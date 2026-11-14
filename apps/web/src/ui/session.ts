@@ -15,6 +15,7 @@ import {
   type DeviceTarget,
   // -- WP WB8 --
   type HistoryMove,
+  type HubAdminEventRecord, // -- WP HUBADMIN --
   type LinkDeviceRecord,
   type LinkPhase,
   type ParamValue,
@@ -68,6 +69,13 @@ export interface SessionState {
   lock?: LockStateRecord | null;
   /** Counts the lock's and the pinned mode's reads, so the mode is resolved again after each. */
   lockRev?: number;
+  // -- WP HUBADMIN --
+  /** Counts the hub's admin events (`limits.changed`, `limits.held`, `mode.changed`): the Installer page reads the hub's copy again on each. */
+  hubAdminRev?: number;
+  /** The last of those events (its rows: what the hub held). */
+  hubAdminEvent?: HubAdminEventRecord | null;
+  /** The recovery code of a PIN just set on the hub, shown once until dismissed; "" for none. */
+  hubRecovery?: string;
 }
 
 // -- WP WB6a --
@@ -205,7 +213,9 @@ export class Session {
       await loadNotices(this.core).catch(() => undefined);
       await loadFieldRanges(this.core).catch(() => undefined); // -- WP P1EFIX --
       const serial = this.state.snapshot?.device.serial || this.deviceId;
-      const text = serial && !this.readOnlyReason ? loadProfile(safeLocalStorage(), serial) : "";
+      // -- WP HUBADMIN -- this page's copy is for a direct (USB) DSPi; through a hub, the hub's copy is in force
+      const viaHub = await this.core.call("installerTarget", undefined).then((t) => t?.copy === "hub", () => false);
+      const text = serial && !this.readOnlyReason && !viaHub ? loadProfile(safeLocalStorage(), serial) : "";
       if (text) await this.core.call("limitsApply", { text }).catch(() => undefined);
       await this.refreshLock();
     } catch {
@@ -651,6 +661,27 @@ export class Session {
       if (this.state.status === "choosing") this.refreshDevices();
     }
     else if (e.event === "lost") this.set({ status: "failed", error: e.reason });
+    // -- WP HUBADMIN -- the hub changed its copy: the lock as the core read it again, and a new read of the page
+    else if (e.event === "hubAdmin") this.onHubAdmin(e.events);
+  }
+
+  // -- WP HUBADMIN --
+  /** Show (or, with "", dismiss) the recovery code of a PIN just set on the hub. Kept only in this session's state. */
+  showHubRecovery(code: string): void {
+    this.set({ hubRecovery: code });
+  }
+
+  /** The hub's admin events of one Link turn: the lock of the last one for this device; the page reads the hub's copy again. */
+  private onHubAdmin(events: HubAdminEventRecord[]): void {
+    const serial = this.state.snapshot?.device.serial || this.deviceId;
+    const mine = events.filter((x) => !x.serial || !serial || x.serial === serial);
+    if (!mine.length) return;
+    const last = mine[mine.length - 1]!;
+    this.set({
+      ...(isLock(last.lock) ? { lock: last.lock, lockRev: (this.state.lockRev ?? 0) + 1 } : {}),
+      hubAdminEvent: last,
+      hubAdminRev: (this.state.hubAdminRev ?? 0) + 1,
+    });
   }
 
   private set(patch: Partial<SessionState>): void {

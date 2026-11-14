@@ -16,6 +16,10 @@ import se.bofr.dspi.core.AutoEqApply
 import se.bofr.dspi.core.AutoEqPreview
 import se.bofr.dspi.core.AutoEqProfile
 import se.bofr.dspi.core.DspiException
+import se.bofr.dspi.core.HubAdminEvent
+import se.bofr.dspi.core.HubAdminListener
+import se.bofr.dspi.core.HubAdminState
+import se.bofr.dspi.core.InstallerTarget
 import se.bofr.dspi.core.LimitFieldRange
 import se.bofr.dspi.core.LimitsStatus
 import se.bofr.dspi.core.LockState
@@ -137,6 +141,18 @@ interface Installer {
     /** The profile in force, as a draft; null with none. */
     val profile: StateFlow<LimitsDraft?>
 
+    // -- WP HUBADMIN --
+    /**
+     * Which copy the page edits (`installer_target`, no I/O): [COPY_CONSOLE]
+     * (USB, MIDI, the demo: as before), [COPY_HUB] (the hub's, through DSPi
+     * Link: [applyLimits], [clearLimits], [setPin], [clearPin] and [cover] go
+     * to the hub) or [COPY_NONE]. Null before the first read or with no core.
+     */
+    val target: StateFlow<InstallerTarget?>
+
+    /** The hub's copy (`hub_limits_get`) while [target] is the hub's; null otherwise. */
+    val hub: StateFlow<HubAdminState?>
+
     /** `limits_set_dir`: the app's folder for the profiles and the PIN (name it before a device opens). */
     suspend fun setFolder(dir: String): Result<Unit>
 
@@ -160,6 +176,10 @@ interface Installer {
 
     /** Remove the profile (nothing on the device changes). */
     suspend fun clearLimits(): Result<Unit>
+
+    // -- WP HUBADMIN --
+    /** Pin [role]'s mode on the hub (`viewer|control|admin`; mode `simple|advanced|installer`, "" unpins). The hub's copy only. */
+    suspend fun pinMode(role: String, mode: String): Result<HubAdminState>
 
     suspend fun manifest(): ModeManifest?
 
@@ -210,6 +230,17 @@ interface Installer {
 
         /** `LockState.heldBy` when the hub holds the PIN. */
         const val HELD_BY_HUB = "hub"
+
+        // -- WP HUBADMIN -- `InstallerTarget.copy`
+        const val COPY_HUB = "hub"
+        const val COPY_CONSOLE = "console"
+        const val COPY_NONE = "none"
+
+        /** The hub's roles, in the order the page lists them. */
+        val HUB_ROLES = listOf("viewer", "control", "admin")
+
+        /** The modes a role may be pinned to ("" none: the user's choice). */
+        val PINNABLE_MODES = listOf("", SIMPLE, ADVANCED, INSTALLER)
     }
 
     /** For bridges without a core (test doubles): no lock, no limits, every change refused. */
@@ -219,6 +250,12 @@ interface Installer {
         override val lock: StateFlow<LockState?> = MutableStateFlow<LockState?>(null).asStateFlow()
         override val limits: StateFlow<LimitsStatus?> = MutableStateFlow<LimitsStatus?>(null).asStateFlow()
         override val profile: StateFlow<LimitsDraft?> = MutableStateFlow<LimitsDraft?>(null).asStateFlow()
+
+        // -- WP HUBADMIN --
+        override val target: StateFlow<InstallerTarget?> = MutableStateFlow<InstallerTarget?>(null).asStateFlow()
+        override val hub: StateFlow<HubAdminState?> = MutableStateFlow<HubAdminState?>(null).asStateFlow()
+
+        override suspend fun pinMode(role: String, mode: String): Result<HubAdminState> = no()
 
         override suspend fun setFolder(dir: String): Result<Unit> = no()
 
@@ -260,16 +297,34 @@ internal class InstallerImpl(private val bridge: DspiBridgeImpl) : Installer {
     private val _profile = MutableStateFlow<LimitsDraft?>(null)
     override val profile: StateFlow<LimitsDraft?> = _profile.asStateFlow()
 
+    // -- WP HUBADMIN --
+    private val _target = MutableStateFlow<InstallerTarget?>(null)
+    override val target: StateFlow<InstallerTarget?> = _target.asStateFlow()
+    private val _hub = MutableStateFlow<HubAdminState?>(null)
+    override val hub: StateFlow<HubAdminState?> = _hub.asStateFlow()
+
     private val core get() = bridge.core
 
     init {
+        // -- WP HUBADMIN -- the hub's limits.changed / limits.held / mode.changed (a core thread): re-read on main
+        bridge.scope.launch(bridge.main) {
+            val listener = HubAdminListener { e -> bridge.scope.launch(bridge.main) { onHubEvent(e) } }
+            bridge.onFfi { runCatching { core.setHubAdminListener(listener) } }
+        }
         // A device opened or gone: its lock and its profile (no I/O but the hub's, read once per device)
         bridge.scope.launch(bridge.main) {
             bridge.deviceGeneration.collect { refresh(hub = true) }
         }
     }
 
-    private data class Read(val lock: LockState?, val limits: LimitsStatus?, val profile: LimitsDraft?)
+    private data class Read(
+        val lock: LockState?,
+        val limits: LimitsStatus?,
+        val profile: LimitsDraft?,
+        // -- WP HUBADMIN --
+        val target: InstallerTarget? = null,
+        val hub: HubAdminState? = null
+    )
 
     override suspend fun refresh(hub: Boolean) {
         val r =
@@ -277,15 +332,89 @@ internal class InstallerImpl(private val bridge: DspiBridgeImpl) : Installer {
                 val lock = runCatching { if (hub) core.installerLockRefresh() else core.installerLockState() }
                     .recoverCatching { core.installerLockState() }
                     .getOrNull()
+                // -- WP HUBADMIN -- through a hub the page shows the hub's copy (read when [hub] asks, else the last read)
+                val first = runCatching { core.installerTarget() }.getOrNull()
+                val hubState = when {
+                    first?.copy != Installer.COPY_HUB -> null
+                    hub -> runCatching { core.hubLimitsGet() }.getOrNull()
+                    else -> _hub.value
+                }
+                // after `hub_limits_get` the target carries the hub's live role
+                val target = if (hubState != null && hub) runCatching { core.installerTarget() }.getOrNull() ?: first else first
                 Read(
                     lock,
                     runCatching { core.limitsStatus() }.getOrNull(),
-                    runCatching { core.limitsProfileDocument() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let(LimitsDraft::fromDocument)
+                    if (target?.copy == Installer.COPY_HUB) {
+                        hubState?.let(::profileOf)
+                    } else {
+                        runCatching { core.limitsProfileDocument() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let(LimitsDraft::fromDocument)
+                    },
+                    target,
+                    hubState
                 )
             }
         _lock.value = r.lock
         _limits.value = r.limits
         _profile.value = r.profile
+        _target.value = r.target // -- WP HUBADMIN --
+        _hub.value = r.hub
+    }
+
+    // -- WP HUBADMIN --
+    private fun profileOf(s: HubAdminState): LimitsDraft? = s.profileDocument.takeIf { it.isNotEmpty() }?.let(LimitsDraft::fromDocument)
+
+    /** Which copy the page edits now (`installer_target`, no I/O); kept in [target]. */
+    private suspend fun copyNow(): String? {
+        val t = bridge.onFfi { runCatching { core.installerTarget() }.getOrNull() }
+        t?.let { _target.value = it }
+        return t?.copy
+    }
+
+    private class HubDone<T>(val value: T, val state: HubAdminState, val target: InstallerTarget?, val lock: LockState?)
+
+    /**
+     * A call on the hub's copy ([block] on the FFI thread gives its value and the
+     * hub's state after it); then the target and the lock (the hub's, a round trip)
+     * read again, all kept.
+     */
+    private suspend fun <T> hubCall(block: () -> Pair<T, HubAdminState>): Result<T> {
+        val r = call {
+            val (v, s) = block()
+            HubDone(
+                v,
+                s,
+                runCatching { core.installerTarget() }.getOrNull(),
+                runCatching { core.installerLockRefresh() }.recoverCatching { core.installerLockState() }.getOrNull()
+            )
+        }
+        r.getOrNull()?.let { d ->
+            _hub.value = d.state
+            _profile.value = profileOf(d.state)
+            d.target?.let { _target.value = it }
+            d.lock?.let { _lock.value = it }
+        }
+        return r.map { it.value }
+    }
+
+    /** The lock after a hub call, as a result (the hub's call succeeded). */
+    private fun lockAfter(r: Result<*>): Result<LockState> = r.mapCatching { _lock.value ?: throw InstallerException("No device.") }
+
+    /** The device the hub's profile is for. */
+    private val hubSerial: String get() = _target.value?.serial?.takeIf { it.isNotEmpty() } ?: bridge.selectedSerial
+
+    /** One of the hub's events: read the hub's copy again and take the event's lock. Main thread. */
+    internal suspend fun onHubEvent(e: HubAdminEvent) {
+        val r = bridge.onFfi {
+            val first = runCatching { core.installerTarget() }.getOrNull()
+            val state = if (first?.copy == Installer.COPY_HUB) runCatching { core.hubLimitsGet() }.getOrNull() else null
+            (if (state != null) runCatching { core.installerTarget() }.getOrNull() ?: first else first) to state
+        }
+        r.first?.let { _target.value = it }
+        if (r.first?.copy == Installer.COPY_HUB) {
+            _hub.value = r.second
+            r.second?.let { _profile.value = profileOf(it) }
+        }
+        _lock.value = e.lock
     }
 
     /** Runs [block] on the FFI thread; a core error becomes a failure in the core's notice words. */
@@ -306,6 +435,12 @@ internal class InstallerImpl(private val bridge: DspiBridgeImpl) : Installer {
         is DspiException.ReadOnly -> runCatching { core.noticeFor(e) }.getOrNull()?.let { n ->
             val detail = (e as? DspiException.LimitExceeded)?.msg?.trim().orEmpty()
             listOf("${n.title}: ${n.reason}", detail).filter { it.isNotEmpty() }.joinToString(" ")
+        }
+        // -- WP HUBADMIN -- a hub without limits (`dlink.no_limits`)
+        is DspiException.Link -> if (e.code == "no_limits") {
+            runCatching { core.noticeFor(e) }.getOrNull()?.let { n -> "${n.title}: ${n.reason}" }
+        } else {
+            null
         }
         else -> null
     }
@@ -329,20 +464,46 @@ internal class InstallerImpl(private val bridge: DspiBridgeImpl) : Installer {
     override suspend fun lockNow() = locked(call { core.installerLock() })
 
     override suspend fun setPin(pin: String): Result<String> {
+        // -- WP HUBADMIN -- the hub's PIN (an Admin needs no current one); the code is shown once all the same
+        if (copyNow() == Installer.COPY_HUB) return hubCall { core.hubPinSet(pin).let { it.recoveryCode to it.state } }
         val r = call { core.installerPinSet(pin) }
         r.getOrNull()?.let { _lock.value = it.state }
         return r.map { it.recoveryCode }
     }
 
-    override suspend fun clearPin() = locked(call { core.installerPinClear() })
+    override suspend fun clearPin(): Result<LockState> {
+        // -- WP HUBADMIN --
+        if (copyNow() == Installer.COPY_HUB) return lockAfter(hubCall { Unit to core.hubPinClear() })
+        return locked(call { core.installerPinClear() })
+    }
 
     override suspend fun cover(pages: List<String>): Result<LockState> {
         refused("cover")?.let { return it }
+        // -- WP HUBADMIN -- on the hub the lock covers the profile's lockedPages: the hub's profile, set again
+        if (copyNow() == Installer.COPY_HUB) {
+            val serial = hubSerial
+            return lockAfter(
+                hubCall {
+                    val now = core.hubLimitsGet().let(::profileOf) ?: LimitsDraft()
+                    Unit to core.hubLimitsSet(now.copy(lockedPages = pages).toDocument(serial)).state
+                }
+            )
+        }
         return locked(call { core.installerLockCover(pages) }).also { refresh(hub = false) }
     }
 
     override suspend fun applyLimits(draft: LimitsDraft): Result<LimitsReport> {
         refused("applyLimits")?.let { return it }
+        // -- WP HUBADMIN -- the hub's copy: what the hub held at once is the report
+        if (copyNow() == Installer.COPY_HUB) {
+            val serial = hubSerial
+            val r = hubCall {
+                val set = core.hubLimitsSet(draft.toDocument(serial))
+                LimitsReport(emptyList(), set.held, emptyList()) to set.state
+            }
+            if (r.isSuccess) bridge.refreshAll()
+            return r
+        }
         val serial = bridge.selectedSerial
         val r = call { core.limitsApplyProfile(draft.toDocument(serial)) }.map { LimitsReport(it.lines, it.held, it.notes) }
         bridge.refreshAll()
@@ -350,7 +511,15 @@ internal class InstallerImpl(private val bridge: DspiBridgeImpl) : Installer {
         return r
     }
 
-    override suspend fun clearLimits(): Result<Unit> = call { core.limitsClear() }.also { refresh(hub = false) }
+    override suspend fun clearLimits(): Result<Unit> {
+        // -- WP HUBADMIN --
+        if (copyNow() == Installer.COPY_HUB) return hubCall { Unit to core.hubLimitsClear() }
+        return call { core.limitsClear() }.also { refresh(hub = false) }
+    }
+
+    // -- WP HUBADMIN -- the hub refuses it off a hub (`dlink.no_limits`) and below Admin (`denied`)
+    override suspend fun pinMode(role: String, mode: String): Result<HubAdminState> =
+        hubCall { core.hubModePin(role, mode).let { it to it } }
 
     override suspend fun manifest(): ModeManifest? = bridge.onFfi { runCatching { core.modeManifest() }.getOrNull() }
 

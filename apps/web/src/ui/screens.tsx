@@ -37,6 +37,7 @@ import { useConsoleKeys, type ConsoleKey } from "./keys";
 import type { ModeChoice, ModeManifest } from "../core/protocol";
 import { InstallerScreen } from "../screens/installer/InstallerScreen";
 import { LockedBanner, UnlockDialog } from "../screens/installer/Unlock";
+import { RecoveryCode } from "../screens/installer/HubAdmin"; // -- WP HUBADMIN --
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -252,6 +253,8 @@ export function Screens(props: { session: Session }) {
         </div>
       ) : null}
       {unlocking ? <UnlockDialog session={session} lock={st.lock} onDone={() => setUnlocking(false)} /> : null}
+      {/* -- WP HUBADMIN -- the hub's recovery code, shown once: here, so it stays when the new PIN closes the Installer mode */}
+      {st.hubRecovery ? <RecoveryCode session={session} code={st.hubRecovery} /> : null}
       {/* -- WP P1WB1 -- the scene bar's host-side half: the A/B toggle; a safe apply's countdown in every mode */}
       {/* -- WP P1DCFIX -- the A/B toggle in every mode too (Simple has the compare) */}
       {lockedUser ? null : <AbBar desk={desk} />}

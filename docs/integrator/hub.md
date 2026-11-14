@@ -147,10 +147,10 @@ answer carries `"v": 1`. With no profile a device behaves as before.
 |---|---|---|
 | `limits.get {id, handle}` | every role | `ok {serial, handle, profile, pin_set, locked, unlocked, held, wrong_tries, retry_in_ms}`: the profile (as the `limits` block of a limits document) or `null`; whether a PIN is set; whether the device is locked, and whether it is unlocked for this session; the rows the hub last held; the wrong PINs since the last good one and the refusal window left, ms (0: none) |
 | `limits.set {id, handle, profile}` | admin | sets the profile (a limits document, a document carrying one in `meta.limits`, or the profile object); `null` clears it. Its `serial` is the device's. A device outside the new profile is held at once: `ok {serial, held}` |
-| `limits.pin {id, handle, pin}` | admin | sets the PIN (4 to 64 characters), or clears it with `null`, which removes the lock |
+| `limits.pin {id, handle, pin}` | admin | sets the PIN (4 to 64 characters), or clears it with `null`, which removes the lock. A new PIN answers `ok {serial, pin_set, recovery_code}`: a recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`, WP HUBADMIN, OD-P1c) that `limits.unlock` takes in place of the PIN (any case, spaces or dashes), shown in this reply only and kept as a salted, slow hash (`device_pin_recovery`, removed from a diagnostics bundle); it goes with the PIN it was made for |
 | `limits.unlock {id, handle, pin}` | control, admin | unlocks the device for this session (an Admin needs no PIN). A wrong PIN is `bad_pin`. The consoles' rule: 3 wrong PINs are free, each further one opens a refusal window of 30 s, doubling to 15 min, inside which every attempt is refused unchecked (`retry_later`, `retry_in_ms`); a good PIN resets the count |
 | `limits.lock {id, handle}` | control, admin | locks the device again for this session |
-| `mode.pinned {id, handle?}` | every role | `ok {role, mode, locked?}`: the mode the hub pins for this session's role (`simple`, `advanced`, `installer`) or `null` (the user's choice), and with a handle whether that device is locked for this session |
+| `mode.pinned {id, handle?}` | every role | `ok {role, mode, locked?, pins?}`: the mode the hub pins for this session's role (`simple`, `advanced`, `installer`) or `null` (the user's choice), and with a handle whether that device is locked for this session. An Admin also gets `pins {viewer, control, admin}`, every role's (WP HUBADMIN: its Installer page) |
 | `mode.pin {id, role, mode}` | admin | pins a role's mode, or unpins it with `null` |
 
 Events to every session: `limits.changed {v, serial, handle}` after a profile or
@@ -199,6 +199,18 @@ PIN change, `limits.held {v, serial, handle, rows}` after the hub held a device,
   answers it, and a diagnostics bundle removes it. Profiles are under
   `device_limits`, pinned modes under `role_modes`. Like the consoles' PIN it is a
   UI lock: whoever has the device on USB can change it with any tool.
+
+The consoles' typed calls for these messages are `dspi_core::hub_admin` (WP
+HUBADMIN): `installer_target` (which copy an Installer page edits: the hub's
+for a device reached through a hub that keeps limits, this console's own only
+for a directly connected one), `hub_limits_get`/`set`/`clear`,
+`hub_pin_set`/`clear` and `hub_mode_pin`, and the events through
+`dspi-link`'s message hook (`LinkEvents::hub_event`), after which the core
+reads the lock again (`installer_lock_refresh`) and tells the app
+(`HubAdminListener`, or `hub_admin_events` on the web). A console paired with
+the hub's PIN is Control (it asks for control), so the Admin role is given on
+the hub's machine (`uconsole hub role <cid> admin`); the role changes live,
+and `hub_limits_get` answers with it.
 
 Reference: `crates/dspi-hub/src/limits.rs`.
 

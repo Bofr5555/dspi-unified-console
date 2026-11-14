@@ -304,6 +304,24 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun pollHotplug(): Unit = throw NotImplementedError("poll_hotplug")
 
+    override fun installerTarget(): InstallerTarget = throw NotImplementedError("installer_target")
+
+    override fun hubLimitsGet(): HubAdminState = throw NotImplementedError("hub_limits_get")
+
+    override fun hubLimitsSet(document: String): HubLimitsSet = throw NotImplementedError("hub_limits_set")
+
+    override fun hubLimitsClear(): HubAdminState = throw NotImplementedError("hub_limits_clear")
+
+    override fun hubPinSet(pin: String): HubPinSet = throw NotImplementedError("hub_pin_set")
+
+    override fun hubPinClear(): HubAdminState = throw NotImplementedError("hub_pin_clear")
+
+    override fun hubModePin(role: String, mode: String): HubAdminState = throw NotImplementedError("hub_mode_pin")
+
+    override fun setHubAdminListener(listener: HubAdminListener?): Unit = throw NotImplementedError("set_hub_admin_listener")
+
+    override fun hubAdminEvents(): List<HubAdminEvent> = throw NotImplementedError("hub_admin_events")
+
     override fun getInputSourceName(source: Int): String = throw NotImplementedError("get_input_source_name")
 
     override fun setInputSourceName(source: Int, name: String): Unit = throw NotImplementedError("set_input_source_name")

@@ -36,8 +36,15 @@ import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.HistoryEntry
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.HistorySource
+import se.bofr.dspi.core.HubAdminEvent
+import se.bofr.dspi.core.HubAdminListener
+import se.bofr.dspi.core.HubAdminState
+import se.bofr.dspi.core.HubLimitsSet
+import se.bofr.dspi.core.HubModePin
+import se.bofr.dspi.core.HubPinSet
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.InputLockStatus
+import se.bofr.dspi.core.InstallerTarget
 import se.bofr.dspi.core.LgStatus
 import se.bofr.dspi.core.LinkAddress
 import se.bofr.dspi.core.LinkDevice
@@ -46,6 +53,7 @@ import se.bofr.dspi.core.LinkInfo
 import se.bofr.dspi.core.LinkListener
 import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.core.LinkStatus
+import se.bofr.dspi.core.LockState
 import se.bofr.dspi.core.MonitorBatch
 import se.bofr.dspi.core.MonitorEntry
 import se.bofr.dspi.core.NamedValue
@@ -1851,6 +1859,148 @@ open class FakeDspiCore(
             rtaTimer?.cancel()
             rtaTimer = null
         }
+    }
+
+    // -- WP HUBADMIN -- the hub's admin API over DSPi Link, as a small hub
+    // model: [hubCopy] "console" (the default) is a directly connected device,
+    // as before; "hub" a device reached through a hub that keeps limits, where
+    // [hubRole] decides who may change the hub's copy (an Admin); "none" a hub
+    // without limits. [hubEvent] sends one of the hub's events.
+
+    /** Which copy the Installer page edits (`installer_target().copy`). */
+    @Volatile var hubCopy = "console"
+
+    /** This console's role on the hub (`viewer`, `control`, `admin`). */
+    @Volatile var hubRole = "admin"
+
+    /** The hub's profile document for the device ("" none). */
+    @Volatile var hubProfile = ""
+        private set
+
+    @Volatile var hubPinSet = false
+        private set
+
+    /** The hub's pinned modes by role ("" unpinned). */
+    val hubPinned: MutableMap<String, String> = Collections.synchronizedMap(linkedMapOf("viewer" to "", "control" to "", "admin" to ""))
+
+    /** What `hub_limits_set` reports as held at once. */
+    @Volatile var hubHeldNext: List<String> = emptyList()
+
+    @Volatile var hubAdminListener: HubAdminListener? = null
+        private set
+
+    private var hubRecoveries = 0
+
+    override fun installerTarget(): InstallerTarget {
+        val hub = hubCopy == "hub"
+        val editable = hubCopy == "console" || (hub && hubRole == "admin")
+        return InstallerTarget(
+            copy = hubCopy,
+            editable = editable,
+            serial = serial,
+            role = if (hubCopy == "console") "" else hubRole,
+            noticeKey = when (hubCopy) {
+                "hub" -> "installer.hub_copy"
+                "console" -> "installer.console_copy"
+                else -> "dlink.no_limits"
+            },
+            readOnlyKey = when {
+                editable -> ""
+                hub -> "installer.hub_role"
+                else -> "dlink.no_limits"
+            }
+        )
+    }
+
+    private fun hubState(): HubAdminState {
+        val admin = hubRole == "admin"
+        val locked = hubPinSet && Regex("\"lockedPages\"\\s*:\\s*\\[\\s*\"").containsMatchIn(hubProfile)
+        return HubAdminState(
+            serial = serial,
+            role = hubRole,
+            canEdit = admin,
+            profileDocument = hubProfile,
+            pinSet = hubPinSet,
+            locked = locked,
+            unlocked = admin,
+            held = hubHeldNext,
+            wrongTries = 0,
+            retryAfterMs = 0,
+            pinnedModes = synchronized(hubPinned) {
+                hubPinned.filterKeys { admin || it == hubRole }.map { (r, m) -> HubModePin(r, m) }
+            }
+        )
+    }
+
+    /** The lock the hub holds, as `installer_lock_state` reports it through the hub. */
+    fun hubLock(): LockState {
+        val s = hubState()
+        return LockState(
+            serial = serial, pinSet = s.pinSet, unlocked = s.unlocked, locked = s.locked && !s.unlocked,
+            installerOpen = !s.pinSet || s.unlocked, covers = emptyList(), allowedWrites = emptyList(), wrongTries = 0,
+            retryAfterMs = 0, recovered = false, note = "", contact = "", scopeNoticeKey = "", detail = "",
+            heldBy = if (s.pinSet) "hub" else "", hubPinnedMode = s.pinnedModes.firstOrNull { it.role == hubRole }?.mode.orEmpty()
+        )
+    }
+
+    private fun <T> hubOp(name: String, args: String = "", write: Boolean = false, block: () -> T): T = op(name, args, device = false) {
+        if (hubCopy != "hub") throw DspiException.Link("no_limits", "this hub keeps no limits")
+        if (write && hubRole != "admin") throw DspiException.Denied()
+        block()
+    }
+
+    override fun hubLimitsGet(): HubAdminState = hubOp("hubLimitsGet") { hubState() }
+
+    override fun hubLimitsSet(document: String): HubLimitsSet = hubOp("hubLimitsSet", document, write = true) {
+        hubProfile = document
+        HubLimitsSet(hubHeldNext, hubState())
+    }
+
+    override fun hubLimitsClear(): HubAdminState = hubOp("hubLimitsClear", write = true) {
+        hubProfile = ""
+        hubState()
+    }
+
+    override fun hubPinSet(pin: String): HubPinSet = hubOp("hubPinSet", write = true) {
+        if (pin.length !in 4..64) throw DspiException.InvalidArgument("a PIN has 4 to 64 characters")
+        hubPinSet = true
+        hubRecoveries++
+        HubPinSet("HUBRC-0000${hubRecoveries % 10}-AAAAA-BBBBB", hubState())
+    }
+
+    override fun hubPinClear(): HubAdminState = hubOp("hubPinClear", write = true) {
+        hubPinSet = false
+        hubState()
+    }
+
+    override fun hubModePin(role: String, mode: String): HubAdminState = hubOp("hubModePin", "$role, $mode", write = true) {
+        if (role !in listOf("viewer", "control", "admin")) throw DspiException.InvalidArgument("no such role: $role")
+        if (mode !in listOf("", "simple", "advanced", "installer")) throw DspiException.InvalidArgument("no such mode: $mode")
+        hubPinned[role] = mode
+        hubState()
+    }
+
+    override fun setHubAdminListener(listener: HubAdminListener?) {
+        hubAdminListener = listener
+    }
+
+    override fun hubAdminEvents(): List<HubAdminEvent> = emptyList()
+
+    /** Through a hub, the lock is the hub's; directly connected, as before (not modelled). */
+    override fun installerLockState(): LockState = if (hubCopy == "hub") hubLock() else super.installerLockState()
+
+    override fun installerLockRefresh(): LockState =
+        if (hubCopy == "hub") op("installerLockRefresh", device = false) { hubLock() } else super.installerLockRefresh()
+
+    /** Test hook: the hub sends [kind] (`limits.changed`, `limits.held`, `mode.changed`), after the core's lock refresh. */
+    fun hubEvent(kind: String, rows: List<String> = emptyList(), role: String = "", mode: String = "") {
+        val e = HubAdminEvent(kind, if (kind == "mode.changed") "" else serial, rows, role, mode, hubLock())
+        hubAdminListener?.onHubAdminEvent(e)
+    }
+
+    /** Test hook: another Admin changed the hub's copy (no event by itself). */
+    fun hubSetProfileRemotely(document: String) {
+        hubProfile = document
     }
 
     companion object {

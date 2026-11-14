@@ -678,6 +678,9 @@ internal interface UniffiCallbackInterfaceHostTransportMethod3 : com.sun.jna.Cal
 internal interface UniffiCallbackInterfaceHostTransportMethod4 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfaceHubAdminListenerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`event`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceLinkListenerMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -762,6 +765,22 @@ internal open class UniffiVTableCallbackInterfaceHostTransport(
     }
 
 }
+@Structure.FieldOrder("onHubAdminEvent", "uniffiFree")
+internal open class UniffiVTableCallbackInterfaceHubAdminListener(
+    @JvmField internal var `onHubAdminEvent`: UniffiCallbackInterfaceHubAdminListenerMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `onHubAdminEvent`: UniffiCallbackInterfaceHubAdminListenerMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfaceHubAdminListener(`onHubAdminEvent`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceHubAdminListener) {
+        `onHubAdminEvent` = other.`onHubAdminEvent`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
+}
 @Structure.FieldOrder("onLinkDevicesChanged", "onLinkClosed", "onLinkStatusChanged", "onLinkTokenIssued", "uniffiFree")
 internal open class UniffiVTableCallbackInterfaceLinkListener(
     @JvmField internal var `onLinkDevicesChanged`: UniffiCallbackInterfaceLinkListenerMethod0? = null,
@@ -835,6 +854,29 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
     }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2125,6 +2167,20 @@ fun uniffi_dspi_core_checksum_method_dspicore_history(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_host_notify(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_admin_events(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_limits_clear(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_limits_get(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_limits_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_pin_set(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_identify(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(
@@ -2140,6 +2196,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_installer_lock_state(
 fun uniffi_dspi_core_checksum_method_dspicore_installer_pin_clear(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_installer_pin_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installer_target(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_installer_unlock(
 ): Short
@@ -2333,6 +2391,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_set_filter(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_hotplug_callback(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_hub_admin_listener(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_i2c(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_i2s_bck_pin(
@@ -2497,6 +2557,8 @@ fun uniffi_dspi_core_checksum_method_hosttransport_lock(
 ): Short
 fun uniffi_dspi_core_checksum_method_hosttransport_unlock(
 ): Short
+fun uniffi_dspi_core_checksum_method_hubadminlistener_on_hub_admin_event(
+): Short
 fun uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed(
 ): Short
 fun uniffi_dspi_core_checksum_method_linklistener_on_link_closed(
@@ -2560,6 +2622,7 @@ internal interface UniffiLib : Library {
             uniffiCallbackInterfaceAutoEqFetch.register(lib)
             uniffiCallbackInterfaceDeviceEvents.register(lib)
             uniffiCallbackInterfaceHostTransport.register(lib)
+            uniffiCallbackInterfaceHubAdminListener.register(lib)
             uniffiCallbackInterfaceLinkListener.register(lib)
             uniffiCallbackInterfaceMidiSender.register(lib)
             uniffiCallbackInterfaceNotifyListener.register(lib)
@@ -2911,6 +2974,20 @@ fun uniffi_dspi_core_fn_method_dspicore_history(`ptr`: Pointer,`n`: Int,uniffi_o
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_host_notify(`ptr`: Pointer,`packet`: RustBuffer.ByValue,`origin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_hub_admin_events(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_limits_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_limits_get(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_limits_set(`ptr`: Pointer,`document`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_mode_pin(`ptr`: Pointer,`role`: RustBuffer.ByValue,`mode`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_pin_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_pin_set(`ptr`: Pointer,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_identify(`ptr`: Pointer,`seconds`: Byte,`toneOutput`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2926,6 +3003,8 @@ fun uniffi_dspi_core_fn_method_dspicore_installer_lock_state(`ptr`: Pointer,unif
 fun uniffi_dspi_core_fn_method_dspicore_installer_pin_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_installer_pin_set(`ptr`: Pointer,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installer_target(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_installer_unlock(`ptr`: Pointer,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -3119,6 +3198,8 @@ fun uniffi_dspi_core_fn_method_dspicore_set_filter(`ptr`: Pointer,`ch`: Byte,`ba
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_hotplug_callback(`ptr`: Pointer,`listener`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_hub_admin_listener(`ptr`: Pointer,`listener`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_i2c(`ptr`: Pointer,`config`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_i2s_bck_pin(`ptr`: Pointer,`role`: Byte,`pin`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -3288,6 +3369,14 @@ fun uniffi_dspi_core_fn_method_hosttransport_kind(`ptr`: Pointer,uniffi_out_err:
 fun uniffi_dspi_core_fn_method_hosttransport_lock(`ptr`: Pointer,`reason`: RustBuffer.ByValue,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_hosttransport_unlock(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_clone_hubadminlistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
+fun uniffi_dspi_core_fn_free_hubadminlistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_init_callback_vtable_hubadminlistener(`vtable`: UniffiVTableCallbackInterfaceHubAdminListener,
+): Unit
+fun uniffi_dspi_core_fn_method_hubadminlistener_on_hub_admin_event(`ptr`: Pointer,`event`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_clone_linklistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
@@ -4144,6 +4233,27 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_host_notify() != 19114.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_admin_events() != 40604.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_limits_clear() != 57758.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_limits_get() != 55493.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_limits_set() != 29899.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin() != 57304.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear() != 63217.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_pin_set() != 62268.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_identify() != 26030.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4166,6 +4276,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_pin_set() != 15081.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_target() != 45550.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_unlock() != 2337.toShort()) {
@@ -4456,6 +4569,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_hotplug_callback() != 10655.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_hub_admin_listener() != 10270.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_i2c() != 62416.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4700,6 +4816,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_hosttransport_unlock() != 61429.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_hubadminlistener_on_hub_admin_event() != 29874.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed() != 16214.toShort()) {
@@ -7929,6 +8048,76 @@ public interface DspiCoreInterface {
     fun `hostNotify`(`packet`: kotlin.ByteArray, `origin`: kotlin.UShort?)
     
     /**
+     * The hub's admin events since the last call, oldest first (at most
+     * 32 are kept), for a binding that polls instead of a listener (the
+     * web). No I/O.
+     */
+    fun `hubAdminEvents`(): List<HubAdminEvent>
+    
+    /**
+     * Remove the hub's limits profile for the open device (nothing on the
+     * device changes; with it goes what the lock covers). Admin of the hub
+     * only. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_limits_set`].
+     */
+    fun `hubLimitsClear`(): HubAdminState
+    
+    /**
+     * The hub's limits profile, PIN state and pinned modes for the open
+     * device (`limits.get`, `mode.pinned`). Every role may read them. Slow
+     * (two round trips): off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `no_limits` when the device is not
+     * reached through a hub that keeps limits (notice `dlink.no_limits`), or
+     * the hub's failure; [`DspiError::Disconnected`].
+     */
+    fun `hubLimitsGet`(): HubAdminState
+    
+    /**
+     * Set the hub's limits profile for the open device: `document` is a
+     * limits document (or one carrying `meta.limits`). The hub holds the
+     * device to it at once and says what it held. Admin of the hub only.
+     * The lock is read again. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a document that is not a
+     * limits profile; [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_limits_get`].
+     */
+    fun `hubLimitsSet`(`document`: kotlin.String): HubLimitsSet
+    
+    /**
+     * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
+     * one of the manifest's modes, "" to unpin). Hub-wide: every console of
+     * that role shows it. Admin of the hub only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown role or mode; as
+     * [`DspiCore::hub_limits_set`].
+     */
+    fun `hubModePin`(`role`: kotlin.String, `mode`: kotlin.String): HubAdminState
+    
+    /**
+     * Remove the hub's installer PIN for the open device (and its recovery
+     * code): the hub's lock is off. Admin of the hub only. Slow: off the UI
+     * thread.
+     *
+     * Errors: as [`DspiCore::hub_limits_set`].
+     */
+    fun `hubPinClear`(): HubAdminState
+    
+    /**
+     * Set (or change) the hub's installer PIN for the open device: the hub
+     * keeps only its salted, slow hash, and makes a recovery code shown this
+     * once. Every console's unlock of the device ends. Admin of the hub only
+     * (an Admin needs no PIN). Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a PIN of fewer than 4 or
+     * more than 64 characters, or with a space at either end; as
+     * [`DspiCore::hub_limits_set`].
+     */
+    fun `hubPinSet`(`pin`: kotlin.String): HubPinSet
+    
+    /**
      * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
      * 120 the firmware shortens to 120) and, with `tone_output`, play its
      * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
@@ -8017,6 +8206,15 @@ public interface DspiCoreInterface {
      * could not be written; [`DspiError::Unsupported`] on the web.
      */
     fun `installerPinSet`(`pin`: kotlin.String): InstallerPin
+    
+    /**
+     * Which copy of the limits, the installer PIN and the pinned modes the
+     * Installer page edits for the open device: the hub's when the device
+     * is reached through a hub that keeps them (editable by an Admin of the
+     * hub only), this console's own when it is connected directly (USB,
+     * MIDI, the demo), none otherwise. No I/O.
+     */
+    fun `installerTarget`(): InstallerTarget
     
     /**
      * Unlock the open device on this console for this session with the
@@ -9124,6 +9322,12 @@ public interface DspiCoreInterface {
      * listeners from inside the callback.
      */
     fun `setHotplugCallback`(`listener`: DeviceEvents?)
+    
+    /**
+     * Register (`Some`) or clear (`None`) the listener for the hub's admin
+     * events ([`HubAdminListener`]).
+     */
+    fun `setHubAdminListener`(`listener`: HubAdminListener?)
     
     /**
      * Send an I2C target control-interface config (pins, 7-bit address).
@@ -13305,6 +13509,152 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The hub's admin events since the last call, oldest first (at most
+     * 32 are kept), for a binding that polls instead of a listener (the
+     * web). No I/O.
+     */override fun `hubAdminEvents`(): List<HubAdminEvent> {
+            return FfiConverterSequenceTypeHubAdminEvent.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_admin_events(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Remove the hub's limits profile for the open device (nothing on the
+     * device changes; with it goes what the lock covers). Admin of the hub
+     * only. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_limits_set`].
+     */
+    @Throws(DspiException::class)override fun `hubLimitsClear`(): HubAdminState {
+            return FfiConverterTypeHubAdminState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_limits_clear(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The hub's limits profile, PIN state and pinned modes for the open
+     * device (`limits.get`, `mode.pinned`). Every role may read them. Slow
+     * (two round trips): off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `no_limits` when the device is not
+     * reached through a hub that keeps limits (notice `dlink.no_limits`), or
+     * the hub's failure; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubLimitsGet`(): HubAdminState {
+            return FfiConverterTypeHubAdminState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_limits_get(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Set the hub's limits profile for the open device: `document` is a
+     * limits document (or one carrying `meta.limits`). The hub holds the
+     * device to it at once and says what it held. Admin of the hub only.
+     * The lock is read again. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a document that is not a
+     * limits profile; [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_limits_get`].
+     */
+    @Throws(DspiException::class)override fun `hubLimitsSet`(`document`: kotlin.String): HubLimitsSet {
+            return FfiConverterTypeHubLimitsSet.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_limits_set(
+        it, FfiConverterString.lower(`document`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
+     * one of the manifest's modes, "" to unpin). Hub-wide: every console of
+     * that role shows it. Admin of the hub only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown role or mode; as
+     * [`DspiCore::hub_limits_set`].
+     */
+    @Throws(DspiException::class)override fun `hubModePin`(`role`: kotlin.String, `mode`: kotlin.String): HubAdminState {
+            return FfiConverterTypeHubAdminState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_mode_pin(
+        it, FfiConverterString.lower(`role`),FfiConverterString.lower(`mode`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Remove the hub's installer PIN for the open device (and its recovery
+     * code): the hub's lock is off. Admin of the hub only. Slow: off the UI
+     * thread.
+     *
+     * Errors: as [`DspiCore::hub_limits_set`].
+     */
+    @Throws(DspiException::class)override fun `hubPinClear`(): HubAdminState {
+            return FfiConverterTypeHubAdminState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_pin_clear(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Set (or change) the hub's installer PIN for the open device: the hub
+     * keeps only its salted, slow hash, and makes a recovery code shown this
+     * once. Every console's unlock of the device ends. Admin of the hub only
+     * (an Admin needs no PIN). Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a PIN of fewer than 4 or
+     * more than 64 characters, or with a space at either end; as
+     * [`DspiCore::hub_limits_set`].
+     */
+    @Throws(DspiException::class)override fun `hubPinSet`(`pin`: kotlin.String): HubPinSet {
+            return FfiConverterTypeHubPinSet.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_pin_set(
+        it, FfiConverterString.lower(`pin`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
      * 120 the firmware shortens to 120) and, with `tone_output`, play its
      * quiet identify tone ([`IDENTIFY_TONE_DBFS`], 400 ms) on that output.
@@ -13472,6 +13822,25 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installer_pin_set(
         it, FfiConverterString.lower(`pin`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Which copy of the limits, the installer PIN and the pinned modes the
+     * Installer page edits for the open device: the hub's when the device
+     * is reached through a hub that keeps them (editable by an Admin of the
+     * hub only), this console's own when it is connected directly (USB,
+     * MIDI, the demo), none otherwise. No I/O.
+     */override fun `installerTarget`(): InstallerTarget {
+            return FfiConverterTypeInstallerTarget.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installer_target(
+        it, _status)
 }
     }
     )
@@ -15537,6 +15906,21 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_hotplug_callback(
         it, FfiConverterOptionalTypeDeviceEvents.lower(`listener`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Register (`Some`) or clear (`None`) the listener for the hub's admin
+     * events ([`HubAdminListener`]).
+     */override fun `setHubAdminListener`(`listener`: HubAdminListener?)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_hub_admin_listener(
+        it, FfiConverterOptionalTypeHubAdminListener.lower(`listener`),_status)
 }
     }
     
@@ -17658,6 +18042,296 @@ public object FfiConverterTypeHostTransport: FfiConverter<HostTransport, Pointer
     override fun allocationSize(value: HostTransport) = 8UL
 
     override fun write(value: HostTransport, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// to the live Rust struct on the other side of the FFI.
+//
+// Each instance implements core operations for working with the Rust `Arc<T>` and the
+// Kotlin Pointer to work with the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque pointer to the underlying Rust struct.
+//     Method calls need to read this pointer from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its pointer should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the pointer, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the pointer, but is interrupted
+//      before it can pass the pointer over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read pointer value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * The hub's admin events reach the app here (WP HUBADMIN): set with
+ * [`DspiCore::set_hub_admin_listener`].
+ */
+public interface HubAdminListener {
+    
+    /**
+     * The hub's limits, lock or pinned modes changed; `event.lock` is the
+     * open device's lock as read just now. Called on the Link session's
+     * supervisor, no core lock held: re-read the Installer page (off the UI
+     * thread) and return.
+     */
+    fun `onHubAdminEvent`(`event`: HubAdminEvent)
+    
+    companion object
+}
+
+/**
+ * The hub's admin events reach the app here (WP HUBADMIN): set with
+ * [`DspiCore::set_hub_admin_listener`].
+ */
+open class HubAdminListenerImpl: Disposable, AutoCloseable, HubAdminListener
+{
+
+    constructor(pointer: Pointer) {
+        this.pointer = pointer
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    /**
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noPointer: NoPointer) {
+        this.pointer = null
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    protected val pointer: Pointer?
+    protected val cleanable: UniffiCleaner.Cleanable
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithPointer(block: (ptr: Pointer) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the pointer being freed concurrently.
+        try {
+            return block(this.uniffiClonePointer())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val pointer: Pointer?) : Runnable {
+        override fun run() {
+            pointer?.let { ptr ->
+                uniffiRustCall { status ->
+                    UniffiLib.INSTANCE.uniffi_dspi_core_fn_free_hubadminlistener(ptr, status)
+                }
+            }
+        }
+    }
+
+    fun uniffiClonePointer(): Pointer {
+        return uniffiRustCall() { status ->
+            UniffiLib.INSTANCE.uniffi_dspi_core_fn_clone_hubadminlistener(pointer!!, status)
+        }
+    }
+
+    
+    /**
+     * The hub's limits, lock or pinned modes changed; `event.lock` is the
+     * open device's lock as read just now. Called on the Link session's
+     * supervisor, no core lock held: re-read the Installer page (off the UI
+     * thread) and return.
+     */override fun `onHubAdminEvent`(`event`: HubAdminEvent)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_hubadminlistener_on_hub_admin_event(
+        it, FfiConverterTypeHubAdminEvent.lower(`event`),_status)
+}
+    }
+    
+    
+
+    
+
+    
+    
+    companion object
+    
+}
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceHubAdminListener {
+    internal object `onHubAdminEvent`: UniffiCallbackInterfaceHubAdminListenerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`event`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeHubAdminListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onHubAdminEvent`(
+                    FfiConverterTypeHubAdminEvent.lift(`event`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeHubAdminListener.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceHubAdminListener.UniffiByValue(
+        `onHubAdminEvent`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_dspi_core_fn_init_callback_vtable_hubadminlistener(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubAdminListener: FfiConverter<HubAdminListener, Pointer> {
+    internal val handleMap = UniffiHandleMap<HubAdminListener>()
+
+    override fun lower(value: HubAdminListener): Pointer {
+        return Pointer(handleMap.insert(value))
+    }
+
+    override fun lift(value: Pointer): HubAdminListener {
+        return HubAdminListenerImpl(value)
+    }
+
+    override fun read(buf: ByteBuffer): HubAdminListener {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: HubAdminListener) = 8UL
+
+    override fun write(value: HubAdminListener, buf: ByteBuffer) {
         // The Rust code always expects pointers written as 8 bytes,
         // and will fail to compile if they don't fit.
         buf.putLong(Pointer.nativeValue(lower(value)))
@@ -24495,6 +25169,309 @@ public object FfiConverterTypeHistoryMove: FfiConverterRustBuffer<HistoryMove> {
 
 
 /**
+ * One of the hub's admin events, after the core read its lock again.
+ */
+data class HubAdminEvent (
+    /**
+     * `limits.changed` (profile or PIN), `limits.held` (the hub held the
+     * device to its profile) or `mode.changed` (a role's pinned mode).
+     */
+    var `kind`: kotlin.String, 
+    /**
+     * The device it concerns ("" for `mode.changed`, which is hub-wide).
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * `limits.held`'s rows.
+     */
+    var `rows`: List<kotlin.String>, 
+    /**
+     * `mode.changed`'s role.
+     */
+    var `role`: kotlin.String, 
+    /**
+     * `mode.changed`'s mode ("" unpinned).
+     */
+    var `mode`: kotlin.String, 
+    /**
+     * The open device's lock after the refresh.
+     */
+    var `lock`: LockState
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubAdminEvent: FfiConverterRustBuffer<HubAdminEvent> {
+    override fun read(buf: ByteBuffer): HubAdminEvent {
+        return HubAdminEvent(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeLockState.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubAdminEvent) = (
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterSequenceString.allocationSize(value.`rows`) +
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`mode`) +
+            FfiConverterTypeLockState.allocationSize(value.`lock`)
+    )
+
+    override fun write(value: HubAdminEvent, buf: ByteBuffer) {
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterSequenceString.write(value.`rows`, buf)
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterString.write(value.`mode`, buf)
+            FfiConverterTypeLockState.write(value.`lock`, buf)
+    }
+}
+
+
+
+/**
+ * The hub's limits, PIN and pinned modes for the open device
+ * ([`DspiCore::hub_limits_get`]).
+ */
+data class HubAdminState (
+    /**
+     * The device's serial.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * This console's role on the hub.
+     */
+    var `role`: kotlin.String, 
+    /**
+     * This console may change the hub's copy (it is an Admin of the hub).
+     */
+    var `canEdit`: kotlin.Boolean, 
+    /**
+     * The hub's profile as a limits document (the `.dspipreset` family,
+     * `meta.kind` `limits`); "" when the hub has none for the device.
+     */
+    var `profileDocument`: kotlin.String, 
+    /**
+     * A PIN is set on the hub for the device.
+     */
+    var `pinSet`: kotlin.Boolean, 
+    /**
+     * The hub's lock is on (a PIN set and the profile's `lockedPages`
+     * non-empty).
+     */
+    var `locked`: kotlin.Boolean, 
+    /**
+     * The lock does not hold for this console (unlocked, or an Admin).
+     */
+    var `unlocked`: kotlin.Boolean, 
+    /**
+     * What the hub last held the device to (its words).
+     */
+    var `held`: List<kotlin.String>, 
+    /**
+     * Wrong PINs since the last good one (counted per device on the hub).
+     */
+    var `wrongTries`: kotlin.UInt, 
+    /**
+     * The hub's refusal window left, ms; 0: none.
+     */
+    var `retryAfterMs`: kotlin.ULong, 
+    /**
+     * The pinned mode of every role (an Admin sees all three), or only this
+     * console's role's.
+     */
+    var `pinnedModes`: List<HubModePin>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubAdminState: FfiConverterRustBuffer<HubAdminState> {
+    override fun read(buf: ByteBuffer): HubAdminState {
+        return HubAdminState(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterSequenceTypeHubModePin.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubAdminState) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterBoolean.allocationSize(value.`canEdit`) +
+            FfiConverterString.allocationSize(value.`profileDocument`) +
+            FfiConverterBoolean.allocationSize(value.`pinSet`) +
+            FfiConverterBoolean.allocationSize(value.`locked`) +
+            FfiConverterBoolean.allocationSize(value.`unlocked`) +
+            FfiConverterSequenceString.allocationSize(value.`held`) +
+            FfiConverterUInt.allocationSize(value.`wrongTries`) +
+            FfiConverterULong.allocationSize(value.`retryAfterMs`) +
+            FfiConverterSequenceTypeHubModePin.allocationSize(value.`pinnedModes`)
+    )
+
+    override fun write(value: HubAdminState, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterBoolean.write(value.`canEdit`, buf)
+            FfiConverterString.write(value.`profileDocument`, buf)
+            FfiConverterBoolean.write(value.`pinSet`, buf)
+            FfiConverterBoolean.write(value.`locked`, buf)
+            FfiConverterBoolean.write(value.`unlocked`, buf)
+            FfiConverterSequenceString.write(value.`held`, buf)
+            FfiConverterUInt.write(value.`wrongTries`, buf)
+            FfiConverterULong.write(value.`retryAfterMs`, buf)
+            FfiConverterSequenceTypeHubModePin.write(value.`pinnedModes`, buf)
+    }
+}
+
+
+
+/**
+ * A profile set on the hub ([`DspiCore::hub_limits_set`]).
+ */
+data class HubLimitsSet (
+    /**
+     * What the hub held the device to at once (its words), as `limits.held`.
+     */
+    var `held`: List<kotlin.String>, 
+    /**
+     * The hub's state after the change.
+     */
+    var `state`: HubAdminState
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubLimitsSet: FfiConverterRustBuffer<HubLimitsSet> {
+    override fun read(buf: ByteBuffer): HubLimitsSet {
+        return HubLimitsSet(
+            FfiConverterSequenceString.read(buf),
+            FfiConverterTypeHubAdminState.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubLimitsSet) = (
+            FfiConverterSequenceString.allocationSize(value.`held`) +
+            FfiConverterTypeHubAdminState.allocationSize(value.`state`)
+    )
+
+    override fun write(value: HubLimitsSet, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`held`, buf)
+            FfiConverterTypeHubAdminState.write(value.`state`, buf)
+    }
+}
+
+
+
+/**
+ * A role's pinned mode on the hub.
+ */
+data class HubModePin (
+    /**
+     * `viewer`, `control` or `admin`.
+     */
+    var `role`: kotlin.String, 
+    /**
+     * `simple`, `advanced` or `installer`; "" for the user's choice.
+     */
+    var `mode`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubModePin: FfiConverterRustBuffer<HubModePin> {
+    override fun read(buf: ByteBuffer): HubModePin {
+        return HubModePin(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubModePin) = (
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`mode`)
+    )
+
+    override fun write(value: HubModePin, buf: ByteBuffer) {
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterString.write(value.`mode`, buf)
+    }
+}
+
+
+
+/**
+ * A PIN set on the hub ([`DspiCore::hub_pin_set`]).
+ */
+data class HubPinSet (
+    /**
+     * The recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`): unlocks the device on
+     * the hub in place of the PIN. Shown this once, never kept but as a
+     * hash on the hub (notice [`NOTICE_HUB_RECOVERY`]).
+     */
+    var `recoveryCode`: kotlin.String, 
+    /**
+     * The hub's state after the change.
+     */
+    var `state`: HubAdminState
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubPinSet: FfiConverterRustBuffer<HubPinSet> {
+    override fun read(buf: ByteBuffer): HubPinSet {
+        return HubPinSet(
+            FfiConverterString.read(buf),
+            FfiConverterTypeHubAdminState.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubPinSet) = (
+            FfiConverterString.allocationSize(value.`recoveryCode`) +
+            FfiConverterTypeHubAdminState.allocationSize(value.`state`)
+    )
+
+    override fun write(value: HubPinSet, buf: ByteBuffer) {
+            FfiConverterString.write(value.`recoveryCode`, buf)
+            FfiConverterTypeHubAdminState.write(value.`state`, buf)
+    }
+}
+
+
+
+/**
  * Settings of the I2C control interface.
  */
 data class I2cConfig (
@@ -24740,6 +25717,82 @@ public object FfiConverterTypeInstallerPin: FfiConverterRustBuffer<InstallerPin>
     override fun write(value: InstallerPin, buf: ByteBuffer) {
             FfiConverterString.write(value.`recoveryCode`, buf)
             FfiConverterTypeLockState.write(value.`state`, buf)
+    }
+}
+
+
+
+/**
+ * Which copy of the limits, the installer PIN and the pinned modes the
+ * Installer page edits ([`DspiCore::installer_target`]).
+ */
+data class InstallerTarget (
+    /**
+     * [`COPY_HUB`], [`COPY_CONSOLE`] or [`COPY_NONE`].
+     */
+    var `copy`: kotlin.String, 
+    /**
+     * The page may change that copy: always for this console's own (its PIN
+     * prompt is [`LockState::installer_open`]'s), for the hub's only as an
+     * Admin of the hub.
+     */
+    var `editable`: kotlin.Boolean, 
+    /**
+     * The open device's serial ("" with none).
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * This console's role on the hub (`viewer`, `control`, `admin`): the
+     * one the hub last answered [`DspiCore::hub_limits_get`] with, else the
+     * session's; "" off a hub, or while the hub session is down.
+     */
+    var `role`: kotlin.String, 
+    /**
+     * The notice row that says which copy is edited: [`NOTICE_HUB_COPY`],
+     * [`NOTICE_CONSOLE_COPY`], [`NOTICE_NO_LIMITS`], or `disconnected`.
+     */
+    var `noticeKey`: kotlin.String, 
+    /**
+     * Why the page is read-only, as a notice row ([`NOTICE_HUB_ROLE`],
+     * [`NOTICE_NO_LIMITS`], `disconnected`); "" when it is editable.
+     */
+    var `readOnlyKey`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallerTarget: FfiConverterRustBuffer<InstallerTarget> {
+    override fun read(buf: ByteBuffer): InstallerTarget {
+        return InstallerTarget(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: InstallerTarget) = (
+            FfiConverterString.allocationSize(value.`copy`) +
+            FfiConverterBoolean.allocationSize(value.`editable`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`noticeKey`) +
+            FfiConverterString.allocationSize(value.`readOnlyKey`)
+    )
+
+    override fun write(value: InstallerTarget, buf: ByteBuffer) {
+            FfiConverterString.write(value.`copy`, buf)
+            FfiConverterBoolean.write(value.`editable`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterString.write(value.`noticeKey`, buf)
+            FfiConverterString.write(value.`readOnlyKey`, buf)
     }
 }
 
@@ -30888,6 +31941,38 @@ public object FfiConverterOptionalTypeDeviceEvents: FfiConverterRustBuffer<Devic
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeHubAdminListener: FfiConverterRustBuffer<HubAdminListener?> {
+    override fun read(buf: ByteBuffer): HubAdminListener? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubAdminListener.read(buf)
+    }
+
+    override fun allocationSize(value: HubAdminListener?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubAdminListener.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubAdminListener?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubAdminListener.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeLinkListener: FfiConverterRustBuffer<LinkListener?> {
     override fun read(buf: ByteBuffer): LinkListener? {
         if (buf.get().toInt() == 0) {
@@ -31906,6 +32991,62 @@ public object FfiConverterSequenceTypeHistoryEntry: FfiConverterRustBuffer<List<
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeHistoryEntry.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubAdminEvent: FfiConverterRustBuffer<List<HubAdminEvent>> {
+    override fun read(buf: ByteBuffer): List<HubAdminEvent> {
+        val len = buf.getInt()
+        return List<HubAdminEvent>(len) {
+            FfiConverterTypeHubAdminEvent.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubAdminEvent>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubAdminEvent.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubAdminEvent>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubAdminEvent.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubModePin: FfiConverterRustBuffer<List<HubModePin>> {
+    override fun read(buf: ByteBuffer): List<HubModePin> {
+        val len = buf.getInt()
+        return List<HubModePin>(len) {
+            FfiConverterTypeHubModePin.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubModePin>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubModePin.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubModePin>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubModePin.write(it, buf)
         }
     }
 }

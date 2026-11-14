@@ -298,6 +298,12 @@ pub trait LinkEvents: Send + Sync {
     fn session_closed(&self, _epoch: u64, code: Option<u16>, reason: &str) {
         self.closed(code, reason);
     }
+    // -- WP HUBADMIN --
+    /// The hub sent an event this client does not handle itself (`limits.changed`,
+    /// `limits.held`, `mode.changed`, `system.*`, ...): `t` is its type, `body` the
+    /// whole message. Called on the reader (or the caller's pump) with no lock held:
+    /// do not block, and do not wait on this session from inside it.
+    fn hub_event(&self, _epoch: u64, _t: &str, _body: &Value) {}
 }
 
 /// Human reason for a hub close code (macOS `LinkClient.reason(forCloseCode:)`).
@@ -1425,7 +1431,14 @@ impl LinkClient {
                 drop(s);
                 self.fire_devices_changed();
             }
-            Inbound::Hello(_) | Inbound::PollError { .. } | Inbound::Other { .. } => {}
+            // -- WP HUBADMIN -- the hub's own events, to the listener
+            Inbound::Other { t, body } => {
+                let ev = lock(&self.inner.events).clone();
+                if let Some(ev) = ev {
+                    ev.hub_event(self.inner.epoch, &t, &body);
+                }
+            }
+            Inbound::Hello(_) | Inbound::PollError { .. } => {}
         }
     }
 

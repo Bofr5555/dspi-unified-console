@@ -29,6 +29,7 @@ import {
   type CoreMethods,
   type DeviceSnapshot,
   type DeviceTarget,
+  type HubAdminEventRecord, // -- WP HUBADMIN --
   type LinkPhase,
   type LinkStatusRecord,
   type Method,
@@ -396,8 +397,10 @@ export class WasmCore implements CoreImpl {
   private async linkOnce(): Promise<void> {
     if (!this.linkOn) return;
     try {
-      const r = (await this.queued("linkTick", null)) as { waitMs: number | null; status: LinkStatusRecord };
+      const r = (await this.queued("linkTick", null)) as { waitMs: number | null; status: LinkStatusRecord; hubEvents?: HubAdminEventRecord[] };
       const st = r.status;
+      // -- WP HUBADMIN -- the hub's admin events of this turn, for the Installer page
+      if (Array.isArray(r.hubEvents) && r.hubEvents.length) this.push({ event: "hubAdmin", events: r.hubEvents });
       this.linkReason = st.closeReason;
       if (st.phase !== this.phase) {
         this.phase = st.phase;

@@ -249,6 +249,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::modes::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP HUBADMIN -- the hub's admin API (src/hub_admin.rs)
+    if let Some(r) = crate::hub_admin::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     // -- WP P1WB2 -- the DAC mute of the power-on page (src/power_on.rs)
     if let Some(r) = crate::power_on::dispatch(&core, &req.method, req.params.clone()) {
         return r;

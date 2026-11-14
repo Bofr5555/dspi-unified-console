@@ -39,6 +39,10 @@ import {
   type LimitsProfile,
 } from "./model";
 import { UnlockDialog, scopeLine } from "./Unlock";
+// -- WP HUBADMIN -- through a hub, the page edits the hub's copy
+import type { HubAdminStateRecord } from "../../core/protocol";
+import { CopyNotice, HubModesPanel, HubPinPanel, failure, useHubAdmin, type HubAdmin } from "./HubAdmin";
+import { editsHubCopy, withLockedPage } from "./model";
 
 const PRESET_SLOTS = 10;
 
@@ -46,15 +50,33 @@ export function InstallerScreen(props: ScreenProps) {
   const { session } = props;
   const st = useSessionState(session);
   const snap = st.snapshot;
+  // -- WP HUBADMIN -- which copy is edited (the core's word); through a hub, the hub's, by an Admin of it
+  const hub = useHubAdmin(session, st.hubAdminRev ?? 0, st.link?.phase ?? "");
   if (!snap) return null;
   const lock = st.lock ?? null;
   // A PIN set and this console not unlocked: the installer's parts stay as they are.
   const gated = !!lock && !lock.installerOpen;
   const ro = session.readOnlyReason;
+  const viaHub = editsHubCopy(hub.target);
   return (
     <div class="installer-screen">
-      <LockPanel session={session} lock={lock} />
-      <LimitsPanel session={session} s={snap.state} serial={snap.device.serial || session.deviceId} disabled={!!ro || gated} labels={snap.outputLabels} />
+      <CopyNotice target={hub.target} editable={hub.editable} />
+      {hub.error ? (
+        <p class="error" role="alert">
+          {hub.error}
+        </p>
+      ) : null}
+      <LockPanel session={session} lock={lock} hub={viaHub ? hub : null} />
+      {viaHub ? <HubPinPanel session={session} hub={hub} covers={parseProfile(hub.state?.profileDocument ?? "")?.lockedPages?.length ?? 0} /> : null}
+      <LimitsPanel
+        session={session}
+        s={snap.state}
+        serial={snap.device.serial || session.deviceId}
+        disabled={viaHub ? !!ro || !hub.editable : !!ro || gated}
+        labels={snap.outputLabels}
+        hub={viaHub ? hub : null}
+      />
+      {viaHub ? <HubModesPanel session={session} hub={hub} /> : null}
       <PowerOnPanel session={session} s={snap.state} disabled={!!ro} ask={props.ask} unsaved={props.unsaved} />
     </div>
   );
@@ -62,8 +84,8 @@ export function InstallerScreen(props: ScreenProps) {
 
 // ---------------------------------------------------------------- the lock
 
-function LockPanel(props: { session: Session; lock: LockStateRecord | null }) {
-  const { session, lock } = props;
+function LockPanel(props: { session: Session; lock: LockStateRecord | null; hub?: HubAdmin | null }) {
+  const { session, lock, hub } = props;
   const [asking, setAsking] = useState(false);
   const [manifest, setManifest] = useState<ModeManifest | null>(null);
   useEffect(() => {
@@ -72,6 +94,22 @@ function LockPanel(props: { session: Session; lock: LockStateRecord | null }) {
   }, [session]);
   const pinSet = !!lock?.pinSet;
   const covers = new Set(lock?.covers ?? []);
+  // -- WP HUBADMIN -- on the hub, what the lock covers is its profile's `lockedPages`: set by setting the profile
+  const hubProfile = hub ? (parseProfile(hub.state?.profileDocument ?? "") ?? {}) : null;
+  const hubCovers = new Set(hubProfile?.lockedPages ?? []);
+  const [coverProblem, setCoverProblem] = useState("");
+  const hubCover = async (id: string, on: boolean) => {
+    if (!hub || !hubProfile) return;
+    const next = withLockedPage(hubProfile, (manifest?.screens ?? []).map((x) => x.id), id, on);
+    try {
+      const r = await session.core.call("hubLimitsSet", { text: profileDocument({ ...next, serial: next.serial || hub.state?.serial || "" }) });
+      hub.adopt(r.state);
+      setCoverProblem("");
+      await session.refreshLock();
+    } catch (e) {
+      setCoverProblem(failure(e));
+    }
+  };
   const cover = (id: string, on: boolean) => {
     const next = (manifest?.screens ?? []).map((x) => x.id).filter((x) => (x === id ? on : covers.has(x)));
     void session.core.call("installerLockCover", { pages: next }).then(
@@ -84,10 +122,12 @@ function LockPanel(props: { session: Session; lock: LockStateRecord | null }) {
       <h3>Installer lock</h3>
       <p class="lock-state">{lockLine(lock)}</p>
       {pinSet ? <p class="note lock-scope">{scopeLine(lock)}</p> : null}
-      <p class="note">
-        The web console keeps no installer PIN of its own. A DSPi served by a hub has the hub's lock: an Admin sets its PIN on the hub, and Unlock here
-        asks the hub.
-      </p>
+      {hub ? null : (
+        <p class="note">
+          The web console keeps no installer PIN of its own. A DSPi served by a hub has the hub's lock: an Admin sets its PIN on the hub, and Unlock here
+          asks the hub.
+        </p>
+      )}
       {pinSet ? (
         <div class="installer-buttons">
           {lock!.unlocked ? (
@@ -101,7 +141,23 @@ function LockPanel(props: { session: Session; lock: LockStateRecord | null }) {
           )}
         </div>
       ) : null}
-      {pinSet && manifest ? (
+      {hub && manifest ? (
+        // -- WP HUBADMIN --
+        <fieldset class="lock-covers" disabled={!hub.editable}>
+          <legend>What the lock covers</legend>
+          {manifest.screens.map((x) => (
+            <label key={x.id}>
+              <input type="checkbox" checked={hubCovers.has(x.id)} onChange={(e) => void hubCover(x.id, (e.target as HTMLInputElement).checked)} /> {x.title}
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
+      {hub && coverProblem ? (
+        <p class="error" role="alert">
+          {coverProblem}
+        </p>
+      ) : null}
+      {!hub && pinSet && manifest ? (
         <fieldset class="lock-covers" disabled={!lock!.installerOpen}>
           <legend>What the lock covers</legend>
           {manifest.screens.map((x) => (
@@ -118,8 +174,8 @@ function LockPanel(props: { session: Session; lock: LockStateRecord | null }) {
 
 // ---------------------------------------------------------------- limits
 
-function LimitsPanel(props: { session: Session; s: DspState; serial: string; disabled: boolean; labels?: Parameters<typeof outputRows>[1] }) {
-  const { session, s, serial, disabled } = props;
+function LimitsPanel(props: { session: Session; s: DspState; serial: string; disabled: boolean; labels?: Parameters<typeof outputRows>[1]; hub?: HubAdmin | null }) {
+  const { session, s, serial, disabled, hub } = props;
   const [profile, setProfile] = useState<LimitsProfile>({});
   const [report, setReport] = useState<{ title: string; lines: string[]; tone: "info" | "warn" | "error" } | null>(null);
   const [status, setStatus] = useState("");
@@ -127,8 +183,17 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
   const file = useRef<HTMLInputElement>(null);
   const storage = safeLocalStorage();
 
+  // -- WP HUBADMIN -- through a hub: the hub's profile, as its last answer has it
+  const hubDoc = hub ? (hub.state?.profileDocument ?? "") : null;
+  useEffect(() => {
+    if (hubDoc === null) return;
+    setProfile(parseProfile(hubDoc) ?? {});
+    setStatus("");
+  }, [hubDoc]);
+
   // The profile the core holds for this device, and its standing notice.
   useEffect(() => {
+    if (hub) return; // -- WP HUBADMIN -- the hub's copy, above
     void session.core.call("limitsProfile", undefined).then(
       (r) => setProfile(parseProfile(r.text) ?? {}),
       () => setProfile({}),
@@ -140,7 +205,7 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
       },
       () => setStatus(""),
     );
-  }, [session]);
+  }, [session, !!hub]);
 
   // S2: the outputs louder than -10 dB without a limiter, again after every change.
   useEffect(() => {
@@ -152,8 +217,17 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
     setProfile(next);
     try {
       const text = profileDocument({ ...next, serial: next.serial || serial });
-      const r: LimitsApplyRecord = await session.core.call("limitsApply", { text });
-      saveProfile(storage, serial, text);
+      let r: { held: string[] };
+      if (hub) {
+        // -- WP HUBADMIN -- the hub's copy: never kept in this page's own storage (that copy is for USB)
+        const set = await session.core.call("hubLimitsSet", { text });
+        hub.adopt(set.state);
+        r = set;
+        void session.refreshLock();
+      } else {
+        r = (await session.core.call("limitsApply", { text })) as LimitsApplyRecord;
+        saveProfile(storage, serial, text);
+      }
       setReport(r.held.length ? { title: "Held to the new limits", lines: r.held, tone: "warn" } : null);
       await session.refresh();
     } catch (e) {
@@ -165,12 +239,20 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
 
   const clear = async () => {
     try {
-      await session.core.call("limitsClear", undefined);
-      saveProfile(storage, serial, "");
+      // -- WP HUBADMIN --
+      if (hub) {
+        hub.adopt((await session.core.call("hubLimitsClear", undefined)) as HubAdminStateRecord);
+        void session.refreshLock();
+      } else {
+        await session.core.call("limitsClear", undefined);
+        saveProfile(storage, serial, "");
+      }
       setProfile({});
       setReport(null);
     } catch (e) {
-      session.fail(e);
+      // -- WP HUBADMIN -- the hub's refusal in the page's report
+      if (hub) setReport({ title: "Not cleared", lines: [failure(e)], tone: "error" });
+      else session.fail(e);
     }
   };
 

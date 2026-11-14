@@ -1806,6 +1806,97 @@ interface DspiCoreApi : AutoCloseable {
     fun pollHotplug()
 
     /**
+     * Which copy of the limits, the installer PIN and the pinned modes the
+     * Installer page edits for the open device: the hub's when the device
+     * is reached through a hub that keeps them (editable by an Admin of the
+     * hub only), this console's own when it is connected directly (USB,
+     * MIDI, the demo), none otherwise. No I/O.
+     */
+    fun installerTarget(): InstallerTarget
+
+    /**
+     * The hub's limits profile, PIN state and pinned modes for the open
+     * device (`limits.get`, `mode.pinned`). Every role may read them. Slow
+     * (two round trips): off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `no_limits` when the device is not
+     * reached through a hub that keeps limits (notice `dlink.no_limits`), or
+     * the hub's failure; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun hubLimitsGet(): HubAdminState
+
+    /**
+     * Set the hub's limits profile for the open device: `document` is a
+     * limits document (or one carrying `meta.limits`). The hub holds the
+     * device to it at once and says what it held. Admin of the hub only.
+     * The lock is read again. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a document that is not a
+     * limits profile; [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_limits_get`].
+     */
+    @Throws(DspiException::class)
+    fun hubLimitsSet(document: String): HubLimitsSet
+
+    /**
+     * Remove the hub's limits profile for the open device (nothing on the
+     * device changes; with it goes what the lock covers). Admin of the hub
+     * only. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_limits_set`].
+     */
+    @Throws(DspiException::class)
+    fun hubLimitsClear(): HubAdminState
+
+    /**
+     * Set (or change) the hub's installer PIN for the open device: the hub
+     * keeps only its salted, slow hash, and makes a recovery code shown this
+     * once. Every console's unlock of the device ends. Admin of the hub only
+     * (an Admin needs no PIN). Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a PIN of fewer than 4 or
+     * more than 64 characters, or with a space at either end; as
+     * [`DspiCore::hub_limits_set`].
+     */
+    @Throws(DspiException::class)
+    fun hubPinSet(pin: String): HubPinSet
+
+    /**
+     * Remove the hub's installer PIN for the open device (and its recovery
+     * code): the hub's lock is off. Admin of the hub only. Slow: off the UI
+     * thread.
+     *
+     * Errors: as [`DspiCore::hub_limits_set`].
+     */
+    @Throws(DspiException::class)
+    fun hubPinClear(): HubAdminState
+
+    /**
+     * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
+     * one of the manifest's modes, "" to unpin). Hub-wide: every console of
+     * that role shows it. Admin of the hub only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown role or mode; as
+     * [`DspiCore::hub_limits_set`].
+     */
+    @Throws(DspiException::class)
+    fun hubModePin(role: String, mode: String): HubAdminState
+
+    /**
+     * Register (`Some`) or clear (`None`) the listener for the hub's admin
+     * events ([`HubAdminListener`]).
+     */
+    fun setHubAdminListener(listener: HubAdminListener?)
+
+    /**
+     * The hub's admin events since the last call, oldest first (at most
+     * 32 are kept), for a binding that polls instead of a listener (the
+     * web). No I/O.
+     */
+    fun hubAdminEvents(): List<HubAdminEvent>
+
+    /**
      * The user's name for input source `source` (`REQ_GET_INPUT_SOURCE_NAME`,
      * registry `in.name`); "" when unnamed.
      *

@@ -137,6 +137,8 @@ pub mod limits;
 mod guarded;
 // -- WP P1LK --
 pub mod modes;
+// -- WP HUBADMIN --
+pub mod hub_admin;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -236,6 +238,11 @@ pub use guarded::{
 pub use guarded::NOTICE_GUARD_WAITING;
 // -- WP P1WB2 -- the hub's backstop sentence beside the countdown
 pub use guarded::NOTICE_GUARD_HUB_BACKSTOP;
+// -- WP HUBADMIN --
+pub use hub_admin::{
+    HubAdminEvent, HubAdminListener, HubAdminState, HubLimitsSet, HubModePin, HubPinSet,
+    InstallerTarget,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -807,6 +814,8 @@ pub(crate) struct Listeners {
     // Read by the Link reader only (src/link.rs behind feature `link`).
     #[cfg_attr(not(feature = "link"), allow(dead_code))]
     pub(crate) link: Slot<dyn LinkListener>,
+    // -- WP HUBADMIN -- the hub's admin events: listener and queue
+    pub(crate) hub_admin: hub_admin::Events,
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]
