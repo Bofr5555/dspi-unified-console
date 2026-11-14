@@ -223,6 +223,13 @@ class AutoEQManager: ObservableObject {
 
     func applyProfile(_ entry: HeadphoneEntry) {
         let vm = AppState.shared.viewModel
+        // -- WP P1SW2 -- With the device on the core: `autoeq_apply` to inputs
+        // 1 and 2 (a snapshot before, one undo step, held to the limits), as
+        // Qt and Android apply a favourite.
+        if vm.transport.coreStateSource != nil, let pair = AutoEQPreviewModel.pairs(vm).first {
+            AutoEQPreviewModel.apply(entry, pair: pair, applyLevel: nil, vm: vm)
+            return
+        }
 
         // Apply filters to both Master channels
         let masterChannels = [Channel.masterLeft.rawValue, Channel.masterRight.rawValue]

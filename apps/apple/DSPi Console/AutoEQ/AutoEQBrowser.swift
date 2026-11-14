@@ -12,6 +12,8 @@ struct AutoEQBrowser: View {
     @State private var searchText = ""
     @State private var selectedEntryId: String?
     @Environment(\.dismiss) private var dismiss
+    /// -- WP P1SW2 -- The preview before Apply (P1AQ), with a core.
+    @State private var previewModel: AutoEQPreviewModel?
 
     var filteredEntries: [HeadphoneEntry] {
         manager.search(query: searchText)
@@ -125,6 +127,13 @@ struct AutoEQBrowser: View {
             .padding()
             .background(Color(NSColor.windowBackgroundColor))
         }
+        // -- WP P1SW2 -- the core's preview: the pair, the curve, the level
+        .sheet(item: $previewModel) { model in
+            AutoEQPreviewView(model: model) { applied in
+                previewModel = nil
+                if applied { dismiss() }
+            }
+        }
         #if os(macOS)
         .frame(minWidth: 500, minHeight: 400)
         .frame(idealWidth: 600, idealHeight: 500)
@@ -137,6 +146,12 @@ struct AutoEQBrowser: View {
 
     private func applySelected() {
         guard let entry = selectedEntry else { return }
+        // -- WP P1SW2 -- with the device on the core: the preview first
+        let vm = AppState.shared.viewModel
+        if vm.transport.coreStateSource != nil {
+            previewModel = AutoEQPreviewModel(entry: entry, vm: vm)
+            return
+        }
         manager.applyProfile(entry)
         dismiss()
     }

@@ -24,7 +24,9 @@ final class SnapshotsP1SW1UITests: XCTestCase {
     func testP1SW1SnapshotsSheetCaptureRecallWithRollbackAndKeep() {
         let app = XCUIApplication()
         app.launchArguments = ["-LocalTransport", "demo", "-DemoMode", "YES", "-CoreTransport", "YES",
-                               "-OpenTool", "snapshots"]
+                               "-OpenTool", "snapshots",
+                               // -- WP P1SW2 -- the app's mode (the window's switch is it now): from Simple
+                               "-ResetInstaller", "YES", "-UIMode", "simple"]
         app.launch()
 
         let sheet = app.descendants(matching: .any)["snapshotsView"].firstMatch

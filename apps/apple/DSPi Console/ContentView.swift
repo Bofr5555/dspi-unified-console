@@ -1135,6 +1135,7 @@ struct ContentView: View {
                 #endif
                 ReadOnlyBanner(vm: vm)
                 OfflineFileBadge(snaps: .shared)   // -- WP P1SW1 -- "File: <name>"
+                LockBanner(installer: .shared)   // -- WP P1SW2 -- the locked user's front page line, Unlock
             }
         }
         // -- WP SWMAC1 -- What an undo or redo had to say, for a few seconds.
@@ -1146,6 +1147,10 @@ struct ContentView: View {
                 UndoNotice(undo: vm.undo)
             }
         }
+        #if os(macOS)
+        // -- WP P1SW2 -- the unlock prompt and the mode switch (iOS: IOSRootView)
+        .installerPrompts()
+        #endif
         .navigationTitle("uConsole for DSPi")
         // The tour describes the filter table and the channel header, neither
         // of which exists on the overview the console opens on.  Selecting a

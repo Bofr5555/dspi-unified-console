@@ -515,7 +515,10 @@ enum PresetDocumentApply {
             let outcome: (PresetApplyReport, links: UInt8?)
             // As a write: behind the queued writes, then the state and the
             // journal published (the import ended the undo history).
-            switch source.writeAndWait({ $0.configImport(text: text, options: flags) }) {
+            // -- WP P1SW2 -- with a token minted after the person chose the file
+            // and its parts (P1TK: tokens are required in this app)
+            switch source.writeAndWait({ $0.configImportConfirmed(text: text, options: flags, eqChannels: allEqChannels,
+                                                                  token: $0.confirmToken(op: .configImport)) }) {
             case .success(let reply):
                 outcome = PresetDocumentApply.report(fromCoreReply: reply)
             case .failure(let error):

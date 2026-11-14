@@ -105,13 +105,13 @@ The integrator documents are in [`docs/integrator/`](docs/integrator/)
 | Snapshots | Whole-device snapshots kept on this computer, one folder per device: capture, name, note, recall, export, import | ✓ (kept in the page) | ✓ | ✓ | ✓ with the core attached | `snapshot` |
 | A/B compare | Two snapshots (or the device now and one), toggled with one bulk write and diffed; keep either side. The toggle key is a plain `B` | ✓ | ✓ | ✓ | ✓ | `ab` |
 | Safe apply | A recall or an import with a way back: Keep, or it goes back by itself (30 s by default, 5 to 300 s in Advanced). Over DSPi Link the hub puts it back too if the console goes away | ✓ | ✓ | ✓ | ✓ | `--guard`, on by default over DSPi Link |
-| Limits profiles | An installer narrows what a system may do (per output gain, high-pass, delay range, limiter ceiling; PEQ boost; master volume). One range table in the core for every editor | ✓ (the page keeps the profile) | ✓ | ✓ | not yet | `limits` |
-| Installer lock and PIN | A PIN on this console (or the hub's) leaves volume, mute and presets to the user; a recovery code is shown once. Not a security boundary: real access control is the hub's roles | reads and unlocks a hub's lock; no PIN of its own | ✓ | ✓ | not yet | `lock` (see the gap below) |
-| Confirmation tokens | Dangerous calls (preset save, copy, delete, factory reset, import, firmware writes) run only with a token their confirmation minted | ✓ | ✓ | ✓ | ✓ for the import | ✓ (`--yes` mints it) |
+| Limits profiles | An installer narrows what a system may do (per output gain, high-pass, delay range, limiter ceiling; PEQ boost; master volume). One range table in the core for every editor | ✓ (the page keeps the profile) | ✓ | ✓ | ✓ with the core attached | `limits` |
+| Installer lock and PIN | A PIN on this console (or the hub's) leaves volume, mute and presets to the user; a recovery code is shown once. Not a security boundary: real access control is the hub's roles | reads and unlocks a hub's lock; no PIN of its own | ✓ | ✓ | ✓ with the core attached | `lock` (see the gap below) |
+| Confirmation tokens | Dangerous calls (preset save, copy, delete, factory reset, import, firmware writes) run only with a token their confirmation minted | ✓ | ✓ | ✓ | ✓ with the core attached | ✓ (`--yes` mints it) |
 | Offline documents and templates | Open a `.dspipreset` with no device and edit it as one; generic templates (stereo, crossovers and the like) and build templates ship with the app, and your own can be saved | ✓ | ✓ | ✓ | ✓ | `open` (templates: not yet) |
 | Document diff and partial import | What a file would change, block by block, and an import of the chosen blocks (volume levels and hardware off unless chosen) | ✓ | ✓ | ✓ | ✓ | `diff`, `import --only`, `--preview` |
-| Undo groups | Compound edits (Clear All, a linked pair's preamp, Direct 1:1, Protect all outputs) are one undo step. Undoing Protect all leaves the limiters on, and every client says so | ✓ | ✓ | ✓ | not yet | not yet (TMCORE) |
-| AutoEQ preview | A headphone profile's curve before it is applied, outputs' gain untouched by default, the suggested trim shown | ✓ | ✓ | ✓ | not yet | `autoeq preview`, `autoeq apply` |
+| Undo groups | Compound edits (Clear All, a linked pair's preamp, Direct 1:1, Protect all outputs) are one undo step. Undoing Protect all leaves the limiters on, and every client says so | ✓ | ✓ | ✓ | ✓ with the core attached | not yet (TMCORE) |
+| AutoEQ preview | A headphone profile's curve before it is applied, outputs' gain untouched by default, the suggested trim shown | ✓ | ✓ | ✓ | ✓ with the core attached | `autoeq preview`, `autoeq apply` |
 
 **Terminal commands** (`uconsole --help` lists them all; each one-shot command is one
 session of the core, so an unlock lasts for that command):
@@ -147,7 +147,8 @@ command line (`DSPI_INSTALLER_PIN` or `--installer-pin -` in a script).
 - **The hub's profile and PIN from the clients (WP HUBADMIN).** The clients edit and lock
   their own copy; setting a hub's profile, PIN or pinned modes from a client, and hearing a
   hub's `limits.changed`/`mode.changed` mid-session, come with HUBADMIN.
-- **Swift:** the limits editor, the installer lock, undo groups and the AutoEQ preview.
+- **Swift without the core:** the default Mac launch (USB through the hub) and the Swift Link client have no core
+  attached, so the PRO features above work there only with `-CoreTransport YES` (macOS) or on the core's devices.
 
 ### What is owed
 
