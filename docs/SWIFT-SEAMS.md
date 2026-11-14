@@ -406,6 +406,27 @@ rules stay. Tests: `CoreDomainSW12Tests` (both bundles), with the DEBUG raw-opco
 | `Commands.swift:4914` `factoryReset` | FACTORY_RESET | factoryReset() (locked in the core) | `presets.rs:311` | `1724` |
 | `PresetDocumentTransfer.swift:301` `apply` | acquireDeviceLock releaseDeviceLock | configImport(text, IMPORT_VOLUMES + IMPORT_HARDWARE bits) (holds the device lock) | `files.rs:2036` | `1361` |
 
+**As built (WP SW13).** With a core attached every function above goes to the core and returns before its raw
+request. Setters without a reply (preset name, startup, both modes) are `write(lane: nil)`; the name is shown cut
+as the core cuts it (31 bytes, on a character). Save, copy, delete, Save Master Volume, Save Output Configuration,
+Commit (`saveParams`) and Factory Reset are `writeAndWait` (behind the queued writes; the journal is published) and
+answer with the status the raw request returned: a `Refused` byte, `PRESET_STATUS_LOCKED` for `Locked`/`Denied`,
+0xFF (presets) or `FLASH_ERR_WRITE` otherwise. A save or copy then takes the baseline as SWF6 does
+(`capturePresetBaseline`: queued echoes first); deleting the active slot and the reset re-read (the reset is followed
+by `fetchAll` for the settings pages, as before). `loadPreset` was SWF6's already. `fetchPresetDirectory` and
+`fetchPresetName` are the core's re-reads (`readAndPublish`); `fetchPresetActive` shows the mirror's slot (no I/O; it
+runs on main); `waitForPresetDeletion` reads the mirror (the core waited). The directory's startup mode, default
+slot and both persistence modes are new CoreMirror fields (before, a core-attached app never read them).
+`fetchMasterVolumeMode`, `fetchSavedMasterVolume`, `fetchPresetStartup` and `fetchOutputConfigMode` are deleted (no
+caller on any path). Documents: `PresetDocumentApply.apply` through a core is `configImport` (`writeAndWait`, then
+the state re-applied, the document's input-pair links set), given the file's own text when the caller has it; the
+reply becomes `PresetApplyReport` (`coreLines` shown as the core words them, counts, missing and skipped parsed, the
+lock from `noticeKey`). Export is `PresetDocumentExport.make`: `configExport` off main, decoded again by the Swift
+codec for the summary. The Swift codec, capture and step-by-step apply stay for the paths without a core;
+`PresetSnapshot` was retired from the core path by SWF6 (`presetChanges`). `HostBridge` gathers the core's chunked
+bulk write (0xA3) into one `REQ_SET_ALL_PARAMS` for a `.fake` host, as it already did for the chunked read. Tests:
+`CoreDomainSW13Tests` (both bundles), with the DEBUG raw-opcode record and a lock-recording host.
+
 #### SW14 (24 functions)
 
 | Swift function | Wire use today | Core replacement | Core (Rust) | Binding line |

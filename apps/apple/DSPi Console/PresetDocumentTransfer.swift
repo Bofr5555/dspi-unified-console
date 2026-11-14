@@ -1,5 +1,6 @@
 import Foundation
 import dspi_core  // -- WP P1XF --
+import dspi_constants  // -- WP SW13 --
 
 // Moving a `PresetDocument` between a file and a device: capture reads the view
 // model, apply writes it back through the ordinary setters.
@@ -255,6 +256,44 @@ extension PresetDocument {
     }
 }
 
+// MARK: - Export
+
+// -- WP SW13 --
+/// A configuration file for Export: through a core its `configExport` (the
+/// core's `.dspipreset`, from its mirror), otherwise this app's capture and
+/// codec.  The document is the file decoded again by this app's codec, for
+/// the summary.
+enum PresetDocumentExport {
+    struct File {
+        let data: Data
+        let doc: PresetDocument
+    }
+
+    /// Main thread in, main thread out.  Through a core the export runs off
+    /// main, behind the writes queued before it.
+    static func make(from vm: DSPViewModel, name: String,
+                     completion: @escaping (Result<File, Error>) -> Void) {
+        guard let source = vm.transport.coreStateSource else {
+            let doc = PresetDocument.capture(from: vm, name: name)
+            completion(Result { File(data: try PresetDocumentFile.encode(doc), doc: doc) })
+            return
+        }
+        let links = (0..<DSPViewModel.inputPairCount).reduce(UInt8(0)) { mask, pair in
+            vm.isInputPairLinked(pair) ? mask | UInt8(1 << pair) : mask
+        }
+        let version = GeneralSettingsTab.appVersion
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = source.call { try $0.configExport(name: name, appVersion: version, links: links) }
+                .mapError { $0 as Error }
+                .flatMap { text -> Result<File, Error> in
+                    let data = Data(text.utf8)
+                    return Result { File(data: data, doc: try PresetDocumentFile.decode(data)) }
+                }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+}
+
 // MARK: - Apply options and report
 
 /// Which parts of a document an import should apply.
@@ -298,7 +337,12 @@ final class PresetApplyReport {
     /// Another DSPi Link session held the device lock, so nothing was sent.
     var lockedOut = false
 
-    var isClean: Bool { missingChannels.isEmpty && skipped.isEmpty }
+    /// -- WP SW13 -- Through a core: its report, line by line (the result
+    /// dialog shows these as they are), and whether it was clean.
+    var coreLines: [String]?
+    var coreClean: Bool?
+
+    var isClean: Bool { coreClean ?? (missingChannels.isEmpty && skipped.isEmpty) }
 }
 
 // MARK: - Apply
@@ -318,10 +362,22 @@ enum PresetDocumentApply {
     ///
     /// Steps are run one per run-loop turn so a progress sheet actually redraws;
     /// `completion` lands back on the main thread when everything has been sent.
+    ///
+    /// -- WP SW13 -- Through a core the document goes to its `configImport`
+    /// instead (`applyThroughCore`): `text` is the file as read (the core
+    /// parses it itself, so keys this app's codec does not know keep their
+    /// meaning); nil encodes `doc`.
     static func apply(_ doc: PresetDocument, to vm: DSPViewModel,
+                      text: String? = nil,
                       options: PresetApplyOptions,
                       progress: @escaping (Double) -> Void = { _ in },
                       completion: @escaping (PresetApplyReport) -> Void) {
+        if let source = vm.transport.coreStateSource {   // -- WP SW13 --
+            let body = text ?? (try? PresetDocumentFile.encode(doc)).map { String(decoding: $0, as: UTF8.self) }
+            applyThroughCore(body ?? "", to: vm, source: source, options: options,
+                             progress: progress, completion: completion)
+            return
+        }
         let report = PresetApplyReport()
         let platform = vm.platformName
 
@@ -372,6 +428,96 @@ enum PresetDocumentApply {
                     transport.releaseDeviceLock()
                     completion(report)
                 }
+            }
+        }
+    }
+
+    // -- WP SW13 --
+    /// The import's options as `configImport` takes them: the audio blocks
+    /// always, the volumes and the hardware I/O (with the limiters) when
+    /// chosen.
+    static func coreOptions(_ options: PresetApplyOptions) -> UInt32 {
+        (options.volumeLevels ? DspiConstants.IMPORT_VOLUMES : 0)
+            | (options.hardwareIO ? DspiConstants.IMPORT_HARDWARE : 0)
+    }
+
+    /// -- WP SW13 -- `configImport`'s JSON reply as this app's report.  The
+    /// counts come from its first line ("Applied N channels, ..."), the
+    /// missing channels and skipped blocks from their lines; the dialog
+    /// shows the core's lines.  A refusal is one skipped line, or the lock.
+    static func report(fromCoreReply reply: String) -> (PresetApplyReport, links: UInt8?) {
+        let report = PresetApplyReport()
+        guard let object = (try? JSONSerialization.jsonObject(with: Data(reply.utf8))) as? [String: Any] else {
+            report.skip("The device's reply could not be read")
+            report.coreClean = false
+            return (report, nil)
+        }
+        guard object["ok"] as? Bool == true else {
+            if object["noticeKey"] as? String == "locked" {
+                report.lockedOut = true
+            } else {
+                report.skip(object["error"] as? String ?? "The configuration was not applied")
+            }
+            report.coreClean = false
+            return (report, nil)
+        }
+        let lines = object["lines"] as? [String] ?? []
+        report.coreLines = lines
+        report.coreClean = object["clean"] as? Bool ?? false
+        if let first = lines.first, first.hasPrefix("Applied ") {
+            let numbers = first.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
+            if numbers.count >= 4 {
+                report.channelsApplied = numbers[0]
+                report.bandsApplied = numbers[1]
+                report.crossoverBandsApplied = numbers[2]
+                report.crosspointsApplied = numbers[3]
+            }
+        }
+        for line in lines {
+            if line.hasPrefix("Skipped: ") { report.skip(String(line.dropFirst("Skipped: ".count))) }
+            if line.hasPrefix("Not present on this device: ") {
+                report.missingChannels = line.dropFirst("Not present on this device: ".count)
+                    .components(separatedBy: ", ")
+            }
+        }
+        let links = (object["links"] as? NSNumber).map { UInt8(truncatingIfNeeded: $0.intValue) }
+        return (report, links)
+    }
+
+    /// -- WP SW13 -- The import through the core: one bulk write under the
+    /// device lock (its `configImport`), off main and behind the writes
+    /// queued before it; then the core's state into the view model, and the
+    /// document's input-pair links (the app's own setting).  The import ends
+    /// the undo history (the core's registry: a bulk image).
+    private static func applyThroughCore(_ text: String, to vm: DSPViewModel, source: CoreStateSource,
+                                         options: PresetApplyOptions,
+                                         progress: @escaping (Double) -> Void,
+                                         completion: @escaping (PresetApplyReport) -> Void) {
+        let flags = coreOptions(options)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let outcome: (PresetApplyReport, links: UInt8?)
+            // As a write: behind the queued writes, then the state and the
+            // journal published (the import ended the undo history).
+            switch source.writeAndWait({ $0.configImport(text: text, options: flags) }) {
+            case .success(let reply):
+                outcome = PresetDocumentApply.report(fromCoreReply: reply)
+            case .failure(let error):
+                let failed = PresetApplyReport()
+                if case .Locked = error { failed.lockedOut = true } else { failed.skip(String(describing: error)) }
+                failed.coreClean = false
+                outcome = (failed, nil)
+            }
+            let (report, links) = outcome
+            if report.coreLines != nil { vm.applyCoreReread(source) }
+            DispatchQueue.main.async {
+                if let links = links {
+                    for pair in 0..<DSPViewModel.inputPairCount {
+                        let linked = links & (1 << UInt8(pair)) != 0
+                        if vm.isInputPairLinked(pair) != linked { vm.setInputPairLinked(pair, linked) }
+                    }
+                }
+                progress(1.0)
+                completion(report)
             }
         }
     }

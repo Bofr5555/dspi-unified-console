@@ -857,17 +857,15 @@ extension DSPViewModel {
         let normalized = (Int(clamped) == MASTER_VOLUME_MODE_WITH_PRESET) ? MASTER_VOLUME_MODE_WITH_PRESET
                                                                           : MASTER_VOLUME_MODE_INDEPENDENT
         DispatchQueue.main.async { self.presetMasterVolumeMode = normalized }
+        // -- WP SW13 -- Through a core, its setter (journalled: a flash write,
+        // stepped over by Undo).
+        if typedWrite({ try $0.setMasterVolumeMode(mode: clamped) }) { return }
         transport.sendControlRequest(request: REQ_SET_MASTER_VOLUME_MODE, value: 0, index: 2, data: Data([clamped]))
     }
 
-    func fetchMasterVolumeMode() {
-        guard let data = transport.getControlRequest(request: REQ_GET_MASTER_VOLUME_MODE, value: 0, index: 2, length: 1) else { return }
-        let val = Int(data[0])
-        DispatchQueue.main.async {
-            self.presetMasterVolumeMode = (val == MASTER_VOLUME_MODE_WITH_PRESET) ? MASTER_VOLUME_MODE_WITH_PRESET
-                                                                                  : MASTER_VOLUME_MODE_INDEPENDENT
-        }
-    }
+    // -- WP SW13 -- `fetchMasterVolumeMode` and `fetchSavedMasterVolume` are
+    // gone: nothing called them on any path (the mode comes with the preset
+    // directory, and through a core with its mirror).
 
     /// Persist the current live master volume into the directory's independent
     /// storage. Accepted in any mode (dormant in MASTER_VOLUME_MODE_WITH_PRESET).
@@ -876,19 +874,14 @@ extension DSPViewModel {
     /// transfer failed.
     @discardableResult
     func saveMasterVolume() -> Bool {
+        if let core = typedCore {   // -- WP SW13 -- behind the queued writes
+            if case .success = core.writeAndWait({ try $0.saveMasterVolume() }) { return true }
+            return false
+        }
         guard let data = transport.getControlRequest(request: REQ_SAVE_MASTER_VOLUME, value: 0, index: 2, length: 1) else {
             return false
         }
         return data.first == 0  // PRESET_OK
-    }
-
-    /// Read the directory's independent master-volume value (the dB applied at
-    /// boot in MASTER_VOLUME_MODE_INDEPENDENT). Independent of the current
-    /// live value and the current mode. Returns nil if the transfer failed.
-    func fetchSavedMasterVolume() -> Float? {
-        guard let data = transport.getControlRequest(request: REQ_GET_SAVED_MASTER_VOLUME, value: 0, index: 2, length: 4),
-              data.count >= 4 else { return nil }
-        return data.withUnsafeBytes { $0.load(as: Float.self) }
     }
 
     func setBypass(_ enabled: Bool) {
@@ -4908,8 +4901,54 @@ extension DSPViewModel {
 
     // MARK: - Preset Commands
 
+    // -- WP SW13 -- Through a core, the presets are its typed calls: it takes
+    // the device lock for a save, copy, load, delete, flash save and reset,
+    // waits for the device's deferred work, re-reads what that changed and
+    // moves the unsaved-changes baseline; the directory, the names, the
+    // startup choice and both persistence modes are its mirror's (CoreMirror
+    // fields).  Each call runs off main, behind the writes queued before it.
+    // A preset status comes back as the raw request returned it: a refusal's
+    // own byte, PRESET_STATUS_LOCKED for another console's lock, 0xFF for any
+    // other failure.  Without a core (USB without -CoreTransport, MIDI, the
+    // Link client) the raw requests below are unchanged.
+
+    /// -- WP SW13 -- A preset call's failure as the status the raw request
+    /// returned.
+    static func presetStatus(_ error: DspiError) -> UInt8 {
+        switch error {
+        case .Refused(let status): return status
+        case .Locked, .Denied: return PRESET_STATUS_LOCKED
+        default: return 0xFF
+        }
+    }
+
+    /// -- WP SW13 -- The directory as the core's mirror holds it, on main.
+    private func showCorePresetDirectory(_ d: PresetDirectory) {
+        let occupied = d.occupiedMask
+        DispatchQueue.main.async {
+            if self.presetOccupied != occupied { self.presetOccupied = occupied }
+            if self.presetStartupMode != Int(d.startupMode) { self.presetStartupMode = Int(d.startupMode) }
+            if self.presetDefaultSlot != Int(d.defaultSlot) { self.presetDefaultSlot = Int(d.defaultSlot) }
+            if self.activePresetSlot != Int(d.lastActive) { self.activePresetSlot = Int(d.lastActive) }
+            let io = Int(d.outputConfigMode) == OUTPUT_CONFIG_MODE_WITH_PRESET ? OUTPUT_CONFIG_MODE_WITH_PRESET
+                                                                                : OUTPUT_CONFIG_MODE_INDEPENDENT
+            if self.presetOutputConfigMode != io { self.presetOutputConfigMode = io }
+            let mv = Int(d.masterVolumeMode) == MASTER_VOLUME_MODE_WITH_PRESET ? MASTER_VOLUME_MODE_WITH_PRESET
+                                                                                : MASTER_VOLUME_MODE_INDEPENDENT
+            if self.presetMasterVolumeMode != mv { self.presetMasterVolumeMode = mv }
+            for slot in 0..<10 where (occupied & UInt16(1 << slot)) == 0 && !self.presetNames[slot].isEmpty {
+                self.presetNames[slot] = ""
+            }
+        }
+    }
+
     @discardableResult
     func fetchPresetDirectory() -> UInt16 {
+        if let core = typedCore {   // -- WP SW13 -- the core's re-read, into its mirror
+            guard case .success(let d) = core.readAndPublish({ try $0.getPresetDirectory() }) else { return 0 }
+            showCorePresetDirectory(d)
+            return d.occupiedMask
+        }
         guard let data = transport.getControlRequest(request: REQ_PRESET_GET_DIR, value: 0, index: 2, length: 7),
               data.count >= 6 else { return 0 }
         let occupied = data.withUnsafeBytes { $0.load(as: UInt16.self) }
@@ -4943,6 +4982,18 @@ extension DSPViewModel {
     }
 
     func fetchPresetName(slot: Int) {
+        if let core = typedCore {   // -- WP SW13 -- an empty slot stalls: no name
+            let name: String
+            if case .success(let n) = core.readAndPublish({ try $0.getPresetName(slot: Self.wire(slot)) }) {
+                name = n
+            } else {
+                name = ""
+            }
+            DispatchQueue.main.async {
+                if self.presetNames.indices.contains(slot), self.presetNames[slot] != name { self.presetNames[slot] = name }
+            }
+            return
+        }
         guard let data = transport.getControlRequest(request: REQ_PRESET_GET_NAME, value: UInt16(slot), index: 2, length: 32) else {
             DispatchQueue.main.async {
                 self.presetNames[slot] = ""
@@ -4961,6 +5012,15 @@ extension DSPViewModel {
     }
 
     func fetchPresetActive() {
+        // -- WP SW13 -- Through a core, the slot its mirror holds (no I/O;
+        // the views call this on main after a failed load).
+        if typedCore != nil {
+            let show = { if let s = self.coreMirror.latest, self.activePresetSlot != Int(s.activePresetSlot) {
+                self.activePresetSlot = Int(s.activePresetSlot)
+            } }
+            if Thread.isMainThread { show() } else { DispatchQueue.main.async(execute: show) }
+            return
+        }
         guard let data = transport.getControlRequest(request: REQ_PRESET_GET_ACTIVE, value: 0, index: 2, length: 1) else { return }
         DispatchQueue.main.async {
             self.activePresetSlot = Int(data[0])
@@ -4972,9 +5032,28 @@ extension DSPViewModel {
     /// another session holds the lock; nothing is sent then.
     @discardableResult
     func savePreset(slot: Int) -> UInt8 {
-        transport.withDeviceLock(reason: "Saving preset", timeout: 5) {
+        if let core = typedCore {   // -- WP SW13 -- the core takes the lock and waits
+            switch core.writeAndWait({ try $0.savePreset(slot: Self.wire(slot)) }) {
+            case .failure(let error): return Self.presetStatus(error)
+            case .success: corePresetSaved(core, slot: slot, active: slot)
+            }
+            return PRESET_OK
+        }
+        return transport.withDeviceLock(reason: "Saving preset", timeout: 5) {
             savePresetUnlocked(slot: slot)
         } ?? PRESET_STATUS_LOCKED
+    }
+
+    /// -- WP SW13 -- After a save through the core: `slot` is occupied and
+    /// `active` the active slot (the core's baseline is the saved state; the
+    /// last edits' echoes are applied first, as SWF6 does).
+    private func corePresetSaved(_ core: CoreStateSource, slot: Int, active: Int) {
+        let changes = core.capturePresetBaseline()
+        DispatchQueue.main.async {
+            if self.activePresetSlot != active { self.activePresetSlot = active }
+            self.presetOccupied |= UInt16(1 << slot)
+            self.coreMirror.showPresetChanges(changes, from: core)
+        }
     }
 
     /// The save itself, for callers that already hold the lock.  Taking it
@@ -5023,7 +5102,14 @@ extension DSPViewModel {
     /// Returns PRESET_OK on success, an error code on failure.
     @discardableResult
     func copyPreset(from sourceSlot: Int, to destinationSlot: Int) -> UInt8 {
-        transport.withDeviceLock(reason: "Copying preset", timeout: 10) {
+        if let core = typedCore {   // -- WP SW13 -- one lock and both waits, in the core
+            switch core.writeAndWait({ try $0.copyPreset(source: Self.wire(sourceSlot), dest: Self.wire(destinationSlot)) }) {
+            case .failure(let error): return Self.presetStatus(error)
+            case .success: corePresetSaved(core, slot: destinationSlot, active: sourceSlot)
+            }
+            return PRESET_OK
+        }
+        return transport.withDeviceLock(reason: "Copying preset", timeout: 10) {
             copyPresetUnlocked(from: sourceSlot, to: destinationSlot)
         } ?? PRESET_STATUS_LOCKED
     }
@@ -5120,6 +5206,18 @@ extension DSPViewModel {
 
     @discardableResult
     func deletePreset(slot: Int) -> UInt8 {
+        if let core = typedCore {   // -- WP SW13 --
+            // The core waits for the deferred delete; deleting the active
+            // slot loads the factory defaults, which it reads again.
+            let wasActive = Int(core.readState().activePresetSlot) == slot
+            switch core.writeAndWait({ try $0.deletePreset(slot: Self.wire(slot)) }) {
+            case .failure(let error): return Self.presetStatus(error)
+            case .success:
+                DispatchQueue.main.async { self.presetOccupied &= ~UInt16(1 << slot) }
+                if wasActive { applyCoreReread(core) }
+            }
+            return PRESET_OK
+        }
         guard let data = transport.getControlRequest(request: REQ_PRESET_DELETE, value: UInt16(slot), index: 2, length: 1) else { return 0xFF }
         let status = data[0]
         if status == PRESET_OK {
@@ -5145,6 +5243,9 @@ extension DSPViewModel {
     /// of polling at 20 ms intervals).
     @discardableResult
     func waitForPresetDeletion(slot: Int, timeout: TimeInterval = 1.5) -> Bool {
+        // -- WP SW13 -- Through a core the delete returned only once the
+        // device confirmed it: its mirror says.
+        if let core = typedCore { return (core.readState().presetOccupied & UInt16(1 << slot)) == 0 }
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let data = transport.getControlRequest(request: REQ_PRESET_GET_DIR, value: 0, index: 2, length: 7),
@@ -5160,6 +5261,13 @@ extension DSPViewModel {
     }
 
     func setPresetName(slot: Int, name: String) {
+        if typedWrite({ try $0.setPresetName(slot: Self.wire(slot), name: name) }) {   // -- WP SW13 --
+            let shown = CsCoreJSON.name(name)   // the core's cut: 31 bytes, on a character
+            DispatchQueue.main.async {
+                if self.presetNames.indices.contains(slot) { self.presetNames[slot] = shown }
+            }
+            return
+        }
         var nameData = Data(name.prefix(31).utf8)
         nameData.append(0) // NUL terminator
         transport.sendControlRequest(request: REQ_PRESET_SET_NAME, value: UInt16(slot), index: 2, data: nameData)
@@ -5174,18 +5282,13 @@ extension DSPViewModel {
             self.presetStartupMode = mode
             self.presetDefaultSlot = defaultSlot
         }
+        // -- WP SW13 --
+        if typedWrite({ try $0.setPresetStartup(mode: Self.wire(mode), defaultSlot: Self.wire(defaultSlot)) }) { return }
         transport.sendControlRequest(request: REQ_PRESET_SET_STARTUP, value: 0, index: 2, data: data)
     }
 
-    func fetchPresetStartup() {
-        guard let data = transport.getControlRequest(request: REQ_PRESET_GET_STARTUP, value: 0, index: 2, length: 3),
-              data.count >= 3 else { return }
-        DispatchQueue.main.async {
-            self.presetStartupMode = Int(data[0])
-            self.presetDefaultSlot = Int(data[1])
-            self.activePresetSlot = Int(data[2])
-        }
-    }
+    // -- WP SW13 -- `fetchPresetStartup` is gone: nothing called it (the
+    // directory read carries the startup choice, and the core's mirror).
 
     // MARK: - Output Config Mode (preset directory flag)
 
@@ -5199,17 +5302,12 @@ extension DSPViewModel {
         let normalized = (Int(clamped) == OUTPUT_CONFIG_MODE_WITH_PRESET) ? OUTPUT_CONFIG_MODE_WITH_PRESET
                                                                           : OUTPUT_CONFIG_MODE_INDEPENDENT
         DispatchQueue.main.async { self.presetOutputConfigMode = normalized }
+        if typedWrite({ try $0.setOutputConfigMode(mode: clamped) }) { return }   // -- WP SW13 --
         transport.sendControlRequest(request: REQ_SET_OUTPUT_CONFIG_MODE, value: 0, index: 2, data: Data([clamped]))
     }
 
-    func fetchOutputConfigMode() {
-        guard let data = transport.getControlRequest(request: REQ_GET_OUTPUT_CONFIG_MODE, value: 0, index: 2, length: 1) else { return }
-        let val = Int(data[0])
-        DispatchQueue.main.async {
-            self.presetOutputConfigMode = (val == OUTPUT_CONFIG_MODE_WITH_PRESET) ? OUTPUT_CONFIG_MODE_WITH_PRESET
-                                                                                  : OUTPUT_CONFIG_MODE_INDEPENDENT
-        }
-    }
+    // -- WP SW13 -- `fetchOutputConfigMode` is gone: nothing called it (the
+    // directory read carries the mode, and the core's mirror).
 
     /// Persist the current live output configuration into the directory's
     /// independent storage so it survives a reboot. Relevant in
@@ -5227,7 +5325,14 @@ extension DSPViewModel {
     /// As `saveOutputConfig`, but tells a held device lock (`.locked`, nothing
     /// sent) apart from a device that did not acknowledge (`.error`).
     func saveOutputConfigResult() -> Result<Void, LinkStatus> {
-        transport.withDeviceLock(reason: "Saving output configuration", timeout: 5) {
+        if let core = typedCore {   // -- WP SW13 -- the core takes the lock
+            switch core.writeAndWait({ try $0.saveOutputConfig() }) {
+            case .success: return .success(())
+            case .failure(.Locked), .failure(.Denied): return .failure(.locked)
+            case .failure: return .failure(.error)
+            }
+        }
+        return transport.withDeviceLock(reason: "Saving output configuration", timeout: 5) {
             guard let data = transport.getControlRequest(request: REQ_SAVE_OUTPUT_CONFIG, value: 0, index: 2, length: 1),
                   data.first == 0 else {  // PRESET_OK
                 return .failure(.error)
@@ -5594,6 +5699,16 @@ extension DSPViewModel {
 
     func saveParams() -> UInt8 {
         guard isDeviceConnected else { return FLASH_ERR_WRITE }
+        if let core = typedCore {   // -- WP SW13 -- under the core's lock; the saved state is the baseline
+            switch core.writeAndWait({ try $0.saveParams() }) {
+            case .success:
+                let changes = core.capturePresetBaseline()
+                DispatchQueue.main.async { self.coreMirror.showPresetChanges(changes, from: core) }
+                return FLASH_OK
+            case .failure(.Refused(let status)): return status
+            case .failure: return FLASH_ERR_WRITE
+            }
+        }
         return transport.withDeviceLock(reason: "Saving to flash", timeout: 5) {
             transport.getControlRequest(request: REQ_SAVE_PARAMS, value: 0, index: 0, length: 1)?.first
         }.flatMap { $0 } ?? FLASH_ERR_WRITE
@@ -5626,6 +5741,18 @@ extension DSPViewModel {
         // fetchAll() below covers the rewrite; drop the device's own
         // BULK_INVALIDATED(source=FACTORY) so it doesn't duplicate that work.
         suppressDeviceResync()
+        if let core = typedCore {   // -- WP SW13 --
+            // The core waits for the reset and reads everything again (its
+            // baseline); the settings pages' state follows with fetchAll, as
+            // before.
+            switch core.writeAndWait({ try $0.factoryReset() }) {
+            case .success:
+                fetchAll()
+                return FLASH_OK
+            case .failure(.Refused(let status)): return status
+            case .failure: return FLASH_ERR_WRITE
+            }
+        }
         if let data = transport.getControlRequest(request: REQ_FACTORY_RESET, value: 0, index: 0, length: 1) {
             let result = data[0]
             if result == FLASH_OK {
