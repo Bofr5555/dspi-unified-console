@@ -91,7 +91,9 @@ class AppState: ObservableObject {
         else if AppState.usesDemoTransport { local = demoTransport }
         else { local = localWithMIDIFallback }   // -- WP SWF2 --
         let composite = CompositeTransport(
-            local: local,
+            // -- WP P1SW1 -- files opened offline first: a member that picks
+            // its own device (a DSPi plugged in) never closes an open file
+            local: LocalTransportSet([documentTransport, local]),
             tokens: LinkTokenStore(),
             clientName: Host.current().localizedName ?? "uConsole for DSPi",
             makeClient: { LinkClient() })
@@ -120,9 +122,10 @@ class AppState: ObservableObject {
     /// device in one list, the DSPi first.  `-LocalTransport demo` leaves
     /// MIDI out.  Devices shared by DSPi Link hubs on the network join the
     /// same list, as on macOS.
+    // -- WP P1SW1 -- files opened offline first (as on the Mac)
     lazy var localTransports: LocalTransportSet = UserDefaults.standard.string(forKey: "LocalTransport") == "demo"
-        ? LocalTransportSet([demoMember])
-        : LocalTransportSet([midiTransport, demoMember])
+        ? LocalTransportSet([documentTransport, demoMember])
+        : LocalTransportSet([documentTransport, midiTransport, demoMember])
 
     // -- WP SW4 -- `-CoreTransport YES`: the demo device is the Rust core's.
     lazy var demoMember: any DeviceTransport = CoreBackedTransport.isEnabled
@@ -152,6 +155,11 @@ class AppState: ObservableObject {
     @MainActor lazy var linkClientCoordinator: LinkClientCoordinator =
         LinkClientCoordinator(composite: transport, ownHubID: nil)
     #endif
+
+    // -- WP P1SW1 -- A `.dspipreset` opened with no device (Open File...,
+    // Open Template...): the core's `openDocument`, a device of its own in
+    // the local list (Snapshots/SnapshotsFiles.swift).
+    lazy var documentTransport: CoreBackedTransport = CoreBackedTransport(link: .document)
 
     lazy var viewModel: DSPViewModel = DSPViewModel(transport: transport)
 
@@ -10624,6 +10632,13 @@ struct FileMenuActions {
             return
         }
 
+        // -- WP P1SW1 -- through a core: what the file changes first, a
+        // choice per block, and "Apply with rollback"
+        if vm.transport.coreStateSource != nil, let text = text {
+            ImportPreview.begin(text: text, doc: doc, vm: vm)
+            return
+        }
+
         guard let options = askImportOptions(doc, vm: vm) else { return }
 
         let progress = ConfigurationProgressSheet()
@@ -11394,6 +11409,11 @@ struct FileMenuActions {
                 showError(error.localizedDescription)
                 return
             }
+            // -- WP P1SW1 -- through a core: the preview (as on the Mac)
+            if vm.transport.coreStateSource != nil, let text = text {
+                ImportPreview.begin(text: text, doc: doc, vm: vm)
+                return
+            }
             FileImportSheets.askImportOptions(prompt: configurationImportPrompt(doc, vm: vm)) { options in
                 applyConfiguration(doc, text: text, options: options, vm: vm)
             }
@@ -12134,6 +12154,11 @@ struct DSPi_ConsoleApp: App {
                     // Restoring from the menu bar needs a window to show; if
                     // none exists yet, the controller asks the scene for one.
                     MenuBarController.shared.reopenMainWindow = { openWindow(id: "main") }
+                    CoreSnapshots.shared.installKeyMonitor()   // -- WP P1SW1 -- the A/B key
+                    // -- WP P1SW1 -- `-ShowSnapshots YES`: the window at launch (screenshots)
+                    if UserDefaults.standard.bool(forKey: "ShowSnapshots") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { SnapshotsWindowController.shared.show() }
+                    }
                 }
         }
         .windowStyle(.hiddenTitleBar)
@@ -12227,6 +12252,26 @@ struct DSPi_ConsoleApp: App {
                     FileMenuActions.exportConfiguration()
                 }
 
+                // -- WP P1SW1 -- offline files and templates
+                Divider()
+
+                Button("Open File...") {
+                    OfflineFiles.openFile()
+                }
+                .keyboardShortcut("o", modifiers: .command)
+
+                Button("Open Template...") {
+                    OfflineFiles.showTemplates()
+                }
+
+                Button("Save File...") {
+                    OfflineFiles.saveFile()
+                }
+
+                Button("Save as Template...") {
+                    OfflineFiles.askSaveTemplate()
+                }
+
                 Divider()
 
                 Button("Save Master Volume") {
@@ -12298,6 +12343,11 @@ struct DSPi_ConsoleApp: App {
 
                 Button("Factory Reset...") {
                     ToolsMenuActions.factoryReset()
+                }
+
+                // -- WP P1SW1 -- snapshots, A/B (key: B) and the safe apply
+                Button("Snapshots...") {
+                    SnapshotsWindowController.shared.show()
                 }
 
                 // STM32H723 firmware cannot self-reboot into a USB bootloader

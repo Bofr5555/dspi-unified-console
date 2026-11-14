@@ -51,6 +51,10 @@ final class CoreBackedTransport: DeviceTransport {
         /// Another transport carries the bytes; `kind` sets the core's echo
         /// and bulk rules for it.
         case host(any DeviceTransport, HostKind)
+        /// -- WP P1SW1 -- A `.dspipreset` document opened offline (the core's
+        /// `openDocument`, PRO1 W7): listed once `prepareDocument` names one,
+        /// opened when it is selected.  Nothing touches USB.
+        case document
     }
 
     /// The kind of a host link, as the core sees it.
@@ -98,6 +102,15 @@ final class CoreBackedTransport: DeviceTransport {
     private let bridge: HostBridge?
     private var subscriptions: Set<AnyCancellable> = []
     private var notifyListener: Listener?
+    // -- WP P1SW1 --
+    /// This transport carries documents opened offline (`Link.document`).
+    let isDocumentLink: Bool
+    /// The document to open when its device is selected (stateLock).
+    private var document: (device: DSPiDevice, text: String, fileName: String)?
+    private var documentCount = 0
+    /// How the last document open went: the core's JSON reply, or its
+    /// error.  Main thread.
+    var documentOpened: ((Result<String, DspiError>) -> Void)?
 
     /// Guards the generation and the drain flag.
     private let stateLock = NSLock()
@@ -149,12 +162,18 @@ final class CoreBackedTransport: DeviceTransport {
     init(link: Link, autoSelect: Bool = false, core: DspiCore = DspiCore()) {
         self.core = core
         coreQueue.setSpecific(key: CoreBackedTransport.onCoreQueue, value: true)
+        isDocumentLink = { () -> Bool in if case .document = link { return true }; return false }()   // -- WP P1SW1 --
         switch link {
         case .demo:
             host = nil
             bridge = nil
             session = 1
             devicesSubject = CurrentValueSubject([FakeTransport.demoDevice])
+        case .document:   // -- WP P1SW1 --
+            host = nil
+            bridge = nil
+            session = 1
+            devicesSubject = CurrentValueSubject([])
         case .host(let transport, let kind):
             host = transport
             bridge = HostBridge(transport, kind: kind)
@@ -199,6 +218,7 @@ final class CoreBackedTransport: DeviceTransport {
 
     func selectDevice(_ device: DSPiDevice) {
         if let host = host { host.selectDevice(device); return }
+        if isDocumentLink { return selectDocument(device) }   // -- WP P1SW1 --
         guard device == FakeTransport.demoDevice else { return }
         bumpGeneration()
         selectedSubject.send(device)
@@ -239,6 +259,44 @@ final class CoreBackedTransport: DeviceTransport {
         } catch {
             opened(error: error)
         }
+    }
+
+    // -- WP P1SW1 -- Documents opened offline.
+
+    /// Name `text` (a `.dspipreset` document read from `fileName`) as this
+    /// transport's one device, to be opened when it is selected (the view
+    /// model's switch, after its unsaved-changes prompt).  Each document is
+    /// a device of its own, so a second file is a switch too.  Main thread.
+    func prepareDocument(text: String, fileName: String) -> DSPiDevice {
+        stateLock.lock()
+        documentCount += 1
+        let device = DSPiDevice(serial: "FILE-\(documentCount)", locationID: 0, hub: nil,
+                                remoteName: "File: \(fileName)")
+        document = (device, text, fileName)
+        stateLock.unlock()
+        devicesSubject.send([device])
+        return device
+    }
+
+    private func selectDocument(_ device: DSPiDevice) {
+        stateLock.lock(); let doc = document; stateLock.unlock()
+        guard let doc = doc, doc.device == device else { return }
+        bumpGeneration()
+        selectedSubject.send(device)
+        coreQueue.async { [weak self] in self?.openDocumentOnCore(doc.text, fileName: doc.fileName) }
+    }
+
+    // On coreQueue.
+    private func openDocumentOnCore(_ text: String, fileName: String) {
+        let result: Result<String, DspiError>
+        do {
+            result = .success(try onCore { try $0.openDocument(text: text, fileName: fileName) })
+            opened(error: nil)
+        } catch {
+            result = .failure(error as? DspiError ?? .Transfer(msg: String(describing: error)))
+            opened(error: error)
+        }
+        DispatchQueue.main.async { self.documentOpened?(result) }
     }
 
     // On coreQueue.
