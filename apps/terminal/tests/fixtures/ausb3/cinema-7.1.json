@@ -1,0 +1,38 @@
+{
+  "name": "cinema",
+  "description": "Cinema 7.1",
+  "rate": 48000,
+  "layout": "7.1",
+  "units": [
+    {
+      "id": "front",
+      "name": "Front L/C/R and sub",
+      "serial": "E6614C311B4A8B2F",
+      "channels": [
+        { "channel": "FL", "output": 0, "distanceM": 3.4 },
+        { "channel": "FR", "output": 1, "distanceM": 3.4 },
+        { "channel": "FC", "output": 2, "distanceM": 3.1 },
+        { "channel": "LFE", "output": 8, "distanceM": 2.6 }
+      ]
+    },
+    {
+      "id": "sides",
+      "name": "Sides",
+      "serial": "E6614C311B4A9C10",
+      "channels": [
+        { "channel": "SL", "output": 0, "distanceM": 1.9 },
+        { "channel": "SR", "output": 1, "distanceM": 2.1 }
+      ]
+    },
+    {
+      "id": "rears",
+      "name": "Rears",
+      "serial": "E6614C311B4AA0D7",
+      "onLockError": "play_unaligned",
+      "channels": [
+        { "channel": "RL", "output": 0, "distanceM": 2.4 },
+        { "channel": "RR", "output": 1, "distanceM": 2.4 }
+      ]
+    }
+  ]
+}

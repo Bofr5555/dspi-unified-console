@@ -1,0 +1,42 @@
+# Written by `uconsole usb-direct generate` (WP AUSB3): installation "cinema", unit front (Front L/C/R and sub).
+# Run it on this unit only:
+#   uconsole --device E6614C311B4A8B2F -f front.dspi
+# then save the unit's preset (Ctrl-S in the interface, or preset.save <slot>).
+# Mode, D and the lock-error action are not here: the hub writes them (SETTINGS.md).
+in.source usb
+# output 0: FL (USB input 0)
+mix 0 0 on 0
+mix 1 0 off
+mix 2 0 off
+mix 3 0 off
+mix 4 0 off
+mix 5 0 off
+mix 6 0 off
+mix 7 0 off
+# output 1: FR (USB input 1)
+mix 0 1 off
+mix 1 1 on 0
+mix 2 1 off
+mix 3 1 off
+mix 4 1 off
+mix 5 1 off
+mix 6 1 off
+mix 7 1 off
+# output 2: FC (USB input 2)
+mix 0 2 off
+mix 1 2 off
+mix 2 2 on 0
+mix 3 2 off
+mix 4 2 off
+mix 5 2 off
+mix 6 2 off
+mix 7 2 off
+# output 8: LFE (USB input 3)
+mix 0 8 off
+mix 1 8 off
+mix 2 8 off
+mix 3 8 on 0
+mix 4 8 off
+mix 5 8 off
+mix 6 8 off
+mix 7 8 off

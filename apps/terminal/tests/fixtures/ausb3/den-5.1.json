@@ -1,0 +1,29 @@
+{
+  "name": "den",
+  "rate": 48000,
+  "layout": "5.1",
+  "d": 240,
+  "quantum": 1024,
+  "keepAligned": false,
+  "units": [
+    {
+      "id": "front",
+      "serial": "E6614C311B4A0001",
+      "channels": [
+        { "channel": "FL", "output": 0 },
+        { "channel": "FR", "output": 1 },
+        { "channel": "FC", "output": 2 }
+      ]
+    },
+    {
+      "id": "rear-sub",
+      "serial": "E6614C311B4A0002",
+      "chip": "rp2350",
+      "channels": [
+        { "channel": "RL", "output": 0 },
+        { "channel": "RR", "output": 1 },
+        { "channel": "LFE", "input": 3, "output": 8 }
+      ]
+    }
+  ]
+}

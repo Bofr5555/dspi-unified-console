@@ -1,0 +1,24 @@
+# Written by `uconsole usb-direct generate` (WP AUSB3): installation "cinema", unit rears (Rears).
+# Run it on this unit only:
+#   uconsole --device E6614C311B4AA0D7 -f rears.dspi
+# then save the unit's preset (Ctrl-S in the interface, or preset.save <slot>).
+# Mode, D and the lock-error action are not here: the hub writes them (SETTINGS.md).
+in.source usb
+# output 0: RL (USB input 0)
+mix 0 0 on 0
+mix 1 0 off
+mix 2 0 off
+mix 3 0 off
+mix 4 0 off
+mix 5 0 off
+mix 6 0 off
+mix 7 0 off
+# output 1: RR (USB input 1)
+mix 0 1 off
+mix 1 1 on 0
+mix 2 1 off
+mix 3 1 off
+mix 4 1 off
+mix 5 1 off
+mix 6 1 off
+mix 7 1 off
