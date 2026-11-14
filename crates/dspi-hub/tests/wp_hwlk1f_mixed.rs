@@ -12,7 +12,7 @@
 //! - aligning says what was written and what was skipped, and why; nothing
 //!   written is said as such;
 //! - `system.set` keeps a model with such a unit, with a warning;
-//! - a PIN pairing gives at most control unless its window was opened for admin.
+//! - a PIN pairing gives at most control; admin is the role set on the hub's machine (PAIRADM).
 #![allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 
 use std::fs;
@@ -492,8 +492,9 @@ fn wp_hwlk1f_saving_a_unit_without_the_link_warns() {
     hub.stop();
 }
 
-/// Decision 4 at the wire: a PIN gives at most control, whatever is asked;
-/// a window opened for admin (`uconsole hub --pair-admin`) gives it once.
+/// Decision 4 at the wire: a PIN gives at most control, whatever is asked.
+/// -- WP PAIRADM -- Admin only as the role set on the hub's machine
+/// (`uconsole hub role <cid> admin`), which applies live: no pairing gives it.
 #[test]
 fn wp_hwlk1f_a_pin_asking_for_admin_gets_control() {
     let (hub, _) = hub(AccessMode::Pin, false);
@@ -515,16 +516,20 @@ fn wp_hwlk1f_a_pin_asking_for_admin_gets_control() {
     );
     assert_eq!(net.auth().clients()[0].role, Role::Control);
 
+    // `uconsole hub role <cid> admin`: the same session, its next message
+    let cid = net.auth().clients()[0].cid;
+    assert!(net.set_role(cid, Role::Admin));
+    assert_eq!(
+        request(&mut c, json!({"t": "system.align", "id": 3}))["t"],
+        "ok"
+    );
+    // A second pairing that asks for admin is control again.
     let mut c = ws(&hub);
-    let pin = net.auth().begin_pairing_admin(Instant::now()).unwrap().pin;
+    let pin = net.auth().begin_pairing(Instant::now()).unwrap().pin;
     let r = request(
         &mut c,
         json!({"t": "auth.pair", "id": 1, "pin": pin, "name": "installer", "role": "admin"}),
     );
-    assert_eq!(r["role"], "admin", "{r}");
-    assert_eq!(
-        request(&mut c, json!({"t": "system.align", "id": 2}))["t"],
-        "ok"
-    );
+    assert_eq!(r["role"], "control", "{r}");
     hub.stop();
 }

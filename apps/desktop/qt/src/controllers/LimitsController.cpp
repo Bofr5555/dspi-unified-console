@@ -581,7 +581,11 @@ QString LimitsController::readOnlyText() const {
     if (key.isEmpty() && hubCopy()) key = m_hub.value(QLatin1String("noticeKey")).toString();
     const NoticeCenter *n = notices();
     if (key.isEmpty() || !n) return QString();
-    return n->line(key, m_hub.value(QLatin1String("error")).toString());
+    const QString why = n->line(key, m_hub.value(QLatin1String("error")).toString());
+    // -- WP PAIRADM -- and what to do, as the web and Android show it
+    // (`installer.hub_role`: how the hub's machine gives the Admin role)
+    const QString action = n->row(key).value(QStringLiteral("action")).toString();
+    return action.isEmpty() ? why : why + QLatin1Char(' ') + action;
 }
 
 QVariantList LimitsController::modePins() const {

@@ -261,9 +261,10 @@ uconsole hub                          # share this machine's devices on the netw
 uconsole hub --help                   # pairing, clients and roles
 ```
 
-The hub pairs clients by PIN; a PIN gives at most the control role. Admin is given on
-the hub's machine: `uconsole hub role <cid> admin`, or `uconsole hub --pair-admin` for
-the one client that pairs in that window. Example service files for systemd, launchd and the
+The hub pairs clients by PIN; a PIN gives at most the control role, and no pairing gives
+more. Admin is given on the hub's machine only: `uconsole hub clients` lists the paired
+clients and `uconsole hub role <cid> admin` makes one an Admin (with the hub stopped), or
+type `clients` and `role <cid> admin` at the running hub's prompt, where it applies at once. Example service files for systemd, launchd and the
 Windows task scheduler are in [`packaging/service/`](packaging/service/), with
 install notes.
 

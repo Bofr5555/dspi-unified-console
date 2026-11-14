@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use dspi_hub::server::ServerLimits;
-use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig};
+use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig, Role};
 use dspi_link::Dir;
 use dspi_link::frames::{CmdRequest, CmdResponse, Frame, kind, status};
 use dspi_proto::generated::ext as extg;
@@ -347,15 +347,16 @@ fn get(code: u8, value: u16, len: u16) -> CmdRequest {
 
 /// Open a window and pair one client at `role`; returns (token, session reply).
 fn paired(t: &Target, role: &str) -> (String, Value) {
-    // -- WP HWLK1F -- a PIN gives at most control unless its window was opened for admin
-    let w = if role == "admin" {
-        t.net.auth().begin_pairing_admin(Instant::now()).unwrap()
-    } else {
-        t.net.auth().begin_pairing(Instant::now()).unwrap()
-    };
+    // -- WP HWLK1F, PAIRADM -- a PIN gives at most control: admin is the role set on
+    // the hub's machine (`uconsole hub role <cid> admin`), live
+    let w = t.net.auth().begin_pairing(Instant::now()).unwrap();
     let mut c = Cx::open(t.port, None, None).unwrap();
     c.hello();
     let reply = c.pair(&w.pin, Some(role), "x");
+    if role == "admin" {
+        let cid = t.net.auth().clients().iter().map(|c| c.cid).max();
+        assert!(t.net.set_role(cid.expect("paired"), Role::Admin));
+    }
     let token = reply["token"].as_str().unwrap_or("").to_owned();
     (token, reply)
 }

@@ -38,10 +38,9 @@ async function ctl(command: string): Promise<Record<string, unknown>> {
   return JSON.parse(next.value) as Record<string, unknown>;
 }
 
-/** A fresh window's PIN. -- WP ALINK1 -- `admin`: a window that may give admin
- * (`uconsole hub --pair-admin`); a plain PIN gives at most control (HWLK1F). */
-async function newPin(admin = false): Promise<string> {
-  pin = String((await ctl(admin ? "pin-admin" : "pin")).pin);
+/** A fresh window's PIN. A PIN gives at most control (HWLK1F, PAIRADM). */
+async function newPin(): Promise<string> {
+  pin = String((await ctl("pin")).pin);
   return pin;
 }
 
@@ -91,9 +90,15 @@ function setVolume(c: LinkClient, db: number): Promise<CmdResponseFrame> {
 async function paired(name: string, role: "admin" | "control" | "viewer"): Promise<{ c: LinkClient; token: string }> {
   const c = client();
   await c.connect(URL, { clientName: name, app: "wp_hb7 ts", version: "0" });
-  const token = await c.pair(await newPin(role === "admin"), name, role);
+  const token = (await c.pair(await newPin(), name, role)) ?? fail("no token");
   expect(c.state === "ready", `state ${c.state} after pairing`);
-  return { c, token: token ?? fail("no token") };
+  if (role !== "admin") return { c, token };
+  // -- WP PAIRADM -- a PIN gives control; admin is the role set on the hub's machine
+  // (`uconsole hub role <cid> admin`), and the token carries it
+  expect(c.role === "control", `a PIN gave ${c.role}`);
+  expect((await ctl(`admin ${name}`)).promoted === true, `${name} not made admin`);
+  c.disconnect();
+  return { c: await withToken(name, token), token };
 }
 
 async function withToken(name: string, token: string): Promise<LinkClient> {

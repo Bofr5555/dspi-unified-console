@@ -231,6 +231,8 @@ test.describe("HUBADMIN on a hub", () => {
     const ro = session.getByRole("note", { name: "Read-only" });
     await expect(ro).toHaveAttribute("data-key", "installer.hub_role");
     await expect(ro).toContainText("Read-only: Admin needed");
+    // -- WP PAIRADM -- and the core's words on how to get Admin: on the hub's machine
+    await expect(ro).toContainText("uconsole hub role <cid> admin");
     await expect(session.locator(".hub-role")).toContainText("Control");
     const limits = session.getByRole("region", { name: "Limits" });
     await expect(limits.getByLabel(/^Highest PEQ boost/)).toHaveValue("4");

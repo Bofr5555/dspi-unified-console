@@ -128,7 +128,7 @@
      "action": "When the DSPi is reached through a hub, the hub's copy is the one in force and edited."},
     {"key": "installer.hub_role", "kind": "warning", "title": "Read-only: Admin needed",
      "reason": "Only an Admin of the hub may change its limits, installer PIN and pinned modes. A console paired with the hub's PIN is a Control client.",
-     "action": "On the hub's machine, give this console the Admin role (uconsole hub role, or its clients list)."},
+     "action": "On the hub's machine, find this console with uconsole hub clients and run uconsole hub role <cid> admin (hub stopped), or type role <cid> admin at the running hub's prompt, where it applies at once."},
     {"key": "dlink.no_limits", "kind": "warning", "title": "This hub keeps no limits",
      "reason": "The hub this DSPi is reached through does not keep limits profiles or installer PINs, so there is nothing to edit here.",
      "action": "Update the hub, or connect the DSPi directly to edit this console's copy."},

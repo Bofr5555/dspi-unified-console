@@ -60,7 +60,10 @@ web server. Pick one:
 2. **From a hub on the network:** run `uconsole hub --web --console <folder>` on the machine
    the DSPi is plugged into, then open **http://&lt;that machine&gt;:11915/** from any
    browser on the network. The page links to the console (`/console/`) and to the hub page
-   (`/hub/`). Pair with the hub's PIN when asked.
+   (`/hub/`). Pair with the hub's PIN when asked. A PIN gives the Control role; to make a
+   console an Admin (for the hub's limits and installer PINs), run `uconsole hub clients`
+   and `uconsole hub role <cid> admin` on the hub's machine, or type `clients` and
+   `role <cid> admin` at the running hub's prompt.
 3. **On your own web server:** serve the unpacked folder over HTTPS
    ([`apps/web/DEPLOY.md`](apps/web/DEPLOY.md) has the details, also for embedding it in a
    fleet product). USB works there in Chromium; hubs can only be reached from a page the

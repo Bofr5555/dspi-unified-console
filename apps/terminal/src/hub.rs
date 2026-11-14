@@ -71,6 +71,25 @@ const DEFAULT_NAME: &str = "DSPi Hub";
 const MAX_NAME: usize = 64;
 /// Held by a running hub, in its store.
 const LOCK_FILE: &str = "dspi-hub.lock";
+// -- WP PAIRADM --
+/// Shown with a pairing PIN: what the client becomes, and how admin is given.
+const PAIRED_ROLE_NOTE: &str = concat!(
+    "A client that pairs with this PIN gets at most the control role. To make it an ",
+    "Admin, type `role <cid> admin` here (`clients` lists them), or run `",
+    dspi_cmd::command!(),
+    " hub role <cid> admin` with the hub stopped."
+);
+/// The refusal of `--pair-admin`, gone since 2026-11-14 (owner): no pairing
+/// gives admin; the role is set on the hub's machine, and applies live.
+const PAIR_ADMIN_GONE: &str = concat!(
+    "--pair-admin is no longer supported: pairing gives at most the control role. ",
+    "To make a console an Admin, pair it (--pair), then on this machine run `",
+    dspi_cmd::command!(),
+    " hub clients` and `",
+    dspi_cmd::command!(),
+    " hub role <cid> admin` with the hub stopped, or type `clients` and `role <cid> admin` ",
+    "at the running hub's prompt, which applies at once"
+);
 // -- WP WB7 --
 /// `uconsole web`'s port when nobody says: the standard one plus one, so it can run beside
 /// a `uconsole hub`, and the same each time, so the page's origin (and with it the hub
@@ -142,9 +161,6 @@ struct RunOptions {
     /// units) with its system model.
     alink: bool,
     // -- WP HWLK1F --
-    /// `--pair-admin`: the pairing window at the start may give admin, to the
-    /// one client that asks for it. Otherwise a PIN gives at most control.
-    pair_admin: bool,
     /// `--with-usb` (a test option, with `--demo --alink`): this machine's
     /// USB devices too, beside the simulated installation.
     with_usb: bool,
@@ -252,10 +268,9 @@ OPTIONS:
     --name <name>             the hub's name, kept for the next start
     --port <port>             the port to listen on (default {DEFAULT_PORT}; 0: any)
     --pair                    open a pairing window at the start and show its PIN.
-                              A PIN gives at most the control role
-    --pair-admin              the same, and the one client that pairs in it may
-                              ask for admin (otherwise admin is only given with
-                              `{COMMAND} hub role` on this machine)
+                              A PIN gives at most the control role. Admin:
+                              `{COMMAND} hub role <cid> admin` on this
+                              machine, or `role <cid> admin` while it runs
     --open                    no PIN: every connection may do anything, including
                               anyone else on this network. PIN pairing is the default
     --forget-clients          agree to a change of --open that forgets every
@@ -330,7 +345,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     // -- WP SW3 --
     let mut alink = false;
     // -- WP HWLK1F --
-    let (mut pair_admin, mut with_usb, mut with_plain_unit) = (false, false, false);
+    let (mut with_usb, mut with_plain_unit) = (false, false);
     let mut with_usb_lock_error = false; // -- WP AUSB2 --
     let mut port_given = false;
     let mut words = Vec::new();
@@ -382,8 +397,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             // -- WP SW3 --
             // -- WP ALINK1 -- `--alink`; `--audio-link`, its name before, is a hidden alias
             "--alink" | "--audio-link" => alink = true,
-            // -- WP HWLK1F --
-            "--pair-admin" => pair_admin = true,
+            // -- WP PAIRADM -- gone (owner, 2026-11-14): refused, never ignored
+            "--pair-admin" => return Err(usage(PAIR_ADMIN_GONE.into())),
             "--with-usb" => with_usb = true,
             "--with-plain-unit" => with_plain_unit = true,
             "--with-usb-lock-error" => with_usb_lock_error = true,
@@ -402,7 +417,6 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 | "--share-usb"
                 | "--alink"
                 | "--audio-link"
-                | "--pair-admin"
                 | "--with-usb"
                 | "--with-plain-unit"
                 | "--with-usb-lock-error"
@@ -457,11 +471,6 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                     )));
                 }
             }
-            if pair_admin && access == AccessMode::Open {
-                return Err(usage(
-                    "--pair-admin and --open: an open hub pairs nobody".into(),
-                ));
-            }
             if local && !port_given {
                 port = LOCAL_PORT;
             }
@@ -470,7 +479,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 port,
                 access,
                 store: store()?,
-                pair: pair || pair_admin,
+                pair,
                 demo,
                 keep_awake,
                 forget_clients: forget,
@@ -483,7 +492,6 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 // -- WP SW3 --
                 alink,
                 // -- WP HWLK1F --
-                pair_admin,
                 with_usb,
                 with_plain_unit,
                 with_usb_lock_error,
@@ -1028,7 +1036,7 @@ fn serve(opts: &RunOptions, json: bool) -> Result<(), Failure> {
         );
     }
     if opts.pair {
-        let _ = begin_pairing(&running, json, opts.pair_admin);
+        let _ = begin_pairing(&running, json);
     }
 
     let typed = std::io::stdin().is_terminal().then(read_lines).flatten();
@@ -1132,7 +1140,7 @@ fn command(running: &Running, line: &str, json: bool) -> bool {
         ["help"] => usage(),
         ["status"] => status(running, json),
         ["pair"] => {
-            let _ = begin_pairing(running, json, false);
+            let _ = begin_pairing(running, json);
         }
         ["unpair"] => {
             running.control.auth().cancel_pairing();
@@ -1197,13 +1205,10 @@ fn status(running: &Running, json: bool) {
     }
 }
 
-/// -- WP HWLK1F -- `admin`: the one pairing may be admin (`--pair-admin`). The
+/// Open a pairing window and show its PIN. -- WP PAIRADM -- It gives at most
+/// the control role; admin is `role <cid> admin` (`{COMMAND} hub role`). The
 /// window opened, for the tests.
-fn begin_pairing(
-    running: &Running,
-    json: bool,
-    admin: bool,
-) -> Option<dspi_hub::auth::PairingWindow> {
+fn begin_pairing(running: &Running, json: bool) -> Option<dspi_hub::auth::PairingWindow> {
     if running.access == AccessMode::Open {
         let m = "access is open: clients connect with no PIN";
         if json {
@@ -1214,13 +1219,7 @@ fn begin_pairing(
         return None;
     }
     let now = Instant::now();
-    let auth = running.control.auth();
-    let window = if admin {
-        auth.begin_pairing_admin(now)
-    } else {
-        auth.begin_pairing(now)
-    };
-    match window {
+    match running.control.auth().begin_pairing(now) {
         Ok(window) => {
             let shown = window.clone();
             let secs = window.expires.saturating_duration_since(now).as_secs();
@@ -1236,8 +1235,8 @@ fn begin_pairing(
                     window.pin
                 );
             }
-            if admin && !json {
-                println!("The client that pairs with this PIN may ask for the admin role.");
+            if !json {
+                println!("{PAIRED_ROLE_NOTE}");
             }
             Some(shown)
         }
@@ -1537,7 +1536,6 @@ mod tests_wp_tm11 {
             // -- WP SW3 --
             alink: false,
             // -- WP HWLK1F --
-            pair_admin: false,
             with_usb: false,
             with_plain_unit: false,
             with_usb_lock_error: false,
@@ -2502,7 +2500,6 @@ mod tests_wp_sw3 {
             share_usb: false,
             alink: false,
             // -- WP HWLK1F --
-            pair_admin: false,
             with_usb: false,
             with_plain_unit: false,
             with_usb_lock_error: false,
@@ -2539,14 +2536,8 @@ mod tests_wp_hwlk1f {
 
     #[test]
     fn wp_hwlk1f_the_new_options_parse() {
-        let o = run(&["--pair-admin"], false).unwrap();
-        assert!(o.pair && o.pair_admin, "--pair-admin opens the window too");
         let o = run(&["--pair"], false).unwrap();
-        assert!(o.pair && !o.pair_admin);
-        assert!(matches!(
-            run(&["--pair-admin", "--open"], false),
-            Err(Failure::Usage(_))
-        ));
+        assert!(o.pair);
         let o = run(&["--alink", "--with-usb", "--with-plain-unit"], true).unwrap();
         assert!(o.alink && o.with_usb && o.with_plain_unit && o.demo);
         // -- WP AUSB2 --
@@ -2560,19 +2551,31 @@ mod tests_wp_hwlk1f {
             assert!(matches!(run(&[f], true), Err(Failure::Usage(_))), "{f}");
             assert!(matches!(run(&[f], false), Err(Failure::Usage(_))), "{f}");
         }
-        assert!(matches!(
-            parse(
-                &["clients", "--pair-admin"],
-                false,
-                Some(PathBuf::from("/s"))
-            ),
-            Err(Failure::Usage(_))
-        ));
         let o = run(&["--alink"], true).unwrap();
-        assert!(
-            !o.with_usb && !o.with_plain_unit && !o.pair_admin,
-            "off unless given"
-        );
+        assert!(!o.with_usb && !o.with_plain_unit, "off unless given");
+    }
+
+    /// -- WP PAIRADM -- `--pair-admin` is gone: refused wherever it is given,
+    /// with the way to admin (`hub role`), never ignored.
+    #[test]
+    fn wp_pairadm_pair_admin_is_refused_with_the_way_to_admin() {
+        for args in [
+            &["--pair-admin"][..],
+            &["--pair", "--pair-admin"],
+            &["--pair-admin", "--open"],
+            &["run", "--pair-admin"],
+            &["clients", "--pair-admin"],
+        ] {
+            match parse(args, false, Some(PathBuf::from("/s"))) {
+                Err(Failure::Usage(m)) => {
+                    assert!(m.contains("no longer supported"), "{m}");
+                    assert!(m.contains(" hub role <cid> admin"), "{m}");
+                    assert!(m.contains(" hub clients"), "{m}");
+                }
+                other => panic!("{args:?}: {other:?}"),
+            }
+        }
+        assert!(parse(&["--pair-admin"], true, Some(PathBuf::from("/s"))).is_err());
     }
 
     fn options(store: &Path) -> RunOptions {
@@ -2591,27 +2594,28 @@ mod tests_wp_hwlk1f {
             local: false,
             share_usb: false,
             alink: false,
-            pair_admin: false,
             with_usb: false,
             with_plain_unit: false,
             with_usb_lock_error: false,
         }
     }
 
-    /// `--pair-admin`'s window gives admin to the one client that asks; the
-    /// typed `pair`'s gives control.
+    /// -- WP PAIRADM -- every window, `--pair`'s and the typed `pair`'s, gives
+    /// at most control; `role <cid> admin` at the prompt makes it admin, live.
     #[test]
-    fn wp_hwlk1f_pair_admin_opens_a_window_that_may_give_admin() {
+    fn wp_pairadm_pairing_gives_control_and_the_role_command_admin() {
         let store = scratch("pair");
         let running = start(&options(&store), false).unwrap();
         let peer = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let auth = running.control.auth();
-        let w = begin_pairing(&running, true, true).unwrap();
+        let w = begin_pairing(&running, true).unwrap();
         let a = auth
             .pair(&w.pin, "installer", Some(Role::Admin), peer, Instant::now())
             .unwrap();
-        assert_eq!(a.role, Role::Admin);
-        let w = begin_pairing(&running, true, false).unwrap();
+        assert_eq!(a.role, Role::Control);
+        assert!(command(&running, &format!("role {} admin", a.cid), true));
+        assert_eq!(auth.role_of(a.cid), Some(Role::Admin));
+        let w = begin_pairing(&running, true).unwrap();
         let c = auth
             .pair(&w.pin, "phone", Some(Role::Admin), peer, Instant::now())
             .unwrap();

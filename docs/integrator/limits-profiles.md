@@ -205,7 +205,11 @@ hub; the Terminal's own import path is `preset_file::apply_limited`.
 ## What the existing safeguards do
 
 - The hub's roles: a `viewer` cannot change anything, a `control` client
-  cannot change the device configuration ([hub.md](hub.md)).
+  cannot change the device configuration ([hub.md](hub.md)). The hub's
+  limits profiles and installer PINs are an Admin's. Pairing with the hub's
+  PIN gives at most Control; Admin is given on the hub's machine only:
+  `uconsole hub clients`, then `uconsole hub role <cid> admin` (hub stopped),
+  or `clients` and `role <cid> admin` at the running hub's prompt, live.
 - The core-voltage rule: no client on the network raises the core voltage
   above 1.20 V.
 - Read-only connections: firmware of another wire format is shown, never

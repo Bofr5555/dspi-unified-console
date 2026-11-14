@@ -1794,6 +1794,8 @@ can trail the other clients without blocking them.
 | **OD-P1l** | **Limits on the hub's own system scenes** (SW2: master volume and preset load across units). | Yes, the same check in P1HL |
 | **OD-P1m** | **An installer hand-over sheet**: one page generated from the profile (limits, contact, the recovery code of OD-P1c, what the lock is and is not), about 0.5; PRO1's "hand it over" has no WP otherwise (E6, the manual, is later). | Add it as a WP after P1LK, in the core's wording, shown and printed by each client's Installer page |
 
+-- WP PAIRADM -- **Admin on a hub (owner, 2026-11-14; review-hubadmin item 7, option C).** Pairing with a hub's PIN gives at most the Control role, enforced on the hub; `uconsole hub --pair-admin` (HWLK1F's admin pairing window) is removed and refused with a message pointing to `hub role`. The only way to Admin (needed for the hub's limits, installer PINs and pinned modes under OD-P1c and OD-P1i) is on the hub's machine: `uconsole hub clients` and `uconsole hub role <cid> admin` with the hub stopped, or `clients` and `role <cid> admin` at the running hub's prompt, which applies live. The notice row `installer.hub_role` says so on every read-only Installer page.
+
 ---
 
 ## 6. Hardware and owner-only tasks

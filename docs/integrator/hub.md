@@ -54,10 +54,13 @@ for a closed bench only.
 - A service has no terminal: stop it, pair from `uconsole hub` in a terminal,
   start it again (`service/README.md`). `--pair` prints the PIN to the log.
 - A PIN gives at most `control`: a client that asks for `admin` with a PIN gets
-  `control` (WP HWLK1F). Admin is given on the hub's own machine only:
-  `uconsole hub role <cid> admin` (or `role <cid> admin` at its prompt), or
-  `uconsole hub --pair-admin`, whose pairing window may give admin to the one
-  client that pairs in it and asks for it.
+  `control` (WP HWLK1F). No pairing gives more (WP PAIRADM, owner 2026-11-14).
+  **Admin is given on the hub's own machine only:** find the client's number
+  with `uconsole hub clients`, then run `uconsole hub role <cid> admin` (both
+  with the hub stopped), or type `clients` and `role <cid> admin` at the running
+  hub's prompt. At the prompt it applies live: the client's next message is
+  judged as Admin, without a reconnect. The option `--pair-admin` of earlier
+  builds is refused with a message that points here.
 - Changing between PIN and open access forgets every paired client, and needs
   `--forget-clients`.
 
@@ -208,9 +211,11 @@ for a directly connected one), `hub_limits_get`/`set`/`clear`,
 `dspi-link`'s message hook (`LinkEvents::hub_event`), after which the core
 reads the lock again (`installer_lock_refresh`) and tells the app
 (`HubAdminListener`, or `hub_admin_events` on the web). A console paired with
-the hub's PIN is Control (it asks for control), so the Admin role is given on
-the hub's machine (`uconsole hub role <cid> admin`); the role changes live,
-and `hub_limits_get` answers with it.
+the hub's PIN is Control (no pairing gives more), so the Admin role is given on
+the hub's machine: `uconsole hub clients` and `uconsole hub role <cid> admin`,
+or `clients` and `role <cid> admin` at the running hub's prompt, where it
+changes live; `hub_limits_get` answers with it. The read-only Installer page
+says so in the notice row `installer.hub_role`.
 
 Reference: `crates/dspi-hub/src/limits.rs`.
 

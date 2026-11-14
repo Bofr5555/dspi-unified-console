@@ -11,13 +11,17 @@ use crate::support::*;
 
 fn paired(b: &Bench, name: &str, role: &str) -> (LinkClient, String) {
     let (c, _) = connect(&b.url(), name, None).unwrap();
-    // -- WP HWLK1F -- admin only through a window opened for it
-    let pin = if role == "admin" {
-        b.admin_pin()
-    } else {
-        b.pin()
-    };
-    let token = c.pair(&pin, role).unwrap();
+    let token = c.pair(&b.pin(), role).unwrap();
+    if role != "admin" {
+        return (c, token);
+    }
+    // -- WP HWLK1F, PAIRADM -- a PIN gives at most control; admin is the role set on
+    // the hub's machine (`uconsole hub role <cid> admin`), and the token carries it
+    assert_eq!(c.role(), "control");
+    assert!(b.promote(name));
+    c.close();
+    let (c, state) = connect(&b.url(), name, Some(token.clone())).unwrap();
+    assert_eq!(state, AuthState::Ready);
     (c, token)
 }
 

@@ -4,8 +4,8 @@
 //! | File | Written by | What |
 //! |---|---|---|
 //! | `hub.json` | here | `{"port", "hub_id", "pin"}`, once the hub is up |
-//! | `cmd` | the driver | `<n> pin`, `<n> change`, `<n> revoke <client name>`, `<n> stop` |
-//! | `ack` | here | `<n> <json>`: the new PIN, `revoked`, or `{}` |
+//! | `cmd` | the driver | `<n> pin`, `<n> change`, `<n> revoke <client name>`, `<n> admin <client name>`, `<n> stop` |
+//! | `ack` | here | `<n> <json>`: the new PIN, `revoked`, `promoted`, or `{}` |
 //!
 //! `HB7_BIND` (default `127.0.0.1`) and `HB7_PORT` (default any) place it;
 //! `HB7_SERVE_SECS` (default 600) ends it if the driver never says stop.
@@ -30,8 +30,9 @@ fn write_atomic(dir: &Path, name: &str, text: &str) {
 fn handle(b: &Bench, verb: &str, arg: &str) -> Option<Value> {
     Some(match verb {
         "pin" => json!({ "pin": b.pin() }),
-        // -- WP ALINK1 -- a window that may give admin (`uconsole hub --pair-admin`, HWLK1F)
-        "pin-admin" => json!({ "pin": b.admin_pin() }),
+        // -- WP PAIRADM -- a PIN gives at most control (HWLK1F): `admin <client name>`
+        // makes a paired client admin, as `uconsole hub role <cid> admin` does
+        "admin" => json!({ "promoted": b.promote(arg) }),
         "change" => {
             b.knob();
             json!({})
