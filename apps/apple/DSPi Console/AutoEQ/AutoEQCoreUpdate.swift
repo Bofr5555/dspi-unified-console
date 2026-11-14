@@ -239,9 +239,22 @@ final class AutoEQCoreRebuild: ObservableObject {
             if let wait = p.retryAfterS { text += "\nTry again in \(wait) seconds." }
             return text + "\nThe database was not changed."
         }
-        var text = "Database rebuilt successfully!\nEntries: \(p.entries)"
+        var text = "AutoEQ database rebuilt.\nEntries: \(p.entries)"   // -- WP P1SW3 -- no "successfully!"
         if p.failedProfiles > 0 { text += "\n\(p.failedProfiles) profiles could not be downloaded." }
         if p.failedListings > 0 { text += "\n\(p.failedListings) folders could not be listed; their profiles are missing." }
         return text
+    }
+
+    /// -- WP P1SW3 -- the rebuild's outcome as a notice: a result line when
+    /// it succeeded or was cancelled, the core's `autoeq` row (by its code,
+    /// `autoeq.network`, `autoeq.rate_limited`) with the summary otherwise.
+    static func notice(_ p: AutoEqRebuildProgress) -> ConsoleNotice {
+        // -- WP P1SW3F -- F5: profiles or folders that did not come are a
+        // warning that stays, as an import's report with notes is.
+        if p.succeeded {
+            return p.failedProfiles > 0 || p.failedListings > 0 ? .result(summary(p), kind: .warning) : .result(summary(p))
+        }
+        if p.code == "cancelled" { return .result(summary(p)) }
+        return .row(p.code.isEmpty ? "autoeq" : "autoeq.\(p.code)", detail: summary(p))
     }
 }

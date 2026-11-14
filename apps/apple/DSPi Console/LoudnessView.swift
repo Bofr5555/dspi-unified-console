@@ -52,7 +52,7 @@ class LoudnessWindowController: NSObject, ObservableObject {
 
     func show(vm: DSPViewModel) {
         if window == nil {
-            let view = LoudnessView(vm: vm, loudness: vm.loudness).onboardingHint("loudness")
+            let view = LoudnessView(vm: vm, loudness: vm.loudness).onboardingHint("loudness").toolWindowFloor(vm)   /* -- WP P1SW3F -- read, not written, on the floor */
 
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 780, height: 400),
@@ -92,7 +92,7 @@ extension LoudnessWindowController: NSWindowDelegate {
 #else
 class LoudnessWindowController: IOSToolWindowController {
     func show(vm: DSPViewModel) {
-        present(title: "Loudness Compensation") { LoudnessView(vm: vm, loudness: vm.loudness).onboardingHint("loudness") }
+        present(title: "Loudness Compensation") { LoudnessView(vm: vm, loudness: vm.loudness).onboardingHint("loudness").toolWindowFloor(vm)   /* -- WP P1SW3F -- read, not written, on the floor */ }
     }
 }
 #endif

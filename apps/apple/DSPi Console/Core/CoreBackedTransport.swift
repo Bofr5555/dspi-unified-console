@@ -1017,8 +1017,11 @@ final class HostBridge: HostTransport, @unchecked Sendable {
     private func bulkChunk(offset: Int, len: Int) throws -> Data {
         cacheLock.lock(); defer { cacheLock.unlock() }
         if offset == 0 || bulkCache == nil {
+            // -- WP P1SW3 -- as much as wLength carries, as the core asks a
+            // single-shot read (the firmware answers min(wLength, image)): a
+            // newer firmware's image (the V33 fixture) is longer than V32's.
             switch transport.getControlResult(request: REQ_GET_ALL_PARAMS, value: 0, index: HostBridge.vendorInterface,
-                                              length: UInt16(BULK_PARAMS_SIZE)) {
+                                              length: UInt16.max) {
             case .success(let data): bulkCache = Data(data)
             case .failure(let status): throw HostBridge.error(for: status, opcode: HostBridge.getAllParamsChunk)
             }

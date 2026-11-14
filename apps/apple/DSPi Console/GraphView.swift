@@ -177,8 +177,10 @@ struct BodePlotView: View {
     /// where PEQ bands are not what the page lists.
     var editedChannel: Int? {
         // -- WP SWF4 -- None on read-only firmware: the graph shows the
-        // bands and drags none.
+        // bands and drags none.  -- WP P1SW3 -- Nor under the installer's
+        // lock: the read-only floor.
         guard PeqGraphEditorView.isAvailable, vm.isDeviceReady, !useOverride, !vm.deviceReadOnly,
+              ReadOnlyFloor.of(vm, installer: .shared).allows(.other),
               let ch = vm.activeEqChannel, vm.channelVisibility[ch] == true,
               !(vm.crossoverTabShown && ch >= vm.chOut1) else { return nil }
         return ch

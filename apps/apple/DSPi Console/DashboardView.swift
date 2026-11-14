@@ -486,6 +486,9 @@ private struct DashboardCardFrame<Content: View>: View {
 
     var body: some View {
         content
+            // -- WP P1SW3F -- F3: the card follows the read-only floor; the
+            // gear over it (the layout, a view setting) stays live.
+            .floorGated(.other)
             // Animated here rather than at each state change, so the readout
             // also slides back when the popover closes on an outside click.
             .environment(\.dashboardGearVisible, isHovered || optionsOpen)

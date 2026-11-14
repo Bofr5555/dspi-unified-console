@@ -22,8 +22,7 @@ final class InstallerP1SW2FTests: XCTestCase, CoreDomainTesting {
     }
 
     private func installer(_ vm: DSPViewModel) -> CoreInstaller {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("P1SW2F-\(UUID().uuidString)", isDirectory: true)
+        let url = TestFolders.fresh("P1SW2F")   // -- WP P1SW3F -- F5: the caches directory
         folders.append(url)
         let i = CoreInstaller(vm: vm, folder: url)
         XCTAssertTrue(spinUntil(10) { i.available && !i.busy && i.choice != nil }, "the wrapper sees the core")

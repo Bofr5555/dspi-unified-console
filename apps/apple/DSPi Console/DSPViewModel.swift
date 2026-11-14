@@ -3254,6 +3254,15 @@ class DSPViewModel: ObservableObject {
                                    sourceTitle: inputSourceTitle)
     }
 
+    /// -- WP P1SW3F -- A device switch asks Save / Discard / Cancel first only
+    /// when there are unsaved changes and the floor allows saving them; under
+    /// the installer's lock (or on read-only firmware) the save would be
+    /// refused, so the switch asks nothing, as a recall (F2).
+    func asksBeforeDeviceSwitch(installer: CoreInstaller = .shared) -> Bool {
+        isDeviceConnected
+            && ReadOnlyFloor.of(self, installer: installer).asksBeforeRecall(hasUnsavedChanges: hasUnsavedChanges)
+    }
+
     #if os(macOS)
     func switchToDevice(_ device: DSPiDevice) {
         // Picking the selected device again while it is not connected is a
@@ -3276,7 +3285,7 @@ class DSPViewModel: ObservableObject {
         }
 
         settleUnsavedChanges()   // -- WP SWF7 --
-        if isDeviceConnected && hasUnsavedChanges {
+        if asksBeforeDeviceSwitch() {   // -- WP P1SW3F -- under the floor nothing may be saved: no question
             let diff = computeDiff()
             let action = PresetAlerts.showUnsavedChangesAlert(diff: diff)
             switch action {
@@ -3285,16 +3294,10 @@ class DSPViewModel: ObservableObject {
                     if self.presetNames[self.activePresetSlot].isEmpty {
                         self.setPresetName(slot: self.activePresetSlot, name: "Preset \(self.activePresetSlot + 1)")
                     }
-                    let saveStatus = self.savePreset(slot: self.activePresetSlot, confirmed: .savePreset())
-                    guard saveStatus == PRESET_OK else {
-                        DispatchQueue.main.async {
-                            let alert = NSAlert()
-                            alert.messageText = "Save Failed"
-                            alert.informativeText = "Failed to save preset (\(presetFailureText(saveStatus))). Device switch aborted."
-                            alert.alertStyle = .warning
-                            alert.addButton(withTitle: "OK")
-                            alert.runModal()
-                        }
+                    let saveStatus = self.savePresetOutcome(slot: self.activePresetSlot, confirmed: .savePreset())   // -- WP P1SW3F -- F1
+                    guard saveStatus.status == PRESET_OK else {
+                        // -- WP P1SW3 -- a notice, not a modal
+                        NoticeCenter.main.post(AppNotices.preset(saveStatus, "Failed to save preset; the device switch was stopped"))
                         return
                     }
                     self.savedSnapshot = nil
@@ -3333,7 +3336,7 @@ class DSPViewModel: ObservableObject {
 
     private func switchToDeviceAfterSettingsCheck(_ device: DSPiDevice) {
         settleUnsavedChanges()   // -- WP SWF7 --
-        guard isDeviceConnected && hasUnsavedChanges else {
+        guard asksBeforeDeviceSwitch() else {   // -- WP P1SW3F --
             savedSnapshot = nil
             transport.selectDevice(device)
             return
@@ -3346,14 +3349,10 @@ class DSPViewModel: ObservableObject {
                     if self.presetNames[self.activePresetSlot].isEmpty {
                         self.setPresetName(slot: self.activePresetSlot, name: "Preset \(self.activePresetSlot + 1)")
                     }
-                    let saveStatus = self.savePreset(slot: self.activePresetSlot, confirmed: .savePreset())
-                    guard saveStatus == PRESET_OK else {
-                        let alert = PlatformAlert()
-                        alert.messageText = "Save Failed"
-                        alert.informativeText = "Failed to save preset (\(presetFailureText(saveStatus))). Device switch aborted."
-                        alert.alertStyle = .warning
-                        alert.addButton(withTitle: "OK")
-                        alert.present()
+                    let saveStatus = self.savePresetOutcome(slot: self.activePresetSlot, confirmed: .savePreset())   // -- WP P1SW3F -- F1
+                    guard saveStatus.status == PRESET_OK else {
+                        // -- WP P1SW3 -- a notice, not a modal
+                        NoticeCenter.main.post(AppNotices.preset(saveStatus, "Failed to save preset; the device switch was stopped"))
                         return
                     }
                     self.savedSnapshot = nil

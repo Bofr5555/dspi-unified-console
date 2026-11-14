@@ -865,18 +865,19 @@ extension DSPViewModel {
     /// own byte, `PRESET_STATUS_LOCKED` for the hub's lock, 0xFF for any other
     /// failure.  Blocking: off the main thread.
     func loadPresetThroughCore(_ source: CoreStateSource, slot: Int) -> UInt8 {
-        guard let wire = UInt8(exactly: slot) else { return PRESET_ERR_INVALID_SLOT }
+        loadPresetThroughCoreOutcome(source, slot: slot).status   // -- WP P1SW3F -- F1
+    }
+
+    /// -- WP P1SW3F -- F1: as `loadPresetThroughCore`, with the core's error.
+    func loadPresetThroughCoreOutcome(_ source: CoreStateSource, slot: Int) -> CoreOutcome {
+        guard let wire = UInt8(exactly: slot) else { return CoreOutcome(PRESET_ERR_INVALID_SLOT) }
         let generation = transport.generation
         switch source.loadPreset(slot: wire) {
         case .failure(let error):
             CoreMirrorLog.log.info("loadPreset(\(slot)) failed: \(String(describing: error), privacy: .public)")
-            switch error {
-            case .Refused(let status): return status
-            case .Locked, .Denied: return PRESET_STATUS_LOCKED
-            default: return 0xFF
-            }
+            return CoreOutcome(DSPViewModel.presetStatus(error), error)
         case .success(let (state, changes)):
-            guard transport.generation == generation else { return PRESET_OK }
+            guard transport.generation == generation else { return CoreOutcome(PRESET_OK) }
             DispatchQueue.main.async {
                 // The new slot at once, as the raw path does (the popup's
                 // check mark), then the preset's state.
@@ -884,7 +885,7 @@ extension DSPViewModel {
                 self.applyCoreState(state, force: true)
                 self.coreFetchTail(changes, from: source)
             }
-            return PRESET_OK
+            return CoreOutcome(PRESET_OK)
         }
     }
 

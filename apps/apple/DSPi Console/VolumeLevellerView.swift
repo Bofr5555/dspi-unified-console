@@ -9,7 +9,7 @@ class VolumeLevellerWindowController: NSObject, ObservableObject {
 
     func show(vm: DSPViewModel) {
         if window == nil {
-            let view = VolumeLevellerView(vm: vm, leveller: vm.leveller).onboardingHint("leveller")
+            let view = VolumeLevellerView(vm: vm, leveller: vm.leveller).onboardingHint("leveller").toolWindowFloor(vm)   /* -- WP P1SW3F -- read, not written, on the floor */
 
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 380, height: 540),
@@ -49,7 +49,7 @@ extension VolumeLevellerWindowController: NSWindowDelegate {
 #else
 class VolumeLevellerWindowController: IOSToolWindowController {
     func show(vm: DSPViewModel) {
-        present(title: "Volume Leveller") { VolumeLevellerView(vm: vm, leveller: vm.leveller).onboardingHint("leveller") }
+        present(title: "Volume Leveller") { VolumeLevellerView(vm: vm, leveller: vm.leveller).onboardingHint("leveller").toolWindowFloor(vm)   /* -- WP P1SW3F -- read, not written, on the floor */ }
     }
 }
 #endif

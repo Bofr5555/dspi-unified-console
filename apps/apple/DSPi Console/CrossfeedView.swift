@@ -9,7 +9,7 @@ class CrossfeedWindowController: NSObject, ObservableObject {
 
     func show(vm: DSPViewModel) {
         if window == nil {
-            let view = CrossfeedView(vm: vm, crossfeed: vm.crossfeed).onboardingHint("crossfeed")
+            let view = CrossfeedView(vm: vm, crossfeed: vm.crossfeed).onboardingHint("crossfeed").toolWindowFloor(vm)   /* -- WP P1SW3F -- read, not written, on the floor */
 
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 780, height: 470),
@@ -49,7 +49,7 @@ extension CrossfeedWindowController: NSWindowDelegate {
 #else
 class CrossfeedWindowController: IOSToolWindowController {
     func show(vm: DSPViewModel) {
-        present(title: "Crossfeed") { CrossfeedView(vm: vm, crossfeed: vm.crossfeed).onboardingHint("crossfeed") }
+        present(title: "Crossfeed") { CrossfeedView(vm: vm, crossfeed: vm.crossfeed).onboardingHint("crossfeed").toolWindowFloor(vm)   /* -- WP P1SW3F -- read, not written, on the floor */ }
     }
 }
 #endif
