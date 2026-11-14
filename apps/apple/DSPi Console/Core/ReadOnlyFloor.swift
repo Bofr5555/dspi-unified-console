@@ -71,6 +71,14 @@ struct ReadOnlyFloor: Equatable {
     /// Some control is off.
     var isReadOnly: Bool { cause != .none }
 
+    /// -- WP P1SW3F -- A tool window opens from its sidebar toggle for
+    /// reading: always on read-only firmware (its controls floored there);
+    /// under the installer's lock only a window the lock leaves open
+    /// (`allowedByLock`, the analyser), as P1SW2 hides the rest.
+    func opensToolWindow(allowedByLock: Bool = false) -> Bool {
+        cause != .installerLock || allowedByLock
+    }
+
     /// -- WP P1SW3F -- F2: a preset recall asks Save / Discard / Cancel
     /// first.  Not under the floor: nothing may be saved there (the save is
     /// a write it does not allow), so a locked user's unsaved mute does not
@@ -180,5 +188,32 @@ struct ReadOnlyFloorLine: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("readOnlyFloorLine")
         }
+    }
+}
+
+// MARK: - Tool windows
+
+/// -- WP P1SW3F -- A tool window's content on the read-only floor: its own
+/// root (a window of its own, so it does not inherit the main window's
+/// environment), shown for reading with every control off and the core's
+/// reason over it.
+private struct ToolWindowFloor: ViewModifier {
+    @ObservedObject var vm: DSPViewModel
+    @ObservedObject private var installer = CoreInstaller.shared
+
+    func body(content: Content) -> some View {
+        let floor = ReadOnlyFloor.of(vm, installer: installer)
+        VStack(spacing: 0) {
+            ReadOnlyFloorLine(verticalPadding: 6)
+            content.floorGated(.other)
+        }
+        .environment(\.readOnlyFloor, floor)
+    }
+}
+
+extension View {
+    /// A tool window's root on the read-only floor of `vm`'s device.
+    func toolWindowFloor(_ vm: DSPViewModel) -> some View {
+        modifier(ToolWindowFloor(vm: vm))
     }
 }

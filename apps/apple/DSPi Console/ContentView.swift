@@ -582,8 +582,8 @@ struct ContentView: View {
                             tooltip: "Headphone Crossfeed",
                             action: { vm.setCrossfeed(!vm.crossfeedEnabled) }
                         )
-                        .onRightClick { crossfeedController.show(vm: vm) }   // -- WP P1SW3F -- F3: inside the floor's .disabled
                         .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
+                        .onRightClick { if floor.opensToolWindow() { crossfeedController.show(vm: vm) } }   // -- WP P1SW3F -- for reading on read-only firmware, not under the lock
 
                         SidebarIconButton(
                             icon: "speaker.zzz",
@@ -591,8 +591,8 @@ struct ContentView: View {
                             tooltip: "Loudness Compensation",
                             action: { vm.setLoudness(!vm.loudnessEnabled) }
                         )
-                        .onRightClick { loudnessController.show(vm: vm) }   // -- WP P1SW3F -- F3: inside the floor's .disabled
                         .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
+                        .onRightClick { if floor.opensToolWindow() { loudnessController.show(vm: vm) } }   // -- WP P1SW3F -- for reading on read-only firmware, not under the lock
 
                         SidebarIconButton(
                             icon: "waveform.path.ecg",
@@ -600,8 +600,8 @@ struct ContentView: View {
                             tooltip: "Volume Leveller",
                             action: { vm.setLeveller(!vm.levellerEnabled) }
                         )
-                        .onRightClick { levellerController.show(vm: vm) }   // -- WP P1SW3F -- F3: inside the floor's .disabled
                         .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
+                        .onRightClick { if floor.opensToolWindow() { levellerController.show(vm: vm) } }   // -- WP P1SW3F -- for reading on read-only firmware, not under the lock
 
                         SidebarIconButton(
                             icon: "",
@@ -612,8 +612,8 @@ struct ContentView: View {
                             tooltip: "Psychoacoustic Bass",
                             action: { vm.setPsybass(!vm.psybassEnabled) }
                         )
-                        .onRightClick { psybassController.show(vm: vm) }   // -- WP P1SW3F -- F3: inside the floor's .disabled
                         .disabled(!floor.allows(.other))   // -- WP SWF4 --, P1SW3: the floor
+                        .onRightClick { if floor.opensToolWindow() { psybassController.show(vm: vm) } }   // -- WP P1SW3F -- for reading on read-only firmware, not under the lock
 
                         SidebarIconButton(
                             icon: "info.circle",

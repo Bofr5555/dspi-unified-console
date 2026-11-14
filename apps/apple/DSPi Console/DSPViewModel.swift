@@ -3254,6 +3254,15 @@ class DSPViewModel: ObservableObject {
                                    sourceTitle: inputSourceTitle)
     }
 
+    /// -- WP P1SW3F -- A device switch asks Save / Discard / Cancel first only
+    /// when there are unsaved changes and the floor allows saving them; under
+    /// the installer's lock (or on read-only firmware) the save would be
+    /// refused, so the switch asks nothing, as a recall (F2).
+    func asksBeforeDeviceSwitch(installer: CoreInstaller = .shared) -> Bool {
+        isDeviceConnected
+            && ReadOnlyFloor.of(self, installer: installer).asksBeforeRecall(hasUnsavedChanges: hasUnsavedChanges)
+    }
+
     #if os(macOS)
     func switchToDevice(_ device: DSPiDevice) {
         // Picking the selected device again while it is not connected is a
@@ -3276,7 +3285,7 @@ class DSPViewModel: ObservableObject {
         }
 
         settleUnsavedChanges()   // -- WP SWF7 --
-        if isDeviceConnected && hasUnsavedChanges {
+        if asksBeforeDeviceSwitch() {   // -- WP P1SW3F -- under the floor nothing may be saved: no question
             let diff = computeDiff()
             let action = PresetAlerts.showUnsavedChangesAlert(diff: diff)
             switch action {
@@ -3327,7 +3336,7 @@ class DSPViewModel: ObservableObject {
 
     private func switchToDeviceAfterSettingsCheck(_ device: DSPiDevice) {
         settleUnsavedChanges()   // -- WP SWF7 --
-        guard isDeviceConnected && hasUnsavedChanges else {
+        guard asksBeforeDeviceSwitch() else {   // -- WP P1SW3F --
             savedSnapshot = nil
             transport.selectDevice(device)
             return

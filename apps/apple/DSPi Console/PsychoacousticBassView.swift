@@ -9,7 +9,7 @@ class PsychoacousticBassWindowController: NSObject, ObservableObject {
 
     func show(vm: DSPViewModel) {
         if window == nil {
-            let view = PsychoacousticBassView(vm: vm, psybass: vm.psybass).onboardingHint("psybass")
+            let view = PsychoacousticBassView(vm: vm, psybass: vm.psybass).onboardingHint("psybass").toolWindowFloor(vm)   /* -- WP P1SW3F -- read, not written, on the floor */
 
             window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 780, height: 500),
@@ -49,7 +49,7 @@ extension PsychoacousticBassWindowController: NSWindowDelegate {
 #else
 class PsychoacousticBassWindowController: IOSToolWindowController {
     func show(vm: DSPViewModel) {
-        present(title: "Psychoacoustic Bass") { PsychoacousticBassView(vm: vm, psybass: vm.psybass).onboardingHint("psybass") }
+        present(title: "Psychoacoustic Bass") { PsychoacousticBassView(vm: vm, psybass: vm.psybass).onboardingHint("psybass").toolWindowFloor(vm)   /* -- WP P1SW3F -- read, not written, on the floor */ }
     }
 }
 #endif

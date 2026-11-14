@@ -141,4 +141,51 @@ final class FunnelP1SW3FTests: XCTestCase, CoreDomainTesting {
         XCTAssertFalse(load.error.map { if case .InstallerLock = $0 { return true } else { return false } } ?? false,
                        "a recall is not refused by the lock: \(String(describing: load.error))")
     }
+
+    // MARK: - The coordinator's two tweaks
+
+    /// A device switch under the lock asks nothing either: its Save is the
+    /// lock's refusal.  Unlocked, the same unsaved change asks.
+    func testP1SW3FADeviceSwitchUnderTheLockAsksNothing() {
+        let (t, vm, installer) = lockedDemo()
+        vm.setOutputMute(output: 0, muted: true)
+        XCTAssertTrue(spinUntil(5) { t.readState().outputMuted.first == true })
+        vm.settleUnsavedChanges()
+        XCTAssertTrue(spinUntil(5) { vm.hasUnsavedChanges })
+        XCTAssertFalse(vm.asksBeforeDeviceSwitch(installer: installer), "locked: no Save / Discard / Cancel")
+        unlock(installer)
+        XCTAssertTrue(spinUntil(5) { !installer.lockedUser })
+        vm.settleUnsavedChanges()
+        XCTAssertTrue(spinUntil(5) { vm.asksBeforeDeviceSwitch(installer: installer) },
+                      "unlocked: the unsaved mute asks before a switch")
+    }
+
+    /// On read-only firmware a module toggle's tool window still opens for
+    /// reading, with its controls floored; under the lock only a window the
+    /// lock allows opens.
+    func testP1SW3FToolWindowsOpenForReadingOnReadOnlyFirmware() throws {
+        let readOnly = ReadOnlyFloor(cause: .readOnlyFirmware)
+        let locked = ReadOnlyFloor(cause: .installerLock)
+        XCTAssertTrue(ReadOnlyFloor.open.opensToolWindow())
+        XCTAssertTrue(readOnly.opensToolWindow(), "read-only firmware: open, for reading")
+        XCTAssertFalse(readOnly.allows(.other), "... with its controls floored")
+        XCTAssertFalse(locked.opensToolWindow(), "the lock: not a window it hides")
+        XCTAssertTrue(locked.opensToolWindow(allowedByLock: true), "the lock: a window it leaves open")
+
+        // On the V33 fixture: the floor is read-only firmware, and the tool
+        // window's root builds over it.
+        let fake = FakeTransport(autoSelect: false)
+        fake.selectDevice(FakeTransport.demoDevice)
+        let v32 = try XCTUnwrap(fake.getControlRequest(request: REQ_GET_ALL_PARAMS, value: 0, index: 2,
+                                                       length: BULK_PARAMS_SIZE))
+        let image = try XCTUnwrap(ReadOnlyFloorP1SW3Tests.fixtureImage(v32, wire: 33))
+        let core = CoreBackedTransport(link: .host(OlderImageTransport(fake, image: image), .fake))
+        let vm = DSPViewModel(transport: core)
+        XCTAssertTrue(spinUntil(30) { vm.isDeviceConnected && vm.fullReadGeneration == core.generation })
+        settle()
+        let floor = ReadOnlyFloor.of(connected: vm.isDeviceConnected, deviceReadOnly: vm.deviceReadOnly, lockedUser: false)
+        XCTAssertEqual(floor.cause, .readOnlyFirmware)
+        XCTAssertTrue(floor.opensToolWindow())
+        _ = CrossfeedView(vm: vm, crossfeed: vm.crossfeed).toolWindowFloor(vm)
+    }
 }
