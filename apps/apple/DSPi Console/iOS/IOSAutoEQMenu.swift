@@ -141,7 +141,7 @@ final class AutoEQRebuildSheet: IOSToolWindowController {
     static let shared = AutoEQRebuildSheet()
     private var rebuild: AutoEQCoreRebuild?
 
-    func start(manager: AutoEQManager, fetch: AutoEqFetch = URLSessionAutoEqFetch()) {
+    func start(manager: AutoEQManager, fetch: AutoEqFetch = URLSessionAutoEqFetch.forRebuild()) {
         guard rebuild == nil else { return }
         let rebuild = AutoEQCoreRebuild(manager: manager)
         self.rebuild = rebuild

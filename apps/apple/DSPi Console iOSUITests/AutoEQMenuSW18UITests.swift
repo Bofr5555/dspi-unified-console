@@ -16,9 +16,9 @@ final class AutoEQMenuSW18UITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
-    private func launch() -> XCUIApplication {
+    private func launch(_ args: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-LocalTransport", "demo", "-DemoMode", "YES"]
+        app.launchArguments = ["-LocalTransport", "demo", "-DemoMode", "YES"] + args
         app.launch()
         return app
     }
@@ -70,6 +70,10 @@ final class AutoEQMenuSW18UITests: XCTestCase {
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: search)
         waitForExpectations(timeout: 10)
 
+        // -- WP SW18F -- kept across a relaunch
+        app.terminate()
+        app.launch()
+
         // Listed under Favorite Profiles, and applying it closes the menu.
         openFavorites(app)
         let favourite = app.buttons["Sennheiser HD 650"].firstMatch
@@ -120,5 +124,75 @@ final class AutoEQMenuSW18UITests: XCTestCase {
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: browser)
         waitForExpectations(timeout: 10)
         XCTAssertFalse(app.alerts.firstMatch.waitForExistence(timeout: 2), "cancelling the picker showed an alert")
+    }
+
+    // -- WP SW18F --
+
+    /// Update Database > Rebuild from GitHub > Rebuild, against the DEBUG
+    /// scripted GitHub (`-AutoEQScriptedFetch slow`: no network, success in a
+    /// few seconds).
+    private func startRebuild(_ app: XCUIApplication) -> XCUIElement {
+        openAutoEQ(app)
+        tapItem("Update Database...", in: app)
+        let dialog = app.alerts["Update AutoEQ Database"]
+        XCTAssertTrue(dialog.waitForExistence(timeout: 5))
+        dialog.buttons["Rebuild from GitHub"].tap()
+        let confirm = app.alerts["Rebuild AutoEQ Database"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.buttons["Rebuild"].tap()
+        let sheet = app.navigationBars["Rebuilding AutoEQ Database"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5), "no progress sheet")
+        return sheet
+    }
+
+    /// Whether Update Database offers Reset to Built-in, i.e. a user database
+    /// exists; the dialog is cancelled again.
+    private func hasUserDatabase(_ app: XCUIApplication, resetIt: Bool = false) -> Bool {
+        openAutoEQ(app)
+        tapItem("Update Database...", in: app)
+        let dialog = app.alerts["Update AutoEQ Database"]
+        XCTAssertTrue(dialog.waitForExistence(timeout: 5))
+        let reset = dialog.buttons["Reset to Built-in"]
+        let has = reset.exists
+        if has && resetIt {
+            reset.tap()
+            let done = app.alerts["Success"]
+            XCTAssertTrue(done.waitForExistence(timeout: 10), "no confirmation of the reset")
+            done.buttons["OK"].tap()
+        } else {
+            dialog.buttons["Cancel"].tap()
+        }
+        return has
+    }
+
+    /// F1: swiping the progress sheet down cancels the rebuild: nothing is
+    /// written and no success alert comes.  Then the same rebuild left alone
+    /// succeeds and writes, so the first half is not vacuous.
+    func testSW18FSwipingTheRebuildSheetAwayCancelsIt() {
+        let app = launch(["-AutoEQScriptedFetch", "slow"])
+        _ = hasUserDatabase(app, resetIt: true)
+        XCTAssertFalse(hasUserDatabase(app), "a user database before the test")
+
+        let sheet = startRebuild(app)
+        let top = sheet.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        top.press(forDuration: 0.1, thenDragTo: top.withOffset(CGVector(dx: 0, dy: 700)))
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: sheet)
+        waitForExpectations(timeout: 10)
+        XCTAssertFalse(app.alerts["Success"].waitForExistence(timeout: 12), "a swiped rebuild ran on and succeeded")
+        // The cancel is reported as such, if at all.
+        let error = app.alerts["Error"]
+        if error.exists {
+            XCTAssertTrue(error.staticTexts.matching(NSPredicate(format: "label CONTAINS 'cancelled'")).firstMatch.exists)
+            error.buttons["OK"].tap()
+        }
+        XCTAssertFalse(hasUserDatabase(app), "a swiped rebuild wrote the database")
+
+        // Control: left alone, the scripted rebuild succeeds and writes.
+        _ = startRebuild(app)
+        let success = app.alerts["Success"]
+        XCTAssertTrue(success.waitForExistence(timeout: 30), "the scripted rebuild did not finish")
+        XCTAssertTrue(success.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Entries: 1'")).firstMatch.exists)
+        success.buttons["OK"].tap()
+        XCTAssertTrue(hasUserDatabase(app, resetIt: true), "the rebuild wrote no database")
     }
 }

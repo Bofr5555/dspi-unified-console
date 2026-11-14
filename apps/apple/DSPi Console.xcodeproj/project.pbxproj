@@ -79,8 +79,7 @@
 				PeqGraphRenderer.swift,
 				PeqGraphShaders.swift,
 				Core/Generated,
-				"Firmware/DSPi-RP2040-v1.1.6.uf2",
-				"Firmware/DSPi-RP2350-v1.1.6.uf2",
+				Firmware,
 			);
 			target = 1A1A00000000000000000001 /* DSPi Console iOS */;
 		};
@@ -169,6 +168,9 @@
 			exceptions = (
 				D50200000000000000000009 /* Exceptions for "DSPi Console" folder in "DSPi Console" target */,
 				1A1A00000000000000000009 /* Exceptions for "DSPi Console" folder in "DSPi Console iOS" target */,
+			);
+			explicitFolders = (
+				Firmware,
 			);
 			path = "DSPi Console";
 			sourceTree = "<group>";

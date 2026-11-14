@@ -62,6 +62,42 @@ struct AutoEQDatabase: Codable {
     let entries: [HeadphoneEntry]
 }
 
+// -- WP SW18F -- The core's serde defaults (dspi-session `autoeq.rs`: only an
+// entry's `id` and a filter's `type` are required), so a database the core
+// accepts on import or writes also loads here.
+extension EmbeddedFilter {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = try c.decode(String.self, forKey: .type)
+        freq = try c.decodeIfPresent(Double.self, forKey: .freq) ?? 0
+        q = try c.decodeIfPresent(Double.self, forKey: .q) ?? 0
+        gain = try c.decodeIfPresent(Double.self, forKey: .gain) ?? 0
+    }
+}
+
+extension HeadphoneEntry {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        manufacturer = try c.decodeIfPresent(String.self, forKey: .manufacturer) ?? ""
+        model = try c.decodeIfPresent(String.self, forKey: .model) ?? ""
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? ""
+        formFactor = try c.decodeIfPresent(String.self, forKey: .formFactor) ?? ""
+        preamp = try c.decodeIfPresent(Double.self, forKey: .preamp) ?? 0
+        filters = try c.decodeIfPresent([EmbeddedFilter].self, forKey: .filters) ?? []
+    }
+}
+
+extension AutoEQDatabase {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 0
+        generatedAt = try c.decodeIfPresent(String.self, forKey: .generatedAt) ?? ""
+        entryCount = try c.decodeIfPresent(Int.self, forKey: .entryCount) ?? 0
+        entries = try c.decodeIfPresent([HeadphoneEntry].self, forKey: .entries) ?? []
+    }
+}
+
 // MARK: - Manager
 
 class AutoEQManager: ObservableObject {

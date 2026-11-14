@@ -75,6 +75,23 @@ final class AutoEQCoreUpdateSW18Tests: XCTestCase {
         XCTAssertEqual(autoeqDatabaseInfo(dbPath: m.userDatabasePath).entryCount, 2, "the file stayed")
     }
 
+    // -- WP SW18F -- F2: the smallest database the core takes loads here too.
+    func testSW18FAMinimalDatabaseTheCoreAcceptsLoads() throws {
+        let m = manager()
+        let imported = wait("import") { AutoEQCoreUpdate.importDatabase(Data(#"{"entries":[{"id":"x/y"}]}"#.utf8), manager: m, completion: $0) }
+        XCTAssertEqual(try imported.get().entryCount, 1, "the core took it")
+        XCTAssertNil(m.errorMessage, "the manager could not read what the core accepted")
+        XCTAssertEqual(m.entries.map(\.id), ["x/y"])
+        let entry = try XCTUnwrap(m.entries.first)
+        XCTAssertEqual(entry.manufacturer, "")
+        XCTAssertEqual(entry.preamp, 0)
+        XCTAssertEqual(entry.filters, [])
+        // A filter needs its type, as in the core; the rest defaults.
+        let db = try JSONDecoder().decode(AutoEQDatabase.self, from: Data(#"{"entries":[{"id":"a","filters":[{"type":"PK"}]}]}"#.utf8))
+        XCTAssertEqual(db.entries.first?.filters.first, EmbeddedFilter(type: "PK", freq: 0, q: 0, gain: 0))
+        XCTAssertThrowsError(try JSONDecoder().decode(AutoEQDatabase.self, from: Data(#"{"entries":[{"model":"no id"}]}"#.utf8)))
+    }
+
     func testSW18ARebuildFromAScriptedGitHubIsReadBack() {
         let m = manager()
         let fetch = ScriptedGitHub(source: "oratory1990", headphones: ["Sennheiser HD 600"])
@@ -122,20 +139,28 @@ final class AutoEQCoreUpdateSW18Tests: XCTestCase {
     }
 
     /// The firmware images: none in the iOS app (an iPhone cannot write them),
-    /// both still in the Mac app.  Looks through the built bundle itself.
-    func testSW18FirmwareImagesOnlyInTheMacBundle() {
+    /// both still in the Mac app.  Looks through the built bundle itself, by
+    /// extension and folder, so an image under any name is caught (WP SW18F:
+    /// the `Firmware` folder is one folder reference, excluded from iOS whole).
+    func testSW18FirmwareImagesOnlyInTheMacBundle() throws {
         let files = FileManager.default.enumerator(at: Bundle.main.bundleURL, includingPropertiesForKeys: nil)?
             .compactMap { $0 as? URL } ?? []
-        let images = files.filter { $0.pathExtension.lowercased() == "uf2" }.map(\.lastPathComponent).sorted()
+        let images = files.filter { $0.pathExtension.lowercased() == "uf2" }
+        let folders = files.filter { $0.lastPathComponent == "Firmware" }
         #if os(iOS)
-        XCTAssertEqual(images, [], "the iOS bundle carries firmware images")
+        XCTAssertEqual(images.map(\.lastPathComponent), [], "the iOS bundle carries firmware images")
+        XCTAssertEqual(folders.map(\.path), [], "the iOS bundle carries the Firmware folder")
         for chip in BootloaderBoard.Chip.allCases {
             XCTAssertThrowsError(try FirmwareImage.bundled(for: chip))
         }
         #else
-        XCTAssertEqual(images.count, 2, "the Mac app keeps both images: \(images)")
+        let folder = try XCTUnwrap(Bundle.main.resourceURL).appendingPathComponent("Firmware", isDirectory: true)
+        XCTAssertEqual(Set(images.map { $0.deletingLastPathComponent().standardizedFileURL.path }),
+                       [folder.standardizedFileURL.path], "the images live in Contents/Resources/Firmware/")
+        XCTAssertEqual(images.count, BootloaderBoard.Chip.allCases.count, "one image per chip: \(images.map(\.lastPathComponent))")
         for chip in BootloaderBoard.Chip.allCases {
-            XCTAssertNoThrow(try FirmwareImage.bundled(for: chip))
+            let image = try FirmwareImage.bundled(for: chip)
+            XCTAssertEqual(image.url.deletingLastPathComponent().standardizedFileURL.path, folder.standardizedFileURL.path)
         }
         #endif
     }

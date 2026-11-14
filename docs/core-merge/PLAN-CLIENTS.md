@@ -275,7 +275,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | AN39 | Android small follow-ups | DONE | 172aa93d (review c5b) | Its overlay item was done in CG30 |
 | AN42 | Undo and redo in the Android app (PRO1 W2) | IN PROGRESS | wp/AN42 | Before P1AN1 (both touch the app bar) |
 
-**SW: Swift (macOS and iOS)**: 35 WPs: 16 DONE, 1 IN REVIEW, 17 TODO, 1 MOVED.
+**SW: Swift (macOS and iOS)**: 35 WPs: 16 DONE, 2 IN REVIEW, 16 TODO, 1 MOVED.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
@@ -296,7 +296,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | SW15 | Simulator and relay test | TODO |  | [HW] after SW5, SW6, SW14 |
 | SW16 | Real iPhone or iPad | TODO |  | [HW][OWNER]: no device yet |
 | SW17 | File import and export | DONE | 84220ac7 (review c6n) |  |
-| SW18 | AutoEQ and firmware window | TODO |  | VM |
+| SW18 | AutoEQ and firmware window | IN REVIEW | wp/SW18F | iOS Tools > AutoEQ (Favorites, CG6 update: rebuild, import, reset); no firmware window, Tools entry or `.uf2` on iOS, banner and wizard point to a computer. Review sw18 accepted with nits; fixups F1-F3 in wp/SW18F |
 | SW19 | Touch graph | TODO |  | VM |
 | SW20 | Hardware keyboard and host format | TODO |  | VM |
 | SW21 |  | MOVED |  | Later work: coach marks |

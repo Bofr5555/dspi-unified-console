@@ -75,6 +75,49 @@ final class URLSessionAutoEqFetch: AutoEqFetch, @unchecked Sendable {
     }
 }
 
+// -- WP SW18F --
+extension URLSessionAutoEqFetch {
+    /// The fetch a rebuild uses: URLSession, or in a DEBUG build launched with
+    /// `-AutoEQScriptedFetch slow` a scripted GitHub that answers slowly and
+    /// never touches the network (UI tests of the rebuild sheet).
+    static func forRebuild() -> AutoEqFetch {
+        #if DEBUG
+        if UserDefaults.standard.string(forKey: "AutoEQScriptedFetch") == "slow" {
+            return SlowScriptedAutoEqFetch()
+        }
+        #endif
+        return URLSessionAutoEqFetch()
+    }
+}
+
+#if DEBUG
+/// One source (oratory1990) with one headphone ("SW18 Test Phone"), every
+/// other address a 404, each answer after 0.4 s: a rebuild that succeeds in a
+/// few seconds unless it is cancelled.
+final class SlowScriptedAutoEqFetch: AutoEqFetch, @unchecked Sendable {
+    private let api = "https://api.github.com/repos/jaakkopasanen/AutoEq/contents/results/"
+    private let raw = "https://raw.githubusercontent.com/jaakkopasanen/AutoEq/master/results/"
+
+    func get(request: AutoEqFetchRequest) throws -> AutoEqFetchResponse {
+        Thread.sleep(forTimeInterval: 0.4)
+        func answer(_ status: UInt16, _ body: String = "") -> AutoEqFetchResponse {
+            AutoEqFetchResponse(status: status, body: Data(body.utf8), retryAfterS: nil,
+                                rateLimitRemaining: nil, rateLimitReset: nil)
+        }
+        switch request.url {
+        case api + "oratory1990":
+            return answer(200, #"[{"name":"t_over-ear","type":"dir"}]"#)
+        case api + "oratory1990/t_over-ear":
+            return answer(200, #"[{"name":"SW18 Test Phone","type":"dir"}]"#)
+        case raw + "oratory1990/t_over-ear/SW18%20Test%20Phone/SW18%20Test%20Phone%20ParametricEQ.txt":
+            return answer(200, "Preamp: -6.5 dB\nFilter 1: ON PK Fc 105 Hz Gain 3.0 dB Q 0.70\n")
+        default:
+            return answer(404)
+        }
+    }
+}
+#endif
+
 // MARK: - Update, import, reset
 
 enum AutoEQCoreUpdate {
@@ -151,7 +194,7 @@ final class AutoEQCoreRebuild: ObservableObject {
 
     /// Starts it (main thread).  `onFinish` runs once on main when it is over,
     /// after the manager has re-read a written database.
-    func start(fetch: AutoEqFetch = URLSessionAutoEqFetch(),
+    func start(fetch: AutoEqFetch = URLSessionAutoEqFetch.forRebuild(),
                pollInterval: TimeInterval = 0.25,
                onFinish: @escaping (AutoEqRebuildProgress) -> Void) {
         guard handle == nil else { return }

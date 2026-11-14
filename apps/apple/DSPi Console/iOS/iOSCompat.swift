@@ -152,19 +152,24 @@ final class ToolSheetPresenter: ObservableObject {
         let onDismiss: () -> Void
     }
 
-    @Published var current: Sheet?
+    /// -- WP SW18 -- Whatever takes a sheet away tells its owner: `dismiss`,
+    /// another sheet replacing it, and the `.sheet(item:)` binding clearing it
+    /// when the sheet is swiped down (which went unnoticed before, so a swiped
+    /// AutoEQ rebuild ran on and a tool kept `isVisible`).
+    @Published var current: Sheet? {
+        didSet {
+            if let old = oldValue, old.id != current?.id { old.onDismiss() }
+        }
+    }
 
     func present(id: String, title: String, content: AnyView, onDismiss: @escaping () -> Void) {
-        // Replacing an open sheet dismisses it first; let its owner know.
-        if let open = current, open.id != id { open.onDismiss() }
+        // Replacing an open sheet dismisses it first: `current`'s didSet tells its owner.
         current = Sheet(id: id, title: title, content: content, onDismiss: onDismiss)
     }
 
     func dismiss(id: String) {
         guard current?.id == id else { return }
-        let sheet = current
         current = nil
-        sheet?.onDismiss()
     }
 }
 
