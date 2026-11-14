@@ -39,6 +39,9 @@
 //    -SelectBand <n>        select PEQ band n on the graph (with -SelectChannel)
 //    -SelectDevice <serial> connect to that device once it is listed (a DSPi
 //                           on a hub or on USB MIDI)
+//    -DemoFirmwareMatch older|newer
+//                           DEBUG: the demo device reports that firmware
+//                           match, so the mismatch banner shows (WP SW18)
 //
 
 #if os(iOS)
@@ -61,7 +64,6 @@ struct DSPiConsoleIOSApp: App {
     @StateObject private var interruptMonitorWindowController = InterruptMonitorWindowController()
     @StateObject private var testSignalsWindowController = TestSignalsWindowController()
     @StateObject private var spectrumWindowController = SpectrumAnalyserWindowController()
-    @StateObject private var firmwareUpdateWindowController = FirmwareUpdateWindowController()
     @StateObject private var whatsNewWindowController = WhatsNewWindowController()
     @StateObject private var onboarding = OnboardingCoordinator.shared
     @Environment(\.scenePhase) private var scenePhase
@@ -88,7 +90,6 @@ struct DSPiConsoleIOSApp: App {
                 .environmentObject(graphWindowController)
                 .environmentObject(interruptMonitorWindowController)
                 .environmentObject(spectrumWindowController)
-                .environmentObject(firmwareUpdateWindowController)
                 .environmentObject(whatsNewWindowController)
                 .environmentObject(autoEQBrowserController)
                 .environmentObject(onboarding)
@@ -135,7 +136,6 @@ struct IOSUndoButtons: View {
 struct IOSRootView: View {
     @ObservedObject var vm: DSPViewModel
     @ObservedObject private var sheets = ToolSheetPresenter.shared
-    @ObservedObject private var platform = PlatformInfo.shared
     @EnvironmentObject private var onboarding: OnboardingCoordinator
     @EnvironmentObject private var matrixMixer: MatrixMixerWindowController
     @EnvironmentObject private var loudness: LoudnessWindowController
@@ -149,7 +149,6 @@ struct IOSRootView: View {
     @EnvironmentObject private var graph: GraphWindowController
     @EnvironmentObject private var interrupts: InterruptMonitorWindowController
     @EnvironmentObject private var spectrum: SpectrumAnalyserWindowController
-    @EnvironmentObject private var firmwareUpdate: FirmwareUpdateWindowController
     @EnvironmentObject private var whatsNew: WhatsNewWindowController
     @EnvironmentObject private var autoEQ: AutoEQBrowserController
 
@@ -227,7 +226,8 @@ struct IOSRootView: View {
             Button("Filter Response") { graph.show(vm: vm) }
         }
         Section {
-            Button("AutoEQ Profiles") { autoEQ.show() }
+            // -- WP SW18 -- the Mac's AutoEQ menu, Favorites and Update Database included
+            IOSAutoEQMenu(browse: { autoEQ.show() })
             Button("Stats for nerbs") { stats.show(transport: vm.transport) }
             Button("Interrupt Monitor") { interrupts.show() }
         }
@@ -235,9 +235,9 @@ struct IOSRootView: View {
             Button("Commit Parameters...") { ToolsMenuActions.commitParameters() }
             Button("Revert to Saved...") { ToolsMenuActions.revertToSaved() }
             Button("Factory Reset...", role: .destructive) { ToolsMenuActions.factoryReset() }
-            if platform.name != "STM32H723" {
-                Button("Firmware Update...") { firmwareUpdate.show(vm: vm) }
-            }
+            // -- WP SW18 -- No Firmware Update here: an iPhone or iPad cannot
+            // put a DSPi into its bootloader drive or write a .uf2, and the
+            // app carries no images. The mismatch banner says to use a computer.
         }
         // -- WP SW17 -- The Mac's File menu: filter and configuration files
         // through the document picker.  On an iPhone in a submenu, so the

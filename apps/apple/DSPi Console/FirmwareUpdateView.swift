@@ -57,17 +57,15 @@ extension FirmwareUpdateWindowController: NSWindowDelegate {
         tearDownContent()
     }
 }
-#else
-class FirmwareUpdateWindowController: IOSToolWindowController {
-    func show(vm: DSPViewModel) {
-        present(title: "Firmware Update") {
-            FirmwareUpdateView(vm: vm, onClose: { [weak self] in self?.hide() })
-        }
-    }
-}
 #endif
+// -- WP SW18 -- No firmware window on iOS: an iPhone or iPad cannot reach a
+// board's bootloader drive, so the window could only wait for a board that
+// never comes. The view below is macOS only; the mismatch banner points to a
+// computer instead.
 
 // MARK: - Update View
+
+#if os(macOS)
 
 /// Installs the bundled firmware onto the connected device, or onto a board
 /// the user has already put into BOOTSEL.
@@ -434,6 +432,8 @@ struct FirmwareUpdateView: View {
     }
 }
 
+#endif   // -- WP SW18 -- FirmwareUpdateView: macOS only
+
 // MARK: - Step Strip
 
 /// The four stops of an update.  Small enough to read in a glance, so the user
@@ -475,7 +475,9 @@ final class FirmwareMismatchBannerState: ObservableObject {
 struct FirmwareMismatchBanner: View {
     @ObservedObject var vm: DSPViewModel
     @ObservedObject private var dismissal = FirmwareMismatchBannerState.shared
+    #if os(macOS)
     let onUpdate: () -> Void
+    #endif
 
     var body: some View {
         if let match = vm.firmwareMatch, match != .match, !dismissal.hiddenForThisLaunch {
@@ -486,8 +488,10 @@ struct FirmwareMismatchBanner: View {
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
+                #if os(macOS)
                 Button(match == .deviceNewer ? "Details..." : "Update...", action: onUpdate)
                     .controlSize(.small)
+                #endif
                 Button("Hide") {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         dismissal.hiddenForThisLaunch = true
@@ -525,9 +529,16 @@ struct FirmwareMismatchBanner: View {
         let device = vm.firmwareVersion.map { FirmwareVersion($0.major, $0.minor, $0.patch, $0.beta).description } ?? "unknown"
         switch vm.firmwareMatch {
         case .deviceNewer:
-            return "This device runs firmware \(device), which is newer than uConsole for DSPi \(expected). Some of its features may not be shown."
+            return "This device runs firmware \(device), which is newer than uConsole for DSPi \(expected). Some of its features may not be shown." + Self.computerHint
         default:
-            return "This device runs firmware \(device); uConsole for DSPi expects \(expected)."
+            return "This device runs firmware \(device); uConsole for DSPi expects \(expected)." + Self.computerHint
         }
     }
+
+    // -- WP SW18 -- iOS cannot write firmware: send the person to a computer.
+    #if os(macOS)
+    static let computerHint = ""
+    #else
+    static let computerHint = " To change its firmware, connect it to a Mac, Windows or Linux computer and use uConsole for DSPi there."
+    #endif
 }

@@ -405,14 +405,14 @@ M3 and M14 (`fw.install`) are deleted: no hub implements them (`PLAN-CLIENTS.md`
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
 | M15 | App self-update | have: opt-in, Settings > Updates (`AppUpdater`); only in the project's own Windows files, AppImage and tar.gz | n.a.: package manager | n.a.: Play | n.a.: App Store |
-| M16 | Firmware wizard: bundled image, verify, downgrade, enter bootloader without installing, export configuration before flashing (`FirmwareUpdateView.swift:384-385`); hidden on STM32H723 (`DSPi_ConsoleApp.swift:11974`) | have (`FirmwareController`, `qml/tools/FirmwareWindow.qml`) | TM3 (non-graphical) | have most; AN18 | n.a.: no USB bootloader (owner); SW18 hides the dead window |
-| M41 | Firmware mismatch banner: any version other than the expected one (`FirmwareUpdateView.swift:481-526`, `DSPViewModel.swift:2099-2106`) | **have**: `qml/banners/FirmwareBanner.qml`, `FirmwareController` (expected version: the bundled images', 1.1.6) | TM4 | **partial**: shown only for an incompatible wire format, never for another version on the same format (`feature-home/HomeModel.kt:89-97`, `feature-home/FirmwareMismatchBanner.kt:35-42`). **AN18**, with the updated images | **partial**: shown, but Update opens the dead firmware window (`ContentView.swift:1075-1077`). **SW18** |
+| M16 | Firmware wizard: bundled image, verify, downgrade, enter bootloader without installing, export configuration before flashing (`FirmwareUpdateView.swift:384-385`); hidden on STM32H723 (`DSPi_ConsoleApp.swift:11974`) | have (`FirmwareController`, `qml/tools/FirmwareWindow.qml`) | TM3 (non-graphical) | have most; AN18 | n.a.: no USB bootloader (owner); **SW18**: no window, no Tools entry, no `.uf2` in the iOS target; the banner and the wizard point to a computer |
+| M41 | Firmware mismatch banner: any version other than the expected one (`FirmwareUpdateView.swift:481-526`, `DSPViewModel.swift:2099-2106`) | **have**: `qml/banners/FirmwareBanner.qml`, `FirmwareController` (expected version: the bundled images', 1.1.6) | TM4 | **partial**: shown only for an incompatible wire format, never for another version on the same format (`feature-home/HomeModel.kt:89-97`, `feature-home/FirmwareMismatchBanner.kt:35-42`). **AN18**, with the updated images | **have (SW18)**: shown, with no Update or Details button on iOS; it says to use a computer |
 
 **Onboarding** (Terminal: decided, skips)
 
 | # | Feature | Qt | Terminal | Android | iOS |
 |---|---|---|---|---|---|
-| M17 | Getting Started wizard (`DSPi_ConsoleApp.swift:12054`) | have | skip | AN19 | have; SW18 drops the firmware step |
+| M17 | Getting Started wizard (`DSPi_ConsoleApp.swift:12054`) | have | skip | AN19 | have; **SW18**: on iOS the firmware step points to a computer, with no install |
 | M20 | What's New | have | skip | AN19 | have |
 | M18, M19 | Coach-mark tour, hints: **off in the shipped Mac build** | later | skip | later | later |
 
@@ -465,8 +465,8 @@ WB6c: **B8** crossover and Linkwitz **have**: an output's XO tab beside PEQ (fam
 | M28 | Filter import with channel pickers, export | have | have; TM10 adds JSON | have | SW17 |
 | M29 | `.dspipreset` with apply options and report | have | TM10 | have | SW17 |
 | M30 | Save Master Volume, Save Output Configuration | have | **have**: `live.rs:1349-1352`, `actions.rs:1393,1412`. TM10's check is answered | have | have |
-| M31 | AutoEQ favourites | have | have | have | SW18 |
-| M32 | AutoEQ update, rebuild from GitHub, import, Reset to Built-in | have (`AutoEqController`) | CG6, TM12 | CG6, AN18 | CG6, SW18 |
+| M31 | AutoEQ favourites | have | have | have | **have (SW18)**: Tools > AutoEQ > Favorite Profiles; the browser's heart always shown on iOS |
+| M32 | AutoEQ update, rebuild from GitHub, import, Reset to Built-in | have (`AutoEqController`) | CG6, TM12 | CG6, AN18 | Mac: Swift; iOS: **CG6 (SW18)**, Rebuild from GitHub, Import File, Reset to Built-in |
 
 **Device settings**
 

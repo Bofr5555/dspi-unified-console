@@ -93,7 +93,10 @@ struct GettingStartedView: View {
 
             footer
         }
+        #if os(macOS)
         .frame(minWidth: 620, minHeight: 520)
+        #endif
+        // -- WP SW18 -- iOS: the screen's size, so the footer stays on it
         .onAppear { installer.beginWatching() }
         .onDisappear {
             installer.stopWatching()
@@ -154,6 +157,14 @@ struct GettingStartedView: View {
     // MARK: Welcome
 
     private var welcomeStage: some View {
+        #if os(iOS)
+        iosWelcomeStage
+        #else
+        macWelcomeStage
+        #endif
+    }
+
+    private var macWelcomeStage: some View {
         stepBody(title: "Welcome to uConsole for DSPi",
                  blurb: "DSPi turns a Raspberry Pi Pico into a remarkably capable audio processor: equalisation, crossovers, upmixing, loudness compensation and more, applied live to whatever you play.\n\nSetup is short and has one job: getting the DSPi firmware onto your Pico. Once it is running, everything else is set up in the app as you need it.") {
             infoRow("bolt.horizontal.circle", "Connect your Pico and install the DSPi firmware, right here.")
@@ -169,6 +180,14 @@ struct GettingStartedView: View {
     /// the app or the hardware is working; a still icon means the next move
     /// is the user's, and the card says exactly what that move is.
     private var boardStage: some View {
+        #if os(iOS)
+        iosBoardStage
+        #else
+        macBoardStage
+        #endif
+    }
+
+    private var macBoardStage: some View {
         stepBody(title: boardStageTitle, blurb: boardStageBlurb) {
             // No separate BOOTSEL footnote: the card that needs those
             // instructions carries them itself, and repeating them beneath it
@@ -394,6 +413,14 @@ struct GettingStartedView: View {
     /// Reached only through a verified install, so it can assert the firmware
     /// is running and point at what the app offers from here.
     private var doneStage: some View {
+        #if os(iOS)
+        iosDoneStage
+        #else
+        macDoneStage
+        #endif
+    }
+
+    private var macDoneStage: some View {
         stepBody(title: "You are set up",
                  blurb: "Your Pico is running the DSPi firmware, and the console is ready whenever it is plugged in. A few places worth knowing about:") {
             infoRow("cable.connector", "Choose which outputs your build uses, and the pins that carry them, in Settings under Hardware.")
@@ -402,6 +429,76 @@ struct GettingStartedView: View {
             infoRow("questionmark.circle", "Help holds release notes and links, and this wizard can be run again.")
         }
     }
+
+    // MARK: iOS (WP SW18)
+
+    #if os(iOS)
+    // An iPhone or iPad cannot write firmware: it cannot see a board in
+    // BOOTSEL or its drive, and the app carries no images. The wizard's job
+    // here is to say so and send the person to a computer, then show what
+    // this device can do once the DSPi runs the firmware.
+
+    private var iosWelcomeStage: some View {
+        stepBody(title: "Welcome to uConsole for DSPi",
+                 blurb: "DSPi turns a Raspberry Pi Pico into a remarkably capable audio processor: equalisation, crossovers, upmixing, loudness compensation and more, applied live to whatever you play.\n\nThe DSPi firmware goes onto the Pico from a computer. Once it runs, this app sets everything else up.") {
+            infoRow("desktopcomputer", "Install or update the firmware with uConsole for DSPi on a Mac, Windows or Linux computer.")
+            infoRow("cable.connector", "Then connect the DSPi to this device with a USB-C cable, or use one shared over the network.")
+            infoRow("slider.horizontal.3", "Outputs, wiring and audio are then yours to shape in the console.")
+        }
+    }
+
+    private var iosBoardStage: some View {
+        stepBody(title: iosBoardTitle, blurb: iosBoardBlurb) {
+            iosBoardCard
+                .frame(minHeight: 190)
+        }
+    }
+
+    private var iosBoardTitle: String {
+        switch vm.firmwareMatch {
+        case .match: return "Your device is ready"
+        case .deviceOlder, .deviceNewer: return "Change the firmware on a computer"
+        case nil: return "Install the firmware on a computer"
+        }
+    }
+
+    private var iosBoardBlurb: String {
+        switch vm.firmwareMatch {
+        case .match:
+            return "Your connected DSPi is already running the firmware this app expects. There is nothing to do here."
+        case .deviceOlder, .deviceNewer:
+            return "Your DSPi runs firmware \(deviceVersion ?? "unknown"); this app expects \(bundledVersion). Firmware cannot be written from an iPhone or iPad."
+        case nil:
+            return "Firmware cannot be written from an iPhone or iPad. Use a computer for this step, then come back."
+        }
+    }
+
+    @ViewBuilder
+    private var iosBoardCard: some View {
+        if vm.firmwareMatch == .match {
+            InstallStateCard(
+                icon: "checkmark.seal.fill",
+                tint: .green,
+                iconSize: 36,
+                title: "Firmware \(bundledVersion) already installed",
+                message: "Continue to finish setup.")
+        } else {
+            InstallStateCard(
+                icon: "desktopcomputer",
+                tint: .accentColor,
+                title: "Use a computer for the firmware",
+                message: "Connect the Pico to a Mac, Windows or Linux computer and install the DSPi firmware with uConsole for DSPi there. Then connect the DSPi to this device with a USB-C cable.")
+        }
+    }
+
+    private var iosDoneStage: some View {
+        stepBody(title: "Ready when your DSPi is",
+                 blurb: "Once your DSPi runs the DSPi firmware, the console is ready whenever it is connected. A few places worth knowing about:") {
+            infoRow("cable.connector", "Choose which outputs your build uses, and the pins that carry them, in Settings under Hardware.")
+            infoRow("slider.horizontal.3", "Tap an input or output in the channel list to edit its filters.")
+        }
+    }
+    #endif
 
     // MARK: Footer
 
@@ -438,6 +535,10 @@ struct GettingStartedView: View {
     /// say "you cannot do this"; showing no button says "nothing is asked of
     /// you".
     private var showsContinue: Bool {
+        #if os(iOS)
+        // -- WP SW18 -- nothing is installed here, so nothing to wait for
+        return true
+        #else
         switch current {
         case .board:
             // Either the firmware went on and was confirmed, or the connected
@@ -450,6 +551,7 @@ struct GettingStartedView: View {
         default:
             return true
         }
+        #endif
     }
 
     /// The install button owns the return key while on screen; the footer's

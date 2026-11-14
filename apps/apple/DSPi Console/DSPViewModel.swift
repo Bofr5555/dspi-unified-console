@@ -2114,6 +2114,18 @@ class DSPViewModel: ObservableObject {
     /// the demo device: its reply is a 1.1.6 beta 5 capture, a simulated
     /// device has no firmware to update, and a banner about it was noise.
     var firmwareMatch: FirmwareMatch? {
+        #if DEBUG && os(iOS)
+        // -- WP SW18 -- `-DemoFirmwareMatch older|newer`: the demo device
+        // shows the banner, for the UI tests of its iOS form.
+        if isDeviceConnected, selectedDevice == FakeTransport.demoDevice,
+           let forced = UserDefaults.standard.string(forKey: "DemoFirmwareMatch") {
+            switch forced {
+            case "older": return .deviceOlder
+            case "newer": return .deviceNewer
+            default: break
+            }
+        }
+        #endif
         guard isDeviceConnected,
               selectedDevice != FakeTransport.demoDevice,
               let v = firmwareVersion,

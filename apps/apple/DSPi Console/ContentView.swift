@@ -64,7 +64,9 @@ struct ContentView: View {
     @EnvironmentObject var graphWindowController: GraphWindowController
     @EnvironmentObject var levellerController: VolumeLevellerWindowController
     @EnvironmentObject var psybassController: PsychoacousticBassWindowController
+    #if os(macOS)   // -- WP SW18 -- no firmware window on iOS
     @EnvironmentObject var firmwareUpdateController: FirmwareUpdateWindowController
+    #endif
     /// Read only so the basics tour can put the right pane on screen for the
     /// steps that describe it; the console is otherwise unaware of onboarding.
     @EnvironmentObject var onboarding: OnboardingCoordinator
@@ -1122,9 +1124,15 @@ struct ContentView: View {
         .overlay(alignment: .top) {
             // -- WP SW8 -- with the read-only notice under it
             VStack(spacing: 0) {
+                #if os(macOS)
                 FirmwareMismatchBanner(vm: vm) {
                     firmwareUpdateController.show(vm: vm)
                 }
+                #else
+                // -- WP SW18 -- iOS: the banner has no Update button; it
+                // points to a computer.
+                FirmwareMismatchBanner(vm: vm)
+                #endif
                 ReadOnlyBanner(vm: vm)
                 OfflineFileBadge(snaps: .shared)   // -- WP P1SW1 -- "File: <name>"
             }
@@ -1551,7 +1559,9 @@ struct MasterModeSection: View {
         .environmentObject(GraphWindowController())
         .environmentObject(VolumeLevellerWindowController())
         .environmentObject(PsychoacousticBassWindowController())
+        #if os(macOS)
         .environmentObject(FirmwareUpdateWindowController())
+        #endif
         .environmentObject(OnboardingCoordinator.shared)
         .frame(height: 790)
 }
@@ -1565,7 +1575,9 @@ struct MasterModeSection: View {
         .environmentObject(GraphWindowController())
         .environmentObject(VolumeLevellerWindowController())
         .environmentObject(PsychoacousticBassWindowController())
+        #if os(macOS)
         .environmentObject(FirmwareUpdateWindowController())
+        #endif
         .environmentObject(OnboardingCoordinator.shared)
         .frame(width: 1000, height: 780)
 }
