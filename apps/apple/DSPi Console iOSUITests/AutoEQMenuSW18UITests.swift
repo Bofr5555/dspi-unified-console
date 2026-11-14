@@ -47,6 +47,9 @@ final class AutoEQMenuSW18UITests: XCTestCase {
 
     func testSW18AutoEQMenuMakesAppliesAndClearsAFavorite() {
         let app = launch()
+        // -- WP SW18F -- the bundled database: a user database left by an
+        // earlier run (the rebuild test's scripted one) has no HD 650
+        _ = hasUserDatabase(app, resetIt: true)
 
         // The menu holds the Mac's items.
         openAutoEQ(app)
