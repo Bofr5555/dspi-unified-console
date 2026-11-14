@@ -949,6 +949,10 @@ pub extern "C" fn dspi_set_tube_param(core: *mut FfiCore, idx: u8, value: f32) -
 
 /// Save the live state to preset `slot`. Returns a `PRESET_*` status, 0xFF
 /// when it could not be asked.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_save_preset_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_save_preset(core: *mut FfiCore, slot: u8) -> u8 {
     status(core, |c| c.save_preset(slot))
@@ -963,6 +967,10 @@ pub extern "C" fn dspi_load_preset(core: *mut FfiCore, slot: u8) -> u8 {
 
 /// Copy preset `source` to `dest`. Returns a `PRESET_*` status, 0xFF when it
 /// could not be asked.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_copy_preset_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_copy_preset(core: *mut FfiCore, source: u8, dest: u8) -> u8 {
     status(core, |c| c.copy_preset(source, dest))
@@ -970,6 +978,10 @@ pub extern "C" fn dspi_copy_preset(core: *mut FfiCore, source: u8, dest: u8) -> 
 
 /// Delete preset `slot`. Returns a `PRESET_*` status, 0xFF when it could not
 /// be asked.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_delete_preset_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_delete_preset(core: *mut FfiCore, slot: u8) -> u8 {
     status(core, |c| c.delete_preset(slot))
@@ -1015,6 +1027,10 @@ pub extern "C" fn dspi_set_preset_startup(core: *mut FfiCore, mode: u8, default_
 
 /// Save the live parameters to flash. Returns a `FLASH_*` status;
 /// `FLASH_ERR_WRITE` when it could not be asked.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_save_params_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_save_params(core: *mut FfiCore) -> u8 {
     status_or(core, FLASH_ERR_WRITE, DspiCore::save_params)
@@ -1029,6 +1045,10 @@ pub extern "C" fn dspi_load_params(core: *mut FfiCore) -> u8 {
 
 /// Restore the factory defaults, writing flash, and read the device again.
 /// Returns a `FLASH_*` status; `FLASH_ERR_WRITE` when it could not be asked.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_factory_reset_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_factory_reset(core: *mut FfiCore) -> u8 {
     status_or(core, FLASH_ERR_WRITE, DspiCore::factory_reset)

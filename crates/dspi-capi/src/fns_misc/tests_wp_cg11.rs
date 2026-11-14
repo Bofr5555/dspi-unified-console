@@ -48,14 +48,27 @@ fn wp_cg11_a_whole_flow_through_c() {
     // Saving asks again, though the word was typed for the trial.
     let v = view(h, dspi_core_vreg_cal_poll);
     assert_eq!(v["commitNeedsWord"], true);
-    assert_eq!(dspi_core_vreg_cal_commit(h, ptr::null()), 0xFF);
+    // -- WP P1TZ -- the plain status call is refused (no token), and with a
+    // token the word is still asked for.
+    assert_eq!(dspi_core_vreg_cal_commit(h, phrase.as_ptr()), 0xFF);
+    let r = with_token_for_test(h, "vreg_save", |t, b, l| {
+        dspi_core_vreg_cal_commit_confirmed(h, ptr::null(), t, b, l)
+    });
+    assert_eq!(r["ok"], false, "{r}");
+    assert_ne!(r["code"], "confirmation_required", "{r}");
     assert_eq!(view(h, dspi_core_vreg_cal_poll)["phase"], "passed");
-    assert_eq!(dspi_core_vreg_cal_commit(h, phrase.as_ptr()), 0);
+    let r = with_token_for_test(h, "vreg_save", |t, b, l| {
+        dspi_core_vreg_cal_commit_confirmed(h, phrase.as_ptr(), t, b, l)
+    });
+    assert_eq!(r["ok"], true, "{r}");
     let v = view(h, dspi_core_vreg_cal_poll);
     assert_eq!(v["phase"], "committed");
     assert_eq!(v["status"]["storedSel"], 0x0E);
 
-    assert_eq!(dspi_core_vreg_manual_set(h, 0, ptr::null()), 0);
+    let r = with_token_for_test(h, "vreg_save", |t, b, l| {
+        dspi_core_vreg_manual_set_confirmed(h, 0, ptr::null(), t, b, l)
+    });
+    assert_eq!(r["ok"], true, "{r}");
     assert_eq!(view(h, dspi_core_vreg_cal_poll)["phase"], "committed");
     assert_eq!(dspi_core_vreg_manual_auto(h, false), 0);
     assert_eq!(dspi_core_vreg_manual_clear(h), 0);

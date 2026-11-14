@@ -242,7 +242,7 @@ fn wp_cg11_pass_then_set_is_verified_and_only_on_request() {
     assert_eq!(r.sent_ops(SET), 0);
     assert_eq!(r.info().stored_sel, 0);
 
-    r.core.core_vreg_cal_commit(None).unwrap();
+    r.core.core_vreg_cal_commit_tok(None).unwrap();
     assert_eq!(r.sent_ops(SET), 1);
     assert_eq!(*r.sent().last().unwrap(), (SET, 0x0D));
     assert_eq!(r.phase(), VregCalPhase::Committed);
@@ -515,7 +515,7 @@ fn wp_cg11_read_only_and_absent_hide_it_with_no_writes() {
         assert_eq!(v.phase, VregCalPhase::Idle);
         assert_eq!(c.core_vreg_cal_open(), Err(want.clone()));
         assert_eq!(c.core_vreg_cal_start(0x0D, SOAK, None), Err(want.clone()));
-        assert_eq!(c.core_vreg_manual_set(0, None), Err(want.clone()));
+        assert_eq!(c.core_vreg_manual_set_tok(0, None), Err(want.clone()));
         assert_eq!(c.core_vreg_manual_trial(0x0D, None), Err(want.clone()));
         assert_eq!(c.core_vreg_manual_auto(false), Err(want.clone()));
         assert_eq!(c.core_vreg_manual_clear(), Err(want.clone()));
@@ -579,10 +579,11 @@ fn wp_cg11_it_never_trials_below_the_build_default_or_above_1v25() {
     // Manual SET: the same limits, and 0 still resets.
     for (code, typed) in [(0x0C, None), (0x0F, Some(WORD))] {
         assert!(invalid(
-            r.core.core_vreg_manual_set(code, typed.map(str::to_owned))
+            r.core
+                .core_vreg_manual_set_tok(code, typed.map(str::to_owned))
         ));
     }
-    assert!(no_word(r.core.core_vreg_manual_set(0x0E, None)));
+    assert!(no_word(r.core.core_vreg_manual_set_tok(0x0E, None)));
     assert!(r.sent().is_empty());
 
     // 1.30 V is not on the menu anywhere.
@@ -629,7 +630,7 @@ fn wp_cg14_the_flow_asks_only_when_it_raises() {
         let t = typed.map(str::to_owned);
         assert!(no_word(r.core.core_vreg_cal_start(0x0E, SOAK, t.clone())));
         assert!(no_word(r.core.core_vreg_manual_trial(0x0E, t.clone())));
-        assert!(no_word(r.core.core_vreg_manual_set(0x0E, t)));
+        assert!(no_word(r.core.core_vreg_manual_set_tok(0x0E, t)));
     }
     assert!(r.sent().is_empty());
 
@@ -642,14 +643,14 @@ fn wp_cg14_the_flow_asks_only_when_it_raises() {
     let choice = v.choices.iter().find(|c| c.code == 0x0E).unwrap();
     assert!(!choice.needs_word && choice.save_needs_word);
     let before = r.sent();
-    assert!(no_word(r.core.core_vreg_cal_commit(None)));
+    assert!(no_word(r.core.core_vreg_cal_commit_tok(None)));
     assert!(no_word(
-        r.core.core_vreg_cal_commit(Some("overvolt".into()))
+        r.core.core_vreg_cal_commit_tok(Some("overvolt".into()))
     ));
     assert_eq!(r.sent(), before, "refused at the transport too");
     let v = r.poll();
     assert_eq!(v.phase, VregCalPhase::Passed, "still there to answer");
-    r.core.core_vreg_cal_commit(word()).unwrap();
+    r.core.core_vreg_cal_commit_tok(word()).unwrap();
     assert_eq!(*r.sent().last().unwrap(), (SET, 0x0E));
     assert_eq!(r.phase(), VregCalPhase::Committed);
     assert!(!r.poll().commit_needs_word);
@@ -659,7 +660,7 @@ fn wp_cg14_the_flow_asks_only_when_it_raises() {
     assert!(!r.poll().choices.iter().any(|c| c.needs_word));
     r.core.core_vreg_manual_trial(0x0E, None).unwrap();
     assert_eq!(r.phase(), VregCalPhase::TrialFound);
-    r.core.core_vreg_manual_set(0x0E, None).unwrap();
+    r.core.core_vreg_manual_set_tok(0x0E, None).unwrap();
     assert_eq!(r.phase(), VregCalPhase::Committed);
 }
 
@@ -742,7 +743,7 @@ fn wp_cg14_a_kept_trial_nobody_here_confirmed_asks_before_it_is_saved() {
     r2.core.core_vreg_cal_keep(SOAK).unwrap();
     r2.pass_soak();
     assert!(r2.poll().commit_needs_word);
-    assert!(no_word(r2.core.core_vreg_cal_commit(None)));
+    assert!(no_word(r2.core.core_vreg_cal_commit_tok(None)));
     assert_eq!(r2.info().stored_sel, 0);
 }
 
@@ -802,9 +803,9 @@ fn wp_qd28b_the_view_says_when_a_reset_needs_the_word() {
         v.reset_needs_word,
         "the view asks for the word, as the rule does"
     );
-    assert!(no_word(r.core.core_vreg_manual_set(0, None)));
+    assert!(no_word(r.core.core_vreg_manual_set_tok(0, None)));
     assert!(r.sent().is_empty(), "nothing written without it");
-    r.core.core_vreg_manual_set(0, word()).unwrap();
+    r.core.core_vreg_manual_set_tok(0, word()).unwrap();
     assert_eq!(r.sent(), vec![(SET, 0)]);
     // Readable again: no word
     *r.wire.status.lock().unwrap() = None;
@@ -854,7 +855,7 @@ fn wp_cg14_a_raw_write_cannot_go_round_the_word() {
 #[test]
 fn wp_cg14_1v30_stays_out_of_the_flow_even_with_the_word() {
     let r = unit_at(0x0E);
-    assert!(invalid(r.core.core_vreg_manual_set(0x0F, word())));
+    assert!(invalid(r.core.core_vreg_manual_set_tok(0x0F, word())));
     assert!(invalid(r.core.core_vreg_manual_trial(0x0F, word())));
     r.core.core_vreg_cal_open().unwrap();
     assert!(invalid(r.core.core_vreg_cal_start(0x0F, SOAK, word())));
@@ -881,7 +882,7 @@ fn wp_cg11_the_soak_has_a_floor() {
 fn wp_cg11_nothing_runs_without_being_opened_or_during_a_run() {
     let r = Rig::new();
     assert!(invalid(r.core.core_vreg_cal_start(0x0D, SOAK, None)));
-    assert!(invalid(r.core.core_vreg_cal_commit(None)));
+    assert!(invalid(r.core.core_vreg_cal_commit_tok(None)));
     assert!(invalid(r.core.core_vreg_cal_keep(SOAK)));
     assert!(r.sent().is_empty());
 
@@ -890,7 +891,7 @@ fn wp_cg11_nothing_runs_without_being_opened_or_during_a_run() {
     assert!(invalid(r.core.core_vreg_cal_open()));
     assert!(invalid(r.core.core_vreg_cal_close()));
     assert!(invalid(r.core.core_vreg_cal_start(0x0D, SOAK, None)));
-    assert!(invalid(r.core.core_vreg_manual_set(0, None)));
+    assert!(invalid(r.core.core_vreg_manual_set_tok(0, None)));
     assert!(invalid(r.core.core_vreg_manual_trial(0x0D, None)));
     assert!(invalid(r.core.core_vreg_manual_clear()));
     assert_eq!(r.sent(), before);
@@ -956,13 +957,13 @@ fn wp_cg11_each_step_waits_for_the_main_loop() {
     assert_eq!(r.phase(), VregCalPhase::Soaking);
 
     r.pass_soak();
-    r.core.core_vreg_cal_commit(None).unwrap();
+    r.core.core_vreg_cal_commit_tok(None).unwrap();
     assert_eq!(r.phase(), VregCalPhase::Committing);
     r.remote.vreg_run_main_loop();
     assert_eq!(r.phase(), VregCalPhase::Committed);
 
     // Reset is SET 0, read back the same way.
-    r.core.core_vreg_manual_set(0, None).unwrap();
+    r.core.core_vreg_manual_set_tok(0, None).unwrap();
     assert_eq!(*r.sent().last().unwrap(), (SET, 0));
     assert_eq!(r.phase(), VregCalPhase::Committing);
     r.remote.vreg_run_main_loop();
@@ -1128,8 +1129,8 @@ proptest! {
             let typed = word();
             let _ = r.core.core_vreg_cal_start(*target, SOAK, typed.clone());
             r.poll();
-            let _ = r.core.core_vreg_cal_commit(typed.clone());
-            let _ = r.core.core_vreg_manual_set(*target, typed.clone());
+            let _ = r.core.core_vreg_cal_commit_tok(typed.clone());
+            let _ = r.core.core_vreg_manual_set_tok(*target, typed.clone());
             let _ = r.core.core_vreg_manual_trial(*target, typed);
             let _ = r.core.core_vreg_cal_keep(SOAK);
             let _ = r.core.core_vreg_trial_end();

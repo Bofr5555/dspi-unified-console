@@ -1,3 +1,15 @@
+/*
+ * Confirmation tokens are always required (WP P1TZ, OD-P1f).
+ * Every dangerous operation (preset save, copy and delete, parameter save,
+ * factory reset, output configuration save, bootloader, configuration
+ * import, stored core voltage, firmware install) is refused with code
+ * `confirmation_required`, and nothing is sent, unless its `_confirmed`
+ * function is given a token from `dspi_confirm_token`. The plain functions
+ * (`dspi_save_preset`, `dspi_config_import`, ...) and the gated paths of
+ * `dspi_write_param` are always refused so. There is no switch:
+ * `dspi_require_confirmation` and `dspi_confirmation_required` are removed.
+ */
+
 #ifndef DSPI_CORE_H
 #define DSPI_CORE_H
 
@@ -4166,6 +4178,10 @@ bool dspi_set_tube_param(struct FfiCore *core, uint8_t idx, float value);
 /**
  * Save the live state to preset `slot`. Returns a `PRESET_*` status, 0xFF
  * when it could not be asked.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_save_preset_confirmed` with a token from `dspi_confirm_token`.
  */
 uint8_t dspi_save_preset(struct FfiCore *core, uint8_t slot);
 
@@ -4178,12 +4194,20 @@ uint8_t dspi_load_preset(struct FfiCore *core, uint8_t slot);
 /**
  * Copy preset `source` to `dest`. Returns a `PRESET_*` status, 0xFF when it
  * could not be asked.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_copy_preset_confirmed` with a token from `dspi_confirm_token`.
  */
 uint8_t dspi_copy_preset(struct FfiCore *core, uint8_t source, uint8_t dest);
 
 /**
  * Delete preset `slot`. Returns a `PRESET_*` status, 0xFF when it could not
  * be asked.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_delete_preset_confirmed` with a token from `dspi_confirm_token`.
  */
 uint8_t dspi_delete_preset(struct FfiCore *core, uint8_t slot);
 
@@ -4212,6 +4236,10 @@ bool dspi_set_preset_startup(struct FfiCore *core, uint8_t mode, uint8_t default
 /**
  * Save the live parameters to flash. Returns a `FLASH_*` status;
  * `FLASH_ERR_WRITE` when it could not be asked.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_save_params_confirmed` with a token from `dspi_confirm_token`.
  */
 uint8_t dspi_save_params(struct FfiCore *core);
 
@@ -4224,6 +4252,10 @@ uint8_t dspi_load_params(struct FfiCore *core);
 /**
  * Restore the factory defaults, writing flash, and read the device again.
  * Returns a `FLASH_*` status; `FLASH_ERR_WRITE` when it could not be asked.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_factory_reset_confirmed` with a token from `dspi_confirm_token`.
  */
 uint8_t dspi_factory_reset(struct FfiCore *core);
 
@@ -4287,12 +4319,20 @@ bool dspi_set_output_config_mode(struct FfiCore *core, uint8_t mode);
 /**
  * Store the output configuration in flash. Returns the device's status,
  * 0xFF when it could not be asked.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_save_output_config_confirmed` with a token from `dspi_confirm_token`.
  */
 uint8_t dspi_save_output_config(struct FfiCore *core);
 
 /**
  * Reboot the device into its USB bootloader. No answer comes back, so true
  * means only that the request went out.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_enter_bootloader_confirmed` with a token from `dspi_confirm_token`.
  */
 bool dspi_enter_bootloader(struct FfiCore *core);
 
@@ -4650,6 +4690,10 @@ uint32_t dspi_config_inspect(const char *text, char *buf, uint32_t len);
  * Apply a configuration document to the device. `options`: bit 0 the
  * volumes too, bit 1 the hardware configuration too. JSON reply; the device
  * has changed whatever the buffer.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_config_import_confirmed` with a token from `dspi_confirm_token`.
  */
 uint32_t dspi_config_import(struct FfiCore *core,
                             const char *text,
@@ -4663,6 +4707,10 @@ uint32_t dspi_config_import(struct FfiCore *core,
  * `DSPI_IMPORT_*` block bits; `eq_channels` the wire channels whose EQ is
  * applied (bit k: channel k; all bits: every one). JSON reply; the device
  * has changed whatever the buffer.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_config_import_confirmed` with a token from `dspi_confirm_token`.
  */
 uint32_t dspi_config_import_selected(struct FfiCore *core,
                                      const char *text,
@@ -5155,6 +5203,10 @@ uint8_t dspi_core_vreg_cal_keep(struct FfiCore *core, uint32_t soak_s);
 /**
  * Store the passed trial's voltage; `typed` as for the start. Returns a
  * status byte.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_core_vreg_cal_commit_confirmed` with a token from `dspi_confirm_token`.
  */
 uint8_t dspi_core_vreg_cal_commit(struct FfiCore *core, const char *typed);
 
@@ -5166,6 +5218,10 @@ uint8_t dspi_core_vreg_trial_end(struct FfiCore *core);
 /**
  * Store VREG code `value` directly (0: the build's default); `typed` as for
  * the start. Returns a status byte.
+ *
+ * Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+ * switch): nothing is sent and the failure is returned. Use
+ * `dspi_core_vreg_manual_set_confirmed` with a token from `dspi_confirm_token`.
  */
 uint8_t dspi_core_vreg_manual_set(struct FfiCore *core, uint8_t value, const char *typed);
 
@@ -5282,7 +5338,10 @@ uint32_t dspi_flash_to_drive_guarded(const uint8_t *image,
  * "out.gain", "indices": [1], "value": {"float": -4}}` (`indices` may be left
  * out; an action's value is `"trigger"`). The reply is `{ok, value}` with
  * the value read back, or a failure; the write has happened whatever the
- * buffer, so do not call again for a short one.
+ * buffer, so do not call again for a short one. The gated paths
+ * (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) take a token
+ * and are always refused here (`confirmation_required`, WP P1TZ): use their
+ * `_confirmed` functions.
  */
 uint32_t dspi_write_param(struct FfiCore *core, const char *request, char *buf, uint32_t len);
 
@@ -5871,19 +5930,19 @@ uint32_t dspi_notice_texts(char *buf, uint32_t len);
  * Mint a token for the operation `op` (a key above) once the user has
  * confirmed it. JSON `{ok, value: <token>}`, or `invalid` for an operation
  * the core does not have. Each call mints a new token. No I/O.
+ *
+ * Tokens are always required (WP P1TZ, OD-P1f; a behaviour change of this
+ * ABI): every gated operation (`save_preset`, `copy_preset`,
+ * `delete_preset`, `save_params`, `factory_reset`, `save_output_config`,
+ * `enter_bootloader`, `config_import`, `vreg_save`, `firmware_flash`) is
+ * refused with code `confirmation_required` and nothing sent unless its
+ * `_confirmed` function gets a good token from here. The plain functions
+ * (`dspi_save_preset`, `dspi_copy_preset`, `dspi_delete_preset`,
+ * `dspi_config_import`, `dspi_config_import_selected`,
+ * `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`) are always
+ * refused so; there is no switch to turn this off.
  */
 uint32_t dspi_confirm_token(struct FfiCore *core, const char *op, char *buf, uint32_t len);
-
-/**
- * Refuse the gated calls without a good token from now on (`on`), or not.
- * Off by default.
- */
-void dspi_require_confirmation(struct FfiCore *core, bool on);
-
-/**
- * Whether the gated calls need a token. False for a null handle.
- */
-bool dspi_confirmation_required(struct FfiCore *core);
 
 /**
  * `dspi_save_preset` with a token. JSON reply.

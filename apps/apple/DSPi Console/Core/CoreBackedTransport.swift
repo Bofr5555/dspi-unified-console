@@ -188,7 +188,7 @@ final class CoreBackedTransport: DeviceTransport {
             core.setNotifyListener(listener: listener)
             // -- WP P1SW2 -- Tokens required (P1TK): every gated call in this
             // app mints its token after the person confirmed (`*Confirmed`).
-            core.requireConfirmation(on: true)
+            // The core requires them from the start (P1TZ): no switch.
         }
 
         if let host = host, let bridge = bridge {

@@ -84,10 +84,6 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun confirmToken(op: ConfirmOp): String = throw NotImplementedError("confirm_token")
 
-    override fun requireConfirmation(on: Boolean): Unit = throw NotImplementedError("require_confirmation")
-
-    override fun confirmationRequired(): Boolean = throw NotImplementedError("confirmation_required")
-
     override fun fetchAll(): Unit = throw NotImplementedError("fetch_all")
 
     override fun refreshParams(): Unit = throw NotImplementedError("refresh_params")

@@ -226,7 +226,7 @@ fn wp_swapfix_f2_another_device_or_preset_captures_a_new_baseline() {
 fn wp_swapfix_f2_a_factory_reset_captures_the_baseline() {
     let (core, _) = demo();
     core.set_output_delay(0, 1.5).unwrap();
-    core.factory_reset().unwrap();
+    core.factory_reset_tok().unwrap();
     assert!(!core.preset_dirty(), "{:?}", core.preset_changes());
 }
 

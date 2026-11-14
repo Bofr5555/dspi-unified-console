@@ -726,11 +726,6 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_config_preview(void*_Nonnull ptr,
 RustBuffer uniffi_dspi_core_fn_method_dspicore_confirm_token(void*_Nonnull ptr, RustBuffer op, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIRMATION_REQUIRED
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONFIRMATION_REQUIRED
-int8_t uniffi_dspi_core_fn_method_dspicore_confirmation_required(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONNECTION_GENERATION
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CONNECTION_GENERATION
 uint64_t uniffi_dspi_core_fn_method_dspicore_connection_generation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1589,11 +1584,6 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_redo(void*_Nonnull ptr, RustCallS
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REFRESH_PARAMS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REFRESH_PARAMS
 void uniffi_dspi_core_fn_method_dspicore_refresh_params(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REQUIRE_CONFIRMATION
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_REQUIRE_CONFIRMATION
-void uniffi_dspi_core_fn_method_dspicore_require_confirmation(void*_Nonnull ptr, int8_t on, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_ALINK_STATS
@@ -3452,12 +3442,6 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_confirm_token(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIRMATION_REQUIRED
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONFIRMATION_REQUIRED
-uint16_t uniffi_dspi_core_checksum_method_dspicore_confirmation_required(void
-    
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONNECTION_GENERATION
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONNECTION_GENERATION
 uint16_t uniffi_dspi_core_checksum_method_dspicore_connection_generation(void
@@ -4487,12 +4471,6 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_redo(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REFRESH_PARAMS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REFRESH_PARAMS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_refresh_params(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REQUIRE_CONFIRMATION
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_REQUIRE_CONFIRMATION
-uint16_t uniffi_dspi_core_checksum_method_dspicore_require_confirmation(void
     
 );
 #endif

@@ -1766,11 +1766,6 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func confirmToken(op: ConfirmOp)  -> String
     
     /**
-     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
-     */
-    func confirmationRequired()  -> Bool
-    
-    /**
      * The open connection's generation: unique per connection and never
      * reused while the process runs, so it changes on every reopen and on
      * a Link re-bind. 0 when nothing is open.
@@ -2236,8 +2231,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
      * changed while the hub was asked;
-     * [`DspiError::ConfirmationRequired`] while tokens are required
-     * ([`DspiCore::require_confirmation`]), also with no device open: the
+     * [`DspiError::ConfirmationRequired`] without a good token (always,
+     * WP P1TZ), also with no device open: the
      * gate runs first, so that case is no longer the plain `Ok` (accepted
      * in review p1b).
      */
@@ -3664,13 +3659,6 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * mapped onto this build's layout.
      */
     func refreshParams() throws 
-    
-    /**
-     * Whether a gated call without a token is refused from now on
-     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
-     * connections; minted tokens stay as they are.
-     */
-    func requireConfirmation(on: Bool) 
     
     /**
      * `EXT_ALINK_STATS_RESET`: clear the alink's error and lock counters.
@@ -5903,16 +5891,6 @@ open func confirmToken(op: ConfirmOp) -> String  {
 }
     
     /**
-     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
-     */
-open func confirmationRequired() -> Bool  {
-    return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_dspi_core_fn_method_dspicore_confirmation_required(self.uniffiClonePointer(),$0
-    )
-})
-}
-    
-    /**
      * The open connection's generation: unique per connection and never
      * reused while the process runs, so it changes on every reopen and on
      * a Link re-bind. 0 when nothing is open.
@@ -6625,8 +6603,8 @@ open func endGroup()  {try! rustCall() {
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
      * changed while the hub was asked;
-     * [`DspiError::ConfirmationRequired`] while tokens are required
-     * ([`DspiCore::require_confirmation`]), also with no device open: the
+     * [`DspiError::ConfirmationRequired`] without a good token (always,
+     * WP P1TZ), also with no device open: the
      * gate runs first, so that case is no longer the plain `Ok` (accepted
      * in review p1b).
      */
@@ -8729,18 +8707,6 @@ open func redo()throws  -> HistoryMove  {
      */
 open func refreshParams()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_refresh_params(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
-    /**
-     * Whether a gated call without a token is refused from now on
-     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
-     * connections; minted tokens stay as they are.
-     */
-open func requireConfirmation(on: Bool)  {try! rustCall() {
-    uniffi_dspi_core_fn_method_dspicore_require_confirmation(self.uniffiClonePointer(),
-        FfiConverterBool.lower(on),$0
     )
 }
 }
@@ -37898,9 +37864,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_confirm_token() != 3433) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_confirmation_required() != 47132) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -38033,7 +37996,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 58644) {
+    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 22183) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 11255) {
@@ -38415,9 +38378,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_refresh_params() != 360) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_require_confirmation() != 45706) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats() != 30180) {

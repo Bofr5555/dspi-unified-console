@@ -27,7 +27,8 @@ class FfiDelayWpAn40Test {
     fun wpAn40HalfMillisecondPresetAppliesExactly() {
         demo().use { core ->
             val doc = withOutputDelays(core.configExport("AN40", "test", 0), 0.5, 1.5)
-            val r = core.configImport(doc, 0)
+            // -- WP P1TZ -- the core always requires a token for an import
+            val r = core.configImportConfirmed(doc, 0, 0xFFFF_FFFFL, core.confirmToken(se.bofr.dspi.core.ConfirmOp.CONFIG_IMPORT))
             assertTrue(r, r.contains("\"ok\":true"))
             assertEquals(0.5f, core.getState().outputDelayMs[0], 0f)
             assertEquals(1.5f, core.getState().outputDelayMs[1], 0f)

@@ -1754,10 +1754,6 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
-
-
-
-
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1950,8 +1946,6 @@ fun uniffi_dspi_core_checksum_method_dspicore_config_import_selected(
 fun uniffi_dspi_core_checksum_method_dspicore_config_preview(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_confirm_token(
-): Short
-fun uniffi_dspi_core_checksum_method_dspicore_confirmation_required(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_connection_generation(
 ): Short
@@ -2296,8 +2290,6 @@ fun uniffi_dspi_core_checksum_method_dspicore_raw_set(
 fun uniffi_dspi_core_checksum_method_dspicore_redo(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_refresh_params(
-): Short
-fun uniffi_dspi_core_checksum_method_dspicore_require_confirmation(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats(
 ): Short
@@ -2762,8 +2754,6 @@ fun uniffi_dspi_core_fn_method_dspicore_config_preview(`ptr`: Pointer,`text`: Ru
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_confirm_token(`ptr`: Pointer,`op`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_confirmation_required(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
 fun uniffi_dspi_core_fn_method_dspicore_connection_generation(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 fun uniffi_dspi_core_fn_method_dspicore_copy_preset(`ptr`: Pointer,`source`: Byte,`dest`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -3107,8 +3097,6 @@ fun uniffi_dspi_core_fn_method_dspicore_raw_set(`ptr`: Pointer,`opcode`: Byte,`v
 fun uniffi_dspi_core_fn_method_dspicore_redo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_refresh_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-fun uniffi_dspi_core_fn_method_dspicore_require_confirmation(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_reset_alink_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3915,9 +3903,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_confirm_token() != 3433.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_confirmation_required() != 47132.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4050,7 +4035,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 58644.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 22183.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 11255.toShort()) {
@@ -4432,9 +4417,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_refresh_params() != 360.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_require_confirmation() != 45706.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats() != 30180.toShort()) {
@@ -6902,11 +6884,6 @@ public interface DspiCoreInterface {
     fun `confirmToken`(`op`: ConfirmOp): kotlin.String
     
     /**
-     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
-     */
-    fun `confirmationRequired`(): kotlin.Boolean
-    
-    /**
      * The open connection's generation: unique per connection and never
      * reused while the process runs, so it changes on every reopen and on
      * a Link re-bind. 0 when nothing is open.
@@ -7372,8 +7349,8 @@ public interface DspiCoreInterface {
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
      * changed while the hub was asked;
-     * [`DspiError::ConfirmationRequired`] while tokens are required
-     * ([`DspiCore::require_confirmation`]), also with no device open: the
+     * [`DspiError::ConfirmationRequired`] without a good token (always,
+     * WP P1TZ), also with no device open: the
      * gate runs first, so that case is no longer the plain `Ok` (accepted
      * in review p1b).
      */
@@ -8800,13 +8777,6 @@ public interface DspiCoreInterface {
      * mapped onto this build's layout.
      */
     fun `refreshParams`()
-    
-    /**
-     * Whether a gated call without a token is refused from now on
-     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
-     * connections; minted tokens stay as they are.
-     */
-    fun `requireConfirmation`(`on`: kotlin.Boolean)
     
     /**
      * `EXT_ALINK_STATS_RESET`: clear the alink's error and lock counters.
@@ -11254,21 +11224,6 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
-     */override fun `confirmationRequired`(): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_confirmation_required(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
      * The open connection's generation: unique per connection and never
      * reused while the process runs, so it changes on every reopen and on
      * a Link re-bind. 0 when nothing is open.
@@ -12176,8 +12131,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
      * changed while the hub was asked;
-     * [`DspiError::ConfirmationRequired`] while tokens are required
-     * ([`DspiCore::require_confirmation`]), also with no device open: the
+     * [`DspiError::ConfirmationRequired`] without a good token (always,
+     * WP P1TZ), also with no device open: the
      * gate runs first, so that case is no longer the plain `Ok` (accepted
      * in review p1b).
      */
@@ -14937,22 +14892,6 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_refresh_params(
         it, _status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Whether a gated call without a token is refused from now on
-     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
-     * connections; minted tokens stay as they are.
-     */override fun `requireConfirmation`(`on`: kotlin.Boolean)
-        = 
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_require_confirmation(
-        it, FfiConverterBoolean.lower(`on`),_status)
 }
     }
     

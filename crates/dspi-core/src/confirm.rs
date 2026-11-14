@@ -15,13 +15,13 @@
 //!   while no device has been opened since (a firmware install, with the
 //!   board in its bootloader).
 //!
-//! With [`DspiCore::require_confirmation`] off (the default until every client
-//! has adopted tokens) a gated call without a token runs as before; a token
-//! that is given is always checked, so a client can adopt tokens before it
-//! turns the requirement on. With it on, a gated call without a good token is
-//! refused with [`DspiError::ConfirmationRequired`] before anything is sent.
-//! The plain calls (`save_preset`, `write_param("preset.save")`, ...) are the
-//! gated calls with no token.
+//! Tokens are always required (-- WP P1TZ --, OD-P1f): a gated call without a
+//! good token is refused with [`DspiError::ConfirmationRequired`] before
+//! anything is sent. There is no switch to turn this off; the plain calls
+//! (`save_preset`, `write_param("preset.save")`, ...) are the gated calls with
+//! no token, so they are refused too. Only this crate's own tests can lift the
+//! requirement on one core (`confirmation_opt_out_for_tests`); every other
+//! test mints a token, as a client does.
 //!
 //! **A token is a discipline, not a security boundary.** The caller that
 //! mints it also uses it; over DSPi Link each client's core mints its own,
@@ -172,13 +172,25 @@ struct Minted {
 }
 
 /// The confirmation state of one core: the requirement and the tokens minted.
-#[derive(Default)]
 pub(crate) struct Confirm {
+    /// Always true outside tests (-- WP P1TZ --).
     required: bool,
     minted: Vec<Minted>,
     count: u64,
     /// The generation of the last connection this core opened (-- WP P1BFIX --).
     last_generation: u64,
+}
+
+// -- WP P1TZ -- tokens are required by default (OD-P1f).
+impl Default for Confirm {
+    fn default() -> Self {
+        Self {
+            required: true,
+            minted: Vec::new(),
+            count: 0,
+            last_generation: 0,
+        }
+    }
 }
 
 /// What a gate let through: the connection the call must still be on.
@@ -319,16 +331,22 @@ impl DspiCore {
         let place = Place::of(&inner);
         inner.confirm.mint(op, clock::Instant::now(), place)
     }
+}
 
-    /// Whether a gated call without a token is refused from now on
-    /// ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
-    /// connections; minted tokens stay as they are.
-    pub fn require_confirmation(&self, on: bool) {
-        self.lock().confirm.required = on;
+// -- WP P1TZ -- the switch is gone from every binding: a test-only opt-out.
+impl DspiCore {
+    /// Lift (or restore) the token requirement on this core, for tests that
+    /// are not about confirmation. Compiled only for this crate's tests; no
+    /// binding and no other crate can reach it.
+    #[cfg(test)]
+    pub(crate) fn confirmation_opt_out_for_tests(&self, off: bool) {
+        self.lock().confirm.required = !off;
     }
 
-    /// Whether gated calls need a token ([`DspiCore::require_confirmation`]).
-    pub fn confirmation_required(&self) -> bool {
+    /// Whether gated calls need a token on this core: true unless a test
+    /// lifted it.
+    #[cfg(test)]
+    pub(crate) fn confirmation_required_for_tests(&self) -> bool {
         self.lock().confirm.required
     }
 }
@@ -404,3 +422,8 @@ pub fn gated_path(path: &str) -> Option<ConfirmOp> {
 #[path = "confirm/tests_wp_p1tk.rs"]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1tk;
+
+// -- WP P1TZ --
+#[cfg(test)]
+#[path = "confirm/test_tokens.rs"]
+mod test_tokens;

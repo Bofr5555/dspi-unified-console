@@ -777,7 +777,7 @@ fn wp_tpl1_every_template_validates() {
         .unwrap();
         core.fetch_all().unwrap();
         let reply =
-            parse(&core.config_import(shipped(sp.id).into(), IMPORT_VOLUMES | IMPORT_HARDWARE));
+            parse(&core.config_import_tok(shipped(sp.id).into(), IMPORT_VOLUMES | IMPORT_HARDWARE));
         assert_eq!(reply["ok"], true, "{}: {reply:#}", sp.id);
         assert_eq!(reply["clean"], true, "{}: {reply:#}", sp.id);
         assert!(
@@ -1289,7 +1289,7 @@ fn wp_tpl1f_a_generic_import_keeps_the_input_source_and_sound_sync() {
             // A device listening over S/PDIF, Sound Sync off.
             core.set_input_source(InputSource::Spdif.to_raw()).unwrap();
             core.set_lg_sound_sync(false).unwrap();
-            let reply = parse(&core.config_import(shipped(sp.id).into(), opts));
+            let reply = parse(&core.config_import_tok(shipped(sp.id).into(), opts));
             assert_eq!(reply["ok"], true, "{}: {reply:#}", sp.id);
             assert_eq!(reply["clean"], true, "{}: {reply:#}", sp.id);
             let left: Vec<&str> = reply["leftAlone"]
@@ -1328,7 +1328,7 @@ fn wp_tpl1f_an_unreadable_input_source_is_still_named() {
     )
     .unwrap();
     core.fetch_all().unwrap();
-    let reply = parse(&core.config_import(doc.to_string(), 0));
+    let reply = parse(&core.config_import_tok(doc.to_string(), 0));
     assert_eq!(reply["ok"], true, "{reply:#}");
     assert_eq!(reply["clean"], false, "{reply:#}");
 }

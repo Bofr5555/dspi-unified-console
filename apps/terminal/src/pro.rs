@@ -86,13 +86,13 @@ pub(crate) struct Opened {
     pub _handle: Arc<crate::core_route::CoreHandle>,
 }
 
-/// A core with this console's folders named and confirmation tokens
-/// required, nothing open yet. The folders are named before a device is
+/// A core with this console's folders named, nothing open yet; confirmation
+/// tokens are always required (P1TZ). The folders are named before a device is
 /// opened, as `docs/integrator/installer-lock.md` asks.
 pub(crate) fn prepare(stores: &Stores) -> Result<Arc<DspiCore>, u8> {
     let core = DspiCore::new();
-    // -- P1TK -- every gated call this console makes carries a token.
-    core.require_confirmation(true);
+    // -- P1TK -- every gated call this console makes carries a token; the core
+    // requires them from the start (P1TZ), so there is nothing to turn on.
     let name = |dir: &Option<PathBuf>| dir.as_ref().map(|d| d.to_string_lossy().into_owned());
     if let Some(dir) = name(&stores.snapshots) {
         core.snapshot_set_dir(dir).map_err(|e| fail(&e))?;
@@ -1179,8 +1179,7 @@ pub(crate) mod tests {
             exit::USAGE
         );
         assert!(near(gain(&core), -7.0));
-        // --yes mints the token the core requires.
-        assert!(core.confirmation_required());
+        // --yes mints the token the core requires (always, P1TZ).
         let plan = CoreImport { yes: true, ..plan };
         assert_eq!(import_on(&core, text, &plan, true, |_, _, _| 9), exit::OK);
         assert!(near(gain(&core), was), "{}", gain(&core));

@@ -162,9 +162,7 @@ static void installerSection(SmokeDriver &d) {
     settled(d, lc);
     cleanUp(d, lc);
 
-    // ---- Tokens are required in Qt (P1TK), and the app's dangerous calls carry them ----
-    d.check("p1qt2: confirmation tokens are required",
-            onWorker<bool>(d, [](FfiCore *c) { return dspi_confirmation_required(c); }));
+    // ---- Tokens are required by every core (P1TK, P1TZ), and the app's dangerous calls carry them ----
     const int slot = device->presets()->activeSlot();
     d.check("p1qt2: a preset save without a token is refused, nothing written",
             slot >= 0 && onWorker<int>(d, [slot](FfiCore *c) { return int(dspi_save_preset(c, uint8_t(slot))); }) != PRESET_OK);

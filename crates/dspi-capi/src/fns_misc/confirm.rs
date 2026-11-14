@@ -2,12 +2,14 @@
 //! `dspi_core::confirm`.
 //!
 //! `dspi_confirm_token` mints a single-use token for one operation, valid for
-//! 10 s on the open connection; the `_confirmed` functions take it (null: no
-//! token) and are the plain calls otherwise. With `dspi_require_confirmation`
-//! on, a call without a good token is refused before anything is sent:
+//! 10 s on the open connection; the `_confirmed` functions take it. Tokens
+//! are always required (WP P1TZ, OD-P1f): a call without a good token, a null
+//! one included, and the plain functions (`dspi_save_preset`,
+//! `dspi_config_import`, ...), are refused before anything is sent:
 //! `{"ok": false, "code": "confirmation_required", "error", "noticeKey":
-//! "confirmation_required"}`. A token that is given is checked whether or not
-//! tokens are required. Each `_confirmed` call has happened (and spent its
+//! "confirmation_required"}` (a status function answers its failure status).
+//! There is no switch: `dspi_require_confirmation` and
+//! `dspi_confirmation_required` are gone. Each `_confirmed` call has happened (and spent its
 //! token) whatever the buffer, so do not call again for a short one: its reply
 //! is `{"ok": true}` or a failure of a few hundred bytes, except the import's,
 //! which is `dspi_config_import_selected`'s.
@@ -23,7 +25,7 @@ use dspi_core::{ConfirmOp, DspiError};
 use super::{
     arg, board_needing, c_bytes, c_str, done_reply, drive_at, json_reply, optional_text, text,
 };
-use crate::{FfiCore, with_core};
+use crate::FfiCore;
 
 /// A token argument: null is none; bytes that are not UTF-8 are refused.
 fn token(p: *const c_char) -> dspi_core::Result<Option<String>> {
@@ -46,6 +48,17 @@ fn confirmed(
 /// Mint a token for the operation `op` (a key above) once the user has
 /// confirmed it. JSON `{ok, value: <token>}`, or `invalid` for an operation
 /// the core does not have. Each call mints a new token. No I/O.
+///
+/// Tokens are always required (WP P1TZ, OD-P1f; a behaviour change of this
+/// ABI): every gated operation (`save_preset`, `copy_preset`,
+/// `delete_preset`, `save_params`, `factory_reset`, `save_output_config`,
+/// `enter_bootloader`, `config_import`, `vreg_save`, `firmware_flash`) is
+/// refused with code `confirmation_required` and nothing sent unless its
+/// `_confirmed` function gets a good token from here. The plain functions
+/// (`dspi_save_preset`, `dspi_copy_preset`, `dspi_delete_preset`,
+/// `dspi_config_import`, `dspi_config_import_selected`,
+/// `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`) are always
+/// refused so; there is no switch to turn this off.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_confirm_token(
     core: *mut FfiCore,
@@ -61,19 +74,6 @@ pub extern "C" fn dspi_confirm_token(
         });
         json_reply(op.map(|op| c.confirm_token(op)))
     })
-}
-
-/// Refuse the gated calls without a good token from now on (`on`), or not.
-/// Off by default.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_require_confirmation(core: *mut FfiCore, on: bool) {
-    with_core(core, (), |h| h.core.require_confirmation(on));
-}
-
-/// Whether the gated calls need a token. False for a null handle.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_confirmation_required(core: *mut FfiCore) -> bool {
-    with_core(core, false, |h| h.core.confirmation_required())
 }
 
 /// `dspi_save_preset` with a token. JSON reply.
@@ -248,3 +248,25 @@ pub extern "C" fn dspi_flash_confirmed(
 #[path = "tests_wp_p1tk.rs"]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1tk;
+
+// -- WP P1TZ -- tokens are always required: other modules' tests call a gated
+// `_confirmed` function with a token minted for it, as a client does.
+#[cfg(test)]
+pub(crate) fn with_token_for_test(
+    h: *mut FfiCore,
+    op: &str,
+    f: impl FnOnce(*const c_char, *mut c_char, u32) -> u32,
+) -> serde_json::Value {
+    let read = |g: &mut dyn FnMut(*mut c_char, u32) -> u32| {
+        let mut buf = vec![0u8; 1 << 20];
+        let n = g(buf.as_mut_ptr().cast(), buf.len() as u32) as usize;
+        assert!(n > 0 && n <= buf.len(), "{n}");
+        serde_json::from_slice::<serde_json::Value>(&buf[..n.saturating_sub(1)]).unwrap_or_default()
+    };
+    let key = std::ffi::CString::new(op).unwrap_or_default();
+    let minted = read(&mut |b, l| dspi_confirm_token(h, key.as_ptr(), b, l));
+    let token =
+        std::ffi::CString::new(minted["value"].as_str().unwrap_or_default()).unwrap_or_default();
+    let mut f = Some(f);
+    read(&mut |b, l| f.take().map_or(0, |f| f(token.as_ptr(), b, l)))
+}

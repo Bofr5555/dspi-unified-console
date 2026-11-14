@@ -234,6 +234,12 @@ mod tests {
         r["value"].clone()
     }
 
+    // -- WP P1TZ -- tokens are always required: a gated call carries one,
+    // minted as the page does after its prompt.
+    fn tok(h: u32, op: &str) -> Value {
+        ok(h, "confirmToken", json!({ "op": op }))
+    }
+
     // -- WP P1DF --
     #[test]
     fn p1df_config_diff_and_preview() {
@@ -299,7 +305,7 @@ mod tests {
         let r = ok(
             h,
             "configImport",
-            json!({ "text": MAC, "options": options }),
+            json!({ "text": MAC, "options": options, "token": tok(h, "config_import") }),
         );
         assert_eq!(r["ok"], true, "{r}");
         let after = ok(
@@ -396,7 +402,11 @@ mod tests {
             "write",
             json!({ "path": "out.gain", "indices": [0], "value": { "float": -4.5 } }),
         );
-        ok(h, "presetCopy", json!({ "source": active, "dest": 3 }));
+        ok(
+            h,
+            "presetCopy",
+            json!({ "source": active, "dest": 3, "token": tok(h, "copy_preset") }),
+        );
         let st = ok(h, "state", Value::Null)["state"].clone();
         assert_eq!(st["activePresetSlot"], active);
         assert_ne!(
@@ -414,7 +424,11 @@ mod tests {
             "write",
             json!({ "path": "bypass", "value": { "bool": true } }),
         );
-        ok(h, "factoryReset", Value::Null);
+        ok(
+            h,
+            "factoryReset",
+            json!({ "token": tok(h, "factory_reset") }),
+        );
         let st = ok(h, "state", Value::Null)["state"].clone();
         assert_eq!(st["bypass"], false);
         assert_eq!(ok(h, "presetChanges", Value::Null)["dirty"], false);

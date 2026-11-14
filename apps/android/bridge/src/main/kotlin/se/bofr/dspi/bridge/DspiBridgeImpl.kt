@@ -336,8 +336,8 @@ class DspiBridgeImpl(
         configFiles = ConfigFilesImpl(this)
         deviceSettings = DeviceSettingsImpl(this)
         coreVoltageCalibration = CoreVoltageCalibrationImpl(this) // -- WP AN23 --
-        // -- WP P1AN2 -- P1TK: this app passes the core's token with every gated call ([coreToken])
-        scope.launch(ffi) { runCatching { core.requireConfirmation(true) } }
+        // -- WP P1AN2 -- P1TK: this app passes the core's token with every gated call ([coreToken]);
+        // the core requires them from the start (P1TZ), so there is no switch to turn on
         updateTimers()
         // As the Qt constructor: pick up a device the core can already see
         // (desktop libusb, the fake in demo mode; on Android the list is

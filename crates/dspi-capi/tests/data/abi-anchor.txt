@@ -1350,8 +1350,6 @@ bool dspi_open_demo_usb_direct(struct FfiCore *core);
 uint32_t dspi_notice_for(const char *key, const char *detail, char *buf, uint32_t len);
 uint32_t dspi_notice_texts(char *buf, uint32_t len);
 uint32_t dspi_confirm_token(struct FfiCore *core, const char *op, char *buf, uint32_t len);
-void dspi_require_confirmation(struct FfiCore *core, bool on);
-bool dspi_confirmation_required(struct FfiCore *core);
 uint32_t dspi_save_preset_confirmed(struct FfiCore *core,
 uint8_t slot,
 const char *token,

@@ -43,6 +43,32 @@ Every binding is the same core (`crates/dspi-core`), so a rule stated here holds
 for all of them. Calls that touch the device block their thread: never call them
 on a UI thread.
 
+## Confirmation tokens
+
+<!-- -- WP P1TZ -- -->
+Dangerous operations always need a confirmation token (OD-P1f; a behaviour change of
+the C ABI and the bindings, see `CHANGELOG.md`). After the person has confirmed one,
+mint a token for it and pass it to the operation's `_confirmed` call:
+
+| Operation (key) | Call that takes the token |
+|---|---|
+| `save_preset`, `copy_preset`, `delete_preset` | `save_preset_confirmed`, `copy_preset_confirmed`, `delete_preset_confirmed` |
+| `save_params`, `factory_reset`, `save_output_config` | `save_params_confirmed`, `factory_reset_confirmed`, `save_output_config_confirmed` |
+| `enter_bootloader`, `firmware_flash` | `enter_bootloader_confirmed`, `flash_confirmed` (mint it in the bootloader wait) |
+| `config_import` | `config_import_confirmed` |
+| `vreg_save` | `core_vreg_cal_commit_confirmed`, `core_vreg_manual_set_confirmed` |
+
+C: `dspi_confirm_token(core, "<key>", buf, len)` and the `dspi_*_confirmed` functions
+(`ci/generated/dspi_core.h`); Kotlin and Swift: `confirmToken(op)` and the
+`*Confirmed` methods; the web Worker: `confirmToken {op}` and a `token` field on
+`write`, `presetCopy` and `factoryReset`. A token is for one operation, used once,
+valid for 10 s and only on the connection it was minted on. Without a good token the
+call is refused with `confirmation_required` (the notice row of that name) and nothing
+is sent; the plain calls, and `write_param` on `preset.save`, `preset.delete`,
+`dev.save` and `dev.save.io`, are always refused so. There is no switch to turn this
+off. A token is a discipline, not a security boundary: over DSPi Link the hub's roles
+stay the boundary. Snapshot recall, A/B and a guarded apply take no token.
+
 ## To write
 
 - A worked example per way in (C, Kotlin, Swift, shell, Link).

@@ -437,18 +437,6 @@ interface DspiCoreApi : AutoCloseable {
     fun confirmToken(op: ConfirmOp): String
 
     /**
-     * Whether a gated call without a token is refused from now on
-     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
-     * connections; minted tokens stay as they are.
-     */
-    fun requireConfirmation(on: Boolean)
-
-    /**
-     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
-     */
-    fun confirmationRequired(): Boolean
-
-    /**
      * Identify the firmware and read every parameter into the mirror.
      *
      * Reads `REQ_GET_PLATFORM`, then the bulk image in whatever wire format
@@ -1732,8 +1720,8 @@ interface DspiCoreApi : AutoCloseable {
      * Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
      * hub refuses its lock; [`DspiError::Disconnected`] when the connection
      * changed while the hub was asked;
-     * [`DspiError::ConfirmationRequired`] while tokens are required
-     * ([`DspiCore::require_confirmation`]), also with no device open: the
+     * [`DspiError::ConfirmationRequired`] without a good token (always,
+     * WP P1TZ), also with no device open: the
      * gate runs first, so that case is no longer the plain `Ok` (accepted
      * in review p1b).
      */

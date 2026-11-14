@@ -20,7 +20,9 @@ class FfiOutputLabelsBug1Test {
     @Test
     fun bug1K340LabelsAndCards() {
         demo().use { core ->
-            val reply = core.configImport(k340, DspiConstants.IMPORT_HARDWARE.toLong())
+            // -- WP P1TZ -- the core always requires a token for an import
+            val token = core.confirmToken(se.bofr.dspi.core.ConfirmOp.CONFIG_IMPORT)
+            val reply = core.configImportConfirmed(k340, DspiConstants.IMPORT_HARDWARE.toLong(), 0xFFFF_FFFFL, token)
             assertTrue(reply, reply.contains("\"ok\":true"))
             val labels = core.outputLabels()
             assertEquals(

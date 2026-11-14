@@ -136,8 +136,7 @@ fn wp_p1tk_every_gated_call_needs_a_good_token_when_required() {
         .core
         .config_export("P1TK".into(), "test".into(), 0)
         .unwrap();
-    p.core.require_confirmation(true);
-    assert!(p.core.confirmation_required());
+    assert!(p.core.confirmation_required_for_tests());
     for (op, call) in gated_calls(doc) {
         check_gate(&p, op, &call);
     }
@@ -147,7 +146,6 @@ fn wp_p1tk_every_gated_call_needs_a_good_token_when_required() {
 #[test]
 fn wp_p1tk_the_vreg_commit_is_gated_before_the_flow() {
     let p = rig();
-    p.core.require_confirmation(true);
     let before = p.traffic();
     assert_eq!(
         code_of(p.core.core_vreg_cal_commit_confirmed(None, None)),
@@ -173,7 +171,6 @@ fn wp_p1tk_the_vreg_commit_is_gated_before_the_flow() {
 #[test]
 fn wp_p1tk_the_bootloader_is_gated() {
     let p = rig();
-    p.core.require_confirmation(true);
     let before = p.traffic();
     assert_eq!(
         code_of(p.core.enter_bootloader()),
@@ -194,26 +191,39 @@ fn wp_p1tk_the_bootloader_is_gated() {
     );
 }
 
-/// Off (the default): the plain calls work as before; a token that is given
-/// is still checked.
+/// On by default (-- WP P1TZ --, OD-P1f): a fresh core refuses every plain
+/// gated call with nothing sent; a token that is given is checked; the
+/// test-only opt-out lifts it.
 #[test]
-fn wp_p1tk_off_by_default_and_a_given_token_is_still_checked() {
+fn wp_p1tz_required_by_default_and_a_given_token_is_checked() {
     let p = rig();
-    assert!(!p.core.confirmation_required());
-    p.core.save_preset(1).unwrap();
-    p.core.save_params().unwrap();
-    p.core.save_output_config().unwrap();
+    assert!(p.core.confirmation_required_for_tests());
+    let before = p.traffic();
+    for r in [
+        p.core.save_preset(1),
+        p.core.save_params(),
+        p.core.save_output_config(),
+        p.core.factory_reset(),
+        p.core.delete_preset(1),
+        p.core.copy_preset(1, 2),
+        p.core.enter_bootloader(),
+    ] {
+        assert_eq!(code_of(r), Err(refusal::MISSING.into()));
+    }
+    assert_eq!(p.traffic(), before, "nothing sent");
     assert_eq!(
         code_of(p.core.save_preset_confirmed(1, Some("nonsense".into()))),
         Err(refusal::UNKNOWN.into())
     );
     let t = p.core.confirm_token(ConfirmOp::SavePreset);
     p.core.save_preset_confirmed(1, Some(t)).unwrap();
-    // On and off again.
-    p.core.require_confirmation(true);
-    assert!(p.core.save_preset(1).is_err());
-    p.core.require_confirmation(false);
+    // Another core starts with the requirement on too.
+    assert!(DspiCore::new().confirmation_required_for_tests());
+    // The test-only opt-out, and back.
+    p.core.confirmation_opt_out_for_tests(true);
     p.core.save_preset(1).unwrap();
+    p.core.confirmation_opt_out_for_tests(false);
+    assert!(p.core.save_preset(1).is_err());
 }
 
 /// A token is for the connection it was minted on: a disconnect and a
@@ -222,12 +232,14 @@ fn wp_p1tk_off_by_default_and_a_given_token_is_still_checked() {
 fn wp_p1tk_a_token_never_crosses_a_reconnect() {
     let core = DspiCore::new();
     core.open_demo().unwrap();
-    core.require_confirmation(true);
     let t = core.confirm_token(ConfirmOp::SavePreset);
     let spare = core.confirm_token(ConfirmOp::SavePreset);
     core.disconnect();
     core.open_demo().unwrap();
-    assert!(core.confirmation_required(), "the requirement stays");
+    assert!(
+        core.confirmation_required_for_tests(),
+        "the requirement stays"
+    );
     assert_eq!(
         code_of(core.save_preset_confirmed(1, Some(t))),
         Err(refusal::CONNECTION_CHANGED.into())
@@ -250,7 +262,6 @@ fn wp_p1tk_a_token_never_crosses_a_reconnect() {
 #[test]
 fn wp_p1tk_a_firmware_token_belongs_to_the_bootloader_wait() {
     let core = DspiCore::new();
-    core.require_confirmation(true);
     let drive = || crate::BootloaderDrive {
         path: "/nonexistent/p1tk-drive".into(),
         platform: 1,
@@ -296,7 +307,6 @@ fn wp_p1tk_a_firmware_token_belongs_to_the_bootloader_wait() {
 fn wp_p1tk_write_param_paths_are_gated() {
     let p = rig();
     let core = &p.core;
-    core.require_confirmation(true);
     for (path, indices, op) in [
         ("preset.save", vec![1u8], ConfirmOp::SavePreset),
         ("dev.save", vec![], ConfirmOp::SaveParams),
@@ -382,7 +392,6 @@ fn wp_p1tk_the_refusal_has_a_notice() {
 #[test]
 fn wp_p1bfix_a_no_device_token_is_its_own_cores() {
     let a = DspiCore::new();
-    a.require_confirmation(true);
     let drive = || crate::BootloaderDrive {
         path: "/nonexistent/p1bfix-drive".into(),
         platform: 1,

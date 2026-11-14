@@ -1062,8 +1062,8 @@ impl DspiCore {
     /// Errors: [`DspiError::Locked`] / [`DspiError::Denied`] when the Link
     /// hub refuses its lock; [`DspiError::Disconnected`] when the connection
     /// changed while the hub was asked;
-    /// [`DspiError::ConfirmationRequired`] while tokens are required
-    /// ([`DspiCore::require_confirmation`]), also with no device open: the
+    /// [`DspiError::ConfirmationRequired`] without a good token (always,
+    /// WP P1TZ), also with no device open: the
     /// gate runs first, so that case is no longer the plain `Ok` (accepted
     /// in review p1b).
     pub fn enter_bootloader(&self) -> Result<()> {
@@ -1727,7 +1727,7 @@ mod tests_wp_c6 {
     #[test]
     fn wp_c6_save_output_config_runs_under_the_lock() {
         let (core, _, log) = rig(&[(op::REQ_SAVE_OUTPUT_CONFIG, Some(vec![0]))]);
-        core.save_output_config().unwrap();
+        core.save_output_config_tok().unwrap();
         assert_eq!(
             entries(&log),
             vec![
@@ -1738,11 +1738,11 @@ mod tests_wp_c6 {
         );
         let (core, _, _) = rig(&[(op::REQ_SAVE_OUTPUT_CONFIG, Some(vec![4]))]);
         assert_eq!(
-            core.save_output_config(),
+            core.save_output_config_tok(),
             Err(DspiError::Refused { status: 4 })
         );
         let (core, _, _) = rig_on(FakeDevice::demo(), &[], true);
-        assert_eq!(core.save_output_config(), Err(DspiError::Locked));
+        assert_eq!(core.save_output_config_tok(), Err(DspiError::Locked));
     }
 
     #[test]
@@ -1901,7 +1901,7 @@ mod tests_wp_c6 {
         vec![
             ("set_output_pin", core.set_output_pin(0, 6)),
             ("set_output_config_mode", core.set_output_config_mode(0)),
-            ("save_output_config", core.save_output_config()),
+            ("save_output_config", core.save_output_config_tok()),
             ("set_output_type", core.set_output_type(0, 0)),
             ("set_i2s_bck_pin", core.set_i2s_bck_pin(0, 14)),
             ("set_i2s_clock_pin_mode", core.set_i2s_clock_pin_mode(0)),
@@ -1947,7 +1947,7 @@ mod tests_wp_c6 {
         assert_eq!(core.get_state(), state);
         // Entering the bootloader still works: an incompatible firmware
         // must stay updatable.
-        core.enter_bootloader().unwrap();
+        core.enter_bootloader_tok().unwrap();
         assert_eq!(
             entries(&log),
             vec![
@@ -1973,14 +1973,14 @@ mod tests_wp_c6 {
             Err(DspiError::Disconnected)
         );
         // Always Ok, as in the old core.
-        assert_eq!(core.enter_bootloader(), Ok(()));
+        assert_eq!(core.enter_bootloader_tok(), Ok(()));
     }
 
     #[test]
     fn wp_c6_enter_bootloader_ignores_the_vanishing_device() {
         // The fake stalls the opcode; a real device answers and reboots.
         let (core, _, log) = rig(&[]);
-        assert_eq!(core.enter_bootloader(), Ok(()));
+        assert_eq!(core.enter_bootloader_tok(), Ok(()));
         assert_eq!(
             entries(&log),
             vec![
@@ -1989,14 +1989,14 @@ mod tests_wp_c6 {
             ]
         );
         let (core, _, _) = rig(&[(op::REQ_ENTER_BOOTLOADER, Some(vec![1]))]);
-        assert_eq!(core.enter_bootloader(), Ok(()));
+        assert_eq!(core.enter_bootloader_tok(), Ok(()));
     }
 
     // -- WP CG24 --
     #[test]
     fn wp_cg24_the_bootloader_restart_holds_the_device_lock() {
         let (core, _, log) = rig(&[]);
-        core.enter_bootloader().unwrap();
+        core.enter_bootloader_tok().unwrap();
         assert_eq!(
             core.held_lock_holder(),
             Some(crate::presets::Holder::Bootloader)
@@ -2016,7 +2016,7 @@ mod tests_wp_c6 {
         let (core, _, log) = rig(&[]);
         core.device_lock_acquire("Installing firmware".into(), 60_000)
             .unwrap();
-        core.enter_bootloader().unwrap();
+        core.enter_bootloader_tok().unwrap();
         assert_eq!(
             core.held_lock_holder(),
             Some(crate::presets::Holder::Caller)
@@ -2032,7 +2032,7 @@ mod tests_wp_c6 {
         assert_eq!(e.last().map(String::as_str), Some("unlock"), "{e:?}");
         // A refused lock sends nothing.
         let (core, _, log) = rig_on(FakeDevice::demo(), &[], true);
-        assert_eq!(core.enter_bootloader(), Err(DspiError::Locked));
+        assert_eq!(core.enter_bootloader_tok(), Err(DspiError::Locked));
         assert_eq!(entries(&log), ["lock Installing firmware"]);
         assert_eq!(core.held_lock_holder(), None);
     }

@@ -215,9 +215,9 @@ fn rig(link: bool) -> Rig {
     };
     rig.deliver();
     rig.core.set_input_preamp(0, -4.0).unwrap();
-    rig.core.save_preset(1).unwrap();
+    rig.core.save_preset_tok(1).unwrap();
     rig.core.set_input_preamp(0, -2.0).unwrap();
-    rig.core.save_preset(0).unwrap();
+    rig.core.save_preset_tok(0).unwrap();
     rig.deliver();
     assert!(!rig.core.preset_dirty(), "{:?}", rig.core.preset_changes());
     rig

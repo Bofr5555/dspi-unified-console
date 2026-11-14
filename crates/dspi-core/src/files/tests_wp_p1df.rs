@@ -197,7 +197,7 @@ fn p1df_a_preview_says_what_the_import_then_does() {
         let options = IMPORT_BY_BLOCK | bit;
         let preview = json_of(&core.config_preview(doc.clone(), options, u32::MAX));
         let before = export(&core);
-        let r = json_of(&core.config_import_selected(doc.clone(), options, u32::MAX));
+        let r = json_of(&core.config_import_selected_tok(doc.clone(), options, u32::MAX));
         assert_eq!(r["ok"], json!(true), "{key}: {r}");
         let real = json_of(&config_diff(before, export(&core)));
         let (mut p, mut d) = (rows(&preview), rows(&real));
@@ -228,7 +228,8 @@ fn p1df_each_block_alone_changes_only_its_values() {
     for (bit, key) in BLOCK_BITS {
         let core = demo();
         let before = export(&core);
-        let r = json_of(&core.config_import_selected(doc.clone(), IMPORT_BY_BLOCK | bit, u32::MAX));
+        let r =
+            json_of(&core.config_import_selected_tok(doc.clone(), IMPORT_BY_BLOCK | bit, u32::MAX));
         assert_eq!(r["ok"], json!(true), "{key}: {r}");
         assert_eq!(r["blocks"], json!(bit), "{key}");
         let d = json_of(&config_diff(before, export(&core)));
@@ -245,7 +246,7 @@ fn p1df_each_block_alone_changes_only_its_values() {
 fn p1df_no_block_changes_nothing() {
     let core = demo();
     let before = export(&core);
-    let r = json_of(&core.config_import_selected(tuned(), IMPORT_BY_BLOCK, u32::MAX));
+    let r = json_of(&core.config_import_selected_tok(tuned(), IMPORT_BY_BLOCK, u32::MAX));
     // -- WP P1AFIX -- (review p1a F4) refused, nothing written: see
     // `wp_p1afix_a_by_block_import_with_no_block_is_refused_and_writes_nothing`
     assert_eq!(r["ok"], json!(false));
@@ -260,7 +261,7 @@ fn p1df_eq_per_channel() {
     // Wire channels 1 and 9 only.
     let mask = (1 << 1) | (1 << 9);
     let options = IMPORT_BY_BLOCK | IMPORT_EQ;
-    let r = json_of(&core.config_import_selected(MAC.into(), options, mask));
+    let r = json_of(&core.config_import_selected_tok(MAC.into(), options, mask));
     assert_eq!(r["ok"], json!(true));
     let after = json_of(&export(&core));
     let mac = json_of(MAC);
@@ -344,7 +345,7 @@ fn p1df_old_option_bits_keep_their_meaning() {
 #[test]
 fn p1df_old_option_bits_through_config_import() {
     let core = demo();
-    let r = json_of(&core.config_import(MAC.into(), 0));
+    let r = json_of(&core.config_import_tok(MAC.into(), 0));
     assert_eq!(r["ok"], json!(true));
     let audio = IMPORT_EQ
         | IMPORT_CROSSOVER
@@ -382,7 +383,7 @@ fn p1df_kind_is_read_and_unknown_reads_as_preset() {
         assert_eq!(i["kind"], json!(read), "{kind}");
         // It imports, as any preset does.
         let core = demo();
-        let r = json_of(&core.config_import(text.clone(), IMPORT_VOLUMES | IMPORT_HARDWARE));
+        let r = json_of(&core.config_import_tok(text.clone(), IMPORT_VOLUMES | IMPORT_HARDWARE));
         assert_eq!(r["ok"], json!(true), "{kind}: {r}");
         assert_eq!(json_of(&config_diff(QT.into(), text))["kind"], json!(read));
     }
@@ -431,12 +432,12 @@ fn p1df_mac_and_qt_documents_still_import() {
     ] {
         for options in [0, IMPORT_VOLUMES | IMPORT_HARDWARE, every] {
             let core = demo();
-            let r = json_of(&core.config_import(doc.into(), options));
+            let r = json_of(&core.config_import_tok(doc.into(), options));
             assert_eq!(r["ok"], json!(true), "{what} {options}: {r}");
         }
         // After an import of everything, the device holds what it says.
         let core = demo();
-        core.config_import(doc.into(), every);
+        core.config_import_tok(doc.into(), every);
         let left = json_of(&core.config_preview(doc.into(), every, u32::MAX));
         assert_eq!(rows(&left), vec![], "{what}");
     }
@@ -499,7 +500,7 @@ fn wp_p1afix_a_by_block_import_with_no_block_is_refused_and_writes_nothing() {
     let sent = outs.load(std::sync::atomic::Ordering::SeqCst);
 
     for eq_channels in [u32::MAX, 0] {
-        let r = json_of(&core.config_import_selected(tuned(), IMPORT_BY_BLOCK, eq_channels));
+        let r = json_of(&core.config_import_selected_tok(tuned(), IMPORT_BY_BLOCK, eq_channels));
         assert_eq!(r["ok"], json!(false), "{r}");
         assert_eq!(r["noticeKey"], json!(NOTICE_CONFIG_NOTHING_SELECTED), "{r}");
         assert!(
@@ -524,8 +525,11 @@ fn wp_p1afix_a_by_block_import_with_no_block_is_refused_and_writes_nothing() {
 
     // A chosen block does write.
     let sent = outs.load(std::sync::atomic::Ordering::SeqCst);
-    let r =
-        json_of(&core.config_import_selected(tuned(), IMPORT_BY_BLOCK | IMPORT_NAMES, u32::MAX));
+    let r = json_of(&core.config_import_selected_tok(
+        tuned(),
+        IMPORT_BY_BLOCK | IMPORT_NAMES,
+        u32::MAX,
+    ));
     assert_eq!(r["ok"], json!(true), "{r}");
     assert!(outs.load(std::sync::atomic::Ordering::SeqCst) > sent);
 }
@@ -542,18 +546,21 @@ fn wp_p1afix_config_refusals_carry_a_notice_key() {
             NOTICE_CONFIG_UNREADABLE,
         ),
         (config_inspect("".into()), NOTICE_CONFIG_UNREADABLE),
-        (none.config_import("{".into(), 0), NOTICE_CONFIG_UNREADABLE),
         (
-            none.config_import_selected("{".into(), 0, 0),
+            none.config_import_tok("{".into(), 0),
+            NOTICE_CONFIG_UNREADABLE,
+        ),
+        (
+            none.config_import_selected_tok("{".into(), 0, 0),
             NOTICE_CONFIG_UNREADABLE,
         ),
         (
             none.config_preview("{".into(), 0, 0),
             NOTICE_CONFIG_UNREADABLE,
         ),
-        (none.config_import(QT.into(), 0), "disconnected"),
+        (none.config_import_tok(QT.into(), 0), "disconnected"),
         (
-            none.config_import_selected(QT.into(), 0, u32::MAX),
+            none.config_import_selected_tok(QT.into(), 0, u32::MAX),
             "disconnected",
         ),
         (none.config_preview(QT.into(), 0, u32::MAX), "disconnected"),
@@ -614,7 +621,7 @@ fn wp_p1efix_an_import_with_the_queue_drained_late_keeps_the_documents_values() 
             let g = core.apply_guarded_import(doc, all, u32::MAX, 30).unwrap();
             assert_eq!(g.phase, crate::GuardPhase::Waiting, "{g:?}");
         } else {
-            let reply: Value = serde_json::from_str(&core.config_import(doc, all)).unwrap();
+            let reply: Value = serde_json::from_str(&core.config_import_tok(doc, all)).unwrap();
             assert_eq!(reply["ok"], true, "{reply}");
         }
         assert_eq!(

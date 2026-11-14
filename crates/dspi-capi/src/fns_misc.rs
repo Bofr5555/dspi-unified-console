@@ -60,6 +60,10 @@ mod alink_usb;
 mod notice_text;
 // -- WP P1TK --
 mod confirm;
+// -- WP P1TZ -- the token helper and the `_confirmed` calls, for other
+// modules' tests
+#[cfg(test)]
+pub(crate) use confirm::*;
 // -- WP P1LM --
 mod limits;
 // -- WP P1LK --
@@ -281,6 +285,10 @@ pub extern "C" fn dspi_set_output_config_mode(core: *mut FfiCore, mode: u8) -> b
 
 /// Store the output configuration in flash. Returns the device's status,
 /// 0xFF when it could not be asked.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_save_output_config_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_save_output_config(core: *mut FfiCore) -> u8 {
     status(core, DspiCore::save_output_config)
@@ -288,6 +296,10 @@ pub extern "C" fn dspi_save_output_config(core: *mut FfiCore) -> u8 {
 
 /// Reboot the device into its USB bootloader. No answer comes back, so true
 /// means only that the request went out.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_enter_bootloader_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_enter_bootloader(core: *mut FfiCore) -> bool {
     flag(core, DspiCore::enter_bootloader)
@@ -888,6 +900,10 @@ pub extern "C" fn dspi_config_inspect(text: *const c_char, buf: *mut c_char, len
 /// Apply a configuration document to the device. `options`: bit 0 the
 /// volumes too, bit 1 the hardware configuration too. JSON reply; the device
 /// has changed whatever the buffer.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_config_import_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_config_import(
     core: *mut FfiCore,
@@ -908,6 +924,10 @@ pub extern "C" fn dspi_config_import(
 /// `DSPI_IMPORT_*` block bits; `eq_channels` the wire channels whose EQ is
 /// applied (bit k: channel k; all bits: every one). JSON reply; the device
 /// has changed whatever the buffer.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_config_import_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_config_import_selected(
     core: *mut FfiCore,
@@ -1810,6 +1830,10 @@ pub extern "C" fn dspi_core_vreg_cal_keep(core: *mut FfiCore, soak_s: u32) -> u8
 
 /// Store the passed trial's voltage; `typed` as for the start. Returns a
 /// status byte.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_core_vreg_cal_commit_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_cal_commit(core: *mut FfiCore, typed: *const c_char) -> u8 {
     status(core, |c| {
@@ -1825,6 +1849,10 @@ pub extern "C" fn dspi_core_vreg_trial_end(core: *mut FfiCore) -> u8 {
 
 /// Store VREG code `value` directly (0: the build's default); `typed` as for
 /// the start. Returns a status byte.
+///
+/// Always refused since WP P1TZ (OD-P1f; tokens are required, with no
+/// switch): nothing is sent and the failure is returned. Use
+/// `dspi_core_vreg_manual_set_confirmed` with a token from `dspi_confirm_token`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_core_vreg_manual_set(
     core: *mut FfiCore,
@@ -2054,7 +2082,10 @@ struct WriteRequest {
 /// "out.gain", "indices": [1], "value": {"float": -4}}` (`indices` may be left
 /// out; an action's value is `"trigger"`). The reply is `{ok, value}` with
 /// the value read back, or a failure; the write has happened whatever the
-/// buffer, so do not call again for a short one.
+/// buffer, so do not call again for a short one. The gated paths
+/// (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) take a token
+/// and are always refused here (`confirmation_required`, WP P1TZ): use their
+/// `_confirmed` functions.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_write_param(
     core: *mut FfiCore,

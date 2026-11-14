@@ -1247,8 +1247,6 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // the firmware-update path's confirmed forms (as enterBootloader
             // and flashToDriveGuarded)
             "confirmToken",
-            "requireConfirmation",
-            "confirmationRequired",
             "enterBootloaderConfirmed",
             "flashConfirmed",
             // -- WP P1LM -- the profile's files and status: the app's files,

@@ -65,3 +65,18 @@ Release notes of earlier versions: `CHANGELOG-0.13.0.md`.
   version 3, with Bofr5555's own contributions under version 3 or later and the section 7
   terms; it names the source archive published with each release instead of a repository
   link, and credits the firmware's third-party parts, Noto Sans Mono and AutoEq.
+
+### Integrators (behaviour change of the C ABI and the bindings)
+<!-- -- WP P1TZ -- -->
+- Confirmation tokens are always required (OD-P1f). Every dangerous operation (preset
+  save, copy and delete, parameter save, factory reset, output configuration save,
+  bootloader, configuration import, stored core voltage, firmware install) is refused
+  with `confirmation_required`, and nothing is sent, unless its `_confirmed` call is given
+  a token minted with `confirm_token` (C: `dspi_confirm_token`) after the person
+  confirmed. The plain calls (`dspi_save_preset`, `dspi_config_import`, `save_preset`,
+  `write_param("preset.save")`, ...) are always refused so.
+- The switch is gone: C `dspi_require_confirmation` and `dspi_confirmation_required`,
+  UniFFI `require_confirmation` and `confirmation_required`, and the web Worker's
+  `requireConfirmation` and `confirmationRequired` are removed. To migrate, mint a token
+  per operation and call the `_confirmed` form: [docs/integrator/README.md](docs/integrator/README.md#confirmation-tokens).
+  Every client in this project already does.

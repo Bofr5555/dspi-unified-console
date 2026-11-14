@@ -162,9 +162,15 @@ fn wp_p1dkfix_a_hub_managed_device_shows_one_lock_the_hubs() {
     assert_eq!(e.notice_key(), "limit_exceeded");
     // A whole-state write from a Control client: refused by name (F5).
     let doc = control.config_export("x".into(), "t".into(), 0).unwrap();
-    let r: Value =
-        serde_json::from_str(&control.config_import(doc, dspi_core::consts::IMPORT_ALL_BLOCKS))
-            .unwrap();
+    // -- WP P1TZ -- with its token, so the refusal is the hub's.
+    let token = control.confirm_token(dspi_core::ConfirmOp::ConfigImport);
+    let r: Value = serde_json::from_str(&control.config_import_confirmed(
+        doc,
+        dspi_core::consts::IMPORT_ALL_BLOCKS,
+        u32::MAX,
+        Some(token),
+    ))
+    .unwrap();
     assert_eq!(r["noticeKey"], "image_refused", "{r}");
     // Locking again goes to the hub.
     let st = control.installer_lock().unwrap();

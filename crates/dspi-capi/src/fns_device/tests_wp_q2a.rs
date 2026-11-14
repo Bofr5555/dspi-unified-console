@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use proptest::prelude::*;
 
 use super::*;
-use crate::types::{FLASH_OK, PRESET_ERR_INVALID_SLOT, PRESET_OK};
+use crate::types::{PRESET_ERR_INVALID_SLOT, PRESET_OK};
 
 const NULL: *mut FfiCore = ptr::null_mut();
 
@@ -307,7 +307,15 @@ fn wp_q2a_meters_fill_every_output() {
 #[test]
 fn wp_q2a_presets_round_trip_and_report_changes() {
     let h = Handle::demo();
-    assert_eq!(dspi_save_preset(h.0, 1), PRESET_OK);
+    // -- WP P1TZ -- the plain save is refused (no token); with one it saves.
+    assert_eq!(dspi_save_preset(h.0, 1), 0xFF);
+    let ok = |op: &str, f: &dyn Fn(*const c_char, *mut c_char, u32) -> u32| {
+        let r = crate::fns_misc::with_token_for_test(h.0, op, f);
+        assert_eq!(r["ok"], true, "{op}: {r}");
+    };
+    ok("save_preset", &|t, b, l| {
+        crate::fns_misc::dspi_save_preset_confirmed(h.0, 1, t, b, l)
+    });
     assert!(dspi_set_preset_name(h.0, 1, c"Room".as_ptr()));
     let mut buf = [0 as c_char; 32];
     assert!(dspi_get_preset_name(h.0, 1, buf.as_mut_ptr(), 32));
@@ -341,8 +349,13 @@ fn wp_q2a_presets_round_trip_and_report_changes() {
     assert!(!list.is_empty());
 
     assert_eq!(dspi_load_preset(h.0, 1), PRESET_OK);
-    assert_eq!(dspi_save_params(h.0), FLASH_OK);
-    assert_eq!(dspi_delete_preset(h.0, 1), PRESET_OK);
+    assert_eq!(dspi_save_params(h.0), FLASH_ERR_WRITE, "no token");
+    ok("save_params", &|t, b, l| {
+        crate::fns_misc::dspi_save_params_confirmed(h.0, t, b, l)
+    });
+    ok("delete_preset", &|t, b, l| {
+        crate::fns_misc::dspi_delete_preset_confirmed(h.0, 1, t, b, l)
+    });
 }
 
 #[test]

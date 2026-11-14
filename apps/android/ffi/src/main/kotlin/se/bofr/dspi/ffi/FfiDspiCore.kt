@@ -145,10 +145,6 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun confirmToken(op: ConfirmOp): String = core.confirmToken(op.toFfi())
 
-    override fun requireConfirmation(on: Boolean) = core.requireConfirmation(on)
-
-    override fun confirmationRequired(): Boolean = core.confirmationRequired()
-
     override fun fetchAll() = call { core.fetchAll() }
 
     override fun refreshParams() = call { core.refreshParams() }

@@ -978,7 +978,7 @@ fn wp_c15_while_reconnecting_writes_fail_fast_and_are_never_replayed() {
     assert_eq!(core.set_master_volume(-6.0), Err(DspiError::Disconnected));
     assert_eq!(core.fetch_status().unwrap_err(), DspiError::Disconnected);
     assert_eq!(core.apply_all_params(), Err(DspiError::Disconnected));
-    assert_eq!(core.save_params(), Err(DspiError::Disconnected));
+    assert_eq!(core.save_params_tok(), Err(DspiError::Disconnected));
     assert!(
         start.elapsed() < Duration::from_millis(100),
         "{:?}",
@@ -1155,7 +1155,7 @@ fn wp_c15_another_consoles_lock_is_reported() {
     connect_faulty(&core, &hub, "");
     bind(&core);
     hub.hold_lock(99, 5000);
-    assert_eq!(core.save_params(), Err(DspiError::Locked));
+    assert_eq!(core.save_params_tok(), Err(DspiError::Locked));
     assert_eq!(core.apply_all_params(), Err(DspiError::Locked));
     hub.release_lock();
     core.apply_all_params().unwrap();
@@ -1171,7 +1171,7 @@ fn wp_c15_a_reopen_during_the_lock_wait_gives_the_lock_back() {
     *guard(&faults.hold_text) = Some(("lock.acquire".into(), 400));
     let worker = {
         let core = Arc::clone(&core);
-        std::thread::spawn(move || core.save_params())
+        std::thread::spawn(move || core.save_params_tok())
     };
     wait_until("the request", || faults.sent("lock.acquire") == 1);
     core.disconnect();
@@ -1608,7 +1608,7 @@ fn wp_c15_hardware_flows_do_not_wait_for_the_lock_under_the_core_lock() {
     *guard(&faults.hold_text) = Some(("lock.acquire".into(), 700));
     let worker = {
         let core = Arc::clone(&core);
-        std::thread::spawn(move || core.save_output_config())
+        std::thread::spawn(move || core.save_output_config_tok())
     };
     wait_until("the request", || faults.sent("lock.acquire") == 1);
     let start = Instant::now();

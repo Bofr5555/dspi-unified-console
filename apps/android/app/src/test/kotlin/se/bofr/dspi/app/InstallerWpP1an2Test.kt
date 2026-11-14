@@ -173,7 +173,7 @@ class InstallerWpP1an2Test {
 
     @Test
     fun p1an2TokensAreRequiredAndAConfirmedSavePasses() = withDemo {
-        assertTrue("required in this app", core.confirmationRequired())
+        // -- WP P1TZ -- required by every core: no switch, and the plain save below is refused
         val token = onMain { bridge.dangerousOps.confirm(DangerousOp.SAVE_PRESET) }
         assertEquals(PresetStatus.OK, onMain { bridge.savePreset(token, 3) })
         try {

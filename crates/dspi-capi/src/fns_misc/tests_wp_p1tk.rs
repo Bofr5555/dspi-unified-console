@@ -37,14 +37,9 @@ fn assert_refused(r: &Value, op: &str, why: &str) {
 
 #[test]
 fn wp_p1tk_tokens_through_c() {
-    // A null handle: the failure values.
-    assert!(!dspi_confirmation_required(ptr::null_mut()));
-    dspi_require_confirmation(ptr::null_mut(), true);
+    // -- WP P1TZ -- tokens are required from the start: no switch to call.
     let h = dspi_core_new();
     assert!(dspi_open_demo(h));
-    assert!(!dspi_confirmation_required(h));
-    dspi_require_confirmation(h, true);
-    assert!(dspi_confirmation_required(h));
 
     // No token, another operation's, a good one, the same again.
     let save = |t: *const c_char| reply(|b, l| dspi_save_preset_confirmed(h, 1, t, b, l));
@@ -158,5 +153,33 @@ fn wp_p1tk_tokens_through_c() {
         reply(|b, l| dspi_confirm_token(h, op.as_ptr(), b, l))["code"],
         "invalid"
     );
+    dspi_core_free(h);
+}
+
+/// WP P1TZ (OD-P1f): a new core refuses every plain gated C function, and a
+/// gated `dspi_write_param` path, with nothing sent; there is no switch.
+#[test]
+fn wp_p1tz_a_new_core_requires_tokens_through_c() {
+    use crate::fns_device::{
+        dspi_copy_preset, dspi_delete_preset, dspi_factory_reset, dspi_save_params,
+        dspi_save_preset,
+    };
+    use crate::fns_misc::{dspi_enter_bootloader, dspi_save_output_config, dspi_write_param};
+    let h = dspi_core_new();
+    assert!(dspi_open_demo(h));
+    assert_eq!(dspi_save_preset(h, 1), 0xFF);
+    assert_eq!(dspi_copy_preset(h, 1, 2), 0xFF);
+    assert_eq!(dspi_delete_preset(h, 1), 0xFF);
+    assert_eq!(dspi_save_params(h), dspi_core::consts::FLASH_ERR_WRITE);
+    assert_eq!(dspi_factory_reset(h), dspi_core::consts::FLASH_ERR_WRITE);
+    assert_eq!(dspi_save_output_config(h), 0xFF);
+    assert!(!dspi_enter_bootloader(h));
+    let req = CString::new(r#"{"path":"preset.save","indices":[1],"value":"trigger"}"#).unwrap();
+    let r = reply(|b, l| dspi_write_param(h, req.as_ptr(), b, l));
+    assert_eq!(r["code"], "confirmation_required", "{r}");
+    // With a token the same save goes through.
+    let t = mint(h, "save_preset");
+    let r = reply(|b, l| dspi_save_preset_confirmed(h, 1, t.as_ptr(), b, l));
+    assert_eq!(r["ok"], true, "{r}");
     dspi_core_free(h);
 }

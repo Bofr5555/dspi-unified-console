@@ -22,11 +22,11 @@ import se.bofr.dspi.fake.FakeDspiCore
 @OptIn(ExperimentalCoroutinesApi::class)
 class InstallerWpP1an2Test {
     @Test
-    fun wpP1an2TheBridgeTurnsTheCoresTokensOnAndMintsOnePerConfirmedCall() = runTest {
+    fun wpP1an2TheBridgeMintsOneTokenPerConfirmedCall() = runTest {
+        // -- WP P1TZ -- the core requires tokens from the start: no switch for the bridge to turn on
         val core = FakeDspiCore()
         val b = newBridge(core)
         runCurrent()
-        assertTrue("requirement on", core.confirmationRequired)
         attach(b, core)
         val ops = b.dangerousOps
         assertEquals(PresetStatus.OK, b.savePreset(ops.confirm(DangerousOp.SAVE_PRESET), 1))

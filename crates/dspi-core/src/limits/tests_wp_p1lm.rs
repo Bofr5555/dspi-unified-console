@@ -309,7 +309,7 @@ fn wp_p1lm_an_import_is_clamped_and_reported() {
     inside(&core);
     apply(&core, &profile());
     let r: Value = serde_json::from_str(
-        &core.config_import(doc, IMPORT_VOLUMES | IMPORT_HARDWARE | IMPORT_ALL_BLOCKS),
+        &core.config_import_tok(doc, IMPORT_VOLUMES | IMPORT_HARDWARE | IMPORT_ALL_BLOCKS),
     )
     .unwrap();
     assert_eq!(r["ok"], true, "{r}");
@@ -358,7 +358,7 @@ fn wp_p1lm_a_recall_is_clamped_and_reported() {
 fn wp_p1lm_a_slot_load_outside_the_profile_is_clamped_and_reported() {
     let core = demo();
     core.set_output_gain(O, 10.0).unwrap();
-    core.save_preset(3).unwrap();
+    core.save_preset_tok(3).unwrap();
     core.set_output_gain(O, 0.0).unwrap();
     apply(&core, &profile());
     core.load_preset(3).unwrap();

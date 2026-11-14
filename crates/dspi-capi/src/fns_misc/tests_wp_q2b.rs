@@ -383,8 +383,13 @@ fn wp_q2b_files_round_trip_on_the_demo_device() {
     let info = read_json(|b, l| dspi_config_inspect(doc.as_ptr(), b, l));
     assert_eq!(info["ok"], true);
     assert_eq!(info["name"], "Q2b");
-    let applied = read_json(|b, l| dspi_config_import(h, doc.as_ptr(), 0, b, l));
-    assert_eq!(applied["ok"], true);
+    // -- WP P1TZ -- the plain import is refused; with a token it applies.
+    let refused = read_json(|b, l| dspi_config_import(h, doc.as_ptr(), 0, b, l));
+    assert_eq!(refused["noticeKey"], "confirmation_required", "{refused}");
+    let applied = with_token_for_test(h, "config_import", |t, b, l| {
+        dspi_config_import_confirmed(h, doc.as_ptr(), 0, u32::MAX, t, b, l)
+    });
+    assert_eq!(applied["ok"], true, "{applied}");
     assert_eq!(
         read_json(|b, l| dspi_config_inspect(null(), b, l))["ok"],
         false

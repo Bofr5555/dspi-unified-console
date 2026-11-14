@@ -348,16 +348,8 @@ open class FakeDspiCore(
     }
 
     // -- WP P1AN2 -- P1TK's token-taking forms: the fake mints any token and runs the plain call
-    // (the core's own tests check the tokens), so the bridge's calls stay on the fake's record
-    /** Whether the bridge turned the core's token requirement on. */
-    var confirmationRequired = false
-        private set
-
-    override fun requireConfirmation(on: Boolean) {
-        confirmationRequired = on
-    }
-
-    override fun confirmationRequired(): Boolean = confirmationRequired
+    // (the core's own tests check the tokens), so the bridge's calls stay on the fake's record.
+    // The real core always requires tokens (P1TZ); the fake has no switch either.
 
     private var tokens = 0
 

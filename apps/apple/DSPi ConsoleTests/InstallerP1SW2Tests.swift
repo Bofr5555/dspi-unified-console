@@ -220,7 +220,7 @@ final class InstallerP1SW2Tests: XCTestCase, CoreDomainTesting {
 
     func testP1SW2TokensAreRequiredAndTheAppsGatedCallsCarryOne() {
         let (_, t, vm) = demoVM()
-        XCTAssertEqual(try t.call { $0.confirmationRequired() }.get(), true, "required in this app")
+        // P1TZ: required by every core from the start (no switch); the plain save below is refused.
         if case .failure(let e) = t.call({ try $0.savePreset(slot: 2) }) {
             if case .ConfirmationRequired = e {} else { XCTFail("refused for the token: \(e)") }
         } else {
