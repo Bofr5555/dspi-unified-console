@@ -213,27 +213,65 @@ class CaptureTest(unittest.TestCase):
         self.assertAlmostEqual(r.mean_ns, 2500, delta=b.dt_ns)
 
 
+def make_run(d, label, offsets, caps=3, units=None, step_ns=100.0):
+    """A capture directory as `capture` writes it: meta.json, edges.csv, pairs.csv."""
+    run = cli.Run(label, units or {"D0": "k340", "D1": "pico2", "D2": "pico"}, list(offsets), "D0", 4096, 48000,
+                  analysis.Limits())
+    w = cli.Writer(d, run)
+    for cap in range(caps):
+        s = seg({ch: dict(offset_ns=o + step_ns * cap * (ch != "D0"), seed=cap + 1) for ch, o in offsets.items()},
+                host=600.0 * cap)
+        w.segment(cap, s)
+        w.results(cap, s.host_time_s, analysis.analyse([s], run.chans, run.ref, run.period_ns, run.limits))
+    return run, w
+
+
 class CliTest(unittest.TestCase):
     def test_wp_scope1_edges_csv_round_trip(self):
         with tmpdir() as d:
-            w = cli.Writer(d)
-            for cap in range(3):
-                s = seg({"D0": dict(offset_ns=0), "D1": dict(offset_ns=3000 + 100 * cap)}, host=600.0 * cap)
-                w.segment(cap, s)
-                w.results(cap, s.host_time_s, analysis.analyse([s], ["D0", "D1"], "D0", PERIOD_NS, LIM))
+            run, w = make_run(d, "active 5 m, brand A", {"D0": 0.0, "D1": 3000.0})
             w.segment(3, analysis.Segment({}, SPAN, 1800.0))     # a capture with no edges at all
-            for f in (w.edges, w.pairs, w.log):
-                f.close()
+            w.close()
+            with open(os.path.join(d, "edges.csv")) as f:
+                head, first = f.readline(), f.readline()
+            self.assertIn("run_label,unit,channel", head)
+            self.assertIn("active 5 m, brand A", first)
+            self.assertIn("k340,D0", first)
             out = os.path.join(d, "re")
-            rc = cli.main(["analyse", os.path.join(d, "edges.csv"), "--channels", "D0,D1", "--out", out,
-                           "--label", "D1=pico2"])
+            rc = cli.main(["analyse", os.path.join(d, "edges.csv"), "--out", out])   # settings from meta.json
             with open(os.path.join(out, "summary.txt")) as f:
                 text = f.read()
             self.assertEqual(rc, 1)                  # capture 3 has no edges: its pair fails, pooled still fine
-            self.assertIn("pico2 vs D0: +3100 ns", text)
+            self.assertIn("run 'active 5 m, brand A'", text)
+            self.assertIn("pico2 vs k340: +3100 ns", text)
             self.assertIn("long run", text)
             self.assertIn("drift +600.0 ns/hour", text)
             self.assertIn("failed captures 1/4", text)
+            with open(os.path.join(out, "pairs.csv")) as f:
+                rows = list(cli.csv.DictReader(f))
+            self.assertEqual({(r["run_label"], r["ref_unit"], r["unit"]) for r in rows},
+                             {("active 5 m, brand A", "k340", "pico2")})
+
+    def test_wp_scope1_compare_runs(self):
+        with tmpdir() as d:
+            a, b = os.path.join(d, "cable-a"), os.path.join(d, "cable-b")
+            make_run(a, "passive 2 m", {"D0": 0.0, "D1": 1000.0, "D2": -500.0}, step_ns=0.0)[1].close()
+            make_run(b, "active 15 m", {"D0": 0.0, "D1": 1100.0, "D2": 25_000.0}, step_ns=50.0)[1].close()
+            out = os.path.join(d, "cmp")
+            rc = cli.main(["compare", a, b, "--out", out])
+            self.assertEqual(rc, 1)                  # pico on the 15 m cable is beyond 1 sample
+            with open(os.path.join(out, "compare.csv")) as f:
+                rows = {(r["run_label"], r["unit"]): r for r in cli.csv.DictReader(f)}
+            self.assertEqual(len(rows), 4)
+            self.assertAlmostEqual(float(rows[("passive 2 m", "pico2")]["mean_ns"]), 1000.0, places=2)
+            self.assertEqual(rows[("passive 2 m", "pico")]["verdict"], "PASS")
+            self.assertEqual(rows[("active 15 m", "pico")]["verdict"], "FAIL")
+            self.assertAlmostEqual(float(rows[("active 15 m", "pico2")]["drift_ns_per_hour"]), 300.0, places=1)
+            with open(os.path.join(out, "compare.txt")) as f:
+                table = f.read()
+            self.assertIn("run label", table.splitlines()[0])
+            self.assertIn("active 15 m", table)
+            self.assertIn("+25050", table)
 
 
 if __name__ == "__main__":

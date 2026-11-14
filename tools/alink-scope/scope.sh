@@ -4,6 +4,8 @@
 #   scope.sh build                    build the image (downloads from Pico's official repositories)
 #   scope.sh test                     unit tests (synthetic edges, fake driver; no device, no network)
 #   scope.sh analyse EDGES.csv ARGS   re-analyse a saved capture (no device)
+#   scope.sh compare RUN_DIR...       table of offset, jitter and drift across runs (no device);
+#                                     writes $ALINK_SCOPE_OUT/compare-<time>/compare.{csv,txt}
 #   scope.sh find                     print the scope's USB node (reads sysfs only, never opens it)
 #   scope.sh run --go ARGS            THE SCOPE: passes its USB node into the container and runs
 #                                     `python3 -m alink_scope ARGS` (info | capture ...). Only with
@@ -47,6 +49,14 @@ case "${1:-}" in
     f=$(cd "$(dirname "$1")" && pwd)/$(basename "$1"); shift
     case "$f" in "$OUT"/*) ;; *) die "put the capture under $OUT" ;; esac
     nodev python3 -m alink_scope analyse "/out/${f#"$OUT"/}" "$@" ;;
+  compare)
+    shift; [ $# -ge 1 ] || die "compare RUN_DIR..."
+    args=()
+    for r in "$@"; do
+      f=$(cd "$r" && pwd)
+      case "$f" in "$OUT"/*) args+=("/out/${f#"$OUT"/}") ;; *) die "$r is not under $OUT" ;; esac
+    done
+    nodev python3 -m alink_scope compare "${args[@]}" --out "/out/compare-$(date +%Y%m%d-%H%M%S)" ;;
   find)
     node ;;
   run)
@@ -60,5 +70,5 @@ case "${1:-}" in
       -v "$here":/tool:ro -v "$OUT":/out -w /out -e PYTHONPATH=/tool -e PYTHONDONTWRITEBYTECODE=1 \
       "$IMAGE" python3 -m alink_scope "$@" ;;
   *)
-    sed -n '2,13p' "$0"; exit 2 ;;
+    sed -n '2,15p' "$0"; exit 2 ;;
 esac
