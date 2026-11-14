@@ -1,5 +1,5 @@
 {
- "repo_commit": "776b8468",
+ "repo_commit": "844ef382",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -292,8 +292,10 @@
    "assets/notices/notices.json",
    "assets/onboarding/getting_started.json",
    "assets/onboarding/whatsnew.json",
+   "assets/templates/k340.dspipreset",
    "crates/dspi-core/src/alink.rs",
    "crates/dspi-core/src/alink/system.rs",
+   "crates/dspi-core/src/alink_usb.rs",
    "crates/dspi-core/src/autoeq.rs",
    "crates/dspi-core/src/callbacks.rs",
    "crates/dspi-core/src/connect.rs",
@@ -324,6 +326,7 @@
    "crates/dspi-core/src/names.rs",
    "crates/dspi-core/src/notice_text.rs",
    "crates/dspi-core/src/notify.rs",
+   "crates/dspi-core/src/offline.rs",
    "crates/dspi-core/src/output_labels.rs",
    "crates/dspi-core/src/params.rs",
    "crates/dspi-core/src/params_fx.rs",
@@ -350,6 +353,7 @@
    "crates/dspi-proto/src/enums.rs",
    "crates/dspi-proto/src/ext.rs",
    "crates/dspi-proto/src/ext/alink.rs",
+   "crates/dspi-proto/src/ext/alink_usb.rs",
    "crates/dspi-proto/src/ext/diag.rs",
    "crates/dspi-proto/src/frame.rs",
    "crates/dspi-proto/src/lib.rs",
@@ -394,9 +398,11 @@
    "crates/dspi-transport/src/clock.rs",
    "crates/dspi-transport/src/fake.rs",
    "crates/dspi-transport/src/fake/alink.rs",
+   "crates/dspi-transport/src/fake/alink_usb.rs",
    "crates/dspi-transport/src/fake/analysis.rs",
    "crates/dspi-transport/src/fake/bulk_db.rs",
    "crates/dspi-transport/src/fake/diag.rs",
+   "crates/dspi-transport/src/fake/document.rs",
    "crates/dspi-transport/src/fake/features.rs",
    "crates/dspi-transport/src/fake/subharm.rs",
    "crates/dspi-transport/src/fake/surfaces.rs",
@@ -430,7 +436,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "776b8468d3108ea51609715ce6986e4c95d13fdd",
+  "commit": "844ef382e08aea1b3e200e0e5f1bc8d6f7c46542",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",
@@ -456,6 +462,8 @@
    "DSPi Console/Constants.swift",
    "DSPi Console/ContentView.swift",
    "DSPi Console/Core/CoreBackedTransport.swift",
+   "DSPi Console/Core/CoreControlSurfaces.swift",
+   "DSPi Console/Core/CoreDiagnostics.swift",
    "DSPi Console/Core/CoreMirror.swift",
    "DSPi Console/Core/CoreUndo.swift",
    "DSPi Console/Core/OutputLabels.swift",
