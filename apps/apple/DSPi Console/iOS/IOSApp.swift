@@ -263,6 +263,13 @@ struct IOSRootView: View {
         Button("Export Filters...") { FileMenuActions.exportFilters() }
         Button("Import Device Configuration...") { FileMenuActions.importConfiguration() }
         Button("Export Device Configuration...") { FileMenuActions.exportConfiguration() }
+        // -- WP P1SW1 -- offline files and templates; the snapshots (a
+        // half-height sheet) here too, so the iPhone's Tools menu keeps its length
+        Button("Snapshots...") { SnapshotsSheet.show() }
+        Button("Open File...") { OfflineFiles.openFile() }
+        Button("Open Template...") { OfflineFiles.showTemplates() }
+        Button("Save File...") { OfflineFiles.saveFile() }
+        Button("Save as Template...") { OfflineFiles.askSaveTemplate() }
     }
 
     /// One-time launch work: onboarding, and the launch-argument hooks used
@@ -326,6 +333,7 @@ struct IOSRootView: View {
         case "interrupts": interrupts.show()
         case "autoeq":     autoEQ.show()
         case "graph":      graph.show(vm: vm)
+        case "snapshots":  SnapshotsSheet.show()   // -- WP P1SW1 --
         case "whatsnew":   whatsNew.show()
         case "settings":   showSettings = true
         case "devices":    showDevices = true

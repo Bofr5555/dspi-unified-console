@@ -136,6 +136,10 @@ pub struct ShellModel {
     pub echo: String,
     /// A status message that overrides the echo line for a few seconds.
     pub status: Option<String>,
+    // -- WP P1TM --
+    /// The file an offline session edits (`uconsole open FILE`): the title
+    /// shows "File: <name>" in place of the serial.
+    pub document: Option<String>,
 }
 
 impl ShellModel {
@@ -190,6 +194,8 @@ impl ShellModel {
             platform: String::new(),
             firmware: String::new(),
             serial_short: String::new(),
+            // -- WP P1TM --
+            document: None,
             via: String::new(),
             ext: String::new(),
             connected: false,

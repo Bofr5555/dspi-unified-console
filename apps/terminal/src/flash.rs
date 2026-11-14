@@ -27,9 +27,10 @@
 //!   `uconsole raw` ([`Target::open_raw`]), which lets the bootloader request through
 //!   on purpose: another wire format, or an image that cannot be read at all, is
 //!   when a board most needs this.
-//! - **Writing is not success.** [`flash_to_drive_guarded`] returning means the
-//!   write ended, or the drive went away during it, which is assumed to be the
-//!   board rebooting and which a pulled cable looks like too. Only the board
+//! - **Writing is not success.** [`dspi_core::flash_to_drive_guarded`] (through
+//!   `flash_confirmed`) returning means the write ended, or the drive went away
+//!   during it, which is assumed to be the board rebooting and which a pulled
+//!   cable looks like too. Only the board
 //!   coming back with the image's version is success.
 //!
 //! The device side goes through [`DspiCore`], the one owner of the guard's board
@@ -54,7 +55,7 @@ use std::time::Duration;
 use dspi_core::{
     BootloaderDrive, DspState, DspiCore, DspiError, FirmwareGuardBoard, FirmwareGuardDecision,
     FirmwareGuardVerdict, Uf2Info, bootloader_drives, firmware_guard_board_in_bootloader,
-    firmware_guard_check, flash_to_drive_guarded, info_platform, uf2_inspect,
+    firmware_guard_check, info_platform, uf2_inspect,
 };
 use dspi_proto::Platform;
 use dspi_proto::packets::FirmwareVersion;
@@ -705,7 +706,12 @@ fn onto_device(
 /// A reboot refused before it was sent (the device lock, WP CG24) is said at
 /// once instead of waiting for a drive that cannot come (WP TM25).
 fn enter_bootloader(req: &Request, device: &Device) -> Result<(), u8> {
-    let sent = device.core.enter_bootloader();
+    // -- WP P1TM -- gated (P1TK): asked already, so the token is minted here.
+    device.core.require_confirmation(true);
+    let token = device
+        .core
+        .confirm_token(dspi_core::ConfirmOp::EnterBootloader);
+    let sent = device.core.enter_bootloader_confirmed(Some(token));
     device.core.disconnect();
     sent.map_err(|e| {
         let (code, message) = not_rebooted(&e);
@@ -788,11 +794,18 @@ fn wait_for_drive(req: &Request, world: &mut dyn World) -> Result<BootloaderDriv
 /// Through the guard, with the board record the answers were given against.
 fn write(req: &Request, image: &Image, drive: &BootloaderDrive, passed: &Passed) -> Result<(), u8> {
     req.note(&format!("Writing to {}...", printable(&drive.path)));
-    let written = flash_to_drive_guarded(
+    // -- WP P1TM -- the write is a gated call (P1TK): the person has said yes
+    // (or --force), so its token is minted here, with the drive there and no
+    // device open on this core.
+    let core = DspiCore::new();
+    core.require_confirmation(true);
+    let token = core.confirm_token(dspi_core::ConfirmOp::FirmwareFlash);
+    let written = core.flash_confirmed(
         image.bytes.clone(),
         drive.clone(),
         passed.board.clone(),
         passed.typed.clone(),
+        Some(token),
     );
     written.map_err(|e| {
         let code = match &e {

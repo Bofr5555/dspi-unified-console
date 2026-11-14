@@ -1126,10 +1126,18 @@ struct ContentView: View {
                     firmwareUpdateController.show(vm: vm)
                 }
                 ReadOnlyBanner(vm: vm)
+                OfflineFileBadge(snaps: .shared)   // -- WP P1SW1 -- "File: <name>"
             }
         }
         // -- WP SWMAC1 -- What an undo or redo had to say, for a few seconds.
-        .overlay(alignment: .bottom) { UndoNotice(undo: vm.undo) }
+        // -- WP P1SW1 -- Above it the safe apply's countdown bar (Keep,
+        // Revert), the A/B chip and the snapshots' notice line.
+        .overlay(alignment: .bottom) {
+            VStack(spacing: 0) {
+                SnapshotsOverlay(snaps: .shared)
+                UndoNotice(undo: vm.undo)
+            }
+        }
         .navigationTitle("uConsole for DSPi")
         // The tour describes the filter table and the channel header, neither
         // of which exists on the overview the console opens on.  Selecting a

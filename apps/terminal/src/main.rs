@@ -106,6 +106,8 @@ mod flash;
 mod hub;
 // -- WP P0E --
 mod diag;
+// -- WP P1TM --
+mod pro;
 
 use dspi_cmd::COMMAND;
 use std::process::ExitCode;
@@ -247,6 +249,24 @@ fn main() -> ExitCode {
         // -- WP P0E --
         Some("diag") => diag::run(target, &flags, json),
         Some("watch") => cmd_watch(target, json),
+        // -- WP P1TM --
+        Some("snapshot") => pro::snapshots::cmd_snapshot(target, &flags, json),
+        Some("ab") => pro::snapshots::cmd_ab(target, &flags, json),
+        Some("open") => pro::snapshots::cmd_open(&flags, json, &mut |file, session, state| {
+            run_tui(
+                session,
+                state,
+                None,
+                Some(file),
+                flags.contains(&"--lite"),
+                flags.contains(&"--no-animation"),
+                palette,
+            )
+        }),
+        Some("diff") => pro::cmd_diff(target, &flags, json),
+        Some("limits") => pro::installer::cmd_limits(target, &flags, json),
+        Some("lock") => pro::installer::cmd_lock(target, &flags, json),
+        Some("status") => pro::cmd_status(target, &flags, json),
         // No arguments opens the interface; arguments run one command and exit.
         None => cmd_tui(target, &flags, palette),
         Some(other) if other.starts_with("--") => cmd_tui(target, &flags, palette),
@@ -281,6 +301,14 @@ fn is_command_word(word: &str) -> bool {
         "web",
         // -- WP P0E --
         "diag",
+        // -- WP P1TM --
+        "snapshot",
+        "ab",
+        "open",
+        "diff",
+        "limits",
+        "lock",
+        "status",
     ];
     TERMINAL_VERBS.contains(&word)
         || dspi_cmd::VERBS.iter().any(|(n, _)| *n == word)
@@ -553,6 +581,29 @@ USAGE:
                              (--volume, --hardware to include those blocks)
                              (--map-legacy for pre-2026 channel names)
                              (--dry-run to report only, --json for the report)
+                             (--only eq,routing,... to apply those blocks alone,
+                             --preview to show what would change, --guard S to
+                             go back after S seconds (5-300) unless kept,
+                             --yes to confirm without asking)
+    {COMMAND} diff <a> [b]    what differs between two documents, or between
+                             one and the device
+    {COMMAND} open <file>     edit a document with no device, in the interface
+                             (\"File:\" in the title); asks to save at the end
+    {COMMAND} snapshot save <name> [--note text] | list | recall <n> [--guard S]
+             | diff <n> [m] | export <n> <file|-> | import <file> | delete <n>
+                             whole-device snapshots kept on this computer;
+                             <n> is the number, name or id from `list`
+    {COMMAND} ab [A] <B>      compare two snapshots (with only B, the device now
+                             is A): t toggles, d diffs, a or b keeps a side
+                             (--keep a|b to end on one at once)
+    {COMMAND} limits show | set <file> | clear
+                             the installer's limits profile for this device
+    {COMMAND} lock status | unlock | set-pin | clear-pin
+                             the installer's PIN on this console. With a PIN
+                             set, limits and lock changes ask for it, or take
+                             DSPI_INSTALLER_PIN / --installer-pin - in a script
+                             (a new PIN: DSPI_NEW_INSTALLER_PIN / --new-pin -)
+    {COMMAND} status          the connection, device, limits, lock and audio link
     {COMMAND} cs export <file|-> write the control-surface configuration
     {COMMAND} cs import <file|-> apply one, live; bindings move pins, so only here
                              (--dry-run to report only, --save to store it)
@@ -591,7 +642,12 @@ USAGE:
                              the stream's start, gaps, missed and late samples,
                              and why its timeline ended (DIAG)
     {COMMAND} autoeq search <q> find a headphone correction profile
-    {COMMAND} autoeq apply <id> apply one to the input channels
+    {COMMAND} autoeq apply <id> [ch | l r]
+                             apply one to inputs 1 and 2, a channel, or a
+                             pair of inputs or outputs (--level: also set an
+                             output pair's gain; --dry-run: preview only)
+    {COMMAND} autoeq preview <id> [l r]
+                             what applying it would do, nothing written
     {COMMAND} autoeq rebuild --yes
                              download every profile from GitHub again
     {COMMAND} autoeq update <url> replace the database with a download
@@ -974,7 +1030,7 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
         let Some(mut session) = Session::new(Box::new(mock), state.caps.clone()) else {
             return exit::TRANSPORT;
         };
-        return run_tui(&mut session, state, None, lite, no_animation, palette);
+        return run_tui(&mut session, state, None, None, lite, no_animation, palette);
     }
 
     // One bulk read seeds everything the packet covers, so the first frame
@@ -986,7 +1042,15 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
     // -- WP TM9 -- The target as reached: with the hub's id, for a reconnect.
     let reached = c.link.clone().map_or_else(|| target.clone(), Target::Link);
     let link = Some((&reached, &c.ext));
-    run_tui(&mut c.session, c.state, link, lite, no_animation, palette)
+    run_tui(
+        &mut c.session,
+        c.state,
+        link,
+        None,
+        lite,
+        no_animation,
+        palette,
+    )
 }
 
 // -- WP TM26 --
@@ -1009,6 +1073,8 @@ fn run_tui(
     session: &mut Session,
     state: dspi_session::DeviceState,
     connection: Option<(&Target, &ExtState)>,
+    // -- WP P1TM -- the file an offline session edits
+    document: Option<&str>,
     lite: bool,
     no_animation: bool,
     palette: dspi_tui::theme::Palette,
@@ -1036,6 +1102,9 @@ fn run_tui(
     );
     if let Some((target, ext)) = connection {
         live.set_connection(target, ext);
+    }
+    if let Some(file) = document {
+        live.set_document(file);
     }
 
     match dspi_tui::live::run(live, session) {
@@ -1298,118 +1367,38 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
             exit::OK
         }
 
-        Some("apply") => {
+        // -- WP P1TM -- a pair (inputs 1 and 2 by default) goes through the core's
+        // autoeq_preview/autoeq_apply; one channel through the shared plan.
+        // Either way a shape this build does not know leaves its band flat.
+        Some(verb @ ("apply" | "preview")) => {
             let Some(id) = args.get(1) else {
-                eprintln!("{COMMAND}: autoeq apply needs a profile id from `autoeq search`");
+                eprintln!("{COMMAND}: autoeq {verb} needs a profile id from `autoeq search`");
                 return exit::USAGE;
             };
             let Some(entry) = db.get(id) else {
                 eprintln!("{COMMAND}: no profile called `{id}`");
                 return exit::USAGE;
             };
-
-            let mut session = match connect(target) {
-                Ok(s) => s,
-                Err(c) => return c,
+            let preview = verb == "preview" || flags.contains(&"--dry-run");
+            let json = flags.contains(&"--json");
+            let req = |pair| pro::autoeq::Request {
+                pair,
+                preview,
+                level: flags.contains(&"--level"),
             };
-            if flags.contains(&"--dry-run") {
-                session.dry_run = true;
-            }
-
-            // Default to every input: a headphone correction belongs on what is
-            // being listened to, and applying it to one side only would be worse
-            // than not applying it.
-            let caps = session.capabilities().clone();
-            let channels: Vec<u8> = match args.get(2) {
-                Some(name) => {
-                    match caps
-                        .channels
-                        .iter()
-                        .find(|c| c.slug == *name || c.name == *name)
-                    {
-                        Some(c) => vec![c.index],
-                        None => {
-                            eprintln!("{COMMAND}: no channel called `{name}`");
-                            return exit::USAGE;
-                        }
-                    }
-                }
-                None => (0..caps.num_inputs).collect(),
-            };
-
-            let mut applied = 0usize;
-            let mut unsupported: Vec<&str> = Vec::new();
-
-            for ch in &channels {
-                let _ = session.write("pre", &[*ch], dspi_proto::value::Value::Float(entry.preamp));
-
-                for (i, f) in entry.filters.iter().enumerate() {
-                    if i as u8 >= caps.max_bands {
-                        break;
-                    }
-                    let Some(kind) = autoeq::filter_type(&f.kind) else {
-                        if !unsupported.contains(&f.kind.as_str()) {
-                            unsupported.push(&f.kind);
-                        }
-                        continue;
-                    };
-                    let packet = dspi_proto::value::EqParamPacket {
-                        channel: *ch,
-                        band: i as u8,
-                        filter_type: kind,
-                        bypass: false,
-                        freq: f.freq,
-                        q: f.q,
-                        gain_db: f.gain,
-                        qp: None,
-                    };
-                    if session.write_band(&packet).is_ok() {
-                        applied += 1;
-                    }
-                }
-
-                // Bands the profile does not use must be cleared, or whatever
-                // was there before survives underneath the correction.
-                for i in entry.filters.len()..caps.max_bands as usize {
-                    let packet = dspi_proto::value::EqParamPacket {
-                        channel: *ch,
-                        band: i as u8,
-                        filter_type: dspi_proto::FilterType::Flat,
-                        bypass: false,
-                        freq: 1000.0,
-                        q: 0.707,
-                        gain_db: 0.0,
-                        qp: None,
-                    };
-                    let _ = session.write_band(&packet);
+            match args.get(2..).unwrap_or_default() {
+                [] => pro::autoeq::cmd(target, entry, req(None), json),
+                [l, r] => pro::autoeq::cmd(target, entry, req(Some((*l, *r))), json),
+                [one] if !preview => autoeq_one_channel(target, entry, one),
+                _ => {
+                    eprintln!(
+                        "{COMMAND}: autoeq {verb} takes a profile id, then nothing (inputs 1 \
+                         and 2), two channels{}",
+                        if preview { "" } else { ", or one channel" }
+                    );
+                    exit::USAGE
                 }
             }
-
-            println!(
-                "{} {} to {} channel(s): {applied} bands, preamp {:+.1} dB",
-                if session.dry_run {
-                    "Would apply"
-                } else {
-                    "Applied"
-                },
-                entry.id,
-                channels.len(),
-                entry.preamp
-            );
-            if entry.filters.len() > caps.max_bands as usize {
-                println!(
-                    "Note: the profile has {} bands, this device has {}; the rest were dropped.",
-                    entry.filters.len(),
-                    caps.max_bands
-                );
-            }
-            if !unsupported.is_empty() {
-                println!(
-                    "Shapes this build does not know: {}",
-                    unsupported.join(", ")
-                );
-            }
-            exit::OK
         }
 
         _ => {
@@ -1427,7 +1416,9 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
                 }
             );
             println!("\n  {COMMAND} autoeq search <words>");
-            println!("  {COMMAND} autoeq apply <id> [channel]");
+            println!("  {COMMAND} autoeq apply <id> [channel | left right]");
+            // -- WP P1TM --
+            println!("  {COMMAND} autoeq preview <id> [left right]");
             // -- WP TM12 --
             println!("  {COMMAND} autoeq rebuild --yes");
             println!("  {COMMAND} autoeq update <https url>");
@@ -1435,6 +1426,81 @@ fn cmd_autoeq(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
             println!("  {COMMAND} autoeq reset");
             exit::OK
         }
+    }
+}
+
+// -- WP P1TM --
+/// `autoeq apply <id> <channel>`: one channel, through the profile's shared
+/// plan (`Entry::plan`), so a shape this build does not know is cleared
+/// rather than left over from before.
+fn autoeq_one_channel(target: &Target, entry: &dspi_session::autoeq::Entry, name: &str) -> u8 {
+    let mut session = match connect(target) {
+        Ok(s) => s,
+        Err(c) => return c,
+    };
+    let caps = session.capabilities().clone();
+    let Some(ch) = caps
+        .channels
+        .iter()
+        .find(|c| c.slug == name || c.name == name)
+        .map(|c| c.index)
+    else {
+        eprintln!("{COMMAND}: no channel called `{}`", printable(name));
+        return exit::USAGE;
+    };
+    let plan = entry.plan(caps.max_bands);
+    let mut failed = Vec::new();
+    if let Err(e) = session.write("pre", &[ch], Value::Float(plan.preamp_db)) {
+        failed.push(format!("preamp: {e}"));
+    }
+    let band = |band: u8, filter_type, freq, q, gain_db| dspi_proto::value::EqParamPacket {
+        channel: ch,
+        band,
+        filter_type,
+        bypass: false,
+        freq,
+        q,
+        gain_db,
+        qp: None,
+    };
+    let mut applied = 0usize;
+    for b in &plan.bands {
+        match session.write_band(&band(b.band, b.filter_type, b.freq, b.q, b.gain_db)) {
+            Ok(_) => applied += 1,
+            Err(e) => failed.push(format!("band {}: {e}", u16::from(b.band) + 1)),
+        }
+    }
+    for &i in &plan.cleared {
+        let flat = band(i, dspi_proto::FilterType::Flat, 1000.0, 0.707, 0.0);
+        if let Err(e) = session.write_band(&flat) {
+            failed.push(format!("band {}: {e}", u16::from(i) + 1));
+        }
+    }
+    println!(
+        "Applied {} to {}: {applied} bands, preamp {:+.1} dB",
+        entry.id,
+        printable(name),
+        plan.preamp_db
+    );
+    if plan.dropped > 0 {
+        println!(
+            "Note: the profile has {} more bands than this device; they were left out.",
+            plan.dropped
+        );
+    }
+    if !plan.unsupported.is_empty() {
+        println!(
+            "Shapes this build does not know, left flat: {}",
+            plan.unsupported.join(", ")
+        );
+    }
+    for f in &failed {
+        eprintln!("{COMMAND}: not written: {f}");
+    }
+    if failed.is_empty() {
+        exit::OK
+    } else {
+        exit::TRANSPORT
     }
 }
 
