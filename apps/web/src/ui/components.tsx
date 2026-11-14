@@ -302,9 +302,17 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
       {st.status === "choosing" ? <HubChooser session={s} /> : null}
       {ro ? <p class="note read-only-reason">{ro}</p> : null}
       {st.error ? (
-        <p class="error" role="alert">
-          {st.error}
-        </p>
+        // -- WP P1WB2 -- with its notice row (P1NT) when the core's table has one: title, reason, what to do
+        st.errorNotice ? (
+          <p class={`error notice notice-${st.errorNotice.kind}`} role="alert" data-key={st.errorNotice.key}>
+            <strong>{st.errorNotice.title}.</strong> {st.errorNotice.reason} <span class="notice-detail">{st.error}</span>{" "}
+            <span class="notice-action">{st.errorNotice.action}</span>
+          </p>
+        ) : (
+          <p class="error" role="alert">
+            {st.error}
+          </p>
+        )
       ) : null}
       {snap && st.status === "open" ? (
         <div class="controls">
@@ -401,6 +409,8 @@ function LostLinkBanner(props: { phase: { phase: Parameters<typeof linkText>[0];
 /** Polls only while the page is visible: nothing runs for a hidden tab. */
 function Meters(props: { session: Session; names: string[] }) {
   const [levels, setLevels] = useState<number[]>([]);
+  // -- WP P1WB2 -- (S8) not a fresh reading (Link): since when, greyed
+  const [staleSince, setStaleSince] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -408,7 +418,9 @@ function Meters(props: { session: Session; names: string[] }) {
       if (!alive) return;
       if (document.visibilityState === "visible" && props.session.state.status === "open") {
         try {
-          setLevels((await props.session.core.call("meters", undefined)).peaks.map(peakDb));
+          const m = await props.session.core.call("meters", undefined);
+          setLevels(m.peaks.map(peakDb));
+          setStaleSince(m.stale ? Date.now() - (m.ageMs ?? 0) : null);
         } catch {
           // A failed read leaves the last levels; the strip shows the state.
         }
@@ -422,7 +434,13 @@ function Meters(props: { session: Session; names: string[] }) {
     };
   }, [props.session]);
   return (
-    <ul class="meters" aria-label="Levels">
+    <>
+    {staleSince !== null ? (
+      <p class="note meters-stale" role="status" aria-label="Meters stale">
+        Stale since {staleText(staleSince)}: no fresh reading from the DSPi.
+      </p>
+    ) : null}
+    <ul class={staleSince !== null ? "meters stale" : "meters"} aria-label="Levels">
       {props.names.map((n, i) => {
         const db = levels[i] ?? -90;
         const pct = Math.max(0, Math.min(100, ((db + 90) / 90) * 100));
@@ -436,7 +454,18 @@ function Meters(props: { session: Session; names: string[] }) {
         );
       })}
     </ul>
+    </>
   );
+}
+
+// -- WP P1WB2 --
+/** When the meters' last fresh reading was: the time of day, and how long ago. */
+export function staleText(since: number, now = Date.now()): string {
+  const d = new Date(since);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss} (${Math.max(0, Math.round((now - since) / 1000))} s ago)`;
 }
 
 // ---------------------------------------------------------------- About

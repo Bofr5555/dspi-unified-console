@@ -61,6 +61,8 @@ export interface DeskState {
   // -- WP P1DCFIX --
   /** The core's countdown sentence (notice `guard.waiting`): `{s}` is the seconds left. */
   waitingText: string;
+  /** -- WP P1WB2 -- beside the countdown when the hub runs the guard too: the core's row `guard.hub_backstop`. */
+  backstopText: string;
 }
 
 /** The rollback's default, seconds (OD-P1g). */
@@ -72,6 +74,9 @@ export const GUARD_POLL_MS = 250;
 /** The core's notice key for the countdown (P1NT's table, F7). */
 export const GUARD_WAITING_KEY = "guard.waiting";
 /** The same words, until the core has answered (the core's row is the one shown). */
+// -- WP P1WB2 -- the hub's backstop beside the countdown (the core's row, P1NT)
+export const GUARD_BACKSTOP_KEY = "guard.hub_backstop";
+const BACKSTOP_FALLBACK = "The hub puts them back too if this console goes away.";
 const WAITING_FALLBACK = "Keep these settings? They go back in {s} s unless you press Keep.";
 
 /** The countdown sentence with the seconds in, split around them (the page marks the number). */
@@ -147,6 +152,7 @@ export class SnapshotDesk {
     abDiff: null,
     timeoutS: DEFAULT_TIMEOUT_S,
     waitingText: WAITING_FALLBACK,
+    backstopText: BACKSTOP_FALLBACK, // -- WP P1WB2 --
   };
   private readonly listeners = new Set<() => void>();
   private next = 1;
@@ -178,15 +184,17 @@ export class SnapshotDesk {
         this.wasOpen = open;
       });
     }
-    const [guardDefault, ab, guard, waiting] = await Promise.all([
+    const [guardDefault, ab, guard, waiting, backstop] = await Promise.all([
       core.call("applyGuardDefault", undefined).catch(() => false),
       core.call("abState", undefined).catch(() => NO_COMPARE),
       core.call("applyStatus", undefined).catch(() => null),
       core.call("noticeFor", { key: GUARD_WAITING_KEY }).catch(() => null),
+      core.call("noticeFor", { key: GUARD_BACKSTOP_KEY }).catch(() => null), // -- WP P1WB2 --
     ]);
     if (!this.alive) return;
     const waitingText = waiting && waiting.key === GUARD_WAITING_KEY ? `${waiting.title} ${waiting.reason}` : this.state.waitingText;
-    this.set({ guardDefault, ab, guard: guard && guard.phase !== "idle" ? guard : null, waitingText });
+    const backstopText = backstop && backstop.key === GUARD_BACKSTOP_KEY ? backstop.reason : this.state.backstopText;
+    this.set({ guardDefault, ab, guard: guard && guard.phase !== "idle" ? guard : null, waitingText, backstopText });
     if (guard?.phase === "waiting") this.schedule();
   }
 
@@ -470,7 +478,9 @@ export class SnapshotDesk {
         await this.guardStarted(g);
         return true;
       }
-      const r: ImportReport = await this.session.core.call("configImport", { text, options, eqChannels });
+      // -- WP P1WB2 -- the import was confirmed in its dialog: its token
+      const token = await this.session.token("config_import");
+      const r: ImportReport = await this.session.core.call("configImport", { text, options, eqChannels, ...(token ? { token } : {}) });
       await this.after();
       this.set({ outcome: { title: `Imported “${name}”`, lines: r.lines, notes: [], tone: r.clean ? "info" : "warn" } });
       return true;

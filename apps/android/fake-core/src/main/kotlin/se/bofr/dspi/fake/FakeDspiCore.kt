@@ -316,6 +316,121 @@ open class FakeDspiCore(
 
     override fun endGroup() {}
 
+    // -- WP P1AN2 -- P1TK's token-taking forms: the fake mints any token and runs the plain call
+    // (the core's own tests check the tokens), so the bridge's calls stay on the fake's record
+    /** Whether the bridge turned the core's token requirement on. */
+    var confirmationRequired = false
+        private set
+
+    override fun requireConfirmation(on: Boolean) {
+        confirmationRequired = on
+    }
+
+    override fun confirmationRequired(): Boolean = confirmationRequired
+
+    private var tokens = 0
+
+    /** The ops the bridge minted a core token for, in order. */
+    val mintedTokens = ArrayList<se.bofr.dspi.core.ConfirmOp>()
+
+    override fun confirmToken(op: se.bofr.dspi.core.ConfirmOp): String {
+        mintedTokens += op
+        return "fake-${op.name.lowercase()}-${++tokens}"
+    }
+
+    override fun savePresetConfirmed(slot: Int, token: String?) = savePreset(slot)
+
+    override fun copyPresetConfirmed(source: Int, dest: Int, token: String?) = copyPreset(source, dest)
+
+    override fun deletePresetConfirmed(slot: Int, token: String?) = deletePreset(slot)
+
+    override fun saveParamsConfirmed(token: String?) = saveParams()
+
+    override fun factoryResetConfirmed(token: String?) = factoryReset()
+
+    override fun saveOutputConfigConfirmed(token: String?) = saveOutputConfig()
+
+    override fun enterBootloaderConfirmed(token: String?) = enterBootloader()
+
+    // A per-block import goes to configImportSelected (a test's subclass has it); the old two-option one to configImport
+    override fun configImportConfirmed(text: String, options: Long, eqChannels: Long, token: String?): String =
+        if (options and DspiConstants.IMPORT_BY_BLOCK.toLong() != 0L) {
+            configImportSelected(text, options, eqChannels)
+        } else {
+            configImport(text, options)
+        }
+
+    // -- WP P1AN2 -- P1AQ on the fake: the AutoEQ plan's writes (the input's preamp unless asked
+    // otherwise, the first ten known filters, the rest of the bands flat) through the fake's setters
+    override fun autoeqPreview(
+        profile: se.bofr.dspi.core.AutoEqProfile,
+        left: Int,
+        right: Int,
+        applyLevel: Boolean?
+    ): se.bofr.dspi.core.AutoEqPreview {
+        val s = state
+        if (left == right ||
+            left !in 0 until s.numChannels ||
+            right !in 0 until s.numChannels
+        ) {
+            throw DspiException.InvalidArgument("channel")
+        }
+        val bands = autoeqBands(profile)
+        val channels = listOf(left, right).map { ch ->
+            se.bofr.dspi.core.AutoEqChannel(ch, ch >= s.numInputChannels, profile.preampDb, bands, emptyList(), emptyList())
+        }
+        val outputs = left >= s.numInputChannels
+        return se.bofr.dspi.core.AutoEqPreview(
+            profile.id,
+            channels,
+            if (outputs) "" else "preamp",
+            if (outputs) profile.preampDb else 0f,
+            emptyList(),
+            emptyList(),
+            0,
+            emptyList()
+        )
+    }
+
+    override fun autoeqApply(
+        profile: se.bofr.dspi.core.AutoEqProfile,
+        left: Int,
+        right: Int,
+        applyLevel: Boolean?
+    ): se.bofr.dspi.core.AutoEqApply {
+        val p = autoeqPreview(profile, left, right, applyLevel)
+        for (ch in listOf(left, right)) {
+            val input = ch < state.numInputChannels
+            if (input && applyLevel != false) setInputPreamp(ch, profile.preampDb)
+            p.channels.first { it.channel == ch }.bands.forEachIndexed { b, f -> setFilter(ch, b, f) }
+        }
+        return se.bofr.dspi.core.AutoEqApply(p, "", "", emptyList())
+    }
+
+    private fun autoeqBands(profile: se.bofr.dspi.core.AutoEqProfile): List<FilterParams> {
+        val known = profile.filters.mapNotNull { f ->
+            val t = when (f.kind.lowercase()) {
+                "peaking", "pk" -> DspiConstants.FILTER_PEAKING
+                "lowshelf", "ls", "lsc" -> DspiConstants.FILTER_LOWSHELF
+                "highshelf", "hs", "hsc" -> DspiConstants.FILTER_HIGHSHELF
+                "lowpass", "lp", "lpq" -> DspiConstants.FILTER_LOWPASS
+                "highpass", "hp", "hpq" -> DspiConstants.FILTER_HIGHPASS
+                else -> return@mapNotNull null
+            }
+            FilterParams(filterType = t, bypass = false, freq = f.freq, q = f.q, gain = f.gainDb, qp = 0.707f)
+        }
+        return List(DspiConstants.BANDS_PER_CHANNEL) { b ->
+            known.getOrNull(b)
+                ?: FilterParams(filterType = DspiConstants.FILTER_FLAT, bypass = false, freq = 1000f, q = 0.707f, gain = 0f, qp = 0.707f)
+        }
+    }
+
+    // P1PR's pair write: both inputs, as the core writes them (one step there; the fake keeps two)
+    override fun setInputPairPreamp(input: Int, db: Float) {
+        setInputPreamp(input, db)
+        setInputPreamp(input xor 1, db)
+    }
+
     override fun canUndo(): Boolean = connected && undoSteps.isNotEmpty()
 
     override fun canRedo(): Boolean = connected && redoSteps.isNotEmpty()

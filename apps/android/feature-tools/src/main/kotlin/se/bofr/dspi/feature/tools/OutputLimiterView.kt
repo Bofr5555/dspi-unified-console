@@ -20,8 +20,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -39,7 +44,9 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.bridge.Installer
 import se.bofr.dspi.ui.Caption
 import se.bofr.dspi.ui.HelpTip
 import se.bofr.dspi.ui.MacColors
@@ -176,6 +183,19 @@ private fun LimiterSettings(
             }
         }
         HorizontalDivider()
+        // -- WP P1AN2 -- S2: the warning row and the core's "protect all outputs" (one undo step, P1PR)
+        val scope = rememberCoroutineScope()
+        val revision by bridge.stateRevision.collectAsState()
+        var unprotected by remember { mutableStateOf(emptyList<Int>()) }
+        LaunchedEffect(revision) { unprotected = bridge.installer.outputsWithoutLimiter() }
+        if (unprotected.isNotEmpty()) {
+            Caption(
+                "⚠ " + unprotected.joinToString(", ") { "OUT${it + 1}" } +
+                    (if (unprotected.size == 1) " is" else " are") +
+                    " above ${Installer.UNPROTECTED_GAIN_DB.toInt()} dB gain with no limiter.",
+                color = MacColors.orange
+            )
+        }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             HelpTip("Give every output this output's threshold, release and on/off state. Link groups are left as they are.") {
                 OutlinedButton(onClick = {
@@ -187,11 +207,15 @@ private fun LimiterSettings(
                 "All outputs",
                 enabled,
                 listOf(
+                    // -- WP P1AN2 --
+                    "Protect all outputs (${Installer.PROTECT_CEILING_DB.toInt()} dBFS)" to {
+                        edit(bridge) { scope.launch { bridge.installer.protectAllOutputs() } }
+                    },
                     "Link all stereo pairs" to { edit(bridge) { bridge.linkAllLimiterPairs() } },
                     "Unlink all outputs" to { edit(bridge) { bridge.unlinkAllLimiters() } },
                     "Switch every limiter off" to { edit(bridge) { bridge.disableAllLimiters() } }
                 ),
-                dividerBefore = setOf(2)
+                dividerBefore = setOf(1, 3)
             )
         }
     }

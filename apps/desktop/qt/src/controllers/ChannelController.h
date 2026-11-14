@@ -180,6 +180,11 @@ private:
     void writeBand(int channel, int band, bool crossover, const FilterParams &p);
     // The band edit on `channel` and, for half of a linked input pair, its partner
     void editBand(int channel, int band, bool crossover, const std::function<void(FilterParams &)> &edit);
+    // -- WP P1QT2 -- `writes` (its writes queued now) as one undo step labelled
+    // `label` (P1UG): the core's group opened before them on the worker and
+    // closed after; they are keyed apart meanwhile, so none of them joins a
+    // write queued before the group
+    void grouped(const QString &label, const std::function<void()> &writes);
     void onSnapshot();
     void loadLinks();
     void storeLinks();
@@ -200,6 +205,8 @@ private:
     Poller::Id m_limiterPoll = 0;
     QVariantList m_reduction;
     QHash<int, QString> m_typeNames;
+    QString m_groupTag;      // -- WP P1QT2 -- the open group's key suffix, "" with none
+    quint64 m_groupSeq = 0;  // -- WP P1QT2 --
 };
 
 #endif // CHANNELCONTROLLER_H

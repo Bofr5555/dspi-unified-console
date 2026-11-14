@@ -1003,7 +1003,8 @@ class ConfigFilesImpl internal constructor(private val bridge: DspiBridgeImpl) :
         val r =
             bridge.onFfi {
                 try {
-                    bridge.core.configImport(text, options)
+                    // -- WP P1AN2 -- P1TK: the core's token for the import the user confirmed
+                    bridge.core.configImportConfirmed(text, options, Snapshots.ALL_CHANNELS, bridge.coreToken(DangerousOp.CONFIG_IMPORT))
                 } finally {
                     bridge.flashWritten()
                 }

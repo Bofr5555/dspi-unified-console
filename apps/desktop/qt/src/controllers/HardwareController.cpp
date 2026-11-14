@@ -1,5 +1,6 @@
 // -- WP QP11 -- The hardware settings pages and the save bar (HardwareController.h).
 #include "HardwareController.h"
+#include "Confirm.h"   // -- WP P1QT2 --
 
 #include "Core.h"
 #include "DeviceModel.h"
@@ -186,7 +187,7 @@ public:
         h->m_ctx.device->write(
             QStringLiteral("save output configuration"),
             [status](FfiCore *c) {
-                *status = dspi_save_output_config(c);
+                *status = Confirm::saveOutputConfig(c);   // -- WP P1QT2 -- token
                 return *status == 0;
             },
             [this, status, done](bool ok) {

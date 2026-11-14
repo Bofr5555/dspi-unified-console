@@ -1,6 +1,7 @@
 // -- WP QP15 -- The File menu: filters and device configurations in and out,
 // Save Master Volume, Save Output Configuration
 #include "FilesController.h"
+#include "Confirm.h"   // -- WP P1QT2 --
 
 #include "AppIdentity.h"
 #include "ChannelController.h"
@@ -506,9 +507,10 @@ void FilesController::applyConfiguration(int blocks, bool guarded) {
     m_ctx.device->write(
         QStringLiteral("configuration import"),
         [text, options, reply](FfiCore *c) {
-            *reply = QJsonDocument::fromJson(callOnce([c, &text, options](char *b, uint32_t n) {
-                         return dspi_config_import_selected(c, text.constData(), options, 0xFFFFFFFFu, b, n);
-                     })).object();
+            // -- WP P1QT2 -- with a token: the import was confirmed in its dialog
+            *reply = QJsonDocument::fromJson(Confirm::run(c, Confirm::kConfigImport, [c, &text, options](const char *t, char *b, uint32_t n) {
+                         return dspi_config_import_confirmed(c, text.constData(), options, 0xFFFFFFFFu, t, b, n);
+                     }, kReplyBytes).json).object();
             return reply->value(QLatin1String("ok")).toBool();
         },
         [this, reply](bool ok) {
@@ -575,7 +577,7 @@ void FilesController::answerDevice(const QString &op, const QString &answer) {
                 char name[CHANNEL_NAME_LEN] = {};
                 if (!dspi_get_preset_name(c, uint8_t(slot), name, sizeof name) || name[0] == 0)
                     dspi_set_preset_name(c, uint8_t(slot), fallback.constData());
-                *status = dspi_save_preset(c, uint8_t(slot));
+                *status = Confirm::savePreset(c, uint8_t(slot));   // -- WP P1QT2 -- token
                 return *status == PRESET_OK;
             },
             [this, status](bool ok) {
@@ -603,7 +605,7 @@ void FilesController::answerDevice(const QString &op, const QString &answer) {
         m_ctx.device->write(
             QStringLiteral("factory reset"),
             [status](FfiCore *c) {
-                *status = dspi_factory_reset(c);
+                *status = Confirm::factoryReset(c);   // -- WP P1QT2 -- token
                 return *status == FLASH_OK;
             },
             [this](bool ok) {
@@ -619,7 +621,7 @@ void FilesController::saveOutputConfiguration() {
     m_ctx.device->write(
         QStringLiteral("output configuration save"),
         [status](FfiCore *c) {
-            *status = dspi_save_output_config(c);
+            *status = Confirm::saveOutputConfig(c);   // -- WP P1QT2 -- token
             return *status == FLASH_OK;
         },
         [this, status](bool ok) {

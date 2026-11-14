@@ -194,7 +194,14 @@ class ReadOnlyTest {
             "configFiles.importFilters" to { b.configFiles.importFilters("{}", listOf(0)) },
             // -- WP AN42 -- an undo or redo writes the device like the setter it replays
             "undo" to { assertEquals(HistoryStep.Refused, b.undo()) },
-            "redo" to { assertEquals(HistoryStep.Refused, b.redo()) }
+            "redo" to { assertEquals(HistoryStep.Refused, b.redo()) },
+            // -- WP P1AN2 -- the Installer facet's writes (refused before the core: a failure, no traffic)
+            "installer.applyLimits" to { assertTrue(b.installer.applyLimits(LimitsDraft(masterVolumeMaxDb = -10f)).isFailure) },
+            "installer.cover" to { assertTrue(b.installer.cover(listOf("front")).isFailure) },
+            "installer.protectAllOutputs" to { assertTrue(b.installer.protectAllOutputs().isFailure) },
+            "installer.autoeqApply" to {
+                assertTrue(b.installer.autoeqApply(se.bofr.dspi.core.AutoEqProfile("x", "X", 0f, emptyList()), 0, 1).isFailure)
+            }
         )
     }
 
@@ -369,8 +376,8 @@ class ReadOnlyTest {
         val core = tooOld()
         val b = newBridge(core)
         val tested = writePaths(b).map { it.first }.toSet()
-        fun members(c: Class<*>) =
-            c.declaredMethods.map { it.name }.filterNot { Regex("get[A-Z].*").matches(it) || it.contains('$') }.toSet()
+        fun members(c: Class<*>) = // -- WP P1AN2 -- a suspend member returning Result has a mangled JVM name (`setPin-gIAlu-s`)
+            c.declaredMethods.map { it.name.substringBefore('-') }.filterNot { Regex("get[A-Z].*").matches(it) || it.contains('$') }.toSet()
         val bridge = members(DspiBridge::class.java)
         assertEquals("unclassified DspiBridge members", emptySet<String>(), bridge - tested - READ_MEMBERS)
         val controllers =
@@ -380,7 +387,8 @@ class ReadOnlyTest {
                 "cs" to CsController::class.java,
                 "configFiles" to ConfigFiles::class.java,
                 "rta" to RtaController::class.java,
-                "monitor" to MonitorModel::class.java
+                "monitor" to MonitorModel::class.java,
+                "installer" to Installer::class.java // -- WP P1AN2 --
             )
         for ((prefix, c) in controllers) {
             val left = members(c).filter { "$prefix.$it" !in tested && "$prefix.$it" !in CONTROLLER_READS }
@@ -433,7 +441,12 @@ class ReadOnlyTest {
                 // analyser request parameters: part of the RTA subscription (a read)
                 "rta.setFftOrder", "rta.setAvgMs", "rta.setPeakDecay",
                 // -- WP AN17 -- rta_take_control re-pushes this console's own subscription (PASS_THROUGH in WriteGuardedCore)
-                "rta.takeControl"
+                "rta.takeControl",
+                // -- WP P1AN2 -- reads, the mode manifest, notices, and the lock and limits on this console:
+                // the PIN, the lock and clearing a profile change nothing on the device (PASS_THROUGH)
+                "installer.setFolder", "installer.refresh", "installer.unlock", "installer.lockNow", "installer.setPin",
+                "installer.clearPin", "installer.clearLimits", "installer.manifest", "installer.resolve", "installer.noticeText",
+                "installer.notice", "installer.outputsWithoutLimiter", "installer.autoeqPreview"
             )
     }
 }

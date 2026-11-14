@@ -1,6 +1,8 @@
 // -- WP QP8 -- The subharmonic, tube, upmixer and limiter controller (ToolsController.h).
 #include "ToolsController.h"
 
+#include "CoreWorker.h"   // -- WP P1QT2 --
+
 #include "ChannelListModel.h"
 #include "Core.h"
 #include "DeviceModel.h"
@@ -208,6 +210,7 @@ ToolsController::ToolsController(const AppContext &ctx, QObject *parent) : QObje
         ++m_reads;
         emit toolsChanged();
         updatePolls();
+        readUnprotected();   // -- WP P1QT2 --
     });
     connect(m_ctx.device->channels(), &ChannelListModel::countChanged, this, [this]() {
         ++m_reads;
@@ -797,14 +800,38 @@ void ToolsController::switchLimitersOff() {
 
 // Every limiter on at -1 dBFS, the stereo pairs linked. The groups go first, so
 // the all-outputs writes after them land on every member alike.
+// -- WP P1QT2 -- The core's helper (P1PR): every limiter on at -1 dBFS, the
+// stereo pairs linked, the PDM sub left out, one undo step, held to the
+// limits profile (an output's own ceiling, if lower, is kept and reported)
 void ToolsController::protectAllOutputs() {
-    std::vector<float> groups;
-    for (const QVariant &g : stereoPairGroups()) groups.push_back(float(g.toInt()));
-    limiterWrite(QStringLiteral("output limiters protect"), [groups](FfiCore *c) {
-        const uint8_t all = LIMITER_ALL_OUTPUTS;
-        return writeGroups(c, groups) && dspi_set_limiter_param(c, all, LIMITER_PARAM_THRESHOLD_DB, -1.0f) &&
-               dspi_set_limiter_param(c, all, LIMITER_PARAM_ENABLED, 1.0f);
-    });
+    limiterWrite(QStringLiteral("output limiters protect"), [](FfiCore *c) { return dspi_protect_all_outputs(c, kProtectCeilingDb); });
+}
+
+// -- WP P1QT2 -- PRO1 S2's warning, from the core's mirror, on the worker
+void ToolsController::readUnprotected() {
+    if (m_unprotectedAsked) return;
+    m_unprotectedAsked = true;
+    m_ctx.core->worker()->call(
+        this, [](FfiCore *c) { return dspi_outputs_without_limiter(c, kUnprotectedAboveDb); },
+        [this](uint32_t mask) {
+            m_unprotectedAsked = false;
+            QVariantList list;
+            for (int o = 0; o < MAX_OUTPUTS && o < 32; ++o)
+                if (mask >> o & 1u) list << o;
+            if (list == m_unprotected) return;
+            m_unprotected = list;
+            emit unprotectedChanged();
+        });
+}
+
+QString ToolsController::unprotectedText() const {
+    if (m_unprotected.isEmpty()) return QString();
+    QStringList names;
+    for (const QVariant &o : m_unprotected) names << outputName(o.toInt());
+    //: PRO1 S2's warning row; %1 the outputs ("Out 1, Out 2"), %2 the gain (-10)
+    return tr("No limiter on %1, above %2 dB of gain.")
+        .arg(names.join(QStringLiteral(", ")))
+        .arg(int(kUnprotectedAboveDb));
 }
 
 QString ToolsController::limiterLinkSummary(int output) const {

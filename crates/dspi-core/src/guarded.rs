@@ -73,6 +73,12 @@ pub const APPLY_GUARD_DEFAULT_TIMEOUT_S: u32 = 30;
 /// seconds left ([`GuardedApply::message`] is empty while waiting).
 pub const NOTICE_GUARD_WAITING: &str = "guard.waiting";
 
+// -- WP P1WB2 --
+/// The notice (P1NT's table) a client adds to the countdown when the hub runs
+/// the guard too ([`GuardedApply::hub`]): the hub reverts if this console
+/// goes away. Its reason is the sentence to show.
+pub const NOTICE_GUARD_HUB_BACKSTOP: &str = "guard.hub_backstop";
+
 /// The longest timeout granted, in seconds; a longer one is shortened to it.
 /// The hub's deadline is [`HUB_MARGIN`] later, inside its 600 s.
 pub const APPLY_GUARD_MAX_TIMEOUT_S: u32 = 590;

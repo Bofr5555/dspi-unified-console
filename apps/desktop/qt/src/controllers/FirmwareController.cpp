@@ -1,6 +1,7 @@
 // -- WP QP16 -- The firmware window, its installer, the bundled images and the
 // version-mismatch banner (FirmwareController.h)
 #include "FirmwareController.h"
+#include "Confirm.h"   // -- WP P1QT2 --
 
 #include "AppIdentity.h"
 #include "Core.h"
@@ -507,7 +508,7 @@ void FirmwareController::enterBootloaderForInstall() {
     if (!m_ctx.device->connected() || m_rebootRequested) return;
     m_rebootRequested = true;
     m_leftGeneration = m_ctx.device->snapshot().generation;
-    m_ctx.device->writeEvenReadOnly(QStringLiteral("enter bootloader"), [](FfiCore *c) { return dspi_enter_bootloader(c); },
+    m_ctx.device->writeEvenReadOnly(QStringLiteral("enter bootloader"), [](FfiCore *c) { return Confirm::enterBootloader(c); },   // -- WP P1QT2 -- token
                                     [this](bool sent) {
                                         if (sent || m_installing) return;
                                         m_armed = false;
@@ -518,7 +519,7 @@ void FirmwareController::enterBootloaderForInstall() {
 
 void FirmwareController::enterBootloaderOnly() {
     if (!m_ctx.device->connected()) return;
-    m_ctx.device->writeEvenReadOnly(QStringLiteral("enter bootloader"), [](FfiCore *c) { return dspi_enter_bootloader(c); });
+    m_ctx.device->writeEvenReadOnly(QStringLiteral("enter bootloader"), [](FfiCore *c) { return Confirm::enterBootloader(c); });   // -- WP P1QT2 -- token
 }
 
 void FirmwareController::exportConfiguration() {
@@ -576,13 +577,16 @@ void FirmwareController::write(const BootloaderLocator::Board &board, const Imag
     const QByteArray typed = m_typed.toUtf8();
     m_ctx.core->worker()->call(
         this,
-        [bytes, drive, chip, required, typed](FfiCore *) {
-            return QJsonDocument::fromJson(readSized([&](char *b, uint32_t n) {
-                       return dspi_flash_to_drive_guarded(reinterpret_cast<const uint8_t *>(bytes.constData()),
-                                                          uint32_t(bytes.size()), drive.constData(), int8_t(chip),
-                                                          uint16_t(required), typed.isEmpty() ? nullptr : typed.constData(),
-                                                          b, n);
-                   })).object();
+        [bytes, drive, chip, required, typed](FfiCore *c) {
+            // -- WP P1QT2 -- with a token minted now, the board waiting in its
+            // bootloader (the person started the install; the guard's word, if
+            // it asked for one, is `typed`)
+            return QJsonDocument::fromJson(Confirm::run(c, Confirm::kFirmwareFlash, [&](const char *t, char *b, uint32_t n) {
+                       return dspi_flash_confirmed(c, reinterpret_cast<const uint8_t *>(bytes.constData()),
+                                                   uint32_t(bytes.size()), drive.constData(), int8_t(chip),
+                                                   uint16_t(required), typed.isEmpty() ? nullptr : typed.constData(),
+                                                   t, b, n);
+                   }).json).object();
         },
         [this, image](QJsonObject reply) {
             if (!reply.value(QStringLiteral("ok")).toBool()) {

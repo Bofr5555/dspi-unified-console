@@ -92,7 +92,8 @@ export function GuardBar(props: { desk: SnapshotDesk }) {
           {w.before}
           <span class="guard-left">{w.seconds}</span>
           {w.after}
-          {g.hub ? " The hub puts them back too if this page goes away." : ""}
+          {/* -- WP P1WB2 -- the core's row (guard.hub_backstop), read by the desk */}
+          {g.hub ? ` ${st.backstopText}` : ""}
         </span>
       </div>
       <progress class="guard-progress" max={1} value={part} aria-label="Time left" />

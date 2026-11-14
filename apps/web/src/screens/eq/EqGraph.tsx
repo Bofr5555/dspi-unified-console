@@ -67,7 +67,7 @@ export interface GraphProps {
   curves: Curves | null;
   freqs: number[] | null;
   /** The other channels shown. */
-  others: { curve: number[]; colour: string; offset: number }[];
+  others: { curve: number[]; colour: string; offset: number; dashed?: boolean }[]; // -- WP P1WB2 --
   /** The edited channel: its curve's colour and level shift; its curve is `curves.chains[0]`. */
   colour: string;
   offset: number;

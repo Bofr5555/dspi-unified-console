@@ -77,8 +77,20 @@ object HomeModel {
      * outputs clipping (the core's sticky clip flags, named by their OUTn tags), limiters holding
      * the level down, a core above [CPU_HIGH] %; otherwise all is well.
      */
-    fun healthLine(connected: Boolean, clipping: List<String>, limiting: List<String>, cpu0: Int, cpu1: Int): HealthLine {
+    fun healthLine(
+        connected: Boolean,
+        clipping: List<String>,
+        limiting: List<String>,
+        cpu0: Int,
+        cpu1: Int,
+        // -- WP P1AN2 -- S8: how old the meters are when the core says they are stale (null: fresh)
+        staleMs: Long? = null
+    ): HealthLine {
         if (!connected) return HealthLine("Not connected", Health.OFFLINE)
+        // Old meters say nothing about now: that comes first, and nothing is "OK" meanwhile
+        if (staleMs != null) {
+            return HealthLine(staleLine(staleMs), if (clipping.isNotEmpty()) Health.PROBLEM else Health.WARNING)
+        }
         val parts = buildList {
             if (clipping.isNotEmpty()) add("Clipping: ${clipping.joinToString(", ")}")
             if (limiting.isNotEmpty()) add("Limiting: ${limiting.joinToString(", ")}")
@@ -90,6 +102,10 @@ object HomeModel {
             else -> HealthLine(parts.joinToString(" · "), Health.WARNING)
         }
     }
+
+    // -- WP P1AN2 --
+    /** "Meters stale since 12 s": the meters' age in whole seconds (S8 "stale since"). */
+    fun staleLine(ageMs: Long): String = "Meters stale since ${(ageMs / 1000).coerceAtLeast(1)} s"
 
     /** `InputLinkAlerts.showMismatchAlert` title. */
     fun linkMismatchTitle(pageInput: Int, partnerInput: Int): String = "Inputs ${pageInput + 1} and ${partnerInput + 1} don't match"

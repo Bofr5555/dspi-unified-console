@@ -190,11 +190,17 @@ void MatrixController::directRouting() {
         if (o != pdm && !s->output_enabled[o]) enable.push_back(uint8_t(o));
     m_model->unstageAll();
     // PDM goes off first: that frees Core 1 for the EQ outputs enabled after
-    m_ctx.device->write(QStringLiteral("matrix routes"), [pdmOn, pdm, routes, enable](FfiCore *c) {
+    // -- WP P1QT2 -- one undo step (P1UG): the core's group around the writes
+    const QByteArray label = tr("Direct 1:1").toUtf8();
+    m_ctx.device->write(QStringLiteral("matrix routes"), [pdmOn, pdm, routes, enable, label](FfiCore *c) {
         bool ok = true;
         if (pdmOn) ok = dspi_set_output_enable(c, uint8_t(pdm), false) == 0 && ok;
+        // The crosspoints are the step; an output switched on is never undone
+        // (audible), so it stays outside the group
+        dspi_undo_group_begin(c, label.constData());
         for (const RouteWrite &r : routes)
             ok = dspi_set_matrix_route(c, r.input, r.output, r.enabled, r.gain, r.invert) && ok;
+        dspi_undo_group_end(c);
         for (uint8_t o : enable) ok = dspi_set_output_enable(c, o, true) == 1 && ok;
         return ok;
     });
@@ -211,10 +217,14 @@ void MatrixController::clearRoutes() {
         }
     m_model->unstageAll();
     if (routes.empty()) return;
-    m_ctx.device->write(QStringLiteral("matrix routes"), [routes](FfiCore *c) {
+    // -- WP P1QT2 -- one undo step (P1UG)
+    const QByteArray label = tr("Clear Routing").toUtf8();
+    m_ctx.device->write(QStringLiteral("matrix routes"), [routes, label](FfiCore *c) {
         bool ok = true;
+        dspi_undo_group_begin(c, label.constData());
         for (const RouteWrite &r : routes)
             ok = dspi_set_matrix_route(c, r.input, r.output, r.enabled, r.gain, r.invert) && ok;
+        dspi_undo_group_end(c);
         return ok;
     });
 }

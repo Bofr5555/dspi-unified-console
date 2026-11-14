@@ -35,11 +35,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.ui.writesAllowed
 
 /** The AutoEQ browser. [onApply] applies the selected profile and returns whether it was applied (then the browser closes). */
 @Composable
-fun AutoEQBrowser(manager: AutoEQManager, onApply: (HeadphoneEntry) -> Boolean, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+fun AutoEQBrowser(
+    manager: AutoEQManager,
+    onApply: (HeadphoneEntry) -> Boolean,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    // -- WP P1AN2 -- T6: with a core, the pair choice and the preview before Apply ([onApplyPair])
+    bridge: DspiBridge? = null,
+    onApplyPair: ((HeadphoneEntry, AutoEqPair) -> Boolean)? = null
+) {
     var searchText by rememberSaveable { mutableStateOf("") }
     var selectedEntryId by rememberSaveable { mutableStateOf<String?>(null) }
     val entries by manager.entries.collectAsState()
@@ -93,6 +102,17 @@ fun AutoEQBrowser(manager: AutoEQManager, onApply: (HeadphoneEntry) -> Boolean, 
         }
 
         HorizontalDivider()
+        // -- WP P1AN2 --
+        val pairs = bridge?.let { b ->
+            remember(b.numInputChannels, b.numOutputChannels) { autoEqPairs(b.numInputChannels, b.numOutputChannels) }
+        }
+        var pair by remember(pairs) { mutableStateOf(pairs?.firstOrNull()) }
+        val withPreview = bridge != null && onApplyPair != null && coreAutoEq(bridge) && pair != null
+        if (withPreview && selectedEntry != null) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                AutoEQPreviewPanel(bridge!!, selectedEntry, pairs!!, pair!!) { pair = it }
+            }
+        }
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 if (selectedEntry != null) {
@@ -108,7 +128,10 @@ fun AutoEQBrowser(manager: AutoEQManager, onApply: (HeadphoneEntry) -> Boolean, 
             }
             TextButton(onClick = onDismiss) { Text("Cancel") }
             Button(onClick = {
-                selectedEntry?.let { if (onApply(it)) onDismiss() }
+                selectedEntry?.let {
+                    val applied = if (withPreview) onApplyPair!!(it, pair!!) else onApply(it) // -- WP P1AN2 --
+                    if (applied) onDismiss()
+                }
             }, enabled = selectedEntry != null && writesAllowed()) { Text("Apply") }
         }
     }

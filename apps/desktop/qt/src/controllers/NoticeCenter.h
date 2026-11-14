@@ -1,8 +1,10 @@
 #ifndef NOTICECENTER_H
 #define NOTICECENTER_H
 
+#include <QHash>
 #include <QObject>
 #include <QString>
+#include <QVariantMap>
 #include <QTimer>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
@@ -47,6 +49,23 @@ public:
 
     // kind: "info", "warning" or "error"
     Q_INVOKABLE void post(const QString &text, const QString &kind = QStringLiteral("info"));
+
+    // -- WP P1QT2 -- The core's notice table (P1NT, `dspi_notice_texts`, read
+    // once: no handle, no I/O). A row by key: { key, kind, title, reason,
+    // action }, {} for a key the table lacks.
+    Q_INVOKABLE QVariantMap row(const QString &key) const;
+    // A row in one line, "Title: reason", or `fallback` when the table lacks it
+    Q_INVOKABLE QString line(const QString &key, const QString &fallback = QString()) const;
+    // A row's reason sentence alone, or `fallback`
+    Q_INVOKABLE QString sentence(const QString &key, const QString &fallback = QString()) const;
+    // Posts the row for `key` in the row's kind ("Title: reason"); `detail`
+    // when the table lacks it. Keys of the same family fall back to the
+    // family's row (`installer_lock.x` to `installer_lock`).
+    Q_INVOKABLE void postKey(const QString &key, const QString &detail = QString());
+    // A write refusal worth a notice of its own: a limit, the installer's
+    // lock, a missing confirmation, a hub that refused an image or could not
+    // judge the write. Other refusals keep their own words where they are.
+    static bool gateKey(const QString &key);
     Q_INVOKABLE void dismiss();
     Q_INVOKABLE void clear();
 
@@ -61,6 +80,7 @@ private:
     QVariantList m_queue;
     QTimer m_timer;
     int m_serial = 0;
+    QHash<QString, QVariantMap> m_rows;   // -- WP P1QT2 -- the core's notice table
 };
 
 #endif // NOTICECENTER_H

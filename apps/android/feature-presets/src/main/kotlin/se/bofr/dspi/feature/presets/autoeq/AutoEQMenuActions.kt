@@ -32,9 +32,34 @@ class AutoEQMenuActions(
 ) {
     /** Favorite Profiles > entry, and the browser's Apply: applies immediately (live, unsaved). */
     fun applyProfile(entry: HeadphoneEntry): Boolean {
+        // -- WP P1AN2 -- through the core (inputs 1-2, one undo step) where there is one
+        if (coreAutoEq(bridge)) return applyToPair(entry, AutoEqPair(0, 1, "IN 1–2"))
         if (!manager.applyProfile(entry, bridge)) {
             host.showError("No device connected.")
             return false
+        }
+        return true
+    }
+
+    // -- WP P1AN2 --
+    /**
+     * T6: apply [entry] to [pair] through the core (`autoeq_apply`: a snapshot
+     * first, one undo step, outputs' gain kept). The result is one line on the
+     * notice line (no success modal), a refusal an error alert.
+     */
+    fun applyToPair(entry: HeadphoneEntry, pair: AutoEqPair): Boolean {
+        if (!bridge.connected) {
+            host.showError("No device connected.")
+            return false
+        }
+        scope.launch {
+            bridge.installer.autoeqApply(profileOf(entry), pair.left, pair.right)
+                .onSuccess { r ->
+                    host.showNotice(
+                        (listOf("AutoEQ: ${entry.displayName} applied to ${pair.label}.") + previewLines(r.preview)).joinToString(" ")
+                    )
+                }
+                .onFailure { host.showError(it.message.orEmpty().ifEmpty { "The profile was not applied." }) }
         }
         return true
     }

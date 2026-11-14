@@ -21,6 +21,10 @@ Banner {
           //: %1 what was applied (a file's or snapshot's name), %2 the core's sentence with the seconds left
           : qsTr("“%1”: %2").arg(SnapshotsController.guardLabel)
                 .arg(SnapshotsController.guardWaitingText.replace("{s}", String(seconds)))
+            // -- WP P1QT2 -- over DSPi Link the hub's timer is the backstop (notice guard.hub_backstop)
+            + (SnapshotsController.guardHub
+               ? " " + NoticeCenter.sentence("guard.hub_backstop", qsTr("The hub puts them back too if this console goes away."))
+               : "")
 
     // The time left, as a bar that runs down
     Rectangle {

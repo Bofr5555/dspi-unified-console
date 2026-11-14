@@ -219,7 +219,8 @@ Rectangle {
         objectName: list.objectName + ".clearQuestion"
         parent: Overlay.overlay
         title: qsTr("Clear All Bands?")
-        text: qsTr("Every band in this list will be reset to its default (flat) state. This cannot be undone.")
+        // -- WP P1QT2 -- one undo step now (Edit > Undo puts every band back)
+        text: qsTr("Every band in this list will be reset to its default (flat) state. Edit > Undo puts them back.")
         acceptText: qsTr("Clear All")
         onAnswered: answer => { if (answer === "accept") ChannelController.clearBands(list.channel, list.crossover) }
     }

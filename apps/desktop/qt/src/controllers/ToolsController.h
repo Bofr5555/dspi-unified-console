@@ -66,8 +66,18 @@ class ToolsController : public QObject {
     Q_PROPERTY(QVariantMap upmixStatus READ upmixStatus NOTIFY upmixStatusChanged)
 
     Q_PROPERTY(bool limiterSupported READ limiterSupported NOTIFY toolsChanged)
+    // -- WP P1QT2 -- PRO1 S2: the outputs that are on, above -10 dB of gain and
+    // without a limiter (the core's outputs_without_limiter), and its warning row
+    Q_PROPERTY(QVariantList unprotectedOutputs READ unprotectedOutputs NOTIFY unprotectedChanged)
+    Q_PROPERTY(QString unprotectedText READ unprotectedText NOTIFY unprotectedChanged)
 public:
+    // -- WP P1QT2 -- Protect all outputs' ceiling, and the warning's gain
+    static constexpr float kProtectCeilingDb = -1.0f;
+    static constexpr float kUnprotectedAboveDb = -10.0f;
+
     ToolsController(const AppContext &ctx, QObject *parent);
+    QVariantList unprotectedOutputs() const { return m_unprotected; }   // -- WP P1QT2 --
+    QString unprotectedText() const;                                    // -- WP P1QT2 --
     static ToolsController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<ToolsController>(); }
 
     int revision() const { return m_reads; }
@@ -165,6 +175,7 @@ signals:
     void subharmMeterChanged();
     void tubeGlowChanged();
     void upmixStatusChanged();
+    void unprotectedChanged();   // -- WP P1QT2 --
 
 private:
     void apply(const QString &what, std::function<bool(FfiCore *)> setter, std::function<void(bool)> done = {});
@@ -173,6 +184,7 @@ private:
     void fetchHeadroom();
     void updatePolls();
     void updateGlow();
+    void readUnprotected();   // -- WP P1QT2 --
 
     AppContext m_ctx;
     int m_reads = 0;
@@ -185,6 +197,8 @@ private:
     bool m_upmixShown = false;
     Poller::Id m_subMeterPoll = -1;
     Poller::Id m_upmixPoll = -1;
+    QVariantList m_unprotected;        // -- WP P1QT2 --
+    bool m_unprotectedAsked = false;   // -- WP P1QT2 --
 };
 
 #endif // TOOLSCONTROLLER_H

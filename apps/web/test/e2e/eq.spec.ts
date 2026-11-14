@@ -201,7 +201,7 @@ test("WB6b chip and list: change type and Q, bypass a band (chip, Alt-click, lis
   await expect.poll(async () => (await out1(page))[slot]!.filterType).toBe(1);
   await list.getByRole("button", { name: "Clear All" }).click();
   const ask = page.getByRole("dialog", { name: "Clear All Bands?" });
-  await expect(ask).toContainText("This cannot be undone.");
+  await expect(ask).toContainText("One Undo puts them all back."); // -- WP P1WB2 -- one undo group
   await ask.getByRole("button", { name: "Clear All" }).click();
   await expect.poll(async () => (await out1(page)).every((x) => x.filterType === 0)).toBe(true);
   expect(errors).toEqual([]);

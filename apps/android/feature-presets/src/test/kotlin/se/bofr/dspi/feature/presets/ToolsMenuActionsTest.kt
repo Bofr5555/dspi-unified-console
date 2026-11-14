@@ -29,8 +29,9 @@ class ToolsMenuActionsTest {
         host.press("Save")
         runCurrent()
         assertEquals(listOf("savePreset(0)"), core.presetCalls())
-        assertEquals("Success", host.alert.value!!.messageText)
-        assertEquals("Preset saved successfully", host.alert.value!!.informativeText)
+        // -- WP P1AN2 -- U5: a success is the notice line, never a modal
+        assertNull(host.alert.value)
+        assertEquals("Preset saved successfully", host.notice.value)
         assertFalse(b.presetDirty.value)
     }
 
@@ -79,7 +80,7 @@ class ToolsMenuActionsTest {
         host.press("Revert")
         runCurrent()
         assertEquals(listOf("loadParams"), core.presetCalls())
-        assertEquals("Parameters reverted successfully", host.alert.value!!.informativeText)
+        assertEquals("Parameters reverted successfully", host.notice.value) // -- WP P1AN2 --
         assertFalse(b.presetDirty.value)
     }
 
@@ -95,7 +96,8 @@ class ToolsMenuActionsTest {
         host.press("Reset")
         runCurrent()
         assertEquals(listOf("factoryReset"), core.presetCalls())
-        assertEquals("Factory reset complete", host.alert.value!!.informativeText)
+        assertEquals("Factory reset complete", host.notice.value) // -- WP P1AN2 --
+        assertNull(host.alert.value)
     }
 
     @Test
@@ -108,14 +110,14 @@ class ToolsMenuActionsTest {
         t.saveMasterVolume()
         assertNull(host.alert.value)
         runCurrent()
-        assertEquals("Success", host.alert.value!!.messageText)
-        assertTrue(host.alert.value!!.informativeText.startsWith("Master volume saved ("))
-        assertTrue(host.alert.value!!.informativeText.endsWith("). It will be applied on next boot."))
-        host.press("OK")
+        // -- WP P1AN2 -- the notice line
+        assertNull(host.alert.value)
+        assertTrue(host.notice.value.startsWith("Master volume saved ("))
+        assertTrue(host.notice.value.endsWith("). It will be applied on next boot."))
         t.saveOutputConfig()
         assertNull(host.alert.value)
         runCurrent()
-        assertEquals("Output configuration saved. It will be applied on next boot.", host.alert.value!!.informativeText)
+        assertEquals("Output configuration saved. It will be applied on next boot.", host.notice.value) // -- WP P1AN2 --
         assertEquals(listOf("saveMasterVolume", "saveOutputConfig"), core.presetCalls())
     }
 

@@ -75,6 +75,8 @@ pub mod limits;
 pub mod modes;
 // -- WP P1AQ --
 pub mod autoeq;
+// -- WP P1WB2 -- the DAC mute for the power-on page
+pub mod power_on;
 // -- WP SW3 --
 pub mod system;
 // -- WP WB4a --

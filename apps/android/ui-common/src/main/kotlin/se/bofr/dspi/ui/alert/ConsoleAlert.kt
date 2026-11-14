@@ -5,8 +5,11 @@
 // from :feature-presets). Drawn by [ConsoleAlertHost].
 package se.bofr.dspi.ui.alert
 
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** NSAlert.Style. */
@@ -86,8 +89,29 @@ class AlertHost {
         _progress.value = null
     }
 
+    // -- WP P1AN2 -- U5: a success is not a modal. It goes to the notice line
+    // (the app's snackbar over the screen, [LocalNoticeLine]); [notice] keeps
+    // the latest for a host drawn without one (tests, previews).
+    private val _notice = MutableStateFlow("")
+
+    /** The latest notice-line text ("" none). */
+    val notice: StateFlow<String> = _notice.asStateFlow()
+
+    private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+    /** Each notice as it is posted, for the host that shows them ([ConsoleAlertHost]). */
+    val notices: SharedFlow<String> = _notices.asSharedFlow()
+
+    /** One line on the notice line; never a modal. */
+    fun showNotice(message: String) {
+        if (message.isEmpty()) return
+        _notice.value = message
+        _notices.tryEmit(message)
+    }
+
     // The menu action structs' showSuccess / showError / showInfo helpers.
-    fun showSuccess(message: String) = show(ConsoleAlert("Success", message, AlertStyle.INFORMATIONAL, listOf(ok())))
+    /** -- WP P1AN2 -- the notice line (was the macOS "Success" alert); several lines become one. */
+    fun showSuccess(message: String) = showNotice(message.lines().filter { it.isNotBlank() }.joinToString(" "))
 
     fun showError(message: String) = show(ConsoleAlert("Error", message, AlertStyle.CRITICAL, listOf(ok())))
 
