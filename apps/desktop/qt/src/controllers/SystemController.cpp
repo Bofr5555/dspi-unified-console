@@ -453,7 +453,13 @@ void SystemController::save() {
         [this](const QJsonObject &o) {
             if (isOk(o)) {
                 clearDraft();
-                setAction(tr("Saved on the hub."), false);
+                // -- WP P1QT1 -- the hub's warnings about the model it kept
+                // (HWLK1F's note: a unit whose firmware has no audio link)
+                QStringList warnings;
+                for (const QJsonValue &w : o.value(QLatin1String("warnings")).toArray()) warnings.append(w.toString());
+                if (warnings.isEmpty()) setAction(tr("Saved on the hub."), false);
+                else
+                    setAction(tr("Saved on the hub, with warnings:") + QLatin1Char('\n') + warnings.join(QLatin1Char('\n')), false);
             } else if (str(o, "code") == QLatin1String("conflict")) {
                 m_stale = true;
                 emit draftChanged();

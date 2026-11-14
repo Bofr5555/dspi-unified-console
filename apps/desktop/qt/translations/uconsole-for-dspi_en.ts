@@ -1585,7 +1585,16 @@ Switching an output is instant and never writes to flash. The pin, name and powe
 <context>
     <name>DeviceStatus</name>
     <message>
+        <source>File: %1</source>
+        <extracomment>%1 is the open file&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>No Devices</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A file is open, not a device: edits change the file once you save it (File &gt; Save File).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1768,6 +1777,22 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
 </context>
 <context>
+    <name>FileBanner</name>
+    <message>
+        <source>File: %1. You are editing a file, not a device; nothing here reaches a DSPi.</source>
+        <extracomment>%1 is the open file&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save as Template…</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>FilesController</name>
     <message>
         <source>Failed to read file: %1</source>
@@ -1866,6 +1891,18 @@ This will not overwrite your saved parameters unless you run &apos;Commit Parame
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save as Template</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Template</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Failed to parse DSPi Console filter file</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1917,7 +1954,25 @@ This will not overwrite your saved parameters unless you run &apos;Commit Parame
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>EQ, crossover, delays, gains, routing and the DSP features are always applied.</source>
+        <source>This file is no DSPi configuration.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No file is open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Saved %1.</source>
+        <extracomment>%1 is the file&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Template saved as %1.</source>
+        <extracomment>%1 is the template&apos;s file name</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1982,6 +2037,10 @@ This will not overwrite your saved parameters unless you run &apos;Commit Parame
     </message>
     <message>
         <source>Another console is applying changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing was selected to import; nothing was changed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3902,7 +3961,74 @@ Groups are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Hardware I/O (GPIO pins, clocks, ADAT, inputs, output limiters)</source>
+        <source>EQ</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Crossover</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Routing and matrix</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outputs (gains, delays, mutes)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Output limiters</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Names</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSP features (loudness, crossfeed, bass, leveller…)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hardware I/O (GPIO pins, clocks, ADAT, inputs)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bring in:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 (%2)</source>
+        <extracomment>%1 a block of settings, %2 how many of its values would change</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing on the device would change.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 value on the device would change:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 values on the device would change:</source>
+        <extracomment>%1 the number of values the import would change</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What the import changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 → %2</source>
+        <extracomment>A value on the device now, then after the import</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply with rollback: always over DSPi Link (Keep or Revert)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply with rollback (Keep or Revert)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -3911,6 +4037,10 @@ Groups are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Import</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply with Rollback</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -5083,6 +5213,22 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Open File…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New from Template…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save as Template…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Save Master Volume</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5124,6 +5270,14 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Factory Reset…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Snapshots…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Toggle A/B</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6878,6 +7032,26 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>SafeApplyBanner</name>
+    <message>
+        <source>“%1” is applied. Keep it, or the settings from before come back in %2 s.</source>
+        <extracomment>%1 what was applied (a file&apos;s or snapshot&apos;s name), %2 the seconds left</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Time left: %1 s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SettingsController</name>
     <message>
         <source>Application</source>
@@ -8260,6 +8434,264 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>SnapshotsController</name>
+    <message>
+        <source>The snapshot could not be stored.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Snapshot %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Snapshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi configurations (*.dspipreset)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Snapshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to write file: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Snapshot exported to %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import Snapshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DSPi configurations (*.dspipreset *.json);;All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to read file: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Finish the safe apply first: Keep or Revert.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The snapshot was not recalled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recalled “%1”.</source>
+        <extracomment>%1 is the snapshot&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compare did not start.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The other side was not recalled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The compare did not end.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing waits for Keep.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>There is nothing to revert.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SnapshotsWindow</name>
+    <message>
+        <source>Snapshots</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <extracomment>%1 is A or B, %2 the snapshot on that side</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Current settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete Snapshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New snapshot&apos;s name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New snapshot&apos;s note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Note (optional)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Capture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep the device&apos;s settings as they are now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No snapshots of this device yet. Capture keeps its settings as they are now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Device Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Snapshot name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Snapshot note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Note</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Put the device back to this snapshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Compare with Current</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A is the device as it is now, B this snapshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Import…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep a configuration file as a snapshot of this device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete the snapshot “%1”? It cannot be brought back.</source>
+        <extracomment>%1 is the snapshot&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall with rollback: always over DSPi Link (Keep or Revert)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall with rollback (Keep or Revert)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A/B Compare</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A side</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>B</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>B side</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Start</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the device now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Toggle A/B</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Finish the safe apply first: Keep or Revert.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall the other side (Ctrl+Shift+C)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep A</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep B</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What differs from A to B</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 → %2</source>
+        <extracomment>A value in A, then in B</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A and B hold the same settings.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SpectrumPage</name>
     <message>
         <source>Display</source>
@@ -9435,6 +9867,10 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <source>Saved on the hub.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Saved on the hub, with warnings:</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SystemIntegration</name>
@@ -9773,6 +10209,46 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>Align</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>TemplatePicker</name>
+    <message>
+        <source>New from Template</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A template opens as a new file with no device. Edit it on every screen, then save it, or import it to a DSPi.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Templates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1, %2 in, %3 out · %4</source>
+        <extracomment>%1 the platform, %2 and %3 the input and output counts, %4 &quot;shipped&quot; or &quot;yours&quot;</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>shipped with the app</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>saved here</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No templates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

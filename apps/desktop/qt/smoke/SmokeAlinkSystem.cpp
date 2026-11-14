@@ -326,6 +326,8 @@ void alinkSystemSection(SmokeDriver &d) {
     QMetaObject::invokeMethod(latencyB(), "accepted");
     const int before = sys->revision();
     d.check("lkui1: Save", click(save()) && d.waitFor(15000, [&] { return !sys->busy() && !sys->dirty(); }) && !sys->actionFailed());
+    // -- WP P1QT1 -- the save's answer is shown: "Saved on the hub." or that with the hub's warnings
+    d.check("p1qt1: the save's answer is shown, warnings with it", sys->actionMessage().startsWith(QLatin1String("Saved on the hub")));
     d.check("lkui1: the hub has it", fresh() && sys->revision() == before + 1
                                          && sys->unitLatencyText(QStringLiteral("B")) == QLatin1String("170"));
 

@@ -6304,7 +6304,9 @@ uint32_t dspi_alink_system_view(struct FfiCore *core, char *buf, uint32_t len);
  * `edits_json` is {setSystemDelay, systemDelayFrames (null: automatic),
  * rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}],
  * usbModes: [{unitId, mode}], keepUsbAligned (null: unchanged)}.
- * Replies JSON {ok, revision} (the new one), or code `conflict` when the
+ * Replies JSON {ok, revision, warnings} (the new revision; the hub's
+ * warnings about the model it kept, one sentence each, `[]` for none),
+ * or code `conflict` when the
  * installation changed on the hub meanwhile (nothing saved: reload),
  * `denied` for a role other than admin. Blocks. Returns the length
  * needed; see the module's rule on short buffers.
