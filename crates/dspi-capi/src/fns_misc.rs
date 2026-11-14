@@ -33,6 +33,8 @@ use dspi_core::{
     BootloaderDrive, DeviceEvents, DspiCore, DspiError, FirmwareGuardBoard, NotifyListener,
     PairMap, ParamValue, Result, RtaListener, VregDemoEvent,
 };
+// -- WP P1AB --
+use dspi_core::AbSide;
 use serde_json::{Map, Value, json};
 
 use crate::fns_device::{
@@ -1106,6 +1108,85 @@ pub extern "C" fn dspi_snapshot_capture_document(
             c.snapshot_capture_document(n.to_owned(), note)
         }))
     })
+}
+
+// -- WP P1AB -- A/B compare (PRO1 W4)
+/// Start an A/B compare of two snapshots in the store: `a_id` null or ""
+/// captures the open device as A, else snapshot `a_id` is recalled first;
+/// `b_id` is B. JSON: the compare `{ok, active, side, aName, bName, recall}`
+/// (`side` `"a"`/`"b"`, `recall` the recall made or null), or a failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_ab_start(
+    core: *mut FfiCore,
+    a_id: *const c_char,
+    b_id: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(arg(b_id, "b_id").and_then(|b| {
+            let a = optional_text(a_id, "a_id")?.unwrap_or_default();
+            c.ab_start(a, b.to_owned())
+        }))
+    })
+}
+
+/// [`dspi_ab_start`] with snapshot documents' text: `a_doc` null or ""
+/// captures the open device as A.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_ab_start_documents(
+    core: *mut FfiCore,
+    a_doc: *const c_char,
+    b_doc: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(arg(b_doc, "b_doc").and_then(|b| {
+            let a = optional_text(a_doc, "a_doc")?.unwrap_or_default();
+            c.ab_start_documents(a, b.to_owned())
+        }))
+    })
+}
+
+/// Recall the other side of the running compare (a recall in the event
+/// log; ends the undo history; never guarded, no token). JSON: the compare
+/// on its new side, or a failure (`invalid` with no compare running).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_ab_toggle(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(c.ab_toggle()))
+}
+
+/// What differs from A to B: `dspi_config_diff`'s JSON for the pair, or a
+/// failure with no compare running.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_ab_diff(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| document_reply(c.ab_diff()))
+}
+
+/// End the compare on `side` (`"a"` or `"b"`), recalling it first when the
+/// device is on the other. JSON: the compare (`active` false), or a failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_ab_keep(
+    core: *mut FfiCore,
+    side: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        json_reply(arg(side, "side").and_then(|s| {
+            let side = AbSide::from_key(s).ok_or_else(|| DspiError::InvalidArgument {
+                msg: format!("side is \"a\" or \"b\", not \"{s}\""),
+            })?;
+            c.ab_keep(side)
+        }))
+    })
+}
+
+/// The running compare, or `active: false` with none. JSON; never a failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_ab_state(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| json_reply(Ok(c.ab_state())))
 }
 
 /// Recall a snapshot document's text on the open device: the reply of
@@ -2192,6 +2273,10 @@ mod tests_wp_p1sn;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1afix;
+// -- WP P1AB --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p1ab;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

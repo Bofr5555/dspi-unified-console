@@ -1078,6 +1078,20 @@ const char *name,
 const char *note,
 char *buf,
 uint32_t len);
+uint32_t dspi_ab_start(struct FfiCore *core,
+const char *a_id,
+const char *b_id,
+char *buf,
+uint32_t len);
+uint32_t dspi_ab_start_documents(struct FfiCore *core,
+const char *a_doc,
+const char *b_doc,
+char *buf,
+uint32_t len);
+uint32_t dspi_ab_toggle(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_ab_diff(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_ab_keep(struct FfiCore *core, const char *side, char *buf, uint32_t len);
+uint32_t dspi_ab_state(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_snapshot_recall_document(struct FfiCore *core,
 const char *doc,
 char *buf,

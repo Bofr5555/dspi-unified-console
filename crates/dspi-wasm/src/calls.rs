@@ -340,6 +340,12 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP P1SN -- snapshots as documents (no files on the web)
         "snapshotCapture" => snapshots::capture(&core, params(req.params)?),
         "snapshotRecall" => snapshots::recall(&core, params(req.params)?),
+        // -- WP P1AB -- A/B compare of snapshot documents (src/ab.rs)
+        "abStart" => crate::ab::start(&core, params(req.params)?),
+        "abToggle" => crate::ab::toggle(&core),
+        "abDiff" => crate::ab::diff(&core),
+        "abKeep" => crate::ab::keep(&core, params(req.params)?),
+        "abState" => Ok(crate::ab::state(&core)),
         // -- WP P1OF -- offline editing and templates (src/offline.rs)
         "documentOpen" => document_open(h, &core, params(req.params)?),
         "documentInfo" => crate::offline::info(&core),

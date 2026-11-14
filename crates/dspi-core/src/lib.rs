@@ -129,6 +129,8 @@ pub mod confirm;
 mod snapshot;
 // -- WP P1OF --
 pub mod offline;
+// -- WP P1AB --
+mod ab;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -209,6 +211,8 @@ pub use confirm::{CONFIRM_TOKEN_TTL_MS, ConfirmOp};
 pub use snapshot::{SnapshotInfo, SnapshotRecall};
 // -- WP P1OF --
 pub use offline::{template_list, template_text};
+// -- WP P1AB --
+pub use ab::{AbCompare, AbSide};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -256,6 +260,9 @@ pub struct DspiCore {
     /// The folder the client named for snapshots (none on the web).
     #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
     pub(crate) snapshots: snapshot::StoreSlot,
+    // -- WP P1AB --
+    /// The running A/B compare. Taken without `inner`, never while holding it.
+    pub(crate) ab: ab::AbSlot,
 }
 
 // -- WP LK4 --
@@ -795,6 +802,8 @@ impl DspiCore {
             events,
             // -- WP P1SN --
             snapshots: snapshot::StoreSlot::default(),
+            // -- WP P1AB --
+            ab: ab::AbSlot::default(),
         })
     }
 }

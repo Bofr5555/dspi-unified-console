@@ -501,6 +501,36 @@ void*_Nonnull uniffi_dspi_core_fn_constructor_dspicore_new(RustCallStatus *_Nonn
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_DIFF
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_DIFF
+RustBuffer uniffi_dspi_core_fn_method_dspicore_ab_diff(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_KEEP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_KEEP
+RustBuffer uniffi_dspi_core_fn_method_dspicore_ab_keep(void*_Nonnull ptr, RustBuffer side, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_START
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_START
+RustBuffer uniffi_dspi_core_fn_method_dspicore_ab_start(void*_Nonnull ptr, RustBuffer a_id, RustBuffer b_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_START_DOCUMENTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_START_DOCUMENTS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_ab_start_documents(void*_Nonnull ptr, RustBuffer a_text, RustBuffer b_text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_STATE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_STATE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_ab_state(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_TOGGLE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_AB_TOGGLE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_ab_toggle(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_ALINK_INFO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_ALINK_INFO
 RustBuffer uniffi_dspi_core_fn_method_dspicore_alink_info(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2918,6 +2948,42 @@ uint16_t uniffi_dspi_core_checksum_method_deviceevents_on_arrived(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DEVICEEVENTS_ON_DEPARTED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DEVICEEVENTS_ON_DEPARTED
 uint16_t uniffi_dspi_core_checksum_method_deviceevents_on_departed(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_DIFF
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_DIFF
+uint16_t uniffi_dspi_core_checksum_method_dspicore_ab_diff(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_KEEP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_KEEP
+uint16_t uniffi_dspi_core_checksum_method_dspicore_ab_keep(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_START
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_START
+uint16_t uniffi_dspi_core_checksum_method_dspicore_ab_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_START_DOCUMENTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_START_DOCUMENTS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_ab_start_documents(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_STATE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_STATE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_ab_state(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_TOGGLE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_AB_TOGGLE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_ab_toggle(void
     
 );
 #endif

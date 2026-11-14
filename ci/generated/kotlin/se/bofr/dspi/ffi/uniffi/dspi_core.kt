@@ -1642,6 +1642,18 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1746,6 +1758,18 @@ fun uniffi_dspi_core_checksum_method_autoeqrebuild_poll(
 fun uniffi_dspi_core_checksum_method_deviceevents_on_arrived(
 ): Short
 fun uniffi_dspi_core_checksum_method_deviceevents_on_departed(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_ab_diff(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_ab_keep(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_ab_start(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_ab_start_documents(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_ab_state(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_ab_toggle(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_alink_info(
 ): Short
@@ -2467,6 +2491,18 @@ fun uniffi_dspi_core_fn_free_dspicore(`ptr`: Pointer,uniffi_out_err: UniffiRustC
 ): Unit
 fun uniffi_dspi_core_fn_constructor_dspicore_new(uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
+fun uniffi_dspi_core_fn_method_dspicore_ab_diff(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_ab_keep(`ptr`: Pointer,`side`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_ab_start(`ptr`: Pointer,`aId`: RustBuffer.ByValue,`bId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_ab_start_documents(`ptr`: Pointer,`aText`: RustBuffer.ByValue,`bText`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_ab_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_ab_toggle(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_alink_info(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_alink_system_align(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3470,6 +3506,24 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_deviceevents_on_departed() != 29424.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_diff() != 25258.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_keep() != 48010.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_start() != 31789.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_start_documents() != 53767.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_state() != 41482.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_toggle() != 10804.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_alink_info() != 63997.toShort()) {
@@ -5935,6 +5989,68 @@ public object FfiConverterTypeDeviceEvents: FfiConverter<DeviceEvents, Pointer> 
  * makes, so a binding calls these off its UI thread.
  */
 public interface DspiCoreInterface {
+    
+    /**
+     * What differs from A to B: [`crate::files::config_diff`]'s JSON for
+     * the pair (P1DF's rows, blocks and summary). No I/O.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running.
+     */
+    fun `abDiff`(): kotlin.String
+    
+    /**
+     * End the compare on `side`. Keeping the live side keeps the device's
+     * state as it is, edits included (nothing sent); the other side is
+     * recalled as it was left (a recall, as a toggle is). Returns `active: false`,
+     * `side` the one kept, and the recall if one was made.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running; the
+     * recall's errors (the compare then runs on, unless the connection is
+     * gone).
+     */
+    fun `abKeep`(`side`: AbSide): AbCompare
+    
+    /**
+     * Start an A/B compare of two snapshots in the store (WP P1AB, PRO1
+     * W4). `a_id` "" captures the device's state as A (named "A", not
+     * filed); otherwise snapshot `a_id` is recalled first, so the device is
+     * on A. `b_id` is B. A compare already running is replaced.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a snapshot, or A and B of different platforms or channel
+     * counts (nothing sent); [`DspiError::Disconnected`]; the capture's and
+     * the recall's errors; [`DspiError::Io`] for an unreadable store or no
+     * folder named; [`DspiError::Unsupported`] on the web (use
+     * [`DspiCore::ab_start_documents`]).
+     */
+    fun `abStart`(`aId`: kotlin.String, `bId`: kotlin.String): AbCompare
+    
+    /**
+     * [`DspiCore::ab_start`] with snapshot documents' text (the web, and a
+     * client's own store): `a_text` "" captures the device as A.
+     */
+    fun `abStartDocuments`(`aText`: kotlin.String, `bText`: kotlin.String): AbCompare
+    
+    /**
+     * The running compare, or `active: false` with none (a disconnect
+     * ends one). Never fails; no I/O.
+     */
+    fun `abState`(): AbCompare
+    
+    /**
+     * Recall the other side: one bulk write (`0xA1`) plus the settings
+     * outside the image that differ, recorded in the event log as a recall.
+     * The side left is captured first (reads only), so edits made on it are
+     * kept and come back on the next toggle, as in a DAW's A/B.
+     * It ends the undo history; it is not an undo step. Never guarded and
+     * never token-gated. Returns the compare, on the new side, with the
+     * recall's changes.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running; the
+     * recall's errors. A lost connection ends the compare
+     * ([`DspiError::Disconnected`]); another refusal leaves it on its side.
+     */
+    fun `abToggle`(): AbCompare
     
     /**
      * The unit's audio link as the connect probe found it, without
@@ -9355,6 +9471,133 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
             UniffiLib.INSTANCE.uniffi_dspi_core_fn_clone_dspicore(pointer!!, status)
         }
     }
+
+    
+    /**
+     * What differs from A to B: [`crate::files::config_diff`]'s JSON for
+     * the pair (P1DF's rows, blocks and summary). No I/O.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running.
+     */
+    @Throws(DspiException::class)override fun `abDiff`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_ab_diff(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * End the compare on `side`. Keeping the live side keeps the device's
+     * state as it is, edits included (nothing sent); the other side is
+     * recalled as it was left (a recall, as a toggle is). Returns `active: false`,
+     * `side` the one kept, and the recall if one was made.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running; the
+     * recall's errors (the compare then runs on, unless the connection is
+     * gone).
+     */
+    @Throws(DspiException::class)override fun `abKeep`(`side`: AbSide): AbCompare {
+            return FfiConverterTypeAbCompare.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_ab_keep(
+        it, FfiConverterTypeAbSide.lower(`side`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Start an A/B compare of two snapshots in the store (WP P1AB, PRO1
+     * W4). `a_id` "" captures the device's state as A (named "A", not
+     * filed); otherwise snapshot `a_id` is recalled first, so the device is
+     * on A. `b_id` is B. A compare already running is replaced.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a snapshot, or A and B of different platforms or channel
+     * counts (nothing sent); [`DspiError::Disconnected`]; the capture's and
+     * the recall's errors; [`DspiError::Io`] for an unreadable store or no
+     * folder named; [`DspiError::Unsupported`] on the web (use
+     * [`DspiCore::ab_start_documents`]).
+     */
+    @Throws(DspiException::class)override fun `abStart`(`aId`: kotlin.String, `bId`: kotlin.String): AbCompare {
+            return FfiConverterTypeAbCompare.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_ab_start(
+        it, FfiConverterString.lower(`aId`),FfiConverterString.lower(`bId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * [`DspiCore::ab_start`] with snapshot documents' text (the web, and a
+     * client's own store): `a_text` "" captures the device as A.
+     */
+    @Throws(DspiException::class)override fun `abStartDocuments`(`aText`: kotlin.String, `bText`: kotlin.String): AbCompare {
+            return FfiConverterTypeAbCompare.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_ab_start_documents(
+        it, FfiConverterString.lower(`aText`),FfiConverterString.lower(`bText`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The running compare, or `active: false` with none (a disconnect
+     * ends one). Never fails; no I/O.
+     */override fun `abState`(): AbCompare {
+            return FfiConverterTypeAbCompare.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_ab_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Recall the other side: one bulk write (`0xA1`) plus the settings
+     * outside the image that differ, recorded in the event log as a recall.
+     * The side left is captured first (reads only), so edits made on it are
+     * kept and come back on the next toggle, as in a DAW's A/B.
+     * It ends the undo history; it is not an undo step. Never guarded and
+     * never token-gated. Returns the compare, on the new side, with the
+     * recall's changes.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running; the
+     * recall's errors. A lost connection ends the compare
+     * ([`DspiError::Disconnected`]); another refusal leaves it on its side.
+     */
+    @Throws(DspiException::class)override fun `abToggle`(): AbCompare {
+            return FfiConverterTypeAbCompare.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_ab_toggle(
+        it, _status)
+}
+    }
+    )
+    }
+    
 
     
     /**
@@ -17841,6 +18084,69 @@ public object FfiConverterTypeRtaListener: FfiConverter<RtaListener, Pointer> {
 
 
 /**
+ * Where a compare stands ([`DspiCore::ab_state`] and every A/B call).
+ */
+data class AbCompare (
+    /**
+     * Whether a compare is running.
+     */
+    var `active`: kotlin.Boolean, 
+    /**
+     * The side on the device: while a compare runs, the one last recalled;
+     * after [`DspiCore::ab_keep`], the one kept. `None` with no compare.
+     */
+    var `side`: AbSide?, 
+    /**
+     * A's snapshot name ("" with no compare).
+     */
+    var `aName`: kotlin.String, 
+    /**
+     * B's snapshot name ("" with no compare).
+     */
+    var `bName`: kotlin.String, 
+    /**
+     * What this call recalled, if it recalled anything.
+     */
+    var `recall`: SnapshotRecall?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAbCompare: FfiConverterRustBuffer<AbCompare> {
+    override fun read(buf: ByteBuffer): AbCompare {
+        return AbCompare(
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalTypeAbSide.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeSnapshotRecall.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AbCompare) = (
+            FfiConverterBoolean.allocationSize(value.`active`) +
+            FfiConverterOptionalTypeAbSide.allocationSize(value.`side`) +
+            FfiConverterString.allocationSize(value.`aName`) +
+            FfiConverterString.allocationSize(value.`bName`) +
+            FfiConverterOptionalTypeSnapshotRecall.allocationSize(value.`recall`)
+    )
+
+    override fun write(value: AbCompare, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`active`, buf)
+            FfiConverterOptionalTypeAbSide.write(value.`side`, buf)
+            FfiConverterString.write(value.`aName`, buf)
+            FfiConverterString.write(value.`bName`, buf)
+            FfiConverterOptionalTypeSnapshotRecall.write(value.`recall`, buf)
+    }
+}
+
+
+
+/**
  * State of the ADAT output.
  */
 data class AdatOutStatus (
@@ -26263,6 +26569,45 @@ public object FfiConverterTypeVregChoice: FfiConverterRustBuffer<VregChoice> {
 
 
 /**
+ * One side of a compare.
+ */
+
+enum class AbSide {
+    
+    /**
+     * The first snapshot (the captured state when none was given).
+     */
+    A,
+    /**
+     * The second snapshot.
+     */
+    B;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAbSide: FfiConverterRustBuffer<AbSide> {
+    override fun read(buf: ByteBuffer) = try {
+        AbSide.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: AbSide) = 4UL
+
+    override fun write(value: AbSide, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * An operation that takes a confirmation token.
  */
 
@@ -28169,6 +28514,70 @@ public object FfiConverterOptionalTypeRingHealth: FfiConverterRustBuffer<RingHea
         } else {
             buf.put(1)
             FfiConverterTypeRingHealth.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeSnapshotRecall: FfiConverterRustBuffer<SnapshotRecall?> {
+    override fun read(buf: ByteBuffer): SnapshotRecall? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeSnapshotRecall.read(buf)
+    }
+
+    override fun allocationSize(value: SnapshotRecall?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeSnapshotRecall.allocationSize(value)
+        }
+    }
+
+    override fun write(value: SnapshotRecall?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeSnapshotRecall.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeAbSide: FfiConverterRustBuffer<AbSide?> {
+    override fun read(buf: ByteBuffer): AbSide? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeAbSide.read(buf)
+    }
+
+    override fun allocationSize(value: AbSide?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeAbSide.allocationSize(value)
+        }
+    }
+
+    override fun write(value: AbSide?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeAbSide.write(value, buf)
         }
     }
 }

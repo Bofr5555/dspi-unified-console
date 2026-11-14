@@ -21,6 +21,73 @@ package se.bofr.dspi.core
  */
 interface DspiCoreApi : AutoCloseable {
     /**
+     * Start an A/B compare of two snapshots in the store (WP P1AB, PRO1
+     * W4). `a_id` "" captures the device's state as A (named "A", not
+     * filed); otherwise snapshot `a_id` is recalled first, so the device is
+     * on A. `b_id` is B. A compare already running is replaced.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a snapshot, or A and B of different platforms or channel
+     * counts (nothing sent); [`DspiError::Disconnected`]; the capture's and
+     * the recall's errors; [`DspiError::Io`] for an unreadable store or no
+     * folder named; [`DspiError::Unsupported`] on the web (use
+     * [`DspiCore::ab_start_documents`]).
+     */
+    @Throws(DspiException::class)
+    fun abStart(aId: String, bId: String): AbCompare
+
+    /**
+     * [`DspiCore::ab_start`] with snapshot documents' text (the web, and a
+     * client's own store): `a_text` "" captures the device as A.
+     */
+    @Throws(DspiException::class)
+    fun abStartDocuments(aText: String, bText: String): AbCompare
+
+    /**
+     * Recall the other side: one bulk write (`0xA1`) plus the settings
+     * outside the image that differ, recorded in the event log as a recall.
+     * The side left is captured first (reads only), so edits made on it are
+     * kept and come back on the next toggle, as in a DAW's A/B.
+     * It ends the undo history; it is not an undo step. Never guarded and
+     * never token-gated. Returns the compare, on the new side, with the
+     * recall's changes.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running; the
+     * recall's errors. A lost connection ends the compare
+     * ([`DspiError::Disconnected`]); another refusal leaves it on its side.
+     */
+    @Throws(DspiException::class)
+    fun abToggle(): AbCompare
+
+    /**
+     * What differs from A to B: [`crate::files::config_diff`]'s JSON for
+     * the pair (P1DF's rows, blocks and summary). No I/O.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running.
+     */
+    @Throws(DspiException::class)
+    fun abDiff(): String
+
+    /**
+     * End the compare on `side`. Keeping the live side keeps the device's
+     * state as it is, edits included (nothing sent); the other side is
+     * recalled as it was left (a recall, as a toggle is). Returns `active: false`,
+     * `side` the one kept, and the recall if one was made.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with no compare running; the
+     * recall's errors (the compare then runs on, unless the connection is
+     * gone).
+     */
+    @Throws(DspiException::class)
+    fun abKeep(side: AbSide): AbCompare
+
+    /**
+     * The running compare, or `active: false` with none (a disconnect
+     * ends one). Never fails; no I/O.
+     */
+    fun abState(): AbCompare
+
+    /**
      * The unit's audio link as the connect probe found it, without
      * traffic: `None` when the device has no alink (stock firmware, the fork
      * without it, role 0, a protocol version this build does not speak, or

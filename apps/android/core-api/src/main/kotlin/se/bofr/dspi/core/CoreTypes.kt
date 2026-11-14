@@ -2073,6 +2073,33 @@ data class CrossfeedPair(
 )
 
 /**
+ * Where a compare stands ([`DspiCore::ab_state`] and every A/B call).
+ */
+data class AbCompare(
+    /**
+     * Whether a compare is running.
+     */
+    val active: Boolean,
+    /**
+     * The side on the device: while a compare runs, the one last recalled;
+     * after [`DspiCore::ab_keep`], the one kept. `None` with no compare.
+     */
+    val side: AbSide?,
+    /**
+     * A's snapshot name ("" with no compare).
+     */
+    val aName: String,
+    /**
+     * B's snapshot name ("" with no compare).
+     */
+    val bName: String,
+    /**
+     * What this call recalled, if it recalled anything.
+     */
+    val recall: SnapshotRecall?,
+)
+
+/**
  * What `EXT_ALINK_INFO` reports, read once at connect.
  */
 data class AlinkInfo(
@@ -4004,6 +4031,20 @@ enum class FillBand {
      * At or past an edge.
      */
     BAD,
+}
+
+/**
+ * One side of a compare.
+ */
+enum class AbSide {
+    /**
+     * The first snapshot (the captured state when none was given).
+     */
+    A,
+    /**
+     * The second snapshot.
+     */
+    B,
 }
 
 /**
