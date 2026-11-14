@@ -216,7 +216,7 @@ enum Msg {
     /// `limits.held`, `mode.changed`) on the client with this epoch.
     Hub {
         epoch: u64,
-        event: crate::hub_admin::HubAdminEvent,
+        event: Box<crate::hub_admin::HubAdminEvent>,
     },
 }
 
@@ -246,7 +246,10 @@ impl LinkEvents for Forward {
     // this is the reader, and the lock's refresh is a round trip)
     fn hub_event(&self, epoch: u64, t: &str, body: &serde_json::Value) {
         if let Some(event) = crate::hub_admin::HubAdminEvent::from_hub(t, body) {
-            let _ = self.tx.send(Msg::Hub { epoch, event });
+            let _ = self.tx.send(Msg::Hub {
+                epoch,
+                event: Box::new(event),
+            });
         }
     }
 }
@@ -1790,7 +1793,7 @@ fn on_msg(core: &DspiCore, id: u64, msg: Msg) {
                 .as_ref()
                 .is_some_and(|s| s.id == id && s.instance == epoch);
             if current {
-                core.hub_admin_event(event);
+                core.hub_admin_event(*event);
             }
         }
     }

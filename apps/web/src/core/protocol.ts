@@ -420,10 +420,12 @@ export type CoreEvent =
   | { event: "state"; snapshot: DeviceSnapshot; flags: number }
   | { event: "link"; phase: LinkPhase; pinSource?: string; reason?: string }
   /** The connection is gone (unplugged, the core stopped). */
-  | { event: "lost"; reason: string };
+  | { event: "lost"; reason: string }
+  // -- WP HUBADMIN -- the hub's `limits.changed`, `limits.held`, `mode.changed` of a Link turn (`linkTick`'s `hubEvents`)
+  | { event: "hubAdmin"; events: HubAdminEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods {
+export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -1099,4 +1101,72 @@ export interface InstallerMethods {
   /** The DAC's hardware mute config (read back about 150 ms later with `dacMuteFetch`). */
   dacMuteSet: { params: Omit<DacMuteRecord, "supported">; result: null };
   dacMuteFetch: { params: undefined; result: DacMuteRecord };
+}
+
+// -- WP HUBADMIN -- which copy the Installer page edits, and the hub's copy over DSPi Link
+// (crates/dspi-wasm/src/hub_admin.rs over dspi_core::hub_admin)
+
+/** Which copy the Installer page edits (`dspi_core::hub_admin::InstallerTarget`). */
+export interface InstallerTargetRecord {
+  /** `hub`, `console` (a USB DSPi, the demo) or `none`. */
+  copy: string;
+  /** The page may change that copy (the hub's: an Admin of the hub only). */
+  editable: boolean;
+  serial: string;
+  /** This console's role on the hub (`viewer`, `control`, `admin`), "" off a hub. */
+  role: string;
+  /** The notice row saying which copy is edited. */
+  noticeKey: string;
+  /** Why the page is read-only, as a notice row; "" when editable. */
+  readOnlyKey: string;
+}
+
+/** A role's pinned mode on the hub; `mode` "" for none. */
+export interface HubModePinRecord {
+  role: string;
+  mode: string;
+}
+
+/** The hub's limits, PIN and pinned modes for the open device (`dspi_core::hub_admin::HubAdminState`). */
+export interface HubAdminStateRecord {
+  serial: string;
+  role: string;
+  canEdit: boolean;
+  /** The hub's profile as a limits document, "" for none. */
+  profileDocument: string;
+  pinSet: boolean;
+  locked: boolean;
+  unlocked: boolean;
+  held: string[];
+  wrongTries: number;
+  retryAfterMs: number;
+  pinnedModes: HubModePinRecord[];
+}
+
+/** A hub admin event, after the core read the lock again (`dspi_core::hub_admin::HubAdminEvent`). */
+export interface HubAdminEventRecord {
+  /** `limits.changed`, `limits.held` or `mode.changed`. */
+  kind: string;
+  serial: string;
+  rows: string[];
+  role: string;
+  mode: string;
+  lock: LockStateRecord;
+}
+
+export interface HubAdminMethods {
+  /** Which copy the Installer page edits; no I/O. */
+  installerTarget: { params: undefined; result: InstallerTargetRecord };
+  /** The hub's copy (every role may read). Off a hub: `dlink.no_limits`. */
+  hubLimitsGet: { params: undefined; result: HubAdminStateRecord };
+  /** Set the hub's limits profile (a limits document): what it held at once. Admin only (`denied`). */
+  hubLimitsSet: { params: { text: string }; result: { held: string[]; state: HubAdminStateRecord } };
+  hubLimitsClear: { params: undefined; result: HubAdminStateRecord };
+  /** Set the hub's installer PIN (an Admin needs no current one): the recovery code, shown once. */
+  hubPinSet: { params: { pin: string }; result: { recoveryCode: string; state: HubAdminStateRecord } };
+  hubPinClear: { params: undefined; result: HubAdminStateRecord };
+  /** Pin `role`'s mode on the hub; "" unpins. */
+  hubModePin: { params: { role: string; mode: string }; result: HubAdminStateRecord };
+  /** The hub's admin events since the last call (also handed out by `linkTick`). */
+  hubAdminEvents: { params: undefined; result: HubAdminEventRecord[] };
 }

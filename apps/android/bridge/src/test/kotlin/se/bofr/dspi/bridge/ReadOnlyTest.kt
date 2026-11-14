@@ -448,7 +448,10 @@ class ReadOnlyTest {
                 "installer.clearPin", "installer.clearLimits", "installer.manifest", "installer.resolve", "installer.noticeText",
                 "installer.notice", "installer.outputsWithoutLimiter", "installer.autoeqPreview",
                 // -- WP P1EFIX -- stateless: the limits editor's range table
-                "installer.fieldRanges"
+                "installer.fieldRanges",
+                // -- WP HUBADMIN -- a role's pinned mode on the hub: the hub's, nothing written to the device
+                // (`hubModePin` is PASS_THROUGH in WriteGuardedCore); the hub's role check gates it
+                "installer.pinMode"
             )
     }
 }

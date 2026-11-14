@@ -808,3 +808,9 @@
 .dspi-web .autoeq-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; margin: 0.35rem 0; min-width: 0; }
 .dspi-web .autoeq-row label { display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
 .dspi-web .autoeq-name { min-width: 0; overflow-wrap: anywhere; color: var(--muted); }
+/* -- WP HUBADMIN -- which copy the Installer page edits; the hub's recovery code, shown once */
+.dspi-web .installer-copy { overflow-wrap: anywhere; }
+.dspi-web .installer-copy.read-only { border-color: var(--warn); }
+.dspi-web .installer-copy .notice-action { display: block; font-size: 0.85rem; }
+.dspi-web .hub-recovery { margin: 0.5rem 0; }
+.dspi-web .recovery-code code { font-size: 1.1rem; overflow-wrap: anywhere; }

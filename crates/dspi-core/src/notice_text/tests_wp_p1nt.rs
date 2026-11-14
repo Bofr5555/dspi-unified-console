@@ -165,6 +165,21 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 );
                 continue;
             }
+            // -- WP HUBADMIN -- which copy the Installer page edits: no error
+            // makes these keys, `installer_target` names them
+            if family == "installer" {
+                assert!(
+                    [
+                        crate::hub_admin::NOTICE_HUB_COPY,
+                        crate::hub_admin::NOTICE_CONSOLE_COPY,
+                        crate::hub_admin::NOTICE_HUB_ROLE,
+                    ]
+                    .contains(&n.key.as_str()),
+                    "{}: not a key hub_admin.rs names",
+                    n.key
+                );
+                continue;
+            }
             let e = match family {
                 "dlink" => dlink(code),
                 "autoeq" => DspiError::AutoEq {

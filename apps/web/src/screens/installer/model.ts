@@ -221,3 +221,73 @@ export function lockLine(lock: { pinSet: boolean; heldBy: string; locked: boolea
   if (lock.locked) return bannerLine();
   return lock.covers.length ? `Locked on ${where}.` : `An installer PIN is set on ${where}; the lock covers nothing yet.`;
 }
+
+// ---------------------------------------------------------------- the hub's copy
+
+// -- WP HUBADMIN -- which copy the page edits (the core's `installerTarget`): a DSPi reached
+// through a hub that keeps limits has the HUB's profile, PIN and pinned modes, edited over
+// DSPi Link by an Admin of the hub (read-only below Admin); a direct (USB) DSPi has this
+// console's copy, kept by this page per serial as before. The hub's copy is never kept here.
+
+/** The hub's roles, in the order the page lists them. */
+export const HUB_ROLES = ["viewer", "control", "admin"] as const;
+
+/** A role's name on the page. */
+export function roleLabel(role: string): string {
+  return role ? role[0]!.toUpperCase() + role.slice(1) : role;
+}
+
+/** Whether the page edits the hub's copy (`installerTarget.copy == "hub"`). */
+export function editsHubCopy(target: { copy: string } | null | undefined): boolean {
+  return target?.copy === "hub";
+}
+
+/** Whether the hub's copy may be changed from here: the core's word on the target and, once read, the hub's (`canEdit`). */
+export function hubEditable(target: { copy: string; editable: boolean } | null | undefined, state: { canEdit: boolean } | null | undefined): boolean {
+  return editsHubCopy(target) && !!target!.editable && (state ? state.canEdit : true);
+}
+
+/** The choices of a role's pinned mode: none, then the manifest's modes (their labels), else the three. */
+export function pinnedModeChoices(modes: { id: string; label: string }[] | null | undefined): { value: string; label: string }[] {
+  const list = modes?.length ? modes.map((m) => ({ value: m.id, label: m.label })) : ["simple", "advanced", "installer"].map((id) => ({ value: id, label: roleLabel(id) }));
+  return [{ value: "", label: "None" }, ...list];
+}
+
+/** `role`'s pinned mode in the hub's answer, "" for none. */
+export function pinnedModeOf(state: { pinnedModes: { role: string; mode: string }[] } | null | undefined, role: string): string {
+  return state?.pinnedModes.find((p) => p.role === role)?.mode ?? "";
+}
+
+/** The roles whose pinned mode the page shows: all three to an Admin, else this console's own (`role`) and those the hub answered with. */
+export function pinnedRoles(state: { pinnedModes: { role: string }[] } | null | undefined, editable: boolean, role = ""): string[] {
+  if (editable) return [...HUB_ROLES];
+  const seen = new Set((state?.pinnedModes ?? []).map((p) => p.role));
+  if (role) seen.add(role);
+  return HUB_ROLES.filter((r) => seen.has(r));
+}
+
+/** Why the two PIN fields cannot be sent ("" when they can): empty, or not the same. The core judges the PIN itself. */
+export function pinPairProblem(pin: string, again: string): string {
+  if (!pin) return "Type the new PIN.";
+  if (pin !== again) return "The two PINs are not the same.";
+  return "";
+}
+
+/** `profile` with page `id` covered by the lock (`on`) or not, in the manifest's order (`order`). */
+export function withLockedPage(profile: LimitsProfile, order: string[], id: string, on: boolean): LimitsProfile {
+  const now = new Set(profile.lockedPages ?? []);
+  if (on) now.add(id);
+  else now.delete(id);
+  const known = order.filter((x) => now.has(x));
+  const others = [...now].filter((x) => !order.includes(x));
+  return tidyProfile({ ...profile, lockedPages: [...known, ...others] });
+}
+
+/** The hub's lock in one line, from its answer. */
+export function hubLockLine(state: { pinSet: boolean; locked: boolean; unlocked: boolean } | null | undefined, covers: number): string {
+  if (!state) return "";
+  if (!state.pinSet) return "No installer PIN is set on the hub for this DSPi.";
+  if (state.unlocked) return "An installer PIN is set on the hub; this console has unlocked it.";
+  if (state.locked) return "An installer PIN is set on the hub, and its lock is on.";
+  return covers ? "An installer PIN is set on the hub." : "An installer PIN is set on the hub; the lock covers nothing yet.";
+}
