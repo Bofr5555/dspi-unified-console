@@ -211,6 +211,10 @@ enum Msg {
     Token { hub_id: String, token: String },
     /// Something else changed: look again.
     Kick,
+    // -- WP HUBADMINF -- F1
+    /// The client with this epoch ended: what it learnt of the hub goes
+    /// (the cached role), then as [`Msg::Kick`].
+    Closed(u64),
     // -- WP HUBADMIN --
     /// The hub's limits, lock or pinned modes changed (`limits.changed`,
     /// `limits.held`, `mode.changed`) on the client with this epoch.
@@ -231,8 +235,9 @@ impl LinkEvents for Forward {
         let _ = self.tx.send(Msg::Devices(epoch));
     }
 
-    fn session_closed(&self, _epoch: u64, _code: Option<u16>, _reason: &str) {
-        let _ = self.tx.send(Msg::Kick);
+    fn session_closed(&self, epoch: u64, _code: Option<u16>, _reason: &str) {
+        // -- WP HUBADMINF -- F1: the role the hub last answered is that session's
+        let _ = self.tx.send(Msg::Closed(epoch));
     }
 
     fn token_issued(&self, hub_id: &str, token: &str) {
@@ -1785,6 +1790,8 @@ fn on_msg(core: &DspiCore, id: u64, msg: Msg) {
         }
         Msg::Token { hub_id, token } => core.note_token(hub_id, token),
         Msg::Kick => {}
+        // -- WP HUBADMINF -- F1
+        Msg::Closed(epoch) => core.hub_role_forget(id, epoch),
         // -- WP HUBADMIN --
         Msg::Hub { epoch, event } => {
             let current = core
@@ -2226,7 +2233,12 @@ impl DspiCore {
             return None;
         }
         let open = inner.conn.as_ref().map(|c| c.serial.as_str());
-        (open == Some(bound.serial.as_str())).then(|| (bound.handle, bound.serial.clone()))
+        // -- WP HUBADMINF -- F3: and the open connection is the bound one
+        let same = inner
+            .conn
+            .as_ref()
+            .is_some_and(|c| bound.opening || c.generation == bound.generation);
+        (same && open == Some(bound.serial.as_str())).then(|| (bound.handle, bound.serial.clone()))
     }
 }
 
@@ -2246,6 +2258,10 @@ pub(crate) struct AdminTarget {
     pub(crate) has_limits: bool,
     /// The session's socket is up.
     pub(crate) live: bool,
+    // -- WP HUBADMINF -- F1
+    /// The Link session and its client's epoch: a role learnt from the hub
+    /// holds for this pair only (a reconnect is a new epoch).
+    pub(crate) session: (u64, u64),
 }
 
 // -- WP HUBADMIN --
@@ -2256,12 +2272,19 @@ impl DspiCore {
         let inner = self.lock();
         let s = inner.link.as_ref()?;
         let bound = s.bound.as_ref()?;
-        let open = inner.conn.as_ref().map(|c| c.serial.as_str());
-        if open != Some(bound.serial.as_str()) {
+        let conn = inner.conn.as_ref()?;
+        if conn.serial != bound.serial {
+            return None;
+        }
+        // -- WP HUBADMINF -- F3: the same serial is not enough (the demo device
+        // and a demo hub's share one): the open connection must be the one
+        // this session attached for it, or the one it is attaching now.
+        if !bound.opening && conn.generation != bound.generation {
             return None;
         }
         let client = s.client.as_ref().filter(|c| !c.is_closed());
         Some(AdminTarget {
+            session: (s.id, s.instance),
             handle: bound.handle,
             serial: bound.serial.clone(),
             role: client.map(LinkClient::role).unwrap_or_default(),

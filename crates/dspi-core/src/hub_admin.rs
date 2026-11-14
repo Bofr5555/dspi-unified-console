@@ -54,6 +54,7 @@ pub const NOTICE_HUB_RECOVERY: &str = "installer_lock.hub_recovery";
 pub const HUB_ROLES: [&str; 3] = ["viewer", "control", "admin"];
 
 /// The events kept for [`DspiCore::hub_admin_events`] at most; older ones go.
+#[cfg_attr(not(feature = "link"), allow(dead_code))] // -- WP HUBADMINF -- F2: Link builds use it
 const QUEUE_MAX: usize = 32;
 /// Rows of a hold kept per event.
 const ROWS_MAX: usize = 64;
@@ -177,6 +178,7 @@ pub struct HubAdminEvent {
 }
 
 /// The kinds of [`HubAdminEvent`].
+#[cfg_attr(not(feature = "link"), allow(dead_code))] // -- WP HUBADMINF -- F2: Link builds use it
 const KINDS: [&str; 3] = ["limits.changed", "limits.held", "mode.changed"];
 
 fn text(v: Option<&Value>) -> String {
@@ -199,6 +201,7 @@ fn rows(v: Option<&Value>) -> Vec<String> {
 
 impl HubAdminEvent {
     /// The event in a hub message of type `t`; `None` for any other message.
+    #[cfg_attr(not(feature = "link"), allow(dead_code))]
     pub(crate) fn from_hub(t: &str, body: &Value) -> Option<Self> {
         if !KINDS.contains(&t) {
             return None;
@@ -230,14 +233,26 @@ pub trait HubAdminListener: Send + Sync {
 pub(crate) struct Events {
     listener: Slot<dyn HubAdminListener>,
     queue: Mutex<VecDeque<HubAdminEvent>>,
-    /// The role the hub last answered for (serial, role): a role given on
-    /// the hub's machine applies at once, while the session's hello keeps the
-    /// role it paired with.
-    role: Mutex<Option<(String, String)>>,
+    /// The role the hub last answered for: a role given on the hub's machine
+    /// applies at once, while the session's hello keeps the role it paired
+    /// with. -- WP HUBADMINF -- F1: kept for its session and epoch only, and
+    /// dropped when that client ends.
+    role: Mutex<Option<RoleSeen>>,
+}
+
+/// A role the hub answered with (WP HUBADMINF, F1).
+#[cfg_attr(not(feature = "link"), allow(dead_code))]
+struct RoleSeen {
+    /// The Link session and its client's epoch it was answered on.
+    session: (u64, u64),
+    serial: String,
+    role: String,
 }
 
 // ── The calls ──────────────────────────────────────────────────────────────
 
+// -- WP HUBADMINF -- F2: only Link builds ask a hub
+#[cfg(feature = "link")]
 fn hub_error(e: DspiError) -> DspiError {
     // The hub's own refusals, as the core's kinds (`docs/integrator/hub.md`).
     match e {
@@ -301,7 +316,7 @@ impl DspiCore {
                     ..InstallerTarget::default()
                 };
             }
-            let role = self.hub_role_seen(&t.serial).unwrap_or(t.role);
+            let role = self.hub_role_seen(&t).unwrap_or(t.role);
             let editable = role == "admin";
             return InstallerTarget {
                 copy: COPY_HUB.into(),
@@ -485,21 +500,39 @@ impl DspiCore {
 }
 
 impl DspiCore {
-    /// The role the hub last answered with for `serial`, if any.
-    #[cfg_attr(not(feature = "link"), allow(dead_code))]
-    fn hub_role_seen(&self, serial: &str) -> Option<String> {
+    /// The role the hub last answered with for `t`'s device on `t`'s session
+    /// and epoch, if any.
+    #[cfg(feature = "link")]
+    fn hub_role_seen(&self, t: &crate::link::AdminTarget) -> Option<String> {
         self.listeners
             .hub_admin
             .role
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .as_ref()
-            .filter(|(s, r)| s == serial && !r.is_empty())
-            .map(|(_, r)| r.clone())
+            .filter(|r| r.session == t.session && r.serial == t.serial && !r.role.is_empty())
+            .map(|r| r.role.clone())
+    }
+
+    // -- WP HUBADMINF -- F1
+    /// Forget the role the hub answered with on Link session `id`'s client
+    /// with `epoch` (that client ended).
+    #[cfg_attr(not(feature = "link"), allow(dead_code))]
+    pub(crate) fn hub_role_forget(&self, id: u64, epoch: u64) {
+        let mut seen = self
+            .listeners
+            .hub_admin
+            .role
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if seen.as_ref().is_some_and(|r| r.session == (id, epoch)) {
+            *seen = None;
+        }
     }
 
     /// An event of the hub's: the lock read again, then kept and told. On
     /// the Link supervisor, with no core lock held.
+    #[cfg_attr(not(feature = "link"), allow(dead_code))]
     pub(crate) fn hub_admin_event(&self, mut event: HubAdminEvent) {
         #[cfg(feature = "link")]
         {
@@ -584,12 +617,18 @@ impl DspiCore {
         let pinned = self.link_hub_request("mode.pinned", f).map_err(hub_error)?;
         let role = text(pinned.get("role"));
         let st = state_from(&got, &pinned, role);
+        // -- WP HUBADMINF -- F1: for this session and epoch only
+        let seen = self.link_admin_target().map(|t| RoleSeen {
+            session: t.session,
+            serial: st.serial.clone(),
+            role: st.role.clone(),
+        });
         *self
             .listeners
             .hub_admin
             .role
             .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Some((st.serial.clone(), st.role.clone()));
+            .unwrap_or_else(PoisonError::into_inner) = seen;
         Ok(st)
     }
 }

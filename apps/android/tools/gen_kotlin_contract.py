@@ -49,6 +49,9 @@ OUT_API = ROOT / "core-api/src/main/kotlin/se/bofr/dspi/core/DspiCoreApi.kt"
 OUT_ADAPTER = ROOT / "ffi/src/main/kotlin/se/bofr/dspi/ffi/FfiDspiCore.kt"
 OUT_UNIMPL = ROOT / "core-api/src/main/kotlin/se/bofr/dspi/core/UnimplementedDspiCore.kt"
 OUT_CONSTS = ROOT / "core-api/src/main/kotlin/se/bofr/dspi/core/DspiConstants.kt"
+# -- WP HUBADMINF -- (review hubadmin item 6) the hand-written listener interfaces the
+# generated adapter and API name: every foreign trait must have one there.
+LISTENERS = ROOT / "core-api/src/main/kotlin/se/bofr/dspi/core/Listeners.kt"
 # Firmware constants the core does not define (contract additions, coordinator E4).
 # (name, value, kdoc); provenance: firmware config.h @ [firmware].tag_sha of tools/REFERENCE.toml.
 FIRMWARE_CONSTS = [
@@ -884,6 +887,14 @@ def int_or_str(v: str):
         return float(v)
 
 
+def missing_listeners(surf) -> list[str]:
+    """-- WP HUBADMINF -- the foreign traits with no `interface`/`fun interface` of that
+    name in Listeners.kt."""
+    text = LISTENERS.read_text() if LISTENERS.exists() else ""
+    return sorted(n for n in surf.traits
+                  if not re.search(rf"^\s*(?:fun\s+)?interface\s+{re.escape(n)}\b", text, re.M))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="fail if generated files are stale")
@@ -905,9 +916,17 @@ def main() -> int:
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
+    # -- WP HUBADMINF -- a foreign trait without its hand-written interface fails
+    # here, not first in the Kotlin compile
+    missing = missing_listeners(surf)
+    for name in missing:
+        print(f"missing: interface {name} in {LISTENERS.relative_to(ROOT)} (hand-written; the "
+              f"generated code names it)", file=sys.stderr)
     if stale:
         for p in stale:
             print(f"stale: {p.relative_to(ROOT)} (run tools/gen_kotlin_contract.py)", file=sys.stderr)
+        return 1
+    if missing:
         return 1
     print(f"records={len(surf.records)} enums={len(surf.enums)} methods={len(surf.methods)} free={len(surf.free)} "
           f"errors={len(surf.error.variants)} traits={len(surf.traits)} objects={len(surf.objects)}", file=sys.stderr)
