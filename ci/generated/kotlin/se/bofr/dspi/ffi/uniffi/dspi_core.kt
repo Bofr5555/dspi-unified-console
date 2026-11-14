@@ -1580,6 +1580,68 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1669,6 +1731,10 @@ fun uniffi_dspi_core_checksum_func_quantize_delay(
 ): Short
 fun uniffi_dspi_core_checksum_func_quantize_gain(
 ): Short
+fun uniffi_dspi_core_checksum_func_template_list(
+): Short
+fun uniffi_dspi_core_checksum_func_template_text(
+): Short
 fun uniffi_dspi_core_checksum_func_uf2_inspect(
 ): Short
 fun uniffi_dspi_core_checksum_method_autoeqfetch_get(
@@ -1721,19 +1787,29 @@ fun uniffi_dspi_core_checksum_method_dspicore_config_export(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_config_import(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_config_import_confirmed(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_config_import_selected(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_config_preview(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_confirm_token(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_confirmation_required(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_connection_generation(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_copy_preset(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_copy_preset_confirmed(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_close(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit_confirmed(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_keep(
 ): Short
@@ -1752,6 +1828,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_auto(
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_clear(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set_confirmed(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial(
 ): Short
@@ -1785,6 +1863,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_cs_status_text(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_delete_preset(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_delete_preset_confirmed(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_demo_latency_timing(
@@ -1807,6 +1887,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_end_group(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_enter_bootloader(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_event_log_devices(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_event_log_export(
@@ -1818,6 +1900,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_event_log_set_dir(
 fun uniffi_dspi_core_checksum_method_dspicore_ext_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_factory_reset(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_factory_reset_confirmed(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_feature_present(
 ): Short
@@ -1911,6 +1995,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_firmware_guard_board(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_flash_confirmed(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_get_channel_name(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_get_device_name(
@@ -1967,11 +2053,15 @@ fun uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_notify_tap_set(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_offline_document(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_demo(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_demo_alink(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_demo_usb_direct(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_open_document(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_open_fd(
 ): Short
@@ -2005,6 +2095,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_redo(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_refresh_params(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_require_confirmation(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats(
@@ -2027,13 +2119,23 @@ fun uniffi_dspi_core_checksum_method_dspicore_rta_start(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_rta_take_control(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_save_as_template(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_save_document(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_save_master_volume(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_save_output_config(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_save_output_config_confirmed(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_save_params(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_save_params_confirmed(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_save_preset(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_save_preset_confirmed(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_scan_devices(
 ): Short
@@ -2213,6 +2315,28 @@ fun uniffi_dspi_core_checksum_method_dspicore_siggen_get_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_siggen_set_config(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_capture(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_capture_document(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_delete(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_export(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_import(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_list(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_recall(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_recall_document(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_rename(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_set_dir(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_set_note(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_test_dac_mute(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_undo(
@@ -2383,19 +2507,29 @@ fun uniffi_dspi_core_fn_method_dspicore_config_export(`ptr`: Pointer,`name`: Rus
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_config_import(`ptr`: Pointer,`text`: RustBuffer.ByValue,`options`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_config_import_confirmed(`ptr`: Pointer,`text`: RustBuffer.ByValue,`options`: Int,`eqChannels`: Int,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_config_import_selected(`ptr`: Pointer,`text`: RustBuffer.ByValue,`options`: Int,`eqChannels`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_config_preview(`ptr`: Pointer,`text`: RustBuffer.ByValue,`options`: Int,`eqChannels`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_confirm_token(`ptr`: Pointer,`op`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_confirmation_required(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_dspi_core_fn_method_dspicore_connection_generation(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 fun uniffi_dspi_core_fn_method_dspicore_copy_preset(`ptr`: Pointer,`source`: Byte,`dest`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_copy_preset_confirmed(`ptr`: Pointer,`source`: Byte,`dest`: Byte,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core1_conflict_reason(`ptr`: Pointer,`output`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_close(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(`ptr`: Pointer,`typed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit_confirmed(`ptr`: Pointer,`typed`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_keep(`ptr`: Pointer,`soakS`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -2414,6 +2548,8 @@ fun uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_auto(`ptr`: Pointer,`on
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set(`ptr`: Pointer,`value`: Byte,`typed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set_confirmed(`ptr`: Pointer,`value`: Byte,`typed`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_trial(`ptr`: Pointer,`value`: Byte,`typed`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -2447,6 +2583,8 @@ fun uniffi_dspi_core_fn_method_dspicore_cs_status_text(`ptr`: Pointer,`code`: By
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_delete_preset(`ptr`: Pointer,`slot`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_delete_preset_confirmed(`ptr`: Pointer,`slot`: Byte,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_demo_latency_sets(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
 fun uniffi_dspi_core_fn_method_dspicore_demo_latency_timing(`ptr`: Pointer,`mode`: Byte,`reads`: Byte,`blackout`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -2469,6 +2607,8 @@ fun uniffi_dspi_core_fn_method_dspicore_end_group(`ptr`: Pointer,uniffi_out_err:
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_enter_bootloader(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_enter_bootloader_confirmed(`ptr`: Pointer,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_event_log_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_event_log_export(`ptr`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2480,6 +2620,8 @@ fun uniffi_dspi_core_fn_method_dspicore_event_log_set_dir(`ptr`: Pointer,`dir`: 
 fun uniffi_dspi_core_fn_method_dspicore_ext_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_factory_reset(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_factory_reset_confirmed(`ptr`: Pointer,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_feature_present(`ptr`: Pointer,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
@@ -2573,6 +2715,8 @@ fun uniffi_dspi_core_fn_method_dspicore_firmware_guard_board(`ptr`: Pointer,unif
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(`ptr`: Pointer,`version`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+fun uniffi_dspi_core_fn_method_dspicore_flash_confirmed(`ptr`: Pointer,`image`: RustBuffer.ByValue,`drive`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_get_channel_name(`ptr`: Pointer,`ch`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_get_device_name(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2629,12 +2773,16 @@ fun uniffi_dspi_core_fn_method_dspicore_notify_tap_drain(`ptr`: Pointer,uniffi_o
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_notify_tap_set(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_offline_document(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_open_demo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_demo_alink(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_demo_usb_direct(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_open_document(`ptr`: Pointer,`text`: RustBuffer.ByValue,`fileName`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_open_fd(`ptr`: Pointer,`fd`: Int,`serial`: RustBuffer.ByValue,`vid`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_open_host(`ptr`: Pointer,`transport`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2667,6 +2815,8 @@ fun uniffi_dspi_core_fn_method_dspicore_redo(`ptr`: Pointer,uniffi_out_err: Unif
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_refresh_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_require_confirmation(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_reset_alink_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -2689,13 +2839,23 @@ fun uniffi_dspi_core_fn_method_dspicore_rta_start(`ptr`: Pointer,uniffi_out_err:
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_rta_take_control(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_save_as_template(`ptr`: Pointer,`name`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,`links`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_save_document(`ptr`: Pointer,`appVersion`: RustBuffer.ByValue,`links`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_save_master_volume(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_save_output_config(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_save_output_config_confirmed(`ptr`: Pointer,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_save_params(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_save_params_confirmed(`ptr`: Pointer,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_save_preset(`ptr`: Pointer,`slot`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_save_preset_confirmed(`ptr`: Pointer,`slot`: Byte,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_scan_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -2875,6 +3035,28 @@ fun uniffi_dspi_core_fn_method_dspicore_siggen_get_status(`ptr`: Pointer,uniffi_
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_siggen_set_config(`ptr`: Pointer,`config`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_capture(`ptr`: Pointer,`name`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_capture_document(`ptr`: Pointer,`name`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_delete(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_export(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_import(`ptr`: Pointer,`text`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_list(`ptr`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_recall(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_recall_document(`ptr`: Pointer,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_rename(`ptr`: Pointer,`id`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_set_note(`ptr`: Pointer,`id`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_test_dac_mute(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_undo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3023,6 +3205,10 @@ fun uniffi_dspi_core_fn_func_quantize_delay(`ms`: Float,uniffi_out_err: UniffiRu
 ): Float
 fun uniffi_dspi_core_fn_func_quantize_gain(`db`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
+fun uniffi_dspi_core_fn_func_template_list(`userDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_template_text(`id`: RustBuffer.ByValue,`userDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_uf2_inspect(`image`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun ffi_dspi_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -3262,6 +3448,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_quantize_gain() != 25180.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_func_template_list() != 58721.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_template_text() != 59334.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_uf2_inspect() != 30039.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3340,16 +3532,28 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import() != 20391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import_confirmed() != 34044.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_config_import_selected() != 35048.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_config_preview() != 60996.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_confirm_token() != 3433.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_confirmation_required() != 47132.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_copy_preset() != 9367.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_copy_preset_confirmed() != 33372.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_core1_conflict_reason() != 6255.toShort()) {
@@ -3359,6 +3563,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit() != 44738.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_commit_confirmed() != 11396.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_cal_keep() != 33548.toShort()) {
@@ -3386,6 +3593,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set() != 2842.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_set_confirmed() != 3178.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial() != 30445.toShort()) {
@@ -3436,6 +3646,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_delete_preset() != 218.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_delete_preset_confirmed() != 41129.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_demo_latency_sets() != 20471.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3469,6 +3682,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader() != 19680.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 11255.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3485,6 +3701,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_factory_reset() != 27488.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_factory_reset_confirmed() != 21942.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_feature_present() != 18345.toShort()) {
@@ -3625,6 +3844,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 36538.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_get_channel_name() != 25587.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3709,6 +3931,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_notify_tap_set() != 10210.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_offline_document() != 20879.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo() != 35962.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3716,6 +3941,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo_usb_direct() != 36241.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_open_document() != 10612.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_fd() != 57502.toShort()) {
@@ -3766,6 +3994,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_refresh_params() != 360.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_require_confirmation() != 45706.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats() != 30180.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3799,16 +4030,31 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_rta_take_control() != 33133.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_save_as_template() != 23052.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_save_document() != 12211.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_save_master_volume() != 17732.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_save_output_config() != 27456.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_save_output_config_confirmed() != 26787.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_save_params() != 8876.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_save_params_confirmed() != 27808.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_save_preset() != 49987.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_save_preset_confirmed() != 24345.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_scan_devices() != 33045.toShort()) {
@@ -4076,6 +4322,39 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_siggen_set_config() != 59149.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_capture() != 32693.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_capture_document() != 16773.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_delete() != 58898.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_export() != 23201.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_import() != 58149.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_list() != 29663.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_recall() != 16804.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_recall_document() != 8659.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_rename() != 7102.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_set_dir() != 26239.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_set_note() != 19310.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228.toShort()) {
@@ -5929,6 +6208,16 @@ public interface DspiCoreInterface {
     fun `configImport`(`text`: kotlin.String, `options`: kotlin.UInt): kotlin.String
     
     /**
+     * [`DspiCore::config_import_selected`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
+     * good one while tokens are required, or with a bad one at any time, the
+     * reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
+     * written. A text that is not a document, or an empty selection, is
+     * refused first and leaves the token unspent.
+     */
+    fun `configImportConfirmed`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt, `token`: kotlin.String?): kotlin.String
+    
+    /**
      * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
      * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
      * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
@@ -5957,6 +6246,18 @@ public interface DspiCoreInterface {
     fun `configPreview`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt): kotlin.String
     
     /**
+     * A single-use token for `op`, valid for 10 s on the current connection:
+     * mint it when the user has confirmed `op` (the confirmation dialog's OK),
+     * and pass it to the gated call. No I/O.
+     */
+    fun `confirmToken`(`op`: ConfirmOp): kotlin.String
+    
+    /**
+     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
+     */
+    fun `confirmationRequired`(): kotlin.Boolean
+    
+    /**
      * The open connection's generation: unique per connection and never
      * reused while the process runs, so it changes on every reopen and on
      * a Link re-bind. 0 when nothing is open.
@@ -5977,6 +6278,12 @@ public interface DspiCoreInterface {
      * confirmed; otherwise as [`DspiCore::save_preset`].
      */
     fun `copyPreset`(`source`: kotlin.UByte, `dest`: kotlin.UByte)
+    
+    /**
+     * [`DspiCore::copy_preset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    fun `copyPresetConfirmed`(`source`: kotlin.UByte, `dest`: kotlin.UByte, `token`: kotlin.String?)
     
     /**
      * Whether enabling output `output` would collide on Core 1, and if so
@@ -6003,6 +6310,15 @@ public interface DspiCoreInterface {
      * `Passed`, with the trial running. Errors as for starting.
      */
     fun `coreVregCalCommit`(`typed`: kotlin.String?)
+    
+    /**
+     * [`DspiCore::core_vreg_cal_commit`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
+     * [`DspiError::ConfirmationRequired`], with no write and noted in the
+     * view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
+     * is, beside the token.
+     */
+    fun `coreVregCalCommitConfirmed`(`typed`: kotlin.String?, `token`: kotlin.String?)
     
     /**
      * Keep a trial found on the device: the soak counts from now, for
@@ -6077,6 +6393,12 @@ public interface DspiCoreInterface {
      * Read back by later polls, as a commit. Errors as for starting.
      */
     fun `coreVregManualSet`(`value`: kotlin.UByte, `typed`: kotlin.String?)
+    
+    /**
+     * [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
+     * [`DspiCore::core_vreg_cal_commit_confirmed`].
+     */
+    fun `coreVregManualSetConfirmed`(`value`: kotlin.UByte, `typed`: kotlin.String?, `token`: kotlin.String?)
     
     /**
      * Manual `TRIAL`, with the flow's limits and confirmation. It shows as a
@@ -6270,6 +6592,12 @@ public interface DspiCoreInterface {
     fun `deletePreset`(`slot`: kotlin.UByte)
     
     /**
+     * [`DspiCore::delete_preset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    fun `deletePresetConfirmed`(`slot`: kotlin.UByte, `token`: kotlin.String?)
+    
+    /**
      * How many output-latency requests the demo device has received, for
      * clients' tests that a wait never sends one again. `Unsupported`, with no
      * traffic, on anything but a simulated device.
@@ -6398,6 +6726,13 @@ public interface DspiCoreInterface {
     fun `enterBootloader`()
     
     /**
+     * [`DspiCore::enter_bootloader`] with a confirmation token
+     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
+     * device open a token is still checked, and nothing is sent.
+     */
+    fun `enterBootloaderConfirmed`(`token`: kotlin.String?)
+    
+    /**
      * The serials with an event log, sorted. Never fails.
      */
     fun `eventLogDevices`(): List<kotlin.String>
@@ -6455,6 +6790,12 @@ public interface DspiCoreInterface {
      * error, of the reset or the re-read.
      */
     fun `factoryReset`()
+    
+    /**
+     * [`DspiCore::factory_reset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    fun `factoryResetConfirmed`(`token`: kotlin.String?)
     
     /**
      * Whether the connect probe found feature `name` on the open device
@@ -6979,6 +7320,18 @@ public interface DspiCoreInterface {
     fun `firmwareVersionMatches`(`version`: kotlin.String): kotlin.Boolean
     
     /**
+     * [`crate::flash_to_drive_guarded`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
+     * the bootloader drive is there (the board has left, so a token minted
+     * while it was still connected no longer holds). Without a good token
+     * while tokens are required, or with a bad one at any time,
+     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     *
+     * Errors: that, then those of `flash_to_drive_guarded`.
+     */
+    fun `flashConfirmed`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String, `token`: kotlin.String?)
+    
+    /**
      * Reads the name of wire channel `ch` from the device
      * (`REQ_GET_CHANNEL_NAME`) and keeps it in the mirror. Works on a
      * read-only connection too (its image is then left alone).
@@ -7259,6 +7612,13 @@ public interface DspiCoreInterface {
     fun `notifyTapSet`(`enabled`: kotlin.Boolean)
     
     /**
+     * Whether the open connection is a document ([`DspiCore::open_document`]),
+     * as JSON: `{offline: true, fileName, name, kind, platform}`, or
+     * `{offline: false}` for a device or none. No I/O.
+     */
+    fun `offlineDocument`(): kotlin.String
+    
+    /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
      * Replaces any open device.
@@ -7281,6 +7641,27 @@ public interface DspiCoreInterface {
      * hardware. Replaces any open device.
      */
     fun `openDemoUsbDirect`()
+    
+    /**
+     * Open the `.dspipreset` document `text` with no device, as the demo
+     * device seeded from it (PRO1 W7): the platform and channel counts its
+     * `meta` names (else the channels it lists), every setting it holds read
+     * as an import reads them, the rest the demo's. `file_name` is what the
+     * client shows ("File: <name>"); `meta.name`, else the file's name, names
+     * the running preset and the device. Replaces any open device; nothing
+     * touches USB. The settings are read (`fetch_all`) and are the baseline
+     * for unsaved changes; the undo history starts empty.
+     *
+     * Returns JSON `{ok: true, fileName, name, kind, platform, inputs,
+     * outputs, notes}`, `notes` what reading the document reported (values
+     * left alone or clamped, channels this shape lacks).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a document
+     * this build reads (the reason as a sentence) or one naming no inputs or
+     * outputs; [`DspiError::Transfer`] if the device could not be laid out
+     * or read. On an error nothing is open.
+     */
+    fun `openDocument`(`text`: kotlin.String, `fileName`: kotlin.String): kotlin.String
     
     /**
      * Adopt a USB device the platform already opened: Android's
@@ -7517,6 +7898,13 @@ public interface DspiCoreInterface {
     fun `refreshParams`()
     
     /**
+     * Whether a gated call without a token is refused from now on
+     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
+     * connections; minted tokens stay as they are.
+     */
+    fun `requireConfirmation`(`on`: kotlin.Boolean)
+    
+    /**
      * `EXT_ALINK_STATS_RESET`: clear the alink's error and lock counters.
      * Errors as [`DspiCore::set_alink_slots`].
      */
@@ -7621,6 +8009,26 @@ public interface DspiCoreInterface {
     fun `rtaTakeControl`()
     
     /**
+     * The open device or document as a template: a `.dspipreset` document
+     * with `meta.kind = "template"` named `name` (`config_export`'s rules;
+     * `links` as there). The client writes it to the user's template
+     * folder, where [`template_list`] finds it. Errors as `config_export`'s.
+     */
+    fun `saveAsTemplate`(`name`: kotlin.String, `appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String
+    
+    /**
+     * The open document as it now stands, a `.dspipreset` document of the
+     * kind it was opened as, under its name (`config_export`'s rules;
+     * `links` as there). The edits are then the baseline: nothing is unsaved.
+     * The client writes the text to the file.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the connection is not a
+     * document (export the configuration instead); otherwise
+     * `config_export`'s.
+     */
+    fun `saveDocument`(`appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String
+    
+    /**
      * FLASH WRITE: store the live master volume for the independent mode
      * (`REQ_SAVE_MASTER_VOLUME`), under the device lock like the other
      * flash writes. Changes nothing in the mirror.
@@ -7646,6 +8054,12 @@ public interface DspiCoreInterface {
     fun `saveOutputConfig`()
     
     /**
+     * [`DspiCore::save_output_config`] with a confirmation token
+     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+     */
+    fun `saveOutputConfigConfirmed`(`token`: kotlin.String?)
+    
+    /**
      * Save the live state to the active slot (`REQ_SAVE_PARAMS`), under the
      * device lock; the live state becomes the baseline.
      *
@@ -7655,6 +8069,12 @@ public interface DspiCoreInterface {
      * error.
      */
     fun `saveParams`()
+    
+    /**
+     * [`DspiCore::save_params`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    fun `saveParamsConfirmed`(`token`: kotlin.String?)
     
     /**
      * Save the live state to `slot` (0..10) and wait until the device has
@@ -7671,6 +8091,13 @@ public interface DspiCoreInterface {
      * [`DspiError::ReadOnly`]; [`DspiError::Disconnected`].
      */
     fun `savePreset`(`slot`: kotlin.UByte)
+    
+    /**
+     * [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
+     * [`DspiError::ConfirmationRequired`], with nothing sent, without a good
+     * one while tokens are required, or with a bad one at any time.
+     */
+    fun `savePresetConfirmed`(`slot`: kotlin.UByte, `token`: kotlin.String?)
     
     /**
      * Enumerate DSPis on USB (nusb): VID `2E8B` or the legacy VID, PID
@@ -8656,6 +9083,105 @@ public interface DspiCoreInterface {
     fun `siggenSetConfig`(`config`: SiggenConfig)
     
     /**
+     * Capture the open device as a new snapshot in the store (see
+     * [`DspiCore::snapshot_capture_document`]). Errors as there, and
+     * [`DspiError::Io`] with no folder named or a failed write.
+     */
+    fun `snapshotCapture`(`name`: kotlin.String, `note`: kotlin.String): SnapshotInfo
+    
+    /**
+     * The open device's state as a snapshot document (`.dspipreset` text,
+     * `meta.kind = "snapshot"`), not filed: for the web, which keeps
+     * snapshots as downloads, and for a client's own store. `name` and
+     * `note` (any Unicode; cut to 200 and 4000 characters) go in with it.
+     * Reads the settings outside the image (the control surfaces' whole
+     * configuration among them); the image is the mirror.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::Transfer`] before
+     * the device's settings were read, or for a failed read;
+     * [`DspiError::Unsupported`] for firmware whose image this build cannot
+     * map.
+     */
+    fun `snapshotCaptureDocument`(`name`: kotlin.String, `note`: kotlin.String): kotlin.String
+    
+    /**
+     * Delete snapshot `id`. Errors as [`DspiCore::snapshot_rename`].
+     */
+    fun `snapshotDelete`(`id`: kotlin.String)
+    
+    /**
+     * Snapshot `id`'s document, to save as a file. Errors as
+     * [`DspiCore::snapshot_rename`].
+     */
+    fun `snapshotExport`(`id`: kotlin.String): kotlin.String
+    
+    /**
+     * File a `.dspipreset` document (a snapshot or any other kind) as a
+     * snapshot of the open device, named `name` ("" keeps the document's)
+     * with `note`. A document without an image is recalled through the
+     * import's path.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a
+     * document this build reads; [`DspiError::Disconnected`] with no device
+     * and no serial in the document; [`DspiError::Io`].
+     */
+    fun `snapshotImport`(`text`: kotlin.String, `name`: kotlin.String, `note`: kotlin.String): SnapshotInfo
+    
+    /**
+     * The snapshots of device `serial` ("" the open device), oldest first.
+     * Never fails: no folder, no device or no snapshots is an empty list, and
+     * a damaged index is rebuilt from the documents.
+     */
+    fun `snapshotList`(`serial`: kotlin.String): List<SnapshotInfo>
+    
+    /**
+     * Recall snapshot `id` on the open device: the settings outside the
+     * image that differ (device and source names, output latency, control
+     * surfaces), then the image as one bulk write, under the device lock.
+     * The undo history before it ends; the event log records a recall with
+     * its changes. Live, not stored in a preset slot. Never guarded and
+     * never queued: on a lost connection it stops where it is.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a snapshot
+     * of another platform or channel count, or an image of another wire
+     * format this build cannot convert (nothing is sent);
+     * [`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::Locked`] and the transfer errors of a bulk write;
+     * [`DspiError::Io`] for an unreadable store.
+     */
+    fun `snapshotRecall`(`id`: kotlin.String): SnapshotRecall
+    
+    /**
+     * Recall a snapshot document's text (see
+     * [`DspiCore::snapshot_recall`]): for the web and for a document the
+     * client keeps itself.
+     */
+    fun `snapshotRecallDocument`(`text`: kotlin.String): SnapshotRecall
+    
+    /**
+     * Rename snapshot `id`; any Unicode, cut to 200 characters.
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id;
+     * [`DspiError::Io`].
+     */
+    fun `snapshotRename`(`id`: kotlin.String, `name`: kotlin.String): SnapshotInfo
+    
+    /**
+     * Keep snapshots in files under `dir`, the client's own data folder
+     * (created if missing): one folder per device serial, one document per
+     * snapshot and an index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+    fun `snapshotSetDir`(`dir`: kotlin.String)
+    
+    /**
+     * Set snapshot `id`'s note; any Unicode, cut to 4000 characters.
+     * Errors as [`DspiCore::snapshot_rename`].
+     */
+    fun `snapshotSetNote`(`id`: kotlin.String, `note`: kotlin.String): SnapshotInfo
+    
+    /**
      * Pulse the mute output for about a second, so an installer can hear
      * that the pin and polarity are right.
      *
@@ -9293,6 +9819,26 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * [`DspiCore::config_import_selected`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::ConfigImport`]). Without a
+     * good one while tokens are required, or with a bad one at any time, the
+     * reply is a refusal (`noticeKey` `confirmation_required`) and nothing is
+     * written. A text that is not a document, or an empty selection, is
+     * refused first and leaves the token unspent.
+     */override fun `configImportConfirmed`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt, `token`: kotlin.String?): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_config_import_confirmed(
+        it, FfiConverterString.lower(`text`),FfiConverterUInt.lower(`options`),FfiConverterUInt.lower(`eqChannels`),FfiConverterOptionalString.lower(`token`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * [`DspiCore::config_import`] with the EQ narrowed to the wire channels
      * in `eq_channels` (bit k: channel k; `u32::MAX` every one). `options`
      * as there: with [`IMPORT_BY_BLOCK`] each `IMPORT_*` block bit says
@@ -9341,6 +9887,38 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * A single-use token for `op`, valid for 10 s on the current connection:
+     * mint it when the user has confirmed `op` (the confirmation dialog's OK),
+     * and pass it to the gated call. No I/O.
+     */override fun `confirmToken`(`op`: ConfirmOp): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_confirm_token(
+        it, FfiConverterTypeConfirmOp.lower(`op`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Whether gated calls need a token ([`DspiCore::require_confirmation`]).
+     */override fun `confirmationRequired`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_confirmation_required(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The open connection's generation: unique per connection and never
      * reused while the process runs, so it changes on every reopen and on
      * a Link re-bind. 0 when nothing is open.
@@ -9376,6 +9954,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_copy_preset(
         it, FfiConverterUByte.lower(`source`),FfiConverterUByte.lower(`dest`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * [`DspiCore::copy_preset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    @Throws(DspiException::class)override fun `copyPresetConfirmed`(`source`: kotlin.UByte, `dest`: kotlin.UByte, `token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_copy_preset_confirmed(
+        it, FfiConverterUByte.lower(`source`),FfiConverterUByte.lower(`dest`),FfiConverterOptionalString.lower(`token`),_status)
 }
     }
     
@@ -9433,6 +10027,25 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit(
         it, FfiConverterOptionalString.lower(`typed`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * [`DspiCore::core_vreg_cal_commit`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::VregSave`]): refused with
+     * [`DspiError::ConfirmationRequired`], with no write and noted in the
+     * view, as [`DspiCore::save_preset_confirmed`] is. The word stays as it
+     * is, beside the token.
+     */
+    @Throws(DspiException::class)override fun `coreVregCalCommitConfirmed`(`typed`: kotlin.String?, `token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_cal_commit_confirmed(
+        it, FfiConverterOptionalString.lower(`typed`),FfiConverterOptionalString.lower(`token`),_status)
 }
     }
     
@@ -9597,6 +10210,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set(
         it, FfiConverterUByte.lower(`value`),FfiConverterOptionalString.lower(`typed`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * [`DspiCore::core_vreg_manual_set`] with a confirmation token, as
+     * [`DspiCore::core_vreg_cal_commit_confirmed`].
+     */
+    @Throws(DspiException::class)override fun `coreVregManualSetConfirmed`(`value`: kotlin.UByte, `typed`: kotlin.String?, `token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_core_vreg_manual_set_confirmed(
+        it, FfiConverterUByte.lower(`value`),FfiConverterOptionalString.lower(`typed`),FfiConverterOptionalString.lower(`token`),_status)
 }
     }
     
@@ -9957,6 +10586,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * [`DspiCore::delete_preset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    @Throws(DspiException::class)override fun `deletePresetConfirmed`(`slot`: kotlin.UByte, `token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_delete_preset_confirmed(
+        it, FfiConverterUByte.lower(`slot`),FfiConverterOptionalString.lower(`token`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * How many output-latency requests the demo device has received, for
      * clients' tests that a wait never sends one again. `Unsupported`, with no
      * traffic, on anything but a simulated device.
@@ -10194,6 +10839,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * [`DspiCore::enter_bootloader`] with a confirmation token
+     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`]. With no
+     * device open a token is still checked, and nothing is sent.
+     */
+    @Throws(DspiException::class)override fun `enterBootloaderConfirmed`(`token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_enter_bootloader_confirmed(
+        it, FfiConverterOptionalString.lower(`token`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * The serials with an event log, sorted. Never fails.
      */override fun `eventLogDevices`(): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
@@ -10307,6 +10969,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_factory_reset(
         it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * [`DspiCore::factory_reset`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    @Throws(DspiException::class)override fun `factoryResetConfirmed`(`token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_factory_reset_confirmed(
+        it, FfiConverterOptionalString.lower(`token`),_status)
 }
     }
     
@@ -11335,6 +12013,28 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * [`crate::flash_to_drive_guarded`] with a confirmation token
+     * ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]): mint it once
+     * the bootloader drive is there (the board has left, so a token minted
+     * while it was still connected no longer holds). Without a good token
+     * while tokens are required, or with a bad one at any time,
+     * [`DspiError::ConfirmationRequired`] and nothing reaches the drive.
+     *
+     * Errors: that, then those of `flash_to_drive_guarded`.
+     */
+    @Throws(DspiException::class)override fun `flashConfirmed`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String, `token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_flash_confirmed(
+        it, FfiConverterByteArray.lower(`image`),FfiConverterTypeBootloaderDrive.lower(`drive`),FfiConverterTypeFirmwareGuardBoard.lower(`board`),FfiConverterString.lower(`typedConfirmation`),FfiConverterOptionalString.lower(`token`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Reads the name of wire channel `ch` from the device
      * (`REQ_GET_CHANNEL_NAME`) and keeps it in the mirror. Works on a
      * read-only connection too (its image is then left alone).
@@ -11897,6 +12597,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Whether the open connection is a document ([`DspiCore::open_document`]),
+     * as JSON: `{offline: true, fileName, name, kind, platform}`, or
+     * `{offline: false}` for a device or none. No I/O.
+     */override fun `offlineDocument`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_offline_document(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
      * Replaces any open device.
@@ -11947,6 +12664,38 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Open the `.dspipreset` document `text` with no device, as the demo
+     * device seeded from it (PRO1 W7): the platform and channel counts its
+     * `meta` names (else the channels it lists), every setting it holds read
+     * as an import reads them, the rest the demo's. `file_name` is what the
+     * client shows ("File: <name>"); `meta.name`, else the file's name, names
+     * the running preset and the device. Replaces any open device; nothing
+     * touches USB. The settings are read (`fetch_all`) and are the baseline
+     * for unsaved changes; the undo history starts empty.
+     *
+     * Returns JSON `{ok: true, fileName, name, kind, platform, inputs,
+     * outputs, notes}`, `notes` what reading the document reported (values
+     * left alone or clamped, channels this shape lacks).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a document
+     * this build reads (the reason as a sentence) or one naming no inputs or
+     * outputs; [`DspiError::Transfer`] if the device could not be laid out
+     * or read. On an error nothing is open.
+     */
+    @Throws(DspiException::class)override fun `openDocument`(`text`: kotlin.String, `fileName`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_open_document(
+        it, FfiConverterString.lower(`text`),FfiConverterString.lower(`fileName`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -12346,6 +13095,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Whether a gated call without a token is refused from now on
+     * ([`DspiError::ConfirmationRequired`]). Off by default. Kept across
+     * connections; minted tokens stay as they are.
+     */override fun `requireConfirmation`(`on`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_require_confirmation(
+        it, FfiConverterBoolean.lower(`on`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * `EXT_ALINK_STATS_RESET`: clear the alink's error and lock counters.
      * Errors as [`DspiCore::set_alink_slots`].
      */
@@ -12556,6 +13321,48 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The open device or document as a template: a `.dspipreset` document
+     * with `meta.kind = "template"` named `name` (`config_export`'s rules;
+     * `links` as there). The client writes it to the user's template
+     * folder, where [`template_list`] finds it. Errors as `config_export`'s.
+     */
+    @Throws(DspiException::class)override fun `saveAsTemplate`(`name`: kotlin.String, `appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_save_as_template(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`appVersion`),FfiConverterUByte.lower(`links`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The open document as it now stands, a `.dspipreset` document of the
+     * kind it was opened as, under its name (`config_export`'s rules;
+     * `links` as there). The edits are then the baseline: nothing is unsaved.
+     * The client writes the text to the file.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the connection is not a
+     * document (export the configuration instead); otherwise
+     * `config_export`'s.
+     */
+    @Throws(DspiException::class)override fun `saveDocument`(`appVersion`: kotlin.String, `links`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_save_document(
+        it, FfiConverterString.lower(`appVersion`),FfiConverterUByte.lower(`links`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * FLASH WRITE: store the live master volume for the independent mode
      * (`REQ_SAVE_MASTER_VOLUME`), under the device lock like the other
      * flash writes. Changes nothing in the mirror.
@@ -12601,6 +13408,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * [`DspiCore::save_output_config`] with a confirmation token
+     * ([`crate::confirm`]), as [`DspiCore::save_preset_confirmed`].
+     */
+    @Throws(DspiException::class)override fun `saveOutputConfigConfirmed`(`token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_save_output_config_confirmed(
+        it, FfiConverterOptionalString.lower(`token`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Save the live state to the active slot (`REQ_SAVE_PARAMS`), under the
      * device lock; the live state becomes the baseline.
      *
@@ -12615,6 +13438,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_save_params(
         it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * [`DspiCore::save_params`] with a confirmation token, as
+     * [`DspiCore::save_preset_confirmed`].
+     */
+    @Throws(DspiException::class)override fun `saveParamsConfirmed`(`token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_save_params_confirmed(
+        it, FfiConverterOptionalString.lower(`token`),_status)
 }
     }
     
@@ -12641,6 +13480,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_save_preset(
         it, FfiConverterUByte.lower(`slot`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * [`DspiCore::save_preset`] with a confirmation token ([`crate::confirm`]):
+     * [`DspiError::ConfirmationRequired`], with nothing sent, without a good
+     * one while tokens are required, or with a bad one at any time.
+     */
+    @Throws(DspiException::class)override fun `savePresetConfirmed`(`slot`: kotlin.UByte, `token`: kotlin.String?)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_save_preset_confirmed(
+        it, FfiConverterUByte.lower(`slot`),FfiConverterOptionalString.lower(`token`),_status)
 }
     }
     
@@ -14516,6 +15372,223 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Capture the open device as a new snapshot in the store (see
+     * [`DspiCore::snapshot_capture_document`]). Errors as there, and
+     * [`DspiError::Io`] with no folder named or a failed write.
+     */
+    @Throws(DspiException::class)override fun `snapshotCapture`(`name`: kotlin.String, `note`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_capture(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The open device's state as a snapshot document (`.dspipreset` text,
+     * `meta.kind = "snapshot"`), not filed: for the web, which keeps
+     * snapshots as downloads, and for a client's own store. `name` and
+     * `note` (any Unicode; cut to 200 and 4000 characters) go in with it.
+     * Reads the settings outside the image (the control surfaces' whole
+     * configuration among them); the image is the mirror.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::Transfer`] before
+     * the device's settings were read, or for a failed read;
+     * [`DspiError::Unsupported`] for firmware whose image this build cannot
+     * map.
+     */
+    @Throws(DspiException::class)override fun `snapshotCaptureDocument`(`name`: kotlin.String, `note`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_capture_document(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Delete snapshot `id`. Errors as [`DspiCore::snapshot_rename`].
+     */
+    @Throws(DspiException::class)override fun `snapshotDelete`(`id`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_delete(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Snapshot `id`'s document, to save as a file. Errors as
+     * [`DspiCore::snapshot_rename`].
+     */
+    @Throws(DspiException::class)override fun `snapshotExport`(`id`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_export(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * File a `.dspipreset` document (a snapshot or any other kind) as a
+     * snapshot of the open device, named `name` ("" keeps the document's)
+     * with `note`. A document without an image is recalled through the
+     * import's path.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a
+     * document this build reads; [`DspiError::Disconnected`] with no device
+     * and no serial in the document; [`DspiError::Io`].
+     */
+    @Throws(DspiException::class)override fun `snapshotImport`(`text`: kotlin.String, `name`: kotlin.String, `note`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_import(
+        it, FfiConverterString.lower(`text`),FfiConverterString.lower(`name`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The snapshots of device `serial` ("" the open device), oldest first.
+     * Never fails: no folder, no device or no snapshots is an empty list, and
+     * a damaged index is rebuilt from the documents.
+     */override fun `snapshotList`(`serial`: kotlin.String): List<SnapshotInfo> {
+            return FfiConverterSequenceTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_list(
+        it, FfiConverterString.lower(`serial`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Recall snapshot `id` on the open device: the settings outside the
+     * image that differ (device and source names, output latency, control
+     * surfaces), then the image as one bulk write, under the device lock.
+     * The undo history before it ends; the event log records a recall with
+     * its changes. Live, not stored in a preset slot. Never guarded and
+     * never queued: on a lost connection it stops where it is.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a snapshot
+     * of another platform or channel count, or an image of another wire
+     * format this build cannot convert (nothing is sent);
+     * [`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::Locked`] and the transfer errors of a bulk write;
+     * [`DspiError::Io`] for an unreadable store.
+     */
+    @Throws(DspiException::class)override fun `snapshotRecall`(`id`: kotlin.String): SnapshotRecall {
+            return FfiConverterTypeSnapshotRecall.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_recall(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Recall a snapshot document's text (see
+     * [`DspiCore::snapshot_recall`]): for the web and for a document the
+     * client keeps itself.
+     */
+    @Throws(DspiException::class)override fun `snapshotRecallDocument`(`text`: kotlin.String): SnapshotRecall {
+            return FfiConverterTypeSnapshotRecall.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_recall_document(
+        it, FfiConverterString.lower(`text`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Rename snapshot `id`; any Unicode, cut to 200 characters.
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id;
+     * [`DspiError::Io`].
+     */
+    @Throws(DspiException::class)override fun `snapshotRename`(`id`: kotlin.String, `name`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_rename(
+        it, FfiConverterString.lower(`id`),FfiConverterString.lower(`name`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Keep snapshots in files under `dir`, the client's own data folder
+     * (created if missing): one folder per device serial, one document per
+     * snapshot and an index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+    @Throws(DspiException::class)override fun `snapshotSetDir`(`dir`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_set_dir(
+        it, FfiConverterString.lower(`dir`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Set snapshot `id`'s note; any Unicode, cut to 4000 characters.
+     * Errors as [`DspiCore::snapshot_rename`].
+     */
+    @Throws(DspiException::class)override fun `snapshotSetNote`(`id`: kotlin.String, `note`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_set_note(
+        it, FfiConverterString.lower(`id`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -24119,6 +25192,154 @@ public object FfiConverterTypeSiggenTypeInfo: FfiConverterRustBuffer<SiggenTypeI
 
 
 /**
+ * One snapshot in a list ([`DspiCore::snapshot_list`]).
+ */
+data class SnapshotInfo (
+    /**
+     * The store's id, for the other calls.
+     */
+    var `id`: kotlin.String, 
+    /**
+     * The user's name; any Unicode.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * The user's note; any Unicode.
+     */
+    var `note`: kotlin.String, 
+    /**
+     * The serial of the device it was taken from.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * When it was taken, ms since the Unix epoch.
+     */
+    var `savedMs`: kotlin.Long, 
+    /**
+     * The platform it was taken on (`RP2040`, `RP2350`), "" when unknown.
+     */
+    var `platform`: kotlin.String, 
+    /**
+     * The device's input channels then, 0 when unknown.
+     */
+    var `inputChannels`: kotlin.UByte, 
+    /**
+     * The device's output channels then, 0 when unknown.
+     */
+    var `outputChannels`: kotlin.UByte, 
+    /**
+     * The wire format of its image, 0 when unknown.
+     */
+    var `wireFormat`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSnapshotInfo: FfiConverterRustBuffer<SnapshotInfo> {
+    override fun read(buf: ByteBuffer): SnapshotInfo {
+        return SnapshotInfo(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SnapshotInfo) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`note`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterLong.allocationSize(value.`savedMs`) +
+            FfiConverterString.allocationSize(value.`platform`) +
+            FfiConverterUByte.allocationSize(value.`inputChannels`) +
+            FfiConverterUByte.allocationSize(value.`outputChannels`) +
+            FfiConverterUByte.allocationSize(value.`wireFormat`)
+    )
+
+    override fun write(value: SnapshotInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`note`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterLong.write(value.`savedMs`, buf)
+            FfiConverterString.write(value.`platform`, buf)
+            FfiConverterUByte.write(value.`inputChannels`, buf)
+            FfiConverterUByte.write(value.`outputChannels`, buf)
+            FfiConverterUByte.write(value.`wireFormat`, buf)
+    }
+}
+
+
+
+/**
+ * What a recall did ([`DspiCore::snapshot_recall`]).
+ */
+data class SnapshotRecall (
+    /**
+     * The snapshot's name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Whether the snapshot's own image was written (false: a document
+     * without one, written through the import's path).
+     */
+    var `image`: kotlin.Boolean, 
+    /**
+     * What changed, in the unsaved-changes list's words, then the settings
+     * outside the image that were rewritten.
+     */
+    var `changes`: List<kotlin.String>, 
+    /**
+     * What was not written, and why (a feature this firmware lacks, a part
+     * the device refused, a value held to the device's range).
+     */
+    var `notes`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSnapshotRecall: FfiConverterRustBuffer<SnapshotRecall> {
+    override fun read(buf: ByteBuffer): SnapshotRecall {
+        return SnapshotRecall(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SnapshotRecall) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`image`) +
+            FfiConverterSequenceString.allocationSize(value.`changes`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`)
+    )
+
+    override fun write(value: SnapshotRecall, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`image`, buf)
+            FfiConverterSequenceString.write(value.`changes`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+    }
+}
+
+
+
+/**
  * Fill of one S/PDIF output's buffers.
  */
 data class SpdifBufferStats (
@@ -25009,6 +26230,79 @@ public object FfiConverterTypeVregChoice: FfiConverterRustBuffer<VregChoice> {
 
 
 
+/**
+ * An operation that takes a confirmation token.
+ */
+
+enum class ConfirmOp {
+    
+    /**
+     * Save the live state to a preset slot ([`DspiCore::save_preset_confirmed`]).
+     */
+    SAVE_PRESET,
+    /**
+     * Copy a preset ([`DspiCore::copy_preset_confirmed`]).
+     */
+    COPY_PRESET,
+    /**
+     * Delete a preset ([`DspiCore::delete_preset_confirmed`]).
+     */
+    DELETE_PRESET,
+    /**
+     * Save the live state to the active slot ([`DspiCore::save_params_confirmed`]).
+     */
+    SAVE_PARAMS,
+    /**
+     * Factory reset ([`DspiCore::factory_reset_confirmed`]).
+     */
+    FACTORY_RESET,
+    /**
+     * Save the output configuration ([`DspiCore::save_output_config_confirmed`]).
+     */
+    SAVE_OUTPUT_CONFIG,
+    /**
+     * Restart into the bootloader ([`DspiCore::enter_bootloader_confirmed`]).
+     */
+    ENTER_BOOTLOADER,
+    /**
+     * Import a configuration document ([`DspiCore::config_import_confirmed`]).
+     */
+    CONFIG_IMPORT,
+    /**
+     * Store a core voltage ([`DspiCore::core_vreg_cal_commit_confirmed`],
+     * [`DspiCore::core_vreg_manual_set_confirmed`]).
+     */
+    VREG_SAVE,
+    /**
+     * Write a firmware image to the bootloader drive
+     * ([`DspiCore::flash_confirmed`]).
+     */
+    FIRMWARE_FLASH;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeConfirmOp: FfiConverterRustBuffer<ConfirmOp> {
+    override fun read(buf: ByteBuffer) = try {
+        ConfirmOp.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ConfirmOp) = 4UL
+
+    override fun write(value: ConfirmOp, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
 
 
 /**
@@ -25198,6 +26492,28 @@ sealed class DspiException: kotlin.Exception() {
             get() = "msg=${ `msg` }"
     }
     
+    /**
+     * A dangerous call (`crate::confirm`) was not let through: tokens are
+     * required and none was given, or the one given is not good for it.
+     * Nothing was sent. `code`: `missing`, `unknown`, `used`, `wrong_op`,
+     * `expired` or `connection_changed` (`crate::confirm::refusal`).
+     */
+    class ConfirmationRequired(
+        
+        /**
+         * Why, as above.
+         */
+        val `code`: kotlin.String, 
+        
+        /**
+         * Which operation and why, for a log or a detail line.
+         */
+        val `msg`: kotlin.String
+        ) : DspiException() {
+        override val message
+            get() = "code=${ `code` }, msg=${ `msg` }"
+    }
+    
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<DspiException> {
         override fun lift(error_buf: RustBuffer.ByValue): DspiException = FfiConverterTypeDspiError.lift(error_buf)
@@ -25244,6 +26560,10 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
                 FfiConverterString.read(buf),
                 )
             13 -> DspiException.OvervoltWordRequired(
+                FfiConverterString.read(buf),
+                )
+            14 -> DspiException.ConfirmationRequired(
+                FfiConverterString.read(buf),
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -25315,6 +26635,12 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
                 4UL
                 + FfiConverterString.allocationSize(value.`msg`)
             )
+            is DspiException.ConfirmationRequired -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`code`)
+                + FfiConverterString.allocationSize(value.`msg`)
+            )
         }
     }
 
@@ -25380,6 +26706,12 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
             }
             is DspiException.OvervoltWordRequired -> {
                 buf.putInt(13)
+                FfiConverterString.write(value.`msg`, buf)
+                Unit
+            }
+            is DspiException.ConfirmationRequired -> {
+                buf.putInt(14)
+                FfiConverterString.write(value.`code`, buf)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
@@ -27887,6 +29219,34 @@ public object FfiConverterSequenceTypeSiggenTypeInfo: FfiConverterRustBuffer<Lis
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeSnapshotInfo: FfiConverterRustBuffer<List<SnapshotInfo>> {
+    override fun read(buf: ByteBuffer): List<SnapshotInfo> {
+        val len = buf.getInt()
+        return List<SnapshotInfo>(len) {
+            FfiConverterTypeSnapshotInfo.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<SnapshotInfo>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeSnapshotInfo.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<SnapshotInfo>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeSnapshotInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeSpdifBufferStats: FfiConverterRustBuffer<List<SpdifBufferStats>> {
     override fun read(buf: ByteBuffer): List<SpdifBufferStats> {
         val len = buf.getInt()
@@ -28565,6 +29925,42 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_quantize_gain(
         FfiConverterFloat.lower(`db`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The templates there are, as a JSON array: the ones this build ships, then
+         * the `.dspipreset` files of kind template in `user_dir` ("" for none; none
+         * on the web), each `{id, name, builtin, platform, inputs, outputs,
+         * savedUtc, status}`. `id` is what [`template_text`] takes: `builtin:<name>`
+         * or the file's name. `status` is the template's own status line (a shipped
+         * template awaiting approval says so), else "". A file that cannot be read,
+         * is not a document or not a template is left out; listing never fails.
+         */ fun `templateList`(`userDir`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_template_list(
+        FfiConverterString.lower(`userDir`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The text of template `id` from [`template_list`]: a shipped one, or a file
+         * in `user_dir`, for [`DspiCore::open_document`] or an import.
+         *
+         * Errors: [`DspiError::InvalidArgument`] for an id that is no template (a
+         * user id must be a plain `.dspipreset` file name in `user_dir`) or a file
+         * over 4 MB; [`DspiError::Io`] when the file cannot be read.
+         */
+    @Throws(DspiException::class) fun `templateText`(`id`: kotlin.String, `userDir`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_template_text(
+        FfiConverterString.lower(`id`),FfiConverterString.lower(`userDir`),_status)
 }
     )
     }

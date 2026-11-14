@@ -1,5 +1,5 @@
 {
- "repo_commit": "844ef382",
+ "repo_commit": "27cc37bf",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -298,6 +298,7 @@
    "crates/dspi-core/src/alink_usb.rs",
    "crates/dspi-core/src/autoeq.rs",
    "crates/dspi-core/src/callbacks.rs",
+   "crates/dspi-core/src/confirm.rs",
    "crates/dspi-core/src/connect.rs",
    "crates/dspi-core/src/consts.rs",
    "crates/dspi-core/src/cs.rs",
@@ -334,6 +335,7 @@
    "crates/dspi-core/src/raw.rs",
    "crates/dspi-core/src/records.rs",
    "crates/dspi-core/src/rta.rs",
+   "crates/dspi-core/src/snapshot.rs",
    "crates/dspi-core/src/state.rs",
    "crates/dspi-core/src/stats.rs",
    "crates/dspi-core/src/vreg.rs",
@@ -390,6 +392,7 @@
    "crates/dspi-session/src/rta.rs",
    "crates/dspi-session/src/rta_sharing.rs",
    "crates/dspi-session/src/runtime.rs",
+   "crates/dspi-session/src/snapshot_store.rs",
    "crates/dspi-session/src/state.rs",
    "crates/dspi-session/src/surfaces.rs",
    "crates/dspi-session/src/tube.rs",
@@ -436,7 +439,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "844ef382e08aea1b3e200e0e5f1bc8d6f7c46542",
+  "commit": "27cc37bff45fab4ecfc05f07f0b15247ec8278bb",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",
