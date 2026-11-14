@@ -161,6 +161,7 @@ fn unit(id: &str, upstream: &str) -> Unit {
         upstream: upstream.into(),
         transport: Default::default(),
         usb_mode: None,
+        on_lock_error: Default::default(), // -- WP AUSB2 --
         output: None,
         repeater: false,
         hop_delay_frames: None,

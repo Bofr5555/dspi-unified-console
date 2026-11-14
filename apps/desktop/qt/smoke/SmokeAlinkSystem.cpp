@@ -12,7 +12,11 @@
 // scene applied at once on it, skipped by the alignment with the reason.
 // -- WP AUSB1 -- The demo installation's two USB-direct units (Rear L/R, Height):
 // phase-locked, their delay in samples and range, the statistics line, counted
-// apart in the summary, and a recall at a USB frame on them.
+// apart in the summary, and a recall at a USB frame on them. -- WP AUSB2 -- A
+// hub whose Rear L/R can't lock (`--with-usb-lock-error`): the row says it is
+// muted and why, the hub's alarm is shown; the Installer sets it to play
+// unaligned and keeps the USB-direct units aligned, and the hub's own poll
+// writes the setting to the unit, which then says so.
 // Screenshots in <out>/lkui1/, dark and light.
 #include "SmokeDriver.h"
 
@@ -437,6 +441,66 @@ void alinkSystemSection(SmokeDriver &d) {
     window->close();
     leave();
     mixed.stop();
+
+    // ---- -- WP AUSB2 -- a USB-direct unit that can't lock -----------------------
+    UconsoleHub locking;
+    d.check("ausb2: a hub whose Rear L/R can't lock runs",
+            locking.start(out + QStringLiteral("/hub-lock-error"),
+                          { QStringLiteral("--open"), QStringLiteral("--forget-clients"), QStringLiteral("--with-usb-lock-error") }));
+    link->connectToHub(locking.url);
+    d.check("ausb2: on the hub, DEMO-ALINK-A bound", settled() && bind(QStringLiteral("DEMO-ALINK-A")));
+    const auto unitR = [&] {
+        for (const QVariant &v : sys->units())
+            if (v.toMap().value(QStringLiteral("id")).toString() == QLatin1String("R")) return v.toMap();
+        return QVariantMap();
+    };
+    const auto lockAlarm = [&](const char *doing) {
+        for (const QVariant &v : sys->alarms()) {
+            const QString m = v.toMap().value(QStringLiteral("message")).toString();
+            if (m == QStringLiteral("USB-direct unit Rear L/R can't lock \u2014 %1 (the host's rate is out of range)").arg(QLatin1String(doing)))
+                return true;
+        }
+        return false;
+    };
+    d.check("ausb2: Rear L/R is said to be muted, can't lock", d.waitFor(15000, [&] {
+        return sys->available() && unitR().value(QStringLiteral("stateWord")).toString() == QLatin1String("Can't lock (USB): muted");
+    }) && unitR().value(QStringLiteral("usbLockError")).toBool());
+    d.check("ausb2: the hub's alarm is shown", lockAlarm("muted"));
+    std::printf("smoke: ausb2: %s\n", qPrintable(sys->summary()));
+    shell->trigger(QStringLiteral("window.system"));
+    d.waitFor(3000, [&] { return window->isVisible(); });
+    d.spin(400);
+    const auto lockR = [&] { return in(QStringLiteral("SystemWindow.lockError.R")); };
+    d.check("ausb2: the row says why",
+            lockR() && lockR()->isVisible()
+                && lockR()->property("text").toString() == QLatin1String("Can't lock: the host's rate is out of range"));
+    shoot(QStringLiteral("ausb2-lock-error-muted"));
+    // Installer: Rear L/R plays unaligned, the USB-direct units kept aligned
+    const auto actionR = [&] { return in(QStringLiteral("SystemWindow.onLockError.R")); };
+    const auto keep = [&] { return in(QStringLiteral("SystemWindow.keepUsbAligned")); };
+    d.check("ausb2: the Installer's USB-direct settings",
+            actionR() && actionR()->isVisible() && actionR()->isEnabled() && keep() && keep()->isEnabled()
+                && in(QStringLiteral("SystemWindow.usbMode.H")) && actionR()->property("currentIndex").toInt() == 0);
+    if (actionR() && keep()) {
+        actionR()->setProperty("currentIndex", 1);
+        QMetaObject::invokeMethod(actionR(), "activated", Q_ARG(int, 1));
+        keep()->setProperty("checked", true);
+        QMetaObject::invokeMethod(keep(), "toggled");
+    }
+    d.check("ausb2: a draft of both", sys->dirty() && sys->onLockErrorOf(QStringLiteral("R")) == QLatin1String("play_unaligned")
+                                          && sys->keepUsbAligned());
+    d.check("ausb2: saved", click(save()) && d.waitFor(15000, [&] { return !sys->busy() && !sys->dirty(); }) && !sys->actionFailed());
+    // The hub's own poll (every 5 s) writes it to the unit, which then plays unaligned
+    d.check("ausb2: written to the unit by the hub", d.waitFor(30000, [&] {
+        fresh();
+        return unitR().value(QStringLiteral("usbOnLockError")).toString() == QLatin1String("play_unaligned")
+               && unitR().value(QStringLiteral("stateWord")).toString() == QLatin1String("Can't lock (USB): playing unaligned");
+    }));
+    d.check("ausb2: kept aligned, and the alarm says it plays", sys->keepUsbAligned() && lockAlarm("playing unaligned"));
+    shoot(QStringLiteral("ausb2-lock-error-playing"));
+    window->close();
+    leave();
+    locking.stop();
     modes->choose(modeBefore, false);
     if (demoBefore && !device->connected()) device->openDemo();
     d.waitFor(10000, [&] { return !demoBefore || device->connected(); });

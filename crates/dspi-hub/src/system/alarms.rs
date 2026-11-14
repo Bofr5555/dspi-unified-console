@@ -11,6 +11,8 @@
 //! | `reanchor` | an 0xE1 `REANCHOR` (a short silence) | acknowledged |
 //! | `system_muted` | the sender's system mute set (by `system.mute`, a scene or another host), seen at a read or a write | cleared |
 //! | `delay_below_min` | `EXT_ALINK_PHASE` flag `D_BELOW_MIN` | the flag gone |
+//! | `usb_lock_error` | a USB-direct unit in phase lock cannot be in step (*lock error*, the fork's WP USB3b: STATUS flags bit 6 at a read, or an 0xE3 `LOCK_ERROR`): "USB-direct unit X can't lock — muted / playing unaligned (cause)"; critical when it mutes, a warning when it plays (WP AUSB2) | the flag gone at a read, an 0xE3 `LOCK_OK`, or the unit gone (`unit_offline`) |
+//! | `usb_realign_failed` | "Keep USB-direct units aligned" could not write a unit's output delays (WP AUSB2); retried at most every [`REALIGN_RETRY_S`] | a later re-align of it, or its offset no longer moved |
 //! | `usb_realigned` | the hub wrote the USB-direct units' output delays again by itself ("Keep USB-direct units aligned", WP FIXM1): the record of it, one alarm per re-align | acknowledged, or the next re-align (kept in the cleared list) |
 
 use std::collections::BTreeMap;
@@ -22,6 +24,14 @@ use super::align::Observed;
 // -- WP FIXM1 --
 /// The alarm that records an automatic re-align of the USB-direct units.
 pub const USB_REALIGNED: &str = "usb_realigned";
+// -- WP AUSB2 --
+/// A USB-direct unit in lock error.
+pub const USB_LOCK_ERROR: &str = "usb_lock_error";
+/// An automatic re-align that could not write a unit's output delays.
+pub const USB_REALIGN_FAILED: &str = "usb_realign_failed";
+/// How long the hub waits before it tries a failed automatic write again
+/// (a re-align, the lock-error action), seconds: no retry storm.
+pub const REALIGN_RETRY_S: u64 = 60;
 
 /// CRC-16 errors within [`ERROR_WINDOW_S`] that raise `alink_errors`.
 pub const ERROR_STEP: u32 = 16;
@@ -264,6 +274,54 @@ impl AlarmBook {
         let mut changes: Changes = self.clear(USB_REALIGNED, "", now).into_iter().collect();
         changes.extend(self.raise(USB_REALIGNED, "", message, now));
         changes
+    }
+
+    // -- WP AUSB2 --
+    /// Unit `subject`'s lock error as last seen: `Some((message, muted))` in
+    /// it (raised, critical when it mutes), `None` out of it (cleared). The
+    /// changes, to broadcast: a new alarm, a cleared one, or one whose action
+    /// (and so its severity) changed.
+    pub fn usb_lock_error(
+        &mut self,
+        subject: &str,
+        error: Option<(String, bool)>,
+        now: u64,
+    ) -> Changes {
+        let Some((message, muted)) = error else {
+            return self
+                .clear(USB_LOCK_ERROR, subject, now)
+                .into_iter()
+                .collect();
+        };
+        let severity = if muted { "critical" } else { "warning" };
+        let raised = self.raise_counted(USB_LOCK_ERROR, subject, message, now, false);
+        let key = (USB_LOCK_ERROR.to_owned(), subject.to_owned());
+        let Some(a) = self.active.get_mut(&key) else {
+            return Vec::new();
+        };
+        let changed = a.severity != severity;
+        a.severity = severity.into();
+        if raised.is_some() || changed {
+            vec![a.clone()]
+        } else {
+            Vec::new()
+        }
+    }
+
+    // -- WP AUSB2 --
+    /// "Keep USB-direct units aligned" could not write `failed` (names, with
+    /// why), or every unit it tried was written (`None`). The changes.
+    pub fn usb_realign_failed(&mut self, failed: Option<String>, now: u64) -> Changes {
+        match failed {
+            Some(message) => self
+                .raise(USB_REALIGN_FAILED, "", message, now)
+                .into_iter()
+                .collect(),
+            None => self
+                .clear(USB_REALIGN_FAILED, "", now)
+                .into_iter()
+                .collect(),
+        }
     }
 
     /// The alarms on, then the cleared ones kept, newest first.
@@ -798,5 +856,47 @@ mod tests_wp_fixm1 {
         let list = b.list();
         assert_eq!(list.len(), 2);
         assert!(list.iter().all(|a| a.code == USB_REALIGNED));
+    }
+}
+
+// -- WP AUSB2 --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+mod tests_wp_ausb2 {
+    use super::*;
+
+    #[test]
+    fn wp_ausb2_a_lock_error_is_one_alarm_its_severity_follows_the_action() {
+        let mut b = AlarmBook::default();
+        let muted = Some(("U1 muted".to_owned(), true));
+        let c = b.usb_lock_error("U1", muted.clone(), 10);
+        assert_eq!((c.len(), c[0].severity.as_str()), (1, "critical"));
+        // Seen again (a read after the event): the same alarm, nothing to say.
+        assert!(b.usb_lock_error("U1", muted, 11).is_empty());
+        // The action changed: said, now a warning.
+        let c = b.usb_lock_error("U1", Some(("U1 plays".into(), false)), 12);
+        assert_eq!(
+            (
+                c.len(),
+                c[0].severity.as_str(),
+                c[0].message.as_str(),
+                c[0].count
+            ),
+            (1, "warning", "U1 plays", 1)
+        );
+        let c = b.usb_lock_error("U1", None, 13);
+        assert_eq!(c[0].state, AlarmState::Cleared);
+        assert!(b.usb_lock_error("U1", None, 14).is_empty());
+        assert_eq!(b.active(), 0);
+    }
+
+    #[test]
+    fn wp_ausb2_a_failed_realign_counts_each_try_and_clears() {
+        let mut b = AlarmBook::default();
+        assert_eq!(b.usb_realign_failed(Some("x".into()), 1).len(), 1);
+        assert!(b.usb_realign_failed(Some("x".into()), 2).is_empty());
+        assert_eq!(b.list()[0].count, 2);
+        assert_eq!(b.usb_realign_failed(None, 3).len(), 1);
+        assert_eq!(b.active(), 0);
     }
 }

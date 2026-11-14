@@ -6,6 +6,7 @@
 package se.bofr.dspi.fake
 
 import se.bofr.dspi.core.AlinkSceneRecall
+import se.bofr.dspi.core.AlinkSystemAlarm
 import se.bofr.dspi.core.AlinkSystemAlign
 import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.AlinkSystemRoom
@@ -56,8 +57,19 @@ class FakeAlinkSystem {
 
     private var systemDelay: Long? = null
 
-    // -- WP FIXM1 -- the Installer's "Keep USB-direct units aligned" (the web console sets it)
+    // -- WP FIXM1 -- the Installer's "Keep USB-direct units aligned"
     private var keepUsbAligned = false
+
+    // -- WP AUSB2 -- the USB-direct units' modes and lock-error actions as the
+    // installation asks them (unset: the units' own, phase lock; mute)
+    private val usbModeWanted = HashMap<String, String?>()
+    private val onLockError = HashMap<String, String>()
+
+    /**
+     * -- WP AUSB2 -- Rear L/R cannot phase-lock (its host out of range): the core
+     * shows the lock error and the hub's alarm, doing what its setting says.
+     */
+    @Volatile var rearLockError = false
     private var aligned = false
     private var frame = 1_000_000L
     private val lipSync = HashMap<String, Long?>()
@@ -131,11 +143,24 @@ class FakeAlinkSystem {
             for ((id, name, offset) in listOf(Triple("R", "Rear L/R", 144L), Triple("H", "Height", 0L))) {
                 val planned = d + 6
                 val pending = !aligned
-                rows += unit(id, name, "DEMO-USB-$id", "unit", "USB-direct", "Main room", "phase_locked", "Phase-locked (USB)").copy(
+                // -- WP AUSB2 --
+                val action = onLockError[id] ?: "mute"
+                val lockError = rearLockError && id == "R"
+                val word = when {
+                    !lockError -> "Phase-locked (USB)"
+                    action == "play_unaligned" -> "Can't lock (USB): playing unaligned"
+                    else -> "Can't lock (USB): muted"
+                }
+                val state = if (lockError) "rejected" else "phase_locked"
+                rows += unit(id, name, "DEMO-USB-$id", "unit", "USB-direct", "Main room", state, word).copy(
                     pending = pending,
                     transport = "usb_direct",
                     usbMode = "phase_lock",
-                    usbModeWanted = "phase_lock",
+                    usbModeWanted = if (usbModeWanted.containsKey(id)) usbModeWanted[id] else "phase_lock",
+                    usbLockError = lockError,
+                    usbLockErrorCause = if (lockError) "the host's rate is out of range" else "",
+                    usbOnLockError = action,
+                    usbOnLockErrorWanted = action,
                     usbDelaySamples = planned,
                     usbDelayMs = ms(planned),
                     unitUsbDelaySamples = if (pending) 192L else planned,
@@ -151,7 +176,8 @@ class FakeAlinkSystem {
                     timelineEnds = 0,
                     startOffsetSamples = offset,
                     usbStats = "host -11.5 ppm · VCXO -11.5 ppm · phase error +0.05 samples · gaps 0, missed 0, late 0 samples · " +
-                        "re-anchors 0 · timeline ends 0" + if (offset > 0) " · stream $offset samples early" else ""
+                        "re-anchors 0 · timeline ends 0" + (if (offset > 0) " · stream $offset samples early" else "") +
+                        " · lock errors ${if (lockError) 1 else 0}"
                 )
             }
         }
@@ -159,7 +185,8 @@ class FakeAlinkSystem {
         if (plainUnit) {
             rows += unit("P", "Plain unit", "DEMO-PLAIN", "unit", "No audio link", "Bar", "no_alink", "No audio link (firmware)")
         }
-        val plain = (if (usbDirect) ", USB-direct 2 of 2 locked" else "") +
+        val usbLocked = if (rearLockError) 1 else 2 // -- WP AUSB2 --
+        val plain = (if (usbDirect) ", USB-direct $usbLocked of 2 locked" else "") +
             if (plainUnit) ", 1 without the audio link (firmware)" else ""
         val pendingAll = pendingUnits + if (usbDirect && !aligned) 2 else 0
         val admin = role == "admin"
@@ -180,7 +207,22 @@ class FakeAlinkSystem {
             units = rows,
             rooms = rooms.map { (id, name) -> AlinkSystemRoom(id, name, lipSync[id]) },
             scenes = scenes,
-            alarms = emptyList(),
+            // -- WP AUSB2 -- the hub's alarm for Rear L/R's lock error
+            alarms = if (usbDirect && rearLockError) {
+                val playing = onLockError["R"] == "play_unaligned"
+                listOf(
+                    AlinkSystemAlarm(
+                        7,
+                        if (playing) "warning" else "critical",
+                        "Rear L/R",
+                        "USB-direct unit Rear L/R can't lock — " + (if (playing) "playing unaligned" else "muted") +
+                            " (the host's rate is out of range)",
+                        "raised"
+                    )
+                )
+            } else {
+                emptyList()
+            },
             systemMute = false,
             pendingApplyFrame = heldFrame,
             locked = 4,
@@ -188,9 +230,13 @@ class FakeAlinkSystem {
             pending = pendingAll,
             unitCount = 4,
             usbUnitCount = if (usbDirect) 2 else 0,
-            usbLocked = if (usbDirect) 2 else 0,
+            usbLocked = if (usbDirect) usbLocked.toLong() else 0,
             summary = "Audio link: 4 of 4 locked" + plain + if (pendingAll > 0) ", audio link delay to write on $pendingAll" else "",
-            health = if (pendingAll > 0 || plainUnit) "warning" else "ok",
+            health = when {
+                usbDirect && rearLockError -> "problem" // -- WP AUSB2 --
+                pendingAll > 0 || plainUnit -> "warning"
+                else -> "ok"
+            },
             issues = emptyList(),
             // -- WP FIXM1 --
             keepUsbAligned = keepUsbAligned,
@@ -204,7 +250,9 @@ class FakeAlinkSystem {
             id, name, serial, kind, role, room, true, state, word, false, null, null, null, null, null, null, null, null,
             null, null, 0, null, 0,
             // -- WP AUSB1 -- transport and the USB-direct fields
-            "alink", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "", null, ""
+            "alink", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "", null, "",
+            // -- WP AUSB2 -- lock error, its cause, the action now and asked, firmware without it
+            false, "", null, "", false
         )
 
     @Synchronized fun save(revision: Long, edits: AlinkSystemEdits): Long {
@@ -221,6 +269,17 @@ class FakeAlinkSystem {
         // -- WP AUSB1 -- only the demo's USB-direct units take a mode
         for (m in edits.usbModes) {
             if (!usbDirect || m.unitId !in setOf("R", "H")) throw DspiException.InvalidArgument("no USB-direct unit ${m.unitId}")
+            // -- WP AUSB2 -- as the core: only known words
+            if (m.mode != null && m.mode !in setOf("off", "rate_lock", "phase_lock")) {
+                throw DspiException.InvalidArgument("USB-direct mode ${m.mode}")
+            }
+            if (m.onLockError != null && m.onLockError !in setOf("mute", "play_unaligned")) {
+                throw DspiException.InvalidArgument("USB-direct lock-error action ${m.onLockError}")
+            }
+        }
+        for (m in edits.usbModes) {
+            usbModeWanted[m.unitId] = m.mode
+            m.onLockError?.let { onLockError[m.unitId] = it }
         }
         for (r in edits.rooms) lipSync[r.roomId] = r.lipSyncUs
         for (u in edits.units) latency[u.unitId] = u.measuredLatencyUs

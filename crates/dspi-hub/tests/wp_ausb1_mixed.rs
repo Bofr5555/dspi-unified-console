@@ -421,6 +421,7 @@ fn wp_ausb1_the_mode_is_set_from_the_editor_and_a_rate_locked_unit_takes_scenes_
         usb_modes: vec![AlinkUnitUsbMode {
             unit_id: "U2".into(),
             mode: Some("rate_lock".into()),
+            on_lock_error: None, // -- WP AUSB2 --
         }],
         ..AlinkSystemEdits::default()
     };
@@ -437,6 +438,7 @@ fn wp_ausb1_the_mode_is_set_from_the_editor_and_a_rate_locked_unit_takes_scenes_
         usb_modes: vec![AlinkUnitUsbMode {
             unit_id: "A".into(),
             mode: Some("rate_lock".into()),
+            on_lock_error: None, // -- WP AUSB2 --
         }],
         ..AlinkSystemEdits::default()
     };
@@ -448,6 +450,7 @@ fn wp_ausb1_the_mode_is_set_from_the_editor_and_a_rate_locked_unit_takes_scenes_
         usb_modes: vec![AlinkUnitUsbMode {
             unit_id: "U2".into(),
             mode: Some("fast".into()),
+            on_lock_error: None, // -- WP AUSB2 --
         }],
         ..AlinkSystemEdits::default()
     };
@@ -488,6 +491,9 @@ fn wp_ausb1_the_mode_is_set_from_the_editor_and_a_rate_locked_unit_takes_scenes_
         (u2.result.as_str(), u2.reason.as_deref()),
         ("applied_now", Some("not phase-locked (USB-direct)"))
     );
+    // -- WP AUSB2 -- K's frame read is skipped now (review fixm1 F4), so the apply
+    // is quick: let the sender's held frame pass before the next scene.
+    std::thread::sleep(Duration::from_millis(400));
     let rc = core.alink_system_recall("evening".into()).unwrap();
     assert!(
         rc.message

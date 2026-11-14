@@ -1658,6 +1658,8 @@ fn usb_direct_text(
                 "ends": ends, "suspends": d.suspends, "resumes": d.resumes,
                 "busResets": d.bus_resets, "unplugs": d.unplugs, "lastFrames": d.last_frames,
                 "lastUs": d.last_us, "lastDevUs": d.last_dev_us, "longestRideUs": d.longest_ride_us,
+                // -- WP AUSB2 -- layout 2 (0 from layout 1)
+                "version": d.version, "badSofReadings": d.bad_sof_readings, "lockErrors": d.lock_errors,
                 "maxPassUs": d.max_pass_us, "maxIsrQuietUs": d.max_isr_quiet_us,
                 "maxIsrLateUs": d.max_isr_late_us, "holdoverUs": d.holdover_us,
             })
@@ -1666,6 +1668,8 @@ fn usb_direct_text(
             "config": {
                 "mode": c.mode, "modeName": mode, "autoReanchor": c.flags & usb::FLAG_AUTO_REANCHOR != 0,
                 "d": c.d, "runsAsRateLock": reasons,
+                // -- WP AUSB2 --
+                "onLockError": if c.on_lock_error == usb::ON_LOCK_ERROR_PLAY { "play_unaligned" } else { "mute" },
             },
             "status": {
                 "state": s.state.as_str(), "phaseState": s.phase_state, "rateHz": rate_hz,
@@ -1673,6 +1677,7 @@ fn usb_direct_text(
                 "stream": s.flags & usb::USB_FLAG_STREAM != 0,
                 "timeBase": s.flags & usb::USB_FLAG_TIME_BASE != 0,
                 "holdover": s.flags & usb::USB_FLAG_HOLDOVER != 0,
+                "lockError": s.flags & usb::USB_FLAG_LOCK_ERROR != 0, // -- WP AUSB2 --
                 "hostPpm": s.host_ppm, "vcxoPpm": s.vcxo_ppm, "phaseErrorSamples": s.phase_error,
                 "sample": s.sample, "busFrame": s.bus_frame, "dMin": s.d_min, "dMax": s.d_max,
                 "fill": s.fill, "streamStartBusFrame": start, "streamAgeFrames": s.stream_age_frames,
@@ -1717,6 +1722,17 @@ fn usb_direct_text(
     if !reasons.is_empty() {
         lines.push(("runs as", format!("rate lock: {}", reasons.join(", "))));
     }
+    // -- WP AUSB2 -- what it does when it can't lock, and whether it can't now
+    let playing = c.on_lock_error == usb::ON_LOCK_ERROR_PLAY;
+    lines.push((
+        "lock error",
+        match (s.flags & usb::USB_FLAG_LOCK_ERROR != 0, playing) {
+            (true, true) => "now: playing unaligned".to_owned(),
+            (true, false) => "now: muted".to_owned(),
+            (false, true) => "none (would play unaligned)".to_owned(),
+            (false, false) => "none (would mute)".to_owned(),
+        },
+    ));
     lines.extend([
         (
             "rate",
@@ -3417,5 +3433,47 @@ mod tests_wp_ausb1 {
             usb_direct_text(&mut plain, false),
             Err(dspi_session::ext::ExtError::Unsupported { .. })
         ));
+    }
+}
+
+// -- WP AUSB2 --
+#[cfg(test)]
+mod tests_wp_ausb2 {
+    use super::*;
+    use dspi_transport::fake::{USB_SIM_HOST_RANGE, UsbDirectSetup};
+    use dspi_transport::{FakeDevice, Transport};
+
+    #[test]
+    fn wp_ausb2_ext_usb_direct_says_the_lock_error_and_its_action() {
+        let mut dev = FakeDevice::demo_usb_direct(UsbDirectSetup::default());
+        let text = usb_direct_text(&mut dev, false).unwrap();
+        assert!(
+            text.lines().any(|l| l == "lock error    none (would mute)"),
+            "{text}"
+        );
+        dev.control_out(
+            dspi_proto::generated::opcodes::REQ_EXTENSION,
+            dspi_proto::ext::alink_usb::EXT_ALINK_USB,
+            &[2, 1, 192, 0, 1, 0, 0, 0],
+        )
+        .unwrap();
+        assert!(dev.remote().usb_direct_sim(USB_SIM_HOST_RANGE));
+        let text = usb_direct_text(&mut dev, false).unwrap();
+        assert!(
+            text.lines()
+                .any(|l| l == "lock error    now: playing unaligned"),
+            "{text}"
+        );
+        let v: serde_json::Value =
+            serde_json::from_str(&usb_direct_text(&mut dev, true).unwrap()).unwrap();
+        assert_eq!(v["config"]["onLockError"], "play_unaligned");
+        assert_eq!(v["status"]["lockError"], true);
+        assert_eq!(
+            (
+                v["diag"]["version"].as_u64(),
+                v["diag"]["lockErrors"].as_u64()
+            ),
+            (Some(2), Some(1))
+        );
     }
 }

@@ -67,6 +67,11 @@ pub struct AlinkUsbConfig {
     pub d_above_max: bool,
     /// Mode 2 at 44.1 kHz: it runs as mode 1.
     pub rate_unsupported: bool,
+    // -- WP AUSB2 --
+    /// What mode 2 does in lock error (the fork's WP USB3b): `mute` (the
+    /// default, and what firmware before WP USB3b reads as) or
+    /// `play_unaligned`; `unknown` for another code.
+    pub on_lock_error: String,
     /// The state, as [`AlinkUsbStatus::state`].
     pub state: String,
     /// Its code.
@@ -100,6 +105,13 @@ pub struct AlinkUsbStatus {
     pub time_base: bool,
     /// No SOF for over 50 ms: the time base is extrapolated.
     pub holdover: bool,
+    // -- WP AUSB2 --
+    /// The VCXO started at the host rate the unit stored (WP USB3).
+    pub seeded: bool,
+    /// Mode 2 cannot be in step (host rejected, a configuration that cannot
+    /// phase-lock, or a phase error pending): the unit is muted or plays
+    /// unaligned, as [`AlinkUsbConfig::on_lock_error`] says (WP USB3b).
+    pub lock_error: bool,
     /// The host's SOF rate against the unit's crystal, ppm (+ = host fast).
     pub host_ppm: f32,
     /// The soft VCXO's correction, ppm.
@@ -153,6 +165,10 @@ pub struct AlinkUsbEnd {
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlinkUsbDiag {
+    // -- WP AUSB2 --
+    /// The layout read: 1, or 2 since the fork's WP USB3b (with
+    /// [`Self::bad_sof_readings`] and [`Self::lock_errors`]).
+    pub version: u8,
     /// The latest end's cause ([`AlinkUsbEnd::cause`]); none yet.
     pub last_cause: Option<String>,
     /// SOF absences ridden through.
@@ -171,6 +187,11 @@ pub struct AlinkUsbDiag {
     pub unplugs: u16,
     /// The latest absence: frames counted on the bus.
     pub last_frames: u32,
+    // -- WP AUSB2 --
+    /// RP2350 SOF timestamps the unit repaired (layout 2; 0 in layout 1).
+    pub bad_sof_readings: u16,
+    /// Entries into lock error (layout 2; 0 in layout 1).
+    pub lock_errors: u16,
     /// Its duration by the unit's clock, µs.
     pub last_us: u32,
     /// Clock minus frames at the host rate, µs.
@@ -232,6 +253,8 @@ impl DspiCore {
     }
 
     /// Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+    /// -- WP AUSB2 -- the unit's lock-error action (byte 4) is read first and
+    /// kept (mute when it cannot be read);
     /// `auto_reanchor` (normally true); `d` samples from arrival to output,
     /// the same on every unit that should play aligned (170-399 at 48 kHz,
     /// 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
@@ -254,6 +277,8 @@ impl DspiCore {
                 0
             },
             d,
+            // -- WP AUSB2 -- replaced by the unit's own below
+            on_lock_error: usb::ON_LOCK_ERROR_MUTE,
             status_flags: 0,
             state: 0,
         };
@@ -268,9 +293,59 @@ impl DspiCore {
         usb_conn(&mut inner, usb::EXT_ALINK_USB)?;
         let mut w = inner.writable_conn()?;
         let t = w.conn().transport();
-        let before = sx::read_alink_usb(t).ok().map(|b| config_value(&b));
+        let read = sx::read_alink_usb(t).ok();
+        let before = read.as_ref().map(config_value);
+        // -- WP AUSB2 -- never reset the lock-error action by writing the mode
+        let c = usb::AlinkUsbConfig {
+            on_lock_error: read.map_or(usb::ON_LOCK_ERROR_MUTE, |r| r.on_lock_error),
+            ..c
+        };
         sx::write_alink_usb(t, c).map_err(write_error)?;
         journal::Pending::of(journal::ALINK_USB, &[], before)
+            .done_with(&mut inner, config_value(&c));
+        Ok(())
+    }
+
+    // -- WP AUSB2 --
+    /// Set what the unit does in mode 2 when it cannot phase-lock (*lock
+    /// error*: the host's rate out of range, a configuration that cannot
+    /// phase-lock, a phase error pending; the fork's WP USB3b,
+    /// `extension_channel_spec.md` 2.9.2): `play_unaligned` false mutes it
+    /// (the default: it was asked to be in step), true lets it play
+    /// unaligned. Writes `EXT_ALINK_USB` with its mode, flags and D as read,
+    /// only byte 4 changed, so nothing re-anchors. The core never saves it
+    /// (`REQ_SAVE_OUTPUT_CONFIG` stores it).
+    ///
+    /// Errors, with no traffic: `Disconnected`; `Unsupported` without the
+    /// block; `ReadOnly`. `Transfer` when the setting cannot be read first.
+    /// `Unsupported` when the unit refuses `play_unaligned` (firmware before
+    /// WP USB3b, where the byte is reserved: the test for the setting);
+    /// `Refused` for another refusal (mode 2 with D outside its limits now);
+    /// `Denied`, `Locked` or `Transfer` from a hub.
+    pub fn set_alink_usb_on_lock_error(&self, play_unaligned: bool) -> Result<()> {
+        self.ensure_probed();
+        let mut inner = self.lock();
+        usb_conn(&mut inner, usb::EXT_ALINK_USB)?;
+        let mut w = inner.writable_conn()?;
+        let t = w.conn().transport();
+        let read = sx::read_alink_usb(t).map_err(read_error)?;
+        let c = usb::AlinkUsbConfig {
+            on_lock_error: if play_unaligned {
+                usb::ON_LOCK_ERROR_PLAY
+            } else {
+                usb::ON_LOCK_ERROR_MUTE
+            },
+            status_flags: 0,
+            state: 0,
+            ..read
+        };
+        match sx::write_alink_usb(t, c).map_err(write_error) {
+            Err(DspiError::Refused { .. }) if play_unaligned => {
+                return Err(DspiError::Unsupported);
+            }
+            r => r?,
+        }
+        journal::Pending::of(journal::ALINK_USB, &[], Some(config_value(&read)))
             .done_with(&mut inner, config_value(&c));
         Ok(())
     }
@@ -284,8 +359,8 @@ impl DspiCore {
         Ok(status(&s))
     }
 
-    /// Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
-    /// `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+    /// Read `EXT_ALINK_USB_DIAG` (layout version 1 or 2 -- WP AUSB2 --;
+    /// another reads as `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
     pub fn fetch_alink_usb_diag(&self) -> Result<AlinkUsbDiag> {
         self.ensure_probed();
         let mut inner = self.lock();
@@ -432,16 +507,29 @@ pub(crate) fn config(c: &usb::AlinkUsbConfig) -> AlinkUsbConfig {
         d_below_min: c.status_flags & usb::STATUS_D_BELOW_MIN != 0,
         d_above_max: c.status_flags & usb::STATUS_D_ABOVE_MAX != 0,
         rate_unsupported: c.status_flags & usb::STATUS_RATE_UNSUPPORTED != 0,
+        on_lock_error: on_lock_error_name(c.on_lock_error).into(),
         state: state.as_str().into(),
         state_code: c.state,
     }
 }
 
-/// The journal's value of a USB-direct setting: `[mode, flags, d LE]`,
-/// without the device's IN-only bytes.
+// -- WP AUSB2 --
+/// `EXT_ALINK_USB.on_lock_error` by name: `mute`, `play_unaligned`, `unknown`.
+pub(crate) fn on_lock_error_name(code: u8) -> &'static str {
+    match code {
+        usb::ON_LOCK_ERROR_MUTE => "mute",
+        usb::ON_LOCK_ERROR_PLAY => "play_unaligned",
+        _ => "unknown",
+    }
+}
+
+/// The journal's value of a USB-direct setting: `[mode, flags, d LE,
+/// on_lock_error]` (-- WP AUSB2 -- with byte 4), without the device's IN-only
+/// bytes.
 fn config_value(c: &usb::AlinkUsbConfig) -> Value {
     let mut b = vec![c.mode, c.flags];
     b.extend(c.d.to_le_bytes());
+    b.push(c.on_lock_error);
     Value::Bytes(b)
 }
 
@@ -462,6 +550,8 @@ pub(crate) fn status(s: &usb::AlinkUsbStatus) -> AlinkUsbStatus {
         nominal_feedback: s.flags & usb::USB_FLAG_NOMINAL_FEEDBACK != 0,
         time_base: s.flags & usb::USB_FLAG_TIME_BASE != 0,
         holdover: s.flags & usb::USB_FLAG_HOLDOVER != 0,
+        seeded: s.flags & usb::USB_FLAG_SEEDED != 0,
+        lock_error: s.flags & usb::USB_FLAG_LOCK_ERROR != 0,
         host_ppm: s.host_ppm,
         vcxo_ppm: s.vcxo_ppm,
         phase_error_samples: s.phase_error,
@@ -483,6 +573,7 @@ pub(crate) fn status(s: &usb::AlinkUsbStatus) -> AlinkUsbStatus {
 
 pub(crate) fn diag(d: &usb::AlinkUsbDiag) -> AlinkUsbDiag {
     AlinkUsbDiag {
+        version: d.version,
         last_cause: d.last_cause_name().map(str::to_owned),
         rides: d.rides,
         holdovers: d.holdovers,
@@ -500,6 +591,8 @@ pub(crate) fn diag(d: &usb::AlinkUsbDiag) -> AlinkUsbDiag {
         bus_resets: d.bus_resets,
         unplugs: d.unplugs,
         last_frames: d.last_frames,
+        bad_sof_readings: d.bad_sof_readings,
+        lock_errors: d.lock_errors,
         last_us: d.last_us,
         last_dev_us: d.last_dev_us,
         longest_ride_us: d.longest_ride_us,
@@ -513,3 +606,8 @@ pub(crate) fn diag(d: &usb::AlinkUsbDiag) -> AlinkUsbDiag {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_ausb1;
+
+// -- WP AUSB2 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_ausb2;

@@ -64,6 +64,13 @@ pub const STATUS_D_ABOVE_MAX: u8 = 1 << 1;
 pub const STATUS_RATE_UNSUPPORTED: u8 = 1 << 2;
 /// The firmware's default D, samples (4.0 ms at 48 kHz; valid at 48 kHz only).
 pub const DEFAULT_D: u16 = 192;
+// -- WP AUSB2 -- (fork WP USB3b, 2.9.2)
+/// `EXT_ALINK_USB.on_lock_error` (byte 4) 0: a mode-2 unit in lock error stays
+/// muted (the default).
+pub const ON_LOCK_ERROR_MUTE: u8 = 0;
+/// `EXT_ALINK_USB.on_lock_error` 1: it plays unaligned. Firmware before WP
+/// USB3b refuses it (the byte was reserved): a host's test for the setting.
+pub const ON_LOCK_ERROR_PLAY: u8 = 1;
 
 /// `EXT_ALINK_USB_STATUS.flags` bit 0: RP2350 hardware SOF timestamps.
 pub const USB_FLAG_HW_TIMESTAMP: u8 = 1 << 0;
@@ -75,6 +82,12 @@ pub const USB_FLAG_NOMINAL_FEEDBACK: u8 = 1 << 2;
 pub const USB_FLAG_TIME_BASE: u8 = 1 << 3;
 /// bit 4: no SOF for over 50 ms: the time base is extrapolated (WP USB2).
 pub const USB_FLAG_HOLDOVER: u8 = 1 << 4;
+// -- WP AUSB2 --
+/// bit 5: the VCXO started at the stored host rate (WP USB3).
+pub const USB_FLAG_SEEDED: u8 = 1 << 5;
+/// bit 6: mode 2 cannot be in step (host rejected, CONFIG or pending; WP
+/// USB3b): the unit does what `on_lock_error` says.
+pub const USB_FLAG_LOCK_ERROR: u8 = 1 << 6;
 
 /// The 11-bit bus frame number wraps here.
 pub const BUS_FRAMES: u16 = 2048;
@@ -82,8 +95,12 @@ pub const BUS_FRAMES: u16 = 2048;
 pub const BUS_PAST_FRAMES: u16 = 64;
 /// `stream_first_bus_frame` without a stream.
 pub const NO_STREAM: u16 = 0xFFFF;
-/// `EXT_ALINK_USB_DIAG`'s layout version this build reads.
-pub const DIAG_VERSION: u8 = 1;
+/// `EXT_ALINK_USB_DIAG`'s newest layout version this build reads (WP USB3b;
+/// -- WP AUSB2 -- version 1 still reads, [`DIAG_VERSION_1`]).
+pub const DIAG_VERSION: u8 = 2;
+/// The first layout (WP USB2): u32 `last_frames` at 32, u32
+/// `longest_ride_us` at 44, no `bad_sof_readings` or `lock_errors`.
+pub const DIAG_VERSION_1: u8 = 1;
 /// `EXT_ALINK_USB_DIAG` OUT: clear every field.
 pub const DIAG_CLEAR: [u8; 1] = [1];
 /// `EXT_ALINK_USB_DIAG.last_cause` with no timeline end yet.
@@ -281,6 +298,12 @@ pub enum UsbEventReason {
     Holdover,
     /// 9: SOF back within 10 s on the same timeline.
     Resumed,
+    // -- WP AUSB2 --
+    /// 10: mode 2 entered lock error (the state says why: 6 rejected, 3
+    /// CONFIG, 5 with phase state 3 pending).
+    LockError,
+    /// 11: it left lock error.
+    LockOk,
     /// A code this build does not know.
     Other(u8),
 }
@@ -299,6 +322,8 @@ impl UsbEventReason {
             7 => Self::Config,
             8 => Self::Holdover,
             9 => Self::Resumed,
+            10 => Self::LockError,
+            11 => Self::LockOk,
             o => Self::Other(o),
         }
     }
@@ -316,12 +341,15 @@ impl UsbEventReason {
             Self::Config => 7,
             Self::Holdover => 8,
             Self::Resumed => 9,
+            Self::LockError => 10,
+            Self::LockOk => 11,
             Self::Other(o) => o,
         }
     }
 
     /// `none`, `locked`, `host_range`, `sof_lost`, `reanchor`, `gap`,
-    /// `disabled`, `config`, `holdover`, `resumed` or `unknown`.
+    /// `disabled`, `config`, `holdover`, `resumed`, `lock_error`, `lock_ok` or
+    /// `unknown`.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::None => "none",
@@ -334,6 +362,8 @@ impl UsbEventReason {
             Self::Config => "config",
             Self::Holdover => "holdover",
             Self::Resumed => "resumed",
+            Self::LockError => "lock_error",
+            Self::LockOk => "lock_ok",
             Self::Other(_) => "unknown",
         }
     }
@@ -442,6 +472,10 @@ pub struct AlinkUsbConfig {
     pub flags: u8,
     /// Samples from a USB sample's arrival to its output.
     pub d: u16,
+    // -- WP AUSB2 --
+    /// Byte 4: what mode 2 does in lock error, [`ON_LOCK_ERROR_MUTE`] or
+    /// [`ON_LOCK_ERROR_PLAY`] (0 on firmware before WP USB3b, reserved there).
+    pub on_lock_error: u8,
     /// IN only: `STATUS_*` bits.
     pub status_flags: u8,
     /// IN only: [`UsbState`]'s code.
@@ -457,6 +491,7 @@ impl AlinkUsbConfig {
         mode: MODE_OFF,
         flags: FLAG_AUTO_REANCHOR,
         d: DEFAULT_D,
+        on_lock_error: ON_LOCK_ERROR_MUTE,
         status_flags: 0,
         state: 0,
     };
@@ -467,15 +502,19 @@ impl AlinkUsbConfig {
             mode: byte(b, 0)?,
             flags: byte(b, 1)?,
             d: u16_at(b, 2)?,
+            on_lock_error: byte(b, 4)?,
             status_flags: byte(b, 6)?,
             state: byte(b, 7)?,
         })
     }
 
-    /// The OUT payload: the IN-only bytes and the reserved ones are 0.
+    /// The OUT payload: the IN-only bytes and the reserved one are 0.
+    /// -- WP AUSB2 -- byte 4 is `on_lock_error`: a host that writes the mode
+    /// or D keeps the unit's own (read first), or firmware since WP USB3b
+    /// takes 0 (mute).
     pub fn encode(&self) -> [u8; Self::SIZE] {
         let [d0, d1] = self.d.to_le_bytes();
-        [self.mode, self.flags, d0, d1, 0, 0, 0, 0]
+        [self.mode, self.flags, d0, d1, self.on_lock_error, 0, 0, 0]
     }
 
     /// The IN reply (for fakes and fixtures): with the IN-only bytes.
@@ -487,10 +526,14 @@ impl AlinkUsbConfig {
     }
 
     /// What the firmware refuses regardless of the rate: a mode above 2, an
-    /// undefined flag bit, D 0. (Mode 2's D range is checked against the
-    /// unit's `d_min..d_max`, [`Self::fits`].)
+    /// undefined flag bit, D 0, `on_lock_error` above 1 (-- WP AUSB2 --). (Mode
+    /// 2's D range is checked against the unit's `d_min..d_max`,
+    /// [`Self::fits`]; firmware before WP USB3b also refuses `on_lock_error` 1.)
     pub fn is_valid(&self) -> bool {
-        self.mode <= MODE_PHASE_LOCK && self.flags & !FLAG_AUTO_REANCHOR == 0 && self.d != 0
+        self.mode <= MODE_PHASE_LOCK
+            && self.flags & !FLAG_AUTO_REANCHOR == 0
+            && self.d != 0
+            && self.on_lock_error <= ON_LOCK_ERROR_PLAY
     }
 
     /// Valid, and in mode 2 with D inside `d_min..=d_max`.
@@ -654,9 +697,12 @@ pub fn content_lead(a: (u16, i32), b: (u16, i32), spf: u16) -> i64 {
         .saturating_add(i64::from(b.1).saturating_sub(i64::from(a.1)))
 }
 
-/// `EXT_ALINK_USB_DIAG` IN, 64 bytes, layout version 1 (2.9.6).
+/// `EXT_ALINK_USB_DIAG` IN, 64 bytes, layout version 1 or 2 (2.9.6; -- WP
+/// AUSB2 -- version 2 since WP USB3b).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AlinkUsbDiag {
+    /// The layout read: [`DIAG_VERSION_1`] or [`DIAG_VERSION`].
+    pub version: u8,
     /// The latest timeline end, an index into `ends`; `None` for none.
     pub last_cause: Option<u8>,
     /// SOF absences ridden through (resumed).
@@ -673,14 +719,23 @@ pub struct AlinkUsbDiag {
     pub bus_resets: u16,
     /// Disconnects.
     pub unplugs: u16,
-    /// The latest absence or discontinuity: frames counted on the bus.
+    /// The latest absence or discontinuity: frames counted on the bus (u16,
+    /// saturating, in version 2).
     pub last_frames: u32,
+    // -- WP AUSB2 --
+    /// Version 2: RP2350 SOF timestamps repaired (each one a fresh anchor
+    /// before WP USB3b); 0 in version 1.
+    pub bad_sof_readings: u16,
     /// Its duration by the unit's clock, µs.
     pub last_us: u32,
     /// Clock minus frames at the host rate, µs.
     pub last_dev_us: i32,
-    /// The longest absence ridden through, µs.
+    /// The longest absence ridden through, µs (version 2 counts ms:
+    /// `longest_ride_ms` × 1000).
     pub longest_ride_us: u32,
+    // -- WP AUSB2 --
+    /// Version 2: entries into lock error (2.9.2); 0 in version 1.
+    pub lock_errors: u16,
     /// The longest main-loop pass while USB is the source, µs.
     pub max_pass_us: u32,
     /// The longest time without a SOF interrupt entry, µs.
@@ -696,18 +751,22 @@ impl AlinkUsbDiag {
     pub const SIZE: usize = 64;
 
     /// From an IN reply; `None` short or for a layout other than
-    /// [`DIAG_VERSION`].
+    /// [`DIAG_VERSION_1`] and [`DIAG_VERSION`].
     pub fn decode(b: &[u8]) -> Option<Self> {
         let b = b.get(..Self::SIZE)?;
-        if byte(b, 0)? != DIAG_VERSION {
-            return None;
-        }
+        let version = byte(b, 0)?;
+        let v2 = match version {
+            DIAG_VERSION_1 => false,
+            DIAG_VERSION => true,
+            _ => return None,
+        };
         let mut ends = [0u16; 9];
         for (i, e) in ends.iter_mut().enumerate() {
             *e = u16_at(b, i.checked_mul(2)?.checked_add(6)?)?;
         }
         let cause = byte(b, 1)?;
         Some(Self {
+            version,
             last_cause: (cause != NO_CAUSE).then_some(cause),
             rides: u16_at(b, 2)?,
             holdovers: u16_at(b, 4)?,
@@ -716,10 +775,20 @@ impl AlinkUsbDiag {
             resumes: u16_at(b, 26)?,
             bus_resets: u16_at(b, 28)?,
             unplugs: u16_at(b, 30)?,
-            last_frames: u32_at(b, 32)?,
+            last_frames: if v2 {
+                u32::from(u16_at(b, 32)?)
+            } else {
+                u32_at(b, 32)?
+            },
+            bad_sof_readings: if v2 { u16_at(b, 34)? } else { 0 },
             last_us: u32_at(b, 36)?,
             last_dev_us: i32_at(b, 40)?,
-            longest_ride_us: u32_at(b, 44)?,
+            longest_ride_us: if v2 {
+                u32::from(u16_at(b, 44)?).saturating_mul(1000)
+            } else {
+                u32_at(b, 44)?
+            },
+            lock_errors: if v2 { u16_at(b, 46)? } else { 0 },
             max_pass_us: u32_at(b, 48)?,
             max_isr_quiet_us: u32_at(b, 52)?,
             max_isr_late_us: u32_at(b, 56)?,
@@ -727,10 +796,12 @@ impl AlinkUsbDiag {
         })
     }
 
-    /// The reply, for fakes and fixtures.
+    /// The reply in [`Self::version`]'s layout (version 2 for any but 1),
+    /// for fakes and fixtures.
     pub fn encode(&self) -> [u8; Self::SIZE] {
         let mut b = [0u8; Self::SIZE];
-        b[0] = DIAG_VERSION;
+        let v2 = self.version != DIAG_VERSION_1;
+        b[0] = if v2 { DIAG_VERSION } else { DIAG_VERSION_1 };
         b[1] = self.last_cause.unwrap_or(NO_CAUSE);
         put(&mut b, 2, &self.rides.to_le_bytes());
         put(&mut b, 4, &self.holdovers.to_le_bytes());
@@ -743,10 +814,22 @@ impl AlinkUsbDiag {
         put(&mut b, 26, &self.resumes.to_le_bytes());
         put(&mut b, 28, &self.bus_resets.to_le_bytes());
         put(&mut b, 30, &self.unplugs.to_le_bytes());
-        put(&mut b, 32, &self.last_frames.to_le_bytes());
+        if v2 {
+            let sat = |v: u32| u16::try_from(v).unwrap_or(u16::MAX);
+            put(&mut b, 32, &sat(self.last_frames).to_le_bytes());
+            put(&mut b, 34, &self.bad_sof_readings.to_le_bytes());
+            put(
+                &mut b,
+                44,
+                &sat(self.longest_ride_us.checked_div(1000).unwrap_or(0)).to_le_bytes(),
+            );
+            put(&mut b, 46, &self.lock_errors.to_le_bytes());
+        } else {
+            put(&mut b, 32, &self.last_frames.to_le_bytes());
+            put(&mut b, 44, &self.longest_ride_us.to_le_bytes());
+        }
         put(&mut b, 36, &self.last_us.to_le_bytes());
         put(&mut b, 40, &self.last_dev_us.to_le_bytes());
-        put(&mut b, 44, &self.longest_ride_us.to_le_bytes());
         put(&mut b, 48, &self.max_pass_us.to_le_bytes());
         put(&mut b, 52, &self.max_isr_quiet_us.to_le_bytes());
         put(&mut b, 56, &self.max_isr_late_us.to_le_bytes());
@@ -766,8 +849,9 @@ impl AlinkUsbDiag {
         self.last_cause.and_then(end_cause_name)
     }
 
-    /// All zero, as after a clear (no end yet).
+    /// All zero, as after a clear (no end yet), in the newest layout.
     pub const CLEAR: AlinkUsbDiag = AlinkUsbDiag {
+        version: DIAG_VERSION,
         last_cause: None,
         rides: 0,
         holdovers: 0,
@@ -777,9 +861,11 @@ impl AlinkUsbDiag {
         bus_resets: 0,
         unplugs: 0,
         last_frames: 0,
+        bad_sof_readings: 0,
         last_us: 0,
         last_dev_us: 0,
         longest_ride_us: 0,
+        lock_errors: 0,
         max_pass_us: 0,
         max_isr_quiet_us: 0,
         max_isr_late_us: 0,
@@ -1035,7 +1121,11 @@ mod tests_wp_ausb1 {
 
     #[test]
     fn wp_ausb1_the_diag_reads_only_version_1() {
-        let mut d = AlinkUsbDiag::CLEAR;
+        // -- WP AUSB2 -- version 2 reads too now (its own test); 3 does not.
+        let mut d = AlinkUsbDiag {
+            version: DIAG_VERSION_1,
+            ..AlinkUsbDiag::CLEAR
+        };
         d.ends[0] = 3;
         d.ends[8] = 1;
         d.last_cause = Some(0);
@@ -1046,9 +1136,9 @@ mod tests_wp_ausb1 {
         assert_eq!(AlinkUsbDiag::decode(&b), Some(d));
         assert_eq!(d.total_ends(), 4);
         assert_eq!(d.last_cause_name(), Some("sof_lost"));
-        let mut v2 = b;
-        v2[0] = 2;
-        assert_eq!(AlinkUsbDiag::decode(&v2), None);
+        let mut v3 = b;
+        v3[0] = 3;
+        assert_eq!(AlinkUsbDiag::decode(&v3), None);
         assert_eq!(
             AlinkUsbDiag::decode(&AlinkUsbDiag::CLEAR.encode())
                 .unwrap()
@@ -1134,5 +1224,113 @@ mod tests_wp_ausb1 {
         assert_eq!(UsbState::from_raw(6).as_str(), "rejected");
         assert_eq!(UsbEventReason::from_raw(9).as_str(), "resumed");
         assert_eq!(end_cause_name(9), None);
+    }
+}
+
+// -- WP AUSB2 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_ausb2 {
+    use super::*;
+
+    #[test]
+    fn wp_ausb2_byte_4_is_on_lock_error_and_is_written() {
+        // 2.9.2: `02 01 c0 00 01 00 00 05`: phase lock, D 192, play unaligned.
+        let raw = [0x02, 0x01, 0xc0, 0, 0x01, 0, 0x00, 0x05];
+        let c = AlinkUsbConfig::decode(&raw).unwrap();
+        assert_eq!(c.on_lock_error, ON_LOCK_ERROR_PLAY);
+        assert_eq!(c.encode(), [0x02, 0x01, 0xc0, 0, 0x01, 0, 0, 0]);
+        assert_eq!(c.encode_in(), raw);
+        assert!(c.is_valid());
+        assert!(
+            !AlinkUsbConfig {
+                on_lock_error: 2,
+                ..c
+            }
+            .is_valid(),
+            "only 0 and 1"
+        );
+        assert_eq!(AlinkUsbConfig::DEFAULT.on_lock_error, ON_LOCK_ERROR_MUTE);
+    }
+
+    #[test]
+    fn wp_ausb2_the_lock_error_flag_and_events() {
+        assert_eq!(USB_FLAG_LOCK_ERROR, 0x40);
+        for (raw, r, name) in [
+            (10u8, UsbEventReason::LockError, "lock_error"),
+            (11, UsbEventReason::LockOk, "lock_ok"),
+        ] {
+            assert_eq!(UsbEventReason::from_raw(raw), r);
+            assert_eq!((r.raw(), r.as_str()), (raw, name));
+        }
+        assert_eq!(UsbEventReason::from_raw(12), UsbEventReason::Other(12));
+        // `02 e3 00 09 06 00 0a 00 ...`: rejected, lock error.
+        let payload = [6, 0, 10, 0, 1, 0, 0, 0];
+        let e = alink_usb_event(Some(NOTIFY_FEAT_ALINK_USB), 0xE3, &payload).unwrap();
+        assert_eq!(
+            (e.state, e.reason, e.sample_low),
+            (UsbState::Rejected, UsbEventReason::LockError, 1)
+        );
+        assert!(!e.is_loss(), "a lock error is its own alarm, not a loss");
+    }
+
+    /// Version 2's layout, byte for byte (2.9.6).
+    #[test]
+    fn wp_ausb2_the_diag_reads_version_2() {
+        let mut b = [0u8; 64];
+        b[0] = 2;
+        b[1] = 5;
+        b[32..34].copy_from_slice(&300u16.to_le_bytes());
+        b[34..36].copy_from_slice(&7u16.to_le_bytes());
+        b[36..40].copy_from_slice(&300_100u32.to_le_bytes());
+        b[44..46].copy_from_slice(&1250u16.to_le_bytes());
+        b[46..48].copy_from_slice(&3u16.to_le_bytes());
+        b[48..52].copy_from_slice(&1800u32.to_le_bytes());
+        let d = AlinkUsbDiag::decode(&b).unwrap();
+        assert_eq!(
+            (
+                d.version,
+                d.last_cause_name(),
+                d.last_frames,
+                d.bad_sof_readings,
+                d.last_us,
+                d.longest_ride_us,
+                d.lock_errors,
+                d.max_pass_us
+            ),
+            (
+                2,
+                Some("reanchor_phase_error"),
+                300,
+                7,
+                300_100,
+                1_250_000,
+                3,
+                1800
+            )
+        );
+        assert_eq!(d.encode(), b, "round trip");
+        // Saturating u16 fields when a version 2 reply is made.
+        let big = AlinkUsbDiag {
+            last_frames: 70_000,
+            longest_ride_us: 80_000_000,
+            ..d
+        };
+        let again = AlinkUsbDiag::decode(&big.encode()).unwrap();
+        assert_eq!(
+            (again.last_frames, again.longest_ride_us),
+            (65_535, 65_535_000)
+        );
+        // Version 1 reads its own layout, the new fields 0.
+        let v1 = AlinkUsbDiag {
+            version: DIAG_VERSION_1,
+            longest_ride_us: 300_123,
+            ..d
+        };
+        let v1 = AlinkUsbDiag::decode(&v1.encode()).unwrap();
+        assert_eq!(
+            (v1.longest_ride_us, v1.bad_sof_readings, v1.lock_errors),
+            (300_123, 0, 0)
+        );
     }
 }

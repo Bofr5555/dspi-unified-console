@@ -51,6 +51,14 @@ fn wp_ausb1_usb_direct_through_c() {
     assert_eq!(dspi_set_alink_usb(h, 2, true, 250), 0);
     assert_eq!(reply(h, dspi_fetch_alink_usb)["d"], 250);
     assert_eq!(dspi_set_alink_usb(h, 3, true, 250), 0xFF);
+    // -- WP AUSB2 -- the lock-error action, and the fields that come with it
+    assert_eq!(reply(h, dspi_fetch_alink_usb)["onLockError"], "mute");
+    assert_eq!(dspi_set_alink_usb_on_lock_error(h, true), 0);
+    assert_eq!(
+        reply(h, dspi_fetch_alink_usb)["onLockError"],
+        "play_unaligned"
+    );
+    assert_eq!(reply(h, dspi_fetch_alink_usb_status)["lockError"], false);
     let d = reply(h, dspi_fetch_alink_usb_diag);
     assert_eq!(d["ends"].as_array().map(Vec::len), Some(9));
     assert_eq!(dspi_clear_alink_usb_diag(h), 0);
@@ -66,5 +74,6 @@ fn wp_ausb1_usb_direct_through_c() {
     assert!(!dspi_usb_direct_supported(h));
     assert_eq!(reply(h, dspi_fetch_alink_usb_status)["code"], "unsupported");
     assert_eq!(dspi_set_alink_usb(h, 2, true, 192), 0xFF);
+    assert_eq!(dspi_set_alink_usb_on_lock_error(h, false), 0xFF);
     free(h);
 }

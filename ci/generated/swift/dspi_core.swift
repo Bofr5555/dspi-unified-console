@@ -2118,8 +2118,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func fetchAlinkUsb() throws  -> AlinkUsbConfig
     
     /**
-     * Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
-     * `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+     * Read `EXT_ALINK_USB_DIAG` (layout version 1 or 2 -- WP AUSB2 --;
+     * another reads as `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
      */
     func fetchAlinkUsbDiag() throws  -> AlinkUsbDiag
     
@@ -3341,6 +3341,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+     * -- WP AUSB2 -- the unit's lock-error action (byte 4) is read first and
+     * kept (mute when it cannot be read);
      * `auto_reanchor` (normally true); `d` samples from arrival to output,
      * the same on every unit that should play aligned (170-399 at 48 kHz,
      * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
@@ -3355,6 +3357,25 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * `Denied`, `Locked` or `Transfer` from a hub.
      */
     func setAlinkUsb(mode: UInt8, autoReanchor: Bool, d: UInt16) throws 
+    
+    /**
+     * Set what the unit does in mode 2 when it cannot phase-lock (*lock
+     * error*: the host's rate out of range, a configuration that cannot
+     * phase-lock, a phase error pending; the fork's WP USB3b,
+     * `extension_channel_spec.md` 2.9.2): `play_unaligned` false mutes it
+     * (the default: it was asked to be in step), true lets it play
+     * unaligned. Writes `EXT_ALINK_USB` with its mode, flags and D as read,
+     * only byte 4 changed, so nothing re-anchors. The core never saves it
+     * (`REQ_SAVE_OUTPUT_CONFIG` stores it).
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * block; `ReadOnly`. `Transfer` when the setting cannot be read first.
+     * `Unsupported` when the unit refuses `play_unaligned` (firmware before
+     * WP USB3b, where the byte is reserved: the test for the setting);
+     * `Refused` for another refusal (mode 2 with D outside its limits now);
+     * `Denied`, `Locked` or `Transfer` from a hub.
+     */
+    func setAlinkUsbOnLockError(playUnaligned: Bool) throws 
     
     /**
      * Bypass (`true`) or re-enable one band of wire channel `ch`, keeping
@@ -5591,8 +5612,8 @@ open func fetchAlinkUsb()throws  -> AlinkUsbConfig  {
 }
     
     /**
-     * Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
-     * `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+     * Read `EXT_ALINK_USB_DIAG` (layout version 1 or 2 -- WP AUSB2 --;
+     * another reads as `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
      */
 open func fetchAlinkUsbDiag()throws  -> AlinkUsbDiag  {
     return try  FfiConverterTypeAlinkUsbDiag_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -7363,6 +7384,8 @@ open func setAlinkSlots(slots: Data)throws   {try rustCallWithError(FfiConverter
     
     /**
      * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+     * -- WP AUSB2 -- the unit's lock-error action (byte 4) is read first and
+     * kept (mute when it cannot be read);
      * `auto_reanchor` (normally true); `d` samples from arrival to output,
      * the same on every unit that should play aligned (170-399 at 48 kHz,
      * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
@@ -7381,6 +7404,30 @@ open func setAlinkUsb(mode: UInt8, autoReanchor: Bool, d: UInt16)throws   {try r
         FfiConverterUInt8.lower(mode),
         FfiConverterBool.lower(autoReanchor),
         FfiConverterUInt16.lower(d),$0
+    )
+}
+}
+    
+    /**
+     * Set what the unit does in mode 2 when it cannot phase-lock (*lock
+     * error*: the host's rate out of range, a configuration that cannot
+     * phase-lock, a phase error pending; the fork's WP USB3b,
+     * `extension_channel_spec.md` 2.9.2): `play_unaligned` false mutes it
+     * (the default: it was asked to be in step), true lets it play
+     * unaligned. Writes `EXT_ALINK_USB` with its mode, flags and D as read,
+     * only byte 4 changed, so nothing re-anchors. The core never saves it
+     * (`REQ_SAVE_OUTPUT_CONFIG` stores it).
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * block; `ReadOnly`. `Transfer` when the setting cannot be read first.
+     * `Unsupported` when the unit refuses `play_unaligned` (firmware before
+     * WP USB3b, where the byte is reserved: the test for the setting);
+     * `Refused` for another refusal (mode 2 with D outside its limits now);
+     * `Denied`, `Locked` or `Transfer` from a hub.
+     */
+open func setAlinkUsbOnLockError(playUnaligned: Bool)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_set_alink_usb_on_lock_error(self.uniffiClonePointer(),
+        FfiConverterBool.lower(playUnaligned),$0
     )
 }
 }
@@ -12242,9 +12289,35 @@ public struct AlinkSystemUnit {
     public var startOffsetSamples: Int64?
     /**
      * The statistics in one line, for a details row: host and VCXO ppm,
-     * phase error, gaps, missed and late samples, re-anchors, timeline ends.
+     * phase error, gaps, missed and late samples, re-anchors, timeline ends;
+     * -- WP AUSB2 -- lock errors, repaired SOF readings, the longest ride.
      */
     public var usbStats: String
+    /**
+     * The unit is in lock error: asked to phase-lock, it cannot be in step
+     * (its host out of range, a rate or D that cannot phase-lock, a phase
+     * error pending). [`Self::state_word`] then says what it does.
+     */
+    public var usbLockError: Bool
+    /**
+     * Why, in words, while it is ("the host's rate is out of range"); "".
+     */
+    public var usbLockErrorCause: String
+    /**
+     * What the unit does in lock error now: `mute` or `play_unaligned`;
+     * none when not read.
+     */
+    public var usbOnLockError: String?
+    /**
+     * What the installation asks it to do (the hub writes it): `mute` (the
+     * default) or `play_unaligned`; "" for a unit that is not USB-direct.
+     */
+    public var usbOnLockErrorWanted: String
+    /**
+     * The unit refused "play unaligned" (firmware before the fork's WP
+     * USB3b): it mutes in lock error whatever is asked.
+     */
+    public var usbPlayUnalignedUnsupported: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -12384,8 +12457,29 @@ public struct AlinkSystemUnit {
          */startOffsetSamples: Int64?, 
         /**
          * The statistics in one line, for a details row: host and VCXO ppm,
-         * phase error, gaps, missed and late samples, re-anchors, timeline ends.
-         */usbStats: String) {
+         * phase error, gaps, missed and late samples, re-anchors, timeline ends;
+         * -- WP AUSB2 -- lock errors, repaired SOF readings, the longest ride.
+         */usbStats: String, 
+        /**
+         * The unit is in lock error: asked to phase-lock, it cannot be in step
+         * (its host out of range, a rate or D that cannot phase-lock, a phase
+         * error pending). [`Self::state_word`] then says what it does.
+         */usbLockError: Bool, 
+        /**
+         * Why, in words, while it is ("the host's rate is out of range"); "".
+         */usbLockErrorCause: String, 
+        /**
+         * What the unit does in lock error now: `mute` or `play_unaligned`;
+         * none when not read.
+         */usbOnLockError: String?, 
+        /**
+         * What the installation asks it to do (the hub writes it): `mute` (the
+         * default) or `play_unaligned`; "" for a unit that is not USB-direct.
+         */usbOnLockErrorWanted: String, 
+        /**
+         * The unit refused "play unaligned" (firmware before the fork's WP
+         * USB3b): it mutes in lock error whatever is asked.
+         */usbPlayUnalignedUnsupported: Bool) {
         self.id = id
         self.name = name
         self.serial = serial
@@ -12428,6 +12522,11 @@ public struct AlinkSystemUnit {
         self.lastEnd = lastEnd
         self.startOffsetSamples = startOffsetSamples
         self.usbStats = usbStats
+        self.usbLockError = usbLockError
+        self.usbLockErrorCause = usbLockErrorCause
+        self.usbOnLockError = usbOnLockError
+        self.usbOnLockErrorWanted = usbOnLockErrorWanted
+        self.usbPlayUnalignedUnsupported = usbPlayUnalignedUnsupported
     }
 }
 
@@ -12564,6 +12663,21 @@ extension AlinkSystemUnit: Equatable, Hashable {
         if lhs.usbStats != rhs.usbStats {
             return false
         }
+        if lhs.usbLockError != rhs.usbLockError {
+            return false
+        }
+        if lhs.usbLockErrorCause != rhs.usbLockErrorCause {
+            return false
+        }
+        if lhs.usbOnLockError != rhs.usbOnLockError {
+            return false
+        }
+        if lhs.usbOnLockErrorWanted != rhs.usbOnLockErrorWanted {
+            return false
+        }
+        if lhs.usbPlayUnalignedUnsupported != rhs.usbPlayUnalignedUnsupported {
+            return false
+        }
         return true
     }
 
@@ -12610,6 +12724,11 @@ extension AlinkSystemUnit: Equatable, Hashable {
         hasher.combine(lastEnd)
         hasher.combine(startOffsetSamples)
         hasher.combine(usbStats)
+        hasher.combine(usbLockError)
+        hasher.combine(usbLockErrorCause)
+        hasher.combine(usbOnLockError)
+        hasher.combine(usbOnLockErrorWanted)
+        hasher.combine(usbPlayUnalignedUnsupported)
     }
 }
 
@@ -12663,7 +12782,12 @@ public struct FfiConverterTypeAlinkSystemUnit: FfiConverterRustBuffer {
                 timelineEnds: FfiConverterOptionUInt32.read(from: &buf), 
                 lastEnd: FfiConverterString.read(from: &buf), 
                 startOffsetSamples: FfiConverterOptionInt64.read(from: &buf), 
-                usbStats: FfiConverterString.read(from: &buf)
+                usbStats: FfiConverterString.read(from: &buf), 
+                usbLockError: FfiConverterBool.read(from: &buf), 
+                usbLockErrorCause: FfiConverterString.read(from: &buf), 
+                usbOnLockError: FfiConverterOptionString.read(from: &buf), 
+                usbOnLockErrorWanted: FfiConverterString.read(from: &buf), 
+                usbPlayUnalignedUnsupported: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -12710,6 +12834,11 @@ public struct FfiConverterTypeAlinkSystemUnit: FfiConverterRustBuffer {
         FfiConverterString.write(value.lastEnd, into: &buf)
         FfiConverterOptionInt64.write(value.startOffsetSamples, into: &buf)
         FfiConverterString.write(value.usbStats, into: &buf)
+        FfiConverterBool.write(value.usbLockError, into: &buf)
+        FfiConverterString.write(value.usbLockErrorCause, into: &buf)
+        FfiConverterOptionString.write(value.usbOnLockError, into: &buf)
+        FfiConverterString.write(value.usbOnLockErrorWanted, into: &buf)
+        FfiConverterBool.write(value.usbPlayUnalignedUnsupported, into: &buf)
     }
 }
 
@@ -13594,6 +13723,11 @@ public struct AlinkUnitUsbMode {
      * `off`, `rate_lock` or `phase_lock`; none: the unit's own is kept.
      */
     public var mode: String?
+    /**
+     * What it does in lock error: `mute` or `play_unaligned` (the hub writes
+     * it to the unit); none: unchanged.
+     */
+    public var onLockError: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -13603,9 +13737,14 @@ public struct AlinkUnitUsbMode {
          */unitId: String, 
         /**
          * `off`, `rate_lock` or `phase_lock`; none: the unit's own is kept.
-         */mode: String?) {
+         */mode: String?, 
+        /**
+         * What it does in lock error: `mute` or `play_unaligned` (the hub writes
+         * it to the unit); none: unchanged.
+         */onLockError: String?) {
         self.unitId = unitId
         self.mode = mode
+        self.onLockError = onLockError
     }
 }
 
@@ -13622,12 +13761,16 @@ extension AlinkUnitUsbMode: Equatable, Hashable {
         if lhs.mode != rhs.mode {
             return false
         }
+        if lhs.onLockError != rhs.onLockError {
+            return false
+        }
         return true
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(unitId)
         hasher.combine(mode)
+        hasher.combine(onLockError)
     }
 }
 
@@ -13641,13 +13784,15 @@ public struct FfiConverterTypeAlinkUnitUsbMode: FfiConverterRustBuffer {
         return
             try AlinkUnitUsbMode(
                 unitId: FfiConverterString.read(from: &buf), 
-                mode: FfiConverterOptionString.read(from: &buf)
+                mode: FfiConverterOptionString.read(from: &buf), 
+                onLockError: FfiConverterOptionString.read(from: &buf)
         )
     }
 
     public static func write(_ value: AlinkUnitUsbMode, into buf: inout [UInt8]) {
         FfiConverterString.write(value.unitId, into: &buf)
         FfiConverterOptionString.write(value.mode, into: &buf)
+        FfiConverterOptionString.write(value.onLockError, into: &buf)
     }
 }
 
@@ -13701,6 +13846,12 @@ public struct AlinkUsbConfig {
      */
     public var rateUnsupported: Bool
     /**
+     * What mode 2 does in lock error (the fork's WP USB3b): `mute` (the
+     * default, and what firmware before WP USB3b reads as) or
+     * `play_unaligned`; `unknown` for another code.
+     */
+    public var onLockError: String
+    /**
      * The state, as [`AlinkUsbStatus::state`].
      */
     public var state: String
@@ -13735,6 +13886,11 @@ public struct AlinkUsbConfig {
          * Mode 2 at 44.1 kHz: it runs as mode 1.
          */rateUnsupported: Bool, 
         /**
+         * What mode 2 does in lock error (the fork's WP USB3b): `mute` (the
+         * default, and what firmware before WP USB3b reads as) or
+         * `play_unaligned`; `unknown` for another code.
+         */onLockError: String, 
+        /**
          * The state, as [`AlinkUsbStatus::state`].
          */state: String, 
         /**
@@ -13747,6 +13903,7 @@ public struct AlinkUsbConfig {
         self.dBelowMin = dBelowMin
         self.dAboveMax = dAboveMax
         self.rateUnsupported = rateUnsupported
+        self.onLockError = onLockError
         self.state = state
         self.stateCode = stateCode
     }
@@ -13780,6 +13937,9 @@ extension AlinkUsbConfig: Equatable, Hashable {
         if lhs.rateUnsupported != rhs.rateUnsupported {
             return false
         }
+        if lhs.onLockError != rhs.onLockError {
+            return false
+        }
         if lhs.state != rhs.state {
             return false
         }
@@ -13797,6 +13957,7 @@ extension AlinkUsbConfig: Equatable, Hashable {
         hasher.combine(dBelowMin)
         hasher.combine(dAboveMax)
         hasher.combine(rateUnsupported)
+        hasher.combine(onLockError)
         hasher.combine(state)
         hasher.combine(stateCode)
     }
@@ -13818,6 +13979,7 @@ public struct FfiConverterTypeAlinkUsbConfig: FfiConverterRustBuffer {
                 dBelowMin: FfiConverterBool.read(from: &buf), 
                 dAboveMax: FfiConverterBool.read(from: &buf), 
                 rateUnsupported: FfiConverterBool.read(from: &buf), 
+                onLockError: FfiConverterString.read(from: &buf), 
                 state: FfiConverterString.read(from: &buf), 
                 stateCode: FfiConverterUInt8.read(from: &buf)
         )
@@ -13831,6 +13993,7 @@ public struct FfiConverterTypeAlinkUsbConfig: FfiConverterRustBuffer {
         FfiConverterBool.write(value.dBelowMin, into: &buf)
         FfiConverterBool.write(value.dAboveMax, into: &buf)
         FfiConverterBool.write(value.rateUnsupported, into: &buf)
+        FfiConverterString.write(value.onLockError, into: &buf)
         FfiConverterString.write(value.state, into: &buf)
         FfiConverterUInt8.write(value.stateCode, into: &buf)
     }
@@ -13856,6 +14019,11 @@ public func FfiConverterTypeAlinkUsbConfig_lower(_ value: AlinkUsbConfig) -> Rus
  * What `EXT_ALINK_USB_DIAG` reports: why a unit lost its timeline.
  */
 public struct AlinkUsbDiag {
+    /**
+     * The layout read: 1, or 2 since the fork's WP USB3b (with
+     * [`Self::bad_sof_readings`] and [`Self::lock_errors`]).
+     */
+    public var version: UInt8
     /**
      * The latest end's cause ([`AlinkUsbEnd::cause`]); none yet.
      */
@@ -13893,6 +14061,14 @@ public struct AlinkUsbDiag {
      */
     public var lastFrames: UInt32
     /**
+     * RP2350 SOF timestamps the unit repaired (layout 2; 0 in layout 1).
+     */
+    public var badSofReadings: UInt16
+    /**
+     * Entries into lock error (layout 2; 0 in layout 1).
+     */
+    public var lockErrors: UInt16
+    /**
      * Its duration by the unit's clock, µs.
      */
     public var lastUs: UInt32
@@ -13925,6 +14101,10 @@ public struct AlinkUsbDiag {
     // declare one manually.
     public init(
         /**
+         * The layout read: 1, or 2 since the fork's WP USB3b (with
+         * [`Self::bad_sof_readings`] and [`Self::lock_errors`]).
+         */version: UInt8, 
+        /**
          * The latest end's cause ([`AlinkUsbEnd::cause`]); none yet.
          */lastCause: String?, 
         /**
@@ -13952,6 +14132,12 @@ public struct AlinkUsbDiag {
          * The latest absence: frames counted on the bus.
          */lastFrames: UInt32, 
         /**
+         * RP2350 SOF timestamps the unit repaired (layout 2; 0 in layout 1).
+         */badSofReadings: UInt16, 
+        /**
+         * Entries into lock error (layout 2; 0 in layout 1).
+         */lockErrors: UInt16, 
+        /**
          * Its duration by the unit's clock, µs.
          */lastUs: UInt32, 
         /**
@@ -13972,6 +14158,7 @@ public struct AlinkUsbDiag {
         /**
          * The running holdover's age, µs.
          */holdoverUs: UInt32) {
+        self.version = version
         self.lastCause = lastCause
         self.rides = rides
         self.holdovers = holdovers
@@ -13981,6 +14168,8 @@ public struct AlinkUsbDiag {
         self.busResets = busResets
         self.unplugs = unplugs
         self.lastFrames = lastFrames
+        self.badSofReadings = badSofReadings
+        self.lockErrors = lockErrors
         self.lastUs = lastUs
         self.lastDevUs = lastDevUs
         self.longestRideUs = longestRideUs
@@ -13998,6 +14187,9 @@ extension AlinkUsbDiag: Sendable {}
 
 extension AlinkUsbDiag: Equatable, Hashable {
     public static func ==(lhs: AlinkUsbDiag, rhs: AlinkUsbDiag) -> Bool {
+        if lhs.version != rhs.version {
+            return false
+        }
         if lhs.lastCause != rhs.lastCause {
             return false
         }
@@ -14025,6 +14217,12 @@ extension AlinkUsbDiag: Equatable, Hashable {
         if lhs.lastFrames != rhs.lastFrames {
             return false
         }
+        if lhs.badSofReadings != rhs.badSofReadings {
+            return false
+        }
+        if lhs.lockErrors != rhs.lockErrors {
+            return false
+        }
         if lhs.lastUs != rhs.lastUs {
             return false
         }
@@ -14050,6 +14248,7 @@ extension AlinkUsbDiag: Equatable, Hashable {
     }
 
     public func hash(into hasher: inout Hasher) {
+        hasher.combine(version)
         hasher.combine(lastCause)
         hasher.combine(rides)
         hasher.combine(holdovers)
@@ -14059,6 +14258,8 @@ extension AlinkUsbDiag: Equatable, Hashable {
         hasher.combine(busResets)
         hasher.combine(unplugs)
         hasher.combine(lastFrames)
+        hasher.combine(badSofReadings)
+        hasher.combine(lockErrors)
         hasher.combine(lastUs)
         hasher.combine(lastDevUs)
         hasher.combine(longestRideUs)
@@ -14078,6 +14279,7 @@ public struct FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AlinkUsbDiag {
         return
             try AlinkUsbDiag(
+                version: FfiConverterUInt8.read(from: &buf), 
                 lastCause: FfiConverterOptionString.read(from: &buf), 
                 rides: FfiConverterUInt16.read(from: &buf), 
                 holdovers: FfiConverterUInt16.read(from: &buf), 
@@ -14087,6 +14289,8 @@ public struct FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer {
                 busResets: FfiConverterUInt16.read(from: &buf), 
                 unplugs: FfiConverterUInt16.read(from: &buf), 
                 lastFrames: FfiConverterUInt32.read(from: &buf), 
+                badSofReadings: FfiConverterUInt16.read(from: &buf), 
+                lockErrors: FfiConverterUInt16.read(from: &buf), 
                 lastUs: FfiConverterUInt32.read(from: &buf), 
                 lastDevUs: FfiConverterInt32.read(from: &buf), 
                 longestRideUs: FfiConverterUInt32.read(from: &buf), 
@@ -14098,6 +14302,7 @@ public struct FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer {
     }
 
     public static func write(_ value: AlinkUsbDiag, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.version, into: &buf)
         FfiConverterOptionString.write(value.lastCause, into: &buf)
         FfiConverterUInt16.write(value.rides, into: &buf)
         FfiConverterUInt16.write(value.holdovers, into: &buf)
@@ -14107,6 +14312,8 @@ public struct FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer {
         FfiConverterUInt16.write(value.busResets, into: &buf)
         FfiConverterUInt16.write(value.unplugs, into: &buf)
         FfiConverterUInt32.write(value.lastFrames, into: &buf)
+        FfiConverterUInt16.write(value.badSofReadings, into: &buf)
+        FfiConverterUInt16.write(value.lockErrors, into: &buf)
         FfiConverterUInt32.write(value.lastUs, into: &buf)
         FfiConverterInt32.write(value.lastDevUs, into: &buf)
         FfiConverterUInt32.write(value.longestRideUs, into: &buf)
@@ -14269,6 +14476,16 @@ public struct AlinkUsbStatus {
      */
     public var holdover: Bool
     /**
+     * The VCXO started at the host rate the unit stored (WP USB3).
+     */
+    public var seeded: Bool
+    /**
+     * Mode 2 cannot be in step (host rejected, a configuration that cannot
+     * phase-lock, or a phase error pending): the unit is muted or plays
+     * unaligned, as [`AlinkUsbConfig::on_lock_error`] says (WP USB3b).
+     */
+    public var lockError: Bool
+    /**
      * The host's SOF rate against the unit's crystal, ppm (+ = host fast).
      */
     public var hostPpm: Float
@@ -14370,6 +14587,14 @@ public struct AlinkUsbStatus {
          * No SOF for over 50 ms: the time base is extrapolated.
          */holdover: Bool, 
         /**
+         * The VCXO started at the host rate the unit stored (WP USB3).
+         */seeded: Bool, 
+        /**
+         * Mode 2 cannot be in step (host rejected, a configuration that cannot
+         * phase-lock, or a phase error pending): the unit is muted or plays
+         * unaligned, as [`AlinkUsbConfig::on_lock_error`] says (WP USB3b).
+         */lockError: Bool, 
+        /**
          * The host's SOF rate against the unit's crystal, ppm (+ = host fast).
          */hostPpm: Float, 
         /**
@@ -14428,6 +14653,8 @@ public struct AlinkUsbStatus {
         self.nominalFeedback = nominalFeedback
         self.timeBase = timeBase
         self.holdover = holdover
+        self.seeded = seeded
+        self.lockError = lockError
         self.hostPpm = hostPpm
         self.vcxoPpm = vcxoPpm
         self.phaseErrorSamples = phaseErrorSamples
@@ -14482,6 +14709,12 @@ extension AlinkUsbStatus: Equatable, Hashable {
             return false
         }
         if lhs.holdover != rhs.holdover {
+            return false
+        }
+        if lhs.seeded != rhs.seeded {
+            return false
+        }
+        if lhs.lockError != rhs.lockError {
             return false
         }
         if lhs.hostPpm != rhs.hostPpm {
@@ -14546,6 +14779,8 @@ extension AlinkUsbStatus: Equatable, Hashable {
         hasher.combine(nominalFeedback)
         hasher.combine(timeBase)
         hasher.combine(holdover)
+        hasher.combine(seeded)
+        hasher.combine(lockError)
         hasher.combine(hostPpm)
         hasher.combine(vcxoPpm)
         hasher.combine(phaseErrorSamples)
@@ -14584,6 +14819,8 @@ public struct FfiConverterTypeAlinkUsbStatus: FfiConverterRustBuffer {
                 nominalFeedback: FfiConverterBool.read(from: &buf), 
                 timeBase: FfiConverterBool.read(from: &buf), 
                 holdover: FfiConverterBool.read(from: &buf), 
+                seeded: FfiConverterBool.read(from: &buf), 
+                lockError: FfiConverterBool.read(from: &buf), 
                 hostPpm: FfiConverterFloat.read(from: &buf), 
                 vcxoPpm: FfiConverterFloat.read(from: &buf), 
                 phaseErrorSamples: FfiConverterFloat.read(from: &buf), 
@@ -14614,6 +14851,8 @@ public struct FfiConverterTypeAlinkUsbStatus: FfiConverterRustBuffer {
         FfiConverterBool.write(value.nominalFeedback, into: &buf)
         FfiConverterBool.write(value.timeBase, into: &buf)
         FfiConverterBool.write(value.holdover, into: &buf)
+        FfiConverterBool.write(value.seeded, into: &buf)
+        FfiConverterBool.write(value.lockError, into: &buf)
         FfiConverterFloat.write(value.hostPpm, into: &buf)
         FfiConverterFloat.write(value.vcxoPpm, into: &buf)
         FfiConverterFloat.write(value.phaseErrorSamples, into: &buf)
@@ -30865,7 +31104,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb() != 17817) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_diag() != 26442) {
+    if (uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_diag() != 52822) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_status() != 59602) {
@@ -31186,7 +31425,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_alink_slots() != 51727) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 27355) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 58666) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_alink_usb_on_lock_error() != 63612) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_band_bypass() != 64308) {

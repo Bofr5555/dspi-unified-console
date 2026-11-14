@@ -142,8 +142,25 @@ pub struct AlinkSystemUnit {
     /// alignment delays its outputs by that).
     pub start_offset_samples: Option<i64>,
     /// The statistics in one line, for a details row: host and VCXO ppm,
-    /// phase error, gaps, missed and late samples, re-anchors, timeline ends.
+    /// phase error, gaps, missed and late samples, re-anchors, timeline ends;
+    /// -- WP AUSB2 -- lock errors, repaired SOF readings, the longest ride.
     pub usb_stats: String,
+    // -- WP AUSB2 -- lock error (the fork's WP USB3b)
+    /// The unit is in lock error: asked to phase-lock, it cannot be in step
+    /// (its host out of range, a rate or D that cannot phase-lock, a phase
+    /// error pending). [`Self::state_word`] then says what it does.
+    pub usb_lock_error: bool,
+    /// Why, in words, while it is ("the host's rate is out of range"); "".
+    pub usb_lock_error_cause: String,
+    /// What the unit does in lock error now: `mute` or `play_unaligned`;
+    /// none when not read.
+    pub usb_on_lock_error: Option<String>,
+    /// What the installation asks it to do (the hub writes it): `mute` (the
+    /// default) or `play_unaligned`; "" for a unit that is not USB-direct.
+    pub usb_on_lock_error_wanted: String,
+    /// The unit refused "play unaligned" (firmware before the fork's WP
+    /// USB3b): it mutes in lock error whatever is asked.
+    pub usb_play_unaligned_unsupported: bool,
 }
 
 /// A room, with its lip-sync offset.
@@ -322,6 +339,10 @@ pub struct AlinkUnitUsbMode {
     pub unit_id: String,
     /// `off`, `rate_lock` or `phase_lock`; none: the unit's own is kept.
     pub mode: Option<String>,
+    // -- WP AUSB2 --
+    /// What it does in lock error: `mute` or `play_unaligned` (the hub writes
+    /// it to the unit); none: unchanged.
+    pub on_lock_error: Option<String>,
 }
 
 /// One write's outcome on one device.
@@ -862,7 +883,7 @@ pub(crate) fn build_view(
             if usb_locked_as_asked(&row) {
                 usb_locked = usb_locked.saturating_add(1);
             }
-            if matches!(row.state.as_str(), "no_sof" | "rejected") {
+            if matches!(row.state.as_str(), "no_sof" | "rejected") || row.usb_lock_error {
                 usb_trouble = usb_trouble.saturating_add(1);
             }
             if row.pending {
@@ -1030,6 +1051,17 @@ fn usb_state_word(state: &str) -> &'static str {
     }
 }
 
+// -- WP AUSB2 --
+/// A lock error's cause (the hub's `lockErrorCause`) in words.
+fn lock_error_words(cause: &str) -> &'static str {
+    match cause {
+        "host_rejected" => "the host's rate is out of range",
+        "pending" => "a phase error is still being pulled in",
+        "config" => "its rate or D cannot phase-lock",
+        _ => "",
+    }
+}
+
 // -- WP AUSB1 --
 /// A timeline end's cause in words.
 fn end_word(cause: &str) -> &'static str {
@@ -1069,6 +1101,12 @@ fn usb_row(
 ) {
     row.transport = "usb_direct".into();
     row.role = "USB-direct".into();
+    // -- WP AUSB2 --
+    row.usb_on_lock_error_wanted = match str_at(u, &["onLockError"]) {
+        "play_unaligned" => "play_unaligned",
+        _ => "mute",
+    }
+    .into();
     let wanted = str_at(u, &["usbMode"]);
     row.usb_mode_wanted = (!wanted.is_empty()).then(|| wanted.to_owned());
     let seen = o.and_then(|o| o.get("usb")).filter(|v| v.is_object());
@@ -1087,6 +1125,32 @@ fn usb_row(
     };
     row.state = state.into();
     row.state_word = usb_state_word(state).into();
+    // -- WP AUSB2 -- in lock error: what it does says more than its state
+    let flag = |k: &str| {
+        seen.and_then(|s| s.get(k))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    };
+    row.usb_on_lock_error = seen
+        .map(|s| str_at(s, &["onLockError"]))
+        .filter(|a| !a.is_empty())
+        .map(str::to_owned);
+    row.usb_play_unaligned_unsupported = flag("playUnalignedUnsupported");
+    row.usb_lock_error = row.connected && flag("lockError");
+    if row.usb_lock_error {
+        let playing = row.usb_on_lock_error.as_deref() == Some("play_unaligned");
+        row.state_word = if playing {
+            "Can't lock (USB): playing unaligned"
+        } else {
+            "Can't lock (USB): muted"
+        }
+        .into();
+        row.usb_lock_error_cause = lock_error_words(
+            seen.map(|s| str_at(s, &["lockErrorCause"]))
+                .unwrap_or_default(),
+        )
+        .into();
+    }
     row.phase_error_frames = None;
     let f32_of = |k: &str| {
         seen.and_then(|s| s.get(k))
@@ -1158,6 +1222,19 @@ fn usb_row(
         }
         if let Some(o) = row.start_offset_samples.filter(|o| *o != 0) {
             parts.push(format!("stream {o} samples early"));
+        }
+        // -- WP AUSB2 -- DIAG layout 2's counters, when there is something to say
+        let diag_u = |k: &str| u32_of(diag.and_then(|d| d.get(k))).unwrap_or(0);
+        if diag.is_some_and(|d| u32_of(d.get("version")) == Some(2)) {
+            parts.push(format!("lock errors {}", diag_u("lockErrors")));
+            let bad = diag_u("badSofReadings");
+            if bad > 0 {
+                parts.push(format!("SOF readings repaired {bad}"));
+            }
+        }
+        let ride = diag_u("longestRideMs");
+        if ride > 0 {
+            parts.push(format!("longest ride {ride} ms"));
         }
         row.usb_stats = parts.join(" · ");
     }
@@ -1287,6 +1364,14 @@ pub(crate) fn apply_edits(model: &mut Value, edits: &AlinkSystemEdits) -> Result
                 msg: format!("USB-direct mode {m:?}: off, rate_lock or phase_lock"),
             });
         }
+        // -- WP AUSB2 --
+        if let Some(a) = u.on_lock_error.as_deref()
+            && !matches!(a, "mute" | "play_unaligned")
+        {
+            return Err(DspiError::InvalidArgument {
+                msg: format!("USB-direct lock-error action {a:?}: mute or play_unaligned"),
+            });
+        }
         let unit = m
             .get_mut("units")
             .and_then(Value::as_array_mut)
@@ -1303,6 +1388,16 @@ pub(crate) fn apply_edits(model: &mut Value, edits: &AlinkSystemEdits) -> Result
             None => {
                 unit.remove("usbMode");
             }
+        }
+        // -- WP AUSB2 -- mute is the hub's default: not written
+        match u.on_lock_error.as_deref() {
+            Some("play_unaligned") => {
+                unit.insert("onLockError".into(), Value::from("play_unaligned"));
+            }
+            Some(_) => {
+                unit.remove("onLockError");
+            }
+            None => {}
         }
     }
     // -- WP FIXM1 -- off is the hub's default: not written

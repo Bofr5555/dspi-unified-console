@@ -179,6 +179,8 @@ nothing is written and the answer is `denied`, naming the op.
 | `delay_below_min` | critical | the unit's `D_BELOW_MIN` flag | the flag gone |
 | `system_muted` | warning | a sender's system mute seen set, at a read or a write | seen clear |
 | `usb_realigned` | warning | the hub wrote the USB-direct units' speaker delays again by itself ("Keep USB-direct units aligned", below): the record of it, naming the units | acknowledged, or the next re-align (kept with the cleared ones) |
+| `usb_lock_error` | critical when the unit mutes, a warning when it plays | a USB-direct unit in phase lock that cannot be in step (*lock error*, below: STATUS flags bit 6 at a read, or an `0xE3` `LOCK_ERROR`): "USB-direct unit Rear L/R can't lock — muted (the host's rate is out of range)" | the flag gone at a read, an `0xE3` `LOCK_OK`, or the unit gone (`unit_offline` then) |
+| `usb_realign_failed` | warning | "Keep USB-direct units aligned" could not write a unit's speaker delays (offline, not writable, a refused write), naming the units and why; tried again at most once a minute, each try counted | a later re-align of every moved unit, or no offset moved any more |
 
 Events are decoded only from devices that announce them (`EXT_NOTIFY_FEATURES`
 bit 2). The hub asks each device of the model when it attaches or the model
@@ -329,14 +331,49 @@ after it arrived, so every unit of one host plays sample-aligned.
   offsets changed — Align again (… moved since the last alignment …)", which every
   client shows (the core's view sets `alignNeeded`; the web's Alignment panel has
   an "Align again…" button). Offsets are relative, so streams that all moved
-  together raise nothing. An alignment that changes a unit's mode or D re-anchors
-  it, so expect the issue once more after such an alignment.
+  together raise nothing. -- WP AUSB2 -- An alignment that changes a unit's mode or
+  D re-anchors it: the hub then waits (up to 3 s) until the units it re-anchored
+  are phase-locked with their streams placed again, reads the start offsets again
+  and writes the speaker delays from those, so "Align again" does not follow the
+  Align; its report carries that fresh alignment, and counts the issue only for a
+  unit still not written. The offsets written are kept in the hub's store
+  (`system_usb_offsets` in `hub-store.json`), so a restarted hub judges against
+  what it wrote before.
 - **Keep USB-direct units aligned** (Installer, the model's `keepUsbAligned`, off
   by default; the core's edits `keepUsbAligned`, the view's `keepUsbAligned`).
   On, the hub does not ask: when an offset moved it writes the moved units'
   speaker delays again itself (nothing else, so nothing re-anchors and the audio
   link units are untouched) and records it as the alarm `usb_realigned`. A unit it
-  cannot write (offline, out of range, a refused write) stays in the issue.
+  cannot write (offline, out of range, a refused write) stays in the issue and is
+  the alarm `usb_realign_failed`; it is tried again at most once a minute. --
+  WP AUSB2 -- This runs from the hub's own poll, never from a client's
+  `system.status` (which only reads).
+- **The hub's own poll** (WP AUSB2). While the model has USB-direct units the hub
+  reads the installation every 5 s by itself, as its own session: it raises and
+  clears their alarms, keeps them aligned when asked, and writes their lock-error
+  action. A client's `system.status` reads the same and writes nothing.
+- **Lock error** (WP AUSB2; the fork's WP USB3b, `extension_channel_spec.md`
+  2.9.2). A unit in phase lock that cannot be in step (its host's rate out of
+  range, a rate or D that cannot phase-lock, a phase error still being pulled in)
+  is in *lock error*. What it does is a per-unit setting, the model's
+  `onLockError`: `mute` (the default, left out of the JSON: it was asked to be in
+  step) or `play_unaligned` (a PA stack would rather play). The Installer sets it
+  (the web's "When it can't lock" in "USB-direct units"; Qt's and Android's Clock
+  and audio links; the core's edits `usbModes[].onLockError`, saved by revision);
+  the hub's poll and every alignment write it to the unit (`EXT_ALINK_USB` byte 4,
+  with the mode, flags and D as read, so nothing re-anchors; `what:
+  "on_lock_error"`). Firmware before WP USB3b refuses "play unaligned" (the byte was
+  reserved): the hub remembers it until the unit attaches again, does not ask
+  again, and the alignment says `usb_lock_error_unsupported` ("Height: its firmware
+  cannot play unaligned in lock error, so it mutes"). A unit in lock error is the
+  alarm `usb_lock_error` and the issue of that name; the core's rows carry
+  `usbLockError`, its cause in words, the action now and asked, and say "Can't
+  lock (USB): muted" or "… playing unaligned". The core's
+  `set_alink_usb_on_lock_error` writes it on one unit directly (`Unsupported` when
+  the firmware refuses it), and `set_alink_usb` keeps the unit's own. DIAG layout 2
+  adds `lock_errors`, `bad_sof_readings` and `longest_ride_ms` to the statistics
+  line (layout 1 still reads). `uconsole --demo hub --alink --with-usb-lock-error`
+  starts Rear L/R in lock error.
 - **Mixed rates.** One D in samples is one time only at one rate: a USB-direct unit
   at 96 kHz plays its D in 96 kHz samples (half the time of the same number at
   48 kHz, and its limits are 324..351), while the audio link and 48 kHz units count
@@ -356,7 +393,17 @@ after it arrived, so every unit of one host plays sample-aligned.
   (not the largest S: S of different units differ by their origins), plus a lead
   counted from that read that covers the audio link's writes and each USB-direct
   op's write and read-back, at most 1.92 s ahead (`plan.usbFrame`, `plan.usbOps`,
-  `plan.usbLeadSamples`);
+  `plan.usbLeadSamples`). -- WP AUSB2 -- When the reads after the USB-direct
+  unit's and the writes before its op would take longer than 1.92 s (slow reads
+  over a Link path, units that stall), a bus frame could already be past when
+  written, and the unit would take its next occurrence, up to 2 s late: the hub
+  then reads the USB-direct units again and plans from that read; if even that
+  cannot reach, their ops are written at once (`applied_now`, reason `applied now:
+  the USB frame would be past before it was written (slow reads)`). A model lead
+  over 1.92 s is cut to it (`plan.usbLeadCapped`): those ops are queued 1.92 s
+  ahead, not with the audio link's frame, which the write's reason and `onTime`
+  false say. A unit last seen without the audio link takes its ops at once with no
+  frame read (review fixm1 F4: no 1.2 s per such unit after a write to it);
   path `usb_frame` when nothing else is scheduled. A USB-direct unit that is not
   phase-locked takes its ops at once with its own commands (reason `not
   phase-locked (USB-direct)`). When the audio link's part is refused whole (a
@@ -379,9 +426,8 @@ after it arrived, so every unit of one host plays sample-aligned.
   true}`) opens one on its own.
 - **Not done.** All USB-direct units of a hub are taken to be on one USB host
   (one SOF): units on two host controllers count different bus frames, and the hub
-  does not tell them apart yet. Qt and Android show the units but set no mode
-  (the web's Installer does; the core's `alink_system_save` takes `usbModes`).
-  No alarm is raised for a USB-direct unit yet (the event log has 0xE3).
+  does not tell them apart yet. -- WP AUSB2 -- Qt and Android now set the mode,
+  the lock-error action and "Keep USB-direct units aligned" too (Admin).
 
 ## Where it is kept
 

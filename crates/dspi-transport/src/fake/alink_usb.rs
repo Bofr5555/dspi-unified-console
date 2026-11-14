@@ -31,6 +31,13 @@
 //!   a lost time base (anchors again), a faded gap, the host out of range and
 //!   back, a stream restart, settle (finish a pull-in or an anchor now).
 //!
+//! - **Lock error** (-- WP AUSB2 --, the fork's WP USB3b): a mode-2 unit whose
+//!   host is out of range is in lock error: STATUS flags bit 6, 0xE3
+//!   `LOCK_ERROR` on entry and `LOCK_OK` on exit, DIAG `lock_errors`. Its action
+//!   is `EXT_ALINK_USB` byte 4 (0 mute, 1 play unaligned), refused above 1, and
+//!   refused at 1 by a unit made with [`UsbDirectSetup::usb3b`] off (firmware
+//!   before WP USB3b, which also answers DIAG layout version 1).
+//!
 //! Not modelled: the 250 ms rate limit on 0xE3, the servo's dynamics (the
 //! phase error is a small slow function of the clock), 44.1 kHz (the fake runs
 //! 48 kHz), the input source (the fake is always on USB).
@@ -121,6 +128,11 @@ pub struct UsbDirectSetup {
     pub stream_shift: i32,
     /// RP2350 SOF timestamps (STATUS flags bit 0).
     pub hw_timestamp: bool,
+    // -- WP AUSB2 --
+    /// Firmware since the fork's WP USB3b: `on_lock_error` (byte 4) taken,
+    /// lock error reported, DIAG layout version 2. Off: byte 4 must be 0 and
+    /// DIAG is version 1.
+    pub usb3b: bool,
 }
 
 impl Default for UsbDirectSetup {
@@ -133,6 +145,7 @@ impl Default for UsbDirectSetup {
             stream_lag_frames: 0,
             stream_shift: 0,
             hw_timestamp: true,
+            usb3b: true,
         }
     }
 }
@@ -189,7 +202,7 @@ impl AlinkUsb {
             c.d = setup.d;
         }
         self.anchors = u32::from(setup.mode == usb::MODE_PHASE_LOCK);
-        self.diag = Some(AlinkUsbDiag::CLEAR);
+        self.diag = Some(self.diag_clear());
         // The host's streams began well before now (`STREAM_BEFORE` frames
         // before its first SOF here), this one `stream_lag_frames` after the
         // first, so a first read already sees them placed.
@@ -205,6 +218,26 @@ impl AlinkUsb {
 
     fn setup(&self) -> UsbDirectSetup {
         self.setup.unwrap_or_default()
+    }
+
+    // -- WP AUSB2 --
+    /// DIAG cleared, in the firmware's layout.
+    fn diag_clear(&self) -> AlinkUsbDiag {
+        AlinkUsbDiag {
+            version: if self.setup().usb3b {
+                usb::DIAG_VERSION
+            } else {
+                usb::DIAG_VERSION_1
+            },
+            ..AlinkUsbDiag::CLEAR
+        }
+    }
+
+    // -- WP AUSB2 --
+    /// In lock error now: mode 2 with the host out of range, on firmware
+    /// that reports it.
+    fn lock_error(&self) -> bool {
+        self.setup().usb3b && self.config().mode == usb::MODE_PHASE_LOCK && self.rejected
     }
 
     fn config(&self) -> AlinkUsbConfig {
@@ -322,6 +355,10 @@ impl AlinkUsb {
         }
         if holdover {
             flags |= usb::USB_FLAG_HOLDOVER;
+        }
+        // -- WP AUSB2 --
+        if self.lock_error() {
+            flags |= usb::USB_FLAG_LOCK_ERROR;
         }
         let measured = !matches!(state, UsbState::Off | UsbState::NoSof);
         AlinkUsbStatus {
@@ -445,7 +482,10 @@ impl State {
             usb::EXT_ALINK_USB => Some(self.alink_usb.config_in().encode_in().to_vec()),
             usb::EXT_ALINK_USB_STATUS => Some(self.alink_usb.status().encode().to_vec()),
             usb::EXT_ALINK_USB_DIAG => {
-                let mut d = self.alink_usb.diag.unwrap_or(AlinkUsbDiag::CLEAR);
+                let mut d = self
+                    .alink_usb
+                    .diag
+                    .unwrap_or_else(|| self.alink_usb.diag_clear());
                 d.max_pass_us = 1800;
                 d.max_isr_quiet_us = 1100;
                 d.max_isr_late_us = 12;
@@ -514,7 +554,7 @@ impl State {
             usb::EXT_ALINK_USB => Some(self.write_usb_config(data)),
             usb::EXT_ALINK_USB_DIAG => Some(match *data {
                 [1] => {
-                    self.alink_usb.diag = Some(AlinkUsbDiag::CLEAR);
+                    self.alink_usb.diag = Some(self.alink_usb.diag_clear());
                     true
                 }
                 _ => false,
@@ -543,8 +583,11 @@ impl State {
             return false;
         };
         let (d_min, d_max) = usb::d_limits(SPF);
+        // -- WP AUSB2 -- byte 4 is `on_lock_error` since WP USB3b, reserved before
+        let byte4_ok = c.on_lock_error == 0 || self.alink_usb.setup().usb3b;
         if data.len() != AlinkUsbConfig::SIZE
-            || data.get(4..6) != Some(&[0, 0])
+            || data.get(5) != Some(&0)
+            || !byte4_ok
             || !c.fits(d_min, d_max)
         {
             return false;
@@ -556,9 +599,12 @@ impl State {
         };
         let old = self.alink_usb.config();
         if (old.mode, old.d, old.flags) == (c.mode, c.d, c.flags) {
+            // -- WP AUSB2 -- the lock-error action alone changes nothing else
+            self.alink_usb.config = Some(c);
             return true;
         }
         let was = self.alink_usb.state();
+        let was_error = self.alink_usb.lock_error();
         self.alink_usb.config = Some(c);
         match (old.mode, c.mode) {
             (_, usb::MODE_OFF) => {
@@ -586,7 +632,24 @@ impl State {
                 self.usb_event(UsbEventReason::None);
             }
         }
+        self.lock_error_since(was_error);
         true
+    }
+
+    // -- WP AUSB2 --
+    /// Mode 2 entered (`LOCK_ERROR`, DIAG `lock_errors`) or left (`LOCK_OK`)
+    /// lock error since it was `was` (2.9.2).
+    fn lock_error_since(&mut self, was: bool) {
+        match (was, self.alink_usb.lock_error()) {
+            (false, true) => {
+                if let Some(d) = self.alink_usb.diag.as_mut() {
+                    d.lock_errors = d.lock_errors.saturating_add(1);
+                }
+                self.usb_event(UsbEventReason::LockError);
+            }
+            (true, false) => self.usb_event(UsbEventReason::LockOk),
+            _ => {}
+        }
     }
 
     /// Count a timeline end of cause `i` in DIAG.
@@ -739,11 +802,13 @@ impl State {
                 self.usb_event(UsbEventReason::Gap);
             }
             USB_SIM_HOST_RANGE => {
+                let was = self.alink_usb.lock_error();
                 self.alink_usb.rejected = !self.alink_usb.rejected;
                 if self.alink_usb.rejected {
                     self.bump_end(3);
                 }
                 self.usb_event(UsbEventReason::HostRange);
+                self.lock_error_since(was);
             }
             USB_SIM_STREAM_RESTART => {
                 self.alink_usb.place_stream();
@@ -768,3 +833,12 @@ impl State {
     clippy::arithmetic_side_effects
 )]
 mod tests_wp_ausb1;
+
+// -- WP AUSB2 --
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+mod tests_wp_ausb2;

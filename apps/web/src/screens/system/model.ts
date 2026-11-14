@@ -67,7 +67,15 @@ export interface Unit {
   transport?: "alink" | "usb_direct";
   /** -- WP AUSB1 -- a USB-direct unit's mode, written with the alignment; absent: the unit's own. */
   usbMode?: UsbMode | null;
+  /** -- WP AUSB2 -- what it does when it can't lock (the hub writes it); absent: mute. */
+  onLockError?: OnLockError;
 }
+/** -- WP AUSB2 -- a USB-direct unit's lock-error action (`EXT_ALINK_USB` byte 4). */
+export type OnLockError = "mute" | "play_unaligned";
+export const ON_LOCK_ERROR: { id: OnLockError; label: string }[] = [
+  { id: "mute", label: "Mute" },
+  { id: "play_unaligned", label: "Play unaligned" },
+];
 /** -- WP AUSB1 -- a USB-direct unit's mode (`EXT_ALINK_USB.mode`). */
 export type UsbMode = "off" | "rate_lock" | "phase_lock";
 export const USB_MODES: { id: UsbMode; label: string }[] = [
@@ -110,7 +118,21 @@ export interface UsbSeen {
     busResets: number;
     unplugs: number;
     longestRideUs: number;
+    // -- WP AUSB2 -- layout 2 (0 from layout 1)
+    longestRideMs?: number;
+    lockErrors?: number;
+    badSofReadings?: number;
+    version?: number;
   } | null;
+  // -- WP AUSB2 --
+  /** What it does in lock error now (`mute` on firmware before the fork's WP USB3b). */
+  onLockError?: OnLockError | "unknown";
+  /** In lock error: asked to phase-lock, it can't be in step. */
+  lockError?: boolean;
+  /** Why: `host_rejected`, `config`, `pending`. */
+  lockErrorCause?: string | null;
+  /** It refused "play unaligned" (older firmware): it mutes. */
+  playUnalignedUnsupported?: boolean;
 }
 export interface SceneAction {
   target: string;
@@ -546,11 +568,44 @@ export function usbModeWord(mode: string | null | undefined): string {
   return USB_MODES.find((m) => m.id === mode)?.label ?? "Unknown";
 }
 
-/** A USB-direct unit's lock as the System view says it. */
+/** A USB-direct unit's lock as the System view says it. -- WP AUSB2 -- in lock error, what it does. */
 export function usbLock(o: Observed | undefined): string {
   if (!o?.online) return "Unknown";
   if (o.usbDirect === "none") return NO_USB_DIRECT;
+  if (o.usb?.lockError) return lockErrorState(o.usb);
   return usbStateWord(o.usb?.state);
+}
+
+// -- WP AUSB2 --
+/** A lock error's cause in words. */
+export function lockErrorWords(cause: string | null | undefined): string {
+  switch (cause) {
+    case "host_rejected":
+      return "the host's rate is out of range";
+    case "pending":
+      return "a phase error is still being pulled in";
+    case "config":
+      return "its rate or D cannot phase-lock";
+    default:
+      return "cause unknown";
+  }
+}
+
+/** A unit in lock error, in words: "Can't lock: muted" or "Can't lock: playing unaligned". */
+export function lockErrorState(u: UsbSeen): string {
+  return u.onLockError === "play_unaligned" ? "Can't lock: playing unaligned" : "Can't lock: muted";
+}
+
+/** `model` with USB-direct unit `unitId`'s lock-error action (mute is the hub's default: not written). */
+export function withOnLockError(model: SystemModel, unitId: string, action: OnLockError): SystemModel {
+  return {
+    ...model,
+    units: model.units.map((u) => {
+      if (u.id !== unitId) return u;
+      const { onLockError: _a, ...rest } = u;
+      return action === "play_unaligned" ? { ...rest, onLockError: action } : rest;
+    }),
+  };
 }
 
 /** A timeline end's cause in words (`EXT_ALINK_USB_DIAG`). */
@@ -585,6 +640,13 @@ export function usbStats(u: UsbSeen): string {
   const parts = [`host ${sign(u.hostPpm, 1)} ppm`, `VCXO ${sign(u.vcxoPpm, 1)} ppm`];
   if (u.state === "phase_locked") parts.push(`phase error ${sign(u.phaseError, 2)} samples`);
   parts.push(`gaps ${u.gapCount}, missed ${u.missedSamples}, late ${u.lateSamples} samples`);
+  // -- WP AUSB2 -- DIAG layout 2's counters, and a lock error's cause
+  if (u.diag?.version === 2) {
+    parts.push(`lock errors ${u.diag.lockErrors ?? 0}`);
+    if (u.diag.badSofReadings) parts.push(`SOF readings repaired ${u.diag.badSofReadings}`);
+  }
+  if (u.diag?.longestRideMs) parts.push(`longest ride ${u.diag.longestRideMs} ms`);
+  if (u.lockError) parts.push(`can't lock: ${lockErrorWords(u.lockErrorCause)}`);
   return parts.join(" · ");
 }
 

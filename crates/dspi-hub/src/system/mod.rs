@@ -22,12 +22,16 @@ pub(crate) use run::learn_events;
 pub use run::{AlignReport, SceneReport, SystemRefused, SystemStatus, WriteResult};
 // -- WP AUSB1 --
 pub use run::USB_HELD_BACK;
+// -- WP AUSB2 --
+pub use run::{USB_LEAD_CAPPED, USB_LEAD_EXCEEDED};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use dspi_proto::ext::alink::{AlinkEvent, alink_event};
+use dspi_proto::ext::alink_usb::{self as usb, UsbEventReason};
 use serde_json::json;
 
 use crate::error::HubError;
@@ -61,6 +65,16 @@ pub trait SystemStore: Send + Sync {
     fn load(&self) -> Option<SystemModel>;
     /// Replace the model kept.
     fn save(&self, model: &SystemModel) -> Result<(), HubError>;
+    // -- WP AUSB2 --
+    /// The USB-direct start offsets the hub last wrote into the units' output
+    /// delays, by unit id, if they were kept (`system_usb_offsets`).
+    fn load_usb_offsets(&self) -> Option<BTreeMap<String, i64>> {
+        None
+    }
+    /// Keep them, so a restarted hub still knows what it wrote.
+    fn save_usb_offsets(&self, _offsets: &BTreeMap<String, i64>) -> Result<(), HubError> {
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -83,8 +97,19 @@ struct State {
     // -- WP FIXM1 --
     /// The USB-direct start offsets the hub last wrote into the units' output
     /// delays, by unit id (none: 0); `None` until the first alignment written
-    /// in this run, so nothing is judged before it.
+    /// in this run, so nothing is judged before it. -- WP AUSB2 -- Kept in
+    /// the store: a restarted hub starts from what it wrote before.
     usb_offsets_written: Option<BTreeMap<String, i64>>,
+    // -- WP AUSB2 --
+    /// Whether each device announces 0xE3 (`EXT_NOTIFY_FEATURES` bit 4), by
+    /// serial.
+    usb_events: BTreeMap<String, bool>,
+    /// USB-direct units (serials) that refused "play unaligned": firmware
+    /// before the fork's WP USB3b. Forgotten when the unit attaches again.
+    play_unaligned_refused: BTreeSet<String>,
+    /// When an automatic write that failed may be tried again, by key
+    /// (`realign:<unit id>`, `lock:<serial>`): no retry storm.
+    retry_after: BTreeMap<String, Instant>,
 }
 
 /// The system's state, shared by the hub's handles and the relay's tap.
@@ -93,6 +118,9 @@ pub(crate) struct SystemShared {
     store: Option<Arc<dyn SystemStore>>,
     /// Keeps saves in the order of the changes. Above `state`.
     saving: Mutex<()>,
+    // -- WP AUSB2 --
+    /// The hub's own poll of the model's USB-direct units, ms between two.
+    poll_ms: AtomicU64,
 }
 
 impl std::fmt::Debug for SystemShared {
@@ -103,6 +131,12 @@ impl std::fmt::Debug for SystemShared {
 
 /// How long after the hub writes a unit's phase its re-anchor is expected.
 const REANCHOR_EXPECTED: Duration = Duration::from_secs(2);
+
+// -- WP AUSB2 --
+/// How often the hub reads the model's USB-direct units by itself (when the
+/// model has any): it keeps them aligned when asked, writes their lock-error
+/// action, and raises their alarms without a client asking for a status.
+pub const SYSTEM_POLL: Duration = Duration::from_secs(5);
 
 /// Unix seconds now.
 pub(crate) fn now() -> u64 {
@@ -140,14 +174,80 @@ impl SystemShared {
     /// The model from `store`, or an empty one.
     pub(crate) fn new(store: Option<Arc<dyn SystemStore>>) -> Self {
         let model = store.as_ref().and_then(|s| s.load()).unwrap_or_default();
+        // -- WP AUSB2 -- what the hub wrote before a restart
+        let usb_offsets_written = store.as_ref().and_then(|s| s.load_usb_offsets());
         Self {
             state: Mutex::new(State {
                 model,
+                usb_offsets_written,
                 ..State::default()
             }),
             store,
             saving: Mutex::new(()),
+            poll_ms: AtomicU64::new(u64::try_from(SYSTEM_POLL.as_millis()).unwrap_or(u64::MAX)),
         }
+    }
+
+    // -- WP AUSB2 --
+    /// How long the hub's own poll waits between two reads.
+    pub(crate) fn poll_interval(&self) -> Duration {
+        Duration::from_millis(self.poll_ms.load(Ordering::Relaxed))
+    }
+
+    // -- WP AUSB2 --
+    /// Change [`Self::poll_interval`] (at least 100 ms).
+    pub(crate) fn set_poll_interval(&self, every: Duration) {
+        let ms = u64::try_from(every.as_millis())
+            .unwrap_or(u64::MAX)
+            .max(100);
+        self.poll_ms.store(ms, Ordering::Relaxed);
+    }
+
+    // -- WP AUSB2 --
+    /// Whether an automatic write under `key` may be tried now; when it may,
+    /// the next try is held off for [`alarms::REALIGN_RETRY_S`].
+    pub(crate) fn may_retry(&self, key: &str) -> bool {
+        let mut s = self.lock();
+        let now = Instant::now();
+        if s.retry_after.get(key).is_some_and(|t| now < *t) {
+            return false;
+        }
+        if let Some(t) = now.checked_add(Duration::from_secs(alarms::REALIGN_RETRY_S)) {
+            s.retry_after.insert(key.to_owned(), t);
+        }
+        true
+    }
+
+    // -- WP AUSB2 --
+    /// The automatic write under `key` worked: the next may come at once.
+    pub(crate) fn retry_done(&self, key: &str) {
+        self.lock().retry_after.remove(key);
+    }
+
+    // -- WP AUSB2 --
+    /// Unit `serial` refused "play unaligned" (`true`), or took it.
+    pub(crate) fn play_unaligned_refused(&self, serial: &str, refused: bool) {
+        let mut s = self.lock();
+        if refused {
+            s.play_unaligned_refused.insert(serial.to_owned());
+        } else {
+            s.play_unaligned_refused.remove(serial);
+        }
+    }
+
+    // -- WP AUSB2 --
+    /// Whether unit `serial` refused "play unaligned" in this run.
+    pub(crate) fn refuses_play_unaligned(&self, serial: &str) -> bool {
+        self.lock().play_unaligned_refused.contains(serial)
+    }
+
+    // -- WP AUSB2 --
+    /// A device attached: what was learned of its firmware's lock-error
+    /// setting and of failed writes to it no longer holds.
+    pub(crate) fn attached(&self, serial: &str) {
+        let mut s = self.lock();
+        s.play_unaligned_refused.remove(serial);
+        s.retry_after.remove(&format!("lock:{serial}"));
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -209,9 +309,12 @@ impl SystemShared {
         element_of(&self.lock().model, serial).is_some()
     }
 
-    /// What `serial`'s `EXT_NOTIFY_FEATURES` says about 0xE1.
-    pub(crate) fn learned_events(&self, serial: &str, announces: bool) {
-        self.lock().events.insert(serial.to_owned(), announces);
+    /// What `serial`'s `EXT_NOTIFY_FEATURES` says about 0xE1 and -- WP AUSB2
+    /// -- 0xE3.
+    pub(crate) fn learned_events(&self, serial: &str, announces: bool, usb_events: bool) {
+        let mut s = self.lock();
+        s.events.insert(serial.to_owned(), announces);
+        s.usb_events.insert(serial.to_owned(), usb_events);
     }
 
     // -- fixup sw2x (F1) --
@@ -237,6 +340,39 @@ impl SystemShared {
         let mut changes = Vec::new();
         for (id, serial) in units {
             changes.extend(s.alarms.observe(&id, observed.get(&serial), t));
+        }
+        // -- WP AUSB2 -- USB-direct units in lock error
+        let usb_units: Vec<(String, String, String)> = s
+            .model
+            .units
+            .iter()
+            .filter(|u| u.usb_direct())
+            .map(|u| {
+                let name = if u.name.is_empty() { &u.id } else { &u.name };
+                (u.id.clone(), u.serial.clone(), name.clone())
+            })
+            .collect();
+        for (id, serial, name) in usb_units {
+            let o = observed.get(&serial);
+            let error = match o.filter(|o| o.online).map(|o| o.usb.as_ref()) {
+                // Offline: `unit_offline` says it.
+                None => Some(None),
+                // Attached, not read: as it was.
+                Some(None) => None,
+                Some(Some(u)) => Some(u.lock_error.then(|| {
+                    (
+                        align::lock_error_message(
+                            &name,
+                            &u.on_lock_error,
+                            u.lock_error_cause.as_deref(),
+                        ),
+                        u.on_lock_error != "play_unaligned",
+                    )
+                })),
+            };
+            if let Some(error) = error {
+                changes.extend(s.alarms.usb_lock_error(&id, error, t));
+            }
         }
         let senders: Vec<(String, Option<bool>)> = s
             .model
@@ -293,18 +429,37 @@ impl SystemShared {
     }
 
     // -- WP FIXM1 --
-    /// The hub wrote unit `id`'s output delays with this start offset (none: 0).
+    /// The hub wrote unit `id`'s output delays with this start offset (none:
+    /// 0). -- WP AUSB2 -- Saved in the store when it changed.
     pub(crate) fn usb_offset_written(&self, id: &str, offset: Option<i64>) {
-        let mut s = self.lock();
-        let w = s.usb_offsets_written.get_or_insert_with(BTreeMap::new);
-        match offset {
-            Some(o) => {
-                w.insert(id.to_owned(), o);
+        let _in_order = guard(&self.saving);
+        let save = {
+            let mut s = self.lock();
+            let first = s.usb_offsets_written.is_none();
+            let w = s.usb_offsets_written.get_or_insert_with(BTreeMap::new);
+            let before = w.clone();
+            match offset {
+                Some(o) => {
+                    w.insert(id.to_owned(), o);
+                }
+                None => {
+                    w.remove(id);
+                }
             }
-            None => {
-                w.remove(id);
-            }
+            (first || before != *w).then(|| w.clone())
+        };
+        if let (Some(w), Some(store)) = (save, &self.store)
+            && let Err(e) = store.save_usb_offsets(&w)
+        {
+            log::warn!("hub: the USB-direct start offsets written are not kept: {e}");
         }
+    }
+
+    // -- WP AUSB2 --
+    /// Record "Keep USB-direct units aligned" failing on some units (`Some`:
+    /// the sentence) or not (`None`); the changes to broadcast.
+    pub(crate) fn usb_realign_failed(&self, failed: Option<String>) -> Vec<Alarm> {
+        self.lock().alarms.usb_realign_failed(failed, now())
     }
 
     // -- WP FIXM1 --
@@ -321,10 +476,64 @@ impl SystemShared {
         }
     }
 
-    /// Whether a packet is one [`Self::on_packet`] looks at (0xE1), so the
-    /// caller fetches the device's serial only for those.
+    /// Whether a packet is one [`Self::on_packet`] looks at (0xE1; -- WP
+    /// AUSB2 -- and 0xE3), so the caller fetches the device's serial only for
+    /// those.
     pub(crate) fn wants(packet: &[u8]) -> bool {
-        packet.get(1) == Some(&dspi_proto::ext::alink::NOTIFY_EVT_ALINK_STATE)
+        matches!(
+            packet.get(1),
+            Some(&dspi_proto::ext::alink::NOTIFY_EVT_ALINK_STATE | &usb::NOTIFY_EVT_ALINK_USB)
+        )
+    }
+
+    // -- WP AUSB2 --
+    /// An 0xE3 from USB-direct unit `serial` of the model that announces it:
+    /// `LOCK_ERROR` raises its lock-error alarm, `LOCK_OK` clears it. The
+    /// changes.
+    fn on_usb_event(&self, serial: &str, id: u8, payload: &[u8]) -> Vec<Alarm> {
+        let mut s = self.lock();
+        let announces = s.usb_events.get(serial).copied().unwrap_or(false);
+        let features = announces.then_some(usb::NOTIFY_FEAT_ALINK_USB);
+        let Some(e) = usb::alink_usb_event(features, id, payload) else {
+            return Vec::new();
+        };
+        let Some(u) = s
+            .model
+            .units
+            .iter()
+            .find(|u| u.usb_direct() && u.serial == serial)
+        else {
+            return Vec::new();
+        };
+        let (unit, name) = (
+            u.id.clone(),
+            if u.name.is_empty() {
+                u.id.clone()
+            } else {
+                u.name.clone()
+            },
+        );
+        // What it does: as last read, else as the model asks.
+        let action = s
+            .observed
+            .get(serial)
+            .and_then(|o| o.usb.as_ref())
+            .map_or_else(
+                || u.on_lock_error.as_str().to_owned(),
+                |o| o.on_lock_error.clone(),
+            );
+        let error = match e.reason {
+            UsbEventReason::LockError => {
+                let cause = align::lock_error_cause(e.state.as_str(), e.phase_state);
+                Some((
+                    align::lock_error_message(&name, &action, Some(cause)),
+                    action != "play_unaligned",
+                ))
+            }
+            UsbEventReason::LockOk => None,
+            _ => return Vec::new(),
+        };
+        s.alarms.usb_lock_error(&unit, error, now())
     }
 
     /// A packet from the device with this serial (the relay's tap, fixup sw2x
@@ -337,6 +546,13 @@ impl SystemShared {
             return;
         };
         if !Self::wants(packet) {
+            return;
+        }
+        // -- WP AUSB2 --
+        if id == usb::NOTIFY_EVT_ALINK_USB {
+            for a in &self.on_usb_event(serial, id, payload) {
+                relay.broadcast_event(&alarm_event(a));
+            }
             return;
         }
         let changes = {
@@ -405,9 +621,9 @@ mod tests_wp_sw2 {
     fn wp_sw2_a_loss_event_raises_an_alarm_on_the_relay() {
         let s = SystemShared::new(None);
         s.set_model(align::tests_wp_sw2::cinema()).unwrap();
-        s.learned_events("S-B", true);
-        s.learned_events("S-C", false);
-        s.learned_events("S-fan", true);
+        s.learned_events("S-B", true, false);
+        s.learned_events("S-C", false, false);
+        s.learned_events("S-fan", true, false);
         let relay = Relay::default();
         // 0xE1: holdover, class 1, LOS.
         let lost = [2, 0xE1, 0, 0, 3, 1, 2, 0, 1, 0, 0, 0];

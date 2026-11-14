@@ -90,6 +90,10 @@ class SystemController : public QObject {
     Q_PROPERTY(bool stale READ stale NOTIFY draftChanged)
     Q_PROPERTY(bool draftDelayAuto READ draftDelayAuto NOTIFY draftChanged)
     Q_PROPERTY(int draftDelayFrames READ draftDelayFrames NOTIFY draftChanged)
+    // -- WP AUSB2 -- the USB-direct units the editor lists ({ id, name }), and
+    // "Keep USB-direct units aligned" as drafted, else as the hub has it
+    Q_PROPERTY(QVariantList usbUnits READ usbUnits NOTIFY editUnitsChanged)
+    Q_PROPERTY(bool keepUsbAligned READ keepUsbAligned NOTIFY draftChanged)
 public:
     SystemController(const AppContext &ctx, QObject *parent = nullptr);
     ~SystemController() override;
@@ -131,6 +135,8 @@ public:
     bool stale() const { return m_stale; }
     bool draftDelayAuto() const { return m_draftAuto; }
     int draftDelayFrames() const { return m_draftFrames; }
+    QVariantList usbUnits() const { return m_usbUnits; }
+    bool keepUsbAligned() const;
 
     // Reads the view now (the poll does every 3 s)
     Q_INVOKABLE void refresh();
@@ -147,6 +153,16 @@ public:
     // The draft's value for QML: what was typed, else the view's
     Q_INVOKABLE QString roomLipSyncText(const QString &roomId) const;
     Q_INVOKABLE QString unitLatencyText(const QString &unitId) const;
+    // -- WP AUSB2 -- a USB-direct unit's mode ("off", "rate_lock", "phase_lock",
+    // or "" for the unit's own), what it does when it can't lock ("mute" or
+    // "play_unaligned"), and keeping the USB-direct units aligned (Admin).
+    // False when not taken.
+    Q_INVOKABLE bool setUsbMode(const QString &unitId, const QString &mode);
+    Q_INVOKABLE bool setOnLockError(const QString &unitId, const QString &action);
+    Q_INVOKABLE bool setKeepUsbAligned(bool on);
+    // The draft's value for QML: as drafted, else as the installation asks
+    Q_INVOKABLE QString usbModeOf(const QString &unitId) const;
+    Q_INVOKABLE QString onLockErrorOf(const QString &unitId) const;
     // Sends the draft (only while dirty and not stale)
     Q_INVOKABLE void save();
     // Throws the draft away and reads the view again
@@ -197,6 +213,7 @@ private:
     bool m_available = false;
     QJsonObject m_view;
     QVariantList m_units, m_rooms, m_scenes, m_editUnits;
+    QVariantList m_usbUnits;   // -- WP AUSB2 --
     QString m_error;
     QVariantMap m_lastRecall;
     QString m_recalledScene;
@@ -212,6 +229,9 @@ private:
     // id -> µs, or an invalid QVariant for "the model's own"
     QHash<QString, QVariant> m_draftRooms;
     QHash<QString, QVariant> m_draftUnits;
+    // -- WP AUSB2 -- id -> { mode: "" for the unit's own, onLockError: "" unchanged }
+    QHash<QString, QVariantMap> m_draftUsb;
+    QVariant m_draftKeep;   // invalid: unchanged
 };
 
 #endif // SYSTEMCONTROLLER_H

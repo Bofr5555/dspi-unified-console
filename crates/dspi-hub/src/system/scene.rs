@@ -127,6 +127,12 @@ pub struct ScenePlan {
     /// The lead the bus frame was chosen with, samples.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usb_lead_samples: Option<u64>,
+    // -- WP AUSB2 -- (review fixm1 F1)
+    /// The lead asked was longer than a bus frame reaches
+    /// ([`USB_MAX_LEAD_FRAMES`], the model's lead over 1.92 s): the
+    /// USB-direct ops act 1.92 s ahead, not at the audio link's frame.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub usb_lead_capped: bool,
 }
 
 // -- WP AUSB1 --
@@ -158,6 +164,12 @@ pub struct UsbNow {
 /// The longest lead a bus-frame target takes: 2048 frames less the 64 that
 /// count as past, and a margin of 64 for the reads (1.92 s).
 pub const USB_MAX_LEAD_FRAMES: u64 = 2048 - 64 - 64;
+// -- WP AUSB2 --
+/// [`USB_MAX_LEAD_FRAMES`] as time (a bus frame is 1 ms at every rate): when
+/// the writes still to come and the time since the latest read take longer,
+/// a bus frame could already be past when written, and the unit would take
+/// its next occurrence, up to 2 s late (`extension_channel_spec.md` 2.9.4).
+pub const USB_MAX_LEAD: Duration = Duration::from_millis(USB_MAX_LEAD_FRAMES);
 
 // -- WP AUSB1 --
 /// The bus frame `lead` samples after the S of the most recent read of `usb`
@@ -269,6 +281,7 @@ pub fn plan_mixed(
             usb_frame: None,
             usb_ops: Vec::new(),
             usb_lead_samples: None,
+            usb_lead_capped: false,
         });
     }
     let round = |f: u64| f.checked_next_multiple_of(SUPERFRAME_FRAMES);
@@ -302,6 +315,7 @@ pub fn plan_mixed(
             usb_frame: None,
             usb_ops: Vec::new(),
             usb_lead_samples: None,
+            usb_lead_capped: false,
         });
     }
     let frame = base.and_then(|b| b.checked_add(lead)).and_then(round);
@@ -323,6 +337,7 @@ pub fn plan_mixed(
             usb_frame: None,
             usb_ops: Vec::new(),
             usb_lead_samples: None,
+            usb_lead_capped: false,
         });
     };
     Ok(ScenePlan {
@@ -338,6 +353,7 @@ pub fn plan_mixed(
         usb_frame: None,
         usb_ops: Vec::new(),
         usb_lead_samples: None,
+        usb_lead_capped: false,
     })
 }
 
@@ -379,6 +395,8 @@ pub fn plan_usb(
     let (bus, lead) = usb_target(&seen, *usb_lead).ok_or(SceneRefused::NoFrame)?;
     plan.usb_frame = Some(bus);
     plan.usb_lead_samples = Some(lead);
+    // -- WP AUSB2 --
+    plan.usb_lead_capped = lead < *usb_lead;
     plan.usb_ops = usb_ops;
     if plan.ops.is_empty() && plan.direct.is_empty() {
         plan.path = "usb_frame".into();
@@ -610,5 +628,36 @@ mod tests_wp_sw2 {
         assert_eq!(p.usb_lead_samples, Some(4800));
         assert_eq!(p.usb_frame, Some(10 + 100));
         assert_eq!(p.lead_frames, 2400);
+        assert!(!p.usb_lead_capped);
+    }
+
+    // -- WP AUSB2 -- (review fixm1 F1)
+    #[test]
+    fn wp_ausb2_a_lead_over_the_reach_is_cut_and_said() {
+        let mut m = cinema();
+        let serial = m.units[0].serial.clone();
+        m.scenes = vec![scene(&[("all", "master_volume", 0, -2000)])];
+        let mut units = BTreeMap::new();
+        units.insert(serial, seen(2, 10, 0));
+        // A model lead of 4 s: the bus frame reaches 1.92 s.
+        let usb = UsbNow {
+            units,
+            lead: 192_000,
+        };
+        let p = plan_usb(
+            &m,
+            "evening",
+            &frames(),
+            None,
+            192_000,
+            &BTreeSet::new(),
+            &usb,
+        )
+        .unwrap();
+        assert_eq!(p.usb_lead_samples, Some(USB_MAX_LEAD_FRAMES * 48));
+        assert!(p.usb_lead_capped);
+        assert_eq!(USB_MAX_LEAD, Duration::from_millis(1920));
+        let json = serde_json::to_value(&p).unwrap();
+        assert_eq!(json["usbLeadCapped"], true);
     }
 }

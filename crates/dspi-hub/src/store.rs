@@ -64,6 +64,9 @@ struct FileData {
     // the clients and names; checked when it is used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     system: Option<serde_json::Value>,
+    // -- WP AUSB2 -- the USB-direct start offsets the hub last wrote, by unit id
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    system_usb_offsets: Option<BTreeMap<String, i64>>,
 }
 
 /// The persistent state, as loaded.
@@ -78,6 +81,8 @@ pub struct HubStore {
     device_names: BTreeMap<String, String>,
     // -- WP SW2 --
     system: Option<serde_json::Value>,
+    // -- WP AUSB2 --
+    system_usb_offsets: Option<BTreeMap<String, i64>>,
 }
 
 fn io_error(what: &str, path: &Path, e: &io::Error) -> HubError {
@@ -206,6 +211,7 @@ impl HubStore {
                 device_names: BTreeMap::new(),
                 // -- WP SW2 --
                 system: None,
+                system_usb_offsets: None,
             };
             // Now, so the id is the same at the next start even with nothing paired.
             store.save()?;
@@ -228,6 +234,7 @@ impl HubStore {
             device_names: data.device_names,
             // -- WP SW2 --
             system: data.system,
+            system_usb_offsets: data.system_usb_offsets,
         })
     }
 
@@ -257,6 +264,7 @@ impl HubStore {
             device_names: data.device_names,
             // -- WP SW2 --
             system: data.system,
+            system_usb_offsets: data.system_usb_offsets,
         }))
     }
 
@@ -282,6 +290,7 @@ impl HubStore {
             device_names: self.device_names.clone(),
             // -- WP SW2 --
             system: self.system.clone(),
+            system_usb_offsets: self.system_usb_offsets.clone(),
         };
         let bytes = serde_json::to_vec_pretty(&data)
             .map_err(|e| HubError::Io(format!("cannot encode the hub store: {e}")))?;
@@ -343,6 +352,18 @@ impl HubStore {
                 None
             }
         }
+    }
+
+    // -- WP AUSB2 --
+    /// The USB-direct start offsets the hub last wrote, if kept.
+    pub fn system_usb_offsets(&self) -> Option<&BTreeMap<String, i64>> {
+        self.system_usb_offsets.as_ref()
+    }
+
+    // -- WP AUSB2 --
+    /// Replace them, for [`Self::save`].
+    pub fn set_system_usb_offsets(&mut self, offsets: &BTreeMap<String, i64>) {
+        self.system_usb_offsets = Some(offsets.clone());
     }
 
     /// Replace the system model, for [`Self::save`].

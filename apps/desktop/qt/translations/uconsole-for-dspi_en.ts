@@ -9624,6 +9624,14 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Can&apos;t lock: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Its firmware cannot play unaligned: it mutes when it can&apos;t lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1, pending</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9689,6 +9697,54 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>µs; empty: the output latency counts</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB-direct, %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>USB mode of %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Its own</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rate lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Phase lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What %1 does when it can&apos;t lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute when it can&apos;t lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Play unaligned when it can&apos;t lock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When a phase-locked unit can&apos;t be in step (its host&apos;s rate out of range, a rate or delay that can&apos;t phase-lock), it stays muted, or plays unaligned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep USB-direct units aligned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When a USB-direct stream&apos;s start moves, the hub writes their output delays again by itself</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

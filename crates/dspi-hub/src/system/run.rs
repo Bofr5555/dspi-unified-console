@@ -35,6 +35,17 @@ use crate::session::{Completion, INTERNAL_SESSION_ID, Role, SessionCtx};
 /// Why a USB-direct unit's op of a scene was not written: the audio link's part
 /// of the scene was refused (`system.scene.apply`'s `reason`).
 pub const USB_HELD_BACK: &str = "the audio link part was refused";
+// -- WP AUSB2 -- (review fixm1 F1)
+/// Why a USB-direct unit's op was written at once: the reads and writes
+/// before it would take longer than a bus frame reaches (1.92 s), even after
+/// reading the units again, so a frame could already be past when written
+/// and play up to 2 s late.
+pub const USB_LEAD_EXCEEDED: &str =
+    "applied now: the USB frame would be past before it was written (slow reads)";
+/// Why a USB-direct unit's queued op is not at the audio link's frame: the
+/// model's lead is longer than a bus frame reaches (1.92 s).
+pub const USB_LEAD_CAPPED: &str =
+    "at a USB frame 1.92 s ahead, not with the audio link (lead over 1.92 s)";
 
 /// How long one transfer may take, queue included.
 const TRANSFER_WAIT: Duration = Duration::from_secs(3);
@@ -175,6 +186,21 @@ fn usb_lead(
         .saturating_add(frames_in(since_read))
 }
 
+// -- WP AUSB2 -- (review fixm1 F1)
+/// How long until the USB-direct ops are written, from the latest USB-direct
+/// read: the time already gone since it (`since_read`), the audio link's
+/// writes (`alink_estimate`, which come first) and the USB-direct ops' own
+/// write and read-back. A bus frame further than [`scene::USB_MAX_LEAD`] from
+/// that read may be past when it is written.
+fn usb_ahead(alink_estimate: Duration, usb_rtts: &[Duration], since_read: Duration) -> Duration {
+    usb_rtts
+        .iter()
+        .fold(alink_estimate, |acc, rtt| {
+            acc.saturating_add(rtt.saturating_mul(2))
+        })
+        .saturating_add(since_read)
+}
+
 /// What a unit's queue said of `req` right after it was written.
 fn apply_result(seen: Option<ApplyStatus>, req: &ApplyRequest) -> String {
     match seen {
@@ -254,7 +280,11 @@ pub(crate) fn learn_events(system: &Arc<SystemShared>, dev: &DeviceShared) {
             .then(|| r.payload.get(..4)?.try_into().ok().map(u32::from_le_bytes))
             .flatten()
             .unwrap_or(0);
-        system.learned_events(&serial, bits & alink::NOTIFY_FEAT_ALINK_STATE != 0);
+        system.learned_events(
+            &serial,
+            bits & alink::NOTIFY_FEAT_ALINK_STATE != 0,
+            bits & usb::NOTIFY_FEAT_ALINK_USB != 0,
+        );
     });
     dev.submit(internal(), req, done, None);
 }
@@ -571,6 +601,8 @@ fn observe_usb(dev: &DeviceShared) -> Observed {
 // -- WP AUSB1 --
 /// The hub's record of a USB-direct unit's reads.
 fn usb_seen(c: &AlinkUsbConfig, s: &AlinkUsbStatus, d: Option<&AlinkUsbDiag>) -> align::UsbSeen {
+    // -- WP AUSB2 --
+    let lock_error = s.flags & usb::USB_FLAG_LOCK_ERROR != 0;
     let mut flags = Vec::new();
     for (bit, word) in [
         (usb::STATUS_D_BELOW_MIN, "d_below_min"),
@@ -615,7 +647,23 @@ fn usb_seen(c: &AlinkUsbConfig, s: &AlinkUsbStatus, d: Option<&AlinkUsbDiag>) ->
             bus_resets: d.bus_resets,
             unplugs: d.unplugs,
             longest_ride_us: d.longest_ride_us,
+            // -- WP AUSB2 --
+            longest_ride_ms: d.longest_ride_us.checked_div(1000).unwrap_or(0),
+            lock_errors: d.lock_errors,
+            bad_sof_readings: d.bad_sof_readings,
+            version: d.version,
         }),
+        // -- WP AUSB2 --
+        on_lock_error: match c.on_lock_error {
+            usb::ON_LOCK_ERROR_PLAY => "play_unaligned",
+            usb::ON_LOCK_ERROR_MUTE => "mute",
+            _ => "unknown",
+        }
+        .into(),
+        lock_error,
+        lock_error_cause: lock_error
+            .then(|| align::lock_error_cause(s.state.as_str(), s.phase_state).to_owned()),
+        play_unaligned_unsupported: false,
     }
 }
 
@@ -725,6 +773,43 @@ fn usb_apply_result(seen: Option<ApplyStatus>, req: &ApplyRequest, bus: u16, spf
         }
         Some(_) => "queued".into(),
         None => "queued_unverified".into(),
+    }
+}
+
+// -- WP AUSB2 --
+/// How long an alignment waits for USB-direct units it re-anchored to be
+/// phase-locked with their streams placed again (the firmware: about D + 20
+/// ms, longer after a pull-in from mode 0).
+const REANCHOR_WAIT: Duration = Duration::from_secs(3);
+
+// -- WP AUSB2 -- (review fixm1 F3)
+/// Wait until each unit of `units` (serial, device, the mode written) is as
+/// its mode asks again: phase-locked with its stream placed on the timeline
+/// (or no stream), or rate-locked; at most [`REANCHOR_WAIT`] in all.
+fn wait_placed(units: &[(String, Arc<DeviceShared>, u8)]) {
+    let until = Instant::now().checked_add(REANCHOR_WAIT);
+    for (_, dev, mode) in units {
+        loop {
+            let s = get_ext(
+                dev,
+                usb::EXT_ALINK_USB_STATUS,
+                AlinkUsbStatus::SIZE,
+                AlinkUsbStatus::decode,
+            );
+            let settled = s.is_some_and(|s| match *mode {
+                usb::MODE_PHASE_LOCK => {
+                    s.state == usb::UsbState::PhaseLocked
+                        && (s.flags & usb::USB_FLAG_STREAM == 0
+                            || s.stream_start_bus_frame().is_some())
+                }
+                usb::MODE_RATE_LOCK => s.state == usb::UsbState::RateLocked,
+                _ => true,
+            });
+            if settled || until.is_none_or(|t| Instant::now() >= t) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 }
 
@@ -968,16 +1053,144 @@ impl HubHandle {
     ///
     /// -- WP FIXM1 -- It also watches the USB-direct streams' start offsets:
     /// when one moved since the hub last wrote them, the alignment carries the
-    /// issue `usb_start_offsets_changed` ("Align again"), or, with the model's
-    /// "Keep USB-direct units aligned", the hub writes those units' output
-    /// delays again (nothing else, so nothing re-anchors) and records it as
-    /// the alarm `usb_realigned`.
+    /// issue `usb_start_offsets_changed` ("Align again"). -- WP AUSB2 -- A
+    /// client's status never writes: "Keep USB-direct units aligned" and the
+    /// lock-error action run from the hub's own poll ([`Self::system_poll_now`]).
     pub fn system_status(&self) -> SystemStatus {
-        self.system_status_watching(true)
+        self.system_status_watching(false)
+    }
+
+    // -- WP AUSB2 -- (review fixm1 F2)
+    /// The hub's own poll, run every [`super::SYSTEM_POLL`] by the hub while
+    /// the model has USB-direct units (and callable at once, for tests and
+    /// embedders): [`Self::system_status`], then, as the hub's own session,
+    /// each USB-direct unit's lock-error action written where the unit has
+    /// another, and with "Keep USB-direct units aligned" the output delays of
+    /// the units whose start offset moved written again (recorded as
+    /// `usb_realigned`; a unit it could not write as `usb_realign_failed`,
+    /// tried again at most every [`super::alarms::REALIGN_RETRY_S`]). Blocks
+    /// for the transfers.
+    pub fn system_poll_now(&self) -> SystemStatus {
+        let status = self.system_status_watching(true);
+        let (model, _) = self.system().model();
+        self.sync_lock_errors(&model, &status);
+        status
+    }
+
+    // -- WP AUSB2 --
+    /// How often the hub's own poll runs (default [`super::SYSTEM_POLL`]; at
+    /// least 100 ms). Takes effect after the poll's current wait.
+    pub fn set_system_poll_interval(&self, every: Duration) {
+        self.system().set_poll_interval(every);
+    }
+
+    // -- WP AUSB2 --
+    /// The hub's own poll's wait, and whether the model has anything for it
+    /// (USB-direct units).
+    pub(crate) fn system_poll_due(&self) -> (Duration, bool) {
+        let (model, _) = self.system().model();
+        (
+            self.system().poll_interval(),
+            model.units.iter().any(super::model::Unit::usb_direct),
+        )
+    }
+
+    // -- WP AUSB2 --
+    /// Write each USB-direct unit's lock-error action (`EXT_ALINK_USB` byte
+    /// 4, with the mode, flags and D as read, so nothing re-anchors) where the
+    /// unit has another than the model asks. A unit that refuses "play
+    /// unaligned" (firmware before the fork's WP USB3b) is remembered, and the
+    /// alignment says so (`usb_lock_error_unsupported`); a failed write is
+    /// tried again at most every [`super::alarms::REALIGN_RETRY_S`].
+    fn sync_lock_errors(
+        &self,
+        model: &super::model::SystemModel,
+        status: &SystemStatus,
+    ) -> Vec<WriteResult> {
+        let mut writes = Vec::new();
+        for u in model.units.iter().filter(|u| u.usb_direct()) {
+            let Some(seen) = status
+                .observed
+                .get(&u.serial)
+                .filter(|o| o.online)
+                .and_then(|o| o.usb.as_ref())
+            else {
+                continue;
+            };
+            if let Some(w) = self.sync_lock_error(u, seen) {
+                writes.push(w);
+            }
+        }
+        writes
+    }
+
+    // -- WP AUSB2 --
+    /// [`Self::sync_lock_errors`] for one unit as read (`seen`): the write's
+    /// outcome (`on_lock_error`), or `None` when nothing was written.
+    fn sync_lock_error(
+        &self,
+        u: &super::model::Unit,
+        seen: &align::UsbSeen,
+    ) -> Option<WriteResult> {
+        let want = u.on_lock_error;
+        let play = want == super::model::OnLockError::PlayUnaligned;
+        if seen.on_lock_error == want.as_str()
+            || (play && self.system().refuses_play_unaligned(&u.serial))
+        {
+            return None;
+        }
+        let mode = usb::UsbMode::from_name(&seen.mode)?;
+        let key = format!("lock:{}", u.serial);
+        let dev = self.device_by_serial(&u.serial)?;
+        if !self.system().may_retry(&key) {
+            return None;
+        }
+        let c = AlinkUsbConfig {
+            mode: mode.raw(),
+            flags: if seen.auto_reanchor {
+                usb::FLAG_AUTO_REANCHOR
+            } else {
+                0
+            },
+            d: seen.d,
+            on_lock_error: want.code(),
+            status_flags: 0,
+            state: 0,
+        };
+        let result = match exec_told(
+            &dev,
+            Dir::Set,
+            op::REQ_EXTENSION,
+            usb::EXT_ALINK_USB,
+            c.encode().to_vec(),
+            0,
+        ) {
+            Ok(_) => {
+                self.system().retry_done(&key);
+                if play {
+                    self.system().play_unaligned_refused(&u.serial, false);
+                }
+                "ok".to_owned()
+            }
+            Err(Failed { stalled: true, .. }) if play => {
+                // The byte is reserved there: the firmware's own answer.
+                self.system().play_unaligned_refused(&u.serial, true);
+                self.system().retry_done(&key);
+                "unsupported".to_owned()
+            }
+            Err(f) => status_name(f.status),
+        };
+        Some(WriteResult {
+            serial: u.serial.clone(),
+            element: u.id.clone(),
+            what: "on_lock_error".into(),
+            result,
+            reason: None,
+        })
     }
 
     /// [`Self::system_status`]; `keep` lets "Keep USB-direct units aligned"
-    /// write (not while an alignment is about to be written anyway).
+    /// write (-- WP AUSB2 -- the hub's own poll only).
     fn system_status_watching(&self, keep: bool) -> SystemStatus {
         let (model, revision) = self.system().model();
         let mut observed = BTreeMap::new();
@@ -1015,12 +1228,23 @@ impl HubHandle {
             };
             observed.insert(serial, o);
         }
+        // -- WP AUSB2 -- what the hub learned when it wrote "play unaligned"
+        for (serial, o) in &mut observed {
+            if let Some(u) = o.usb.as_mut() {
+                u.play_unaligned_unsupported = self.system().refuses_play_unaligned(serial);
+            }
+        }
         let mut alignment = align::align(&model, &observed);
         // -- WP FIXM1 -- (review ausb1 F3) the start offsets as written, or not
         let offsets = align::usb_offsets(&alignment);
         let mut moved = self.system().usb_offsets_moved(&offsets);
         if !moved.is_empty() && keep && model.keep_usb_aligned {
             moved = self.realign_usb(&model, &alignment, &offsets, &moved);
+        } else if moved.is_empty() && keep {
+            // -- WP AUSB2 -- nothing moved (any more): no failure stands
+            for a in &self.system().usb_realign_failed(None) {
+                self.inner.relay.broadcast_event(&alarm_event(a));
+            }
         }
         if !moved.is_empty() {
             let names: Vec<String> = moved.iter().map(|id| unit_name(&model, id)).collect();
@@ -1046,11 +1270,15 @@ impl HubHandle {
     /// speakers' `out.delay`. A value the unit already has is not written again,
     /// so an unchanged phase does not re-anchor. Blocks for the transfers.
     pub fn system_align(&self, apply: bool) -> AlignReport {
-        let status = self.system_status_watching(!apply);
-        let alignment = status.alignment;
+        let status = self.system_status_watching(false);
+        let mut alignment = status.alignment;
         let mut writes = Vec::new();
         if apply {
             let (model, _) = self.system().model();
+            // -- WP AUSB2 -- USB-direct units whose mode or D was written, and
+            // every USB-direct unit's plan, for its delays
+            let mut reanchored: Vec<(String, Arc<DeviceShared>, u8)> = Vec::new();
+            let mut usb_plans: Vec<(align::UnitPlan, Arc<DeviceShared>)> = Vec::new();
             for plan in &alignment.units {
                 let dev = self.device_by_serial(&plan.serial);
                 let result = |what: &str, result: String| WriteResult {
@@ -1107,6 +1335,11 @@ impl HubHandle {
                             0
                         },
                         d: plan.usb_d.or(seen.map(|s| s.d)).unwrap_or(usb::DEFAULT_D),
+                        // -- WP AUSB2 -- the unit's own; the model's is written below
+                        on_lock_error: match seen.map(|s| s.on_lock_error.as_str()) {
+                            Some("play_unaligned") => usb::ON_LOCK_ERROR_PLAY,
+                            _ => usb::ON_LOCK_ERROR_MUTE,
+                        },
                         status_flags: 0,
                         state: 0,
                     };
@@ -1120,7 +1353,21 @@ impl HubHandle {
                         set_ext(&dev, usb::EXT_ALINK_USB, want.encode().to_vec())
                             .map_or_else(status_name, |()| "ok".into())
                     };
+                    // -- WP AUSB2 -- (review fixm1 F3) a new mode or D re-anchors it
+                    if r == "ok" {
+                        reanchored.push((plan.serial.clone(), Arc::clone(&dev), mode));
+                    }
                     writes.push(result("usb_direct", r));
+                    // -- WP AUSB2 -- the lock-error action the model asks
+                    if let (Some(u), Some(s)) = (model.unit(&plan.unit), seen)
+                        && let Some(w) = self.sync_lock_error(u, s)
+                    {
+                        writes.push(w);
+                    }
+                    // Its delays carry the start offsets: written once every
+                    // USB-direct unit is placed again, below.
+                    usb_plans.push((plan.clone(), dev));
+                    continue;
                 } else {
                     if let Some(slots) = model
                         .unit(&plan.unit)
@@ -1160,14 +1407,53 @@ impl HubHandle {
                     };
                     writes.push(result("phase", r));
                 }
-                let delays = write_out_delays(&dev, plan);
+                writes.extend(write_out_delays(&dev, plan));
+            }
+            // -- WP AUSB2 -- (review fixm1 F3) a unit that re-anchored placed its stream
+            // anew: wait for it, read the start offsets again, and write the
+            // USB-direct units' delays from those, so "Align again" does not follow.
+            if !reanchored.is_empty() {
+                wait_placed(&reanchored);
+                let fresh = self.system_status_watching(false).alignment;
+                usb_plans = usb_plans
+                    .into_iter()
+                    .map(|(old, dev)| {
+                        let plan = fresh
+                            .units
+                            .iter()
+                            .find(|p| p.unit == old.unit)
+                            .cloned()
+                            .unwrap_or(old);
+                        (plan, dev)
+                    })
+                    .collect();
+                alignment = fresh;
+            }
+            for (plan, dev) in &usb_plans {
+                if !plan.writable {
+                    continue;
+                }
+                let delays = write_out_delays(dev, plan);
                 // -- WP FIXM1 -- the start offset these delays carry, once all are in
-                if plan.transport == "usb_direct" && delays.iter().all(|w| delay_written(&w.result))
-                {
+                if delays.iter().all(|w| delay_written(&w.result)) {
                     self.system()
                         .usb_offset_written(&plan.unit, plan.start_offset_samples);
                 }
                 writes.extend(delays);
+            }
+            // -- WP AUSB2 -- (review fixm1 F5) the report says what holds after the
+            // writes: "Align again" only for units still not written
+            alignment
+                .issues
+                .retain(|i| i.code != align::USB_OFFSETS_CHANGED);
+            let moved = self
+                .system()
+                .usb_offsets_moved(&align::usb_offsets(&alignment));
+            if !moved.is_empty() {
+                let names: Vec<String> = moved.iter().map(|id| unit_name(&model, id)).collect();
+                alignment
+                    .issues
+                    .push(align::usb_offsets_changed_issue(&names));
             }
         }
         AlignReport {
@@ -1192,23 +1478,71 @@ impl HubHandle {
     ) -> Vec<String> {
         let mut done = Vec::new();
         let mut failed = Vec::new();
+        // -- WP AUSB2 -- (review fixm1 F2) why each failed; none tried again before its time
+        let mut why: Vec<String> = Vec::new();
+        let mut held = false;
         for plan in alignment
             .units
             .iter()
             .filter(|p| p.transport == "usb_direct" && moved.contains(&p.unit))
         {
+            let key = format!("realign:{}", plan.unit);
             let dev = self.device_by_serial(&plan.serial);
             let (Some(dev), true) = (dev, plan.writable) else {
                 failed.push(plan.unit.clone());
+                if self.system().may_retry(&key) {
+                    why.push(format!(
+                        "{} ({})",
+                        unit_name(model, &plan.unit),
+                        if self.device_by_serial(&plan.serial).is_none() {
+                            "not connected"
+                        } else {
+                            "not writable now"
+                        }
+                    ));
+                } else {
+                    held = true;
+                }
                 continue;
             };
+            if !self.system().may_retry(&key) {
+                failed.push(plan.unit.clone());
+                held = true;
+                continue;
+            }
             let writes = write_out_delays(&dev, plan);
             if writes.iter().all(|w| delay_written(&w.result)) {
                 self.system()
                     .usb_offset_written(&plan.unit, offsets.get(&plan.unit).copied());
+                self.system().retry_done(&key);
                 done.push(unit_name(model, &plan.unit));
             } else {
                 failed.push(plan.unit.clone());
+                let results: Vec<String> = writes
+                    .iter()
+                    .filter(|w| !delay_written(&w.result))
+                    .map(|w| format!("{} {}", w.what, w.result))
+                    .collect();
+                why.push(format!(
+                    "{} ({})",
+                    unit_name(model, &plan.unit),
+                    results.join(", ")
+                ));
+            }
+        }
+        if !why.is_empty() {
+            let message = format!(
+                "Keep USB-direct units aligned: the output delays could not be written on {}; \
+                 tried again in {} s, or Align by hand",
+                why.join(", "),
+                super::alarms::REALIGN_RETRY_S
+            );
+            for a in &self.system().usb_realign_failed(Some(message)) {
+                self.inner.relay.broadcast_event(&alarm_event(a));
+            }
+        } else if failed.is_empty() && !held {
+            for a in &self.system().usb_realign_failed(None) {
+                self.inner.relay.broadcast_event(&alarm_event(a));
             }
         }
         if !done.is_empty() {
@@ -1398,6 +1732,14 @@ impl HubHandle {
                     }
                     continue;
                 }
+                // -- WP AUSB2 -- (review fixm1 F4) last seen without the alink (the
+                // last status read told it twice): at once, without a frame read
+                // that would stall and probe again
+                if self.system().last_seen_without_alink(&u.serial) {
+                    rtts.insert(u.serial.clone(), Duration::ZERO);
+                    no_alink.insert(u.serial.clone());
+                    continue;
+                }
                 let (frame, rtt) = timed_frame(&dev);
                 rtts.insert(u.serial.clone(), rtt);
                 match frame {
@@ -1439,14 +1781,42 @@ impl HubHandle {
         // audio link's: their lead covers both, each op a write and a read-back,
         // and counts from the most recent USB-direct read, not from now.
         let latest_usb_read = usb_now.values().map(|u| u.read_at).max();
+        // -- WP AUSB2 -- (review fixm1 F1) USB-direct units whose bus frame could
+        // be past when written: their ops go at once instead
+        let mut usb_too_far: BTreeSet<String> = BTreeSet::new();
         let plan = if let Some(read_at) = latest_usb_read.filter(|_| !first.usb_ops.is_empty()) {
-            let since_read = reads_began.elapsed().saturating_sub(read_at);
-            usb.lead = usb_lead(
-                model_lead,
-                estimate,
-                first.usb_ops.iter().map(|o| write_rtt(&o.serial)),
-                since_read,
-            );
+            let usb_rtts: Vec<Duration> =
+                first.usb_ops.iter().map(|o| write_rtt(&o.serial)).collect();
+            let mut since_read = reads_began.elapsed().saturating_sub(read_at);
+            if usb_ahead(estimate, &usb_rtts, since_read) > scene::USB_MAX_LEAD {
+                // Read the USB-direct units again, once: the lead then counts from now.
+                let serials: Vec<String> = usb_now.keys().cloned().collect();
+                for serial in serials {
+                    let seen = self
+                        .device_by_serial(&serial)
+                        .and_then(|d| timed_usb(&d, reads_began).0);
+                    match seen {
+                        Some(u) => {
+                            usb_now.insert(serial, u);
+                        }
+                        None => {
+                            usb_now.remove(&serial);
+                            no_alink.insert(serial);
+                        }
+                    }
+                }
+                since_read = usb_now
+                    .values()
+                    .map(|u| u.read_at)
+                    .max()
+                    .map_or(Duration::ZERO, |r| reads_began.elapsed().saturating_sub(r));
+                if usb_ahead(estimate, &usb_rtts, since_read) > scene::USB_MAX_LEAD {
+                    usb_too_far.extend(std::mem::take(&mut usb_now).into_keys());
+                    no_alink.extend(usb_too_far.iter().cloned());
+                }
+                usb.units = usb_now.clone();
+            }
+            usb.lead = usb_lead(model_lead, estimate, usb_rtts.into_iter(), since_read);
             scene::plan_usb(
                 &model,
                 id,
@@ -1604,12 +1974,14 @@ impl HubHandle {
                         spf,
                     ),
                 };
+                // -- WP AUSB2 -- not with the audio link's frame: said
+                let capped = plan.usb_lead_capped && !plan.ops.is_empty();
                 writes.push(WriteResult {
                     serial: o.serial.clone(),
                     element: o.element.clone(),
                     what: o.op.clone(),
                     result,
-                    reason: None,
+                    reason: capped.then(|| USB_LEAD_CAPPED.into()),
                 });
             }
         }
@@ -1670,7 +2042,10 @@ impl HubHandle {
                 None => "no_device".into(),
             };
             // -- WP AUSB1 -- a USB-direct unit that is not phase-locked, said as such
-            let reason = if usb_units.contains(&o.serial) {
+            let reason = if usb_too_far.contains(&o.serial) {
+                // -- WP AUSB2 --
+                USB_LEAD_EXCEEDED
+            } else if usb_units.contains(&o.serial) {
                 "not phase-locked (USB-direct)"
             } else {
                 "no audio link (firmware)"
@@ -1688,6 +2063,8 @@ impl HubHandle {
         // ahead after every write. An op applied at once is not at the frame.
         let still_ahead = frame_after_writes.is_some_and(|f| f < plan.frame);
         let on_time = writes.iter().all(|w| match w.result.as_str() {
+            // -- WP AUSB2 -- queued 1.92 s ahead, not at the audio link's frame
+            _ if w.reason.as_deref() == Some(USB_LEAD_CAPPED) => false,
             "queued" | "applied" | "ok" | "ok_unverified" => true,
             "queued_unverified" => still_ahead,
             _ => false,
@@ -1741,5 +2118,29 @@ mod tests_wp_fixm1 {
             usb_lead(2400, alink, slow.into_iter(), 30 * MS),
             frames_in(850 * MS) + frames_in(30 * MS)
         );
+    }
+}
+
+// -- WP AUSB2 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_ausb2 {
+    use super::*;
+
+    const MS: Duration = Duration::from_millis(1);
+
+    /// The time until the USB-direct ops are written: what decides that a bus
+    /// frame could be past (review fixm1 F1), with no model lead in it.
+    #[test]
+    fn wp_ausb2_usb_ahead_counts_the_writes_and_the_time_since_the_read() {
+        let alink = writes_estimate([200 * MS].into_iter());
+        assert_eq!(alink, 450 * MS);
+        assert_eq!(usb_ahead(alink, &[100 * MS], 30 * MS), 680 * MS);
+        // Reads that took 2 s after the USB-direct read: past the 1.92 s reach.
+        assert!(usb_ahead(LEAD_MARGIN, &[MS], 2000 * MS) > scene::USB_MAX_LEAD);
+        // Read again: from now, well inside it.
+        assert!(usb_ahead(LEAD_MARGIN, &[MS], 2 * MS) < scene::USB_MAX_LEAD);
+        // Slow writes alone can pass it too: then the ops go at once.
+        assert!(usb_ahead(LEAD_MARGIN, &[1000 * MS], Duration::ZERO) > scene::USB_MAX_LEAD);
     }
 }

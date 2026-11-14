@@ -106,6 +106,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setAlinkUsb(mode: Int, autoReanchor: Boolean, d: Int) = call { core.setAlinkUsb(mode.toUByte(), autoReanchor, d.toUShort()) }
 
+    override fun setAlinkUsbOnLockError(playUnaligned: Boolean) = call { core.setAlinkUsbOnLockError(playUnaligned) }
+
     override fun fetchAlinkUsbStatus(): AlinkUsbStatus = call { core.fetchAlinkUsbStatus().toDomain() }
 
     override fun fetchAlinkUsbDiag(): AlinkUsbDiag = call { core.fetchAlinkUsbDiag().toDomain() }
@@ -2195,6 +2197,11 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemUnit.toDomain() =
         lastEnd = lastEnd,
         startOffsetSamples = startOffsetSamples,
         usbStats = usbStats,
+        usbLockError = usbLockError,
+        usbLockErrorCause = usbLockErrorCause,
+        usbOnLockError = usbOnLockError,
+        usbOnLockErrorWanted = usbOnLockErrorWanted,
+        usbPlayUnalignedUnsupported = usbPlayUnalignedUnsupported,
     )
 
 internal fun AlinkSystemUnit.toFfi() =
@@ -2241,6 +2248,11 @@ internal fun AlinkSystemUnit.toFfi() =
         lastEnd = lastEnd,
         startOffsetSamples = startOffsetSamples,
         usbStats = usbStats,
+        usbLockError = usbLockError,
+        usbLockErrorCause = usbLockErrorCause,
+        usbOnLockError = usbOnLockError,
+        usbOnLockErrorWanted = usbOnLockErrorWanted,
+        usbPlayUnalignedUnsupported = usbPlayUnalignedUnsupported,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemRoom.toDomain() =
@@ -2405,12 +2417,14 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkUnitUsbMode.toDomain() =
     AlinkUnitUsbMode(
         unitId = unitId,
         mode = mode,
+        onLockError = onLockError,
     )
 
 internal fun AlinkUnitUsbMode.toFfi() =
     se.bofr.dspi.ffi.uniffi.AlinkUnitUsbMode(
         unitId = unitId,
         mode = mode,
+        onLockError = onLockError,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemWrite.toDomain() =
@@ -2480,6 +2494,7 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbConfig.toDomain() =
         dBelowMin = dBelowMin,
         dAboveMax = dAboveMax,
         rateUnsupported = rateUnsupported,
+        onLockError = onLockError,
         state = state,
         stateCode = stateCode.toInt(),
     )
@@ -2493,6 +2508,7 @@ internal fun AlinkUsbConfig.toFfi() =
         dBelowMin = dBelowMin,
         dAboveMax = dAboveMax,
         rateUnsupported = rateUnsupported,
+        onLockError = onLockError,
         state = state,
         stateCode = stateCode.toUByte(),
     )
@@ -2509,6 +2525,8 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbStatus.toDomain() =
         nominalFeedback = nominalFeedback,
         timeBase = timeBase,
         holdover = holdover,
+        seeded = seeded,
+        lockError = lockError,
         hostPpm = hostPpm,
         vcxoPpm = vcxoPpm,
         phaseErrorSamples = phaseErrorSamples,
@@ -2539,6 +2557,8 @@ internal fun AlinkUsbStatus.toFfi() =
         nominalFeedback = nominalFeedback,
         timeBase = timeBase,
         holdover = holdover,
+        seeded = seeded,
+        lockError = lockError,
         hostPpm = hostPpm,
         vcxoPpm = vcxoPpm,
         phaseErrorSamples = phaseErrorSamples,
@@ -2571,6 +2591,7 @@ internal fun AlinkUsbEnd.toFfi() =
 
 internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbDiag.toDomain() =
     AlinkUsbDiag(
+        version = version.toInt(),
         lastCause = lastCause,
         rides = rides.toInt(),
         holdovers = holdovers.toInt(),
@@ -2580,6 +2601,8 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbDiag.toDomain() =
         busResets = busResets.toInt(),
         unplugs = unplugs.toInt(),
         lastFrames = lastFrames.toLong(),
+        badSofReadings = badSofReadings.toInt(),
+        lockErrors = lockErrors.toInt(),
         lastUs = lastUs.toLong(),
         lastDevUs = lastDevUs,
         longestRideUs = longestRideUs.toLong(),
@@ -2591,6 +2614,7 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkUsbDiag.toDomain() =
 
 internal fun AlinkUsbDiag.toFfi() =
     se.bofr.dspi.ffi.uniffi.AlinkUsbDiag(
+        version = version.toUByte(),
         lastCause = lastCause,
         rides = rides.toUShort(),
         holdovers = holdovers.toUShort(),
@@ -2600,6 +2624,8 @@ internal fun AlinkUsbDiag.toFfi() =
         busResets = busResets.toUShort(),
         unplugs = unplugs.toUShort(),
         lastFrames = lastFrames.toUInt(),
+        badSofReadings = badSofReadings.toUShort(),
+        lockErrors = lockErrors.toUShort(),
         lastUs = lastUs.toUInt(),
         lastDevUs = lastDevUs,
         longestRideUs = longestRideUs.toUInt(),

@@ -1572,6 +1572,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2042,6 +2044,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_set_alink_phase(
 fun uniffi_dspi_core_checksum_method_dspicore_set_alink_slots(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_alink_usb(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_alink_usb_on_lock_error(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_band_bypass(
 ): Short
@@ -2696,6 +2700,8 @@ fun uniffi_dspi_core_fn_method_dspicore_set_alink_phase(`ptr`: Pointer,`mode`: B
 fun uniffi_dspi_core_fn_method_dspicore_set_alink_slots(`ptr`: Pointer,`slots`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_alink_usb(`ptr`: Pointer,`mode`: Byte,`autoReanchor`: Byte,`d`: Short,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_alink_usb_on_lock_error(`ptr`: Pointer,`playUnaligned`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_band_bypass(`ptr`: Pointer,`ch`: Byte,`band`: Byte,`bypass`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3487,7 +3493,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb() != 17817.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_diag() != 26442.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_diag() != 52822.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_alink_usb_status() != 59602.toShort()) {
@@ -3808,7 +3814,10 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_alink_slots() != 51727.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 27355.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 58666.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_alink_usb_on_lock_error() != 63612.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_band_bypass() != 64308.toShort()) {
@@ -6487,8 +6496,8 @@ public interface DspiCoreInterface {
     fun `fetchAlinkUsb`(): AlinkUsbConfig
     
     /**
-     * Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
-     * `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+     * Read `EXT_ALINK_USB_DIAG` (layout version 1 or 2 -- WP AUSB2 --;
+     * another reads as `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
      */
     fun `fetchAlinkUsbDiag`(): AlinkUsbDiag
     
@@ -7710,6 +7719,8 @@ public interface DspiCoreInterface {
     
     /**
      * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+     * -- WP AUSB2 -- the unit's lock-error action (byte 4) is read first and
+     * kept (mute when it cannot be read);
      * `auto_reanchor` (normally true); `d` samples from arrival to output,
      * the same on every unit that should play aligned (170-399 at 48 kHz,
      * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
@@ -7724,6 +7735,25 @@ public interface DspiCoreInterface {
      * `Denied`, `Locked` or `Transfer` from a hub.
      */
     fun `setAlinkUsb`(`mode`: kotlin.UByte, `autoReanchor`: kotlin.Boolean, `d`: kotlin.UShort)
+    
+    /**
+     * Set what the unit does in mode 2 when it cannot phase-lock (*lock
+     * error*: the host's rate out of range, a configuration that cannot
+     * phase-lock, a phase error pending; the fork's WP USB3b,
+     * `extension_channel_spec.md` 2.9.2): `play_unaligned` false mutes it
+     * (the default: it was asked to be in step), true lets it play
+     * unaligned. Writes `EXT_ALINK_USB` with its mode, flags and D as read,
+     * only byte 4 changed, so nothing re-anchors. The core never saves it
+     * (`REQ_SAVE_OUTPUT_CONFIG` stores it).
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * block; `ReadOnly`. `Transfer` when the setting cannot be read first.
+     * `Unsupported` when the unit refuses `play_unaligned` (firmware before
+     * WP USB3b, where the byte is reserved: the test for the setting);
+     * `Refused` for another refusal (mode 2 with D outside its limits now);
+     * `Denied`, `Locked` or `Transfer` from a hub.
+     */
+    fun `setAlinkUsbOnLockError`(`playUnaligned`: kotlin.Boolean)
     
     /**
      * Bypass (`true`) or re-enable one band of wire channel `ch`, keeping
@@ -10352,8 +10382,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * Read `EXT_ALINK_USB_DIAG` (layout version 1; another reads as
-     * `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
+     * Read `EXT_ALINK_USB_DIAG` (layout version 1 or 2 -- WP AUSB2 --;
+     * another reads as `Transfer`). Errors as [`DspiCore::fetch_alink_usb`].
      */
     @Throws(DspiException::class)override fun `fetchAlinkUsbDiag`(): AlinkUsbDiag {
             return FfiConverterTypeAlinkUsbDiag.lift(
@@ -12676,6 +12706,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
     /**
      * Write `EXT_ALINK_USB`: `mode` 0 off, 1 rate lock, 2 phase lock;
+     * -- WP AUSB2 -- the unit's lock-error action (byte 4) is read first and
+     * kept (mute when it cannot be read);
      * `auto_reanchor` (normally true); `d` samples from arrival to output,
      * the same on every unit that should play aligned (170-399 at 48 kHz,
      * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
@@ -12695,6 +12727,35 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_alink_usb(
         it, FfiConverterUByte.lower(`mode`),FfiConverterBoolean.lower(`autoReanchor`),FfiConverterUShort.lower(`d`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Set what the unit does in mode 2 when it cannot phase-lock (*lock
+     * error*: the host's rate out of range, a configuration that cannot
+     * phase-lock, a phase error pending; the fork's WP USB3b,
+     * `extension_channel_spec.md` 2.9.2): `play_unaligned` false mutes it
+     * (the default: it was asked to be in step), true lets it play
+     * unaligned. Writes `EXT_ALINK_USB` with its mode, flags and D as read,
+     * only byte 4 changed, so nothing re-anchors. The core never saves it
+     * (`REQ_SAVE_OUTPUT_CONFIG` stores it).
+     *
+     * Errors, with no traffic: `Disconnected`; `Unsupported` without the
+     * block; `ReadOnly`. `Transfer` when the setting cannot be read first.
+     * `Unsupported` when the unit refuses `play_unaligned` (firmware before
+     * WP USB3b, where the byte is reserved: the test for the setting);
+     * `Refused` for another refusal (mode 2 with D outside its limits now);
+     * `Denied`, `Locked` or `Transfer` from a hub.
+     */
+    @Throws(DspiException::class)override fun `setAlinkUsbOnLockError`(`playUnaligned`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_alink_usb_on_lock_error(
+        it, FfiConverterBoolean.lower(`playUnaligned`),_status)
 }
     }
     
@@ -17565,9 +17626,35 @@ data class AlinkSystemUnit (
     var `startOffsetSamples`: kotlin.Long?, 
     /**
      * The statistics in one line, for a details row: host and VCXO ppm,
-     * phase error, gaps, missed and late samples, re-anchors, timeline ends.
+     * phase error, gaps, missed and late samples, re-anchors, timeline ends;
+     * -- WP AUSB2 -- lock errors, repaired SOF readings, the longest ride.
      */
-    var `usbStats`: kotlin.String
+    var `usbStats`: kotlin.String, 
+    /**
+     * The unit is in lock error: asked to phase-lock, it cannot be in step
+     * (its host out of range, a rate or D that cannot phase-lock, a phase
+     * error pending). [`Self::state_word`] then says what it does.
+     */
+    var `usbLockError`: kotlin.Boolean, 
+    /**
+     * Why, in words, while it is ("the host's rate is out of range"); "".
+     */
+    var `usbLockErrorCause`: kotlin.String, 
+    /**
+     * What the unit does in lock error now: `mute` or `play_unaligned`;
+     * none when not read.
+     */
+    var `usbOnLockError`: kotlin.String?, 
+    /**
+     * What the installation asks it to do (the hub writes it): `mute` (the
+     * default) or `play_unaligned`; "" for a unit that is not USB-direct.
+     */
+    var `usbOnLockErrorWanted`: kotlin.String, 
+    /**
+     * The unit refused "play unaligned" (firmware before the fork's WP
+     * USB3b): it mutes in lock error whatever is asked.
+     */
+    var `usbPlayUnalignedUnsupported`: kotlin.Boolean
 ) {
     
     companion object
@@ -17621,6 +17708,11 @@ public object FfiConverterTypeAlinkSystemUnit: FfiConverterRustBuffer<AlinkSyste
             FfiConverterString.read(buf),
             FfiConverterOptionalLong.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -17666,7 +17758,12 @@ public object FfiConverterTypeAlinkSystemUnit: FfiConverterRustBuffer<AlinkSyste
             FfiConverterOptionalUInt.allocationSize(value.`timelineEnds`) +
             FfiConverterString.allocationSize(value.`lastEnd`) +
             FfiConverterOptionalLong.allocationSize(value.`startOffsetSamples`) +
-            FfiConverterString.allocationSize(value.`usbStats`)
+            FfiConverterString.allocationSize(value.`usbStats`) +
+            FfiConverterBoolean.allocationSize(value.`usbLockError`) +
+            FfiConverterString.allocationSize(value.`usbLockErrorCause`) +
+            FfiConverterOptionalString.allocationSize(value.`usbOnLockError`) +
+            FfiConverterString.allocationSize(value.`usbOnLockErrorWanted`) +
+            FfiConverterBoolean.allocationSize(value.`usbPlayUnalignedUnsupported`)
     )
 
     override fun write(value: AlinkSystemUnit, buf: ByteBuffer) {
@@ -17712,6 +17809,11 @@ public object FfiConverterTypeAlinkSystemUnit: FfiConverterRustBuffer<AlinkSyste
             FfiConverterString.write(value.`lastEnd`, buf)
             FfiConverterOptionalLong.write(value.`startOffsetSamples`, buf)
             FfiConverterString.write(value.`usbStats`, buf)
+            FfiConverterBoolean.write(value.`usbLockError`, buf)
+            FfiConverterString.write(value.`usbLockErrorCause`, buf)
+            FfiConverterOptionalString.write(value.`usbOnLockError`, buf)
+            FfiConverterString.write(value.`usbOnLockErrorWanted`, buf)
+            FfiConverterBoolean.write(value.`usbPlayUnalignedUnsupported`, buf)
     }
 }
 
@@ -18149,7 +18251,12 @@ data class AlinkUnitUsbMode (
     /**
      * `off`, `rate_lock` or `phase_lock`; none: the unit's own is kept.
      */
-    var `mode`: kotlin.String?
+    var `mode`: kotlin.String?, 
+    /**
+     * What it does in lock error: `mute` or `play_unaligned` (the hub writes
+     * it to the unit); none: unchanged.
+     */
+    var `onLockError`: kotlin.String?
 ) {
     
     companion object
@@ -18163,17 +18270,20 @@ public object FfiConverterTypeAlinkUnitUsbMode: FfiConverterRustBuffer<AlinkUnit
         return AlinkUnitUsbMode(
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
     override fun allocationSize(value: AlinkUnitUsbMode) = (
             FfiConverterString.allocationSize(value.`unitId`) +
-            FfiConverterOptionalString.allocationSize(value.`mode`)
+            FfiConverterOptionalString.allocationSize(value.`mode`) +
+            FfiConverterOptionalString.allocationSize(value.`onLockError`)
     )
 
     override fun write(value: AlinkUnitUsbMode, buf: ByteBuffer) {
             FfiConverterString.write(value.`unitId`, buf)
             FfiConverterOptionalString.write(value.`mode`, buf)
+            FfiConverterOptionalString.write(value.`onLockError`, buf)
     }
 }
 
@@ -18213,6 +18323,12 @@ data class AlinkUsbConfig (
      */
     var `rateUnsupported`: kotlin.Boolean, 
     /**
+     * What mode 2 does in lock error (the fork's WP USB3b): `mute` (the
+     * default, and what firmware before WP USB3b reads as) or
+     * `play_unaligned`; `unknown` for another code.
+     */
+    var `onLockError`: kotlin.String, 
+    /**
      * The state, as [`AlinkUsbStatus::state`].
      */
     var `state`: kotlin.String, 
@@ -18239,6 +18355,7 @@ public object FfiConverterTypeAlinkUsbConfig: FfiConverterRustBuffer<AlinkUsbCon
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterUByte.read(buf),
         )
     }
@@ -18251,6 +18368,7 @@ public object FfiConverterTypeAlinkUsbConfig: FfiConverterRustBuffer<AlinkUsbCon
             FfiConverterBoolean.allocationSize(value.`dBelowMin`) +
             FfiConverterBoolean.allocationSize(value.`dAboveMax`) +
             FfiConverterBoolean.allocationSize(value.`rateUnsupported`) +
+            FfiConverterString.allocationSize(value.`onLockError`) +
             FfiConverterString.allocationSize(value.`state`) +
             FfiConverterUByte.allocationSize(value.`stateCode`)
     )
@@ -18263,6 +18381,7 @@ public object FfiConverterTypeAlinkUsbConfig: FfiConverterRustBuffer<AlinkUsbCon
             FfiConverterBoolean.write(value.`dBelowMin`, buf)
             FfiConverterBoolean.write(value.`dAboveMax`, buf)
             FfiConverterBoolean.write(value.`rateUnsupported`, buf)
+            FfiConverterString.write(value.`onLockError`, buf)
             FfiConverterString.write(value.`state`, buf)
             FfiConverterUByte.write(value.`stateCode`, buf)
     }
@@ -18274,6 +18393,11 @@ public object FfiConverterTypeAlinkUsbConfig: FfiConverterRustBuffer<AlinkUsbCon
  * What `EXT_ALINK_USB_DIAG` reports: why a unit lost its timeline.
  */
 data class AlinkUsbDiag (
+    /**
+     * The layout read: 1, or 2 since the fork's WP USB3b (with
+     * [`Self::bad_sof_readings`] and [`Self::lock_errors`]).
+     */
+    var `version`: kotlin.UByte, 
     /**
      * The latest end's cause ([`AlinkUsbEnd::cause`]); none yet.
      */
@@ -18310,6 +18434,14 @@ data class AlinkUsbDiag (
      * The latest absence: frames counted on the bus.
      */
     var `lastFrames`: kotlin.UInt, 
+    /**
+     * RP2350 SOF timestamps the unit repaired (layout 2; 0 in layout 1).
+     */
+    var `badSofReadings`: kotlin.UShort, 
+    /**
+     * Entries into lock error (layout 2; 0 in layout 1).
+     */
+    var `lockErrors`: kotlin.UShort, 
     /**
      * Its duration by the unit's clock, µs.
      */
@@ -18349,6 +18481,7 @@ data class AlinkUsbDiag (
 public object FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer<AlinkUsbDiag> {
     override fun read(buf: ByteBuffer): AlinkUsbDiag {
         return AlinkUsbDiag(
+            FfiConverterUByte.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterUShort.read(buf),
             FfiConverterUShort.read(buf),
@@ -18358,6 +18491,8 @@ public object FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer<AlinkUsbDiag>
             FfiConverterUShort.read(buf),
             FfiConverterUShort.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
             FfiConverterUInt.read(buf),
             FfiConverterInt.read(buf),
             FfiConverterUInt.read(buf),
@@ -18369,6 +18504,7 @@ public object FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer<AlinkUsbDiag>
     }
 
     override fun allocationSize(value: AlinkUsbDiag) = (
+            FfiConverterUByte.allocationSize(value.`version`) +
             FfiConverterOptionalString.allocationSize(value.`lastCause`) +
             FfiConverterUShort.allocationSize(value.`rides`) +
             FfiConverterUShort.allocationSize(value.`holdovers`) +
@@ -18378,6 +18514,8 @@ public object FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer<AlinkUsbDiag>
             FfiConverterUShort.allocationSize(value.`busResets`) +
             FfiConverterUShort.allocationSize(value.`unplugs`) +
             FfiConverterUInt.allocationSize(value.`lastFrames`) +
+            FfiConverterUShort.allocationSize(value.`badSofReadings`) +
+            FfiConverterUShort.allocationSize(value.`lockErrors`) +
             FfiConverterUInt.allocationSize(value.`lastUs`) +
             FfiConverterInt.allocationSize(value.`lastDevUs`) +
             FfiConverterUInt.allocationSize(value.`longestRideUs`) +
@@ -18388,6 +18526,7 @@ public object FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer<AlinkUsbDiag>
     )
 
     override fun write(value: AlinkUsbDiag, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`version`, buf)
             FfiConverterOptionalString.write(value.`lastCause`, buf)
             FfiConverterUShort.write(value.`rides`, buf)
             FfiConverterUShort.write(value.`holdovers`, buf)
@@ -18397,6 +18536,8 @@ public object FfiConverterTypeAlinkUsbDiag: FfiConverterRustBuffer<AlinkUsbDiag>
             FfiConverterUShort.write(value.`busResets`, buf)
             FfiConverterUShort.write(value.`unplugs`, buf)
             FfiConverterUInt.write(value.`lastFrames`, buf)
+            FfiConverterUShort.write(value.`badSofReadings`, buf)
+            FfiConverterUShort.write(value.`lockErrors`, buf)
             FfiConverterUInt.write(value.`lastUs`, buf)
             FfiConverterInt.write(value.`lastDevUs`, buf)
             FfiConverterUInt.write(value.`longestRideUs`, buf)
@@ -18499,6 +18640,16 @@ data class AlinkUsbStatus (
      */
     var `holdover`: kotlin.Boolean, 
     /**
+     * The VCXO started at the host rate the unit stored (WP USB3).
+     */
+    var `seeded`: kotlin.Boolean, 
+    /**
+     * Mode 2 cannot be in step (host rejected, a configuration that cannot
+     * phase-lock, or a phase error pending): the unit is muted or plays
+     * unaligned, as [`AlinkUsbConfig::on_lock_error`] says (WP USB3b).
+     */
+    var `lockError`: kotlin.Boolean, 
+    /**
      * The host's SOF rate against the unit's crystal, ppm (+ = host fast).
      */
     var `hostPpm`: kotlin.Float, 
@@ -18584,6 +18735,8 @@ public object FfiConverterTypeAlinkUsbStatus: FfiConverterRustBuffer<AlinkUsbSta
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
             FfiConverterFloat.read(buf),
             FfiConverterFloat.read(buf),
             FfiConverterFloat.read(buf),
@@ -18614,6 +18767,8 @@ public object FfiConverterTypeAlinkUsbStatus: FfiConverterRustBuffer<AlinkUsbSta
             FfiConverterBoolean.allocationSize(value.`nominalFeedback`) +
             FfiConverterBoolean.allocationSize(value.`timeBase`) +
             FfiConverterBoolean.allocationSize(value.`holdover`) +
+            FfiConverterBoolean.allocationSize(value.`seeded`) +
+            FfiConverterBoolean.allocationSize(value.`lockError`) +
             FfiConverterFloat.allocationSize(value.`hostPpm`) +
             FfiConverterFloat.allocationSize(value.`vcxoPpm`) +
             FfiConverterFloat.allocationSize(value.`phaseErrorSamples`) +
@@ -18643,6 +18798,8 @@ public object FfiConverterTypeAlinkUsbStatus: FfiConverterRustBuffer<AlinkUsbSta
             FfiConverterBoolean.write(value.`nominalFeedback`, buf)
             FfiConverterBoolean.write(value.`timeBase`, buf)
             FfiConverterBoolean.write(value.`holdover`, buf)
+            FfiConverterBoolean.write(value.`seeded`, buf)
+            FfiConverterBoolean.write(value.`lockError`, buf)
             FfiConverterFloat.write(value.`hostPpm`, buf)
             FfiConverterFloat.write(value.`vcxoPpm`, buf)
             FfiConverterFloat.write(value.`phaseErrorSamples`, buf)

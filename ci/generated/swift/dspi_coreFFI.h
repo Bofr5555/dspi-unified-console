@@ -1426,6 +1426,11 @@ void uniffi_dspi_core_fn_method_dspicore_set_alink_slots(void*_Nonnull ptr, Rust
 void uniffi_dspi_core_fn_method_dspicore_set_alink_usb(void*_Nonnull ptr, uint8_t mode, int8_t auto_reanchor, uint16_t d, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_ALINK_USB_ON_LOCK_ERROR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_ALINK_USB_ON_LOCK_ERROR
+void uniffi_dspi_core_fn_method_dspicore_set_alink_usb_on_lock_error(void*_Nonnull ptr, int8_t play_unaligned, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_BAND_BYPASS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_BAND_BYPASS
 void uniffi_dspi_core_fn_method_dspicore_set_band_bypass(void*_Nonnull ptr, uint8_t ch, uint8_t band, int8_t bypass, RustCallStatus *_Nonnull out_status
@@ -3841,6 +3846,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_set_alink_slots(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_ALINK_USB
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_ALINK_USB
 uint16_t uniffi_dspi_core_checksum_method_dspicore_set_alink_usb(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_ALINK_USB_ON_LOCK_ERROR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_ALINK_USB_ON_LOCK_ERROR
+uint16_t uniffi_dspi_core_checksum_method_dspicore_set_alink_usb_on_lock_error(void
     
 );
 #endif

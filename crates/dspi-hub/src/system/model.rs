@@ -270,6 +270,12 @@ pub struct Unit {
     /// `rate_lock` or `phase_lock`. `None`: the unit's own mode is kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usb_mode: Option<String>,
+    // -- WP AUSB2 --
+    /// What a USB-direct unit in phase lock does when it cannot be in step
+    /// (*lock error*, the fork's WP USB3b): mute (the default) or play
+    /// unaligned. The hub writes it to the unit (`EXT_ALINK_USB` byte 4).
+    #[serde(default, skip_serializing_if = "OnLockError::is_mute")]
+    pub on_lock_error: OnLockError,
     /// Which output of the upstream element, for the record.
     #[serde(default)]
     pub output: Option<u8>,
@@ -324,6 +330,41 @@ impl UnitTransport {
     /// The default, left out of the JSON.
     pub fn is_alink(&self) -> bool {
         *self == Self::Alink
+    }
+}
+
+// -- WP AUSB2 --
+/// What a USB-direct unit does in lock error ([`Unit::on_lock_error`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OnLockError {
+    /// Stay muted until it is in step again (the firmware's default).
+    #[default]
+    Mute,
+    /// Play, unaligned (rate-free, rate-locked or with its phase error).
+    PlayUnaligned,
+}
+
+impl OnLockError {
+    /// The default, left out of the JSON.
+    pub fn is_mute(&self) -> bool {
+        *self == Self::Mute
+    }
+
+    /// `EXT_ALINK_USB` byte 4.
+    pub fn code(self) -> u8 {
+        match self {
+            Self::Mute => dspi_proto::ext::alink_usb::ON_LOCK_ERROR_MUTE,
+            Self::PlayUnaligned => dspi_proto::ext::alink_usb::ON_LOCK_ERROR_PLAY,
+        }
+    }
+
+    /// `mute` or `play_unaligned`, as in the JSON.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Mute => "mute",
+            Self::PlayUnaligned => "play_unaligned",
+        }
     }
 }
 
@@ -697,9 +738,9 @@ impl SystemModel {
                         u.id
                     ));
                 }
-            } else if u.usb_mode.is_some() {
+            } else if u.usb_mode.is_some() || !u.on_lock_error.is_mute() {
                 return bad(format!(
-                    "unit {}: a USB mode is for a USB-direct unit",
+                    "unit {}: a USB mode or lock-error action is for a USB-direct unit",
                     u.id
                 ));
             } else if !feeds(&u.upstream) {

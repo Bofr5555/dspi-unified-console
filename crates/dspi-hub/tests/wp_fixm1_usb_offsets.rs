@@ -217,7 +217,9 @@ fn wp_fixm1_keep_usb_direct_units_aligned_writes_the_delays_again_and_records_it
     core.alink_system_save(v.revision, edits).unwrap();
     assert!(h.system_model().0.keep_usb_aligned);
     h.system_align(true);
-    let s = restart_u1(&hub, &u1);
+    restart_u1(&hub, &u1);
+    // -- WP AUSB2 -- (review fixm1 F2) by the hub's own poll, not a client's status
+    let s = h.system_poll_now();
     // Written again by the hub itself: no issue, a record of it.
     assert!(!codes(&s).contains(&CHANGED.into()), "{:?}", codes(&s));
     let realigned: Vec<_> = s
