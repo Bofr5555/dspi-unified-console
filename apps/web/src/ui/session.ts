@@ -20,11 +20,18 @@ import {
   type ParamValue,
   // -- WP P1WB1 --
   type OpenedDocument,
+  // -- WP P1WB2 --
+  type LockStateRecord,
+  type NoticeRecord,
 } from "../core/protocol";
 import type { CoreClient } from "../core/client";
 import { VIEW_ONLY_REASON, type Access, type Source } from "../fleet/types";
 // -- WP WB4b --
 import type { HubToken, HubTokens } from "../fleet/hub-tokens";
+// -- WP P1WB2 -- notices from the core's table; the limits profile this page keeps
+import { loadNotices, noticeOf } from "./texts";
+import { safeLocalStorage } from "../fleet/local";
+import { loadProfile } from "../screens/installer/model";
 
 export interface SessionState {
   /** -- WP WB4b -- `pairing`: a hub wants its PIN; `choosing`: pick one of a hub's DSPis. */
@@ -54,6 +61,13 @@ export interface SessionState {
   // -- WP P1WB1 --
   /** What an offline session was opened from (`documentOpen`): the strip says "File: <name>". Null on a device. */
   document?: OpenedDocument | null;
+  // -- WP P1WB2 --
+  /** The error's notice from the core's table (P1NT), when it has one; `error` is then its detail. */
+  errorNotice?: NoticeRecord | null;
+  /** The device's installer lock (`installerLockRefresh`): the hub's or this console's. Null before it is read. */
+  lock?: LockStateRecord | null;
+  /** Counts the lock's and the pinned mode's reads, so the mode is resolved again after each. */
+  lockRev?: number;
 }
 
 // -- WP WB6a --
@@ -63,7 +77,9 @@ export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset"
   | "crossoverType"
   | "crosspoint"
   // -- WP WB8 -- a whole band during a graph drag
-  | "filter";
+  | "filter"
+  // -- WP P1WB2 -- every limiter on at -1 dBFS, pairs linked (one undo step)
+  | "protectAllOutputs";
 
 // -- WP WB6b --
 /** One write of `Session.writeAll`. */
@@ -92,6 +108,9 @@ export class Session {
   private hub: { url: string; hubId: string } | null = null;
   /** The serial of the hub DSPi this session opens or has open, if any. */
   deviceId = "";
+  // -- WP P1WB2 --
+  /** The mode a fleet backend pins for this device (`FleetBackend.pinnedMode`), "" for none. */
+  fleetMode = "";
 
   constructor(
     readonly id: string,
@@ -119,6 +138,7 @@ export class Session {
       const r = await this.core.call("documentOpen", { text, fileName });
       const { document, ...snapshot } = r;
       this.set({ status: "open", snapshot, document, error: "" });
+      void this.afterOpen(); // -- WP P1WB2 --
     } catch (e) {
       this.set({ status: "failed", error: message(e) });
     }
@@ -156,17 +176,116 @@ export class Session {
   private async load(target: DeviceTarget): Promise<void> {
     const snapshot = await this.core.call("open", target);
     this.set({ status: "open", snapshot, error: "" });
-    if (target.kind === "hub") this.refreshLock();
+    // -- WP P1WB2 -- every kind: tokens on, the notices, the limits this page keeps, the lock
+    await this.afterOpen();
+  }
+
+  // -- WP P1WB2 --
+  /**
+   * Once a device (or a document) is open: gated calls need a confirmation token from here
+   * on (P1TK; each prompt mints one), the notice table is read, the limits profile this page
+   * keeps for the device is applied (P1LM: the web has no files), and the lock is read.
+   * Each step's failure leaves the session as it was (the tests' stub core has none of them).
+   */
+  private async afterOpen(): Promise<void> {
+    try {
+      await this.core.call("requireConfirmation", { on: true }).catch(() => undefined);
+      await loadNotices(this.core).catch(() => undefined);
+      const serial = this.state.snapshot?.device.serial || this.deviceId;
+      const text = serial && !this.readOnlyReason ? loadProfile(safeLocalStorage(), serial) : "";
+      if (text) await this.core.call("limitsApply", { text }).catch(() => undefined);
+      await this.refreshLock();
+    } catch {
+      // Nothing of it is needed to show the device.
+    }
   }
 
   // -- WP MERGEP1D --
   /**
    * The hub's installer lock for the bound DSPi (`installerLockRefresh`), read
    * after the bind and after a reconnect, so the core refuses a write in the
-   * hub's words (`installer_lock.hub`). The one lock prompt (`heldBy`) is P1-E.
+   * hub's words (`installer_lock.hub`). -- WP P1WB2 -- kept in the state for the one lock
+   * prompt (`heldBy`); a fleet's pinned mode goes to the core after it (the refresh sets
+   * the hub's).
    */
-  private refreshLock(): void {
-    this.core.call("installerLockRefresh", undefined).catch(() => undefined);
+  async refreshLock(): Promise<void> {
+    let lock: unknown = null;
+    try {
+      lock = await this.core.call("installerLockRefresh", undefined);
+    } catch {
+      // The last answer stands (a hub that could not answer now).
+    }
+    // After the refresh, which sets the hub's own pin (or none).
+    if (this.fleetMode) await this.core.call("modeSetPinned", { mode: this.fleetMode }).catch(() => undefined);
+    this.set({ lock: isLock(lock) ? lock : (this.state.lock ?? null), lockRev: (this.state.lockRev ?? 0) + 1 });
+  }
+
+  // -- WP P1WB2 --
+  /** Unlock with the installer's PIN (the hub's, when the hub holds the lock). Answers the refusal's words, "" when unlocked. */
+  async unlock(pin: string): Promise<string> {
+    try {
+      const lock = await this.core.call("installerUnlock", { pin });
+      if (isLock(lock)) this.set({ lock });
+      return "";
+    } catch (e) {
+      void this.refreshLockState();
+      const n = noticeOf(e);
+      return n ? `${n.title}: ${n.reason}` : message(e);
+    }
+  }
+
+  /** Lock again (the end of an unlock). */
+  async relock(): Promise<void> {
+    try {
+      const lock = await this.core.call("installerLock", undefined);
+      if (isLock(lock)) this.set({ lock });
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** The lock as the core holds it now, no hub round trip (after a refusal: the wait). */
+  private async refreshLockState(): Promise<void> {
+    try {
+      const lock = await this.core.call("installerLockState", undefined);
+      if (isLock(lock)) this.set({ lock });
+    } catch {
+      // Kept.
+    }
+  }
+
+  /**
+   * A confirmation token for `op` (`save_preset`, `delete_preset`, `copy_preset`,
+   * `factory_reset`, `config_import`), minted when the user has confirmed and spent by the
+   * call right after (P1TK). Undefined when the core has none (the tests' stub).
+   */
+  async token(op: string): Promise<string | undefined> {
+    return this.core.call("confirmToken", { op }).catch(() => undefined);
+  }
+
+  /** `write` of a gated path with a token for `op` minted now. */
+  async writeConfirmed(op: string, path: string, value: ParamValue, indices?: number[]): Promise<boolean> {
+    return this.write(path, value, indices, await this.token(op));
+  }
+
+  /**
+   * Several writes as one undo step named `label` (P1UG: Clear All, Direct 1:1): the group
+   * is ended whatever `run` does. Answers what `run` answered.
+   */
+  async group<T>(label: string, run: () => Promise<T>): Promise<T> {
+    await this.core.call("beginGroup", { label }).catch(() => undefined);
+    try {
+      return await run();
+    } finally {
+      await this.core.call("endGroup", undefined).catch(() => undefined);
+      this.historyAsked = null;
+      void this.refreshHistory();
+    }
+  }
+
+  /** Show `e` as the session's error, with its notice row when the core's table has one. */
+  fail(e: unknown): void {
+    this.set({ error: message(e), errorNotice: noticeOf(e) });
   }
 
   // -- WP WB4b --
@@ -247,18 +366,20 @@ export class Session {
    * Writes and shows what the device read back; a refusal leaves the old value
    * shown. -- WP WB6a -- Answers whether the write went through.
    */
-  async write(path: string, value: ParamValue, indices?: number[]): Promise<boolean> {
+  async write(path: string, value: ParamValue, indices?: number[], token?: string): Promise<boolean> {
     if (this.readOnlyReason) {
       this.set({ error: this.readOnlyReason });
       return false;
     }
     try {
-      await this.core.call("write", indices ? { path, indices, value } : { path, value });
+      // -- WP P1WB2 -- a gated path's confirmation token, when the caller minted one
+      const t = token ? { token } : {};
+      await this.core.call("write", indices ? { path, indices, value, ...t } : { path, value, ...t });
       const snapshot = await this.core.call("state", undefined);
       this.set({ snapshot, error: "" });
       return true;
     } catch (e) {
-      this.set({ error: message(e) });
+      this.fail(e);
       return false;
     }
   }
@@ -280,7 +401,7 @@ export class Session {
       this.set({ snapshot, error: "" });
       return true;
     } catch (e) {
-      this.set({ error: message(e) });
+      this.fail(e); // -- WP P1WB2 --
       return false;
     }
   }
@@ -312,7 +433,7 @@ export class Session {
       for (const w of writes) await this.core.call("write", w.indices ? { path: w.path, indices: w.indices, value: w.value } : w);
     } catch (e) {
       ok = false;
-      this.set({ error: message(e) });
+      this.fail(e); // -- WP P1WB2 --
     }
     try {
       const snapshot = await this.core.call("state", undefined);
@@ -331,7 +452,7 @@ export class Session {
   async savePreset(slot: number): Promise<boolean> {
     const name = this.state.snapshot?.state.presetNames[slot] ?? "";
     if (!name.trim() && !(await this.write("preset.name", { text: `Preset ${slot + 1}` }, [slot]))) return false;
-    return this.write("preset.save", "trigger", [slot]);
+    return this.writeConfirmed("save_preset", "preset.save", "trigger", [slot]); // -- WP P1WB2 -- with its token
   }
 
   /** Whether anything is unsaved (`unsaved`); the page's leave prompt and a host page ask this. */
@@ -380,7 +501,7 @@ export class Session {
       const snapshot = await this.core.call("state", undefined);
       this.set({ snapshot, error: "", notice: await this.stepNotice(m) });
     } catch (e) {
-      this.set({ error: message(e) });
+      this.fail(e); // -- WP P1WB2 --
       void this.refreshHistory();
     }
   }
@@ -511,7 +632,7 @@ export class Session {
     if (e.event === "state") this.set({ snapshot: e.snapshot });
     else if (e.event === "link") {
       // -- WP MERGEP1D -- bound again after a reconnect: the hub's lock again
-      if (e.phase === "bound" && this.state.link?.phase === "reconnecting") this.refreshLock();
+      if (e.phase === "bound" && this.state.link?.phase === "reconnecting") void this.refreshLock();
       this.set({ link: { phase: e.phase, pinSource: e.pinSource } });
       // -- WP WB4b -- the hub's list may have changed (a DSPi came or went)
       if (this.state.status === "choosing") this.refreshDevices();
@@ -520,6 +641,8 @@ export class Session {
   }
 
   private set(patch: Partial<SessionState>): void {
+    // -- WP P1WB2 -- a new error line without a notice has none
+    if ("error" in patch && !("errorNotice" in patch)) patch = { ...patch, errorNotice: null };
     this.state = { ...this.state, ...patch };
     for (const l of this.listeners) l();
     // -- WP WB6b --
@@ -532,6 +655,12 @@ export class Session {
 function message(e: unknown): string {
   if (e instanceof CoreCallError) return capitalise(e.message);
   return e instanceof Error ? e.message : String(e);
+}
+
+// -- WP P1WB2 --
+/** A lock state as the core answers it (a test's fake core may answer anything). */
+function isLock(v: unknown): v is LockStateRecord {
+  return !!v && typeof v === "object" && typeof (v as LockStateRecord).pinSet === "boolean";
 }
 
 function sameLines(a: string[], b: string[]): boolean {

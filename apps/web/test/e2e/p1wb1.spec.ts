@@ -223,7 +223,8 @@ test("P1WB1 keys: Qt's table, never while a text field has focus", async ({ page
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel" }).click();
   // Preset 2 (stored first), with an unsaved change: asked, as the picker asks.
-  await call(page, "presetCopy", { source: 0, dest: 1 });
+  // -- WP P1WB2 -- with its confirmation token (required on the web)
+  await call(page, "presetCopy", { source: 0, dest: 1, token: await call(page, "confirmToken", { op: "copy_preset" }) });
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -3 } });
   // -- WP P1DCFIX -- (F6) once the page shows it as unsaved; the focus on Main's tab, in this console
   await unsavedShown(session, "Main");
@@ -285,7 +286,8 @@ test.describe("over DSPi Link", () => {
     await expect(item.getByRole("button", { name: "Recall with Rollback" })).toHaveCount(0);
     await item.getByRole("button", { name: "Recall", exact: true }).click();
     const guard = session.getByRole("alert", { name: "Safe apply" });
-    await expect(guard).toContainText("The hub puts them back too if this page goes away");
+    // -- WP P1WB2 -- the core's row guard.hub_backstop
+    await expect(guard).toContainText("The hub puts them back too if this console goes away.");
     await guard.getByRole("button", { name: "Keep" }).click();
     await expect(guard).toHaveCount(0);
     await expect(screen.getByRole("status", { name: "Result" })).toBeVisible();

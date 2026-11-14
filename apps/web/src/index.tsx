@@ -79,3 +79,5 @@ export type { CoreEvent, DeviceSnapshot, DeviceTarget, LinkPhase } from "./core/
 export { LocalBackend, normaliseHubUrl } from "./fleet/local";
 export { VIEW_ONLY_REASON } from "./fleet/types";
 export type { Access, FleetBackend, FleetUser, Installation, Source } from "./fleet/types";
+// -- WP P1WB2 --
+export type { PinnedMode } from "./fleet/types";

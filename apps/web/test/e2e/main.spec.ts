@@ -147,7 +147,12 @@ test("WB6a presets: switching asks about unsaved changes (Cancel, Discard, Save)
   const other = start === 1 ? 2 : 1;
   // A second stored slot to switch to (the demo stores only the one it runs).
   await page.evaluate(
-    ([source, dest]) => (globalThis as unknown as Clients).dspiClients[0]!.call("presetCopy", { source, dest }),
+    // -- WP P1WB2 -- tokens are required on the web: the copy carries one, as the page's Copy to does
+    async ([source, dest]) => {
+      const c = (globalThis as unknown as Clients).dspiClients[0]!;
+      const token = await c.call("confirmToken", { op: "copy_preset" });
+      return c.call("presetCopy", { source, dest, token });
+    },
     [start, other] as const,
   );
   await expect(picker).toHaveValue(String(start));
@@ -212,7 +217,12 @@ test("WB6a presets: the slot menu renames, sets the default, copies and clears",
   const active = start === 2 ? 4 : 2;
   const n = active + 1;
   await page.evaluate(
-    ([source, dest]) => (globalThis as unknown as Clients).dspiClients[0]!.call("presetCopy", { source, dest }),
+    // -- WP P1WB2 -- tokens are required on the web: the copy carries one, as the page's Copy to does
+    async ([source, dest]) => {
+      const c = (globalThis as unknown as Clients).dspiClients[0]!;
+      const token = await c.call("confirmToken", { op: "copy_preset" });
+      return c.call("presetCopy", { source, dest, token });
+    },
     [start, active] as const,
   );
   await picker.selectOption(String(active));

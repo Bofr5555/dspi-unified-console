@@ -45,6 +45,8 @@ export const BandList = memo(function BandList(props: {
   ask: Ask;
   choose: (b: number, add: boolean) => void;
   commit: (changes: Map<number, FilterParams>) => void;
+  // -- WP P1WB2 -- Clear All as one undo step (P1UG); without it, the bands through `commit`
+  clearAll?: () => Promise<void>;
 }) {
   const { bands, limits, disabled } = props;
   // On a phone the values are short and their units in the headings.
@@ -61,13 +63,15 @@ export const BandList = memo(function BandList(props: {
   const clearAll = async () => {
     const a = await props.ask({
       title: "Clear All Bands?",
-      body: <p>Every band in this list will be reset to its default (flat) state. This cannot be undone.</p>,
+      body: <p>Every band in this list will be reset to its default (flat) state. One Undo puts them all back.</p>,
       buttons: [
         { label: "Clear All", value: "clear", danger: true },
         { label: "Cancel", value: "cancel" },
       ],
     });
-    if (a === "clear") props.commit(new Map(bands.map((_, b) => [b, { ...OFF_BAND }])));
+    if (a !== "clear") return;
+    if (props.clearAll) await props.clearAll();
+    else props.commit(new Map(bands.map((_, b) => [b, { ...OFF_BAND }])));
   };
 
   return (

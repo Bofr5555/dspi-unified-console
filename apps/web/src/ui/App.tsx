@@ -87,6 +87,8 @@ export function App(props: { options: ConsoleOptions }) {
       source.kind === "hub" ? (source.deviceId ?? "") : source.kind === "usb" && source.serial ? source.serial : source.kind;
     const access = props.options.readOnly ? "view" : await backend.access(inst.id, source, deviceId);
     const session = new Session(id, inst.id, inst.name, source, access, spawnCore(), source.kind === "hub" ? tokens : null);
+    // -- WP P1WB2 -- the fleet's pinned mode for this device, if it pins one
+    session.fleetMode = (await backend.pinnedMode?.(inst.id, source, deviceId).catch(() => null)) ?? "";
     setSessions((list) => [...list, session]);
     setActive(id);
     await session.open(targetFor(source));

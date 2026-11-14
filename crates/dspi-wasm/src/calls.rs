@@ -249,6 +249,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::modes::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP P1WB2 -- the DAC mute of the power-on page (src/power_on.rs)
+    if let Some(r) = crate::power_on::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {

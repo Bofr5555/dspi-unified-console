@@ -129,6 +129,9 @@
     {"key": "guard.waiting", "kind": "info", "title": "Keep these settings?",
      "reason": "They go back in {s} s unless you press Keep.",
      "action": "Press Keep to keep them, or Revert to go back now."},
+    {"key": "guard.hub_backstop", "kind": "info", "title": "The hub keeps the way back too",
+     "reason": "The hub puts them back too if this console goes away.",
+     "action": "Press Keep or Revert here as usual."},
     {"key": "unknown", "kind": "error", "title": "Something went wrong",
      "reason": "The request did not complete.",
      "action": "Try again."}

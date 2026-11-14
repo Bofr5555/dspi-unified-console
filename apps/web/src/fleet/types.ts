@@ -78,7 +78,18 @@ export interface FleetBackend {
    * (its choose_device step).
    */
   hubDevices?(url: string): Promise<{ deviceId: string; name: string }[] | null>;
+  // -- WP P1WB2 -- (P1HL, docs/UI-MODES.md section 4) the fleet's pinned mode
+  /**
+   * The mode this user is pinned to on a device, when the server pins one (per role, as a
+   * hub does with `mode.pinned`): `simple`, `advanced` or `installer`. It overrides the
+   * user's choice, and the mode switch says so. Missing or null: the user chooses (a hub's
+   * own pin still applies).
+   */
+  pinnedMode?(installationId: string, source: Source, deviceId: string): Promise<PinnedMode | null>;
 }
+
+/** -- WP P1WB2 -- a mode a fleet may pin (the mode manifest's ids). */
+export type PinnedMode = "simple" | "advanced" | "installer";
 
 /** The wording shown when access is the backend's "view". */
 export const VIEW_ONLY_REASON = "You can view this DSPi but not change it";

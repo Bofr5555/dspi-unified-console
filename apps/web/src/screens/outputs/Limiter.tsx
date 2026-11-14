@@ -155,6 +155,8 @@ export function LimiterDialog(props: { session: Session; s: DspState; output: nu
               },
               { label: "Unlink all outputs", onSelect: () => writeAll([{ path: "limit.link", value: { int: 0 }, indices: [ALL] }]) },
               "separator",
+              // -- WP P1WB2 -- (S2, P1PR) the core's: every limiter on at -1 dBFS, pairs linked, one undo step
+              { label: "Protect all outputs (-1 dBFS, pairs linked)", onSelect: () => void session.change("protectAllOutputs", undefined) },
               { label: "Switch every limiter off", onSelect: () => writeAll([{ path: "limit.on", value: { bool: false }, indices: [ALL] }]) },
             ]}
           />

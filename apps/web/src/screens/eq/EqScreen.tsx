@@ -22,6 +22,9 @@ import { EqGraph } from "./EqGraph";
 // -- WP WB6c -- the output's page: its settings card and crossover
 import { CrossoverList } from "../outputs/Crossover";
 import { OutputCard, type OutputLimits } from "../outputs/OutputCard";
+// -- WP P1WB2 -- AutoEQ with its preview on the graph
+import { AutoEqPanel } from "./AutoEq";
+import type { AutoEqPreviewRecord } from "../../core/protocol";
 import {
   DEFAULT_LIMITS,
   OFF_BAND,
@@ -39,6 +42,12 @@ interface EqChannel extends ChannelRow {
   output: boolean;
   /** Its colour on the graph. */
   colour: string;
+}
+
+// -- WP P1WB2 --
+/** Whether a band is already as Clear All leaves it. */
+function sameFlat(p: FilterParams): boolean {
+  return p.filterType === OFF_BAND.filterType && p.freq === OFF_BAND.freq && p.gain === OFF_BAND.gain && p.q === OFF_BAND.q && !!p.bypass === !!OFF_BAND.bypass;
 }
 
 /** The PEQ bands the device takes on a wire channel. */
@@ -195,12 +204,20 @@ const EqView = memo(
     const curves = useCurves(session, key, req);
     const freqs = useGrid(session);
     const othersKey = JSON.stringify([curves?.chains.slice(1), othersShown.map((c) => [c.colour, offsetOf(s, c)])]);
+    // -- WP P1WB2 -- AutoEQ: open or not, and its preview (drawn dashed for the edited channel)
+    const [autoeq, setAutoeq] = useState(false);
+    const [aePreview, setAePreview] = useState<AutoEqPreviewRecord | null>(null);
     const others = useMemo(
-      () =>
-        othersShown
+      () => {
+        const list: { curve: number[]; colour: string; offset: number; dashed?: boolean }[] = othersShown
           .map((c, i) => ({ curve: curves?.chains[i + 1] ?? [], colour: c.colour, offset: offsetOf(s, c) }))
-          .filter((o) => o.curve.length),
-      [othersKey],
+          .filter((o) => o.curve.length);
+        // The channel's level after the apply (its gain or preamp, unchanged when the level is not written).
+        const mine = aePreview?.channels.find((c) => c.channel === cw);
+        if (mine?.curve.length) list.push({ curve: mine.curve, colour: "#e8a33d", offset: mine.levelDb, dashed: true });
+        return list;
+      },
+      [othersKey, aePreview, cw],
     );
 
     const freqInput = useRef<HTMLInputElement | null>(null);
@@ -271,6 +288,13 @@ const EqView = memo(
             </span>
           ))}
         </div>
+        {/* -- WP P1WB2 -- */}
+        <div class="eq-tools">
+          <button type="button" aria-expanded={autoeq} onClick={() => setAutoeq((v) => !v)}>
+            AutoEQ…
+          </button>
+        </div>
+        {autoeq ? <AutoEqPanel session={session} channels={channels} wire={cw} disabled={ro} onPreview={setAePreview} /> : null}
         {chosen.output ? (
           <OutputCard
             session={session}
@@ -359,6 +383,18 @@ const EqView = memo(
           ask={ask}
           choose={choose}
           commit={edits.commit}
+          // -- WP P1WB2 -- one undo step: every band flat, as one group
+          clearAll={() =>
+            session.group("Clear All Bands", async () => {
+              // The device's bands as they are now (another console may have changed them).
+              await session.refresh();
+              const now = peq(session.state.snapshot?.state ?? s, cw);
+              for (let b = 0; b < now.length; b++) {
+                if (!sameFlat(now[b]!)) await session.core.call("filter", { channel: cw, band: b, ...OFF_BAND }).catch((e) => session.fail(e));
+              }
+              await session.refresh();
+            })
+          }
         />
         )}
       </div>

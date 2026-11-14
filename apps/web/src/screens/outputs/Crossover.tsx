@@ -69,11 +69,14 @@ export const CrossoverList = memo(function CrossoverList(props: {
       ],
     });
     if (a !== "clear") return;
-    for (let b = 0; b < bands.length; b++) {
-      const p = bands[b]!;
-      if (p.filterType !== 0 || p.freq !== CLEARED_FREQ) await session.change("crossoverType", { channel: wire, band: b, filterType: 0, freq: CLEARED_FREQ });
-      if (p.bypass) await session.write("eq.bypass", { bool: false }, [wire, XOVER_BASE + b]);
-    }
+    // -- WP P1WB2 -- one undo step (P1UG)
+    await session.group("Clear All Bands", async () => {
+      for (let b = 0; b < bands.length; b++) {
+        const p = bands[b]!;
+        if (p.filterType !== 0 || p.freq !== CLEARED_FREQ) await session.change("crossoverType", { channel: wire, band: b, filterType: 0, freq: CLEARED_FREQ });
+        if (p.bypass) await session.write("eq.bypass", { bool: false }, [wire, XOVER_BASE + b]);
+      }
+    });
   };
 
   return (

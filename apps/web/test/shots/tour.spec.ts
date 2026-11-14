@@ -10,7 +10,9 @@
 // (`EXT_FAKE_ALINK_SIM`, a tunnelled extension write an Admin session may send).
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+// -- WP P1WB2 -- an installer PIN as the hub keeps it, for the locked-user view
+import { pbkdf2Sync, randomBytes } from "node:crypto";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
@@ -384,5 +386,70 @@ test.describe("an audio link installation on the hub", () => {
     await setMode(session, page, "Installer");
     await expect(session.getByRole("region", { name: "Clock and audio links" }).getByRole("button", { name: "Compute" })).toBeDisabled();
     await shot(page, "role-viewer-installer");
+  });
+});
+
+// -- WP P1WB2 -- the Installer page (limits with the clamp report, outputs without a limiter,
+// power-on), AutoEQ's preview on the graph, and on a hub the locked-user view and its prompt
+test.describe("P1WB2: the Installer page, AutoEQ, the lock", () => {
+  test("the Installer page and AutoEQ's preview on the core's demo", async ({ page }) => {
+    const session = await openDemo(page);
+    await setMode(session, page, "Installer");
+    await tab(session, "Installer").click();
+    const limits = session.getByRole("region", { name: "Limits" });
+    await expect(limits).toBeVisible();
+    await shot(page, "demo-installer-page");
+    const out2 = limits.getByRole("group", { name: /^OUT2/ });
+    const highest = out2.getByLabel("Highest gain (dB)");
+    await highest.fill("-3");
+    await highest.dispatchEvent("change");
+    await expect(limits.getByRole("status", { name: "Limits report" })).toContainText("Held to the new limits");
+    await shot(page, "demo-limits-held", { of: limits });
+    await shot(page, "demo-power-on", { of: session.getByRole("region", { name: "At power-on" }) });
+    await limits.getByRole("button", { name: "Clear Profile" }).click();
+    await tab(session, "EQ").click();
+    await session.getByRole("button", { name: "AutoEQ…" }).click();
+    const panel = session.getByRole("region", { name: "AutoEQ" });
+    const profile = { id: "o/Sony A", manufacturer: "Sony", model: "A", preamp: -4, filters: [{ type: "PK", freq: 105, q: 0.7, gain: 6 }, { type: "HSC", freq: 8000, q: 0.7, gain: -3 }] };
+    await panel.getByLabel("AutoEQ profile").setInputFiles({ name: "sony-a.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(profile)) });
+    await panel.getByRole("button", { name: "Preview" }).click();
+    await expect(panel.getByRole("status", { name: "AutoEQ preview" })).toBeVisible();
+    await shot(page, "demo-autoeq-preview");
+  });
+
+  test.describe("on a hub", () => {
+    test.skip(!process.env.DSPI_TERM, "no uconsole binary (set DSPI_TERM)");
+    let hub: OwnHub | undefined;
+    test.afterEach(async () => {
+      if (hub) await stopHub(hub);
+      hub = undefined;
+    });
+
+    test("the locked-user view and the one prompt, naming the hub", async ({ page }) => {
+      const serial = "DEMO-ALINK-A";
+      const first = await linkHub(["--pair"], true);
+      const store = first.store;
+      await stopHub(first);
+      const file = `${store}/hub-store.json`;
+      const data = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+      const salt = randomBytes(16);
+      const hash = pbkdf2Sync("2468", Buffer.concat([salt, Buffer.from(serial)]), 2000, 32, "sha256");
+      data.device_pins = { [serial]: { version: 1, kdf: "pbkdf2-sha256", iterations: 2000, salt: salt.toString("hex"), hash: hash.toString("hex") } };
+      data.device_limits = { [serial]: { lockedPages: ["channels"], note: "Bar: volume and presets only, please.", contact: "Installer on duty" } };
+      data.role_modes = { control: "simple" };
+      writeFileSync(file, JSON.stringify(data, null, 2));
+      hub = await linkHub(["--pair"], true, store);
+      const session = await openUnit(page, hub, serial);
+      await expect(session.getByRole("complementary", { name: "Status" }).getByRole("button", { name: "Mode: Locked" })).toBeVisible();
+      await shot(page, "hub-locked-user");
+      await session.getByRole("region", { name: "Locked" }).getByRole("button", { name: "Unlock…" }).click();
+      const unlock = page.getByRole("dialog", { name: "Unlock" });
+      await expect(unlock).toBeVisible();
+      await shot(page, "hub-unlock-prompt", { full: false });
+      await unlock.getByLabel("Installer PIN").fill("2468");
+      await unlock.getByRole("button", { name: "Unlock" }).click();
+      await expect(session.getByRole("complementary", { name: "Status" }).getByRole("button", { name: "Mode: Simple (pinned)" })).toBeVisible();
+      await shot(page, "hub-unlocked-pinned");
+    });
   });
 });

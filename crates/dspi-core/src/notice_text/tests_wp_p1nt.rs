@@ -153,7 +153,16 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
             // -- WP P1DCFIX -- the safe apply's countdown: no error makes
             // this key, the clients ask for it while a guard waits
             if family == "guard" {
-                assert_eq!(n.key, crate::guarded::NOTICE_GUARD_WAITING);
+                // -- WP P1WB2 -- and the hub's backstop beside it
+                assert!(
+                    [
+                        crate::guarded::NOTICE_GUARD_WAITING,
+                        crate::guarded::NOTICE_GUARD_HUB_BACKSTOP,
+                    ]
+                    .contains(&n.key.as_str()),
+                    "{}: not a key guarded.rs names",
+                    n.key
+                );
                 continue;
             }
             let e = match family {
@@ -267,4 +276,20 @@ fn wp_p1dcfix_the_countdown_has_one_sentence_with_the_seconds() {
     assert_eq!(n.reason, "They go back in {s} s unless you press Keep.");
     let all = format!("{} {} {}", n.title, n.reason, n.action);
     assert_eq!(all.matches("{s}").count(), 1, "{all}");
+}
+
+/// WP P1WB2: the hub's backstop sentence beside the countdown, in shared
+/// words (a console, never the host's own noun).
+#[test]
+fn wp_p1wb2_the_hub_backstop_has_its_row() {
+    let n = notice_for_key(
+        crate::guarded::NOTICE_GUARD_HUB_BACKSTOP.into(),
+        String::new(),
+    );
+    assert_eq!(n.key, "guard.hub_backstop");
+    assert_eq!(n.kind, NoticeKind::Info);
+    assert_eq!(
+        n.reason,
+        "The hub puts them back too if this console goes away."
+    );
 }
