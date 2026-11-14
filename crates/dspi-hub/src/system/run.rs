@@ -25,7 +25,7 @@ use dspi_proto::ext::alink_usb::{
 
 use super::alarms::Alarm;
 use super::align::{self, Alignment, AlinkFirmware, Observed};
-use super::scene::{self, ScenePlan, SceneRefused, SenderSeen, UsbSeenNow};
+use super::scene::{self, ScenePlan, SceneRefused, SenderSeen, UsbNow, UsbSeenNow};
 use super::{SystemShared, alarm_event};
 use crate::device::DeviceShared;
 use crate::hub::HubHandle;
@@ -144,6 +144,35 @@ const FASTEST_RATE: u128 = 96_000;
 /// Frames at [`FASTEST_RATE`] in `d`.
 fn frames_in(d: Duration) -> u64 {
     u64::try_from(d.as_micros().saturating_mul(FASTEST_RATE) / 1_000_000).unwrap_or(u64::MAX)
+}
+
+// -- fixup sw2x (F2), factored by WP FIXM1 --
+/// How long writes of these round trips take: each a write and a read of the
+/// queue, plus [`LEAD_MARGIN`].
+fn writes_estimate(rtts: impl Iterator<Item = Duration>) -> Duration {
+    rtts.fold(LEAD_MARGIN, |acc, rtt| {
+        acc.saturating_add(rtt.saturating_mul(2))
+    })
+}
+
+// -- WP FIXM1 -- (review ausb1 F2)
+/// The lead (samples) of a scene's USB-direct bus frame, counted from the most
+/// recent USB-direct read: the model's lead or, when longer, the audio link's
+/// writes (`alink_estimate`) and then the USB-direct ops' own write and
+/// read-back (`usb_rtts`), plus the time already gone since that read
+/// (`since_read`). Counted at [`FASTEST_RATE`], so never short.
+fn usb_lead(
+    model_lead: u64,
+    alink_estimate: Duration,
+    usb_rtts: impl Iterator<Item = Duration>,
+    since_read: Duration,
+) -> u64 {
+    let writes = usb_rtts.fold(alink_estimate, |acc, rtt| {
+        acc.saturating_add(rtt.saturating_mul(2))
+    });
+    model_lead
+        .max(frames_in(writes))
+        .saturating_add(frames_in(since_read))
 }
 
 /// What a unit's queue said of `req` right after it was written.
@@ -590,11 +619,81 @@ fn usb_seen(c: &AlinkUsbConfig, s: &AlinkUsbStatus, d: Option<&AlinkUsbDiag>) ->
     }
 }
 
+// -- fixup sw2x (F3), factored by WP FIXM1 --
+/// Write `plan`'s distance delays (`out_delay:<n>`) to `dev`, each only when
+/// the unit holds another value; a delay cut to the unit's longest is said
+/// (`clamped (...)`).
+fn write_out_delays(dev: &DeviceShared, plan: &align::UnitPlan) -> Vec<WriteResult> {
+    plan.out_delays
+        .iter()
+        .map(|(output, ms)| {
+            let now = exec(
+                dev,
+                Dir::Get,
+                op::REQ_GET_OUTPUT_DELAY,
+                u16::from(*output),
+                Vec::new(),
+                4,
+            )
+            .ok()
+            .and_then(|b| b.get(..4)?.try_into().ok().map(f32::from_le_bytes));
+            let r = if now.is_some_and(|n| (n - ms).abs() < 0.0005) {
+                "unchanged".into()
+            } else {
+                exec(
+                    dev,
+                    Dir::Set,
+                    op::REQ_SET_OUTPUT_DELAY,
+                    u16::from(*output),
+                    ms.to_le_bytes().to_vec(),
+                    0,
+                )
+                .map_or_else(status_name, |_| "ok".into())
+            };
+            // -- fixup sw2x (F3) -- a cut delay is never just "ok".
+            let r = if plan.clamped_outputs.contains(output) && !r.starts_with("refused") {
+                format!("clamped ({r})")
+            } else {
+                r
+            };
+            WriteResult {
+                serial: plan.serial.clone(),
+                element: plan.unit.clone(),
+                what: format!("out_delay:{output}"),
+                result: r,
+                reason: None,
+            }
+        })
+        .collect()
+}
+
+// -- WP FIXM1 --
+/// A delay write that left the unit with the delay asked (or its longest).
+fn delay_written(result: &str) -> bool {
+    matches!(
+        result,
+        "ok" | "unchanged" | "clamped (ok)" | "clamped (unchanged)"
+    )
+}
+
+// -- WP FIXM1 --
+/// A unit's name for people, else its id.
+fn unit_name(model: &super::model::SystemModel, id: &str) -> String {
+    model
+        .unit(id)
+        .map(|u| u.name.as_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or(id)
+        .to_owned()
+}
+
 // -- WP AUSB1 --
 /// `EXT_ALINK_USB_STATUS` for a scene: the unit's S and samples per frame when
-/// it is phase-locked, and how long the read took.
-fn timed_usb(dev: &DeviceShared) -> (Option<UsbSeenNow>, Duration) {
+/// it is phase-locked, and how long the read took. -- WP FIXM1 -- `since` is
+/// the start of the scene's reads; the read's start is kept from it.
+fn timed_usb(dev: &DeviceShared, since: Instant) -> (Option<UsbSeenNow>, Duration) {
     let start = Instant::now();
+    let read_at = start.saturating_duration_since(since);
     let s = get_ext(
         dev,
         usb::EXT_ALINK_USB_STATUS,
@@ -605,6 +704,7 @@ fn timed_usb(dev: &DeviceShared) -> (Option<UsbSeenNow>, Duration) {
         Some(UsbSeenNow {
             sample: s.sample,
             spf: s.spf()?,
+            read_at,
         })
     });
     (seen, start.elapsed())
@@ -865,7 +965,20 @@ impl HubHandle {
     /// hops and hop delays, frame counters. Updates the alarms (changes go out
     /// as `system.alarm`) and computes the alignment, writing nothing. Blocks
     /// for the reads.
+    ///
+    /// -- WP FIXM1 -- It also watches the USB-direct streams' start offsets:
+    /// when one moved since the hub last wrote them, the alignment carries the
+    /// issue `usb_start_offsets_changed` ("Align again"), or, with the model's
+    /// "Keep USB-direct units aligned", the hub writes those units' output
+    /// delays again (nothing else, so nothing re-anchors) and records it as
+    /// the alarm `usb_realigned`.
     pub fn system_status(&self) -> SystemStatus {
+        self.system_status_watching(true)
+    }
+
+    /// [`Self::system_status`]; `keep` lets "Keep USB-direct units aligned"
+    /// write (not while an alignment is about to be written anyway).
+    fn system_status_watching(&self, keep: bool) -> SystemStatus {
         let (model, revision) = self.system().model();
         let mut observed = BTreeMap::new();
         // -- WP AUSB1 -- the model's USB-direct units are read as such
@@ -902,7 +1015,19 @@ impl HubHandle {
             };
             observed.insert(serial, o);
         }
-        let alignment = align::align(&model, &observed);
+        let mut alignment = align::align(&model, &observed);
+        // -- WP FIXM1 -- (review ausb1 F3) the start offsets as written, or not
+        let offsets = align::usb_offsets(&alignment);
+        let mut moved = self.system().usb_offsets_moved(&offsets);
+        if !moved.is_empty() && keep && model.keep_usb_aligned {
+            moved = self.realign_usb(&model, &alignment, &offsets, &moved);
+        }
+        if !moved.is_empty() {
+            let names: Vec<String> = moved.iter().map(|id| unit_name(&model, id)).collect();
+            alignment
+                .issues
+                .push(align::usb_offsets_changed_issue(&names));
+        }
         let changes = self.system().observed(observed.clone(), alignment.clone());
         for a in &changes {
             self.inner.relay.broadcast_event(&alarm_event(a));
@@ -921,7 +1046,7 @@ impl HubHandle {
     /// speakers' `out.delay`. A value the unit already has is not written again,
     /// so an unchanged phase does not re-anchor. Blocks for the transfers.
     pub fn system_align(&self, apply: bool) -> AlignReport {
-        let status = self.system_status();
+        let status = self.system_status_watching(!apply);
         let alignment = status.alignment;
         let mut writes = Vec::new();
         if apply {
@@ -1035,39 +1160,14 @@ impl HubHandle {
                     };
                     writes.push(result("phase", r));
                 }
-                for (output, ms) in &plan.out_delays {
-                    let what = format!("out_delay:{output}");
-                    let now = exec(
-                        &dev,
-                        Dir::Get,
-                        op::REQ_GET_OUTPUT_DELAY,
-                        u16::from(*output),
-                        Vec::new(),
-                        4,
-                    )
-                    .ok()
-                    .and_then(|b| b.get(..4)?.try_into().ok().map(f32::from_le_bytes));
-                    let r = if now.is_some_and(|n| (n - ms).abs() < 0.0005) {
-                        "unchanged".into()
-                    } else {
-                        exec(
-                            &dev,
-                            Dir::Set,
-                            op::REQ_SET_OUTPUT_DELAY,
-                            u16::from(*output),
-                            ms.to_le_bytes().to_vec(),
-                            0,
-                        )
-                        .map_or_else(status_name, |_| "ok".into())
-                    };
-                    // -- fixup sw2x (F3) -- a cut delay is never just "ok".
-                    let r = if plan.clamped_outputs.contains(output) && !r.starts_with("refused") {
-                        format!("clamped ({r})")
-                    } else {
-                        r
-                    };
-                    writes.push(result(&what, r));
+                let delays = write_out_delays(&dev, plan);
+                // -- WP FIXM1 -- the start offset these delays carry, once all are in
+                if plan.transport == "usb_direct" && delays.iter().all(|w| delay_written(&w.result))
+                {
+                    self.system()
+                        .usb_offset_written(&plan.unit, plan.start_offset_samples);
                 }
+                writes.extend(delays);
             }
         }
         AlignReport {
@@ -1075,6 +1175,57 @@ impl HubHandle {
             applied: apply,
             writes,
         }
+    }
+
+    // -- WP FIXM1 --
+    /// "Keep USB-direct units aligned": write the output delays of the
+    /// USB-direct units in `moved` again from `alignment` (their mode, D and
+    /// every other unit are left alone, so nothing re-anchors), record it as
+    /// the alarm `usb_realigned` and broadcast it. The units still moved (not
+    /// writable now, or a write failed).
+    fn realign_usb(
+        &self,
+        model: &super::model::SystemModel,
+        alignment: &Alignment,
+        offsets: &BTreeMap<String, i64>,
+        moved: &[String],
+    ) -> Vec<String> {
+        let mut done = Vec::new();
+        let mut failed = Vec::new();
+        for plan in alignment
+            .units
+            .iter()
+            .filter(|p| p.transport == "usb_direct" && moved.contains(&p.unit))
+        {
+            let dev = self.device_by_serial(&plan.serial);
+            let (Some(dev), true) = (dev, plan.writable) else {
+                failed.push(plan.unit.clone());
+                continue;
+            };
+            let writes = write_out_delays(&dev, plan);
+            if writes.iter().all(|w| delay_written(&w.result)) {
+                self.system()
+                    .usb_offset_written(&plan.unit, offsets.get(&plan.unit).copied());
+                done.push(unit_name(model, &plan.unit));
+            } else {
+                failed.push(plan.unit.clone());
+            }
+        }
+        if !done.is_empty() {
+            let mut message = format!(
+                "USB-direct start offsets changed: output delays written again on {} \
+                 (Keep USB-direct units aligned)",
+                done.join(", ")
+            );
+            if !failed.is_empty() {
+                let names: Vec<String> = failed.iter().map(|id| unit_name(model, id)).collect();
+                message.push_str(&format!("; not on {}", names.join(", ")));
+            }
+            for a in &self.system().usb_realigned(message) {
+                self.inner.relay.broadcast_event(&alarm_event(a));
+            }
+        }
+        failed
     }
 
     // -- fixup sw2x (roles) --
@@ -1218,6 +1369,8 @@ impl HubHandle {
         let mut no_frame: Vec<String> = Vec::new();
         // -- WP AUSB1 -- phase-locked USB-direct units, at a bus frame; the others at once
         let mut usb_now: BTreeMap<String, UsbSeenNow> = BTreeMap::new();
+        // -- WP FIXM1 -- the reads' start: each USB-direct read is timed from it
+        let reads_began = Instant::now();
         for a in &scene.actions {
             for u in model.resolve_target(&a.target).unwrap_or_default() {
                 if rtts.contains_key(&u.serial) || offline.contains(&u.serial) {
@@ -1233,7 +1386,7 @@ impl HubHandle {
                 };
                 // -- WP AUSB1 --
                 if u.usb_direct() {
-                    let (seen, rtt) = timed_usb(&dev);
+                    let (seen, rtt) = timed_usb(&dev, reads_began);
                     rtts.insert(u.serial.clone(), rtt);
                     match seen {
                         Some(s) => {
@@ -1268,23 +1421,43 @@ impl HubHandle {
         }
         let seen = sender.as_ref().map(|(s, _, _)| s);
         let model_lead = u64::from(model.apply_lead_frames);
-        let first = scene::plan_usb(&model, id, &frames, seen, model_lead, &no_alink, &usb_now)?;
+        let mut usb = UsbNow {
+            units: usb_now.clone(),
+            lead: model_lead,
+        };
+        let first = scene::plan_usb(&model, id, &frames, seen, model_lead, &no_alink, &usb)?;
         // -- fixup sw2x (F2) -- each op is a write and a read of the queue.
-        let estimate = first
-            .ops
-            .iter()
-            .map(|o| {
-                rtts.get(&o.serial)
-                    .copied()
-                    .unwrap_or(DEFAULT_WRITE_RTT)
-                    .max(MIN_WRITE_RTT)
-            })
-            .fold(LEAD_MARGIN, |acc, rtt| {
-                acc.saturating_add(rtt.saturating_mul(2))
-            });
+        let write_rtt = |serial: &str| {
+            rtts.get(serial)
+                .copied()
+                .unwrap_or(DEFAULT_WRITE_RTT)
+                .max(MIN_WRITE_RTT)
+        };
+        let estimate = writes_estimate(first.ops.iter().map(|o| write_rtt(&o.serial)));
         let needed = frames_in(estimate);
-        let plan = if needed > model_lead {
-            scene::plan_usb(&model, id, &frames, seen, needed, &no_alink, &usb_now)?
+        // -- WP FIXM1 -- (review ausb1 F2) the USB-direct writes come after the
+        // audio link's: their lead covers both, each op a write and a read-back,
+        // and counts from the most recent USB-direct read, not from now.
+        let latest_usb_read = usb_now.values().map(|u| u.read_at).max();
+        let plan = if let Some(read_at) = latest_usb_read.filter(|_| !first.usb_ops.is_empty()) {
+            let since_read = reads_began.elapsed().saturating_sub(read_at);
+            usb.lead = usb_lead(
+                model_lead,
+                estimate,
+                first.usb_ops.iter().map(|o| write_rtt(&o.serial)),
+                since_read,
+            );
+            scene::plan_usb(
+                &model,
+                id,
+                &frames,
+                seen,
+                needed.max(model_lead),
+                &no_alink,
+                &usb,
+            )?
+        } else if needed > model_lead {
+            scene::plan_usb(&model, id, &frames, seen, needed, &no_alink, &usb)?
         } else {
             first
         };
@@ -1525,5 +1698,48 @@ impl HubHandle {
             frame_after_writes,
             on_time,
         })
+    }
+}
+
+// -- WP FIXM1 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_fixm1 {
+    use super::*;
+
+    const MS: Duration = Duration::from_millis(1);
+
+    /// The USB-direct lead covers the audio link's writes, then the USB-direct
+    /// ops' write and read-back, and the time gone since the latest read.
+    #[test]
+    fn wp_fixm1_the_usb_lead_counts_its_own_writes_and_the_time_since_the_read() {
+        // A long model lead wins over fast writes, shifted by the time since the read.
+        assert_eq!(
+            usb_lead(9600, LEAD_MARGIN, [MS].into_iter(), Duration::ZERO),
+            9600
+        );
+        assert_eq!(
+            usb_lead(9600, LEAD_MARGIN, [MS].into_iter(), 10 * MS),
+            9600 + 960
+        );
+        // Fast writes over a short model lead: the margin and one write and read-back.
+        assert_eq!(
+            usb_lead(2400, LEAD_MARGIN, [MS].into_iter(), Duration::ZERO),
+            frames_in(52 * MS)
+        );
+        // Slow USB-direct writes (two units at 100 ms): 50 + 2·2·100 ms = 450 ms.
+        let alink = writes_estimate(std::iter::empty());
+        assert_eq!(alink, LEAD_MARGIN);
+        let slow = [100 * MS, 100 * MS];
+        assert_eq!(
+            usb_lead(2400, alink, slow.into_iter(), Duration::ZERO),
+            frames_in(450 * MS)
+        );
+        // The audio link's writes come first and count too.
+        let alink = writes_estimate([200 * MS].into_iter());
+        assert_eq!(
+            usb_lead(2400, alink, slow.into_iter(), 30 * MS),
+            frames_in(850 * MS) + frames_in(30 * MS)
+        );
     }
 }

@@ -55,6 +55,9 @@ class FakeAlinkSystem {
         private set
 
     private var systemDelay: Long? = null
+
+    // -- WP FIXM1 -- the Installer's "Keep USB-direct units aligned" (the web console sets it)
+    private var keepUsbAligned = false
     private var aligned = false
     private var frame = 1_000_000L
     private val lipSync = HashMap<String, Long?>()
@@ -189,6 +192,9 @@ class FakeAlinkSystem {
             summary = "Audio link: 4 of 4 locked" + plain + if (pendingAll > 0) ", audio link delay to write on $pendingAll" else "",
             health = if (pendingAll > 0 || plainUnit) "warning" else "ok",
             issues = emptyList(),
+            // -- WP FIXM1 --
+            keepUsbAligned = keepUsbAligned,
+            alignNeeded = false,
             stale = false
         )
     }
@@ -218,6 +224,7 @@ class FakeAlinkSystem {
         }
         for (r in edits.rooms) lipSync[r.roomId] = r.lipSyncUs
         for (u in edits.units) latency[u.unitId] = u.measuredLatencyUs
+        edits.keepUsbAligned?.let { keepUsbAligned = it } // -- WP FIXM1 --
         this.revision++
         return this.revision
     }

@@ -3184,11 +3184,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * FLASH WRITE: store the live master volume for the independent mode
-     * (`REQ_SAVE_MASTER_VOLUME`). Changes nothing in the mirror.
+     * (`REQ_SAVE_MASTER_VOLUME`), under the device lock like the other
+     * flash writes. Changes nothing in the mirror.
      *
      * Errors: [`DspiError::Refused`] with the device's status byte
-     * (`PRESET_*`) when the save fails; the connection and transfer errors
-     * of every setter.
+     * (`PRESET_*`) when the save fails; [`DspiError::Locked`] /
+     * [`DspiError::Denied`] (Link); the connection and transfer errors of
+     * every setter.
      */
     func saveMasterVolume() throws 
     
@@ -3342,8 +3344,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * `auto_reanchor` (normally true); `d` samples from arrival to output,
      * the same on every unit that should play aligned (170-399 at 48 kHz,
      * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
-     * or D while phase-locked re-anchors (about D + 20 ms of silence). Saved
-     * with the output configuration.
+     * or D while phase-locked re-anchors (about D + 20 ms of silence). The
+     * core never saves it: the firmware stores it in flash only on
+     * `REQ_SAVE_OUTPUT_CONFIG`, which this call does not send, so the unit
+     * keeps it across a restart only after the user saves.
      *
      * Errors, with no traffic: `Disconnected`; `Unsupported` without the
      * block; `InvalidArgument` for a mode above 2 or D 0; `ReadOnly`. From the
@@ -7138,11 +7142,13 @@ open func rtaTakeControl()  {try! rustCall() {
     
     /**
      * FLASH WRITE: store the live master volume for the independent mode
-     * (`REQ_SAVE_MASTER_VOLUME`). Changes nothing in the mirror.
+     * (`REQ_SAVE_MASTER_VOLUME`), under the device lock like the other
+     * flash writes. Changes nothing in the mirror.
      *
      * Errors: [`DspiError::Refused`] with the device's status byte
-     * (`PRESET_*`) when the save fails; the connection and transfer errors
-     * of every setter.
+     * (`PRESET_*`) when the save fails; [`DspiError::Locked`] /
+     * [`DspiError::Denied`] (Link); the connection and transfer errors of
+     * every setter.
      */
 open func saveMasterVolume()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_save_master_volume(self.uniffiClonePointer(),$0
@@ -7360,8 +7366,10 @@ open func setAlinkSlots(slots: Data)throws   {try rustCallWithError(FfiConverter
      * `auto_reanchor` (normally true); `d` samples from arrival to output,
      * the same on every unit that should play aligned (170-399 at 48 kHz,
      * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
-     * or D while phase-locked re-anchors (about D + 20 ms of silence). Saved
-     * with the output configuration.
+     * or D while phase-locked re-anchors (about D + 20 ms of silence). The
+     * core never saves it: the firmware stores it in flash only on
+     * `REQ_SAVE_OUTPUT_CONFIG`, which this call does not send, so the unit
+     * keeps it across a restart only after the user saves.
      *
      * Errors, with no traffic: `Disconnected`; `Unsupported` without the
      * block; `InvalidArgument` for a mode above 2 or D 0; `ReadOnly`. From the
@@ -11737,6 +11745,10 @@ public struct AlinkSystemEdits {
      * USB-direct units' modes (Installer).
      */
     public var usbModes: [AlinkUnitUsbMode]
+    /**
+     * "Keep USB-direct units aligned" (Installer); none: unchanged.
+     */
+    public var keepUsbAligned: Bool?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -11755,12 +11767,16 @@ public struct AlinkSystemEdits {
          */units: [AlinkUnitLatency], 
         /**
          * USB-direct units' modes (Installer).
-         */usbModes: [AlinkUnitUsbMode]) {
+         */usbModes: [AlinkUnitUsbMode], 
+        /**
+         * "Keep USB-direct units aligned" (Installer); none: unchanged.
+         */keepUsbAligned: Bool?) {
         self.setSystemDelay = setSystemDelay
         self.systemDelayFrames = systemDelayFrames
         self.rooms = rooms
         self.units = units
         self.usbModes = usbModes
+        self.keepUsbAligned = keepUsbAligned
     }
 }
 
@@ -11786,6 +11802,9 @@ extension AlinkSystemEdits: Equatable, Hashable {
         if lhs.usbModes != rhs.usbModes {
             return false
         }
+        if lhs.keepUsbAligned != rhs.keepUsbAligned {
+            return false
+        }
         return true
     }
 
@@ -11795,6 +11814,7 @@ extension AlinkSystemEdits: Equatable, Hashable {
         hasher.combine(rooms)
         hasher.combine(units)
         hasher.combine(usbModes)
+        hasher.combine(keepUsbAligned)
     }
 }
 
@@ -11811,7 +11831,8 @@ public struct FfiConverterTypeAlinkSystemEdits: FfiConverterRustBuffer {
                 systemDelayFrames: FfiConverterOptionUInt32.read(from: &buf), 
                 rooms: FfiConverterSequenceTypeAlinkRoomLipSync.read(from: &buf), 
                 units: FfiConverterSequenceTypeAlinkUnitLatency.read(from: &buf), 
-                usbModes: FfiConverterSequenceTypeAlinkUnitUsbMode.read(from: &buf)
+                usbModes: FfiConverterSequenceTypeAlinkUnitUsbMode.read(from: &buf), 
+                keepUsbAligned: FfiConverterOptionBool.read(from: &buf)
         )
     }
 
@@ -11821,6 +11842,7 @@ public struct FfiConverterTypeAlinkSystemEdits: FfiConverterRustBuffer {
         FfiConverterSequenceTypeAlinkRoomLipSync.write(value.rooms, into: &buf)
         FfiConverterSequenceTypeAlinkUnitLatency.write(value.units, into: &buf)
         FfiConverterSequenceTypeAlinkUnitUsbMode.write(value.usbModes, into: &buf)
+        FfiConverterOptionBool.write(value.keepUsbAligned, into: &buf)
     }
 }
 
@@ -12825,6 +12847,18 @@ public struct AlinkSystemView {
      */
     public var issues: [String]
     /**
+     * "Keep USB-direct units aligned" (Installer): the hub writes the
+     * USB-direct units' output delays again by itself when their start
+     * offsets move. Off: it says "USB-direct start offsets changed — Align
+     * again" among the issues, and `align_needed` is set.
+     */
+    public var keepUsbAligned: Bool
+    /**
+     * The hub says an alignment is due: USB-direct start offsets moved
+     * since it last wrote them (one-click Align, Installer).
+     */
+    public var alignNeeded: Bool
+    /**
      * The hub limits how often the status is read; this is the last view
      * again, not a fresh one.
      */
@@ -12920,6 +12954,16 @@ public struct AlinkSystemView {
          * The alignment's issues, in the hub's words.
          */issues: [String], 
         /**
+         * "Keep USB-direct units aligned" (Installer): the hub writes the
+         * USB-direct units' output delays again by itself when their start
+         * offsets move. Off: it says "USB-direct start offsets changed — Align
+         * again" among the issues, and `align_needed` is set.
+         */keepUsbAligned: Bool, 
+        /**
+         * The hub says an alignment is due: USB-direct start offsets moved
+         * since it last wrote them (one-click Align, Installer).
+         */alignNeeded: Bool, 
+        /**
          * The hub limits how often the status is read; this is the last view
          * again, not a fresh one.
          */stale: Bool) {
@@ -12950,6 +12994,8 @@ public struct AlinkSystemView {
         self.summary = summary
         self.health = health
         self.issues = issues
+        self.keepUsbAligned = keepUsbAligned
+        self.alignNeeded = alignNeeded
         self.stale = stale
     }
 }
@@ -13042,6 +13088,12 @@ extension AlinkSystemView: Equatable, Hashable {
         if lhs.issues != rhs.issues {
             return false
         }
+        if lhs.keepUsbAligned != rhs.keepUsbAligned {
+            return false
+        }
+        if lhs.alignNeeded != rhs.alignNeeded {
+            return false
+        }
         if lhs.stale != rhs.stale {
             return false
         }
@@ -13076,6 +13128,8 @@ extension AlinkSystemView: Equatable, Hashable {
         hasher.combine(summary)
         hasher.combine(health)
         hasher.combine(issues)
+        hasher.combine(keepUsbAligned)
+        hasher.combine(alignNeeded)
         hasher.combine(stale)
     }
 }
@@ -13116,6 +13170,8 @@ public struct FfiConverterTypeAlinkSystemView: FfiConverterRustBuffer {
                 summary: FfiConverterString.read(from: &buf), 
                 health: FfiConverterString.read(from: &buf), 
                 issues: FfiConverterSequenceString.read(from: &buf), 
+                keepUsbAligned: FfiConverterBool.read(from: &buf), 
+                alignNeeded: FfiConverterBool.read(from: &buf), 
                 stale: FfiConverterBool.read(from: &buf)
         )
     }
@@ -13148,6 +13204,8 @@ public struct FfiConverterTypeAlinkSystemView: FfiConverterRustBuffer {
         FfiConverterString.write(value.summary, into: &buf)
         FfiConverterString.write(value.health, into: &buf)
         FfiConverterSequenceString.write(value.issues, into: &buf)
+        FfiConverterBool.write(value.keepUsbAligned, into: &buf)
+        FfiConverterBool.write(value.alignNeeded, into: &buf)
         FfiConverterBool.write(value.stale, into: &buf)
     }
 }
@@ -31089,7 +31147,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_rta_take_control() != 33133) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_save_master_volume() != 4329) {
+    if (uniffi_dspi_core_checksum_method_dspicore_save_master_volume() != 17732) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_save_output_config() != 27456) {
@@ -31128,7 +31186,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_alink_slots() != 51727) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 2052) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 27355) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_band_bypass() != 64308) {

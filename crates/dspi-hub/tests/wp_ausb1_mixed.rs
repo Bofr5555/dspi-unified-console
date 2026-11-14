@@ -367,18 +367,41 @@ fn wp_ausb1_a_mixed_scene_goes_at_a_usb_frame_an_alink_frame_and_at_once() {
     );
     // Again before the first one's frame: the sender holds it and refuses; the
     // USB-direct units are held back with it, so no room plays half a scene.
+    // -- WP FIXM1 -- (review ausb1 F1) made deterministic: the recall's frame
+    // has passed, then a scene with a 4 s lead is held while the second one
+    // is planned and written (its reads alone take about 1.2 s here: K, without
+    // the audio link, stalls the frame reads), so the sender refuses it
+    // whatever the load; the hold-back is asserted, not merely allowed.
+    std::thread::sleep(Duration::from_millis(200));
+    let (mut slow, _) = h.system_model();
+    slow.apply_lead_frames = 192_000;
+    h.system_set_model(slow.clone()).unwrap();
+    let held = h.system_apply_scene("evening", Role::Admin).unwrap();
+    let tx = held.writes.iter().find(|w| w.element == "tx").unwrap();
+    assert_eq!(tx.result, "queued", "{:?}", held.writes);
     let again = h.system_apply_scene("evening", Role::Admin).unwrap();
     let tx = again.writes.iter().find(|w| w.element == "tx").unwrap();
-    if tx.result == "refused" {
-        for e in ["U1", "U2"] {
-            let w = again.writes.iter().find(|w| w.element == e).unwrap();
-            assert_eq!(
-                (w.result.as_str(), w.reason.as_deref()),
-                ("skipped", Some(dspi_hub::system::USB_HELD_BACK))
-            );
-        }
+    assert_eq!(tx.result, "refused", "{:?}", again.writes);
+    assert!(!again.on_time, "{:?}", again.writes);
+    for e in ["U1", "U2"] {
+        let w = again.writes.iter().find(|w| w.element == e).unwrap();
+        assert_eq!(
+            (w.result.as_str(), w.reason.as_deref()),
+            ("skipped", Some(dspi_hub::system::USB_HELD_BACK)),
+            "{:?}",
+            again.writes
+        );
     }
-    std::thread::sleep(Duration::from_millis(200));
+    // The held scene's frames pass (4 s at 48 kHz); the model's own lead again.
+    std::thread::sleep(Duration::from_millis(
+        held.plan
+            .lead_frames
+            .max(held.plan.usb_lead_samples.unwrap_or(0))
+            / 48
+            + 200,
+    ));
+    slow.apply_lead_frames = dspi_hub::system::model::DEFAULT_APPLY_LEAD;
+    h.system_set_model(slow).unwrap();
     // A scene of one USB-direct unit alone: the bus frame only.
     let r = h.system_apply_scene("rear", Role::Admin).unwrap();
     assert_eq!(

@@ -80,6 +80,11 @@ struct State {
     /// Units the hub has just re-anchored itself (a new `EXT_ALINK_PHASE`), by
     /// serial: their `REANCHOR` event before this is no alarm.
     reanchoring: BTreeMap<String, Instant>,
+    // -- WP FIXM1 --
+    /// The USB-direct start offsets the hub last wrote into the units' output
+    /// delays, by unit id (none: 0); `None` until the first alignment written
+    /// in this run, so nothing is judged before it.
+    usb_offsets_written: Option<BTreeMap<String, i64>>,
 }
 
 /// The system's state, shared by the hub's handles and the relay's tap.
@@ -274,6 +279,39 @@ impl SystemShared {
             .observed
             .get(serial)
             .is_some_and(Observed::without_alink)
+    }
+
+    // -- WP FIXM1 --
+    /// The USB-direct units whose start offset (`now`, by unit id) is no
+    /// longer the one the hub wrote; none before the first alignment written.
+    pub(crate) fn usb_offsets_moved(&self, now: &BTreeMap<String, i64>) -> Vec<String> {
+        self.lock()
+            .usb_offsets_written
+            .as_ref()
+            .map(|w| align::usb_offsets_moved(w, now))
+            .unwrap_or_default()
+    }
+
+    // -- WP FIXM1 --
+    /// The hub wrote unit `id`'s output delays with this start offset (none: 0).
+    pub(crate) fn usb_offset_written(&self, id: &str, offset: Option<i64>) {
+        let mut s = self.lock();
+        let w = s.usb_offsets_written.get_or_insert_with(BTreeMap::new);
+        match offset {
+            Some(o) => {
+                w.insert(id.to_owned(), o);
+            }
+            None => {
+                w.remove(id);
+            }
+        }
+    }
+
+    // -- WP FIXM1 --
+    /// Record an automatic re-align (alarm `usb_realigned`); the changes to
+    /// broadcast.
+    pub(crate) fn usb_realigned(&self, message: String) -> Vec<Alarm> {
+        self.lock().alarms.usb_realigned(message, now())
     }
 
     /// The hub is about to write unit `serial`'s phase: its re-anchor follows.

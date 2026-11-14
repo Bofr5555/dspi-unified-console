@@ -44,7 +44,9 @@ data class SystemDraft(
         rooms = rooms.map { (id, us) -> AlinkRoomLipSync(id, us) },
         units = units.map { (id, us) -> AlinkUnitLatency(id, us) },
         // -- WP AUSB1 -- USB-direct modes are set in the web console's Installer mode
-        usbModes = emptyList()
+        usbModes = emptyList(),
+        // -- WP FIXM1 -- so is "Keep USB-direct units aligned": left as it is
+        keepUsbAligned = null
     )
 }
 

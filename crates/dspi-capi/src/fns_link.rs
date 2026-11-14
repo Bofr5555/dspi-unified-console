@@ -586,7 +586,8 @@ pub(crate) mod link {
 
     /// Save the Clock-and-audio-links edits made on the view of `revision`:
     /// `edits_json` is {setSystemDelay, systemDelayFrames (null: automatic),
-    /// rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}]}.
+    /// rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}],
+    /// usbModes: [{unitId, mode}], keepUsbAligned (null: unchanged)}.
     /// Replies JSON {ok, revision} (the new one), or code `conflict` when the
     /// installation changed on the hub meanwhile (nothing saved: reload),
     /// `denied` for a role other than admin. Blocks. Returns the length
