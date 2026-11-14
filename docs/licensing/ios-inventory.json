@@ -1,5 +1,5 @@
 {
- "repo_commit": "0204c717",
+ "repo_commit": "35cf785a",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -298,6 +298,7 @@
    "assets/onboarding/getting_started.json",
    "assets/onboarding/whatsnew.json",
    "assets/templates/k340.dspipreset",
+   "crates/dspi-core/src/ab.rs",
    "crates/dspi-core/src/alink.rs",
    "crates/dspi-core/src/alink/system.rs",
    "crates/dspi-core/src/alink_usb.rs",
@@ -320,6 +321,7 @@
    "crates/dspi-core/src/files.rs",
    "crates/dspi-core/src/firmware.rs",
    "crates/dspi-core/src/firmware_guard.rs",
+   "crates/dspi-core/src/guarded.rs",
    "crates/dspi-core/src/hardware.rs",
    "crates/dspi-core/src/host_transport.rs",
    "crates/dspi-core/src/hotplug.rs",
@@ -446,7 +448,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "0204c7173a0ba136d1b950a3c60eb32057025aad",
+  "commit": "35cf785ab7499f6926a4b90b3ffab7353e20a4b9",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",
