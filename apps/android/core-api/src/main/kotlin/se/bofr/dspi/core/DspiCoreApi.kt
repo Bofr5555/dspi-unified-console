@@ -2023,6 +2023,77 @@ interface DspiCoreApi : AutoCloseable {
     fun limitsStatus(): LimitsStatus
 
     /**
+     * The open device's installer lock on this console: whether a PIN is
+     * set, whether the locked-user state is on, what it covers and allows,
+     * the refusal window after wrong PINs, the installer's note and contact.
+     * With no device: no PIN, nothing locked.
+     */
+    fun installerLockState(): LockState
+
+    /**
+     * Unlock the open device on this console for this session with the
+     * installer's PIN or the recovery code. With no PIN set, nothing is
+     * asked and nothing changes. Slow (a PIN hash): off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InstallerLock`] `wrong_pin`, or `wait` while the refusal
+     * window after repeated wrong PINs is open (nothing checked;
+     * [`LockState::retry_after_ms`]).
+     */
+    @Throws(DspiException::class)
+    fun installerUnlock(pin: String): LockState
+
+    /**
+     * Lock the open device again on this console (the end of an unlock).
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
+     * `no_pin` when no PIN is set (nothing to lock).
+     */
+    @Throws(DspiException::class)
+    fun installerLock(): LockState
+
+    /**
+     * Set (or change) the open device's installer PIN on this console, and
+     * make a new recovery code, shown this once. The console stays unlocked
+     * for the device. Kept in the limits folder (`limits_set_dir`), else for
+     * this core's lifetime. Slow (two hashes): off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
+     * for a PIN of fewer than 4 or more than 64 characters, or with a space
+     * at either end; [`DspiError::InstallerLock`] `pin_required` while a PIN
+     * is set and the console is not unlocked; [`DspiError::Io`] when a file
+     * could not be written; [`DspiError::Unsupported`] on the web.
+     */
+    @Throws(DspiException::class)
+    fun installerPinSet(pin: String): InstallerPin
+
+    /**
+     * Remove the open device's installer PIN (and its recovery code) on
+     * this console: no lock, no prompt, as before a PIN was set. Nothing
+     * to do with none set.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
+     * `pin_required` while the console is not unlocked; [`DspiError::Io`]
+     * when a file could not be removed.
+     */
+    @Throws(DspiException::class)
+    fun installerPinClear(): LockState
+
+    /**
+     * Choose what the open device's lock covers: screen ids of the mode
+     * manifest (`front` and the rest; empty: the PIN locks nothing). Kept in
+     * the device's limits profile (`lockedPages`), which is created when
+     * there is none; the device is held to the profile as
+     * [`DspiCore::limits_apply_profile`] does.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * an id the manifest does not have; [`DspiError::InstallerLock`]
+     * `pin_required`; [`DspiError::Io`] as `limits_apply_profile`.
+     */
+    @Throws(DspiException::class)
+    fun installerLockCover(pages: List<String>): LockState
+
+    /**
      * Open a DSPi Link session to `url` (`link_ws_url`), replacing any
      * previous one. `token` = the token stored for this hub's id ("" =
      * none). `expected_hub_id` = that id. With it, a token goes out only after
@@ -2135,6 +2206,35 @@ interface DspiCoreApi : AutoCloseable {
      * to it would fail for ever.
      */
     fun linkSetUrl(url: String)
+
+    /**
+     * The mode to show on a client of `platform` (`phone`, `desktop` or
+     * `web`) when the user has chosen `chosen` (a mode id, or "" for none):
+     * the locked-user state first, then a mode the hub pins, then the
+     * user's choice, then the platform's default. With no PIN set nothing
+     * asks for one. Never writes; no I/O beyond the PIN's files, read once.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a platform class or a mode
+     * the manifest does not have.
+     */
+    @Throws(DspiException::class)
+    fun modeResolve(platform: String, chosen: String): ModeChoice
+
+    /**
+     * Pin the open device's mode, as the hub says for this console's role
+     * (P1HL's `mode.pinned`): a mode id or `locked_user`; "" clears it. It
+     * overrides the user's choice until cleared or another device opens.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for an id the manifest does not have.
+     */
+    @Throws(DspiException::class)
+    fun modeSetPinned(mode: String)
+
+    /**
+     * The mode the hub pins for the open device ("" for none).
+     */
+    fun modePinned(): String
 
     /**
      * The monitor lines with an id above `after_id`, oldest first, and the
@@ -4010,6 +4110,14 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun aboutJson(): String
+
+    /**
+     * The mode manifest: modes, the locked-user state, screens and operations,
+     * with their titles and defaults. No I/O.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun modeManifest(): ModeManifest
 
     /**
      * Every filter type the firmware defines with its name, in the Console's

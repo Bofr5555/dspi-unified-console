@@ -64,6 +64,11 @@ fn samples() -> Vec<DspiError> {
             code: "out_gain".into(),
             msg: msg(),
         },
+        // -- WP P1LK --
+        DspiError::InstallerLock {
+            code: "locked".into(),
+            msg: msg(),
+        },
     ]
 }
 
@@ -148,6 +153,11 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                     code: code.into(),
                     msg: String::new(),
                     retry_after_s: None,
+                },
+                // -- WP P1LK --
+                "installer_lock" => DspiError::InstallerLock {
+                    code: code.into(),
+                    msg: String::new(),
                 },
                 other => panic!("{other}: no family"),
             };

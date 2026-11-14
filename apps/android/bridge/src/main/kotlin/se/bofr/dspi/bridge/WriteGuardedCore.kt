@@ -14,6 +14,7 @@ import se.bofr.dspi.core.GuardedApply
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.LimitsApply
+import se.bofr.dspi.core.LockState
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.SnapshotRecall
 import se.bofr.dspi.core.UartConfig
@@ -734,6 +735,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.limitsApplyProfile(document)
     }
 
+    // -- WP P1LK -- what the lock covers is kept in the profile, which is then
+    // applied (writes, as limitsApplyProfile)
+    override fun installerLockCover(pages: List<String>): LockState {
+        guard("installerLockCover")
+        return inner.installerLockCover(pages)
+    }
+
     // -- WP P1SA -- a guarded import or recall writes the device
     override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply {
         guard("applyGuardedImport")
@@ -927,6 +935,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "abKeep",
             // -- WP P1LM --
             "limitsApplyProfile",
+            // -- WP P1LK --
+            "installerLockCover",
             // -- WP P1SA --
             "applyGuardedImport",
             "applyGuardedSnapshot",
@@ -1200,7 +1210,19 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "limitsSetDir",
             "limitsProfileDocument",
             "limitsClear",
-            "limitsStatus"
+            "limitsStatus",
+            // -- WP P1LK -- the mode manifest and the installer's PIN and lock:
+            // stateless text and this console's own state and files; nothing
+            // is sent to the device
+            "modeManifest",
+            "modeResolve",
+            "modeSetPinned",
+            "modePinned",
+            "installerLockState",
+            "installerUnlock",
+            "installerLock",
+            "installerPinSet",
+            "installerPinClear"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

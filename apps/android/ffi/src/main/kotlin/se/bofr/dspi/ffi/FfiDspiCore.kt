@@ -406,6 +406,18 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun limitsStatus(): LimitsStatus = core.limitsStatus().toDomain()
 
+    override fun installerLockState(): LockState = core.installerLockState().toDomain()
+
+    override fun installerUnlock(pin: String): LockState = call { core.installerUnlock(pin).toDomain() }
+
+    override fun installerLock(): LockState = call { core.installerLock().toDomain() }
+
+    override fun installerPinSet(pin: String): InstallerPin = call { core.installerPinSet(pin).toDomain() }
+
+    override fun installerPinClear(): LockState = call { core.installerPinClear().toDomain() }
+
+    override fun installerLockCover(pages: List<String>): LockState = call { core.installerLockCover(pages).toDomain() }
+
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = call { core.linkConnect(url, clientName, appVersion, token, expectedHubId).toDomain() }
 
     override fun linkPair(pin: String): String = call { core.linkPair(pin) }
@@ -423,6 +435,12 @@ class FfiDspiCore : DspiCoreApi {
     override fun linkRetryNow() = core.linkRetryNow()
 
     override fun linkSetUrl(url: String) = core.linkSetUrl(url)
+
+    override fun modeResolve(platform: String, chosen: String): ModeChoice = call { core.modeResolve(platform, chosen).toDomain() }
+
+    override fun modeSetPinned(mode: String) = call { core.modeSetPinned(mode) }
+
+    override fun modePinned(): String = core.modePinned()
 
     override fun monitorRead(afterId: Long): MonitorBatch = core.monitorRead(afterId.toULong()).toDomain()
 
@@ -762,6 +780,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun aboutJson(): String = se.bofr.dspi.ffi.uniffi.aboutJson()
 
+    override fun modeManifest(): ModeManifest = se.bofr.dspi.ffi.uniffi.modeManifest().toDomain()
+
     override fun filterTypeNames(): List<FilterTypeName> = se.bofr.dspi.ffi.uniffi.filterTypeNames().map { it.toDomain() }
 
     override fun filterTypeName(code: Int): String = se.bofr.dspi.ffi.uniffi.filterTypeName(code.toUByte())
@@ -808,6 +828,7 @@ internal fun FfiException.toDomain(): DspiException =
         is FfiException.OvervoltWordRequired -> DspiException.OvervoltWordRequired(msg)
         is FfiException.ConfirmationRequired -> DspiException.ConfirmationRequired(code, msg)
         is FfiException.LimitExceeded -> DspiException.LimitExceeded(code, msg)
+        is FfiException.InstallerLock -> DspiException.InstallerLock(code, msg)
     }
 
 internal fun DspiException.toFfi(): FfiException =
@@ -827,6 +848,7 @@ internal fun DspiException.toFfi(): FfiException =
         is DspiException.OvervoltWordRequired -> FfiException.OvervoltWordRequired(msg)
         is DspiException.ConfirmationRequired -> FfiException.ConfirmationRequired(code, msg)
         is DspiException.LimitExceeded -> FfiException.LimitExceeded(code, msg)
+        is DspiException.InstallerLock -> FfiException.InstallerLock(code, msg)
     }
 
 // ── Record mapping (UniFFI <-> domain) ──
@@ -3045,6 +3067,54 @@ internal fun LimitsApply.toFfi() =
         notes = notes,
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.LockState.toDomain() =
+    LockState(
+        serial = serial,
+        pinSet = pinSet,
+        unlocked = unlocked,
+        locked = locked,
+        installerOpen = installerOpen,
+        covers = covers,
+        allowedWrites = allowedWrites,
+        wrongTries = wrongTries.toLong(),
+        retryAfterMs = retryAfterMs.toLong(),
+        recovered = recovered,
+        note = note,
+        contact = contact,
+        scopeNoticeKey = scopeNoticeKey,
+        detail = detail,
+    )
+
+internal fun LockState.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LockState(
+        serial = serial,
+        pinSet = pinSet,
+        unlocked = unlocked,
+        locked = locked,
+        installerOpen = installerOpen,
+        covers = covers,
+        allowedWrites = allowedWrites,
+        wrongTries = wrongTries.toUInt(),
+        retryAfterMs = retryAfterMs.toULong(),
+        recovered = recovered,
+        note = note,
+        contact = contact,
+        scopeNoticeKey = scopeNoticeKey,
+        detail = detail,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.InstallerPin.toDomain() =
+    InstallerPin(
+        recoveryCode = recoveryCode,
+        state = state.toDomain(),
+    )
+
+internal fun InstallerPin.toFfi() =
+    se.bofr.dspi.ffi.uniffi.InstallerPin(
+        recoveryCode = recoveryCode,
+        state = state.toFfi(),
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.LinkPhaseText.toDomain() =
     LinkPhaseText(
         key = key,
@@ -3061,6 +3131,120 @@ internal fun LinkPhaseText.toFfi() =
         text = text,
         actionKey = actionKey,
         action = action,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.ModeEntry.toDomain() =
+    ModeEntry(
+        id = id,
+        label = label,
+        defaultOn = defaultOn,
+        needsPinWhenSet = needsPinWhenSet,
+    )
+
+internal fun ModeEntry.toFfi() =
+    se.bofr.dspi.ffi.uniffi.ModeEntry(
+        id = id,
+        label = label,
+        defaultOn = defaultOn,
+        needsPinWhenSet = needsPinWhenSet,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.ModesLockedUser.toDomain() =
+    ModesLockedUser(
+        label = label,
+        screens = screens,
+        settings = settings,
+        writes = writes,
+    )
+
+internal fun ModesLockedUser.toFfi() =
+    se.bofr.dspi.ffi.uniffi.ModesLockedUser(
+        label = label,
+        screens = screens,
+        settings = settings,
+        writes = writes,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.ModeScreen.toDomain() =
+    ModeScreen(
+        id = id,
+        title = title,
+        modes = modes,
+        firstIn = firstIn,
+        layer = layer,
+        platforms = platforms,
+    )
+
+internal fun ModeScreen.toFfi() =
+    se.bofr.dspi.ffi.uniffi.ModeScreen(
+        id = id,
+        title = title,
+        modes = modes,
+        firstIn = firstIn,
+        layer = layer,
+        platforms = platforms,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.ModeOperation.toDomain() =
+    ModeOperation(
+        id = id,
+        title = title,
+        modes = modes,
+        platforms = platforms,
+        confirm = confirm,
+    )
+
+internal fun ModeOperation.toFfi() =
+    se.bofr.dspi.ffi.uniffi.ModeOperation(
+        id = id,
+        title = title,
+        modes = modes,
+        platforms = platforms,
+        confirm = confirm,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.ModeManifest.toDomain() =
+    ModeManifest(
+        version = version.toLong(),
+        platforms = platforms,
+        modes = modes.map { it.toDomain() },
+        lockedUser = lockedUser.toDomain(),
+        screens = screens.map { it.toDomain() },
+        operations = operations.map { it.toDomain() },
+    )
+
+internal fun ModeManifest.toFfi() =
+    se.bofr.dspi.ffi.uniffi.ModeManifest(
+        version = version.toUInt(),
+        platforms = platforms,
+        modes = modes.map { it.toFfi() },
+        lockedUser = lockedUser.toFfi(),
+        screens = screens.map { it.toFfi() },
+        operations = operations.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.ModeChoice.toDomain() =
+    ModeChoice(
+        mode = mode,
+        reason = reason,
+        switchable = switchable,
+        needsPin = needsPin,
+        openModes = openModes,
+        screens = screens,
+        firstScreen = firstScreen,
+        operations = operations,
+    )
+
+internal fun ModeChoice.toFfi() =
+    se.bofr.dspi.ffi.uniffi.ModeChoice(
+        mode = mode,
+        reason = reason,
+        switchable = switchable,
+        needsPin = needsPin,
+        openModes = openModes,
+        screens = screens,
+        firstScreen = firstScreen,
+        operations = operations,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.FilterTypeName.toDomain() =

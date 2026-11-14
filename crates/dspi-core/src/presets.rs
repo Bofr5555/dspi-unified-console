@@ -208,6 +208,7 @@ impl DspiCore {
     ///
     /// Errors: as [`DspiCore::save_preset`], and the re-read's.
     pub fn load_preset(&self, slot: u8) -> Result<()> {
+        let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         slot_in_range(slot)?;
         let lines = self.with_device_lock(LOAD_REASON, |inner| {
             let before = inner.state.clone(); // -- WP P0M --

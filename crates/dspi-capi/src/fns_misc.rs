@@ -62,6 +62,8 @@ mod notice_text;
 mod confirm;
 // -- WP P1LM --
 mod limits;
+// -- WP P1LK --
+mod modes;
 // -- WP P1OF --
 mod offline;
 // -- WP P1SA --
@@ -89,6 +91,8 @@ fn error_code(e: &DspiError) -> &'static str {
         DspiError::ConfirmationRequired { .. } => "confirmation_required",
         // -- WP P1LM --
         DspiError::LimitExceeded { .. } => "limit_exceeded",
+        // -- WP P1LK --
+        DspiError::InstallerLock { .. } => "installer_lock",
     }
 }
 

@@ -1395,6 +1395,22 @@ uint32_t dspi_limits_profile_document(struct FfiCore *core, char *buf, uint32_t 
 uint32_t dspi_limits_apply_profile(struct FfiCore *core, const char *doc, char *buf, uint32_t len);
 uint32_t dspi_limits_clear(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_limits_status(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_mode_manifest(char *buf, uint32_t len);
+uint32_t dspi_mode_resolve(struct FfiCore *core,
+const char *platform,
+const char *chosen,
+char *buf,
+uint32_t len);
+uint32_t dspi_mode_set_pinned(struct FfiCore *core, const char *mode, char *buf, uint32_t len);
+uint32_t dspi_installer_lock_state(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_installer_unlock(struct FfiCore *core, const char *pin, char *buf, uint32_t len);
+uint32_t dspi_installer_lock(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_installer_pin_set(struct FfiCore *core, const char *pin, char *buf, uint32_t len);
+uint32_t dspi_installer_pin_clear(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_installer_lock_cover(struct FfiCore *core,
+const char *pages_json,
+char *buf,
+uint32_t len);
 uint32_t dspi_open_document(struct FfiCore *core,
 const char *doc,
 const char *file_name,

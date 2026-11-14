@@ -350,6 +350,18 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun limitsStatus(): LimitsStatus = throw NotImplementedError("limits_status")
 
+    override fun installerLockState(): LockState = throw NotImplementedError("installer_lock_state")
+
+    override fun installerUnlock(pin: String): LockState = throw NotImplementedError("installer_unlock")
+
+    override fun installerLock(): LockState = throw NotImplementedError("installer_lock")
+
+    override fun installerPinSet(pin: String): InstallerPin = throw NotImplementedError("installer_pin_set")
+
+    override fun installerPinClear(): LockState = throw NotImplementedError("installer_pin_clear")
+
+    override fun installerLockCover(pages: List<String>): LockState = throw NotImplementedError("installer_lock_cover")
+
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = throw NotImplementedError("link_connect")
 
     override fun linkPair(pin: String): String = throw NotImplementedError("link_pair")
@@ -367,6 +379,12 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun linkRetryNow(): Unit = throw NotImplementedError("link_retry_now")
 
     override fun linkSetUrl(url: String): Unit = throw NotImplementedError("link_set_url")
+
+    override fun modeResolve(platform: String, chosen: String): ModeChoice = throw NotImplementedError("mode_resolve")
+
+    override fun modeSetPinned(mode: String): Unit = throw NotImplementedError("mode_set_pinned")
+
+    override fun modePinned(): String = throw NotImplementedError("mode_pinned")
 
     override fun monitorRead(afterId: Long): MonitorBatch = throw NotImplementedError("monitor_read")
 
@@ -705,6 +723,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun onboardingGettingStartedJson(): String = throw NotImplementedError("onboarding_getting_started_json")
 
     override fun aboutJson(): String = throw NotImplementedError("about_json")
+
+    override fun modeManifest(): ModeManifest = throw NotImplementedError("mode_manifest")
 
     override fun filterTypeNames(): List<FilterTypeName> = throw NotImplementedError("filter_type_names")
 

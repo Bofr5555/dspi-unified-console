@@ -2903,6 +2903,72 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func inaccessibleDevices()  -> UInt32
     
     /**
+     * Lock the open device again on this console (the end of an unlock).
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
+     * `no_pin` when no PIN is set (nothing to lock).
+     */
+    func installerLock() throws  -> LockState
+    
+    /**
+     * Choose what the open device's lock covers: screen ids of the mode
+     * manifest (`front` and the rest; empty: the PIN locks nothing). Kept in
+     * the device's limits profile (`lockedPages`), which is created when
+     * there is none; the device is held to the profile as
+     * [`DspiCore::limits_apply_profile`] does.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * an id the manifest does not have; [`DspiError::InstallerLock`]
+     * `pin_required`; [`DspiError::Io`] as `limits_apply_profile`.
+     */
+    func installerLockCover(pages: [String]) throws  -> LockState
+    
+    /**
+     * The open device's installer lock on this console: whether a PIN is
+     * set, whether the locked-user state is on, what it covers and allows,
+     * the refusal window after wrong PINs, the installer's note and contact.
+     * With no device: no PIN, nothing locked.
+     */
+    func installerLockState()  -> LockState
+    
+    /**
+     * Remove the open device's installer PIN (and its recovery code) on
+     * this console: no lock, no prompt, as before a PIN was set. Nothing
+     * to do with none set.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
+     * `pin_required` while the console is not unlocked; [`DspiError::Io`]
+     * when a file could not be removed.
+     */
+    func installerPinClear() throws  -> LockState
+    
+    /**
+     * Set (or change) the open device's installer PIN on this console, and
+     * make a new recovery code, shown this once. The console stays unlocked
+     * for the device. Kept in the limits folder (`limits_set_dir`), else for
+     * this core's lifetime. Slow (two hashes): off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
+     * for a PIN of fewer than 4 or more than 64 characters, or with a space
+     * at either end; [`DspiError::InstallerLock`] `pin_required` while a PIN
+     * is set and the console is not unlocked; [`DspiError::Io`] when a file
+     * could not be written; [`DspiError::Unsupported`] on the web.
+     */
+    func installerPinSet(pin: String) throws  -> InstallerPin
+    
+    /**
+     * Unlock the open device on this console for this session with the
+     * installer's PIN or the recovery code. With no PIN set, nothing is
+     * asked and nothing changes. Slow (a PIN hash): off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InstallerLock`] `wrong_pin`, or `wait` while the refusal
+     * window after repeated wrong PINs is open (nothing checked;
+     * [`LockState::retry_after_ms`]).
+     */
+    func installerUnlock(pin: String) throws  -> LockState
+    
+    /**
      * Whether a device is open: `conn.is_some()`. It stays true after an
      * unplug until the connection is closed (by C1b's hotplug poll, C7's
      * notification handling, or [`DspiCore::disconnect`]); a call on it
@@ -3098,6 +3164,33 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * hold 10 000 ms after the last new clip. Never fails.
      */
     func meterBallistics()  -> MeterBallistics
+    
+    /**
+     * The mode the hub pins for the open device ("" for none).
+     */
+    func modePinned()  -> String
+    
+    /**
+     * The mode to show on a client of `platform` (`phone`, `desktop` or
+     * `web`) when the user has chosen `chosen` (a mode id, or "" for none):
+     * the locked-user state first, then a mode the hub pins, then the
+     * user's choice, then the platform's default. With no PIN set nothing
+     * asks for one. Never writes; no I/O beyond the PIN's files, read once.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a platform class or a mode
+     * the manifest does not have.
+     */
+    func modeResolve(platform: String, chosen: String) throws  -> ModeChoice
+    
+    /**
+     * Pin the open device's mode, as the hub says for this console's role
+     * (P1HL's `mode.pinned`): a mode id or `locked_user`; "" clears it. It
+     * overrides the user's choice until cleared or another device opens.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for an id the manifest does not have.
+     */
+    func modeSetPinned(mode: String) throws 
     
     /**
      * Forget every monitor line. Ids carry on from where they were, so a
@@ -7337,6 +7430,105 @@ open func inaccessibleDevices() -> UInt32  {
 }
     
     /**
+     * Lock the open device again on this console (the end of an unlock).
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
+     * `no_pin` when no PIN is set (nothing to lock).
+     */
+open func installerLock()throws  -> LockState  {
+    return try  FfiConverterTypeLockState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installer_lock(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Choose what the open device's lock covers: screen ids of the mode
+     * manifest (`front` and the rest; empty: the PIN locks nothing). Kept in
+     * the device's limits profile (`lockedPages`), which is created when
+     * there is none; the device is held to the profile as
+     * [`DspiCore::limits_apply_profile`] does.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * an id the manifest does not have; [`DspiError::InstallerLock`]
+     * `pin_required`; [`DspiError::Io`] as `limits_apply_profile`.
+     */
+open func installerLockCover(pages: [String])throws  -> LockState  {
+    return try  FfiConverterTypeLockState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installer_lock_cover(self.uniffiClonePointer(),
+        FfiConverterSequenceString.lower(pages),$0
+    )
+})
+}
+    
+    /**
+     * The open device's installer lock on this console: whether a PIN is
+     * set, whether the locked-user state is on, what it covers and allows,
+     * the refusal window after wrong PINs, the installer's note and contact.
+     * With no device: no PIN, nothing locked.
+     */
+open func installerLockState() -> LockState  {
+    return try!  FfiConverterTypeLockState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_installer_lock_state(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Remove the open device's installer PIN (and its recovery code) on
+     * this console: no lock, no prompt, as before a PIN was set. Nothing
+     * to do with none set.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
+     * `pin_required` while the console is not unlocked; [`DspiError::Io`]
+     * when a file could not be removed.
+     */
+open func installerPinClear()throws  -> LockState  {
+    return try  FfiConverterTypeLockState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installer_pin_clear(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Set (or change) the open device's installer PIN on this console, and
+     * make a new recovery code, shown this once. The console stays unlocked
+     * for the device. Kept in the limits folder (`limits_set_dir`), else for
+     * this core's lifetime. Slow (two hashes): off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
+     * for a PIN of fewer than 4 or more than 64 characters, or with a space
+     * at either end; [`DspiError::InstallerLock`] `pin_required` while a PIN
+     * is set and the console is not unlocked; [`DspiError::Io`] when a file
+     * could not be written; [`DspiError::Unsupported`] on the web.
+     */
+open func installerPinSet(pin: String)throws  -> InstallerPin  {
+    return try  FfiConverterTypeInstallerPin_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installer_pin_set(self.uniffiClonePointer(),
+        FfiConverterString.lower(pin),$0
+    )
+})
+}
+    
+    /**
+     * Unlock the open device on this console for this session with the
+     * installer's PIN or the recovery code. With no PIN set, nothing is
+     * asked and nothing changes. Slow (a PIN hash): off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InstallerLock`] `wrong_pin`, or `wait` while the refusal
+     * window after repeated wrong PINs is open (nothing checked;
+     * [`LockState::retry_after_ms`]).
+     */
+open func installerUnlock(pin: String)throws  -> LockState  {
+    return try  FfiConverterTypeLockState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_installer_unlock(self.uniffiClonePointer(),
+        FfiConverterString.lower(pin),$0
+    )
+})
+}
+    
+    /**
      * Whether a device is open: `conn.is_some()`. It stays true after an
      * unplug until the connection is closed (by C1b's hotplug poll, C7's
      * notification handling, or [`DspiCore::disconnect`]); a call on it
@@ -7625,6 +7817,50 @@ open func meterBallistics() -> MeterBallistics  {
     uniffi_dspi_core_fn_method_dspicore_meter_ballistics(self.uniffiClonePointer(),$0
     )
 })
+}
+    
+    /**
+     * The mode the hub pins for the open device ("" for none).
+     */
+open func modePinned() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_mode_pinned(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The mode to show on a client of `platform` (`phone`, `desktop` or
+     * `web`) when the user has chosen `chosen` (a mode id, or "" for none):
+     * the locked-user state first, then a mode the hub pins, then the
+     * user's choice, then the platform's default. With no PIN set nothing
+     * asks for one. Never writes; no I/O beyond the PIN's files, read once.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a platform class or a mode
+     * the manifest does not have.
+     */
+open func modeResolve(platform: String, chosen: String)throws  -> ModeChoice  {
+    return try  FfiConverterTypeModeChoice_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_mode_resolve(self.uniffiClonePointer(),
+        FfiConverterString.lower(platform),
+        FfiConverterString.lower(chosen),$0
+    )
+})
+}
+    
+    /**
+     * Pin the open device's mode, as the hub says for this console's role
+     * (P1HL's `mode.pinned`): a mode id or `locked_user`; "" clears it. It
+     * overrides the user's choice until cleared or another device opens.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for an id the manifest does not have.
+     */
+open func modeSetPinned(mode: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_mode_set_pinned(self.uniffiClonePointer(),
+        FfiConverterString.lower(mode),$0
+    )
+}
 }
     
     /**
@@ -21993,6 +22229,95 @@ public func FfiConverterTypeInputLockStatus_lower(_ value: InputLockStatus) -> R
 
 
 /**
+ * A PIN just set ([`DspiCore::installer_pin_set`]).
+ */
+public struct InstallerPin {
+    /**
+     * The recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`): shown this once, for
+     * the hand-over note, never kept but as a hash (notice
+     * `installer_lock.recovery`).
+     */
+    public var recoveryCode: String
+    /**
+     * The lock now.
+     */
+    public var state: LockState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`): shown this once, for
+         * the hand-over note, never kept but as a hash (notice
+         * `installer_lock.recovery`).
+         */recoveryCode: String, 
+        /**
+         * The lock now.
+         */state: LockState) {
+        self.recoveryCode = recoveryCode
+        self.state = state
+    }
+}
+
+#if compiler(>=6)
+extension InstallerPin: Sendable {}
+#endif
+
+
+extension InstallerPin: Equatable, Hashable {
+    public static func ==(lhs: InstallerPin, rhs: InstallerPin) -> Bool {
+        if lhs.recoveryCode != rhs.recoveryCode {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(recoveryCode)
+        hasher.combine(state)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeInstallerPin: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> InstallerPin {
+        return
+            try InstallerPin(
+                recoveryCode: FfiConverterString.read(from: &buf), 
+                state: FfiConverterTypeLockState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: InstallerPin, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.recoveryCode, into: &buf)
+        FfiConverterTypeLockState.write(value.state, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallerPin_lift(_ buf: RustBuffer) throws -> InstallerPin {
+    return try FfiConverterTypeInstallerPin.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeInstallerPin_lower(_ value: InstallerPin) -> RustBuffer {
+    return FfiConverterTypeInstallerPin.lower(value)
+}
+
+
+/**
  * State of the LG Sound Sync link (optical volume from an LG TV).
  */
 public struct LgStatus {
@@ -23461,6 +23786,272 @@ public func FfiConverterTypeLinkStatus_lower(_ value: LinkStatus) -> RustBuffer 
 
 
 /**
+ * The open device's installer lock on this console
+ * ([`DspiCore::installer_lock_state`]).
+ */
+public struct LockState {
+    /**
+     * The open device's serial ("" with none).
+     */
+    public var serial: String
+    /**
+     * An installer PIN is set for it on this console (an unreadable PIN
+     * file counts as set; `detail` says why).
+     */
+    public var pinSet: Bool
+    /**
+     * A PIN is set and this console is unlocked for the device, this
+     * session.
+     */
+    public var unlocked: Bool
+    /**
+     * The locked-user state: a PIN is set, the lock covers something and
+     * this console is not unlocked. Only `allowed_writes` pass.
+     */
+    public var locked: Bool
+    /**
+     * The Installer pages, the profile and the PIN may change without a
+     * PIN prompt: no PIN is set, or the console is unlocked.
+     */
+    public var installerOpen: Bool
+    /**
+     * What the lock covers: the mode manifest's screen ids (the profile's
+     * `lockedPages`); empty: a PIN alone locks nothing.
+     */
+    public var covers: [String]
+    /**
+     * The writes the locked-user state allows (registry paths).
+     */
+    public var allowedWrites: [String]
+    /**
+     * Wrong PINs since the last good one.
+     */
+    public var wrongTries: UInt32
+    /**
+     * How long until the next attempt is allowed, ms; 0: now.
+     */
+    public var retryAfterMs: UInt64
+    /**
+     * Unlocked with the recovery code: the installer should set a new PIN.
+     */
+    public var recovered: Bool
+    /**
+     * The installer's note, for the locked front page.
+     */
+    public var note: String
+    /**
+     * How to reach the installer.
+     */
+    public var contact: String
+    /**
+     * The notice the unlock dialog shows in one line: the lock is on this
+     * console, the DSPi itself is open (`installer_lock.scope`).
+     */
+    public var scopeNoticeKey: String
+    /**
+     * Why the PIN's file is unreadable, when it is.
+     */
+    public var detail: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The open device's serial ("" with none).
+         */serial: String, 
+        /**
+         * An installer PIN is set for it on this console (an unreadable PIN
+         * file counts as set; `detail` says why).
+         */pinSet: Bool, 
+        /**
+         * A PIN is set and this console is unlocked for the device, this
+         * session.
+         */unlocked: Bool, 
+        /**
+         * The locked-user state: a PIN is set, the lock covers something and
+         * this console is not unlocked. Only `allowed_writes` pass.
+         */locked: Bool, 
+        /**
+         * The Installer pages, the profile and the PIN may change without a
+         * PIN prompt: no PIN is set, or the console is unlocked.
+         */installerOpen: Bool, 
+        /**
+         * What the lock covers: the mode manifest's screen ids (the profile's
+         * `lockedPages`); empty: a PIN alone locks nothing.
+         */covers: [String], 
+        /**
+         * The writes the locked-user state allows (registry paths).
+         */allowedWrites: [String], 
+        /**
+         * Wrong PINs since the last good one.
+         */wrongTries: UInt32, 
+        /**
+         * How long until the next attempt is allowed, ms; 0: now.
+         */retryAfterMs: UInt64, 
+        /**
+         * Unlocked with the recovery code: the installer should set a new PIN.
+         */recovered: Bool, 
+        /**
+         * The installer's note, for the locked front page.
+         */note: String, 
+        /**
+         * How to reach the installer.
+         */contact: String, 
+        /**
+         * The notice the unlock dialog shows in one line: the lock is on this
+         * console, the DSPi itself is open (`installer_lock.scope`).
+         */scopeNoticeKey: String, 
+        /**
+         * Why the PIN's file is unreadable, when it is.
+         */detail: String) {
+        self.serial = serial
+        self.pinSet = pinSet
+        self.unlocked = unlocked
+        self.locked = locked
+        self.installerOpen = installerOpen
+        self.covers = covers
+        self.allowedWrites = allowedWrites
+        self.wrongTries = wrongTries
+        self.retryAfterMs = retryAfterMs
+        self.recovered = recovered
+        self.note = note
+        self.contact = contact
+        self.scopeNoticeKey = scopeNoticeKey
+        self.detail = detail
+    }
+}
+
+#if compiler(>=6)
+extension LockState: Sendable {}
+#endif
+
+
+extension LockState: Equatable, Hashable {
+    public static func ==(lhs: LockState, rhs: LockState) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.pinSet != rhs.pinSet {
+            return false
+        }
+        if lhs.unlocked != rhs.unlocked {
+            return false
+        }
+        if lhs.locked != rhs.locked {
+            return false
+        }
+        if lhs.installerOpen != rhs.installerOpen {
+            return false
+        }
+        if lhs.covers != rhs.covers {
+            return false
+        }
+        if lhs.allowedWrites != rhs.allowedWrites {
+            return false
+        }
+        if lhs.wrongTries != rhs.wrongTries {
+            return false
+        }
+        if lhs.retryAfterMs != rhs.retryAfterMs {
+            return false
+        }
+        if lhs.recovered != rhs.recovered {
+            return false
+        }
+        if lhs.note != rhs.note {
+            return false
+        }
+        if lhs.contact != rhs.contact {
+            return false
+        }
+        if lhs.scopeNoticeKey != rhs.scopeNoticeKey {
+            return false
+        }
+        if lhs.detail != rhs.detail {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(pinSet)
+        hasher.combine(unlocked)
+        hasher.combine(locked)
+        hasher.combine(installerOpen)
+        hasher.combine(covers)
+        hasher.combine(allowedWrites)
+        hasher.combine(wrongTries)
+        hasher.combine(retryAfterMs)
+        hasher.combine(recovered)
+        hasher.combine(note)
+        hasher.combine(contact)
+        hasher.combine(scopeNoticeKey)
+        hasher.combine(detail)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLockState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LockState {
+        return
+            try LockState(
+                serial: FfiConverterString.read(from: &buf), 
+                pinSet: FfiConverterBool.read(from: &buf), 
+                unlocked: FfiConverterBool.read(from: &buf), 
+                locked: FfiConverterBool.read(from: &buf), 
+                installerOpen: FfiConverterBool.read(from: &buf), 
+                covers: FfiConverterSequenceString.read(from: &buf), 
+                allowedWrites: FfiConverterSequenceString.read(from: &buf), 
+                wrongTries: FfiConverterUInt32.read(from: &buf), 
+                retryAfterMs: FfiConverterUInt64.read(from: &buf), 
+                recovered: FfiConverterBool.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf), 
+                contact: FfiConverterString.read(from: &buf), 
+                scopeNoticeKey: FfiConverterString.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LockState, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterBool.write(value.pinSet, into: &buf)
+        FfiConverterBool.write(value.unlocked, into: &buf)
+        FfiConverterBool.write(value.locked, into: &buf)
+        FfiConverterBool.write(value.installerOpen, into: &buf)
+        FfiConverterSequenceString.write(value.covers, into: &buf)
+        FfiConverterSequenceString.write(value.allowedWrites, into: &buf)
+        FfiConverterUInt32.write(value.wrongTries, into: &buf)
+        FfiConverterUInt64.write(value.retryAfterMs, into: &buf)
+        FfiConverterBool.write(value.recovered, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+        FfiConverterString.write(value.contact, into: &buf)
+        FfiConverterString.write(value.scopeNoticeKey, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLockState_lift(_ buf: RustBuffer) throws -> LockState {
+    return try FfiConverterTypeLockState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLockState_lower(_ value: LockState) -> RustBuffer {
+    return FfiConverterTypeLockState.lower(value)
+}
+
+
+/**
  * The meter ballistics' timing (`DspiCore::set_meter_ballistics`).
  */
 public struct MeterBallistics {
@@ -23560,6 +24151,820 @@ public func FfiConverterTypeMeterBallistics_lift(_ buf: RustBuffer) throws -> Me
 #endif
 public func FfiConverterTypeMeterBallistics_lower(_ value: MeterBallistics) -> RustBuffer {
     return FfiConverterTypeMeterBallistics.lower(value)
+}
+
+
+/**
+ * The mode a client shows, and why ([`DspiCore::mode_resolve`]).
+ */
+public struct ModeChoice {
+    /**
+     * The mode to show: `simple`, `advanced`, `installer` or `locked_user`.
+     */
+    public var mode: String
+    /**
+     * Why: `locked` (the locked-user state), `pinned` (the hub's),
+     * `chosen` (the user's) or `default` (the platform class's).
+     */
+    public var reason: String
+    /**
+     * The user may switch modes (no lock, no pinned mode).
+     */
+    public var switchable: Bool
+    /**
+     * The mode asked for (chosen or pinned) is the Installer, an installer
+     * PIN is set and the console is not unlocked: ask for the PIN
+     * (`installer_unlock`); `mode` is the default meanwhile. Never with no
+     * PIN set.
+     */
+    public var needsPin: Bool
+    /**
+     * The modes the switch offers with no PIN prompt.
+     */
+    public var openModes: [String]
+    /**
+     * The screens of `mode` for this platform class, in order.
+     */
+    public var screens: [String]
+    /**
+     * The first of them.
+     */
+    public var firstScreen: String
+    /**
+     * The operations `mode` offers on this platform class.
+     */
+    public var operations: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The mode to show: `simple`, `advanced`, `installer` or `locked_user`.
+         */mode: String, 
+        /**
+         * Why: `locked` (the locked-user state), `pinned` (the hub's),
+         * `chosen` (the user's) or `default` (the platform class's).
+         */reason: String, 
+        /**
+         * The user may switch modes (no lock, no pinned mode).
+         */switchable: Bool, 
+        /**
+         * The mode asked for (chosen or pinned) is the Installer, an installer
+         * PIN is set and the console is not unlocked: ask for the PIN
+         * (`installer_unlock`); `mode` is the default meanwhile. Never with no
+         * PIN set.
+         */needsPin: Bool, 
+        /**
+         * The modes the switch offers with no PIN prompt.
+         */openModes: [String], 
+        /**
+         * The screens of `mode` for this platform class, in order.
+         */screens: [String], 
+        /**
+         * The first of them.
+         */firstScreen: String, 
+        /**
+         * The operations `mode` offers on this platform class.
+         */operations: [String]) {
+        self.mode = mode
+        self.reason = reason
+        self.switchable = switchable
+        self.needsPin = needsPin
+        self.openModes = openModes
+        self.screens = screens
+        self.firstScreen = firstScreen
+        self.operations = operations
+    }
+}
+
+#if compiler(>=6)
+extension ModeChoice: Sendable {}
+#endif
+
+
+extension ModeChoice: Equatable, Hashable {
+    public static func ==(lhs: ModeChoice, rhs: ModeChoice) -> Bool {
+        if lhs.mode != rhs.mode {
+            return false
+        }
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.switchable != rhs.switchable {
+            return false
+        }
+        if lhs.needsPin != rhs.needsPin {
+            return false
+        }
+        if lhs.openModes != rhs.openModes {
+            return false
+        }
+        if lhs.screens != rhs.screens {
+            return false
+        }
+        if lhs.firstScreen != rhs.firstScreen {
+            return false
+        }
+        if lhs.operations != rhs.operations {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(mode)
+        hasher.combine(reason)
+        hasher.combine(switchable)
+        hasher.combine(needsPin)
+        hasher.combine(openModes)
+        hasher.combine(screens)
+        hasher.combine(firstScreen)
+        hasher.combine(operations)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeModeChoice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ModeChoice {
+        return
+            try ModeChoice(
+                mode: FfiConverterString.read(from: &buf), 
+                reason: FfiConverterString.read(from: &buf), 
+                switchable: FfiConverterBool.read(from: &buf), 
+                needsPin: FfiConverterBool.read(from: &buf), 
+                openModes: FfiConverterSequenceString.read(from: &buf), 
+                screens: FfiConverterSequenceString.read(from: &buf), 
+                firstScreen: FfiConverterString.read(from: &buf), 
+                operations: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ModeChoice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.mode, into: &buf)
+        FfiConverterString.write(value.reason, into: &buf)
+        FfiConverterBool.write(value.switchable, into: &buf)
+        FfiConverterBool.write(value.needsPin, into: &buf)
+        FfiConverterSequenceString.write(value.openModes, into: &buf)
+        FfiConverterSequenceString.write(value.screens, into: &buf)
+        FfiConverterString.write(value.firstScreen, into: &buf)
+        FfiConverterSequenceString.write(value.operations, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModeChoice_lift(_ buf: RustBuffer) throws -> ModeChoice {
+    return try FfiConverterTypeModeChoice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModeChoice_lower(_ value: ModeChoice) -> RustBuffer {
+    return FfiConverterTypeModeChoice.lower(value)
+}
+
+
+/**
+ * A mode: Simple, Advanced or Installer.
+ */
+public struct ModeEntry {
+    /**
+     * `simple`, `advanced` or `installer`.
+     */
+    public var id: String
+    /**
+     * The mode's name in the UI.
+     */
+    public var label: String
+    /**
+     * The platform classes that open in this mode by default.
+     */
+    public var defaultOn: [String]
+    /**
+     * Behind the installer's PIN when one is set (and only then).
+     */
+    public var needsPinWhenSet: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `simple`, `advanced` or `installer`.
+         */id: String, 
+        /**
+         * The mode's name in the UI.
+         */label: String, 
+        /**
+         * The platform classes that open in this mode by default.
+         */defaultOn: [String], 
+        /**
+         * Behind the installer's PIN when one is set (and only then).
+         */needsPinWhenSet: Bool) {
+        self.id = id
+        self.label = label
+        self.defaultOn = defaultOn
+        self.needsPinWhenSet = needsPinWhenSet
+    }
+}
+
+#if compiler(>=6)
+extension ModeEntry: Sendable {}
+#endif
+
+
+extension ModeEntry: Equatable, Hashable {
+    public static func ==(lhs: ModeEntry, rhs: ModeEntry) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        if lhs.defaultOn != rhs.defaultOn {
+            return false
+        }
+        if lhs.needsPinWhenSet != rhs.needsPinWhenSet {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(label)
+        hasher.combine(defaultOn)
+        hasher.combine(needsPinWhenSet)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeModeEntry: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ModeEntry {
+        return
+            try ModeEntry(
+                id: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                defaultOn: FfiConverterSequenceString.read(from: &buf), 
+                needsPinWhenSet: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ModeEntry, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterSequenceString.write(value.defaultOn, into: &buf)
+        FfiConverterBool.write(value.needsPinWhenSet, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModeEntry_lift(_ buf: RustBuffer) throws -> ModeEntry {
+    return try FfiConverterTypeModeEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModeEntry_lower(_ value: ModeEntry) -> RustBuffer {
+    return FfiConverterTypeModeEntry.lower(value)
+}
+
+
+/**
+ * The mode manifest (`assets/modes/modes.json`).
+ */
+public struct ModeManifest {
+    /**
+     * The format, 1.
+     */
+    public var version: UInt32
+    /**
+     * The platform classes: `phone`, `desktop`, `web`.
+     */
+    public var platforms: [String]
+    /**
+     * The modes, in the order a switch lists them.
+     */
+    public var modes: [ModeEntry]
+    /**
+     * The locked-user state.
+     */
+    public var lockedUser: ModesLockedUser
+    /**
+     * The screens, in order.
+     */
+    public var screens: [ModeScreen]
+    /**
+     * The operations that depend on the mode.
+     */
+    public var operations: [ModeOperation]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The format, 1.
+         */version: UInt32, 
+        /**
+         * The platform classes: `phone`, `desktop`, `web`.
+         */platforms: [String], 
+        /**
+         * The modes, in the order a switch lists them.
+         */modes: [ModeEntry], 
+        /**
+         * The locked-user state.
+         */lockedUser: ModesLockedUser, 
+        /**
+         * The screens, in order.
+         */screens: [ModeScreen], 
+        /**
+         * The operations that depend on the mode.
+         */operations: [ModeOperation]) {
+        self.version = version
+        self.platforms = platforms
+        self.modes = modes
+        self.lockedUser = lockedUser
+        self.screens = screens
+        self.operations = operations
+    }
+}
+
+#if compiler(>=6)
+extension ModeManifest: Sendable {}
+#endif
+
+
+extension ModeManifest: Equatable, Hashable {
+    public static func ==(lhs: ModeManifest, rhs: ModeManifest) -> Bool {
+        if lhs.version != rhs.version {
+            return false
+        }
+        if lhs.platforms != rhs.platforms {
+            return false
+        }
+        if lhs.modes != rhs.modes {
+            return false
+        }
+        if lhs.lockedUser != rhs.lockedUser {
+            return false
+        }
+        if lhs.screens != rhs.screens {
+            return false
+        }
+        if lhs.operations != rhs.operations {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(version)
+        hasher.combine(platforms)
+        hasher.combine(modes)
+        hasher.combine(lockedUser)
+        hasher.combine(screens)
+        hasher.combine(operations)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeModeManifest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ModeManifest {
+        return
+            try ModeManifest(
+                version: FfiConverterUInt32.read(from: &buf), 
+                platforms: FfiConverterSequenceString.read(from: &buf), 
+                modes: FfiConverterSequenceTypeModeEntry.read(from: &buf), 
+                lockedUser: FfiConverterTypeModesLockedUser.read(from: &buf), 
+                screens: FfiConverterSequenceTypeModeScreen.read(from: &buf), 
+                operations: FfiConverterSequenceTypeModeOperation.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ModeManifest, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.version, into: &buf)
+        FfiConverterSequenceString.write(value.platforms, into: &buf)
+        FfiConverterSequenceTypeModeEntry.write(value.modes, into: &buf)
+        FfiConverterTypeModesLockedUser.write(value.lockedUser, into: &buf)
+        FfiConverterSequenceTypeModeScreen.write(value.screens, into: &buf)
+        FfiConverterSequenceTypeModeOperation.write(value.operations, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModeManifest_lift(_ buf: RustBuffer) throws -> ModeManifest {
+    return try FfiConverterTypeModeManifest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModeManifest_lower(_ value: ModeManifest) -> RustBuffer {
+    return FfiConverterTypeModeManifest.lower(value)
+}
+
+
+/**
+ * An operation and the modes that offer it.
+ */
+public struct ModeOperation {
+    /**
+     * Stable id (`firmware`, `factory_reset`, ...).
+     */
+    public var id: String
+    /**
+     * The title in the UI.
+     */
+    public var title: String
+    /**
+     * The modes that offer it.
+     */
+    public var modes: [String]
+    /**
+     * The platform classes it is for; empty: all.
+     */
+    public var platforms: [String]
+    /**
+     * Behind its usual confirmation.
+     */
+    public var confirm: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Stable id (`firmware`, `factory_reset`, ...).
+         */id: String, 
+        /**
+         * The title in the UI.
+         */title: String, 
+        /**
+         * The modes that offer it.
+         */modes: [String], 
+        /**
+         * The platform classes it is for; empty: all.
+         */platforms: [String], 
+        /**
+         * Behind its usual confirmation.
+         */confirm: Bool) {
+        self.id = id
+        self.title = title
+        self.modes = modes
+        self.platforms = platforms
+        self.confirm = confirm
+    }
+}
+
+#if compiler(>=6)
+extension ModeOperation: Sendable {}
+#endif
+
+
+extension ModeOperation: Equatable, Hashable {
+    public static func ==(lhs: ModeOperation, rhs: ModeOperation) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.modes != rhs.modes {
+            return false
+        }
+        if lhs.platforms != rhs.platforms {
+            return false
+        }
+        if lhs.confirm != rhs.confirm {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(title)
+        hasher.combine(modes)
+        hasher.combine(platforms)
+        hasher.combine(confirm)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeModeOperation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ModeOperation {
+        return
+            try ModeOperation(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                modes: FfiConverterSequenceString.read(from: &buf), 
+                platforms: FfiConverterSequenceString.read(from: &buf), 
+                confirm: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ModeOperation, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterSequenceString.write(value.modes, into: &buf)
+        FfiConverterSequenceString.write(value.platforms, into: &buf)
+        FfiConverterBool.write(value.confirm, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModeOperation_lift(_ buf: RustBuffer) throws -> ModeOperation {
+    return try FfiConverterTypeModeOperation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModeOperation_lower(_ value: ModeOperation) -> RustBuffer {
+    return FfiConverterTypeModeOperation.lower(value)
+}
+
+
+/**
+ * A screen and the modes that show it.
+ */
+public struct ModeScreen {
+    /**
+     * Stable id (`front`, `system`, ...; a lock's cover names these).
+     */
+    public var id: String
+    /**
+     * The title in the UI.
+     */
+    public var title: String
+    /**
+     * The modes (and `locked_user`) that show it.
+     */
+    public var modes: [String]
+    /**
+     * The modes it is the first screen of.
+     */
+    public var firstIn: [String]
+    /**
+     * `pro` for a Pro-layer screen a client shows once it has built it
+     * (else the next screen of the list stands in); "" otherwise.
+     */
+    public var layer: String
+    /**
+     * The platform classes it is for; empty: all.
+     */
+    public var platforms: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Stable id (`front`, `system`, ...; a lock's cover names these).
+         */id: String, 
+        /**
+         * The title in the UI.
+         */title: String, 
+        /**
+         * The modes (and `locked_user`) that show it.
+         */modes: [String], 
+        /**
+         * The modes it is the first screen of.
+         */firstIn: [String], 
+        /**
+         * `pro` for a Pro-layer screen a client shows once it has built it
+         * (else the next screen of the list stands in); "" otherwise.
+         */layer: String, 
+        /**
+         * The platform classes it is for; empty: all.
+         */platforms: [String]) {
+        self.id = id
+        self.title = title
+        self.modes = modes
+        self.firstIn = firstIn
+        self.layer = layer
+        self.platforms = platforms
+    }
+}
+
+#if compiler(>=6)
+extension ModeScreen: Sendable {}
+#endif
+
+
+extension ModeScreen: Equatable, Hashable {
+    public static func ==(lhs: ModeScreen, rhs: ModeScreen) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.title != rhs.title {
+            return false
+        }
+        if lhs.modes != rhs.modes {
+            return false
+        }
+        if lhs.firstIn != rhs.firstIn {
+            return false
+        }
+        if lhs.layer != rhs.layer {
+            return false
+        }
+        if lhs.platforms != rhs.platforms {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(title)
+        hasher.combine(modes)
+        hasher.combine(firstIn)
+        hasher.combine(layer)
+        hasher.combine(platforms)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeModeScreen: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ModeScreen {
+        return
+            try ModeScreen(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                modes: FfiConverterSequenceString.read(from: &buf), 
+                firstIn: FfiConverterSequenceString.read(from: &buf), 
+                layer: FfiConverterString.read(from: &buf), 
+                platforms: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ModeScreen, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterSequenceString.write(value.modes, into: &buf)
+        FfiConverterSequenceString.write(value.firstIn, into: &buf)
+        FfiConverterString.write(value.layer, into: &buf)
+        FfiConverterSequenceString.write(value.platforms, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModeScreen_lift(_ buf: RustBuffer) throws -> ModeScreen {
+    return try FfiConverterTypeModeScreen.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModeScreen_lower(_ value: ModeScreen) -> RustBuffer {
+    return FfiConverterTypeModeScreen.lower(value)
+}
+
+
+/**
+ * What the locked-user state shows and allows.
+ */
+public struct ModesLockedUser {
+    /**
+     * The state's name in the UI (a badge).
+     */
+    public var label: String
+    /**
+     * Its screens, in order.
+     */
+    public var screens: [String]
+    /**
+     * What its Settings shows (`about`, `installer_note`).
+     */
+    public var settings: [String]
+    /**
+     * The writes it allows, by registry path (the core enforces them).
+     */
+    public var writes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The state's name in the UI (a badge).
+         */label: String, 
+        /**
+         * Its screens, in order.
+         */screens: [String], 
+        /**
+         * What its Settings shows (`about`, `installer_note`).
+         */settings: [String], 
+        /**
+         * The writes it allows, by registry path (the core enforces them).
+         */writes: [String]) {
+        self.label = label
+        self.screens = screens
+        self.settings = settings
+        self.writes = writes
+    }
+}
+
+#if compiler(>=6)
+extension ModesLockedUser: Sendable {}
+#endif
+
+
+extension ModesLockedUser: Equatable, Hashable {
+    public static func ==(lhs: ModesLockedUser, rhs: ModesLockedUser) -> Bool {
+        if lhs.label != rhs.label {
+            return false
+        }
+        if lhs.screens != rhs.screens {
+            return false
+        }
+        if lhs.settings != rhs.settings {
+            return false
+        }
+        if lhs.writes != rhs.writes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(label)
+        hasher.combine(screens)
+        hasher.combine(settings)
+        hasher.combine(writes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeModesLockedUser: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ModesLockedUser {
+        return
+            try ModesLockedUser(
+                label: FfiConverterString.read(from: &buf), 
+                screens: FfiConverterSequenceString.read(from: &buf), 
+                settings: FfiConverterSequenceString.read(from: &buf), 
+                writes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ModesLockedUser, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterSequenceString.write(value.screens, into: &buf)
+        FfiConverterSequenceString.write(value.settings, into: &buf)
+        FfiConverterSequenceString.write(value.writes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModesLockedUser_lift(_ buf: RustBuffer) throws -> ModesLockedUser {
+    return try FfiConverterTypeModesLockedUser.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeModesLockedUser_lower(_ value: ModesLockedUser) -> RustBuffer {
+    return FfiConverterTypeModesLockedUser.lower(value)
 }
 
 
@@ -29762,6 +31167,21 @@ public enum DspiError: Swift.Error {
          * What and why, for a log or a detail line.
          */msg: String
     )
+    /**
+     * The installer's lock on this console (`crate::limits`, S4): nothing was
+     * sent. `code`: `locked` (the locked-user state allows only volume, mute
+     * and preset), `pin_required` (an installer action needs the unlock),
+     * `wrong_pin`, `wait` (too many wrong PINs: the refusal window is open;
+     * `installer_lock_state().retry_after_ms` says how long) or `no_pin`.
+     */
+    case InstallerLock(
+        /**
+         * Why, as above.
+         */code: String, 
+        /**
+         * What and why, for a log or a detail line.
+         */msg: String
+    )
 }
 
 
@@ -29815,6 +31235,10 @@ public struct FfiConverterTypeDspiError: FfiConverterRustBuffer {
             msg: try FfiConverterString.read(from: &buf)
             )
         case 15: return .LimitExceeded(
+            code: try FfiConverterString.read(from: &buf), 
+            msg: try FfiConverterString.read(from: &buf)
+            )
+        case 16: return .InstallerLock(
             code: try FfiConverterString.read(from: &buf), 
             msg: try FfiConverterString.read(from: &buf)
             )
@@ -29901,6 +31325,12 @@ public struct FfiConverterTypeDspiError: FfiConverterRustBuffer {
         
         case let .LimitExceeded(code,msg):
             writeInt(&buf, Int32(15))
+            FfiConverterString.write(code, into: &buf)
+            FfiConverterString.write(msg, into: &buf)
+            
+        
+        case let .InstallerLock(code,msg):
+            writeInt(&buf, Int32(16))
             FfiConverterString.write(code, into: &buf)
             FfiConverterString.write(msg, into: &buf)
             
@@ -32540,6 +33970,81 @@ fileprivate struct FfiConverterSequenceTypeLinkPhaseText: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeModeEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [ModeEntry]
+
+    public static func write(_ value: [ModeEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeModeEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ModeEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ModeEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeModeEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeModeOperation: FfiConverterRustBuffer {
+    typealias SwiftType = [ModeOperation]
+
+    public static func write(_ value: [ModeOperation], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeModeOperation.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ModeOperation] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ModeOperation]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeModeOperation.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeModeScreen: FfiConverterRustBuffer {
+    typealias SwiftType = [ModeScreen]
+
+    public static func write(_ value: [ModeScreen], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeModeScreen.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ModeScreen] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ModeScreen]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeModeScreen.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMonitorEntry: FfiConverterRustBuffer {
     typealias SwiftType = [MonitorEntry]
 
@@ -33367,6 +34872,16 @@ public func linkWsUrl(host: String, port: UInt16, path: String) -> String  {
 })
 }
 /**
+ * The mode manifest: modes, the locked-user state, screens and operations,
+ * with their titles and defaults. No I/O.
+ */
+public func modeManifest() -> ModeManifest  {
+    return try!  FfiConverterTypeModeManifest_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_mode_manifest($0
+    )
+})
+}
+/**
  * What to tell the user about `error`.
  */
 public func noticeFor(error: DspiError) -> Notice  {
@@ -33607,6 +35122,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_ws_url() != 18495) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_mode_manifest() != 33369) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_notice_for() != 13472) {
@@ -34113,6 +35631,24 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_installer_lock() != 14116) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_installer_lock_cover() != 6684) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_installer_lock_state() != 5498) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_installer_pin_clear() != 32631) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_installer_pin_set() != 15081) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_installer_unlock() != 2337) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_is_connected() != 6017) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -34165,6 +35701,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_meter_ballistics() != 35146) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_mode_pinned() != 48561) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_mode_resolve() != 51986) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_mode_set_pinned() != 36173) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_monitor_clear() != 47062) {

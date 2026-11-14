@@ -5968,6 +5968,73 @@ uint32_t dspi_limits_clear(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_limits_status(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * The mode manifest, JSON `{ok, version, platforms, modes, lockedUser,
+ * screens, operations}` (the shape of `assets/modes/modes.json`). No handle,
+ * no I/O; 0 for a panic.
+ */
+uint32_t dspi_mode_manifest(char *buf, uint32_t len);
+
+/**
+ * The mode to show on a client of `platform` (`phone`, `desktop`, `web`)
+ * when the user chose `chosen` ("" or null for none): JSON `{ok, mode,
+ * reason, switchable, needsPin, openModes, screens, firstScreen,
+ * operations}`, or a failure (`invalid` for a name the manifest lacks).
+ */
+uint32_t dspi_mode_resolve(struct FfiCore *core,
+                           const char *platform,
+                           const char *chosen,
+                           char *buf,
+                           uint32_t len);
+
+/**
+ * Pin the open device's mode as the hub says (`""` or null clears it):
+ * JSON `{ok}` or a failure.
+ */
+uint32_t dspi_mode_set_pinned(struct FfiCore *core, const char *mode, char *buf, uint32_t len);
+
+/**
+ * The open device's installer lock: JSON `{ok, serial, pinSet, unlocked,
+ * locked, installerOpen, covers, allowedWrites, wrongTries, retryAfterMs,
+ * recovered, note, contact, scopeNoticeKey, detail}`.
+ */
+uint32_t dspi_installer_lock_state(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Unlock the open device on this console with the PIN or the recovery
+ * code: the lock state's JSON, or a failure (`installer_lock`: `wrong_pin`,
+ * `wait`). Slow: off the UI thread.
+ */
+uint32_t dspi_installer_unlock(struct FfiCore *core, const char *pin, char *buf, uint32_t len);
+
+/**
+ * Lock the open device again on this console: the lock state's JSON, or a
+ * failure (`installer_lock` `no_pin`).
+ */
+uint32_t dspi_installer_lock(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Set the open device's installer PIN: JSON `{ok, recoveryCode, state}`
+ * (the code shown this once), or a failure (`invalid`, `installer_lock`
+ * `pin_required`, `io`). Slow: off the UI thread.
+ */
+uint32_t dspi_installer_pin_set(struct FfiCore *core, const char *pin, char *buf, uint32_t len);
+
+/**
+ * Remove the open device's installer PIN: the lock state's JSON, or a
+ * failure.
+ */
+uint32_t dspi_installer_pin_clear(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Choose what the open device's lock covers: `pages_json` a JSON array of
+ * the manifest's screen ids. The lock state's JSON, or a failure.
+ */
+uint32_t dspi_installer_lock_cover(struct FfiCore *core,
+                                   const char *pages_json,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
  * Open the `.dspipreset` document `doc` with no device, as the demo device
  * seeded from it; `file_name` is what the client shows ("File: <name>"; null
  * reads as empty). Replaces any open device; nothing touches USB. JSON

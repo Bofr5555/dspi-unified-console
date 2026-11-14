@@ -1908,6 +1908,8 @@ fn write_error(e: &DspiError) -> String {
         DspiError::ConfirmationRequired { msg, .. } => msg.clone(),
         // -- WP P1LM --
         DspiError::LimitExceeded { msg, .. } => msg.clone(),
+        // -- WP P1LK --
+        DspiError::InstallerLock { msg, .. } => msg.clone(),
         other => format!("The device could not be written: {other}."),
     }
 }

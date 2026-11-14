@@ -1,7 +1,11 @@
 # UI modes: Simple, Advanced, Installer
 
-*Design, WP UIM1, 2026-11-12. Owner decisions of 2026-11-12. Nothing here is built yet except the Android Home order
-(section 8) and the web's slice order (`core-merge/PLAN-CLIENTS.md` section 5.5); everything else is a design for later WPs.*
+*Design, WP UIM1, 2026-11-12. Owner decisions of 2026-11-12 and 2026-11-13 (OD-P1c to OD-P1e). **Built in the core
+(WP P1LK, 2026-11-14):** the mode manifest (section 6), the installer PIN, the locked-user state and its write check
+(section 3), the hub-pinned mode's place in the resolution (section 4) and the defaults (section 5); calls and rules in
+[`integrator/installer-lock.md`](integrator/installer-lock.md). Also built: the Android Home order (section 8) and the
+web's slice order (`core-merge/PLAN-CLIENTS.md` section 5.5). The clients' mode switches, PIN dialogs and locked-user
+views are their P1 WPs.*
 
 Every client is one app per platform. The app has three **modes**, which decide what the user sees, and a **locked-user
 state**, which an installer can put a device in. A mode never changes the device and never grants a permission: what may be
@@ -44,13 +48,19 @@ Notes:
 ## 3. The locked-user state and the installer PIN
 
 - An installer sets a PIN for a device in the Installer mode. Setting it is what makes a lock possible; the installer then
-  chooses what the lock covers (as part of the device's limits profile, a later core WP).
+  chooses what the lock covers (the limits profile's `lockedPages`, by the manifest's screen ids). *Built (P1LK):*
+  `installer_pin_set` (which also shows a recovery code once), `installer_lock_cover`.
 - A console enters the locked-user state by itself when the device it opens carries a lock and the console is not unlocked
   for that device, or when the hub says so (section 4). It is not chosen from the mode switch.
 - Leaving it is the Installer unlock: the PIN. Unlocking lasts for the session, or until the user locks again; the status
   rail (or the phone's top bar) says "Installer" while it lasts.
 - **The PIN is a UI lock, not a security boundary.** Whoever has the device on USB can change it with any tool. The unlock
-  dialog says so in one line. Where real access control is needed, it is the hub's roles (section 4).
+  dialog says so in one line: the lock is on this console, the DSPi itself is open (OD-P1d; notice
+  `installer_lock.scope`). Where real access control is needed, it is the hub's roles (section 4).
+- *Built (P1LK):* in the locked-user state the core refuses every write but volume, mute and preset (within the limits)
+  before anything is sent (`installer_lock.locked`). Repeated wrong PINs open a refusal window kept as the next allowed
+  time, never a sleep. A forgotten PIN (OD-P1c): on a hub an Admin clears it; off a hub the recovery code, then
+  deleting the device's profile folder as the documented last resort; no "Remove lock" button.
 - Removing the PIN (in the Installer mode) removes the lock; the device is back to section 1.
 
 ## 4. Fleet: accounts and roles on the hub, the web console as the UI
@@ -95,7 +105,28 @@ The list of screens per mode, their order, their titles and which ones need the 
 CG10's onboarding text does (`assets/onboarding/`). A client renders the list it is given; it does not decide it. Adding a
 screen later is a data change plus one view per client. Wording comes from the same file, so the clients use the same words.
 
-A **proposed** shape (not built; a core WP turns it into an asset, a typed record and an export on each binding):
+*Built (P1LK):* `assets/modes/modes.json`, the typed `ModeManifest` (`mode_manifest()` on UniFFI, `dspi_mode_manifest`
+in C, `modeManifest` on the web), and `mode_resolve(platform, chosen)`. The built shape uses camelCase keys, as every
+binding record does, adds `platforms`, the locked-user state's `label` and `writes`, `first_in` for `locked_user`, and
+the `diagnostics` and `installer_pin` operations:
+
+```json
+{
+  "version": 1,
+  "platforms": ["phone", "desktop", "web"],
+  "modes": [
+    { "id": "simple", "label": "Simple", "defaultOn": ["phone"], "needsPinWhenSet": false },
+    { "id": "advanced", "label": "Advanced", "defaultOn": ["desktop", "web"], "needsPinWhenSet": false },
+    { "id": "installer", "label": "Installer", "defaultOn": [], "needsPinWhenSet": true }
+  ],
+  "lockedUser": { "label": "Locked", "screens": ["front"], "settings": ["about", "installer_note"],
+                  "writes": ["vol.master", "vol.user", "vol.mute", "out.mute", "preset.load"] },
+  "screens": [ { "id": "front", "title": "Home", "modes": ["simple", "locked_user"], "firstIn": ["simple", "locked_user"] }, "..." ],
+  "operations": [ { "id": "firmware", "title": "Firmware Update", "modes": ["installer"], "platforms": ["desktop"], "confirm": true }, "..." ]
+}
+```
+
+The proposal it was built from:
 
 ```json
 {
@@ -152,7 +183,8 @@ The other clients follow when their Pro work or polish pass reaches the screen.
 
 ## 9. Open questions
 
-The owner has not yet decided these:
+Questions 1 and 2 were decided on 2026-11-13: 1 by OD-P1c (above, section 3) and 2 by the roles Admin, Control and Viewer
+only, with a venue phone as Control within the hub's limits or as Viewer (OD-P1i). The text below is kept as asked.
 
 1. **The PIN's home and recovery.** Proposed: stored with the device's limits profile on the hub and locally, hashed; unlock
    lasts the session. Open: is a recovery path needed (a hub admin clearing a device's PIN), and how is a forgotten PIN

@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "platforms": ["phone", "desktop", "web"],
+  "modes": [
+    {"id": "simple", "label": "Simple", "defaultOn": ["phone"], "needsPinWhenSet": false},
+    {"id": "advanced", "label": "Advanced", "defaultOn": ["desktop", "web"], "needsPinWhenSet": false},
+    {"id": "installer", "label": "Installer", "defaultOn": [], "needsPinWhenSet": true}
+  ],
+  "lockedUser": {
+    "label": "Locked",
+    "screens": ["front"],
+    "settings": ["about", "installer_note"],
+    "writes": ["vol.master", "vol.user", "vol.mute", "out.mute", "preset.load"]
+  },
+  "screens": [
+    {"id": "front", "title": "Home", "modes": ["simple", "locked_user"], "firstIn": ["simple", "locked_user"]},
+    {"id": "system", "title": "System", "modes": ["advanced", "installer"], "firstIn": ["advanced", "installer"], "layer": "pro"},
+    {"id": "channels", "title": "Channels and EQ", "modes": ["simple", "advanced", "installer"]},
+    {"id": "routing", "title": "Routing", "modes": ["advanced", "installer"]},
+    {"id": "dynamics", "title": "Dynamics and effects", "modes": ["simple", "advanced", "installer"]},
+    {"id": "hardware", "title": "Hardware", "modes": ["advanced", "installer"]},
+    {"id": "history", "title": "History", "modes": ["advanced", "installer"], "layer": "pro"},
+    {"id": "limits", "title": "Limits and power-on", "modes": ["installer"], "layer": "pro"}
+  ],
+  "operations": [
+    {"id": "diagnostics", "title": "Save Diagnostics", "modes": ["advanced", "installer"]},
+    {"id": "factory_reset", "title": "Factory Reset", "modes": ["simple", "advanced", "installer"], "confirm": true},
+    {"id": "firmware", "title": "Firmware Update", "modes": ["installer"], "platforms": ["desktop"], "confirm": true},
+    {"id": "core_voltage", "title": "Core Voltage", "modes": ["installer"], "confirm": true},
+    {"id": "installer_pin", "title": "Installer PIN", "modes": ["installer"]}
+  ]
+}

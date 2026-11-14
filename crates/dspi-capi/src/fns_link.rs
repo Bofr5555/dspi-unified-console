@@ -189,6 +189,8 @@ pub(crate) mod link {
             DspiError::ConfirmationRequired { .. } => "confirmation_required",
             // -- WP P1LM --
             DspiError::LimitExceeded { .. } => "limit_exceeded",
+            // -- WP P1LK --
+            DspiError::InstallerLock { .. } => "installer_lock",
         }
     }
 
