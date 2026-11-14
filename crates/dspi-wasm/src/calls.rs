@@ -37,6 +37,8 @@ use crate::presets;
 use crate::outputs;
 // -- WP P1SN --
 use crate::snapshots;
+// -- WP P1LM --
+use crate::limits;
 // -- WP WB4a --
 use crate::usb;
 use crate::write;
@@ -81,6 +83,8 @@ impl From<DspiError> for CallError {
             DspiError::Link { .. } => "link",
             // -- WP P1TK --
             DspiError::ConfirmationRequired { .. } => "confirmation_required",
+            // -- WP P1LM --
+            DspiError::LimitExceeded { .. } => "limit_exceeded",
             _ => "internal",
         };
         // -- WP P1NT --
@@ -346,6 +350,11 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "abDiff" => crate::ab::diff(&core),
         "abKeep" => crate::ab::keep(&core, params(req.params)?),
         "abState" => Ok(crate::ab::state(&core)),
+        // -- WP P1LM -- limits profiles as documents (no files on the web)
+        "limitsApply" => limits::apply(&core, params(req.params)?),
+        "limitsProfile" => Ok(limits::profile(&core)),
+        "limitsClear" => limits::clear(&core),
+        "limitsStatus" => Ok(limits::status(&core)),
         // -- WP P1OF -- offline editing and templates (src/offline.rs)
         "documentOpen" => document_open(h, &core, params(req.params)?),
         "documentInfo" => crate::offline::info(&core),

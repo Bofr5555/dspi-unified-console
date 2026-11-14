@@ -131,6 +131,8 @@ mod snapshot;
 pub mod offline;
 // -- WP P1AB --
 mod ab;
+// -- WP P1LM --
+pub mod limits;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -213,6 +215,8 @@ pub use snapshot::{SnapshotInfo, SnapshotRecall};
 pub use offline::{template_list, template_text};
 // -- WP P1AB --
 pub use ab::{AbCompare, AbSide};
+// -- WP P1LM --
+pub use limits::{LimitsApply, LimitsStatus};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -355,6 +359,9 @@ pub(crate) struct Inner {
     // -- WP P1TK --
     /// Confirmation tokens and whether gated calls need one (`confirm.rs`).
     pub(crate) confirm: confirm::Confirm,
+    // -- WP P1LM --
+    /// The open device's limits profile (`limits.rs`).
+    pub(crate) limits: limits::Limits,
 }
 
 /// An open device.
@@ -700,6 +707,7 @@ impl Inner {
             history_seen: None,
             dragging: None,                       // -- WP QTGAP1 --
             confirm: confirm::Confirm::default(), // -- WP P1TK --
+            limits: limits::Limits::default(),    // -- WP P1LM --
         }
     }
 

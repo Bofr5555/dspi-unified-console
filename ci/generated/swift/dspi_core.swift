@@ -2824,6 +2824,53 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func isConnected()  -> Bool
     
     /**
+     * Set the open device's profile from `document` (a limits document, or
+     * any document carrying `meta.limits`), keep it (files when a folder is
+     * named), and hold the device to it at once: a value outside a narrowed
+     * limit is written to the limit (journalled, one undo group), and
+     * reported. The profile's serial is the open device's.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for a document with no readable
+     * profile; [`DspiError::Io`] when the file could not be written
+     * (nothing changed).
+     */
+    func limitsApplyProfile(document: String) throws  -> LimitsApply
+    
+    /**
+     * Remove the open device's profile (its files too): the device runs as
+     * it does with none. The PIN, if one is set, stays (P1LK).
+     *
+     * Errors: [`DspiError::Disconnected`] with no device; [`DspiError::Io`]
+     * when a file could not be removed.
+     */
+    func limitsClear() throws 
+    
+    /**
+     * The open device's profile as a document (`meta.kind = "limits"`;
+     * never a PIN), "" when it has none.
+     */
+    func limitsProfileDocument()  -> String
+    
+    /**
+     * Keep limits profiles (and their PIN hashes) in files under `dir`, the
+     * app's own data folder, one subfolder per device serial (created when
+     * first written; "" forgets the folder). A profile set before a folder
+     * was named is kept for this core's lifetime only.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files: use
+     * [`DspiCore::limits_apply_profile`] with the document the page keeps).
+     */
+    func limitsSetDir(dir: String) throws 
+    
+    /**
+     * The open device's limits: whether a profile is in force, how it was
+     * found, the standing notice when its file is unreadable, and what the
+     * last clamp held. Reads the profile's file once per device.
+     */
+    func limitsStatus()  -> LimitsStatus
+    
+    /**
      * Close the Link session (normal close) and drop a device bound to it,
      * and stop any reconnecting. This is how an app leaves a hub, giving back
      * its session slot (`disconnect` keeps the session, for another
@@ -7059,6 +7106,78 @@ open func inaccessibleDevices() -> UInt32  {
 open func isConnected() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_is_connected(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Set the open device's profile from `document` (a limits document, or
+     * any document carrying `meta.limits`), keep it (files when a folder is
+     * named), and hold the device to it at once: a value outside a narrowed
+     * limit is written to the limit (journalled, one undo group), and
+     * reported. The profile's serial is the open device's.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for a document with no readable
+     * profile; [`DspiError::Io`] when the file could not be written
+     * (nothing changed).
+     */
+open func limitsApplyProfile(document: String)throws  -> LimitsApply  {
+    return try  FfiConverterTypeLimitsApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_limits_apply_profile(self.uniffiClonePointer(),
+        FfiConverterString.lower(document),$0
+    )
+})
+}
+    
+    /**
+     * Remove the open device's profile (its files too): the device runs as
+     * it does with none. The PIN, if one is set, stays (P1LK).
+     *
+     * Errors: [`DspiError::Disconnected`] with no device; [`DspiError::Io`]
+     * when a file could not be removed.
+     */
+open func limitsClear()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_limits_clear(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * The open device's profile as a document (`meta.kind = "limits"`;
+     * never a PIN), "" when it has none.
+     */
+open func limitsProfileDocument() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_limits_profile_document(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Keep limits profiles (and their PIN hashes) in files under `dir`, the
+     * app's own data folder, one subfolder per device serial (created when
+     * first written; "" forgets the folder). A profile set before a folder
+     * was named is kept for this core's lifetime only.
+     *
+     * Errors: [`DspiError::Unsupported`] on the web (no files: use
+     * [`DspiCore::limits_apply_profile`] with the document the page keeps).
+     */
+open func limitsSetDir(dir: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_limits_set_dir(self.uniffiClonePointer(),
+        FfiConverterString.lower(dir),$0
+    )
+}
+}
+    
+    /**
+     * The open device's limits: whether a profile is in force, how it was
+     * found, the standing notice when its file is unreadable, and what the
+     * last clamp held. Reads the profile's file once per device.
+     */
+open func limitsStatus() -> LimitsStatus  {
+    return try!  FfiConverterTypeLimitsStatus_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_limits_status(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -21531,6 +21650,256 @@ public func FfiConverterTypeLgStatus_lower(_ value: LgStatus) -> RustBuffer {
 
 
 /**
+ * What applying a profile did ([`DspiCore::limits_apply_profile`]).
+ */
+public struct LimitsApply {
+    /**
+     * The report: "Held to the limits profile: ..." when the device was
+     * outside a narrowed limit, nothing otherwise.
+     */
+    public var lines: [String]
+    /**
+     * What moved, one row each.
+     */
+    public var held: [String]
+    /**
+     * Writes that failed, and why (the profile is kept all the same).
+     */
+    public var notes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The report: "Held to the limits profile: ..." when the device was
+         * outside a narrowed limit, nothing otherwise.
+         */lines: [String], 
+        /**
+         * What moved, one row each.
+         */held: [String], 
+        /**
+         * Writes that failed, and why (the profile is kept all the same).
+         */notes: [String]) {
+        self.lines = lines
+        self.held = held
+        self.notes = notes
+    }
+}
+
+#if compiler(>=6)
+extension LimitsApply: Sendable {}
+#endif
+
+
+extension LimitsApply: Equatable, Hashable {
+    public static func ==(lhs: LimitsApply, rhs: LimitsApply) -> Bool {
+        if lhs.lines != rhs.lines {
+            return false
+        }
+        if lhs.held != rhs.held {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(lines)
+        hasher.combine(held)
+        hasher.combine(notes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLimitsApply: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LimitsApply {
+        return
+            try LimitsApply(
+                lines: FfiConverterSequenceString.read(from: &buf), 
+                held: FfiConverterSequenceString.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LimitsApply, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.lines, into: &buf)
+        FfiConverterSequenceString.write(value.held, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLimitsApply_lift(_ buf: RustBuffer) throws -> LimitsApply {
+    return try FfiConverterTypeLimitsApply.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLimitsApply_lower(_ value: LimitsApply) -> RustBuffer {
+    return FfiConverterTypeLimitsApply.lower(value)
+}
+
+
+/**
+ * The open device's limits ([`DspiCore::limits_status`]).
+ */
+public struct LimitsStatus {
+    /**
+     * A profile is in force for the open device.
+     */
+    public var active: Bool
+    /**
+     * The open device's serial ("" with none).
+     */
+    public var serial: String
+    /**
+     * How the profile was found: `none`, `ok`, `fell_back` (the profile
+     * file is missing or unreadable; the last good copy is in force) or
+     * `unreadable` (no good copy: running unlimited).
+     */
+    public var state: String
+    /**
+     * The standing notice's key (`limits.fell_back`, `limits.unreadable`;
+     * `crate::notice_text`), "" when there is none to show.
+     */
+    public var noticeKey: String
+    /**
+     * Why, for the notice's detail line.
+     */
+    public var detail: String
+    /**
+     * What the last clamp held (an import, a recall, a profile applied, a
+     * slot load), one row each, in the import's words.
+     */
+    public var lastHeld: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * A profile is in force for the open device.
+         */active: Bool, 
+        /**
+         * The open device's serial ("" with none).
+         */serial: String, 
+        /**
+         * How the profile was found: `none`, `ok`, `fell_back` (the profile
+         * file is missing or unreadable; the last good copy is in force) or
+         * `unreadable` (no good copy: running unlimited).
+         */state: String, 
+        /**
+         * The standing notice's key (`limits.fell_back`, `limits.unreadable`;
+         * `crate::notice_text`), "" when there is none to show.
+         */noticeKey: String, 
+        /**
+         * Why, for the notice's detail line.
+         */detail: String, 
+        /**
+         * What the last clamp held (an import, a recall, a profile applied, a
+         * slot load), one row each, in the import's words.
+         */lastHeld: [String]) {
+        self.active = active
+        self.serial = serial
+        self.state = state
+        self.noticeKey = noticeKey
+        self.detail = detail
+        self.lastHeld = lastHeld
+    }
+}
+
+#if compiler(>=6)
+extension LimitsStatus: Sendable {}
+#endif
+
+
+extension LimitsStatus: Equatable, Hashable {
+    public static func ==(lhs: LimitsStatus, rhs: LimitsStatus) -> Bool {
+        if lhs.active != rhs.active {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.noticeKey != rhs.noticeKey {
+            return false
+        }
+        if lhs.detail != rhs.detail {
+            return false
+        }
+        if lhs.lastHeld != rhs.lastHeld {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(active)
+        hasher.combine(serial)
+        hasher.combine(state)
+        hasher.combine(noticeKey)
+        hasher.combine(detail)
+        hasher.combine(lastHeld)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLimitsStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LimitsStatus {
+        return
+            try LimitsStatus(
+                active: FfiConverterBool.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf), 
+                noticeKey: FfiConverterString.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf), 
+                lastHeld: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LimitsStatus, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.active, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterString.write(value.noticeKey, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
+        FfiConverterSequenceString.write(value.lastHeld, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLimitsStatus_lift(_ buf: RustBuffer) throws -> LimitsStatus {
+    return try FfiConverterTypeLimitsStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLimitsStatus_lower(_ value: LimitsStatus) -> RustBuffer {
+    return FfiConverterTypeLimitsStatus.lower(value)
+}
+
+
+/**
  * A hub address.
  */
 public struct LinkAddress {
@@ -28924,6 +29293,19 @@ public enum DspiError: Swift.Error {
          * Which operation and why, for a log or a detail line.
          */msg: String
     )
+    /**
+     * The write would cross a limit of the device's limits profile
+     * (`crate::limits`): nothing was sent. `code`: `out_gain`, `eq_boost`,
+     * `highpass`, `delay`, `limiter` or `master_volume`.
+     */
+    case LimitExceeded(
+        /**
+         * Which limit, as above.
+         */code: String, 
+        /**
+         * What and why, for a log or a detail line.
+         */msg: String
+    )
 }
 
 
@@ -28973,6 +29355,10 @@ public struct FfiConverterTypeDspiError: FfiConverterRustBuffer {
             msg: try FfiConverterString.read(from: &buf)
             )
         case 14: return .ConfirmationRequired(
+            code: try FfiConverterString.read(from: &buf), 
+            msg: try FfiConverterString.read(from: &buf)
+            )
+        case 15: return .LimitExceeded(
             code: try FfiConverterString.read(from: &buf), 
             msg: try FfiConverterString.read(from: &buf)
             )
@@ -29053,6 +29439,12 @@ public struct FfiConverterTypeDspiError: FfiConverterRustBuffer {
         
         case let .ConfirmationRequired(code,msg):
             writeInt(&buf, Int32(14))
+            FfiConverterString.write(code, into: &buf)
+            FfiConverterString.write(msg, into: &buf)
+            
+        
+        case let .LimitExceeded(code,msg):
+            writeInt(&buf, Int32(15))
             FfiConverterString.write(code, into: &buf)
             FfiConverterString.write(msg, into: &buf)
             
@@ -33107,6 +33499,21 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_is_connected() != 6017) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_limits_apply_profile() != 36615) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_limits_clear() != 26237) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_limits_profile_document() != 12621) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_limits_set_dir() != 22784) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_limits_status() != 25922) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_close() != 64450) {

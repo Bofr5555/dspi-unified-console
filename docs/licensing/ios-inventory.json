@@ -1,5 +1,5 @@
 {
- "repo_commit": "27cc37bf",
+ "repo_commit": "0204c717",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -236,6 +236,11 @@
     "license": "MIT OR Apache-2.0",
     "version": "0.11.0"
    },
+   "sha2": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.11.1"
+   },
    "socket2": {
     "first_party": false,
     "license": "MIT OR Apache-2.0",
@@ -321,6 +326,7 @@
    "crates/dspi-core/src/info.rs",
    "crates/dspi-core/src/journal.rs",
    "crates/dspi-core/src/lib.rs",
+   "crates/dspi-core/src/limits.rs",
    "crates/dspi-core/src/link.rs",
    "crates/dspi-core/src/link_text.rs",
    "crates/dspi-core/src/monitor.rs",
@@ -379,6 +385,7 @@
    "crates/dspi-session/src/filterfile.rs",
    "crates/dspi-session/src/history.rs",
    "crates/dspi-session/src/lib.rs",
+   "crates/dspi-session/src/limits.rs",
    "crates/dspi-session/src/link_words.rs",
    "crates/dspi-session/src/meters.rs",
    "crates/dspi-session/src/notify.rs",
@@ -439,7 +446,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "27cc37bff45fab4ecfc05f07f0b15247ec8278bb",
+  "commit": "0204c7173a0ba136d1b950a3c60eb32057025aad",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",

@@ -322,6 +322,16 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun history(n: Long): List<HistoryEntry> = throw NotImplementedError("history")
 
+    override fun limitsSetDir(dir: String): Unit = throw NotImplementedError("limits_set_dir")
+
+    override fun limitsProfileDocument(): String = throw NotImplementedError("limits_profile_document")
+
+    override fun limitsApplyProfile(document: String): LimitsApply = throw NotImplementedError("limits_apply_profile")
+
+    override fun limitsClear(): Unit = throw NotImplementedError("limits_clear")
+
+    override fun limitsStatus(): LimitsStatus = throw NotImplementedError("limits_status")
+
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = throw NotImplementedError("link_connect")
 
     override fun linkPair(pin: String): String = throw NotImplementedError("link_pair")

@@ -895,6 +895,8 @@ impl BandChange {
 /// `attach_probed` read no longer describes the device after a write, so
 /// `fetch_all` must read it again (`fresh_image`).
 fn send(inner: &mut Inner, path: &str, indices: &[u8], value: Value) -> Result<()> {
+    // -- WP P1LM -- a limits profile refuses a value past a limit, unsent
+    crate::limits::check_write(inner, path, indices, &value)?;
     let mut w = inner.writable_conn()?;
     w.conn().fresh_image = false;
     w.session()?.send(path, indices, value)?;
@@ -912,6 +914,8 @@ fn send_raw(inner: &mut Inner, opcode: u8, value: u16, data: &[u8]) -> Result<()
 /// read the band back first, and the caller holds all of it. The Linkwitz
 /// `qp` sidecar goes only with a Linkwitz Transform.
 fn send_band(inner: &mut Inner, ch: u8, band: u8, p: &FilterParams) -> Result<()> {
+    // -- WP P1LM -- a limits profile refuses a boost or a lost high-pass
+    crate::limits::check_band(inner, ch, band, p)?;
     let filter_type = FilterType::from_raw(p.filter_type);
     let packet = EqParamPacket {
         channel: ch,

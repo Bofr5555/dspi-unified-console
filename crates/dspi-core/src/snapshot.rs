@@ -727,6 +727,9 @@ impl DspiCore {
                     let mut s = before.clone();
                     state::decode_bulk(&image, &mut s)
                         .map_err(|_| invalid("this snapshot's image is damaged"))?;
+                    // -- WP P1LM -- held to the device's limits profile, and said so
+                    let held = crate::limits::hold(inner, &mut s);
+                    notes.extend(crate::limits::held_line(&held));
                     inner.state = s;
                     if let Err(e) = crate::connect::apply_all_params_locked(inner) {
                         // -- WP BULKFIX -- as the import does

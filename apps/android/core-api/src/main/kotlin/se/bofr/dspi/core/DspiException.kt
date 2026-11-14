@@ -76,6 +76,13 @@ sealed class DspiException(message: String) : Exception(message) {
      */
     class ConfirmationRequired(val code: String, val msg: String) : DspiException(msg)
 
+    /**
+     * WP P1LM: the write would cross a limit of the device's limits profile;
+     * nothing was sent. [code]: `out_gain`, `eq_boost`, `highpass`, `delay`,
+     * `limiter` or `master_volume`.
+     */
+    class LimitExceeded(val code: String, val msg: String) : DspiException(msg)
+
     companion object {
         /** macOS `DeviceLock.lockedMessage`. */
         const val LOCKED_MESSAGE = "Another console is applying changes"

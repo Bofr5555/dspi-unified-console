@@ -67,6 +67,8 @@ pub mod presets;
 pub mod snapshots;
 // -- WP P1AB --
 pub mod ab;
+// -- WP P1LM --
+pub mod limits;
 // -- WP SW3 --
 pub mod system;
 // -- WP WB4a --

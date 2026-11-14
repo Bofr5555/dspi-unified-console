@@ -12,6 +12,7 @@ import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.I2cConfig
+import se.bofr.dspi.core.LimitsApply
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.SnapshotRecall
 import se.bofr.dspi.core.UartConfig
@@ -726,6 +727,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.abKeep(side)
     }
 
+    // -- WP P1LM -- applying a profile holds the device to it (writes)
+    override fun limitsApplyProfile(document: String): LimitsApply {
+        guard("limitsApplyProfile")
+        return inner.limitsApplyProfile(document)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -900,7 +907,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "abStart",
             "abStartDocuments",
             "abToggle",
-            "abKeep"
+            "abKeep",
+            // -- WP P1LM --
+            "limitsApplyProfile"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1154,7 +1163,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "requireConfirmation",
             "confirmationRequired",
             "enterBootloaderConfirmed",
-            "flashConfirmed"
+            "flashConfirmed",
+            // -- WP P1LM -- the profile's files and status: the app's files,
+            // nothing sent
+            "limitsSetDir",
+            "limitsProfileDocument",
+            "limitsClear",
+            "limitsStatus"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

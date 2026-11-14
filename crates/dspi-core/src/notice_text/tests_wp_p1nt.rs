@@ -59,6 +59,11 @@ fn samples() -> Vec<DspiError> {
             code: "missing".into(),
             msg: msg(),
         },
+        // -- WP P1LM --
+        DspiError::LimitExceeded {
+            code: "out_gain".into(),
+            msg: msg(),
+        },
     ]
 }
 
@@ -123,6 +128,16 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                     ]
                     .contains(&n.key.as_str()),
                     "{}: not a key files.rs answers",
+                    n.key
+                );
+                continue;
+            }
+            // -- WP P1LM -- the limits profile's standing notices: no error
+            // variant makes these keys, `limits` does
+            if family == "limits" {
+                assert!(
+                    crate::limits::NOTICE_KEYS.contains(&n.key.as_str()),
+                    "{}: not a key limits.rs answers",
                     n.key
                 );
                 continue;

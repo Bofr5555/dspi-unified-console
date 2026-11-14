@@ -1390,6 +1390,11 @@ const char *typed,
 const char *token,
 char *buf,
 uint32_t len);
+uint32_t dspi_limits_set_dir(struct FfiCore *core, const char *dir, char *buf, uint32_t len);
+uint32_t dspi_limits_profile_document(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_limits_apply_profile(struct FfiCore *core, const char *doc, char *buf, uint32_t len);
+uint32_t dspi_limits_clear(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_limits_status(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_open_document(struct FfiCore *core,
 const char *doc,
 const char *file_name,

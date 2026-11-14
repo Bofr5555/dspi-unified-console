@@ -491,6 +491,25 @@ impl Inner {
         update: impl FnOnce(&mut DspState),
     ) -> Result<()> {
         let value = value_for(path, v)?;
+        // -- WP P1LM -- a limits profile judges the limiters the write leaves
+        if crate::limits::judges_fx(self, path) {
+            let mut next = self.state.clone();
+            update(&mut next);
+            crate::limits::check_limiters(self, &next)?;
+            return self.fx_send(path, indices, value, move |s| *s = next);
+        }
+        self.fx_send(path, indices, value, update)
+    }
+
+    // -- WP P1LM -- (split from `fx_write`)
+    /// Send `value` and patch the mirror with `update`.
+    fn fx_send(
+        &mut self,
+        path: &'static str,
+        indices: &[u8],
+        value: Value,
+        update: impl FnOnce(&mut DspState),
+    ) -> Result<()> {
         // -- WP P0W --
         let change = self.journal_begin(path, indices)?;
         self.writable_conn()?
