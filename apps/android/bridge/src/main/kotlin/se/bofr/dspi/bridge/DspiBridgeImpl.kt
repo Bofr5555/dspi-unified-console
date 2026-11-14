@@ -25,6 +25,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import se.bofr.dspi.core.AdatOutStatus
+import se.bofr.dspi.core.AlinkSceneRecall
+import se.bofr.dspi.core.AlinkSystemAlign
+import se.bofr.dspi.core.AlinkSystemEdits
+import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.DeviceEvents
 import se.bofr.dspi.core.DspState
 import se.bofr.dspi.core.DspiConstants
@@ -46,10 +50,6 @@ import se.bofr.dspi.core.FlashStatus
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.InputLockStatus
 import se.bofr.dspi.core.LgStatus
-import se.bofr.dspi.core.AlinkSceneRecall
-import se.bofr.dspi.core.AlinkSystemAlign
-import se.bofr.dspi.core.AlinkSystemEdits
-import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.NotifyListener
 import se.bofr.dspi.core.OutputCard
 import se.bofr.dspi.core.OutputLabel

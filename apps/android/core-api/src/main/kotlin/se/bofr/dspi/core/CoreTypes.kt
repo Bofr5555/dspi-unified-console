@@ -2665,6 +2665,18 @@ data class AlinkSystemView(
      */
     val issues: List<String>,
     /**
+     * "Keep USB-direct units aligned" (Installer): the hub writes the
+     * USB-direct units' output delays again by itself when their start
+     * offsets move. Off: it says "USB-direct start offsets changed — Align
+     * again" among the issues, and `align_needed` is set.
+     */
+    val keepUsbAligned: Boolean,
+    /**
+     * The hub says an alignment is due: USB-direct start offsets moved
+     * since it last wrote them (one-click Align, Installer).
+     */
+    val alignNeeded: Boolean,
+    /**
      * The hub limits how often the status is read; this is the last view
      * again, not a fresh one.
      */
@@ -2723,6 +2735,10 @@ data class AlinkSystemEdits(
      * USB-direct units' modes (Installer).
      */
     val usbModes: List<AlinkUnitUsbMode>,
+    /**
+     * "Keep USB-direct units aligned" (Installer); none: unchanged.
+     */
+    val keepUsbAligned: Boolean?,
 )
 
 /**

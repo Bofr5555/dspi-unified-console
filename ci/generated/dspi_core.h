@@ -5844,7 +5844,8 @@ uint32_t dspi_alink_system_view(struct FfiCore *core, char *buf, uint32_t len);
 /**
  * Save the Clock-and-audio-links edits made on the view of `revision`:
  * `edits_json` is {setSystemDelay, systemDelayFrames (null: automatic),
- * rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}]}.
+ * rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}],
+ * usbModes: [{unitId, mode}], keepUsbAligned (null: unchanged)}.
  * Replies JSON {ok, revision} (the new one), or code `conflict` when the
  * installation changed on the hub meanwhile (nothing saved: reload),
  * `denied` for a role other than admin. Blocks. Returns the length

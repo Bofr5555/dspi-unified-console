@@ -35,6 +35,9 @@ use crate::journal::journal;
 use crate::records::*;
 use crate::{DspiCore, DspiError, Inner, Result, quantize_delay, quantize_gain, state};
 
+/// -- WP FIXM1 -- The device lock's reason for the master-volume save.
+const SAVE_MASTER_VOLUME_REASON: &str = "Saving master volume";
+
 /// First crossover band index on the wire (`XOVER_BAND_BASE`, 20).
 const XOVER_BASE: u8 = {
     assert!(filter::XOVER_BAND_BASE <= u8::MAX as u16);
@@ -274,24 +277,28 @@ impl DspiCore {
     }
 
     /// FLASH WRITE: store the live master volume for the independent mode
-    /// (`REQ_SAVE_MASTER_VOLUME`). Changes nothing in the mirror.
+    /// (`REQ_SAVE_MASTER_VOLUME`), under the device lock like the other
+    /// flash writes. Changes nothing in the mirror.
     ///
     /// Errors: [`DspiError::Refused`] with the device's status byte
-    /// (`PRESET_*`) when the save fails; the connection and transfer errors
-    /// of every setter.
+    /// (`PRESET_*`) when the save fails; [`DspiError::Locked`] /
+    /// [`DspiError::Denied`] (Link); the connection and transfer errors of
+    /// every setter.
     pub fn save_master_volume(&self) -> Result<()> {
-        let mut inner = self.writing()?;
-        send(&mut inner, "vol.master.save", &[], Value::Trigger)?;
-        let code = inner
-            .writable_conn()?
-            .session()?
-            .last_write_status()
-            .ok_or_else(|| DspiError::Transfer {
-                msg: "no status reply to the master-volume save".into(),
-            })?;
-        crate::error::status(code)?;
-        journal(&mut inner, "vol.master.save", &[], Value::Trigger);
-        Ok(())
+        // -- WP FIXM1 -- (review sw13 N1) the device lock, as save_preset.
+        self.with_device_lock(SAVE_MASTER_VOLUME_REASON, |inner| {
+            send(inner, "vol.master.save", &[], Value::Trigger)?;
+            let code = inner
+                .writable_conn()?
+                .session()?
+                .last_write_status()
+                .ok_or_else(|| DspiError::Transfer {
+                    msg: "no status reply to the master-volume save".into(),
+                })?;
+            crate::error::status(code)?;
+            journal(inner, "vol.master.save", &[], Value::Trigger);
+            Ok(())
+        })
     }
 
     /// User volume (what the host's volume slider drives) in dB, clamped to

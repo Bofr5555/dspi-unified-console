@@ -26,12 +26,17 @@
 //!   units with the alink that no frame could be read for are listed
 //!   ([`ScenePlan::unscheduled`]) instead of refusing the scene: it is refused
 //!   only when no unit can apply any of it.
+//! - **USB-direct units** (WP AUSB1, fixup FIXM1): one bus frame for every
+//!   phase-locked unit, taken from the most recent read, never from the
+//!   largest S (S of different units differ by their origins); the caller's
+//!   lead counts from that read and covers the writes still to come.
 //! - **Why not `UNMUTE` through the sender.** BULKFIX's guard
 //!   (`dspi_session::bulk_gain`) sits on each unit's own transport: an unmute
 //!   sent per unit passes it (the suspect outputs' gains are re-sent first, or
 //!   the op is refused), one broadcast through the sender would not.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Duration;
 
 use dspi_proto::ext::alink::{ApplyOp, ApplyRequest, SUPERFRAME_FRAMES, ctrl_msg_min_frame};
 use serde::Serialize;
@@ -133,6 +138,21 @@ pub struct UsbSeenNow {
     pub sample: u64,
     /// Samples per bus frame (48 or 96).
     pub spf: u16,
+    // -- WP FIXM1 --
+    /// When the read began, from the start of the scene's reads: the most
+    /// recent read decides the bus frame ([`usb_target`]).
+    pub read_at: Duration,
+}
+
+// -- WP FIXM1 --
+/// The USB-direct units of a scene as read, and the lead (samples) their bus
+/// frame is taken with, counted from the most recent read.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UsbNow {
+    /// The phase-locked units by serial.
+    pub units: BTreeMap<String, UsbSeenNow>,
+    /// Samples from the most recent read to the bus frame.
+    pub lead: u64,
 }
 
 /// The longest lead a bus-frame target takes: 2048 frames less the 64 that
@@ -140,10 +160,13 @@ pub struct UsbSeenNow {
 pub const USB_MAX_LEAD_FRAMES: u64 = 2048 - 64 - 64;
 
 // -- WP AUSB1 --
-/// The bus frame `lead` samples after the newest S of `usb` (rounded up to a
-/// frame boundary; the lead cut to [`USB_MAX_LEAD_FRAMES`]), and the lead used.
+/// The bus frame `lead` samples after the S of the most recent read of `usb`
+/// (rounded up to a frame boundary; the lead cut to [`USB_MAX_LEAD_FRAMES`]),
+/// and the lead used. -- WP FIXM1 -- Not the largest S: S of different units
+/// differ by their origins (multiples of 2048 frames), so only the latest read
+/// says where the bus is now; every unit shares that bus frame.
 pub fn usb_target(usb: &[UsbSeenNow], lead: u64) -> Option<(u16, u64)> {
-    let newest = usb.iter().max_by_key(|u| u.sample)?;
+    let newest = usb.iter().max_by_key(|u| u.read_at)?;
     let spf = u64::from(newest.spf);
     let lead = lead.min(USB_MAX_LEAD_FRAMES.saturating_mul(spf));
     let target = newest
@@ -320,7 +343,8 @@ pub fn plan_mixed(
 
 // -- WP AUSB1 --
 /// [`plan_mixed`] for an installation with USB-direct units: those in `usb`
-/// (phase-locked, read now) take their ops at one bus frame
+/// (phase-locked, read now) take their ops at one bus frame, `usb.lead`
+/// samples after the most recent read
 /// ([`ScenePlan::usb_frame`], [`ScenePlan::usb_ops`]); the other USB-direct
 /// units must be in `no_alink` and take theirs at once
 /// ([`ScenePlan::direct`]). The audio link's units are planned as
@@ -332,8 +356,12 @@ pub fn plan_usb(
     sender: Option<&SenderSeen>,
     lead: u64,
     no_alink: &BTreeSet<String>,
-    usb: &BTreeMap<String, UsbSeenNow>,
+    usb: &UsbNow,
 ) -> Result<ScenePlan, SceneRefused> {
+    let UsbNow {
+        units: usb,
+        lead: usb_lead,
+    } = usb;
     let mut aside = no_alink.clone();
     aside.extend(usb.keys().cloned());
     let mut plan = plan_mixed(model, scene_id, frames, sender, lead, &aside)?;
@@ -348,7 +376,7 @@ pub fn plan_usb(
         .iter()
         .filter_map(|o| usb.get(&o.serial).copied())
         .collect();
-    let (bus, lead) = usb_target(&seen, lead).ok_or(SceneRefused::NoFrame)?;
+    let (bus, lead) = usb_target(&seen, *usb_lead).ok_or(SceneRefused::NoFrame)?;
     plan.usb_frame = Some(bus);
     plan.usb_lead_samples = Some(lead);
     plan.usb_ops = usb_ops;
@@ -538,5 +566,49 @@ mod tests_wp_sw2 {
         let p = plan(&m, "evening", &frames(), None, 9600).unwrap();
         assert_eq!(p.frame, (1_000_000u64 + 9600).next_multiple_of(32));
         assert_eq!(p.lead_frames, 9600);
+    }
+
+    // -- WP FIXM1 --
+    fn seen(origin_wraps: u64, bus: u64, read_ms: u64) -> UsbSeenNow {
+        UsbSeenNow {
+            sample: (origin_wraps * 2048 + bus) * 48,
+            spf: 48,
+            read_at: Duration::from_millis(read_ms),
+        }
+    }
+
+    /// The bus frame comes from the latest read, not the largest S: a unit
+    /// whose origin lies further on reports a larger S for an older bus frame.
+    #[test]
+    fn wp_fixm1_the_bus_frame_comes_from_the_latest_read() {
+        let old_big_origin = seen(5, 100, 0);
+        let latest = seen(1, 101, 1);
+        let (bus, lead) = usb_target(&[old_big_origin, latest], 2400).unwrap();
+        assert_eq!((bus, lead), (101 + 50, 2400));
+        // The order of the units does not matter.
+        let (again, _) = usb_target(&[latest, old_big_origin], 2400).unwrap();
+        assert_eq!(again, bus);
+        // Near the wrap: still the next occurrence after the latest read.
+        let (bus, _) = usb_target(&[seen(0, 2040, 0), seen(3, 2047, 2)], 480).unwrap();
+        assert_eq!(bus, (2047 + 10) % 2048);
+        // The lead is capped.
+        let (_, lead) = usb_target(&[latest], u64::MAX).unwrap();
+        assert_eq!(lead, USB_MAX_LEAD_FRAMES * 48);
+        assert_eq!(usb_target(&[], 2400), None);
+    }
+
+    /// `plan_usb` takes the USB lead it is given, apart from the alink's.
+    #[test]
+    fn wp_fixm1_the_usb_lead_is_the_callers_own() {
+        let mut m = cinema();
+        let serial = m.units[0].serial.clone();
+        m.scenes = vec![scene(&[("all", "master_volume", 0, -2000)])];
+        let mut units = BTreeMap::new();
+        units.insert(serial, seen(2, 10, 0));
+        let usb = UsbNow { units, lead: 4800 };
+        let p = plan_usb(&m, "evening", &frames(), None, 2400, &BTreeSet::new(), &usb).unwrap();
+        assert_eq!(p.usb_lead_samples, Some(4800));
+        assert_eq!(p.usb_frame, Some(10 + 100));
+        assert_eq!(p.lead_frames, 2400);
     }
 }

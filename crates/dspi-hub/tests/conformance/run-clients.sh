@@ -19,7 +19,11 @@
 #        to ~/work/matrix/hb7 there and are built with swiftc, under the matrix's
 #        lock (~/work/matrix/lock, as ci/macvm.sh), so no xcodebuild runs beside
 #        it. The hub's port is published on the host's loopback only and reaches
-#        the guest through `ssh -R`.
+#        the guest through `ssh -R`. -- fixup FIXM1 (review sw13) -- the hub starts
+#        only once the lock is free (a `ci/macvm.sh` run holds it ~10 min, longer
+#        than the hub's default 600 s), serves for HB7_SERVE_SECS (3600 here) in
+#        case another run takes the lock first, and the client says how long it
+#        waited for it.
 #
 # Scratch and logs: ${DSPI_BUILD_CACHE:-~/.cache/dspi-build}/work/hb7-conformance/<client>/,
 # never tmpfs. Exit status: the client's (0 when every scenario passed); 3 for
@@ -51,6 +55,20 @@ if [ "$client" = swift ]; then
   grep -qw console <<<"$who" || { say "run-clients: nobody is logged in to the GUI of $host"; exit 3; }
 fi
 
+# -- fixup FIXM1 -- 0b. Wait for the matrix's lock to be free before the hub's
+# clock starts (the client's session takes it below; a lock left by a lost
+# session is stale and does not count).
+if [ "$client" = swift ]; then
+  waited=$(vm 'set -u; start=$(date +%s)
+    while [ -d ~/work/matrix/lock ]; do
+      pid=$(cat ~/work/matrix/lock/pid 2>/dev/null)
+      if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then break; fi
+      sleep 15
+    done
+    echo $(( $(date +%s) - start ))' </dev/null 2>&1) || { say "run-clients: $host: $waited"; exit 3; }
+  say "the matrix lock was free after ${waited}s"
+fi
+
 # 1. The hub's binary.
 say "building the conformance test binary"
 bin=$("$root/ci/run.sh" 'cargo test -p dspi-hub --test conformance --no-run 2>&1' |
@@ -62,7 +80,8 @@ target=$B/target/${branch//\//-}
 # 2. The hub, in its own container.
 name=hb7-serve-$client-$$
 publish=()
-if [ "$client" = swift ]; then publish=(-p 127.0.0.1::11915); fi
+serve_secs=600
+if [ "$client" = swift ]; then publish=(-p 127.0.0.1::11915); serve_secs=${HB7_SERVE_SECS:-3600}; fi
 cleanup() {
   podman rm -f "$name" >/dev/null 2>&1 || true
   if [ -n "${tunnel_pid:-}" ]; then kill "$tunnel_pid" 2>/dev/null || true; fi
@@ -70,7 +89,7 @@ cleanup() {
 trap cleanup EXIT
 podman run -d --name "$name" --userns=keep-id --user "$(id -u):$(id -g)" \
   -v "$target":/target:ro,z -v "$work/conf":/conf:z -v "$B/work/empty":/sys/bus/usb/devices:ro,z \
-  -e HB7_CONF_DIR=/conf -e TMPDIR=/conf/tmp -e HB7_BIND=0.0.0.0 -e HB7_PORT=11915 \
+  -e HB7_CONF_DIR=/conf -e TMPDIR=/conf/tmp -e HB7_BIND=0.0.0.0 -e HB7_PORT=11915 -e "HB7_SERVE_SECS=$serve_secs" \
   "${publish[@]}" "$COREMERGE" \
   "$bin" --ignored --exact serve::conformance_serve_for_other_clients --nocapture >/dev/null
 for _ in $(seq 200); do [ -s "$work/conf/hub.json" ] && break; sleep 0.1; done
@@ -111,6 +130,7 @@ else
   ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -N -R "127.0.0.1:$port:127.0.0.1:$port" "$host" &
   tunnel_pid=$!
   run=(ssh -o BatchMode=yes "$host" "set -u
+    asked=\$(date +%s)
     while ! mkdir ~/work/matrix/lock 2>/dev/null; do
       pid=\$(cat ~/work/matrix/lock/pid 2>/dev/null)
       if [ -n \"\$pid\" ] && ! kill -0 \"\$pid\" 2>/dev/null; then rm -rf ~/work/matrix/lock; continue; fi
@@ -118,6 +138,7 @@ else
     done
     echo \$\$ >~/work/matrix/lock/pid
     trap 'rm -rf ~/work/matrix/lock' EXIT
+    echo \"took ~/work/matrix/lock after \$(( \$(date +%s) - asked ))s (the hub serves ${serve_secs}s from its start)\"
     cd ~/work/matrix/hb7 && echo 'building with swiftc' &&
       xcrun swiftc -O -o conformance *.swift 2>&1 | grep -E 'error' ; test -x conformance || exit 1
     HB7_URL=ws://127.0.0.1:$port/dspi/v1 HB7_HUB_ID=$hub_id ./conformance")

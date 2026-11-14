@@ -40,7 +40,7 @@ class ReadOnlyTest {
         return listOf<Pair<String, suspend () -> Unit>>(
             // -- WP LKUI1 -- the hub's audio link installation (they throw once refused)
             "alinkSystemSave" to {
-                runCatching { b.alinkSystemSave(1, AlinkSystemEdits(false, null, emptyList(), emptyList(), emptyList())) }
+                runCatching { b.alinkSystemSave(1, AlinkSystemEdits(false, null, emptyList(), emptyList(), emptyList(), null)) }
             },
             "alinkSystemAlign" to { runCatching { b.alinkSystemAlign() } },
             "alinkSystemRecall" to { runCatching { b.alinkSystemRecall("evening") } },

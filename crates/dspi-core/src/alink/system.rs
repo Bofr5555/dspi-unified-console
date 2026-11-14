@@ -254,6 +254,15 @@ pub struct AlinkSystemView {
     pub health: String,
     /// The alignment's issues, in the hub's words.
     pub issues: Vec<String>,
+    // -- WP FIXM1 --
+    /// "Keep USB-direct units aligned" (Installer): the hub writes the
+    /// USB-direct units' output delays again by itself when their start
+    /// offsets move. Off: it says "USB-direct start offsets changed — Align
+    /// again" among the issues, and `align_needed` is set.
+    pub keep_usb_aligned: bool,
+    /// The hub says an alignment is due: USB-direct start offsets moved
+    /// since it last wrote them (one-click Align, Installer).
+    pub align_needed: bool,
     /// The hub limits how often the status is read; this is the last view
     /// again, not a fresh one.
     pub stale: bool,
@@ -297,6 +306,9 @@ pub struct AlinkSystemEdits {
     // -- WP AUSB1 --
     /// USB-direct units' modes (Installer).
     pub usb_modes: Vec<AlinkUnitUsbMode>,
+    // -- WP FIXM1 --
+    /// "Keep USB-direct units aligned" (Installer); none: unchanged.
+    pub keep_usb_aligned: Option<bool>,
 }
 
 // -- WP AUSB1 --
@@ -989,6 +1001,14 @@ pub(crate) fn build_view(
             .map(|i| str_at(i, &["message"]).to_owned())
             .filter(|m| !m.is_empty())
             .collect(),
+        // -- WP FIXM1 --
+        keep_usb_aligned: model
+            .get("keepUsbAligned")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        align_needed: list(at(status, &["alignment"]).unwrap_or(&Value::Null), "issues")
+            .iter()
+            .any(|i| str_at(i, &["code"]) == "usb_start_offsets_changed"),
         stale: false,
     }
 }
@@ -1284,6 +1304,16 @@ pub(crate) fn apply_edits(model: &mut Value, edits: &AlinkSystemEdits) -> Result
                 unit.remove("usbMode");
             }
         }
+    }
+    // -- WP FIXM1 -- off is the hub's default: not written
+    match edits.keep_usb_aligned {
+        Some(true) => {
+            m.insert("keepUsbAligned".into(), Value::Bool(true));
+        }
+        Some(false) => {
+            m.remove("keepUsbAligned");
+        }
+        None => {}
     }
     Ok(())
 }

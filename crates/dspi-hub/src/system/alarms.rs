@@ -11,12 +11,17 @@
 //! | `reanchor` | an 0xE1 `REANCHOR` (a short silence) | acknowledged |
 //! | `system_muted` | the sender's system mute set (by `system.mute`, a scene or another host), seen at a read or a write | cleared |
 //! | `delay_below_min` | `EXT_ALINK_PHASE` flag `D_BELOW_MIN` | the flag gone |
+//! | `usb_realigned` | the hub wrote the USB-direct units' output delays again by itself ("Keep USB-direct units aligned", WP FIXM1): the record of it, one alarm per re-align | acknowledged, or the next re-align (kept in the cleared list) |
 
 use std::collections::BTreeMap;
 
 use serde::Serialize;
 
 use super::align::Observed;
+
+// -- WP FIXM1 --
+/// The alarm that records an automatic re-align of the USB-direct units.
+pub const USB_REALIGNED: &str = "usb_realigned";
 
 /// CRC-16 errors within [`ERROR_WINDOW_S`] that raise `alink_errors`.
 pub const ERROR_STEP: u32 = 16;
@@ -243,12 +248,22 @@ impl AlarmBook {
             .iter()
             .find(|(_, a)| a.id == id)
             .map(|(k, _)| k.clone())?;
-        if key.0 == "reanchor" {
+        if key.0 == "reanchor" || key.0 == USB_REALIGNED {
             return self.clear(&key.0, &key.1, now);
         }
         let a = self.active.get_mut(&key)?;
         a.state = AlarmState::Acknowledged;
         Some(a.clone())
+    }
+
+    // -- WP FIXM1 --
+    /// Record an automatic re-align of the USB-direct units: a new
+    /// [`USB_REALIGNED`] alarm, the one before it (if still on) cleared into
+    /// the record. Both changes, to broadcast.
+    pub fn usb_realigned(&mut self, message: String, now: u64) -> Changes {
+        let mut changes: Changes = self.clear(USB_REALIGNED, "", now).into_iter().collect();
+        changes.extend(self.raise(USB_REALIGNED, "", message, now));
+        changes
     }
 
     /// The alarms on, then the cleared ones kept, newest first.
@@ -747,5 +762,41 @@ mod tests_fixup_fs1 {
             c[0].message,
             "C: 16 CRC-16 errors on the audio link within a minute"
         );
+    }
+}
+
+// -- WP FIXM1 --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+mod tests_wp_fixm1 {
+    use super::*;
+
+    #[test]
+    fn wp_fixm1_each_usb_realign_is_recorded() {
+        let mut b = AlarmBook::default();
+        let first = b.usb_realigned("Rear L/R re-aligned".into(), 10);
+        assert_eq!(first.len(), 1);
+        assert_eq!(
+            (
+                first[0].code.as_str(),
+                first[0].state,
+                first[0].severity.as_str()
+            ),
+            (USB_REALIGNED, AlarmState::Raised, "warning")
+        );
+        // The next one clears the first into the record and is new itself.
+        let second = b.usb_realigned("Height re-aligned".into(), 20);
+        assert_eq!(second.len(), 2);
+        assert_eq!(second[0].state, AlarmState::Cleared);
+        assert_eq!(second[1].message, "Height re-aligned");
+        assert_eq!(b.active(), 1);
+        // Acknowledged: over, and still in the record.
+        let id = second[1].id;
+        let acked = b.acknowledge(id, 30).unwrap();
+        assert_eq!(acked.state, AlarmState::Cleared);
+        assert_eq!(b.active(), 0);
+        let list = b.list();
+        assert_eq!(list.len(), 2);
+        assert!(list.iter().all(|a| a.code == USB_REALIGNED));
     }
 }

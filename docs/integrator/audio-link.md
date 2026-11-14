@@ -178,6 +178,7 @@ nothing is written and the answer is `denied`, naming the op.
 | `reanchor` | warning | an `0xE1` `REANCHOR` the hub did not cause | acknowledged |
 | `delay_below_min` | critical | the unit's `D_BELOW_MIN` flag | the flag gone |
 | `system_muted` | warning | a sender's system mute seen set, at a read or a write | seen clear |
+| `usb_realigned` | warning | the hub wrote the USB-direct units' speaker delays again by itself ("Keep USB-direct units aligned", below): the record of it, naming the units | acknowledged, or the next re-align (kept with the cleared ones) |
 
 Events are decoded only from devices that announce them (`EXT_NOTIFY_FEATURES`
 bit 2). The hub asks each device of the model when it attaches or the model
@@ -314,16 +315,48 @@ after it arrived, so every unit of one host plays sample-aligned.
   each unit's content plays earlier than the latest one's
   (`alignment.units[].startOffsetSamples`, issue `usb_start_offsets`) and adds that
   to its speakers' output delays (a unit with an offset and no speakers in the
-  model gets `start_offset_no_outputs`). After a re-anchor the figures describe the
-  stream as placed anew: restart the streams and align again.
+  model gets `start_offset_no_outputs`). Only units at one stream rate are
+  equalised: one at another rate (96 kHz next to 48 kHz) gets `usb_rate_differs`
+  and keeps its offset.
+- **Start offsets move** (WP FIXM1). Every time the host reopens a stream (ALSA or
+  PipeWire closing and opening the device, a player starting) and every time a
+  unit anchors again (a bus reset, a mode or D change, an automatic re-anchor),
+  the stream is placed anew and its start offset changes, while the speaker delays
+  the hub wrote stay; a bench K340 anchored eight times in an hour. The hub
+  therefore remembers the offsets it last wrote (from the first alignment written
+  in its run) and compares them at every `system.status`: when one moved, the
+  alignment carries the issue `usb_start_offsets_changed`, "USB-direct start
+  offsets changed — Align again (… moved since the last alignment …)", which every
+  client shows (the core's view sets `alignNeeded`; the web's Alignment panel has
+  an "Align again…" button). Offsets are relative, so streams that all moved
+  together raise nothing. An alignment that changes a unit's mode or D re-anchors
+  it, so expect the issue once more after such an alignment.
+- **Keep USB-direct units aligned** (Installer, the model's `keepUsbAligned`, off
+  by default; the core's edits `keepUsbAligned`, the view's `keepUsbAligned`).
+  On, the hub does not ask: when an offset moved it writes the moved units'
+  speaker delays again itself (nothing else, so nothing re-anchors and the audio
+  link units are untouched) and records it as the alarm `usb_realigned`. A unit it
+  cannot write (offline, out of range, a refused write) stays in the issue.
+- **Mixed rates.** One D in samples is one time only at one rate: a USB-direct unit
+  at 96 kHz plays its D in 96 kHz samples (half the time of the same number at
+  48 kHz, and its limits are 324..351), while the audio link and 48 kHz units count
+  D in 48 kHz frames. The hub writes the same number to every unit and does not
+  convert it, so a USB-direct unit at 96 kHz next to a 48 kHz audio link (or 48 kHz
+  USB-direct units) is not aligned by the system delay: run every unit of a room
+  at one rate, or measure that unit with a test click and enter its latency.
+  `mixed_time_bases` covers the latency difference between the transports, not
+  this unit difference.
 - **Writing.** `system.align` with `apply` writes `EXT_ALINK_USB` (`what:
   "usb_direct"`: the mode, automatic re-anchor as the unit has it, and D in phase
   lock) when it differs, then the output delays; skipped with `no USB-direct block
   (firmware)`, `state unknown`, `not connected` or `out of range`.
 - **Scenes.** The phase-locked USB-direct units take a scene's ops at one bus frame
   (`EXT_APPLY_AT_FRAME` time base 2, sample 0 of that frame: the same 8 bytes mean
-  the same instant on every unit of the host), the newest S read plus the lead,
-  at most 1.92 s ahead (`plan.usbFrame`, `plan.usbOps`, `plan.usbLeadSamples`);
+  the same instant on every unit of the host), taken from the most recent read
+  (not the largest S: S of different units differ by their origins), plus a lead
+  counted from that read that covers the audio link's writes and each USB-direct
+  op's write and read-back, at most 1.92 s ahead (`plan.usbFrame`, `plan.usbOps`,
+  `plan.usbLeadSamples`);
   path `usb_frame` when nothing else is scheduled. A USB-direct unit that is not
   phase-locked takes its ops at once with its own commands (reason `not
   phase-locked (USB-direct)`). When the audio link's part is refused whole (a

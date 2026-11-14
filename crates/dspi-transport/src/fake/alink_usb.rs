@@ -302,7 +302,12 @@ impl AlinkUsb {
             .saturating_duration_since(bus_epoch())
             .as_secs_f32();
         let holdover = self.diag.is_some_and(|d| d.holdover_us > 0);
-        let stream = locked.then_some(self.stream_start).flatten();
+        // -- WP FIXM1 -- a stream placed at the next frame is not there yet:
+        // reported from its first frame on, so its start never reads one early.
+        let stream = locked
+            .then_some(self.stream_start)
+            .flatten()
+            .filter(|s| *s <= n);
         let age = stream.map_or(0, |s| n.saturating_sub(s));
         let age32 = u32::try_from(age).unwrap_or(u32::MAX);
         let mut flags = usb::USB_FLAG_STREAM;

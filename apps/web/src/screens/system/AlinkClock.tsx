@@ -39,6 +39,10 @@ import {
   usbModeWord,
   usbStateWord,
   withUsbMode,
+  // -- WP FIXM1 --
+  USB_OFFSETS_CHANGED,
+  usbAlignDue,
+  withKeepUsbAligned,
   type UsbMode,
   type SystemModel,
   type WriteResult,
@@ -269,7 +273,8 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
           </tbody>
         </table>
       </div>
-      {a?.issues.filter((i) => !i.subject || !model.units.some((u) => u.id === i.subject)).map((i) => (
+      {/* -- WP FIXM1 -- the alignment due is said by the Alignment panel, with its button */}
+      {a?.issues.filter((i) => i.code !== USB_OFFSETS_CHANGED && (!i.subject || !model.units.some((u) => u.id === i.subject))).map((i) => (
         <p class="sys-issue" key={`${i.code}-${i.subject ?? ""}`} data-code={i.code}>
           {i.message}
         </p>
@@ -379,6 +384,17 @@ function UsbUnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boo
           </tbody>
         </table>
       </div>
+      {/* -- WP FIXM1 -- the start offsets move with every stream reopen and anchor: said, or kept aligned by the hub */}
+      <label class="sys-row" title="When a USB-direct stream's start offset moves (the computer reopened a stream, a unit anchored again), the hub writes the USB-direct units' speaker delays again by itself and records it as an alarm. Off: it says “Align again”.">
+        <input
+          type="checkbox"
+          aria-label="Keep USB-direct units aligned"
+          checked={model.keepUsbAligned === true}
+          disabled={!props.admin}
+          onChange={(e) => props.onEdit(withKeepUsbAligned(model, (e.target as HTMLInputElement).checked))}
+        />
+        <span>Keep USB-direct units aligned</span>
+      </label>
     </>
   );
 }
@@ -496,6 +512,15 @@ function AlignPanel(props: { feed: SystemFeed; ask: Ask; admin: boolean; mayAlig
         </button>
         {al?.running ? <span class="sys-muted">Working…</span> : null}
       </div>
+      {/* -- WP FIXM1 -- the hub says the USB-direct start offsets moved: one click aligns again */}
+      {usbAlignDue(st.status) ? (
+        <p class="sys-issue" role="status" aria-label="USB-direct alignment due" data-code={USB_OFFSETS_CHANGED}>
+          {st.status!.alignment.issues.find((i) => i.code === USB_OFFSETS_CHANGED)!.message}{" "}
+          <button type="button" disabled={!props.admin || al?.running} onClick={() => void apply()} title={props.admin ? undefined : writeNote(st.role, "align")}>
+            Align again…
+          </button>
+        </p>
+      ) : null}
       {al?.error ? (
         <p class="error" role="alert">
           {al.error}

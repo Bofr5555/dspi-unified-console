@@ -7,6 +7,10 @@ import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.sin
 import se.bofr.dspi.core.AdatOutStatus
+import se.bofr.dspi.core.AlinkSceneRecall
+import se.bofr.dspi.core.AlinkSystemAlign
+import se.bofr.dspi.core.AlinkSystemEdits
+import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.BootloaderCounts
 import se.bofr.dspi.core.BufferStats
 import se.bofr.dspi.core.CoreInfo
@@ -40,11 +44,7 @@ import se.bofr.dspi.core.LinkHello
 import se.bofr.dspi.core.LinkInfo
 import se.bofr.dspi.core.LinkListener
 import se.bofr.dspi.core.LinkPhase
-import se.bofr.dspi.core.AlinkSceneRecall
 import se.bofr.dspi.core.LinkStatus
-import se.bofr.dspi.core.AlinkSystemAlign
-import se.bofr.dspi.core.AlinkSystemEdits
-import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.MonitorBatch
 import se.bofr.dspi.core.MonitorEntry
 import se.bofr.dspi.core.NamedValue
