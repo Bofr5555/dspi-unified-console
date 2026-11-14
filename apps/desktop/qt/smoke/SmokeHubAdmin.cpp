@@ -279,8 +279,11 @@ static void hubAdminSection(SmokeDriver &d) {
             d.check("hubadmin: Control: the hub's copy, read-only", d.waitFor(15000, [&] {
                 return lc->copy() == QLatin1String("hub") && !lc->busy() && !lc->editable();
             }));
-            d.check("hubadmin: why, in the hub_role row",
-                    lc->readOnlyText() == notices->line(QStringLiteral("installer.hub_role")) && !lc->readOnlyText().isEmpty());
+            // -- WP PAIRADM -- the row's reason and its action: how to get Admin
+            d.check("hubadmin: why, in the hub_role row, and how to get Admin",
+                    lc->readOnlyText().startsWith(notices->line(QStringLiteral("installer.hub_role")))
+                        && lc->readOnlyText().endsWith(notices->row(QStringLiteral("installer.hub_role")).value(QStringLiteral("action")).toString())
+                        && lc->readOnlyText().contains(QStringLiteral("hub role <cid> admin")));
             d.spin(200);
             d.check("hubadmin: the page shows the read-only line, its fields disabled",
                     shown(item("Installer.readOnly")) && item("Installer.masterVolumeMax") && !item("Installer.masterVolumeMax")->isEnabled());

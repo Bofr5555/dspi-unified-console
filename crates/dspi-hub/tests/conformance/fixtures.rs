@@ -9,6 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use dspi_hub::Role;
 use dspi_link::socket::{TcpConnector, WsConnector, WsMessage, WsPair, WsRecv};
 use dspi_transport::FakeDevice;
 use serde_json::{Value, json};
@@ -155,10 +156,13 @@ fn admin(b: &Bench) -> WsPair {
     let hello = next(&mut ws, &["hello"]);
     assert_shape(&fixture("hello_hub.json"), &hello, &[], "hello");
     let mut pair = fixture("auth_pair.json");
-    pair["pin"] = b.admin_pin().into();
+    pair["pin"] = b.pin().into();
     pair["role"] = "admin".into();
     let ok = request(&mut ws, &pair);
     assert_eq!(ok["t"], "ok", "{ok}");
+    // -- WP PAIRADM -- a PIN gives control; admin as `uconsole hub role <cid> admin`
+    let cid = b.net.auth().clients().iter().map(|c| c.cid).max();
+    assert!(b.net.set_role(cid.expect("paired"), Role::Admin));
     ws
 }
 

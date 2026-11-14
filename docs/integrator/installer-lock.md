@@ -91,6 +91,12 @@ sees one lock and one prompt:
 - Otherwise `heldBy` is `console` (this console's PIN) or "" (none). A console PIN still applies to the device when it
   is attached over USB, and on a hub that holds no PIN for it.
 
+**Who may change the hub's copy: an Admin of the hub.** A console paired with the hub's PIN is a Control client, and
+no pairing gives more (WP PAIRADM). To make a console an Admin, on the hub's machine find its number with
+`uconsole hub clients` and run `uconsole hub role <cid> admin` (with the hub stopped), or type `clients` and
+`role <cid> admin` at the running hub's prompt, where it applies at once. Below Admin the Installer page is read-only
+and says so in the notice row `installer.hub_role` (`installer_target().readOnlyKey`, WP HUBADMIN).
+
 The hub's other named refusals keep their notice too: a limit is `LimitExceeded { code: <the limit> }`, an image a
 Control client may not write is `DspiError::ImageRefused` (`image_refused`), a write the hub could not judge because
 it could not read the device is `DspiError::LimitsUnknown` (`limits_unknown`).

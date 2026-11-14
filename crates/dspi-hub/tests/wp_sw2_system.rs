@@ -1077,13 +1077,15 @@ fn wp_sw3x_a_stale_model_is_refused_and_the_role_is_current() {
     let hub = networked(store_dir(), AccessMode::Pin);
     let net = hub.network().unwrap();
     let mut c = ws(&hub);
-    // -- WP HWLK1F -- a window opened for admin (`--pair-admin`)
-    let pin = net.auth().begin_pairing_admin(Instant::now()).unwrap().pin;
+    // -- WP HWLK1F, PAIRADM -- a PIN gives control; admin is the role set on the
+    // hub's machine (`uconsole hub role <cid> admin`), live
+    let pin = net.auth().begin_pairing(Instant::now()).unwrap().pin;
     let r = request(
         &mut c,
         json!({"t": "auth.pair", "id": 1, "pin": pin, "name": "sw3x", "role": "admin"}),
     );
-    assert_eq!(r["role"], "admin", "{r}");
+    assert_eq!(r["role"], "control", "{r}");
+    assert!(net.set_role(net.auth().clients()[0].cid, Role::Admin));
     let got = request(&mut c, json!({"t": "system.get", "id": 2}));
     assert_eq!(got["role"], "admin", "{got}");
     let base = got["revision"].as_u64().unwrap();

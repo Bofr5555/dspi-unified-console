@@ -37,10 +37,9 @@ func ctl(_ command: String) throws -> [String: Any] {
     return object
 }
 
-// -- WP ALINK1 -- `admin`: a window that may give admin (`uconsole hub --pair-admin`);
-// a plain PIN gives at most control (HWLK1F).
-func newPin(admin: Bool = false) throws -> String {
-    guard let pin = try ctl(admin ? "pin-admin" : "pin")["pin"] as? String else { throw Failure(description: "no PIN") }
+// A fresh window's PIN. A PIN gives at most control (HWLK1F, PAIRADM).
+func newPin() throws -> String {
+    guard let pin = try ctl("pin")["pin"] as? String else { throw Failure(description: "no PIN") }
     return pin
 }
 
@@ -82,10 +81,18 @@ func pair(_ c: LinkClient, _ pin: String, _ name: String, _ role: LinkRole) thro
 
 func paired(_ name: String, _ role: LinkRole) throws -> (LinkClient, String) {
     let c = try connect(name)
-    let token = try pair(c, try newPin(admin: role == .admin), name, role).get()
+    let token = try pair(c, try newPin(), name, role).get()
     // The published state follows the completion by one main-thread hop.
     try expect(spin(until: { c.state == .ready }), "state \(c.state) after pairing")
-    return (c, token)
+    if role != .admin { return (c, token) }
+    // -- WP PAIRADM -- a PIN gives control; admin is the role set on the hub's machine
+    // (`uconsole hub role <cid> admin`), and the token carries it
+    try expect(c.role == .control, "a PIN gave \(String(describing: c.role))")
+    try expect(try ctl("admin \(name)")["promoted"] as? Bool == true, "\(name) not made admin")
+    c.disconnect()
+    let again = try connect(name, token: token)
+    try expect(spin(until: { again.state == .ready }), "state \(again.state) with the token")
+    return (again, token)
 }
 
 func command(_ c: LinkClient, _ r: LinkCmdRequest) throws -> LinkCmdResponse {

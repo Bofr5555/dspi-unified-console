@@ -18,8 +18,8 @@
 //!   callback cannot reach the app, as on the web).
 //!
 //! The coordinator's rules hold as the hub keeps them: pairing with the hub's
-//! PIN gives Control at most, so Admin needs `uconsole hub --pair-admin` (or
-//! the role set on the hub's machine); wrong installer PINs are counted per
+//! PIN gives Control at most, so Admin is the role set on the hub's machine
+//! (`uconsole hub role <cid> admin`; WP PAIRADM); wrong installer PINs are counted per
 //! device on the hub (3 free, then 30 s doubling to 15 min, kept across a
 //! restart); the analyser stays allowed while locked. Below Admin the page is
 //! read-only, with [`NOTICE_HUB_ROLE`] saying why.

@@ -37,6 +37,11 @@ const MAX_TRACKED_PEERS: usize = 1024;
 pub const MAX_PAIRED_CLIENTS: usize = 64;
 /// Longest client name kept, in characters.
 pub const MAX_CLIENT_NAME: usize = 64;
+// -- WP PAIRADM --
+/// The most a PIN pairing gives, whatever the client asks. Admin is given only
+/// on the hub's machine (`uconsole hub role <cid> admin`, [`AuthStore::set_role`]):
+/// there is no pairing window that gives more (owner, 2026-11-14).
+pub const PAIR_MAX_ROLE: Role = Role::Control;
 /// What a client with no usable name is listed as.
 const UNNAMED_CLIENT: &str = "Unnamed client";
 /// How stale a stored `last_seen` may get, so a client reconnecting in a loop does not
@@ -143,10 +148,6 @@ struct OpenWindow {
     pin_hash: TokenHash,
     expires: Instant,
     failures: usize,
-    // -- WP HWLK1F --
-    /// The most this window's pairing gives: control, or admin for a window
-    /// opened on the hub's own machine for that ([`AuthStore::begin_pairing_admin`]).
-    max_role: Role,
 }
 
 #[derive(Debug, Default)]
@@ -341,28 +342,16 @@ impl AuthStore {
     /// Open a pairing window, replacing an open one. [`HubError::Io`] if the system
     /// has no random numbers, since a guessable PIN is worse than none.
     ///
-    /// -- WP HWLK1F -- Its pairing gives at most `control`, whatever the client
-    /// asks: admin comes from `uconsole hub role` on the hub's machine, or from a
-    /// window opened with [`Self::begin_pairing_admin`].
+    /// -- WP HWLK1F, PAIRADM -- Its pairing gives at most [`PAIR_MAX_ROLE`]
+    /// (`control`), whatever the client asks. Admin is given only on the hub's
+    /// machine, with `uconsole hub role <cid> admin` ([`Self::set_role`]).
     pub fn begin_pairing(&self, now: Instant) -> Result<PairingWindow, HubError> {
-        self.open_window(now, Role::Control)
-    }
-
-    // -- WP HWLK1F --
-    /// [`Self::begin_pairing`] for one pairing that may be `admin` when the
-    /// client asks for it (`uconsole hub --pair-admin`, on the hub's machine).
-    pub fn begin_pairing_admin(&self, now: Instant) -> Result<PairingWindow, HubError> {
-        self.open_window(now, Role::Admin)
-    }
-
-    fn open_window(&self, now: Instant, max_role: Role) -> Result<PairingWindow, HubError> {
         let pin = new_pin()?;
         let expires = after(now, PAIRING_WINDOW);
         self.lock().window = Some(OpenWindow {
             pin_hash: sha256(pin.as_bytes()),
             expires,
             failures: 0,
-            max_role,
         });
         Ok(PairingWindow { pin, expires })
     }
@@ -382,9 +371,9 @@ impl AuthStore {
     /// A wrong PIN counts against the address and against the PIN itself, which dies
     /// after five failures from anywhere. A right one pairs one client and ends the
     /// window. With no window open every PIN is wrong. `name` is cleaned and capped.
-    /// No `requested` role means `control` (the Swift hub's default). -- WP HWLK1F --
-    /// A role above the window's most (control, unless opened for admin) is
-    /// cut to it: asking for admin with a PIN gets control.
+    /// No `requested` role means `control` (the Swift hub's default). -- WP HWLK1F,
+    /// PAIRADM -- A role above [`PAIR_MAX_ROLE`] is cut to it: asking for admin
+    /// with a PIN gets control.
     pub fn pair(
         &self,
         pin: &str,
@@ -398,11 +387,11 @@ impl AuthStore {
             return Err(AuthError::RateLimited);
         }
         let presented = sha256(pin.as_bytes());
-        let (right, max_role) = match &s.window {
-            Some(w) if now < w.expires => (hashes_equal(&w.pin_hash, &presented), w.max_role),
+        let right = match &s.window {
+            Some(w) if now < w.expires => hashes_equal(&w.pin_hash, &presented),
             _ => {
                 s.window = None;
-                (false, Role::Control)
+                false
             }
         };
         if !right {
@@ -423,7 +412,7 @@ impl AuthStore {
             AuthError::Internal
         })?;
         let token = BASE64URL_NOPAD.encode(&raw);
-        let role = requested.unwrap_or(Role::Control).min(max_role);
+        let role = requested.unwrap_or(Role::Control).min(PAIR_MAX_ROLE);
         let seconds = unix_seconds(SystemTime::now());
         let cid = s.store.take_cid();
         s.store.clients_mut().push(StoredClient {
@@ -748,7 +737,7 @@ mod tests_wp_hb1 {
 
     // -- WP HWLK1F --
     #[test]
-    fn wp_hwlk1f_a_pin_gives_at_most_control_unless_opened_for_admin() {
+    fn wp_pairadm_a_pin_gives_at_most_control_admin_only_by_role() {
         let (s, now) = (auth(), Instant::now());
         let w = s.begin_pairing(now).unwrap();
         let a = s.pair(&w.pin, "asks", Some(Role::Admin), A, now).unwrap();
@@ -757,18 +746,13 @@ mod tests_wp_hb1 {
         let w = s.begin_pairing(now).unwrap();
         let v = s.pair(&w.pin, "less", Some(Role::Viewer), A, now).unwrap();
         assert_eq!(v.role, Role::Viewer, "less is given");
-        let w = s.begin_pairing_admin(now).unwrap();
-        let x = s
-            .pair(&w.pin, "installer", Some(Role::Admin), A, now)
-            .unwrap();
-        assert_eq!(x.role, Role::Admin, "a window opened for admin");
-        let w = s.begin_pairing_admin(now).unwrap();
-        let y = s.pair(&w.pin, "default", None, A, now).unwrap();
-        assert_eq!(y.role, Role::Control, "admin only when asked for");
-        // One pairing: the next window is a plain one again.
+        // Admin: only `uconsole hub role <cid> admin` on the hub's machine.
+        assert!(s.set_role(a.cid, Role::Admin));
+        assert_eq!(s.role_of(a.cid), Some(Role::Admin));
         let w = s.begin_pairing(now).unwrap();
         let z = s.pair(&w.pin, "next", Some(Role::Admin), A, now).unwrap();
-        assert_eq!(z.role, Role::Control);
+        assert_eq!(z.role, Role::Control, "every window caps at control");
+        assert_eq!(PAIR_MAX_ROLE, Role::Control);
     }
 
     #[test]

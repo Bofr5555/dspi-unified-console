@@ -107,26 +107,27 @@ impl Bench {
         self.net.auth().begin_pairing(Instant::now()).unwrap().pin
     }
 
-    /// -- WP HWLK1F -- a PIN whose pairing may be admin (`--pair-admin`): a plain
-    /// one gives at most control.
-    fn admin_pin(&self) -> String {
-        self.net
-            .auth()
-            .begin_pairing_admin(Instant::now())
-            .unwrap()
-            .pin
+    /// -- WP HWLK1F, PAIRADM -- a PIN gives at most control: the newest paired
+    /// client made admin as `uconsole hub role <cid> admin` does, live.
+    fn promote(&self) {
+        let cid = self.net.auth().clients().iter().map(|c| c.cid).max();
+        assert!(
+            self.net
+                .set_role(cid.expect("a paired client"), Role::Admin)
+        );
     }
 
     /// A raw, authenticated `admin` socket, and its token.
     fn admin(&self) -> (Ws, String) {
         let mut ws = ws(self.port);
         hello(&mut ws);
-        let pin = self.admin_pin();
+        let pin = self.pin();
         let reply = request(
             &mut ws,
             json!({"t": "auth.pair", "id": 1, "pin": pin, "name": "raw", "role": "admin"}),
         );
         assert_eq!(reply["t"], "ok", "{reply}");
+        self.promote();
         (ws, reply["token"].as_str().unwrap().to_owned())
     }
 
@@ -416,11 +417,12 @@ fn wp_hb1_the_client_and_fixtures_pass_against_the_server() {
     assert_eq!(hello.limits.max_payload, 8192);
     assert_eq!(hello.limits.max_inflight, 8);
 
-    let token = first.pair(&b.admin_pin(), "admin").unwrap();
-    assert_eq!(first.role(), "admin");
+    let token = first.pair(&b.pin(), "admin").unwrap();
+    // -- WP PAIRADM -- a PIN gives at most control; admin is given on the hub's machine
+    assert_eq!(first.role(), "control");
+    b.promote();
     let session = first.session_id().unwrap();
     assert!(session >= 2, "0 and 1 are not for the network");
-    assert!(first.denied().is_empty());
     let devices = first.devices();
     assert_eq!(devices.len(), 1);
     assert_eq!(devices[0].state, "online");
@@ -435,6 +437,12 @@ fn wp_hb1_the_client_and_fixtures_pass_against_the_server() {
     let (second, state) = client(&b, Some(token)).unwrap();
     assert!(matches!(state, AuthState::Ready), "{state:?}");
     assert_ne!(second.session_id(), first.session_id());
+    assert_eq!(
+        second.role(),
+        "admin",
+        "the token carries the role given since"
+    );
+    assert!(second.denied().is_empty());
     let online = b.net.auth().clients();
     assert_eq!(online.len(), 1);
     assert_eq!(online[0].name, "test client");
@@ -489,10 +497,11 @@ fn wp_hb1_replies_match_the_upstream_fixtures() {
 
     // And after.
     let mut pair = fixture("auth_pair.json");
-    pair["pin"] = b.admin_pin().into();
+    pair["pin"] = b.pin().into();
     pair["role"] = "admin".into();
     let ok = request(&mut raw, pair);
     assert_has_shape(&fixture("auth_ok.json"), &ok, &[], "auth ok");
+    b.promote(); // -- WP PAIRADM -- for `auth.list`, admin's
     assert!(matches!(
         Inbound::parse(&ok.to_string()).unwrap(),
         Inbound::Ok { .. }
@@ -948,7 +957,8 @@ fn wp_hb1_before_auth_commands_are_discarded_unanswered() {
     );
 
     let (c, _) = client(&b, None).unwrap();
-    c.pair(&b.admin_pin(), "admin").unwrap();
+    c.pair(&b.pin(), "admin").unwrap();
+    b.promote(); // -- WP PAIRADM --
     let rx = c.notifications(0);
     let volume = -33.0f32;
     let r = c.command(
@@ -1718,7 +1728,8 @@ fn wp_hb1_a_revoked_sessions_later_frames_do_not_run() {
     let (watcher, _) = b.admin();
     let (c, _) = client(&b, None).unwrap();
     drop(watcher);
-    c.pair(&b.admin_pin(), "admin").unwrap();
+    c.pair(&b.pin(), "admin").unwrap();
+    b.promote(); // -- WP PAIRADM --
     let heard = c.notifications(0);
     assert!(b.net.revoke(cid));
     let volume = (-41.0f32).to_le_bytes();

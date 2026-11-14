@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use dspi_hub::server::{NetworkControl, ServerLimits};
-use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig};
+use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig, Role};
 use dspi_link::socket::TcpConnector;
 use dspi_link::{AuthState, ConnectOptions, LinkClient, LinkError, SessionConfig};
 use dspi_proto::generated::notify as nfy;
@@ -131,14 +131,12 @@ impl Bench {
         self.net.auth().begin_pairing(Instant::now()).unwrap().pin
     }
 
-    /// -- WP HWLK1F -- a PIN whose pairing may be admin (`uconsole hub --pair-admin`);
-    /// a plain one gives at most control.
-    pub fn admin_pin(&self) -> String {
-        self.net
-            .auth()
-            .begin_pairing_admin(Instant::now())
-            .unwrap()
-            .pin
+    /// -- WP HWLK1F, PAIRADM -- a PIN gives at most control: make the paired client
+    /// `name` admin as `uconsole hub role <cid> admin` does on the hub's machine,
+    /// live. False if no client has that name.
+    pub fn promote(&self, name: &str) -> bool {
+        self.client_id(name)
+            .is_some_and(|cid| self.net.set_role(cid, Role::Admin))
     }
 
     /// Stop, and start again on the same port with the same store: a hub restart.
