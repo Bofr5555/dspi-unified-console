@@ -3511,7 +3511,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_diff() != 25258.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_keep() != 13087.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_keep() != 48010.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_start() != 31789.toShort()) {
@@ -3523,7 +3523,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_state() != 41482.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_toggle() != 59578.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_ab_toggle() != 10804.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_alink_info() != 63997.toShort()) {
@@ -5999,8 +5999,9 @@ public interface DspiCoreInterface {
     fun `abDiff`(): kotlin.String
     
     /**
-     * End the compare on `side`: recalled first when the device is on the
-     * other side (a recall, as a toggle is). Returns `active: false`,
+     * End the compare on `side`. Keeping the live side keeps the device's
+     * state as it is, edits included (nothing sent); the other side is
+     * recalled as it was left (a recall, as a toggle is). Returns `active: false`,
      * `side` the one kept, and the recall if one was made.
      *
      * Errors: [`DspiError::InvalidArgument`] with no compare running; the
@@ -6039,6 +6040,8 @@ public interface DspiCoreInterface {
     /**
      * Recall the other side: one bulk write (`0xA1`) plus the settings
      * outside the image that differ, recorded in the event log as a recall.
+     * The side left is captured first (reads only), so edits made on it are
+     * kept and come back on the next toggle, as in a DAW's A/B.
      * It ends the undo history; it is not an undo step. Never guarded and
      * never token-gated. Returns the compare, on the new side, with the
      * recall's changes.
@@ -9490,8 +9493,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * End the compare on `side`: recalled first when the device is on the
-     * other side (a recall, as a toggle is). Returns `active: false`,
+     * End the compare on `side`. Keeping the live side keeps the device's
+     * state as it is, edits included (nothing sent); the other side is
+     * recalled as it was left (a recall, as a toggle is). Returns `active: false`,
      * `side` the one kept, and the recall if one was made.
      *
      * Errors: [`DspiError::InvalidArgument`] with no compare running; the
@@ -9573,6 +9577,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     /**
      * Recall the other side: one bulk write (`0xA1`) plus the settings
      * outside the image that differ, recorded in the event log as a recall.
+     * The side left is captured first (reads only), so edits made on it are
+     * kept and come back on the next toggle, as in a DAW's A/B.
      * It ends the undo history; it is not an undo step. Never guarded and
      * never token-gated. Returns the compare, on the new side, with the
      * recall's changes.

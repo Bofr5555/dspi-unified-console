@@ -1261,8 +1261,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func abDiff() throws  -> String
     
     /**
-     * End the compare on `side`: recalled first when the device is on the
-     * other side (a recall, as a toggle is). Returns `active: false`,
+     * End the compare on `side`. Keeping the live side keeps the device's
+     * state as it is, edits included (nothing sent); the other side is
+     * recalled as it was left (a recall, as a toggle is). Returns `active: false`,
      * `side` the one kept, and the recall if one was made.
      *
      * Errors: [`DspiError::InvalidArgument`] with no compare running; the
@@ -1301,6 +1302,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     /**
      * Recall the other side: one bulk write (`0xA1`) plus the settings
      * outside the image that differ, recorded in the event log as a recall.
+     * The side left is captured first (reads only), so edits made on it are
+     * kept and come back on the next toggle, as in a DAW's A/B.
      * It ends the undo history; it is not an undo step. Never guarded and
      * never token-gated. Returns the compare, on the new side, with the
      * recall's changes.
@@ -4713,8 +4716,9 @@ open func abDiff()throws  -> String  {
 }
     
     /**
-     * End the compare on `side`: recalled first when the device is on the
-     * other side (a recall, as a toggle is). Returns `active: false`,
+     * End the compare on `side`. Keeping the live side keeps the device's
+     * state as it is, edits included (nothing sent); the other side is
+     * recalled as it was left (a recall, as a toggle is). Returns `active: false`,
      * `side` the one kept, and the recall if one was made.
      *
      * Errors: [`DspiError::InvalidArgument`] with no compare running; the
@@ -4778,6 +4782,8 @@ open func abState() -> AbCompare  {
     /**
      * Recall the other side: one bulk write (`0xA1`) plus the settings
      * outside the image that differ, recorded in the event log as a recall.
+     * The side left is captured first (reads only), so edits made on it are
+     * kept and come back on the next toggle, as in a DAW's A/B.
      * It ends the undo history; it is not an undo step. Never guarded and
      * never token-gated. Returns the compare, on the new side, with the
      * recall's changes.
@@ -32677,7 +32683,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_ab_diff() != 25258) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_ab_keep() != 13087) {
+    if (uniffi_dspi_core_checksum_method_dspicore_ab_keep() != 48010) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_ab_start() != 31789) {
@@ -32689,7 +32695,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_ab_state() != 41482) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_ab_toggle() != 59578) {
+    if (uniffi_dspi_core_checksum_method_dspicore_ab_toggle() != 10804) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_alink_info() != 63997) {

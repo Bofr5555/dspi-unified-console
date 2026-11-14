@@ -46,6 +46,8 @@ interface DspiCoreApi : AutoCloseable {
     /**
      * Recall the other side: one bulk write (`0xA1`) plus the settings
      * outside the image that differ, recorded in the event log as a recall.
+     * The side left is captured first (reads only), so edits made on it are
+     * kept and come back on the next toggle, as in a DAW's A/B.
      * It ends the undo history; it is not an undo step. Never guarded and
      * never token-gated. Returns the compare, on the new side, with the
      * recall's changes.
@@ -67,8 +69,9 @@ interface DspiCoreApi : AutoCloseable {
     fun abDiff(): String
 
     /**
-     * End the compare on `side`: recalled first when the device is on the
-     * other side (a recall, as a toggle is). Returns `active: false`,
+     * End the compare on `side`. Keeping the live side keeps the device's
+     * state as it is, edits included (nothing sent); the other side is
+     * recalled as it was left (a recall, as a toggle is). Returns `active: false`,
      * `side` the one kept, and the recall if one was made.
      *
      * Errors: [`DspiError::InvalidArgument`] with no compare running; the

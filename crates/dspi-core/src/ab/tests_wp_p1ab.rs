@@ -391,3 +391,51 @@ fn wp_p1ab_refusals_send_nothing() {
     assert_eq!(AbSide::from_key(" B "), Some(AbSide::B));
     assert_eq!(AbSide::from_key("c"), None);
 }
+
+/// Round 2: an edit on B survives two toggles (A/B as in a DAW), each
+/// toggle is one recall in the event log, the diff follows the edit, and
+/// keeping the live side keeps the edit with nothing sent.
+#[test]
+fn wp_p1ab_an_edit_on_b_survives_two_toggles() {
+    let r = rig();
+    let core = &r.core;
+    let (_, b) = a_and_b(core);
+    let state_a = core.get_state();
+    let before = recalls(core).len();
+    core.ab_start_documents(String::new(), b).unwrap();
+    let diff_before = json_of(&core.ab_diff().unwrap())["count"].as_u64().unwrap();
+
+    core.ab_toggle().unwrap();
+    // Tweak B, in and outside the image.
+    core.set_output_gain(1, -7.5).unwrap();
+    core.set_device_name("Bee tweaked".into()).unwrap();
+    let state_b = core.get_state();
+    let image_b = r.remote.image();
+
+    let to_a = core.ab_toggle().unwrap();
+    assert_eq!(to_a.side, Some(AbSide::A));
+    assert_eq!(core.get_state(), state_a);
+    let to_b = core.ab_toggle().unwrap();
+    assert_eq!(to_b.side, Some(AbSide::B));
+    assert_eq!(core.get_state(), state_b, "B kept its tweak");
+    assert_eq!(r.remote.image(), image_b);
+    assert_eq!(core.get_device_name().unwrap(), "Bee tweaked");
+    assert_eq!(to_b.b_name, "Bright", "B keeps its name");
+
+    // One recall per toggle, and only those.
+    assert_eq!(recalls(core).len() - before, 3, "{:?}", recalls(core));
+    // The diff is between the sides as last left: one more row.
+    let diff_now = json_of(&core.ab_diff().unwrap())["count"].as_u64().unwrap();
+    assert_eq!(diff_now, diff_before + 1);
+
+    // An edit on B, then keep B: the live state stays, nothing is sent.
+    core.set_output_gain(2, -3.5).unwrap();
+    let live = core.get_state();
+    let sent = r.outs.load(Ordering::SeqCst);
+    let kept = core.ab_keep(AbSide::B).unwrap();
+    assert_eq!(kept.recall, None);
+    assert!(!kept.active);
+    assert_eq!(core.get_state(), live);
+    assert_eq!(r.outs.load(Ordering::SeqCst), sent);
+    assert_eq!(recalls(core).len() - before, 3);
+}

@@ -20,8 +20,10 @@
 //!
 //! A compare belongs to the connection it began on: a disconnect, a lost
 //! device or a new connection ends it, and nothing is replayed; the next
-//! call sees no compare. Edits made while on one side are not kept by a
-//! toggle: the other side's snapshot is recalled as it was taken.
+//! call sees no compare. Edits made while on one side are kept: a toggle
+//! first captures the side it leaves (reads only, no event), so tweaking B,
+//! flipping to A and back finds B with the tweak. [`DspiCore::ab_diff`]
+//! compares the sides as last left.
 
 use std::sync::Mutex;
 
@@ -33,6 +35,8 @@ use crate::{DspiCore, DspiError, Result};
 /// The name a captured A is given, and its note.
 const CAPTURED_A_NAME: &str = "A";
 const CAPTURED_A_NOTE: &str = "Captured for an A/B compare";
+/// The note of a side re-captured as a toggle leaves it.
+const CAPTURED_NOTE: &str = "Captured by an A/B toggle";
 
 /// One side of a compare.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
@@ -122,6 +126,20 @@ impl Compare {
         match side {
             AbSide::A => &self.a,
             AbSide::B => &self.b,
+        }
+    }
+
+    fn text_mut(&mut self, side: AbSide) -> &mut String {
+        match side {
+            AbSide::A => &mut self.a,
+            AbSide::B => &mut self.b,
+        }
+    }
+
+    fn name(&self, side: AbSide) -> &str {
+        match side {
+            AbSide::A => &self.a_name,
+            AbSide::B => &self.b_name,
         }
     }
 
@@ -227,18 +245,35 @@ impl DspiCore {
                 }
                 Ok(r)
             }
-            Err(e) => {
-                let gone =
-                    e == DspiError::Disconnected || self.ab_generation().ok() != Some(c.generation);
-                if gone {
-                    let mut slot = self.ab.slot();
-                    if slot.as_ref().is_some_and(|n| n.epoch == c.epoch) {
-                        *slot = None;
-                    }
-                }
-                Err(e)
+            Err(e) => Err(self.ab_failed(c, e)),
+        }
+    }
+
+    /// `e` from a call for compare `c`: a lost connection ends `c`.
+    fn ab_failed(&self, c: &Compare, e: DspiError) -> DspiError {
+        let gone = e == DspiError::Disconnected || self.ab_generation().ok() != Some(c.generation);
+        if gone {
+            let mut slot = self.ab.slot();
+            if slot.as_ref().is_some_and(|n| n.epoch == c.epoch) {
+                *slot = None;
             }
         }
+        e
+    }
+
+    /// Capture the device as the side `c` is on, so edits made there are
+    /// kept (P1AB round 2): reads only, no event, no write.
+    fn ab_recapture(&self, c: &mut Compare) -> Result<()> {
+        let side = c.side;
+        let name = c.name(side).to_owned();
+        let text = self
+            .snapshot_capture_document(name, CAPTURED_NOTE.into())
+            .map_err(|e| self.ab_failed(c, e))?;
+        *c.text_mut(side) = text.clone();
+        if let Some(now) = self.ab.slot().as_mut().filter(|n| n.epoch == c.epoch) {
+            *now.text_mut(side) = text;
+        }
+        Ok(())
     }
 
     /// Start a compare of `a` and `b` (documents; `a` `None`: capture it).
@@ -322,6 +357,8 @@ impl DspiCore {
 
     /// Recall the other side: one bulk write (`0xA1`) plus the settings
     /// outside the image that differ, recorded in the event log as a recall.
+    /// The side left is captured first (reads only), so edits made on it are
+    /// kept and come back on the next toggle, as in a DAW's A/B.
     /// It ends the undo history; it is not an undo step. Never guarded and
     /// never token-gated. Returns the compare, on the new side, with the
     /// recall's changes.
@@ -330,8 +367,10 @@ impl DspiCore {
     /// recall's errors. A lost connection ends the compare
     /// ([`DspiError::Disconnected`]); another refusal leaves it on its side.
     pub fn ab_toggle(&self) -> Result<AbCompare> {
-        let c = self.ab_current().ok_or_else(|| invalid(NO_COMPARE))?;
+        let mut c = self.ab_current().ok_or_else(|| invalid(NO_COMPARE))?;
         let to = c.side.other();
+        // -- WP P1AB round 2 -- the side left keeps its edits
+        self.ab_recapture(&mut c)?;
         let recall = self.ab_recall(&c, to)?;
         let mut now = c;
         now.side = to;
@@ -347,8 +386,9 @@ impl DspiCore {
         Ok(crate::files::config_diff(c.a, c.b))
     }
 
-    /// End the compare on `side`: recalled first when the device is on the
-    /// other side (a recall, as a toggle is). Returns `active: false`,
+    /// End the compare on `side`. Keeping the live side keeps the device's
+    /// state as it is, edits included (nothing sent); the other side is
+    /// recalled as it was left (a recall, as a toggle is). Returns `active: false`,
     /// `side` the one kept, and the recall if one was made.
     ///
     /// Errors: [`DspiError::InvalidArgument`] with no compare running; the
