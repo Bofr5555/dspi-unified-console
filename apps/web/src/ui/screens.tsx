@@ -33,6 +33,10 @@ import { AbBar, GuardBar } from "../screens/snapshots/Bars";
 import { SnapshotsScreen } from "../screens/snapshots/SnapshotsScreen";
 import { FilesScreen } from "../screens/files/FilesScreen";
 import { useConsoleKeys, type ConsoleKey } from "./keys";
+// -- WP P1WB2 -- the Installer page, the lock, the mode from the core's manifest
+import type { ModeChoice, ModeManifest } from "../core/protocol";
+import { InstallerScreen } from "../screens/installer/InstallerScreen";
+import { LockedBanner, UnlockDialog } from "../screens/installer/Unlock";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -81,6 +85,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "files", label: "Files", View: FilesScreen },
   // -- WP WB8 -- (UI-MODES: monitoring of the Advanced and Installer modes)
   { id: "events", label: "Events", View: EventsScreen },
+  // -- WP P1WB2 -- (the manifest's "Limits and power-on": the Installer mode only)
+  { id: "installer", label: "Installer", View: InstallerScreen },
 ];
 
 // -- WP P1WB1 --
@@ -96,11 +102,23 @@ const SETUP = new Set(["files"]);
  */
 export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
   // -- WP WB8 -- the event log last, in Advanced and Installer
-  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events");
+  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events" && x.id !== "installer");
   if (mode === "simple") return today.filter((x) => !SETUP.has(x.id)); // -- WP P1WB1 --
   const system = SCREENS.find((x) => x.id === "system")!;
   const events = SCREENS.find((x) => x.id === "events")!;
-  return installation ? [system, ...today, events] : [...today, system, events];
+  // -- WP P1WB2 -- the Installer page last, in the Installer mode
+  const tail = mode === "installer" ? SCREENS.filter((x) => x.id === "installer") : [];
+  return installation ? [system, ...today, events, ...tail] : [...today, system, events, ...tail];
+}
+
+// -- WP P1WB2 --
+/** The locked-user state's screens: the front page alone (the manifest's `lockedUser.screens`). */
+export function lockedScreens(): ScreenDef[] {
+  return SCREENS.filter((x) => x.id === "main");
+}
+
+function isMode(m: string): m is Mode {
+  return m === "simple" || m === "advanced" || m === "installer";
 }
 
 export function Screens(props: { session: Session }) {
@@ -113,15 +131,37 @@ export function Screens(props: { session: Session }) {
   }, [system]);
   const feed = useFeed(system);
   const serial = session.state.snapshot?.device.serial || session.deviceId || session.id;
-  const [mode, setMode] = useState<Mode>(() => loadMode(safeLocalStorage(), serial));
-  const shown = screensFor(mode, feed.kind === "hub");
+  // -- WP P1WB2 -- the user's choice, then the core's resolution of it (lock, hub or fleet pin)
+  const [chosenMode, setMode] = useState<Mode>(() => loadMode(safeLocalStorage(), serial));
+  const st = useSessionState(session);
+  const [manifest, setManifest] = useState<ModeManifest | null>(null);
+  useEffect(() => {
+    void session.core.call("modeManifest", undefined).then(setManifest, () => setManifest(null));
+  }, [session]);
+  const [resolved, setResolved] = useState<{ chosen: Mode; choice: ModeChoice } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void session.core.call("modeResolve", { platform: "web", chosen: chosenMode }).then(
+      (choice) => alive && setResolved({ chosen: chosenMode, choice }),
+      () => alive && setResolved(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [session, chosenMode, st.lock, st.lockRev]);
+  const choice = resolved && resolved.chosen === chosenMode ? resolved.choice : null;
+  const lockedUser = choice?.mode === "locked_user";
+  const mode: Mode = choice && isMode(choice.mode) ? choice.mode : lockedUser ? "simple" : chosenMode;
+  const modes = (manifest?.modes ?? []).filter((m) => isMode(m.id)).map((m) => ({ id: m.id as Mode, label: m.label }));
+  const [unlocking, setUnlocking] = useState(false);
+  const shown = lockedUser ? lockedScreens() : screensFor(mode, feed.kind === "hub");
   const [chosen, setChosen] = useState<string | null>(null);
   const current = chosen ?? shown[0]!.id;
   const screen = shown.find((x) => x.id === current) ?? shown[0]!;
   const setCurrent = setChosen;
   const [question, setQuestion] = useState<(Question & { answer: (v: string) => void }) | null>(null);
   // -- WP WB8 -- undo and redo: the buttons follow the session's state; the keys act on this view
-  const st = useSessionState(session);
+  // (-- WP P1WB2 -- `st` is read above, for the lock)
   const root = useRef<HTMLDivElement>(null);
   useUndoKeys(session, root);
   // -- WP P1WB1 -- one desk per session: snapshots, A/B, safe apply, files
@@ -200,10 +240,21 @@ export function Screens(props: { session: Session }) {
   return (
     <div class="session-screens" ref={root}>
       {/* -- WP SW3 -- on an installation, the scene bar */}
-      {mode !== "simple" ? <SceneBar feed={system} session={session} ask={ask} /> : null}
+      {mode !== "simple" && !lockedUser ? <SceneBar feed={system} session={session} ask={ask} /> : null}
+      {/* -- WP P1WB2 -- the locked-user front page's banner; the Installer mode asking for its PIN */}
+      {lockedUser && st.lock ? <LockedBanner session={session} lock={st.lock} /> : null}
+      {choice?.needsPin && !lockedUser ? (
+        <div class="banner banner-pin" role="status">
+          <span>The Installer mode needs the installer's PIN.</span>
+          <button type="button" onClick={() => setUnlocking(true)}>
+            Unlock…
+          </button>
+        </div>
+      ) : null}
+      {unlocking ? <UnlockDialog session={session} lock={st.lock} onDone={() => setUnlocking(false)} /> : null}
       {/* -- WP P1WB1 -- the scene bar's host-side half: the A/B toggle; a safe apply's countdown in every mode */}
       {/* -- WP P1DCFIX -- the A/B toggle in every mode too (Simple has the compare) */}
-      <AbBar desk={desk} />
+      {lockedUser ? null : <AbBar desk={desk} />}
       <GuardBar desk={desk} />
       {/* -- WP WB8 -- the tabs and, beside them, Undo and Redo */}
       <div class="screen-bar">
@@ -225,6 +276,8 @@ export function Screens(props: { session: Session }) {
         feed={system}
         session={session}
         mode={mode}
+        choice={choice}
+        modes={modes}
         onMode={(m, every) => {
           saveMode(safeLocalStorage(), serial, m, every);
           setMode(m);

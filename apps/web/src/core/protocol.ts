@@ -423,7 +423,7 @@ export type CoreEvent =
   | { event: "lost"; reason: string };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods, DocumentMethods {
+export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -431,7 +431,8 @@ export interface CoreMethods extends AlinkMethods, DocumentMethods {
    * as `Session::write(path, indices, value)`: the result is the value the
    * device kept, read back.
    */
-  write: { params: { path: string; indices?: number[]; value: ParamValue }; result: ParamValue };
+  // -- WP P1WB2 -- `token`: a confirmation token for a gated path (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`)
+  write: { params: { path: string; indices?: number[]; value: ParamValue; token?: string }; result: ParamValue };
   describe: { params: { path: string }; result: ParamInfo };
   // -- WP CG36 --
   /**
@@ -483,16 +484,16 @@ export interface CoreMethods extends AlinkMethods, DocumentMethods {
   linkStatus: { params: undefined; result: LinkStatusRecord };
   // -- WP MERGEP1D -- the hub's installer lock of the bound DSPi (crates/dspi-wasm/src/modes.rs)
   /** The one lock state to show: `heldBy` `hub` (the hub's PIN), `console`, or "" for none. */
-  installerLockRefresh: { params: undefined; result: { heldBy: string; locked: boolean; scopeNoticeKey: string } };
+  installerLockRefresh: { params: undefined; result: LockStateRecord };
   // -- WP WB6a -- the preset flows `write` does not cover (crates/dspi-wasm/src/presets.rs)
   /** The live state against the active preset: the core's sentences (CG7), empty when it matches. */
   presetChanges: { params: undefined; result: { dirty: boolean; changes: string[] } };
   /** Copy to: the live state into `dest`, `source` stays active. Writes flash twice. */
-  presetCopy: { params: { source: number; dest: number }; result: null };
+  presetCopy: { params: { source: number; dest: number; token?: string }; result: null };
   /** Revert to Saved: reload the active preset. */
   presetRevert: { params: undefined; result: null };
   /** Factory Reset, once the user confirmed it: the defaults; stored presets are kept. */
-  factoryReset: { params: undefined; result: null };
+  factoryReset: { params: undefined | { token?: string }; result: null };
   // -- WP WB6b -- the EQ graph's curves: the core's maths, no device I/O
   /** The frequency (Hz) of each curve point: 201, log-spaced 10 Hz..20 kHz. */
   curveGrid: { params: undefined; result: { freqs: number[] } };
@@ -942,4 +943,144 @@ export class CoreCallError extends Error {
 /** A peak (0..1) in dBFS, floored at -90 for a meter. */
 export function peakDb(peak: number): number {
   return peak > 0 ? Math.max(-90, 20 * Math.log10(peak)) : -90;
+}
+
+// -- WP P1WB2 -- the Installer page, the lock, the mode manifest, tokens, groups, protect all,
+// AutoEQ preview, the power-on fields (crates/dspi-wasm/src/{modes,limits,outputs,history,autoeq,power_on}.rs)
+
+/** The open device's installer lock (`dspi_core::LockState`). */
+export interface LockStateRecord {
+  serial: string;
+  pinSet: boolean;
+  unlocked: boolean;
+  /** The locked-user state: only `allowedWrites` pass. */
+  locked: boolean;
+  /** The Installer pages may change without a PIN prompt. */
+  installerOpen: boolean;
+  covers: string[];
+  allowedWrites: string[];
+  wrongTries: number;
+  retryAfterMs: number;
+  recovered: boolean;
+  note: string;
+  contact: string;
+  /** `installer_lock.scope` (this console) or `installer_lock.hub`. */
+  scopeNoticeKey: string;
+  detail: string;
+  /** `console`, `hub`, or "" with no PIN. */
+  heldBy: string;
+  /** The mode the hub pins for this console's role on this device, "" for none. */
+  hubPinnedMode: string;
+}
+
+/** The mode manifest (`assets/modes/modes.json`, `dspi_core::ModeManifest`). */
+export interface ModeManifest {
+  version: number;
+  platforms: string[];
+  modes: { id: string; label: string; defaultOn: string[]; needsPinWhenSet: boolean }[];
+  lockedUser: { label: string; screens: string[]; settings: string[]; writes: string[] };
+  screens: { id: string; title: string; modes: string[]; firstIn?: string[]; layer?: string }[];
+  operations: { id: string; title: string; modes: string[]; platforms?: string[]; confirm?: boolean }[];
+}
+
+/** The mode to show and why (`dspi_core::ModeChoice`). */
+export interface ModeChoice {
+  /** `simple`, `advanced`, `installer` or `locked_user`. */
+  mode: string;
+  /** `locked`, `pinned`, `chosen` or `default`. */
+  reason: string;
+  switchable: boolean;
+  needsPin: boolean;
+  openModes: string[];
+  screens: string[];
+  firstScreen: string;
+  operations: string[];
+}
+
+/** What applying a limits profile did (`dspi_core::LimitsApply`). */
+export interface LimitsApplyRecord {
+  lines: string[];
+  /** The values held to the profile, one row each. */
+  held: string[];
+  notes: string[];
+}
+
+/** A PEQ or crossover band as AutoEQ leaves it. */
+export interface AutoEqChannelRecord {
+  channel: number;
+  isOutput: boolean;
+  levelDb: number;
+  bands: FilterParams[];
+  crossover: FilterParams[];
+  /** dB at each `curveGrid` point. */
+  curve: number[];
+}
+
+/** What an AutoEQ profile would do to a channel pair (`dspi_core::AutoEqPreview`). */
+export interface AutoEqPreviewRecord {
+  profileId: string;
+  channels: AutoEqChannelRecord[];
+  /** `input_preamp`, `output_gain` or `none`. */
+  levelTarget: string;
+  suggestedTrimDb: number;
+  held: string[];
+  unsupported: string[];
+  dropped: number;
+  notes: string[];
+}
+
+/** The DAC's hardware mute (`dacMuteFetch`). */
+export interface DacMuteRecord {
+  supported: boolean;
+  enabled: boolean;
+  activeLow: boolean;
+  pin: number;
+  holdMs: number;
+  releaseMs: number;
+}
+
+export interface InstallerMethods {
+  modeManifest: { params: undefined; result: ModeManifest };
+  /** The mode to show on the web for the user's `chosen` ("" for none): lock, hub pin, choice, default. */
+  modeResolve: { params: { platform: string; chosen?: string }; result: ModeChoice };
+  /** Pin the open device's mode (a fleet's or a hub's); "" clears it. */
+  modeSetPinned: { params: { mode: string }; result: Record<string, never> };
+  modePinned: { params: undefined; result: { mode: string } };
+  installerLockState: { params: undefined; result: LockStateRecord };
+  /** With the hub's PIN when the hub holds the lock. A wrong one: `installer_lock` (`installer_lock.wrong_pin`, `.wait`). */
+  installerUnlock: { params: { pin: string }; result: LockStateRecord };
+  installerLock: { params: undefined; result: LockStateRecord };
+  /** The web keeps no PIN: `unsupported`. */
+  installerPinSet: { params: { pin: string }; result: { recoveryCode: string; state: LockStateRecord } };
+  installerPinClear: { params: undefined; result: LockStateRecord };
+  /** What the lock covers, by the manifest's screen ids. */
+  installerLockCover: { params: { pages: string[] }; result: LockStateRecord };
+  /** Set the open device's limits profile (a limits document) and hold the device to it. */
+  limitsApply: { params: { text: string }; result: LimitsApplyRecord };
+  /** The open device's profile as a document, "" with none. */
+  limitsProfile: { params: undefined; result: { text: string } };
+  limitsClear: { params: undefined; result: Record<string, never> };
+  /** Every limiter on at the ceiling (default -1 dBFS), stereo pairs linked: one undo step. */
+  protectAllOutputs: { params: undefined | { ceilingDbfs: number }; result: null };
+  /** The outputs (0-based) that are on, above the threshold (default -10 dB) and without a limiter. */
+  outputsWithoutLimiter: { params: undefined | { thresholdDb: number }; result: number[] };
+  /** Both inputs of a linked pair, one undo step. */
+  inputPairPreamp: { params: { input: number; db: number }; result: null };
+  /** Everything written until `endGroup` is one undo step named `label`. */
+  beginGroup: { params: { label: string }; result: null };
+  endGroup: { params: undefined; result: null };
+  /** A single-use token for one gated operation (`save_preset`, `delete_preset`, `copy_preset`, `factory_reset`, `config_import`, ...), 10 s. */
+  confirmToken: { params: { op: string }; result: string };
+  requireConfirmation: { params: { on: boolean }; result: null };
+  confirmationRequired: { params: undefined; result: boolean };
+  /** What an AutoEQ database entry would do to the pair `left`, `right` (wire channels); nothing written. */
+  autoeqPreview: { params: { profile: unknown; left: number; right: number; applyLevel?: boolean }; result: AutoEqPreviewRecord };
+  /** Apply it, in one undo group, through the limits; the state before as a snapshot document. */
+  autoeqApply: {
+    params: { profile: unknown; left: number; right: number; applyLevel?: boolean };
+    result: { preview: AutoEqPreviewRecord; snapshotDocument: string; snapshotId: string; notes: string[] };
+  };
+  /** The DAC's hardware mute config (read back about 150 ms later with `dacMuteFetch`). */
+  dacMuteSet: { params: Omit<DacMuteRecord, "supported">; result: null };
+  dacMuteFetch: { params: undefined; result: DacMuteRecord };
 }

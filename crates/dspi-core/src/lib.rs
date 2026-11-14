@@ -232,6 +232,8 @@ pub use guarded::{
 };
 // -- WP P1DCFIX -- the countdown's notice key
 pub use guarded::NOTICE_GUARD_WAITING;
+// -- WP P1WB2 -- the hub's backstop sentence beside the countdown
+pub use guarded::NOTICE_GUARD_HUB_BACKSTOP;
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

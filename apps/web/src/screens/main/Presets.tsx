@@ -71,7 +71,7 @@ export const PresetsCard = memo(
         if (a === "discard" && !(await session.change("presetRevert", undefined))) return;
         // The destination keeps its name; one without gets the Console's default.
         if (!(view.names[dest] ?? "").trim() && !(await session.write("preset.name", { text: `Preset ${dest + 1}` }, [dest]))) return;
-        await session.change("presetCopy", { source: active, dest });
+        await session.change("presetCopy", { source: active, dest, token: await session.token("copy_preset") }); // -- WP P1WB2 -- with its token
       });
 
     const askCopy = async () => {
@@ -124,7 +124,7 @@ export const PresetsCard = memo(
               onSelect: () =>
                 void (async () => {
                   if (await confirm("Clear Preset?", `Clear "${label(active)}" and restore factory defaults? This cannot be undone.`, "Clear", true))
-                    await run(() => session.write("preset.delete", "trigger", [active]));
+                    await run(() => session.writeConfirmed("delete_preset", "preset.delete", "trigger", [active])); // -- WP P1WB2 --
                 })(),
             },
           ]
@@ -148,7 +148,7 @@ export const PresetsCard = memo(
                     await run(async () => {
                       for (let i = 0; i < PRESET_SLOTS; i++) {
                         if ((session.state.snapshot?.state.presetOccupied ?? 0) & (1 << i)) {
-                          if (!(await session.write("preset.delete", "trigger", [i]))) return;
+                          if (!(await session.writeConfirmed("delete_preset", "preset.delete", "trigger", [i]))) return; // -- WP P1WB2 --
                         }
                       }
                     });
@@ -188,7 +188,7 @@ export const PresetsCard = memo(
                 true,
               )
             )
-              await run(() => session.change("factoryReset", undefined));
+              await run(async () => session.change("factoryReset", { token: await session.token("factory_reset") })); // -- WP P1WB2 --
           })(),
       },
     ];

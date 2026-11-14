@@ -771,3 +771,40 @@
   /* whole pixels per row, so the screens below keep their sub-pixel layout when the rows wrap */
   .dspi-web .screen-tabs > button { line-height: 20px; padding-top: 5px; padding-bottom: 5px; }
 }
+/* -- WP P1WB2 -- the Installer page, the lock, notices, stale meters, AutoEQ */
+.dspi-web .installer-screen { display: grid; gap: 0.75rem; min-width: 0; }
+.dspi-web .installer-screen .card { min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .installer-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; margin-top: 0.5rem; }
+.dspi-web .lock-covers { display: flex; flex-wrap: wrap; gap: 0.25rem 0.9rem; border: 1px solid var(--line); border-radius: 6px; margin: 0.5rem 0 0; padding: 0.35rem 0.6rem; min-width: 0; }
+.dspi-web .limits-device, .dspi-web .power-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.4rem 0.9rem; margin: 0.5rem 0; }
+.dspi-web .limits-outputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.5rem; }
+.dspi-web .limits-output, .dspi-web .power-dac { border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.6rem; min-width: 0; margin: 0; display: grid; gap: 0.3rem; }
+.dspi-web .limit-field { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-width: 0; font-size: 0.9rem; }
+.dspi-web .limit-field > span { min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .limit-field input, .dspi-web .limit-field select { flex: 0 1 8rem; min-width: 0; width: 8rem; }
+.dspi-web .limit-text { display: grid; gap: 0.2rem; margin-top: 0.4rem; font-size: 0.9rem; }
+.dspi-web .limit-text textarea, .dspi-web .limit-text input { width: 100%; box-sizing: border-box; }
+.dspi-web .limit-check { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.9rem; }
+.dspi-web .limits-warning { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; border: 1px solid var(--warn); border-radius: 6px; padding: 0.35rem 0.6rem; margin: 0.5rem 0; }
+.dspi-web .limits-warning > span { flex: 1 1 12rem; min-width: 0; }
+.dspi-web .limits-report, .dspi-web .autoeq-outcome, .dspi-web .autoeq-preview { border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.6rem; margin-top: 0.5rem; overflow-wrap: anywhere; }
+.dspi-web .limits-report.warn, .dspi-web .autoeq-outcome.warn { border-color: var(--warn); }
+.dspi-web .limits-report.error, .dspi-web .autoeq-outcome.error { border-color: var(--bad); }
+.dspi-web .limits-report ul { margin: 0.25rem 0 0; padding-left: 1.2rem; }
+.dspi-web .locked-banner { border-color: var(--warn); }
+.dspi-web .locked-note { white-space: pre-wrap; }
+.dspi-web .lock-scope { color: var(--muted); font-size: 0.9rem; }
+.dspi-web .banner-pin { border-color: var(--warn); }
+.dspi-web .mode-fixed { color: inherit; }
+.dspi-web .error.notice .notice-detail { display: block; font-size: 0.85rem; opacity: 0.85; }
+.dspi-web .error.notice .notice-action { display: block; font-size: 0.85rem; }
+.dspi-web .error.notice-warning { color: var(--warn); }
+.dspi-web .error.notice-info { color: inherit; }
+.dspi-web .meters.stale { opacity: 0.45; filter: grayscale(1); }
+.dspi-web .meters-stale { margin: 0.25rem 0; }
+.dspi-web .eq-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+/* whole pixels, so the EQ screen below keeps its sub-pixel layout (as the tab rows, P1WB1) */
+.dspi-web .eq-tools > button { line-height: 20px; padding-top: 5px; padding-bottom: 5px; }
+.dspi-web .autoeq-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; margin: 0.35rem 0; min-width: 0; }
+.dspi-web .autoeq-row label { display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.dspi-web .autoeq-name { min-width: 0; overflow-wrap: anywhere; color: var(--muted); }

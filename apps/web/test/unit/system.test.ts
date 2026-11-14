@@ -157,7 +157,8 @@ test("SW3: the mode is remembered per device, or for every device, Advanced by d
   assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["main", "eq", "matrix", "snapshots"]); // -- WP P1DCFIX -- recall and A/B only
   // -- WP P1WB1 -- Snapshots and Files in Advanced and Installer
   assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "main", "eq", "matrix", "snapshots", "files", "events"]);
-  assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "matrix", "snapshots", "files", "system", "events"]);
+  // -- WP P1WB2 -- the Installer page last, in the Installer mode
+  assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "matrix", "snapshots", "files", "system", "events", "installer"]);
 });
 
 test("SW3: words: results, ops, frames; the rail puts alarms on first, critical first", () => {

@@ -99,7 +99,8 @@ const MatrixView = memo(
 
     // The 8-channel mode's actions (`Direct 1:1`, `Clear`).
     const many = inputs.length > 2;
-    const direct = async () => {
+    // -- WP P1WB2 -- each one undo step (P1UG)
+    const direct = () => session.group("Direct 1:1", async () => {
       for (const i of inputs) {
         for (const o of outs) {
           const want = o.index === i.index && o.index !== pdmOutput(s);
@@ -107,10 +108,10 @@ const MatrixView = memo(
         }
       }
       if (s.outputEnabled[pdmOutput(s)]) await session.write("out.enable", { bool: false }, [pdmOutput(s)]);
-    };
-    const clearAll = async () => {
+    });
+    const clearAll = () => session.group("Clear routing", async () => {
       for (const i of inputs) for (const o of outs) if (s.matrixRouting[i.index]?.[o.index] && !(await crosspoint(i.index, o.index, { enabled: false }))) return;
-    };
+    });
 
     return (
       <div class="matrix-screen">

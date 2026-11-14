@@ -10,12 +10,19 @@ import { useSessionState } from "../../ui/components";
 import type { SystemFeed } from "./feed";
 import { useFeed } from "./SystemScreen";
 import { MODES, mayWrite, railAlarms, subjectName, systemMuted, writeNote, type Alarm, type Mode } from "./model";
+// -- WP P1WB2 -- the mode switch onto the core's mode manifest and its resolution (P1LK)
+import type { ModeChoice } from "../../core/protocol";
 
 export function StatusRail(props: {
   feed: SystemFeed;
   session: Session;
   mode: Mode;
   onMode: (mode: Mode, every: boolean) => void;
+  // -- WP P1WB2 --
+  /** The core's resolution (`modeResolve`): a pinned or locked mode is not switchable. */
+  choice?: ModeChoice | null;
+  /** The manifest's modes and their labels. */
+  modes?: { id: Mode; label: string }[];
 }) {
   const st = useFeed(props.feed);
   const ss = useSessionState(props.session);
@@ -29,7 +36,12 @@ export function StatusRail(props: {
   const kind = props.session.source.kind;
   // -- WP P1WB1 -- a document opened with no device
   const where = kind === "hub" ? `hub ${ss.hubName || ""}`.trim() : kind === "usb" ? "USB" : kind === "document" ? "a file" : "the demo";
-  const mode = MODES.find((m) => m.id === props.mode)!;
+  const modes = props.modes?.length ? props.modes : MODES; // -- WP P1WB2 --
+  const mode = modes.find((m) => m.id === props.mode) ?? MODES.find((m) => m.id === props.mode)!;
+  // -- WP P1WB2 -- the locked-user state, or a mode the hub (or the fleet) pins
+  const locked = props.choice?.mode === "locked_user";
+  const pinned = props.choice?.reason === "pinned";
+  const shown = locked ? "Locked" : pinned ? `${mode.label} (pinned)` : mode.label;
   return (
     <aside class="sys-rail" aria-label="Status">
       <div class="sys-rail-row">
@@ -44,8 +56,8 @@ export function StatusRail(props: {
             {st.scene?.refusal ? <span class="sys-rail-refused"> · {st.scene.name} refused</span> : null}
           </span>
         ) : null}
-        <button type="button" class="sys-rail-item sys-mode" aria-label={`Mode: ${mode.label}`} onClick={() => setChoosing(true)}>
-          Mode: {mode.label}
+        <button type="button" class="sys-rail-item sys-mode" aria-label={`Mode: ${shown}`} onClick={() => setChoosing(true)}>
+          Mode: {shown}
         </button>
         {hub ? (
           <button
@@ -76,7 +88,9 @@ export function StatusRail(props: {
           ))}
         </ul>
       ) : null}
-      {choosing ? <ModeDialog mode={props.mode} onDone={(m, every) => (setChoosing(false), m && props.onMode(m, every))} /> : null}
+      {choosing ? (
+        <ModeDialog mode={props.mode} modes={modes} choice={props.choice ?? null} onDone={(m, every) => (setChoosing(false), m && props.onMode(m, every))} />
+      ) : null}
     </aside>
   );
 }
@@ -104,10 +118,22 @@ function AlarmRow(props: { a: Alarm; name: string; mayAck: boolean; onAck: () =>
   );
 }
 
-/** The mode switch (docs/UI-MODES.md section 5): no PIN on the web, so every mode is reachable. */
-function ModeDialog(props: { mode: Mode; onDone: (m: Mode | null, every: boolean) => void }) {
+/**
+ * The mode switch (docs/UI-MODES.md section 5), its modes from the core's manifest. With no PIN
+ * every mode is reachable. -- WP P1WB2 -- A mode the hub or the fleet pins, or the locked-user
+ * state, is not switchable here: the dialog says why. The Installer mode with a PIN set asks
+ * for it (the session's view, once chosen).
+ */
+function ModeDialog(props: { mode: Mode; modes: { id: Mode; label: string }[]; choice: ModeChoice | null; onDone: (m: Mode | null, every: boolean) => void }) {
   const [mode, setMode] = useState(props.mode);
   const [every, setEvery] = useState(false);
+  const fixed = props.choice ? !props.choice.switchable : false;
+  const why =
+    props.choice?.mode === "locked_user"
+      ? "Locked by the installer: unlock to switch modes."
+      : props.choice?.reason === "pinned"
+        ? `This console is pinned to ${props.modes.find((m) => m.id === props.choice!.mode)?.label ?? props.choice.mode} for this DSPi.`
+        : "";
   return (
     <Dialog
       title="Mode"
@@ -117,9 +143,10 @@ function ModeDialog(props: { mode: Mode; onDone: (m: Mode | null, every: boolean
         { label: "Cancel", onClick: () => props.onDone(null, false) },
       ]}
     >
-      <fieldset class="sys-modes">
+      {why ? <p class="sys-note mode-fixed">{why}</p> : null}
+      <fieldset class="sys-modes" disabled={fixed}>
         <legend>What this console shows</legend>
-        {MODES.map((m) => (
+        {props.modes.map((m) => (
           <label key={m.id}>
             <input type="radio" name="mode" checked={mode === m.id} onChange={() => setMode(m.id)} /> {m.label}
           </label>

@@ -22,7 +22,7 @@ export interface Scene {
   g: Geometry;
   freqs: number[] | null;
   /** The other channels shown, each a thin line. */
-  others: { curve: number[]; colour: string; offset: number }[];
+  others: { curve: number[]; colour: string; offset: number; dashed?: boolean }[]; // -- WP P1WB2 -- dashed: an AutoEQ preview
   /** The edited channel's combined curve and its level shift (gain or trim). */
   main: { curve: number[] | null; colour: string; offset: number } | null;
   bands: SceneBand[];
@@ -106,8 +106,10 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
   ctx.globalAlpha = 0.7;
   for (const o of s.others) {
     ctx.strokeStyle = o.colour;
+    if (o.dashed) ctx.setLineDash([6, 4]); // -- WP P1WB2 --
     path(o.curve, o.offset);
     ctx.stroke();
+    if (o.dashed) ctx.setLineDash([]);
   }
   ctx.globalAlpha = 1;
 

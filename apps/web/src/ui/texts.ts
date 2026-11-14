@@ -4,7 +4,7 @@
 
 import linkWords from "../../../../ci/generated/web/link-words.json";
 import about from "../../../../assets/about.json";
-import type { LinkPhase } from "../core/protocol";
+import { CoreCallError, type LinkPhase, type NoticeRecord } from "../core/protocol"; // -- WP P1WB2 -- notices
 
 export interface LinkText {
   key: string;
@@ -48,3 +48,44 @@ export interface AboutData {
 }
 
 export const aboutData = about as AboutData;
+
+// -- WP P1WB2 -- the core's notice table (P1NT, `assets/notices/notices.json`): one row per
+// error key, with a title, the reason and what to do, in the words every client shows. Read
+// once from a core (`noticeTexts`); the rows are the same in every session.
+
+
+let rows: Map<string, NoticeRecord> | null = null;
+let loading: Promise<void> | null = null;
+
+/** Read the table from a core, once per page; a failure leaves it unread (asked again next time). */
+export function loadNotices(core: { call(method: "noticeTexts", params: undefined): Promise<NoticeRecord[]> }): Promise<void> {
+  if (rows) return Promise.resolve();
+  loading ??= core.call("noticeTexts", undefined).then(
+    (list) => {
+      if (Array.isArray(list)) rows = new Map(list.map((n) => [n.key, n]));
+      else loading = null;
+    },
+    () => {
+      loading = null;
+    },
+  );
+  return loading;
+}
+
+/** The row for `key`, or null before the table is read or for a key it does not have. */
+export function noticeRow(key: string): NoticeRecord | null {
+  return rows?.get(key) ?? null;
+}
+
+/** A failure's notice: its key's row, with the core's own words as the detail. Null without one. */
+export function noticeOf(e: unknown): NoticeRecord | null {
+  if (!(e instanceof CoreCallError) || !e.noticeKey) return null;
+  const row = noticeRow(e.noticeKey);
+  return row ? { ...row, detail: e.message } : null;
+}
+
+/** Tests only: forget the table. */
+export function resetNotices(): void {
+  rows = null;
+  loading = null;
+}
