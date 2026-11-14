@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
@@ -108,7 +109,10 @@ class BarStripPlacementAn34Test {
 
     /** The graph's gear, then its "RTA Bars" switch (the gear panel is a Dialog: its own root). */
     private fun toggleRtaBars() {
-        rule.onAllNodesWithText("⋮", useUnmergedTree = true)[0].performClick()
+        rule.onAllNodesWithContentDescription(
+            se.bofr.dspi.feature.graph.GRAPH_OPTIONS_DESCRIPTION,
+            useUnmergedTree = true
+        )[0].performClick()
         settleUntil("the gear panel") {
             rule.onAllNodesWithText("RTA Bars", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }

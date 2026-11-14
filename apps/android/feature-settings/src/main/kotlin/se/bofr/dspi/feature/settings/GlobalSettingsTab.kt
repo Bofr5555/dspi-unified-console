@@ -6,7 +6,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -106,7 +110,8 @@ fun GlobalSettingsTab(bridge: DspiBridge, coordinator: SettingsSaveCoordinator) 
                 val m = draft.dacHwMuteConfig
                 SettingsSection("External Mute Control") {
                     Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Top) {
-                        Text("!", color = MacColors.orange)
+                        // -- WP P1EFIX3 -- the platform's icon, described
+                        Icon(Icons.Filled.Warning, contentDescription = "Warning", tint = MacColors.orange, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text(

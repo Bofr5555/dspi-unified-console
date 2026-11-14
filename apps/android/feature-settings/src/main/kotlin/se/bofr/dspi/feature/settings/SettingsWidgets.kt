@@ -18,11 +18,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -220,7 +224,13 @@ internal fun RowDivider() =
 internal fun StatusLine(message: String?, isError: Boolean) {
     if (message.isNullOrEmpty()) return
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(if (isError) "!" else "✓", color = if (isError) MacColors.orange else MacColors.green, fontSize = 13.sp)
+        // -- WP P1EFIX3 -- the platform's icon, described
+        Icon(
+            if (isError) Icons.Filled.Warning else Icons.Filled.CheckCircle,
+            contentDescription = if (isError) "Warning" else "Done",
+            tint = if (isError) MacColors.orange else MacColors.green,
+            modifier = Modifier.size(14.dp)
+        )
         Spacer(Modifier.width(6.dp))
         Text(
             message,

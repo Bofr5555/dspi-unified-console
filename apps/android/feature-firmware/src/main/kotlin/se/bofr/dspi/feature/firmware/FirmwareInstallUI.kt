@@ -20,7 +20,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -70,18 +76,21 @@ fun LabeledValueRow(label: String, value: String, modifier: Modifier = Modifier,
     }
 }
 
-/** Glyph stand-ins for the SF Symbols the macOS cards use. */
-enum class InstallIcon(val glyph: String) {
+/**
+ * Stand-ins for the SF Symbols the macOS cards use: a plain glyph, or
+ * (-- WP P1EFIX3 --) the platform's icon with what TalkBack says for it.
+ */
+enum class InstallIcon(val glyph: String, val image: ImageVector? = null, val description: String = "") {
     SEARCH("⌕"),
     CHECK_CIRCLE("✓"),
     CABLE("⏚"),
     DRIVE("▭"),
     DRIVE_CHECK("✓"),
     CYCLE("↻"),
-    SEAL("✓"),
+    SEAL("", Icons.Filled.CheckCircle, "Done"),
     QUESTION("?"),
-    WARNING("!"),
-    LOCK("#")
+    WARNING("", Icons.Filled.Warning, "Warning"),
+    LOCK("", Icons.Filled.Lock, "USB permission needed")
 }
 
 /** One centred state: icon or spinner, short title, one or two sentences. */
@@ -105,7 +114,12 @@ fun InstallStateCard(
             if (spinning) {
                 CircularProgressIndicator(Modifier.size(iconSize), strokeWidth = 3.dp)
             } else {
-                Text(icon.glyph, color = tint, fontSize = (iconSize.value * 0.9f).sp)
+                val image = icon.image
+                if (image != null) {
+                    Icon(image, contentDescription = icon.description, tint = tint, modifier = Modifier.size(iconSize))
+                } else {
+                    Text(icon.glyph, color = tint, fontSize = (iconSize.value * 0.9f).sp)
+                }
             }
         }
         Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)

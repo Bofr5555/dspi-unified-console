@@ -50,6 +50,9 @@ compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview"
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
+# -- WP P1EFIX3 -- the platform's icons (Favorite, Lock, Warning, Settings, CheckCircle) with content
+# descriptions; already in the graph through material3 (1.7.8, the BOM's), verified: no new artifact
+compose-material-icons-core = { module = "androidx.compose.material:material-icons-core" }
 compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 # -- WP AN20 -- the Accessibility Test Framework checks behind enableAccessibilityChecks() (BOM-managed)

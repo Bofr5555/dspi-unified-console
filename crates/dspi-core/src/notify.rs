@@ -225,13 +225,31 @@ impl DspiCore {
         // The whole of process_notifications, the re-read it may need
         // included: a patch the device cannot be trusted on is put right by
         // that re-read, never left in the mirror.
+        // -- WP P1EFIX3 -- (review p1efix2 N1) the connection the pump ran on
+        let generation = self.lock().conn.as_ref().map(|c| c.generation);
         let r = self.process_notifications_at(Instant::now());
         // -- WP P1EFIX2 -- (review p1efix F1) kept as it was, every flag and
         // channel, for the next call: a settle that only saw the history move
         // claims no refresh, and a NAMES, SIGGEN, CS_AUX, IR_LEARN, STREAMS,
         // INPUT_FORMAT, PRESET or STALE it took still reaches the client
-        if r != NotifyResult::default()
-            && let Some(conn) = self.lock().conn.as_mut()
+        if let Some(generation) = generation {
+            self.keep_settled(generation, r);
+        }
+    }
+
+    // -- WP P1EFIX3 --
+    /// Keep a settle's result for the next pump, on the connection of
+    /// `generation` only: after a close and an open in between, the old
+    /// connection's flags never reach the new one.
+    pub(crate) fn keep_settled(&self, generation: u64, r: NotifyResult) {
+        if r == NotifyResult::default() {
+            return;
+        }
+        if let Some(conn) = self
+            .lock()
+            .conn
+            .as_mut()
+            .filter(|c| c.generation == generation)
         {
             conn.settled.flags |= r.flags;
             conn.settled.filter_channels |= r.filter_channels;

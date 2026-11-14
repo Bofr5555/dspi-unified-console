@@ -9,7 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -289,7 +293,13 @@ private fun ApplyRow(
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
             if (status != null && !dirty) {
-                Text(if (status.second) "! " else "✓ ", color = if (status.second) MacColors.orange else MacColors.green)
+                // -- WP P1EFIX3 -- the platform's icon, described
+                Icon(
+                    if (status.second) Icons.Filled.Warning else Icons.Filled.CheckCircle,
+                    contentDescription = if (status.second) "Warning" else "Done",
+                    tint = if (status.second) MacColors.orange else MacColors.green,
+                    modifier = Modifier.size(14.dp).padding(end = 2.dp)
+                )
                 Text(
                     status.first,
                     style = MaterialTheme.typography.bodySmall,

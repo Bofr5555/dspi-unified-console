@@ -176,3 +176,33 @@ fn wp_p1efix2_f2_a_late_own_echo_after_the_image() {
     let _ = core.process_notifications();
     assert_eq!(core.get_state().master_volume_db, v0 - 3.0);
 }
+
+/// WP P1EFIX3 (review p1efix2 N1): a settle's flags are kept on the
+/// connection they came from only. Kept for the open one, they are announced;
+/// kept for one closed and replaced since, they are dropped.
+#[test]
+fn wp_p1efix3_settled_flags_stay_with_their_connection() {
+    let (core, _remote) = demo();
+    let names = NotifyResult {
+        flags: NOTIFY_NAMES,
+        filter_channels: 0b10,
+    };
+    let first = core.lock().conn.as_ref().unwrap().generation;
+    core.keep_settled(first, names);
+    let r = core.process_notifications();
+    assert_ne!(r.flags & NOTIFY_NAMES, 0, "{r:?}");
+    assert_eq!(r.filter_channels & 0b10, 0b10, "{r:?}");
+    // The same connection's settle, then a close and a new device in between.
+    core.disconnect();
+    core.open_demo().unwrap();
+    quiet(&core);
+    let second = core.lock().conn.as_ref().unwrap().generation;
+    assert_ne!(first, second);
+    core.keep_settled(first, names);
+    let r = core.process_notifications();
+    assert_eq!(
+        r.flags & NOTIFY_NAMES,
+        0,
+        "the old connection's flags are dropped: {r:?}"
+    );
+}

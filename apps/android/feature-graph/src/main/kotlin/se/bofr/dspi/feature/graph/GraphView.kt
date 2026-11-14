@@ -27,6 +27,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -535,7 +538,15 @@ internal fun BodePlotView(bridge: DspiBridge, modifier: Modifier, channels: Set<
                 .background(Color.Black.copy(alpha = 0.35f))
                 .clickable { optionsOpen = true },
             contentAlignment = Alignment.Center
-        ) { Text("⋮", color = Color.White.copy(alpha = 0.8f), fontSize = 15.sp) }
+        ) {
+            // -- WP P1EFIX3 -- the platform's settings icon, described
+            Icon(
+                Icons.Filled.Settings,
+                contentDescription = GRAPH_OPTIONS_DESCRIPTION,
+                tint = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
     }
     // The gear panel holds app preferences and the spectrum's channels: no device writes (G1)
     if (optionsOpen) {
@@ -796,3 +807,7 @@ fun GraphLegend(bridge: DspiBridge, modifier: Modifier = Modifier) {
         }
     }
 }
+
+// -- WP P1EFIX3 --
+/** The graph's options button, as TalkBack says it. */
+const val GRAPH_OPTIONS_DESCRIPTION = "Graph options"
