@@ -134,6 +134,21 @@ def edge_period(edges: np.ndarray, nominal_ns: float) -> float | None:
     return float(slope)
 
 
+def period_bound_ns(edges: np.ndarray, nominal_ns: float, dt_ns: float) -> float:
+    """Worst-case error of edge_period() from edge quantisation (each edge within +-dt/2).
+
+    The least-squares slope is sum((k - kbar) * e_k) / sum((k - kbar)^2), so an error
+    of at most dt/2 per edge moves it by at most dt/2 * sum|k - kbar| / sum((k - kbar)^2).
+    """
+    e = np.sort(np.asarray(edges, dtype=float))
+    if e.size < 3:
+        return float("inf")
+    k = np.round((e - e[0]) / nominal_ns)
+    c = k - k.mean()
+    den = float((c * c).sum())
+    return float("inf") if den == 0 else 0.5 * dt_ns * float(np.abs(c).sum()) / den
+
+
 # ---------------------------------------------------------------------------
 # Results
 # ---------------------------------------------------------------------------
@@ -159,6 +174,7 @@ class PairResult:
     threshold_ns: float
     verdict: str                    # PASS / FAIL
     reasons: list[str] = field(default_factory=list)
+    period_tol_ppm: float = float("nan")   # quantisation bound of period_ppm (nan: sample interval unknown)
 
     def samples(self, fs: int) -> float:
         return ns_to_samples(self.mean_ns, fs)
@@ -173,6 +189,7 @@ class PairResult:
             d[f"mean_samples_{fs // 1000}k"] = _f(ns_to_samples(self.mean_ns, fs), 4)
             d[f"p2p_samples_{fs // 1000}k"] = _f(ns_to_samples(self.p2p_ns, fs), 4)
         d.update({"drift_ns_per_s": _f(self.drift_ns_per_s), "period_ppm": _f(self.period_ppm, 3),
+                  "period_tol_ppm": _f(self.period_tol_ppm, 3),
                   "threshold_ns": _f(self.threshold_ns), "verdict": self.verdict, "reasons": "; ".join(self.reasons)})
         return d
 
@@ -194,7 +211,7 @@ class Limits:
 
 
 def summarise(ref: str, ch: str, t_ref: np.ndarray, off: np.ndarray, missing: int, extra: int,
-              period_ppm: float, limits: Limits) -> PairResult:
+              period_ppm: float, limits: Limits, period_tol_ppm: float = float("nan")) -> PairResult:
     n = int(off.size)
     reasons = []
     if n == 0:
@@ -209,13 +226,17 @@ def summarise(ref: str, ch: str, t_ref: np.ndarray, off: np.ndarray, missing: in
         if max(abs(mn), abs(mx)) > thr:
             reasons.append(f"offset beyond +-{limits.threshold_samples:g} sample(s) at {limits.fs} Hz "
                            f"(worst {max(abs(mn), abs(mx)):.0f} ns)")
-    if not math.isnan(period_ppm) and abs(period_ppm) > limits.max_period_ppm:
-        reasons.append(f"not locked: edge period {period_ppm:+.2f} ppm from the reference")
+    # Not locked only beyond the limit plus what edge quantisation alone can produce
+    # (review scope1 T1: 4-5 edges at 7 us per sample give +-10 ppm by themselves).
+    tol = 0.0 if math.isnan(period_tol_ppm) else period_tol_ppm
+    if not math.isnan(period_ppm) and abs(period_ppm) > limits.max_period_ppm + tol:
+        reasons.append(f"not locked: edge period {period_ppm:+.2f} ppm from the reference"
+                       + (f" (quantisation allows +-{tol:.2f})" if tol else ""))
     total = n + missing
     if total and missing / total > limits.max_missing_frac:
         reasons.append(f"{missing} of {total} edges missing")
     return PairResult(ref, ch, n, missing, extra, mean, std, p2p, mn, mx, drift, period_ppm,
-                      limits.threshold_ns, "FAIL" if reasons else "PASS", reasons)
+                      limits.threshold_ns, "FAIL" if reasons else "PASS", reasons, period_tol_ppm)
 
 
 @dataclass
@@ -225,6 +246,7 @@ class Segment:
     span_ns: tuple[float, float]
     host_time_s: float = 0.0        # wall-clock start of the capture (long runs)
     match_ns: float | None = None   # match window override (triggered windows: half the window)
+    dt_ns: float | None = None      # sample interval (edge quantisation +-dt/2); None: unknown
 
 
 def analyse(segments: list[Segment], channels: list[str], ref: str, period_ns: float,
@@ -240,7 +262,7 @@ def analyse(segments: list[Segment], channels: list[str], ref: str, period_ns: f
             continue
         ts, ds = [], []
         missing = extra = 0
-        ppms = []
+        ppms, tols = [], []
         for seg in segments:
             r = seg.edges.get(ref, np.zeros(0))
             o = seg.edges.get(ch, np.zeros(0))
@@ -252,10 +274,15 @@ def analyse(segments: list[Segment], channels: list[str], ref: str, period_ns: f
             pr, po = edge_period(r, period_ns), edge_period(o, period_ns)
             if pr and po:
                 ppms.append((po / pr - 1.0) * 1e6)
+                if seg.dt_ns:
+                    tols.append((period_bound_ns(r, period_ns, seg.dt_ns) +
+                                 period_bound_ns(o, period_ns, seg.dt_ns)) / pr * 1e6)
         t = np.concatenate(ts) if ts else np.zeros(0)
         d = np.concatenate(ds) if ds else np.zeros(0)
         ppm = float(np.median(ppms)) if ppms else float("nan")
-        out.append(summarise(ref, ch, t, d, missing, extra, ppm, limits))
+        # every segment's estimate carries its own bound: the median of them bounds the median
+        tol = float(max(tols)) if tols and len(tols) == len(ppms) else float("nan")
+        out.append(summarise(ref, ch, t, d, missing, extra, ppm, limits, tol))
     return out
 
 
@@ -280,11 +307,15 @@ def text_summary(results: list[PairResult], labels: dict[str, str] | None = None
                 f"{r.verdict}  {b} vs {a}: {r.mean_ns:+.0f} ns = {r.samples(48000):+.3f} smp@48k / "
                 f"{r.samples(96000):+.3f} smp@96k; jitter std {r.std_ns:.0f} ns, p2p {r.p2p_ns:.0f} ns; "
                 f"n {r.n}, missing {r.missing}, drift {r.drift_ns_per_s:+.1f} ns/s"
-                + ("" if math.isnan(r.period_ppm) else f", period {r.period_ppm:+.3f} ppm"))
+                + ("" if math.isnan(r.period_ppm) else f", period {r.period_ppm:+.3f} ppm")
+                + ("" if math.isnan(r.period_tol_ppm) else f" (+-{r.period_tol_ppm:.3f} from quantisation)"))
         else:
             lines.append(f"{r.verdict}  {b} vs {a}: no matched edges (missing {r.missing})")
         for why in r.reasons:
             lines.append(f"      - {why}")
+        if not math.isnan(r.period_tol_ppm) and r.period_tol_ppm > 1.0:
+            lines.append(f"      note: edge quantisation alone allows +-{r.period_tol_ppm:.1f} ppm on the period: the "
+                         "not-locked check is weak here (more --periods, a faster timebase or --mode window)")
     verdict = "PASS" if results and all(r.verdict == "PASS" for r in results) else "FAIL"
     lines.append(f"OVERALL {verdict} (threshold +-{results[0].threshold_ns:.0f} ns)" if results else "OVERALL FAIL (no pairs)")
     return "\n".join(lines)

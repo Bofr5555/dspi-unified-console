@@ -60,7 +60,8 @@ class FakePs2000a:
     """
 
     def __init__(self, units: dict[int, float], variant="2206B MSO", memory=2_000_000, start_ns=3.3e6,
-                 min_tb=0, digital_ok=True, trig_at_ns=None, ppm: dict[int, float] | None = None):
+                 min_tb=0, digital_ok=True, trig_at_ns=None, ppm: dict[int, float] | None = None,
+                 max_tb: int | None = None):
         self.units = units
         self.variant = variant
         self.memory = memory
@@ -68,6 +69,8 @@ class FakePs2000a:
         self.min_tb = min_tb
         self.digital_ok = digital_ok
         self.ppm = ppm or {}
+        self.max_tb = max_tb
+        self.tb_calls = []
         self.calls = []
         self.ports = {}
         self.analog_on = {}
@@ -122,10 +125,11 @@ class FakePs2000a:
         return float(2 ** tb * 2) if tb < 3 else float((tb - 2) * 16)
 
     def ps2000aGetTimebase2(self, h, tb, n, dt_ref, oversample, mx_ref, seg):
-        if tb < self.min_tb or n > self.memory:
+        self.tb_calls.append(tb)
+        if tb < self.min_tb or n > self.memory or (self.max_tb is not None and tb > self.max_tb):
             return 0x0E
         self._set(dt_ref, self.dt(tb))
-        self._set(mx_ref, self.memory)
+        self._set(mx_ref, self.memory if tb < 1000 else self.memory // 2)   # a smaller limit at slow timebases
         return 0
 
     def ps2000aSetTriggerChannelConditions(self, h, cond, n):

@@ -102,7 +102,8 @@ def _common(p: argparse.ArgumentParser) -> None:
 
 PAIR_FIELDS = (["capture", "host_time", "run_label", "ref_unit", "unit"]
                + list(analysis.PairResult("", "", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "").row()))
-EDGE_FIELDS = ["capture", "host_time", "span_start_ns", "span_end_ns", "match_ns", "run_label", "unit", "channel", "t_ns"]
+EDGE_FIELDS = ["capture", "host_time", "span_start_ns", "span_end_ns", "match_ns", "dt_ns", "run_label", "unit",
+               "channel", "t_ns"]
 
 
 def pair_rows(run: Run, cap, host_time: float, results: list[analysis.PairResult]):
@@ -133,7 +134,8 @@ class Writer:
 
     def segment(self, cap: int, seg: analysis.Segment) -> None:
         head = [cap, f"{seg.host_time_s:.6f}", f"{seg.span_ns[0]:.3f}", f"{seg.span_ns[1]:.3f}",
-                "" if seg.match_ns is None else f"{seg.match_ns:.3f}", self.run.label]
+                "" if seg.match_ns is None else f"{seg.match_ns:.3f}",
+                "" if seg.dt_ns is None else f"{seg.dt_ns:.4f}", self.run.label]
         wrote = False
         for ch, ts in seg.edges.items():
             for t in ts:
@@ -172,6 +174,7 @@ def read_edges(path: str) -> list[tuple[int, analysis.Segment]]:
             s = segs.setdefault(cap, {"host": float(row["host_time"]),
                                       "span": (float(row["span_start_ns"]), float(row["span_end_ns"])),
                                       "match": float(row["match_ns"]) if row.get("match_ns") else None,
+                                      "dt": float(row["dt_ns"]) if row.get("dt_ns") else None,
                                       "edges": {}})
             if row["channel"]:
                 s["edges"].setdefault(row["channel"], []).append(float(row["t_ns"]))
@@ -179,7 +182,7 @@ def read_edges(path: str) -> list[tuple[int, analysis.Segment]]:
     for cap in sorted(segs):
         s = segs[cap]
         e = {k: np.asarray(v) for k, v in s["edges"].items()}
-        out.append((cap, analysis.Segment(e, s["span"], s["host"], s["match"])))
+        out.append((cap, analysis.Segment(e, s["span"], s["host"], s["match"], s["dt"])))
     return out
 
 
@@ -341,6 +344,18 @@ def cmd_compare(a) -> int:
     return 0 if rows and all(r["verdict"] == "PASS" for r in rows) else 1
 
 
+AUTO_SPAN_MAX_DT_NS = 100.0     # span mode only when the block resolves edges to 100 ns or better
+
+
+def auto_mode(memory: int, samples: int, span_ns: float, analog: bool) -> str:
+    """span when its block resolves the edges finely enough (period check and jitter), else window
+    (review scope1 T1: a 48 kS scope over 4 periods gives 7 us per sample).  Window mode needs a
+    digital reference to trigger on."""
+    if analog or (samples > 0 and span_ns / samples <= AUTO_SPAN_MAX_DT_NS):
+        return "span"
+    return "window"
+
+
 def _open_scope():
     from . import capture
     sc = capture.Ps2000a(capture.load_driver())
@@ -391,6 +406,10 @@ def cmd_capture(a) -> int:
         w.note("unit " + json.dumps(info))
         for n in note:
             w.note(n)
+        if a.mode == "auto":
+            a.mode = auto_mode(sc.max_samples(1), min(a.max_samples, sc.max_samples(1)), a.periods * run.period_ns,
+                               analog)
+            w.note(f"mode auto: {a.mode} (memory {sc.max_samples(1)} samples)")
         w.note(f"run '{run.label}', units {run.units}, channels {run.chans}, ref {run.ref}, mode {a.mode}, "
                f"{'analog' if analog else 'digital'}, logic threshold {a.level} V")
         t_end = time.time() + (a.duration if a.every else 0)
@@ -417,6 +436,11 @@ def cmd_capture(a) -> int:
                 segs.append((cap, s))
             res = analysis.analyse(cap_segs, run.chans, run.ref, run.period_ns, run.limits)
             w.results(cap, t_cap, res)
+            weak = [r.period_tol_ppm for r in res if not np.isnan(r.period_tol_ppm)]
+            if cap == 0 and weak and max(weak) > run.limits.max_period_ppm:
+                w.note(f"warning: at dt {dt:.0f} ns edge quantisation allows +-{max(weak):.1f} ppm on the marker "
+                       f"period (limit {run.limits.max_period_ppm:g}): the not-locked check is widened by that; "
+                       "for a tight check use --mode window or more --periods")
             per.append((t_cap, res))
             w.note(f"capture {cap}: dt {dt:.1f} ns; " + "; ".join(
                 f"{run.unit(r.ch)} {r.verdict} {r.mean_ns:+.0f} ns p2p {r.p2p_ns:.0f} n {r.n}" for r in res))
@@ -440,8 +464,9 @@ def main(argv=None) -> int:
     sub.add_parser("info", help="print the scope's unit info")
     c = sub.add_parser("capture", help="capture and analyse")
     _common(c)
-    c.add_argument("--mode", choices=("span", "window"), default="span",
-                   help="span: one block over --periods marker periods; window: triggered windows around ref edges")
+    c.add_argument("--mode", choices=("auto", "span", "window"), default="auto",
+                   help="span: one block over --periods marker periods; window: triggered windows around ref edges; "
+                        "auto (default): span if that block resolves edges to 100 ns, else window")
     c.add_argument("--periods", type=float, default=4.0, help="span mode: marker periods per block")
     c.add_argument("--max-samples", type=int, default=50_000_000, help="span mode: samples per block at most")
     c.add_argument("--windows", type=int, default=20, help="window mode: triggered windows per capture")

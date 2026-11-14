@@ -30,8 +30,9 @@ Everything here runs in a podman container. The host needs only a udev rule; no 
 
 ## 2. Flash the test images (owner's step)
 
-Images: DSPi fork branch `wp/SCOPE1-usb3b` = the reviewed USB3b image's source (844017f) plus the marker commits only,
-marker on GPIO 22, N 4096, no lock pin. sha256 in `~/.cache/dspi-build/work/wp-SCOPE1/images-v2/SHA256SUMS`.
+Images: DSPi fork branch `wp/SCOPE1F-usb3b` = the reviewed USB3b image's source (844017f) plus the marker commits
+only (review scope1 fixups included), marker on GPIO 22, N 4096, no lock pin. sha256 in
+`~/.cache/dspi-build/work/wp-SCOPE1/images-f/SHA256SUMS`.
 
 | File | Board | Build |
 |---|---|---|
@@ -42,8 +43,17 @@ marker on GPIO 22, N 4096, no lock pin. sha256 in `~/.cache/dspi-build/work/wp-S
 The same build without the marker is byte-identical to the reviewed USB3b K340 image except for the version stamp
 (WP SCOPE1 report). Back up each unit first, copy the UF2 in BOOTSEL mode, then on every unit: input source USB,
 `EXT_ALINK_USB` mode 2 with the same D (e.g. `02 01 c0 00 00 00 00 00`, D 192 at 48 kHz), same output type, same
-DSP delays; never saved (no `0x52`). The marker runs once the unit is phase-locked (state 5) and needs no audio
-stream; in mode 0 or 1 it stays low. Restore mode 0 and the normal firmware afterwards.
+DSP delays; never saved (no `0x52`). Restore mode 0 and the normal firmware afterwards.
+
+**When the marker runs.** From the moment the unit's outputs start on the timeline: the start of the mode-2
+anchor. That is before the unit is phase-locked: edges also come while the anchor verifies (`EXT_ALINK_USB_STATUS`
+state 4, whole-sample corrections still possible) and in phase state 3 (re-anchor pending, `AUTO_REANCHOR` clear),
+and they show where that unit's output really is, so a capture then can fail. Only state 5 means phase-locked:
+check every unit's status (or wait a few seconds after the last anchor) before a capture that counts. No audio
+stream is needed. No edges in mode 0 or 1, at 44.1 kHz, before the first anchor, or after a `SOF_LOST` until the next
+anchor; a SOF holdover keeps the timeline and the edges. The bench images have no lock pin; a build with
+`-DALINK_SCOPE_MARKER_LOCK_GPIO=<pin>` raises it only in state 5 with phase LOCKED and outside a SOF holdover (alink:
+phase LOCKED, not in holdover).
 
 ## 3. Host setup and the container (owner's go)
 
@@ -106,8 +116,13 @@ $S analyse ~/.cache/dspi-build/work/alink-scope/baseline/edges.csv              
 - `--fs 96000` when the units run at 96 kHz (marker period and threshold), `--n` if the firmware was built with
   another `ALINK_SCOPE_MARKER_N`, `--threshold-samples`, `--level` (logic threshold, 1.5 V for 3.3 V CMOS),
   `--analog` (A and B instead of the digital inputs; automatic when the scope reports no MSO).
-- **span** (default): one block over `--periods` (4) marker periods (341 ms at 48 kHz) at the fastest timebase the
-  memory allows (`--max-samples`, 50 M): with 32 MS that is about 12 ns per sample.
+- **auto** (default): span when its block resolves the edges to 100 ns or better (memory of about 3.4 MS for 4
+  periods at 48 kHz), otherwise window; `run.log` says which.
+- **span**: one block over `--periods` (4) marker periods (341 ms at 48 kHz) at the fastest timebase the
+  memory allows (`--max-samples`, 50 M): with 32 MS that is about 12 ns per sample. With little memory (48 kS: about
+  7 us per sample) the edge quantisation alone moves the measured marker period by tens of ppm; the not-locked check
+  is then widened by that bound (`period_tol_ppm` in pairs.csv, a note in the summary, a warning in run.log), so it
+  only catches gross errors there; offsets beyond the threshold still fail.
 - **window**: blocks triggered on the reference's rising edge, `--window-us` (200 us) around it, at the fastest
   timebase: for a 2205A MSO (48 kS) or for the best resolution. A unit more than half a window away counts as missing.
 - **compare RUN_DIR...**: one row per run and unit: run label, unit, reference unit, offset (ns and samples at
@@ -132,7 +147,8 @@ OVERALL PASS (threshold +-20833 ns)
   a problem.
 - **missing / extra**: edges without a partner. A few are normal (the firmware skips an edge it could not place
   exactly); more than 10 % fail.
-- **Not locked**: a unit whose marker period differs from the reference's by more than 10 ppm is not phase-locked
+- **Not locked**: a unit whose marker period differs from the reference's by more than 10 ppm (plus the edge
+  quantisation bound `period_tol_ppm`, which is tiny with a fine timebase) is not phase-locked
   (mode 1 or a free-running crystal); its offset slides by the ppm (25 ppm = 25 us/s) and the pair fails.
 - **Long run**: `drift` of the capture means in ns/hour, the range of the means, and how many captures failed; any
   failed capture fails the run.

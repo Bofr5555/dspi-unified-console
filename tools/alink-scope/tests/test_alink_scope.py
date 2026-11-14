@@ -213,6 +213,91 @@ class CaptureTest(unittest.TestCase):
         self.assertAlmostEqual(r.mean_ns, 2500, delta=b.dt_ns)
 
 
+def quantised(edges, t0, dt):
+    """What the digital edge extractor reports: the first sample at or after the edge, less dt/2."""
+    return t0 + (np.ceil((np.asarray(edges) - t0) / dt) - 0.5) * dt
+
+
+class QuantisationTest(unittest.TestCase):
+    """Review scope1 T1: a 48 kS scope in span mode must not call locked units 'not locked'."""
+
+    CASES = ((4, 4 * PERIOD_NS / 48_000), (4, 7008.0), (8, 8 * PERIOD_NS / 48_000))   # periods, dt ns
+
+    def trials(self, use_dt: bool, n=300):
+        rng = np.random.default_rng(7)
+        fails = 0
+        for periods, dt in self.CASES:
+            for _ in range(n):
+                t0 = rng.uniform(0, PERIOD_NS)
+                span = (t0, t0 + periods * PERIOD_NS)
+                edges = {}
+                for ch in ("D0", "D1", "D2"):
+                    e = marker_times(rng.uniform(-10_000, 10_000), span[0], span[1], phase0_ns=rng.uniform(0, 1e6))
+                    edges[ch] = quantised(e, t0, dt)
+                sg = analysis.Segment(edges, span, 0.0, dt_ns=dt if use_dt else None)
+                for r in analysis.analyse([sg], ["D0", "D1", "D2"], "D0", PERIOD_NS, LIM):
+                    fails += any("not locked" in x for x in r.reasons)
+        return fails
+
+    def test_wp_scope1_48ks_span_no_false_not_locked(self):
+        self.assertEqual(self.trials(use_dt=True), 0)
+        self.assertGreater(self.trials(use_dt=False, n=100), 0)   # the review's finding, without the bound
+
+    def test_wp_scope1_48ks_fake_scope_span(self):
+        fails = 0
+        for k in range(30):
+            fake = FakePs2000a({0: 0.0, 1: 3000.0 + 37 * k, 2: -8000.0}, memory=48_000, start_ns=1e6 + 1.234e6 * k)
+            sc = capture.Ps2000a(fake, sleep=lambda s: None)
+            sc.open()
+            sc.setup(["D0", "D1", "D2"], 1.5, analog=False)
+            b = sc.capture_span(["D0", "D1", "D2"], 4 * PERIOD_NS, 50_000_000, False, 1.5)
+            self.assertGreater(b.dt_ns, 5000)
+            self.assertEqual(b.segment.dt_ns, b.dt_ns)
+            for r in analysis.analyse([b.segment], ["D0", "D1", "D2"], "D0", PERIOD_NS, LIM):
+                fails += r.verdict != "PASS"
+                self.assertGreater(r.period_tol_ppm, LIM.max_period_ppm)   # the check is weak here, and says so
+        self.assertEqual(fails, 0)
+
+    def test_wp_scope1_out_of_lock_still_caught_with_fine_dt(self):
+        span = (0.0, 4 * PERIOD_NS)
+        e = {"D0": quantised(marker_times(0, *span), 0.0, 12.0),
+             "D1": quantised(marker_times(2000, *span, ppm=25.0), 0.0, 12.0)}
+        r = analysis.analyse([analysis.Segment(e, span, 0.0, dt_ns=12.0)], ["D0", "D1"], "D0", PERIOD_NS, LIM)[0]
+        self.assertLess(r.period_tol_ppm, 1.0)
+        self.assertTrue(any("not locked" in x for x in r.reasons))
+
+    def test_wp_scope1_auto_mode(self):
+        self.assertEqual(cli.auto_mode(48_000, 48_000, 4 * PERIOD_NS, False), "window")
+        self.assertEqual(cli.auto_mode(32_000_000, 32_000_000, 4 * PERIOD_NS, False), "span")
+        self.assertEqual(cli.auto_mode(48_000, 48_000, 4 * PERIOD_NS, True), "span")   # no digital trigger
+
+
+class TimebaseClampTest(unittest.TestCase):
+    """Review scope1 T2: the timebase search stays within what the driver accepts."""
+
+    def test_wp_scope1_timebase_ceiling(self):
+        fake = FakePs2000a({0: 0.0}, memory=1_000_000, max_tb=5000)
+        sc = capture.Ps2000a(fake)
+        sc.open()
+        with self.assertRaises(capture.ScopeError) as cm:
+            sc.choose_timebase(1e18, 1_000_000)
+        self.assertIn("longest accepted: timebase", str(cm.exception))
+        self.assertLessEqual(max(fake.tb_calls), 2 * 5000)       # stopped at the first refusal above
+        tb, dt = sc.choose_timebase(4 * PERIOD_NS, 1_000_000)
+        self.assertLessEqual(tb, 5000)
+        self.assertGreaterEqual(dt * 1_000_000, 4 * PERIOD_NS)
+        self.assertLess(fake.dt(tb - 1) * 1_000_000, 4 * PERIOD_NS)
+
+    def test_wp_scope1_samples_clamped_to_driver(self):
+        fake = FakePs2000a({0: 0.0, 1: 0.0}, memory=2000)          # tb >= 1000 holds only half the memory
+        sc = capture.Ps2000a(fake, sleep=lambda s: None)
+        sc.open()
+        sc.setup(["D0", "D1"], 1.5, analog=False)
+        b = sc.capture_span(["D0", "D1"], 2 * PERIOD_NS, 50_000_000, False, 1.5)
+        self.assertGreaterEqual(b.timebase, 1000)
+        self.assertLessEqual(b.samples, 1000)
+
+
 def make_run(d, label, offsets, caps=3, units=None, step_ns=100.0):
     """A capture directory as `capture` writes it: meta.json, edges.csv, pairs.csv."""
     run = cli.Run(label, units or {"D0": "k340", "D1": "pico2", "D2": "pico"}, list(offsets), "D0", 4096, 48000,

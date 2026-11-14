@@ -3,10 +3,11 @@
 Runs only inside the alink-scope container with the scope passed in (README).
 The driver module is injected (`lib`), so the tests drive this code with a fake.
 
-Two capture shapes:
+Two capture shapes (the CLI's default `auto` picks span when its block resolves
+edges to 100 ns, else window):
   span    one free-running block that covers `periods` marker periods at the
-          fastest timebase the memory allows (the default; needs memory: a 2206B
-          MSO with 32 MS covers 4 periods of 85 ms at 8 ns... 12 ns).
+          fastest timebase the memory allows (needs memory: a 2206B MSO with
+          32 MS covers 4 periods of 85 ms at 8 ns... 12 ns).
   window  repeated blocks triggered on the reference channel's rising edge,
           each a short window around it at the fastest timebase: for small
           memories (2205A MSO, 48 kS) or for the best resolution.
@@ -154,27 +155,58 @@ class Ps2000a:
         check(self.ps.ps2000aMemorySegments(self.h, segments, ctypes.byref(n)), "ps2000aMemorySegments")
         return int(n.value)
 
-    def interval_ns(self, tb: int, samples: int) -> float | None:
+    TB_MAX = 0xFFFFFFFF             # ps2000aGetTimebase2's timebase is a uint32
+
+    def timebase(self, tb: int, samples: int) -> tuple[float, int] | None:
+        """(interval ns, max samples) the driver reports for a timebase; None if it refuses it."""
         dt = ctypes.c_float()
         mx = ctypes.c_int32()
         st = self.ps.ps2000aGetTimebase2(self.h, tb, samples, ctypes.byref(dt), 0, ctypes.byref(mx), 0)
-        return float(dt.value) if st == PICO_OK else None
+        return (float(dt.value), int(mx.value)) if st == PICO_OK else None
 
-    def choose_timebase(self, span_ns: float, samples: int, tb_max: int = 1 << 30) -> tuple[int, float]:
-        """The fastest timebase whose `samples` cover span_ns (binary search; interval grows with tb)."""
-        lo, hi = 0, tb_max
-        best = None
-        while lo <= hi:
+    def interval_ns(self, tb: int, samples: int) -> float | None:
+        r = self.timebase(tb, samples)
+        return r[0] if r else None
+
+    def choose_timebase(self, span_ns: float, samples: int, tb_max: int | None = None) -> tuple[int, float]:
+        """The fastest timebase whose `samples` cover span_ns, within what the driver accepts.
+
+        Doubling from 1 finds the first accepted timebase that covers the span; if the
+        driver refuses a timebase above an accepted one, the search stops there (its
+        ceiling, review scope1 T2).  A binary search then finds the fastest one between
+        the last accepted short one and it; a refused one there counts as too short
+        (refusals at the fast end: too few samples or too many channels for that rate).
+        """
+        top = self.TB_MAX if tb_max is None else min(tb_max, self.TB_MAX)
+        lo, hi, hi_dt, accepted, tb = 0, None, None, None, 1
+        while True:
+            dt = self.interval_ns(tb, samples)
+            if dt is None:
+                if accepted is not None:
+                    break                   # the driver's ceiling: nothing larger to try
+            else:
+                if dt * samples >= span_ns:
+                    hi, hi_dt = tb, dt
+                    break
+                accepted, lo = tb, tb + 1
+            if tb >= top:
+                break
+            tb = min(top, tb * 2)
+        if hi is None:
+            longest = "" if accepted is None else f" (longest accepted: timebase {accepted}, " \
+                f"{self.interval_ns(accepted, samples) * samples / 1e6:.1f} ms)"
+            raise ScopeError(f"no timebase covers {span_ns / 1e6:.1f} ms with {samples} samples{longest}: "
+                             "use fewer --periods or --mode window")
+        if accepted is None:
+            lo = 0
+        while lo < hi:
             mid = (lo + hi) // 2
             dt = self.interval_ns(mid, samples)
             if dt is not None and dt * samples >= span_ns:
-                best = (mid, dt)
-                hi = mid - 1
+                hi, hi_dt = mid, dt
             else:
                 lo = mid + 1
-        if best is None:
-            raise ScopeError(f"no timebase covers {span_ns / 1e6:.1f} ms with {samples} samples")
-        return best
+        return hi, hi_dt
 
     def fastest_timebase(self, samples: int, tb_max: int = 64) -> tuple[int, float]:
         for tb in range(tb_max):
@@ -243,6 +275,9 @@ class Ps2000a:
                      level_v: float, keep_raw: bool = False) -> Block:
         n = min(self.max_samples(1), max_samples)
         tb, dt = self.choose_timebase(span_ns, n)
+        tbi = self.timebase(tb, n)
+        if tbi and tbi[1] > 0:
+            n = min(n, tbi[1])              # what the driver says this timebase can hold
         n = int(min(n, np.ceil(span_ns / dt)))
         self.trigger_off()
         host = self.clock()
@@ -251,7 +286,7 @@ class Ps2000a:
         data = self.fetch(sources, n)
         got = min(len(v) for v in data.values())
         e = self.edges(data, channels, dt, 0.0, analog, level_v)
-        seg = analysis.Segment(e, (0.0, got * dt), host)
+        seg = analysis.Segment(e, (0.0, got * dt), host, dt_ns=dt)
         return Block(seg, dt, got, tb, {f"{k:#x}": v for k, v in data.items()} if keep_raw else None)
 
     def capture_window(self, channels: list[str], ref: str, window_ns: float, analog: bool,
@@ -270,7 +305,7 @@ class Ps2000a:
         got = min(len(v) for v in data.values())
         t0 = -pre * dt               # the trigger at t = 0
         e = self.edges(data, channels, dt, t0, analog, level_v)
-        seg = analysis.Segment(e, (t0, t0 + got * dt), host, match_ns=0.95 * pre * dt)
+        seg = analysis.Segment(e, (t0, t0 + got * dt), host, match_ns=0.95 * pre * dt, dt_ns=dt)
         return Block(seg, dt, got, tb)
 
     def sources(self, channels: list[str], analog: bool) -> list[int]:
