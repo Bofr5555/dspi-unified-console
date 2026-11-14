@@ -44,8 +44,13 @@ firmware's USB formats (full speed, 12 Mb/s):
 
 | Unit | 44.1 kHz | 48 kHz | 96 kHz |
 |---|---|---|---|
-| RP2350 | 2 (16 or 24 bit) | 2 (24 bit), 4 (24 bit), 6 or 8 (16 bit) | 2 (24 bit) |
-| RP2040 | 2 | 2 | 2 |
+| RP2350 | 2 (16 or 24 bit) | 2 (16 or 24 bit), 4 (16 or 24 bit), 6 or 8 (16 bit) | 2 (16 or 24 bit) |
+| RP2040 | 2 (16 or 24 bit) | 2 (16 or 24 bit) | 2 (16 or 24 bit) |
+
+The generator always opens the 24-bit form where there is one. (An RP2350 running the *sender* firmware build, `DSPI_ROLE_SENDER`, also offers
+6 channels in 24 bit at 48 kHz and 4 channels in 16 bit at 96 kHz; it can be a
+USB-direct unit too, but the generator and these tables use only the formats of
+the ordinary unit build.)
 
 - **44.1 kHz cannot phase-lock** (a 1 ms frame holds no whole number of samples):
   rate lock only. Run the system at 48 kHz; the player resamples once.
@@ -60,10 +65,27 @@ How many units one computer carries (computed, **not measured**):
 
 | Where the units hang | Units | Why |
 |---|---|---|
-| A single-TT hub, or anything that makes a hub run at full speed (an isolator or a full-speed-only extender in front of it) | **1** per hub | Every RP2350 unit reserves 788 bytes per frame whatever it plays; that is about 632 us of the 900 us a full-speed frame allows for audio (USB 2.0, 5.11.3). An RP2040 unit (582 bytes) about 471 us: also one. |
+| A single-TT hub, or anything that makes a hub run at full speed (an isolator or a full-speed-only extender in front of it) | **1** per hub | Every RP2350 unit reserves 788 bytes per frame whatever it plays: about 624 us of the 900 us (90 %) a full-speed frame allows for periodic transfers. An RP2040 unit (582 bytes) about 463 us: also one (formulas below). |
 | A multi-TT hub | **1 per port** (7 on a 7-port hub) | each downstream port has its own transaction translator, so its own full-speed frame |
-| A root port of the computer, no hub | 1 per port | the port runs at full speed for that unit alone |
-| All of them on one USB controller | about **30** (computed) | through the hubs each unit costs about 19 us of high-speed bus time per frame in split transactions; real controllers may refuse sooner (they check bandwidth themselves) |
+| A root port of a USB 3 (xHCI) computer, no hub | 1 per port | the port runs at full speed for that unit alone |
+| All of them on one USB controller | about **30** (computed) | through the hubs each unit costs about 25 us of high-speed bus time per frame in split transactions, of the 800 us (80 %) allowed; real controllers may refuse sooner (they check bandwidth themselves) |
+
+How the figures are computed (USB 2.0 specification; host delay left out):
+
+- Full-speed periodic budget: 90 % of the 1 ms frame = 900 us (5.6.4).
+- Full-speed isochronous transaction time (5.11.3):
+  `9107 + 83.54 x floor(3.167 + 1.1667 x 8 x bytes)` ns. 788 bytes: about
+  624 us; 582 bytes: about 463 us. Two units do not fit in 900 us.
+- Through a transaction translator, a 788-byte packet goes as 5 start-splits of
+  up to 188 bytes, each about `55 x 8 x 2.083 + 2.083 x floor(3.167 + 1.1667 x 8 x 188)`
+  ns = 4.6 us of high-speed time: about 23 us, plus about 2 us for the feedback
+  endpoint's splits, so about 25 us per unit per frame. The high-speed periodic
+  budget is 80 % of each 125 us microframe (5.6.4), 800 us per frame: about 32
+  units, "about 30" with margin.
+- **Older computers with USB 2.0 only (EHCI):** a full-speed unit plugged straight
+  into a root port is handed to a companion controller (UHCI or OHCI), which is
+  another controller with another clock than the units behind a hub on the same
+  computer. On such computers put every unit behind the one hub.
 
 All units that must play aligned **must be on one USB controller**: units on two
 controllers count different frames, follow two different clocks, and can be
@@ -123,7 +145,7 @@ That is a ground loop, heard as hum or buzz, worst with long cables across a roo
 - **USB isolators** built on the ADuM3160/ADuM4160 work at full speed only, which
   suits the units (they are full speed anyway). Put one **at the unit end**:
   cable (active or not), then the isolator, then the unit. The isolator adds a
-  fixed delay of a few hundred nanoseconds: harmless (section 2).
+  small fixed delay (well under a microsecond): harmless (section 2).
 - **Never put an isolator between the computer and a hub.** The hub then runs at
   full speed for everything behind it, and only one unit fits (section 1).
 - The isolated side gets its power from the isolator's own converter, which is
@@ -219,7 +241,9 @@ Then:
 1. Copy the two configuration files, `systemctl --user restart wireplumber pipewire
    pipewire-pulse`. `wpctl status` shows the combined sink and one "(DSPi
    USB-direct)" sink per unit; make the combined sink the default. `pw-top` shows
-   every unit at the rate and quantum, and no unit resampled.
+   the rate and quantum on the driver's row only (one unit; the others and the
+   streams follow it and show 0); `pw-dump` shows each unit's format (for example
+   `S24LE 48000 4`). No unit is resampled.
 2. Run each unit's routing script and save its preset.
 3. Set mode, D and the lock-error action through the hub (Installer, "USB-direct
    units", Admin; or the model file), then **Align**. The hub writes them to the
@@ -237,7 +261,8 @@ Why these settings:
   Every close and reopen places the stream anew and moves its start offset, which
   the hub then has to align again (audio-link.md, "Start offsets move"). With
   suspend off the units keep a stream of silence open and the offsets stay put;
-  "Keep USB-direct units aligned" covers the rest.
+  "Keep USB-direct units aligned" covers the rest. The combined sink is not
+  suspended either, so the next programme starts without waiting for it.
 - **Fixed quantum.** The units' D does not depend on it, but a quantum that
   changes with the player changes the computer's own latency and its timing on
   the bus; a fixed one keeps lip sync and packet timing constant. These settings
@@ -245,9 +270,12 @@ Why these settings:
 - WirePlumber 0.4 (Lua configuration) is not generated; translate the rules by
   hand, or update WirePlumber.
 
-The generated configuration has not yet been loaded by a real PipeWire on the
-bench; check with `pw-dump` that each unit's node carries the format, clock name
-and group above.
+The generated configuration has been loaded in PipeWire 1.4.11 with WirePlumber
+0.5.14 (review ausb3, on stand-in sinks without USB hardware): it parses, splits
+the channels as listed, fixes rate and quantum, and the shared clock name turns
+rate matching and resampling off. The rules' match against a real unit's card
+has not been seen yet; check with `pw-dump` that each unit's node carries the
+format, clock name and group above.
 
 ### macOS (untested)
 
@@ -349,4 +377,5 @@ return).
 | A unit stays muted at start for many seconds | first time on this computer: it learns the rate (up to about 11 s) | wait; next time it locks in about 0.5 s |
 | Wrong speaker plays a channel | routing or channel map | the unit's `SETTINGS.md` table; run its `.dspi` script again; `uconsole --device <serial> get mix ...` |
 | Sound at 44.1 kHz is not aligned | 44.1 kHz cannot phase-lock | run the system at 48 kHz |
-| `pw-top` shows a unit at another rate or quantum | the rules did not match (another serial, a different node name) | `pw-dump` / `wpctl inspect` the unit's node; its name must contain the serial |
+| A unit is not under the driver in `pw-top`, or its `pw-dump` format is not the generated one | the rules did not match (another serial, a different node name) | `pw-dump` / `wpctl inspect` the unit's node; its name must contain the serial |
+| A unit comes up with an analog profile, not Pro Audio, and its format rules do not apply | a profile once picked for that card (in a mixer) is stored, and WirePlumber restores it before it reads the generated `device.profile` | set Pro Audio once (`wpctl set-profile <unit id> <index>` or pavucontrol); WirePlumber then remembers that |

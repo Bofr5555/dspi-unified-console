@@ -490,6 +490,9 @@ fn parse_unit(v: &Value, i: usize, rate: u32) -> Result<Unit, String> {
     let serial = string(&m, "serial", &what)?
         .ok_or_else(|| format!("{what}: its USB serial is needed (uconsole list)"))?;
     serial_ok(&serial)?;
+    // Review ausb3 N3: the firmware's iSerial is upper-case hex, and PipeWire's
+    // name match is case-sensitive.
+    let serial = serial.to_ascii_uppercase();
     let chip = match string(&m, "chip", &what)?.as_deref() {
         None | Some("rp2350") => Chip::Rp2350,
         Some("rp2040") => Chip::Rp2040,
@@ -660,7 +663,9 @@ pub fn pipewire_conf(inst: &Installation) -> String {
          audio.rate = {}\n                \
          node.force-quantum = {}\n                \
          node.lock-quantum = true\n                \
-         node.lock-rate = true\n            \
+         node.lock-rate = true\n                \
+         # Not suspended when the player stops: the next programme starts at once.\n                \
+         session.suspend-timeout-seconds = 0\n            \
          }}\n            \
          stream.props = {{\n                \
          resample.disable = true\n                \
@@ -832,7 +837,22 @@ pub fn hub_model(inst: &Installation) -> Result<Value, String> {
     model
         .validate()
         .map_err(|e| format!("the hub's model: {e}"))?;
-    serde_json::to_value(&model).map_err(|e| format!("the hub's model: {e}"))
+    let mut out = serde_json::to_value(&model).map_err(|e| format!("the hub's model: {e}"))?;
+    // Review ausb3 N9: the model's f32 distances, to the centimetre (not
+    // 3.4000000953674316).
+    if let Some(units) = out.get_mut("units").and_then(Value::as_array_mut) {
+        for sp in units
+            .iter_mut()
+            .filter_map(|u| u.get_mut("speakers").and_then(Value::as_array_mut))
+            .flatten()
+        {
+            let d = sp.get("distanceM").and_then(Value::as_f64);
+            if let (Some(d), Some(o)) = (d, sp.as_object_mut()) {
+                o.insert("distanceM".into(), json!((d * 100.0).round() / 100.0));
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// `SETTINGS.md`: what each unit is set to, and the steps.
@@ -960,7 +980,8 @@ pub fn settings_sheet(inst: &Installation) -> String {
             to `~/.config/wireplumber/wireplumber.conf.d/`, then\n   \
             `systemctl --user restart wireplumber pipewire pipewire-pulse`.\n   \
             `wpctl status` lists \"{d}\" and one \"... (DSPi USB-direct)\" sink per unit;\n   \
-            `pw-top` shows every unit at {r} Hz and quantum {q}. Make \"{d}\" the default sink.\n\
+            `pw-top` shows {r} Hz and quantum {q} on the driver's row (the other units follow\n   \
+            it and show 0); `pw-dump` shows each unit's format. Make \"{d}\" the default sink.\n\
          3. **Routing.** For each unit: `{c} --device <serial> -f units/<id>.dspi`, then save\n   \
             its preset. It sets the input source to USB and the crosspoints above.\n\
          4. **Mode, D and the lock-error action** are written by the hub (Installer, \"USB-direct\n   \
@@ -1424,6 +1445,41 @@ mod tests_wp_ausb3 {
         assert_eq!(ok.d, None);
         assert!(ok.warnings.iter().any(|w| w.contains("not sample-aligned")));
         assert!(ok.warnings.iter().any(|w| w.contains("goes to no unit")));
+    }
+
+    /// Review ausb3 N3: a lower-case serial is matched as the firmware sends it.
+    #[test]
+    fn wp_ausb3_fixup_serials_are_upper_cased() {
+        let mut v: Value = serde_json::from_str(CINEMA).unwrap();
+        v["units"][0]["serial"] = json!("e6614c311b4a8b2f");
+        let inst = parse(&v.to_string()).unwrap();
+        assert_eq!(inst.units[0].serial, "E6614C311B4A8B2F");
+        assert!(pipewire_conf(&inst).contains("_E6614C311B4A8B2F-00.*"));
+        assert!(!pipewire_conf(&inst).contains("e6614c311b4a8b2f"));
+        assert!(wireplumber_conf(&inst).contains("_E6614C311B4A8B2F-00"));
+        assert_eq!(
+            hub_model(&inst).unwrap()["units"][0]["serial"],
+            "E6614C311B4A8B2F"
+        );
+        // The same serial in two cases is one unit twice.
+        v["units"][1]["serial"] = json!("E6614C311B4A8B2F");
+        assert!(parse(&v.to_string()).unwrap_err().contains("used twice"));
+    }
+
+    /// Review ausb3 N7, N9: the combined sink never suspends; distances in cm.
+    #[test]
+    fn wp_ausb3_fixup_sink_not_suspended_and_distances_rounded() {
+        let inst = parse(CINEMA).unwrap();
+        let pw = pipewire_conf(&inst);
+        let props = pw.split("combine.props").nth(1).unwrap();
+        let props = props.split("stream.props").next().unwrap();
+        assert!(
+            props.contains("session.suspend-timeout-seconds = 0"),
+            "{props}"
+        );
+        let text = serde_json::to_string(&hub_model(&inst).unwrap()).unwrap();
+        assert!(text.contains("\"distanceM\":3.4"), "{text}");
+        assert!(!text.contains("0000000"), "{text}");
     }
 
     /// The whole output for the cinema fixture, as committed. Regenerate with

@@ -48,7 +48,8 @@ written to a unit. The guide is `docs/integrator/usb-direct-home-theater.md`.
    to `~/.config/wireplumber/wireplumber.conf.d/`, then
    `systemctl --user restart wireplumber pipewire pipewire-pulse`.
    `wpctl status` lists "Cinema 7.1" and one "... (DSPi USB-direct)" sink per unit;
-   `pw-top` shows every unit at 48000 Hz and quantum 256. Make "Cinema 7.1" the default sink.
+   `pw-top` shows 48000 Hz and quantum 256 on the driver's row (the other units follow
+   it and show 0); `pw-dump` shows each unit's format. Make "Cinema 7.1" the default sink.
 3. **Routing.** For each unit: `uconsole --device <serial> -f units/<id>.dspi`, then save
    its preset. It sets the input source to USB and the crosspoints above.
 4. **Mode, D and the lock-error action** are written by the hub (Installer, "USB-direct
