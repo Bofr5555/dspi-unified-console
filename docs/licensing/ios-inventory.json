@@ -1,5 +1,5 @@
 {
- "repo_commit": "c961cfcb",
+ "repo_commit": "db6cb17a",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -343,6 +343,7 @@
    "crates/dspi-core/src/hardware.rs",
    "crates/dspi-core/src/host_transport.rs",
    "crates/dspi-core/src/hotplug.rs",
+   "crates/dspi-core/src/hub_admin.rs",
    "crates/dspi-core/src/info.rs",
    "crates/dspi-core/src/journal.rs",
    "crates/dspi-core/src/lib.rs",
@@ -418,6 +419,7 @@
    "crates/dspi-session/src/probe.rs",
    "crates/dspi-session/src/readout.rs",
    "crates/dspi-session/src/ring_health.rs",
+   "crates/dspi-session/src/route.rs",
    "crates/dspi-session/src/rta.rs",
    "crates/dspi-session/src/rta_sharing.rs",
    "crates/dspi-session/src/runtime.rs",
@@ -468,7 +470,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "c961cfcb2c6c9ce66179388e22b0e3d3b0ce9381",
+  "commit": "db6cb17a89c3013ba75a12be2cd79933a23dce91",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",
@@ -487,6 +489,7 @@
    "DSPi Console/AutoEQ/AutoEQBrowser.swift",
    "DSPi Console/AutoEQ/AutoEQCoreUpdate.swift",
    "DSPi Console/AutoEQ/AutoEQManager.swift",
+   "DSPi Console/AutoEQ/AutoEQPreview.swift",
    "DSPi Console/AutoEQ/autoeq_database.json",
    "DSPi Console/BootloaderLocator.swift",
    "DSPi Console/ChannelPalette.swift",
@@ -497,10 +500,12 @@
    "DSPi Console/Core/CoreBackedTransport.swift",
    "DSPi Console/Core/CoreControlSurfaces.swift",
    "DSPi Console/Core/CoreDiagnostics.swift",
+   "DSPi Console/Core/CoreInstaller.swift",
    "DSPi Console/Core/CoreMirror.swift",
    "DSPi Console/Core/CoreSnapshots.swift",
    "DSPi Console/Core/CoreUndo.swift",
    "DSPi Console/Core/OutputLabels.swift",
+   "DSPi Console/Core/UserConfirmation.swift",
    "DSPi Console/CoreVoltageStatusView.swift",
    "DSPi Console/CrossfeedPairMapView.swift",
    "DSPi Console/CrossfeedView.swift",
@@ -522,6 +527,7 @@
    "DSPi Console/GraphSpectrumOverlay.swift",
    "DSPi Console/GraphView.swift",
    "DSPi Console/HostAudioFormatMonitor.swift",
+   "DSPi Console/Installer/InstallerViews.swift",
    "DSPi Console/InterruptMonitor.swift",
    "DSPi Console/Link/AuthStore.swift",
    "DSPi Console/Link/CompositeTransport.swift",

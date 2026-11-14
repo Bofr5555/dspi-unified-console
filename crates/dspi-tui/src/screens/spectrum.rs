@@ -1808,21 +1808,11 @@ mod tests {
         assert!((up - -60.0).abs() > (down - 0.0).abs(), "{up} {down}");
     }
 
-    /// Another console's configuration, as `Sharing` hears of it.
-    fn follow(shared: &Shared, mask: u16, origin: u16) {
-        let mut app = shared.borrow_mut();
-        let mut bytes = RtaConfig {
-            tap: TAP_INPUT,
-            channel_mask: mask,
-            fft_order: 10,
-            avg_ms: 300,
-            peak_decay_db_s: 12,
-            flags: 0,
-        }
-        .encode()
-        .to_vec();
+    /// The `RTA_CONFIG` event for `config`, attributed to `origin`.
+    fn rta_event(config: RtaConfig, origin: u16) -> Notification {
+        let mut bytes = config.encode().to_vec();
         bytes.push(1);
-        let note = Notification {
+        Notification {
             seq: 1,
             event: Event::Unknown {
                 id: dspi_proto::generated::notify::NOTIFY_EVT_RTA_CONFIG as u8,
@@ -1831,9 +1821,39 @@ mod tests {
             lost: false,
             origin: Some(origin),
             received: Instant::now(),
-        };
+        }
+    }
+
+    /// Another console's configuration, as `Sharing` hears of it. -- WP ANLAST --
+    /// A pushed choice of ours that is still pending comes back first: their
+    /// push is a later one (the last choice made wins, and one of ours whose
+    /// echo is still to come would drive).
+    fn follow(shared: &Shared, mask: u16, origin: u16) {
+        let mut app = shared.borrow_mut();
         let s = &mut app.spectrum;
         let caps = s.engine.caps().copied();
+        if s.sharing.pending()
+            && s.sharing.following().is_none()
+            && let Some(ours) = s.engine.wanted()
+        {
+            s.sharing.note(
+                &rta_event(ours, 1),
+                TransportKind::Link,
+                Some(1),
+                caps.as_ref(),
+            );
+        }
+        let note = rta_event(
+            RtaConfig {
+                tap: TAP_INPUT,
+                channel_mask: mask,
+                fft_order: 10,
+                avg_ms: 300,
+                peak_decay_db_s: 12,
+                flags: 0,
+            },
+            origin,
+        );
         s.sharing
             .note(&note, TransportKind::Link, Some(1), caps.as_ref());
     }

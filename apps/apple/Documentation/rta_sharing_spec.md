@@ -107,6 +107,57 @@ A host that cannot follow (a UART or I2C client reading the analyser
 directly, not a Link hub, which only relays) loses its channels when a
 console takes control. That is the cost of "the last to choose drives".
 
+### 3.3a Which choice is last (unified console, WP ANLAST, 2026-11-14)
+
+The owner's rule: **the last choice made wins.** In the unified console
+(`dspi_session::rta_sharing`, used by the core and the Terminal) "last" is the
+order in which the device applied the pushes, which is the order of the
+`RTA_CONFIG` events. The hub forwards every console's SET to the one device and
+relays each event to every session in that one order, so all consoles drain the
+same sequence; no console's clock is compared.
+
+- A new choice (a changed request, or Take control while following) is
+  *pending* until its own echo, an event with our configuration, comes through
+  that sequence. While it is pending the console drives, and another console's
+  event drained meanwhile is for a push applied before ours: it does not make
+  this console follow, even though it is drained after the choice was made.
+- An event from another console drained after our echo is a later push and
+  makes us follow, as before.
+- Two consoles choosing at once therefore converge: each sees the same order,
+  the one whose push the device applied last drives, and the other follows it.
+- A pending choice that never reaches the device gives way to the latest push
+  seen meanwhile, or, if none was, to the configuration followed when the
+  choice was made: released before its push went out, or refused until the
+  engine gives up. A refusal is any failed push of our choice: the device's
+  STALL for a configuration it cannot hold, or the hub's `LOCKED` or `DENIED`
+  (WP ANLASTF F1). A choice changed again before its push keeps what was seen
+  meanwhile (F3). If the echo is lost, a readback that leaves our
+  configuration after holding it still means a later push, named by the event
+  seen meanwhile when there was one (F4).
+- A choice identical to what the device already holds (the configuration
+  followed, or one the engine already agrees with, so nothing is pushed) is
+  made now and confirmed at once: nothing is pending, this console drives,
+  and another console's later push makes it follow (F2, owner's decision). The
+  engine never pushes our older configuration over it.
+- Two SETs applied in one firmware main-loop pass (`rta.c` stages a SET and
+  `apply_config` applies the latest from the main loop) give one event, with
+  the later configuration, which the hub attributes to the oldest pending
+  `RTA_SET_CONFIG` writer (F5; the firmware is not changed for this). The
+  console whose configuration the event carries takes it as its own echo
+  (the match is by configuration, not by origin) and drives. The other one,
+  if the event is attributed to it, takes it for an older push of its own and
+  stays pending; its engine then sees the readback disagree and pushes again,
+  whose echo settles both, with that console driving. Nobody is stuck and
+  the two converge on one driver, but the winner is the console whose push
+  the device announced last, which here may be the earlier chooser. The
+  window is one main-loop pass against two serial control transfers.
+
+The old rule (CG5 to FLAKE2) judged every event drained after the choice, so a
+console choosing while another console's earlier event was still in its queue
+followed that console straight away and held its own push back, while the
+other console never followed it. The Swift engine without a core (section 3.1)
+still has the old rule; through a core it has the new one.
+
 `appliedConfig` keeps the values the engine asked for. The device's clamped
 `avgMs` is stored separately for the bin average, so a clamped value is not
 read as a difference and pushed again on every echo.

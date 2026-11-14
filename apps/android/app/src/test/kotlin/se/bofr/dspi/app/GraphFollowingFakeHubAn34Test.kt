@@ -137,13 +137,6 @@ class GraphFollowingFakeHubAn34Test {
 
     private fun bFollowing() = runBlocking { withContext(bMain) { b.rta.ownership.value?.following } }
 
-    // -- WP FLAKE2 -- B's event log records a notification when B's core drains it
-    private fun bDrainedAsEvent() = runBlocking {
-        withContext(bFfi) {
-            bCore.eventLogRead("", 0, 500).entries.any { "RtaConfig" in it.text && "tap=out mask=0x0001" in it.text }
-        }
-    }
-
     @Test
     fun an34TheGraphDrawsAFollowedSelectionWithoutTakingControl() {
         connectA()
@@ -164,17 +157,10 @@ class GraphFollowingFakeHubAn34Test {
                 tagged(own) &&
                 a.rta.snapshot.value?.let { it.tap == DspiConstants.RTA_TAP_OUTPUT && it.count > 0 } == true
         }
-        // -- WP FLAKE2 -- and B has drained the device's event for A's push. A choice is judged
-        // against every event drained after it (rta_sharing: an event after our choice makes us
-        // follow), so B's choice made while A's event still waited in B's queue made B follow A
-        // (under load B's batch came 3 ms after B's choice), and A never followed B.
-        val drainEnd = System.currentTimeMillis() + 15_000
-        while (!bDrainedAsEvent()) {
-            check(System.currentTimeMillis() < drainEnd) { "timed out: B drains A's analyser event" }
-            Thread.sleep(20)
-        }
-
-        // B pushes inputs 1 and 2: A's graph draws those
+        // B pushes inputs 1 and 2: A's graph draws those. -- WP ANLAST -- B need not have drained
+        // the event of A's push first: the last choice made wins, so B's choice drives even with
+        // that event still unread in B's queue (FLAKE2 waited for the drain here, since the old
+        // rule made any event drained after B's choice make B follow A).
         runBlocking { withContext(bMain) { b.rta.update(1, DspiConstants.RTA_TAP_INPUT, 0b11, false) } }
         pump("A follows B") { a.rta.ownership.value?.following == true && tagged(theirs) }
         assertFalse(tagged(own))
