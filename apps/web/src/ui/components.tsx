@@ -93,10 +93,12 @@ function SourceRow(props: { src: Source; env: PageEnv; open: boolean; onOpen: ()
         ? src.serial
           ? `DSPi on USB · ${shortSerial(src.serial)}`
           : "DSPi on USB"
-        : src.deviceId
-          ? `${src.name || src.deviceId} · hub ${hostOf(src.url)}`
-          : `Hub ${hostOf(src.url)}`;
-  const avail = src.kind === "demo" ? { ok: true, reason: "" } : src.kind === "usb" ? env.usb : env.link;
+        : src.kind === "document"
+          ? `File ${src.fileName}` // -- WP P1WB1 -- (never listed by a backend)
+          : src.deviceId
+            ? `${src.name || src.deviceId} · hub ${hostOf(src.url)}`
+            : `Hub ${hostOf(src.url)}`;
+  const avail = src.kind === "demo" || src.kind === "document" ? { ok: true, reason: "" } : src.kind === "usb" ? env.usb : env.link;
   return (
     <li class="source">
       <span class="source-name" title={src.kind === "usb" && src.serial ? src.serial : undefined}>
@@ -273,7 +275,12 @@ export function SessionView(props: { session: Session; onClose: () => void }) {
       <header class="strip">
         <span class={`dot dot-${st.status}`} aria-hidden="true" />
         <strong class="device-name">{snap?.device.name ?? "Connecting"}</strong>
-        {snap ? (
+        {snap && st.document ? (
+          // -- WP P1WB1 -- a document opened with no device: its file in place of a serial
+          <span class="device-meta">
+            {snap.device.platform} · <span class="badge file-badge">File: {st.document.fileName || st.document.name}</span>
+          </span>
+        ) : snap ? (
           <span class="device-meta">
             {snap.device.platform} · firmware {snap.device.firmware}
             {snap.device.serial ? ` · ${snap.device.serial}` : ""}

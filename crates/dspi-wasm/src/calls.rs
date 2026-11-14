@@ -339,6 +339,9 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP P1DF -- the document diff and the import preview
         "configDiff" => presets::diff(params(req.params)?),
         "configPreview" => presets::preview(&core, params(req.params)?),
+        // -- WP P1WB1 -- a plain import and the export, for the page's files
+        "configImport" => presets::import(&core, params(req.params)?),
+        "configExport" => presets::export(&core, params(req.params)?),
         // -- WP P1AFIX -- the crossfeed's custom pair, typed
         "crossfeedCustomPair" => presets::crossfeed_custom_pair(&core),
         // -- WP P1SN -- snapshots as documents (no files on the web)
