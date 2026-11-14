@@ -191,7 +191,8 @@ fn wp_lkui1_edits_change_only_what_was_edited() {
             unit_id: "A".into(),
             measured_latency_us: Some(80),
         }],
-        usb_modes: Vec::new(), // -- WP AUSB1 --
+        usb_modes: Vec::new(),  // -- WP AUSB1 --
+        keep_usb_aligned: None, // -- WP FIXM1 --
     };
     apply_edits(&mut m, &edits).unwrap();
     assert_eq!(m["dFrames"], 200);
@@ -379,4 +380,46 @@ fn wp_lkui1_without_a_hub_session_the_calls_say_disconnected() {
         core.alink_system_align(),
         Err(DspiError::Disconnected)
     ));
+}
+
+// -- WP FIXM1 --
+#[test]
+fn wp_fixm1_keep_usb_aligned_is_shown_edited_and_an_align_is_said_due() {
+    let mut m = model();
+    let v = build_view(&m, 4, &status(), "admin");
+    assert!(!v.keep_usb_aligned && !v.align_needed, "off by default");
+    // Not edited: left as it is.
+    apply_edits(&mut m, &AlinkSystemEdits::default()).unwrap();
+    assert!(m.get("keepUsbAligned").is_none());
+    let on = AlinkSystemEdits {
+        keep_usb_aligned: Some(true),
+        ..AlinkSystemEdits::default()
+    };
+    apply_edits(&mut m, &on).unwrap();
+    assert_eq!(m["keepUsbAligned"], true);
+    assert!(build_view(&m, 4, &status(), "admin").keep_usb_aligned);
+    let off = AlinkSystemEdits {
+        keep_usb_aligned: Some(false),
+        ..AlinkSystemEdits::default()
+    };
+    apply_edits(&mut m, &off).unwrap();
+    assert!(
+        m.get("keepUsbAligned").is_none(),
+        "off is the default: not written"
+    );
+    // The hub's issue: an alignment is due, in its words.
+    let mut st = status();
+    st["alignment"]["issues"] = json!([{
+        "code": "usb_start_offsets_changed",
+        "message": "USB-direct start offsets changed \u{2014} Align again (Rear moved)"
+    }]);
+    let v = build_view(&m, 4, &st, "admin");
+    assert!(v.align_needed);
+    assert!(
+        v.issues
+            .iter()
+            .any(|i| i.starts_with("USB-direct start offsets changed \u{2014} Align again")),
+        "{:?}",
+        v.issues
+    );
 }

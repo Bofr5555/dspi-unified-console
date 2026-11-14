@@ -3769,7 +3769,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_rta_take_control() != 33133.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_save_master_volume() != 4329.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_save_master_volume() != 17732.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_save_output_config() != 27456.toShort()) {
@@ -3808,7 +3808,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_alink_slots() != 51727.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 2052.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 27355.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_band_bypass() != 64308.toShort()) {
@@ -7553,11 +7553,13 @@ public interface DspiCoreInterface {
     
     /**
      * FLASH WRITE: store the live master volume for the independent mode
-     * (`REQ_SAVE_MASTER_VOLUME`). Changes nothing in the mirror.
+     * (`REQ_SAVE_MASTER_VOLUME`), under the device lock like the other
+     * flash writes. Changes nothing in the mirror.
      *
      * Errors: [`DspiError::Refused`] with the device's status byte
-     * (`PRESET_*`) when the save fails; the connection and transfer errors
-     * of every setter.
+     * (`PRESET_*`) when the save fails; [`DspiError::Locked`] /
+     * [`DspiError::Denied`] (Link); the connection and transfer errors of
+     * every setter.
      */
     fun `saveMasterVolume`()
     
@@ -7711,8 +7713,10 @@ public interface DspiCoreInterface {
      * `auto_reanchor` (normally true); `d` samples from arrival to output,
      * the same on every unit that should play aligned (170-399 at 48 kHz,
      * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
-     * or D while phase-locked re-anchors (about D + 20 ms of silence). Saved
-     * with the output configuration.
+     * or D while phase-locked re-anchors (about D + 20 ms of silence). The
+     * core never saves it: the firmware stores it in flash only on
+     * `REQ_SAVE_OUTPUT_CONFIG`, which this call does not send, so the unit
+     * keeps it across a restart only after the user saves.
      *
      * Errors, with no traffic: `Disconnected`; `Unsupported` without the
      * block; `InvalidArgument` for a mode above 2 or D 0; `ReadOnly`. From the
@@ -12385,11 +12389,13 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
     /**
      * FLASH WRITE: store the live master volume for the independent mode
-     * (`REQ_SAVE_MASTER_VOLUME`). Changes nothing in the mirror.
+     * (`REQ_SAVE_MASTER_VOLUME`), under the device lock like the other
+     * flash writes. Changes nothing in the mirror.
      *
      * Errors: [`DspiError::Refused`] with the device's status byte
-     * (`PRESET_*`) when the save fails; the connection and transfer errors
-     * of every setter.
+     * (`PRESET_*`) when the save fails; [`DspiError::Locked`] /
+     * [`DspiError::Denied`] (Link); the connection and transfer errors of
+     * every setter.
      */
     @Throws(DspiException::class)override fun `saveMasterVolume`()
         = 
@@ -12673,8 +12679,10 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * `auto_reanchor` (normally true); `d` samples from arrival to output,
      * the same on every unit that should play aligned (170-399 at 48 kHz,
      * 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
-     * or D while phase-locked re-anchors (about D + 20 ms of silence). Saved
-     * with the output configuration.
+     * or D while phase-locked re-anchors (about D + 20 ms of silence). The
+     * core never saves it: the firmware stores it in flash only on
+     * `REQ_SAVE_OUTPUT_CONFIG`, which this call does not send, so the unit
+     * keeps it across a restart only after the user saves.
      *
      * Errors, with no traffic: `Disconnected`; `Unsupported` without the
      * block; `InvalidArgument` for a mode above 2 or D 0; `ReadOnly`. From the
@@ -17234,7 +17242,11 @@ data class AlinkSystemEdits (
     /**
      * USB-direct units' modes (Installer).
      */
-    var `usbModes`: List<AlinkUnitUsbMode>
+    var `usbModes`: List<AlinkUnitUsbMode>, 
+    /**
+     * "Keep USB-direct units aligned" (Installer); none: unchanged.
+     */
+    var `keepUsbAligned`: kotlin.Boolean?
 ) {
     
     companion object
@@ -17251,6 +17263,7 @@ public object FfiConverterTypeAlinkSystemEdits: FfiConverterRustBuffer<AlinkSyst
             FfiConverterSequenceTypeAlinkRoomLipSync.read(buf),
             FfiConverterSequenceTypeAlinkUnitLatency.read(buf),
             FfiConverterSequenceTypeAlinkUnitUsbMode.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
         )
     }
 
@@ -17259,7 +17272,8 @@ public object FfiConverterTypeAlinkSystemEdits: FfiConverterRustBuffer<AlinkSyst
             FfiConverterOptionalUInt.allocationSize(value.`systemDelayFrames`) +
             FfiConverterSequenceTypeAlinkRoomLipSync.allocationSize(value.`rooms`) +
             FfiConverterSequenceTypeAlinkUnitLatency.allocationSize(value.`units`) +
-            FfiConverterSequenceTypeAlinkUnitUsbMode.allocationSize(value.`usbModes`)
+            FfiConverterSequenceTypeAlinkUnitUsbMode.allocationSize(value.`usbModes`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`keepUsbAligned`)
     )
 
     override fun write(value: AlinkSystemEdits, buf: ByteBuffer) {
@@ -17268,6 +17282,7 @@ public object FfiConverterTypeAlinkSystemEdits: FfiConverterRustBuffer<AlinkSyst
             FfiConverterSequenceTypeAlinkRoomLipSync.write(value.`rooms`, buf)
             FfiConverterSequenceTypeAlinkUnitLatency.write(value.`units`, buf)
             FfiConverterSequenceTypeAlinkUnitUsbMode.write(value.`usbModes`, buf)
+            FfiConverterOptionalBoolean.write(value.`keepUsbAligned`, buf)
     }
 }
 
@@ -17820,6 +17835,18 @@ data class AlinkSystemView (
      */
     var `issues`: List<kotlin.String>, 
     /**
+     * "Keep USB-direct units aligned" (Installer): the hub writes the
+     * USB-direct units' output delays again by itself when their start
+     * offsets move. Off: it says "USB-direct start offsets changed — Align
+     * again" among the issues, and `align_needed` is set.
+     */
+    var `keepUsbAligned`: kotlin.Boolean, 
+    /**
+     * The hub says an alignment is due: USB-direct start offsets moved
+     * since it last wrote them (one-click Align, Installer).
+     */
+    var `alignNeeded`: kotlin.Boolean, 
+    /**
      * The hub limits how often the status is read; this is the last view
      * again, not a fresh one.
      */
@@ -17863,6 +17890,8 @@ public object FfiConverterTypeAlinkSystemView: FfiConverterRustBuffer<AlinkSyste
             FfiConverterString.read(buf),
             FfiConverterSequenceString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -17894,6 +17923,8 @@ public object FfiConverterTypeAlinkSystemView: FfiConverterRustBuffer<AlinkSyste
             FfiConverterString.allocationSize(value.`summary`) +
             FfiConverterString.allocationSize(value.`health`) +
             FfiConverterSequenceString.allocationSize(value.`issues`) +
+            FfiConverterBoolean.allocationSize(value.`keepUsbAligned`) +
+            FfiConverterBoolean.allocationSize(value.`alignNeeded`) +
             FfiConverterBoolean.allocationSize(value.`stale`)
     )
 
@@ -17925,6 +17956,8 @@ public object FfiConverterTypeAlinkSystemView: FfiConverterRustBuffer<AlinkSyste
             FfiConverterString.write(value.`summary`, buf)
             FfiConverterString.write(value.`health`, buf)
             FfiConverterSequenceString.write(value.`issues`, buf)
+            FfiConverterBoolean.write(value.`keepUsbAligned`, buf)
+            FfiConverterBoolean.write(value.`alignNeeded`, buf)
             FfiConverterBoolean.write(value.`stale`, buf)
     }
 }

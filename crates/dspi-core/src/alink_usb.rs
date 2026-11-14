@@ -235,8 +235,10 @@ impl DspiCore {
     /// `auto_reanchor` (normally true); `d` samples from arrival to output,
     /// the same on every unit that should play aligned (170-399 at 48 kHz,
     /// 324-351 at 96 kHz in mode 2). Takes effect at once; a change of mode
-    /// or D while phase-locked re-anchors (about D + 20 ms of silence). Saved
-    /// with the output configuration.
+    /// or D while phase-locked re-anchors (about D + 20 ms of silence). The
+    /// core never saves it: the firmware stores it in flash only on
+    /// `REQ_SAVE_OUTPUT_CONFIG`, which this call does not send, so the unit
+    /// keeps it across a restart only after the user saves.
     ///
     /// Errors, with no traffic: `Disconnected`; `Unsupported` without the
     /// block; `InvalidArgument` for a mode above 2 or D 0; `ReadOnly`. From the

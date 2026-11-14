@@ -9,7 +9,11 @@
 //! as their bit patterns, plus that tool's `offset(A, B)` for each pair of
 //! consecutive captures (its 2.9.3 start-offset formula). Every field must agree
 //! byte for byte, and `content_lead` must give the tool's offsets.
-#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
 
 use dspi_proto::ext::alink_usb::{AlinkUsbStatus, NO_STREAM, UsbState, content_lead};
 use serde_json::Value;
@@ -48,8 +52,16 @@ fn review_ausb1_the_status_codec_matches_the_firmware_tool_on_real_captures() {
         assert_eq!(u64::from(s.phase_state), u(e, "phase_state"), "{t}");
         assert_eq!(u64::from(s.rate_code), u(e, "rate_code"), "{t}");
         assert_eq!(u64::from(s.flags), u(e, "flags"), "{t}");
-        assert_eq!(u64::from(s.host_ppm.to_bits()), u(e, "host_ppm"), "{t} host_ppm");
-        assert_eq!(u64::from(s.vcxo_ppm.to_bits()), u(e, "vcxo_ppm"), "{t} vcxo_ppm");
+        assert_eq!(
+            u64::from(s.host_ppm.to_bits()),
+            u(e, "host_ppm"),
+            "{t} host_ppm"
+        );
+        assert_eq!(
+            u64::from(s.vcxo_ppm.to_bits()),
+            u(e, "vcxo_ppm"),
+            "{t} vcxo_ppm"
+        );
         assert_eq!(
             u64::from(s.phase_error.to_bits()),
             u(e, "phase_error"),
@@ -66,8 +78,16 @@ fn review_ausb1_the_status_codec_matches_the_firmware_tool_on_real_captures() {
             "{t}"
         );
         assert_eq!(u64::from(s.gap_count), u(e, "gap_count"), "{t}");
-        assert_eq!(u64::from(s.stream_age_frames), u(e, "stream_age_frames"), "{t}");
-        assert_eq!(i64::from(s.stream_shift), e["stream_shift"].as_i64().unwrap(), "{t}");
+        assert_eq!(
+            u64::from(s.stream_age_frames),
+            u(e, "stream_age_frames"),
+            "{t}"
+        );
+        assert_eq!(
+            i64::from(s.stream_shift),
+            e["stream_shift"].as_i64().unwrap(),
+            "{t}"
+        );
         assert_eq!(u64::from(s.stream_samples), u(e, "stream_samples"), "{t}");
         assert_eq!(u64::from(s.anchors), u(e, "anchors"), "{t}");
         assert_eq!(u64::from(s.reanchors), u(e, "reanchors"), "{t}");
@@ -92,10 +112,22 @@ fn review_ausb1_the_status_codec_matches_the_firmware_tool_on_real_captures() {
     // No gap, no missed or late sample in the hour; the unit anchored again
     // several times (anchors 1 -> 9, one re-anchor), which is the firmware's
     // business, not the codec's.
-    assert!(decoded.iter().all(|s| s.gap_count == 0 && s.missed_samples == 0 && s.late_samples == 0));
+    assert!(
+        decoded
+            .iter()
+            .all(|s| s.gap_count == 0 && s.missed_samples == 0 && s.late_samples == 0)
+    );
     assert!(decoded.windows(2).all(|w| w[0].anchors <= w[1].anchors));
-    assert_eq!((decoded[0].anchors, last.anchors, last.reanchors), (1, 9, 1));
-    assert!(decoded.iter().all(|s| s.host_ppm < -9.0 && s.host_ppm > -13.0), "the host about 11 ppm slow");
+    assert_eq!(
+        (decoded[0].anchors, last.anchors, last.reanchors),
+        (1, 9, 1)
+    );
+    assert!(
+        decoded
+            .iter()
+            .all(|s| s.host_ppm < -9.0 && s.host_ppm > -13.0),
+        "the host about 11 ppm slow"
+    );
     // `content_lead` is the tool's `offset(A, B)` for consecutive captures
     // (A the earlier): the same stream gives 0, a restarted one its new start.
     let offsets = expected["pair_offsets"].as_array().unwrap();
@@ -109,5 +141,8 @@ fn review_ausb1_the_status_codec_matches_the_firmware_tool_on_real_captures() {
         assert_eq!(lead, offsets[i].as_i64().unwrap(), "pair {i}");
         nonzero += u32::from(lead != 0);
     }
-    assert!(nonzero >= 5, "the player looped the stream during the hour: {nonzero}");
+    assert!(
+        nonzero >= 5,
+        "the player looped the stream during the hour: {nonzero}"
+    );
 }

@@ -97,6 +97,14 @@ pub struct SystemModel {
     /// Scenes: ops applied at one frame.
     #[serde(default)]
     pub scenes: Vec<Scene>,
+    // -- WP FIXM1 --
+    /// "Keep USB-direct units aligned" (Installer, off by default): when a
+    /// USB-direct stream's start offset moves (the host reopened a stream, a
+    /// unit anchored again), the hub writes the USB-direct units' output
+    /// delays again by itself and records it (alarm `usb_realigned`); off,
+    /// it raises the issue `usb_start_offsets_changed` instead.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keep_usb_aligned: bool,
 }
 
 impl Default for SystemModel {
@@ -115,6 +123,7 @@ impl Default for SystemModel {
             fan_outs: Vec::new(),
             units: Vec::new(),
             scenes: Vec::new(),
+            keep_usb_aligned: false,
         }
     }
 }

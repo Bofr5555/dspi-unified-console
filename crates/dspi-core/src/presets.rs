@@ -2247,6 +2247,28 @@ mod tests {
         assert_eq!(core.get_preset_directory().unwrap().last_active, 3);
     }
 
+    // -- WP FIXM1 --
+    #[test]
+    fn wp_fixm1_the_master_volume_save_runs_inside_one_lock() {
+        let (core, probe) = fetched();
+        let mark = probe.mark();
+        core.save_master_volume().unwrap();
+        let log = probe.since(mark);
+        assert_eq!(
+            log.first().map(String::as_str),
+            Some("lock Saving master volume 60000"),
+            "{log:?}"
+        );
+        assert_eq!(log.last().map(String::as_str), Some("unlock"));
+        assert_eq!(count(&log, "lock"), 1, "{log:?}");
+        assert!(sent(&log, op::REQ_SAVE_MASTER_VOLUME), "{log:?}");
+        // A lock held elsewhere: refused, nothing sent.
+        probe.refuse_lock.store(true, Ordering::SeqCst);
+        let mark = probe.mark();
+        assert_eq!(core.save_master_volume(), Err(DspiError::Locked));
+        assert!(!sent(&probe.since(mark), op::REQ_SAVE_MASTER_VOLUME));
+    }
+
     #[test]
     fn clean1_a_load_reads_the_slot_back_and_is_clean() {
         let (core, probe) = fetched();

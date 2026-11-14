@@ -323,7 +323,9 @@ pub struct Issue {
     pub subject: Option<String>,
     /// A stable code: `limits_unknown`, `no_alink` (WP HWLK1F), `delay_out_of_range`,
     /// `hop_delay_assumed`, `hops_mismatch`, `sender_mismatch`, `offline`,
-    /// `d_too_small`.
+    /// `d_too_small`; USB-direct (WP AUSB1, FIXM1): `mixed_time_bases`,
+    /// `usb_no_stream`, `usb_start_offsets`, `start_offset_no_outputs`,
+    /// `usb_rate_differs`, `usb_start_offsets_changed`.
     pub code: String,
     /// For people.
     pub message: String,
@@ -843,7 +845,17 @@ fn start_offsets(
             ));
             continue;
         };
-        if spf_seen.is_some_and(|s| s != spf) {
+        // -- WP FIXM1 -- (review ausb1 F3) said, never dropped silently
+        if let Some(first) = spf_seen.filter(|s| *s != spf) {
+            issues.push(issue(
+                Some(&u.id),
+                "usb_rate_differs",
+                format!(
+                    "{}: its USB stream runs at {} samples per bus frame, the first USB-direct \
+                     unit's at {first}: its start offset is not equalised with theirs",
+                    u.id, spf
+                ),
+            ));
             continue;
         }
         spf_seen = Some(spf);
@@ -872,7 +884,8 @@ fn start_offsets(
             None,
             "usb_start_offsets",
             "USB-direct streams started apart: the earlier units' outputs are delayed to match. \
-             After a re-anchor, restart the streams and align again"
+             The offsets move whenever the host reopens a stream or a unit anchors again; the hub \
+             then says so (or, with \"Keep USB-direct units aligned\", writes the delays again)"
                 .into(),
         ));
     }
@@ -890,6 +903,52 @@ fn start_offsets(
         }
     }
     offsets
+}
+
+// -- WP FIXM1 --
+/// The issue raised when USB-direct start offsets moved since the hub last
+/// wrote them ([`usb_offsets_moved`]).
+pub const USB_OFFSETS_CHANGED: &str = "usb_start_offsets_changed";
+
+// -- WP FIXM1 --
+/// The start offsets of an alignment's USB-direct units, by unit id: those
+/// with a stream on the timeline ([`UnitPlan::start_offset_samples`]).
+pub fn usb_offsets(alignment: &Alignment) -> BTreeMap<String, i64> {
+    alignment
+        .units
+        .iter()
+        .filter(|p| p.transport == "usb_direct")
+        .filter_map(|p| Some((p.unit.clone(), p.start_offset_samples?)))
+        .collect()
+}
+
+// -- WP FIXM1 --
+/// The USB-direct units whose start offset now differs from the one the hub
+/// wrote (`written`; a unit missing there was written with none, 0). Units
+/// without a stream now are not judged (`usb_no_stream` says so). Offsets
+/// are relative, so streams that all moved together change nothing.
+pub fn usb_offsets_moved(
+    written: &BTreeMap<String, i64>,
+    now: &BTreeMap<String, i64>,
+) -> Vec<String> {
+    now.iter()
+        .filter(|(id, o)| written.get(*id).copied().unwrap_or(0) != **o)
+        .map(|(id, _)| id.clone())
+        .collect()
+}
+
+// -- WP FIXM1 --
+/// The issue for [`usb_offsets_moved`]'s `moved` units.
+pub fn usb_offsets_changed_issue(moved: &[String]) -> Issue {
+    issue(
+        None,
+        USB_OFFSETS_CHANGED,
+        format!(
+            "USB-direct start offsets changed \u{2014} Align again ({} moved since the last \
+             alignment; their speakers' delays no longer match)",
+            moved.join(", ")
+        ),
+    )
 }
 
 #[cfg(test)]
@@ -1156,5 +1215,116 @@ pub(crate) mod tests_wp_sw2 {
         let a = align(&m, &o);
         assert!(a.issues.iter().any(|i| i.code == "d_too_small"));
         assert!(!a.units[0].writable);
+    }
+}
+
+// -- WP FIXM1 --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+mod tests_wp_fixm1 {
+    use super::super::model::*;
+    use super::*;
+
+    fn usb_unit(id: &str) -> Unit {
+        Unit {
+            id: id.into(),
+            name: String::new(),
+            serial: format!("S-{id}"),
+            room: Some("main".into()),
+            upstream: String::new(),
+            transport: UnitTransport::UsbDirect,
+            usb_mode: Some("phase_lock".into()),
+            output: None,
+            repeater: false,
+            hop_delay_frames: None,
+            slots: None,
+            latency_us: 0,
+            measured_latency_us: None,
+            speakers: vec![Speaker {
+                output: 0,
+                distance_m: 3.0,
+            }],
+        }
+    }
+
+    fn seen(rate_code: u8, start: u16) -> Observed {
+        Observed {
+            online: true,
+            usb: Some(UsbSeen {
+                mode: "phase_lock".into(),
+                d: 192,
+                state: "phase_locked".into(),
+                phase_state: 2,
+                rate_code,
+                d_min: 170,
+                d_max: 399,
+                stream: true,
+                stream_start_bus_frame: Some(start),
+                ..UsbSeen::default()
+            }),
+            ..Observed::default()
+        }
+    }
+
+    fn model() -> SystemModel {
+        SystemModel {
+            rooms: vec![Room {
+                id: "main".into(),
+                name: "Main".into(),
+                lip_sync_us: None,
+            }],
+            units: vec![usb_unit("U1"), usb_unit("U2"), usb_unit("U3")],
+            ..SystemModel::default()
+        }
+    }
+
+    /// A unit at another rate is said, not dropped silently.
+    #[test]
+    fn wp_fixm1_a_usb_unit_at_another_rate_gets_an_issue() {
+        let obs = BTreeMap::from([
+            ("S-U1".to_owned(), seen(1, 100)),
+            ("S-U2".to_owned(), seen(1, 102)),
+            ("S-U3".to_owned(), seen(2, 100)),
+        ]);
+        let a = align(&model(), &obs);
+        let rate: Vec<_> = a
+            .issues
+            .iter()
+            .filter(|i| i.code == "usb_rate_differs")
+            .collect();
+        assert_eq!(rate.len(), 1, "{:?}", a.issues);
+        assert_eq!(rate[0].subject.as_deref(), Some("U3"));
+        assert!(
+            rate[0].message.contains("96 samples per bus frame"),
+            "{}",
+            rate[0].message
+        );
+        let offsets = usb_offsets(&a);
+        assert_eq!(
+            offsets,
+            BTreeMap::from([("U1".to_owned(), 96), ("U2".to_owned(), 0)]),
+            "U3 is not equalised"
+        );
+    }
+
+    /// Moved offsets are found against what was written; streams that all
+    /// moved together, or a unit without a stream now, are not.
+    #[test]
+    fn wp_fixm1_moved_offsets_are_told_apart() {
+        let written = BTreeMap::from([("U1".to_owned(), 96), ("U2".to_owned(), 0)]);
+        let same = written.clone();
+        assert!(usb_offsets_moved(&written, &same).is_empty());
+        let moved = BTreeMap::from([("U1".to_owned(), 0), ("U2".to_owned(), 480)]);
+        assert_eq!(usb_offsets_moved(&written, &moved), ["U1", "U2"]);
+        // A unit not written had none (0); one without a stream now is not judged.
+        let new_unit = BTreeMap::from([("U1".to_owned(), 96), ("U3".to_owned(), 48)]);
+        assert_eq!(usb_offsets_moved(&written, &new_unit), ["U3"]);
+        let i = usb_offsets_changed_issue(&["Rear L/R".to_owned()]);
+        assert_eq!(i.code, USB_OFFSETS_CHANGED);
+        assert!(
+            i.message.starts_with(
+                "USB-direct start offsets changed \u{2014} Align again (Rear L/R moved"
+            )
+        );
     }
 }

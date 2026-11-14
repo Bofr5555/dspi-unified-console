@@ -2318,6 +2318,8 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemView.toDomain() =
         summary = summary,
         health = health,
         issues = issues,
+        keepUsbAligned = keepUsbAligned,
+        alignNeeded = alignNeeded,
         stale = stale,
     )
 
@@ -2350,6 +2352,8 @@ internal fun AlinkSystemView.toFfi() =
         summary = summary,
         health = health,
         issues = issues,
+        keepUsbAligned = keepUsbAligned,
+        alignNeeded = alignNeeded,
         stale = stale,
     )
 
@@ -2384,6 +2388,7 @@ internal fun se.bofr.dspi.ffi.uniffi.AlinkSystemEdits.toDomain() =
         rooms = rooms.map { it.toDomain() },
         units = units.map { it.toDomain() },
         usbModes = usbModes.map { it.toDomain() },
+        keepUsbAligned = keepUsbAligned,
     )
 
 internal fun AlinkSystemEdits.toFfi() =
@@ -2393,6 +2398,7 @@ internal fun AlinkSystemEdits.toFfi() =
         rooms = rooms.map { it.toFfi() },
         units = units.map { it.toFfi() },
         usbModes = usbModes.map { it.toFfi() },
+        keepUsbAligned = keepUsbAligned,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AlinkUnitUsbMode.toDomain() =

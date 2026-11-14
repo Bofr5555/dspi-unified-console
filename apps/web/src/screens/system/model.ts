@@ -138,6 +138,9 @@ export interface SystemModel {
   fanOuts: FanOut[];
   units: Unit[];
   scenes: Scene[];
+  // -- WP FIXM1 --
+  /** "Keep USB-direct units aligned" (Installer, off by default): the hub writes the USB-direct units' output delays again when their start offsets move. */
+  keepUsbAligned?: boolean;
 }
 
 /** What the hub read from one device (`Observed`), by serial. */
@@ -595,6 +598,21 @@ export function withUsbMode(model: SystemModel, unitId: string, mode: UsbMode | 
       return mode ? { ...rest, usbMode: mode } : rest;
     }),
   };
+}
+
+// -- WP FIXM1 --
+/** The hub's issue when USB-direct start offsets moved since it last wrote them: an alignment is due. */
+export const USB_OFFSETS_CHANGED = "usb_start_offsets_changed";
+
+/** `model` with "Keep USB-direct units aligned" on or off (off is the hub's default: not written). */
+export function withKeepUsbAligned(model: SystemModel, on: boolean): SystemModel {
+  const { keepUsbAligned: _k, ...rest } = model;
+  return on ? { ...rest, keepUsbAligned: true } : rest;
+}
+
+/** Whether the hub's status says the USB-direct units need aligning again. */
+export function usbAlignDue(status: SystemStatus | null | undefined): boolean {
+  return status?.alignment.issues.some((i) => i.code === USB_OFFSETS_CHANGED) ?? false;
 }
 
 // ---------------------------------------------------------------- the installation
