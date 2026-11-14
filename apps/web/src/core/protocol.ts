@@ -1084,6 +1084,11 @@ export interface InstallerMethods {
   outputsWithoutLimiter: { params: undefined | { thresholdDb: number }; result: number[] };
   /** Both inputs of a linked pair, one undo step. */
   inputPairPreamp: { params: { input: number; db: number }; result: null };
+  // -- WP PAIRBAND --
+  /** A linked input pair's PEQ band (0..9), both sides (`input`, `input ^ 1`), one undo step; a drag's ticks too. */
+  inputPairFilter: { params: { input: number; band: number } & FilterParams; result: null };
+  /** A linked input pair's band bypass, both sides, one undo step. */
+  inputPairBandBypass: { params: { input: number; band: number; bypass: boolean }; result: null };
   /** Everything written until `endGroup` is one undo step named `label`. */
   beginGroup: { params: { label: string }; result: null };
   endGroup: { params: undefined; result: null };

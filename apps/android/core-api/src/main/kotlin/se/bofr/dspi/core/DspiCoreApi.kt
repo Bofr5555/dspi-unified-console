@@ -2612,6 +2612,46 @@ interface DspiCoreApi : AutoCloseable {
     fun setInputPairPreamp(input: Int, db: Float)
 
     /**
+     * PEQ band `band` (0..9) of a linked input pair: `input` and its
+     * partner (`input ^ 1`, inputs 2p and 2p+1, which are wire channels
+     * 2p and 2p+1) both to `params`, as [`DspiCore::set_filter`] writes
+     * it, in one undo group ([`DspiCore::begin_group`]): one undo step
+     * labelled "EQ band, linked pair", and undo and redo move both sides
+     * together. `input`, the side the person edited, is written first.
+     * The link itself is the client's (a document's `inputPairLinked`):
+     * call this for every band edit while the pair is linked (the band
+     * list, a menu, a typed value, each tick of a graph drag), and
+     * `set_filter` otherwise.
+     *
+     * In a drag ([`DspiCore::set_dragging`]) the group joins the drag's
+     * step, so a whole drag of a pair's bands is one step that holds each
+     * band of each side once (WP P0W2) and undo puts both sides back as
+     * they were when the drag began. A value someone else changes on one
+     * side is judged on its own, as in every step: undo leaves theirs and
+     * names them, and puts the rest back.
+     *
+     * The inputs, the band and the values are checked before anything is
+     * sent. A failure on the second write leaves the first one written
+     * (one undo step takes it back).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an input or its partner
+     * out of range, a band out of range, or the values `set_filter`
+     * refuses; the connection and transfer errors of every setter.
+     */
+    @Throws(DspiException::class)
+    fun setInputPairFilter(input: Int, band: Int, params: FilterParams)
+
+    /**
+     * Bypass (`true`) or re-enable PEQ band `band` (0..9) of a linked
+     * input pair, both sides, keeping their settings: `input` and then
+     * `input ^ 1` through [`DspiCore::set_band_bypass`], in one undo group
+     * with the label of [`DspiCore::set_input_pair_filter`]. One undo
+     * step; checks and errors as there.
+     */
+    @Throws(DspiException::class)
+    fun setInputPairBandBypass(input: Int, band: Int, bypass: Boolean)
+
+    /**
      * Bypass the whole EQ (`true`) or run it.
      *
      * Errors: the connection and transfer errors of every setter.

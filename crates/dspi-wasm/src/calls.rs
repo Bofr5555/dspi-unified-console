@@ -410,6 +410,9 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "protectAllOutputs" => outputs::protect_all(&core, params(req.params)?),
         "outputsWithoutLimiter" => Ok(outputs::without_limiter(&core, params(req.params)?)),
         "inputPairPreamp" => outputs::input_pair_preamp(&core, params(req.params)?),
+        // -- WP PAIRBAND -- a linked input pair's band, one undo step
+        "inputPairFilter" => crate::band::input_pair_filter(&core, params(req.params)?),
+        "inputPairBandBypass" => crate::band::input_pair_band_bypass(&core, params(req.params)?),
         "close" => {
             core.disconnect();
             set_demo(h, false);

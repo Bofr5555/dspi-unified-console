@@ -791,6 +791,17 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.setInputPairPreamp(input, db)
     }
 
+    // -- WP PAIRBAND --
+    override fun setInputPairFilter(input: Int, band: Int, params: FilterParams) {
+        guard("setInputPairFilter")
+        return inner.setInputPairFilter(input, band, params)
+    }
+
+    override fun setInputPairBandBypass(input: Int, band: Int, bypass: Boolean) {
+        guard("setInputPairBandBypass")
+        return inner.setInputPairBandBypass(input, band, bypass)
+    }
+
     override fun protectAllOutputs(ceilingDbfs: Float) {
         guard("protectAllOutputs")
         return inner.protectAllOutputs(ceilingDbfs)
@@ -939,6 +950,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P1PR --
             "setInputPairPreamp",
             "protectAllOutputs",
+            // -- WP PAIRBAND --
+            "setInputPairFilter",
+            "setInputPairBandBypass",
             // -- WP P1TK --
             "savePresetConfirmed",
             "copyPresetConfirmed",

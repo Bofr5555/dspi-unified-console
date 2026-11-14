@@ -1673,4 +1673,42 @@ mod tests_wp_tmcore {
         assert!(frame.contains("Held to the limits profile"), "{frame}");
         assert!(gain(&o, 0) <= 0.05, "held at the limit: {}", gain(&o, 0));
     }
+
+    // -- WP PAIRBAND --
+    /// The filter list's write on a linked pair (both sides' lines, one block,
+    /// as `FilterList::write` builds it) is one undo step: one undo puts both
+    /// sides back, so the pair never shows two different filters.
+    #[test]
+    fn wp_pairband_a_tui_linked_pair_band_is_one_undo_step() {
+        let dir = scratch("pairband_tui");
+        let o = opened(&dir);
+        let mut c = connected_on(&o).unwrap();
+        let theme = dspi_tui::Theme::console(
+            dspi_tui::theme::ColorDepth::TrueColor,
+            dspi_tui::theme::Glyphs::Braille,
+        );
+        let mut live = dspi_tui::live::Live::new(
+            c.state,
+            theme,
+            dspi_tui::perf::Performance::default(),
+            Box::new(dspi_tui::live::ConsoleScreens::with_config_path(
+                dir.join("config.toml"),
+            )),
+        );
+        let s = &mut c.session;
+        let band = |ch: usize| o.handle.core.get_state().filters[ch][2];
+        let before = (band(0), band(1));
+        let block = format!(
+            "{}\n{}\n{}\n{}",
+            line(s, "eq.freq", &[0, 2], Value::Float(2500.0)),
+            line(s, "eq.gain", &[0, 2], Value::Float(-3.0)),
+            line(s, "eq.freq", &[1, 2], Value::Float(2500.0)),
+            line(s, "eq.gain", &[1, 2], Value::Float(-3.0)),
+        );
+        live.run_commands(s, &block);
+        assert_eq!(band(0).freq, 2500.0);
+        assert_eq!(band(1).freq, 2500.0);
+        live.run_command(s, "undo");
+        assert_eq!((band(0), band(1)), before, "one undo, both sides back");
+    }
 }
