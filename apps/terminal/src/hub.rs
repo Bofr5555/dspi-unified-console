@@ -2177,6 +2177,31 @@ mod tests_wp_tm11 {
             assert_eq!(inst::hub_limits_clear(&core, &t, false), crate::exit::OK);
             let st = core.hub_limits_get().unwrap();
             assert!(!st.pin_set && st.profile_document.is_empty(), "{st:?}");
+
+            // -- WP HUBADMINF -- F1: demoted live on the hub's machine while
+            // the core still holds "admin": the command reads the role again
+            // and exits 3 before anything is sent.
+            let t = inst::hub_copy(&core).unwrap();
+            assert!(t.editable, "the core last heard admin");
+            assert!(command(&running, &format!("role {cid} control"), false));
+            assert_eq!(
+                inst::hub_limits_set(&core, &t, doc(3.0), false),
+                crate::exit::REJECTED
+            );
+            assert_eq!(
+                inst::hub_pin_set(&core, &t, &mut pins(Some("4711-door")), false),
+                crate::exit::REJECTED
+            );
+            assert_eq!(
+                inst::mode_on(&core, Some(("control".into(), "simple".into())), false),
+                crate::exit::REJECTED
+            );
+            let st = core.hub_limits_get().unwrap();
+            assert!(
+                !st.can_edit && !st.pin_set && st.profile_document.is_empty(),
+                "nothing sent: {st:?}"
+            );
+            assert!(st.pinned_modes.iter().all(|p| p.mode.is_empty()), "{st:?}");
             assert!(!command(&running, "quit", false));
         }
     }
