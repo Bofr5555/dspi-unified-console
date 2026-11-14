@@ -25,6 +25,7 @@ import AppKit
 import UIKit
 #endif
 import Combine
+import dspi_core   // -- WP SW14 -- the log through a core
 
 // MARK: - Wire-Level Constants (mirror firmware notify.h / usb_descriptors.h)
 
@@ -72,11 +73,26 @@ struct InterruptEvent: Identifiable {
     let id = UUID()
     let timestamp: Date
     let rawBytes: Data
+    /// -- WP SW14 -- The core's own line for the packet (`monitorRead`),
+    /// which names the parameter; nil for a packet decoded here.
+    var text: String? = nil
+
+    init(timestamp: Date, rawBytes: Data) {
+        self.timestamp = timestamp
+        self.rawBytes = rawBytes
+    }
+
+    /// -- WP SW14 -- A line of the core's monitor log.
+    init(timestamp: Date, text: String) {
+        self.timestamp = timestamp
+        self.rawBytes = Data()
+        self.text = text
+    }
 
     /// One-line rendering of the event for the log view.
     var formattedLine: String {
         let ts = InterruptEvent.dateFormatter.string(from: timestamp)
-        return "\(ts)  \(decode())"
+        return "\(ts)  \(text ?? decode())"
     }
 
     /// Decode the raw bytes into a human-readable description.
@@ -698,6 +714,20 @@ class InterruptMonitor: ObservableObject {
     private let transport: any DeviceTransport
     private var subscription: AnyCancellable?
 
+    // -- WP SW14 -- The log through a core (docs/SWIFT-SEAMS.md, SW14): the
+    // core turns every notification it drains into a line that names the
+    // parameter (`monitorRead`), so the log shows those lines instead of
+    // decoding the packets here.  The typed hooks above still read the tap.
+    /// The core the log reads, while the device is driven through one (main).
+    private weak var logCore: CoreStateSource?
+    /// The last line read from it; ids never restart while the core lives,
+    /// so a reconnect shows no line twice (main).
+    private var lastLineId: UInt64 = 0
+    /// A read of the core's log is queued (main).
+    private var linesQueued = false
+    /// A packet came while it was: read again after it (main).
+    private var linesAgain = false
+
     init(transport: any DeviceTransport) {
         self.transport = transport
     }
@@ -714,6 +744,10 @@ class InterruptMonitor: ObservableObject {
     func start() {
         stop()
         errorMessage = nil
+        // -- WP SW14 --
+        let core = transport.coreStateSource
+        if core !== logCore { lastLineId = 0 }
+        logCore = core
         subscription = transport.addNotificationObserver { [weak self] notification in
             self?.processEvent(notification)
         }
@@ -906,6 +940,13 @@ class InterruptMonitor: ObservableObject {
             }
         }
 
+        // -- WP SW14 -- Through a core, its line for the packet (paused or
+        // not: a paused read only moves past the lines).
+        if logCore != nil {
+            readCoreLines()
+            return
+        }
+
         // Snapshot pause state on this thread — worst case we lose or add a
         // single event right at a pause/resume edge, which is harmless.
         if isPaused { return }
@@ -915,6 +956,37 @@ class InterruptMonitor: ObservableObject {
         // the log view at the notification rate.
         pendingEvents.append(InterruptEvent(timestamp: Date(), rawBytes: Data(bytes)))
         scheduleFlush()
+    }
+
+    // MARK: - The core's log (WP SW14)
+
+    /// Read the core's new lines on its queue, one read queued at a time;
+    /// the core drained the packet before the tap delivered it here, so its
+    /// line is already there.  Main thread.
+    private func readCoreLines() {
+        guard let core = logCore else { return }
+        guard !linesQueued else { linesAgain = true; return }
+        linesQueued = true
+        linesAgain = false
+        let after = lastLineId
+        core.perform { [weak self] c in
+            let batch = c.monitorRead(afterId: after)
+            DispatchQueue.main.async { self?.showCoreLines(batch, from: core) }
+        }
+    }
+
+    /// Main thread.
+    private func showCoreLines(_ batch: MonitorBatch, from core: CoreStateSource) {
+        linesQueued = false
+        guard core === logCore, isActive else { linesAgain = false; return }
+        lastLineId = max(lastLineId, batch.lastId)
+        guard !isPaused else { if linesAgain { readCoreLines() }; return }
+        for entry in batch.entries {
+            let at = Date(timeIntervalSince1970: TimeInterval(entry.timeMs) / 1000)
+            pendingEvents.append(InterruptEvent(timestamp: at, text: entry.text))
+        }
+        if !pendingEvents.isEmpty { scheduleFlush() }
+        if linesAgain { readCoreLines() }
     }
 
     // MARK: - Coalescing

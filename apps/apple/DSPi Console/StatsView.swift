@@ -1,5 +1,7 @@
 import SwiftUI
 import Combine
+import dspi_core   // -- WP SW14 --
+import dspi_constants
 
 // MARK: - Buffer Stats Data Models
 
@@ -391,6 +393,8 @@ class StatsViewModel: ObservableObject {
     func resetBufferWatermarks() {
         guard isConnected else { return }
         fetchQueue.async { [weak self] in
+            // -- WP SW14 -- Through a core, its typed reset.
+            if let core = self?.core { _ = core.call { try $0.resetBufferStats() }; return }
             guard let transport = self?.transport else { return }
             _ = transport.getControlRequest(request: REQ_RESET_BUFFER_STATS, value: 1, index: 0, length: 1)
         }
@@ -398,7 +402,16 @@ class StatsViewModel: ObservableObject {
 
     // MARK: Reads (fetch queue)
 
+    /// -- WP SW14 -- The core this window's device is driven through, if any
+    /// (docs/SWIFT-SEAMS.md section 3, SW14): every read below is then the
+    /// core's typed one, and nothing of this window goes out raw.
+    private var core: CoreStateSource? { transport?.coreStateSource }
+
     private func readStats() {
+        if let core {
+            readStatsThroughCore(core)
+            return
+        }
         guard let transport = transport, isConnected else { return }
 
         // wValue=3: pdm_ring_overruns
@@ -473,6 +486,140 @@ class StatsViewModel: ObservableObject {
         fetchLgSoundSyncStatus()
         fetchAdatStatus()
         fetchI2SSlaveStatus()
+    }
+
+    // -- WP SW14 --
+    private func readStatsThroughCore(_ core: CoreStateSource) {
+        guard isConnected else { return }
+        func stat(_ which: UInt16) -> UInt32? { try? core.call { try $0.fetchStat(which: which) }.get() }
+        func show(_ which: UInt16, _ set: @escaping (UInt32) -> Void) {
+            if let v = stat(which) { DispatchQueue.main.async { set(v) } }
+        }
+        show(DspiConstants.STAT_PDM_RING_OVERRUNS) { self.pdmRingOverruns = $0 }
+        show(DspiConstants.STAT_PDM_RING_UNDERRUNS) { self.pdmRingUnderruns = $0 }
+        show(DspiConstants.STAT_PDM_DMA_OVERRUNS) { self.pdmDmaOverruns = $0 }
+        show(DspiConstants.STAT_PDM_DMA_UNDERRUNS) { self.pdmDmaUnderruns = $0 }
+        show(DspiConstants.STAT_SPDIF_OVERRUNS) { self.spdifOverruns = $0 }
+        show(DspiConstants.STAT_SPDIF_UNDERRUNS) { self.spdifUnderruns = $0 }
+        show(DspiConstants.STAT_USB_RING_OVERRUNS) { self.usbRingOverruns = $0 }
+        show(DspiConstants.STAT_CLOCK_HZ) { self.systemClockHz = $0 }
+        show(DspiConstants.STAT_CORE_MV) { self.coreVoltageMillivolts = $0 }
+        show(DspiConstants.STAT_SAMPLE_RATE) { self.sampleRateHz = $0 }
+        show(DspiConstants.STAT_TEMPERATURE) { self.systemTempCentiC = Int32(bitPattern: $0) }
+
+        // Output ring health: none on firmware without the latency setting.
+        switch core.call({ try $0.fetchRingHealth() }) {
+        case .success(let h?):
+            fillOnRingScale = true
+            let health = RingHealth(core: h)
+            DispatchQueue.main.async { self.ringHealth = health }
+        case .success(nil):
+            fillOnRingScale = false
+            DispatchQueue.main.async { self.ringHealth = nil }
+        case .failure:
+            break
+        }
+
+        // S/PDIF DMA starvation.
+        if let total = stat(DspiConstants.STAT_STARVATION_TOTAL) {
+            showStarvation(total: total) { i in stat(DspiConstants.STAT_STARVATION_FIRST + UInt16(i)) }
+        }
+
+        // S/PDIF receiver.
+        if inputSourceSupported, case .success(let rx) = core.call({ try $0.fetchSpdifRxStatus() }) {
+            let status = SpdifRxStatus(core: rx)
+            var chStatus = SpdifRxChannelStatus()
+            if status.state == 2, case .success(let d) = core.call({ try $0.fetchSpdifRxChannelStatus() }),
+               d.count >= 24 {
+                chStatus.raw = Array(d.prefix(24))
+            }
+            let index = Self.activeSpdifIndex(source: status.inputSource)
+            var activePin = spdifRxPin
+            if case .success(let pin) = core.call({ try $0.fetchSpdifRxPin(index: index) }), pin != 0 {
+                activePin = pin
+            }
+            DispatchQueue.main.async {
+                self.spdifRxStatus = status
+                self.spdifRxChannelStatus = chStatus
+                self.spdifActiveRxPin = activePin
+            }
+        }
+
+        // LG Sound Sync: shown once a read answers.
+        if case .success(let lg) = core.call({ try $0.fetchLgStatus() }) {
+            let status = LgSoundSyncStatus(enabled: lg.enabled, present: lg.present, volume: lg.volume, muted: lg.muted)
+            DispatchQueue.main.async {
+                self.lgSoundSyncStatus = status
+                self.lgSoundSyncSupported = true
+            }
+        }
+
+        // ADAT output: the core's feature (RP2350 only), as the view model.
+        let adat = core.call { $0.featurePresent(name: "adat_output") }
+        if case .success(true) = adat, case .success(let a) = core.call({ try $0.fetchAdatOutStatus() }) {
+            var status = AdatStatus()
+            status.enabled = a.enabled
+            status.active = a.active
+            status.pin = a.pin
+            status.rateOk = a.rateOk
+            status.resyncCount = a.resyncCount
+            status.slipCount = a.slipCount
+            DispatchQueue.main.async {
+                self.adatSupported = (self.platformName == "RP2350")
+                self.adatStatus = status
+            }
+        } else {
+            DispatchQueue.main.async { self.adatSupported = false }
+        }
+
+        // I2S clock slave: the core's lock read of input 0.
+        if case .success(let lock) = core.call({ try $0.fetchInputLock(which: 0) }) {
+            var status = I2sSlaveStatus()
+            status.state = lock.state
+            status.clockMode = lock.clockMode
+            status.lockCount = lock.lockCount
+            status.lossCount = lock.lossCount
+            status.detectedRate = lock.detectedRate
+            status.measuredHz = lock.measuredHz
+            DispatchQueue.main.async {
+                self.i2sClockModeSupported = true
+                self.i2sSlaveStatus = status
+            }
+        } else {
+            DispatchQueue.main.async { self.i2sClockModeSupported = false }
+        }
+    }
+
+    /// The starvation counters after a total, the per-instance ones from
+    /// `read` (fetch queue).
+    private func showStarvation(total: UInt32, read: (Int) -> UInt32?) {
+        var delta: UInt32 = 0
+        if let prev = previousStarvationTotal { delta = total &- prev }
+        previousStarvationTotal = total
+        var perInstance: [UInt32] = [0, 0, 0, 0]
+        var eventTime: Date? = starvationLastEventTime
+        var prevEventTime: Date? = starvationPreviousEventTime
+        if delta > 0 {
+            prevEventTime = starvationLastEventTime
+            eventTime = Date()
+        }
+        if total > 0 {
+            for i in 0..<4 { perInstance[i] = read(i) ?? 0 }
+        }
+        DispatchQueue.main.async {
+            self.starvationTotal = total
+            self.starvationPerInstance = perInstance
+            self.starvationDelta = delta
+            if let t = eventTime { self.starvationLastEventTime = t }
+            if let p = prevEventTime { self.starvationPreviousEventTime = p }
+        }
+    }
+
+    /// The S/PDIF input index (0-3) of an input source; 0 for the others.
+    /// The optional sources are contiguous from INPUT_SOURCE_SPDIF2.
+    static func activeSpdifIndex(source: UInt8) -> UInt8 {
+        let extIndex = Int(source) - INPUT_SOURCE_SPDIF2 + 1
+        return (1..<SPDIF_RX_NUM_INPUTS).contains(extIndex) ? UInt8(extIndex) : 0
     }
 
     private func fetchRingHealth() {
@@ -558,6 +705,17 @@ class StatsViewModel: ObservableObject {
     }
 
     private func readBufferStats() {
+        // -- WP SW14 -- Through a core, its stats tick: the buffer packet and
+        // the outputs' fill on the ring's own scale, from one transfer.
+        if let core {
+            guard isConnected, case .success(let tick) = core.call({ try $0.fetchStatsTick() }) else { return }
+            let packet = BufferStatsPacket(core: tick)
+            DispatchQueue.main.async {
+                self.bufferStats = packet
+                self.bufferHistory.append(packet)
+            }
+            return
+        }
         guard let transport = transport, isConnected else { return }
         guard let data = transport.getControlRequest(request: REQ_GET_BUFFER_STATS, value: 0, index: 0, length: 44),
               data.count >= 44 else { return }
@@ -686,6 +844,33 @@ class StatsViewModel: ObservableObject {
     }
 
     private func readDeviceInfo() {
+        // -- WP SW14 -- Through a core: the serial the device was opened by,
+        // the platform, version and outputs from the core's state (read at
+        // its connect), the input-source feature from its probe.  No I/O.
+        if let core {
+            let serial = transport?.selectedDevice?.serial ?? ""
+            let state = core.readState()
+            let platformStr: String
+            switch state.platformId {
+            case 1:  platformStr = "RP2350"
+            case 2:  platformStr = "STM32H723"
+            default: platformStr = "RP2040"
+            }
+            let version = FirmwareVersion(Int(state.fwMajor), Int(state.fwMinor), Int(state.fwPatch),
+                                          Int(state.fwBeta))
+            let outputs = Int(state.numOutputChannels)
+            let inputSource = (try? core.call({ $0.featurePresent(name: "input_source") }).get()) ?? false
+            let pin = state.spdifRxPins.first
+            DispatchQueue.main.async {
+                self.serialNumber = serial.isEmpty ? "-" : serial
+                self.platformName = platformStr
+                self.firmwareVersion = "v" + version.description
+                self.outputCount = outputs
+                if inputSource, let pin { self.spdifRxPin = pin }
+                self.inputSourceSupported = inputSource
+            }
+            return
+        }
         guard let transport = transport else { return }
 
         // REQ_GET_SERIAL (0x7E): 16-byte ASCII hex serial

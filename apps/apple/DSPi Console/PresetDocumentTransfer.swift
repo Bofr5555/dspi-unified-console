@@ -322,6 +322,9 @@ final class PresetApplyReport {
 
     /// Channels in the document that this device does not have.
     var missingChannels: [String] = []
+    /// -- WP SW14 -- review sw13 N2: missing channels the core's report
+    /// counted rather than named (its ", and N more" after the first eight).
+    var missingChannelsMore = 0
 
     /// Blocks skipped because this firmware or platform lacks the feature, or
     /// because the device refused the write.
@@ -476,12 +479,26 @@ enum PresetDocumentApply {
         for line in lines {
             if line.hasPrefix("Skipped: ") { report.skip(String(line.dropFirst("Skipped: ".count))) }
             if line.hasPrefix("Not present on this device: ") {
-                report.missingChannels = line.dropFirst("Not present on this device: ".count)
-                    .components(separatedBy: ", ")
+                let missing = missingChannels(in: String(line.dropFirst("Not present on this device: ".count)))
+                report.missingChannels = missing.names
+                report.missingChannelsMore = missing.more
             }
         }
         let links = (object["links"] as? NSNumber).map { UInt8(truncatingIfNeeded: $0.intValue) }
         return (report, links)
+    }
+
+    /// -- WP SW14 -- review sw13 N2: the names of the core's "Not present on
+    /// this device: " line, and how many more it counted ("a, b, and 3 more":
+    /// files.rs, `MISSING_NAMED`).
+    static func missingChannels(in list: String) -> (names: [String], more: Int) {
+        var names = list.components(separatedBy: ", ")
+        if let last = names.last, last.hasPrefix("and "), last.hasSuffix(" more"),
+           let more = Int(last.dropFirst("and ".count).dropLast(" more".count)) {
+            names.removeLast()
+            return (names, more)
+        }
+        return (names, 0)
     }
 
     /// -- WP SW13 -- The import through the core: one bulk write under the
