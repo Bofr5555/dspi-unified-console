@@ -180,6 +180,7 @@ nothing is written and the answer is `denied`, naming the op.
 | `system_muted` | warning | a sender's system mute seen set, at a read or a write | seen clear |
 | `usb_realigned` | warning | the hub wrote the USB-direct units' speaker delays again by itself ("Keep USB-direct units aligned", below): the record of it, naming the units | acknowledged, or the next re-align (kept with the cleared ones) |
 | `usb_lock_error` | critical when the unit mutes, a warning when it plays | a USB-direct unit in phase lock that cannot be in step (*lock error*, below: STATUS flags bit 6 at a read, or an `0xE3` `LOCK_ERROR`): "USB-direct unit Rear L/R can't lock — muted (the host's rate is out of range)" | the flag gone at a read, an `0xE3` `LOCK_OK`, or the unit gone (`unit_offline` then) |
+| `usb_setting_restored` | warning | the hub's poll put a USB-direct unit's lock-error action back to the installation's (it had been changed on the unit, e.g. with `set_alink_usb_on_lock_error`): "The hub restored the installation's lock-error action on Rear L/R (mute): the unit had play unaligned" | acknowledged, or the next restore of that unit (kept with the cleared ones) |
 | `usb_realign_failed` | warning | "Keep USB-direct units aligned" could not write a unit's speaker delays (offline, not writable, a refused write), naming the units and why; tried again at most once a minute, each try counted | a later re-align of every moved unit, or no offset moved any more |
 
 Events are decoded only from devices that announce them (`EXT_NOTIFY_FEATURES`
@@ -361,11 +362,20 @@ after it arrived, so every unit of one host plays sample-aligned.
   (the web's "When it can't lock" in "USB-direct units"; Qt's and Android's Clock
   and audio links; the core's edits `usbModes[].onLockError`, saved by revision);
   the hub's poll and every alignment write it to the unit (`EXT_ALINK_USB` byte 4,
-  with the mode, flags and D as read, so nothing re-anchors; `what:
-  "on_lock_error"`). Firmware before WP USB3b refuses "play unaligned" (the byte was
-  reserved): the hub remembers it until the unit attaches again, does not ask
-  again, and the alignment says `usb_lock_error_unsupported` ("Height: its firmware
-  cannot play unaligned in lock error, so it mutes"). A unit in lock error is the
+  `what: "on_lock_error"`). -- fixup ausb2 -- An alignment writes the mode, D and
+  the action in one write; the poll writes the action with the mode, flags and D
+  it has just read, so nothing re-anchors, and records it as the alarm
+  `usb_setting_restored` (the installation wins over a change made on the unit).
+  A refusal is told apart by writing the same settings again with the unit's own
+  action: taken, the firmware lacks the setting (before WP USB3b: the hub
+  remembers it until the unit attaches again, does not ask again, and the
+  alignment says `usb_lock_error_unsupported`, "Height: its firmware cannot play
+  unaligned in lock error, so it mutes"); refused too, the unit refuses its
+  settings as they are (mode 2 with D outside its range at this rate, a CONFIG
+  lock error): the issue `usb_settings_refused` names the cause, and the hub tries
+  again later. A unit running another mode or D than the installation asks has
+  the issue `usb_settings_differ` until an Align writes them. The hub's poll, an
+  alignment and a scene take turns on a unit (one writer per unit). A unit in lock error is the
   alarm `usb_lock_error` and the issue of that name; the core's rows carry
   `usbLockError`, its cause in words, the action now and asked, and say "Can't
   lock (USB): muted" or "… playing unaligned". The core's
@@ -400,7 +410,8 @@ after it arrived, so every unit of one host plays sample-aligned.
   then reads the USB-direct units again and plans from that read; if even that
   cannot reach, their ops are written at once (`applied_now`, reason `applied now:
   the USB frame would be past before it was written (slow reads)`). A model lead
-  over 1.92 s is cut to it (`plan.usbLeadCapped`): those ops are queued 1.92 s
+  over 1.92 s is cut to it (`plan.usbLeadCapped`; the lead is counted in the
+  unit's own samples, so only a lead that is really longer is): those ops are queued 1.92 s
   ahead, not with the audio link's frame, which the write's reason and `onTime`
   false say. A unit last seen without the audio link takes its ops at once with no
   frame read (review fixm1 F4: no 1.2 s per such unit after a write to it);

@@ -79,3 +79,22 @@ fn wp_ausb2_without_the_block_it_is_unsupported_with_no_traffic() {
     );
     assert_eq!(p.traffic(), before, "nothing was sent");
 }
+
+// -- fixup ausb2 (F2) --
+/// A unit whose D no longer fits its rate (CONFIG) refuses any write of its
+/// settings: that is `Refused`, never "old firmware".
+#[test]
+fn wp_ausb2_a_config_refusal_is_refused_not_unsupported() {
+    let (c, r) = unit(true);
+    assert!(r.usb_direct_sim(dspi_transport::fake::USB_SIM_RATE_96K));
+    let s = c.fetch_alink_usb_status().unwrap();
+    assert_eq!(
+        (s.state.as_str(), s.lock_error, s.rate_hz),
+        ("rate_locked", true, 96_000)
+    );
+    assert!(c.fetch_alink_usb().unwrap().d_below_min);
+    assert!(matches!(
+        c.set_alink_usb_on_lock_error(true),
+        Err(DspiError::Refused { .. })
+    ));
+}

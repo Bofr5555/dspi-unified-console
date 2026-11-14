@@ -110,6 +110,10 @@ struct State {
     /// When an automatic write that failed may be tried again, by key
     /// (`realign:<unit id>`, `lock:<serial>`): no retry storm.
     retry_after: BTreeMap<String, Instant>,
+    // -- fixup ausb2 (F2) --
+    /// USB-direct units (serials) that refused their settings, and why (D
+    /// outside its range at this rate): the issue `usb_settings_refused`.
+    settings_refused: BTreeMap<String, String>,
 }
 
 /// The system's state, shared by the hub's handles and the relay's tap.
@@ -121,6 +125,11 @@ pub(crate) struct SystemShared {
     // -- WP AUSB2 --
     /// The hub's own poll of the model's USB-direct units, ms between two.
     poll_ms: AtomicU64,
+    // -- fixup ausb2 (F6) --
+    /// One writer per unit (by serial) for the USB-direct settings, delays
+    /// and scene ops: the hub's poll, an alignment and a scene take turns. A
+    /// leaf beside `state`, never taken while `state` is held.
+    unit_locks: Mutex<BTreeMap<String, Arc<Mutex<()>>>>,
 }
 
 impl std::fmt::Debug for SystemShared {
@@ -185,7 +194,47 @@ impl SystemShared {
             store,
             saving: Mutex::new(()),
             poll_ms: AtomicU64::new(u64::try_from(SYSTEM_POLL.as_millis()).unwrap_or(u64::MAX)),
+            unit_locks: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    // -- fixup ausb2 (F6) --
+    /// Unit `serial`'s write lock. Several are always taken in serial order.
+    pub(crate) fn unit_lock(&self, serial: &str) -> Arc<Mutex<()>> {
+        Arc::clone(
+            guard(&self.unit_locks)
+                .entry(serial.to_owned())
+                .or_default(),
+        )
+    }
+
+    // -- fixup ausb2 (F2) --
+    /// Unit `serial` refused its settings (`Some(why)`), or took them.
+    pub(crate) fn settings_refused(&self, serial: &str, why: Option<String>) {
+        let mut s = self.lock();
+        match why {
+            Some(w) => {
+                s.settings_refused.insert(serial.to_owned(), w);
+            }
+            None => {
+                s.settings_refused.remove(serial);
+            }
+        }
+    }
+
+    // -- fixup ausb2 (F2) --
+    /// Why unit `serial` refused its settings at the last write, if it did.
+    pub(crate) fn refused_settings(&self, serial: &str) -> Option<String> {
+        self.lock().settings_refused.get(serial).cloned()
+    }
+
+    // -- fixup ausb2 (F5) --
+    /// Record that the hub put a unit's setting back to the installation's
+    /// (alarm `usb_setting_restored`); the changes to broadcast.
+    pub(crate) fn usb_setting_restored(&self, unit: &str, message: String) -> Vec<Alarm> {
+        self.lock()
+            .alarms
+            .usb_setting_restored(unit, message, now())
     }
 
     // -- WP AUSB2 --
@@ -247,6 +296,7 @@ impl SystemShared {
     pub(crate) fn attached(&self, serial: &str) {
         let mut s = self.lock();
         s.play_unaligned_refused.remove(serial);
+        s.settings_refused.remove(serial);
         s.retry_after.remove(&format!("lock:{serial}"));
     }
 

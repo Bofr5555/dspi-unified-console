@@ -184,7 +184,16 @@ fn wp_ausb1_usb_direct_units_are_read_and_shown() {
         c.contains(&(String::new(), "usb_start_offsets".into())),
         "{c:?}"
     );
-    assert!(!c.iter().any(|(s, _)| s == "U1" || s == "U2"), "{c:?}");
+    // -- fixup ausb2 -- before the Align their D is not the installation's yet: said
+    assert!(
+        !c.iter()
+            .any(|(s, code)| (s == "U1" || s == "U2") && code != "usb_settings_differ"),
+        "{c:?}"
+    );
+    assert!(
+        c.contains(&("U1".into(), "usb_settings_differ".into())),
+        "{c:?}"
+    );
     // One system delay: the alink's need (257 + the fan-out's 3) is U1's D too.
     let plan = |id: &str| {
         status

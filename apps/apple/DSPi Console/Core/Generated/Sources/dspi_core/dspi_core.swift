@@ -3371,9 +3371,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Errors, with no traffic: `Disconnected`; `Unsupported` without the
      * block; `ReadOnly`. `Transfer` when the setting cannot be read first.
      * `Unsupported` when the unit refuses `play_unaligned` (firmware before
-     * WP USB3b, where the byte is reserved: the test for the setting);
-     * `Refused` for another refusal (mode 2 with D outside its limits now);
-     * `Denied`, `Locked` or `Transfer` from a hub.
+     * WP USB3b, where the byte is reserved: the test for the setting) while it
+     * takes its settings as they are; `Refused` when it refuses those too
+     * (mode 2 with D outside its limits at this rate, said by its status
+     * flags); `Denied`, `Locked` or `Transfer` from a hub.
+     *
+     * -- fixup ausb2 (F5) -- A unit in a DSPi Link hub's installation takes
+     * the action the installation asks: the hub writes it back within a poll
+     * (about 5 s) and records it (alarm `usb_setting_restored`); change it in
+     * the installation (the Installer's "When it can't lock") instead.
      */
     func setAlinkUsbOnLockError(playUnaligned: Bool) throws 
     
@@ -7421,9 +7427,15 @@ open func setAlinkUsb(mode: UInt8, autoReanchor: Bool, d: UInt16)throws   {try r
      * Errors, with no traffic: `Disconnected`; `Unsupported` without the
      * block; `ReadOnly`. `Transfer` when the setting cannot be read first.
      * `Unsupported` when the unit refuses `play_unaligned` (firmware before
-     * WP USB3b, where the byte is reserved: the test for the setting);
-     * `Refused` for another refusal (mode 2 with D outside its limits now);
-     * `Denied`, `Locked` or `Transfer` from a hub.
+     * WP USB3b, where the byte is reserved: the test for the setting) while it
+     * takes its settings as they are; `Refused` when it refuses those too
+     * (mode 2 with D outside its limits at this rate, said by its status
+     * flags); `Denied`, `Locked` or `Transfer` from a hub.
+     *
+     * -- fixup ausb2 (F5) -- A unit in a DSPi Link hub's installation takes
+     * the action the installation asks: the hub writes it back within a poll
+     * (about 5 s) and records it (alarm `usb_setting_restored`); change it in
+     * the installation (the Installer's "When it can't lock") instead.
      */
 open func setAlinkUsbOnLockError(playUnaligned: Bool)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_alink_usb_on_lock_error(self.uniffiClonePointer(),
@@ -31428,7 +31440,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_alink_usb() != 58666) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_alink_usb_on_lock_error() != 63612) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_alink_usb_on_lock_error() != 51504) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_band_bypass() != 64308) {

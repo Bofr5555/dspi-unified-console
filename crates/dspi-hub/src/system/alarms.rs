@@ -13,6 +13,7 @@
 //! | `delay_below_min` | `EXT_ALINK_PHASE` flag `D_BELOW_MIN` | the flag gone |
 //! | `usb_lock_error` | a USB-direct unit in phase lock cannot be in step (*lock error*, the fork's WP USB3b: STATUS flags bit 6 at a read, or an 0xE3 `LOCK_ERROR`): "USB-direct unit X can't lock — muted / playing unaligned (cause)"; critical when it mutes, a warning when it plays (WP AUSB2) | the flag gone at a read, an 0xE3 `LOCK_OK`, or the unit gone (`unit_offline`) |
 //! | `usb_realign_failed` | "Keep USB-direct units aligned" could not write a unit's output delays (WP AUSB2); retried at most every [`REALIGN_RETRY_S`] | a later re-align of it, or its offset no longer moved |
+//! | `usb_setting_restored` | the hub's poll put a USB-direct unit's lock-error action back to the installation's (fixup ausb2 F5): the record of it | acknowledged, or the next restore of that unit (kept in the cleared list) |
 //! | `usb_realigned` | the hub wrote the USB-direct units' output delays again by itself ("Keep USB-direct units aligned", WP FIXM1): the record of it, one alarm per re-align | acknowledged, or the next re-align (kept in the cleared list) |
 
 use std::collections::BTreeMap;
@@ -29,6 +30,9 @@ pub const USB_REALIGNED: &str = "usb_realigned";
 pub const USB_LOCK_ERROR: &str = "usb_lock_error";
 /// An automatic re-align that could not write a unit's output delays.
 pub const USB_REALIGN_FAILED: &str = "usb_realign_failed";
+// -- fixup ausb2 (F5) --
+/// The hub put a USB-direct unit's setting back to the installation's.
+pub const USB_SETTING_RESTORED: &str = "usb_setting_restored";
 /// How long the hub waits before it tries a failed automatic write again
 /// (a re-align, the lock-error action), seconds: no retry storm.
 pub const REALIGN_RETRY_S: u64 = 60;
@@ -258,7 +262,7 @@ impl AlarmBook {
             .iter()
             .find(|(_, a)| a.id == id)
             .map(|(k, _)| k.clone())?;
-        if key.0 == "reanchor" || key.0 == USB_REALIGNED {
+        if key.0 == "reanchor" || key.0 == USB_REALIGNED || key.0 == USB_SETTING_RESTORED {
             return self.clear(&key.0, &key.1, now);
         }
         let a = self.active.get_mut(&key)?;
@@ -306,6 +310,19 @@ impl AlarmBook {
         } else {
             Vec::new()
         }
+    }
+
+    // -- fixup ausb2 (F5) --
+    /// Record that the hub's poll put unit `subject`'s setting back to the
+    /// installation's: a new [`USB_SETTING_RESTORED`], the one before it for
+    /// the unit (if still on) cleared into the record. The changes.
+    pub fn usb_setting_restored(&mut self, subject: &str, message: String, now: u64) -> Changes {
+        let mut changes: Changes = self
+            .clear(USB_SETTING_RESTORED, subject, now)
+            .into_iter()
+            .collect();
+        changes.extend(self.raise(USB_SETTING_RESTORED, subject, message, now));
+        changes
     }
 
     // -- WP AUSB2 --

@@ -389,7 +389,8 @@ pub struct Issue {
     /// `d_too_small`; USB-direct (WP AUSB1, FIXM1): `mixed_time_bases`,
     /// `usb_no_stream`, `usb_start_offsets`, `start_offset_no_outputs`,
     /// `usb_rate_differs`, `usb_start_offsets_changed`; WP AUSB2:
-    /// `usb_lock_error`, `usb_lock_error_unsupported`.
+    /// `usb_lock_error`, `usb_lock_error_unsupported`; fixup ausb2:
+    /// `usb_settings_differ`, `usb_settings_refused`.
     pub code: String,
     /// For people.
     pub message: String,
@@ -821,6 +822,44 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                     ));
                 }
                 let offset = offsets.get(&r.unit.id).copied();
+                // -- fixup ausb2 (review ausb2 F1) -- what the unit runs differs from
+                // the installation: said, so a drift never stays silent
+                let seen = obs
+                    .get(&r.unit.serial)
+                    .filter(|o| o.online)
+                    .and_then(|o| o.usb.as_ref());
+                if let Some(s) = seen {
+                    let usb_d = if phase {
+                        u16::try_from(effective).ok()
+                    } else {
+                        None
+                    };
+                    let name = if r.unit.name.is_empty() {
+                        &r.unit.id
+                    } else {
+                        &r.unit.name
+                    };
+                    let mut differs = Vec::new();
+                    if s.mode != *mode {
+                        differs.push(format!("its mode is {}, the installation's {mode}", s.mode));
+                    }
+                    if let Some(want) = usb_d.filter(|w| *w != s.d) {
+                        differs.push(format!(
+                            "its D is {} samples, the installation's {want}",
+                            s.d
+                        ));
+                    }
+                    if !differs.is_empty() {
+                        issues.push(issue(
+                            Some(&r.unit.id),
+                            USB_SETTINGS_DIFFER,
+                            format!(
+                                "{name}: the USB-direct unit runs other settings than the installation ({}): Align to write them",
+                                differs.join("; ")
+                            ),
+                        ));
+                    }
+                }
                 return UnitPlan {
                     unit: r.unit.id.clone(),
                     serial: r.unit.serial.clone(),
@@ -990,6 +1029,14 @@ fn start_offsets(
     }
     offsets
 }
+
+// -- fixup ausb2 --
+/// The issue raised when a USB-direct unit runs another mode or D than the
+/// installation asks (before an Align, or after something else changed it).
+pub const USB_SETTINGS_DIFFER: &str = "usb_settings_differ";
+/// The issue raised when a USB-direct unit refused its settings (D outside
+/// its range at this rate): nothing of them was written.
+pub const USB_SETTINGS_REFUSED: &str = "usb_settings_refused";
 
 // -- WP AUSB2 --
 /// The issue raised when a unit refused "play unaligned" (firmware before

@@ -29,10 +29,10 @@ use dspi_core::link::{AlinkSystemEdits, AlinkUnitUsbMode};
 use dspi_hub::system::SystemStatus;
 use dspi_hub::{AccessMode, Hub, HubConfig, NetworkConfig};
 use dspi_proto::generated::opcodes as op;
-use dspi_transport::FakeDevice;
 use dspi_transport::fake::{
     FakeRemote, USB_SIM_HOST_RANGE, USB_SIM_STREAM_RESTART, UsbDirectSetup,
 };
+use dspi_transport::{FakeDevice, Transport};
 use serde_json::json;
 
 const WAIT: Duration = Duration::from_secs(10);
@@ -466,5 +466,219 @@ fn wp_ausb2_the_align_report_does_not_count_the_issue_it_fixed() {
         r.alignment.issues
     );
     assert!(!has_changed(&h.system_status()));
+    hub.stop();
+}
+
+// ---------------------------------------------------------------- fixup ausb2
+
+fn u_config(h: &dspi_hub::HubHandle, serial: &str) -> [u8; 8] {
+    let mut t = h.open_local(serial).unwrap();
+    let b = t
+        .control_in(
+            op::REQ_EXTENSION,
+            dspi_proto::ext::alink_usb::EXT_ALINK_USB,
+            8,
+        )
+        .unwrap();
+    b[..8].try_into().unwrap()
+}
+
+fn with_action(h: &dspi_hub::HubHandle, unit: &str, play: bool) {
+    let mut m = h.system_model().0;
+    let u = m.units.iter_mut().find(|u| u.id == unit).unwrap();
+    u.on_lock_error = if play {
+        dspi_hub::system::model::OnLockError::PlayUnaligned
+    } else {
+        dspi_hub::system::model::OnLockError::Mute
+    };
+    h.system_set_model(m).unwrap();
+}
+
+/// Review ausb2 F1 (probe A): an Align that changes D on a unit whose action
+/// differs writes D and the action in one write; the new D stays. A unit whose
+/// D is not the installation's is an issue until then.
+#[test]
+fn wp_ausb2_fixup_an_align_writes_d_and_the_action_together() {
+    let (hub, _u1, _u2) = hub_in(&store_dir(), true, 240);
+    let h = hub.handle();
+    with_action(&h, "U1", true);
+    let s = h.system_status();
+    assert!(
+        codes(&s).contains(&("U1".into(), "usb_settings_differ".into())),
+        "{:?}",
+        codes(&s)
+    );
+    let msg = &s
+        .alignment
+        .issues
+        .iter()
+        .find(|i| i.code == "usb_settings_differ" && i.subject.as_deref() == Some("U1"))
+        .unwrap()
+        .message;
+    assert!(
+        msg.contains("its D is 192 samples, the installation's 240"),
+        "{msg}"
+    );
+    let r = h.system_align(true);
+    let what = |el: &str, what: &str| {
+        r.writes
+            .iter()
+            .filter(|w| w.element == el && w.what == what)
+            .map(|w| w.result.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(what("U1", "usb_direct"), ["ok"]);
+    assert_eq!(what("U1", "on_lock_error"), ["ok"]);
+    assert_eq!(what("U2", "on_lock_error"), Vec::<String>::new());
+    let c = u_config(&h, "HW-U1");
+    assert_eq!(
+        (c[0], u16::from_le_bytes([c[2], c[3]]), c[4]),
+        (2, 240, 1),
+        "mode 2, D 240, play unaligned"
+    );
+    assert_eq!(
+        u16::from_le_bytes([u_config(&h, "HW-U2")[2], u_config(&h, "HW-U2")[3]]),
+        240
+    );
+    let s = h.system_status();
+    assert!(
+        !codes(&s).iter().any(|(_, c)| c == "usb_settings_differ"),
+        "{:?}",
+        codes(&s)
+    );
+    hub.stop();
+}
+
+/// Review ausb2 F2: a unit whose D no longer fits its rate (CONFIG lock
+/// error) refuses any write: the hub says so and tries later, and never takes
+/// it for firmware without the setting.
+#[test]
+fn wp_ausb2_fixup_a_config_refusal_is_not_old_firmware() {
+    let (hub, u1, _u2) = hub(true);
+    let h = hub.handle();
+    with_action(&h, "U1", true);
+    assert!(u1.usb_direct_sim(dspi_transport::fake::USB_SIM_RATE_96K));
+    let s = h.system_poll_now();
+    let s2 = h.system_status();
+    for st in [&s, &s2] {
+        assert!(
+            !codes(st)
+                .iter()
+                .any(|(_, c)| c == "usb_lock_error_unsupported"),
+            "{:?}",
+            codes(st)
+        );
+    }
+    let refused = s2
+        .alignment
+        .issues
+        .iter()
+        .find(|i| i.code == "usb_settings_refused")
+        .unwrap_or_else(|| panic!("{:?}", codes(&s2)));
+    assert!(
+        refused.message.starts_with(
+            "Rear L/R: the unit refused its settings (its D is outside its range at this rate (d_below_min))"
+        ),
+        "{}",
+        refused.message
+    );
+    // Its lock error is the CONFIG cause, muted (the action could not be written).
+    let a = h
+        .system_alarms()
+        .into_iter()
+        .find(|a| a.code == "usb_lock_error" && a.subject == "U1")
+        .unwrap();
+    assert!(
+        a.message
+            .ends_with("muted (its rate or D cannot phase-lock)"),
+        "{}",
+        a.message
+    );
+    // Back at 48 kHz: the next try (after the hold-off) takes it; an Align now does.
+    assert!(u1.usb_direct_sim(dspi_transport::fake::USB_SIM_RATE_96K));
+    let r = h.system_align(true);
+    let w = r
+        .writes
+        .iter()
+        .find(|w| w.element == "U1" && w.what == "on_lock_error")
+        .unwrap();
+    assert_eq!(w.result, "ok");
+    assert_eq!(u_config(&h, "HW-U1")[4], 1);
+    assert!(
+        !codes(&h.system_status())
+            .iter()
+            .any(|(_, c)| c == "usb_settings_refused")
+    );
+    hub.stop();
+}
+
+/// Review ausb2 F5 (probe E): the hub's poll puts back a hand-written action
+/// that is not the installation's, and records it.
+#[test]
+fn wp_ausb2_fixup_the_poll_restoring_an_action_is_recorded() {
+    let (hub, _u1, _u2) = hub(true);
+    let h = hub.handle();
+    let _ = h.system_status();
+    {
+        let mut t = h.open_local("HW-U1").unwrap();
+        t.control_out(
+            op::REQ_EXTENSION,
+            dspi_proto::ext::alink_usb::EXT_ALINK_USB,
+            &[2, 1, 0xc0, 0, 1, 0, 0, 0],
+        )
+        .unwrap();
+    }
+    h.system_poll_now();
+    assert_eq!(u_config(&h, "HW-U1")[4], 0, "the installation's: mute");
+    let a: Vec<_> = h
+        .system_alarms()
+        .into_iter()
+        .filter(|a| a.code == "usb_setting_restored")
+        .collect();
+    assert_eq!(a.len(), 1, "{a:?}");
+    assert_eq!(
+        (a[0].subject.as_str(), a[0].message.as_str()),
+        (
+            "U1",
+            "The hub restored the installation's lock-error action on Rear L/R (mute): the unit had play unaligned"
+        )
+    );
+    // Acknowledged: over, kept in the record.
+    assert!(h.system_acknowledge(a[0].id).is_some());
+    assert!(
+        !h.system_alarms()
+            .iter()
+            .any(|x| x.code == "usb_setting_restored"
+                && x.state != dspi_hub::system::alarms::AlarmState::Cleared)
+    );
+    hub.stop();
+}
+
+/// Review ausb2 F6: an Align and the hub's poll on the same units at once end
+/// with what the Align wrote, every time.
+#[test]
+fn wp_ausb2_fixup_the_poll_and_an_align_take_turns() {
+    let (hub, _u1, _u2) = hub_in(&store_dir(), true, 240);
+    let h = hub.handle();
+    with_action(&h, "U1", true);
+    let poller = {
+        let h = h.clone();
+        std::thread::spawn(move || {
+            for _ in 0..6 {
+                h.system_poll_now();
+            }
+        })
+    };
+    let r = h.system_align(true);
+    poller.join().unwrap();
+    assert!(r.applied);
+    let c = u_config(&h, "HW-U1");
+    assert_eq!((c[0], u16::from_le_bytes([c[2], c[3]]), c[4]), (2, 240, 1));
+    let s = h.system_poll_now();
+    assert!(
+        !codes(&s).iter().any(|(_, c)| c == "usb_settings_differ"),
+        "{:?}",
+        codes(&s)
+    );
     hub.stop();
 }

@@ -64,9 +64,33 @@ struct FileData {
     // the clients and names; checked when it is used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     system: Option<serde_json::Value>,
-    // -- WP AUSB2 -- the USB-direct start offsets the hub last wrote, by unit id
+    // -- WP AUSB2 -- the USB-direct start offsets the hub last wrote, by unit id.
+    // -- fixup ausb2 (F3) -- kept as JSON: an entry that is not a whole number is
+    // dropped alone ([`usb_offsets`]), never the store.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    system_usb_offsets: Option<BTreeMap<String, i64>>,
+    system_usb_offsets: Option<serde_json::Value>,
+}
+
+// -- fixup ausb2 (F3) --
+/// The start offsets kept, leniently: entries whose value is not a whole
+/// number are left out; anything but an object is none.
+fn usb_offsets(v: Option<serde_json::Value>) -> Option<BTreeMap<String, i64>> {
+    let serde_json::Value::Object(m) = v? else {
+        log::warn!("hub store: system_usb_offsets is not a map; ignored");
+        return None;
+    };
+    let total = m.len();
+    let kept: BTreeMap<String, i64> = m
+        .into_iter()
+        .filter_map(|(k, v)| Some((k, v.as_i64()?)))
+        .collect();
+    if kept.len() != total {
+        log::warn!(
+            "hub store: {} system_usb_offsets entries are not whole numbers; dropped",
+            total.saturating_sub(kept.len())
+        );
+    }
+    Some(kept)
 }
 
 /// The persistent state, as loaded.
@@ -234,7 +258,7 @@ impl HubStore {
             device_names: data.device_names,
             // -- WP SW2 --
             system: data.system,
-            system_usb_offsets: data.system_usb_offsets,
+            system_usb_offsets: usb_offsets(data.system_usb_offsets),
         })
     }
 
@@ -264,7 +288,7 @@ impl HubStore {
             device_names: data.device_names,
             // -- WP SW2 --
             system: data.system,
-            system_usb_offsets: data.system_usb_offsets,
+            system_usb_offsets: usb_offsets(data.system_usb_offsets),
         }))
     }
 
@@ -290,7 +314,10 @@ impl HubStore {
             device_names: self.device_names.clone(),
             // -- WP SW2 --
             system: self.system.clone(),
-            system_usb_offsets: self.system_usb_offsets.clone(),
+            system_usb_offsets: self
+                .system_usb_offsets
+                .as_ref()
+                .and_then(|m| serde_json::to_value(m).ok()),
         };
         let bytes = serde_json::to_vec_pretty(&data)
             .map_err(|e| HubError::Io(format!("cannot encode the hub store: {e}")))?;
@@ -562,6 +589,62 @@ pub(crate) mod tests_wp_hb1 {
             .permissions()
             .mode();
         assert_eq!(mode & 0o077, 0, "{mode:o}");
+    }
+
+    // -- fixup ausb2 (F3) -- review ausb2's probe D
+    /// An odd `system_usb_offsets` entry is dropped alone: the clients, the hub
+    /// id and the system model stay, and nothing is set aside.
+    #[test]
+    fn wp_ausb2_an_odd_usb_offsets_entry_is_dropped_alone() {
+        for (label, offsets, kept) in [
+            (
+                "string value",
+                r#"{"U1": "abc", "U2": 48}"#,
+                Some(vec![("U2", 48)]),
+            ),
+            ("float value", r#"{"U1": 1.5}"#, Some(vec![])),
+            ("null value", r#"{"U1": null}"#, Some(vec![])),
+            ("list", r#"[1, 2]"#, None),
+            ("good", r#"{"U1": 96}"#, Some(vec![("U1", 96)])),
+        ] {
+            let dir = scratch(&format!("offsets-{}", label.replace(' ', "-")));
+            fs::create_dir_all(&dir).unwrap();
+            let good = "ab".repeat(32);
+            let text = format!(
+                r#"{{"hub_id":"11111111-2222-3333-4444-555555555555","clients":[
+                  {{"cid":9,"name":"good","role":"viewer","created":0,"token_sha256":"{good}"}}
+                ],
+                "system": {{"rooms": [{{"id": "main", "name": "Main room"}}]}},
+                "system_usb_offsets": {offsets}}}"#
+            );
+            fs::write(dir.join(FILE_NAME), text).unwrap();
+            let s = HubStore::load(&dir).unwrap();
+            assert_eq!(
+                s.hub_id(),
+                "11111111-2222-3333-4444-555555555555",
+                "{label}"
+            );
+            assert!(s.system().is_some(), "{label}");
+            let want: Option<BTreeMap<String, i64>> =
+                kept.map(|k| k.into_iter().map(|(a, b)| (a.to_owned(), b)).collect());
+            assert_eq!(s.system_usb_offsets(), want.as_ref(), "{label}");
+            let bad = fs::read_dir(&dir)
+                .unwrap()
+                .filter(|e| {
+                    e.as_ref()
+                        .unwrap()
+                        .file_name()
+                        .to_string_lossy()
+                        .contains(".bad-")
+                })
+                .count();
+            assert_eq!(bad, 0, "{label}: nothing set aside");
+            s.save().unwrap();
+            assert_eq!(
+                HubStore::load(&dir).unwrap().system_usb_offsets(),
+                want.as_ref()
+            );
+        }
     }
 
     // -- WP SW2 --

@@ -76,6 +76,14 @@ pub const USB_SIM_HOST_RANGE: u8 = 3;
 pub const USB_SIM_STREAM_RESTART: u8 = 4;
 /// Finish a pull-in or an anchor now.
 pub const USB_SIM_SETTLE: u8 = 5;
+// -- fixup ausb2 (review ausb2 F2) --
+/// The host's stream changes to 96 kHz (again: back to 48 kHz). D's limits
+/// become 324..351, so a mode-2 unit at D 192 cannot phase-lock: it runs
+/// rate-locked with `D_BELOW_MIN` (lock error, cause CONFIG, `0xE3` `CONFIG`
+/// and `LOCK_ERROR`), and refuses a mode-2 write with D outside them. Only the
+/// limits, the rate code and the state change: samples are still counted at
+/// 48 per frame.
+pub const USB_SIM_RATE_96K: u8 = 6;
 
 /// Samples per bus frame (48 kHz).
 const SPF: u16 = 48;
@@ -161,6 +169,9 @@ pub(super) struct AlinkUsb {
     settling: Option<(UsbState, Instant)>,
     /// The host is out of range.
     rejected: bool,
+    // -- fixup ausb2 --
+    /// The stream runs at 96 kHz ([`USB_SIM_RATE_96K`]).
+    rate_96k: bool,
     /// No time base until then (a lost one comes back after a pull-in).
     lost_until: Option<Instant>,
     /// The bus frame (own count N) the current stream's content began in.
@@ -234,10 +245,26 @@ impl AlinkUsb {
     }
 
     // -- WP AUSB2 --
-    /// In lock error now: mode 2 with the host out of range, on firmware
-    /// that reports it.
+    /// In lock error now: mode 2 with the host out of range -- fixup ausb2 --
+    /// or a D outside the limits at this rate, on firmware that reports it.
     fn lock_error(&self) -> bool {
-        self.setup().usb3b && self.config().mode == usb::MODE_PHASE_LOCK && self.rejected
+        self.setup().usb3b
+            && self.config().mode == usb::MODE_PHASE_LOCK
+            && (self.rejected || self.config_bad())
+    }
+
+    // -- fixup ausb2 --
+    /// `d_min`, `d_max` at the stream's rate.
+    fn limits(&self) -> (u16, u16) {
+        usb::d_limits(if self.rate_96k { 96 } else { SPF })
+    }
+
+    // -- fixup ausb2 --
+    /// Mode 2 with D outside the limits now: it runs rate-locked.
+    fn config_bad(&self) -> bool {
+        let c = self.config();
+        let (min, max) = self.limits();
+        c.mode == usb::MODE_PHASE_LOCK && !(min..=max).contains(&c.d)
     }
 
     fn config(&self) -> AlinkUsbConfig {
@@ -290,7 +317,8 @@ impl AlinkUsb {
         if let Some((s, _)) = self.settling {
             return s;
         }
-        if c.mode == usb::MODE_RATE_LOCK {
+        // -- fixup ausb2 -- D outside the limits at this rate: rate lock only
+        if c.mode == usb::MODE_RATE_LOCK || self.config_bad() {
             UsbState::RateLocked
         } else {
             UsbState::PhaseLocked
@@ -327,7 +355,7 @@ impl AlinkUsb {
     fn status(&mut self) -> AlinkUsbStatus {
         let state = self.state();
         let setup = self.setup();
-        let (d_min, d_max) = usb::d_limits(SPF);
+        let (d_min, d_max) = self.limits();
         let (n, _) = self.frames();
         let time_base = !matches!(state, UsbState::Off | UsbState::NoSof);
         let locked = state == UsbState::PhaseLocked;
@@ -368,7 +396,7 @@ impl AlinkUsb {
                 UsbState::Anchoring => 1,
                 _ => 0,
             },
-            rate_code: 1,
+            rate_code: if self.rate_96k { 2 } else { 1 },
             flags,
             host_ppm: if measured { setup.host_ppm } else { 0.0 },
             vcxo_ppm: match state {
@@ -414,7 +442,7 @@ impl AlinkUsb {
     fn config_in(&mut self) -> AlinkUsbConfig {
         let state = self.state();
         let c = self.config();
-        let (d_min, d_max) = usb::d_limits(SPF);
+        let (d_min, d_max) = self.limits();
         let mut status_flags = 0;
         if c.mode == usb::MODE_PHASE_LOCK {
             if c.d < d_min {
@@ -582,7 +610,7 @@ impl State {
         let Some(c) = AlinkUsbConfig::decode(data) else {
             return false;
         };
-        let (d_min, d_max) = usb::d_limits(SPF);
+        let (d_min, d_max) = self.alink_usb.limits();
         // -- WP AUSB2 -- byte 4 is `on_lock_error` since WP USB3b, reserved before
         let byte4_ok = c.on_lock_error == 0 || self.alink_usb.setup().usb3b;
         if data.len() != AlinkUsbConfig::SIZE
@@ -812,6 +840,16 @@ impl State {
             }
             USB_SIM_STREAM_RESTART => {
                 self.alink_usb.place_stream();
+            }
+            // -- fixup ausb2 --
+            USB_SIM_RATE_96K => {
+                let was = self.alink_usb.lock_error();
+                self.alink_usb.rate_96k = !self.alink_usb.rate_96k;
+                if self.alink_usb.config_bad() {
+                    self.bump_end(4);
+                    self.usb_event(UsbEventReason::Config);
+                }
+                self.lock_error_since(was);
             }
             USB_SIM_SETTLE => {
                 while self.alink_usb.settling.is_some() {

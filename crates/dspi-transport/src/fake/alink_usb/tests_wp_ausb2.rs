@@ -116,3 +116,34 @@ fn wp_ausb2_older_firmware_refuses_play_unaligned_and_reads_diag_1() {
         "no lock error before WP USB3b"
     );
 }
+
+// -- fixup ausb2 (review ausb2 F2) --
+#[test]
+fn wp_ausb2_a_rate_change_is_a_config_lock_error_and_refuses_the_old_d() {
+    let mut d = FakeDevice::demo_usb_direct(UsbDirectSetup::default());
+    let mut src = d.notifications().unwrap();
+    reasons(&mut src);
+    assert!(d.remote().usb_direct_sim(USB_SIM_RATE_96K));
+    let s = status(&mut d);
+    assert_eq!(
+        (s.state, s.rate_code, s.d_min, s.d_max),
+        (UsbState::RateLocked, 2, 324, 351)
+    );
+    assert_ne!(s.flags & usb::USB_FLAG_LOCK_ERROR, 0);
+    assert_ne!(config(&mut d).status_flags & usb::STATUS_D_BELOW_MIN, 0);
+    assert_eq!(
+        reasons(&mut src),
+        [UsbEventReason::Config, UsbEventReason::LockError]
+    );
+    // Any write of mode 2 with D 192 is refused now, whatever byte 4 says.
+    for b4 in [0, 1] {
+        assert!(matches!(
+            set(&mut d, usb::EXT_ALINK_USB, &[2, 1, 192, 0, b4, 0, 0, 0]),
+            Err(TransportError::Stalled { .. })
+        ));
+    }
+    // A D that fits (330) phase-locks again: no lock error.
+    set(&mut d, usb::EXT_ALINK_USB, &[2, 1, 0x4a, 0x01, 1, 0, 0, 0]).unwrap();
+    assert_eq!(status(&mut d).flags & usb::USB_FLAG_LOCK_ERROR, 0);
+    assert!(reasons(&mut src).contains(&UsbEventReason::LockOk));
+}

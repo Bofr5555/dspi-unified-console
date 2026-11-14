@@ -195,3 +195,38 @@ fn wp_ausb2_f1_slow_reads_after_the_usb_unit_read_it_again_never_a_past_frame() 
     u1_applied_soon(&h, Duration::from_millis(1000));
     hub.stop();
 }
+
+// -- fixup ausb2 (review ausb2 F4, probe B') --
+/// Reads of about 1.2-1.8 s (one unit without the alink, unknown yet, under
+/// a slider drag) at 48 kHz: under the 1.92 s reach, so the USB-direct op is
+/// not said to be cut ("lead over 1.92 s") and the lead is not the cap.
+#[test]
+fn wp_ausb2_fixup_a_lead_under_the_reach_is_not_said_to_be_cut() {
+    let hub = make_hub();
+    let h = hub.handle();
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut k1 = h.open_local("HW-K1").unwrap();
+    let t = {
+        let stop = Arc::clone(&stop);
+        std::thread::spawn(move || {
+            let mut v = 0u8;
+            while !stop.load(Ordering::SeqCst) {
+                v = v.wrapping_add(1);
+                let _ = k1.control_out(op::REQ_SET_USER_MUTE, 0, &[v & 1]);
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        })
+    };
+    std::thread::sleep(Duration::from_millis(300));
+    // Only K1 is slow: K2 is not written, so its refusals come at once.
+    let r = h.system_apply_scene("evening", Role::Admin).unwrap();
+    stop.store(true, Ordering::SeqCst);
+    t.join().unwrap();
+    assert!(!r.plan.usb_lead_capped, "{:?}", r.plan);
+    let lead = r.plan.usb_lead_samples.unwrap();
+    assert!(lead < 1920 * 48, "{lead} samples is the cap");
+    let u1 = write(&r, "HW-U1");
+    assert_eq!((u1.result.as_str(), u1.reason.as_deref()), ("queued", None));
+    u1_applied_soon(&h, Duration::from_millis(2500));
+    hub.stop();
+}

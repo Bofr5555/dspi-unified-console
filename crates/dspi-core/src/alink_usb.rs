@@ -319,9 +319,15 @@ impl DspiCore {
     /// Errors, with no traffic: `Disconnected`; `Unsupported` without the
     /// block; `ReadOnly`. `Transfer` when the setting cannot be read first.
     /// `Unsupported` when the unit refuses `play_unaligned` (firmware before
-    /// WP USB3b, where the byte is reserved: the test for the setting);
-    /// `Refused` for another refusal (mode 2 with D outside its limits now);
-    /// `Denied`, `Locked` or `Transfer` from a hub.
+    /// WP USB3b, where the byte is reserved: the test for the setting) while it
+    /// takes its settings as they are; `Refused` when it refuses those too
+    /// (mode 2 with D outside its limits at this rate, said by its status
+    /// flags); `Denied`, `Locked` or `Transfer` from a hub.
+    ///
+    /// -- fixup ausb2 (F5) -- A unit in a DSPi Link hub's installation takes
+    /// the action the installation asks: the hub writes it back within a poll
+    /// (about 5 s) and records it (alarm `usb_setting_restored`); change it in
+    /// the installation (the Installer's "When it can't lock") instead.
     pub fn set_alink_usb_on_lock_error(&self, play_unaligned: bool) -> Result<()> {
         self.ensure_probed();
         let mut inner = self.lock();
@@ -340,7 +346,24 @@ impl DspiCore {
             ..read
         };
         match sx::write_alink_usb(t, c).map_err(write_error) {
-            Err(DspiError::Refused { .. }) if play_unaligned => {
+            // -- fixup ausb2 (F2) -- a refusal is the firmware's lack of the
+            // setting only when the same settings with the unit's own action are
+            // taken; else they are refused as they are (D outside its range at
+            // this rate: `status_flags`), a configuration to fix, not old firmware
+            Err(e @ DspiError::Refused { .. }) if play_unaligned => {
+                let explained = read.status_flags
+                    & (usb::STATUS_D_BELOW_MIN
+                        | usb::STATUS_D_ABOVE_MAX
+                        | usb::STATUS_RATE_UNSUPPORTED)
+                    != 0;
+                let own = usb::AlinkUsbConfig {
+                    status_flags: 0,
+                    state: 0,
+                    ..read
+                };
+                if explained || sx::write_alink_usb(t, own).is_err() {
+                    return Err(e);
+                }
                 return Err(DspiError::Unsupported);
             }
             r => r?,
