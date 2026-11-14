@@ -526,14 +526,16 @@ fn hub_writable(t: &InstallerTarget) -> Result<(), u8> {
     })
 }
 
-/// The hub's state for a hub command: re-read once, so a role given on the
-/// hub's machine since this session paired is the one judged.
+/// The hub's state for a hub command: always read again right before a
+/// change, so the role judged is the hub's live one, given or taken on the
+/// hub's machine since this session paired or last read (-- WP HUBADMINF --
+/// F1: a demoted Admin exits 3 before anything is sent).
 fn hub_target(core: &DspiCore, t: &InstallerTarget) -> Result<InstallerTarget, u8> {
-    if !t.read_only_key.is_empty() && t.read_only_key != "disconnected" {
-        core.hub_limits_get().map_err(|e| fail(&e))?;
-        return Ok(core.installer_target());
+    if t.read_only_key == "disconnected" {
+        return Ok(t.clone());
     }
-    Ok(t.clone())
+    core.hub_limits_get().map_err(|e| fail(&e))?;
+    Ok(core.installer_target())
 }
 
 fn print_hub(st: &HubAdminState) {
