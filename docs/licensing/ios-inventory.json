@@ -1,5 +1,5 @@
 {
- "repo_commit": "60aee7f6",
+ "repo_commit": "3939c3de",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -298,7 +298,23 @@
    "assets/notices/notices.json",
    "assets/onboarding/getting_started.json",
    "assets/onboarding/whatsnew.json",
+   "assets/templates/2way-rp2040.dspipreset",
+   "assets/templates/2way-rp2350.dspipreset",
+   "assets/templates/3way-rp2350.dspipreset",
+   "assets/templates/build-pico-2x-pcm5102a-2way.dspipreset",
+   "assets/templates/build-pico-pcm5102a-sub.dspipreset",
+   "assets/templates/build-pico2-2x-pcm5102a-2way.dspipreset",
+   "assets/templates/build-pico2-pcm1808-pcm5102a.dspipreset",
+   "assets/templates/build-pico2-pcm5102a-sub.dspipreset",
+   "assets/templates/headphones-rp2040.dspipreset",
+   "assets/templates/headphones-rp2350.dspipreset",
    "assets/templates/k340.dspipreset",
+   "assets/templates/stereo-2sub-rp2040.dspipreset",
+   "assets/templates/stereo-2sub-rp2350.dspipreset",
+   "assets/templates/stereo-rp2040.dspipreset",
+   "assets/templates/stereo-rp2350.dspipreset",
+   "assets/templates/stereo-sub-rp2040.dspipreset",
+   "assets/templates/stereo-sub-rp2350.dspipreset",
    "crates/dspi-core/src/ab.rs",
    "crates/dspi-core/src/alink.rs",
    "crates/dspi-core/src/alink/system.rs",
@@ -452,7 +468,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "60aee7f6155116efee571377e69fbb8c310792ee",
+  "commit": "3939c3de975d4123e97b4830853599fff3efff88",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",
