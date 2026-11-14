@@ -55,7 +55,7 @@ final class SWF6Tests: XCTestCase {
     /// preamp of input 0 then and a different value to edit it to.
     private func savedPreset3(_ t: CoreBackedTransport, _ vm: DSPViewModel,
                               file: StaticString = #filePath, line: UInt = #line) -> (Float, Float) {
-        XCTAssertEqual(offMain { vm.savePreset(slot: 3) }, PRESET_OK, file: file, line: line)
+        XCTAssertEqual(offMain { vm.savePreset(slot: 3, confirmed: .savePreset()) }, PRESET_OK, file: file, line: line)
         XCTAssertTrue(spinUntil(5) { vm.activePresetSlot == 3 && !vm.hasUnsavedChanges },
                       "the save is the baseline", file: file, line: line)
         let saved = vm.preampDB[0]
@@ -154,7 +154,7 @@ final class SWF6Tests: XCTestCase {
         XCTAssertEqual(vm.computeDiff().summary, core.map { "• \($0)" }.joined(separator: "\n"))
         XCTAssertTrue(core.contains("Preamp L: \(Self.db(saved)) → \(Self.db(edited))"), "\(core)")
 
-        XCTAssertEqual(offMain { vm.savePreset(slot: 3) }, PRESET_OK)
+        XCTAssertEqual(offMain { vm.savePreset(slot: 3, confirmed: .savePreset()) }, PRESET_OK)
         XCTAssertTrue(spinUntil(5) { !vm.hasUnsavedChanges }, "the save is the core's baseline")
         XCTAssertTrue(t.readPresetChanges().isEmpty)
 

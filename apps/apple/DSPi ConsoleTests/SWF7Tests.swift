@@ -38,7 +38,7 @@ final class SWF7Tests: XCTestCase {
 
     /// Preset 3 holds the connect-time state and is the clean baseline.
     private func savedPreset3(_ vm: DSPViewModel, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertEqual(offMain { vm.savePreset(slot: 3) }, PRESET_OK, file: file, line: line)
+        XCTAssertEqual(offMain { vm.savePreset(slot: 3, confirmed: .savePreset()) }, PRESET_OK, file: file, line: line)
         XCTAssertTrue(spinUntil(5) { vm.activePresetSlot == 3 && !vm.hasUnsavedChanges },
                       "the save is the baseline", file: file, line: line)
         settle()

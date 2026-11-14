@@ -4331,30 +4331,32 @@ extension DSPViewModel {
     /// the bus; `releaseFirmwareInstallLock` covers a restart that never
     /// happened.  `completion` (main thread) gets false when the lock was
     /// refused and nothing was sent.
-    func enterBootloaderForInstall(completion: @escaping (Bool) -> Void) {
+    func enterBootloaderForInstall(confirmed: UserConfirmation, completion: @escaping (Bool) -> Void) {
         let transport = self.transport
-        // -- WP P1SW2 -- Through a core: its gated call (a token minted now,
-        // after the person confirmed the install) takes the device lock and
-        // holds it for the restart itself.
-        if let core = transport.coreStateSource {
-            DispatchQueue.global(qos: .userInitiated).async {
-                let result = core.call { try $0.enterBootloaderConfirmed(token: $0.confirmToken(op: .enterBootloader)) }
-                let sent: Bool
-                switch result {
-                case .failure(.Locked), .failure(.Denied), .failure(.ConfirmationRequired),
-                     .failure(.InstallerLock), .failure(.Disconnected): sent = false
-                default: sent = true
-                }
-                DispatchQueue.main.async { completion(sent) }
-            }
-            return
-        }
         DispatchQueue.global(qos: .userInitiated).async {
             guard transport.acquireDeviceLock(reason: "Installing firmware", timeout: DeviceLock.maxTimeout) else {
                 DispatchQueue.main.async { completion(false) }
                 return
             }
             self.firmwareInstallLock.held = true
+            // -- WP P1SW2F -- F4: through a core, its gated call inside the
+            // lock taken above (the core then takes nothing of its own, and
+            // `releaseFirmwareInstallLock` ends it, as the core's doc says);
+            // a refused or failed restart gives the lock back at once.
+            if let core = transport.coreStateSource {
+                let result = core.call {
+                    try $0.enterBootloaderConfirmed(token: confirmed.token($0, for: .enterBootloader))
+                }
+                let sent: Bool
+                switch result {
+                case .failure(.Locked), .failure(.Denied), .failure(.ConfirmationRequired),
+                     .failure(.InstallerLock), .failure(.Disconnected): sent = false
+                default: sent = true
+                }
+                if !sent { self.releaseFirmwareInstallLock() }
+                DispatchQueue.main.async { completion(sent) }
+                return
+            }
             // The device drops off the bus answering, so there is no reply.
             _ = transport.getControlRequest(request: REQ_ENTER_BOOTLOADER, value: 0, index: 2, length: 1)
             DispatchQueue.main.async { completion(true) }
@@ -4362,11 +4364,12 @@ extension DSPViewModel {
     }
 
     /// -- WP P1SW2 -- The restart into the bootloader: through the core with
-    /// a token minted after the person confirmed (P1TK), or the raw request
-    /// without a core.  The device drops off the bus answering: no reply.
-    static func enterBootloader(_ transport: any DeviceTransport) {
+    /// a token minted from the person's confirmation (P1TK), or the raw
+    /// request without a core.  The device drops off the bus answering: no
+    /// reply.
+    static func enterBootloader(_ transport: any DeviceTransport, confirmed: UserConfirmation) {
         if let core = transport.coreStateSource {
-            _ = core.call { try $0.enterBootloaderConfirmed(token: $0.confirmToken(op: .enterBootloader)) }
+            _ = core.call { try $0.enterBootloaderConfirmed(token: confirmed.token($0, for: .enterBootloader)) }
             return
         }
         _ = transport.getControlRequest(request: REQ_ENTER_BOOTLOADER, value: 0, index: 2, length: 1)
@@ -5204,9 +5207,9 @@ extension DSPViewModel {
     /// session's write lands in the snapshot.  PRESET_STATUS_LOCKED when
     /// another session holds the lock; nothing is sent then.
     @discardableResult
-    func savePreset(slot: Int) -> UInt8 {
+    func savePreset(slot: Int, confirmed: UserConfirmation) -> UInt8 {   // -- WP P1SW2F -- F5
         if let core = typedCore {   // -- WP SW13 -- the core takes the lock and waits
-            switch core.writeAndWait({ try $0.savePresetConfirmed(slot: Self.wire(slot), token: $0.confirmToken(op: .savePreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
+            switch core.writeAndWait({ try $0.savePresetConfirmed(slot: Self.wire(slot), token: confirmed.token($0, for: .savePreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .failure(let error): return Self.presetStatus(error)
             case .success: corePresetSaved(core, slot: slot, active: slot)
             }
@@ -5274,10 +5277,10 @@ extension DSPViewModel {
     ///
     /// Returns PRESET_OK on success, an error code on failure.
     @discardableResult
-    func copyPreset(from sourceSlot: Int, to destinationSlot: Int) -> UInt8 {
+    func copyPreset(from sourceSlot: Int, to destinationSlot: Int, confirmed: UserConfirmation) -> UInt8 {
         if let core = typedCore {   // -- WP SW13 -- one lock and both waits, in the core
             switch core.writeAndWait({ try $0.copyPresetConfirmed(source: Self.wire(sourceSlot), dest: Self.wire(destinationSlot),
-                                                              token: $0.confirmToken(op: .copyPreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
+                                                              token: confirmed.token($0, for: .copyPreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .failure(let error): return Self.presetStatus(error)
             case .success: corePresetSaved(core, slot: destinationSlot, active: sourceSlot)
             }
@@ -5379,12 +5382,12 @@ extension DSPViewModel {
     }
 
     @discardableResult
-    func deletePreset(slot: Int) -> UInt8 {
+    func deletePreset(slot: Int, confirmed: UserConfirmation) -> UInt8 {
         if let core = typedCore {   // -- WP SW13 --
             // The core waits for the deferred delete; deleting the active
             // slot loads the factory defaults, which it reads again.
             let wasActive = Int(core.readState().activePresetSlot) == slot
-            switch core.writeAndWait({ try $0.deletePresetConfirmed(slot: Self.wire(slot), token: $0.confirmToken(op: .deletePreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
+            switch core.writeAndWait({ try $0.deletePresetConfirmed(slot: Self.wire(slot), token: confirmed.token($0, for: .deletePreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .failure(let error): return Self.presetStatus(error)
             case .success:
                 DispatchQueue.main.async { self.presetOccupied &= ~UInt16(1 << slot) }
@@ -5491,16 +5494,16 @@ extension DSPViewModel {
     /// status (0 = PRESET_OK); the flash write is deferred on-device. Returns
     /// true on success, false if the device disconnected or the transfer failed.
     @discardableResult
-    func saveOutputConfig() -> Bool {
-        if case .success = saveOutputConfigResult() { return true }
+    func saveOutputConfig(confirmed: UserConfirmation) -> Bool {
+        if case .success = saveOutputConfigResult(confirmed: confirmed) { return true }
         return false
     }
 
     /// As `saveOutputConfig`, but tells a held device lock (`.locked`, nothing
     /// sent) apart from a device that did not acknowledge (`.error`).
-    func saveOutputConfigResult() -> Result<Void, LinkStatus> {
+    func saveOutputConfigResult(confirmed: UserConfirmation) -> Result<Void, LinkStatus> {
         if let core = typedCore {   // -- WP SW13 -- the core takes the lock
-            switch core.writeAndWait({ try $0.saveOutputConfigConfirmed(token: $0.confirmToken(op: .saveOutputConfig)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
+            switch core.writeAndWait({ try $0.saveOutputConfigConfirmed(token: confirmed.token($0, for: .saveOutputConfig)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .success: return .success(())
             case .failure(.Locked), .failure(.Denied): return .failure(.locked)
             case .failure: return .failure(.error)
@@ -5871,10 +5874,10 @@ extension DSPViewModel {
 
     // MARK: - Flash Storage Commands
 
-    func saveParams() -> UInt8 {
+    func saveParams(confirmed: UserConfirmation) -> UInt8 {
         guard isDeviceConnected else { return FLASH_ERR_WRITE }
         if let core = typedCore {   // -- WP SW13 -- under the core's lock; the saved state is the baseline
-            switch core.writeAndWait({ try $0.saveParamsConfirmed(token: $0.confirmToken(op: .saveParams)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
+            switch core.writeAndWait({ try $0.saveParamsConfirmed(token: confirmed.token($0, for: .saveParams)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .success:
                 let changes = core.capturePresetBaseline()
                 DispatchQueue.main.async { self.coreMirror.showPresetChanges(changes, from: core) }
@@ -5910,7 +5913,7 @@ extension DSPViewModel {
         }
     }
 
-    func factoryReset() -> UInt8 {
+    func factoryReset(confirmed: UserConfirmation) -> UInt8 {
         guard isDeviceConnected else { return FLASH_ERR_WRITE }
         // fetchAll() below covers the rewrite; drop the device's own
         // BULK_INVALIDATED(source=FACTORY) so it doesn't duplicate that work.
@@ -5919,7 +5922,7 @@ extension DSPViewModel {
             // The core waits for the reset and reads everything again (its
             // baseline); the settings pages' state follows with fetchAll, as
             // before.
-            switch core.writeAndWait({ try $0.factoryResetConfirmed(token: $0.confirmToken(op: .factoryReset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
+            switch core.writeAndWait({ try $0.factoryResetConfirmed(token: confirmed.token($0, for: .factoryReset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .success:
                 fetchAll()
                 return FLASH_OK

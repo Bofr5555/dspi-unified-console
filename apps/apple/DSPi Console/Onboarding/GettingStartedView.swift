@@ -382,7 +382,8 @@ struct GettingStartedView: View {
     /// soon as the board is ready, which it already is.
     private func beginInstall() {
         confirmed = true
-        installer.installWhenReady()
+        installer.flashGate = { FirmwareFlashGate.refusal() }   // -- WP P1SW2F -- F3
+        installer.installWhenReady(confirmed: .firmwareFlash())
     }
 
     /// Commits to updating the device that is already connected and running.
@@ -391,10 +392,11 @@ struct GettingStartedView: View {
     /// answering, so there is no reply to wait for.
     private func beginConnectedDeviceInstall() {
         confirmed = true
-        installer.installWhenReady()
+        installer.flashGate = { FirmwareFlashGate.refusal() }   // -- WP P1SW2F -- F3
+        guard installer.installWhenReady(confirmed: .firmwareFlash()) else { return }
         guard !rebootRequested else { return }
         rebootRequested = true
-        vm.enterBootloaderForInstall { sent in
+        vm.enterBootloaderForInstall(confirmed: .enterBootloader()) { sent in
             if !sent { installer.abandon(.deviceLocked) }
         }
     }

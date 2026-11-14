@@ -12,7 +12,8 @@
 //  2026-11-13).  Advanced adds capture, rename, note, delete, import,
 //  export, the rollback choice for a recall on USB and the safe apply's
 //  timeout.  -- WP P1SW2 -- The mode is the app's (CoreInstaller): Advanced
-//  on the Mac, Simple first on iOS, the locked user Simple.
+//  on the Mac, Simple first on iOS, the locked user Simple; set in Settings >
+//  Mode (WP P1SW2F: the window only shows it, with a link there).
 //
 
 import SwiftUI
@@ -98,6 +99,7 @@ struct SnapshotsView: View {
             if !aId.isEmpty, !ids.contains(aId) { aId = "" }
             if !bId.isEmpty, !ids.contains(bId) { bId = "" }
         }
+        .accessibilityElement(children: .contain)   // -- WP P1SW2F -- the children keep their identifiers
         .accessibilityIdentifier("snapshotsView")
     }
 
@@ -107,23 +109,15 @@ struct SnapshotsView: View {
         HStack {
             Text("Snapshots").font(.title3.weight(.semibold))
             Spacer()
-            // -- WP P1SW2 -- the app's mode for this device (Simple or
-            // Advanced; the Installer and a pinned or locked mode show here
-            // as they are, the switch is Settings > Mode)
-            if installer.switchable, installer.mode == "simple" || installer.mode == "advanced" {
-                Picker("Mode", selection: Binding(get: { advanced },
-                                                  set: { installer.choose($0 ? "advanced" : "simple", everyDevice: false) })) {
-                    Text("Simple").tag(false)
-                    Text("Advanced").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: 200)
+            // -- WP P1SW2F -- F6: the app's mode, shown; it is set in Settings >
+            // Mode (as Qt's and Android's snapshot windows only follow it)
+            Text("Mode: \(installer.label(ofMode: installer.mode))")
+                .foregroundColor(.secondary)
                 .accessibilityIdentifier("snapshotsMode")
-            } else {
-                Text(installer.label(ofMode: installer.mode))
-                    .foregroundColor(.secondary)
-                    .accessibilityIdentifier("snapshotsMode")
+            if !installer.lockedUser {
+                Button("Change...") { ModeSettingsLink.open() }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("snapshotsModeChange")
             }
         }
     }

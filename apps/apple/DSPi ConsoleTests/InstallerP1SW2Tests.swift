@@ -165,7 +165,7 @@ final class InstallerP1SW2Tests: XCTestCase, CoreDomainTesting {
         vm.setMasterVolume(v - 1)
         XCTAssertTrue(spinUntil(5) { self.state(t).masterVolumeDb == v - 1 }, "volume passes")
         // A gated call while locked is refused too (a flash save).
-        XCTAssertNotEqual(vm.savePreset(slot: 1), PRESET_OK)
+        XCTAssertNotEqual(vm.savePreset(slot: 1, confirmed: .savePreset()), PRESET_OK)
 
         // Wrong, then the recovery code.
         installer.unlock("9999")
@@ -226,12 +226,12 @@ final class InstallerP1SW2Tests: XCTestCase, CoreDomainTesting {
         } else {
             XCTFail("a plain save without a token is refused")
         }
-        XCTAssertEqual(vm.savePreset(slot: 2), PRESET_OK, "the app's save mints its token")
-        XCTAssertEqual(vm.copyPreset(from: 2, to: 3), PRESET_OK)
-        XCTAssertEqual(vm.deletePreset(slot: 3), PRESET_OK)
-        XCTAssertTrue(vm.saveOutputConfig())
-        XCTAssertEqual(vm.saveParams(), FLASH_OK)
-        XCTAssertEqual(vm.factoryReset(), FLASH_OK)
+        XCTAssertEqual(vm.savePreset(slot: 2, confirmed: .savePreset()), PRESET_OK, "the app's save mints its token")
+        XCTAssertEqual(vm.copyPreset(from: 2, to: 3, confirmed: .copyPreset()), PRESET_OK)
+        XCTAssertEqual(vm.deletePreset(slot: 3, confirmed: .deletePreset()), PRESET_OK)
+        XCTAssertTrue(vm.saveOutputConfig(confirmed: .saveOutputConfig()))
+        XCTAssertEqual(vm.saveParams(confirmed: .saveParams()), FLASH_OK)
+        XCTAssertEqual(vm.factoryReset(confirmed: .factoryReset()), FLASH_OK)
         // An import through the core takes one too.
         let doc = (try? t.call { try $0.configExport(name: "P1SW2", appVersion: "test", links: 0) }.get()) ?? ""
         let reply = t.writeAndWait { $0.configImportConfirmed(text: doc, options: 0, eqChannels: allEqChannels,

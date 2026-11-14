@@ -613,6 +613,9 @@ final class SettingsNavigator: ObservableObject {
     static let shared = SettingsNavigator()
     /// Set to the `.id` of the control to scroll to once its page appears.
     @Published var scrollTarget: String?
+    /// -- WP P1SW2F -- A page to show (its `SettingsCategory` raw value),
+    /// taken once by the Settings view (the Snapshots window's link to Mode).
+    @Published var page: String?
     private init() {}
 }
 
@@ -621,6 +624,7 @@ struct SettingsView: View {
     @ObservedObject private var installer = CoreInstaller.shared   // -- WP P1SW2 -- the mode's pages
     /// -- WP P1SW2 -- `-SettingsPage` named a page of a mode not resolved yet.
     @State private var requestedPage: SettingsCategory?
+    @ObservedObject private var navigator = SettingsNavigator.shared   // -- WP P1SW2F --
     @ObservedObject private var saveCoordinator = SettingsSaveCoordinator.shared
     /// Persisted so the window reopens on the page you left it on.
     @AppStorage("settingsSelectedTab") private var selection: SettingsCategory = .general
@@ -736,6 +740,15 @@ struct SettingsView: View {
         #if os(macOS)
         .background(SettingsWindowConfigurator())
         #endif
+        // -- WP P1SW2F -- a page asked for from elsewhere (Snapshots > Change...)
+        .onReceive(navigator.$page) { raw in
+            guard let raw = raw, let page = SettingsCategory(rawValue: raw) else { return }
+            navigator.page = nil
+            if page.isAvailable(vm) {
+                selection = page
+                compactColumn = .detail
+            }
+        }
         .onAppear {
             // `-SettingsPage <page>` (screenshots, UI tests): open on that page,
             // past the page list of a collapsed split view.
@@ -1601,7 +1614,7 @@ final class SettingsSaveCoordinator: ObservableObject {
             }
             if doOutput {
                 guard vm.transport.generation == generation else { return }
-                _ = vm.saveOutputConfig()
+                _ = vm.saveOutputConfig(confirmed: .saveOutputConfig())
             }
             // Control Surfaces persists its whole live config in one directory
             // write (spec §3.5); `csDirty` clears from the device's own flag, so
@@ -10780,7 +10793,7 @@ struct FileMenuActions {
             return
         }
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = vm.saveOutputConfigResult()
+            let result = vm.saveOutputConfigResult(confirmed: .saveOutputConfig())
             DispatchQueue.main.async {
                 switch result {
                 case .success:
@@ -11500,7 +11513,7 @@ struct FileMenuActions {
     static func saveOutputConfig() {
         let vm = AppState.shared.viewModel
         guard vm.isDeviceConnected else { return }
-        DispatchQueue.global(qos: .userInitiated).async { _ = vm.saveOutputConfig() }
+        DispatchQueue.global(qos: .userInitiated).async { _ = vm.saveOutputConfig(confirmed: .saveOutputConfig()) }
     }
 
     private static func showSuccess(_ message: String) { show("Success", message) }
@@ -11537,7 +11550,7 @@ struct ToolsMenuActions {
         alert.addButton(withTitle: "Cancel")
 
         if alert.runModal() == .alertFirstButtonReturn {
-            let result = vm.savePreset(slot: slot)
+            let result = vm.savePreset(slot: slot, confirmed: .savePreset())
             switch result {
             case PRESET_OK:
                 showSuccess("Preset saved successfully")
@@ -11589,7 +11602,7 @@ struct ToolsMenuActions {
                 showError("Not connected to device")
                 return
             }
-            let result = vm.factoryReset()
+            let result = vm.factoryReset(confirmed: .factoryReset())
             switch result {
             case FLASH_OK:
                 showSuccess("Factory reset complete")
@@ -11639,7 +11652,7 @@ struct ToolsMenuActions {
         }
         let slot = vm.activePresetSlot
         confirm("Save Preset", "Save current parameters to preset slot \(slot + 1)?", button: "Save") {
-            let result = vm.savePreset(slot: slot)
+            let result = vm.savePreset(slot: slot, confirmed: .savePreset())
             if result == PRESET_OK {
                 show("Success", "Preset saved successfully")
             } else {
@@ -11668,7 +11681,7 @@ struct ToolsMenuActions {
                 button: "Reset", critical: true) {
             let vm = AppState.shared.viewModel
             guard vm.isDeviceConnected else { show("Error", "Not connected to device"); return }
-            if vm.factoryReset() == FLASH_OK {
+            if vm.factoryReset(confirmed: .factoryReset()) == FLASH_OK {
                 show("Success", "Factory reset complete")
             } else {
                 show("Error", "Failed to reset parameters")
@@ -11943,7 +11956,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if vm.presetNames[vm.activePresetSlot].isEmpty {
                     vm.setPresetName(slot: vm.activePresetSlot, name: "Preset \(vm.activePresetSlot + 1)")
                 }
-                let status = vm.savePreset(slot: vm.activePresetSlot)
+                let status = vm.savePreset(slot: vm.activePresetSlot, confirmed: .savePreset())
                 DispatchQueue.main.async {
                     if status == PRESET_OK {
                         NSApp.reply(toApplicationShouldTerminate: true)
@@ -12198,6 +12211,7 @@ struct DSPi_ConsoleApp: App {
                     // Restoring from the menu bar needs a window to show; if
                     // none exists yet, the controller asks the scene for one.
                     MenuBarController.shared.reopenMainWindow = { openWindow(id: "main") }
+                    ModeSettingsLink.openSettings = { openWindow(id: "settings") }   // -- WP P1SW2F --
                     CoreSnapshots.shared.installKeyMonitor()   // -- WP P1SW1 -- the A/B key
                     // -- WP P1SW1 -- `-ShowSnapshots YES`: the window at launch (screenshots)
                     if UserDefaults.standard.bool(forKey: "ShowSnapshots") {

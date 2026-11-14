@@ -231,7 +231,7 @@ struct ContentView: View {
             if vm.presetNames[slot].isEmpty {
                 vm.setPresetName(slot: slot, name: "Preset \(slot + 1)")
             }
-            let status = vm.savePreset(slot: slot)
+            let status = vm.savePreset(slot: slot, confirmed: .savePreset())
             if status != PRESET_OK {
                 DispatchQueue.main.async {
                     #if os(macOS)
@@ -309,7 +309,7 @@ struct ContentView: View {
                 if vm.presetNames[sourceSlot].isEmpty {
                     vm.setPresetName(slot: sourceSlot, name: "Preset \(sourceSlot + 1)")
                 }
-                _ = vm.savePreset(slot: sourceSlot)
+                _ = vm.savePreset(slot: sourceSlot, confirmed: .savePreset())
             case .discard:
                 _ = vm.loadPreset(slot: sourceSlot)
             case .none:
@@ -330,7 +330,7 @@ struct ContentView: View {
             // save→wait, so the firmware actually processes both slot
             // writes instead of the second one overwriting the first's
             // pending slot before main-loop dispatch.
-            let status = vm.copyPreset(from: sourceSlot, to: destinationSlot)
+            let status = vm.copyPreset(from: sourceSlot, to: destinationSlot, confirmed: .copyPreset())
             guard vm.transport.generation == generation else { return }
             guard status == PRESET_OK else {
                 DispatchQueue.main.async {
@@ -380,7 +380,7 @@ struct ContentView: View {
             // wait is long enough for a device switch to land mid-flow, and
             // the follow-up reload must never run against the new device.
             let generation = vm.transport.generation
-            let status = vm.deletePreset(slot: slot)
+            let status = vm.deletePreset(slot: slot, confirmed: .deletePreset())
             if status == PRESET_OK {
                 // Wait for the firmware's deferred delete to complete before
                 // any followup reads — otherwise fetchPresetDirectory would
@@ -452,7 +452,7 @@ struct ContentView: View {
             // as the single-slot clear path.
             let toDelete = (0..<10).filter { vm.isPresetOccupied($0) }
             for slot in toDelete {
-                vm.deletePreset(slot: slot)
+                vm.deletePreset(slot: slot, confirmed: .deletePreset())
             }
             for slot in toDelete {
                 _ = vm.waitForPresetDeletion(slot: slot)
@@ -753,7 +753,7 @@ struct ContentView: View {
                                                     if vm.presetNames[previousSlot].isEmpty {
                                                         vm.setPresetName(slot: previousSlot, name: "Preset \(previousSlot + 1)")
                                                     }
-                                                    let saveStatus = vm.savePreset(slot: previousSlot)
+                                                    let saveStatus = vm.savePreset(slot: previousSlot, confirmed: .savePreset())
                                                     guard saveStatus == PRESET_OK else {
                                                         DispatchQueue.main.async {
                                                             vm.activePresetSlot = previousSlot

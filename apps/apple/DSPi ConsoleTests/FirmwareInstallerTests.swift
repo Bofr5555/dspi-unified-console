@@ -208,7 +208,7 @@ final class FirmwareInstallerTests: XCTestCase {
         installer.beginWatching()
         XCTAssertEqual(installer.state, .ready(board))
 
-        installer.installWhenReady()
+        installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
         XCTAssertEqual(installer.state, .verified(FirmwareVersion(1, 1, 7)))
     }
@@ -222,7 +222,7 @@ final class FirmwareInstallerTests: XCTestCase {
                                           imageProvider: { _ in image })
         installer.beginWatching()
 
-        installer.installWhenReady()
+        installer.installWhenReady(confirmed: .firmwareFlash())
         XCTAssertEqual(installer.state, .waitingForBoard)
 
         locator.boards = [BootloaderBoard(chip: .rp2350, volumeURL: volume)]
@@ -313,7 +313,7 @@ final class FirmwareInstallerTests: XCTestCase {
                                           verifier: StubVerifier(version: FirmwareVersion(1, 1, 7)),
                                           imageProvider: { _ in image })
         installer.beginWatching()
-        installer.installWhenReady()
+        installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
         XCTAssertEqual(installer.state, .verified(FirmwareVersion(1, 1, 7)))
 
@@ -332,7 +332,7 @@ final class FirmwareInstallerTests: XCTestCase {
                                           verifier: StubVerifier(version: FirmwareVersion(1, 1, 7)),
                                           imageProvider: { _ in image })
         installer.beginWatching()
-        installer.installWhenReady()
+        installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
 
         locator.boards = []
@@ -350,7 +350,7 @@ final class FirmwareInstallerTests: XCTestCase {
                                           verifier: StubVerifier(version: FirmwareVersion(1, 1, 7)),
                                           imageProvider: { _ in image })
         installer.beginWatching()
-        installer.installWhenReady()
+        installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
         installer.reset()
 
@@ -373,7 +373,7 @@ final class FirmwareInstallerTests: XCTestCase {
                                               throw FirmwareInstallError.imageMissing(chip.displayName)
                                           })
         installer.beginWatching()
-        installer.installWhenReady()
+        installer.installWhenReady(confirmed: .firmwareFlash())
         XCTAssertEqual(installer.state, .failed(.imageMissing(BootloaderBoard.Chip.rp2350.displayName)))
 
         locator.emit()
