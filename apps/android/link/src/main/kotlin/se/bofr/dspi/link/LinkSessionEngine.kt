@@ -478,6 +478,7 @@ class LinkSessionEngine(
                 return
             }
             ops.restartAnalyser()
+            ops.refreshLock() // -- WP MERGEP1D -- the hub's lock, again after the reconnect
             if (gen != generation) return
             ops.setInterrupted(false)
             interrupted = false
@@ -516,6 +517,7 @@ class LinkSessionEngine(
             return
         }
         attached = d
+        ops.refreshLock() // -- WP MERGEP1D -- the hub's lock of the device just bound
         ops.setInterrupted(false)
         interrupted = false
         wake.trySend(Unit)

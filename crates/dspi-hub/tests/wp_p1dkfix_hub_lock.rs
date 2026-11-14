@@ -142,8 +142,9 @@ fn wp_p1dkfix_a_hub_managed_device_shows_one_lock_the_hubs() {
     assert_eq!(control.mode_pinned(), "simple");
     // A write outside the lock's scope: the hub refuses it, in the core's words.
     let e = control.set_output_gain(1, 1.0).unwrap_err();
-    assert_eq!(code_of(&e), "locked", "{e:?}");
-    assert_eq!(e.notice_key(), "installer_lock.locked");
+    // -- WP MERGEP1D -- the hub holds the lock: its notice row.
+    assert_eq!(code_of(&e), "hub", "{e:?}");
+    assert_eq!(e.notice_key(), "installer_lock.hub");
     // The console's PIN does not unlock it; wrong PINs are the hub's.
     let e = control.installer_unlock("1357".into()).unwrap_err();
     assert_eq!(code_of(&e), "wrong_pin", "{e:?}");
@@ -170,7 +171,7 @@ fn wp_p1dkfix_a_hub_managed_device_shows_one_lock_the_hubs() {
     assert!(st.locked && st.held_by == "hub", "{st:?}");
     assert_eq!(
         code_of(&control.set_output_gain(1, 0.0).unwrap_err()),
-        "locked"
+        "hub" // -- WP MERGEP1D --
     );
     // The hub's refusal window, as the console shows it.
     for _ in 0..=dspi_session::limits::LOCK_FREE_TRIES {

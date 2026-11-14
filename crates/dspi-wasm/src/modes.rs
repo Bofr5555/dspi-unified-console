@@ -15,7 +15,8 @@
 //!   device's lock (P1HL).
 //!
 //! A write refused by the lock fails with code `installer_lock` and notice
-//! key `installer_lock.locked`.
+//! key `installer_lock.locked` (-- WP MERGEP1D -- `installer_lock.hub` when
+//! the hub holds the lock and refused it).
 
 use dspi_core::DspiCore;
 use serde::Deserialize;

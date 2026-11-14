@@ -216,6 +216,11 @@ void LinkController::applyStatus(const Status &s) {
                 QMetaObject::invokeMethod(this, [this] { track(-1); }, Qt::QueuedConnection);
             });
         }
+        // -- WP MERGEP1D -- the hub's lock, read again after the reconnect
+        post([this] {
+            actOnce([this](char *b, uint32_t n) { return dspi_installer_lock_refresh(m_core, b, n); });
+            QMetaObject::invokeMethod(this, [this] { track(-1); }, Qt::QueuedConnection);
+        });
         emit reconnected();
     } else if (!inSession()) {
         endSession(true);
@@ -423,6 +428,9 @@ void LinkController::postBind(int handle, const QString &serial) {
             dspi_fetch_all(c);
             dspi_rta_start(c);
         }
+        // -- WP MERGEP1D -- the hub's installer lock for this device (LockState
+        // heldBy `hub`), so the core refuses in the hub's words; the prompt is P1-E
+        if (ok) actOnce([&](char *b, uint32_t n) { return dspi_installer_lock_refresh(c, b, n); });
         QMetaObject::invokeMethod(
             this,
             [this, reply, ok, serial] {

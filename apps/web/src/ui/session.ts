@@ -156,6 +156,17 @@ export class Session {
   private async load(target: DeviceTarget): Promise<void> {
     const snapshot = await this.core.call("open", target);
     this.set({ status: "open", snapshot, error: "" });
+    if (target.kind === "hub") this.refreshLock();
+  }
+
+  // -- WP MERGEP1D --
+  /**
+   * The hub's installer lock for the bound DSPi (`installerLockRefresh`), read
+   * after the bind and after a reconnect, so the core refuses a write in the
+   * hub's words (`installer_lock.hub`). The one lock prompt (`heldBy`) is P1-E.
+   */
+  private refreshLock(): void {
+    this.core.call("installerLockRefresh", undefined).catch(() => undefined);
   }
 
   // -- WP WB4b --
@@ -499,6 +510,8 @@ export class Session {
   private onEvent(e: CoreEvent): void {
     if (e.event === "state") this.set({ snapshot: e.snapshot });
     else if (e.event === "link") {
+      // -- WP MERGEP1D -- bound again after a reconnect: the hub's lock again
+      if (e.phase === "bound" && this.state.link?.phase === "reconnecting") this.refreshLock();
       this.set({ link: { phase: e.phase, pinSource: e.pinSource } });
       // -- WP WB4b -- the hub's list may have changed (a DSPi came or went)
       if (this.state.status === "choosing") this.refreshDevices();

@@ -270,8 +270,18 @@ internal class SnapshotsImpl(private val bridge: DspiBridgeImpl) : Snapshots {
         try {
             Result.success(block())
         } catch (e: DspiException) {
-            Result.failure(SnapshotsException(Snapshots.wordsOf(e), e))
+            Result.failure(SnapshotsException(lockWords(e) ?: Snapshots.wordsOf(e), e))
         }
+    }
+
+    // -- WP MERGEP1D -- a refusal by the installer's lock in its notice row
+    // (`installer_lock.hub` when the hub holds the lock, not the "on this
+    // console" words); the table only, no I/O. The one lock prompt
+    // (LockState.heldBy) comes with P1-E.
+    private fun lockWords(e: DspiException): String? = (e as? DspiException.InstallerLock)?.let {
+        runCatching { core.noticeFor(it) }.getOrNull()
+            ?.takeIf { n -> n.key.startsWith("installer_lock") }
+            ?.let { n -> "${n.title}: ${n.reason}" }
     }
 
     /** A write refused by G1 (read-only, a viewer, no device): the bridge reports it; nothing is sent. */

@@ -46,6 +46,14 @@ interface LinkCoreOps {
     /** After the core re-attached by itself: the analyser's worker ended with the old connection. */
     suspend fun restartAnalyser()
 
+    // -- WP MERGEP1D --
+    /**
+     * Read the hub's installer lock of the bound device (`installerLockRefresh`), after a bind
+     * and after a reconnect, so the core refuses a write in the hub's words (`installer_lock.hub`).
+     * Never fails. The one lock prompt (LockState.heldBy) comes with P1-E.
+     */
+    suspend fun refreshLock() {}
+
     fun wsUrl(host: String, port: Int, path: String): String
 
     /** The core's wording for [phase] (CG10). */
@@ -101,6 +109,11 @@ class BridgeLinkCoreOps(
     override suspend fun detach(serial: String) = bridge.detachDevice(serial)
 
     override suspend fun restartAnalyser() = withContext(ffi) { core.rtaStart() }
+
+    // -- WP MERGEP1D -- a hub request: on [network], as the session's calls are
+    override suspend fun refreshLock() {
+        withContext(network) { runCatching { core.installerLockRefresh() } }
+    }
 
     override fun wsUrl(host: String, port: Int, path: String): String = core.linkWsUrl(host, port, path)
 

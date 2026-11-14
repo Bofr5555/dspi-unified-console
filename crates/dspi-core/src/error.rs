@@ -139,7 +139,9 @@ pub enum DspiError {
     /// sent. `code`: `locked` (the locked-user state allows only volume, mute
     /// and preset), `pin_required` (an installer action needs the unlock),
     /// `wrong_pin`, `wait` (too many wrong PINs: the refusal window is open;
-    /// `installer_lock_state().retry_after_ms` says how long) or `no_pin`.
+    /// `installer_lock_state().retry_after_ms` says how long), `no_pin`, or
+    /// `hub` (WP MERGEP1D: the hub this console reaches the device through
+    /// holds the lock and refused the write).
     #[error("{msg}")]
     InstallerLock {
         /// Why, as above.
@@ -278,8 +280,10 @@ fn hub_refusal(e: &TransportError) -> Option<DspiError> {
                 .to_owned(),
             msg,
         },
+        // -- WP MERGEP1D -- a hub's lock refusal: the hub holds the lock, so
+        // the notice is `installer_lock.hub`, not the "on this console" row.
         "installer_lock" => DspiError::InstallerLock {
-            code: "locked".into(),
+            code: "hub".into(),
             msg,
         },
         "image_refused" => DspiError::ImageRefused { msg },
@@ -380,11 +384,11 @@ mod tests {
         assert_eq!(
             e,
             DspiError::InstallerLock {
-                code: "locked".into(),
+                code: "hub".into(),
                 msg: "locked".into()
             }
         );
-        assert_eq!(e.notice_key(), "installer_lock.locked");
+        assert_eq!(e.notice_key(), "installer_lock.hub"); // -- WP MERGEP1D --
         let e = DspiError::from(TransportError::Denied("image_refused: x".into()));
         assert_eq!(e, DspiError::ImageRefused { msg: "x".into() });
         assert_eq!(e.notice_key(), "image_refused");

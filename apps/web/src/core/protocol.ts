@@ -481,6 +481,9 @@ export interface CoreMethods extends AlinkMethods, DocumentMethods {
   linkPair: { params: { pin: string }; result: { token: string } };
   linkDevices: { params: undefined; result: LinkDeviceRecord[] };
   linkStatus: { params: undefined; result: LinkStatusRecord };
+  // -- WP MERGEP1D -- the hub's installer lock of the bound DSPi (crates/dspi-wasm/src/modes.rs)
+  /** The one lock state to show: `heldBy` `hub` (the hub's PIN), `console`, or "" for none. */
+  installerLockRefresh: { params: undefined; result: { heldBy: string; locked: boolean; scopeNoticeKey: string } };
   // -- WP WB6a -- the preset flows `write` does not cover (crates/dspi-wasm/src/presets.rs)
   /** The live state against the active preset: the core's sentences (CG7), empty when it matches. */
   presetChanges: { params: undefined; result: { dirty: boolean; changes: string[] } };

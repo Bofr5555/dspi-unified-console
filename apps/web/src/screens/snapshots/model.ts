@@ -228,11 +228,23 @@ export class SnapshotDesk {
     try {
       return await f();
     } catch (e) {
-      this.set({ outcome: { title: `${what}: not done`, lines: [message(e)], notes: [], tone: "error" } });
+      this.set({ outcome: { title: `${what}: not done`, lines: [await this.refusal(e)], notes: [], tone: "error" } });
       return null;
     } finally {
       this.set({ busy: "" });
     }
+  }
+
+  // -- WP MERGEP1D --
+  /**
+   * A failure in the core's words; a refusal by the installer's lock in its
+   * notice row (`installer_lock.hub` when the hub holds the lock, not the "on
+   * this console" words). The one lock prompt (`heldBy`) comes with P1-E.
+   */
+  private async refusal(e: unknown): Promise<string> {
+    if (!(e instanceof CoreCallError) || !e.noticeKey?.startsWith("installer_lock")) return message(e);
+    const n = await this.session.core.call("noticeFor", { key: e.noticeKey }).catch(() => null);
+    return n && n.key === e.noticeKey ? `${n.title}: ${n.reason}` : message(e);
   }
 
   private writable(what: string): boolean {

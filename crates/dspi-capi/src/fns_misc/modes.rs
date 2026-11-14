@@ -4,6 +4,8 @@
 //! false, "code": "installer_lock", "error", "noticeKey":
 //! "installer_lock.locked"}`; a wrong PIN with `noticeKey`
 //! `installer_lock.wrong_pin`, the refusal window with `installer_lock.wait`.
+//! -- WP MERGEP1D -- A write the hub refused because the hub holds the lock:
+//! `noticeKey` `installer_lock.hub`.
 //!
 //! The PIN calls hash (0.1 to 1 s): call them off the UI thread.
 

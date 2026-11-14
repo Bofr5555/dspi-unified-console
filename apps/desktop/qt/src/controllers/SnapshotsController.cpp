@@ -155,7 +155,17 @@ void SnapshotsController::track(int delta) {
 }
 
 void SnapshotsController::failed(const QJsonObject &reply, const QString &fallback) {
-    const QString error = reply.value(QLatin1String("error")).toString();
+    QString error = reply.value(QLatin1String("error")).toString();
+    // -- WP MERGEP1D -- the installer's lock refused it: the core's notice row
+    // for it (`installer_lock.hub` when the hub holds the lock, not the "on
+    // this console" words). The table only: no handle, no I/O. The one lock
+    // prompt (LockState.heldBy) comes with P1-E.
+    const QByteArray key = reply.value(QLatin1String("noticeKey")).toString().toUtf8();
+    if (key.startsWith("installer_lock")) {
+        const QJsonObject notice = object(once([&](char *b, uint32_t n) { return dspi_notice_for(key.constData(), nullptr, b, n); }));
+        if (isOk(notice) && notice.value(QLatin1String("key")).toString().toUtf8() == key)
+            error = notice.value(QLatin1String("title")).toString() + QLatin1String(": ") + notice.value(QLatin1String("reason")).toString();
+    }
     if (auto *notices = Registrar::instance<NoticeCenter>()) notices->post(error.isEmpty() ? fallback : error, QStringLiteral("error"));
 }
 
