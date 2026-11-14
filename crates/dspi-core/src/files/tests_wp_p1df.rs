@@ -598,7 +598,9 @@ fn wp_p1efix_an_import_with_the_queue_drained_late_keeps_the_documents_values() 
     let all = IMPORT_BY_BLOCK | IMPORT_ALL_BLOCKS;
     for guarded in [false, true] {
         let core = DspiCore::new();
-        core.open_demo().unwrap();
+        // -- WP FLAKE1 -- the echo is in the core's queue once the write returns: with
+        // the reader thread, a loaded host delivered it after the settle (and the test failed)
+        core.open_demo_read_on_drain().unwrap();
         let _ = core.process_notifications();
         let v0 = core.get_state().master_volume_db;
         core.set_master_volume(v0 - 3.0).unwrap();

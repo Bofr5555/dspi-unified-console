@@ -19,6 +19,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.feature.settings.CsBinding
 import se.bofr.dspi.feature.settings.CsModel
@@ -219,16 +221,32 @@ private fun CsAddPage(bridge: DspiBridge, cs: CsModel, onCancel: () -> Unit, onA
 @Composable
 internal fun csSummaries(bridge: DspiBridge, cs: CsModel): Map<Int, String> {
     val out = remember { mutableStateMapOf<Int, String>() }
+    // -- WP FLAKE1 -- built off to the side, then published on the main thread at once
     LaunchedEffect(cs) {
-        out.clear()
+        val next = HashMap<Int, String>()
         cs.bindings.forEachIndexed { slot, b ->
             if (!b.configured) return@forEachIndexed
             CsRules.parseDescription(bridge.cs.describe(CsRules.KIND_BINDING, slot, draftOf(b))).value?.let { d ->
-                out[slot] = listOf(d.title, d.summary).filter { it.isNotEmpty() }.joinToString(" · ")
+                next[slot] = listOf(d.title, d.summary).filter { it.isNotEmpty() }.joinToString(" · ")
             }
         }
+        publishOnMain(out, next)
     }
     return out
+}
+
+// -- WP FLAKE1 --
+/**
+ * Replace [out] with [next] on the main thread. The describe calls resume on whatever
+ * thread the effect's dispatcher leaves them (the FFI thread under Compose's test
+ * dispatcher), and a snapshot-state write there, racing a composition on the main
+ * thread, was not always seen: the list kept its fallback lines (AN9's flaky test).
+ */
+internal suspend fun <K, V> publishOnMain(out: MutableMap<K, V>, next: Map<K, V>) {
+    withContext(Dispatchers.Main.immediate) {
+        out.keys.retainAll(next.keys)
+        out.putAll(next)
+    }
 }
 
 internal fun firstFreeSlot(cs: CsModel): Int? = cs.bindings.indexOfFirst { !it.configured }.takeIf { it >= 0 }

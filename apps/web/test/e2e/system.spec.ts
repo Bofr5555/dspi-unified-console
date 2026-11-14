@@ -10,7 +10,7 @@
 // Screenshots for the report, dark and light, when SW3_SHOTS names a directory.
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
@@ -50,6 +50,24 @@ async function stopHub(h: OwnHub): Promise<void> {
   await exited;
 }
 
+// -- WP FLAKE1 --
+/**
+ * The same hub's installation with an apply lead of `frames` (at 48 kHz) and without its
+ * USB-direct units (a bus frame is at most 1.92 s ahead, so they would not be on time with a
+ * longer lead): the hub is stopped, the model its store kept is changed, and the hub started
+ * again on that store. A scene through the sender is then held for that long, however slowly a
+ * loaded host runs the page.
+ */
+async function withApplyLead(h: OwnHub, frames: number, extra: string[]): Promise<OwnHub> {
+  await stopHub(h);
+  const file = `${h.store}/hub-store.json`;
+  const kept = JSON.parse(readFileSync(file, "utf8")) as { system: { applyLeadFrames?: number; units: { transport?: string }[] } };
+  kept.system.applyLeadFrames = frames;
+  kept.system.units = kept.system.units.filter((u) => u.transport !== "usb_direct");
+  writeFileSync(file, JSON.stringify(kept));
+  return linkHub(extra, false, h.store);
+}
+
 const picker = (page: Page) => page.getByRole("navigation", { name: "DSPi devices" });
 
 /** Connect the serving hub, pair when asked, open unit `serial`'s session. */
@@ -65,6 +83,14 @@ async function openUnit(page: Page, hub: OwnHub, serial: string, pair = !!hub.pi
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
   await expect(session.locator(".device-meta")).toContainText(serial);
+  // -- WP FLAKE1 -- the page settles before a test clicks: Link's "bound" phase arrives after the
+  // open (its banner above the screens goes then), and the installation's first status after it.
+  // A click while either still moves the page lands where the button was (the rail's Mode and
+  // System mute buttons, on a loaded host).
+  const rail = session.getByRole("complementary", { name: "Status" });
+  await expect(rail.getByLabel("Connection")).toHaveText(/^Connected/);
+  await expect(session.locator(".banner")).toHaveCount(0);
+  await expect(rail.getByRole("button", { name: "System mute" })).toHaveText(/^System mute: (on|off)$/);
   return session;
 }
 
@@ -273,7 +299,9 @@ test.describe("SW3: an audio link installation on the hub", () => {
 
   // -- fixup sw3x --
   test("SW3: a second scene through the sender while one is scheduled is refused, said plainly and not marked", async ({ page }) => {
-    hub = await linkHub(["--open", "--forget-clients"]);
+    // -- WP FLAKE1 -- Evening is held by the sender for ten seconds, not the default 50 ms: on a
+    // loaded host the second recall came after Evening's frame, and the sender took it.
+    hub = await withApplyLead(await linkHub(["--open", "--forget-clients"]), 480_000, ["--open", "--forget-clients"]);
     const session = await openUnit(page, hub, "DEMO-ALINK-A");
     const bar = session.getByLabel("Scenes", { exact: true });
     const result = session.getByLabel("Scene result");

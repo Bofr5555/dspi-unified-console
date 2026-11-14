@@ -136,13 +136,15 @@ internal fun CsIrReceiverPage(
 private fun irSummaries(bridge: DspiBridge, records: List<String>): Map<Int, String> {
     val out = remember { mutableStateMapOf<Int, String>() }
     LaunchedEffect(records) {
-        out.clear()
+        // -- WP FLAKE1 -- written on the main thread, as the controls list's (publishOnMain)
+        val next = HashMap<Int, String>()
         records.forEachIndexed { sub, r ->
             if (!CsIr.isLearned(r)) return@forEachIndexed
             CsRules.parseDescription(bridge.cs.describe(CsIr.KIND, sub, r)).value?.let { d ->
-                out[sub] = d.summary.ifEmpty { d.title }
+                next[sub] = d.summary.ifEmpty { d.title }
             }
         }
+        publishOnMain(out, next)
     }
     return out
 }
