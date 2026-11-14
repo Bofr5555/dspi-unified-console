@@ -61,8 +61,15 @@ internal const val GUARD_END_SHOWN_MS = 8_000L
  * waits: what was applied, then the core's countdown sentence [words] (`{s}`
  * the seconds left).
  */
-internal fun guardLines(g: GuardedApply, words: String = Snapshots.COUNTDOWN_WORDS): Pair<String, String> = when (g.phase) {
-    GuardPhase.WAITING -> "\"${g.label.ifEmpty { "The change" }}\"" to Snapshots.countdownLine(words, g.remainingMs)
+internal fun guardLines(
+    g: GuardedApply,
+    words: String = Snapshots.COUNTDOWN_WORDS,
+    // -- WP P1AN2 -- the hub's backstop sentence, after the countdown, when the hub holds the guard
+    backstop: String = Snapshots.HUB_BACKSTOP_WORDS
+): Pair<String, String> = when (g.phase) {
+    GuardPhase.WAITING ->
+        "\"${g.label.ifEmpty { "The change" }}\"" to
+            (Snapshots.countdownLine(words, g.remainingMs) + if (g.hub) " $backstop" else "")
     GuardPhase.LOST -> g.message.ifEmpty { "The connection was lost." } to ""
     else -> g.message to g.notes.joinToString(" ")
 }
@@ -110,9 +117,13 @@ fun SafeApplyBar(bridge: DspiBridge, modifier: Modifier = Modifier) {
         }
     }
     var words by remember(bridge) { mutableStateOf(Snapshots.COUNTDOWN_WORDS) }
-    LaunchedEffect(bridge) { words = snaps.countdownWords() }
+    var backstop by remember(bridge) { mutableStateOf(Snapshots.HUB_BACKSTOP_WORDS) } // -- WP P1AN2 --
+    LaunchedEffect(bridge) {
+        words = snaps.countdownWords()
+        backstop = snaps.backstopWords()
+    }
     if (!guardBarShown(g, watched, endShown)) return
-    val (first, second) = guardLines(g, words)
+    val (first, second) = guardLines(g, words, backstop)
     Surface(
         modifier.fillMaxWidth().padding(8.dp).testTag(SAFE_APPLY_BAR_TAG),
         color = MaterialTheme.colorScheme.inverseSurface,

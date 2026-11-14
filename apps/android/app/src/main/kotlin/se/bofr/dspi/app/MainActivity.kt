@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity() {
                         devices = deviceList(mode, usbState, remote, hubs, link.enabled),
                         onChooseDevice = modes::switchTo,
                         switchAlerts = modes.switchAlerts,
+                        modeStore = app.uiModes, // -- WP P1AN2 --
                         overlay = {
                             RemoteDialogs(
                                 state = remote,

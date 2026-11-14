@@ -24,11 +24,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
@@ -123,8 +125,19 @@ fun ProgressSheet(text: String) {
 /** Draws [host]'s alert slot and progress sheet (macOS `runModal()` + ConfigurationProgressSheet). */
 @Composable
 fun ConsoleAlertHost(host: AlertHost) {
+    // -- WP P1AN2 -- the host's notices go to the app's notice line
+    val line = LocalNoticeLine.current
+    LaunchedEffect(host, line) { if (line != null) host.notices.collect { line(it) } }
     val alert by host.alert.collectAsState()
     val progress by host.progress.collectAsState()
     alert?.let { a -> ConsoleAlertDialog(a, onButton = { b, r -> host.respond(b, r) }, onDismiss = host::dismiss) }
     progress?.let { ProgressSheet(it) }
 }
+
+// -- WP P1AN2 --
+/**
+ * U5's notice line: where a success or a refusal is said in one line, over the
+ * screen and without taking room in it (the app's snackbar). Null outside the
+ * app (tests, previews): an [AlertHost]'s notices then stay in [AlertHost.notice].
+ */
+val LocalNoticeLine = staticCompositionLocalOf<((String) -> Unit)?> { null }

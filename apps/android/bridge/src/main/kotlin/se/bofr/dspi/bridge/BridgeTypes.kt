@@ -24,7 +24,11 @@ data class BridgeStatus(
      * limiter enabled; empty otherwise (read a missing index as 0). Any change
      * of a value is a status change, as Qt's `changed = true`.
      */
-    val limiterReduction: List<Float> = emptyList()
+    val limiterReduction: List<Float> = emptyList(),
+    // -- WP P1AN2 -- S8 "stale since": the core's meter reading is old (DSPi Link: the hub's last
+    // reading is held while the link is slow); [ageMs] how old, 0 while fresh
+    val stale: Boolean = false,
+    val ageMs: Long = 0
 )
 
 data class DeviceListState(

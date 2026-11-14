@@ -131,6 +131,10 @@ interface Snapshots {
      */
     suspend fun countdownWords(): String = COUNTDOWN_WORDS
 
+    // -- WP P1AN2 -- over DSPi Link the hub's timer is the backstop (P1HA)
+    /** The sentence after the countdown when the hub holds the guard: the core's `guard.hub_backstop`, or its English words. */
+    suspend fun backstopWords(): String = HUB_BACKSTOP_WORDS
+
     companion object {
         /** Every channel's EQ (`eq_channels` = `u32::MAX`). */
         const val ALL_CHANNELS: Long = 0xFFFF_FFFFL
@@ -141,6 +145,13 @@ interface Snapshots {
 
         /** The core's `guard.waiting` title and reason, for a core without the notice table. */
         const val COUNTDOWN_WORDS = "Keep these settings? They go back in {s} s unless you press Keep."
+
+        // -- WP P1AN2 --
+        /** The core's notice key for the hub's backstop sentence (P1WB2 adds the row). */
+        const val HUB_BACKSTOP_NOTICE_KEY = "guard.hub_backstop"
+
+        /** Its words for a core without the row. */
+        const val HUB_BACKSTOP_WORDS = "The hub puts them back too if this console goes away."
 
         /** [words] (with `{s}`) for [remainingMs]: the whole seconds left, never below 0. */
         fun countdownLine(words: String, remainingMs: Long): String =
@@ -380,7 +391,13 @@ internal class SnapshotsImpl(private val bridge: DspiBridgeImpl) : Snapshots {
         val r =
             bridge.onFfi {
                 try {
-                    core.configImportSelected(text, options or DspiConstants.IMPORT_BY_BLOCK.toLong(), eqChannels)
+                    // -- WP P1AN2 -- P1TK: the core's token for the import the user confirmed
+                    core.configImportConfirmed(
+                        text,
+                        options or DspiConstants.IMPORT_BY_BLOCK.toLong(),
+                        eqChannels,
+                        bridge.coreToken(DangerousOp.CONFIG_IMPORT)
+                    )
                 } finally {
                     bridge.flashWritten()
                 }
@@ -427,6 +444,15 @@ internal class SnapshotsImpl(private val bridge: DspiBridgeImpl) : Snapshots {
             ?.let { "${it.title} ${it.reason}".trim() }
             ?.takeIf { "{s}" in it }
             ?: Snapshots.COUNTDOWN_WORDS
+    }
+
+    // -- WP P1AN2 --
+    override suspend fun backstopWords(): String = bridge.onFfi {
+        runCatching { core.noticeForKey(Snapshots.HUB_BACKSTOP_NOTICE_KEY, "") }.getOrNull()
+            ?.takeIf { it.key == Snapshots.HUB_BACKSTOP_NOTICE_KEY }
+            ?.let { "${it.title} ${it.reason}".trim() }
+            ?.takeIf { it.isNotEmpty() }
+            ?: Snapshots.HUB_BACKSTOP_WORDS
     }
 
     private companion object {

@@ -97,11 +97,14 @@ import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.HelpTip
 import se.bofr.dspi.ui.LocalDemoMode
 import se.bofr.dspi.ui.LocalDragMarker
+import se.bofr.dspi.ui.LocalUiMode
 import se.bofr.dspi.ui.LocalWritesAllowed
+import se.bofr.dspi.ui.UiModes
 import se.bofr.dspi.ui.WhileVisible
 import se.bofr.dspi.ui.WritesExempt
 import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.ConsoleAlertHost
+import se.bofr.dspi.ui.alert.LocalNoticeLine
 import se.bofr.dspi.ui.link.LinkBanner
 import se.bofr.dspi.ui.link.LinkBannerAction
 import se.bofr.dspi.ui.state.AppState
@@ -157,6 +160,8 @@ fun AppScaffold(
     devices: List<DeviceRow> = emptyList(),
     onChooseDevice: (DeviceChoice) -> Unit = {},
     switchAlerts: AlertHost? = null,
+    // -- WP P1AN2 -- where the chosen UI mode is kept (per device)
+    modeStore: UiModeStore = remember { InMemoryUiModeStore() },
     overlay: @Composable () -> Unit = {}
 ) {
     // -- WP AN35 --
@@ -172,6 +177,23 @@ fun AppScaffold(
     // -- WP AN41 -- a write the core refused, in its words, over the screen
     val notices = remember { SnackbarHostState() }
     RefusalNotices(bridge, notices)
+    // -- WP P1AN2 -- U5's notice line: every AlertHost's notices (no success modals) as the same snackbar
+    val noticeScope = rememberCoroutineScope()
+    val noticeLine: (String) -> Unit = remember(notices) { { t -> noticeScope.launch { notices.showSnackbar(t) } } }
+    // -- WP P1AN2 -- the UI mode of this bridge's device (UI-MODES), never a write
+    val modeModel = remember(bridge, modeStore) { UiModeModel(bridge, modeStore, noticeScope) }
+    DisposableEffect(modeModel) { onDispose { modeModel.close() } }
+    val uiMode by modeModel.mode.collectAsStateWithLifecycle()
+    val modeChoice by modeModel.choice.collectAsStateWithLifecycle()
+    val lockState by modeModel.lock.collectAsStateWithLifecycle()
+    val locked = uiMode == UiModes.LOCKED_USER
+    // The entry: Unlock while locked; none when the hub pins the mode
+    val modeEntry: Pair<String, () -> Unit>? = when {
+        locked -> UNLOCK_ENTRY to modeModel::openDialog
+        // No manifest (a test double) or a mode the hub pins: no switch
+        modeChoice == null || modeChoice?.switchable == false -> null
+        else -> MODE_ENTRY to modeModel::openDialog
+    }
     // -- WP AN42 -- Undo and Redo: the strip's buttons, the keys, their snackbar;
     // the drag mark every slider and graph drag holds, ended whenever the app stops
     val historyScope = rememberCoroutineScope()
@@ -194,6 +216,9 @@ fun AppScaffold(
                     .onFocusChanged { if (!it.hasFocus) focusLost++ }
                     .focusable()
             ) {
+                val openSnapshots: () -> Unit = {
+                    keys.host?.let { h -> if (h.currentRoute != DspiRoutes.SNAPSHOTS) h.navigate(DspiRoutes.SNAPSHOTS) }
+                }
                 // In here: the Scaffold composes its content after the scaffold itself, the requester's node with it
                 LaunchedEffect(focusLost) { focus.requestFocus() }
                 ConnectionStripBar(
@@ -204,10 +229,14 @@ fun AppScaffold(
                     history,
                     devices,
                     // -- WP P1AN1 -- the app bar's Snapshots entry
-                    onSnapshots = { keys.host?.let { h -> if (h.currentRoute != DspiRoutes.SNAPSHOTS) h.navigate(DspiRoutes.SNAPSHOTS) } }
+                    // -- WP P1AN2 -- not in the locked-user state (Home only)
+                    onSnapshots = openSnapshots.takeUnless { locked },
+                    modeEntry = modeEntry, // -- WP P1AN2 --
+                    installerBadge = uiMode == UiModes.INSTALLER && lockState?.pinSet == true // -- WP P1AN2 --
                 ) { c ->
                     if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c)
                 }
+                if (locked) LockedBanner(lockState, modeModel::openDialog) // -- WP P1AN2 --
                 key(bridge) {
                     // -- WP AN35 -- the host's USB format, for every route; the DSPi is on this phone's USB only outside demo and Link
                     HostChannelsFeed(
@@ -218,7 +247,9 @@ fun AppScaffold(
                         // -- WP P1AN1 -- a document opened offline has no device either
                         LocalDemoMode provides (strip is ConnectionStrip.Demo || strip is ConnectionStrip.Document),
                         LocalOnboarding provides onboarding, // -- WP AN19 --
-                        LocalDragMarker provides dragMarker // -- WP AN42 --
+                        LocalDragMarker provides dragMarker, // -- WP AN42 --
+                        LocalUiMode provides uiMode, // -- WP P1AN2 --
+                        LocalNoticeLine provides noticeLine // -- WP P1AN2 --
                     ) {
                         DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote, keys, history)
                     }
@@ -228,7 +259,10 @@ fun AppScaffold(
         }
     }
     overlay()
-    switchAlerts?.let { ConsoleAlertHost(it) } // -- WP AN7 --
+    CompositionLocalProvider(LocalNoticeLine provides noticeLine) {
+        switchAlerts?.let { ConsoleAlertHost(it) } // -- WP AN7 --
+    }
+    ModeDialogHost(modeModel) // -- WP P1AN2 --
 }
 
 @Composable
@@ -261,43 +295,56 @@ private fun DspiRoutesHost(
     val scope = rememberCoroutineScope()
     val keyAlerts = remember(bridge) { AlertHost() } // -- WP P1AN1 -- the preset and Commit keys' alerts
     ConsoleAlertHost(keyAlerts)
+    // -- WP P1AN2 -- the locked-user state shows Home (and Settings' About and note) only
+    val uiMode = LocalUiMode.current
+    val lockedNow = rememberUpdatedState(uiMode == UiModes.LOCKED_USER)
+    val allow: (String) -> Boolean = remember { { r -> !lockedNow.value || UiModeModel.allowedWhenLocked(r) } }
+    LaunchedEffect(uiMode) {
+        if (uiMode == UiModes.LOCKED_USER) {
+            val r = nav.currentBackStackEntry?.destination?.route
+            if (r != null && !UiModeModel.allowedWhenLocked(r)) nav.popBackStack(DspiRoutes.HOME, inclusive = false)
+        }
+    }
     DisposableEffect(nav, bridge, appState, history, keyAlerts) {
-        keys.host = NavShortcutHost(nav, bridge, appState, scope, history, keyAlerts) { writes.value }
+        keys.host = NavShortcutHost(nav, bridge, appState, scope, history, keyAlerts, allow) { writes.value }
         onDispose { keys.host = null }
     }
     NavHost(navController = nav, startDestination = DspiRoutes.HOME) {
         // Each screen's back/navigate act only while its own entry is current (EntryNavigator)
-        screen(nav, DspiRoutes.HOME) { _, go, back -> HomeScreen(bridge, go, back) }
-        screen(nav, DspiRoutes.CHANNEL, listOf(navArgument("ch") { type = NavType.IntType })) { entry, go, back ->
+        screen(nav, allow, DspiRoutes.HOME) { _, go, back -> HomeScreen(bridge, go, back) }
+        screen(nav, allow, DspiRoutes.CHANNEL, listOf(navArgument("ch") { type = NavType.IntType })) { entry, go, back ->
             ChannelScreen(bridge, entry.arguments?.getInt("ch") ?: 0, go, back)
         }
-        screen(nav, DspiRoutes.GRAPH) { _, go, back -> GraphScreen(bridge, go, back) }
-        screen(nav, DspiRoutes.MATRIX) { _, go, back -> MatrixMixerView(bridge, go, back) }
-        screen(nav, DspiRoutes.TOOLS) { _, go, back -> ToolsScreen(bridge, go, back) }
+        screen(nav, allow, DspiRoutes.GRAPH) { _, go, back -> GraphScreen(bridge, go, back) }
+        screen(nav, allow, DspiRoutes.MATRIX) { _, go, back -> MatrixMixerView(bridge, go, back) }
+        screen(nav, allow, DspiRoutes.TOOLS) { _, go, back -> ToolsScreen(bridge, go, back) }
         // -- WP AN31 -- a quick-strip long-press opens that tool's page directly
-        screen(nav, DspiRoutes.TOOL, listOf(navArgument("tool") { type = NavType.StringType })) { entry, go, back ->
+        screen(nav, allow, DspiRoutes.TOOL, listOf(navArgument("tool") { type = NavType.StringType })) { entry, go, back ->
             ToolsScreen(bridge, go, back, open = entry.arguments?.getString("tool"))
         }
-        screen(nav, DspiRoutes.LIMITER, listOf(navArgument("out") { type = NavType.IntType })) { entry, go, back ->
+        screen(nav, allow, DspiRoutes.LIMITER, listOf(navArgument("out") { type = NavType.IntType })) { entry, go, back ->
             OutputLimiterView(bridge, entry.arguments?.getInt("out") ?: 0, go, back)
         }
-        screen(nav, DspiRoutes.PRESETS) { _, go, back -> PresetsScreen(bridge, go, back) }
+        screen(nav, allow, DspiRoutes.PRESETS) { _, go, back -> PresetsScreen(bridge, go, back) }
         // -- WP P1AN1 --
         // -- WP P1DCFIX -- the app has no Simple/Advanced mode yet (P1AN2's mode switch passes the device's
         // mode here); until then the screen is Advanced, its Simple branch (recall and A/B) tested on its own
-        screen(nav, DspiRoutes.SNAPSHOTS) { _, go, back -> SnapshotsScreen(bridge, go, back, mode = SnapshotsMode.ADVANCED) }
-        screen(nav, DspiRoutes.SETTINGS) { _, go, back -> SettingsScreen(bridge, go, back) }
+        // -- WP P1AN2 -- the device's mode: Simple (and the locked-user state) recall and A/B only
+        screen(nav, allow, DspiRoutes.SNAPSHOTS) { _, go, back ->
+            SnapshotsScreen(bridge, go, back, mode = snapshotsModeOf(LocalUiMode.current))
+        }
+        screen(nav, allow, DspiRoutes.SETTINGS) { _, go, back -> SettingsScreen(bridge, go, back) }
         // -- WP LKUI1 -- the hub's audio link installation, from Home's status chip
-        screen(nav, DspiRoutes.SYSTEM) { _, go, back -> SystemScreen(bridge, go, back) }
-        screen(nav, DspiRoutes.ANALYSIS) { _, go, back -> AnalysisScreen(bridge, go, back) }
+        screen(nav, allow, DspiRoutes.SYSTEM) { _, go, back -> SystemScreen(bridge, go, back) }
+        screen(nav, allow, DspiRoutes.ANALYSIS) { _, go, back -> AnalysisScreen(bridge, go, back) }
         // -- WP AN32 -- each Tools-menu entry opens its own analysis page
-        screen(nav, DspiRoutes.ANALYSIS_PAGE, listOf(navArgument("page") { type = NavType.StringType })) { entry, go, back ->
+        screen(nav, allow, DspiRoutes.ANALYSIS_PAGE, listOf(navArgument("page") { type = NavType.StringType })) { entry, go, back ->
             AnalysisScreen(bridge, go, back, open = entry.arguments?.getString("page"))
         }
-        screen(nav, DspiRoutes.FIRMWARE) { _, go, back -> FirmwareRoute(bridge, go, back, bootloaderLocator, remote) }
+        screen(nav, allow, DspiRoutes.FIRMWARE) { _, go, back -> FirmwareRoute(bridge, go, back, bootloaderLocator, remote) }
         // -- WP AN19 --
-        screen(nav, DspiRoutes.GETTING_STARTED) { _, go, back -> GettingStartedRoute(bridge, go, back) }
-        screen(nav, DspiRoutes.WHATS_NEW) { _, _, back -> WhatsNewRoute(back) }
+        screen(nav, allow, DspiRoutes.GETTING_STARTED) { _, go, back -> GettingStartedRoute(bridge, go, back) }
+        screen(nav, allow, DspiRoutes.WHATS_NEW) { _, _, back -> WhatsNewRoute(back) }
     }
     OnboardingAtLaunch(nav) // -- WP AN19 --
 }
@@ -329,13 +376,15 @@ internal fun FirmwareRoute(
 
 private fun NavGraphBuilder.screen(
     nav: NavHostController,
+    // -- WP P1AN2 -- a route the locked-user state does not show is not opened
+    allow: (String) -> Boolean,
     route: String,
     arguments: List<NamedNavArgument> = emptyList(),
     content: @Composable (entry: NavBackStackEntry, go: (String) -> Unit, back: () -> Unit) -> Unit
 ) {
     composable(route, arguments) { entry ->
         val navigator = remember(nav, entry) { nav.navigatorFor(entry) }
-        content(entry, navigator::go, navigator::back)
+        content(entry, { r -> if (allow(r)) navigator.go(r) }, navigator::back)
     }
 }
 
@@ -361,6 +410,9 @@ private fun ConnectionStripBar(
     devices: List<DeviceRow>,
     // -- WP P1AN1 --
     onSnapshots: (() -> Unit)? = null,
+    // -- WP P1AN2 -- the Mode entry ("Mode…", or "Unlock…" while locked) and the Installer badge
+    modeEntry: Pair<String, () -> Unit>? = null,
+    installerBadge: Boolean = false,
     onChooseDevice: (DeviceChoice) -> Unit
 ) {
     // -- WP AN5 -- the owner's lost-connection banner; this bar is above every route, so it is on every screen
@@ -405,19 +457,38 @@ private fun ConnectionStripBar(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                if (installerBadge) InstallerBadge(ink) // -- WP P1AN2 --
                 history?.let { UndoRedoButtons(it, ink) }
                 // -- WP P1AN1 -- Snapshots first in the overflow: the bar keeps its one line
-                StripMenu(listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }) + actions, devices, onChooseDevice, ink)
+                // -- WP P1AN2 -- the Mode entry after it
+                StripMenu(listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }, modeEntry) + actions, devices, onChooseDevice, ink)
             } else {
                 Text(strip.text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
                 actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } }
                 // -- WP P1AN1 --
                 onSnapshots?.let { TextButton(onClick = it, Modifier.testTag(SNAPSHOTS_ENTRY_TAG)) { Text(SNAPSHOTS_ENTRY) } }
+                // -- WP P1AN2 --
+                if (installerBadge) InstallerBadge(ink)
+                modeEntry?.let { (label, act) -> TextButton(onClick = act, Modifier.testTag(MODE_ENTRY_TAG)) { Text(label) } }
                 history?.let { UndoRedoButtons(it, ink) } // -- WP AN42 --
                 DeviceListButton(devices, onChooseDevice) // -- WP AN7 --
             }
         }
     }
+}
+
+// -- WP P1AN2 --
+/** Test tag of the wide strip's Mode button. */
+internal const val MODE_ENTRY_TAG = "strip-mode"
+
+/** The Snapshots screen's branch for the UI mode: Simple and the locked-user state recall and compare only. */
+internal fun snapshotsModeOf(mode: String): SnapshotsMode =
+    if (mode == UiModes.SIMPLE || mode == UiModes.LOCKED_USER) SnapshotsMode.SIMPLE else SnapshotsMode.ADVANCED
+
+/** "Installer" in the bar while an installer has unlocked a device that has a PIN (UI-MODES section 3). */
+@Composable
+private fun InstallerBadge(tint: Color) {
+    Text("Installer", Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1)
 }
 
 // -- WP AN7 --
@@ -518,6 +589,8 @@ private class NavShortcutHost(
     private val history: UndoRedoModel,
     // -- WP P1AN1 --
     private val alerts: AlertHost,
+    // -- WP P1AN2 --
+    private val allow: (String) -> Boolean,
     private val writes: () -> Boolean
 ) : ShortcutHost {
     override val currentRoute: String?
@@ -529,7 +602,9 @@ private class NavShortcutHost(
 
     override fun canPaste() = bridge.canPaste()
 
-    override fun navigate(route: String) = nav.navigate(route)
+    override fun navigate(route: String) {
+        if (allow(route)) nav.navigate(route) // -- WP P1AN2 --
+    }
 
     override fun copyChannel(ch: Int) = bridge.copyChannel(ch)
 

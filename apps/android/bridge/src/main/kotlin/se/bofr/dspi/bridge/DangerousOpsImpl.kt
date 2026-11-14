@@ -1,5 +1,7 @@
 package se.bofr.dspi.bridge
 
+import se.bofr.dspi.core.ConfirmOp
+
 /**
  * [DspiBridgeImpl]'s token issuer: the contract [DangerousOps]
  * (DangerousOpsContract.kt, decisions D1/D2/D5).
@@ -71,3 +73,25 @@ internal class DangerousOpsImpl(private val clock: () -> Long, override val ttlM
         const val DEFAULT_TTL_MS = 10_000L
     }
 }
+
+// -- WP P1AN2 --
+/**
+ * P1TK: the core's token for a gated op. The bridge's own token (above) stays
+ * the UI's proof that the user confirmed; at the call the bridge mints the
+ * core's token for the same op on the FFI thread and passes it to the
+ * `*_confirmed` call, so the core's requirement (on in this app) is met by the
+ * same confirmation. Null: the core does not gate this op (Save Master Volume,
+ * the control-surface save and the hardware controls are not gated there).
+ */
+internal val DangerousOp.confirmOp: ConfirmOp?
+    get() = when (this) {
+        DangerousOp.SAVE_PARAMS -> ConfirmOp.SAVE_PARAMS
+        DangerousOp.SAVE_OUTPUT_CONFIG -> ConfirmOp.SAVE_OUTPUT_CONFIG
+        DangerousOp.FACTORY_RESET -> ConfirmOp.FACTORY_RESET
+        DangerousOp.SAVE_PRESET -> ConfirmOp.SAVE_PRESET
+        DangerousOp.COPY_PRESET -> ConfirmOp.COPY_PRESET
+        DangerousOp.DELETE_PRESET -> ConfirmOp.DELETE_PRESET
+        DangerousOp.CONFIG_IMPORT -> ConfirmOp.CONFIG_IMPORT
+        DangerousOp.ENTER_BOOTLOADER -> ConfirmOp.ENTER_BOOTLOADER
+        DangerousOp.SAVE_MASTER_VOLUME, DangerousOp.CS_SAVE, DangerousOp.HARDWARE_APPLY -> null
+    }

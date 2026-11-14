@@ -101,6 +101,12 @@ class DspiApplication : Application() {
      */
     val bootloaderLocator: BootloaderLocator by lazy { AndroidBootloaderLocator(this, appScope) }
 
+    // -- WP P1AN2 -- the UI mode chosen per device (the Mode dialog)
+    val uiModes: UiModeStore by lazy { PrefsUiModeStore(this) }
+
+    /** -- WP P1AN2 -- the installer's limits profiles and PINs (`limits_set_dir`), app-private. */
+    private fun limitsFolder(): String = java.io.File(filesDir, "limits").path
+
     override fun onCreate() {
         super.onCreate()
         val version = appVersion()
@@ -109,6 +115,8 @@ class DspiApplication : Application() {
         aboutJson = deviceCore::aboutJson
         onboarding = OnboardingSource(deviceCore::onboardingWhatsNewJson, deviceCore::onboardingGettingStartedJson) // -- WP AN19 --
         bridge = DspiBridgeImpl(deviceCore, appScope, linkStore = linkStore, appVersion = version)
+        // -- WP P1AN2 -- named before a device opens (the FFI thread runs it before the USB attach)
+        appScope.launch { bridge.installer.setFolder(limitsFolder()) }
         val services = SharedServiceControl(AndroidServiceControl(this))
         val usb = AndroidUsbSession(this, bridge, appScope, service = services.client("usb"))
         session = usb
@@ -139,7 +147,7 @@ class DspiApplication : Application() {
                     linkStore,
                     log = { Log.i(TAG, it) },
                     onClose = { network.setSessionActive(false) }
-                )
+                ).also { r -> appScope.launch { r.bridge.installer.setFolder(limitsFolder()) } } // -- WP P1AN2 --
             }
         )
         // The notification acts on the unit on screen (device, demo or REMOTE)

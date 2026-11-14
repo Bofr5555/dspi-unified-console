@@ -203,6 +203,27 @@ class DspiBridgeImpl(
      */
     internal fun requireToken(token: ConfirmationToken, op: DangerousOp) = ops.require(token, op, spend = connected)
 
+    // -- WP P1AN2 --
+    /**
+     * FFI thread: the core's token for [op] (P1TK), minted right before the
+     * gated call the user confirmed with the bridge's token; null when the
+     * core does not gate [op] or cannot mint (a test double).
+     */
+    internal fun coreToken(op: DangerousOp): String? = op.confirmOp?.let { o -> runCatching { core.confirmToken(o) }.getOrNull() }
+
+    /**
+     * FFI thread: [block]'s writes as one undo step labelled [label] (P1UG);
+     * a core without groups (a test double) runs them as they are.
+     */
+    internal inline fun <T> grouped(label: String, block: () -> T): T {
+        runCatching { core.beginGroup(label) }
+        try {
+            return block()
+        } finally {
+            runCatching { core.endGroup() }
+        }
+    }
+
     private val map: ChannelMap get() = ChannelMap(current.numInputChannels, current.numOutputChannels)
 
     /** Raw (offset-free) magnitude curves per app id; null = recompute. */
@@ -289,6 +310,9 @@ class DspiBridgeImpl(
     // -- WP P1AN1 --
     override val snapshots: Snapshots by lazy { SnapshotsImpl(this) }
 
+    // -- WP P1AN2 --
+    override val installer: Installer by lazy { InstallerImpl(this) }
+
     private var uiVisible = true
     private var pollJob: Job? = null
     private var hotplugJob: Job? = null
@@ -312,6 +336,8 @@ class DspiBridgeImpl(
         configFiles = ConfigFilesImpl(this)
         deviceSettings = DeviceSettingsImpl(this)
         coreVoltageCalibration = CoreVoltageCalibrationImpl(this) // -- WP AN23 --
+        // -- WP P1AN2 -- P1TK: this app passes the core's token with every gated call ([coreToken])
+        scope.launch(ffi) { runCatching { core.requireConfirmation(true) } }
         updateTimers()
         // As the Qt constructor: pick up a device the core can already see
         // (desktop libusb, the fake in demo mode; on Android the list is
@@ -912,7 +938,10 @@ class DspiBridgeImpl(
                         clipFlags = latched,
                         activeInputChannels = ns.activeInputChannels,
                         peaks = peaks,
-                        limiterReduction = gr
+                        limiterReduction = gr,
+                        // -- WP P1AN2 -- S8: the meters' age when the core says they are stale
+                        stale = ns.stale,
+                        ageMs = if (ns.stale) ns.ageMs else 0L
                     )
                 StatusPoll(st, false)
             }
@@ -1309,8 +1338,15 @@ class DspiBridgeImpl(
         // all-inputs preamp, which would clobber the other pairs).
         val partner = map.inputOf(linkedPartner(inputAppId(input)))
         fire("setInputPreamp", if (sendOnly) Emit.PREVIEW else Emit.CURVES) {
-            core.setInputPreamp(input, db)
-            if (partner >= 0) core.setInputPreamp(partner, db)
+            // -- WP P1AN2 -- a linked pair (2p, 2p+1) is the core's one-step pair write (P1PR, P1UG)
+            if (partner >= 0 && partner == input xor 1) {
+                core.setInputPairPreamp(input, db)
+            } else {
+                grouped(PAIR_PREAMP_LABEL) {
+                    core.setInputPreamp(input, db)
+                    if (partner >= 0) core.setInputPreamp(partner, db)
+                }
+            }
         }
     }
 
@@ -1419,7 +1455,7 @@ class DspiBridgeImpl(
 
     override fun clearPeq(ch: Int) {
         val t = targets(ch)
-        fire("clearPeq", Emit.CURVES) { for (b in 0 until BANDS_PER_CHANNEL) applyFilter(t, b, off) }
+        fire("clearPeq", Emit.CURVES) { grouped(CLEAR_ALL_LABEL) { for (b in 0 until BANDS_PER_CHANNEL) applyFilter(t, b, off) } }
     }
 
     override fun clearAllBands(ch: Int, crossover: Boolean) {
@@ -1427,7 +1463,7 @@ class DspiBridgeImpl(
         if (map.outputOf(ch) < 0) return
         val w = map.wire(ch)
         fire("clearAllBands", Emit.CURVES) {
-            for (b in 0 until MAX_XOVER_BANDS) core.setCrossover(w, b, off)
+            grouped(CLEAR_ALL_LABEL) { for (b in 0 until MAX_XOVER_BANDS) core.setCrossover(w, b, off) }
             markDirty(ch)
         }
     }
@@ -1621,6 +1657,17 @@ class DspiBridgeImpl(
         val pdm = nOut - 1
         val before = current.outputEnabled
         fire("directRouting", Emit.CURVES) {
+            grouped(DIRECT_ROUTING_LABEL) { directRoutingWrites(r, nOut, n, pdm) }
+        }
+        if (overview) {
+            if (pdm >= 0 && before[pdm]) setChannelVisible(pdm + 2, false) // output app id = output + 2
+            for (o in 0 until n) if (o != pdm && !before[o]) setChannelVisible(o + 2, true)
+        }
+    }
+
+    /** FFI thread: [directRouting]'s writes (one undo group, -- WP P1AN2 --). */
+    private fun directRoutingWrites(r: Int, nOut: Int, n: Int, pdm: Int) {
+        run {
             val s = core.getState()
             if (pdm >= 0 && s.outputEnabled[pdm]) core.setOutputEnable(pdm, false)
             for (i in 0 until r) {
@@ -1636,10 +1683,6 @@ class DspiBridgeImpl(
             }
             for (o in 0 until n) if (o != pdm && !s.outputEnabled[o]) core.setOutputEnable(o, true)
         }
-        if (overview) {
-            if (pdm >= 0 && before[pdm]) setChannelVisible(pdm + 2, false) // output app id = output + 2
-            for (o in 0 until n) if (o != pdm && !before[o]) setChannelVisible(o + 2, true)
-        }
     }
 
     /** macOS `clearAllRoutes`: disconnect every crosspoint of the [rows] input rows, gains/polarity untouched. */
@@ -1647,9 +1690,11 @@ class DspiBridgeImpl(
         val r = rowsOr(rows)
         fire("clearRouting") {
             val s = core.getState()
-            for (i in 0 until r) {
-                for (o in 0 until s.numOutputChannels) {
-                    if (s.matrixRouting[i][o]) core.setMatrixRoute(i, o, false, s.matrixGain[i][o], s.matrixInvert[i][o])
+            grouped(CLEAR_ROUTING_LABEL) {
+                for (i in 0 until r) {
+                    for (o in 0 until s.numOutputChannels) {
+                        if (s.matrixRouting[i][o]) core.setMatrixRoute(i, o, false, s.matrixGain[i][o], s.matrixInvert[i][o])
+                    }
                 }
             }
         }
@@ -1725,7 +1770,8 @@ class DspiBridgeImpl(
     override suspend fun saveOutputConfig(token: ConfirmationToken): PresetStatus {
         if (writeRefused("saveOutputConfig", token, DangerousOp.SAVE_OUTPUT_CONFIG)) return PresetStatus.NO_REPLY
         requireToken(token, DangerousOp.SAVE_OUTPUT_CONFIG)
-        val code = onFfi { statusOf(-1) { core.saveOutputConfig() }.also { flashWritten() } }
+        val code =
+            onFfi { statusOf(-1) { core.saveOutputConfigConfirmed(coreToken(DangerousOp.SAVE_OUTPUT_CONFIG)) }.also { flashWritten() } }
         val st = PresetStatus.of(code)
         if (st == PresetStatus.OK) clearOutputEdit()
         if (st == PresetStatus.OK && _hardwareUnsaved.value) {
@@ -1763,7 +1809,7 @@ class DspiBridgeImpl(
         requireToken(token, DangerousOp.SAVE_PRESET)
         val (st, snap) =
             onFfi {
-                val code = statusOf(-1) { core.savePreset(slot) }
+                val code = statusOf(-1) { core.savePresetConfirmed(slot, coreToken(DangerousOp.SAVE_PRESET)) }
                 flashWritten()
                 if (code == DspiConstants.PRESET_OK && slot == core.getState().activePresetSlot) core.captureBaseline()
                 PresetStatus.of(code) to snapshot()
@@ -1795,7 +1841,7 @@ class DspiBridgeImpl(
         requireToken(token, DangerousOp.DELETE_PRESET)
         val (st, snap) =
             onFfi {
-                val code = statusOf(-1) { core.deletePreset(slot) }
+                val code = statusOf(-1) { core.deletePresetConfirmed(slot, coreToken(DangerousOp.DELETE_PRESET)) }
                 flashWritten()
                 PresetStatus.of(code) to snapshot(all = true)
             }
@@ -1808,7 +1854,7 @@ class DspiBridgeImpl(
         requireToken(token, DangerousOp.COPY_PRESET)
         val (st, snap) =
             onFfi {
-                val code = statusOf(-1) { core.copyPreset(fromSlot, toSlot) }
+                val code = statusOf(-1) { core.copyPresetConfirmed(fromSlot, toSlot, coreToken(DangerousOp.COPY_PRESET)) }
                 flashWritten()
                 PresetStatus.of(code) to snapshot()
             }
@@ -1850,13 +1896,13 @@ class DspiBridgeImpl(
     }
 
     override suspend fun saveParams(token: ConfirmationToken) = flashCall("saveParams", token, DangerousOp.SAVE_PARAMS, false) {
-        core.saveParams()
+        core.saveParamsConfirmed(coreToken(DangerousOp.SAVE_PARAMS)) // -- WP P1AN2 --
     }
 
     override suspend fun loadParams() = flashCall("loadParams", null, null, true) { core.loadParams() }
 
     override suspend fun factoryReset(token: ConfirmationToken) = flashCall("factoryReset", token, DangerousOp.FACTORY_RESET, true) {
-        core.factoryReset()
+        core.factoryResetConfirmed(coreToken(DangerousOp.FACTORY_RESET)) // -- WP P1AN2 --
     }
 
     override fun enterBootloader(token: ConfirmationToken) {
@@ -1869,7 +1915,7 @@ class DspiBridgeImpl(
             return
         }
         // G1: allowed while read-only (the firmware-update path)
-        fire("enterBootloader", Emit.NONE, write = false) { core.enterBootloader() }
+        fire("enterBootloader", Emit.NONE, write = false) { core.enterBootloaderConfirmed(coreToken(DangerousOp.ENTER_BOOTLOADER)) }
     }
 
     override fun clearClips() {
@@ -2820,6 +2866,12 @@ class DspiBridgeImpl(
 
     companion object {
         const val STATUS_POLL_MS = 60L
+
+        // -- WP P1AN2 -- the undo groups' labels (P1UG); the pair's is the core's own (P1PR)
+        const val PAIR_PREAMP_LABEL = "Input trim, linked pair"
+        const val CLEAR_ALL_LABEL = "Clear All"
+        const val DIRECT_ROUTING_LABEL = "Direct routing"
+        const val CLEAR_ROUTING_LABEL = "Clear routing"
 
         /** -- WP LK2 -- Over Link the device-changed hooks wait at most this long for the first live meter. */
         const val HOOKS_AFTER_METERS_MS = 5_000L

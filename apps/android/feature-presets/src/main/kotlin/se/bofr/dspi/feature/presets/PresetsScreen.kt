@@ -281,7 +281,10 @@ fun PresetsView(
                 AutoEQBrowser(
                     manager = controller.autoEQ,
                     onApply = { controller.autoEQMenu.applyProfile(it) },
-                    onDismiss = { showAutoEQBrowser = false }
+                    onDismiss = { showAutoEQBrowser = false },
+                    // -- WP P1AN2 -- T6: the pair and the preview before Apply
+                    bridge = controller.bridge,
+                    onApplyPair = { e, p -> controller.autoEQMenu.applyToPair(e, p) }
                 )
             }
         }

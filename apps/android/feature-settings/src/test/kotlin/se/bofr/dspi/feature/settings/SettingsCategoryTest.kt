@@ -8,7 +8,8 @@ import org.junit.Test
 class SettingsCategoryTest {
     @Test
     fun groupsAreTheMacOsSidebarWithoutUpdate() {
-        assertEquals(listOf("Application", "Display", "System", "Control"), SettingsCategory.groups.map { it.first })
+        // -- WP P1AN2 -- the Installer group
+        assertEquals(listOf("Application", "Display", "System", "Control", "Installer"), SettingsCategory.groups.map { it.first })
         assertEquals(SettingsCategory.entries.toSet(), SettingsCategory.groups.flatMap { it.second }.toSet())
     }
 

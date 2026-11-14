@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import se.bofr.dspi.core.ConfirmOp
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.VregCalView
@@ -112,11 +113,12 @@ class CoreVoltageCalibrationImpl internal constructor(private val bridge: DspiBr
 
     override suspend fun keep(soakS: Long) = act { it.coreVregCalKeep(soakS) }
 
-    override suspend fun commit(typed: String?) = act { it.coreVregCalCommit(typed) }
+    // -- WP P1AN2 -- P1TK: the user's Commit (with OVERVOLT where asked) is the confirmation; the core's token goes with it
+    override suspend fun commit(typed: String?) = act { it.coreVregCalCommitConfirmed(typed, vregToken(it)) }
 
     override suspend fun endTrial() = act { it.coreVregTrialEnd() }
 
-    override suspend fun manualSet(value: Int, typed: String?) = act { it.coreVregManualSet(value, typed) }
+    override suspend fun manualSet(value: Int, typed: String?) = act { it.coreVregManualSetConfirmed(value, typed, vregToken(it)) }
 
     override suspend fun manualTrial(value: Int, typed: String?) = act { it.coreVregManualTrial(value, typed) }
 
@@ -130,6 +132,9 @@ class CoreVoltageCalibrationImpl internal constructor(private val bridge: DspiBr
         poll()
         return error
     }
+
+    // -- WP P1AN2 -- FFI thread: P1TK's token for a stored voltage (null from a core that cannot mint one)
+    private fun vregToken(core: DspiCoreApi): String? = runCatching { core.confirmToken(ConfirmOp.VREG_SAVE) }.getOrNull()
 
     private fun attempt(call: (DspiCoreApi) -> Unit): DspiException? = try {
         call(bridge.core)

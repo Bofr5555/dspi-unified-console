@@ -1023,6 +1023,10 @@ interface DspiBridge {
     /** Snapshots, A/B, safe apply, import preview and offline documents. Test doubles get [Snapshots.Unavailable]. */
     val snapshots: Snapshots get() = Snapshots.Unavailable
 
+    // -- WP P1AN2 --
+    /** The installer's lock and limits, the mode manifest, notices, protect all, AutoEQ preview. Test doubles: [Installer.Unavailable]. */
+    val installer: Installer get() = Installer.Unavailable
+
     /** Token issuer for the GATED members (D5). Same instance for the bridge's lifetime. */
     val dangerousOps: DangerousOps
 
