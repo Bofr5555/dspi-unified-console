@@ -272,6 +272,8 @@ fn main() -> ExitCode {
         Some("diff") => pro::cmd_diff(target, &flags, json),
         Some("limits") => pro::installer::cmd_limits(target, &flags, json),
         Some("lock") => pro::installer::cmd_lock(target, &flags, json),
+        // -- WP HUBADMIN -- the hub's pinned modes
+        Some("mode") => pro::installer::cmd_mode(target, &flags, json),
         Some("status") => pro::cmd_status(target, &flags, json),
         // -- WP AUSB3 -- writes files only; opens no unit
         Some("usb-direct") => usb_direct_gen::run(&flags, json),
@@ -317,6 +319,8 @@ fn is_command_word(word: &str) -> bool {
         "limits",
         "lock",
         "status",
+        // -- WP HUBADMIN --
+        "mode",
         // -- WP AUSB3 --
         "usb-direct",
     ];
@@ -611,13 +615,18 @@ USAGE:
     {COMMAND} ab [A] <B>      compare two snapshots (with only B, the device now
                              is A): t toggles, d diffs, a or b keeps a side
                              (--keep a|b to end on one at once)
-    {COMMAND} limits show | set <file> | clear
+    {COMMAND} limits show | get | set <file> | clear
                              the installer's limits profile for this device
     {COMMAND} lock status | unlock | set-pin | clear-pin
                              the installer's PIN on this console. With a PIN
                              set, limits and lock changes ask for it, or take
                              DSPI_INSTALLER_PIN / --installer-pin - in a script
-                             (a new PIN: DSPI_NEW_INSTALLER_PIN / --new-pin -)
+                             (a new PIN: DSPI_NEW_INSTALLER_PIN / --new-pin -).
+                             Over --link to a hub, limits and set-pin/clear-pin
+                             change the HUB's copy (an Admin of the hub only)
+    {COMMAND} mode status | pin <role> <mode|none>
+                             over --link: the modes the hub pins per role
+                             (viewer, control, admin; Admin of the hub only)
     {COMMAND} status          the connection, device, limits, lock and audio link
     {COMMAND} cs export <file|-> write the control-surface configuration
     {COMMAND} cs import <file|-> apply one, live; bindings move pins, so only here

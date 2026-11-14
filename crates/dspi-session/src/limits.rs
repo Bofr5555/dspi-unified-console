@@ -88,6 +88,44 @@ pub fn lock_window_for(wrong: u32) -> Option<std::time::Duration> {
     Some(std::time::Duration::from_millis(ms))
 }
 
+// -- WP HUBADMIN --
+/// The letters of a recovery code (OD-P1c): 32, so one random byte's low five
+/// bits pick one without bias; no 0/O or 1/I to confuse.
+pub const RECOVERY_CODE_ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/// A recovery code's letters (100 bits), shown in groups of five.
+pub const RECOVERY_CODE_CHARS: usize = 20;
+
+// -- WP HUBADMIN --
+/// A recovery code from [`RECOVERY_CODE_CHARS`] random bytes, in groups of five
+/// (`XXXXX-XXXXX-XXXXX-XXXXX`). The console's and the hub's are made alike.
+pub fn recovery_code_from(bytes: &[u8]) -> String {
+    let chars: Vec<char> = bytes
+        .iter()
+        .take(RECOVERY_CODE_CHARS)
+        .map(|b| {
+            let i = usize::from(*b & 0x1F);
+            RECOVERY_CODE_ALPHABET
+                .get(i)
+                .map_or('A', |c| char::from(*c))
+        })
+        .collect();
+    chars
+        .chunks(5)
+        .map(|c| c.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+// -- WP HUBADMIN --
+/// `code` as it is hashed and compared: letters and digits only, upper case,
+/// so a code typed with spaces, dashes or in lower case still matches.
+pub fn normalise_recovery_code(code: &str) -> String {
+    code.chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_uppercase())
+        .collect()
+}
+
 // -- WP P1DKFIX --
 /// Wrong PINs as kept across a restart: the count since the last good PIN,
 /// and the end of the refusal window on the wall clock (ms since the epoch;

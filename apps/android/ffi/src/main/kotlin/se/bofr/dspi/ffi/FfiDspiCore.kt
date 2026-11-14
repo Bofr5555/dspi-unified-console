@@ -61,6 +61,11 @@ class FfiDspiCore : DspiCoreApi {
             override fun onLinkTokenIssued(hubId: String, token: String) = l.onLinkTokenIssued(hubId, token)
         }
 
+    private fun wrapHubAdminListener(l: HubAdminListener) =
+        object : se.bofr.dspi.ffi.uniffi.HubAdminListener {
+            override fun onHubAdminEvent(event: se.bofr.dspi.ffi.uniffi.HubAdminEvent) = l.onHubAdminEvent(event.toDomain())
+        }
+
     companion object {
         init {
             System.loadLibrary("dspi_ffi")
@@ -359,6 +364,24 @@ class FfiDspiCore : DspiCoreApi {
     override fun setHotplugCallback(listener: DeviceEvents?) = core.setHotplugCallback(listener?.let { wrapDeviceEvents(it) })
 
     override fun pollHotplug() = core.pollHotplug()
+
+    override fun installerTarget(): InstallerTarget = core.installerTarget().toDomain()
+
+    override fun hubLimitsGet(): HubAdminState = call { core.hubLimitsGet().toDomain() }
+
+    override fun hubLimitsSet(document: String): HubLimitsSet = call { core.hubLimitsSet(document).toDomain() }
+
+    override fun hubLimitsClear(): HubAdminState = call { core.hubLimitsClear().toDomain() }
+
+    override fun hubPinSet(pin: String): HubPinSet = call { core.hubPinSet(pin).toDomain() }
+
+    override fun hubPinClear(): HubAdminState = call { core.hubPinClear().toDomain() }
+
+    override fun hubModePin(role: String, mode: String): HubAdminState = call { core.hubModePin(role, mode).toDomain() }
+
+    override fun setHubAdminListener(listener: HubAdminListener?) = core.setHubAdminListener(listener?.let { wrapHubAdminListener(it) })
+
+    override fun hubAdminEvents(): List<HubAdminEvent> = core.hubAdminEvents().map { it.toDomain() }
 
     override fun getInputSourceName(source: Int): String = call { core.getInputSourceName(source.toUByte()) }
 
@@ -3111,6 +3134,112 @@ internal fun GuardedApply.toFfi() =
         message = message,
         changes = changes,
         notes = notes,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.InstallerTarget.toDomain() =
+    InstallerTarget(
+        copy = copy,
+        editable = editable,
+        serial = serial,
+        role = role,
+        noticeKey = noticeKey,
+        readOnlyKey = readOnlyKey,
+    )
+
+internal fun InstallerTarget.toFfi() =
+    se.bofr.dspi.ffi.uniffi.InstallerTarget(
+        copy = copy,
+        editable = editable,
+        serial = serial,
+        role = role,
+        noticeKey = noticeKey,
+        readOnlyKey = readOnlyKey,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubModePin.toDomain() =
+    HubModePin(
+        role = role,
+        mode = mode,
+    )
+
+internal fun HubModePin.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubModePin(
+        role = role,
+        mode = mode,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubAdminState.toDomain() =
+    HubAdminState(
+        serial = serial,
+        role = role,
+        canEdit = canEdit,
+        profileDocument = profileDocument,
+        pinSet = pinSet,
+        locked = locked,
+        unlocked = unlocked,
+        held = held,
+        wrongTries = wrongTries.toLong(),
+        retryAfterMs = retryAfterMs.toLong(),
+        pinnedModes = pinnedModes.map { it.toDomain() },
+    )
+
+internal fun HubAdminState.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubAdminState(
+        serial = serial,
+        role = role,
+        canEdit = canEdit,
+        profileDocument = profileDocument,
+        pinSet = pinSet,
+        locked = locked,
+        unlocked = unlocked,
+        held = held,
+        wrongTries = wrongTries.toUInt(),
+        retryAfterMs = retryAfterMs.toULong(),
+        pinnedModes = pinnedModes.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubLimitsSet.toDomain() =
+    HubLimitsSet(
+        held = held,
+        state = state.toDomain(),
+    )
+
+internal fun HubLimitsSet.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubLimitsSet(
+        held = held,
+        state = state.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubPinSet.toDomain() =
+    HubPinSet(
+        recoveryCode = recoveryCode,
+        state = state.toDomain(),
+    )
+
+internal fun HubPinSet.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubPinSet(
+        recoveryCode = recoveryCode,
+        state = state.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubAdminEvent.toDomain() =
+    HubAdminEvent(
+        kind = kind,
+        serial = serial,
+        rows = rows,
+        role = role,
+        mode = mode,
+        lock = lock.toDomain(),
+    )
+
+internal fun HubAdminEvent.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubAdminEvent(
+        kind = kind,
+        serial = serial,
+        rows = rows,
+        role = role,
+        mode = mode,
+        lock = lock.toFfi(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =

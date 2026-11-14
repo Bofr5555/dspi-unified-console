@@ -6225,6 +6225,69 @@ uint32_t dspi_apply_status(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_apply_guard_default(struct FfiCore *core);
 
 /**
+ * Which copy the Installer page edits: JSON `{ok, copy, editable, serial,
+ * role, noticeKey, readOnlyKey}` (`copy` `hub`, `console` or `none`). No I/O.
+ */
+uint32_t dspi_installer_target(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The hub's limits, PIN state and pinned modes for the open device: JSON
+ * `{ok, serial, role, canEdit, profileDocument, pinSet, locked, unlocked,
+ * held, wrongTries, retryAfterMs, pinnedModes: [{role, mode}]}`.
+ */
+uint32_t dspi_hub_limits_get(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Set the hub's limits profile (`document`: a limits document): JSON `{ok,
+ * held, state}` (what the hub held at once; the state as
+ * `dspi_hub_limits_get`'s), or a failure (`invalid`, `denied`, `link`).
+ */
+uint32_t dspi_hub_limits_set(struct FfiCore *core, const char *document, char *buf, uint32_t len);
+
+/**
+ * Remove the hub's limits profile: the state's JSON, or a failure.
+ */
+uint32_t dspi_hub_limits_clear(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Set the hub's installer PIN: JSON `{ok, recoveryCode, state}` (the code
+ * shown this once; notice `installer_lock.hub_recovery`), or a failure.
+ */
+uint32_t dspi_hub_pin_set(struct FfiCore *core, const char *pin, char *buf, uint32_t len);
+
+/**
+ * Remove the hub's installer PIN (and its recovery code): the state's
+ * JSON, or a failure.
+ */
+uint32_t dspi_hub_pin_clear(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Pin `role`'s mode on the hub (`mode` "" or null unpins): the state's
+ * JSON, or a failure (`invalid` for an unknown role or mode).
+ */
+uint32_t dspi_hub_mode_pin(struct FfiCore *core,
+                           const char *role,
+                           const char *mode,
+                           char *buf,
+                           uint32_t len);
+
+/**
+ * The hub's admin events since the last call, oldest first: JSON `{ok,
+ * value: [{kind, serial, rows, role, mode, lock}]}`. No I/O.
+ */
+uint32_t dspi_hub_admin_events(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Set (or with a null `callback`, clear) the listener for the hub's admin
+ * events. False for a null core, or when called from the callback itself.
+ */
+bool dspi_hub_admin_set_listener(struct FfiCore *core,
+                                 void (*callback)(const char *kind,
+                                                  const char *event_json,
+                                                  void *user_data),
+                                 void *user_data);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

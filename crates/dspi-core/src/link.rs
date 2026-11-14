@@ -211,6 +211,13 @@ enum Msg {
     Token { hub_id: String, token: String },
     /// Something else changed: look again.
     Kick,
+    // -- WP HUBADMIN --
+    /// The hub's limits, lock or pinned modes changed (`limits.changed`,
+    /// `limits.held`, `mode.changed`) on the client with this epoch.
+    Hub {
+        epoch: u64,
+        event: crate::hub_admin::HubAdminEvent,
+    },
 }
 
 /// The client's events, as messages. Safe on any thread, under any lock, and
@@ -233,6 +240,14 @@ impl LinkEvents for Forward {
             hub_id: hub_id.to_lowercase(),
             token: token.to_owned(),
         });
+    }
+
+    // -- WP HUBADMIN -- the hub's admin events, to the supervisor (never here:
+    // this is the reader, and the lock's refresh is a round trip)
+    fn hub_event(&self, epoch: u64, t: &str, body: &serde_json::Value) {
+        if let Some(event) = crate::hub_admin::HubAdminEvent::from_hub(t, body) {
+            let _ = self.tx.send(Msg::Hub { epoch, event });
+        }
     }
 }
 
@@ -1767,6 +1782,17 @@ fn on_msg(core: &DspiCore, id: u64, msg: Msg) {
         }
         Msg::Token { hub_id, token } => core.note_token(hub_id, token),
         Msg::Kick => {}
+        // -- WP HUBADMIN --
+        Msg::Hub { epoch, event } => {
+            let current = core
+                .lock()
+                .link
+                .as_ref()
+                .is_some_and(|s| s.id == id && s.instance == epoch);
+            if current {
+                core.hub_admin_event(event);
+            }
+        }
     }
 }
 
@@ -2198,6 +2224,47 @@ impl DspiCore {
         }
         let open = inner.conn.as_ref().map(|c| c.serial.as_str());
         (open == Some(bound.serial.as_str())).then(|| (bound.handle, bound.serial.clone()))
+    }
+}
+
+// -- WP HUBADMIN --
+/// The open device as the bound device of this console's DSPi Link session,
+/// for the Installer page's choice of copy (`hub_admin.rs`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AdminTarget {
+    /// Its handle on the hub.
+    pub(crate) handle: u8,
+    /// Its serial.
+    pub(crate) serial: String,
+    /// This console's role on the hub (`viewer`, `control`, `admin`; "" while
+    /// the session is down).
+    pub(crate) role: String,
+    /// The hub answers `limits.*` (its `hello` lists `limits`).
+    pub(crate) has_limits: bool,
+    /// The session's socket is up.
+    pub(crate) live: bool,
+}
+
+// -- WP HUBADMIN --
+impl DspiCore {
+    /// The open device, when it is the one bound on this console's DSPi Link
+    /// session (live or reconnecting); `None` for USB, MIDI or the demo. No I/O.
+    pub(crate) fn link_admin_target(&self) -> Option<AdminTarget> {
+        let inner = self.lock();
+        let s = inner.link.as_ref()?;
+        let bound = s.bound.as_ref()?;
+        let open = inner.conn.as_ref().map(|c| c.serial.as_str());
+        if open != Some(bound.serial.as_str()) {
+            return None;
+        }
+        let client = s.client.as_ref().filter(|c| !c.is_closed());
+        Some(AdminTarget {
+            handle: bound.handle,
+            serial: bound.serial.clone(),
+            role: client.map(LinkClient::role).unwrap_or_default(),
+            has_limits: client.is_some_and(|c| c.hello().has_cap("limits")),
+            live: client.is_some(),
+        })
     }
 }
 

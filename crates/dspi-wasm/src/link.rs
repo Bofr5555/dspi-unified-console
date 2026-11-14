@@ -187,7 +187,12 @@ pub fn tick(core: &DspiCore) -> Value {
     let wait = core
         .link_tick()
         .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-    json!({ "waitMs": wait, "status": status_json(&core.link_status()) })
+    // -- WP HUBADMIN -- the hub's admin events of this turn, for the Installer page
+    json!({
+        "waitMs": wait,
+        "status": status_json(&core.link_status()),
+        "hubEvents": crate::calls::tidy(&core.hub_admin_events()),
+    })
 }
 
 /// `open {"kind": "hub", "url", "deviceId"}`.

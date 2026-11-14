@@ -73,6 +73,8 @@ pub mod ab;
 pub mod limits;
 // -- WP P1LK --
 pub mod modes;
+// -- WP HUBADMIN -- the hub's admin API
+pub mod hub_admin;
 // -- WP P1AQ --
 pub mod autoeq;
 // -- WP P1WB2 -- the DAC mute for the power-on page

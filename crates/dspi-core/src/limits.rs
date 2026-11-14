@@ -1053,7 +1053,8 @@ pub use lock::{
 };
 // -- WP P1EFIX --
 pub use lock::LOCK_BANNER_NOTICE;
-pub(crate) use lock::{LockScope, lock_check, lock_check_any}; // -- WP TMCOREF -- lock_check_any
+pub(crate) use lock::check_pin_text;
+pub(crate) use lock::{LockScope, lock_check, lock_check_any}; // -- WP TMCOREF -- lock_check_any // -- WP HUBADMIN -- the hub's PIN, the same rule
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
