@@ -90,6 +90,8 @@ use dspi_link::{
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::packets::RtaBandFrame;
 use dspi_transport::link::map_status;
+// -- WP P1HL --
+use dspi_transport::link::map_response;
 use dspi_transport::{
     DeviceDescriptor, LinkTransport, Transport, TransportCaps, TransportError, TransportKind,
 };
@@ -2941,7 +2943,8 @@ impl BackgroundTransport {
                 dspi_transport::clock::sleep(dspi_transport::BUSY_BACKOFF);
                 continue;
             }
-            return match map_status(r.status, opcode) {
+            // -- WP P1HL -- a hub's named refusal keeps its key
+            return match map_response(r.status, opcode, &r.payload) {
                 Some(e) => Err(e),
                 None => Ok(r.payload),
             };
@@ -3147,7 +3150,8 @@ impl Transport for RtaLinkTransport {
                 }
             }
         }
-        match map_status(r.status, opcode) {
+        // -- WP P1HL -- a hub's named refusal keeps its key
+        match map_response(r.status, opcode, &r.payload) {
             Some(e) => Err(e),
             None => Ok(()),
         }

@@ -210,6 +210,10 @@ pub(crate) struct HubInner {
     // -- WP P1HA --
     /// Guarded applies (`apply_guard.rs`). A leaf lock.
     pub(crate) apply_guards: crate::apply_guard::ApplyGuards,
+    // -- WP P1HL --
+    /// Limits profiles, PINs and pinned modes (`limits.rs`). A leaf lock; each
+    /// device's router holds it too.
+    pub(crate) limits: Arc<crate::limits::HubLimits>,
 }
 
 /// A cheap, clonable way to the hub, for the server and the app's broker. It keeps
@@ -278,6 +282,11 @@ impl Hub {
                 as Arc<dyn crate::system::SystemStore>
         });
         let system = Arc::new(crate::system::SystemShared::new(system_store));
+        // -- WP P1HL -- kept where the clients and names are, or for this run only
+        let limits = Arc::new(crate::limits::HubLimits::new(auth.as_ref().map(|a| {
+            Arc::new(crate::auth::StoredLimitsFile(Arc::clone(a)))
+                as Arc<dyn crate::limits::LimitsPersist>
+        })));
         let relay = Arc::new(Relay::default());
         relay.set_tap(Arc::clone(&system));
         let (sup_tx, sup_rx) = mpsc::channel();
@@ -315,6 +324,8 @@ impl Hub {
             locks_syncing: Mutex::new(()),
             // -- WP P1HA --
             apply_guards: crate::apply_guard::ApplyGuards::default(),
+            // -- WP P1HL --
+            limits,
         });
         let io = |e: std::io::Error| HubError::Io(format!("cannot start a hub thread: {e}"));
         let events = {
@@ -359,6 +370,8 @@ impl Hub {
                 Ok(t) => {
                     // -- WP P1HA -- the guarded applies' timer runs on this thread
                     inner.apply_guards.set_wake(Some(stop_tx.clone()));
+                    // -- WP P1HL -- and the holds to a limits profile
+                    inner.limits.set_wake(Some(stop_tx.clone()));
                     Some((stop_tx, t))
                 }
                 Err(e) => {
@@ -431,6 +444,8 @@ impl Hub {
         }
         // -- WP P1HA -- guarded applies revert while their devices are still here
         inner.apply_guards.set_wake(None);
+        // -- WP P1HL --
+        inner.limits.set_wake(None);
         self.handle.apply_stop();
         // 1. Off the network: goodbye, no new connections. 2. Everyone gets their close.
         // 3. Connections go.
@@ -609,6 +624,8 @@ impl HubHandle {
         }
         // -- WP P1HA -- its guarded applies revert
         self.apply_session_closed(id);
+        // -- WP P1HL -- its unlocks go
+        self.inner.limits.session_closed(id);
         self.inner.sync_locks();
         self.inner.emit(HubEvent::SessionClosed { id });
     }
@@ -1035,6 +1052,8 @@ impl HubInner {
             let generation = st.next_generation;
             st.next_generation = generation.wrapping_add(1);
             let router = Router::new(Arc::clone(&self.policy), MAX_INFLIGHT);
+            // -- WP P1HL --
+            router.set_limits(Arc::clone(&self.limits));
             let attachment = Attachment::spawn(
                 transport,
                 source,
@@ -1072,7 +1091,8 @@ impl HubInner {
         if names_changed {
             self.save_names();
         }
-        if self.warm_snapshots {
+        // -- WP P1HL -- a device with a limits profile: its writes are judged on it
+        if self.warm_snapshots || self.limits.has_profile(&serial) {
             shared.warm_snapshot();
         }
         // -- fixup sw2x (F5) -- a unit of the system model, new or back on another
@@ -1312,6 +1332,8 @@ fn system_poll_loop(hub: &HubHandle, stop: &Receiver<()>) {
         let until = hub
             .apply_next_due()
             .map_or(next_poll, |due| due.min(next_poll));
+        // -- WP P1HL -- and the next hold to a limits profile
+        let until = hub.limits_next_due().map_or(until, |due| due.min(until));
         match stop.recv_timeout(until.saturating_duration_since(Instant::now())) {
             Err(RecvTimeoutError::Timeout) => {}
             Ok(()) if !hub.is_stopped() => {}
@@ -1322,6 +1344,8 @@ fn system_poll_loop(hub: &HubHandle, stop: &Receiver<()>) {
         }
         // -- WP P1HA --
         hub.apply_run_due();
+        // -- WP P1HL --
+        hub.limits_run_due();
         if Instant::now() >= next_poll {
             let (wait, due) = hub.system_poll_due();
             if due {

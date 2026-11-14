@@ -667,6 +667,23 @@ impl crate::system::SystemStore for StoredSystem {
     }
 }
 
+// -- WP P1HL --
+/// Limits profiles, PIN hashes and pinned modes, kept in the same file as the
+/// clients and names (`limits.rs`).
+pub(crate) struct StoredLimitsFile(pub(crate) Arc<AuthStore>);
+
+impl crate::limits::LimitsPersist for StoredLimitsFile {
+    fn load(&self) -> crate::limits::StoredLimits {
+        self.0.lock().store.limits()
+    }
+
+    fn save(&self, data: &crate::limits::StoredLimits) -> Result<(), HubError> {
+        let mut s = self.0.lock();
+        s.store.set_limits(data);
+        s.save()
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_hb1 {

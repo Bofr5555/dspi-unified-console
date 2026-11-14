@@ -80,6 +80,43 @@ pub fn map_status(status: u8, opcode: u8) -> Option<TransportError> {
     })
 }
 
+// -- WP P1HL --
+/// [`map_status`] with the answer's payload: a `DENIED` whose payload names one
+/// of [`crate::HUB_REFUSALS`] (`{"refused", "msg"}`, a hub's limits profile or
+/// installer lock) becomes `Denied("<key>: <the hub's words>")`, which
+/// [`TransportError::hub_refusal`] reads back; any other answer maps as before.
+pub fn map_response(status: u8, opcode: u8, payload: &[u8]) -> Option<TransportError> {
+    if status == status::DENIED
+        && let Some((key, msg)) = hub_refusal(payload)
+    {
+        return Some(TransportError::Denied(format!("{key}: {msg}")));
+    }
+    map_status(status, opcode)
+}
+
+// -- WP P1HL --
+/// The refusal a hub's `DENIED` payload names, with its words made safe to show.
+fn hub_refusal(payload: &[u8]) -> Option<(&'static str, String)> {
+    if payload.is_empty() || payload.len() > 4096 {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(payload).ok()?;
+    let refused = v.get("refused")?.as_str()?;
+    let key = crate::HUB_REFUSALS
+        .iter()
+        .copied()
+        .find(|k| *k == refused)?;
+    let msg = v
+        .get("msg")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let msg: String = dspi_link::sanitize_hub_text(msg)
+        .chars()
+        .take(300)
+        .collect();
+    Some((key, msg))
+}
+
 /// Whether a Link status is a busy window to retry (spec 8.1).
 fn is_busy(status: u8) -> bool {
     matches!(
@@ -100,7 +137,8 @@ fn busy_window(
     for i in 0..=BUSY_RETRIES {
         let r = attempt();
         if !is_busy(r.status) {
-            return match map_status(r.status, opcode) {
+            // -- WP P1HL -- a hub's named refusal keeps its key
+            return match map_response(r.status, opcode, &r.payload) {
                 Some(e) => Err(e),
                 None => Ok(r.payload),
             };
@@ -1083,5 +1121,57 @@ mod tests_wp_t5 {
         t.control_out(req::SET_MASTER_VOLUME, 0, &(-9.0f32).to_le_bytes())
             .unwrap();
         assert_eq!(next_note(second.as_mut()).origin, t.session_id());
+    }
+}
+
+// -- WP P1HL --
+#[cfg(test)]
+mod tests_wp_p1hl {
+    use super::*;
+
+    fn denied(payload: &str) -> Option<TransportError> {
+        map_response(status::DENIED, 0x74, payload.as_bytes())
+    }
+
+    /// A hub's named refusal keeps its notice key and its words; anything else
+    /// maps as `map_status` does.
+    #[test]
+    fn wp_p1hl_a_hubs_named_refusal_keeps_its_notice_key() {
+        for key in crate::HUB_REFUSALS {
+            let e = denied(&format!(
+                r#"{{"refused":"{key}","limit":"out_gain","msg":"output 1 gain 6 dB"}}"#
+            ))
+            .unwrap();
+            assert_eq!(e.hub_refusal(), Some((key, "output 1 gain 6 dB")), "{e:?}");
+            assert!(
+                matches!(e, TransportError::Denied(_)),
+                "still a denial: {e:?}"
+            );
+        }
+        // No payload, an unknown key, not JSON, another status: as before.
+        for e in [
+            map_response(status::DENIED, 0x74, &[]),
+            denied(r#"{"refused":"something_else","msg":"x"}"#),
+            denied("not json"),
+            denied(r#"{"msg":"x"}"#),
+        ] {
+            let e = e.unwrap();
+            assert!(matches!(e, TransportError::Denied(_)), "{e:?}");
+            assert_eq!(e.hub_refusal(), None, "{e:?}");
+        }
+        assert!(matches!(
+            map_response(status::LOCKED, 0x74, br#"{"refused":"limit_exceeded"}"#),
+            Some(TransportError::Locked)
+        ));
+        assert!(map_response(status::OK, 0x74, b"payload").is_none());
+        // The hub's words are made safe to show.
+        let e = denied("{\"refused\":\"installer_lock\",\"msg\":\"a\\u001b[2Jb\"}").unwrap();
+        assert_eq!(e.hub_refusal(), Some(("installer_lock", "a\u{fffd}[2Jb")));
+        // A plain Denied whose words merely look like it is not a refusal unless the
+        // key is one of the hub's.
+        assert_eq!(
+            TransportError::Denied("viewer: no".into()).hub_refusal(),
+            None
+        );
     }
 }

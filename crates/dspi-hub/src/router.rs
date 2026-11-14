@@ -115,7 +115,15 @@ struct State {
     /// The hub is writing a guarded apply's settings outside the image back: its
     /// own commands pass the lock until it closes ([`Router::revert_window`]).
     revert_window: bool,
+    // -- WP P1HL --
+    /// The hub's hold writes (`limits.rs`) let past a session's lock, once each,
+    /// by request: a hold to a limits profile is the hub's, as a revert is.
+    hold_pass: Vec<(u8, u16, Vec<u8>)>,
 }
+
+// -- WP P1HL --
+/// The hold writes waiting to be admitted, at most: one device's whole hold.
+const MAX_HOLD_PASS: usize = 256;
 
 /// One device's router.
 #[derive(Debug)]
@@ -123,6 +131,9 @@ pub struct Router {
     policy: Arc<Policy>,
     max_inflight: u32,
     state: Mutex<State>,
+    // -- WP P1HL --
+    /// The hub's limits (`limits.rs`), set once when the device attaches.
+    limits: std::sync::OnceLock<Arc<crate::limits::HubLimits>>,
 }
 
 /// Whether this opcode writes the whole image.
@@ -209,6 +220,22 @@ fn is_alink_id(id: u16) -> bool {
     id & 0xFF00 == 0x8000
 }
 
+// -- WP P1HL --
+/// Take `req`'s pass from [`Router::pass_hold`], if one is waiting.
+fn take_hold_pass(st: &mut State, req: &CmdRequest) -> bool {
+    let at = st
+        .hold_pass
+        .iter()
+        .position(|(c, v, p)| *c == req.b_request && *v == req.w_value && *p == req.payload);
+    match at {
+        Some(i) => {
+            st.hold_pass.remove(i);
+            true
+        }
+        None => false,
+    }
+}
+
 /// Which notification answers a write of this opcode.
 fn write_kind(code: u8) -> PacketKind {
     if is_bulk_write(code) {
@@ -242,6 +269,8 @@ impl Router {
             policy,
             max_inflight,
             state: Mutex::new(State::default()),
+            // -- WP P1HL --
+            limits: std::sync::OnceLock::new(),
         }
     }
 
@@ -267,7 +296,9 @@ impl Router {
             && is_bulk_write(req.b_request)
             && std::mem::take(&mut st.revert_pass))
             // -- WP P1CFIX -- F6: only the guard's write-back session, in the window
-            || (s.id == GUARD_SESSION_ID && st.revert_window);
+            || (s.id == GUARD_SESSION_ID && st.revert_window)
+            // -- WP P1HL -- a hold to a limits profile, this very write
+            || (s.id == INTERNAL_SESSION_ID && take_hold_pass(&mut st, req));
         if st.shut {
             return Err(status::NO_DEVICE);
         }
@@ -500,6 +531,37 @@ impl Router {
     /// Closed again before the bulk write.
     pub fn revert_window(&self, open: bool) {
         self.lock().revert_window = open;
+    }
+
+    // -- WP P1HL --
+    /// The command table this router admits by.
+    pub(crate) fn policy(&self) -> &Policy {
+        &self.policy
+    }
+
+    // -- WP P1HL --
+    /// The hub's limits, for the device's admission (`limits::admit`).
+    pub(crate) fn set_limits(&self, limits: Arc<crate::limits::HubLimits>) {
+        let _ = self.limits.set(limits);
+    }
+
+    // -- WP P1HL --
+    /// The hub's limits, if this device's router was given them.
+    pub(crate) fn limits(&self) -> Option<&Arc<crate::limits::HubLimits>> {
+        self.limits.get()
+    }
+
+    // -- WP P1HL --
+    /// Let the hub's own `req` (as [`INTERNAL_SESSION_ID`]) past any session's lock,
+    /// once: a hold to a limits profile (`limits.rs`) is never refused by a lock, as
+    /// a guarded apply's revert is not. Call it right before submitting `req`.
+    pub(crate) fn pass_hold(&self, req: &CmdRequest) {
+        let mut st = self.lock();
+        if st.hold_pass.len() >= MAX_HOLD_PASS {
+            st.hold_pass.remove(0);
+        }
+        st.hold_pass
+            .push((req.b_request, req.w_value, req.payload.clone()));
     }
 
     /// Release the device lock if `session` holds it.

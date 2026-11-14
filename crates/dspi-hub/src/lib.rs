@@ -18,6 +18,7 @@
 //! | [`advertise`], [`web`] | Bonjour, the bundled web UI | HB5 |
 //! | [`system`] | the audio link's system model: installation, alignment, scenes, alarms | SW2 |
 //! | [`apply_guard`] | guarded apply: capture, confirm or revert by the hub | P1HA |
+//! | [`limits`] | limits profiles, the installer lock and pinned modes | P1HL |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -40,6 +41,8 @@ mod device;
 pub mod error;
 pub mod hub;
 pub mod local;
+// -- WP P1HL --
+pub mod limits;
 pub mod lock;
 pub mod policy;
 pub mod polls;

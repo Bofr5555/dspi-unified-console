@@ -108,6 +108,33 @@ pub enum TransportError {
     Remote(String),
 }
 
+// -- WP P1HL --
+/// The refusals a hub names in a `DENIED` answer's payload (WP P1HL), by their
+/// notice keys: a value outside the device's limits profile (P1NT's
+/// `limit_exceeded`), a command outside the installer lock's scope (P1LK's
+/// `installer_lock`), a whole image on a device with a profile or a lock, and a
+/// write the hub could not judge.
+pub const HUB_REFUSALS: [&str; 4] = [
+    "limit_exceeded",
+    "installer_lock",
+    "image_refused",
+    "limits_unknown",
+];
+
+// -- WP P1HL --
+impl TransportError {
+    /// A hub's named refusal: its notice key ([`HUB_REFUSALS`]) and the hub's
+    /// words. `None` for any other error, a plain `Denied` included.
+    pub fn hub_refusal(&self) -> Option<(&'static str, &str)> {
+        let TransportError::Denied(text) = self else {
+            return None;
+        };
+        let (key, msg) = text.split_once(": ")?;
+        let key = HUB_REFUSALS.iter().copied().find(|k| *k == key)?;
+        Some((key, msg))
+    }
+}
+
 /// Platform-specific advice for a permission failure.
 ///
 /// The cause differs completely per platform, so a single message would be
