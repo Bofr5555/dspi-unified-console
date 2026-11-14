@@ -13,8 +13,8 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -135,7 +135,10 @@ class ChannelPageSpectrumAn37Test {
         settleUntil("the page starts on its own channel") { stripCell(input, usb1) && overlay(input, usb1) }
 
         // The review's scenario: in the gear, check USB 2 and uncheck USB 1
-        rule.onAllNodesWithText("⋮", useUnmergedTree = true)[0].performClick()
+        rule.onAllNodesWithContentDescription(
+            se.bofr.dspi.feature.graph.GRAPH_OPTIONS_DESCRIPTION,
+            useUnmergedTree = true
+        )[0].performClick()
         settleUntil("the gear panel") { inGear("SPECTRUM") }
         clickInGear(bridge.channelName(1))
         clickInGear(bridge.channelName(0))

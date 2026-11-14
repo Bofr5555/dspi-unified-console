@@ -17,8 +17,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -34,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.ui.writesAllowed
@@ -152,7 +158,8 @@ fun HeadphoneRow(entry: HeadphoneEntry, isSelected: Boolean, isFavorite: Boolean
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(if (entry.formFactor == "over-ear") "○" else "◖", modifier = Modifier.width(30.dp), color = fg)
+        // -- WP P1EFIX3 -- a mark only: the row says the form factor in words
+        Text(if (entry.formFactor == "over-ear") "○" else "◖", modifier = Modifier.width(30.dp).clearAndSetSemantics {}, color = fg)
         Column(Modifier.weight(1f)) {
             Text(entry.displayName, color = fg)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -169,8 +176,13 @@ fun HeadphoneRow(entry: HeadphoneEntry, isSelected: Boolean, isFavorite: Boolean
             }
         }
         Spacer(Modifier.width(4.dp))
-        TextButton(onClick = onToggleFavorite) {
-            Text(if (isFavorite) "◆" else "◇", color = if (isFavorite) Color(0xFFFF3B30) else secondary)
+        // -- WP P1EFIX3 -- the platform's heart, described
+        IconButton(onClick = onToggleFavorite) {
+            Icon(
+                if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                contentDescription = if (isFavorite) FAVOURITE_ON else FAVOURITE_OFF,
+                tint = if (isFavorite) Color(0xFFFF3B30) else secondary
+            )
         }
     }
 }
@@ -183,3 +195,8 @@ fun sourceColor(source: String): Color = when (source) {
     "innerfidelity" -> Color(0xFF34C759)
     else -> Color(0xFF8E8E93)
 }
+
+// -- WP P1EFIX3 --
+/** What TalkBack says for the favourite toggle, on and off. */
+const val FAVOURITE_ON = "Favourite"
+const val FAVOURITE_OFF = "Not favourite"

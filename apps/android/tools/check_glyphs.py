@@ -43,16 +43,34 @@ def banned(c: str) -> bool:
     return any(a <= o <= b for a, b in RANGES)
 
 
+# Source sets that are not the app's own text: tests may name a glyph to
+# prove it is gone, and the debug set holds fixtures.
+SKIPPED_SOURCE_SETS = ("test", "androidTest", "debug")
+
+
+def in_main(rel: str) -> bool:
+    """Whether `rel` (from apps/android) lies in a module's src/main."""
+    parts = rel.split(os.sep)
+    return any(a == "src" and b == "main" for a, b in zip(parts, parts[1:]))
+
+
 def main() -> int:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     hits = []
     for dirpath, dirnames, files in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in ("build", "test", "androidTest", ".gradle")]
+        # -- WP P1EFIX3 -- (review p1efix2 N2) only the real source sets are
+        # left out (src/test, src/androidTest, src/debug); a directory of that
+        # name inside src/main is scanned like the rest of it
+        parent = os.path.basename(dirpath)
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in ("build", ".gradle") and not (parent == "src" and d in SKIPPED_SOURCE_SETS)
+        ]
         rel = os.path.relpath(dirpath, root)
-        if os.sep + "src" + os.sep + "main" not in os.sep + rel + os.sep and "/src/main" not in "/" + rel:
+        if not in_main(rel):
             continue
         for name in files:
-            is_res = name.endswith(".xml") and os.sep + "res" + os.sep in os.sep + rel + os.sep
+            is_res = name.endswith(".xml") and "res" in rel.split(os.sep)
             if not (name.endswith(".kt") or is_res):
                 continue
             path = os.path.join(dirpath, name)

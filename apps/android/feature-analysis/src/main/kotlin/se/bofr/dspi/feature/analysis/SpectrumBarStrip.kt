@@ -24,9 +24,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -257,16 +260,17 @@ private fun BarStripOptions(single: Boolean, maxColumns: Int, chosen: Int, onCol
     if (single && onOpenAnalyser == null) return
     var open by remember { mutableStateOf(false) }
     Box {
-        Text(
-            "⋮",
-            fontSize = 12.sp,
-            color = if (open) MaterialTheme.colorScheme.onSurface else secondaryText(),
+        // -- WP P1EFIX3 -- the platform's settings icon, described
+        Icon(
+            Icons.Filled.Settings,
+            contentDescription = "Spectrum strip options",
+            tint = if (open) MaterialTheme.colorScheme.onSurface else secondaryText(),
             modifier = Modifier
                 .size(18.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .clickable { open = !open }
+                .padding(2.dp)
                 .testTag(RTA_BAR_STRIP_OPTIONS_TAG)
-                .semantics { contentDescription = "Spectrum strip options" }
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             if (!single) {

@@ -15,6 +15,7 @@ dependencies {
     "implementation"(libs.lib("compose-ui-graphics"))
     "implementation"(libs.lib("compose-foundation"))
     "implementation"(libs.lib("compose-material3"))
+    "implementation"(libs.lib("compose-material-icons-core")) // -- WP P1EFIX3 --
     "implementation"(libs.lib("compose-ui-tooling-preview"))
     "implementation"(libs.lib("androidx-lifecycle-runtime-compose"))
     "debugImplementation"(libs.lib("compose-ui-tooling"))

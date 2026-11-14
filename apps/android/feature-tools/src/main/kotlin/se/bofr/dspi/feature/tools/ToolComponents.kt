@@ -30,7 +30,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -138,7 +141,8 @@ internal fun UnsupportedNote(primary: String, secondary: String, modifier: Modif
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("!", fontSize = 28.sp, color = secondaryColor())
+        // -- WP P1EFIX3 -- the platform's icon, described
+        Icon(Icons.Filled.Warning, contentDescription = "Warning", tint = secondaryColor(), modifier = Modifier.size(28.dp))
         Text(primary, fontSize = 15.sp, color = secondaryColor(), textAlign = TextAlign.Center)
         Text(secondary, fontSize = 13.sp, color = secondaryColor(), textAlign = TextAlign.Center)
     }
