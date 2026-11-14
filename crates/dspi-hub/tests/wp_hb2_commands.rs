@@ -1239,3 +1239,72 @@ fn wp_upw1_an_analyser_start_does_not_take_another_consoles_write() {
     assert_eq!(b.next_notify(), (b.id(), nfy::PARAM_SRC_HOST_SET as u8));
     assert_eq!(b.next_notify(), (a.id(), nfy::PARAM_SRC_HOST_SET as u8));
 }
+
+// -- WP ANLAST --
+impl Client {
+    /// The next `RTA_CONFIG` notification: its origin and the mask it applied.
+    fn next_rta_config(&self) -> (u16, u16) {
+        let start = Instant::now();
+        loop {
+            match self.session.outbox().pop(Duration::from_millis(20)) {
+                Pop::Item(Outbound::Notify { origin, packet, .. })
+                    if packet.get(1) == Some(&(nfy::NOTIFY_EVT_RTA_CONFIG as u8)) =>
+                {
+                    let c = dspi_proto::packets::RtaConfig::decode(&packet[4..]).unwrap();
+                    return (origin, c.channel_mask);
+                }
+                Pop::Item(_) => {}
+                Pop::Idle if start.elapsed() < WAIT => {}
+                other => panic!("no analyser notification: {other:?}"),
+            }
+        }
+    }
+}
+
+/// WP ANLAST: the analyser's "last choice wins" rule orders pushes by the event
+/// sequence, not by clocks. That holds because the hub applies two consoles'
+/// SETs one after the other and relays the device's events to every session in
+/// that one order, each attributed to the session that pushed it: both consoles
+/// see the same last push, and it is what the device holds.
+#[test]
+fn wp_anlast_two_consoles_pushing_at_once_see_one_order() {
+    let r = rig();
+    let (a, b) = (
+        Client::open(&r, Role::Control),
+        Client::open(&r, Role::Control),
+    );
+    for round in 0..20u16 {
+        let (ma, mb) = (0b01 << (round % 3), 0b110 >> (round % 2));
+        let set = |c: &Client, mask| {
+            c.submit(request(
+                c.handle,
+                Dir::Set,
+                op::REQ_RTA_SET_CONFIG,
+                0,
+                12,
+                rta_config(mask),
+            ))
+        };
+        // Both in flight before either answers.
+        let (ra, rb) = (set(&a, ma), set(&b, mb));
+        assert_eq!(ra.recv_timeout(WAIT).unwrap().status, status::OK);
+        assert_eq!(rb.recv_timeout(WAIT).unwrap().status, status::OK);
+        let seen_a = [a.next_rta_config(), a.next_rta_config()];
+        let seen_b = [b.next_rta_config(), b.next_rta_config()];
+        assert_eq!(seen_a, seen_b, "round {round}: one order for everyone");
+        let mut origins = [seen_a[0].0, seen_a[1].0];
+        origins.sort_unstable();
+        let mut ids = [a.id(), b.id()];
+        ids.sort_unstable();
+        assert_eq!(origins, ids, "round {round}: each push attributed once");
+        for (origin, mask) in seen_a {
+            let pushed = if origin == a.id() { ma } else { mb };
+            assert_eq!(mask, pushed, "round {round}");
+        }
+        // The last in that order is what the device holds.
+        let held = a.get(op::REQ_RTA_GET_CONFIG, 0, 12);
+        assert_eq!(held.status, status::OK);
+        let held = dspi_proto::packets::RtaConfig::decode(&held.payload).unwrap();
+        assert_eq!(held.channel_mask, seen_a[1].1, "round {round}");
+    }
+}

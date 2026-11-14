@@ -52,6 +52,10 @@
 //! analyser is doing and nothing is written over the other console.
 //! [`DspiCore::rta_take_control`], or the request changing, ends it. The rules
 //! are [`dspi_session::rta_sharing`]'s (WP CG19), which the Terminal uses too.
+//! The last choice made wins (WP ANLAST): a new choice is pending until its
+//! echo comes through the device's event sequence, and another console's event
+//! drained before that echo was applied earlier, so it does not make this core
+//! follow.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, Weak};
@@ -375,6 +379,8 @@ impl RtaState {
     fn after_poll(&mut self, share: &PollShare) {
         let caps = self.sharing_caps();
         self.sharing.finish_poll(share, caps.as_ref());
+        // -- WP ANLAST -- a pending choice the device refused is not applied.
+        self.sharing.engine_gave_up(self.engine.rejected());
     }
 
     /// What `rta_get_ownership` returns.
@@ -1805,6 +1811,12 @@ mod tests_wp_c9 {
         core.rta_start();
         wait_for("frames", || core.rta_get_snapshot().count > 0);
         wait_for("the push", || dev.lock().unwrap().config.is_some());
+        // -- WP ANLAST -- and its echo, as firmware with the event sends it: the
+        // choice is no longer pending, so another console's event is later.
+        wait_for("caps", || core.rta_get_caps().supported);
+        let pushed = dev.lock().unwrap().config.unwrap();
+        core.lock().rta.note_config(&event(pushed, 1), true, 0);
+        assert!(!core.lock().rta.sharing.pending());
         (core, dev)
     }
 
@@ -2388,5 +2400,87 @@ mod tests_wp_cg5 {
         until("a's picture", &[&a, &b], || {
             channels(&a.rta_get_snapshot()) == [0]
         });
+    }
+
+    // -- WP ANLAST --
+    /// The last choice made wins: B chooses while the event of A's earlier push
+    /// still waits unread in B's queue, and B drives (before ANLAST B followed
+    /// A, its own push held back). A's push after that makes B follow.
+    #[test]
+    fn wp_anlast_a_choice_made_while_an_earlier_push_is_unread_drives() {
+        let hub = hub();
+        let (a, sid_a) = console(&hub, "a", 0b0001);
+        until("a's push", &[&a], || pushes(&hub, sid_a) > 0);
+        let (b, sid_b) = console(&hub, "b", 0b0110);
+        until("a following", &[&a, &b], || a.rta_get_ownership().following);
+        settle(&[&a, &b]);
+
+        // A chooses and its push reaches the device; B reads nothing meanwhile.
+        a.rta_set_request(request(0b1000));
+        until("a's choice on the device", &[&a], || {
+            device_mask(&hub) == 0b1000
+        });
+        // B chooses with A's event still unread, then drains it.
+        b.rta_set_request(request(0b0010));
+        b.process_notifications();
+        assert!(!b.rta_get_ownership().following, "A's push was earlier");
+        until("b's choice on the device", &[&a, &b], || {
+            device_mask(&hub) == 0b0010 && a.rta_get_ownership().following
+        });
+        settle(&[&a, &b]);
+        assert!(!b.rta_get_ownership().following, "b drives");
+        assert_eq!(a.rta_get_ownership().origin, sid_b);
+        assert_eq!(a.rta_get_ownership().mask, 0b0010);
+        assert_eq!(device_mask(&hub), 0b0010, "no fight");
+
+        // A push of A's after B's choice: B follows, as before.
+        a.rta_set_request(request(0b0100));
+        until("b following a", &[&a, &b], || {
+            b.rta_get_ownership().following
+        });
+        settle(&[&a, &b]);
+        assert_eq!(b.rta_get_ownership().origin, sid_a);
+        assert!(!a.rta_get_ownership().following);
+        assert_eq!(device_mask(&hub), 0b0100);
+    }
+
+    // -- WP ANLAST --
+    /// Two consoles choosing at once agree on one winner, the one whose push
+    /// the device applied last, and neither believes it drives while it
+    /// follows the other.
+    #[test]
+    fn wp_anlast_two_consoles_choosing_at_once_converge() {
+        let hub = hub();
+        let (a, sid_a) = console(&hub, "a", 0b0001);
+        until("a's push", &[&a], || pushes(&hub, sid_a) > 0);
+        let (b, sid_b) = console(&hub, "b", 0b0110);
+        until("a following", &[&a, &b], || a.rta_get_ownership().following);
+        settle(&[&a, &b]);
+        for round in 0..6u16 {
+            let (ma, mb) = if round % 2 == 0 {
+                (0b1000, 0b0010)
+            } else {
+                (0b0100, 0b0011)
+            };
+            a.rta_set_request(request(ma));
+            b.rta_set_request(request(mb));
+            until("one driver", &[&a, &b], || {
+                a.rta_get_ownership().following != b.rta_get_ownership().following
+            });
+            settle(&[&a, &b]);
+            let (fa, fb) = (a.rta_get_ownership(), b.rta_get_ownership());
+            assert_ne!(fa.following, fb.following, "round {round}: one driver");
+            let (driver_mask, follower, driver_sid) = if fa.following {
+                (mb, fa, sid_b)
+            } else {
+                (ma, fb, sid_a)
+            };
+            assert_eq!(device_mask(&hub), driver_mask, "round {round}");
+            assert_eq!(
+                (follower.origin, follower.mask),
+                (driver_sid, driver_mask),
+                "round {round}"
+            );
+        }
     }
 }
