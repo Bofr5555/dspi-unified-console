@@ -47,6 +47,7 @@ import se.bofr.dspi.feature.settings.SettingsSaveCoordinator
 import se.bofr.dspi.feature.settings.SettingsSection
 import se.bofr.dspi.feature.settings.StatusLine
 import se.bofr.dspi.ui.MacColors
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.writeEnabled
 
 private val DESTRUCTIVE = Color(0xFFFF453A)
@@ -175,11 +176,18 @@ private fun CsDisplayHub(
     val settings = remember { mutableStateOf<CsDescription?>(null) }
     val pages = remember { mutableStateMapOf<Int, String>() }
     LaunchedEffect(cs, display.config, display.pages) {
-        wiring.value = CsRules.parseDescription(bridge.cs.describe(CsRules.KIND_BINDING, slot, draftOf(b))).value
-        settings.value = CsRules.parseDescription(bridge.cs.describe(CsDisplay.KIND_DISPLAY, 0, display.config)).value
-        pages.clear()
+        val w = CsRules.parseDescription(bridge.cs.describe(CsRules.KIND_BINDING, slot, draftOf(b))).value
+        val set = CsRules.parseDescription(bridge.cs.describe(CsDisplay.KIND_DISPLAY, 0, display.config)).value
+        val next = HashMap<Int, String>()
         for (i in display.activePages) {
-            CsRules.parseDescription(bridge.cs.describe(CsDisplay.KIND_PAGE, i, display.pages[i])).value?.let { pages[i] = it.summary }
+            CsRules.parseDescription(bridge.cs.describe(CsDisplay.KIND_PAGE, i, display.pages[i])).value?.let { next[i] = it.summary }
+        }
+        // -- WP FLAKE2 -- the write on the main thread (onMainThread)
+        onMainThread {
+            wiring.value = w
+            settings.value = set
+            pages.keys.retainAll(next.keys)
+            pages.putAll(next)
         }
     }
 

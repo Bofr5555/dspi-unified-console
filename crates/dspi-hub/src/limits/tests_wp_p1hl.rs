@@ -575,7 +575,9 @@ fn wp_p1dkfix_the_count_is_per_device_and_an_admin_is_unaffected() {
     assert!(l.unlocked("S", 99, Role::Admin));
 }
 
-/// F6: the count and the window survive a restart of the hub.
+/// F6: the count and the window survive a restart of the hub. -- WP FLAKE2 -- on a
+/// clock the test sets: the five wrong PINs are hashed in real time, and on a loaded
+/// host they took longer than the 5 s the window was allowed to shrink by.
 #[test]
 fn wp_p1dkfix_the_wrong_pin_window_survives_a_restart() {
     #[derive(Default)]
@@ -589,25 +591,36 @@ fn wp_p1dkfix_the_wrong_pin_window_survives_a_restart() {
             Ok(())
         }
     }
+    let t0 = Instant::now();
+    let w0 = std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+    let at = Arc::new(Mutex::new((t0, w0)));
+    let clock: Clock = {
+        let at = Arc::clone(&at);
+        Arc::new(move || *at.lock().unwrap())
+    };
     let mem = Arc::new(Mem::default());
-    let l = HubLimits::new(Some(mem.clone()));
+    let l = HubLimits::with_clock(Some(mem.clone()), Arc::clone(&clock));
     l.set_pin("S", Some("4711")).unwrap();
-    let now = Instant::now();
     for _ in 0..=LOCK_FREE_TRIES {
-        let _ = l.unlock("S", 1, "0000", now);
+        let _ = l.unlock("S", 1, "0000", t0);
     }
     let kept = mem.load().tries["S"];
     assert_eq!(kept.wrong, LOCK_FREE_TRIES + 1);
-    assert!(kept.until_unix_ms > 0);
+    assert_eq!(kept.until_unix_ms, 1_800_000_000_000 + LOCK_FIRST_WAIT_MS);
     drop(l);
-    let again = HubLimits::new(Some(mem.clone()));
-    let (wrong, left) = again.tries("S", Instant::now());
+    // The restart, 1.5 s later on the wall clock, with a new monotonic origin.
+    let t1 = t0 + Duration::from_secs(3600);
+    *at.lock().unwrap() = (t1, w0 + Duration::from_millis(1_500));
+    let again = HubLimits::with_clock(Some(mem.clone()), Arc::clone(&clock));
+    let (wrong, left) = again.tries("S", t1);
     assert_eq!(wrong, LOCK_FREE_TRIES + 1);
-    let left = left.expect("the window survives");
-    assert!(left <= Duration::from_millis(LOCK_FIRST_WAIT_MS));
-    assert!(left > Duration::from_millis(LOCK_FIRST_WAIT_MS - 5_000));
+    assert_eq!(
+        left,
+        Some(Duration::from_millis(LOCK_FIRST_WAIT_MS - 1_500)),
+        "the window survives"
+    );
     assert!(matches!(
-        again.unlock("S", 1, "4711", Instant::now()),
+        again.unlock("S", 1, "4711", t1),
         Err(PinRefused::Later(_))
     ));
     // A window kept far in the future (a clock set back) is never longer
@@ -615,10 +628,8 @@ fn wp_p1dkfix_the_wrong_pin_window_survives_a_restart() {
     let mut far = mem.load();
     far.tries.get_mut("S").unwrap().until_unix_ms = u64::MAX;
     *mem.0.lock().unwrap() = far;
-    let capped = HubLimits::new(Some(mem.clone()));
-    assert!(
-        capped.tries("S", Instant::now()).1.unwrap() <= Duration::from_millis(LOCK_MAX_WAIT_MS)
-    );
+    let capped = HubLimits::with_clock(Some(mem.clone()), clock);
+    assert!(capped.tries("S", t1).1.unwrap() <= Duration::from_millis(LOCK_MAX_WAIT_MS));
     // A PIN set anew clears it, in the store too.
     capped.set_pin("S", Some("2468")).unwrap();
     assert!(!mem.load().tries.contains_key("S"));

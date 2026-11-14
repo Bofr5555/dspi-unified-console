@@ -44,6 +44,7 @@ import se.bofr.dspi.ui.SectionLabel
 import se.bofr.dspi.ui.SegmentedPicker
 import se.bofr.dspi.ui.ToolHeader
 import se.bofr.dspi.ui.ValueFormat
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.rememberWhileVisible
 
 /** Telemetry poll period while the view is up (macOS: ~16 Hz). */
@@ -64,7 +65,8 @@ fun UpmixerView(bridge: DspiBridge, modifier: Modifier = Modifier) {
     LaunchedEffect(supported, connected, visible) {
         telemetry = null
         while (isActive && supported && connected && visible) {
-            telemetry = bridge.fetchUpmixStatus()
+            val t = bridge.fetchUpmixStatus()
+            onMainThread { telemetry = t } // -- WP FLAKE2 -- the write on the main thread (onMainThread)
             delay(UPMIX_STATUS_POLL_MS)
         }
         telemetry = null

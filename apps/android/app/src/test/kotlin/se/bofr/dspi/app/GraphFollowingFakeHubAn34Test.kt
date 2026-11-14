@@ -137,6 +137,13 @@ class GraphFollowingFakeHubAn34Test {
 
     private fun bFollowing() = runBlocking { withContext(bMain) { b.rta.ownership.value?.following } }
 
+    // -- WP FLAKE2 -- B's event log records a notification when B's core drains it
+    private fun bDrainedAsEvent() = runBlocking {
+        withContext(bFfi) {
+            bCore.eventLogRead("", 0, 500).entries.any { "RtaConfig" in it.text && "tap=out mask=0x0001" in it.text }
+        }
+    }
+
     @Test
     fun an34TheGraphDrawsAFollowedSelectionWithoutTakingControl() {
         connectA()
@@ -151,8 +158,21 @@ class GraphFollowingFakeHubAn34Test {
         val own = graphSpectrumTag(RtaChannelSelection(DspiConstants.RTA_TAP_OUTPUT, listOf(0)))
         val theirs = graphSpectrumTag(RtaChannelSelection(DspiConstants.RTA_TAP_INPUT, listOf(0, 1)))
 
-        // A's graph drives the analyser with its dashboard selection
-        pump("A drives") { a.rta.ownership.value?.following == false && tagged(own) }
+        // A's graph drives the analyser with its dashboard selection, and the device holds it
+        pump("A drives") {
+            a.rta.ownership.value?.following == false &&
+                tagged(own) &&
+                a.rta.snapshot.value?.let { it.tap == DspiConstants.RTA_TAP_OUTPUT && it.count > 0 } == true
+        }
+        // -- WP FLAKE2 -- and B has drained the device's event for A's push. A choice is judged
+        // against every event drained after it (rta_sharing: an event after our choice makes us
+        // follow), so B's choice made while A's event still waited in B's queue made B follow A
+        // (under load B's batch came 3 ms after B's choice), and A never followed B.
+        val drainEnd = System.currentTimeMillis() + 15_000
+        while (!bDrainedAsEvent()) {
+            check(System.currentTimeMillis() < drainEnd) { "timed out: B drains A's analyser event" }
+            Thread.sleep(20)
+        }
 
         // B pushes inputs 1 and 2: A's graph draws those
         runBlocking { withContext(bMain) { b.rta.update(1, DspiConstants.RTA_TAP_INPUT, 0b11, false) } }

@@ -331,7 +331,10 @@ class DemoScreensAn28Test {
         start()
         host()
         rule.runOnUiThread { session.close() }
-        pump("the FFI thread ends") { Thread.getAllStackTraces().keys.none { it.name == "dspi-demo-ffi" && it.isAlive } }
+        // -- WP FLAKE2 -- by prefix: while it runs a coroutine, kotlinx's debug mode (on with -ea, as
+        // in Gradle's tests) names the thread "dspi-demo-ffi @coroutine#N", and an exact match
+        // took a thread still working off its queue, before the close, for one that had ended
+        pump("the FFI thread ends") { Thread.getAllStackTraces().keys.none { it.name.startsWith("dspi-demo-ffi") && it.isAlive } }
         assertThrows("the core is freed", IllegalStateException::class.java) { ffiCore.isConnected() }
     }
 }

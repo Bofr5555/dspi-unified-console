@@ -54,6 +54,7 @@ import se.bofr.dspi.ui.ParameterRow
 import se.bofr.dspi.ui.PullDownMenu
 import se.bofr.dspi.ui.SegmentedPicker
 import se.bofr.dspi.ui.ToolHeader
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.writeEnabled
 
 /**
@@ -187,7 +188,10 @@ private fun LimiterSettings(
         val scope = rememberCoroutineScope()
         val revision by bridge.stateRevision.collectAsState()
         var unprotected by remember { mutableStateOf(emptyList<Int>()) }
-        LaunchedEffect(revision) { unprotected = bridge.installer.outputsWithoutLimiter() }
+        LaunchedEffect(revision) {
+            val outs = bridge.installer.outputsWithoutLimiter()
+            onMainThread { unprotected = outs } // -- WP FLAKE2 -- the write on the main thread (onMainThread)
+        }
         if (unprotected.isNotEmpty()) {
             Caption(
                 unprotected.joinToString(", ") { "OUT${it + 1}" } +

@@ -108,6 +108,7 @@ import se.bofr.dspi.ui.alert.ConsoleAlertHost
 import se.bofr.dspi.ui.alert.LocalNoticeLine
 import se.bofr.dspi.ui.link.LinkBanner
 import se.bofr.dspi.ui.link.LinkBannerAction
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.state.AppState
 import se.bofr.dspi.ui.state.LocalAppState
 import se.bofr.dspi.usb.BootloaderLocator
@@ -189,7 +190,8 @@ fun AppScaffold(
     val lockState by modeModel.lock.collectAsStateWithLifecycle()
     // -- WP P1EFIX -- the locked-user banner's line: the core's row (read on the FFI thread)
     val lockLine by produceState(LOCKED_FALLBACK, bridge) {
-        value = bridge.installer.notice(LOCK_BANNER_NOTICE_KEY)?.reason?.takeIf { it.isNotBlank() } ?: LOCKED_FALLBACK
+        val line = bridge.installer.notice(LOCK_BANNER_NOTICE_KEY)?.reason?.takeIf { it.isNotBlank() } ?: LOCKED_FALLBACK
+        onMainThread { value = line } // -- WP FLAKE2 -- the write on the main thread (onMainThread)
     }
     val locked = uiMode == UiModes.LOCKED_USER
     // The entry: Unlock while locked; none when the hub pins the mode
