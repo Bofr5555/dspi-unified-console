@@ -153,6 +153,7 @@ struct IOSRootView: View {
     @EnvironmentObject private var autoEQ: AutoEQBrowserController
 
     @ObservedObject private var panes = CompactPanes.shared
+    @ObservedObject private var installer = CoreInstaller.shared   // -- WP P1SW2 --
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showSettings = false
     @State private var showDevices = false
@@ -176,6 +177,8 @@ struct IOSRootView: View {
         // A hub that asks for a PIN: over the Devices sheet when that is up
         // (that is where a shared device gets picked), from here otherwise.
         .linkPairingSheet(active: !showDevices)
+        // -- WP P1SW2 -- the unlock prompt and the mode switch
+        .installerPrompts(installer)
         .onAppear(perform: launch)
     }
 
@@ -212,6 +215,21 @@ struct IOSRootView: View {
     /// The Mac's Tools and File menus, as one menu.
     @ViewBuilder
     private var toolsMenu: some View {
+        // -- WP P1SW2 -- The locked user: Unlock and the analyser (it changes
+        // no audio) only.  The mode switch is Settings > Mode (the iPhone's
+        // Tools menu has no room left).
+        if installer.lockedUser {
+            Section {
+                Button("Unlock...") { installer.askUnlock() }
+                Button("Spectrum Analyser") { spectrum.show(vm: vm) }
+            }
+        } else {
+            fullToolsMenu
+        }
+    }
+
+    @ViewBuilder
+    private var fullToolsMenu: some View {
         Section {
             Button("Matrix Mixer") { matrixMixer.show() }
             Button("Loudness Compensation") { loudness.show(vm: vm) }
@@ -334,6 +352,7 @@ struct IOSRootView: View {
         case "autoeq":     autoEQ.show()
         case "graph":      graph.show(vm: vm)
         case "snapshots":  SnapshotsSheet.show()   // -- WP P1SW1 --
+        case "mode":       installer.modeShown = true   // -- WP P1SW2 --
         case "whatsnew":   whatsNew.show()
         case "settings":   showSettings = true
         case "devices":    showDevices = true

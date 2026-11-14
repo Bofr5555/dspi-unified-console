@@ -327,6 +327,20 @@ extension DSPViewModel {
     /// The core this view model's device is driven through, if any.
     var typedCore: CoreStateSource? { transport.coreStateSource }
 
+    // -- WP P1SW2 -- Undo groups (P1UG, review sw9 O1).
+    /// The label of a Clear All's one undo step.
+    static let clearAllLabel = "Clear All"
+
+    /// `body`'s writes as one undo step labelled `label`: the core's
+    /// `beginGroup` and `endGroup` queued around them on the core's queue, in
+    /// order with them.  Without a core, `body` alone.
+    func undoGroup(_ label: String, _ body: () -> Void) {
+        guard let core = typedCore else { return body() }
+        core.write(lane: nil) { $0.beginGroup(label: label) }
+        body()
+        core.write(lane: nil) { $0.endGroup() }
+    }
+
     func sendPreampToDevice(_ db: Float) {
         var val = (db * 10).rounded() / 10
         if val == -0.0 { val = 0.0 }
@@ -590,9 +604,11 @@ extension DSPViewModel {
     /// (FLAT, 1000 Hz, Q=0.707, gain=0, bypass=0) recipe to each.
     func clearCrossoverBands(ch: Int) {
         guard ch >= chOut1 else { return }
-        for i in 0..<DSPViewModel.crossoverBandsPerChannel {
-            let defaults = FilterParams(type: .flat, freq: 1000, q: 0.707, gain: 0)
-            setCrossoverBand(ch: ch, localBand: i, p: defaults)
+        undoGroup(Self.clearAllLabel) {   // -- WP P1SW2 -- one undo step (P1UG)
+            for i in 0..<DSPViewModel.crossoverBandsPerChannel {
+                let defaults = FilterParams(type: .flat, freq: 1000, q: 0.707, gain: 0)
+                setCrossoverBand(ch: ch, localBand: i, p: defaults)
+            }
         }
     }
 
@@ -602,8 +618,10 @@ extension DSPViewModel {
     func clearPEQBands(ch: Int) {
         let bandCount = channelData[ch]?.count ?? 10
         let defaults = FilterParams(type: .flat, freq: 1000, q: 0.707, gain: 0)
-        for b in 0..<bandCount {
-            setFilter(ch: ch, band: b, p: defaults)
+        undoGroup(Self.clearAllLabel) {   // -- WP P1SW2 -- one undo step (P1UG)
+            for b in 0..<bandCount {
+                setFilter(ch: ch, band: b, p: defaults)
+            }
         }
         recomputeMagnitudes(for: ch)
     }
@@ -655,6 +673,14 @@ extension DSPViewModel {
         // all-channel REQ_SET_PREAMP, which would clobber the trims of the
         // inputs outside this pair.
         if let core = typedCore {   // -- WP SW9 --
+            // -- WP P1SW2 -- a linked pair through the core's pair setter: one
+            // undo step for both inputs (P1UG, review sw9 O1)
+            if partner != nil {
+                core.commit(lane: "pre[\(channel)]") { [val] in
+                    try $0.setInputPairPreamp(input: Self.wire(channel), db: val)
+                }
+                return
+            }
             for input in [channel] + (partner.map { [$0] } ?? []) {
                 core.commit(lane: "pre[\(input)]") { [val] in   // -- fixup sw9 F2 --
                     try $0.setInputPreamp(input: Self.wire(input), db: val)
@@ -955,17 +981,21 @@ extension DSPViewModel {
     /// per-band bypass flag, so bypassed bands travel too.  Call before setting
     /// the link bit: the writes are one-way and must not mirror back.
     func syncInputPair(from source: Int, to dest: Int) {
-        for (band, p) in (channelData[source] ?? []).enumerated() {
-            setFilter(ch: dest, band: band, p: p)
+        undoGroup("Link Inputs") {   // -- WP P1SW2 -- one undo step (P1UG)
+            for (band, p) in (channelData[source] ?? []).enumerated() {
+                setFilter(ch: dest, band: band, p: p)
+            }
+            setPreampChannel(channel: dest, db: preampValue(source))
         }
-        setPreampChannel(channel: dest, db: preampValue(source))
     }
 
     /// Reset all 10 PEQ bands of a single channel to flat.
     func clearChannelPEQ(_ ch: Int) {
         let defaultFilter = FilterParams(type: .flat, freq: 1000, q: 0.707, gain: 0)
-        for b in 0..<10 {
-            setFilter(ch: ch, band: b, p: defaultFilter)
+        undoGroup(Self.clearAllLabel) {   // -- WP P1SW2 -- one undo step (P1UG)
+            for b in 0..<10 {
+                setFilter(ch: ch, band: b, p: defaultFilter)
+            }
         }
         recomputeMagnitudes(for: ch)
     }
@@ -2091,12 +2121,16 @@ extension DSPViewModel {
         if outputEnabled[pdmOutputIndex] {
             setOutputEnable(output: pdmOutputIndex, enabled: false)
         }
-        // Reset every crosspoint to the i→i diagonal.
-        for i in 0..<numMatrixInputs {
-            for o in 0..<numOutputChannels {
-                let on = (i == o && i < n)
-                if matrixRouting[i][o] != on || matrixGain[i][o] != 0 || matrixInvert[i][o] {
-                    setMatrixRoute(input: i, output: o, enabled: on, gain: 0, invert: false)
+        // Reset every crosspoint to the i→i diagonal.  -- WP P1SW2 -- One
+        // undo step (P1UG); the output enables, which no undo switches back,
+        // stay outside it (as Qt).
+        undoGroup("Direct 1:1 routing") {
+            for i in 0..<numMatrixInputs {
+                for o in 0..<numOutputChannels {
+                    let on = (i == o && i < n)
+                    if matrixRouting[i][o] != on || matrixGain[i][o] != 0 || matrixInvert[i][o] {
+                        setMatrixRoute(input: i, output: o, enabled: on, gain: 0, invert: false)
+                    }
                 }
             }
         }
@@ -2109,10 +2143,12 @@ extension DSPViewModel {
     /// Disconnect every matrix crosspoint, leaving gains/phase untouched.  Run
     /// off the main thread.
     func clearAllRoutes() {
-        for i in 0..<numMatrixInputs {
-            for o in 0..<numOutputChannels where matrixRouting[i][o] {
-                setMatrixRoute(input: i, output: o, enabled: false,
-                               gain: matrixGain[i][o], invert: matrixInvert[i][o])
+        undoGroup("Clear routing") {   // -- WP P1SW2 -- one undo step (P1UG)
+            for i in 0..<numMatrixInputs {
+                for o in 0..<numOutputChannels where matrixRouting[i][o] {
+                    setMatrixRoute(input: i, output: o, enabled: false,
+                                   gain: matrixGain[i][o], invert: matrixInvert[i][o])
+                }
             }
         }
     }
@@ -4297,6 +4333,22 @@ extension DSPViewModel {
     /// refused and nothing was sent.
     func enterBootloaderForInstall(completion: @escaping (Bool) -> Void) {
         let transport = self.transport
+        // -- WP P1SW2 -- Through a core: its gated call (a token minted now,
+        // after the person confirmed the install) takes the device lock and
+        // holds it for the restart itself.
+        if let core = transport.coreStateSource {
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = core.call { try $0.enterBootloaderConfirmed(token: $0.confirmToken(op: .enterBootloader)) }
+                let sent: Bool
+                switch result {
+                case .failure(.Locked), .failure(.Denied), .failure(.ConfirmationRequired),
+                     .failure(.InstallerLock), .failure(.Disconnected): sent = false
+                default: sent = true
+                }
+                DispatchQueue.main.async { completion(sent) }
+            }
+            return
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             guard transport.acquireDeviceLock(reason: "Installing firmware", timeout: DeviceLock.maxTimeout) else {
                 DispatchQueue.main.async { completion(false) }
@@ -4307,6 +4359,17 @@ extension DSPViewModel {
             _ = transport.getControlRequest(request: REQ_ENTER_BOOTLOADER, value: 0, index: 2, length: 1)
             DispatchQueue.main.async { completion(true) }
         }
+    }
+
+    /// -- WP P1SW2 -- The restart into the bootloader: through the core with
+    /// a token minted after the person confirmed (P1TK), or the raw request
+    /// without a core.  The device drops off the bus answering: no reply.
+    static func enterBootloader(_ transport: any DeviceTransport) {
+        if let core = transport.coreStateSource {
+            _ = core.call { try $0.enterBootloaderConfirmed(token: $0.confirmToken(op: .enterBootloader)) }
+            return
+        }
+        _ = transport.getControlRequest(request: REQ_ENTER_BOOTLOADER, value: 0, index: 2, length: 1)
     }
 
     /// Called when the install ends, however it ends.  Idempotent.
@@ -5143,7 +5206,7 @@ extension DSPViewModel {
     @discardableResult
     func savePreset(slot: Int) -> UInt8 {
         if let core = typedCore {   // -- WP SW13 -- the core takes the lock and waits
-            switch core.writeAndWait({ try $0.savePreset(slot: Self.wire(slot)) }) {
+            switch core.writeAndWait({ try $0.savePresetConfirmed(slot: Self.wire(slot), token: $0.confirmToken(op: .savePreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .failure(let error): return Self.presetStatus(error)
             case .success: corePresetSaved(core, slot: slot, active: slot)
             }
@@ -5213,7 +5276,8 @@ extension DSPViewModel {
     @discardableResult
     func copyPreset(from sourceSlot: Int, to destinationSlot: Int) -> UInt8 {
         if let core = typedCore {   // -- WP SW13 -- one lock and both waits, in the core
-            switch core.writeAndWait({ try $0.copyPreset(source: Self.wire(sourceSlot), dest: Self.wire(destinationSlot)) }) {
+            switch core.writeAndWait({ try $0.copyPresetConfirmed(source: Self.wire(sourceSlot), dest: Self.wire(destinationSlot),
+                                                              token: $0.confirmToken(op: .copyPreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .failure(let error): return Self.presetStatus(error)
             case .success: corePresetSaved(core, slot: destinationSlot, active: sourceSlot)
             }
@@ -5320,7 +5384,7 @@ extension DSPViewModel {
             // The core waits for the deferred delete; deleting the active
             // slot loads the factory defaults, which it reads again.
             let wasActive = Int(core.readState().activePresetSlot) == slot
-            switch core.writeAndWait({ try $0.deletePreset(slot: Self.wire(slot)) }) {
+            switch core.writeAndWait({ try $0.deletePresetConfirmed(slot: Self.wire(slot), token: $0.confirmToken(op: .deletePreset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .failure(let error): return Self.presetStatus(error)
             case .success:
                 DispatchQueue.main.async { self.presetOccupied &= ~UInt16(1 << slot) }
@@ -5436,7 +5500,7 @@ extension DSPViewModel {
     /// sent) apart from a device that did not acknowledge (`.error`).
     func saveOutputConfigResult() -> Result<Void, LinkStatus> {
         if let core = typedCore {   // -- WP SW13 -- the core takes the lock
-            switch core.writeAndWait({ try $0.saveOutputConfig() }) {
+            switch core.writeAndWait({ try $0.saveOutputConfigConfirmed(token: $0.confirmToken(op: .saveOutputConfig)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .success: return .success(())
             case .failure(.Locked), .failure(.Denied): return .failure(.locked)
             case .failure: return .failure(.error)
@@ -5810,7 +5874,7 @@ extension DSPViewModel {
     func saveParams() -> UInt8 {
         guard isDeviceConnected else { return FLASH_ERR_WRITE }
         if let core = typedCore {   // -- WP SW13 -- under the core's lock; the saved state is the baseline
-            switch core.writeAndWait({ try $0.saveParams() }) {
+            switch core.writeAndWait({ try $0.saveParamsConfirmed(token: $0.confirmToken(op: .saveParams)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .success:
                 let changes = core.capturePresetBaseline()
                 DispatchQueue.main.async { self.coreMirror.showPresetChanges(changes, from: core) }
@@ -5855,7 +5919,7 @@ extension DSPViewModel {
             // The core waits for the reset and reads everything again (its
             // baseline); the settings pages' state follows with fetchAll, as
             // before.
-            switch core.writeAndWait({ try $0.factoryReset() }) {
+            switch core.writeAndWait({ try $0.factoryResetConfirmed(token: $0.confirmToken(op: .factoryReset)) }) {   // -- WP P1SW2 -- a token minted after the person confirmed
             case .success:
                 fetchAll()
                 return FLASH_OK

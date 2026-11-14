@@ -82,6 +82,8 @@ final class CoreUndo: ObservableObject {
             default: return "Stepped over \(move.skipped.count) changes that cannot be undone."
             }
         case .failure(let error):
+            // -- WP P1SW2 -- the lock or the limits refused the step: the core's row
+            if CoreInstaller.isNamedRefusal(error) { return CoreInstaller.line(for: error) }
             switch error {
             case .Transfer(let msg), .InvalidArgument(let msg), .Link(_, let msg): return msg
             case .Disconnected: return "No device."

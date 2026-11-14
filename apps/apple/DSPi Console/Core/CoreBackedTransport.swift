@@ -186,6 +186,9 @@ final class CoreBackedTransport: DeviceTransport {
         coreQueue.async { [core] in
             core.notifyTapSet(enabled: true)
             core.setNotifyListener(listener: listener)
+            // -- WP P1SW2 -- Tokens required (P1TK): every gated call in this
+            // app mints its token after the person confirmed (`*Confirmed`).
+            core.requireConfirmation(on: true)
         }
 
         if let host = host, let bridge = bridge {
@@ -450,6 +453,11 @@ final class CoreBackedTransport: DeviceTransport {
         // value at once and the status row says why.
         case .Unsupported? where typed: RefusedWrite.handleInvalid(RefusedWrite.unsupportedMessage, fanout: fanout)
         case .Transfer? where typed: RefusedWrite.handleInvalid(RefusedWrite.transferMessage, fanout: fanout)
+        // -- WP P1SW2 -- The limits profile, the installer lock, a missing
+        // token and the hub's named refusals: nothing was sent, so the edit
+        // is put back and the status row shows the core's notice row.
+        case let e? where CoreInstaller.isNamedRefusal(e):
+            RefusedWrite.handleInvalid(CoreInstaller.line(for: e), fanout: fanout)
         default: break
         }
     }
@@ -921,6 +929,8 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
                 // As a raw write-as-read's failure (getControlResult).
                 switch failure {
                 case .Locked: DeviceLock.notice.post()
+                // -- WP P1SW2 -- the lock or the limits refused it: the core's row
+                case let e where CoreInstaller.isNamedRefusal(e): DeviceLock.notice.post(CoreInstaller.line(for: e))
                 case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout)
                 default: break
                 }
