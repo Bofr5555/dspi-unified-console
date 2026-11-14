@@ -72,7 +72,9 @@ class AppModeController(
     scope: CoroutineScope,
     private val demoFactory: () -> DemoSession,
     private val forwardUiVisible: (Boolean) -> Unit,
-    private val remoteFactory: () -> RemoteSession = { error("DSPi Link is not available") }
+    private val remoteFactory: () -> RemoteSession = { error("DSPi Link is not available") },
+    // -- WP P1AN1 -- a document opened offline: the demo stack on the document (P1OF)
+    private val documentFactory: (text: String, fileName: String) -> DemoSession = { _, _ -> error("Opening a file is not available") }
 ) {
     private val scope = scope
     private val _mode = MutableStateFlow(AppMode.DEVICE)
@@ -219,6 +221,26 @@ class AppModeController(
         _bridge.value = d.bridge
         _mode.value = AppMode.DEMO
         return true
+    }
+
+    // -- WP P1AN1 --
+    /**
+     * Open File… (P1OF): leave the current device (after the Unsaved Changes
+     * flow, as any switch) for a session on the document [text], named
+     * [fileName]. It runs as a demo stack (mode DEMO, nothing on USB); the strip
+     * says "File: <name>" while its bridge reports the document. Leaving it is
+     * leaving demo. A document opened while one is open replaces it.
+     */
+    fun openDocument(text: String, fileName: String) {
+        switchGate.run {
+            exitRemote()
+            exitDemo()
+            val d = documentFactory(text, fileName)
+            demo = d
+            d.bridge.setUiVisible(uiVisible)
+            _bridge.value = d.bridge
+            _mode.value = AppMode.DEMO
+        }
     }
 
     /** Leave demo mode and tear the demo stack down. No-op in device mode. */

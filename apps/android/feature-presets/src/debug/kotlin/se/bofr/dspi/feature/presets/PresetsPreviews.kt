@@ -15,11 +15,6 @@ import se.bofr.dspi.feature.presets.autoeq.AutoEQManager
 import se.bofr.dspi.feature.presets.autoeq.FavoriteProfile
 import se.bofr.dspi.feature.presets.autoeq.InMemoryFavoritesStore
 import se.bofr.dspi.ui.DspiTheme
-import se.bofr.dspi.ui.alert.AlertButton
-import se.bofr.dspi.ui.alert.AlertButtonRole
-import se.bofr.dspi.ui.alert.AlertCheckbox
-import se.bofr.dspi.ui.alert.AlertStyle
-import se.bofr.dspi.ui.alert.ConsoleAlert
 import se.bofr.dspi.ui.alert.ConsoleAlertDialog
 
 private const val PREVIEW_DB = """{"version":1,"generatedAt":"2026-01-18T05:41:39.649194+00:00","entryCount":3,"entries":[
@@ -72,20 +67,19 @@ private fun UnsavedChangesPreview() {
     DspiTheme { ConsoleAlertDialog(PresetAlerts.unsavedChangesAlert(diff) {}, onButton = { _, _ -> }, onDismiss = {}) }
 }
 
-@Preview(name = "Import Device Configuration alert", widthDp = 400, heightDp = 700)
+// -- WP P1AN1 -- the import preview replaces the old two-checkbox alert
+@Preview(name = "Import preview", widthDp = 400, heightDp = 800, showBackground = true)
 @Composable
-private fun ImportConfigurationPreview() {
-    val alert =
-        ConsoleAlert(
-            "Import Device Configuration",
-            PresetDocumentFiles.importOptionsText("RP2040", "1.1.5", "2026-10-01T12:00:00Z", "RP2350"),
-            AlertStyle.INFORMATIONAL,
-            listOf(AlertButton("Import", AlertButtonRole.DEFAULT), AlertButton("Cancel", AlertButtonRole.CANCEL)),
-            checkboxes =
-            listOf(
-                AlertCheckbox(FileMenuActions.VOLUMES, "Volume levels (master and listening volume)"),
-                AlertCheckbox(FileMenuActions.HARDWARE, "Hardware I/O (GPIO pins, clocks, ADAT, inputs, output limiters)")
+private fun ImportPreviewPreview() {
+    val diff =
+        DocDiff(
+            ok = true,
+            rows = listOf(
+                DiffRow("eq", "Input L", "Band 1 gain", "0 dB", "-3 dB"),
+                DiffRow("outputs", "Out 1", "Gain", "0 dB", "-6 dB"),
+                DiffRow("names", "Out 1", "Name", "Out 1", "Left woofer")
             )
         )
-    DspiTheme { ConsoleAlertDialog(alert, onButton = { _, _ -> }, onDismiss = {}) }
+    val p = ImportPreview("{}", "Living Room", "Saved from RP2350, firmware 1.1.5.", diff, ImportBlock.defaults(diff), false, false)
+    DspiTheme { ImportPreviewSheet(p, onBlock = { _, _ -> }, onGuarded = {}, onCancel = {}, onApply = {}) }
 }

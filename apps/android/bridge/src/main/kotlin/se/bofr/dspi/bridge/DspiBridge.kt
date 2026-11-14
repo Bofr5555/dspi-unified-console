@@ -1019,6 +1019,10 @@ interface DspiBridge {
     /** The firmware guard (CG8) and the AutoEQ update (CG6). Test doubles get [CoreTools.Unavailable]. */
     val coreTools: CoreTools get() = CoreTools.Unavailable
 
+    // -- WP P1AN1 --
+    /** Snapshots, A/B, safe apply, import preview and offline documents. Test doubles get [Snapshots.Unavailable]. */
+    val snapshots: Snapshots get() = Snapshots.Unavailable
+
     /** Token issuer for the GATED members (D5). Same instance for the bridge's lifetime. */
     val dangerousOps: DangerousOps
 
