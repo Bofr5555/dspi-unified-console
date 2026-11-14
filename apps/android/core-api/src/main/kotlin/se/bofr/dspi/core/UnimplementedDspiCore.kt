@@ -188,6 +188,24 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun firmwareGuardBoard(): FirmwareGuardBoard = throw NotImplementedError("firmware_guard_board")
 
+    override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply = throw NotImplementedError("apply_guarded_import")
+
+    override fun applyGuardedSnapshot(id: String, timeoutS: Long): GuardedApply = throw NotImplementedError("apply_guarded_snapshot")
+
+    override fun applyGuardedSnapshotDocument(text: String, timeoutS: Long): GuardedApply = throw NotImplementedError("apply_guarded_snapshot_document")
+
+    override fun applyGuardBegin(label: String, timeoutS: Long): GuardedApply = throw NotImplementedError("apply_guard_begin")
+
+    override fun applyConfirm(): GuardedApply = throw NotImplementedError("apply_confirm")
+
+    override fun applyRevert(): GuardedApply = throw NotImplementedError("apply_revert")
+
+    override fun applyPoll(): GuardedApply = throw NotImplementedError("apply_poll")
+
+    override fun applyStatus(): GuardedApply = throw NotImplementedError("apply_status")
+
+    override fun applyGuardDefault(): Boolean = throw NotImplementedError("apply_guard_default")
+
     override fun setOutputPin(slot: Int, pin: Int): Unit = throw NotImplementedError("set_output_pin")
 
     override fun fetchOutputPin(slot: Int): Int = throw NotImplementedError("fetch_output_pin")

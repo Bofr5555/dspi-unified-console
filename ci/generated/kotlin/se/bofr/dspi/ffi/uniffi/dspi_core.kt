@@ -1642,6 +1642,24 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1762,6 +1780,24 @@ fun uniffi_dspi_core_checksum_method_dspicore_apply_all_params(
 fun uniffi_dspi_core_checksum_method_dspicore_apply_at_frame(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_confirm(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_guard_begin(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_guard_default(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_guarded_import(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_guarded_snapshot(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_guarded_snapshot_document(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_poll(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_revert(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_apply_status(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_begin_group(
 ): Short
@@ -2483,6 +2519,24 @@ fun uniffi_dspi_core_fn_method_dspicore_apply_at_frame(`ptr`: Pointer,`frame`: L
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_apply_at_time_base(`ptr`: Pointer,`timeBase`: Byte,`frame`: Long,`op`: Byte,`arg`: Byte,`value`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_apply_confirm(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_apply_guard_begin(`ptr`: Pointer,`label`: RustBuffer.ByValue,`timeoutS`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_apply_guard_default(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_dspi_core_fn_method_dspicore_apply_guarded_import(`ptr`: Pointer,`text`: RustBuffer.ByValue,`options`: Int,`eqChannels`: Int,`timeoutS`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_apply_guarded_snapshot(`ptr`: Pointer,`id`: RustBuffer.ByValue,`timeoutS`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_apply_guarded_snapshot_document(`ptr`: Pointer,`text`: RustBuffer.ByValue,`timeoutS`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_apply_poll(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_apply_revert(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_apply_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_begin_group(`ptr`: Pointer,`label`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_cached_device_name(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3494,6 +3548,33 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base() != 14078.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 1016.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_guard_begin() != 27268.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_guard_default() != 61033.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_guarded_import() != 8099.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_guarded_snapshot() != 60494.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_guarded_snapshot_document() != 49168.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_poll() != 47485.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_revert() != 4343.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_status() != 7134.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_begin_group() != 15128.toShort()) {
@@ -6051,6 +6132,93 @@ public interface DspiCoreInterface {
      * phase-locked on the USB time base, a full queue).
      */
     fun `applyAtTimeBase`(`timeBase`: kotlin.UByte, `frame`: kotlin.ULong, `op`: kotlin.UByte, `arg`: kotlin.UByte, `value`: kotlin.Short)
+    
+    /**
+     * Keep the change. Returns the state: [`GuardPhase::Kept`]; or, past
+     * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
+     * could not reach the hub (it is not sent again: the hub reverts).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     */
+    fun `applyConfirm`(): GuardedApply
+    
+    /**
+     * Begin a guard around a flow the client runs itself (output enables, a
+     * control-surface edit, several hardware settings): capture a snapshot
+     * now, then the client writes as usual and calls
+     * [`DspiCore::apply_confirm`] or [`DspiCore::apply_revert`]; the timeout
+     * and a lost connection work as for an import. `label` names the flow
+     * in the status. Errors as [`DspiCore::apply_guarded_import`]'s before
+     * anything is applied.
+     */
+    fun `applyGuardBegin`(`label`: kotlin.String, `timeoutS`: kotlin.UInt): GuardedApply
+    
+    /**
+     * Whether an import or a recall is guarded by default here (owner,
+     * OD-P1g): over DSPi Link to a hub that offers the guard, yes; on USB
+     * it is the user's choice. An A/B toggle never is.
+     */
+    fun `applyGuardDefault`(): kotlin.Boolean
+    
+    /**
+     * Import `text` (a `.dspipreset` document) with a way back: capture a
+     * snapshot, apply the blocks `options` and `eq_channels` choose (as
+     * [`DspiCore::config_import_selected`] takes them), then wait
+     * `timeout_s` seconds (0: 30, at most 590) for
+     * [`DspiCore::apply_confirm`]. A timeout, [`DspiCore::apply_revert`] or a
+     * failed import puts the snapshot back; over DSPi Link the hub guards it
+     * too. No confirmation token: a guarded apply has its own way back.
+     *
+     * Returns the state, [`GuardPhase::Waiting`] with the changes.
+     *
+     * Errors, with nothing applied: [`DspiError::InvalidArgument`] for a text
+     * that is not a document, an empty selection, or while another guarded
+     * apply waits; [`DspiError::Disconnected`], [`DspiError::ReadOnly`];
+     * [`DspiError::Link`] for the hub's refusal (`busy`, `locked`,
+     * `denied`, `no_device`). The import's own errors, after the snapshot
+     * was put back (see [`DspiCore::apply_status`]).
+     */
+    fun `applyGuardedImport`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt, `timeoutS`: kotlin.UInt): GuardedApply
+    
+    /**
+     * Recall snapshot `id` from the store with a way back, as
+     * [`DspiCore::apply_guarded_import`] does for a document. Errors as
+     * there, and [`DspiCore::snapshot_recall`]'s.
+     */
+    fun `applyGuardedSnapshot`(`id`: kotlin.String, `timeoutS`: kotlin.UInt): GuardedApply
+    
+    /**
+     * Recall a snapshot document's text with a way back (the web's, which
+     * keeps snapshots as files the page holds). Only a snapshot: any other
+     * document is refused with [`DspiError::InvalidArgument`], nothing sent.
+     */
+    fun `applyGuardedSnapshotDocument`(`text`: kotlin.String, `timeoutS`: kotlin.UInt): GuardedApply
+    
+    /**
+     * Drive the guard: revert at the timeout, notice a lost connection, ask
+     * the hub how a lost one ended once the connection is back. Call it
+     * from the client's poll, off the UI thread (it may write). Returns the
+     * state; at once, unchanged, while another guarded call runs.
+     */
+    fun `applyPoll`(): GuardedApply
+    
+    /**
+     * Put the settings from before back now. Returns the state:
+     * [`GuardPhase::Reverted`], [`GuardPhase::RevertFailed`], or
+     * [`GuardPhase::Lost`] when the connection went. After a lost USB
+     * connection, it recalls the captured snapshot once the same device is
+     * open again (the user's word, never queued).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting and no
+     * lost apply can be reverted on the open device.
+     */
+    fun `applyRevert`(): GuardedApply
+    
+    /**
+     * The guard's state, for the countdown bar: no I/O, never blocks on a
+     * guarded call.
+     */
+    fun `applyStatus`(): GuardedApply
     
     /**
      * Begin an undo group: everything written until the matching
@@ -9555,6 +9723,189 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Keep the change. Returns the state: [`GuardPhase::Kept`]; or, past
+     * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
+     * could not reach the hub (it is not sent again: the hub reverts).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     */
+    @Throws(DspiException::class)override fun `applyConfirm`(): GuardedApply {
+            return FfiConverterTypeGuardedApply.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_confirm(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Begin a guard around a flow the client runs itself (output enables, a
+     * control-surface edit, several hardware settings): capture a snapshot
+     * now, then the client writes as usual and calls
+     * [`DspiCore::apply_confirm`] or [`DspiCore::apply_revert`]; the timeout
+     * and a lost connection work as for an import. `label` names the flow
+     * in the status. Errors as [`DspiCore::apply_guarded_import`]'s before
+     * anything is applied.
+     */
+    @Throws(DspiException::class)override fun `applyGuardBegin`(`label`: kotlin.String, `timeoutS`: kotlin.UInt): GuardedApply {
+            return FfiConverterTypeGuardedApply.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_guard_begin(
+        it, FfiConverterString.lower(`label`),FfiConverterUInt.lower(`timeoutS`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Whether an import or a recall is guarded by default here (owner,
+     * OD-P1g): over DSPi Link to a hub that offers the guard, yes; on USB
+     * it is the user's choice. An A/B toggle never is.
+     */override fun `applyGuardDefault`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_guard_default(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Import `text` (a `.dspipreset` document) with a way back: capture a
+     * snapshot, apply the blocks `options` and `eq_channels` choose (as
+     * [`DspiCore::config_import_selected`] takes them), then wait
+     * `timeout_s` seconds (0: 30, at most 590) for
+     * [`DspiCore::apply_confirm`]. A timeout, [`DspiCore::apply_revert`] or a
+     * failed import puts the snapshot back; over DSPi Link the hub guards it
+     * too. No confirmation token: a guarded apply has its own way back.
+     *
+     * Returns the state, [`GuardPhase::Waiting`] with the changes.
+     *
+     * Errors, with nothing applied: [`DspiError::InvalidArgument`] for a text
+     * that is not a document, an empty selection, or while another guarded
+     * apply waits; [`DspiError::Disconnected`], [`DspiError::ReadOnly`];
+     * [`DspiError::Link`] for the hub's refusal (`busy`, `locked`,
+     * `denied`, `no_device`). The import's own errors, after the snapshot
+     * was put back (see [`DspiCore::apply_status`]).
+     */
+    @Throws(DspiException::class)override fun `applyGuardedImport`(`text`: kotlin.String, `options`: kotlin.UInt, `eqChannels`: kotlin.UInt, `timeoutS`: kotlin.UInt): GuardedApply {
+            return FfiConverterTypeGuardedApply.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_guarded_import(
+        it, FfiConverterString.lower(`text`),FfiConverterUInt.lower(`options`),FfiConverterUInt.lower(`eqChannels`),FfiConverterUInt.lower(`timeoutS`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Recall snapshot `id` from the store with a way back, as
+     * [`DspiCore::apply_guarded_import`] does for a document. Errors as
+     * there, and [`DspiCore::snapshot_recall`]'s.
+     */
+    @Throws(DspiException::class)override fun `applyGuardedSnapshot`(`id`: kotlin.String, `timeoutS`: kotlin.UInt): GuardedApply {
+            return FfiConverterTypeGuardedApply.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_guarded_snapshot(
+        it, FfiConverterString.lower(`id`),FfiConverterUInt.lower(`timeoutS`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Recall a snapshot document's text with a way back (the web's, which
+     * keeps snapshots as files the page holds). Only a snapshot: any other
+     * document is refused with [`DspiError::InvalidArgument`], nothing sent.
+     */
+    @Throws(DspiException::class)override fun `applyGuardedSnapshotDocument`(`text`: kotlin.String, `timeoutS`: kotlin.UInt): GuardedApply {
+            return FfiConverterTypeGuardedApply.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_guarded_snapshot_document(
+        it, FfiConverterString.lower(`text`),FfiConverterUInt.lower(`timeoutS`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Drive the guard: revert at the timeout, notice a lost connection, ask
+     * the hub how a lost one ended once the connection is back. Call it
+     * from the client's poll, off the UI thread (it may write). Returns the
+     * state; at once, unchanged, while another guarded call runs.
+     */override fun `applyPoll`(): GuardedApply {
+            return FfiConverterTypeGuardedApply.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_poll(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Put the settings from before back now. Returns the state:
+     * [`GuardPhase::Reverted`], [`GuardPhase::RevertFailed`], or
+     * [`GuardPhase::Lost`] when the connection went. After a lost USB
+     * connection, it recalls the captured snapshot once the same device is
+     * open again (the user's word, never queued).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting and no
+     * lost apply can be reverted on the open device.
+     */
+    @Throws(DspiException::class)override fun `applyRevert`(): GuardedApply {
+            return FfiConverterTypeGuardedApply.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_revert(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The guard's state, for the countdown bar: no I/O, never blocks on a
+     * guarded call.
+     */override fun `applyStatus`(): GuardedApply {
+            return FfiConverterTypeGuardedApply.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_apply_status(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -22400,6 +22751,108 @@ public object FfiConverterTypeFirmwareGuardVerdict: FfiConverterRustBuffer<Firmw
 
 
 /**
+ * A guarded apply's state: [`DspiCore::apply_status`] and every guarded call.
+ */
+data class GuardedApply (
+    /**
+     * This core's number for it (1, 2, …); 0 when none was begun.
+     */
+    var `id`: kotlin.ULong, 
+    /**
+     * Where it stands.
+     */
+    var `phase`: GuardPhase, 
+    /**
+     * What was applied: the document's or snapshot's name, or the client's
+     * label for a flow.
+     */
+    var `label`: kotlin.String, 
+    /**
+     * The hub guards it too (DSPi Link with `apply_guard`): a vanished
+     * client is reverted by the hub.
+     */
+    var `hub`: kotlin.Boolean, 
+    /**
+     * The timeout, ms.
+     */
+    var `timeoutMs`: kotlin.UInt, 
+    /**
+     * What is left of it, ms; 0 once it has ended.
+     */
+    var `remainingMs`: kotlin.UInt, 
+    /**
+     * How it ended: "" while waiting, `confirmed`, `timeout`, `reverted`
+     * (Revert), `failed` (the apply itself failed), `connection_lost`,
+     * `taken_over` (another console took the device's lock) or
+     * `hub_stopping`.
+     */
+    var `reason`: kotlin.String, 
+    /**
+     * One plain sentence for the user, "" while waiting.
+     */
+    var `message`: kotlin.String, 
+    /**
+     * What the apply changed, in the unsaved-changes list's words.
+     */
+    var `changes`: List<kotlin.String>, 
+    /**
+     * What the apply or the revert did not do, and why.
+     */
+    var `notes`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeGuardedApply: FfiConverterRustBuffer<GuardedApply> {
+    override fun read(buf: ByteBuffer): GuardedApply {
+        return GuardedApply(
+            FfiConverterULong.read(buf),
+            FfiConverterTypeGuardPhase.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: GuardedApply) = (
+            FfiConverterULong.allocationSize(value.`id`) +
+            FfiConverterTypeGuardPhase.allocationSize(value.`phase`) +
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterBoolean.allocationSize(value.`hub`) +
+            FfiConverterUInt.allocationSize(value.`timeoutMs`) +
+            FfiConverterUInt.allocationSize(value.`remainingMs`) +
+            FfiConverterString.allocationSize(value.`reason`) +
+            FfiConverterString.allocationSize(value.`message`) +
+            FfiConverterSequenceString.allocationSize(value.`changes`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`)
+    )
+
+    override fun write(value: GuardedApply, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`id`, buf)
+            FfiConverterTypeGuardPhase.write(value.`phase`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterBoolean.write(value.`hub`, buf)
+            FfiConverterUInt.write(value.`timeoutMs`, buf)
+            FfiConverterUInt.write(value.`remainingMs`, buf)
+            FfiConverterString.write(value.`reason`, buf)
+            FfiConverterString.write(value.`message`, buf)
+            FfiConverterSequenceString.write(value.`changes`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+    }
+}
+
+
+
+/**
  * One change in the history ([`DspiCore::history`]).
  */
 data class HistoryEntry (
@@ -26943,6 +27396,68 @@ public object FfiConverterTypeFirmwareGuardReason: FfiConverterRustBuffer<Firmwa
     override fun allocationSize(value: FirmwareGuardReason) = 4UL
 
     override fun write(value: FirmwareGuardReason, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where a guarded apply stands ([`GuardedApply::phase`]).
+ */
+
+enum class GuardPhase {
+    
+    /**
+     * None has been begun on this core.
+     */
+    IDLE,
+    /**
+     * Applied; waiting for Keep or Revert. The countdown runs.
+     */
+    WAITING,
+    /**
+     * Kept: by Keep, or because another console took the device over.
+     */
+    KEPT,
+    /**
+     * The settings from before are back.
+     */
+    REVERTED,
+    /**
+     * Putting them back failed; it is not tried again.
+     */
+    REVERT_FAILED,
+    /**
+     * The hub went to put them back and the device was not there: nothing
+     * was written.
+     */
+    NOT_WRITTEN,
+    /**
+     * The connection was lost. With the hub's guard this lasts until the
+     * hub says how it ended; without it, the device may still hold the
+     * change, and Revert works once the same device is open again.
+     */
+    LOST;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeGuardPhase: FfiConverterRustBuffer<GuardPhase> {
+    override fun read(buf: ByteBuffer) = try {
+        GuardPhase.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: GuardPhase) = 4UL
+
+    override fun write(value: GuardPhase, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }

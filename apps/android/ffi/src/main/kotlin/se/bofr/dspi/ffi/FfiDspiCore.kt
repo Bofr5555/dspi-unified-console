@@ -244,6 +244,24 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun firmwareGuardBoard(): FirmwareGuardBoard = core.firmwareGuardBoard().toDomain()
 
+    override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply = call { core.applyGuardedImport(text, options.toUInt(), eqChannels.toUInt(), timeoutS.toUInt()).toDomain() }
+
+    override fun applyGuardedSnapshot(id: String, timeoutS: Long): GuardedApply = call { core.applyGuardedSnapshot(id, timeoutS.toUInt()).toDomain() }
+
+    override fun applyGuardedSnapshotDocument(text: String, timeoutS: Long): GuardedApply = call { core.applyGuardedSnapshotDocument(text, timeoutS.toUInt()).toDomain() }
+
+    override fun applyGuardBegin(label: String, timeoutS: Long): GuardedApply = call { core.applyGuardBegin(label, timeoutS.toUInt()).toDomain() }
+
+    override fun applyConfirm(): GuardedApply = call { core.applyConfirm().toDomain() }
+
+    override fun applyRevert(): GuardedApply = call { core.applyRevert().toDomain() }
+
+    override fun applyPoll(): GuardedApply = core.applyPoll().toDomain()
+
+    override fun applyStatus(): GuardedApply = core.applyStatus().toDomain()
+
+    override fun applyGuardDefault(): Boolean = core.applyGuardDefault()
+
     override fun setOutputPin(slot: Int, pin: Int) = call { core.setOutputPin(slot.toUByte(), pin.toUByte()) }
 
     override fun fetchOutputPin(slot: Int): Int = call { core.fetchOutputPin(slot.toUByte()).toInt() }
@@ -2885,6 +2903,34 @@ internal fun FirmwareGuardVerdict.toFfi() =
         requiredMv = requiredMv.toUShort(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.GuardedApply.toDomain() =
+    GuardedApply(
+        id = id.toLong(),
+        phase = phase.toDomain(),
+        label = label,
+        hub = hub,
+        timeoutMs = timeoutMs.toLong(),
+        remainingMs = remainingMs.toLong(),
+        reason = reason,
+        message = message,
+        changes = changes,
+        notes = notes,
+    )
+
+internal fun GuardedApply.toFfi() =
+    se.bofr.dspi.ffi.uniffi.GuardedApply(
+        id = id.toULong(),
+        phase = phase.toFfi(),
+        label = label,
+        hub = hub,
+        timeoutMs = timeoutMs.toUInt(),
+        remainingMs = remainingMs.toUInt(),
+        reason = reason,
+        message = message,
+        changes = changes,
+        notes = notes,
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =
     HistoryEntry(
         path = path,
@@ -3299,6 +3345,28 @@ internal fun FirmwareGuardReason.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareGuardR
         FirmwareGuardReason.IMAGE_LOWER -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.IMAGE_LOWER
         FirmwareGuardReason.BOARD_UNKNOWN -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.BOARD_UNKNOWN
         FirmwareGuardReason.OVERVOLT -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.OVERVOLT
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.GuardPhase.toDomain(): GuardPhase =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.GuardPhase.IDLE -> GuardPhase.IDLE
+        se.bofr.dspi.ffi.uniffi.GuardPhase.WAITING -> GuardPhase.WAITING
+        se.bofr.dspi.ffi.uniffi.GuardPhase.KEPT -> GuardPhase.KEPT
+        se.bofr.dspi.ffi.uniffi.GuardPhase.REVERTED -> GuardPhase.REVERTED
+        se.bofr.dspi.ffi.uniffi.GuardPhase.REVERT_FAILED -> GuardPhase.REVERT_FAILED
+        se.bofr.dspi.ffi.uniffi.GuardPhase.NOT_WRITTEN -> GuardPhase.NOT_WRITTEN
+        se.bofr.dspi.ffi.uniffi.GuardPhase.LOST -> GuardPhase.LOST
+    }
+
+internal fun GuardPhase.toFfi(): se.bofr.dspi.ffi.uniffi.GuardPhase =
+    when (this) {
+        GuardPhase.IDLE -> se.bofr.dspi.ffi.uniffi.GuardPhase.IDLE
+        GuardPhase.WAITING -> se.bofr.dspi.ffi.uniffi.GuardPhase.WAITING
+        GuardPhase.KEPT -> se.bofr.dspi.ffi.uniffi.GuardPhase.KEPT
+        GuardPhase.REVERTED -> se.bofr.dspi.ffi.uniffi.GuardPhase.REVERTED
+        GuardPhase.REVERT_FAILED -> se.bofr.dspi.ffi.uniffi.GuardPhase.REVERT_FAILED
+        GuardPhase.NOT_WRITTEN -> se.bofr.dspi.ffi.uniffi.GuardPhase.NOT_WRITTEN
+        GuardPhase.LOST -> se.bofr.dspi.ffi.uniffi.GuardPhase.LOST
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.HistorySource.toDomain(): HistorySource =
