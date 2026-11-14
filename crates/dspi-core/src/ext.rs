@@ -116,12 +116,41 @@ impl DspiCore {
     /// needs `word`, exactly `OVERVOLT`, or nothing is written. This is the
     /// one path to 1.30 V; the GUIs' flow stops at 1.25 V (`core_vreg_cal_*`).
     ///
-    /// Errors: `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
+    /// -- WP P1TZF -- A SET stores the voltage in flash: it takes a
+    /// confirmation token ([`crate::ConfirmOp::VregSave`], as
+    /// [`DspiCore::core_vreg_manual_set_confirmed`]), checked first, before
+    /// anything is sent. The other operations (a trial, its end, AUTO, CLEAR)
+    /// take none, as the plan says; a token given with one is still checked
+    /// and spent. Mint one per try: a refusal for the word after the token
+    /// was accepted has spent it.
+    ///
+    /// Errors: [`DspiError::ConfirmationRequired`] for a SET without a good
+    /// token; `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
     /// a read-only connection;
     /// `Unsupported` when the device has no usable core-voltage extension;
     /// `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
     /// request anyway; `Denied`, `Locked` or `Transfer` from the link.
-    pub fn core_vreg_op(&self, op: u8, value: u8, word: Option<String>) -> Result<()> {
+    pub fn core_vreg_op_confirmed(
+        &self,
+        op: u8,
+        value: u8,
+        word: Option<String>,
+        token: Option<String>,
+    ) -> Result<()> {
+        if op == VREG_OP_SET || token.is_some() {
+            let _ticket = self.confirm_gate(crate::ConfirmOp::VregSave, token.as_deref())?;
+        }
+        self.core_vreg_op_with(op, value, word)
+    }
+}
+
+// -- WP P1TZF -- a SET's opcode in `core_vreg_op_confirmed` (`VregOp::Set`'s code)
+const VREG_OP_SET: u8 = 0;
+
+impl DspiCore {
+    /// The body of [`DspiCore::core_vreg_op_confirmed`] past its token, for
+    /// the calibration flow, whose own calls have passed their gate (WP P1TZF).
+    pub(crate) fn core_vreg_op_with(&self, op: u8, value: u8, word: Option<String>) -> Result<()> {
         self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
         let floor = match &inner.conn()?.ext.core_vreg {

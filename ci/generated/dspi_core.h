@@ -9,13 +9,15 @@
  * `dspi_copy_preset`, `dspi_delete_preset`, `dspi_save_params`,
  * `dspi_factory_reset`, `dspi_save_output_config`, `dspi_enter_bootloader`,
  * `dspi_config_import`, `dspi_config_import_selected`,
- * `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`), the free
- * firmware writes (`dspi_flash_to_drive`, `dspi_flash_to_drive_guarded`:
- * now `dspi_flash_to_drive_confirmed` and `dspi_flash_confirmed` on a core,
- * which need no device open) and the switch (`dspi_require_confirmation`,
- * `dspi_confirmation_required`).
- * `dspi_write_param` refuses the gated paths (`preset.save`,
- * `preset.delete`, `dev.save`, `dev.save.io`) with `confirmation_required`.
+ * `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`,
+ * `dspi_core_vreg_op`), the free firmware writes (`dspi_flash_to_drive`,
+ * `dspi_flash_to_drive_guarded`; the one drive write is
+ * `dspi_flash_confirmed`, behind the firmware guard, which needs no device
+ * open) and the switch (`dspi_require_confirmation`,
+ * `dspi_confirmation_required`). `dspi_write_param` refuses the gated paths
+ * (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) with
+ * `confirmation_required`; `dspi_write_param_confirmed` takes them with a
+ * token. The raw requests refuse the dangerous operations' opcodes.
  */
 
 #ifndef DSPI_CORE_H
@@ -4625,7 +4627,7 @@ uint32_t dspi_config_export(struct FfiCore *core,
 uint32_t dspi_config_inspect(const char *text, char *buf, uint32_t len);
 
 /**
- * What `dspi_config_import_selected` with the same arguments would change
+ * What `dspi_config_import_confirmed` with the same arguments (and a token) would change
  * on the device, without writing: JSON rows `{block, section, item,
  * before, after}`, counts per block and a summary. No I/O.
  */
@@ -4880,12 +4882,6 @@ uint8_t dspi_crossfeed_k340_pair_mask(void);
  * ...), or a failure (`unsupported` without it).
  */
 uint32_t dspi_fetch_core_vreg(struct FfiCore *core, char *buf, uint32_t len);
-
-/**
- * One raw core voltage operation. `word` is what the user typed (null:
- * nothing); raising above 1.20 V needs `OVERVOLT`. Returns a status byte.
- */
-uint8_t dspi_core_vreg_op(struct FfiCore *core, uint8_t op, uint8_t value, const char *word);
 
 /**
  * The user's name for input source `source`, read from the device, into
@@ -5201,9 +5197,24 @@ uint32_t dspi_firmware_guard_check(const uint8_t *image,
  * buffer, so do not call again for a short one. The gated paths
  * (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) need a token
  * and are always refused here (`confirmation_required`, nothing sent; WP
- * P1TZ): use their `_confirmed` functions.
+ * P1TZ): use `dspi_write_param_confirmed` or their typed `_confirmed`
+ * functions.
  */
 uint32_t dspi_write_param(struct FfiCore *core, const char *request, char *buf, uint32_t len);
+
+/**
+ * `dspi_write_param` with a token: the gated paths (`preset.save`,
+ * `preset.delete`, `dev.save`, `dev.save.io`) go through their typed calls
+ * with `token` (from `dspi_confirm_token`); any other path is
+ * `dspi_write_param`'s, and a token given with it is refused. JSON as
+ * `dspi_write_param`'s; the write has happened (and the token is spent)
+ * whatever the buffer.
+ */
+uint32_t dspi_write_param_confirmed(struct FfiCore *core,
+                                    const char *request,
+                                    const char *token,
+                                    char *buf,
+                                    uint32_t len);
 
 /**
  * Which optional bytes the device's image carried: bit 0 the I2S clock pin
@@ -5938,7 +5949,10 @@ uint32_t dspi_core_vreg_manual_set_confirmed(struct FfiCore *core,
  * waits in its bootloader (`firmware_flash`; `core` needs no device open,
  * a board already in BOOTSEL has none). Blocks for the copy. JSON reply;
  * nothing reaches the drive on a refusal (`confirmation_required`,
- * `firmware_guard`, `invalid`). WP P1TZ retired `dspi_flash_to_drive_guarded`.
+ * `firmware_guard`, `invalid`). The only drive write of this ABI: WP P1TZ
+ * retired `dspi_flash_to_drive` and `dspi_flash_to_drive_guarded`, WP P1TZF
+ * the unguarded `dspi_flash_to_drive_confirmed`. A board in BOOTSEL: pass
+ * `board_required_mv` 0 (unknown) and the phrase the guard's verdict asks for.
  */
 uint32_t dspi_flash_confirmed(struct FfiCore *core,
                               const uint8_t *image,
@@ -5952,21 +5966,20 @@ uint32_t dspi_flash_confirmed(struct FfiCore *core,
                               uint32_t len);
 
 /**
- * Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
- * RP2040, 1 RP2350) without the firmware guard (`dspi_flash_confirmed` is
- * the guarded write, the one to use), with a token minted for
- * `firmware_flash` (`core` needs no device open). Blocks for the copy. JSON
- * `{ok}` or a failure; an invalid image, or a missing or wrong token, never
- * reaches the drive. WP P1TZ retired `dspi_flash_to_drive`.
+ * One core voltage operation (`op` 0 set, 1 trial, 2 end trial, 3 auto, 4
+ * clear). `word` is what the user typed (null: nothing); raising above
+ * 1.20 V needs `OVERVOLT`. A SET takes a token minted for `vreg_save`
+ * (null for the others; one given is checked). JSON `{ok}` or a failure
+ * (`confirmation_required` for a SET without a good token, nothing sent).
+ * WP P1TZF retired `dspi_core_vreg_op`.
  */
-uint32_t dspi_flash_to_drive_confirmed(struct FfiCore *core,
-                                       const uint8_t *image,
-                                       uint32_t image_len,
-                                       const char *drive_path,
-                                       int8_t platform,
-                                       const char *token,
-                                       char *buf,
-                                       uint32_t len);
+uint32_t dspi_core_vreg_op_confirmed(struct FfiCore *core,
+                                     uint8_t op,
+                                     uint8_t value,
+                                     const char *word,
+                                     const char *token,
+                                     char *buf,
+                                     uint32_t len);
 
 /**
  * Keep limits profiles in files under `dir`, the app's own data folder, one
@@ -6143,7 +6156,7 @@ uint32_t dspi_template_text(const char *id, const char *user_dir, char *buf, uin
 
 /**
  * Import the `.dspipreset` document `doc` with a way back: `options` and
- * `eq_channels` as `dspi_config_import_selected` takes them, `timeout_s`
+ * `eq_channels` as `dspi_config_import_confirmed` takes them, `timeout_s`
  * seconds for the Keep (0: 30; at most 590). No confirmation token. JSON:
  * the state (`waiting`, with the changes), or a failure (`invalid` for no
  * document, an empty selection, or another apply waiting; the hub's refusal

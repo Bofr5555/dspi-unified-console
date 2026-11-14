@@ -618,10 +618,16 @@ pub(crate) fn vreg_op(
     target: &Target,
     op: dspi_proto::ext::VregOp,
     word: Option<&str>,
+    yes: bool,
     ask: &mut dyn FnMut() -> Option<String>,
 ) -> Result<(), u8> {
     let pins = &PinSource::for_this_command()?;
     use dspi_proto::ext::VregOp as V;
+    // -- WP P1TZF -- a SET stores the voltage in flash: a gated call (its
+    // token, `vreg_save`), so asked first, or `--yes`
+    if matches!(op, V::Set(_)) {
+        crate::pro::confirmed(yes, "Store this core voltage in the device's flash?")?;
+    }
     let (code, value) = match op {
         V::Set(v) => (0, v),
         V::Trial(v) => (1, v),
@@ -634,6 +640,12 @@ pub(crate) fn vreg_op(
     vreg_on(&opened.handle.core, (code, value), word, ask, pins)
 }
 
+/// The token a core-voltage request takes: one for a SET (op 0), minted for
+/// this try, once the person said yes (WP P1TZF); none for the others.
+fn vreg_token(core: &DspiCore, code: u8) -> Option<String> {
+    (code == 0).then(|| core.confirm_token(ConfirmOp::VregSave))
+}
+
 /// [`vreg_op`] on an open core: `request` is the core's `(op, value)`.
 pub(crate) fn vreg_on(
     core: &DspiCore,
@@ -643,9 +655,12 @@ pub(crate) fn vreg_on(
     pins: &PinSource,
 ) -> Result<(), u8> {
     unlock_up_front(core, pins, true)?;
-    let sent = match core.core_vreg_op(code, value, word.map(str::to_owned)) {
+    // -- WP P1TZF -- the confirmed form; a token per try (a word refusal spends it)
+    let send =
+        |w: Option<String>| core.core_vreg_op_confirmed(code, value, w, vreg_token(core, code));
+    let sent = match send(word.map(str::to_owned)) {
         Err(DspiError::OvervoltWordRequired { msg }) if word.is_none() => match ask() {
-            Some(typed) => core.core_vreg_op(code, value, Some(typed)),
+            Some(typed) => send(Some(typed)),
             None => Err(DspiError::OvervoltWordRequired { msg }),
         },
         other => other,
@@ -1352,6 +1367,85 @@ mod tests_wp_tmcore {
             s.write("preset.delete", &[1], Value::Trigger).unwrap(),
             Outcome::Triggered
         );
+    }
+
+    // -- WP P1TZF -- (review p1tz F1)
+    /// The Terminal's own dangerous writes go through the typed confirmed
+    /// calls (refused without a yes, done with one); the raw path under its
+    /// session (`CoreTransport`) refuses the gated opcodes and still carries
+    /// the rest.
+    #[test]
+    fn wp_p1tzf_dangerous_writes_are_typed_and_the_raw_path_refuses_them() {
+        let dir = scratch("p1tzf_route");
+        let o = opened(&dir);
+        let gated: [(&str, &[u8]); 6] = [
+            ("preset.save", &[1]),
+            ("preset.delete", &[1]),
+            ("dev.save", &[]),
+            ("dev.save.io", &[]),
+            ("dev.reset", &[]),
+            ("dev.bootloader", &[]),
+        ];
+        let mut s = routed(&o, Confirm::Refuse);
+        for (path, indices) in gated {
+            let e = s.write(path, indices, Value::Trigger).unwrap_err();
+            assert_eq!(crate::write_exit(&e), crate::exit::REJECTED, "{path}: {e}");
+        }
+        let mut s = routed(&o, Confirm::Given);
+        for (path, indices) in &gated[..5] {
+            assert_eq!(
+                s.write(path, indices, Value::Trigger).unwrap(),
+                Outcome::Triggered,
+                "{path}"
+            );
+        }
+        // The transport under the session: the gated opcodes never go out raw.
+        let mut t = CoreTransport::new(Arc::clone(&o.handle));
+        for code in [
+            op::REQ_PRESET_SAVE,
+            op::REQ_PRESET_DELETE,
+            op::REQ_SAVE_PARAMS,
+            op::REQ_SAVE_OUTPUT_CONFIG,
+            op::REQ_FACTORY_RESET,
+            op::REQ_ENTER_BOOTLOADER,
+        ] {
+            assert!(t.control_in_upto(code, 1, 1).is_err(), "0x{code:02X} in");
+            assert!(t.control_out(code, 1, &[0]).is_err(), "0x{code:02X} out");
+        }
+        assert!(o.handle.core.is_connected());
+        // Everything else still goes through it.
+        assert!(t.control_in_upto(op::REQ_PRESET_GET_ACTIVE, 0, 1).is_ok());
+        assert!(t.control_in_upto(op::REQ_PRESET_LOAD, 0, 1).is_ok());
+        let mut s = routed(&o, Confirm::Refuse);
+        assert!(s.write("vol.master", &[], Value::Float(-10.0)).is_ok());
+    }
+
+    /// `ext vreg set` stores the voltage: a gated call, with a token per try.
+    #[test]
+    fn wp_p1tzf_a_vreg_set_takes_its_token() {
+        let dir = scratch("p1tzf_vreg");
+        let o = opened(&dir);
+        let core = &o.handle.core;
+        let mut never = || -> Option<String> { panic!("asked for the word") };
+        core.fetch_core_vreg()
+            .expect("the demo has the core-voltage extension");
+        // Without a token the core refuses the SET, nothing written.
+        assert!(matches!(
+            core.core_vreg_op_confirmed(0, 0x0E, Some("OVERVOLT".into()), None),
+            Err(DspiError::ConfirmationRequired { .. })
+        ));
+        // The Terminal's path mints it (the person said yes in `vreg_op`).
+        vreg_on(
+            core,
+            (0, 0x0E),
+            Some("OVERVOLT"),
+            &mut never,
+            &PinSource::Nobody,
+        )
+        .unwrap();
+        assert_eq!(core.fetch_core_vreg().unwrap().stored_sel, 0x0E);
+        // AUTO takes no token.
+        vreg_on(core, (3, 1), None, &mut never, &PinSource::Nobody).unwrap();
     }
 
     #[test]

@@ -65,4 +65,10 @@ impl DspiCore {
     pub(crate) fn core_vreg_manual_set_tok(&self, value: u8, typed: Option<String>) -> Result<()> {
         self.core_vreg_manual_set_confirmed(value, typed, self.tok(ConfirmOp::VregSave))
     }
+
+    // -- WP P1TZF -- the core-voltage request: a SET (op 0) with a token
+    pub(crate) fn core_vreg_op_tok(&self, op: u8, value: u8, word: Option<String>) -> Result<()> {
+        let token = (op == 0).then(|| self.confirm_token(ConfirmOp::VregSave));
+        self.core_vreg_op_confirmed(op, value, word, token)
+    }
 }

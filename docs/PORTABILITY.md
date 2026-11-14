@@ -73,7 +73,7 @@ Of the rebuilt app (`apps/desktop/qt/src/platform/` unless named):
 | What | Where | Linux | Windows |
 |---|---|---|---|
 | A DSPi seen but not openable | `DeviceAccess`, `qml/platform/UdevDialog.qml` | the udev rule (`70-dspi.rules`), installed through `pkexec` | "close the other program" advice |
-| Bootloader drives | `BootloaderLocator` (the core's `dspi_bootloader_drives`); writes by the core (`dspi_flash_to_drive_guarded`) | mountinfo and `/run/media` | removable drives by label |
+| Bootloader drives | `BootloaderLocator` (the core's `dspi_bootloader_drives`); writes by the core (`dspi_flash_confirmed`, behind the firmware guard, with a token) | mountinfo and `/run/media` | removable drives by label |
 | Host channel count | `HostAudioFormatLinux.cpp`, `HostAudioFormatWindows.cpp` | the board's ALSA card | WASAPI, the board found by its USB serial |
 | Link tokens | `TokenStore` | the Secret Service (D-Bus) | Credential Manager |
 | Open at login, keep awake | `SystemIntegration` | XDG autostart; the desktop portal's or logind's sleep inhibitor | the HKCU Run value; a power request |

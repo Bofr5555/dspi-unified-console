@@ -282,7 +282,7 @@ fn wp_f1_kotlin_surface_is_the_cores_public_api() {
         "fun `firmwareVersionMatches`",
         "fun `computeMagnitudeCurve`",
         "fun `uf2Inspect`",
-        "fun `flashToDriveConfirmed`", // -- WP P1TZ -- a core method with a token
+        "fun `flashConfirmed`", // -- WP P1TZF -- the one drive write, with a token
         "fun `configInspect`",
         "class DspiException",
         "data class DspState",

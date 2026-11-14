@@ -980,14 +980,23 @@ interface DspiCoreApi : AutoCloseable {
      * needs `word`, exactly `OVERVOLT`, or nothing is written. This is the
      * one path to 1.30 V; the GUIs' flow stops at 1.25 V (`core_vreg_cal_*`).
      *
-     * Errors: `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
+     * -- WP P1TZF -- A SET stores the voltage in flash: it takes a
+     * confirmation token ([`crate::ConfirmOp::VregSave`], as
+     * [`DspiCore::core_vreg_manual_set_confirmed`]), checked first, before
+     * anything is sent. The other operations (a trial, its end, AUTO, CLEAR)
+     * take none, as the plan says; a token given with one is still checked
+     * and spent. Mint one per try: a refusal for the word after the token
+     * was accepted has spent it.
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] for a SET without a good
+     * token; `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
      * a read-only connection;
      * `Unsupported` when the device has no usable core-voltage extension;
      * `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
      * request anyway; `Denied`, `Locked` or `Transfer` from the link.
      */
     @Throws(DspiException::class)
-    fun coreVregOp(op: Int, value: Int, word: String?)
+    fun coreVregOpConfirmed(op: Int, value: Int, word: String?, token: String?)
 
     /**
      * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
@@ -1187,55 +1196,25 @@ interface DspiCoreApi : AutoCloseable {
      * longer holds); it works with no device open, and a board already in
      * BOOTSEL has none. Without a good token, or with one for another
      * operation, [`DspiError::ConfirmationRequired`] and nothing reaches the
-     * drive. The write itself is as [`DspiCore::flash_to_drive_confirmed`]'s.
+     * drive. It is the only drive write the bindings have (WP P1TZF): a
+     * caller that knows the board passes it, and one in BOOTSEL passes
+     * [`crate::firmware_guard_board_in_bootloader`] with the typed phrase
+     * the verdict asks for.
+     *
+     * Before any byte goes out: the image is fully validated, the drive's
+     * `INFO_UF2.TXT` is read again and must still name the board `drive`
+     * describes, the image's family must be one that board boots, and the
+     * drive must have room for the image. The board reboots into the new
+     * firmware as it takes the last block, so `Ok` means only "the write
+     * ended, or the drive went away during it": the caller confirms success
+     * by waiting for the DSPi to re-enumerate and report the image's version
+     * (`Uf2Info::firmware_version`); a timeout there is the failure.
      *
      * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
      * message when the image needs confirmation; then the write's.
      */
     @Throws(DspiException::class)
     fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?)
-
-    /**
-     * Write `image` to `drive` as `firmware.uf2`, synced to the medium, with a
-     * confirmation token, without the firmware guard ([`DspiCore::flash_confirmed`]
-     * is the write behind the guard, the one to use wherever the core does the
-     * writing).
-     *
-     * Before any byte goes out: the image is fully validated, the drive's
-     * `INFO_UF2.TXT` is read again and must still name the board `drive`
-     * describes, the image's family must be one that board boots, and the
-     * drive must have room for the image. The file is then written with one
-     * `write_all` and one `sync_all`.
-     *
-     * The board reboots into the new firmware as it takes the last block, so
-     * the write or the sync can fail because the drive has gone: that (either
-     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
-     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
-     * `Ok` means only "the write ended, or the drive went away during it, assumed
-     * to be the board rebooting". **The caller must
-     * confirm success** by waiting for the DSPi to re-enumerate and report the
-     * image's version (`Uf2Info::firmware_version`); a timeout there is the
-     * failure.
-     *
-     * The `INFO_UF2.TXT` re-check and the write are separate path-based
-     * operations, so a different drive mounted at the same path in between
-     * would get the file (an inherent check-then-use race; the Qt updater has
-     * the same). The window is a few milliseconds and both boot ROMs reject an
-     * image of the other family.
-     *
-     * The token ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]; WP
-     * P1TZ): mint it once the bootloader drive is there; it works with no
-     * device open, and a board in BOOTSEL has none. Without a good one, or with
-     * a token for another operation, [`DspiError::ConfirmationRequired`] and
-     * nothing reaches the drive. With a device still open, the installer lock
-     * holds this write too (before the token is spent).
-     *
-     * Errors: that; [`DspiError::InvalidArgument`] for an invalid image, a drive that
-     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
-     * that has gone, is short of space, or fails the write.
-     */
-    @Throws(DspiException::class)
-    fun flashToDriveConfirmed(image: List<Int>, drive: BootloaderDrive, token: String?)
 
     /**
      * What the open board needs, read from the device now. Call before
@@ -3411,8 +3390,10 @@ interface DspiCoreApi : AutoCloseable {
      * An opcode that is not a plain read (`REQ_PRESET_LOAD`,
      * `REQ_RTA_CONTROL`, ...) is a write-as-read and is treated as a write.
      * A plain read is any `*_GET_*` opcode, `REQ_EXTENSION`, `REQ_LIMITER`,
-     * `REQ_OUTPUT_LATENCY`, and the three §1.2 exceptions: `REQ_CLEAR_CLIPS`,
-     * `REQ_RESET_BUFFER_STATS` and `REQ_ENTER_BOOTLOADER`.
+     * `REQ_OUTPUT_LATENCY`, and the §1.2 exceptions `REQ_CLEAR_CLIPS` and
+     * `REQ_RESET_BUFFER_STATS` (`REQ_ENTER_BOOTLOADER`, the third, is refused
+     * here since WP P1TZF: it takes a token, through
+     * `enter_bootloader_confirmed`).
      *
      * The mirror does not change here. A device change reaches it through
      * the notification, like anyone else's. Over DSPi Link the
@@ -3424,7 +3405,11 @@ interface DspiCoreApi : AutoCloseable {
      * thread. `REQ_GET_ALL_PARAMS` for a whole image is the slow case.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS` and
-     * the chunk opcodes (nothing is sent); [`DspiError::Disconnected`];
+     * the chunk opcodes, and for an opcode behind a confirmation token
+     * ([`raw_gated_call`]: preset save and delete, parameter and output
+     * configuration save, factory reset, the bootloader), naming the
+     * `_confirmed` call to use (nothing is sent; WP P1TZF);
+     * [`DspiError::Disconnected`];
      * [`DspiError::ReadOnly`] for a write-as-read on a read-only connection
      * (nothing is sent); [`DspiError::Refused`] with status 0 when the
      * device stalls; [`DspiError::Denied`], [`DspiError::Locked`] or
@@ -3442,8 +3427,9 @@ interface DspiCoreApi : AutoCloseable {
      * transfer with the core's lock held: call it off the UI thread.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS`, the
-     * chunk opcodes, an `EXT_CORE_VREG` request, or more than 65535 bytes of
-     * `data` (nothing is sent);
+     * chunk opcodes, an opcode behind a confirmation token ([`raw_gated_call`],
+     * as for `raw_get`), an `EXT_CORE_VREG` request, or more than 65535
+     * bytes of `data` (nothing is sent);
      * [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a read-only
      * connection (nothing is sent); [`DspiError::Refused`] with status 0
      * when the device stalls; [`DspiError::Denied`], [`DspiError::Locked`]

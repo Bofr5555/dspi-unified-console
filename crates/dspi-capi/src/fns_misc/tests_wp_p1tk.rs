@@ -94,8 +94,8 @@ fn wp_p1tk_tokens_through_c() {
         reply(|b, l| dspi_config_import_confirmed(h, doc.as_ptr(), 0, u32::MAX, t, b, l))
     };
     let r = import(ptr::null());
-    assert_eq!(r["ok"], false, "{r}");
-    assert_eq!(r["noticeKey"], "confirmation_required", "{r}");
+    // -- WP P1TZF -- (review p1tz F4) the same `code` as every other refusal
+    assert_refused(&r, "config_import", "no confirmation token");
     let t = mint(h, "config_import");
     ok(import(t.as_ptr()));
 
@@ -230,6 +230,8 @@ fn wp_p1tz_a_new_core_requires_tokens_through_c() {
         "dspi_confirmation_required",
         "dspi_flash_to_drive",
         "dspi_flash_to_drive_guarded",
+        "dspi_flash_to_drive_confirmed",
+        "dspi_core_vreg_op",
     ] {
         assert!(
             !header.contains(&format!(" {gone}(")),
@@ -238,8 +240,9 @@ fn wp_p1tz_a_new_core_requires_tokens_through_c() {
     }
 }
 
-/// WP P1TZ: the drive write without the guard is a core's too, gated like the
-/// rest, with no device open (a board in BOOTSEL has no DSPi connection).
+/// WP P1TZ / P1TZF: the drive write (only the guarded one is exported) is a
+/// core's, gated like the rest, with no device open (a board in BOOTSEL has
+/// no DSPi connection).
 #[test]
 fn wp_p1tz_the_drive_write_takes_a_firmware_token() {
     let h = dspi_core_new();
@@ -247,7 +250,18 @@ fn wp_p1tz_the_drive_write_takes_a_firmware_token() {
     let path = CString::new("/nonexistent/p1tz-drive").unwrap();
     let write = |t: *const c_char| {
         reply(|b, l| {
-            dspi_flash_to_drive_confirmed(h, image.as_ptr(), 512, path.as_ptr(), 1, t, b, l)
+            dspi_flash_confirmed(
+                h,
+                image.as_ptr(),
+                512,
+                path.as_ptr(),
+                1,
+                0,
+                ptr::null(),
+                t,
+                b,
+                l,
+            )
         })
     };
     assert_refused(

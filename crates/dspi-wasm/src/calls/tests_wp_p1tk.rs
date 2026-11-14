@@ -107,6 +107,21 @@ fn wp_p1tk_tokens_through_the_worker_calls() {
         refusal::MISSING,
     );
     ok(h, "presetCopy", with(&copy, &token("copy_preset")));
+    // -- WP P1TZF -- (review p1tz F4) the import refuses the same way
+    let doc = ok(h, "configExport", json!({ "name": "P1TZF" }))["text"].clone();
+    let import = json!({ "text": doc });
+    assert_refused(
+        &run(h, "configImport", import.clone()),
+        Op::ConfigImport,
+        refusal::MISSING,
+    );
+    let wrong = token("save_params");
+    assert_refused(
+        &run(h, "configImport", with(&import, &wrong)),
+        Op::ConfigImport,
+        refusal::WRONG_OP,
+    );
+    ok(h, "configImport", with(&import, &token("config_import")));
 
     // A token does not cross a reconnect.
     let stale = token("save_params");

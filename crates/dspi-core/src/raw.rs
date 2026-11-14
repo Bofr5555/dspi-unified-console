@@ -42,8 +42,10 @@ impl DspiCore {
     /// An opcode that is not a plain read (`REQ_PRESET_LOAD`,
     /// `REQ_RTA_CONTROL`, ...) is a write-as-read and is treated as a write.
     /// A plain read is any `*_GET_*` opcode, `REQ_EXTENSION`, `REQ_LIMITER`,
-    /// `REQ_OUTPUT_LATENCY`, and the three §1.2 exceptions: `REQ_CLEAR_CLIPS`,
-    /// `REQ_RESET_BUFFER_STATS` and `REQ_ENTER_BOOTLOADER`.
+    /// `REQ_OUTPUT_LATENCY`, and the §1.2 exceptions `REQ_CLEAR_CLIPS` and
+    /// `REQ_RESET_BUFFER_STATS` (`REQ_ENTER_BOOTLOADER`, the third, is refused
+    /// here since WP P1TZF: it takes a token, through
+    /// `enter_bootloader_confirmed`).
     ///
     /// The mirror does not change here. A device change reaches it through
     /// the notification, like anyone else's. Over DSPi Link the
@@ -55,13 +57,18 @@ impl DspiCore {
     /// thread. `REQ_GET_ALL_PARAMS` for a whole image is the slow case.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS` and
-    /// the chunk opcodes (nothing is sent); [`DspiError::Disconnected`];
+    /// the chunk opcodes, and for an opcode behind a confirmation token
+    /// ([`raw_gated_call`]: preset save and delete, parameter and output
+    /// configuration save, factory reset, the bootloader), naming the
+    /// `_confirmed` call to use (nothing is sent; WP P1TZF);
+    /// [`DspiError::Disconnected`];
     /// [`DspiError::ReadOnly`] for a write-as-read on a read-only connection
     /// (nothing is sent); [`DspiError::Refused`] with status 0 when the
     /// device stalls; [`DspiError::Denied`], [`DspiError::Locked`] or
     /// [`DspiError::Transfer`] from the link.
     pub fn raw_get(&self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
         check_not_bulk_session(opcode)?;
+        check_not_gated(opcode)?; // -- WP P1TZF --
         let mut guard = self.lock();
         if is_plain_read(opcode) {
             guard
@@ -91,19 +98,22 @@ impl DspiCore {
     /// transfer with the core's lock held: call it off the UI thread.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS`, the
-    /// chunk opcodes, an `EXT_CORE_VREG` request, or more than 65535 bytes of
-    /// `data` (nothing is sent);
+    /// chunk opcodes, an opcode behind a confirmation token ([`raw_gated_call`],
+    /// as for `raw_get`), an `EXT_CORE_VREG` request, or more than 65535
+    /// bytes of `data` (nothing is sent);
     /// [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a read-only
     /// connection (nothing is sent); [`DspiError::Refused`] with status 0
     /// when the device stalls; [`DspiError::Denied`], [`DspiError::Locked`]
     /// or [`DspiError::Transfer`] from the link.
     pub fn raw_set(&self, opcode: u8, value: u16, data: Vec<u8>) -> Result<()> {
         check_not_bulk_session(opcode)?;
+        check_not_gated(opcode)?; // -- WP P1TZF --
         // -- WP CG14 --
         // It could not carry the confirmation word: `core_vreg_op` can.
         if dspi_session::overvolt::is_core_vreg_write(opcode, value) {
             return Err(DspiError::InvalidArgument {
-                msg: "core-voltage requests go through core_vreg_op, not a raw write".into(),
+                msg: "core-voltage requests go through core_vreg_op_confirmed, not a raw write"
+                    .into(),
             });
         }
         if u16::try_from(data.len()).is_err() {
@@ -392,6 +402,37 @@ fn check_not_bulk_session(opcode: u8) -> Result<()> {
     Ok(())
 }
 
+// -- WP P1TZF --
+/// The typed call that takes a confirmation token for `opcode`, when the
+/// opcode is one of the dangerous operations (`crate::confirm`): those never
+/// go out through a raw request, which carries no token. Public (not in the
+/// bindings) for the Terminal's `raw`, which also opens devices without a
+/// core.
+pub fn raw_gated_call(opcode: u8) -> Option<&'static str> {
+    match opcode {
+        op::REQ_PRESET_SAVE => Some("save_preset_confirmed (or copy_preset_confirmed)"),
+        op::REQ_PRESET_DELETE => Some("delete_preset_confirmed"),
+        op::REQ_SAVE_PARAMS => Some("save_params_confirmed"),
+        op::REQ_SAVE_OUTPUT_CONFIG => Some("save_output_config_confirmed"),
+        op::REQ_FACTORY_RESET => Some("factory_reset_confirmed"),
+        op::REQ_ENTER_BOOTLOADER => Some("enter_bootloader_confirmed"),
+        _ => None,
+    }
+}
+
+/// [`DspiError::InvalidArgument`], with nothing sent, for an opcode behind a
+/// confirmation token: the refusal names the `_confirmed` call to use.
+fn check_not_gated(opcode: u8) -> Result<()> {
+    match raw_gated_call(opcode) {
+        Some(call) => Err(DspiError::InvalidArgument {
+            msg: format!(
+                "opcode 0x{opcode:02X} needs a confirmation token: use {call}, not a raw request"
+            ),
+        }),
+        None => Ok(()),
+    }
+}
+
 /// Whether an IN transfer of `opcode` may go out on a read-only connection.
 ///
 /// Checked against the firmware's IN handlers (`vendor_commands.c`):
@@ -492,7 +533,8 @@ mod tests_wp_cg4 {
             Err(DspiError::ReadOnly)
         ));
         for (name, code) in ALL_OPCODES {
-            if REFUSED_BULK.contains(&code) {
+            // -- WP P1TZF -- the gated opcodes are refused before the connection
+            if REFUSED_BULK.contains(&code) || raw_gated_call(code).is_some() {
                 continue;
             }
             assert_eq!(
@@ -525,11 +567,16 @@ mod tests_wp_cg4 {
             // No such opcode in this build: fails closed.
             0x01,
         ] {
-            assert_eq!(
-                core.raw_get(code, 0, 1),
-                Err(DspiError::ReadOnly),
-                "raw_get 0x{code:02X}"
-            );
+            // -- WP P1TZF -- a gated opcode is refused as such, before the connection
+            let refused = core.raw_get(code, 0, 1);
+            if raw_gated_call(code).is_some() {
+                assert!(
+                    matches!(refused, Err(DspiError::InvalidArgument { .. })),
+                    "raw_get 0x{code:02X}: {refused:?}"
+                );
+            } else {
+                assert_eq!(refused, Err(DspiError::ReadOnly), "raw_get 0x{code:02X}");
+            }
         }
         assert_eq!(opcodes(&log), [] as [u8; 0]);
     }
@@ -545,7 +592,8 @@ mod tests_wp_cg4 {
             op::REQ_ENTER_BOOTLOADER,
         ];
         for (name, code) in ALL_OPCODES {
-            if REFUSED_BULK.contains(&code) {
+            // -- WP P1TZF -- the gated opcodes are refused before this (tests_wp_p1tzf)
+            if REFUSED_BULK.contains(&code) || raw_gated_call(code).is_some() {
                 continue;
             }
             let (core, log) = core_on(MockTransport::new().answering_everything(vec![1u8]), false);
@@ -855,3 +903,8 @@ mod tests_wp_cg4 {
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "raw/tests_wp_cg23.rs"]
 mod tests_wp_cg23;
+
+// -- WP P1TZF --
+#[cfg(test)]
+#[path = "raw/tests_wp_p1tzf.rs"]
+mod tests_wp_p1tzf;

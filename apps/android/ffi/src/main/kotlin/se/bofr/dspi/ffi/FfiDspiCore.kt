@@ -229,7 +229,7 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun fetchCoreVreg(): CoreVregInfo = call { core.fetchCoreVreg().toDomain() }
 
-    override fun coreVregOp(op: Int, value: Int, word: String?) = call { core.coreVregOp(op.toUByte(), value.toUByte(), word) }
+    override fun coreVregOpConfirmed(op: Int, value: Int, word: String?, token: String?) = call { core.coreVregOpConfirmed(op.toUByte(), value.toUByte(), word, token) }
 
     override fun identify(seconds: Int, toneOutput: Int?) = call { core.identify(seconds.toUByte(), toneOutput?.let { it.toUByte() }) }
 
@@ -256,8 +256,6 @@ class FfiDspiCore : DspiCoreApi {
     override fun firmwareVersionMatches(version: String): Boolean = call { core.firmwareVersionMatches(version) }
 
     override fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?) = call { core.flashConfirmed(ByteArray(image.size) { image[it].toByte() }, drive.toFfi(), board.toFfi(), typedConfirmation, token) }
-
-    override fun flashToDriveConfirmed(image: List<Int>, drive: BootloaderDrive, token: String?) = call { core.flashToDriveConfirmed(ByteArray(image.size) { image[it].toByte() }, drive.toFfi(), token) }
 
     override fun firmwareGuardBoard(): FirmwareGuardBoard = core.firmwareGuardBoard().toDomain()
 

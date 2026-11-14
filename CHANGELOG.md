@@ -77,25 +77,36 @@ Release notes of earlier versions: `CHANGELOG-0.13.0.md`.
 - Removed: the calls without a token. C: `dspi_save_preset`, `dspi_copy_preset`,
   `dspi_delete_preset`, `dspi_save_params`, `dspi_factory_reset`, `dspi_save_output_config`,
   `dspi_enter_bootloader`, `dspi_config_import`, `dspi_config_import_selected`,
-  `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`. UniFFI (Kotlin, Swift):
-  `save_preset`, `copy_preset`, `delete_preset`, `save_params`, `factory_reset`,
-  `save_output_config`, `enter_bootloader`, `config_import`, `config_import_selected`,
-  `core_vreg_cal_commit`, `core_vreg_manual_set`. Use the `_confirmed` form of each (an
+  `dspi_core_vreg_cal_commit`, `dspi_core_vreg_manual_set`, `dspi_core_vreg_op`. UniFFI
+  (Kotlin, Swift): `save_preset`, `copy_preset`, `delete_preset`, `save_params`,
+  `factory_reset`, `save_output_config`, `enter_bootloader`, `config_import`,
+  `config_import_selected`, `core_vreg_cal_commit`, `core_vreg_manual_set`, `core_vreg_op`
+  (now `core_vreg_op_confirmed`: a SET, which stores the voltage, takes a `vreg_save`
+  token; trials, AUTO and CLEAR take none). Use the `_confirmed` form of each (an
   import: `config_import_confirmed(text, options, eq_channels, token)`, `eq_channels`
   all bits for every channel).
-- The firmware writes are core methods that take a `firmware_flash` token; they work with
-  no device open, so a board already in BOOTSEL (no DSPi connection) is still flashed. Mint
-  the token on any core once the bootloader drive is there. Removed: the free
-  `flash_to_drive` and `flash_to_drive_guarded` (C `dspi_flash_to_drive`,
-  `dspi_flash_to_drive_guarded`); use `flash_confirmed` (behind the firmware guard, the one
-  to use; C `dspi_flash_confirmed`) or `flash_to_drive_confirmed` (without the guard; C
-  `dspi_flash_to_drive_confirmed`). Without a token, or with one for another operation,
-  nothing reaches the drive.
+- The firmware write is one core method, behind the firmware guard, that takes a
+  `firmware_flash` token: `flash_confirmed` (C `dspi_flash_confirmed`). It works with no
+  device open, so a board already in BOOTSEL (no DSPi connection) is still flashed: pass
+  `firmware_guard_board_in_bootloader()` (C: `board_required_mv` 0) and the phrase the
+  guard's verdict asks for, and mint the token on any core once the bootloader drive is
+  there. Removed: the free `flash_to_drive` and `flash_to_drive_guarded` (C
+  `dspi_flash_to_drive`, `dspi_flash_to_drive_guarded`); there is no write without the
+  guard. Without a token, or with one for another operation, nothing reaches the drive.
 - Removed: the switch. C `dspi_require_confirmation` and `dspi_confirmation_required`,
   UniFFI `require_confirmation` and `confirmation_required`, the web Worker's
   `requireConfirmation` and `confirmationRequired`.
 - `write_param` (C `dspi_write_param`) refuses the gated paths `preset.save`,
   `preset.delete`, `dev.save` and `dev.save.io` with `confirmation_required`;
-  `write_param_confirmed` takes them with a token.
+  `write_param_confirmed` (C `dspi_write_param_confirmed`, UniFFI `write_param_confirmed`,
+  the web Worker's `write` with `token`) takes them with a token.
+- Raw requests (`raw_get`, `raw_set`; the Terminal's `raw`) refuse the opcodes of the
+  dangerous operations (`REQ_PRESET_SAVE`, `REQ_PRESET_DELETE`, `REQ_SAVE_PARAMS`,
+  `REQ_SAVE_OUTPUT_CONFIG`, `REQ_FACTORY_RESET`, `REQ_ENTER_BOOTLOADER`) with
+  `invalid`, naming the `_confirmed` call to use; nothing is sent. A raw request carries no
+  token. Every other opcode goes out as before.
+- The import's token refusal (C `dspi_config_import_confirmed`, the web Worker's
+  `configImport`) carries `code` `confirmation_required`, as every other `_confirmed`
+  reply.
 - Migration: [docs/integrator/README.md](docs/integrator/README.md#confirmation-tokens).
   Every client in this project already uses the `_confirmed` forms.

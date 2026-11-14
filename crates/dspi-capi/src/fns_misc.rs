@@ -876,7 +876,7 @@ pub extern "C" fn dspi_config_inspect(text: *const c_char, buf: *mut c_char, len
 }
 
 // -- WP P1DF --
-/// What `dspi_config_import_selected` with the same arguments would change
+/// What `dspi_config_import_confirmed` with the same arguments (and a token) would change
 /// on the device, without writing: JSON rows `{block, section, item,
 /// before, after}`, counts per block and a summary. No I/O.
 #[unsafe(no_mangle)]
@@ -1385,19 +1385,8 @@ pub extern "C" fn dspi_fetch_core_vreg(core: *mut FfiCore, buf: *mut c_char, len
     text(core, buf, len, |c| json_reply(c.fetch_core_vreg()))
 }
 
-/// One raw core voltage operation. `word` is what the user typed (null:
-/// nothing); raising above 1.20 V needs `OVERVOLT`. Returns a status byte.
-#[unsafe(no_mangle)]
-pub extern "C" fn dspi_core_vreg_op(
-    core: *mut FfiCore,
-    op: u8,
-    value: u8,
-    word: *const c_char,
-) -> u8 {
-    status(core, |c| {
-        c.core_vreg_op(op, value, optional_text(word, "word")?)
-    })
-}
+// -- WP P1TZF -- dspi_core_vreg_op is dspi_core_vreg_op_confirmed (fns_misc/confirm.rs):
+// a SET takes a token
 
 // ── Names ────────────────────────────────────────────────────────────
 
@@ -1943,7 +1932,8 @@ struct WriteRequest {
 /// buffer, so do not call again for a short one. The gated paths
 /// (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) need a token
 /// and are always refused here (`confirmation_required`, nothing sent; WP
-/// P1TZ): use their `_confirmed` functions.
+/// P1TZ): use `dspi_write_param_confirmed` or their typed `_confirmed`
+/// functions.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_write_param(
     core: *mut FfiCore,
@@ -1959,6 +1949,37 @@ pub extern "C" fn dspi_write_param(
                 })
             })
             .and_then(|r| c.write_param(r.path, r.indices, r.value))
+            .map(|value| json!({ "value": value }));
+        json_reply(written)
+    })
+}
+
+// -- WP P1TZF -- (review p1tz F3) the write by path with a confirmation token
+/// `dspi_write_param` with a token: the gated paths (`preset.save`,
+/// `preset.delete`, `dev.save`, `dev.save.io`) go through their typed calls
+/// with `token` (from `dspi_confirm_token`); any other path is
+/// `dspi_write_param`'s, and a token given with it is refused. JSON as
+/// `dspi_write_param`'s; the write has happened (and the token is spent)
+/// whatever the buffer.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_write_param_confirmed(
+    core: *mut FfiCore,
+    request: *const c_char,
+    token: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    text(core, buf, len, |c| {
+        let written = arg(request, "request")
+            .and_then(|r| {
+                serde_json::from_str::<WriteRequest>(r).map_err(|e| DspiError::InvalidArgument {
+                    msg: format!("the request is not one: {e}"),
+                })
+            })
+            .and_then(|r| {
+                let token = optional_text(token, "token")?;
+                c.write_param_confirmed(r.path, r.indices, r.value, token)
+            })
             .map(|value| json!({ "value": value }));
         json_reply(written)
     })

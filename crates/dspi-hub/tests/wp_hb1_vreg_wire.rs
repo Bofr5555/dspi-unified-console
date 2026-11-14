@@ -92,7 +92,10 @@ fn wp_hb1_a_network_raise_is_refused_on_the_wire_and_the_apps_goes_through() {
     );
     assert_eq!(stored(&net), 0, "nothing was written");
 
-    core.core_vreg_op(SET, V125, Some(WORD.into())).unwrap();
+    // -- WP P1TZF -- a SET takes a token, minted as a client does after its dialog
+    let token = core.confirm_token(dspi_core::ConfirmOp::VregSave);
+    core.core_vreg_op_confirmed(SET, V125, Some(WORD.into()), Some(token))
+        .unwrap();
     assert_eq!(stored(&net), V125, "the app's raise reached the unit");
 
     assert_eq!(set(&net, V130), status::DENIED);

@@ -214,7 +214,7 @@ fn wp_c8_ext_status_reports_the_connect_probe() {
     );
     assert_eq!(core.fetch_core_vreg(), Err(DspiError::Disconnected));
     assert_eq!(
-        core.core_vreg_op(4, 0, Some("OVERVOLT".into())),
+        core.core_vreg_op_tok(4, 0, Some("OVERVOLT".into())),
         Err(DspiError::Disconnected)
     );
 }
@@ -241,7 +241,7 @@ fn wp_c8_stock_firmware_has_no_extensions_and_nothing_is_sent() {
     );
     assert_eq!(p.core.fetch_core_vreg(), Err(DspiError::Unsupported));
     assert_eq!(
-        p.core.core_vreg_op(0, 0x0E, Some("OVERVOLT".into())),
+        p.core.core_vreg_op_tok(0, 0x0E, Some("OVERVOLT".into())),
         Err(DspiError::Unsupported)
     );
     assert_eq!(p.traffic(), before);
@@ -295,7 +295,7 @@ fn wp_c8_a_listed_sub_command_whose_read_failed_is_absent() {
     );
     assert_eq!(p.core.fetch_core_vreg(), Err(DspiError::Unsupported));
     assert_eq!(
-        p.core.core_vreg_op(4, 0, Some("OVERVOLT".into())),
+        p.core.core_vreg_op_tok(4, 0, Some("OVERVOLT".into())),
         Err(DspiError::Unsupported)
     );
     assert_eq!(p.traffic(), before);
@@ -436,11 +436,11 @@ fn wp_c8_a_read_only_connection_never_writes_the_extension_channel() {
         Err(DspiError::ReadOnly)
     );
     assert_eq!(
-        p.core.core_vreg_op(0, 0x0E, Some("OVERVOLT".into())),
+        p.core.core_vreg_op_tok(0, 0x0E, Some("OVERVOLT".into())),
         Err(DspiError::ReadOnly)
     );
     assert_eq!(
-        p.core.core_vreg_op(3, 0, Some("OVERVOLT".into())),
+        p.core.core_vreg_op_tok(3, 0, Some("OVERVOLT".into())),
         Err(DspiError::ReadOnly)
     );
     assert_eq!(p.traffic().1, outs, "no OUT transfer");
@@ -459,7 +459,7 @@ fn wp_c8_core_voltage_ops_apply_and_read_back() {
     assert_eq!(v.millivolts, 1200);
 
     p.core
-        .core_vreg_op(0, 0x0E, Some("OVERVOLT".into()))
+        .core_vreg_op_tok(0, 0x0E, Some("OVERVOLT".into()))
         .unwrap();
     let v = p.core.fetch_core_vreg().unwrap();
     assert_eq!(
@@ -468,26 +468,36 @@ fn wp_c8_core_voltage_ops_apply_and_read_back() {
     );
 
     p.core
-        .core_vreg_op(1, 0x0F, Some("OVERVOLT".into()))
+        .core_vreg_op_tok(1, 0x0F, Some("OVERVOLT".into()))
         .unwrap();
     let v = p.core.fetch_core_vreg().unwrap();
     assert!(v.trial_active);
     assert_eq!((v.trial_vreg, v.live_vreg), (0x0F, 0x0F));
-    p.core.core_vreg_op(2, 0, Some("OVERVOLT".into())).unwrap();
+    p.core
+        .core_vreg_op_tok(2, 0, Some("OVERVOLT".into()))
+        .unwrap();
     let v = p.core.fetch_core_vreg().unwrap();
     assert!(!v.trial_active);
     assert_eq!(v.live_vreg, 0x0E);
 
-    p.core.core_vreg_op(3, 0, Some("OVERVOLT".into())).unwrap();
+    p.core
+        .core_vreg_op_tok(3, 0, Some("OVERVOLT".into()))
+        .unwrap();
     assert!(p.core.fetch_core_vreg().unwrap().auto_disabled);
-    p.core.core_vreg_op(3, 1, Some("OVERVOLT".into())).unwrap();
+    p.core
+        .core_vreg_op_tok(3, 1, Some("OVERVOLT".into()))
+        .unwrap();
     assert!(!p.core.fetch_core_vreg().unwrap().auto_disabled);
 
     // Back to the build default.
-    p.core.core_vreg_op(0, 0, Some("OVERVOLT".into())).unwrap();
+    p.core
+        .core_vreg_op_tok(0, 0, Some("OVERVOLT".into()))
+        .unwrap();
     let v = p.core.fetch_core_vreg().unwrap();
     assert_eq!((v.stored_sel, v.live_vreg), (0, 0x0D));
-    p.core.core_vreg_op(4, 0, Some("OVERVOLT".into())).unwrap();
+    p.core
+        .core_vreg_op_tok(4, 0, Some("OVERVOLT".into()))
+        .unwrap();
     // The connection's copy follows the last read.
     let mut inner = p.core.lock();
     let ext = &inner.conn().unwrap().ext;
@@ -498,7 +508,7 @@ fn wp_c8_core_voltage_ops_apply_and_read_back() {
 fn wp_c8_core_voltage_requests_outside_the_limits_are_refused_before_any_traffic() {
     let p = k340();
     p.core
-        .core_vreg_op(0, 0x0E, Some("OVERVOLT".into()))
+        .core_vreg_op_tok(0, 0x0E, Some("OVERVOLT".into()))
         .unwrap();
     let before = p.traffic();
     for (op, value) in [
@@ -512,7 +522,7 @@ fn wp_c8_core_voltage_requests_outside_the_limits_are_refused_before_any_traffic
     ] {
         assert!(
             matches!(
-                p.core.core_vreg_op(op, value, Some("OVERVOLT".into())),
+                p.core.core_vreg_op_tok(op, value, Some("OVERVOLT".into())),
                 Err(DspiError::InvalidArgument { .. })
             ),
             "op {op} value {value:#x}"
@@ -538,7 +548,7 @@ fn wp_c8_a_core_voltage_request_the_device_stalls_is_refused() {
         },
     );
     assert_eq!(
-        p.core.core_vreg_op(0, 0x0E, Some("OVERVOLT".into())),
+        p.core.core_vreg_op_tok(0, 0x0E, Some("OVERVOLT".into())),
         Err(DspiError::Refused {
             status: EXT_WRITE_REFUSED
         })
