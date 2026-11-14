@@ -170,6 +170,19 @@ fn role_permits(role: Role, class: Class) -> bool {
     }
 }
 
+// -- WP P1HA --
+/// Whether this role may send this `apply.*` message (`apply_guard.rs`):
+/// beginning, confirming and cancelling a guarded apply is Admin and Control, as
+/// applying is a listening-state change at the least (spec 6.3); reading its
+/// status is every role's. Anything else is not an `apply.*` message: false.
+pub fn apply_guard_allows(role: Role, message: &str) -> bool {
+    match message {
+        "apply.begin" | "apply.confirm" | "apply.cancel" => role != Role::Viewer,
+        "apply.status" => true,
+        _ => false,
+    }
+}
+
 /// `None`: this command is no `EXT_CORE_VREG` write. Otherwise the request it
 /// carries, `Some(None)` if it is not one the rule can judge: a wrong length or an
 /// op it does not know. The firmware refuses those (`ext_handle_set`,
@@ -380,5 +393,23 @@ mod tests_wp_hb2 {
             ..write(v, &[])
         };
         assert_eq!(core_vreg_write(&read), None);
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_p1ha {
+    use super::*;
+
+    #[test]
+    fn wp_p1ha_guarded_apply_is_admin_and_control() {
+        for t in ["apply.begin", "apply.confirm", "apply.cancel"] {
+            assert!(apply_guard_allows(Role::Admin, t));
+            assert!(apply_guard_allows(Role::Control, t));
+            assert!(!apply_guard_allows(Role::Viewer, t));
+        }
+        for role in [Role::Admin, Role::Control, Role::Viewer] {
+            assert!(apply_guard_allows(role, "apply.status"));
+            assert!(!apply_guard_allows(role, "apply.other"));
+        }
     }
 }

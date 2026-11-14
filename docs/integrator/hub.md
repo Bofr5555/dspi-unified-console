@@ -74,6 +74,39 @@ still gives `control` (see Pairing). The core-voltage extension
 has its own rule: no client on the network raises it above 1.20 V, whatever its
 role; do that on the hub machine. Reference: `crates/dspi-hub/src/policy.rs`.
 
+## Guarded apply
+
+<!-- WP P1HA -->
+A client about to change a device over Link (an import, a snapshot recall) can
+ask the hub to guard the change: if the client does not confirm it in time, or
+goes away, the hub writes the device's previous settings back itself. Additive
+to Link 1.2: a hub that has it lists `apply_guard` in `hello.caps`, and every
+answer carries `"v": 1`. A client checks the cap before sending them; other hubs and the upstream page are unaffected.
+
+| Message | Role | What |
+|---|---|---|
+| `apply.begin {id, handle, timeout_ms?}` | control, admin | reads the device's whole image (`0xA0`, in the device's order behind what this client queued) and starts the guard. `timeout_ms` defaults to 30 000 and is clamped to 1 000 to 600 000. Answer `ok {guard, serial, timeout_ms}` |
+| `apply.confirm {id, handle}` | control, admin | keeps the change. Only the session that began it, and only before the timeout. Answer `ok {guard, serial, handle, reason: "confirmed", result: "kept", at}` |
+| `apply.cancel {id, handle}` | control, admin | writes the image back now and answers with the outcome, as `apply.ended` below |
+| `apply.status {id, handle}` | every role | `ok {active, last}`: the running guard (`guard`, `serial`, `session`, `remaining_ms`, `reverting`) or `null`, and the last outcome on that device or `null` |
+
+Every end is also sent to every session as
+`apply.ended {v, guard, serial, handle, reason, result, status?, at}`:
+`reason` is `confirmed`, `timeout`, `session_closed`, `cancelled` or
+`hub_stopping`; `result` is `kept`, `reverted`, `revert_failed` (with the Link
+`status`; it is not tried again) or `not_written` (no device with that serial
+was online: nothing was written).
+
+- One guard per device: a second `apply.begin` is `busy`. Another session's
+  confirm or cancel is `denied`; a confirm after the timeout is `conflict`.
+- The write back is the hub's own (`0xA1`, origin the hub's session) and is
+  never refused by another session's lock. It only ever goes to the board with
+  the serial the guard was begun on: after a replug of another board nothing is
+  written.
+- Stopping the hub (sharing off) reverts every running guard first.
+
+Reference: `crates/dspi-hub/src/apply_guard.rs`.
+
 ## Network and firewall
 
 | What | Port | Notes |

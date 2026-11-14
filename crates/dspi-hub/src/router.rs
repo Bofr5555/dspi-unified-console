@@ -34,6 +34,8 @@ use crate::lock::LockTable;
 use crate::policy::{self, Policy};
 use crate::relay::PacketKind;
 use crate::session::{LOCAL_SESSION_ID, NO_ORIGIN, SessionCtx, SessionId};
+// -- WP P1HA --
+use crate::session::INTERNAL_SESSION_ID;
 
 /// How long after a write a notification is attributed to it (spec 8.3).
 pub const ATTRIBUTION_WINDOW: Duration = Duration::from_millis(500);
@@ -105,6 +107,10 @@ struct State {
     writers: VecDeque<Writer>,
     next_token: u64,
     shut: bool,
+    // -- WP P1HA --
+    /// The hub's next own bulk write is a guarded apply's revert: it passes the lock
+    /// ([`Router::pass_revert`]).
+    revert_pass: bool,
 }
 
 /// One device's router.
@@ -252,10 +258,14 @@ impl Router {
             return Err(status::DENIED);
         }
         let mut st = self.lock();
+        // -- WP P1HA -- taken by the hub's next bulk write, whatever its fate
+        let revert = s.id == INTERNAL_SESSION_ID
+            && is_bulk_write(req.b_request)
+            && std::mem::take(&mut st.revert_pass);
         if st.shut {
             return Err(status::NO_DEVICE);
         }
-        if !st.lock.permits(s.id, now) {
+        if !revert && !st.lock.permits(s.id, now) {
             return Err(status::LOCKED);
         }
         let count = st.inflight.entry(s.id).or_insert(0);
@@ -464,6 +474,15 @@ impl Router {
         now: Instant,
     ) -> Option<Duration> {
         self.lock().lock.acquire(session, timeout, now)
+    }
+
+    // -- WP P1HA --
+    /// Let the hub's next own bulk write (`0xA1` as [`INTERNAL_SESSION_ID`]) past any
+    /// session's lock, once: a guarded apply's revert is never refused by a lock
+    /// (`apply_guard.rs`). Call it right before submitting that write; nothing else
+    /// of the hub's writes a bulk image.
+    pub fn pass_revert(&self) {
+        self.lock().revert_pass = true;
     }
 
     /// Release the device lock if `session` holds it.

@@ -207,6 +207,9 @@ pub(crate) struct HubInner {
     /// in the registry has been sent. Above L1, as `names_saving` is: L1, L2 and L3 are
     /// taken under it, and it is never taken under any of them.
     locks_syncing: Mutex<()>,
+    // -- WP P1HA --
+    /// Guarded applies (`apply_guard.rs`). A leaf lock.
+    pub(crate) apply_guards: crate::apply_guard::ApplyGuards,
 }
 
 /// A cheap, clonable way to the hub, for the server and the app's broker. It keeps
@@ -310,6 +313,8 @@ impl Hub {
             advertiser: Mutex::new(None),
             // -- WP HUBFLAKE4 --
             locks_syncing: Mutex::new(()),
+            // -- WP P1HA --
+            apply_guards: crate::apply_guard::ApplyGuards::default(),
         });
         let io = |e: std::io::Error| HubError::Io(format!("cannot start a hub thread: {e}"));
         let events = {
@@ -351,7 +356,11 @@ impl Hub {
                 .name("hub-system".into())
                 .spawn(move || system_poll_loop(&handle, &stop_rx))
             {
-                Ok(t) => Some((stop_tx, t)),
+                Ok(t) => {
+                    // -- WP P1HA -- the guarded applies' timer runs on this thread
+                    inner.apply_guards.set_wake(Some(stop_tx.clone()));
+                    Some((stop_tx, t))
+                }
                 Err(e) => {
                     log::warn!(
                         "hub: the system poll did not start ({e}): USB-direct units are read only when a client asks"
@@ -420,6 +429,9 @@ impl Hub {
             let _ = stop.send(());
             let _ = thread.join();
         }
+        // -- WP P1HA -- guarded applies revert while their devices are still here
+        inner.apply_guards.set_wake(None);
+        self.handle.apply_stop();
         // 1. Off the network: goodbye, no new connections. 2. Everyone gets their close.
         // 3. Connections go.
         let goodbye = guard(&inner.advertiser).take();
@@ -595,6 +607,8 @@ impl HubHandle {
             d.router.session_closed(id);
             d.polls.session_closed(id);
         }
+        // -- WP P1HA -- its guarded applies revert
+        self.apply_session_closed(id);
         self.inner.sync_locks();
         self.inner.emit(HubEvent::SessionClosed { id });
     }
@@ -1282,17 +1296,32 @@ fn supervisor_loop(
 /// [`crate::system::SYSTEM_POLL`] (or as set), while the model has USB-direct
 /// units, [`HubHandle::system_poll_now`]. Ends when `stop` is sent or dropped.
 fn system_poll_loop(hub: &HubHandle, stop: &Receiver<()>) {
+    // -- WP P1HA -- also the guarded applies' timer: a message while the hub is not
+    // stopping is a wake (a guard begun or ended early), and the wait ends at the
+    // first guard's deadline. The system poll keeps its own schedule.
+    let mut next_poll = Instant::now()
+        .checked_add(hub.system_poll_due().0)
+        .unwrap_or_else(Instant::now);
     loop {
-        let (wait, _) = hub.system_poll_due();
-        match stop.recv_timeout(wait) {
+        let until = hub
+            .apply_next_due()
+            .map_or(next_poll, |due| due.min(next_poll));
+        match stop.recv_timeout(until.saturating_duration_since(Instant::now())) {
             Err(RecvTimeoutError::Timeout) => {}
+            Ok(()) if !hub.is_stopped() => {}
             Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
         }
         if hub.is_stopped() {
             return;
         }
-        if hub.system_poll_due().1 {
-            hub.system_poll_now();
+        // -- WP P1HA --
+        hub.apply_run_due();
+        if Instant::now() >= next_poll {
+            let (wait, due) = hub.system_poll_due();
+            if due {
+                hub.system_poll_now();
+            }
+            next_poll = Instant::now().checked_add(wait).unwrap_or(next_poll);
         }
     }
 }

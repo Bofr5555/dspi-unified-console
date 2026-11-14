@@ -17,6 +17,7 @@
 //! | [`server`], [`auth`], [`store`] | the socket, pairing, what is kept on disk | HB1 |
 //! | [`advertise`], [`web`] | Bonjour, the bundled web UI | HB5 |
 //! | [`system`] | the audio link's system model: installation, alignment, scenes, alarms | SW2 |
+//! | [`apply_guard`] | guarded apply: capture, confirm or revert by the hub | P1HA |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -26,8 +27,10 @@
 )]
 
 pub mod advertise;
+// -- WP P1HA --
 #[cfg(feature = "app")]
 pub mod app;
+pub mod apply_guard;
 pub mod auth;
 // -- WP BULKFIX --
 mod bulk_gain;

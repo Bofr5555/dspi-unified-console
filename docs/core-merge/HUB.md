@@ -638,6 +638,15 @@ frame-ancestors 'none'`, `nosniff`, `no-cache` with an ETag (304), `Referrer-Pol
 **TM11.** `dspi-hub` without `app`. **SW-M3.** A UniFFI wrapper over the same; `DeviceBroker`
 is a plain Rust trait today and needs no export if the wrapper's `AppLink` stays in Rust.
 
+**P1HA, `apply_guard.rs`, for P1SA and P1HL.** `apply.begin/confirm/cancel/status` and the
+`apply.ended` event (`docs/integrator/hub.md`, "Guarded apply"); cap `apply_guard`, `v: 1`.
+`apply_guard::handle_message` is chained after `lock::handle_message` in the connection's reader.
+The timer runs on AUSB2's `hub-system` thread (`system_poll_loop` wakes at the first guard's
+deadline, and on a message while the hub is not stopping); a closed session and `Hub::stop`
+revert at once. The revert is one `0xA1` as `INTERNAL_SESSION_ID`, let past any lock by
+`Router::pass_revert` (consumed by that admit): P1HL's lock scope and limits must let it pass too.
+It goes to the online device with the captured serial only. `ApplyGuards` is a leaf lock.
+
 ## 10. Considered and rejected
 
 - **R1. Hub always in the path (Swift's way).** One code path, and the app is always a
