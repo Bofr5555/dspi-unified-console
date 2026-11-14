@@ -275,7 +275,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | AN39 | Android small follow-ups | DONE | 172aa93d (review c5b) | Its overlay item was done in CG30 |
 | AN42 | Undo and redo in the Android app (PRO1 W2) | IN PROGRESS | wp/AN42 | Before P1AN1 (both touch the app bar) |
 
-**SW: Swift (macOS and iOS)**: 35 WPs: 16 DONE, 1 IN REVIEW, 17 TODO, 1 MOVED.
+**SW: Swift (macOS and iOS)**: 35 WPs: 16 DONE, 2 IN REVIEW, 16 TODO, 1 MOVED.
 
 | ID | Title | Status | Merged in / branch | Next or blocker |
 |---|---|---|---|---|
@@ -296,7 +296,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | SW15 | Simulator and relay test | TODO |  | [HW] after SW5, SW6, SW14 |
 | SW16 | Real iPhone or iPad | TODO |  | [HW][OWNER]: no device yet |
 | SW17 | File import and export | DONE | 84220ac7 (review c6n) |  |
-| SW18 | AutoEQ and firmware window | TODO |  | VM |
+| SW18 | AutoEQ and firmware window | IN REVIEW | wp/SW18F | iOS Tools > AutoEQ (Favorites, CG6 update: rebuild, import, reset); no firmware window, Tools entry or `.uf2` on iOS, banner and wizard point to a computer. Review sw18 accepted with nits; fixups F1-F3 in wp/SW18F |
 | SW19 | Touch graph | TODO |  | VM |
 | SW20 | Hardware keyboard and host format | TODO |  | VM |
 | SW21 |  | MOVED |  | Later work: coach marks |
@@ -1216,7 +1216,7 @@ Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use
 
 **SW17: File import and export.** [TODO] Size 1. **Owns:** `iOS/DocumentPicker.swift`, the `notYet` block in `DSPi_ConsoleApp.swift`. **Done when:** filter files and `.dspipreset` round-trip against shared fixtures. **Deps:** SW2.
 
-**SW18: AutoEQ and firmware window.** [TODO] Size 0.75. **Owns:** iOS AutoEQ menu, firmware wizard step. **Implements:** Favourites, CG6's update; hide the dead firmware window and point to a computer, including the mismatch banner's Update button (`ContentView.swift:1075-1077`) and the Tools entry (`iOS/IOSApp.swift:218-220`); no `.uf2` images in the iOS target. **Done when:** UI tests cover the menu, show no firmware entry on iOS, and show the banner cannot open the window; the iOS bundle has no `.uf2`; the Mac is unchanged. **Deps:** CG6, SW2.
+**SW18: AutoEQ and firmware window.** [IN REVIEW wp/SW18] Size 0.75. **Owns:** iOS AutoEQ menu, firmware wizard step. **Implements:** Favourites, CG6's update; hide the dead firmware window and point to a computer, including the mismatch banner's Update button (`ContentView.swift:1075-1077`) and the Tools entry (`iOS/IOSApp.swift:218-220`); no `.uf2` images in the iOS target. **Done when:** UI tests cover the menu, show no firmware entry on iOS, and show the banner cannot open the window; the iOS bundle has no `.uf2`; the Mac is unchanged. **Deps:** CG6, SW2.
 
 **SW19: Touch graph.** [TODO] Size 1.5. **Owns:** `iOS/PeqTouchEditor.swift`, a touch HUD. **Implements:** marquee, pull from curve, shape chooser, value chip. **Done when:** UI tests on iPhone and iPad cover each gesture. **Deps:** SW2.
 

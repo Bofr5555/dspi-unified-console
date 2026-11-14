@@ -79,6 +79,10 @@ case "$platform" in
     echo "simulator: $sim"
     args+=(-scheme "DSPi Console iOS" -destination "id=${sim%% *}")
     bundle="DSPi Console iOSTests"   # -- WP SW4 --
+    # -- WP SW18 -- An incremental build never removes a resource that left
+    # the target, so a .uf2 image from an earlier build would stay in the
+    # app and fail AutoEQCoreUpdateSW18Tests: build the app bundle afresh.
+    rm -rf "$out/dd-ios/Build/Products/"*-iphonesimulator/"DSPi Console iOS.app"
     ;;
 esac
 

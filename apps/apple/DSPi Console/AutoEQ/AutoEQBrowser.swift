@@ -125,8 +125,14 @@ struct AutoEQBrowser: View {
             .padding()
             .background(Color(NSColor.windowBackgroundColor))
         }
+        #if os(macOS)
         .frame(minWidth: 500, minHeight: 400)
         .frame(idealWidth: 600, idealHeight: 500)
+        #else
+        // -- WP SW18 -- the sheet's width: at the Mac's 500 points the rows'
+        // hearts sat off an iPhone's screen
+        .frame(minHeight: 400)
+        #endif
     }
 
     private func applySelected() {
@@ -176,7 +182,7 @@ struct HeadphoneRow: View {
             Spacer()
 
             // Heart button - show on hover or if favorited
-            if isHovering || isFavorite {
+            if showsHeart {
                 Button(action: onToggleFavorite) {
                     Image(systemName: isFavorite ? "heart.fill" : "heart")
                         .font(.system(size: 14))
@@ -184,6 +190,13 @@ struct HeadphoneRow: View {
                 }
                 .buttonStyle(.plain)
                 .help(isFavorite ? "Remove from favorites" : "Add to favorites")
+                #if os(iOS)
+                // -- WP SW18 -- a finger-sized target, named for VoiceOver and the UI tests
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+                .accessibilityLabel(isFavorite ? "Remove \(entry.displayName) from favorites" : "Add \(entry.displayName) to favorites")
+                .accessibilityIdentifier("autoeq.favorite.\(entry.id)")
+                #endif
             }
         }
         .padding(.horizontal, 12)
@@ -191,6 +204,16 @@ struct HeadphoneRow: View {
         .onHover { hovering in
             isHovering = hovering
         }
+    }
+
+    /// -- WP SW18 -- A touch screen has no hover: on iOS the heart is always
+    /// there, or nothing could be made a favourite.
+    private var showsHeart: Bool {
+        #if os(iOS)
+        return true
+        #else
+        return isHovering || isFavorite
+        #endif
     }
 
     private func sourceColor(_ source: String) -> Color {

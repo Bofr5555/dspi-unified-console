@@ -100,7 +100,18 @@ final class PlatformAlert {
     func addButton(withTitle title: String) { buttons.append(title) }
 
     func present(_ completion: @escaping (Int) -> Void = { _ in }) {
+        present(completion, attempts: 25)
+    }
+
+    private func present(_ completion: @escaping (Int) -> Void, attempts: Int) {
         DispatchQueue.main.async {
+            // -- WP SW18F -- A sheet still on its way out cannot present, and
+            // UIKit drops the alert without a word (the AutoEQ rebuild's
+            // result, shown as its sheet closes): wait until it has gone.
+            if let top = UIApplication.shared.topViewController, top.isBeingDismissed, attempts > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.present(completion, attempts: attempts - 1) }
+                return
+            }
             let controller = UIAlertController(title: self.messageText,
                                                message: self.informativeText.isEmpty ? nil : self.informativeText,
                                                preferredStyle: .alert)
@@ -152,19 +163,24 @@ final class ToolSheetPresenter: ObservableObject {
         let onDismiss: () -> Void
     }
 
-    @Published var current: Sheet?
+    /// -- WP SW18 -- Whatever takes a sheet away tells its owner: `dismiss`,
+    /// another sheet replacing it, and the `.sheet(item:)` binding clearing it
+    /// when the sheet is swiped down (which went unnoticed before, so a swiped
+    /// AutoEQ rebuild ran on and a tool kept `isVisible`).
+    @Published var current: Sheet? {
+        didSet {
+            if let old = oldValue, old.id != current?.id { old.onDismiss() }
+        }
+    }
 
     func present(id: String, title: String, content: AnyView, onDismiss: @escaping () -> Void) {
-        // Replacing an open sheet dismisses it first; let its owner know.
-        if let open = current, open.id != id { open.onDismiss() }
+        // Replacing an open sheet dismisses it first: `current`'s didSet tells its owner.
         current = Sheet(id: id, title: title, content: content, onDismiss: onDismiss)
     }
 
     func dismiss(id: String) {
         guard current?.id == id else { return }
-        let sheet = current
         current = nil
-        sheet?.onDismiss()
     }
 }
 
