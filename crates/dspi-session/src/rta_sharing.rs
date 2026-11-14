@@ -1277,3 +1277,277 @@ mod tests_wp_anlast {
         }
     }
 }
+
+/// REVIEW ANLAST probes (throwaway): each asserts what the rule promises.
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_review_anlast {
+    use std::time::Duration;
+
+    use dspi_transport::MockTransport;
+    use dspi_transport::mock::{LogHandle, Reply};
+
+    use super::*;
+    use crate::rta::Request;
+
+    fn caps() -> RtaCaps {
+        RtaCaps {
+            input_channels: 8,
+            output_channels: 9,
+            order_min: 8,
+            order_max: 10,
+            order_default: 10,
+            bass_bands: 14,
+            max_bands: 37,
+            level_zero: 243,
+            ..RtaCaps::default()
+        }
+    }
+
+    fn config(mask: u16) -> RtaConfig {
+        RtaConfig {
+            tap: TAP_OUTPUT,
+            channel_mask: mask,
+            fft_order: 10,
+            avg_ms: 300,
+            peak_decay_db_s: 12,
+            flags: 0,
+        }
+    }
+
+    fn event(c: &RtaConfig, origin: u16) -> Notification {
+        let mut bytes = c.encode().to_vec();
+        bytes.push(1);
+        Notification {
+            seq: 1,
+            event: Event::Unknown {
+                id: EVT_RTA_CONFIG,
+                bytes,
+            },
+            lost: false,
+            origin: Some(origin),
+            received: Instant::now(),
+        }
+    }
+
+    /// Session 7's console: engine + sharing over a mock, as the Terminal runs them.
+    struct Rig {
+        sharing: Sharing,
+        engine: RtaEngine,
+        mock: MockTransport,
+        log: LogHandle,
+        view: crate::rta::ViewId,
+        now: Instant,
+    }
+
+    impl Rig {
+        fn new(mask: u16, readbacks: Vec<RtaConfig>, set: Reply) -> Self {
+            let mock = MockTransport::new()
+                .reply(
+                    op::REQ_RTA_GET_CONFIG,
+                    Reply::Sequence(
+                        readbacks
+                            .iter()
+                            .map(|c| Reply::Data(c.encode().to_vec()))
+                            .collect(),
+                    ),
+                )
+                .reply(op::REQ_RTA_SET_CONFIG, set)
+                .data(op::REQ_RTA_GET_STATUS, vec![0; 24]);
+            let log = mock.log_handle();
+            let mut engine = RtaEngine::new();
+            assert!(engine.load(caps(), vec![100; 37]));
+            engine.set_options(Followed { config: config(mask), origin: 0 }.options());
+            let view = engine.subscribe(Request { tap: TAP_OUTPUT, mask, wants_bins: false });
+            let mut sharing = Sharing::default();
+            sharing.judge_own(Some(config(mask)));
+            Self { sharing, engine, mock, log, view, now: Instant::now() }
+        }
+
+        fn note(&mut self, n: &Notification) -> bool {
+            let caps = caps();
+            self.sharing.note(n, TransportKind::Link, Some(7), Some(&caps))
+        }
+
+        /// One poll as the client runs it: judge our choice, feed the engine.
+        fn tick(&mut self, own: u16) {
+            self.sharing.judge_own(Some(config(own)));
+            let (mask, options) = match self.sharing.following() {
+                Some(f) => (f.config.channel_mask, f.options()),
+                None => (own, Followed { config: config(own), origin: 0 }.options()),
+            };
+            self.engine.set_options(options);
+            self.engine.update(self.view, Request { tap: TAP_OUTPUT, mask, wants_bins: false });
+            self.now += Duration::from_secs(1);
+            self.sharing.tick(&mut self.engine, &mut self.mock, self.now, Budget::default());
+        }
+
+        fn pushes(&self) -> Vec<u16> {
+            self.log
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|x| x.opcode == op::REQ_RTA_SET_CONFIG)
+                .map(|x| RtaConfig::decode(&x.payload).unwrap().channel_mask)
+                .collect()
+        }
+
+        fn state(&self) -> String {
+            format!(
+                "pending={} following={:?} rejected={} pushes={:?}",
+                self.sharing.pending(),
+                self.sharing.following().map(|f| (f.origin, f.config.channel_mask)),
+                self.engine.rejected(),
+                self.pushes()
+            )
+        }
+    }
+
+    /// R1: the firmware STALLs an invalid SET (vendor_commands.c:2128, config.h:195),
+    /// and the hub answers LOCKED/DENIED the same way: the push is an Err. The engine
+    /// gives up after three; the rule says we then follow the push seen meanwhile.
+    #[test]
+    fn review_r1_a_push_the_device_stalls_gives_way_to_the_push_seen_meanwhile() {
+        let mut r = Rig::new(0b01, vec![config(0b01), config(0b10)], Reply::Stall);
+        // Driving 0b01 with its echo seen (the push itself is not the point here).
+        assert!(r.note(&event(&config(0b01), 7)));
+        assert!(!r.sharing.pending());
+        // Our new choice; its push STALLs. Console 9's push lands meanwhile.
+        r.tick(0b100);
+        assert_eq!(r.pushes(), [0b100], "{}", r.state());
+        assert!(r.sharing.pending(), "{}", r.state());
+        assert!(r.note(&event(&config(0b10), 9)));
+        assert_eq!(r.sharing.following(), None, "9's push was applied before ours");
+        for _ in 0..12 {
+            r.tick(0b100);
+            if r.engine.rejected() {
+                break;
+            }
+        }
+        assert!(r.engine.rejected(), "the engine gave up: {}", r.state());
+        assert!(r.sharing.following().is_some(), "STUCK: {}", r.state());
+    }
+
+    /// R1b: after the stall, console 9 keeps pushing: we never follow any of it.
+    #[test]
+    fn review_r1b_after_a_stalled_push_later_pushes_are_still_not_followed() {
+        let mut r = Rig::new(0b01, vec![config(0b01), config(0b10)], Reply::Stall);
+        assert!(r.note(&event(&config(0b01), 7)));
+        r.tick(0b100);
+        for _ in 0..12 {
+            r.tick(0b100);
+        }
+        assert!(r.engine.rejected(), "{}", r.state());
+        for m in [0b10u16, 0b1000, 0b11] {
+            assert!(r.note(&event(&config(m), 9)));
+            r.tick(0b100);
+        }
+        assert!(r.sharing.following().is_some(), "STUCK after 3 later pushes by 9: {}", r.state());
+    }
+
+    /// R2: a choice identical to what the device holds (we follow 9's 0b10 and now
+    /// choose 0b10 ourselves) makes no SET, so no echo ever comes. 9 then chooses
+    /// 0b1000, later than our choice: the last choice made is 9's.
+    #[test]
+    fn review_r2_a_choice_the_device_already_holds_is_pending_without_a_push() {
+        let mut r = Rig::new(
+            0b01,
+            // ticks: 1 push (no read); 2 swallowed push (no read); 3 read 0b10
+            // (confirmed); 4 our identical choice, read 0b1000 (9's later push).
+            vec![config(0b10), config(0b1000)],
+            Reply::Data(vec![]),
+        );
+        r.tick(0b01);
+        assert!(r.note(&event(&config(0b01), 7)));
+        assert!(r.note(&event(&config(0b10), 9)));
+        assert_eq!(r.sharing.following().unwrap().origin, 9);
+        r.tick(0b01);
+        r.tick(0b01);
+        assert_eq!(r.pushes(), [0b01], "nothing pushed while following: {}", r.state());
+        assert_eq!(r.engine.wanted().unwrap().channel_mask, 0b10);
+        // We choose exactly what the device holds: a choice, no SET needed.
+        r.tick(0b10);
+        assert_eq!(r.pushes(), [0b01], "no SET: the device already holds 0b10: {}", r.state());
+        assert_eq!(r.sharing.following(), None);
+        assert!(r.sharing.pending(), "{}", r.state());
+        // 9 chose 0b1000 later than we chose 0b10 (its event, and its readback above).
+        assert!(r.note(&event(&config(0b1000), 9)));
+        let after_event = r.state();
+        r.tick(0b10);
+        r.tick(0b10);
+        assert!(
+            r.pushes() == [0b01] && r.sharing.following().is_some(),
+            "9's later choice overridden. after 9's event: [{after_event}]; two ticks later: [{}]",
+            r.state()
+        );
+    }
+
+    /// R3: released before its push went out, a choice gives way to the push seen
+    /// meanwhile (ANLAST). Also when the choice was changed once before release.
+    #[test]
+    fn review_r3_a_rechosen_then_released_choice_still_follows_the_push_seen_meanwhile() {
+        let mut s = Sharing::default();
+        s.judge_own(Some(config(0b01)));
+        assert!(s.note_config(&config(0b01).encode(), true, 7, Some(&caps())));
+        assert!(!s.pending());
+        s.judge_own(Some(config(0b100)));
+        assert!(s.note_config(&config(0b10).encode(), false, 9, Some(&caps())));
+        assert_eq!(s.following(), None);
+        s.judge_own(Some(config(0b1000))); // changed again, still unpushed
+        s.judge_own(None); // and released
+        assert_eq!(
+            s.following().map(|f| (f.origin, f.config.channel_mask)),
+            Some((9, 0b10)),
+            "9's push, seen meanwhile, is what the device holds; pending={}",
+            s.pending()
+        );
+    }
+
+    /// R3b: the same without the re-choice passes (the WP's own case).
+    #[test]
+    fn review_r3b_released_without_a_rechoice_follows() {
+        let mut s = Sharing::default();
+        s.judge_own(Some(config(0b01)));
+        assert!(s.note_config(&config(0b01).encode(), true, 7, Some(&caps())));
+        s.judge_own(Some(config(0b100)));
+        assert!(s.note_config(&config(0b10).encode(), false, 9, Some(&caps())));
+        s.judge_own(None);
+        assert_eq!(s.following().map(|f| f.origin), Some(9));
+    }
+
+    /// R4: firmware without the event: pending never clears after a push, and a
+    /// later host is still followed by readback.
+    #[test]
+    fn review_r4_without_the_event_pending_stays_set_but_is_harmless() {
+        let mut r = Rig::new(0b01, vec![config(0b01), config(0b10)], Reply::Data(vec![]));
+        r.tick(0b01); // push, no read
+        r.tick(0b01); // read 0b01: agreed
+        assert!(r.sharing.agreed(), "{}", r.state());
+        assert!(r.sharing.pending(), "no echo ever: still pending; {}", r.state());
+        r.tick(0b01); // read 0b10: another host
+        assert_eq!(r.sharing.following().map(|f| f.origin), Some(0), "{}", r.state());
+        assert!(!r.sharing.pending());
+    }
+
+    /// R5: lost echo, but the other console's event was seen: the origin is known
+    /// from it, yet the readback path reports 0.
+    #[test]
+    fn review_r5_a_lost_echo_forgets_the_origin_the_event_carried() {
+        let mut s = Sharing::default();
+        s.judge_own(Some(config(0b01)));
+        assert!(s.note_config(&config(0b01).encode(), true, 7, Some(&caps())));
+        s.judge_own(Some(config(0b100)));
+        let mut p = s.begin_poll();
+        p.pushed = true;
+        p.pushed_config = Some(config(0b100));
+        s.finish_poll(&p, Some(&caps()));
+        assert!(s.note_config(&config(0b10).encode(), false, 9, Some(&caps())));
+        let mut p = s.begin_poll();
+        p.note_readback(config(0b100));
+        s.finish_poll(&p, Some(&caps()));
+        let mut p = s.begin_poll();
+        p.note_readback(config(0b10));
+        s.finish_poll(&p, Some(&caps()));
+        assert_eq!(s.following().map(|f| f.origin), Some(9), "origin from the event seen");
+    }
+}
