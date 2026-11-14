@@ -190,6 +190,8 @@ void LimitsController::onSnapshot() {
     if (fresh) {
         m_primeHeld = true;
         m_hub = QJsonObject();   // -- WP HUBADMIN -- another device, another copy
+        m_target = QJsonObject();   // -- WP HUBADMINF -- F4: and not editable until read
+        emit changed();             // -- WP HUBADMINF -- F4: the page disables its fields now
         m_hubDue = true;
         m_recoveryCode.clear();
         m_pinError.clear();
@@ -558,7 +560,9 @@ QString LimitsController::copy() const {
 
 bool LimitsController::editable() const {
     if (!connected()) return false;
-    if (m_target.isEmpty()) return true;
+    // -- WP HUBADMINF -- F4: not read yet: which copy is unknown, so nothing
+    // is edited (a write now could go to the wrong copy)
+    if (m_target.isEmpty()) return false;
     // The hub's copy that could not be read is not edited blind
     if (hubCopy() && !isOk(m_hub)) return false;
     return m_target.value(QLatin1String("editable")).toBool();

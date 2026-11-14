@@ -21,6 +21,10 @@ const WAIT: Duration = Duration::from_secs(20);
 const PIN: &str = "hub-7531";
 
 fn hub_in(dir: &std::path::Path) -> Hub {
+    hub_with(dir, FakeDevice::demo().with_serial("HA-1"))
+}
+
+fn hub_with(dir: &std::path::Path, device: FakeDevice) -> Hub {
     let hub = Hub::start(HubConfig {
         network: Some(NetworkConfig {
             port: 0,
@@ -33,8 +37,7 @@ fn hub_in(dir: &std::path::Path) -> Hub {
         ..HubConfig::in_process("HUBADMIN hub")
     })
     .unwrap();
-    hub.attach(Box::new(FakeDevice::demo().with_serial("HA-1")), 0)
-        .unwrap();
+    hub.attach(Box::new(device), 0).unwrap();
     hub
 }
 
@@ -302,4 +305,64 @@ fn wp_hubadmin_the_consoles_copy_over_a_hub_is_not_the_one_edited() {
         usb.hub_limits_get().unwrap_err().notice_key(),
         NOTICE_NO_LIMITS
     );
+}
+
+// -- WP HUBADMINF -- F1
+#[test]
+fn wp_hubadminf_a_live_demotion_shows_after_one_read_and_the_hub_refuses() {
+    let dir = scratch();
+    let hub = hub_in(&dir);
+    let admin = client(&hub, true);
+    assert!(admin.hub_limits_get().unwrap().can_edit);
+    assert!(admin.installer_target().editable);
+    let net = hub.network().unwrap();
+    let cid = net.auth().clients().iter().map(|c| c.cid).max().unwrap();
+    assert!(net.set_role(cid, Role::Control));
+    // The hub refuses at once, whatever the core last heard.
+    assert!(matches!(
+        admin.hub_limits_set(profile(3.0, &[])).unwrap_err(),
+        DspiError::Denied
+    ));
+    // One read, and the page's target follows.
+    let st = admin.hub_limits_get().unwrap();
+    assert!(!st.can_edit && st.profile_document.is_empty(), "{st:?}");
+    let t = admin.installer_target();
+    assert!(!t.editable && t.read_only_key == NOTICE_HUB_ROLE, "{t:?}");
+    // Promoted again and read: editable; the session closed: the role it
+    // learnt goes with it (the target is not the hub's any more).
+    assert!(net.set_role(cid, Role::Admin));
+    assert!(admin.hub_limits_get().unwrap().can_edit);
+    assert!(admin.installer_target().editable);
+    admin.link_close();
+    let t = admin.installer_target();
+    assert!(!t.editable, "{t:?}");
+}
+
+// -- WP HUBADMINF -- F3
+#[test]
+fn wp_hubadminf_the_local_demo_beside_a_demo_hub_is_this_consoles_copy() {
+    let dir = scratch();
+    // The demo hub's DSPi and the local demo share DEMO0000DSPI0001.
+    let hub = hub_with(&dir, FakeDevice::demo());
+    let core = client(&hub, true);
+    let t = core.installer_target();
+    assert_eq!(
+        (t.copy.as_str(), t.serial.as_str()),
+        (COPY_HUB, "DEMO0000DSPI0001"),
+        "{t:?}"
+    );
+    // The console opens its own demo over the bound hub device: the same
+    // serial, another connection. This console's copy, at once.
+    core.open_demo().unwrap();
+    let t = core.installer_target();
+    assert_eq!(t.copy, "console", "{t:?}");
+    assert_eq!(t.serial, "DEMO0000DSPI0001");
+    assert!(t.editable);
+    assert_eq!(
+        core.hub_limits_get().unwrap_err().notice_key(),
+        NOTICE_NO_LIMITS
+    );
+    // The lock is the console's own too (no hub asked).
+    let st = core.installer_lock_refresh().unwrap();
+    assert_ne!(st.held_by, "hub", "{st:?}");
 }
