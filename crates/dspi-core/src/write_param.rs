@@ -186,6 +186,8 @@ impl DspiCore {
             )));
         }
         let value = Value::from(value);
+        // -- WP P1LK -- the locked-user state's writes pass its check
+        let _lock = crate::limits::LockScope::for_path(d.path);
         // -- WP LK4 -- a write that depends on the probe (a feature, a band
         // index, a control-surface slot) waits for a DSPi Link bind's probe
         if dspi_session::write::depends_on_probe(d) {

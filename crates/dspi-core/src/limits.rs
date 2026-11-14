@@ -105,6 +105,9 @@ pub(crate) struct Limits {
     current: Option<Current>,
     /// What the last clamp held, in the import's words.
     last_held: Vec<String>,
+    // -- WP P1LK --
+    /// The installer's PIN and lock, per serial.
+    pub(crate) lock: lock::LockBook,
 }
 
 #[derive(Debug)]
@@ -686,6 +689,7 @@ impl DspiCore {
                 let mut inner = self.lock();
                 inner.limits.dir = (!dir.trim().is_empty()).then(|| dir.into());
                 inner.limits.current = None;
+                inner.limits.lock.forget_files(); // -- WP P1LK --
             }
             self.limits_preload(); // -- WP P1CFIX -- N1
             Ok(())
@@ -723,6 +727,7 @@ impl DspiCore {
         {
             let mut inner = self.lock();
             let serial = inner.conn()?.serial.clone();
+            lock::installer_gate(&mut inner)?; // -- WP P1LK --
             profile.serial.clone_from(&serial);
             #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
             if let Some(store) = inner.limits.store() {
@@ -754,6 +759,7 @@ impl DspiCore {
     pub fn limits_clear(&self) -> Result<()> {
         let mut inner = self.lock();
         let serial = inner.conn()?.serial.clone();
+        lock::installer_gate(&mut inner)?; // -- WP P1LK --
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         if let Some(store) = inner.limits.store() {
             store.clear(&serial).map_err(|e| DspiError::Io {
@@ -809,6 +815,8 @@ impl DspiCore {
     /// each judged like any write), after a profile is applied or a preset
     /// slot is loaded. The rows held, and the writes that failed.
     pub(crate) fn limits_enforce(&self) -> (Vec<String>, Vec<String>) {
+        // -- WP P1LK -- a hold only narrows: it passes the locked-user state
+        let _scope = lock::LockScope::allow();
         let (before, after, rows) = {
             let mut inner = self.lock();
             let Some(p) = inner.limits_profile().cloned() else {
@@ -907,6 +915,7 @@ impl DspiCore {
     /// loaded meanwhile). Nothing on the web (no files), with no folder, no
     /// device, or a profile already loaded for it.
     pub(crate) fn limits_preload(&self) {
+        self.lock_preload(); // -- WP P1LK -- the PIN's files too
         #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
         {
             let (dir, serial) = {
@@ -956,9 +965,22 @@ impl DspiCore {
     }
 }
 
+// -- WP P1LK --
+mod lock;
+pub use lock::{
+    InstallerPin, LOCK_FIRST_WAIT_MS, LOCK_FREE_TRIES, LOCK_MAX_WAIT_MS, LOCK_SCOPE_NOTICE,
+    LOCKED_USER_WRITES, LockState,
+};
+pub(crate) use lock::{LockScope, lock_check};
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1lm;
+
+// -- WP P1LK --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
+mod tests_wp_p1lk;
 
 // -- WP P1CFIX --
 #[cfg(test)]

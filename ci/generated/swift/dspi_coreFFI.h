@@ -1256,6 +1256,36 @@ void uniffi_dspi_core_fn_method_dspicore_identify(void*_Nonnull ptr, uint8_t sec
 uint32_t uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_LOCK
+RustBuffer uniffi_dspi_core_fn_method_dspicore_installer_lock(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_LOCK_COVER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_LOCK_COVER
+RustBuffer uniffi_dspi_core_fn_method_dspicore_installer_lock_cover(void*_Nonnull ptr, RustBuffer pages, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_LOCK_STATE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_LOCK_STATE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_installer_lock_state(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_PIN_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_PIN_CLEAR
+RustBuffer uniffi_dspi_core_fn_method_dspicore_installer_pin_clear(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_PIN_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_PIN_SET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_installer_pin_set(void*_Nonnull ptr, RustBuffer pin, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_UNLOCK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INSTALLER_UNLOCK
+RustBuffer uniffi_dspi_core_fn_method_dspicore_installer_unlock(void*_Nonnull ptr, RustBuffer pin, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_IS_CONNECTED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_IS_CONNECTED
 int8_t uniffi_dspi_core_fn_method_dspicore_is_connected(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1344,6 +1374,21 @@ float uniffi_dspi_core_fn_method_dspicore_max_delay_ms(void*_Nonnull ptr, RustCa
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_METER_BALLISTICS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_METER_BALLISTICS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_meter_ballistics(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MODE_PINNED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MODE_PINNED
+RustBuffer uniffi_dspi_core_fn_method_dspicore_mode_pinned(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MODE_RESOLVE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MODE_RESOLVE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_mode_resolve(void*_Nonnull ptr, RustBuffer platform, RustBuffer chosen, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MODE_SET_PINNED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MODE_SET_PINNED
+void uniffi_dspi_core_fn_method_dspicore_mode_set_pinned(void*_Nonnull ptr, RustBuffer mode, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MONITOR_CLEAR
@@ -2408,6 +2453,12 @@ RustBuffer uniffi_dspi_core_fn_func_link_phase_texts(RustCallStatus *_Nonnull ou
 RustBuffer uniffi_dspi_core_fn_func_link_ws_url(RustBuffer host, uint16_t port, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_MODE_MANIFEST
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_MODE_MANIFEST
+RustBuffer uniffi_dspi_core_fn_func_mode_manifest(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_NOTICE_FOR
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_NOTICE_FOR
 RustBuffer uniffi_dspi_core_fn_func_notice_for(RustBuffer error, RustCallStatus *_Nonnull out_status
@@ -2916,6 +2967,12 @@ uint16_t uniffi_dspi_core_checksum_func_link_phase_texts(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_WS_URL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_WS_URL
 uint16_t uniffi_dspi_core_checksum_func_link_ws_url(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_MODE_MANIFEST
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_MODE_MANIFEST
+uint16_t uniffi_dspi_core_checksum_func_mode_manifest(void
     
 );
 #endif
@@ -3927,6 +3984,42 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_LOCK
+uint16_t uniffi_dspi_core_checksum_method_dspicore_installer_lock(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_LOCK_COVER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_LOCK_COVER
+uint16_t uniffi_dspi_core_checksum_method_dspicore_installer_lock_cover(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_LOCK_STATE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_LOCK_STATE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_installer_lock_state(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_PIN_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_PIN_CLEAR
+uint16_t uniffi_dspi_core_checksum_method_dspicore_installer_pin_clear(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_PIN_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_PIN_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_installer_pin_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_UNLOCK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_INSTALLER_UNLOCK
+uint16_t uniffi_dspi_core_checksum_method_dspicore_installer_unlock(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_IS_CONNECTED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_IS_CONNECTED
 uint16_t uniffi_dspi_core_checksum_method_dspicore_is_connected(void
@@ -4032,6 +4125,24 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_max_delay_ms(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_METER_BALLISTICS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_METER_BALLISTICS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_meter_ballistics(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MODE_PINNED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MODE_PINNED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_mode_pinned(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MODE_RESOLVE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MODE_RESOLVE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_mode_resolve(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MODE_SET_PINNED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MODE_SET_PINNED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_mode_set_pinned(void
     
 );
 #endif

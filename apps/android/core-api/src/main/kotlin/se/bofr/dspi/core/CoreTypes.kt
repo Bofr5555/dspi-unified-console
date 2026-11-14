@@ -3643,6 +3643,91 @@ data class LimitsApply(
 )
 
 /**
+ * The open device's installer lock on this console
+ * ([`DspiCore::installer_lock_state`]).
+ */
+data class LockState(
+    /**
+     * The open device's serial ("" with none).
+     */
+    val serial: String,
+    /**
+     * An installer PIN is set for it on this console (an unreadable PIN
+     * file counts as set; `detail` says why).
+     */
+    val pinSet: Boolean,
+    /**
+     * A PIN is set and this console is unlocked for the device, this
+     * session.
+     */
+    val unlocked: Boolean,
+    /**
+     * The locked-user state: a PIN is set, the lock covers something and
+     * this console is not unlocked. Only `allowed_writes` pass.
+     */
+    val locked: Boolean,
+    /**
+     * The Installer pages, the profile and the PIN may change without a
+     * PIN prompt: no PIN is set, or the console is unlocked.
+     */
+    val installerOpen: Boolean,
+    /**
+     * What the lock covers: the mode manifest's screen ids (the profile's
+     * `lockedPages`); empty: a PIN alone locks nothing.
+     */
+    val covers: List<String>,
+    /**
+     * The writes the locked-user state allows (registry paths).
+     */
+    val allowedWrites: List<String>,
+    /**
+     * Wrong PINs since the last good one.
+     */
+    val wrongTries: Long,
+    /**
+     * How long until the next attempt is allowed, ms; 0: now.
+     */
+    val retryAfterMs: Long,
+    /**
+     * Unlocked with the recovery code: the installer should set a new PIN.
+     */
+    val recovered: Boolean,
+    /**
+     * The installer's note, for the locked front page.
+     */
+    val note: String,
+    /**
+     * How to reach the installer.
+     */
+    val contact: String,
+    /**
+     * The notice the unlock dialog shows in one line: the lock is on this
+     * console, the DSPi itself is open (`installer_lock.scope`).
+     */
+    val scopeNoticeKey: String,
+    /**
+     * Why the PIN's file is unreadable, when it is.
+     */
+    val detail: String,
+)
+
+/**
+ * A PIN just set ([`DspiCore::installer_pin_set`]).
+ */
+data class InstallerPin(
+    /**
+     * The recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`): shown this once, for
+     * the hand-over note, never kept but as a hash (notice
+     * `installer_lock.recovery`).
+     */
+    val recoveryCode: String,
+    /**
+     * The lock now.
+     */
+    val state: LockState,
+)
+
+/**
  * What to tell the user about a [`LinkPhase`].
  */
 data class LinkPhaseText(
@@ -3669,6 +3754,179 @@ data class LinkPhaseText(
      * rule is that a lost connection always offers the way out.
      */
     val action: String?,
+)
+
+/**
+ * A mode: Simple, Advanced or Installer.
+ */
+data class ModeEntry(
+    /**
+     * `simple`, `advanced` or `installer`.
+     */
+    val id: String,
+    /**
+     * The mode's name in the UI.
+     */
+    val label: String,
+    /**
+     * The platform classes that open in this mode by default.
+     */
+    val defaultOn: List<String>,
+    /**
+     * Behind the installer's PIN when one is set (and only then).
+     */
+    val needsPinWhenSet: Boolean,
+)
+
+/**
+ * What the locked-user state shows and allows.
+ */
+data class ModesLockedUser(
+    /**
+     * The state's name in the UI (a badge).
+     */
+    val label: String,
+    /**
+     * Its screens, in order.
+     */
+    val screens: List<String>,
+    /**
+     * What its Settings shows (`about`, `installer_note`).
+     */
+    val settings: List<String>,
+    /**
+     * The writes it allows, by registry path (the core enforces them).
+     */
+    val writes: List<String>,
+)
+
+/**
+ * A screen and the modes that show it.
+ */
+data class ModeScreen(
+    /**
+     * Stable id (`front`, `system`, ...; a lock's cover names these).
+     */
+    val id: String,
+    /**
+     * The title in the UI.
+     */
+    val title: String,
+    /**
+     * The modes (and `locked_user`) that show it.
+     */
+    val modes: List<String>,
+    /**
+     * The modes it is the first screen of.
+     */
+    val firstIn: List<String>,
+    /**
+     * `pro` for a Pro-layer screen a client shows once it has built it
+     * (else the next screen of the list stands in); "" otherwise.
+     */
+    val layer: String,
+    /**
+     * The platform classes it is for; empty: all.
+     */
+    val platforms: List<String>,
+)
+
+/**
+ * An operation and the modes that offer it.
+ */
+data class ModeOperation(
+    /**
+     * Stable id (`firmware`, `factory_reset`, ...).
+     */
+    val id: String,
+    /**
+     * The title in the UI.
+     */
+    val title: String,
+    /**
+     * The modes that offer it.
+     */
+    val modes: List<String>,
+    /**
+     * The platform classes it is for; empty: all.
+     */
+    val platforms: List<String>,
+    /**
+     * Behind its usual confirmation.
+     */
+    val confirm: Boolean,
+)
+
+/**
+ * The mode manifest (`assets/modes/modes.json`).
+ */
+data class ModeManifest(
+    /**
+     * The format, 1.
+     */
+    val version: Long,
+    /**
+     * The platform classes: `phone`, `desktop`, `web`.
+     */
+    val platforms: List<String>,
+    /**
+     * The modes, in the order a switch lists them.
+     */
+    val modes: List<ModeEntry>,
+    /**
+     * The locked-user state.
+     */
+    val lockedUser: ModesLockedUser,
+    /**
+     * The screens, in order.
+     */
+    val screens: List<ModeScreen>,
+    /**
+     * The operations that depend on the mode.
+     */
+    val operations: List<ModeOperation>,
+)
+
+/**
+ * The mode a client shows, and why ([`DspiCore::mode_resolve`]).
+ */
+data class ModeChoice(
+    /**
+     * The mode to show: `simple`, `advanced`, `installer` or `locked_user`.
+     */
+    val mode: String,
+    /**
+     * Why: `locked` (the locked-user state), `pinned` (the hub's),
+     * `chosen` (the user's) or `default` (the platform class's).
+     */
+    val reason: String,
+    /**
+     * The user may switch modes (no lock, no pinned mode).
+     */
+    val switchable: Boolean,
+    /**
+     * The mode asked for (chosen or pinned) is the Installer, an installer
+     * PIN is set and the console is not unlocked: ask for the PIN
+     * (`installer_unlock`); `mode` is the default meanwhile. Never with no
+     * PIN set.
+     */
+    val needsPin: Boolean,
+    /**
+     * The modes the switch offers with no PIN prompt.
+     */
+    val openModes: List<String>,
+    /**
+     * The screens of `mode` for this platform class, in order.
+     */
+    val screens: List<String>,
+    /**
+     * The first of them.
+     */
+    val firstScreen: String,
+    /**
+     * The operations `mode` offers on this platform class.
+     */
+    val operations: List<String>,
 )
 
 /**

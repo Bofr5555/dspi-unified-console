@@ -135,6 +135,8 @@ mod ab;
 pub mod limits;
 // -- WP P1SA --
 mod guarded;
+// -- WP P1LK --
+pub mod modes;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -219,6 +221,11 @@ pub use offline::{template_list, template_text};
 pub use ab::{AbCompare, AbSide};
 // -- WP P1LM --
 pub use limits::{LimitsApply, LimitsStatus};
+// -- WP P1LK --
+pub use limits::{InstallerPin, LockState};
+pub use modes::{
+    ModeChoice, ModeEntry, ModeManifest, ModeOperation, ModeScreen, ModesLockedUser, mode_manifest,
+};
 // -- WP P1SA --
 pub use guarded::{
     APPLY_GUARD_DEFAULT_TIMEOUT_S, APPLY_GUARD_MAX_TIMEOUT_S, GuardPhase, GuardedApply,
@@ -733,6 +740,7 @@ impl Inner {
             self.read_only_refusals = self.read_only_refusals.saturating_add(1);
             return Err(DspiError::ReadOnly);
         }
+        crate::limits::lock_check(self)?; // -- WP P1LK -- the installer's lock
         Ok(Writable(self.conn()?))
     }
 }

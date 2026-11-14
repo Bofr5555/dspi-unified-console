@@ -82,6 +82,7 @@ or `x-<hex>` for a serial with other characters):
 | `limits.dspipreset` | the profile |
 | `limits.good.dspipreset` | the last profile that was written cleanly: the fallback |
 | `limits.pin.json` | the PIN's hash (P1LK) |
+| `limits.recovery.json` | the recovery code's hash (P1LK, [installer-lock.md](installer-lock.md)) |
 
 Every file is written atomically: a temporary file beside it, then a rename,
 so a crash leaves the old file or the new one.
@@ -108,7 +109,9 @@ installer restores it risks a hard lockout.
 ### A forgotten PIN (OD-P1c)
 
 The documented last resort: delete the device's folder. That removes the
-profile, its good copy and the PIN together.
+profile, its good copy and the PIN together (and the recovery code; before it,
+the recovery code shown when the PIN was set, or a hub's Admin:
+[installer-lock.md](installer-lock.md)).
 
 ## Enforcement
 

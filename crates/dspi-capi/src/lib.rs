@@ -162,6 +162,8 @@ mod tests {
             "src/fns_misc/confirm.rs",
             // -- WP P1LM --
             "src/fns_misc/limits.rs",
+            // -- WP P1LK --
+            "src/fns_misc/modes.rs",
             // -- WP P1OF --
             "src/fns_misc/offline.rs",
             // -- WP P1SA --

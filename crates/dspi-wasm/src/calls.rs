@@ -85,6 +85,8 @@ impl From<DspiError> for CallError {
             DspiError::ConfirmationRequired { .. } => "confirmation_required",
             // -- WP P1LM --
             DspiError::LimitExceeded { .. } => "limit_exceeded",
+            // -- WP P1LK --
+            DspiError::InstallerLock { .. } => "installer_lock",
             _ => "internal",
         };
         // -- WP P1NT --
@@ -238,6 +240,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     }
     // -- WP SW3 -- the hub's audio-link system model (src/system.rs)
     if let Some(r) = crate::system::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP P1LK -- the mode manifest and the installer's lock (src/modes.rs)
+    if let Some(r) = crate::modes::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
     match req.method.as_str() {

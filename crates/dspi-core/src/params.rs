@@ -287,6 +287,7 @@ impl DspiCore {
     /// Errors: [`DspiError::InvalidArgument`] for a NaN; the connection and
     /// transfer errors of every setter.
     pub fn set_master_volume(&self, db: f32) -> Result<()> {
+        let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         let db = not_nan(db, "master volume")?;
         let val = if db <= MASTER_VOL_MUTE_DB {
             MASTER_VOL_MUTE_DB
@@ -339,6 +340,7 @@ impl DspiCore {
     /// Errors: [`DspiError::InvalidArgument`] for a NaN; the connection and
     /// transfer errors of every setter.
     pub fn set_user_volume(&self, db: f32) -> Result<()> {
+        let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         let val = not_nan(db, "user volume")?.clamp(-60.0, 0.0);
         self.set_scalar("vol.user", Value::Float(val), |s| s.user_volume_db = val)
     }
@@ -347,6 +349,7 @@ impl DspiCore {
     ///
     /// Errors: the connection and transfer errors of every setter.
     pub fn set_user_mute(&self, muted: bool) -> Result<()> {
+        let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         self.set_scalar("vol.mute", Value::Bool(muted), |s| s.user_mute = muted)
     }
 
@@ -687,6 +690,7 @@ impl DspiCore {
     /// Errors: [`DspiError::InvalidArgument`] for an output out of range; the
     /// connection and transfer errors of every setter.
     pub fn set_output_mute(&self, output: u8, muted: bool) -> Result<()> {
+        let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         let mut inner = self.writing()?;
         let o = output_index(&inner.state, output)?;
         let change = inner.journal_begin("out.mute", &[output])?;

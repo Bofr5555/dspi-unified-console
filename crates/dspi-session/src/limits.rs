@@ -52,6 +52,11 @@ pub const GOOD_FILE: &str = "limits.good.dspipreset";
 /// The PIN's hash: host-only, never in a document.
 pub const PIN_FILE: &str = "limits.pin.json";
 
+// -- WP P1LK --
+/// The installer's recovery code's hash (OD-P1c), beside the PIN's: host-only,
+/// never in a document. The code itself is shown once, when the PIN is set.
+pub const RECOVERY_FILE: &str = "limits.recovery.json";
+
 /// The largest profile document read.
 const MAX_DOC_BYTES: usize = 1 << 20;
 
@@ -675,6 +680,9 @@ pub struct Loaded {
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub use files::LimitsStore;
+// -- WP P1LK --
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub use files::random_bytes;
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod files {
@@ -686,7 +694,7 @@ mod files {
 
     use super::{
         GOOD_FILE, LimitsProfile, LoadState, Loaded, PIN_FILE, PIN_ITERATIONS, PROFILE_FILE,
-        PinRecord, from_document,
+        PinRecord, RECOVERY_FILE, from_document,
     };
     use crate::preset_file::save_file;
     use crate::snapshot_store::dir_name;
@@ -843,6 +851,41 @@ mod files {
         pub fn clear_pin(&self, serial: &str) -> io::Result<()> {
             remove(&self.dir(serial).join(PIN_FILE))
         }
+
+        // -- WP P1LK --
+        /// Keep the hash of `serial`'s recovery code (atomic), made as a PIN's.
+        pub fn write_recovery(&self, record: &PinRecord, serial: &str) -> io::Result<()> {
+            let dir = self.dir(serial);
+            create_dir(&dir)?;
+            let text = serde_json::to_string_pretty(record).map_err(io::Error::other)?;
+            save_file(&dir.join(RECOVERY_FILE), &text)
+        }
+
+        // -- WP P1LK --
+        /// `serial`'s recovery code record; `None` when none is kept. An
+        /// unreadable record is an error.
+        pub fn recovery(&self, serial: &str) -> io::Result<Option<PinRecord>> {
+            let Some(text) = read(&self.dir(serial).join(RECOVERY_FILE))? else {
+                return Ok(None);
+            };
+            serde_json::from_str(&text)
+                .map(Some)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        }
+
+        // -- WP P1LK --
+        /// Remove `serial`'s recovery code.
+        pub fn clear_recovery(&self, serial: &str) -> io::Result<()> {
+            remove(&self.dir(serial).join(RECOVERY_FILE))
+        }
+    }
+
+    // -- WP P1LK --
+    /// `N` random bytes from the operating system (a salt, a recovery code).
+    pub fn random_bytes<const N: usize>() -> io::Result<[u8; N]> {
+        let mut b = [0u8; N];
+        getrandom::fill(&mut b).map_err(|e| io::Error::other(e.to_string()))?;
+        Ok(b)
     }
 }
 

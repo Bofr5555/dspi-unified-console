@@ -134,6 +134,19 @@ pub enum DspiError {
         /// What and why, for a log or a detail line.
         msg: String,
     },
+    // -- WP P1LK --
+    /// The installer's lock on this console (`crate::limits`, S4): nothing was
+    /// sent. `code`: `locked` (the locked-user state allows only volume, mute
+    /// and preset), `pin_required` (an installer action needs the unlock),
+    /// `wrong_pin`, `wait` (too many wrong PINs: the refusal window is open;
+    /// `installer_lock_state().retry_after_ms` says how long) or `no_pin`.
+    #[error("{msg}")]
+    InstallerLock {
+        /// Why, as above.
+        code: String,
+        /// What and why, for a log or a detail line.
+        msg: String,
+    },
 }
 
 // -- WP P1NT --
@@ -159,16 +172,19 @@ impl DspiError {
             Self::ConfirmationRequired { .. } => "confirmation_required",
             // -- WP P1LM --
             Self::LimitExceeded { .. } => "limit_exceeded",
+            // -- WP P1LK --
+            Self::InstallerLock { .. } => "installer_lock",
         }
     }
 
     /// The stable key of this error's notice (`crate::notice_text`): the
-    /// variant's key, or `dlink.<code>` / `autoeq.<code>` where the table has a
-    /// row for that code.
+    /// variant's key, or `dlink.<code>` / `autoeq.<code>` /
+    /// `installer_lock.<code>` where the table has a row for that code.
     pub fn notice_key(&self) -> String {
         let kind = self.kind_key();
         let code = match self {
             Self::Link { code, .. } | Self::AutoEq { code, .. } => Some(code.as_str()),
+            Self::InstallerLock { code, .. } => Some(code.as_str()), // -- WP P1LK --
             _ => None,
         };
         code.map(|c| format!("{kind}.{c}"))
@@ -188,7 +204,8 @@ impl DspiError {
             | Self::FirmwareGuardBlocked { msg }
             | Self::OvervoltWordRequired { msg }
             | Self::ConfirmationRequired { msg, .. }
-            | Self::LimitExceeded { msg, .. } => msg.clone(),
+            | Self::LimitExceeded { msg, .. }
+            | Self::InstallerLock { msg, .. } => msg.clone(), // -- WP P1LK --
             Self::Refused { status } => format!("status {status}"),
             Self::Disconnected
             | Self::Unsupported

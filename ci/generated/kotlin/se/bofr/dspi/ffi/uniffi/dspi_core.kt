@@ -1682,6 +1682,26 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1752,6 +1772,8 @@ fun uniffi_dspi_core_checksum_func_link_phase_text(
 fun uniffi_dspi_core_checksum_func_link_phase_texts(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_ws_url(
+): Short
+fun uniffi_dspi_core_checksum_func_mode_manifest(
 ): Short
 fun uniffi_dspi_core_checksum_func_notice_for(
 ): Short
@@ -2089,6 +2111,18 @@ fun uniffi_dspi_core_checksum_method_dspicore_identify(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installer_lock(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installer_lock_cover(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installer_lock_state(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installer_pin_clear(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installer_pin_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_installer_unlock(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_is_connected(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_limits_apply_profile(
@@ -2124,6 +2158,12 @@ fun uniffi_dspi_core_checksum_method_dspicore_load_preset(
 fun uniffi_dspi_core_checksum_method_dspicore_max_delay_ms(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_meter_ballistics(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_mode_pinned(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_mode_resolve(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_mode_set_pinned(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_monitor_clear(
 ): Short
@@ -2849,6 +2889,18 @@ fun uniffi_dspi_core_fn_method_dspicore_identify(`ptr`: Pointer,`seconds`: Byte,
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+fun uniffi_dspi_core_fn_method_dspicore_installer_lock(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installer_lock_cover(`ptr`: Pointer,`pages`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installer_lock_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installer_pin_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installer_pin_set(`ptr`: Pointer,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_installer_unlock(`ptr`: Pointer,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_is_connected(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun uniffi_dspi_core_fn_method_dspicore_limits_apply_profile(`ptr`: Pointer,`document`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -2885,6 +2937,12 @@ fun uniffi_dspi_core_fn_method_dspicore_max_delay_ms(`ptr`: Pointer,uniffi_out_e
 ): Float
 fun uniffi_dspi_core_fn_method_dspicore_meter_ballistics(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_mode_pinned(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_mode_resolve(`ptr`: Pointer,`platform`: RustBuffer.ByValue,`chosen`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_mode_set_pinned(`ptr`: Pointer,`mode`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_monitor_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_monitor_read(`ptr`: Pointer,`afterId`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -3307,6 +3365,8 @@ fun uniffi_dspi_core_fn_func_link_phase_texts(uniffi_out_err: UniffiRustCallStat
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_ws_url(`host`: RustBuffer.ByValue,`port`: Short,`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_mode_manifest(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_notice_for(`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_notice_for_key(`key`: RustBuffer.ByValue,`detail`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3539,6 +3599,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_ws_url() != 18495.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_mode_manifest() != 33369.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_notice_for() != 13472.toShort()) {
@@ -4045,6 +4108,24 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_lock() != 14116.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_lock_cover() != 6684.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_lock_state() != 5498.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_pin_clear() != 32631.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_pin_set() != 15081.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_installer_unlock() != 2337.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_is_connected() != 6017.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4097,6 +4178,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_meter_ballistics() != 35146.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_mode_pinned() != 48561.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_mode_resolve() != 51986.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_mode_set_pinned() != 36173.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_monitor_clear() != 47062.toShort()) {
@@ -7767,6 +7857,72 @@ public interface DspiCoreInterface {
     fun `inaccessibleDevices`(): kotlin.UInt
     
     /**
+     * Lock the open device again on this console (the end of an unlock).
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
+     * `no_pin` when no PIN is set (nothing to lock).
+     */
+    fun `installerLock`(): LockState
+    
+    /**
+     * Choose what the open device's lock covers: screen ids of the mode
+     * manifest (`front` and the rest; empty: the PIN locks nothing). Kept in
+     * the device's limits profile (`lockedPages`), which is created when
+     * there is none; the device is held to the profile as
+     * [`DspiCore::limits_apply_profile`] does.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * an id the manifest does not have; [`DspiError::InstallerLock`]
+     * `pin_required`; [`DspiError::Io`] as `limits_apply_profile`.
+     */
+    fun `installerLockCover`(`pages`: List<kotlin.String>): LockState
+    
+    /**
+     * The open device's installer lock on this console: whether a PIN is
+     * set, whether the locked-user state is on, what it covers and allows,
+     * the refusal window after wrong PINs, the installer's note and contact.
+     * With no device: no PIN, nothing locked.
+     */
+    fun `installerLockState`(): LockState
+    
+    /**
+     * Remove the open device's installer PIN (and its recovery code) on
+     * this console: no lock, no prompt, as before a PIN was set. Nothing
+     * to do with none set.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
+     * `pin_required` while the console is not unlocked; [`DspiError::Io`]
+     * when a file could not be removed.
+     */
+    fun `installerPinClear`(): LockState
+    
+    /**
+     * Set (or change) the open device's installer PIN on this console, and
+     * make a new recovery code, shown this once. The console stays unlocked
+     * for the device. Kept in the limits folder (`limits_set_dir`), else for
+     * this core's lifetime. Slow (two hashes): off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
+     * for a PIN of fewer than 4 or more than 64 characters, or with a space
+     * at either end; [`DspiError::InstallerLock`] `pin_required` while a PIN
+     * is set and the console is not unlocked; [`DspiError::Io`] when a file
+     * could not be written; [`DspiError::Unsupported`] on the web.
+     */
+    fun `installerPinSet`(`pin`: kotlin.String): InstallerPin
+    
+    /**
+     * Unlock the open device on this console for this session with the
+     * installer's PIN or the recovery code. With no PIN set, nothing is
+     * asked and nothing changes. Slow (a PIN hash): off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InstallerLock`] `wrong_pin`, or `wait` while the refusal
+     * window after repeated wrong PINs is open (nothing checked;
+     * [`LockState::retry_after_ms`]).
+     */
+    fun `installerUnlock`(`pin`: kotlin.String): LockState
+    
+    /**
      * Whether a device is open: `conn.is_some()`. It stays true after an
      * unplug until the connection is closed (by C1b's hotplug poll, C7's
      * notification handling, or [`DspiCore::disconnect`]); a call on it
@@ -7962,6 +8118,33 @@ public interface DspiCoreInterface {
      * hold 10 000 ms after the last new clip. Never fails.
      */
     fun `meterBallistics`(): MeterBallistics
+    
+    /**
+     * The mode the hub pins for the open device ("" for none).
+     */
+    fun `modePinned`(): kotlin.String
+    
+    /**
+     * The mode to show on a client of `platform` (`phone`, `desktop` or
+     * `web`) when the user has chosen `chosen` (a mode id, or "" for none):
+     * the locked-user state first, then a mode the hub pins, then the
+     * user's choice, then the platform's default. With no PIN set nothing
+     * asks for one. Never writes; no I/O beyond the PIN's files, read once.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a platform class or a mode
+     * the manifest does not have.
+     */
+    fun `modeResolve`(`platform`: kotlin.String, `chosen`: kotlin.String): ModeChoice
+    
+    /**
+     * Pin the open device's mode, as the hub says for this console's role
+     * (P1HL's `mode.pinned`): a mode id or `locked_user`; "" clears it. It
+     * overrides the user's choice until cleared or another device opens.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for an id the manifest does not have.
+     */
+    fun `modeSetPinned`(`mode`: kotlin.String)
     
     /**
      * Forget every monitor line. Ids carry on from where they were, so a
@@ -12968,6 +13151,137 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Lock the open device again on this console (the end of an unlock).
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
+     * `no_pin` when no PIN is set (nothing to lock).
+     */
+    @Throws(DspiException::class)override fun `installerLock`(): LockState {
+            return FfiConverterTypeLockState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installer_lock(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Choose what the open device's lock covers: screen ids of the mode
+     * manifest (`front` and the rest; empty: the PIN locks nothing). Kept in
+     * the device's limits profile (`lockedPages`), which is created when
+     * there is none; the device is held to the profile as
+     * [`DspiCore::limits_apply_profile`] does.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * an id the manifest does not have; [`DspiError::InstallerLock`]
+     * `pin_required`; [`DspiError::Io`] as `limits_apply_profile`.
+     */
+    @Throws(DspiException::class)override fun `installerLockCover`(`pages`: List<kotlin.String>): LockState {
+            return FfiConverterTypeLockState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installer_lock_cover(
+        it, FfiConverterSequenceString.lower(`pages`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The open device's installer lock on this console: whether a PIN is
+     * set, whether the locked-user state is on, what it covers and allows,
+     * the refusal window after wrong PINs, the installer's note and contact.
+     * With no device: no PIN, nothing locked.
+     */override fun `installerLockState`(): LockState {
+            return FfiConverterTypeLockState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installer_lock_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Remove the open device's installer PIN (and its recovery code) on
+     * this console: no lock, no prompt, as before a PIN was set. Nothing
+     * to do with none set.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InstallerLock`]
+     * `pin_required` while the console is not unlocked; [`DspiError::Io`]
+     * when a file could not be removed.
+     */
+    @Throws(DspiException::class)override fun `installerPinClear`(): LockState {
+            return FfiConverterTypeLockState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installer_pin_clear(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Set (or change) the open device's installer PIN on this console, and
+     * make a new recovery code, shown this once. The console stays unlocked
+     * for the device. Kept in the limits folder (`limits_set_dir`), else for
+     * this core's lifetime. Slow (two hashes): off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`]
+     * for a PIN of fewer than 4 or more than 64 characters, or with a space
+     * at either end; [`DspiError::InstallerLock`] `pin_required` while a PIN
+     * is set and the console is not unlocked; [`DspiError::Io`] when a file
+     * could not be written; [`DspiError::Unsupported`] on the web.
+     */
+    @Throws(DspiException::class)override fun `installerPinSet`(`pin`: kotlin.String): InstallerPin {
+            return FfiConverterTypeInstallerPin.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installer_pin_set(
+        it, FfiConverterString.lower(`pin`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Unlock the open device on this console for this session with the
+     * installer's PIN or the recovery code. With no PIN set, nothing is
+     * asked and nothing changes. Slow (a PIN hash): off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InstallerLock`] `wrong_pin`, or `wait` while the refusal
+     * window after repeated wrong PINs is open (nothing checked;
+     * [`LockState::retry_after_ms`]).
+     */
+    @Throws(DspiException::class)override fun `installerUnlock`(`pin`: kotlin.String): LockState {
+            return FfiConverterTypeLockState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_installer_unlock(
+        it, FfiConverterString.lower(`pin`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Whether a device is open: `conn.is_some()`. It stays true after an
      * unplug until the connection is closed (by C1b's hotplug poll, C7's
      * notification handling, or [`DspiCore::disconnect`]); a call on it
@@ -13341,6 +13655,64 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     }
     )
     }
+    
+
+    
+    /**
+     * The mode the hub pins for the open device ("" for none).
+     */override fun `modePinned`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_mode_pinned(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The mode to show on a client of `platform` (`phone`, `desktop` or
+     * `web`) when the user has chosen `chosen` (a mode id, or "" for none):
+     * the locked-user state first, then a mode the hub pins, then the
+     * user's choice, then the platform's default. With no PIN set nothing
+     * asks for one. Never writes; no I/O beyond the PIN's files, read once.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a platform class or a mode
+     * the manifest does not have.
+     */
+    @Throws(DspiException::class)override fun `modeResolve`(`platform`: kotlin.String, `chosen`: kotlin.String): ModeChoice {
+            return FfiConverterTypeModeChoice.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_mode_resolve(
+        it, FfiConverterString.lower(`platform`),FfiConverterString.lower(`chosen`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Pin the open device's mode, as the hub says for this console's role
+     * (P1HL's `mode.pinned`): a mode id or `locked_user`; "" clears it. It
+     * overrides the user's choice until cleared or another device opens.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::InvalidArgument`] for an id the manifest does not have.
+     */
+    @Throws(DspiException::class)override fun `modeSetPinned`(`mode`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_mode_set_pinned(
+        it, FfiConverterString.lower(`mode`),_status)
+}
+    }
+    
     
 
     
@@ -23730,6 +24102,49 @@ public object FfiConverterTypeInputLockStatus: FfiConverterRustBuffer<InputLockS
 
 
 /**
+ * A PIN just set ([`DspiCore::installer_pin_set`]).
+ */
+data class InstallerPin (
+    /**
+     * The recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`): shown this once, for
+     * the hand-over note, never kept but as a hash (notice
+     * `installer_lock.recovery`).
+     */
+    var `recoveryCode`: kotlin.String, 
+    /**
+     * The lock now.
+     */
+    var `state`: LockState
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeInstallerPin: FfiConverterRustBuffer<InstallerPin> {
+    override fun read(buf: ByteBuffer): InstallerPin {
+        return InstallerPin(
+            FfiConverterString.read(buf),
+            FfiConverterTypeLockState.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: InstallerPin) = (
+            FfiConverterString.allocationSize(value.`recoveryCode`) +
+            FfiConverterTypeLockState.allocationSize(value.`state`)
+    )
+
+    override fun write(value: InstallerPin, buf: ByteBuffer) {
+            FfiConverterString.write(value.`recoveryCode`, buf)
+            FfiConverterTypeLockState.write(value.`state`, buf)
+    }
+}
+
+
+
+/**
  * State of the LG Sound Sync link (optical volume from an LG TV).
  */
 data class LgStatus (
@@ -24449,6 +24864,138 @@ public object FfiConverterTypeLinkStatus: FfiConverterRustBuffer<LinkStatus> {
 
 
 /**
+ * The open device's installer lock on this console
+ * ([`DspiCore::installer_lock_state`]).
+ */
+data class LockState (
+    /**
+     * The open device's serial ("" with none).
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * An installer PIN is set for it on this console (an unreadable PIN
+     * file counts as set; `detail` says why).
+     */
+    var `pinSet`: kotlin.Boolean, 
+    /**
+     * A PIN is set and this console is unlocked for the device, this
+     * session.
+     */
+    var `unlocked`: kotlin.Boolean, 
+    /**
+     * The locked-user state: a PIN is set, the lock covers something and
+     * this console is not unlocked. Only `allowed_writes` pass.
+     */
+    var `locked`: kotlin.Boolean, 
+    /**
+     * The Installer pages, the profile and the PIN may change without a
+     * PIN prompt: no PIN is set, or the console is unlocked.
+     */
+    var `installerOpen`: kotlin.Boolean, 
+    /**
+     * What the lock covers: the mode manifest's screen ids (the profile's
+     * `lockedPages`); empty: a PIN alone locks nothing.
+     */
+    var `covers`: List<kotlin.String>, 
+    /**
+     * The writes the locked-user state allows (registry paths).
+     */
+    var `allowedWrites`: List<kotlin.String>, 
+    /**
+     * Wrong PINs since the last good one.
+     */
+    var `wrongTries`: kotlin.UInt, 
+    /**
+     * How long until the next attempt is allowed, ms; 0: now.
+     */
+    var `retryAfterMs`: kotlin.ULong, 
+    /**
+     * Unlocked with the recovery code: the installer should set a new PIN.
+     */
+    var `recovered`: kotlin.Boolean, 
+    /**
+     * The installer's note, for the locked front page.
+     */
+    var `note`: kotlin.String, 
+    /**
+     * How to reach the installer.
+     */
+    var `contact`: kotlin.String, 
+    /**
+     * The notice the unlock dialog shows in one line: the lock is on this
+     * console, the DSPi itself is open (`installer_lock.scope`).
+     */
+    var `scopeNoticeKey`: kotlin.String, 
+    /**
+     * Why the PIN's file is unreadable, when it is.
+     */
+    var `detail`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLockState: FfiConverterRustBuffer<LockState> {
+    override fun read(buf: ByteBuffer): LockState {
+        return LockState(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LockState) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterBoolean.allocationSize(value.`pinSet`) +
+            FfiConverterBoolean.allocationSize(value.`unlocked`) +
+            FfiConverterBoolean.allocationSize(value.`locked`) +
+            FfiConverterBoolean.allocationSize(value.`installerOpen`) +
+            FfiConverterSequenceString.allocationSize(value.`covers`) +
+            FfiConverterSequenceString.allocationSize(value.`allowedWrites`) +
+            FfiConverterUInt.allocationSize(value.`wrongTries`) +
+            FfiConverterULong.allocationSize(value.`retryAfterMs`) +
+            FfiConverterBoolean.allocationSize(value.`recovered`) +
+            FfiConverterString.allocationSize(value.`note`) +
+            FfiConverterString.allocationSize(value.`contact`) +
+            FfiConverterString.allocationSize(value.`scopeNoticeKey`) +
+            FfiConverterString.allocationSize(value.`detail`)
+    )
+
+    override fun write(value: LockState, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterBoolean.write(value.`pinSet`, buf)
+            FfiConverterBoolean.write(value.`unlocked`, buf)
+            FfiConverterBoolean.write(value.`locked`, buf)
+            FfiConverterBoolean.write(value.`installerOpen`, buf)
+            FfiConverterSequenceString.write(value.`covers`, buf)
+            FfiConverterSequenceString.write(value.`allowedWrites`, buf)
+            FfiConverterUInt.write(value.`wrongTries`, buf)
+            FfiConverterULong.write(value.`retryAfterMs`, buf)
+            FfiConverterBoolean.write(value.`recovered`, buf)
+            FfiConverterString.write(value.`note`, buf)
+            FfiConverterString.write(value.`contact`, buf)
+            FfiConverterString.write(value.`scopeNoticeKey`, buf)
+            FfiConverterString.write(value.`detail`, buf)
+    }
+}
+
+
+
+/**
  * The meter ballistics' timing (`DspiCore::set_meter_ballistics`).
  */
 data class MeterBallistics (
@@ -24493,6 +25040,404 @@ public object FfiConverterTypeMeterBallistics: FfiConverterRustBuffer<MeterBalli
             FfiConverterUInt.write(value.`holdMs`, buf)
             FfiConverterFloat.write(value.`decayPerS`, buf)
             FfiConverterUInt.write(value.`clipHoldMs`, buf)
+    }
+}
+
+
+
+/**
+ * The mode a client shows, and why ([`DspiCore::mode_resolve`]).
+ */
+data class ModeChoice (
+    /**
+     * The mode to show: `simple`, `advanced`, `installer` or `locked_user`.
+     */
+    var `mode`: kotlin.String, 
+    /**
+     * Why: `locked` (the locked-user state), `pinned` (the hub's),
+     * `chosen` (the user's) or `default` (the platform class's).
+     */
+    var `reason`: kotlin.String, 
+    /**
+     * The user may switch modes (no lock, no pinned mode).
+     */
+    var `switchable`: kotlin.Boolean, 
+    /**
+     * The mode asked for (chosen or pinned) is the Installer, an installer
+     * PIN is set and the console is not unlocked: ask for the PIN
+     * (`installer_unlock`); `mode` is the default meanwhile. Never with no
+     * PIN set.
+     */
+    var `needsPin`: kotlin.Boolean, 
+    /**
+     * The modes the switch offers with no PIN prompt.
+     */
+    var `openModes`: List<kotlin.String>, 
+    /**
+     * The screens of `mode` for this platform class, in order.
+     */
+    var `screens`: List<kotlin.String>, 
+    /**
+     * The first of them.
+     */
+    var `firstScreen`: kotlin.String, 
+    /**
+     * The operations `mode` offers on this platform class.
+     */
+    var `operations`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeModeChoice: FfiConverterRustBuffer<ModeChoice> {
+    override fun read(buf: ByteBuffer): ModeChoice {
+        return ModeChoice(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ModeChoice) = (
+            FfiConverterString.allocationSize(value.`mode`) +
+            FfiConverterString.allocationSize(value.`reason`) +
+            FfiConverterBoolean.allocationSize(value.`switchable`) +
+            FfiConverterBoolean.allocationSize(value.`needsPin`) +
+            FfiConverterSequenceString.allocationSize(value.`openModes`) +
+            FfiConverterSequenceString.allocationSize(value.`screens`) +
+            FfiConverterString.allocationSize(value.`firstScreen`) +
+            FfiConverterSequenceString.allocationSize(value.`operations`)
+    )
+
+    override fun write(value: ModeChoice, buf: ByteBuffer) {
+            FfiConverterString.write(value.`mode`, buf)
+            FfiConverterString.write(value.`reason`, buf)
+            FfiConverterBoolean.write(value.`switchable`, buf)
+            FfiConverterBoolean.write(value.`needsPin`, buf)
+            FfiConverterSequenceString.write(value.`openModes`, buf)
+            FfiConverterSequenceString.write(value.`screens`, buf)
+            FfiConverterString.write(value.`firstScreen`, buf)
+            FfiConverterSequenceString.write(value.`operations`, buf)
+    }
+}
+
+
+
+/**
+ * A mode: Simple, Advanced or Installer.
+ */
+data class ModeEntry (
+    /**
+     * `simple`, `advanced` or `installer`.
+     */
+    var `id`: kotlin.String, 
+    /**
+     * The mode's name in the UI.
+     */
+    var `label`: kotlin.String, 
+    /**
+     * The platform classes that open in this mode by default.
+     */
+    var `defaultOn`: List<kotlin.String>, 
+    /**
+     * Behind the installer's PIN when one is set (and only then).
+     */
+    var `needsPinWhenSet`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeModeEntry: FfiConverterRustBuffer<ModeEntry> {
+    override fun read(buf: ByteBuffer): ModeEntry {
+        return ModeEntry(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ModeEntry) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterSequenceString.allocationSize(value.`defaultOn`) +
+            FfiConverterBoolean.allocationSize(value.`needsPinWhenSet`)
+    )
+
+    override fun write(value: ModeEntry, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterSequenceString.write(value.`defaultOn`, buf)
+            FfiConverterBoolean.write(value.`needsPinWhenSet`, buf)
+    }
+}
+
+
+
+/**
+ * The mode manifest (`assets/modes/modes.json`).
+ */
+data class ModeManifest (
+    /**
+     * The format, 1.
+     */
+    var `version`: kotlin.UInt, 
+    /**
+     * The platform classes: `phone`, `desktop`, `web`.
+     */
+    var `platforms`: List<kotlin.String>, 
+    /**
+     * The modes, in the order a switch lists them.
+     */
+    var `modes`: List<ModeEntry>, 
+    /**
+     * The locked-user state.
+     */
+    var `lockedUser`: ModesLockedUser, 
+    /**
+     * The screens, in order.
+     */
+    var `screens`: List<ModeScreen>, 
+    /**
+     * The operations that depend on the mode.
+     */
+    var `operations`: List<ModeOperation>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeModeManifest: FfiConverterRustBuffer<ModeManifest> {
+    override fun read(buf: ByteBuffer): ModeManifest {
+        return ModeManifest(
+            FfiConverterUInt.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceTypeModeEntry.read(buf),
+            FfiConverterTypeModesLockedUser.read(buf),
+            FfiConverterSequenceTypeModeScreen.read(buf),
+            FfiConverterSequenceTypeModeOperation.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ModeManifest) = (
+            FfiConverterUInt.allocationSize(value.`version`) +
+            FfiConverterSequenceString.allocationSize(value.`platforms`) +
+            FfiConverterSequenceTypeModeEntry.allocationSize(value.`modes`) +
+            FfiConverterTypeModesLockedUser.allocationSize(value.`lockedUser`) +
+            FfiConverterSequenceTypeModeScreen.allocationSize(value.`screens`) +
+            FfiConverterSequenceTypeModeOperation.allocationSize(value.`operations`)
+    )
+
+    override fun write(value: ModeManifest, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`version`, buf)
+            FfiConverterSequenceString.write(value.`platforms`, buf)
+            FfiConverterSequenceTypeModeEntry.write(value.`modes`, buf)
+            FfiConverterTypeModesLockedUser.write(value.`lockedUser`, buf)
+            FfiConverterSequenceTypeModeScreen.write(value.`screens`, buf)
+            FfiConverterSequenceTypeModeOperation.write(value.`operations`, buf)
+    }
+}
+
+
+
+/**
+ * An operation and the modes that offer it.
+ */
+data class ModeOperation (
+    /**
+     * Stable id (`firmware`, `factory_reset`, ...).
+     */
+    var `id`: kotlin.String, 
+    /**
+     * The title in the UI.
+     */
+    var `title`: kotlin.String, 
+    /**
+     * The modes that offer it.
+     */
+    var `modes`: List<kotlin.String>, 
+    /**
+     * The platform classes it is for; empty: all.
+     */
+    var `platforms`: List<kotlin.String>, 
+    /**
+     * Behind its usual confirmation.
+     */
+    var `confirm`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeModeOperation: FfiConverterRustBuffer<ModeOperation> {
+    override fun read(buf: ByteBuffer): ModeOperation {
+        return ModeOperation(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ModeOperation) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterSequenceString.allocationSize(value.`modes`) +
+            FfiConverterSequenceString.allocationSize(value.`platforms`) +
+            FfiConverterBoolean.allocationSize(value.`confirm`)
+    )
+
+    override fun write(value: ModeOperation, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterSequenceString.write(value.`modes`, buf)
+            FfiConverterSequenceString.write(value.`platforms`, buf)
+            FfiConverterBoolean.write(value.`confirm`, buf)
+    }
+}
+
+
+
+/**
+ * A screen and the modes that show it.
+ */
+data class ModeScreen (
+    /**
+     * Stable id (`front`, `system`, ...; a lock's cover names these).
+     */
+    var `id`: kotlin.String, 
+    /**
+     * The title in the UI.
+     */
+    var `title`: kotlin.String, 
+    /**
+     * The modes (and `locked_user`) that show it.
+     */
+    var `modes`: List<kotlin.String>, 
+    /**
+     * The modes it is the first screen of.
+     */
+    var `firstIn`: List<kotlin.String>, 
+    /**
+     * `pro` for a Pro-layer screen a client shows once it has built it
+     * (else the next screen of the list stands in); "" otherwise.
+     */
+    var `layer`: kotlin.String, 
+    /**
+     * The platform classes it is for; empty: all.
+     */
+    var `platforms`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeModeScreen: FfiConverterRustBuffer<ModeScreen> {
+    override fun read(buf: ByteBuffer): ModeScreen {
+        return ModeScreen(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ModeScreen) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterSequenceString.allocationSize(value.`modes`) +
+            FfiConverterSequenceString.allocationSize(value.`firstIn`) +
+            FfiConverterString.allocationSize(value.`layer`) +
+            FfiConverterSequenceString.allocationSize(value.`platforms`)
+    )
+
+    override fun write(value: ModeScreen, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterSequenceString.write(value.`modes`, buf)
+            FfiConverterSequenceString.write(value.`firstIn`, buf)
+            FfiConverterString.write(value.`layer`, buf)
+            FfiConverterSequenceString.write(value.`platforms`, buf)
+    }
+}
+
+
+
+/**
+ * What the locked-user state shows and allows.
+ */
+data class ModesLockedUser (
+    /**
+     * The state's name in the UI (a badge).
+     */
+    var `label`: kotlin.String, 
+    /**
+     * Its screens, in order.
+     */
+    var `screens`: List<kotlin.String>, 
+    /**
+     * What its Settings shows (`about`, `installer_note`).
+     */
+    var `settings`: List<kotlin.String>, 
+    /**
+     * The writes it allows, by registry path (the core enforces them).
+     */
+    var `writes`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeModesLockedUser: FfiConverterRustBuffer<ModesLockedUser> {
+    override fun read(buf: ByteBuffer): ModesLockedUser {
+        return ModesLockedUser(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ModesLockedUser) = (
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterSequenceString.allocationSize(value.`screens`) +
+            FfiConverterSequenceString.allocationSize(value.`settings`) +
+            FfiConverterSequenceString.allocationSize(value.`writes`)
+    )
+
+    override fun write(value: ModesLockedUser, buf: ByteBuffer) {
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterSequenceString.write(value.`screens`, buf)
+            FfiConverterSequenceString.write(value.`settings`, buf)
+            FfiConverterSequenceString.write(value.`writes`, buf)
     }
 }
 
@@ -27697,6 +28642,29 @@ sealed class DspiException: kotlin.Exception() {
             get() = "code=${ `code` }, msg=${ `msg` }"
     }
     
+    /**
+     * The installer's lock on this console (`crate::limits`, S4): nothing was
+     * sent. `code`: `locked` (the locked-user state allows only volume, mute
+     * and preset), `pin_required` (an installer action needs the unlock),
+     * `wrong_pin`, `wait` (too many wrong PINs: the refusal window is open;
+     * `installer_lock_state().retry_after_ms` says how long) or `no_pin`.
+     */
+    class InstallerLock(
+        
+        /**
+         * Why, as above.
+         */
+        val `code`: kotlin.String, 
+        
+        /**
+         * What and why, for a log or a detail line.
+         */
+        val `msg`: kotlin.String
+        ) : DspiException() {
+        override val message
+            get() = "code=${ `code` }, msg=${ `msg` }"
+    }
+    
 
     companion object ErrorHandler : UniffiRustCallStatusErrorHandler<DspiException> {
         override fun lift(error_buf: RustBuffer.ByValue): DspiException = FfiConverterTypeDspiError.lift(error_buf)
@@ -27750,6 +28718,10 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
                 FfiConverterString.read(buf),
                 )
             15 -> DspiException.LimitExceeded(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            16 -> DspiException.InstallerLock(
                 FfiConverterString.read(buf),
                 FfiConverterString.read(buf),
                 )
@@ -27834,6 +28806,12 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
                 + FfiConverterString.allocationSize(value.`code`)
                 + FfiConverterString.allocationSize(value.`msg`)
             )
+            is DspiException.InstallerLock -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`code`)
+                + FfiConverterString.allocationSize(value.`msg`)
+            )
         }
     }
 
@@ -27910,6 +28888,12 @@ public object FfiConverterTypeDspiError : FfiConverterRustBuffer<DspiException> 
             }
             is DspiException.LimitExceeded -> {
                 buf.putInt(15)
+                FfiConverterString.write(value.`code`, buf)
+                FfiConverterString.write(value.`msg`, buf)
+                Unit
+            }
+            is DspiException.InstallerLock -> {
+                buf.putInt(16)
                 FfiConverterString.write(value.`code`, buf)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
@@ -30208,6 +31192,90 @@ public object FfiConverterSequenceTypeLinkPhaseText: FfiConverterRustBuffer<List
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeModeEntry: FfiConverterRustBuffer<List<ModeEntry>> {
+    override fun read(buf: ByteBuffer): List<ModeEntry> {
+        val len = buf.getInt()
+        return List<ModeEntry>(len) {
+            FfiConverterTypeModeEntry.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ModeEntry>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeModeEntry.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ModeEntry>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeModeEntry.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeModeOperation: FfiConverterRustBuffer<List<ModeOperation>> {
+    override fun read(buf: ByteBuffer): List<ModeOperation> {
+        val len = buf.getInt()
+        return List<ModeOperation>(len) {
+            FfiConverterTypeModeOperation.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ModeOperation>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeModeOperation.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ModeOperation>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeModeOperation.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeModeScreen: FfiConverterRustBuffer<List<ModeScreen>> {
+    override fun read(buf: ByteBuffer): List<ModeScreen> {
+        val len = buf.getInt()
+        return List<ModeScreen>(len) {
+            FfiConverterTypeModeScreen.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ModeScreen>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeModeScreen.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ModeScreen>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeModeScreen.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeMonitorEntry: FfiConverterRustBuffer<List<MonitorEntry>> {
     override fun read(buf: ByteBuffer): List<MonitorEntry> {
         val len = buf.getInt()
@@ -31132,6 +32200,19 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_ws_url(
         FfiConverterString.lower(`host`),FfiConverterUShort.lower(`port`),FfiConverterString.lower(`path`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The mode manifest: modes, the locked-user state, screens and operations,
+         * with their titles and defaults. No I/O.
+         */ fun `modeManifest`(): ModeManifest {
+            return FfiConverterTypeModeManifest.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_mode_manifest(
+        _status)
 }
     )
     }

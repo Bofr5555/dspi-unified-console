@@ -83,6 +83,14 @@ sealed class DspiException(message: String) : Exception(message) {
      */
     class LimitExceeded(val code: String, val msg: String) : DspiException(msg)
 
+    /**
+     * WP P1LK: the installer's lock on this console; nothing was sent. [code]:
+     * `locked` (the locked-user state allows only volume, mute and preset),
+     * `pin_required`, `wrong_pin`, `wait` (too many wrong PINs; see
+     * `installerLockState().retryAfterMs`) or `no_pin`.
+     */
+    class InstallerLock(val code: String, val msg: String) : DspiException(msg)
+
     companion object {
         /** macOS `DeviceLock.lockedMessage`. */
         const val LOCKED_MESSAGE = "Another console is applying changes"
