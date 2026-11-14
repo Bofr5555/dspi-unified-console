@@ -95,9 +95,14 @@ pub struct Sharing {
 struct Pending {
     /// Our push of it went out.
     pushed: bool,
-    /// The latest configuration another console pushed meanwhile. The device
-    /// applied it before ours, so it counts only if ours never is: our push
-    /// refused, or the choice released before it was pushed.
+    // -- WP ANLASTF -- F1
+    /// The engine tried to push it, whether the device or hub took it or not
+    /// (a STALL, `LOCKED`, `DENIED`): the engine's give-up count is ours.
+    attempted: bool,
+    /// The latest configuration another console pushed meanwhile, or the one
+    /// followed when the choice was made. The device applied it before ours,
+    /// so it counts only if ours never is: our push refused, or the choice
+    /// released before it was pushed.
     earlier: Option<Followed>,
 }
 
@@ -120,6 +125,12 @@ pub struct PollShare {
     // -- WP ANLAST --
     /// What really went out, when a push did.
     pushed_config: Option<RtaConfig>,
+    // -- WP ANLASTF --
+    /// What the engine tried to push, accepted or not (F1).
+    attempted_config: Option<RtaConfig>,
+    /// The engine read the bands: it was watching, so a poll without a push
+    /// means it already agrees with the device (F2).
+    polled: bool,
 }
 
 impl PollShare {
@@ -128,6 +139,13 @@ impl PollShare {
     pub fn note_readback(&mut self, config: RtaConfig) {
         self.readback = Some(config);
     }
+}
+
+// -- WP ANLASTF --
+/// Everything the engine compares before it pushes (`RtaEngine::agrees`):
+/// equal, and there is nothing to push.
+fn same_push(a: &RtaConfig, b: &RtaConfig) -> bool {
+    same_choice(a, b) && a.avg_ms == b.avg_ms && a.peak_decay_db_s == b.peak_decay_db_s
 }
 
 /// The same tap, channels and transform size. Exact: a device analysing more
@@ -183,10 +201,15 @@ impl Sharing {
     /// While driving this only outdates a poll in flight.
     pub fn take_control(&mut self) {
         self.epoch = self.epoch.wrapping_add(1);
-        if self.following.take().is_some() {
+        if let Some(f) = self.following.take() {
             self.agreed = false;
             self.absorb = None;
-            self.pending = Some(Pending::default()); // -- WP ANLAST --
+            // -- WP ANLAST -- / ANLASTF F1: if ours never lands, the device
+            // still holds the one followed.
+            self.pending = Some(Pending {
+                earlier: Some(f),
+                ..Pending::default()
+            });
         }
     }
 
@@ -215,8 +238,11 @@ impl Sharing {
     /// after each poll with `RtaEngine::rejected`; [`Self::tick`] does. A
     /// choice whose push went out and was refused is not applied, so another
     /// console's push seen meanwhile drives after all.
+    ///
+    /// WP ANLASTF F1: a push the device STALLs or the hub refuses (`LOCKED`,
+    /// `DENIED`) counts as pushed and refused, so this holds for it too.
     pub fn engine_gave_up(&mut self, rejected: bool) {
-        if rejected && self.pending.is_some_and(|p| p.pushed) {
+        if rejected && self.pending.is_some_and(|p| p.attempted) {
             self.abandon_pending();
         }
     }
@@ -238,11 +264,31 @@ impl Sharing {
             return;
         };
         if self.last_own != Some(mine) {
+            // -- WP ANLASTF --
+            let before = self.pending.take();
+            let was_following = self.following;
             self.take_control();
             self.agreed = false;
             self.absorb = None;
             self.last_own = Some(mine);
-            self.pending = Some(Pending::default()); // -- WP ANLAST --
+            if was_following.is_some_and(|f| same_push(&f.config, &mine)) {
+                // F2: what the device holds already. Made now and confirmed at
+                // once: driving, and a later push makes us follow.
+                self.pending = None;
+                self.agreed = true;
+                return;
+            }
+            // F3: a choice changed again before its push keeps what was seen
+            // meanwhile; once a push of ours went out, what came before is older.
+            let earlier = match before {
+                Some(p) if p.pushed => None,
+                Some(p) => p.earlier,
+                None => was_following,
+            };
+            self.pending = Some(Pending {
+                earlier,
+                ..Pending::default()
+            }); // -- WP ANLAST --
         }
     }
 
@@ -315,6 +361,10 @@ impl Sharing {
                     Some(p) => p.earlier = Some(theirs),
                     None => self.following = Some(theirs),
                 }
+            } else if let Some(p) = &mut self.pending {
+                // -- WP ANLASTF -- an older push of ours was applied: what
+                // another console pushed before it is older still.
+                p.earlier = None;
             }
             // An echo of ours that no longer matches is an older push,
             // superseded by one still in flight.
@@ -366,6 +416,33 @@ impl Sharing {
         {
             p.pushed = true;
         }
+        // -- WP ANLASTF -- F1: or was tried, and refused.
+        if let (Some(p), Some(tried), Some(mine)) =
+            (&mut self.pending, share.attempted_config, self.last_own)
+            && same_choice(&tried, &mine)
+        {
+            p.attempted = true;
+        }
+        // -- WP ANLASTF -- F2: the engine watched and had nothing to push: it
+        // already agrees with the device, so no echo will come. Confirmed now;
+        // a push seen since the choice is later than it.
+        if share.polled
+            && share.attempted_config.is_none()
+            && !share.absorbed
+            && share.epoch == self.epoch
+            && let (Some(p), Some(mine)) = (self.pending, self.last_own)
+            && !p.attempted
+        {
+            self.pending = None;
+            match p.earlier.filter(|e| !same_choice(&e.config, &mine)) {
+                Some(e) => {
+                    self.epoch = self.epoch.wrapping_add(1);
+                    self.following = Some(e);
+                    self.agreed = false;
+                }
+                None => self.agreed = true,
+            }
+        }
         if share.absorbed && self.absorb == share.absorb {
             self.absorb = None;
         }
@@ -392,10 +469,16 @@ impl Sharing {
         if another_host && caps.is_some_and(|c| followable(&read, c)) {
             // The device moved away from ours after holding it, or from the
             // one followed: a push later than ours either way (WP ANLAST).
-            self.pending = None;
+            // -- WP ANLASTF -- F4: the event seen meanwhile names who.
+            let origin = self
+                .pending
+                .take()
+                .and_then(|p| p.earlier)
+                .filter(|e| same_choice(&e.config, &read))
+                .map_or(0, |e| e.origin);
             self.following = Some(Followed {
                 config: read,
-                origin: 0,
+                origin,
             });
         }
     }
@@ -418,6 +501,7 @@ impl<'a> Held<'a> {
 
 impl Transport for Held<'_> {
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        self.share.polled |= opcode == op::REQ_RTA_GET_BANDS; // -- WP ANLASTF --
         let r = self.t.control_in(opcode, value, len);
         if opcode == op::REQ_RTA_GET_CONFIG
             && let Ok(b) = &r
@@ -434,6 +518,8 @@ impl Transport for Held<'_> {
         value: u16,
         max_len: u16,
     ) -> dspi_transport::Result<Vec<u8>> {
+        // -- WP ANLASTF --
+        self.share.polled |= opcode == op::REQ_RTA_GET_BANDS_ALL || opcode == op::REQ_RTA_GET_BANDS;
         self.t.control_in_upto(opcode, value, max_len)
     }
 
@@ -448,6 +534,8 @@ impl Transport for Held<'_> {
             self.share.absorbed = true;
             return Ok(());
         }
+        // -- WP ANLASTF -- F1: tried, whatever the answer.
+        self.share.attempted_config = RtaConfig::decode(data).ok();
         let r = self.t.control_out(opcode, value, data);
         self.share.pushed |= r.is_ok();
         // -- WP ANLAST --
@@ -1002,6 +1090,7 @@ mod tests_wp_anlast {
         assert!(!p.hold, "a pending choice is never held back");
         p.pushed = true;
         p.pushed_config = Some(c);
+        p.attempted_config = Some(c); // -- WP ANLASTF -- as `Held` records it
         s.finish_poll(&p, Some(&caps()));
     }
 
@@ -1278,10 +1367,12 @@ mod tests_wp_anlast {
     }
 }
 
-/// REVIEW ANLAST probes (throwaway): each asserts what the rule promises.
+/// WP ANLASTF: the review's probes (review/anlast-probes a8cbc4b6), kept as
+/// tests, with the fixups' own: each asserts what the rule promises on a way
+/// out of a pending choice (F1-F5), with the real engine where it decides.
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
-mod tests_review_anlast {
+mod tests_wp_anlastf {
     use std::time::Duration;
 
     use dspi_transport::MockTransport;
@@ -1357,16 +1448,34 @@ mod tests_review_anlast {
             let log = mock.log_handle();
             let mut engine = RtaEngine::new();
             assert!(engine.load(caps(), vec![100; 37]));
-            engine.set_options(Followed { config: config(mask), origin: 0 }.options());
-            let view = engine.subscribe(Request { tap: TAP_OUTPUT, mask, wants_bins: false });
+            engine.set_options(
+                Followed {
+                    config: config(mask),
+                    origin: 0,
+                }
+                .options(),
+            );
+            let view = engine.subscribe(Request {
+                tap: TAP_OUTPUT,
+                mask,
+                wants_bins: false,
+            });
             let mut sharing = Sharing::default();
             sharing.judge_own(Some(config(mask)));
-            Self { sharing, engine, mock, log, view, now: Instant::now() }
+            Self {
+                sharing,
+                engine,
+                mock,
+                log,
+                view,
+                now: Instant::now(),
+            }
         }
 
         fn note(&mut self, n: &Notification) -> bool {
             let caps = caps();
-            self.sharing.note(n, TransportKind::Link, Some(7), Some(&caps))
+            self.sharing
+                .note(n, TransportKind::Link, Some(7), Some(&caps))
         }
 
         /// One poll as the client runs it: judge our choice, feed the engine.
@@ -1374,12 +1483,31 @@ mod tests_review_anlast {
             self.sharing.judge_own(Some(config(own)));
             let (mask, options) = match self.sharing.following() {
                 Some(f) => (f.config.channel_mask, f.options()),
-                None => (own, Followed { config: config(own), origin: 0 }.options()),
+                None => (
+                    own,
+                    Followed {
+                        config: config(own),
+                        origin: 0,
+                    }
+                    .options(),
+                ),
             };
             self.engine.set_options(options);
-            self.engine.update(self.view, Request { tap: TAP_OUTPUT, mask, wants_bins: false });
+            self.engine.update(
+                self.view,
+                Request {
+                    tap: TAP_OUTPUT,
+                    mask,
+                    wants_bins: false,
+                },
+            );
             self.now += Duration::from_secs(1);
-            self.sharing.tick(&mut self.engine, &mut self.mock, self.now, Budget::default());
+            self.sharing.tick(
+                &mut self.engine,
+                &mut self.mock,
+                self.now,
+                Budget::default(),
+            );
         }
 
         fn pushes(&self) -> Vec<u16> {
@@ -1396,7 +1524,9 @@ mod tests_review_anlast {
             format!(
                 "pending={} following={:?} rejected={} pushes={:?}",
                 self.sharing.pending(),
-                self.sharing.following().map(|f| (f.origin, f.config.channel_mask)),
+                self.sharing
+                    .following()
+                    .map(|f| (f.origin, f.config.channel_mask)),
                 self.engine.rejected(),
                 self.pushes()
             )
@@ -1407,7 +1537,7 @@ mod tests_review_anlast {
     /// and the hub answers LOCKED/DENIED the same way: the push is an Err. The engine
     /// gives up after three; the rule says we then follow the push seen meanwhile.
     #[test]
-    fn review_r1_a_push_the_device_stalls_gives_way_to_the_push_seen_meanwhile() {
+    fn wp_anlastf_r1_a_push_the_device_stalls_gives_way_to_the_push_seen_meanwhile() {
         let mut r = Rig::new(0b01, vec![config(0b01), config(0b10)], Reply::Stall);
         // Driving 0b01 with its echo seen (the push itself is not the point here).
         assert!(r.note(&event(&config(0b01), 7)));
@@ -1417,7 +1547,11 @@ mod tests_review_anlast {
         assert_eq!(r.pushes(), [0b100], "{}", r.state());
         assert!(r.sharing.pending(), "{}", r.state());
         assert!(r.note(&event(&config(0b10), 9)));
-        assert_eq!(r.sharing.following(), None, "9's push was applied before ours");
+        assert_eq!(
+            r.sharing.following(),
+            None,
+            "9's push was applied before ours"
+        );
         for _ in 0..12 {
             r.tick(0b100);
             if r.engine.rejected() {
@@ -1430,7 +1564,7 @@ mod tests_review_anlast {
 
     /// R1b: after the stall, console 9 keeps pushing: we never follow any of it.
     #[test]
-    fn review_r1b_after_a_stalled_push_later_pushes_are_still_not_followed() {
+    fn wp_anlastf_r1b_after_a_stalled_push_later_pushes_are_followed() {
         let mut r = Rig::new(0b01, vec![config(0b01), config(0b10)], Reply::Stall);
         assert!(r.note(&event(&config(0b01), 7)));
         r.tick(0b100);
@@ -1442,14 +1576,18 @@ mod tests_review_anlast {
             assert!(r.note(&event(&config(m), 9)));
             r.tick(0b100);
         }
-        assert!(r.sharing.following().is_some(), "STUCK after 3 later pushes by 9: {}", r.state());
+        assert!(
+            r.sharing.following().is_some(),
+            "STUCK after 3 later pushes by 9: {}",
+            r.state()
+        );
     }
 
-    /// R2: a choice identical to what the device holds (we follow 9's 0b10 and now
+    /// R2 (F2, decided: confirmed at once): a choice identical to what the device holds (we follow 9's 0b10 and now
     /// choose 0b10 ourselves) makes no SET, so no echo ever comes. 9 then chooses
     /// 0b1000, later than our choice: the last choice made is 9's.
     #[test]
-    fn review_r2_a_choice_the_device_already_holds_is_pending_without_a_push() {
+    fn wp_anlastf_r2_a_choice_the_device_already_holds_is_confirmed_at_once() {
         let mut r = Rig::new(
             0b01,
             // ticks: 1 push (no read); 2 swallowed push (no read); 3 read 0b10
@@ -1463,13 +1601,24 @@ mod tests_review_anlast {
         assert_eq!(r.sharing.following().unwrap().origin, 9);
         r.tick(0b01);
         r.tick(0b01);
-        assert_eq!(r.pushes(), [0b01], "nothing pushed while following: {}", r.state());
+        assert_eq!(
+            r.pushes(),
+            [0b01],
+            "nothing pushed while following: {}",
+            r.state()
+        );
         assert_eq!(r.engine.wanted().unwrap().channel_mask, 0b10);
         // We choose exactly what the device holds: a choice, no SET needed.
         r.tick(0b10);
-        assert_eq!(r.pushes(), [0b01], "no SET: the device already holds 0b10: {}", r.state());
-        assert_eq!(r.sharing.following(), None);
-        assert!(r.sharing.pending(), "{}", r.state());
+        assert_eq!(
+            r.pushes(),
+            [0b01],
+            "no SET: the device already holds 0b10: {}",
+            r.state()
+        );
+        // WP ANLASTF F2 (decided): made now and confirmed at once, nothing pending.
+        // This tick's readback already shows 9's later 0b1000, so we may follow it.
+        assert!(!r.sharing.pending(), "{}", r.state());
         // 9 chose 0b1000 later than we chose 0b10 (its event, and its readback above).
         assert!(r.note(&event(&config(0b1000), 9)));
         let after_event = r.state();
@@ -1485,7 +1634,7 @@ mod tests_review_anlast {
     /// R3: released before its push went out, a choice gives way to the push seen
     /// meanwhile (ANLAST). Also when the choice was changed once before release.
     #[test]
-    fn review_r3_a_rechosen_then_released_choice_still_follows_the_push_seen_meanwhile() {
+    fn wp_anlastf_r3_a_rechosen_then_released_choice_still_follows_the_push_seen_meanwhile() {
         let mut s = Sharing::default();
         s.judge_own(Some(config(0b01)));
         assert!(s.note_config(&config(0b01).encode(), true, 7, Some(&caps())));
@@ -1505,7 +1654,7 @@ mod tests_review_anlast {
 
     /// R3b: the same without the re-choice passes (the WP's own case).
     #[test]
-    fn review_r3b_released_without_a_rechoice_follows() {
+    fn wp_anlastf_r3b_released_without_a_rechoice_follows() {
         let mut s = Sharing::default();
         s.judge_own(Some(config(0b01)));
         assert!(s.note_config(&config(0b01).encode(), true, 7, Some(&caps())));
@@ -1518,21 +1667,30 @@ mod tests_review_anlast {
     /// R4: firmware without the event: pending never clears after a push, and a
     /// later host is still followed by readback.
     #[test]
-    fn review_r4_without_the_event_pending_stays_set_but_is_harmless() {
+    fn wp_anlastf_r4_without_the_event_pending_stays_set_but_is_harmless() {
         let mut r = Rig::new(0b01, vec![config(0b01), config(0b10)], Reply::Data(vec![]));
         r.tick(0b01); // push, no read
         r.tick(0b01); // read 0b01: agreed
         assert!(r.sharing.agreed(), "{}", r.state());
-        assert!(r.sharing.pending(), "no echo ever: still pending; {}", r.state());
+        assert!(
+            r.sharing.pending(),
+            "no echo ever: still pending; {}",
+            r.state()
+        );
         r.tick(0b01); // read 0b10: another host
-        assert_eq!(r.sharing.following().map(|f| f.origin), Some(0), "{}", r.state());
+        assert_eq!(
+            r.sharing.following().map(|f| f.origin),
+            Some(0),
+            "{}",
+            r.state()
+        );
         assert!(!r.sharing.pending());
     }
 
     /// R5: lost echo, but the other console's event was seen: the origin is known
     /// from it, yet the readback path reports 0.
     #[test]
-    fn review_r5_a_lost_echo_forgets_the_origin_the_event_carried() {
+    fn wp_anlastf_r5_a_lost_echo_keeps_the_origin_the_event_carried() {
         let mut s = Sharing::default();
         s.judge_own(Some(config(0b01)));
         assert!(s.note_config(&config(0b01).encode(), true, 7, Some(&caps())));
@@ -1548,6 +1706,469 @@ mod tests_review_anlast {
         let mut p = s.begin_poll();
         p.note_readback(config(0b10));
         s.finish_poll(&p, Some(&caps()));
-        assert_eq!(s.following().map(|f| f.origin), Some(9), "origin from the event seen");
+        assert_eq!(
+            s.following().map(|f| f.origin),
+            Some(9),
+            "origin from the event seen"
+        );
+    }
+
+    /// F1 with the hub: a session that does not hold the device lock gets
+    /// `LOCKED` for its push, which the engine counts like a STALL.
+    #[test]
+    fn wp_anlastf_a_push_the_hub_refuses_locked_gives_way_to_the_push_seen_meanwhile() {
+        let mut r = Rig::new(
+            0b01,
+            vec![config(0b01), config(0b10)],
+            Reply::Error(dspi_transport::TransportError::Locked),
+        );
+        assert!(r.note(&event(&config(0b01), 7)));
+        r.tick(0b100);
+        assert!(r.sharing.pending(), "{}", r.state());
+        assert!(r.note(&event(&config(0b10), 9)));
+        assert_eq!(r.sharing.following(), None);
+        for _ in 0..12 {
+            r.tick(0b100);
+            if r.engine.rejected() {
+                break;
+            }
+        }
+        assert!(r.engine.rejected(), "{}", r.state());
+        assert!(!r.sharing.pending(), "{}", r.state());
+        assert_eq!(
+            r.sharing
+                .following()
+                .map(|f| (f.origin, f.config.channel_mask)),
+            Some((9, 0b10)),
+            "{}",
+            r.state()
+        );
+        // And 9's next push is followed in place, never pushed over.
+        let n = r.pushes().len();
+        assert!(r.note(&event(&config(0b1000), 9)));
+        assert_eq!(r.sharing.following().unwrap().config.channel_mask, 0b1000);
+        r.tick(0b100);
+        r.tick(0b100);
+        assert!(r.sharing.following().is_some(), "{}", r.state());
+        assert_eq!(r.pushes().len(), n, "{}", r.state());
+    }
+
+    /// F1: refused while following, with nothing pushed meanwhile: the device
+    /// still holds the configuration followed when the choice was made.
+    #[test]
+    fn wp_anlastf_a_refused_choice_made_while_following_follows_that_again() {
+        let mut r = Rig::new(0b01, vec![config(0b10)], Reply::Stall);
+        assert!(r.note(&event(&config(0b01), 7)));
+        assert!(r.note(&event(&config(0b10), 9)));
+        assert!(r.sharing.following().is_some());
+        for _ in 0..12 {
+            r.tick(0b100);
+            if r.engine.rejected() {
+                break;
+            }
+        }
+        assert_eq!(
+            r.sharing
+                .following()
+                .map(|f| (f.origin, f.config.channel_mask)),
+            Some((9, 0b10)),
+            "{}",
+            r.state()
+        );
+    }
+
+    /// F5: the firmware applies a staged SET from its main loop, so two SETs
+    /// staged in one pass give one event, with the later configuration, which
+    /// the hub attributes to the oldest writer. Here A (7) pushed 0b10, then
+    /// B (9) pushed 0b100; one event 0b100 attributed to A. B, whose choice it
+    /// carries, resolves at once. A takes it for an older push of its own,
+    /// stays pending, and its engine sees the readback disagree and pushes
+    /// again; that push's echo settles both, with A driving.
+    #[test]
+    fn wp_anlastf_two_sets_coalesced_into_one_event_still_settle() {
+        // A: the real engine; the device reads 0b100, then (after A's second
+        // push) 0b10.
+        let mut a = Rig::new(0b01, vec![config(0b100), config(0b10)], Reply::Data(vec![]));
+        assert!(a.note(&event(&config(0b01), 7)));
+        a.tick(0b10); // A's push
+        assert_eq!(a.pushes(), [0b10]);
+        // B, as the session's rules alone.
+        let mut b = Sharing::default();
+        let caps = caps();
+        b.judge_own(Some(config(0b01)));
+        assert!(b.note_config(&config(0b01).encode(), true, 9, Some(&caps)));
+        b.judge_own(Some(config(0b100)));
+        let mut p = b.begin_poll();
+        p.pushed = true;
+        p.pushed_config = Some(config(0b100));
+        p.attempted_config = Some(config(0b100));
+        b.finish_poll(&p, Some(&caps));
+        // The one event, attributed to A.
+        assert!(a.note(&event(&config(0b100), 7)));
+        assert!(b.note_config(&config(0b100).encode(), false, 7, Some(&caps)));
+        assert!(!b.pending(), "the console whose config it carries resolves");
+        assert_eq!(b.following(), None);
+        assert!(a.sharing.pending(), "{}", a.state());
+        // A is not stuck: the readback disagrees, the engine pushes again.
+        a.tick(0b10);
+        a.tick(0b10);
+        assert_eq!(a.pushes(), [0b10, 0b10], "{}", a.state());
+        assert!(a.note(&event(&config(0b10), 7)));
+        assert!(b.note_config(&config(0b10).encode(), false, 7, Some(&caps)));
+        assert!(!a.sharing.pending());
+        assert_eq!(a.sharing.following(), None, "A drives");
+        assert_eq!(b.following().map(|f| f.origin), Some(7), "B follows A");
+    }
+
+    // ---- the model --------------------------------------------------------
+
+    /// The one device several consoles share: what it holds, and the event
+    /// sequence every console drains in the same order. It STALLs a SET for
+    /// any mask divisible by 7, as the firmware does for an invalid one.
+    #[derive(Default)]
+    struct Device {
+        config: Option<RtaConfig>,
+        stream: Vec<(RtaConfig, u16)>,
+    }
+
+    fn refused(c: &RtaConfig) -> bool {
+        c.channel_mask.is_multiple_of(7)
+    }
+
+    /// One console's path to the device, as the hub gives it.
+    struct Wire {
+        device: std::sync::Arc<std::sync::Mutex<Device>>,
+        id: u16,
+        descriptor: DeviceDescriptor,
+    }
+
+    impl Transport for Wire {
+        fn control_in(&mut self, opcode: u8, _: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+            match opcode {
+                op::REQ_RTA_GET_CONFIG => {
+                    let d = self.device.lock().unwrap();
+                    d.config
+                        .map(|c| c.encode().to_vec())
+                        .ok_or(dspi_transport::TransportError::Stalled { opcode })
+                }
+                _ => Ok(vec![0; usize::from(len)]),
+            }
+        }
+
+        fn control_out(&mut self, opcode: u8, _: u16, data: &[u8]) -> dspi_transport::Result<()> {
+            if opcode == op::REQ_RTA_SET_CONFIG {
+                let c = RtaConfig::decode(data).unwrap();
+                if refused(&c) {
+                    return Err(dspi_transport::TransportError::Stalled { opcode });
+                }
+                let mut d = self.device.lock().unwrap();
+                d.config = Some(c);
+                d.stream.push((c, self.id));
+            }
+            Ok(())
+        }
+
+        fn descriptor(&self) -> &DeviceDescriptor {
+            &self.descriptor
+        }
+
+        fn session_id(&self) -> Option<u16> {
+            Some(self.id)
+        }
+
+        fn caps(&self) -> TransportCaps {
+            TransportCaps {
+                kind: TransportKind::Link,
+                chunked_bulk: false,
+                remote: true,
+            }
+        }
+    }
+
+    struct Console {
+        id: u16,
+        sharing: Sharing,
+        engine: RtaEngine,
+        wire: Wire,
+        view: Option<crate::rta::ViewId>,
+        /// What it asks for; `None` while its displays are hidden.
+        own: Option<u16>,
+        /// The last thing it asked for, shown again on a re-show.
+        last: u16,
+        /// Events drained so far.
+        at: usize,
+        /// Reconnected, and nothing pushed or heard since.
+        stale: bool,
+    }
+
+    impl Console {
+        fn new(id: u16, device: &std::sync::Arc<std::sync::Mutex<Device>>, at: usize) -> Self {
+            let mut engine = RtaEngine::new();
+            assert!(engine.load(caps(), vec![100; 37]));
+            Self {
+                id,
+                sharing: Sharing::default(),
+                engine,
+                wire: Wire {
+                    device: device.clone(),
+                    id,
+                    descriptor: DeviceDescriptor {
+                        serial: "MODEL".into(),
+                        bus_id: String::new(),
+                        address: 0,
+                    },
+                },
+                view: None,
+                own: None,
+                last: 0,
+                at,
+                stale: false,
+            }
+        }
+
+        /// One poll as the Terminal runs it: judge, feed the engine, tick.
+        fn poll(&mut self, now: Instant) {
+            self.sharing.judge_own(self.own.map(config));
+            let mask = match (self.sharing.following(), self.own) {
+                (_, None) => None,
+                (Some(f), Some(_)) => Some((f.config.channel_mask, f.options())),
+                (None, Some(m)) => Some((
+                    m,
+                    Followed {
+                        config: config(m),
+                        origin: 0,
+                    }
+                    .options(),
+                )),
+            };
+            match mask {
+                Some((mask, options)) => {
+                    self.engine.set_options(options);
+                    let req = Request {
+                        tap: TAP_OUTPUT,
+                        mask,
+                        wants_bins: false,
+                    };
+                    match self.view {
+                        Some(v) => self.engine.update(v, req),
+                        None => self.view = Some(self.engine.subscribe(req)),
+                    }
+                }
+                None => {
+                    if let Some(v) = self.view.take() {
+                        self.engine.release(v);
+                    }
+                }
+            }
+            let before = self.wire.device.lock().unwrap().stream.len();
+            self.sharing
+                .tick(&mut self.engine, &mut self.wire, now, Budget::default());
+            if self.wire.device.lock().unwrap().stream.len() > before {
+                self.stale = false;
+            }
+        }
+
+        fn drain(&mut self) -> bool {
+            let next = self
+                .wire
+                .device
+                .lock()
+                .unwrap()
+                .stream
+                .get(self.at)
+                .copied();
+            let Some((c, by)) = next else {
+                return false;
+            };
+            self.at += 1;
+            self.stale = false;
+            let caps = caps();
+            self.sharing
+                .note_config(&c.encode(), by == self.id, by, Some(&caps));
+            true
+        }
+
+        fn reconnect(&mut self) {
+            self.sharing.reset();
+            self.engine.disconnect();
+            assert!(self.engine.load(caps(), vec![100; 37]));
+            // A new session: what was relayed before is not replayed.
+            self.at = self.wire.device.lock().unwrap().stream.len();
+            self.stale = true;
+        }
+    }
+
+    struct World {
+        device: std::sync::Arc<std::sync::Mutex<Device>>,
+        consoles: Vec<Console>,
+        now: Instant,
+    }
+
+    impl World {
+        fn new(n: u16) -> Self {
+            let device = std::sync::Arc::new(std::sync::Mutex::new(Device::default()));
+            let consoles = (1..=n).map(|id| Console::new(id, &device, 0)).collect();
+            Self {
+                device,
+                consoles,
+                now: Instant::now(),
+            }
+        }
+
+        fn poll(&mut self, i: usize) {
+            self.now += Duration::from_secs(1);
+            let now = self.now;
+            self.consoles[i].poll(now);
+        }
+
+        /// What holds after every step. Never pending and following at once.
+        /// A console that has heard every event, waits for nothing, and asked
+        /// for something, sees the device rightly: following what it holds,
+        /// or driving with its own choice (or its own older push) there. The
+        /// one exception is a refusal with nobody to follow (the engine shows
+        /// it), as before ANLAST.
+        fn check(&self, seed: u64, step: usize) {
+            let d = self.device.lock().unwrap();
+            for c in &self.consoles {
+                let s = &c.sharing;
+                assert!(
+                    !(s.pending() && s.following().is_some()),
+                    "seed {seed} step {step}: {} pending and following",
+                    c.id
+                );
+                let Some(mine) = s.last_own else { continue };
+                let Some(held) = d.config else { continue };
+                let drained = c.at == d.stream.len();
+                if !drained || s.pending() || c.stale {
+                    continue;
+                }
+                // Refused with nobody to follow: the engine says so (as before
+                // ANLAST). Refused while another console's push was seen: that
+                // one is followed (F1).
+                if c.engine.rejected() && s.following().is_none() {
+                    continue;
+                }
+                let last_by = d.stream.last().map(|e| e.1);
+                match s.following() {
+                    Some(f) => assert!(
+                        same_choice(&f.config, &held),
+                        "seed {seed} step {step}: {} follows {f:?}, device holds {held:?}",
+                        c.id
+                    ),
+                    None => assert!(
+                        same_choice(&held, &mine) || last_by == Some(c.id),
+                        "seed {seed} step {step}: {} drives {mine:?}, device holds {held:?} by {last_by:?}",
+                        c.id
+                    ),
+                }
+            }
+        }
+
+        /// Everyone shows its choice again, polls and drains until nothing moves.
+        fn settle(&mut self, seed: u64) {
+            for c in &mut self.consoles {
+                if c.own.is_none() && c.last != 0 {
+                    c.own = Some(c.last);
+                }
+            }
+            // Long enough for a refused push's three attempts and their reads.
+            for _ in 0..20 {
+                for i in 0..self.consoles.len() {
+                    while self.consoles[i].drain() {}
+                    self.poll(i);
+                    while self.consoles[i].drain() {}
+                }
+            }
+            // Quiet: whoever the device announced last drives, everyone else
+            // who asked for something follows it, unless refused.
+            let d = self.device.lock().unwrap();
+            let Some(&(held, by)) = d.stream.last() else {
+                return;
+            };
+            assert!(same_choice(&d.config.unwrap(), &held));
+            for c in &self.consoles {
+                let s = &c.sharing;
+                // A refused choice is given up too (F1): nothing waits for ever.
+                assert!(
+                    !s.pending(),
+                    "seed {seed}: {} pending: {s:?} own {:?} stream {:?}",
+                    c.id,
+                    c.own,
+                    d.stream
+                );
+                if c.own.is_none() || c.engine.rejected() {
+                    continue;
+                }
+                match s.following() {
+                    None => assert!(
+                        same_choice(&held, &s.last_own.unwrap()),
+                        "seed {seed}: {} drives, device holds {held:?} by {by}",
+                        c.id
+                    ),
+                    Some(f) => assert!(
+                        same_choice(&f.config, &held),
+                        "seed {seed}: {} follows {f:?}, device holds {held:?}",
+                        c.id
+                    ),
+                }
+            }
+        }
+    }
+
+    /// Two or three consoles: choices (new, refused, identical to what the
+    /// device holds or another console asks for), releases and re-shows,
+    /// polls with readbacks, drains and reconnects, in any interleaving, with
+    /// the invariant checked after every step and convergence at the end.
+    #[test]
+    fn wp_anlastf_any_interleaving_keeps_the_invariant_and_converges() {
+        for seed in 0..1500u64 {
+            let mut rng = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let mut next = |n: u64| {
+                rng = rng
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (rng >> 33) % n
+            };
+            let n = 2 + next(2) as usize;
+            let mut w = World::new(n as u16);
+            let mut fresh = 0u16;
+            for step in 0..(6 + next(40) as usize) {
+                let i = next(n as u64) as usize;
+                match next(10) {
+                    0 | 1 => {
+                        fresh = (fresh + 1) % 0x1FF;
+                        let m = fresh.max(1);
+                        w.consoles[i].own = Some(m);
+                        w.consoles[i].last = m;
+                    }
+                    2 => {
+                        // Identical: what the device holds, or what another asks.
+                        let other = w.consoles[next(n as u64) as usize].own;
+                        let held = w.device.lock().unwrap().config.map(|c| c.channel_mask);
+                        if let Some(m) = if next(2) == 0 { held } else { other } {
+                            w.consoles[i].own = Some(m);
+                            w.consoles[i].last = m;
+                        }
+                    }
+                    3 => {
+                        let c = &mut w.consoles[i];
+                        c.own = match c.own {
+                            Some(_) => None,
+                            None if c.last != 0 => Some(c.last),
+                            None => None,
+                        };
+                    }
+                    4..=6 => w.poll(i),
+                    7 | 8 => {
+                        w.consoles[i].drain();
+                    }
+                    _ => w.consoles[i].reconnect(),
+                }
+                w.check(seed, step);
+            }
+            w.settle(seed);
+        }
     }
 }
