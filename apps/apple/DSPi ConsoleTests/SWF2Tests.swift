@@ -162,7 +162,7 @@ final class SWF2RefusedWriteTests: XCTestCase {
         var packets: [Data] = []
         let sub = fanout.add { packets.append($0.packet) }
         XCTAssertTrue(RefusedWrite.handle(.denied, fanout: fanout))
-        XCTAssertTrue(waitForNotice("This console's role on the hub does not allow that"))
+        XCTAssertTrue(waitForNotice(DeviceLock.deniedMessage))   // -- WP P1SW3 -- the core's `denied` row
         XCTAssertEqual(packets, [Data([0x02, 0x03, 0, 0, 0, 0, 0, 0])], "a BULK_INVALIDATED: re-read everything")
         XCTAssertTrue(RefusedWrite.handle(.locked, fanout: fanout))
         XCTAssertTrue(waitForNotice(DeviceLock.lockedMessage))
@@ -218,7 +218,7 @@ final class SWF2RefusedWriteTests: XCTestCase {
 
         XCTAssertTrue(spinUntil(10) { vm.outputGainDB[0] == original }, "the device's value is back")
         XCTAssertFalse(vm.hasUnsavedChanges, "no dirty preset for a write that never happened")
-        XCTAssertTrue(waitForNotice("This console's role on the hub does not allow that"))
+        XCTAssertTrue(waitForNotice(DeviceLock.deniedMessage))   // -- WP P1SW3 -- the core's `denied` row
         monitor.stop()
     }
 }

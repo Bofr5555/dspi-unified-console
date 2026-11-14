@@ -9,6 +9,20 @@ struct SystemStatus: Equatable {
     var clipFlags: UInt32 = 0      // Sticky bitmask from firmware (one bit per channel, up to 17)
     var clipLatched: UInt32 = 0    // App-side latch (OR'd from firmware flags)
     var clipTimestamp: Date? = nil  // When last clip was detected (for auto-clear)
+    /// -- WP P1SW3 -- The core's meter reads have been a repeat of an older
+    /// one (`stale`, e.g. a hub that limits the poll) since then; nil while
+    /// they are fresh.
+    var staleSince: Date? = nil
+
+    /// -- WP P1SW3 -- The meters' "stale since" line ("" while fresh).
+    static func staleLine(since: Date?, now: Date = Date()) -> String {
+        guard let since else { return "" }
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .medium
+        let ago = max(0, Int(now.timeIntervalSince(since).rounded()))
+        return "Meters stale since \(f.string(from: since)) (\(ago) s ago)"
+    }
 }
 
 class DSPMeterModel: ObservableObject {

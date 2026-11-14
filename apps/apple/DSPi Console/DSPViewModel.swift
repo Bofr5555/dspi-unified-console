@@ -3287,14 +3287,8 @@ class DSPViewModel: ObservableObject {
                     }
                     let saveStatus = self.savePreset(slot: self.activePresetSlot, confirmed: .savePreset())
                     guard saveStatus == PRESET_OK else {
-                        DispatchQueue.main.async {
-                            let alert = NSAlert()
-                            alert.messageText = "Save Failed"
-                            alert.informativeText = "Failed to save preset (\(presetFailureText(saveStatus))). Device switch aborted."
-                            alert.alertStyle = .warning
-                            alert.addButton(withTitle: "OK")
-                            alert.runModal()
-                        }
+                        // -- WP P1SW3 -- a notice, not a modal
+                        NoticeCenter.main.post(AppNotices.preset(saveStatus, "Failed to save preset; the device switch was stopped"))
                         return
                     }
                     self.savedSnapshot = nil
@@ -3348,12 +3342,8 @@ class DSPViewModel: ObservableObject {
                     }
                     let saveStatus = self.savePreset(slot: self.activePresetSlot, confirmed: .savePreset())
                     guard saveStatus == PRESET_OK else {
-                        let alert = PlatformAlert()
-                        alert.messageText = "Save Failed"
-                        alert.informativeText = "Failed to save preset (\(presetFailureText(saveStatus))). Device switch aborted."
-                        alert.alertStyle = .warning
-                        alert.addButton(withTitle: "OK")
-                        alert.present()
+                        // -- WP P1SW3 -- a notice, not a modal
+                        NoticeCenter.main.post(AppNotices.preset(saveStatus, "Failed to save preset; the device switch was stopped"))
                         return
                     }
                     self.savedSnapshot = nil

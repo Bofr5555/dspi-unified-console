@@ -90,15 +90,15 @@ enum IOSAutoEQActions {
             do {
                 data = try Data(contentsOf: url)
             } catch {
-                showError("Failed to import database: \(error.localizedDescription)")
+                showError(AppNotices.file(error))
                 return
             }
             AutoEQCoreUpdate.importDatabase(data, manager: manager) { result in
                 switch result {
                 case .success(let info):
-                    showSuccess("Database updated successfully.\nEntries: \(info.entryCount)")
+                    showSuccess("AutoEQ database updated: \(info.entryCount) entries")
                 case .failure(let error):
-                    showError("Failed to import database: \(AutoEQCoreUpdate.message(error))")
+                    showError(AppNotices.autoEQ(error))
                 }
             }
         }
@@ -108,36 +108,24 @@ enum IOSAutoEQActions {
         AutoEQCoreUpdate.resetToBuiltIn(manager) { result in
             switch result {
             case .success:
-                showSuccess("Reset to built-in database.\nEntries: \(manager.entries.count)")
+                showSuccess("AutoEQ database reset to built-in: \(manager.entries.count) entries")
             case .failure(let error):
-                showError("Failed to reset: \(AutoEQCoreUpdate.message(error))")
+                showError(AppNotices.autoEQ(error))
             }
         }
     }
 
-    static func showSuccess(_ message: String) {
-        let alert = PlatformAlert()
-        alert.messageText = "Success"
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
-        alert.present()
-    }
+    // -- WP P1SW3 -- notices on the main window's host (U5), never a modal
+    static func showSuccess(_ message: String) { NoticeCenter.main.post(.result(message)) }
 
-    static func showError(_ message: String) {
-        let alert = PlatformAlert()
-        alert.messageText = "Error"
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.present()
-    }
+    static func showError(_ notice: ConsoleNotice) { NoticeCenter.main.post(notice) }
 }
 
 // MARK: - Rebuild progress
 
 /// The rebuild's progress as a tool sheet.  Closing the sheet cancels the
 /// rebuild (the database stays as it was); when it is over the sheet goes
-/// and an alert says what came of it.
+/// and the main window's notice host says what came of it (P1SW3).
 final class AutoEQRebuildSheet: IOSToolWindowController {
     static let shared = AutoEQRebuildSheet()
     private var rebuild: AutoEQCoreRebuild?
@@ -153,11 +141,8 @@ final class AutoEQRebuildSheet: IOSToolWindowController {
             self?.rebuild = nil
             self?.hide()
             Self.whenSheetHasGone {
-                if progress.succeeded {
-                    IOSAutoEQActions.showSuccess(AutoEQCoreRebuild.summary(progress))
-                } else {
-                    IOSAutoEQActions.showError(AutoEQCoreRebuild.summary(progress))
-                }
+                // -- WP P1SW3 -- on the main window's notice host
+                NoticeCenter.main.post(AutoEQCoreRebuild.notice(progress))
             }
         }
     }

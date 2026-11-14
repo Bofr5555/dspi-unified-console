@@ -181,13 +181,16 @@ protocol DeviceTransport: AnyObject {
 
 /// Shared wording and limits for the device lock.
 enum DeviceLock {
-    static let lockedMessage = "Another console is applying changes"
+    // -- WP P1SW3 -- The words are the core's notice rows (P1NT): the
+    // `locked` row's title, and the `denied` and `read_only` rows as
+    // "Title: reason".
+    static let lockedMessage = ConsoleNotice.row("locked").title
     // -- WP SWF2 -- The core's wording for DENIED (`DspiError::Denied`), as
     // `lockedMessage` is its `Locked`: a write this session's role may not make.
-    static let deniedMessage = "This console's role on the hub does not allow that"
+    static let deniedMessage = ConsoleNotice.row("denied").sentence
     // -- WP SWF4 -- The core's wording for `DspiError::ReadOnly`: firmware in
     // another wire format is shown, and nothing is written to it.
-    static let readOnlyMessage = "The connected firmware is read-only in this version"
+    static let readOnlyMessage = ConsoleNotice.row("read_only").sentence
     /// Hubs cap a lock at 60 s (spec 7.7).
     static let maxTimeout: TimeInterval = 60
 
@@ -260,8 +263,9 @@ enum RefusedWrite {
     // -- WP SW10 -- fixup sw10 F2: the wording for a typed write the core
     // refused as Unsupported (its probe did not find the feature) or that
     // failed in transfer; both are put back as `handleInvalid` does.
-    static let unsupportedMessage = "The connected firmware does not support that"
-    static let transferMessage = "The change did not reach the device"
+    // -- WP P1SW3 -- the core's rows (`unsupported`, `transfer`)
+    static let unsupportedMessage = ConsoleNotice.row("unsupported").sentence
+    static let transferMessage = ConsoleNotice.row("transfer").sentence
 }
 
 extension DeviceTransport {
