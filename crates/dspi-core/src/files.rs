@@ -855,7 +855,8 @@ fn io_value(s: &DspState, m: &mut DspState, has: &dyn Fn(u32) -> bool) -> Map<St
 
 /// Check a document's text and parse it: JSON, an object, a schema this build
 /// reads, and at least one channel. The error is a sentence for the user.
-fn parse_config(text: &str) -> std::result::Result<Value, String> {
+// -- WP P1SN -- pub(crate): a snapshot is a document
+pub(crate) fn parse_config(text: &str) -> std::result::Result<Value, String> {
     if text.len() > MAX_FILE_BYTES {
         return Err(TOO_LARGE.into());
     }
@@ -1906,7 +1907,8 @@ fn write_error(e: &DspiError) -> String {
 /// extension channel reports. `Disconnected` with no device, `Unsupported`
 /// for firmware whose image this build cannot map, `Transfer` before any
 /// image was read.
-fn exportable(inner: &mut Inner) -> Result<(DspState, Option<[u8; 4]>)> {
+// -- WP P1SN -- pub(crate): a snapshot capture exports
+pub(crate) fn exportable(inner: &mut Inner) -> Result<(DspState, Option<[u8; 4]>)> {
     let conn = inner.conn()?;
     let wire = conn.wire;
     let ext = conn.ext.pair_map;
@@ -2463,9 +2465,59 @@ impl DspiCore {
     }
 }
 
+// -- WP P1SN --
+/// A whole document written as a snapshot recall's bulk part: what
+/// [`DspiCore::write_whole_document`] gives back.
+pub(crate) struct WholeWrite {
+    /// The mirror before the write.
+    pub(crate) before: DspState,
+    /// The mirror after it.
+    pub(crate) after: DspState,
+    /// What reading the document reported (channels missing, values left
+    /// alone, shortened or clamped, parts not written).
+    pub(crate) notes: Vec<String>,
+    /// Whether the device keeps its output configuration apart from presets.
+    pub(crate) separate: bool,
+}
+
+// -- WP P1SN --
+impl DspiCore {
+    /// Every block of `doc` built onto the mirror and sent as one bulk write
+    /// (and the pair map over the extension channel), with the core lock
+    /// held and the device lock taken by the caller: the import's own path,
+    /// for a snapshot document that carries no image. Same errors as the
+    /// import; on an error the mirror is as the import leaves it.
+    pub(crate) fn write_whole_document(
+        &self,
+        inner: &mut Inner,
+        doc: &Value,
+    ) -> Result<WholeWrite> {
+        let (built, before, separate) = self.write_document(inner, doc, Selection::all())?;
+        Ok(WholeWrite {
+            notes: notes(&built),
+            after: built.state,
+            before,
+            separate,
+        })
+    }
+
+    /// [`DspiCore::push_output_config`] with the reasons for what was not
+    /// written as lines. Call with the core lock released.
+    pub(crate) fn push_output_config_lines(
+        &self,
+        before: &DspState,
+        after: &DspState,
+    ) -> Vec<String> {
+        let mut skipped = Skips::default();
+        self.push_output_config(before, after, &mut skipped);
+        skipped.reasons
+    }
+}
+
 /// Whether anything of the output configuration (pins, slot types, clocks,
 /// inputs, the DAC mute, the limiters) differs.
-fn io_changed(a: &DspState, b: &DspState) -> bool {
+// -- WP P1SN -- pub(crate): a snapshot recall pushes it too
+pub(crate) fn io_changed(a: &DspState, b: &DspState) -> bool {
     a.output_pins != b.output_pins
         || a.output_types != b.output_types
         || a.i2s_bck_pin != b.i2s_bck_pin

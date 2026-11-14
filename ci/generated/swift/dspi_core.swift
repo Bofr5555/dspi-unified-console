@@ -4351,6 +4351,105 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func siggenSetConfig(config: SiggenConfig) throws 
     
     /**
+     * Capture the open device as a new snapshot in the store (see
+     * [`DspiCore::snapshot_capture_document`]). Errors as there, and
+     * [`DspiError::Io`] with no folder named or a failed write.
+     */
+    func snapshotCapture(name: String, note: String) throws  -> SnapshotInfo
+    
+    /**
+     * The open device's state as a snapshot document (`.dspipreset` text,
+     * `meta.kind = "snapshot"`), not filed: for the web, which keeps
+     * snapshots as downloads, and for a client's own store. `name` and
+     * `note` (any Unicode; cut to 200 and 4000 characters) go in with it.
+     * Reads the settings outside the image (the control surfaces' whole
+     * configuration among them); the image is the mirror.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::Transfer`] before
+     * the device's settings were read, or for a failed read;
+     * [`DspiError::Unsupported`] for firmware whose image this build cannot
+     * map.
+     */
+    func snapshotCaptureDocument(name: String, note: String) throws  -> String
+    
+    /**
+     * Delete snapshot `id`. Errors as [`DspiCore::snapshot_rename`].
+     */
+    func snapshotDelete(id: String) throws 
+    
+    /**
+     * Snapshot `id`'s document, to save as a file. Errors as
+     * [`DspiCore::snapshot_rename`].
+     */
+    func snapshotExport(id: String) throws  -> String
+    
+    /**
+     * File a `.dspipreset` document (a snapshot or any other kind) as a
+     * snapshot of the open device, named `name` ("" keeps the document's)
+     * with `note`. A document without an image is recalled through the
+     * import's path.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a
+     * document this build reads; [`DspiError::Disconnected`] with no device
+     * and no serial in the document; [`DspiError::Io`].
+     */
+    func snapshotImport(text: String, name: String, note: String) throws  -> SnapshotInfo
+    
+    /**
+     * The snapshots of device `serial` ("" the open device), oldest first.
+     * Never fails: no folder, no device or no snapshots is an empty list, and
+     * a damaged index is rebuilt from the documents.
+     */
+    func snapshotList(serial: String)  -> [SnapshotInfo]
+    
+    /**
+     * Recall snapshot `id` on the open device: the settings outside the
+     * image that differ (device and source names, output latency, control
+     * surfaces), then the image as one bulk write, under the device lock.
+     * The undo history before it ends; the event log records a recall with
+     * its changes. Live, not stored in a preset slot. Never guarded and
+     * never queued: on a lost connection it stops where it is.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a snapshot
+     * of another platform or channel count, or an image of another wire
+     * format this build cannot convert (nothing is sent);
+     * [`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::Locked`] and the transfer errors of a bulk write;
+     * [`DspiError::Io`] for an unreadable store.
+     */
+    func snapshotRecall(id: String) throws  -> SnapshotRecall
+    
+    /**
+     * Recall a snapshot document's text (see
+     * [`DspiCore::snapshot_recall`]): for the web and for a document the
+     * client keeps itself.
+     */
+    func snapshotRecallDocument(text: String) throws  -> SnapshotRecall
+    
+    /**
+     * Rename snapshot `id`; any Unicode, cut to 200 characters.
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id;
+     * [`DspiError::Io`].
+     */
+    func snapshotRename(id: String, name: String) throws  -> SnapshotInfo
+    
+    /**
+     * Keep snapshots in files under `dir`, the client's own data folder
+     * (created if missing): one folder per device serial, one document per
+     * snapshot and an index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+    func snapshotSetDir(dir: String) throws 
+    
+    /**
+     * Set snapshot `id`'s note; any Unicode, cut to 4000 characters.
+     * Errors as [`DspiCore::snapshot_rename`].
+     */
+    func snapshotSetNote(id: String, note: String) throws  -> SnapshotInfo
+    
+    /**
      * Pulse the mute output for about a second, so an installer can hear
      * that the pin and polarity are right.
      *
@@ -9087,6 +9186,175 @@ open func siggenSetConfig(config: SiggenConfig)throws   {try rustCallWithError(F
         FfiConverterTypeSiggenConfig_lower(config),$0
     )
 }
+}
+    
+    /**
+     * Capture the open device as a new snapshot in the store (see
+     * [`DspiCore::snapshot_capture_document`]). Errors as there, and
+     * [`DspiError::Io`] with no folder named or a failed write.
+     */
+open func snapshotCapture(name: String, note: String)throws  -> SnapshotInfo  {
+    return try  FfiConverterTypeSnapshotInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_capture(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(note),$0
+    )
+})
+}
+    
+    /**
+     * The open device's state as a snapshot document (`.dspipreset` text,
+     * `meta.kind = "snapshot"`), not filed: for the web, which keeps
+     * snapshots as downloads, and for a client's own store. `name` and
+     * `note` (any Unicode; cut to 200 and 4000 characters) go in with it.
+     * Reads the settings outside the image (the control surfaces' whole
+     * configuration among them); the image is the mirror.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::Transfer`] before
+     * the device's settings were read, or for a failed read;
+     * [`DspiError::Unsupported`] for firmware whose image this build cannot
+     * map.
+     */
+open func snapshotCaptureDocument(name: String, note: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_capture_document(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(note),$0
+    )
+})
+}
+    
+    /**
+     * Delete snapshot `id`. Errors as [`DspiCore::snapshot_rename`].
+     */
+open func snapshotDelete(id: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_delete(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+}
+}
+    
+    /**
+     * Snapshot `id`'s document, to save as a file. Errors as
+     * [`DspiCore::snapshot_rename`].
+     */
+open func snapshotExport(id: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_export(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * File a `.dspipreset` document (a snapshot or any other kind) as a
+     * snapshot of the open device, named `name` ("" keeps the document's)
+     * with `note`. A document without an image is recalled through the
+     * import's path.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a
+     * document this build reads; [`DspiError::Disconnected`] with no device
+     * and no serial in the document; [`DspiError::Io`].
+     */
+open func snapshotImport(text: String, name: String, note: String)throws  -> SnapshotInfo  {
+    return try  FfiConverterTypeSnapshotInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_import(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(note),$0
+    )
+})
+}
+    
+    /**
+     * The snapshots of device `serial` ("" the open device), oldest first.
+     * Never fails: no folder, no device or no snapshots is an empty list, and
+     * a damaged index is rebuilt from the documents.
+     */
+open func snapshotList(serial: String) -> [SnapshotInfo]  {
+    return try!  FfiConverterSequenceTypeSnapshotInfo.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_list(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),$0
+    )
+})
+}
+    
+    /**
+     * Recall snapshot `id` on the open device: the settings outside the
+     * image that differ (device and source names, output latency, control
+     * surfaces), then the image as one bulk write, under the device lock.
+     * The undo history before it ends; the event log records a recall with
+     * its changes. Live, not stored in a preset slot. Never guarded and
+     * never queued: on a lost connection it stops where it is.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a snapshot
+     * of another platform or channel count, or an image of another wire
+     * format this build cannot convert (nothing is sent);
+     * [`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::Locked`] and the transfer errors of a bulk write;
+     * [`DspiError::Io`] for an unreadable store.
+     */
+open func snapshotRecall(id: String)throws  -> SnapshotRecall  {
+    return try  FfiConverterTypeSnapshotRecall_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_recall(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * Recall a snapshot document's text (see
+     * [`DspiCore::snapshot_recall`]): for the web and for a document the
+     * client keeps itself.
+     */
+open func snapshotRecallDocument(text: String)throws  -> SnapshotRecall  {
+    return try  FfiConverterTypeSnapshotRecall_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_recall_document(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),$0
+    )
+})
+}
+    
+    /**
+     * Rename snapshot `id`; any Unicode, cut to 200 characters.
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id;
+     * [`DspiError::Io`].
+     */
+open func snapshotRename(id: String, name: String)throws  -> SnapshotInfo  {
+    return try  FfiConverterTypeSnapshotInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_rename(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(name),$0
+    )
+})
+}
+    
+    /**
+     * Keep snapshots in files under `dir`, the client's own data folder
+     * (created if missing): one folder per device serial, one document per
+     * snapshot and an index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+open func snapshotSetDir(dir: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_set_dir(self.uniffiClonePointer(),
+        FfiConverterString.lower(dir),$0
+    )
+}
+}
+    
+    /**
+     * Set snapshot `id`'s note; any Unicode, cut to 4000 characters.
+     * Errors as [`DspiCore::snapshot_rename`].
+     */
+open func snapshotSetNote(id: String, note: String)throws  -> SnapshotInfo  {
+    return try  FfiConverterTypeSnapshotInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_set_note(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(note),$0
+    )
+})
 }
     
     /**
@@ -25738,6 +26006,308 @@ public func FfiConverterTypeSiggenTypeInfo_lower(_ value: SiggenTypeInfo) -> Rus
 
 
 /**
+ * One snapshot in a list ([`DspiCore::snapshot_list`]).
+ */
+public struct SnapshotInfo {
+    /**
+     * The store's id, for the other calls.
+     */
+    public var id: String
+    /**
+     * The user's name; any Unicode.
+     */
+    public var name: String
+    /**
+     * The user's note; any Unicode.
+     */
+    public var note: String
+    /**
+     * The serial of the device it was taken from.
+     */
+    public var serial: String
+    /**
+     * When it was taken, ms since the Unix epoch.
+     */
+    public var savedMs: Int64
+    /**
+     * The platform it was taken on (`RP2040`, `RP2350`), "" when unknown.
+     */
+    public var platform: String
+    /**
+     * The device's input channels then, 0 when unknown.
+     */
+    public var inputChannels: UInt8
+    /**
+     * The device's output channels then, 0 when unknown.
+     */
+    public var outputChannels: UInt8
+    /**
+     * The wire format of its image, 0 when unknown.
+     */
+    public var wireFormat: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The store's id, for the other calls.
+         */id: String, 
+        /**
+         * The user's name; any Unicode.
+         */name: String, 
+        /**
+         * The user's note; any Unicode.
+         */note: String, 
+        /**
+         * The serial of the device it was taken from.
+         */serial: String, 
+        /**
+         * When it was taken, ms since the Unix epoch.
+         */savedMs: Int64, 
+        /**
+         * The platform it was taken on (`RP2040`, `RP2350`), "" when unknown.
+         */platform: String, 
+        /**
+         * The device's input channels then, 0 when unknown.
+         */inputChannels: UInt8, 
+        /**
+         * The device's output channels then, 0 when unknown.
+         */outputChannels: UInt8, 
+        /**
+         * The wire format of its image, 0 when unknown.
+         */wireFormat: UInt8) {
+        self.id = id
+        self.name = name
+        self.note = note
+        self.serial = serial
+        self.savedMs = savedMs
+        self.platform = platform
+        self.inputChannels = inputChannels
+        self.outputChannels = outputChannels
+        self.wireFormat = wireFormat
+    }
+}
+
+#if compiler(>=6)
+extension SnapshotInfo: Sendable {}
+#endif
+
+
+extension SnapshotInfo: Equatable, Hashable {
+    public static func ==(lhs: SnapshotInfo, rhs: SnapshotInfo) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.note != rhs.note {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.savedMs != rhs.savedMs {
+            return false
+        }
+        if lhs.platform != rhs.platform {
+            return false
+        }
+        if lhs.inputChannels != rhs.inputChannels {
+            return false
+        }
+        if lhs.outputChannels != rhs.outputChannels {
+            return false
+        }
+        if lhs.wireFormat != rhs.wireFormat {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(note)
+        hasher.combine(serial)
+        hasher.combine(savedMs)
+        hasher.combine(platform)
+        hasher.combine(inputChannels)
+        hasher.combine(outputChannels)
+        hasher.combine(wireFormat)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSnapshotInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SnapshotInfo {
+        return
+            try SnapshotInfo(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                savedMs: FfiConverterInt64.read(from: &buf), 
+                platform: FfiConverterString.read(from: &buf), 
+                inputChannels: FfiConverterUInt8.read(from: &buf), 
+                outputChannels: FfiConverterUInt8.read(from: &buf), 
+                wireFormat: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SnapshotInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterInt64.write(value.savedMs, into: &buf)
+        FfiConverterString.write(value.platform, into: &buf)
+        FfiConverterUInt8.write(value.inputChannels, into: &buf)
+        FfiConverterUInt8.write(value.outputChannels, into: &buf)
+        FfiConverterUInt8.write(value.wireFormat, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSnapshotInfo_lift(_ buf: RustBuffer) throws -> SnapshotInfo {
+    return try FfiConverterTypeSnapshotInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSnapshotInfo_lower(_ value: SnapshotInfo) -> RustBuffer {
+    return FfiConverterTypeSnapshotInfo.lower(value)
+}
+
+
+/**
+ * What a recall did ([`DspiCore::snapshot_recall`]).
+ */
+public struct SnapshotRecall {
+    /**
+     * The snapshot's name.
+     */
+    public var name: String
+    /**
+     * Whether the snapshot's own image was written (false: a document
+     * without one, written through the import's path).
+     */
+    public var image: Bool
+    /**
+     * What changed, in the unsaved-changes list's words, then the settings
+     * outside the image that were rewritten.
+     */
+    public var changes: [String]
+    /**
+     * What was not written, and why (a feature this firmware lacks, a part
+     * the device refused, a value held to the device's range).
+     */
+    public var notes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The snapshot's name.
+         */name: String, 
+        /**
+         * Whether the snapshot's own image was written (false: a document
+         * without one, written through the import's path).
+         */image: Bool, 
+        /**
+         * What changed, in the unsaved-changes list's words, then the settings
+         * outside the image that were rewritten.
+         */changes: [String], 
+        /**
+         * What was not written, and why (a feature this firmware lacks, a part
+         * the device refused, a value held to the device's range).
+         */notes: [String]) {
+        self.name = name
+        self.image = image
+        self.changes = changes
+        self.notes = notes
+    }
+}
+
+#if compiler(>=6)
+extension SnapshotRecall: Sendable {}
+#endif
+
+
+extension SnapshotRecall: Equatable, Hashable {
+    public static func ==(lhs: SnapshotRecall, rhs: SnapshotRecall) -> Bool {
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.image != rhs.image {
+            return false
+        }
+        if lhs.changes != rhs.changes {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(image)
+        hasher.combine(changes)
+        hasher.combine(notes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSnapshotRecall: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SnapshotRecall {
+        return
+            try SnapshotRecall(
+                name: FfiConverterString.read(from: &buf), 
+                image: FfiConverterBool.read(from: &buf), 
+                changes: FfiConverterSequenceString.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SnapshotRecall, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.image, into: &buf)
+        FfiConverterSequenceString.write(value.changes, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSnapshotRecall_lift(_ buf: RustBuffer) throws -> SnapshotRecall {
+    return try FfiConverterTypeSnapshotRecall.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSnapshotRecall_lower(_ value: SnapshotRecall) -> RustBuffer {
+    return FfiConverterTypeSnapshotRecall.lower(value)
+}
+
+
+/**
  * Fill of one S/PDIF output's buffers.
  */
 public struct SpdifBufferStats {
@@ -30720,6 +31290,31 @@ fileprivate struct FfiConverterSequenceTypeSiggenTypeInfo: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeSnapshotInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [SnapshotInfo]
+
+    public static func write(_ value: [SnapshotInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSnapshotInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SnapshotInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SnapshotInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSnapshotInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeSpdifBufferStats: FfiConverterRustBuffer {
     typealias SwiftType = [SpdifBufferStats]
 
@@ -32315,6 +32910,39 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_siggen_set_config() != 59149) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_capture() != 32693) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_capture_document() != 16773) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_delete() != 58898) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_export() != 23201) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_import() != 58149) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_list() != 29663) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_recall() != 16804) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_recall_document() != 8659) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_rename() != 7102) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_set_dir() != 26239) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_set_note() != 19310) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_test_dac_mute() != 36228) {

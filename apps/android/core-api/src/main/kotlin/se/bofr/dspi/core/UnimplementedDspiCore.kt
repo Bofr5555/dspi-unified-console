@@ -512,6 +512,28 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun rtaTakeControl(): Unit = throw NotImplementedError("rta_take_control")
 
+    override fun snapshotCaptureDocument(name: String, note: String): String = throw NotImplementedError("snapshot_capture_document")
+
+    override fun snapshotRecallDocument(text: String): SnapshotRecall = throw NotImplementedError("snapshot_recall_document")
+
+    override fun snapshotSetDir(dir: String): Unit = throw NotImplementedError("snapshot_set_dir")
+
+    override fun snapshotCapture(name: String, note: String): SnapshotInfo = throw NotImplementedError("snapshot_capture")
+
+    override fun snapshotList(serial: String): List<SnapshotInfo> = throw NotImplementedError("snapshot_list")
+
+    override fun snapshotRecall(id: String): SnapshotRecall = throw NotImplementedError("snapshot_recall")
+
+    override fun snapshotRename(id: String, name: String): SnapshotInfo = throw NotImplementedError("snapshot_rename")
+
+    override fun snapshotSetNote(id: String, note: String): SnapshotInfo = throw NotImplementedError("snapshot_set_note")
+
+    override fun snapshotDelete(id: String): Unit = throw NotImplementedError("snapshot_delete")
+
+    override fun snapshotExport(id: String): String = throw NotImplementedError("snapshot_export")
+
+    override fun snapshotImport(text: String, name: String, note: String): SnapshotInfo = throw NotImplementedError("snapshot_import")
+
     override fun siggenFetchCaps(): SiggenCaps = throw NotImplementedError("siggen_fetch_caps")
 
     override fun siggenGetConfig(): SiggenConfig = throw NotImplementedError("siggen_get_config")

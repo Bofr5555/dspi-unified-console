@@ -568,6 +568,28 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun rtaTakeControl() = core.rtaTakeControl()
 
+    override fun snapshotCaptureDocument(name: String, note: String): String = call { core.snapshotCaptureDocument(name, note) }
+
+    override fun snapshotRecallDocument(text: String): SnapshotRecall = call { core.snapshotRecallDocument(text).toDomain() }
+
+    override fun snapshotSetDir(dir: String) = call { core.snapshotSetDir(dir) }
+
+    override fun snapshotCapture(name: String, note: String): SnapshotInfo = call { core.snapshotCapture(name, note).toDomain() }
+
+    override fun snapshotList(serial: String): List<SnapshotInfo> = core.snapshotList(serial).map { it.toDomain() }
+
+    override fun snapshotRecall(id: String): SnapshotRecall = call { core.snapshotRecall(id).toDomain() }
+
+    override fun snapshotRename(id: String, name: String): SnapshotInfo = call { core.snapshotRename(id, name).toDomain() }
+
+    override fun snapshotSetNote(id: String, note: String): SnapshotInfo = call { core.snapshotSetNote(id, note).toDomain() }
+
+    override fun snapshotDelete(id: String) = call { core.snapshotDelete(id) }
+
+    override fun snapshotExport(id: String): String = call { core.snapshotExport(id) }
+
+    override fun snapshotImport(text: String, name: String, note: String): SnapshotInfo = call { core.snapshotImport(text, name, note).toDomain() }
+
     override fun siggenFetchCaps(): SiggenCaps = call { core.siggenFetchCaps().toDomain() }
 
     override fun siggenGetConfig(): SiggenConfig = call { core.siggenGetConfig().toDomain() }
@@ -3023,6 +3045,48 @@ internal fun RawNotification.toFfi() =
         own = own,
         lost = lost,
         receivedMs = receivedMs,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.SnapshotInfo.toDomain() =
+    SnapshotInfo(
+        id = id,
+        name = name,
+        note = note,
+        serial = serial,
+        savedMs = savedMs,
+        platform = platform,
+        inputChannels = inputChannels.toInt(),
+        outputChannels = outputChannels.toInt(),
+        wireFormat = wireFormat.toInt(),
+    )
+
+internal fun SnapshotInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.SnapshotInfo(
+        id = id,
+        name = name,
+        note = note,
+        serial = serial,
+        savedMs = savedMs,
+        platform = platform,
+        inputChannels = inputChannels.toUByte(),
+        outputChannels = outputChannels.toUByte(),
+        wireFormat = wireFormat.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.SnapshotRecall.toDomain() =
+    SnapshotRecall(
+        name = name,
+        image = image,
+        changes = changes,
+        notes = notes,
+    )
+
+internal fun SnapshotRecall.toFfi() =
+    se.bofr.dspi.ffi.uniffi.SnapshotRecall(
+        name = name,
+        image = image,
+        changes = changes,
+        notes = notes,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.VregChoice.toDomain() =

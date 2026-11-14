@@ -35,6 +35,8 @@ use crate::link;
 use crate::presets;
 // -- WP WB6c --
 use crate::outputs;
+// -- WP P1SN --
+use crate::snapshots;
 // -- WP WB4a --
 use crate::usb;
 use crate::write;
@@ -335,6 +337,9 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "configPreview" => presets::preview(&core, params(req.params)?),
         // -- WP P1AFIX -- the crossfeed's custom pair, typed
         "crossfeedCustomPair" => presets::crossfeed_custom_pair(&core),
+        // -- WP P1SN -- snapshots as documents (no files on the web)
+        "snapshotCapture" => snapshots::capture(&core, params(req.params)?),
+        "snapshotRecall" => snapshots::recall(&core, params(req.params)?),
         // -- WP WB6b -- the EQ graph's curves, the core's maths (src/curves.rs)
         "curveGrid" => Ok(curves::grid()),
         "curves" => curves::curves(params(req.params)?),

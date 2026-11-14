@@ -10,6 +10,7 @@ import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.SiggenConfig
+import se.bofr.dspi.core.SnapshotRecall
 import se.bofr.dspi.core.UartConfig
 import se.bofr.dspi.core.VregDemoEvent
 
@@ -690,6 +691,17 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.coreVregManualSetConfirmed(value, typed, token)
     }
 
+    // -- WP P1SN -- a recall writes the device (names, latency, surfaces, the image)
+    override fun snapshotRecall(id: String): SnapshotRecall {
+        guard("snapshotRecall")
+        return inner.snapshotRecall(id)
+    }
+
+    override fun snapshotRecallDocument(text: String): SnapshotRecall {
+        guard("snapshotRecallDocument")
+        return inner.snapshotRecallDocument(text)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -856,7 +868,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "saveOutputConfigConfirmed",
             "configImportConfirmed",
             "coreVregCalCommitConfirmed",
-            "coreVregManualSetConfirmed"
+            "coreVregManualSetConfirmed",
+            // -- WP P1SN --
+            "snapshotRecall",
+            "snapshotRecallDocument"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -894,6 +909,16 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P1DF -- the diff and the preview write nothing
             "configDiff",
             "configPreview",
+            // -- WP P1SN -- the store is the app's files; a capture only reads the device
+            "snapshotSetDir",
+            "snapshotCapture",
+            "snapshotCaptureDocument",
+            "snapshotList",
+            "snapshotRename",
+            "snapshotSetNote",
+            "snapshotDelete",
+            "snapshotExport",
+            "snapshotImport",
             // -- WP P1AFIX -- the stored custom pair, from the mirror: a read
             "crossfeedCustomPair",
             "crossfeedPairMapValid",

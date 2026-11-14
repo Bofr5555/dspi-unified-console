@@ -38,6 +38,8 @@ pub mod rta;
 // -- WP TM5 --
 pub mod rta_sharing;
 pub mod runtime;
+// -- WP P1SN --
+pub mod snapshot_store;
 pub mod state;
 pub mod surfaces;
 pub mod tube;

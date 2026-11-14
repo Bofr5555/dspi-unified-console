@@ -2953,6 +2953,115 @@ interface DspiCoreApi : AutoCloseable {
     fun rtaTakeControl()
 
     /**
+     * The open device's state as a snapshot document (`.dspipreset` text,
+     * `meta.kind = "snapshot"`), not filed: for the web, which keeps
+     * snapshots as downloads, and for a client's own store. `name` and
+     * `note` (any Unicode; cut to 200 and 4000 characters) go in with it.
+     * Reads the settings outside the image (the control surfaces' whole
+     * configuration among them); the image is the mirror.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::Transfer`] before
+     * the device's settings were read, or for a failed read;
+     * [`DspiError::Unsupported`] for firmware whose image this build cannot
+     * map.
+     */
+    @Throws(DspiException::class)
+    fun snapshotCaptureDocument(name: String, note: String): String
+
+    /**
+     * Recall a snapshot document's text (see
+     * [`DspiCore::snapshot_recall`]): for the web and for a document the
+     * client keeps itself.
+     */
+    @Throws(DspiException::class)
+    fun snapshotRecallDocument(text: String): SnapshotRecall
+
+    /**
+     * Keep snapshots in files under `dir`, the client's own data folder
+     * (created if missing): one folder per device serial, one document per
+     * snapshot and an index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+    @Throws(DspiException::class)
+    fun snapshotSetDir(dir: String)
+
+    /**
+     * Capture the open device as a new snapshot in the store (see
+     * [`DspiCore::snapshot_capture_document`]). Errors as there, and
+     * [`DspiError::Io`] with no folder named or a failed write.
+     */
+    @Throws(DspiException::class)
+    fun snapshotCapture(name: String, note: String): SnapshotInfo
+
+    /**
+     * The snapshots of device `serial` ("" the open device), oldest first.
+     * Never fails: no folder, no device or no snapshots is an empty list, and
+     * a damaged index is rebuilt from the documents.
+     */
+    fun snapshotList(serial: String): List<SnapshotInfo>
+
+    /**
+     * Recall snapshot `id` on the open device: the settings outside the
+     * image that differ (device and source names, output latency, control
+     * surfaces), then the image as one bulk write, under the device lock.
+     * The undo history before it ends; the event log records a recall with
+     * its changes. Live, not stored in a preset slot. Never guarded and
+     * never queued: on a lost connection it stops where it is.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a snapshot
+     * of another platform or channel count, or an image of another wire
+     * format this build cannot convert (nothing is sent);
+     * [`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::Locked`] and the transfer errors of a bulk write;
+     * [`DspiError::Io`] for an unreadable store.
+     */
+    @Throws(DspiException::class)
+    fun snapshotRecall(id: String): SnapshotRecall
+
+    /**
+     * Rename snapshot `id`; any Unicode, cut to 200 characters.
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id;
+     * [`DspiError::Io`].
+     */
+    @Throws(DspiException::class)
+    fun snapshotRename(id: String, name: String): SnapshotInfo
+
+    /**
+     * Set snapshot `id`'s note; any Unicode, cut to 4000 characters.
+     * Errors as [`DspiCore::snapshot_rename`].
+     */
+    @Throws(DspiException::class)
+    fun snapshotSetNote(id: String, note: String): SnapshotInfo
+
+    /**
+     * Delete snapshot `id`. Errors as [`DspiCore::snapshot_rename`].
+     */
+    @Throws(DspiException::class)
+    fun snapshotDelete(id: String)
+
+    /**
+     * Snapshot `id`'s document, to save as a file. Errors as
+     * [`DspiCore::snapshot_rename`].
+     */
+    @Throws(DspiException::class)
+    fun snapshotExport(id: String): String
+
+    /**
+     * File a `.dspipreset` document (a snapshot or any other kind) as a
+     * snapshot of the open device, named `name` ("" keeps the document's)
+     * with `note`. A document without an image is recalled through the
+     * import's path.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a
+     * document this build reads; [`DspiError::Disconnected`] with no device
+     * and no serial in the document; [`DspiError::Io`].
+     */
+    @Throws(DspiException::class)
+    fun snapshotImport(text: String, name: String, note: String): SnapshotInfo
+
+    /**
      * The generator's capabilities: the `REQ_SIGGEN_GET_CAPS` header and
      * each signal type's descriptor.
      *
