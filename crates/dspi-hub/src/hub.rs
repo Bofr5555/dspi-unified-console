@@ -35,8 +35,8 @@ use crate::relay::{Relay, Scope};
 use crate::router::Router;
 use crate::server::{NetworkConfig, Server};
 use crate::session::{
-    CLOSE_SHUTTING_DOWN, Completion, FIRST_REMOTE_SESSION_ID, INTERNAL_SESSION_ID,
-    LOCAL_SESSION_ID, NO_ORIGIN, Outbox, Role, Session, SessionCtx, SessionId,
+    CLOSE_SHUTTING_DOWN, Completion, FIRST_REMOTE_SESSION_ID, GUARD_SESSION_ID,
+    INTERNAL_SESSION_ID, LOCAL_SESSION_ID, NO_ORIGIN, Outbox, Role, Session, SessionCtx, SessionId,
 };
 use crate::snapshot::SnapshotRefused;
 use crate::usb::DeviceBus;
@@ -842,7 +842,10 @@ fn next_session_id(st: &mut State) -> SessionId {
     loop {
         let id = st.next_session;
         st.next_session = id.wrapping_add(1);
-        let reserved = matches!(id, NO_ORIGIN | LOCAL_SESSION_ID | INTERNAL_SESSION_ID);
+        let reserved = matches!(
+            id,
+            NO_ORIGIN | LOCAL_SESSION_ID | INTERNAL_SESSION_ID | GUARD_SESSION_ID // -- WP P1CFIX --
+        );
         if !reserved && !st.sessions.contains_key(&id) {
             return id;
         }

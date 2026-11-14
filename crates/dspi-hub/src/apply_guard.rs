@@ -29,7 +29,8 @@
 //!   the device and source names, the output latency and the control-surface
 //!   configuration, and the revert writes back what differs, before the image
 //!   (`apply_extras.rs`), under the same rules: one write each, past any lock (the
-//!   router's revert window), only to the captured serial. `apply.begin` answers and
+//!   router's revert window, for its own session `GUARD_SESSION_ID` only), only to
+//!   the captured serial. `apply.begin` answers and
 //!   the outcome carries `captured` (the parts held), the outcome `restored` (the
 //!   parts written back) and `notes` (what was not, and why).
 //! - **Timer.** Due guards are reverted on the hub's `hub-system` thread (AUSB2's poll
@@ -732,9 +733,14 @@ impl HubHandle {
                 // image last, as a client's recall), past any lock.
                 {
                     let _window = RevertWindow::open(&dev);
+                    // Its own session: only it passes locks in the window.
+                    let ctx = SessionCtx {
+                        id: crate::session::GUARD_SESSION_ID,
+                        ..internal()
+                    };
                     restored = extras.restore(&mut GuardTransport::new(
                         std::sync::Arc::clone(&dev),
-                        internal(),
+                        ctx,
                         REVERT_WAIT,
                     ));
                 }

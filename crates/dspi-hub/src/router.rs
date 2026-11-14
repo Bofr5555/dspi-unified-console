@@ -35,7 +35,7 @@ use crate::policy::{self, Policy};
 use crate::relay::PacketKind;
 use crate::session::{LOCAL_SESSION_ID, NO_ORIGIN, SessionCtx, SessionId};
 // -- WP P1HA --
-use crate::session::INTERNAL_SESSION_ID;
+use crate::session::{GUARD_SESSION_ID, INTERNAL_SESSION_ID};
 
 /// How long after a write a notification is attributed to it (spec 8.3).
 pub const ATTRIBUTION_WINDOW: Duration = Duration::from_millis(500);
@@ -263,9 +263,11 @@ impl Router {
         }
         let mut st = self.lock();
         // -- WP P1HA -- taken by the hub's next bulk write, whatever its fate
-        let revert = s.id == INTERNAL_SESSION_ID
-            && (st.revert_window // -- WP P1CFIX -- F6
-                || (is_bulk_write(req.b_request) && std::mem::take(&mut st.revert_pass)));
+        let revert = (s.id == INTERNAL_SESSION_ID
+            && is_bulk_write(req.b_request)
+            && std::mem::take(&mut st.revert_pass))
+            // -- WP P1CFIX -- F6: only the guard's write-back session, in the window
+            || (s.id == GUARD_SESSION_ID && st.revert_window);
         if st.shut {
             return Err(status::NO_DEVICE);
         }
@@ -490,10 +492,12 @@ impl Router {
     }
 
     // -- WP P1CFIX -- F6
-    /// Open (or close) the window in which every command of the hub's own
-    /// ([`INTERNAL_SESSION_ID`]) passes any session's lock: a guarded apply's revert
-    /// writing back the settings outside the image (`apply_extras.rs`), never refused
-    /// by a lock like its bulk write. Closed again before the bulk write.
+    /// Open (or close) the window in which the commands of a guarded apply's
+    /// write-back ([`GUARD_SESSION_ID`], the settings outside the image,
+    /// `apply_extras.rs`) pass any session's lock, never refused by a lock like its
+    /// bulk write. Only that id: the hub's other own writes
+    /// ([`INTERNAL_SESSION_ID`], e.g. keep-aligned) stay subject to a user's lock.
+    /// Closed again before the bulk write.
     pub fn revert_window(&self, open: bool) {
         self.lock().revert_window = open;
     }
@@ -724,6 +728,44 @@ mod tests_wp_hb0 {
         assert_eq!(r.admit(&ctx(2), &req, t), Ok(()));
         r.session_closed(2);
         assert_eq!(r.admit(&ctx(3), &req, t), Ok(()));
+    }
+
+    // -- WP P1CFIX -- F6 (decision 4)
+    /// In an open revert window only the guard's write-back session passes a user's
+    /// lock: the hub-system thread's keep-aligned and lock-error writes (the hub's
+    /// internal session, `system/run.rs`) are still refused, and so is any client.
+    #[test]
+    fn wp_p1cfix_only_the_guard_write_back_passes_a_lock_in_the_revert_window() {
+        use crate::session::{GUARD_SESSION_ID, INTERNAL_SESSION_ID};
+        use dspi_proto::ext::alink;
+        let (r, t) = (router(8), Instant::now());
+        let internal = SessionCtx {
+            id: INTERNAL_SESSION_ID,
+            role: Role::Admin,
+            exempt_inflight: true,
+        };
+        let guard = SessionCtx {
+            id: GUARD_SESSION_ID,
+            ..internal
+        };
+        // A keep-aligned write: the alink control message on the extension channel.
+        let keep_aligned = set(op::REQ_EXTENSION, alink::EXT_ALINK_CTRL_MSG);
+        let name = set(op::REQ_SET_DEVICE_NAME, 0);
+        assert!(r.lock_acquire(2, Duration::from_secs(5), t));
+        // Closed: nobody but the holder passes.
+        assert_eq!(r.admit(&guard, &name, t), Err(status::LOCKED));
+        r.revert_window(true);
+        assert_eq!(
+            r.admit(&internal, &keep_aligned, t),
+            Err(status::LOCKED),
+            "keep-aligned still refused by the user's lock"
+        );
+        assert_eq!(r.admit(&internal, &name, t), Err(status::LOCKED));
+        assert_eq!(r.admit(&ctx(3), &name, t), Err(status::LOCKED));
+        assert_eq!(r.admit(&guard, &name, t), Ok(()), "the write-back passes");
+        r.revert_window(false);
+        assert_eq!(r.admit(&guard, &name, t), Err(status::LOCKED));
+        assert_eq!(r.admit(&internal, &keep_aligned, t), Err(status::LOCKED));
     }
 
     #[test]

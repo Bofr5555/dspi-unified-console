@@ -24,6 +24,12 @@ pub const LOCAL_SESSION_ID: SessionId = 1;
 pub const FIRST_REMOTE_SESSION_ID: SessionId = 2;
 /// The hub's own reads and writes (snapshot warm-up, board name adoption).
 pub const INTERNAL_SESSION_ID: SessionId = 0xFFFF;
+// -- WP P1CFIX -- F6 (coordinator, decision 4)
+/// A guarded apply's write-back of the settings outside the image
+/// (`apply_extras.rs`): its own id, so only it passes locks in the router's revert
+/// window, never the hub's other internal writes (the hub-system thread's
+/// keep-aligned and lock-error actions run as [`INTERNAL_SESSION_ID`]).
+pub const GUARD_SESSION_ID: SessionId = 0xFFFE;
 
 /// NOTIFY frames held per subscriber before the oldest are dropped.
 pub const NOTIFY_CAPACITY: usize = 256;

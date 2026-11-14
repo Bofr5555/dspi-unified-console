@@ -21,8 +21,9 @@
 //! says what was captured, and the client's status says what was not.
 //!
 //! The capture runs as the session that begins the guard (in its order, through its
-//! lock); the revert as the hub ([`crate::session::INTERNAL_SESSION_ID`]) inside the
-//! router's revert window, so no lock refuses it.
+//! lock); the revert as the guard's own hub session
+//! ([`crate::session::GUARD_SESSION_ID`]) inside the router's revert window, so no
+//! lock refuses it, while the hub's other internal writes stay subject to locks.
 
 use std::sync::Arc;
 use std::sync::mpsc;
