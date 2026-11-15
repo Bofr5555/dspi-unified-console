@@ -104,6 +104,12 @@ struct Pending {
     /// so it counts only if ours never is: our push refused, or the choice
     /// released before it was pushed.
     earlier: Option<Followed>,
+    // -- WP ANLASTQ --
+    /// Made by [`Sharing::take_control`], the person's explicit "stop
+    /// following", not by a change of what the views ask for. With nothing
+    /// of ours to push (nothing asked for), it ends in driving nothing rather
+    /// than in following again; a refusal still gives way to `earlier`.
+    explicit: bool,
 }
 
 // -- WP CG19 --
@@ -208,6 +214,7 @@ impl Sharing {
             // still holds the one followed.
             self.pending = Some(Pending {
                 earlier: Some(f),
+                explicit: true, // -- WP ANLASTQ --
                 ..Pending::default()
             });
         }
@@ -259,7 +266,14 @@ impl Sharing {
         let Some(mine) = own else {
             // -- WP ANLAST --
             if self.pending.is_some_and(|p| !p.pushed) {
-                self.abandon_pending();
+                // -- WP ANLASTQ -- the person took control with nothing chosen
+                // (a side switch to an empty side, Clear): as before ANLAST,
+                // that stops following; the next push of anyone's is followed.
+                if self.pending.is_some_and(|p| p.explicit) {
+                    self.pending = None;
+                } else {
+                    self.abandon_pending();
+                }
             }
             return;
         };
@@ -1711,6 +1725,50 @@ mod tests_wp_anlastf {
             Some(9),
             "origin from the event seen"
         );
+    }
+
+    // -- WP ANLASTQ --
+    /// Qt's side switch to a side with nothing chosen while following: the
+    /// views ask for nothing, then Take control. The person took control: not
+    /// following any more (before ANLASTQ the release revived the following
+    /// at once, so the switch seemed to do nothing). A later push by anyone
+    /// is followed, as before.
+    #[test]
+    fn wp_anlastq_take_control_with_nothing_chosen_stops_following() {
+        for take_first in [false, true] {
+            let mut s = Sharing::default();
+            let caps = caps();
+            s.judge_own(Some(config(0b01)));
+            assert!(s.note_config(&config(0b01).encode(), true, 7, Some(&caps)));
+            assert!(s.note_config(&config(0b10).encode(), false, 9, Some(&caps)));
+            assert!(s.following().is_some());
+            if take_first {
+                s.take_control();
+                s.judge_own(None);
+            } else {
+                s.judge_own(None);
+                s.take_control();
+                s.judge_own(None);
+            }
+            assert_eq!(s.following(), None, "take_first {take_first}");
+            assert!(!s.pending(), "take_first {take_first}");
+            assert!(s.note_config(&config(0b100).encode(), false, 9, Some(&caps)));
+            assert_eq!(s.following().map(|f| f.origin), Some(9));
+        }
+    }
+
+    /// The same release after a choice made by the views (not Take control)
+    /// still gives way to the push seen meanwhile (ANLAST, R3b).
+    #[test]
+    fn wp_anlastq_a_views_choice_released_before_its_push_still_follows() {
+        let mut s = Sharing::default();
+        let caps = caps();
+        s.judge_own(Some(config(0b01)));
+        assert!(s.note_config(&config(0b01).encode(), true, 7, Some(&caps)));
+        assert!(s.note_config(&config(0b10).encode(), false, 9, Some(&caps)));
+        s.judge_own(Some(config(0b100)));
+        s.judge_own(None);
+        assert_eq!(s.following().map(|f| f.origin), Some(9));
     }
 
     /// F1 with the hub: a session that does not hold the device lock gets
