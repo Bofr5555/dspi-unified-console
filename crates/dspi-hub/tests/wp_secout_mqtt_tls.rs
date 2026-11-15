@@ -41,6 +41,10 @@ const LEAF: &[u8] = include_bytes!("../../dspi-tui/testdata/tm12/leaf.der");
 const LEAF_KEY: &[u8] = include_bytes!("../../dspi-tui/testdata/tm12/leaf-key.der");
 const LEAF_PIN: &str = "sha256//QIoTMalqjAmU7cqIfPIw0djIOMn8E2uRqx/dfg0/EiE=";
 const CA_PIN: &str = "sha256//TvRMfCrv5h+dn2AsWNZpHWAJfVdXDQVjdGLYOIsvft8=";
+// -- WP P2CFIXB --
+/// `openssl req -x509` (OpenSSL 3) for DNS:localhost: self-signed and marked CA:TRUE.
+const SELF_CA_TRUE: &[u8] = include_bytes!("../testdata/p2cfixb/self-ca-true.der");
+const SELF_CA_TRUE_KEY: &[u8] = include_bytes!("../testdata/p2cfixb/self-ca-true-key.der");
 const PASSWORD: &str = "wp-secout-hunter2";
 const WAIT: Duration = Duration::from_secs(20);
 
@@ -166,6 +170,10 @@ struct TlsBroker {
 
 impl TlsBroker {
     fn start(want_client_cert: bool) -> TlsBroker {
+        TlsBroker::start_with(want_client_cert, LEAF, LEAF_KEY)
+    }
+
+    fn start_with(want_client_cert: bool, cert: &[u8], key: &[u8]) -> TlsBroker {
         let provider = Arc::new(rustls::crypto::ring::default_provider());
         let builder = ServerConfig::builder_with_provider(Arc::clone(&provider))
             .with_safe_default_protocol_versions()
@@ -180,8 +188,8 @@ impl TlsBroker {
         let config = Arc::new(
             builder
                 .with_single_cert(
-                    vec![CertificateDer::from(LEAF.to_vec())],
-                    PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(LEAF_KEY.to_vec())),
+                    vec![CertificateDer::from(cert.to_vec())],
+                    PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.to_vec())),
                 )
                 .unwrap(),
         );
@@ -414,11 +422,12 @@ fn wp_secout_mqtt_a_wrong_ca_or_pin_is_refused_and_no_connect_is_sent() {
     for (host, tls, says) in [
         // The test CA is not among the public ones.
         ("localhost", on(|_| {}), "trusted CA"),
-        // The leaf is not the issuer of itself.
+        // The exact certificate, the wrong name (WP P2CFIXB: the exact certificate is taken
+        // as the trust, and its name still checked).
         (
-            "localhost",
+            "127.0.0.1",
             on(|t| t.ca_pem = Some(pem("CERTIFICATE", LEAF))),
-            "refused",
+            "not for 127.0.0.1",
         ),
         // The right CA, the wrong name.
         (
@@ -586,4 +595,37 @@ fn wp_secout_mqtt_tls_settings_parse_strictly_and_keep_the_key_on_update() {
     let mut c = MqttConfig::new("127.0.0.1", 1, "hub");
     c.tls = on(|t| t.ca_pem = Some("nope".into()));
     assert!(MqttClient::start(c, |_| {}).is_err());
+}
+
+// -- WP P2CFIXB --
+#[test]
+fn wp_p2cfixb_mqtt_a_ca_true_self_signed_broker_given_as_ca_pem_is_trusted() {
+    let broker = TlsBroker::start_with(false, SELF_CA_TRUE, SELF_CA_TRUE_KEY);
+    let exact = || on(|t| t.ca_pem = Some(pem("CERTIFICATE", SELF_CA_TRUE)));
+    let (mut client, events) = start(config("localhost", broker.addr.port(), exact()));
+    wait_for("CONNACK over TLS", || connected(&events));
+    assert!(client.status().encrypted);
+    assert_connect_with_password(&broker.seen(), None);
+    client.stop();
+    // A wrong name, and another CA: refused before CONNECT, the latter saying what to do.
+    for (host, tls, says) in [
+        ("127.0.0.1", exact(), "not for 127.0.0.1"),
+        (
+            "localhost",
+            on(|t| t.ca_pem = Some(pem("CERTIFICATE", CA))),
+            "CA certificate used as its own",
+        ),
+    ] {
+        let broker = TlsBroker::start_with(false, SELF_CA_TRUE, SELF_CA_TRUE_KEY);
+        let (mut client, events) = start(config(host, broker.addr.port(), tls));
+        wait_for("a refused handshake", || !reasons(&events).is_empty());
+        client.stop();
+        let why = reasons(&events).remove(0);
+        assert!(why.contains(says), "{host}: {why}");
+        assert!(!connected(&events));
+        for s in broker.seen() {
+            assert!(matches!(s, Seen::Refused(0)), "no CONNECT bytes");
+        }
+    }
+    assert_no_secret_logged();
 }

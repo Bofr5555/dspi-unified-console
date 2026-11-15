@@ -28,6 +28,7 @@ use rustls::client::{ClientConfig, ClientConnection, WebPkiServerVerifier};
 use rustls::crypto::{CryptoProvider, WebPkiSupportedAlgorithms};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
+use rustls::server::ParsedCertificate;
 use rustls::{
     CertificateError, DigitallySignedStruct, RootCertStore, SignatureScheme, StreamOwned,
 };
@@ -351,6 +352,64 @@ impl ServerCertVerifier for PinVerifier {
     }
 }
 
+/// `ca_pem` (WP P2CFIXB, review p2c F2): a presented end-entity certificate that is
+/// byte-identical to one of the pasted certificates is accepted with its name checked and
+/// the handshake signature verified (dates are not looked at: the exact certificate was
+/// given, as with a pin). This is what a self-signed receiver needs, since OpenSSL 3's
+/// `req -x509` marks such a certificate CA:TRUE and webpki refuses a CA used as an end
+/// entity. Anything else goes to webpki with the pasted certificates as roots: real chains,
+/// dates and names checked as usual.
+#[derive(Debug)]
+struct CaPemVerifier {
+    exact: Vec<CertificateDer<'static>>,
+    webpki: Arc<WebPkiServerVerifier>,
+}
+
+impl ServerCertVerifier for CaPemVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        server_name: &ServerName<'_>,
+        ocsp_response: &[u8],
+        now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        if self
+            .exact
+            .iter()
+            .any(|c| ct_eq(c.as_ref(), end_entity.as_ref()))
+        {
+            let parsed = ParsedCertificate::try_from(end_entity)?;
+            rustls::client::verify_server_name(&parsed, server_name)?;
+            return Ok(ServerCertVerified::assertion());
+        }
+        self.webpki
+            .verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now)
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.webpki.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.webpki.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.webpki.supported_verify_schemes()
+    }
+}
+
 /// A client configuration for `trust`, with a client certificate if given, and these ALPN
 /// protocols (`http/1.1` for webhooks, none for MQTT).
 pub fn client_config(
@@ -384,7 +443,16 @@ pub fn client_config(
                 WebPkiServerVerifier::builder_with_provider(Arc::new(store), Arc::clone(&provider))
                     .build()
                     .map_err(|e| TlsError::Config(e.to_string()))?;
-            builder.with_webpki_verifier(verifier)
+            match trust {
+                // -- WP P2CFIXB --
+                Trust::Ca(certs) => builder
+                    .dangerous()
+                    .with_custom_certificate_verifier(Arc::new(CaPemVerifier {
+                        exact: certs.clone(),
+                        webpki: verifier,
+                    })),
+                _ => builder.with_webpki_verifier(verifier),
+            }
         }
         (None, Trust::Pin(pin)) => builder
             .dangerous()
@@ -495,6 +563,10 @@ impl Write for Stream {
     }
 }
 
+/// The reason given when a server presents a CA certificate as its own and it is not the
+/// exact certificate given in `ca_pem` (WP P2CFIXB).
+pub const CA_AS_END_ENTITY: &str = "the server's certificate is a CA certificate used as its own: give that exact certificate as ca_pem, pin it with pin_sha256, or issue a leaf from it";
+
 fn handshake_error(e: &io::Error, host: &str) -> TlsError {
     match e
         .get_ref()
@@ -513,6 +585,10 @@ fn handshake_error(e: &io::Error, host: &str) -> TlsError {
             }
             CertificateError::NotValidYet | CertificateError::NotValidYetContext { .. } => {
                 TlsError::Certificate("it is not valid yet".into())
+            }
+            // -- WP P2CFIXB --
+            CertificateError::Other(o) if format!("{o:?}").contains("CaUsedAsEndEntity") => {
+                TlsError::Certificate(CA_AS_END_ENTITY.into())
             }
             other => TlsError::Certificate(format!("{other:?}")),
         },
