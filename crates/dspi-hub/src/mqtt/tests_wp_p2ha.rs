@@ -62,6 +62,7 @@ fn state_with_device(out: &mut Outbox) -> HaState {
             name: "Front fills".into(),
             fw: "1.1.7".into(),
             platform: "RP2350".into(),
+            model: None,
             online: true,
         },
     );
@@ -451,6 +452,7 @@ fn wp_p2ha_commands_become_control_plane_messages() {
 
 #[test]
 fn wp_p2ha_a_forgotten_device_is_removed_and_offline_is_unavailable() {
+    // -- WP P2DFIXA -- forgotten is `inventory.forget`, not the end of the grace.
     let mut out = Outbox::default();
     let mut st = state_with_device(&mut out);
     out.drain();
@@ -465,11 +467,25 @@ fn wp_p2ha_a_forgotten_device_is_removed_and_offline_is_unavailable() {
         topics(&mut out)[&availability_topic(BASE, SERIAL)],
         "offline"
     );
+    // -- WP P2DFIXA -- past the registry's grace: kept, unavailable.
     st.on_bus(
         &mut out,
         &BusMessage::DeviceRemoved {
             serial: SERIAL.into(),
             handle: 1,
+        },
+    );
+    let got = topics(&mut out);
+    assert!(
+        got.keys().all(|t| !t.ends_with("/config")),
+        "nothing removed: {got:?}"
+    );
+    assert_eq!(st.serials(), vec![SERIAL.to_owned()]);
+    // Forgotten by an Admin (`inventory.forget`): removed.
+    st.on_bus(
+        &mut out,
+        &BusMessage::DeviceForgotten {
+            serial: SERIAL.into(),
         },
     );
     let got = topics(&mut out);

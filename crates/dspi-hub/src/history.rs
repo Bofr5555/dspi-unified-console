@@ -271,6 +271,8 @@ impl History {
                 out.extend(self.flush(serial));
             }
             BusMessage::DeviceRemoved { .. } => {}
+            // -- WP P2DFIXA -- `inventory.forget` removes the files itself.
+            BusMessage::DeviceForgotten { .. } => {}
             BusMessage::Notification {
                 serial,
                 session,
