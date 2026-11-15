@@ -452,6 +452,14 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun hubApiKeyRevoke(cid: Long) = call { core.hubApiKeyRevoke(cid.toUInt()) }
 
+    override fun hubInventorySet(serial: String, location: String?, note: String?, tags: List<String>?): HubDevice = call { core.hubInventorySet(serial, location, note, tags).toDomain() }
+
+    override fun hubInventoryForget(serial: String, withData: Boolean): HubInventoryForgot = call { core.hubInventoryForget(serial, withData).toDomain() }
+
+    override fun hubRename(name: String): String = call { core.hubRename(name) }
+
+    override fun hubIdentifySerial(serial: String, seconds: Int, toneOutput: Int?): IdentifyInfo? = call { core.hubIdentifySerial(serial, seconds.toUByte(), toneOutput?.let { it.toUByte() })?.let { it.toDomain() } }
+
     override fun getInputSourceName(source: Int): String = call { core.getInputSourceName(source.toUByte()) }
 
     override fun setInputSourceName(source: Int, name: String) = call { core.setInputSourceName(source.toUByte(), name) }
@@ -4215,6 +4223,18 @@ internal fun HubApiKeyMinted.toFfi() =
         role = role,
         plaintextOk = plaintextOk,
         key = (key as FfiHubSecret).inner,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubInventoryForgot.toDomain() =
+    HubInventoryForgot(
+        serial = serial,
+        forgot = forgot,
+    )
+
+internal fun HubInventoryForgot.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubInventoryForgot(
+        serial = serial,
+        forgot = forgot,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =

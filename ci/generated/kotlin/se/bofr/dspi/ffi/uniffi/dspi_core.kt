@@ -1896,6 +1896,14 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2349,7 +2357,13 @@ fun uniffi_dspi_core_checksum_method_dspicore_hub_health(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_identify(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_identify_serial(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_inventory(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_inventory_forget(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_inventory_set(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_limits_clear(
 ): Short
@@ -2374,6 +2388,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_hub_outbound_test(
 fun uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_pin_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_rename(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_schedule_delete(
 ): Short
@@ -3247,7 +3263,13 @@ fun uniffi_dspi_core_fn_method_dspicore_hub_health(`ptr`: Pointer,uniffi_out_err
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_identify(`ptr`: Pointer,`seconds`: Byte,`toneOutput`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_identify_serial(`ptr`: Pointer,`serial`: RustBuffer.ByValue,`seconds`: Byte,`toneOutput`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_inventory(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_inventory_forget(`ptr`: Pointer,`serial`: RustBuffer.ByValue,`withData`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_inventory_set(`ptr`: Pointer,`serial`: RustBuffer.ByValue,`location`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,`tags`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_limits_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -3272,6 +3294,8 @@ fun uniffi_dspi_core_fn_method_dspicore_hub_outbound_test(`ptr`: Pointer,`id`: R
 fun uniffi_dspi_core_fn_method_dspicore_hub_pin_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_pin_set(`ptr`: Pointer,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_rename(`ptr`: Pointer,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_schedule_delete(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -4682,7 +4706,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_identify() != 8517.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_identify_serial() != 15672.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_inventory() != 11241.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_inventory_forget() != 47841.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_inventory_set() != 23396.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_limits_clear() != 57758.toShort()) {
@@ -4721,6 +4754,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_pin_set() != 62268.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_rename() != 39300.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_schedule_delete() != 22406.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4754,7 +4790,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_put() != 8801.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_recall() != 36034.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_recall() != 38397.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_rename() != 10752.toShort()) {
@@ -8783,6 +8819,27 @@ public interface DspiCoreInterface {
     fun `hubIdentify`(`seconds`: kotlin.UByte, `toneOutput`: kotlin.UByte?): IdentifyInfo?
     
     /**
+     * Identify device `serial` on the hub ("" the open device;
+     * `device.identify`): blink its LED for `seconds` (0 stops it; at most
+     * 120, longer is shortened) and, with `tone_output`, play its quiet
+     * identify tone once on that output (leave it empty unless the user
+     * asked for sound). Any device on the hub, open here or not; the hub
+     * sends it, at most once per device per 2 s, whoever asked. The answer
+     * is the device's state read after the write; `None` when that read
+     * failed (the write went out). Control or Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] (nothing sent) on no hub, on a hub
+     * without the `identify` cap, and on firmware without `EXT_IDENTIFY`;
+     * [`DspiError::InvalidArgument`] for a tone output the device does not
+     * have; [`DspiError::Locked`] for a tone under another session's lock;
+     * [`DspiError::Link`] `rate_limited`, `offline`, `not_found`, `device`;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`] (nothing
+     * sent); [`DspiError::Disconnected`].
+     */
+    fun `hubIdentifySerial`(`serial`: kotlin.String, `seconds`: kotlin.UByte, `toneOutput`: kotlin.UByte?): IdentifyInfo?
+    
+    /**
      * Every DSPi the hub has seen, online or not: online first, then by
      * last seen, newest first (`inventory.list`, read page by page, at most
      * 1024). Every role. Slow: off the UI thread.
@@ -8791,6 +8848,38 @@ public interface DspiCoreInterface {
      * sent); [`DspiError::Disconnected`]; the hub's refusal (module docs).
      */
     fun `hubInventory`(): List<HubDevice>
+    
+    /**
+     * Forget device `serial` on the hub (`inventory.forget`): its record and
+     * its history files, and with `with_data` its snapshots on the hub too.
+     * Only an offline device: the hub refuses one that is attached. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an empty `serial` (nothing
+     * sent); [`DspiError::Link`] `conflict` while the device is online,
+     * `not_found` for a serial not in the inventory, `internal` when a file
+     * could not be removed (the record stays: try again); as
+     * [`DspiCore::hub_inventory_set`].
+     */
+    fun `hubInventoryForget`(`serial`: kotlin.String, `withData`: kotlin.Boolean): HubInventoryForgot
+    
+    /**
+     * Set device `serial`'s location, note and tags in the hub's inventory
+     * ("" the open device; `inventory.set`). Each `Some` replaces its field
+     * and an empty one clears it (`Some("")`, `Some(vec![])`); `None` keeps
+     * it. The hub's bounds: a location and a note at most 256 characters, no
+     * control characters (a note may hold newlines and tabs); at most 16
+     * tags of 1 to 32 characters, trimmed, duplicates dropped. The answer is
+     * the record as the hub now has it. Admin of the hub. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `inventory` cap (nothing
+     * sent); [`DspiError::InvalidArgument`] for a value past a bound (the
+     * hub's `bad_request`, nothing changed); [`DspiError::Link`] `not_found`
+     * for a serial not in the inventory; [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
+     */
+    fun `hubInventorySet`(`serial`: kotlin.String, `location`: kotlin.String?, `note`: kotlin.String?, `tags`: List<kotlin.String>?): HubDevice
     
     /**
      * Remove the hub's limits profile for the open device (nothing on the
@@ -8920,6 +9009,19 @@ public interface DspiCoreInterface {
     fun `hubPinSet`(`pin`: kotlin.String): HubPinSet
     
     /**
+     * Rename the hub (`hub.rename`): control characters dropped and the ends
+     * trimmed by the hub, at most 64 characters. The answer is the name the
+     * hub now uses (in every later `hello`, `/dspi/v1/info` and its mDNS
+     * record). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_stats` cap
+     * (nothing sent); [`DspiError::InvalidArgument`] for a name empty after
+     * that or too long (nothing changed); [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
+     */
+    fun `hubRename`(`name`: kotlin.String): kotlin.String
+    
+    /**
      * Delete rule `id` (`schedule.delete`). Admin of the hub. Slow: off the
      * UI thread.
      *
@@ -9043,6 +9145,14 @@ public interface DspiCoreInterface {
      * (`snapshot.recall`). With `guard` a guarded apply begins first
      * (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
      * Control or Admin. Slow: off the UI thread.
+     *
+     * WP P2CC3: a guarded recall is this core's guarded apply, as one begun
+     * here: [`DspiCore::apply_status`] reports it (`hub: true`, the
+     * recall's changes), [`DspiCore::apply_confirm`] keeps it and
+     * [`DspiCore::apply_revert`] (or the timeout, through
+     * [`DspiCore::apply_poll`]) has the hub put back what it captured, as
+     * this session. While another guarded apply waits it is refused with
+     * [`DspiError::InvalidArgument`], nothing sent.
      *
      * Errors: [`DspiError::ImageRefused`] for Control on a device with a
      * limits profile or a lock (nothing written); [`DspiError::Link`]
@@ -14869,6 +14979,38 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Identify device `serial` on the hub ("" the open device;
+     * `device.identify`): blink its LED for `seconds` (0 stops it; at most
+     * 120, longer is shortened) and, with `tone_output`, play its quiet
+     * identify tone once on that output (leave it empty unless the user
+     * asked for sound). Any device on the hub, open here or not; the hub
+     * sends it, at most once per device per 2 s, whoever asked. The answer
+     * is the device's state read after the write; `None` when that read
+     * failed (the write went out). Control or Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] (nothing sent) on no hub, on a hub
+     * without the `identify` cap, and on firmware without `EXT_IDENTIFY`;
+     * [`DspiError::InvalidArgument`] for a tone output the device does not
+     * have; [`DspiError::Locked`] for a tone under another session's lock;
+     * [`DspiError::Link`] `rate_limited`, `offline`, `not_found`, `device`;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`] (nothing
+     * sent); [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubIdentifySerial`(`serial`: kotlin.String, `seconds`: kotlin.UByte, `toneOutput`: kotlin.UByte?): IdentifyInfo? {
+            return FfiConverterOptionalTypeIdentifyInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_identify_serial(
+        it, FfiConverterString.lower(`serial`),FfiConverterUByte.lower(`seconds`),FfiConverterOptionalUByte.lower(`toneOutput`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Every DSPi the hub has seen, online or not: online first, then by
      * last seen, newest first (`inventory.list`, read page by page, at most
      * 1024). Every role. Slow: off the UI thread.
@@ -14882,6 +15024,60 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_inventory(
         it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Forget device `serial` on the hub (`inventory.forget`): its record and
+     * its history files, and with `with_data` its snapshots on the hub too.
+     * Only an offline device: the hub refuses one that is attached. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an empty `serial` (nothing
+     * sent); [`DspiError::Link`] `conflict` while the device is online,
+     * `not_found` for a serial not in the inventory, `internal` when a file
+     * could not be removed (the record stays: try again); as
+     * [`DspiCore::hub_inventory_set`].
+     */
+    @Throws(DspiException::class)override fun `hubInventoryForget`(`serial`: kotlin.String, `withData`: kotlin.Boolean): HubInventoryForgot {
+            return FfiConverterTypeHubInventoryForgot.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_inventory_forget(
+        it, FfiConverterString.lower(`serial`),FfiConverterBoolean.lower(`withData`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Set device `serial`'s location, note and tags in the hub's inventory
+     * ("" the open device; `inventory.set`). Each `Some` replaces its field
+     * and an empty one clears it (`Some("")`, `Some(vec![])`); `None` keeps
+     * it. The hub's bounds: a location and a note at most 256 characters, no
+     * control characters (a note may hold newlines and tabs); at most 16
+     * tags of 1 to 32 characters, trimmed, duplicates dropped. The answer is
+     * the record as the hub now has it. Admin of the hub. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `inventory` cap (nothing
+     * sent); [`DspiError::InvalidArgument`] for a value past a bound (the
+     * hub's `bad_request`, nothing changed); [`DspiError::Link`] `not_found`
+     * for a serial not in the inventory; [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubInventorySet`(`serial`: kotlin.String, `location`: kotlin.String?, `note`: kotlin.String?, `tags`: List<kotlin.String>?): HubDevice {
+            return FfiConverterTypeHubDevice.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_inventory_set(
+        it, FfiConverterString.lower(`serial`),FfiConverterOptionalString.lower(`location`),FfiConverterOptionalString.lower(`note`),FfiConverterOptionalSequenceString.lower(`tags`),_status)
 }
     }
     )
@@ -15149,6 +15345,30 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Rename the hub (`hub.rename`): control characters dropped and the ends
+     * trimmed by the hub, at most 64 characters. The answer is the name the
+     * hub now uses (in every later `hello`, `/dspi/v1/info` and its mDNS
+     * record). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_stats` cap
+     * (nothing sent); [`DspiError::InvalidArgument`] for a name empty after
+     * that or too long (nothing changed); [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubRename`(`name`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_rename(
+        it, FfiConverterString.lower(`name`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Delete rule `id` (`schedule.delete`). Admin of the hub. Slow: off the
      * UI thread.
      *
@@ -15390,6 +15610,14 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * (`snapshot.recall`). With `guard` a guarded apply begins first
      * (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
      * Control or Admin. Slow: off the UI thread.
+     *
+     * WP P2CC3: a guarded recall is this core's guarded apply, as one begun
+     * here: [`DspiCore::apply_status`] reports it (`hub: true`, the
+     * recall's changes), [`DspiCore::apply_confirm`] keeps it and
+     * [`DspiCore::apply_revert`] (or the timeout, through
+     * [`DspiCore::apply_poll`]) has the hub put back what it captured, as
+     * this session. While another guarded apply waits it is refused with
+     * [`DspiError::InvalidArgument`], nothing sent.
      *
      * Errors: [`DspiError::ImageRefused`] for Control on a device with a
      * limits profile or a lock (nothing written); [`DspiError::Link`]
@@ -29615,6 +29843,48 @@ public object FfiConverterTypeHubHealth: FfiConverterRustBuffer<HubHealth> {
 
 
 /**
+ * What [`DspiCore::hub_inventory_forget`] removed.
+ */
+data class HubInventoryForgot (
+    /**
+     * The device.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * What went, in order: `record`, then `events` if it had history files,
+     * then `snapshots` if asked and it had any.
+     */
+    var `forgot`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubInventoryForgot: FfiConverterRustBuffer<HubInventoryForgot> {
+    override fun read(buf: ByteBuffer): HubInventoryForgot {
+        return HubInventoryForgot(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubInventoryForgot) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterSequenceString.allocationSize(value.`forgot`)
+    )
+
+    override fun write(value: HubInventoryForgot, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterSequenceString.write(value.`forgot`, buf)
+    }
+}
+
+
+
+/**
  * A profile set on the hub ([`DspiCore::hub_limits_set`]).
  */
 data class HubLimitsSet (
@@ -39299,6 +39569,38 @@ public object FfiConverterOptionalTypeParamValue: FfiConverterRustBuffer<ParamVa
         } else {
             buf.put(1)
             FfiConverterTypeParamValue.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalSequenceString: FfiConverterRustBuffer<List<kotlin.String>?> {
+    override fun read(buf: ByteBuffer): List<kotlin.String>? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterSequenceString.read(buf)
+    }
+
+    override fun allocationSize(value: List<kotlin.String>?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterSequenceString.allocationSize(value)
+        }
+    }
+
+    override fun write(value: List<kotlin.String>?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterSequenceString.write(value, buf)
         }
     }
 }

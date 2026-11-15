@@ -35,6 +35,9 @@
 //! The second section (WP P2CC2, [`admin`]): alarms, schedules, notifications
 //! out, MQTT and API keys, with `alarm.changed` and `schedule.ran` through
 //! the same listener.
+//!
+//! The third section (WP P2CC3, [`manage`]): an Admin's inventory edits and
+//! forget, renaming the hub, and Identify for any device on the hub.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -54,6 +57,10 @@ pub use admin::{
     HubScheduleAction, HubScheduleLast, HubScheduleResult, HubScheduleRule, HubScheduleRun,
     HubSchedules, HubSecret, NOTICE_ALARM_FAMILY, NOTICE_ALARM_UNKNOWN, hub_alarm_notice,
 };
+
+// -- WP P2CC3 -- the hub's device and name writes
+pub mod manage;
+pub use manage::HubInventoryForgot;
 
 /// Cap: `inventory.*` (hub-api.md section 3).
 pub const CAP_INVENTORY: &str = "inventory";
@@ -940,25 +947,8 @@ impl DspiCore {
                 return Err(DspiError::Disconnected);
             }
             self.hub_cap(CAP_IDENTIFY)?;
-            let mut f = serde_json::Map::new();
-            f.insert("serial".into(), t.serial.into());
-            f.insert("seconds".into(), seconds.into());
-            if let Some(o) = tone_output {
-                f.insert("tone_output".into(), o.into());
-            }
-            let reply = self.hub_ask("device.identify", f)?;
-            return Ok(reply
-                .get("status")
-                .filter(|s| s.is_object())
-                .map(|s| IdentifyInfo {
-                    remaining_s: small(s.get("remaining_s")).unwrap_or(0),
-                    last_tone_output: small(s.get("last_tone")),
-                    chip: text(s.get("chip")),
-                    chip_rev: small(s.get("chip_rev")).unwrap_or(0),
-                    chip_id: 0,
-                    board: text(s.get("board")),
-                    hw_rev: text(s.get("hw_rev")),
-                }));
+            // -- WP P2CC3 -- shared with `hub_identify_serial`
+            return self.hub_identify_on(t.serial, seconds, tone_output);
         }
         self.identify(seconds, tone_output)?;
         Ok(self.fetch_identify().ok())
@@ -1281,6 +1271,14 @@ impl DspiCore {
     /// (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
     /// Control or Admin. Slow: off the UI thread.
     ///
+    /// WP P2CC3: a guarded recall is this core's guarded apply, as one begun
+    /// here: [`DspiCore::apply_status`] reports it (`hub: true`, the
+    /// recall's changes), [`DspiCore::apply_confirm`] keeps it and
+    /// [`DspiCore::apply_revert`] (or the timeout, through
+    /// [`DspiCore::apply_poll`]) has the hub put back what it captured, as
+    /// this session. While another guarded apply waits it is refused with
+    /// [`DspiError::InvalidArgument`], nothing sent.
+    ///
     /// Errors: [`DspiError::ImageRefused`] for Control on a device with a
     /// limits profile or a lock (nothing written); [`DspiError::Link`]
     /// `offline`, `not_found`, `conflict` (another session's guarded apply);
@@ -1305,8 +1303,15 @@ impl DspiCore {
                     f.insert("timeout_ms".into(), timeout_ms.into());
                 }
             }
-            let reply = self.hub_ask("snapshot.recall", f)?;
-            Ok(recall_from(&reply))
+            if !guard {
+                let reply = self.hub_ask("snapshot.recall", f)?;
+                return Ok(recall_from(&reply));
+            }
+            // -- WP P2CC3 -- the hub's guard is this core's guarded apply:
+            // apply_status shows it, apply_confirm / apply_revert end it
+            self.guard_adopt_recall(timeout_ms, || {
+                self.hub_ask("snapshot.recall", f).map(|r| recall_from(&r))
+            })
         }
         #[cfg(not(feature = "link"))]
         {
@@ -1412,6 +1417,36 @@ impl DspiCore {
             .map(|c| c.serial.clone())
             .filter(|s| !s.is_empty())
             .ok_or(DspiError::Disconnected)
+    }
+
+    // -- WP P2CC3 --
+    /// `device.identify` of `serial` (the cap checked by the caller): the
+    /// status read after the write, `None` when that read failed.
+    fn hub_identify_on(
+        &self,
+        serial: String,
+        seconds: u8,
+        tone_output: Option<u8>,
+    ) -> Result<Option<IdentifyInfo>> {
+        let mut f = serde_json::Map::new();
+        f.insert("serial".into(), serial.into());
+        f.insert("seconds".into(), seconds.into());
+        if let Some(o) = tone_output {
+            f.insert("tone_output".into(), o.into());
+        }
+        let reply = self.hub_ask("device.identify", f)?;
+        Ok(reply
+            .get("status")
+            .filter(|s| s.is_object())
+            .map(|s| IdentifyInfo {
+                remaining_s: small(s.get("remaining_s")).unwrap_or(0),
+                last_tone_output: small(s.get("last_tone")),
+                chip: text(s.get("chip")),
+                chip_rev: small(s.get("chip_rev")).unwrap_or(0),
+                chip_id: 0,
+                board: text(s.get("board")),
+                hw_rev: text(s.get("hw_rev")),
+            }))
     }
 
     /// `snapshot.put` of a measured document.

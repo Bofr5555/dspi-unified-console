@@ -896,7 +896,8 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     } else if opts.demo {
         running
             .handle
-            .attach(Box::new(FakeDevice::demo()), 0)
+            // -- WP P2CC3 -- with the diagnostics extension, so Identify works
+            .attach(Box::new(demo_device()), 0)
             .map_err(|e| Failure::Failed(format!("the demo device did not attach: {e}")))?;
     } else {
         running.handle.scan_now();
@@ -905,6 +906,30 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     // the truth.
     running.control.start_accepting();
     Ok(running)
+}
+
+// -- WP P2CC3 --
+/// The demo device's own meter block (`FakeDevice::demo`'s).
+const DEMO_STATUS: &[u8] = include_bytes!("../../../tests/fixtures/link/device/status_wvalue9.bin");
+
+// -- WP P2CC3 --
+/// `--demo hub`'s device: [`FakeDevice::demo`] as wp/FWX firmware
+/// (`FakeOptions::diag_ext`: `EXT_IDENTIFY`, `EXT_RESET_INFO`, the clip
+/// event), so the hub's Identify (`device.identify`) and health facts work on
+/// it.
+fn demo_device() -> FakeDevice {
+    let dev = FakeDevice::new(
+        dspi_transport::Capture::demo(),
+        dspi_transport::FakeOptions {
+            extensions: true,
+            surfaces: true,
+            analysis: true,
+            diag_ext: true,
+            ..dspi_transport::FakeOptions::default()
+        },
+    );
+    dev.remote().set_status(DEMO_STATUS.to_vec());
+    dev
 }
 
 // -- WP SW3 --
@@ -3641,5 +3666,69 @@ mod tests_wp_p2tm {
         let (code, _) = http(running.control.port(), "GET", &path, Some(&key.key));
         assert_eq!(code, 401);
         drop(running);
+    }
+}
+
+// -- WP P2CC3 --
+/// `uconsole --demo hub`'s device has the diagnostics extension: the hub's
+/// Identify works on it, and its meters are the demo's own.
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p2cc3 {
+    use super::*;
+    use crate::api::tests_wp_p2tm::api_call;
+    use dspi_transport::Transport;
+    use dspi_tui::shell::connect::LinkTarget;
+
+    #[test]
+    fn wp_p2cc3_the_demo_hubs_device_answers_identify() {
+        // The demo device's meters, unchanged.
+        let mut ours = demo_device();
+        let mut demo = FakeDevice::demo();
+        let op = dspi_proto::generated::opcodes::REQ_GET_STATUS;
+        let len = u16::try_from(DEMO_STATUS.len()).unwrap();
+        assert_eq!(
+            ours.control_in(op, 9, len).unwrap(),
+            demo.control_in(op, 9, len).unwrap()
+        );
+
+        let store = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("wp_p2cc3")
+            .join("identify");
+        let _ = std::fs::remove_dir_all(&store);
+        std::fs::create_dir_all(&store).unwrap();
+        let mut o = match parse(
+            &["--port", "0", "--loopback", "--no-keep-awake"],
+            true,
+            Some(PathBuf::from("/store")),
+        ) {
+            Ok(HubCommand::Run(o)) => o,
+            other => panic!("{other:?}"),
+        };
+        o.name = Some("P2CC3 test hub".into());
+        o.store = store.clone();
+        let running = start(&o, false).unwrap();
+        let pin = running
+            .control
+            .auth()
+            .begin_pairing(Instant::now())
+            .unwrap()
+            .pin;
+        let mut l = LinkTarget::parse(&format!("127.0.0.1:{}", running.control.port())).unwrap();
+        l.pin = Some(pin);
+        l.tokens = Some(store.join("link-tokens.toml"));
+        let target = Target::Link(l);
+        assert_eq!(
+            api_call(
+                &target,
+                "device.identify",
+                json!({"serial": "DEMO0000DSPI0001", "seconds": 1})
+            ),
+            exit::OK
+        );
+        assert!(!command(&running, "quit", false));
     }
 }

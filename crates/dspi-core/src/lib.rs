@@ -274,6 +274,8 @@ pub use hub_server::{
     HubScheduleAction, HubScheduleLast, HubScheduleResult, HubScheduleRule, HubScheduleRun,
     HubSchedules, HubSecret, hub_alarm_notice,
 };
+// -- WP P2CC3 --
+pub use hub_server::HubInventoryForgot;
 // -- WP ROMODE --
 pub use read_only::{
     GUARD_PENDING, HUB_READS, NOTICE_READ_ONLY_CLIENT, NOTICE_READ_ONLY_GUARD_PENDING,

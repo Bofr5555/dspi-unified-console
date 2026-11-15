@@ -6638,6 +6638,56 @@ uint32_t dspi_hub_api_key_mint(struct FfiCore *core,
 uint32_t dspi_hub_api_key_revoke(struct FfiCore *core, uint32_t cid, char *buf, uint32_t len);
 
 /**
+ * Set device `serial`'s (null or "": the open device's) `location`, `note`
+ * and tags (`tags_json`, a JSON list of strings) in the hub's inventory
+ * (Admin). Each null keeps its field; "" (or `[]`) clears it. The record as
+ * the hub now has it: JSON `{ok, serial, handle, online, name, ..., location,
+ * note, tags, ...}` as `dspi_hub_inventory`'s, or a failure (`invalid` past a
+ * bound, `link` with `dlink.not_found`).
+ */
+uint32_t dspi_hub_inventory_set(struct FfiCore *core,
+                                const char *serial,
+                                const char *location,
+                                const char *note,
+                                const char *tags_json,
+                                char *buf,
+                                uint32_t len);
+
+/**
+ * Forget offline device `serial` on the hub (Admin): its record, its history
+ * and, with `with_data`, its snapshots on the hub. JSON `{ok, serial,
+ * forgot: ["record", "events"?, "snapshots"?]}`, or a failure (`link` with
+ * `dlink.conflict` while it is online, `dlink.not_found`).
+ */
+uint32_t dspi_hub_inventory_forget(struct FfiCore *core,
+                                   const char *serial,
+                                   bool with_data,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * Rename the hub to `name` (Admin): JSON `{ok, value: "<the name the hub
+ * now uses>"}`, or a failure (`invalid` for an empty or too long name).
+ */
+uint32_t dspi_hub_rename(struct FfiCore *core, const char *name, char *buf, uint32_t len);
+
+/**
+ * Identify device `serial` on the hub (null or "": the open device) for
+ * `seconds` (0 stops), with the quiet tone on `tone_output` (0xFF: none;
+ * pass 0xFF unless the user asked for sound). Any device on the hub. JSON
+ * as `dspi_hub_identify`'s: `{ok, remainingS, lastToneOutput, chip, chipRev,
+ * chipId, board, hwRev}`, `{ok, value: null}` when the state could not be
+ * read after the write, or a failure (`unsupported` off a hub; `link` with
+ * `dlink.rate_limited`, `dlink.offline`, `dlink.not_found`).
+ */
+uint32_t dspi_hub_identify_serial(struct FfiCore *core,
+                                  const char *serial,
+                                  uint8_t seconds,
+                                  uint8_t tone_output,
+                                  char *buf,
+                                  uint32_t len);
+
+/**
  * The master volume `db` as `dspi_set_master_volume` keeps it: -128 (mute)
  * at or below -128, else 0.5 dB steps within -127..=0. NaN comes back NaN.
  */
