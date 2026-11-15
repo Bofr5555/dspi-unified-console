@@ -641,12 +641,21 @@ impl DspiCore {
     /// Clear the device's sticky clip flags after the clip hold ended, without
     /// waiting: when another call holds the lock, the next read tries again
     /// (and the ballistics count a clear unanswered for 2 s as failed). The
-    /// outcome goes to the ballistics: a refusal (a viewer on a hub) or a
-    /// failure makes the hold follow the device's sticky bits, with no retry.
+    /// outcome goes to the ballistics: a refusal (a viewer on a hub, the
+    /// client read-only mode, which sends nothing) or a failure makes the
+    /// hold follow the device's sticky bits, with no retry.
     pub(crate) fn clear_clips_when_free(&self) {
         let Some(mut inner) = self.try_lock() else {
             return;
         };
+        // -- WP ROMODEF -- (review romode F3) the client read-only mode
+        // writes nothing: the clear is not sent and counts as refused, so the
+        // hold follows the device's sticky bits (as for a hub's viewer)
+        if inner.client_read_only.on {
+            drop(inner);
+            self.events.clear_result(false);
+            return;
+        }
         let ok = match inner.conn() {
             Ok(conn) => conn
                 .get_upto(dspi_proto::generated::opcodes::REQ_CLEAR_CLIPS, 0, 4)

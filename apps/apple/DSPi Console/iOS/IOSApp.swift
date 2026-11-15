@@ -35,6 +35,8 @@
 //    -ReadOnly YES          the core's client read-only mode for every device
 //                           through the core (WP ROMODE): every write refused
 //                           before it is sent; reads and meters go on
+//                           Not a DSPi over DSPi Link: the app's own Link
+//                           client is not the core's until SW6 (WP ROMODEF)
 //    -ForceOrientation landscape|portrait
 //                           rotate the window after launch (screenshots)
 //    -EmulateWidth <points> lay the app out in a window that narrow, as in

@@ -299,6 +299,9 @@ fn wp_romode_every_write_family_is_refused_with_nothing_sent() {
         "cs_apply",
         &core.cs_apply(r#"{"op":"name","index":0,"name":"x"}"#.into()),
     );
+    // -- WP ROMODEF -- the device's counters: not even §1.2's housekeeping.
+    refused("clear_clips", core.clear_clips());
+    refused("reset_buffer_stats", core.reset_buffer_stats());
     // Raw: no write, no write-as-read, not even the §1.2 housekeeping.
     refused(
         "raw_set",
@@ -346,9 +349,6 @@ fn wp_romode_reads_notifications_and_meters_go_on() {
     core.get_preset_directory().unwrap();
     assert!(!core.raw_get(op::REQ_GET_PLATFORM, 0, 7).unwrap().is_empty());
     assert!(!core.read_image_bytes().unwrap().is_empty());
-    // §1.2's housekeeping, typed, as on a read-only connection.
-    core.clear_clips().unwrap();
-    core.reset_buffer_stats().unwrap();
     // Another console's change reaches the mirror.
     assert!(remote.poke(
         g::OFF_MASTER_VOLUME,
@@ -362,13 +362,10 @@ fn wp_romode_reads_notifications_and_meters_go_on() {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert_eq!(core.client_read_only_refusals(), 0);
-    assert!(
-        writes(&log)
-            .iter()
-            .all(|&(out, op, _)| !out
-                && matches!(op, op::REQ_CLEAR_CLIPS | op::REQ_RESET_BUFFER_STATS)),
-        "{:?}",
-        writes(&log)
+    assert_eq!(
+        writes(&log),
+        [],
+        "nothing but pure reads reached the device"
     );
     // Reads of local state: a snapshot, an export, the history.
     core.snapshot_capture_document("s".into(), String::new())
@@ -507,4 +504,119 @@ fn wp_romode_the_mode_is_refused_while_a_guarded_apply_waits_and_the_way_back_st
     let image = remote.image();
     refused("after Keep", core.set_master_volume(-1.0));
     assert_eq!(remote.image(), image);
+}
+
+// -- WP ROMODEF -- (review romode F3, the reviewer's probe 2)
+#[test]
+fn wp_romodef_the_meters_do_not_clear_the_devices_clips_in_the_mode() {
+    let (core, remote, log) = demo();
+    core.set_client_read_only(true).unwrap();
+    let n = usize::from(core.get_state().num_channels);
+    core.set_meter_ballistics(crate::MeterBallistics {
+        hold_ms: 1000,
+        decay_per_s: 0.5,
+        clip_hold_ms: 50,
+    });
+    let inputs = core.get_state().num_input_channels;
+    let out1 = 1u32 << inputs;
+    let block = |clips: u32| {
+        let mut b = Vec::new();
+        for _ in 0..n {
+            b.extend_from_slice(&0u16.to_le_bytes());
+        }
+        b.extend_from_slice(&[10, 20]);
+        b.extend_from_slice(&clips.to_le_bytes());
+        b.push(2);
+        b
+    };
+    remote.set_status(block(0));
+    core.fetch_status().unwrap();
+    remote.set_status(block(out1));
+    assert_eq!(core.fetch_status().unwrap().clip_hold, out1);
+    core.fetch_status().unwrap();
+    std::thread::sleep(Duration::from_millis(80));
+    log.lock().unwrap().clear();
+    let st = core.fetch_status().unwrap();
+    let clears: Vec<_> = log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|&&(_, o, _)| o == op::REQ_CLEAR_CLIPS)
+        .copied()
+        .collect();
+    assert_eq!(clears, [], "no clear went out in the mode");
+    // The refused clear: the hold follows the device's sticky flag from the
+    // next read on.
+    let _ = st;
+    let st = core.fetch_status().unwrap();
+    assert_eq!(st.clip_hold & out1, out1, "{st:?}");
+    assert_eq!(
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|&&(_, o, _)| o == op::REQ_CLEAR_CLIPS)
+            .count(),
+        0
+    );
+    refused("clear_clips", core.clear_clips());
+    refused("reset_buffer_stats", core.reset_buffer_stats());
+    assert_eq!(writes(&log), []);
+    // Off again: the meters clear as before.
+    core.set_client_read_only(false).unwrap();
+    core.clear_clips().unwrap();
+}
+
+// -- WP ROMODEF -- (review romode F2, the reviewer's hub probe)
+#[cfg(feature = "link")]
+#[test]
+fn wp_romodef_the_audio_link_system_writes_over_the_hub_are_refused() {
+    use dspi_link::fakehub::{Auth, FakeHub, HubConfig};
+    let hub = FakeHub::start(HubConfig {
+        auth: Auth::None,
+        ..HubConfig::bridge()
+    })
+    .unwrap();
+    let core = DspiCore::new();
+    core.link_connect(
+        hub.url(),
+        "romodef".into(),
+        "test".into(),
+        String::new(),
+        String::new(),
+    )
+    .unwrap();
+    core.set_client_read_only(true).unwrap();
+    let before = core.client_read_only_refusals();
+    let save = core.alink_system_save(0, crate::link::alink_system::AlinkSystemEdits::default());
+    let align = core.alink_system_align();
+    let recall = core.alink_system_recall("x".into());
+    assert_eq!(
+        core.link_hub_request("system.set", serde_json::Map::new()),
+        Err(DspiError::ReadOnly)
+    );
+    assert_eq!(
+        align.map(|_| ()),
+        Err(DspiError::ReadOnly),
+        "system.align went out"
+    );
+    assert_eq!(
+        recall.map(|_| ()),
+        Err(DspiError::ReadOnly),
+        "system.scene.apply went out"
+    );
+    assert_eq!(
+        save.map(|_| ()),
+        Err(DspiError::ReadOnly),
+        "system.set went out"
+    );
+    assert!(core.client_read_only_refusals() >= before + 3);
+    // The view only reads: it reaches the hub (which refuses an unknown type).
+    let view = core.alink_system_view();
+    assert!(!matches!(view, Err(DspiError::ReadOnly)), "{view:?}");
+    // Off: the write reaches the hub.
+    core.set_client_read_only(false).unwrap();
+    assert!(!matches!(
+        core.alink_system_align(),
+        Err(DspiError::ReadOnly)
+    ));
 }

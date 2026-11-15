@@ -22,14 +22,21 @@
 //!   connection may still send raw (clear clips, the stats resets) is refused
 //!   too;
 //! - a hub request ([`DspiCore::link_hub_request`], and through it the hub's
-//!   admin API, its limits and lock, and the web's System view) goes out only
-//!   when it reads ([`HUB_READS`]).
+//!   admin API, its limits and lock; and the audio link's System view's own
+//!   `system.*` requests, -- WP ROMODEF --) goes out only when it reads
+//!   ([`HUB_READS`]): `system.set`, `system.align`, `system.scene.apply` are
+//!   refused;
+//! - -- WP ROMODEF -- the device's counters too, which a read-only
+//!   *connection* may still clear (§1.2): typed `clear_clips` and
+//!   `reset_buffer_stats` are refused, and the meters' automatic clear after
+//!   the clip hold is not sent (the hold then follows the device's sticky
+//!   flags, as for a hub's viewer). Another console's clip evidence and soak
+//!   watermarks stay as they are.
 //!
 //! Reads, notifications, the meters and the typed analyser keep working: the
 //! analyser's configuration push and STOP change no setting (as the
-//! installer's lock lets them through, P1DKFIX F7), so they pass. The
-//! §1.2 housekeeping calls `clear_clips` and `reset_buffer_stats` pass too, as
-//! on a read-only connection. Local files (snapshot capture, export) are not
+//! installer's lock lets them through, P1DKFIX F7), so they pass: the one
+//! write the mode lets out. Local files (snapshot capture, export) are not
 //! the device's and are not refused.
 //!
 //! A refusal counts in [`DspiCore::client_read_only_refusals`], not in

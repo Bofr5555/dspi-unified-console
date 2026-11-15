@@ -135,7 +135,7 @@ enum OfflineFiles {
                 switch result {
                 case .success(let text): open(text: text, fileName: TemplateEntry.fileName(t.name))
                 case .failure(let e):
-                    let words = (e as? DspiError).map(CoreSnapshots.words) ?? e.localizedDescription
+                    let words = (e as? DspiError).map { CoreSnapshots.words($0) } ?? e.localizedDescription
                     CoreSnapshots.shared.post("The template could not be read: \(words)", .error)
                 }
             }

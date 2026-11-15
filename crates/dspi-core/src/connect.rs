@@ -270,9 +270,20 @@ impl DspiCore {
     /// "state-changing opcodes only on a `Writable`": it goes out on a plain
     /// `Connection`.
     ///
+    /// -- WP ROMODEF -- Not in the client read-only mode, which writes
+    /// nothing, the device's counters included: [`DspiError::ReadOnly`],
+    /// nothing sent, the clip hold left as it is.
+    ///
     /// Errors: [`DspiError::Disconnected`] with no device open; the
     /// transport's typed error when the transfer fails.
     pub fn clear_clips(&self) -> Result<()> {
+        // -- WP ROMODEF -- (review romode F3)
+        {
+            let mut guard = self.lock();
+            if guard.conn.is_some() {
+                crate::read_only::check(&mut guard)?;
+            }
+        }
         // -- WP P0M -- the core's clip hold goes dark at once; a clear that
         // fails brings back what the device still reports
         self.events.clear_clip_hold();

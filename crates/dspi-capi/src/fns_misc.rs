@@ -1540,8 +1540,19 @@ pub extern "C" fn dspi_feature_present(core: *mut FfiCore, name: *const c_char) 
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_take_failure(buf: *mut c_char, len: u32) -> u32 {
     guard(0, || {
+        // -- WP ROMODEF -- (review romode F4) the key the failure's core gave
+        let key = crate::fns_device::last_failure_key();
         let reply = |e: Option<DspiError>| match e {
-            Some(e) => json_reply::<()>(Err(e)),
+            Some(e) => {
+                let reply = json_reply::<()>(Err(e));
+                match (key, serde_json::from_str::<Value>(&reply)) {
+                    (Some(key), Ok(Value::Object(mut fields))) => {
+                        fields.insert("noticeKey".to_owned(), Value::String(key.to_owned()));
+                        Value::Object(fields).to_string()
+                    }
+                    _ => reply,
+                }
+            }
             None => json!({ "ok": true }).to_string(),
         };
         let needed = copy_text(

@@ -57,6 +57,22 @@ final class ClientReadOnlyROMODETests: XCTestCase {
         }
     }
 
+    /// -- WP ROMODEF -- (review romode F5) a core handed in with a guarded
+    /// apply waiting refuses the mode: the transport then says false, and
+    /// the status row gives the core's reason.
+    func testROMODEFAModeTheCoreRefusedIsNotClaimed() throws {
+        let core = DspiCore()
+        try core.openDemo()
+        _ = try core.applyGuardBegin(label: "x", timeoutS: 30)
+        let t = CoreBackedTransport(link: .demo, core: core, clientReadOnly: true)
+        let row = ConsoleNotice.row("read_only.guard_pending")
+        XCTAssertEqual(row.key, "read_only.guard_pending")
+        XCTAssertTrue(spinUntil(5) { !t.clientReadOnly }, "the transport does not claim the mode")
+        XCTAssertTrue(spinUntil(5) { DeviceLock.notice.message == row.sentence }, "and says why")
+        XCTAssertFalse(core.clientReadOnly())
+        _ = try core.applyRevert()
+    }
+
     func testROMODEDocumentsAndAPlainLaunchStayWritable() {
         // No `-ReadOnly` in the test host's arguments: off by default, and a
         // document link never takes the launch flag.

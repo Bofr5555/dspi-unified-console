@@ -3891,7 +3891,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_clear_alink_usb_diag() != 55031.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_clear_clips() != 25742.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_clear_clips() != 34858.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_client_read_only() != 3116.toShort()) {
@@ -4419,7 +4419,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats() != 30180.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 36944.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 19713.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect() != 57433.toShort()) {
@@ -6791,6 +6791,10 @@ public interface DspiCoreInterface {
      * "state-changing opcodes only on a `Writable`": it goes out on a plain
      * `Connection`.
      *
+     * -- WP ROMODEF -- Not in the client read-only mode, which writes
+     * nothing, the device's counters included: [`DspiError::ReadOnly`],
+     * nothing sent, the clip hold left as it is.
+     *
      * Errors: [`DspiError::Disconnected`] with no device open; the
      * transport's typed error when the transfer fails.
      */
@@ -8830,7 +8834,8 @@ public interface DspiCoreInterface {
      * Start the buffer watermarks again from now
      * (`REQ_RESET_BUFFER_STATS`). Diagnostics housekeeping that changes no
      * setting and nothing in the bulk image, so like `clear_clips` it is
-     * allowed on a read-only connection (PLAN §1.2).
+     * allowed on a read-only connection (PLAN §1.2). -- WP ROMODEF -- Not
+     * in the client read-only mode: [`DspiError::ReadOnly`], nothing sent.
      *
      * Errors: [`DspiError::Refused`] for a status byte other than ACK (1);
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
@@ -11106,6 +11111,10 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * connection too. This is the one named exception (PLAN §1.2) to
      * "state-changing opcodes only on a `Writable`": it goes out on a plain
      * `Connection`.
+     *
+     * -- WP ROMODEF -- Not in the client read-only mode, which writes
+     * nothing, the device's counters included: [`DspiError::ReadOnly`],
+     * nothing sent, the clip hold left as it is.
      *
      * Errors: [`DspiError::Disconnected`] with no device open; the
      * transport's typed error when the transfer fails.
@@ -14966,7 +14975,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * Start the buffer watermarks again from now
      * (`REQ_RESET_BUFFER_STATS`). Diagnostics housekeeping that changes no
      * setting and nothing in the bulk image, so like `clear_clips` it is
-     * allowed on a read-only connection (PLAN §1.2).
+     * allowed on a read-only connection (PLAN §1.2). -- WP ROMODEF -- Not
+     * in the client read-only mode: [`DspiError::ReadOnly`], nothing sent.
      *
      * Errors: [`DspiError::Refused`] for a status byte other than ACK (1);
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.

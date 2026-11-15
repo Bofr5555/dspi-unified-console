@@ -585,6 +585,10 @@ interface DspiCoreApi : AutoCloseable {
      * "state-changing opcodes only on a `Writable`": it goes out on a plain
      * `Connection`.
      *
+     * -- WP ROMODEF -- Not in the client read-only mode, which writes
+     * nothing, the device's counters included: [`DspiError::ReadOnly`],
+     * nothing sent, the clip hold left as it is.
+     *
      * Errors: [`DspiError::Disconnected`] with no device open; the
      * transport's typed error when the transfer fails.
      */
@@ -3831,7 +3835,8 @@ interface DspiCoreApi : AutoCloseable {
      * Start the buffer watermarks again from now
      * (`REQ_RESET_BUFFER_STATS`). Diagnostics housekeeping that changes no
      * setting and nothing in the bulk image, so like `clear_clips` it is
-     * allowed on a read-only connection (PLAN §1.2).
+     * allowed on a read-only connection (PLAN §1.2). -- WP ROMODEF -- Not
+     * in the client read-only mode: [`DspiError::ReadOnly`], nothing sent.
      *
      * Errors: [`DspiError::Refused`] for a status byte other than ACK (1);
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.

@@ -3,7 +3,9 @@
 //!
 //! While it is on, every write of this handle is refused before anything is
 //! sent: a `bool` setter returns false, a status setter 0xFF, a JSON call
-//! `{"ok": false, "code": "read_only", "noticeKey": "read_only.client"}`.
+//! `{"ok": false, "code": "read_only", "noticeKey": "read_only.client"}`;
+//! `dspi_take_failure` carries the same key for a `bool` or status setter's
+//! refusal (-- WP ROMODEF --).
 //! Reads, notifications, the meters and the analyser go on. A client-side
 //! diagnostic, not a security boundary: the client turns it on and off, and
 //! nothing else is bound by it.
@@ -97,6 +99,11 @@ mod tests_wp_romode {
         let before = unsafe { (*dspi_get_state(h)).master_volume_db };
 
         assert!(!dspi_set_master_volume(h, -7.0));
+        // -- WP ROMODEF -- (review romode F4) a `bool` setter's failure, taken
+        let taken = reply(|b, l| super::super::dspi_take_failure(b, l));
+        assert_eq!(taken["ok"], false, "{taken}");
+        assert_eq!(taken["code"], "read_only", "{taken}");
+        assert_eq!(taken["noticeKey"], "read_only.client", "{taken}");
         let r = write(h, r#"{"path":"vol.master","value":{"float":-7}}"#);
         assert_eq!(r["ok"], false, "{r}");
         assert_eq!(r["code"], "read_only", "{r}");

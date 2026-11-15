@@ -614,7 +614,12 @@ impl DspiCore {
         let _op = lock(&self.guarded.op);
         if let Some(r) = self.running() {
             if r.lost {
-                self.resolve_lost(r);
+                // -- WP ROMODEF -- (review romode F6) as `apply_poll` (P1CFIX
+                // N3): no I/O while the hub stays unreachable on the same
+                // session and connection; the guard still counts as waiting
+                if !r.unreachable_on.is_some_and(|k| k == self.lost_key()) {
+                    self.resolve_lost(r);
+                }
             } else if self.connection_changed(&r) {
                 self.on_lost(r);
             } else if now() >= r.deadline {

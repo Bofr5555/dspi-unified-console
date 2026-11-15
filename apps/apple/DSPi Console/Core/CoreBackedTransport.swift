@@ -53,7 +53,10 @@ final class CoreBackedTransport: DeviceTransport {
     /// refuses every write before anything is sent and reads, notifications,
     /// the meters and the analyser go on.  A diagnostic for watching a unit
     /// that must not change, not a security boundary.  Documents opened
-    /// offline are not devices and are left writable.
+    /// offline are not devices and are left writable.  -- WP ROMODEF -- A
+    /// DSPi reached over DSPi Link is not bound by it: Swift's own Link
+    /// client (`CompositeTransport`, `NetworkTransport`) does not go through
+    /// the core until SW6 moves it there, which then picks the mode up.
     static var readOnlyLaunchFlag: Bool { UserDefaults.standard.bool(forKey: "ReadOnly") }
 
     /// -- WP ROMODE -- `-MIDIReadOnly YES` (or `-ReadOnly YES`): the read-only
@@ -138,7 +141,11 @@ final class CoreBackedTransport: DeviceTransport {
     /// This transport carries documents opened offline (`Link.document`).
     let isDocumentLink: Bool
     /// -- WP ROMODE -- The core is in its client read-only mode.
-    let clientReadOnly: Bool
+    /// -- WP ROMODEF -- (review romode F5) what the core said: false when it
+    /// refused to turn the mode on (a guarded apply waits on a core handed
+    /// in), so a firmware refusal is never shown as the mode's.  stateLock.
+    var clientReadOnly: Bool { stateLock.lock(); defer { stateLock.unlock() }; return clientReadOnlyValue }
+    private var clientReadOnlyValue: Bool
     /// The document to open when its device is selected (stateLock).
     private var document: (device: DSPiDevice, text: String, fileName: String)?
     private var documentCount = 0
@@ -201,7 +208,7 @@ final class CoreBackedTransport: DeviceTransport {
         let isDocument = { () -> Bool in if case .document = link { return true }; return false }()
         isDocumentLink = isDocument   // -- WP P1SW1 --
         let readOnly = clientReadOnly ?? (!isDocument && CoreBackedTransport.readOnlyLaunchFlag)
-        self.clientReadOnly = readOnly
+        self.clientReadOnlyValue = readOnly
         switch link {
         case .demo:
             host = nil
@@ -231,11 +238,13 @@ final class CoreBackedTransport: DeviceTransport {
 
         let listener = Listener { [weak self] in self?.scheduleDrain() }
         notifyListener = listener
-        coreQueue.async { [core] in
+        coreQueue.async { [weak self, core] in
             // -- WP ROMODE -- before any device opens.  Refused only while a
-            // guarded apply waits on a core handed in (`read_only.guard_pending`).
+            // guarded apply waits on a core handed in (`read_only.guard_pending`):
+            // -- WP ROMODEF -- then the transport says false and the status row why.
             do { try core.setClientReadOnly(on: readOnly) } catch {
                 CoreBackedTransport.log.error("client read-only mode not set: \(String(describing: error), privacy: .public)")
+                self?.clientReadOnlyRefused(error)
             }
             core.notifyTapSet(enabled: true)
             core.setNotifyListener(listener: listener)
@@ -270,6 +279,19 @@ final class CoreBackedTransport: DeviceTransport {
         } else if autoSelect {
             DispatchQueue.main.async { [weak self] in self?.selectDevice(FakeTransport.demoDevice) }
         }
+    }
+
+    // -- WP ROMODEF --
+    /// The core would not turn its client read-only mode on: the transport
+    /// reports false from now on, and the status row says why (the core's
+    /// `read_only.guard_pending` row).
+    private func clientReadOnlyRefused(_ error: Error) {
+        stateLock.lock()
+        clientReadOnlyValue = false
+        stateLock.unlock()
+        let words = (error as? DspiError).map { ConsoleNotice(core.noticeForError(error: $0)).sentence }
+            ?? ConsoleNotice.row("read_only.guard_pending").sentence
+        DispatchQueue.main.async { DeviceLock.notice.post(words) }
     }
 
     deinit {

@@ -415,9 +415,9 @@ impl DspiCore {
     /// [`DspiError::Link`] with the hub's code or the client's.
     pub fn alink_system_view(&self) -> Result<AlinkSystemView> {
         let client = self.hub_client()?;
-        let status = match request(&client, "system.status", Map::new()) {
+        let status = match request(self, &client, "system.status", Map::new()) {
             Ok(s) => s,
-            Err(e) if is_rate_limited(&e) => {
+            Err(HubFail::Link(e)) if is_rate_limited(&e) => {
                 return self
                     .system_cache(|c| c.view.clone())
                     .map(|mut v| {
@@ -426,14 +426,14 @@ impl DspiCore {
                     })
                     .ok_or_else(|| map_error(e));
             }
-            Err(e) => return Err(map_error(e)),
+            Err(e) => return Err(fail(e)),
         };
         let revision = status.get("revision").and_then(Value::as_u64).unwrap_or(0);
         let cached = self.system_cache(|c| c.model.clone());
         let model = match cached {
             Some((r, m)) if r == revision => m,
             _ => {
-                let got = request(&client, "system.get", Map::new()).map_err(map_error)?;
+                let got = request(self, &client, "system.get", Map::new()).map_err(fail)?;
                 got.get("model").cloned().unwrap_or(Value::Null)
             }
         };
@@ -473,7 +473,7 @@ impl DspiCore {
         let client = self.hub_client()?;
         let mut fields = Map::new();
         fields.insert("apply".into(), true.into());
-        let report = request(&client, "system.align", fields).map_err(map_error)?;
+        let report = request(self, &client, "system.align", fields).map_err(fail)?;
         let model = self.system_cache(|c| c.model.clone().map(|(_, m)| m));
         Ok(align_outcome(
             &report,
@@ -494,7 +494,7 @@ impl DspiCore {
         let client = self.hub_client()?;
         let mut fields = Map::new();
         fields.insert("scene".into(), Value::from(scene.as_str()));
-        let report = request(&client, "system.scene.apply", fields).map_err(map_error)?;
+        let report = request(self, &client, "system.scene.apply", fields).map_err(fail)?;
         let (model, held, own) = self.system_cache(|c| {
             (
                 c.model.clone().map(|(_, m)| m),
@@ -534,12 +534,34 @@ impl DspiCore {
     }
 }
 
+// -- WP ROMODEF -- (review romode F2) every `system.*` request meets the
+// client read-only mode's hub allowlist first, as `link_hub_request` does.
+/// Why a `system.*` request failed: the core refused it before sending, or
+/// the hub or the client did.
+enum HubFail {
+    Core(DspiError),
+    Link(LinkError),
+}
+
+fn fail(e: HubFail) -> DspiError {
+    match e {
+        HubFail::Core(e) => e,
+        HubFail::Link(e) => map_error(e),
+    }
+}
+
+/// `t` with `fields` to the hub, unless the client read-only mode refuses
+/// it ([`crate::read_only::HUB_READS`]): then nothing is sent.
 fn request(
+    core: &DspiCore,
     client: &LinkClient,
     t: &str,
     fields: Map<String, Value>,
-) -> std::result::Result<Value, LinkError> {
-    client.request_json(t, fields, HUB_REQUEST_TIMEOUT)
+) -> std::result::Result<Value, HubFail> {
+    crate::read_only::check_hub_request(&mut core.lock(), t).map_err(HubFail::Core)?;
+    client
+        .request_json(t, fields, HUB_REQUEST_TIMEOUT)
+        .map_err(HubFail::Link)
 }
 
 fn is_rate_limited(e: &LinkError) -> bool {
@@ -1882,13 +1904,15 @@ impl DspiCore {
         edits: AlinkSystemEdits,
     ) -> Result<AlinkSystemSaved> {
         let client = self.hub_client()?;
+        // -- WP ROMODEF -- a save is a `system.set`: refused before its read
+        crate::read_only::check_hub_request(&mut self.lock(), "system.set")?;
         let cached = self
             .system_cache(|c| c.model.clone())
             .filter(|(r, _)| *r == revision);
         let mut model = match cached {
             Some((_, m)) => m,
             None => {
-                let got = request(&client, "system.get", Map::new()).map_err(map_error)?;
+                let got = request(self, &client, "system.get", Map::new()).map_err(fail)?;
                 let now = got.get("revision").and_then(Value::as_u64).unwrap_or(0);
                 if now != revision {
                     return Err(conflict(now));
@@ -1900,7 +1924,7 @@ impl DspiCore {
         let mut fields = Map::new();
         fields.insert("model".into(), model);
         fields.insert("revision".into(), revision.into());
-        let saved = request(&client, "system.set", fields);
+        let saved = request(self, &client, "system.set", fields);
         // Whatever the answer, the next view reads the model again.
         self.system_cache(|c| c.model = None);
         match saved {
@@ -1920,8 +1944,10 @@ impl DspiCore {
                     })
                     .unwrap_or_default(),
             }),
-            Err(LinkError::Rejected { code, .. }) if code == "conflict" => Err(conflict(revision)),
-            Err(e) => Err(map_error(e)),
+            Err(HubFail::Link(LinkError::Rejected { code, .. })) if code == "conflict" => {
+                Err(conflict(revision))
+            }
+            Err(e) => Err(fail(e)),
         }
     }
 }
