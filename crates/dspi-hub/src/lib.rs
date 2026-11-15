@@ -19,6 +19,7 @@
 //! | [`system`] | the audio link's system model: installation, alignment, scenes, alarms | SW2 |
 //! | [`apply_guard`] | guarded apply: capture, confirm or revert by the hub | P1HA |
 //! | [`limits`] | limits profiles, the installer lock and pinned modes | P1HL |
+//! | `ffi` (feature `uniffi`) | the Swift binding: the app hosts a hub | SW-M3 |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -26,6 +27,11 @@
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects
 )]
+
+// -- WP SW-M3 -- The Swift binding (feature `uniffi`): the namespace `dspi_hub`,
+// whose symbols the library `crates/dspi-ffi` re-exports with its feature `hub`.
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
 
 pub mod advertise;
 // -- WP P1HA --
@@ -39,6 +45,9 @@ pub mod auth;
 mod bulk_gain;
 mod device;
 pub mod error;
+// -- WP SW-M3 --
+#[cfg(feature = "uniffi")]
+pub mod ffi;
 pub mod hub;
 pub mod local;
 // -- WP P1HL --

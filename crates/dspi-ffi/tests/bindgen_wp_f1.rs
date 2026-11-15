@@ -105,7 +105,12 @@ fn generate(language: &str) -> PathBuf {
     std::fs::create_dir_all(&out).unwrap();
     // One run per namespace, each with its config by path.
     let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    for (name, dir) in [("dspi_core", "dspi-core"), ("dspi_ffi", "dspi-ffi")] {
+    // -- WP SW-M3 -- and the hub's namespace in a build with `hub`
+    let mut namespaces = vec![("dspi_core", "dspi-core"), ("dspi_ffi", "dspi-ffi")];
+    if cfg!(feature = "hub") {
+        namespaces.push(("dspi_hub", "dspi-hub"));
+    }
+    for (name, dir) in namespaces {
         let run = Command::new(env!("CARGO_BIN_EXE_uniffi-bindgen"))
             .current_dir(env!("CARGO_MANIFEST_DIR"))
             .args(["generate", "--library"])

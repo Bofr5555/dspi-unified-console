@@ -642,6 +642,7 @@ version = "0.13.0"
 dependencies = [
  "android_logger",
  "dspi-core",
+ "dspi-hub",
  "log",
  "uniffi",
 ]
@@ -669,6 +670,7 @@ dependencies = [
  "socket2",
  "thiserror",
  "tungstenite",
+ "uniffi",
 ]
 
 [[package]]

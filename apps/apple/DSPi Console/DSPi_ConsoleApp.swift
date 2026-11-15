@@ -17,7 +17,9 @@ class AppState: ObservableObject {
     // -- WP SW2 -- No real device under XCTest unless the run opts in (TestHostGuard).
     // -- WP SW-M1 -- The local DSPi on USB through the Rust core's `usb`
     // feature (Core/CoreUsb.swift), not the app's own IOKit driver.
-    let usb = CoreUsb(startMonitoring: TestHostGuard.mayOpenDevices)
+    // -- WP SW-M3 -- Built only when used: the Swift hub's device (the
+    // opt-out); by default the local core opens USB itself (`coreTransport`).
+    lazy var usb = CoreUsb(startMonitoring: TestHostGuard.mayOpenDevices)
 
     /// The DSPi Link gateway.  It owns the USB device's command path; the local
     /// UI is session 1 on it, exactly like a remote client, so ordering,
@@ -87,9 +89,28 @@ class AppState: ObservableObject {
     // -- WP SW4 -- The Rust core drives the local device, over the hub's
     // session 1 (docs/SWIFT-SEAMS.md 5.4), or its own demo device with
     // `-LocalTransport demo`.
+    // -- WP SW-M3 -- By default the core's own USB (`Link.usb`), handed to the
+    // Rust hub while the Mac shares (`coreHub`); `-CoreHub NO` keeps the
+    // Swift hub's session 1.
     lazy var coreTransport: CoreBackedTransport = AppState.usesDemoTransport
         ? CoreBackedTransport(link: .demo, autoSelect: true)
-        : CoreBackedTransport(link: .host(localTransport, .hub))
+        : AppState.usesCoreHub
+            ? CoreBackedTransport(link: .usb(direct: TestHostGuard.mayOpenDevices))
+            : CoreBackedTransport(link: .host(localTransport, .hub))
+
+    // -- WP SW-M3 -- The Mac's DSPi Link hub from the Rust core
+    // (Core/CoreHub.swift): it serves the local core's USB devices, or its own
+    // demo device with `-LocalTransport demo`.  nil under the opt-out.
+    @MainActor lazy var coreHub: CoreHubService? = AppState.usesCoreHub
+        ? CoreHubService(devices: AppState.usesDemoTransport ? .demo : .app(coreTransport))
+        : nil
+
+    /// -- WP SW-M3 -- The hub's id, for the hub browser to leave this Mac's
+    /// own hub out: the Rust hub's stored one (nil before its first start), or
+    /// the Swift hub's.
+    var ownHubID: String? {
+        AppState.usesCoreHub ? CoreHubService.savedHubID() : linkHub.auth.hubID.uuidString.lowercased()
+    }
 
     // -- WP SW-M1 -- With the core: the DSPi's USB MIDI port stays the
     // fallback when the vendor interface cannot be opened, as SWF2 set up.
@@ -138,7 +159,7 @@ class AppState: ObservableObject {
     /// feeding the composite so shared devices reach the device picker.
     @MainActor lazy var linkClientCoordinator: LinkClientCoordinator =
         LinkClientCoordinator(composite: transport,
-                              ownHubID: linkHub.auth.hubID.uuidString.lowercased())
+                              ownHubID: ownHubID)   // -- WP SW-M3 --
     #else
     /// The demo device: a simulated DSPi that answers every request from
     /// fixture state.
@@ -238,6 +259,24 @@ class AppState: ObservableObject {
     /// the same flag (`-CoreTransport NO` / DSPI_CORE_TRANSPORT=0), which
     /// keeps Swift's `LinkClient` and `NetworkTransport`.
     static var usesCoreLink: Bool { usesCoreTransport }
+
+    /// -- WP SW-M3 -- The Mac shares its devices through the Rust hub
+    /// (Core/CoreHub.swift) and its core opens USB itself, unless opted out:
+    /// `-CoreTransport NO` (all Swift), or `-CoreHub NO` (the core over the
+    /// Swift hub's session 1, SW-M1's path).  A hardware test run
+    /// (TestHostGuard's opt-ins) keeps the Swift hub unless `-CoreHub YES`:
+    /// its harness reads the device raw through CoreUsb.
+    static var usesCoreHub: Bool {
+        #if os(macOS)
+        guard usesCoreTransport else { return false }
+        if UserDefaults.standard.object(forKey: "CoreHub") != nil {
+            return UserDefaults.standard.bool(forKey: "CoreHub")
+        }
+        return !(TestHostGuard.underXCTest && TestHostGuard.mayOpenDevices)
+        #else
+        return false
+        #endif
+    }
 
     /// -- WP SW5 -- Back in the foreground: the DSPi on USB MIDI re-checks
     /// that it answers, then everything is re-read (or it reconnects).
@@ -11898,7 +11937,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Logger(subsystem: AppIdentity.logSubsystem, category: "link")
             .notice("Launch: sharing preference is \(resumeSharing, privacy: .public)")
         if resumeSharing {
-            _ = AppState.shared.linkService
+            // -- WP SW-M3 -- the Rust hub's service, or the Swift hub's (opt-out)
+            if AppState.usesCoreHub { _ = AppState.shared.coreHub } else { _ = AppState.shared.linkService }
         }
         // Likewise the hub browser: shared devices from other hubs reach the
         // picker only once the coordinator exists, so build it now if it has

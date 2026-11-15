@@ -1,0 +1,10 @@
+# -- WP SW-M3 -- The binding of this crate's `uniffi` feature (crates/dspi-ffi,
+# feature `hub`): the Mac app hosts a hub with it. Swift is the user; the Kotlin
+# package is set because ci/drift.sh generates every namespace in both languages,
+# and a UniFFI Kotlin file declares its helpers at package level, so each
+# namespace needs its own package. Android's Play build has no hub.
+[bindings.kotlin]
+package_name = "se.bofr.dspi.ffi.uniffi.hub"
+cdylib_name = "dspi_ffi"
+# `attach_app` takes dspi_core's DspiCore: where that namespace's Kotlin lives.
+external_packages = { dspi_core = "se.bofr.dspi.ffi.uniffi" }

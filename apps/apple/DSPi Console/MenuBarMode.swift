@@ -95,7 +95,18 @@ final class MenuBarController: ObservableObject {
 /// Contents of the menu bar item.  Kept to what a gateway needs: what it is
 /// doing, a way back to the window, pairing, sharing on or off, quit.
 struct MenuBarMenu: View {
-    @ObservedObject private var service = AppState.shared.linkService
+    // -- WP SW-M3 -- the Rust hub's service, or the Swift hub's (opt-out)
+    var body: some View {
+        if let hub = AppState.shared.coreHub {
+            MenuBarMenuItems(service: hub)
+        } else {
+            MenuBarMenuItems(service: AppState.shared.linkService)
+        }
+    }
+}
+
+struct MenuBarMenuItems<Service: HubSharingModel>: View {
+    @ObservedObject var service: Service
     @ObservedObject private var controller = MenuBarController.shared
     @ObservedObject private var vm = AppState.shared.viewModel
 
@@ -139,7 +150,18 @@ struct MenuBarMenu: View {
 
 /// The menu bar glyph: filled while sharing so the state reads at a glance.
 struct MenuBarLabel: View {
-    @ObservedObject private var service = AppState.shared.linkService
+    // -- WP SW-M3 -- the Rust hub's service, or the Swift hub's (opt-out)
+    var body: some View {
+        if let hub = AppState.shared.coreHub {
+            MenuBarGlyph(service: hub)
+        } else {
+            MenuBarGlyph(service: AppState.shared.linkService)
+        }
+    }
+}
+
+struct MenuBarGlyph<Service: HubSharingModel>: View {
+    @ObservedObject var service: Service
     var body: some View {
         Image(systemName: service.isRunning ? "waveform.circle.fill" : "waveform.circle")
     }

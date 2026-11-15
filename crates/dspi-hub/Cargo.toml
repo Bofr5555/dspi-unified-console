@@ -22,6 +22,10 @@ usb = ["dep:nusb", "dspi-transport/usb"]
 app = ["dep:dspi-core"]
 # The Bonjour responder (advertise.rs, WP HB5), CG2's `MdnsAdvertiser`.
 mdns = ["dspi-link/mdns"]
+# -- WP SW-M3 --
+# The Swift binding (ffi.rs): the UniFFI namespace `dspi_hub`, which the library
+# `crates/dspi-ffi` carries with its feature `hub` (the Mac app's slices only).
+uniffi = ["dep:uniffi", "app", "dspi-core/uniffi"]
 
 [dependencies]
 dspi-proto.workspace = true
@@ -35,6 +39,8 @@ dspi-link.workspace = true
 # the clients run. Without default features: none of what they add is used here.
 dspi-session = { path = "../dspi-session", default-features = false }
 dspi-core = { workspace = true, optional = true }
+# -- WP SW-M3 --
+uniffi = { workspace = true, optional = true }
 thiserror.workspace = true
 log.workspace = true
 # policy/commands.json, the hub's command table (policy.rs).

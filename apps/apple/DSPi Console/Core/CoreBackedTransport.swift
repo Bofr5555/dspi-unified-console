@@ -17,6 +17,10 @@
 //    how the Mac's core reaches its USB device through the in-process hub's
 //    session 1 until SW-M3 (SWIFT-SEAMS 5.4), and how the tests run the
 //    existing wire tests over Swift's `FakeTransport`.
+//  * -- WP SW-M3 -- the Mac's DSPi on USB, the core's own (`Link.usb`):
+//    `select_device` and `poll_hotplug`, nusb underneath.  While the Mac
+//    shares its devices the core gets them through the Rust hub instead
+//    (Core/CoreHub.swift, `HubHost.attachApp`), the way the Qt app does.
 //
 //  Behind a launch flag: `-CoreTransport YES`, or DSPI_CORE_TRANSPORT=1 in
 //  the environment (`TEST_RUNNER_DSPI_CORE_TRANSPORT=1 xcodebuild test`).
@@ -91,6 +95,13 @@ final class CoreBackedTransport: DeviceTransport {
         /// Lists the hub's devices; the core's supervisor reconnects and
         /// binds the device again.  The transport drives `CoreLink.core`.
         case link(CoreLink)
+        /// -- WP SW-M3 -- The Mac's DSPi on USB through the core's own USB
+        /// (`select_device`, `poll_hotplug`), or through the Mac's Rust hub
+        /// while it shares (`withCoreForHub`).  Lists the bus, auto-connects
+        /// the first DSPi to arrive and follows hot-plug, as CoreUsb did.
+        /// `direct`: the core may open USB itself; false under XCTest unless
+        /// the run opts in (TestHostGuard), when only a hub's devices show.
+        case usb(direct: Bool)
     }
 
     /// The kind of a host link, as the core sees it.
@@ -140,6 +151,16 @@ final class CoreBackedTransport: DeviceTransport {
     let midi: CoreMidiPipe?
     // -- WP SW6 -- The hub session this transport drives (`Link.link`).
     let linkSession: CoreLink?
+    // -- WP SW-M3 -- `Link.usb`: the core's own USB may be opened (`direct`).
+    let isUsbLink: Bool
+    private let usbDirect: Bool
+    /// The core's USB comes through the Mac's hub (stateLock).
+    private var usbBrokered = false
+    /// Bumped by every USB open and close (stateLock): an open chain stops
+    /// once a newer one began.
+    private var usbOpens: UInt64 = 0
+    /// The serials the last USB poll saw (coreQueue only); nil before the first.
+    private var usbSeen: [String]?
     /// -- WP SW5 -- Bumped by every MIDI open and close (stateLock): an
     /// open's outcome is reported only while it is still the latest.  Not
     /// `localGeneration`, which a drain also moves when the core changes
@@ -223,6 +244,8 @@ final class CoreBackedTransport: DeviceTransport {
         isDocumentLink = isDocument   // -- WP P1SW1 --
         let readOnly = clientReadOnly ?? (!isDocument && CoreBackedTransport.readOnlyLaunchFlag)
         self.clientReadOnlyValue = readOnly
+        // -- WP SW-M3 --
+        if case .usb(let direct) = link { isUsbLink = true; usbDirect = direct } else { isUsbLink = false; usbDirect = false }
         switch link {
         case .demo:
             host = nil
@@ -258,6 +281,13 @@ final class CoreBackedTransport: DeviceTransport {
             midi = nil
             linkSession = session
             self.session = 1
+            devicesSubject = CurrentValueSubject([])
+        case .usb:   // -- WP SW-M3 -- the only host on the device, or the hub's session 1
+            host = nil
+            bridge = nil
+            midi = nil
+            linkSession = nil
+            session = 1
             devicesSubject = CurrentValueSubject([])
         }
 
@@ -303,6 +333,8 @@ final class CoreBackedTransport: DeviceTransport {
             }
         } else if let session = linkSession {
             session.transport = self   // -- WP SW6 --
+        } else if isUsbLink {
+            startUsbHotplug()   // -- WP SW-M3 --
         } else if autoSelect {
             DispatchQueue.main.async { [weak self] in self?.selectDevice(FakeTransport.demoDevice) }
         }
@@ -336,6 +368,7 @@ final class CoreBackedTransport: DeviceTransport {
         if isDocumentLink { return selectDocument(device) }   // -- WP P1SW1 --
         if midi != nil { return openMidiPort(device, force: false) }   // -- WP SW5 --
         if let session = linkSession { return session.bind(serial: device.serial) }   // -- WP SW6 --
+        if isUsbLink { return selectUsb(device) }   // -- WP SW-M3 --
         guard device == FakeTransport.demoDevice else { return }
         bumpGeneration()
         selectedSubject.send(device)
@@ -346,6 +379,8 @@ final class CoreBackedTransport: DeviceTransport {
         if let host = host { host.reconnect(); return }
         // -- WP SW6 -- the core's session tries now (`link_retry_now`), or dials
         if let session = linkSession { return session.resume() }
+        // -- WP SW-M3 -- USB: look at the bus again from scratch, as CoreUsb did
+        if isUsbLink { coreQueue.async { [weak self] in self?.usbSeen = nil } }
         guard let device = selectedDevice else { return }
         publishConnected(false)
         if midi != nil { return openMidiPort(device, force: true) }   // -- WP SW5 --
@@ -361,6 +396,7 @@ final class CoreBackedTransport: DeviceTransport {
         }
         bumpGeneration()
         selectedSubject.send(nil)
+        if isUsbLink { _ = nextUsbOpen() }   // -- WP SW-M3 -- an open chain in flight stops
         if let pipe = midi {   // -- WP SW5 -- a request in flight fails at once
             _ = nextMidiOpen()
             pipe.close()
@@ -601,34 +637,229 @@ final class CoreBackedTransport: DeviceTransport {
     /// does, and the raw observers get a BULK_INVALIDATED (a re-read).
     func linkRebound() {
         reboundsForTest += 1
-        coreQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.onCore { $0.rtaStart() }
-            let connected = self.onCore { $0.isConnected() }
-            let coreGeneration = self.onCore { $0.connectionGeneration() }
-            self.stateLock.lock()
-            if coreGeneration != self.knownCoreGeneration {
-                self.knownCoreGeneration = coreGeneration
-                self.localGeneration &+= 1
-            }
-            self.stateLock.unlock()
-            if connected, !self.stateFanout.isEmpty {
-                let journal = self.journalOnCore()
-                self.lastJournal = journal
-                self.stateFanout.publish(CoreStateChange(flags: CoreStateChange.stateFlags,
-                                                         state: self.onCore { $0.getState() },
-                                                         presetChanges: self.onCore { $0.presetChanges() },
-                                                         journal: journal))
-            }
-            Self.log.notice("DSPi Link: bound again after a reconnect (connected: \(connected))")
-            DispatchQueue.main.async {
-                self.publishConnected(connected)
-                if connected {
-                    self.fanout.publish(LinkNotification(packet: Self.resyncPacket, origin: 0, receivedAt: Date()))
-                }
+        coreQueue.async { [weak self] in self?.republishAfterRebind("DSPi Link: bound again after a reconnect") }
+    }
+
+    /// -- WP SW-M3 -- (was `linkRebound`'s body) The core opened its device
+    /// again by itself, a Link rebind or a move of its USB to or from the
+    /// Mac's hub: the analyser starts again, the new state is published as a
+    /// drain does, and the raw observers get a BULK_INVALIDATED (a re-read).
+    /// On coreQueue.
+    private func republishAfterRebind(_ what: String) {
+        onCore { $0.rtaStart() }
+        let connected = onCore { $0.isConnected() }
+        let coreGeneration = onCore { $0.connectionGeneration() }
+        stateLock.lock()
+        if coreGeneration != knownCoreGeneration {
+            knownCoreGeneration = coreGeneration
+            localGeneration &+= 1
+        }
+        stateLock.unlock()
+        if connected, !stateFanout.isEmpty {
+            let journal = journalOnCore()
+            lastJournal = journal
+            stateFanout.publish(CoreStateChange(flags: CoreStateChange.stateFlags,
+                                                state: onCore { $0.getState() },
+                                                presetChanges: onCore { $0.presetChanges() },
+                                                journal: journal))
+        }
+        Self.log.notice("\(what, privacy: .public) (connected: \(connected))")
+        DispatchQueue.main.async {
+            self.publishConnected(connected)
+            if connected {
+                self.fanout.publish(LinkNotification(packet: Self.resyncPacket, origin: 0, receivedAt: Date()))
             }
         }
     }
+
+    // -- WP SW-M3 -- The Mac's DSPi on USB (`Link.usb`): the core's own, or
+    // the Mac's Rust hub's while it shares.  CoreUsb's rules: the list keeps
+    // its order, the first DSPi to arrive is opened, a departed selection
+    // moves to another DSPi if there is one, an open is retried a few times
+    // (the device is published a moment before it can be claimed).
+
+    /// One thread: poll on coreQueue, then wait for a hot-plug event or half a
+    /// second, and again.  It holds the transport only while it polls, so it
+    /// ends within one wait once the transport is gone.
+    private func startUsbHotplug() {
+        let direct = usbDirect
+        let thread = Thread { [weak self] in
+            var seen: UInt64 = 0
+            while true {
+                do {
+                    guard let me = self else { return }
+                    me.coreQueue.sync { me.pollUsb() }
+                }
+                if direct {
+                    seen = usbPipeWaitChange(seen: seen, timeoutMs: 500)
+                } else {
+                    Thread.sleep(forTimeInterval: 0.5)
+                }
+            }
+        }
+        thread.name = "DSPi USB hot-plug (core)"
+        thread.qualityOfService = .utility
+        thread.start()
+    }
+
+    /// One poll: the core's hot-plug (closes a departed device, reopens the
+    /// selected one when it is back), then the bus, or the hub's list while
+    /// the core's USB comes through the hub.  coreQueue only.
+    private func pollUsb() {
+        stateLock.lock(); let brokered = usbBrokered; stateLock.unlock()
+        // Without either (XCTest, no hub) the bus is not looked at: no devices.
+        let infos: [DeviceInfo]
+        if brokered || usbDirect {
+            onCore { $0.pollHotplug() }
+            infos = brokered ? onCore { $0.scanDevices() } : usbPipeScan()
+        } else {
+            infos = []
+        }
+        let found = infos.map { DSPiDevice(serial: $0.serial, locationID: $0.locationId) }
+        let serials = found.map(\.serial).sorted()
+        let before = Set(usbSeen ?? [])
+        let first = usbSeen == nil
+        usbSeen = serials
+        let arrived = found.filter { !before.contains($0.serial) }
+        let connected = onCore { $0.isConnected() }
+        let coreGeneration = onCore { $0.connectionGeneration() }
+        stateLock.lock()
+        if coreGeneration != knownCoreGeneration {
+            // The core closed or reopened the device by itself.
+            knownCoreGeneration = coreGeneration
+            localGeneration &+= 1
+        }
+        stateLock.unlock()
+        let changed = first || Set(serials) != before
+        DispatchQueue.main.async { [weak self] in
+            self?.usbApply(present: found, arrived: arrived, connected: connected, listChanged: changed)
+        }
+    }
+
+    /// The list and the selection after a poll.  Main thread.
+    private func usbApply(present: [DSPiDevice], arrived: [DSPiDevice], connected: Bool, listChanged: Bool) {
+        if listChanged {
+            let sorted = present.sorted { $0.serial < $1.serial }
+            var list = devicesSubject.value.filter { d in sorted.contains { $0.serial == d.serial } }
+            for d in sorted where !list.contains(where: { $0.serial == d.serial }) { list.append(d) }
+            if list != devicesSubject.value || list.map(\.locationID) != devicesSubject.value.map(\.locationID) {
+                devicesSubject.send(list)
+            }
+        }
+        let list = devicesSubject.value
+        if let selected = selectedSubject.value {
+            if !present.contains(where: { $0.serial == selected.serial }) {
+                // It left: the core has closed it and keeps its serial for a
+                // replug; move to another DSPi so the user is not left on a phantom.
+                guard isConnected || listChanged else { return }
+                publishConnected(false)
+                errorSubject.send("Device Removed")
+                if let next = list.first { selectUsb(next) }
+            } else if connected != isConnected, !usbOpenInFlight {
+                // The core reopened it after a replug, or lost it.
+                if connected { errorSubject.send(nil) }
+                publishConnected(connected)
+            }
+        } else if let first = arrived.first {
+            selectUsb(first)
+        }
+        if list.isEmpty, selectedSubject.value != nil { selectedSubject.send(nil) }
+    }
+
+    /// Delays between open attempts, in seconds (CoreUsb's): the device is
+    /// published a moment before it can be claimed, most visibly on the
+    /// re-enumeration after a firmware flash.
+    static let usbOpenRetryDelays: [TimeInterval] = [0.1, 0.2, 0.4, 0.8, 1.0]
+
+    /// The status line for an open that failed after every retry: the core's
+    /// typed `busy` is another program holding the vendor interface.
+    static func usbOpenFailureMessage(_ error: Error) -> String {
+        if case .Link(let code, _)? = error as? DspiError, code == "busy" {
+            return "Device busy (another app has it open)"
+        }
+        return "Could not open device"
+    }
+
+    /// An open chain has not ended yet (stateLock).
+    private var usbOpenInFlightValue = false
+    private var usbOpenInFlight: Bool {
+        stateLock.lock(); defer { stateLock.unlock() }; return usbOpenInFlightValue
+    }
+
+    /// Open `device` on the core.  Main thread.
+    private func selectUsb(_ device: DSPiDevice) {
+        bumpGeneration()
+        let chain = nextUsbOpen()
+        stateLock.lock(); usbOpenInFlightValue = true; stateLock.unlock()
+        selectedSubject.send(device)
+        errorSubject.send(nil)
+        coreQueue.async { [weak self] in self?.openUsbOnCore(device, attempt: 0, chain: chain) }
+    }
+
+    private func nextUsbOpen() -> UInt64 {
+        stateLock.lock(); defer { stateLock.unlock() }
+        usbOpens &+= 1
+        return usbOpens
+    }
+
+    private func isLatestUsbOpen(_ chain: UInt64) -> Bool {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return usbOpens == chain
+    }
+
+    /// One try of an open chain.  coreQueue only.
+    private func openUsbOnCore(_ device: DSPiDevice, attempt: Int, chain: UInt64) {
+        guard isLatestUsbOpen(chain) else { return }
+        var failure: String?
+        do {
+            try onCore { try $0.selectDevice(serial: device.serial) }
+        } catch {
+            if case .Disconnected? = error as? DspiError {
+                // Gone during the retries: it left; never there: not found.
+                failure = attempt > 0 ? "Device Removed" : "Device not found"
+            } else if attempt < Self.usbOpenRetryDelays.count {
+                coreQueue.asyncAfter(deadline: .now() + Self.usbOpenRetryDelays[attempt]) { [weak self] in
+                    self?.openUsbOnCore(device, attempt: attempt + 1, chain: chain)
+                }
+                return
+            } else {
+                failure = Self.usbOpenFailureMessage(error)
+                Self.log.error("USB open failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+        let connected = onCore { $0.isConnected() }
+        let coreGeneration = onCore { $0.connectionGeneration() }
+        stateLock.lock()
+        knownCoreGeneration = coreGeneration
+        if usbOpens == chain { usbOpenInFlightValue = false }
+        stateLock.unlock()
+        DispatchQueue.main.async {
+            guard self.isLatestUsbOpen(chain), self.selectedDevice == device else { return }
+            self.errorSubject.send(failure)
+            self.publishConnected(connected && failure == nil)
+        }
+    }
+
+    /// Run `body` with this transport's core on coreQueue, where nothing else
+    /// of the core's runs meanwhile: the Mac's hub (Core/CoreHub.swift)
+    /// starts, puts the core on it (`HubHost.attachApp`) and stops there.
+    /// `body` returns whether the core's USB now comes through a hub (nil:
+    /// unchanged); then the device is re-read and republished, as after a
+    /// rebind.  `Link.usb` only.
+    func withCoreForHub(_ body: @escaping @Sendable (DspiCore) -> Bool?) {
+        coreQueue.async { [weak self] in
+            guard let self = self else { return }
+            guard let brokered = self.onCore(body) else { return }
+            self.stateLock.lock(); self.usbBrokered = brokered; self.stateLock.unlock()
+            self.usbSeen = nil
+            self.republishAfterRebind(brokered ? "USB: the DSPi now comes through this Mac's hub"
+                                               : "USB: the DSPi is the core's own again")
+            self.pollUsb()
+        }
+    }
+
+    /// Tests only: the core's USB comes through a hub now.
+    var usbBrokeredForTest: Bool { stateLock.lock(); defer { stateLock.unlock() }; return usbBrokered }
 
     // -- WP P1SW1 -- Documents opened offline.
 

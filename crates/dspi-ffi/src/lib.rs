@@ -28,6 +28,8 @@
 //! - **Panics** in the core come out as UniFFI's internal error, not an abort.
 //!   Foreign callbacks that throw are contained.
 //! - **Link** bindings are on: this library always builds `dspi-core/link`.
+//! - **Hub** (feature `hub`, WP SW-M3): `dspi-hub`'s binding, namespace `dspi_hub`,
+//!   for the Mac app only. Its own config is `crates/dspi-hub/uniffi.toml`.
 
 #![warn(missing_docs)]
 
@@ -36,6 +38,9 @@ uniffi::setup_scaffolding!();
 // The linker keeps the core's scaffolding symbols only when something in this
 // library names them.
 dspi_core::uniffi_reexport_scaffolding!();
+// -- WP SW-M3 -- and the hub's (namespace `dspi_hub`), with the feature `hub`.
+#[cfg(feature = "hub")]
+dspi_hub::uniffi_reexport_scaffolding!();
 
 /// Send the core's `log` output to logcat on Android and to stderr elsewhere,
 /// at level Info. Call it once at startup; further calls change nothing.
