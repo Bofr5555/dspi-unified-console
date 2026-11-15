@@ -40,6 +40,8 @@ import { LockedBanner, UnlockDialog } from "../screens/installer/Unlock";
 import { RecoveryCode } from "../screens/installer/HubAdmin"; // -- WP HUBADMIN --
 // -- WP WB6D -- the System view's blocks open the screen that edits them
 import type { ChainTarget } from "../screens/system/chain";
+// -- WP WB6E -- the scene bar: the device's ten preset slots, Recall and Store
+import { SlotBar } from "../screens/scenebar/SlotBar";
 
 // -- WP WB6F -- the status rail's health row and panel
 import { HealthFeed } from "./status-rail/feed";
@@ -47,6 +49,10 @@ import { HealthRail } from "./status-rail/HealthRail";
 
 // -- WP WB6G -- the input pages
 import { InputsScreen } from "../screens/inputs/InputsScreen";
+// -- WP WB6H -- the effects (Dynamics and effects, every mode)
+import { EffectsScreen } from "../screens/effects/EffectsScreen";
+// -- WP WB6I -- Settings (M55, M56, M61, M62)
+import { SettingsScreen } from "../screens/settings/SettingsScreen";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -94,6 +100,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "inputs", label: "Inputs", View: InputsScreen },
   // -- WP WB6c --
   { id: "matrix", label: "Matrix", View: MatrixScreen },
+  // -- WP WB6H -- (UI-MODES: "Dynamics and effects", in every mode)
+  { id: "effects", label: "Effects", View: EffectsScreen },
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
   { id: "system", label: "System", View: SystemScreen },
   // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
@@ -104,6 +112,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "events", label: "Events", View: EventsScreen },
   // -- WP P1WB2 -- (the manifest's "Limits and power-on": the Installer mode only)
   { id: "installer", label: "Installer", View: InstallerScreen },
+  // -- WP WB6I -- (every mode, last: the Console's Settings window; Core Voltage inside, the Installer mode's)
+  { id: "settings", label: "Settings", View: SettingsScreen },
 ];
 
 // -- WP P1WB1 --
@@ -119,13 +129,14 @@ const SETUP = new Set(["files"]);
  */
 export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
   // -- WP WB8 -- the event log last, in Advanced and Installer
-  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events" && x.id !== "installer");
-  if (mode === "simple") return today.filter((x) => !SETUP.has(x.id)); // -- WP P1WB1 --
+  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events" && x.id !== "installer" && x.id !== "settings"); // -- WP WB6I -- settings
+  const settings = SCREENS.filter((x) => x.id === "settings"); // -- WP WB6I -- last, in every mode
+  if (mode === "simple") return [...today.filter((x) => !SETUP.has(x.id)), ...settings]; // -- WP P1WB1 -- -- WP WB6I -- settings
   const system = SCREENS.find((x) => x.id === "system")!;
   const events = SCREENS.find((x) => x.id === "events")!;
   // -- WP P1WB2 -- the Installer page last, in the Installer mode
   const tail = mode === "installer" ? SCREENS.filter((x) => x.id === "installer") : [];
-  return installation ? [system, ...today, events, ...tail] : [...today, system, events, ...tail];
+  return installation ? [system, ...today, events, ...tail, ...settings] : [...today, system, events, ...tail, ...settings]; // -- WP WB6I -- settings
 }
 
 // -- WP P1WB2 --
@@ -273,6 +284,8 @@ export function Screens(props: { session: Session }) {
     <div class="session-screens" ref={root}>
       {/* -- WP SW3 -- on an installation, the scene bar */}
       {mode !== "simple" && !lockedUser ? <SceneBar feed={system} session={session} ask={ask} /> : null}
+      {/* -- WP WB6E -- the device's preset slots, in Advanced and Installer (the Pro layer; Simple keeps the Main window's picker) */}
+      {mode !== "simple" && !lockedUser ? <SlotBar session={session} ask={ask} unsaved={unsaved} /> : null}
       {/* -- WP P1WB2 -- the locked-user front page's banner; the Installer mode asking for its PIN */}
       {lockedUser && st.lock ? <LockedBanner session={session} lock={st.lock} /> : null}
       {choice?.needsPin && !lockedUser ? (

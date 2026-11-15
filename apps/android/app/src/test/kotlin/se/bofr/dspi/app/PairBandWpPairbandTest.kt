@@ -123,9 +123,9 @@ class PairBandWpPairbandTest {
                     sides(it).second.freq == 300f + 700f * it
             }
         }
-        assertEquals("Paste EQ", core.history(1).first().label)
+        assertEquals("Paste Parameters", core.history(1).first().label)
         val step = onMain { bridge.undo() }
-        assertEquals("Paste EQ", (step as HistoryStep.Moved).move.entry?.label)
+        assertEquals("Paste Parameters", (step as HistoryStep.Moved).move.entry?.label)
         until("one undo, every band of both sides back") { (0 until DspiConstants.BANDS_PER_CHANNEL).map { sides(it) } == before }
     }
 

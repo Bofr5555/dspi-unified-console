@@ -425,7 +425,7 @@ export type CoreEvent =
   | { event: "hubAdmin"; events: HubAdminEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */ {
+export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, SettingsMethods /* -- WP WB6I -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -551,6 +551,11 @@ export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMet
   // -- WP WB6G -- the input sources' names (crates/dspi-wasm/src/inputs.rs), the core's cache, no traffic
   /** `names[s]`: source `s`'s name ("" unnamed); `supported` false on firmware without names. Renamed by `write` of `in.name`. */
   inputSourceNames: { params: undefined; result: { supported: boolean; names: string[] } };
+  // -- WP WB6H -- the effect screens (crates/dspi-wasm/src/effects.rs)
+  /** Whether the connect probe found each named feature (`DspiCore::feature_present`); all false with no device. At most 64 names. */
+  features: { params: { names: string[] }; result: Record<string, boolean> };
+  /** The effects' choice parameters in the Console's words, by registry path (`cf.preset`, `tube.type`, ...). */
+  effectChoices: { params: undefined; result: Record<string, { value: number; label: string; detail: string }[]> };
 }
 
 // -- WP P1WB1 -- documents, snapshots, A/B, safe apply, offline files, limits status, notices
@@ -1187,4 +1192,124 @@ export interface HubAdminMethods {
   hubModePin: { params: { role: string; mode: string }; result: HubAdminStateRecord };
   /** The hub's admin events since the last call (also handed out by `linkTick`). */
   hubAdminEvents: { params: undefined; result: HubAdminEventRecord[] };
+}
+
+// -- WP WB6I -- the Settings page (crates/dspi-wasm/src/settings.rs)
+
+/** One output-latency option the device offers (the core's `OutputLatencyOption`). */
+export interface OutputLatencyOption {
+  id: number;
+  streamOnly: boolean;
+  available: boolean;
+  latencyUs: number;
+  batchUs: number;
+  effectiveUs: number;
+}
+
+/** `outputLatency`: the device's request and its options; `supported` false without the setting. */
+export interface OutputLatencyRecord {
+  supported: boolean;
+  requestedId: number;
+  effectiveId: number;
+  effectiveUs: number;
+  pending: boolean;
+  options: OutputLatencyOption[];
+}
+
+/** The core's `CoreVregInfo`: the device's core-voltage status. */
+export interface CoreVregInfo {
+  liveVreg: number;
+  millivolts: number;
+  storedSel: number;
+  defaultVreg: number;
+  autoRaised: boolean;
+  autoDisabled: boolean;
+  hangCount: number;
+  trialActive: boolean;
+  trialVreg: number;
+  failedTrialVreg: number;
+  failedTrialUptimeS: number;
+  uptimeS: number;
+}
+
+/** A voltage the flow offers (the core's `VregChoice`). */
+export interface VregChoice {
+  code: number;
+  millivolts: number;
+  /** A trial of it needs the confirmation word now (the core's rule). */
+  needsWord: boolean;
+  /** A save of it needs the word now. */
+  saveNeedsWord: boolean;
+}
+
+/** The core-voltage flow as the core shows it (`VregCalView`, WP CG11). */
+export interface VregCalView {
+  available: boolean;
+  phase:
+    | "idle"
+    | "review"
+    | "clearing"
+    | "starting_trial"
+    | "soaking"
+    | "passed"
+    | "failed"
+    | "unknown"
+    | "trial_found"
+    | "trial_left_running"
+    | "ending"
+    | "ended"
+    | "committing"
+    | "committed"
+    | "verify_failed";
+  messageKey: string;
+  message: string;
+  warning: string;
+  soakNote: string;
+  choices: VregChoice[];
+  confirmationWord: string;
+  commitNeedsWord: boolean;
+  resetNeedsWord: boolean;
+  defaultSoakS: number;
+  minSoakS: number;
+  targetVreg: number;
+  soakS: number;
+  elapsedS: number;
+  failedVreg: number;
+  ranS: number | null;
+  uptimeAtHangS: number;
+  nextVreg: number;
+  hardwareProblem: boolean;
+  unknownReason: string | null;
+  linkLost: boolean;
+  canStart: boolean;
+  canKeep: boolean;
+  canCommit: boolean;
+  status: CoreVregInfo | null;
+  lastError: string | null;
+}
+
+export interface SettingsMethods {
+  /** The device's name as last known, no traffic; `supported` false on firmware without names. */
+  deviceName: { params: undefined; result: { supported: boolean; name: string } };
+  /** The output latency's request and options (two reads). */
+  outputLatency: { params: undefined; result: OutputLatencyRecord };
+  /** The core-voltage flow from memory. */
+  vregView: { params: undefined; result: VregCalView };
+  /** Read the device and advance the flow: on open and about once a second while shown. */
+  vregPoll: { params: undefined; result: VregCalView };
+  vregOpen: { params: undefined; result: VregCalView };
+  vregClose: { params: undefined; result: VregCalView };
+  /** Start a run: `typed` is what the user typed when the core asks for the word. */
+  vregStart: { params: { code: number; soakS: number; typed?: string }; result: VregCalView };
+  vregKeep: { params: { soakS: number }; result: VregCalView };
+  /** Save the voltage that passed: a `vreg_save` token, the word when `commitNeedsWord`. */
+  vregCommit: { params: { typed?: string; token?: string }; result: VregCalView };
+  vregTrialEnd: { params: undefined; result: VregCalView };
+  /** Manual save; `value` 0 is the build default. A `vreg_save` token. */
+  vregSet: { params: { value: number; typed?: string; token?: string }; result: VregCalView };
+  vregTrial: { params: { value: number; typed?: string }; result: VregCalView };
+  vregAuto: { params: { on: boolean }; result: VregCalView };
+  vregClear: { params: undefined; result: VregCalView };
+  /** The demo device only: `hang`, `reboot`, `power_cycle`, `advance`. */
+  vregDemoEvent: { params: { event: "hang" | "reboot" | "power_cycle" | "advance"; seconds?: number }; result: null };
 }

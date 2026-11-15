@@ -52,6 +52,8 @@ pub mod calls;
 pub mod curves;
 // -- WP WB8 --
 pub mod diag;
+// -- WP WB6H -- the effect screens' feature gates and choice words
+pub mod effects;
 pub mod guard;
 // -- WP P1SA --
 pub mod guarded;
@@ -85,6 +87,10 @@ pub mod power_on;
 pub mod system;
 // -- WP ROMODE -- the client read-only mode
 pub mod read_only;
+// -- WP CLIP1 -- the channel clipboard
+pub mod clipboard;
+// -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
+pub mod settings;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;

@@ -268,6 +268,7 @@ void checkClipboard(SmokeDriver &d, SidebarController *sc) {
 
     sc->select(a);
     d.app().shell->trigger(QStringLiteral("edit.copy"));
+    d.waitIdle();   // -- WP CLIPQT -- the core copies on the worker
     d.check(QStringLiteral("qp1: Edit > Copy takes the selected channel"),
             sc->hasClipboard() && sc->clipboardName() == device->channels()->get(device->channels()->rowOfChannel(a), QStringLiteral("label")).toString());
     sc->pasteChannel(b);

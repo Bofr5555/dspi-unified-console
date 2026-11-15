@@ -469,6 +469,10 @@ test("WB6c matrix: crosspoints connect, level and invert; outputs enable, gain, 
 test("WB6c redraws: the output page and the matrix change nothing while idle; a change touches only its own part", async ({ page }) => {
   const { session, card } = await openOut1(page);
   const graph = session.getByRole("application", { name: /^EQ graph, OUT1/ });
+  // -- fixup b4fix F1 -- in view first: a graph below the fold defers what changed until it is
+  // seen (EqGraph's IntersectionObserver), so counting from there would count that owed draw
+  // when the Delay field's click scrolls it in; the scene bar above it put it below the fold.
+  await graph.scrollIntoViewIfNeeded();
   await drawn(graph);
   const watch = (sel: string) =>
     page.evaluate((sel) => {

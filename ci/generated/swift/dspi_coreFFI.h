@@ -731,6 +731,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_confirm_token(void*_Nonnull ptr, 
 uint64_t uniffi_dspi_core_fn_method_dspicore_connection_generation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_CHANNEL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_CHANNEL
+RustBuffer uniffi_dspi_core_fn_method_dspicore_copy_channel(void*_Nonnull ptr, uint8_t ch, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_PRESET_CONFIRMED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_COPY_PRESET_CONFIRMED
 void uniffi_dspi_core_fn_method_dspicore_copy_preset_confirmed(void*_Nonnull ptr, uint8_t source, uint8_t dest, RustBuffer token, RustCallStatus *_Nonnull out_status
@@ -1509,6 +1514,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_output_labels(void*_Nonnull ptr, 
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OUTPUTS_WITHOUT_LIMITER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_OUTPUTS_WITHOUT_LIMITER
 RustBuffer uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(void*_Nonnull ptr, float threshold_db, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PASTE_CHANNEL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PASTE_CHANNEL
+void uniffi_dspi_core_fn_method_dspicore_paste_channel(void*_Nonnull ptr, RustBuffer clip, uint8_t ch, RustBuffer options, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_POLL_HOTPLUG
@@ -2469,6 +2479,16 @@ RustBuffer uniffi_dspi_core_fn_func_bootloader_drives(RustCallStatus *_Nonnull o
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_CHANNEL_CLIP_FROM_JSON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_CHANNEL_CLIP_FROM_JSON
+RustBuffer uniffi_dspi_core_fn_func_channel_clip_from_json(RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_CHANNEL_CLIP_TO_JSON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_CHANNEL_CLIP_TO_JSON
+RustBuffer uniffi_dspi_core_fn_func_channel_clip_to_json(RustBuffer clip, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_COMPUTE_MAGNITUDE_CURVE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_COMPUTE_MAGNITUDE_CURVE
 RustBuffer uniffi_dspi_core_fn_func_compute_magnitude_curve(RustBuffer filters, RustCallStatus *_Nonnull out_status
@@ -2978,6 +2998,18 @@ uint16_t uniffi_dspi_core_checksum_func_bootloader_drives(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CHANNEL_CLIP_FROM_JSON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CHANNEL_CLIP_FROM_JSON
+uint16_t uniffi_dspi_core_checksum_func_channel_clip_from_json(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CHANNEL_CLIP_TO_JSON
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CHANNEL_CLIP_TO_JSON
+uint16_t uniffi_dspi_core_checksum_func_channel_clip_to_json(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_COMPUTE_MAGNITUDE_CURVE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_COMPUTE_MAGNITUDE_CURVE
 uint16_t uniffi_dspi_core_checksum_func_compute_magnitude_curve(void
@@ -3461,6 +3493,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_confirm_token(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONNECTION_GENERATION
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CONNECTION_GENERATION
 uint16_t uniffi_dspi_core_checksum_method_dspicore_connection_generation(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_CHANNEL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_COPY_CHANNEL
+uint16_t uniffi_dspi_core_checksum_method_dspicore_copy_channel(void
     
 );
 #endif
@@ -4397,6 +4435,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_output_labels(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OUTPUTS_WITHOUT_LIMITER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OUTPUTS_WITHOUT_LIMITER
 uint16_t uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PASTE_CHANNEL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PASTE_CHANNEL
+uint16_t uniffi_dspi_core_checksum_method_dspicore_paste_channel(void
     
 );
 #endif
