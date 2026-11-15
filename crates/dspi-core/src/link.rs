@@ -2351,6 +2351,19 @@ pub(crate) struct GuardTarget {
     pub(crate) has_guard: bool,
 }
 
+// -- WP P2FFIX --
+impl DspiCore {
+    /// This console's session id on its live hub connection, bound to a
+    /// device or not (`None` with no live session, or before the hub gave
+    /// one). No I/O.
+    pub(crate) fn link_client_session(&self) -> Option<u16> {
+        let inner = self.lock();
+        let s = inner.link.as_ref()?;
+        let client = s.client.as_ref().filter(|c| !c.is_closed())?;
+        client.session_id()
+    }
+}
+
 // -- WP P1SA --
 impl DspiCore {
     /// The device bound on this session's live hub connection, for a guarded
