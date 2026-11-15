@@ -66,6 +66,7 @@ import se.bofr.dspi.feature.presets.DocDiff
 import se.bofr.dspi.feature.presets.PresetFileAccess
 import se.bofr.dspi.ui.DspiIcons
 import se.bofr.dspi.ui.alert.ConsoleAlertHost
+import se.bofr.dspi.ui.collectAsStateOnMain
 import se.bofr.dspi.ui.settings.AppSettings
 import se.bofr.dspi.ui.settings.LocalAppSettings
 import se.bofr.dspi.ui.writesAllowed
@@ -151,8 +152,9 @@ fun SnapshotsView(
     val items by model.items.collectAsState()
     val busy by model.busy.collectAsState()
     val result by model.result.collectAsState()
-    val compare by model.compare.collectAsState()
-    val guard by model.guard.collectAsState()
+    // -- WP ANDFU -- the bridge's flows, written after its calls (the bar's poll, Keep, Revert): set on main
+    val compare by model.compare.collectAsStateOnMain()
+    val guard by model.guard.collectAsStateOnMain()
     val choice by model.choice.collectAsState()
     val safeRecall by model.safeRecall.collectAsState()
     val guardDefault by model.guardDefault.collectAsState()

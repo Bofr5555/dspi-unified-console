@@ -60,7 +60,9 @@ pkg_ffi() {
   step "ffi: rustfmt / clippy / tests"
   (cd "$WORKSPACE" && cargo fmt --check "${RUST_CRATES[@]}")
   (cd "$WORKSPACE" && cargo clippy --locked -p dspi-ffi --all-targets -- -D warnings)
-  (cd "$WORKSPACE" && cargo test --locked -p dspi-ffi)
+  # -- WP ANDFU -- every feature: `cli` builds the workspace's uniffi-bindgen, which the
+  # bindings' surface test (tests/bindgen_wp_f1.rs) needs; without it that test compiles out
+  (cd "$WORKSPACE" && cargo test --locked -p dspi-ffi --all-features)
   step "ffi: the core's own tests, with the features the Android library builds it with"
   (cd "$WORKSPACE" && cargo test --locked -p dspi-core --features link,uniffi)
   step "ffi: cross-compile for every shipped ABI (arm64-v8a, armeabi-v7a, x86_64)"
