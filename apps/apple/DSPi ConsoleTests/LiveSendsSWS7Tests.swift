@@ -130,11 +130,16 @@ final class LiveSendsSWS7Tests: XCTestCase, CoreDomainTesting {
             (.subharmCeiling, REQ_GET_SUBHARM_CEILING, -15),
             (.levellerGate, REQ_GET_LEVELLER_GATE, -55),
         ]
+        // The raw SET goes out with wValue 0 and wIndex 0; the fake answers
+        // its GET twin under the same addressing.
+        func held(_ get: UInt8) -> Float? {
+            let d = fake.getControlRequest(request: get, value: 0, index: 0, length: 4)
+            return d.flatMap { $0.count >= 4 ? $0.withUnsafeBytes { $0.load(as: Float.self) } : nil }
+        }
         for (setting, get, value) in reads {
             vm.sendFloatParamToDevice(setting, value)
-            let d = fake.getControlRequest(request: get, value: 0, index: HostBridge.vendorInterface, length: 4)
-            let held = d.flatMap { $0.count >= 4 ? $0.withUnsafeBytes { $0.load(as: Float.self) } : nil }
-            XCTAssertEqual(held, value, "\(setting.path) reached the device raw")
+            XCTAssertTrue(spinUntil(5) { held(get) == value },
+                          "\(setting.path) reached the device raw (\(String(describing: held(get))))")
         }
     }
 }
