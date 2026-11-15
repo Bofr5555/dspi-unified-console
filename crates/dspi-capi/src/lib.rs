@@ -177,6 +177,8 @@ mod tests {
             "src/fns_misc/hub_admin.rs",
             // -- WP ROMODE --
             "src/fns_misc/read_only.rs",
+            // -- WP CLIP1 --
+            "src/fns_misc/clipboard.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

@@ -143,6 +143,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqApply = call { core.autoeqApply(profile.toFfi(), left.toUByte(), right.toUByte(), applyLevel).toDomain() }
 
+    override fun copyChannel(ch: Int): ChannelClip = call { core.copyChannel(ch.toUByte()).toDomain() }
+
+    override fun pasteChannel(clip: ChannelClip, ch: Int, options: ChannelPasteOptions) = call { core.pasteChannel(clip.toFfi(), ch.toUByte(), options.toFfi()) }
+
     override fun confirmToken(op: ConfirmOp): String = core.confirmToken(op.toFfi())
 
     override fun fetchAll() = call { core.fetchAll() }
@@ -746,6 +750,10 @@ class FfiDspiCore : DspiCoreApi {
     override fun autoeqRebuildWarning(dbPath: String): String = se.bofr.dspi.ffi.uniffi.autoeqRebuildWarning(dbPath)
 
     override fun autoeqRebuildStart(dbPath: String, fetch: AutoEqFetch): AutoEqRebuild = FfiAutoEqRebuild(se.bofr.dspi.ffi.uniffi.autoeqRebuildStart(dbPath, wrapAutoEqFetch(fetch)))
+
+    override fun channelClipToJson(clip: ChannelClip): String = call { se.bofr.dspi.ffi.uniffi.channelClipToJson(clip.toFfi()) }
+
+    override fun channelClipFromJson(text: String): ChannelClip = call { se.bofr.dspi.ffi.uniffi.channelClipFromJson(text).toDomain() }
 
     override fun computeResponse(filters: List<FilterParams>, freq: Float): Float = se.bofr.dspi.ffi.uniffi.computeResponse(filters.map { it.toFfi() }, freq)
 
@@ -3006,6 +3014,50 @@ internal fun AutoEqApply.toFfi() =
         snapshotDocument = snapshotDocument,
         snapshotId = snapshotId,
         notes = notes,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.ChannelClipOutput.toDomain() =
+    ChannelClipOutput(
+        gainDb = gainDb,
+        delayMs = delayMs,
+        muted = muted,
+    )
+
+internal fun ChannelClipOutput.toFfi() =
+    se.bofr.dspi.ffi.uniffi.ChannelClipOutput(
+        gainDb = gainDb,
+        delayMs = delayMs,
+        muted = muted,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.ChannelClip.toDomain() =
+    ChannelClip(
+        version = version.toLong(),
+        sourceChannel = sourceChannel.toInt(),
+        sourceName = sourceName,
+        filters = filters.map { it.toDomain() },
+        crossover = crossover?.let { it.map { it.toDomain() } },
+        output = output?.let { it.toDomain() },
+    )
+
+internal fun ChannelClip.toFfi() =
+    se.bofr.dspi.ffi.uniffi.ChannelClip(
+        version = version.toUInt(),
+        sourceChannel = sourceChannel.toUByte(),
+        sourceName = sourceName,
+        filters = filters.map { it.toFfi() },
+        crossover = crossover?.let { it.map { it.toFfi() } },
+        output = output?.let { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.ChannelPasteOptions.toDomain() =
+    ChannelPasteOptions(
+        mirror = mirror?.let { it.toInt() },
+    )
+
+internal fun ChannelPasteOptions.toFfi() =
+    se.bofr.dspi.ffi.uniffi.ChannelPasteOptions(
+        mirror = mirror?.let { it.toUByte() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.IdentifyInfo.toDomain() =

@@ -1779,6 +1779,17 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func connectionGeneration()  -> UInt64
     
     /**
+     * Copy wire channel `ch` (inputs, then outputs) into a clip, from the
+     * mirror: nothing is sent. An input gives its PEQ bank; an output its
+     * PEQ and crossover banks, gain, delay and mute.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device (or document)
+     * open;
+     * [`DspiError::InvalidArgument`] for a channel out of range.
+     */
+    func copyChannel(ch: UInt8) throws  -> ChannelClip
+    
+    /**
      * Copy the live state to `dest` and save it to `source` again, so
      * `source` stays the active preset (the Mac console's "Copy to"). Each
      * save waits for the device; one device lock covers both.
@@ -3495,6 +3506,30 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * firmware without the output limiter, and for a NaN threshold.
      */
     func outputsWithoutLimiter(thresholdDb: Float)  -> Data
+    
+    /**
+     * Paste `clip` onto wire channel `ch`, by the Console's rules (module
+     * docs): the PEQ bank (onto `options.mirror` too), and from an output
+     * to an output the crossover bank, gain, delay (clamped to this
+     * device's line) and mute. Every write goes through the typed setter,
+     * in one undo group labelled [`PASTE_LABEL`]: one undo step puts every
+     * value back.
+     *
+     * Everything is checked before the first write, and a refusal writes
+     * nothing: the clip's version, the channels, the values, the
+     * connection (no device, the client read-only mode, a read-only wire
+     * format, the installer's lock) and a limits profile over the whole
+     * paste. A transfer failure partway stops the paste; what was written
+     * stays, as one undo step.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another clip version, a
+     * channel or partner out of range (or the partner the channel itself),
+     * a non-finite value or a crossover slot of a PEQ type; the refusals
+     * of every setter ([`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::InstallerLock`], [`DspiError::LimitExceeded`]) and its
+     * transfer errors.
+     */
+    func pasteChannel(clip: ChannelClip, ch: UInt8, options: ChannelPasteOptions) throws 
     
     /**
      * Compare the USB bus with the last poll and report arrivals and
@@ -5960,6 +5995,23 @@ open func confirmToken(op: ConfirmOp) -> String  {
 open func connectionGeneration() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_connection_generation(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Copy wire channel `ch` (inputs, then outputs) into a clip, from the
+     * mirror: nothing is sent. An input gives its PEQ bank; an output its
+     * PEQ and crossover banks, gain, delay and mute.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device (or document)
+     * open;
+     * [`DspiError::InvalidArgument`] for a channel out of range.
+     */
+open func copyChannel(ch: UInt8)throws  -> ChannelClip  {
+    return try  FfiConverterTypeChannelClip_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_copy_channel(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(ch),$0
     )
 })
 }
@@ -8525,6 +8577,37 @@ open func outputsWithoutLimiter(thresholdDb: Float) -> Data  {
         FfiConverterFloat.lower(thresholdDb),$0
     )
 })
+}
+    
+    /**
+     * Paste `clip` onto wire channel `ch`, by the Console's rules (module
+     * docs): the PEQ bank (onto `options.mirror` too), and from an output
+     * to an output the crossover bank, gain, delay (clamped to this
+     * device's line) and mute. Every write goes through the typed setter,
+     * in one undo group labelled [`PASTE_LABEL`]: one undo step puts every
+     * value back.
+     *
+     * Everything is checked before the first write, and a refusal writes
+     * nothing: the clip's version, the channels, the values, the
+     * connection (no device, the client read-only mode, a read-only wire
+     * format, the installer's lock) and a limits profile over the whole
+     * paste. A transfer failure partway stops the paste; what was written
+     * stays, as one undo step.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another clip version, a
+     * channel or partner out of range (or the partner the channel itself),
+     * a non-finite value or a crossover slot of a PEQ type; the refusals
+     * of every setter ([`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::InstallerLock`], [`DspiError::LimitExceeded`]) and its
+     * transfer errors.
+     */
+open func pasteChannel(clip: ChannelClip, ch: UInt8, options: ChannelPasteOptions)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_paste_channel(self.uniffiClonePointer(),
+        FfiConverterTypeChannelClip_lower(clip),
+        FfiConverterUInt8.lower(ch),
+        FfiConverterTypeChannelPasteOptions_lower(options),$0
+    )
+}
 }
     
     /**
@@ -19403,6 +19486,325 @@ public func FfiConverterTypeBufferStats_lift(_ buf: RustBuffer) throws -> Buffer
 #endif
 public func FfiConverterTypeBufferStats_lower(_ value: BufferStats) -> RustBuffer {
     return FfiConverterTypeBufferStats.lower(value)
+}
+
+
+/**
+ * What [`DspiCore::copy_channel`] took from a channel. A value: a client
+ * keeps it as it likes, as a record or as its JSON document
+ * ([`channel_clip_to_json`]).
+ */
+public struct ChannelClip {
+    /**
+     * The clip format ([`CHANNEL_CLIP_VERSION`]); a paste refuses another.
+     */
+    public var version: UInt32
+    /**
+     * The wire channel it was copied from (inputs, then outputs).
+     */
+    public var sourceChannel: UInt8
+    /**
+     * The source's name on the device ("" when unnamed); a client may put
+     * the name it shows here, for its "Copied ..." line.
+     */
+    public var sourceName: String
+    /**
+     * The PEQ bank, band 0 first.
+     */
+    public var filters: [FilterParams]
+    /**
+     * The crossover bank, slot 0 first: present when copied from an
+     * output, absent from an input.
+     */
+    public var crossover: [FilterParams]?
+    /**
+     * Gain, delay and mute: present when copied from an output.
+     */
+    public var output: ChannelClipOutput?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The clip format ([`CHANNEL_CLIP_VERSION`]); a paste refuses another.
+         */version: UInt32, 
+        /**
+         * The wire channel it was copied from (inputs, then outputs).
+         */sourceChannel: UInt8, 
+        /**
+         * The source's name on the device ("" when unnamed); a client may put
+         * the name it shows here, for its "Copied ..." line.
+         */sourceName: String, 
+        /**
+         * The PEQ bank, band 0 first.
+         */filters: [FilterParams], 
+        /**
+         * The crossover bank, slot 0 first: present when copied from an
+         * output, absent from an input.
+         */crossover: [FilterParams]?, 
+        /**
+         * Gain, delay and mute: present when copied from an output.
+         */output: ChannelClipOutput?) {
+        self.version = version
+        self.sourceChannel = sourceChannel
+        self.sourceName = sourceName
+        self.filters = filters
+        self.crossover = crossover
+        self.output = output
+    }
+}
+
+#if compiler(>=6)
+extension ChannelClip: Sendable {}
+#endif
+
+
+extension ChannelClip: Equatable, Hashable {
+    public static func ==(lhs: ChannelClip, rhs: ChannelClip) -> Bool {
+        if lhs.version != rhs.version {
+            return false
+        }
+        if lhs.sourceChannel != rhs.sourceChannel {
+            return false
+        }
+        if lhs.sourceName != rhs.sourceName {
+            return false
+        }
+        if lhs.filters != rhs.filters {
+            return false
+        }
+        if lhs.crossover != rhs.crossover {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(version)
+        hasher.combine(sourceChannel)
+        hasher.combine(sourceName)
+        hasher.combine(filters)
+        hasher.combine(crossover)
+        hasher.combine(output)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChannelClip: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChannelClip {
+        return
+            try ChannelClip(
+                version: FfiConverterUInt32.read(from: &buf), 
+                sourceChannel: FfiConverterUInt8.read(from: &buf), 
+                sourceName: FfiConverterString.read(from: &buf), 
+                filters: FfiConverterSequenceTypeFilterParams.read(from: &buf), 
+                crossover: FfiConverterOptionSequenceTypeFilterParams.read(from: &buf), 
+                output: FfiConverterOptionTypeChannelClipOutput.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChannelClip, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.version, into: &buf)
+        FfiConverterUInt8.write(value.sourceChannel, into: &buf)
+        FfiConverterString.write(value.sourceName, into: &buf)
+        FfiConverterSequenceTypeFilterParams.write(value.filters, into: &buf)
+        FfiConverterOptionSequenceTypeFilterParams.write(value.crossover, into: &buf)
+        FfiConverterOptionTypeChannelClipOutput.write(value.output, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChannelClip_lift(_ buf: RustBuffer) throws -> ChannelClip {
+    return try FfiConverterTypeChannelClip.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChannelClip_lower(_ value: ChannelClip) -> RustBuffer {
+    return FfiConverterTypeChannelClip.lower(value)
+}
+
+
+/**
+ * An output's strip as a clip carries it.
+ */
+public struct ChannelClipOutput {
+    /**
+     * Output gain in dB.
+     */
+    public var gainDb: Float
+    /**
+     * Output delay in ms.
+     */
+    public var delayMs: Float
+    /**
+     * Whether the output is muted.
+     */
+    public var muted: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Output gain in dB.
+         */gainDb: Float, 
+        /**
+         * Output delay in ms.
+         */delayMs: Float, 
+        /**
+         * Whether the output is muted.
+         */muted: Bool) {
+        self.gainDb = gainDb
+        self.delayMs = delayMs
+        self.muted = muted
+    }
+}
+
+#if compiler(>=6)
+extension ChannelClipOutput: Sendable {}
+#endif
+
+
+extension ChannelClipOutput: Equatable, Hashable {
+    public static func ==(lhs: ChannelClipOutput, rhs: ChannelClipOutput) -> Bool {
+        if lhs.gainDb != rhs.gainDb {
+            return false
+        }
+        if lhs.delayMs != rhs.delayMs {
+            return false
+        }
+        if lhs.muted != rhs.muted {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(gainDb)
+        hasher.combine(delayMs)
+        hasher.combine(muted)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChannelClipOutput: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChannelClipOutput {
+        return
+            try ChannelClipOutput(
+                gainDb: FfiConverterFloat.read(from: &buf), 
+                delayMs: FfiConverterFloat.read(from: &buf), 
+                muted: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChannelClipOutput, into buf: inout [UInt8]) {
+        FfiConverterFloat.write(value.gainDb, into: &buf)
+        FfiConverterFloat.write(value.delayMs, into: &buf)
+        FfiConverterBool.write(value.muted, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChannelClipOutput_lift(_ buf: RustBuffer) throws -> ChannelClipOutput {
+    return try FfiConverterTypeChannelClipOutput.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChannelClipOutput_lower(_ value: ChannelClipOutput) -> RustBuffer {
+    return FfiConverterTypeChannelClipOutput.lower(value)
+}
+
+
+/**
+ * How [`DspiCore::paste_channel`] pastes.
+ */
+public struct ChannelPasteOptions {
+    /**
+     * The destination's linked partner (a wire channel), when the client
+     * has the pair linked: its PEQ bank gets the same bands.
+     */
+    public var mirror: UInt8?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The destination's linked partner (a wire channel), when the client
+         * has the pair linked: its PEQ bank gets the same bands.
+         */mirror: UInt8?) {
+        self.mirror = mirror
+    }
+}
+
+#if compiler(>=6)
+extension ChannelPasteOptions: Sendable {}
+#endif
+
+
+extension ChannelPasteOptions: Equatable, Hashable {
+    public static func ==(lhs: ChannelPasteOptions, rhs: ChannelPasteOptions) -> Bool {
+        if lhs.mirror != rhs.mirror {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(mirror)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChannelPasteOptions: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChannelPasteOptions {
+        return
+            try ChannelPasteOptions(
+                mirror: FfiConverterOptionUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChannelPasteOptions, into buf: inout [UInt8]) {
+        FfiConverterOptionUInt8.write(value.mirror, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChannelPasteOptions_lift(_ buf: RustBuffer) throws -> ChannelPasteOptions {
+    return try FfiConverterTypeChannelPasteOptions.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChannelPasteOptions_lower(_ value: ChannelPasteOptions) -> RustBuffer {
+    return FfiConverterTypeChannelPasteOptions.lower(value)
 }
 
 
@@ -35951,6 +36353,30 @@ fileprivate struct FfiConverterOptionTypeAlinkInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeChannelClipOutput: FfiConverterRustBuffer {
+    typealias SwiftType = ChannelClipOutput?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChannelClipOutput.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChannelClipOutput.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeCoreVregInfo: FfiConverterRustBuffer {
     typealias SwiftType = CoreVregInfo?
 
@@ -36111,6 +36537,30 @@ fileprivate struct FfiConverterOptionTypeParamValue: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeParamValue.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionSequenceTypeFilterParams: FfiConverterRustBuffer {
+    typealias SwiftType = [FilterParams]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceTypeFilterParams.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceTypeFilterParams.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -37501,6 +37951,35 @@ public func bootloaderDrives() -> [BootloaderDrive]  {
 })
 }
 /**
+ * A clip read back from its document ([`channel_clip_to_json`]).
+ *
+ * Errors: [`DspiError::InvalidArgument`] for text that is not a channel
+ * clip (too long, not JSON, another `kind`, a missing or mistyped field)
+ * and for a clip of another version, older or newer, named in the message.
+ */
+public func channelClipFromJson(text: String)throws  -> ChannelClip  {
+    return try  FfiConverterTypeChannelClip_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_func_channel_clip_from_json(
+        FfiConverterString.lower(text),$0
+    )
+})
+}
+/**
+ * A clip as a JSON document to keep: `{kind: "dspi.channelClip", version,
+ * sourceChannel, sourceName, filters: [{filterType, bypass, freq, q, gain,
+ * qp}], crossover: [...] | null, output: {gainDb, delayMs, muted} | null}`.
+ *
+ * Errors: [`DspiError::InvalidArgument`] for a clip of another version or
+ * with a non-finite value (JSON has no NaN).
+ */
+public func channelClipToJson(clip: ChannelClip)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_func_channel_clip_to_json(
+        FfiConverterTypeChannelClip_lower(clip),$0
+    )
+})
+}
+/**
  * The combined level of `filters` in dB at each of the [`CURVE_POINTS`]
  * frequencies of [`curve_freq`]. Never below -300 dB.
  */
@@ -37954,6 +38433,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_bootloader_drives() != 58490) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_channel_clip_from_json() != 38710) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_channel_clip_to_json() != 1570) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_compute_magnitude_curve() != 49830) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -38195,6 +38680,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_copy_channel() != 34717) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_copy_preset_confirmed() != 9061) {
@@ -38663,6 +39151,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter() != 24245) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_paste_channel() != 43676) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 29460) {
