@@ -293,11 +293,26 @@ struct Rig {
     hub: Hub,
     broker: Broker,
     hub_id: String,
+    // -- WP P2DFIXA --
+    /// The hub's store folder's parent, for a restart on the same store.
+    dir: PathBuf,
 }
 
 fn rig(tag: &str) -> Rig {
     let dir = scratch(tag);
-    let hub = Hub::start(HubConfig {
+    let hub = start_hub(&dir);
+    let hub_id = hub.hub_id().to_owned();
+    Rig {
+        hub,
+        broker: Broker::start(),
+        hub_id,
+        dir,
+    }
+}
+
+/// A hub on `dir`'s store, with the inventory, alarms and identify.
+fn start_hub(dir: &std::path::Path) -> Hub {
+    Hub::start(HubConfig {
         network: Some(NetworkConfig {
             port: 0,
             access: AccessMode::Pin,
@@ -310,17 +325,13 @@ fn rig(tag: &str) -> Rig {
         services: ServiceConfig {
             alarms: true,
             identify: true,
+            // -- WP P2DFIXA --
+            inventory: true,
             ..ServiceConfig::default()
         },
         ..HubConfig::in_process("p2ha")
     })
-    .unwrap();
-    let hub_id = hub.hub_id().to_owned();
-    Rig {
-        hub,
-        broker: Broker::start(),
-        hub_id,
-    }
+    .unwrap()
 }
 
 impl Rig {
@@ -495,6 +506,12 @@ fn wp_p2ha_discovery_and_sets_through_the_executor_as_the_minted_key() {
     );
     let get = admin.ask(json!({"t": "mqtt.get"}));
     assert_eq!(get["settings"]["ha"], json!({"enabled": true, "key": cid}));
+    // -- WP P2DFIXA -- N1: `key: null` while on keeps the key; no second one is minted.
+    let keys = net.auth().clients().len();
+    let again = admin.ask(json!({"t": "mqtt.set", "settings": {"ha":
+        {"enabled": true, "key": null}}}));
+    assert_eq!(again["settings"]["ha"]["key"], cid, "{again}");
+    assert_eq!(net.auth().clients().len(), keys);
 
     // Discovery: every entity, with the device block.
     for e in Entity::ALL {
@@ -739,10 +756,29 @@ fn wp_p2ha_a_forgotten_devices_entities_are_removed() {
         }
     }
     r.hub.detach(handle).unwrap();
-    // Offline within the grace: unavailable, still there.
+    // -- WP P2DFIXA -- offline: unavailable, and still there past the registry's grace.
     r.broker
         .wait_retained(&ha::availability_topic(BASE, serial), "offline");
-    // Forgotten once the grace ends: every config, state and availability cleared.
+    let gone = r.hub.handle();
+    wait_until("the grace to end", || {
+        gone.devices().iter().all(|d| d.identity.serial != serial)
+    });
+    thread::sleep(Duration::from_millis(300));
+    for e in [Entity::MasterVolume, Entity::Mute, Entity::Clip] {
+        assert!(
+            r.broker
+                .retained(&ha::config_topic(&r.hub_id, serial, e))
+                .is_some(),
+            "{e:?} kept until forgotten"
+        );
+    }
+    assert_eq!(
+        r.broker.retained(&ha::availability_topic(BASE, serial)),
+        Some("offline".into())
+    );
+    // Forgotten by an Admin: every config, state and availability cleared.
+    let forgot = admin.ask(json!({"t": "inventory.forget", "serial": serial}));
+    assert_eq!(forgot["t"], "ok", "{forgot}");
     wait_until("the entities removed", || {
         Entity::ALL.iter().all(|e| {
             r.broker
@@ -814,4 +850,49 @@ fn wp_p2ha_end_to_end_a_real_alarm_reaches_mqtt_and_the_sensor() {
     r.broker.wait_retained(&r.state(serial, Entity::Cpu), "12");
     r.broker.wait_retained(&r.state(serial, Entity::Clip), "ON");
     r.hub.stop();
+}
+
+// -- WP P2DFIXA -- the review's probe (review-p2d `probe_p2ha_restart.rs`), on the same
+// store: a device unplugged while the hub was down is shown unavailable, not with the
+// `online` retained from the first run.
+#[test]
+fn wp_p2dfixa_a_device_gone_while_the_hub_was_down_is_unavailable() {
+    let r = rig("restart");
+    let serial = "P2HA-RESTART";
+    r.plug(serial);
+    let mut admin = r.client("Installer", Role::Admin);
+    r.enable(&mut admin, None);
+    r.ready(serial);
+    r.broker
+        .wait_retained(&ha::availability_topic(BASE, serial), "online");
+    drop(admin);
+    // A clean stop: the hub's status goes offline; the device's topics stay retained.
+    r.hub.stop();
+    r.broker.wait_retained(&format!("{BASE}/status"), "offline");
+    assert_eq!(
+        r.broker.retained(&ha::availability_topic(BASE, serial)),
+        Some("online".into()),
+        "retained from the first run"
+    );
+
+    // The hub again, on the same store and broker, the device not plugged in.
+    let hub2 = start_hub(&r.dir);
+    assert_eq!(hub2.hub_id(), r.hub_id, "the same hub");
+    let r2 = Rig {
+        hub: hub2,
+        broker: r.broker.clone(),
+        hub_id: r.hub_id.clone(),
+        dir: r.dir.clone(),
+    };
+    // MQTT and Home Assistant come back on from `mqtt.json`, with the same key.
+    r2.broker.wait_retained(&format!("{BASE}/status"), "online");
+    r2.broker
+        .wait_retained(&ha::availability_topic(BASE, serial), "offline");
+    // Its entities stay (it is not forgotten), unavailable.
+    assert!(
+        r2.broker
+            .retained(&ha::config_topic(&r2.hub_id, serial, Entity::MasterVolume))
+            .is_some()
+    );
+    r2.hub.stop();
 }

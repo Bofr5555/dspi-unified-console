@@ -16,8 +16,14 @@
 //! | `temperature`, `cpu` | `sensor` | `Health` | |
 //! | `clip` | `binary_sensor` | `Health`'s clip latch | |
 //!
-//! A device the hub forgets (its grace ended, `DeviceRemoved`) has its configs, states
-//! and availability cleared (empty retained payloads), so Home Assistant removes it.
+//! A device stays in Home Assistant, unavailable while it is not attached (also past the
+//! registry's grace, `DeviceRemoved`), until an Admin forgets it (`inventory.forget`,
+//! `DeviceForgotten`): then its configs, states and availability are cleared (empty
+//! retained payloads), so Home Assistant removes it. -- WP P2DFIXA -- On every start of
+//! Home Assistant and every connection the worker seeds the devices from the inventory
+//! (`inventory.list` as the key's principal; the registry where the hub runs without
+//! one), so a device that went while the hub was down is shown unavailable, not with its
+//! stale retained `online`.
 //!
 //! **Who writes (OD-P2c, PLAN-P2 M2).** A `set` acts as the API key in `ha.key`: a
 //! principal session opened with [`HubHandle::open_principal`] (a remote-range id, the
@@ -442,6 +448,9 @@ pub enum Feedback {
         fw: String,
         /// Its platform's name.
         platform: String,
+        // -- WP P2DFIXA --
+        /// Its board and hardware revision, where the inventory knows them.
+        model: Option<String>,
         /// Attached now.
         online: bool,
     },
@@ -762,7 +771,15 @@ impl HaState {
                 }
                 Vec::new()
             }
+            // -- WP P2DFIXA -- the grace ended: unavailable, kept until forgotten.
             BusMessage::DeviceRemoved { serial, .. } => {
+                if let Some(d) = self.devices.get_mut(serial) {
+                    d.online = false;
+                    self.publish_device(out, serial, false);
+                }
+                Vec::new()
+            }
+            BusMessage::DeviceForgotten { serial } => {
                 self.remove_device(out, serial);
                 Vec::new()
             }
@@ -876,6 +893,7 @@ impl HaState {
                 name,
                 fw,
                 platform,
+                model,
                 online,
             } => {
                 let Some(d) = self.device(&serial) else {
@@ -886,6 +904,9 @@ impl HaState {
                     d.fw = fw;
                 }
                 d.platform = platform;
+                if model.is_some() {
+                    d.model = model;
+                }
                 d.online = online;
                 self.publish_device(out, &serial, false);
             }
@@ -983,6 +1004,20 @@ pub fn settle_key(
             "Home Assistant acts as an API key, and this hub keeps none (no network store)".into(),
         ));
     };
+    let is_api_key = |cid: u32| {
+        auth.clients()
+            .iter()
+            .any(|c| c.cid == cid && c.kind == ClientKind::Api)
+    };
+    // -- WP P2DFIXA -- `key: null` while it is on keeps its key (never a second one),
+    // as long as that key is still an API key.
+    if next.key.is_none()
+        && current.enabled
+        && let Some(cid) = current.key.filter(|c| is_api_key(*c))
+    {
+        next.key = Some(cid);
+        return Ok(None);
+    }
     if let Some(cid) = next.key {
         return match auth.clients().into_iter().find(|c| c.cid == cid) {
             Some(c) if c.kind == ClientKind::Api => Ok(None),
@@ -1353,28 +1388,91 @@ impl Runner {
         Err((field("code"), field("msg")))
     }
 
+    /// Every device the hub knows: the inventory's (as the key's principal), else the
+    /// registry's. Attached now is the registry's word; the attached ones are read.
     fn scan(&mut self) {
-        let online: Vec<String> = self
+        let attached: Vec<String> = self
             .hub
             .devices()
             .into_iter()
-            .map(|d| {
-                let online = d.state == DeviceState::Online;
-                let serial = d.identity.serial.clone();
-                self.shared.feed(Feedback::Device {
-                    serial: serial.clone(),
+            .filter(|d| d.state == DeviceState::Online)
+            .map(|d| d.identity.serial)
+            .collect();
+        // -- WP P2DFIXA --
+        let known = match self.inventory() {
+            Some(known) => known,
+            None => self
+                .hub
+                .devices()
+                .into_iter()
+                .map(|d| Feedback::Device {
+                    serial: d.identity.serial,
                     name: d.name,
                     fw: d.identity.firmware,
                     platform: platform_name(d.identity.platform).to_owned(),
-                    online,
-                });
-                (serial, online)
-            })
-            .filter(|(_, online)| *online)
-            .map(|(s, _)| s)
-            .collect();
-        for serial in online {
+                    model: None,
+                    online: false,
+                })
+                .collect(),
+        };
+        for mut f in known {
+            if let Feedback::Device { serial, online, .. } = &mut f {
+                *online = attached.contains(serial);
+            }
+            self.shared.feed(f);
+        }
+        for serial in attached {
             self.values(&serial);
+        }
+    }
+
+    // -- WP P2DFIXA --
+    /// The inventory's records as [`Feedback::Device`], page by page, at most
+    /// [`MAX_DEVICES`]; `None` without a principal or without the inventory.
+    fn inventory(&mut self) -> Option<Vec<Feedback>> {
+        let session = self.principal().ok()?;
+        let mut out = Vec::new();
+        let mut offset: u64 = 0;
+        loop {
+            let page = self
+                .ask(
+                    &session,
+                    json!({"t": "inventory.list", "offset": offset, "limit": 500}),
+                )
+                .ok()?;
+            let rows = page.get("devices").and_then(Value::as_array)?;
+            for r in rows {
+                if out.len() >= MAX_DEVICES {
+                    return Some(out);
+                }
+                let text = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("").trim();
+                let serial = text("serial");
+                if serial_level(serial).is_none() {
+                    continue;
+                }
+                let platform = r
+                    .get("platform")
+                    .and_then(Value::as_u64)
+                    .and_then(|p| u8::try_from(p).ok())
+                    .map_or("", platform_name);
+                let model = match (text("board"), text("hw_rev")) {
+                    ("", _) => None,
+                    (b, "") => Some(b.to_owned()),
+                    (b, rev) => Some(format!("{b} ({rev})")),
+                };
+                out.push(Feedback::Device {
+                    serial: serial.to_owned(),
+                    name: text("name").to_owned(),
+                    fw: text("fw").to_owned(),
+                    platform: platform.to_owned(),
+                    model,
+                    online: false,
+                });
+            }
+            match page.get("next_offset").and_then(Value::as_u64) {
+                Some(next) if next > offset && !rows.is_empty() => offset = next,
+                _ => return Some(out),
+            }
         }
     }
 
@@ -1393,6 +1491,7 @@ impl Runner {
             name: d.name,
             fw: d.identity.firmware,
             platform: platform_name(d.identity.platform).to_owned(),
+            model: None,
             online,
         });
         if online {
@@ -1517,6 +1616,7 @@ fn wanted(m: &BusMessage) -> bool {
         BusMessage::DeviceOnline { .. }
             | BusMessage::DeviceOffline { .. }
             | BusMessage::DeviceRemoved { .. }
+            | BusMessage::DeviceForgotten { .. }
             | BusMessage::Notification { .. }
             | BusMessage::Health { .. }
             | BusMessage::Facts { .. }
@@ -1567,6 +1667,8 @@ impl HaRuntime {
         if let Some(on) = &mut self.on {
             Self::subscribe(&self.base, on, client);
             on.state.republish_all(&mut self.out);
+            // -- WP P2DFIXA -- and what the hub knows now, attached or not.
+            on.worker.push(Job::Scan);
         }
     }
 

@@ -740,6 +740,8 @@ impl DeviceAlarms {
                 }
             }
             BusMessage::DeviceRemoved { .. }
+            // -- WP P2DFIXA --
+            | BusMessage::DeviceForgotten { .. }
             | BusMessage::Alarm { .. }
             | BusMessage::Event { .. } => {}
         }
@@ -1127,6 +1129,8 @@ fn wanted(m: &BusMessage) -> bool {
         BusMessage::Alarm { .. } | BusMessage::Event { .. } | BusMessage::DeviceRemoved { .. } => {
             false
         }
+        // -- WP P2DFIXA --
+        BusMessage::DeviceForgotten { .. } => false,
         _ => true,
     }
 }

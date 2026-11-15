@@ -717,8 +717,11 @@ shows the port in use, so sending its `settings` back keeps that port fixed.
 - `password` in `mqtt.set`: a string sets it; `null` or `"not set"` clears it; `"set"` keeps it, so `mqtt.get`'s
   `settings` can be sent back as they are. A password needs a `username` (MQTT 3.1.1).
 - `enabled: true` needs a `broker`. A refusal is `bad_request` with `msg` naming the field; nothing is changed then.
-  A field not listed here is ignored. `tls` is changed in part too (a field left out keeps its value); `mqtt.get`
-  shows it with `ca_pem`, `pin_sha256` and `client_key_pem` as `set` or `not set`.
+  A field not listed here is ignored. `tls`, unlike the other settings, is **replaced whole** by `mqtt.set`: a
+  field left out of it becomes none (no CA, no pin, no client certificate, `mode` off, `allow_plaintext_password`
+  false); only `client_key_pem: "set"` keeps the stored key. So send back every `tls` field you want kept.
+  `mqtt.get` shows `ca_pem`, `pin_sha256`, `client_cert_pem` and the file paths in full (none of them is a secret);
+  only `client_key_pem` is shown as `set` or `not set`.
 - Limits: `broker` 253 bytes of `A-Z a-z 0-9 . - _ :`; `client_id` 1 to 64 of `A-Z a-z 0-9 . - _`; `username` and
   `password` 1 to 256 bytes, no control characters; `base_topic` a topic name of at most 128 bytes, no wildcard, no
   empty level, not starting with `$`.
@@ -775,9 +778,15 @@ serial), each with a device block (`identifiers: ["dspi_<serial>"]`, the device'
   retained `set` (a write is never replayed), a topic that is not `<base>/<serial>/<entity>/set` of a settable entity
   of a device with entities, is dropped. At most 64 messages wait for the hub (the oldest go); a newer set of the
   same entity of a device replaces one still waiting.
-- **Removal.** When the hub forgets a device (its grace after going offline ended), its configs, states and
-  availability are cleared with empty retained payloads, and Home Assistant removes it; it is discovered again when
-  it comes back. Within the grace it is only unavailable. `inventory.forget` itself sends nothing over MQTT.
+- **Removal.** A device that is not attached is unavailable (`<base>/<serial>/availability` `offline`), also past
+  the hub's 60 s grace; its entities stay. Only when an Admin forgets it (`inventory.forget`, section 3) are its
+  configs, states and availability cleared with empty retained payloads, so Home Assistant removes it; it is
+  discovered again if it comes back.
+- **After a restart.** When Home Assistant starts and on every connection the hub lists the devices it knows from
+  the inventory (`inventory.list` as the key's principal; a hub without the inventory uses its device list) and
+  publishes each one, `offline` when it is not attached now. So a device unplugged while the hub was down is shown
+  unavailable, not with the `online` the broker kept from before. A device the hub never knew (another hub's store)
+  is left as the broker has it.
 - On every connection the hub publishes every entity again. A clean stop or a lost hub leaves the entities
   retained and unavailable (`<base>/status` is `offline`).
 

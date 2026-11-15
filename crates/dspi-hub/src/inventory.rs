@@ -1221,6 +1221,11 @@ impl InventoryService {
             hub.inner.relay.broadcast_event(e);
         }
         log::info!("hub: inventory forgot {serial} ({})", forgot.join(", "));
+        // -- WP P2DFIXA -- for Home Assistant (P2HA), which keeps a device's entities
+        // until it is forgotten here.
+        self.bus.publish(BusMessage::DeviceForgotten {
+            serial: serial.clone(),
+        });
         Ok(json!({"serial": serial, "forgot": forgot}))
     }
 }
