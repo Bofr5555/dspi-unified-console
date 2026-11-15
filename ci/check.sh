@@ -73,9 +73,10 @@
 #                                     own tests). python3 stdlib on the host
 #       ios-check                     dspi-ffi without `usb`: nusb is out of the iOS
 #                                     graph, clippy and tests pass with the feature
-#                                     off, and `cargo check` for aarch64-apple-ios
-#                                     (no link: no Apple SDK here; linking is SW1
-#                                     in macvm). Fails if the image has no iOS std
+#                                     off. Fails if the image has no iOS std.
+#                                     -- WP SECCORE -- no `cargo check` for
+#                                     aarch64-apple-ios here: ring needs the Apple
+#                                     SDK; ci/macvm.sh ios compiles it
 #       conformance-ts                upstream's TypeScript Link client against the
 #                                     hub (crates/dspi-hub/tests/conformance/
 #                                     run-clients.sh ts): the build container and
@@ -325,7 +326,9 @@ for s in "${steps[@]}"; do
           echo "ios-check: NOT RUN: this image has no rust-std for aarch64-apple-ios (rustup target add in ci/container/Containerfile)" >&2
           exit 3
         fi
-        cargo check $ios --lib' ;;
+        # -- WP SECCORE -- the graph above is the iOS one; its compile is not: ring
+        # (rustls, the Link TLS) needs the Apple SDK for its C
+        echo "ios-check: cargo check for aarch64-apple-ios skipped: ring needs the Apple SDK; compiled by ci/macvm.sh ios"' ;;
     *) echo "unknown step $s" >&2; exit 2 ;;
   esac
   ok "$s"
