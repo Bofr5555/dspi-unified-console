@@ -1281,7 +1281,9 @@ mod service_impl {
                 .map(|(_, s)| s.clone())
                 .unwrap_or_default();
             let after = engine.checked().map_or(now_s, |c| c.0.max(now_s));
-            let next = if engine.clock_unset() {
+            // -- WP P2CFIXC -- the wall clock now, not only the timer's last look: the
+            // clock can go unset up to a `TICK` before the timer sees it.
+            let next = if engine.clock_unset() || now_s < self.floor_s {
                 None
             } else {
                 engine.next_run(&rule.id, tz, after)
