@@ -475,6 +475,8 @@ WB6g: input trims **have** (`screens/inputs/`): on the Inputs screen, an input's
 | M31 | AutoEQ favourites | have | have | have | **have (SW18)**: Tools > AutoEQ > Favorite Profiles; the browser's heart always shown on iOS |
 | M32 | AutoEQ update, rebuild from GitHub, import, Reset to Built-in | have (`AutoEqController`) | CG6, TM12 | CG6, AN18 | Mac: Swift; iOS: **CG6 (SW18)**, Rebuild from GitHub, Import File, Reset to Built-in |
 
+<!-- -- WP WB6K -- --> Web (WB6k, `screens/files/`): **M28 have**: Files > Filters, Export Filters (a download, `DSPi Filters.txt`) and Import Filters… with the core's channel picker (`filtersInspect`), applied by `filtersImport` as one undo step. **M29 have** (P1WB1), and the document's input pair links now travel both ways (exported from the Inputs page's links, restored by an import with Routing). **M30 have**: Files > Save to the device (the output configuration's save with its token). **M31 have**: the EQ's AutoEQ panel searches the database (`autoeqSearch`), a heart per profile, the favourites shown with no search; Files > AutoEQ database lists them with Clear Favorites. **M32 partial**: Update Database… with Download (the page's own GET of an address; the core reads the answer: status, rate limit, content), Import File… and Reset to Built-in (the built-in database is `autoeq_database.json` beside the console; the user's is in the page's storage); **Rebuild from GitHub is not on the web** (its requests are the core's own, made during a call: it needs a suspending fetch import, a follow-up).
+
 **Device settings**
 
 | # | Feature | Qt | Terminal | Android | iOS |

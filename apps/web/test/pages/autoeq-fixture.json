@@ -1,0 +1,73 @@
+{
+ "version": 1,
+ "generatedAt": "2026-11-01T12:00:00.000Z",
+ "entryCount": 3,
+ "entries": [
+  {
+   "id": "oratory1990/Sennheiser HD 600",
+   "manufacturer": "Sennheiser",
+   "model": "HD 600",
+   "source": "oratory1990",
+   "formFactor": "over-ear",
+   "preamp": -6.4,
+   "filters": [
+    {
+     "type": "LSC",
+     "freq": 105,
+     "q": 0.7,
+     "gain": 6.5
+    },
+    {
+     "type": "PK",
+     "freq": 3200,
+     "q": 2.1,
+     "gain": -3.1
+    },
+    {
+     "type": "PK",
+     "freq": 5800,
+     "q": 4.0,
+     "gain": 2.4
+    },
+    {
+     "type": "HSC",
+     "freq": 10000,
+     "q": 0.7,
+     "gain": -1.5
+    }
+   ]
+  },
+  {
+   "id": "crinacle/Sennheiser HD 650",
+   "manufacturer": "Sennheiser",
+   "model": "HD 650",
+   "source": "crinacle",
+   "formFactor": "over-ear",
+   "preamp": -5.0,
+   "filters": [
+    {
+     "type": "PK",
+     "freq": 120,
+     "q": 0.8,
+     "gain": 4.0
+    }
+   ]
+  },
+  {
+   "id": "rtings/Sony WH-1000XM4",
+   "manufacturer": "Sony",
+   "model": "WH-1000XM4",
+   "source": "rtings",
+   "formFactor": "over-ear",
+   "preamp": -3.0,
+   "filters": [
+    {
+     "type": "PK",
+     "freq": 60,
+     "q": 0.9,
+     "gain": -2.0
+    }
+   ]
+  }
+ ]
+}

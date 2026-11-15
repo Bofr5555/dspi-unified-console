@@ -75,6 +75,8 @@ if (args.has("--unit")) {
   // -- job ICON1 -- the standalone page's icons (assets/icon/render.sh makes them)
   cpSync(join(root, "icons"), out, { recursive: true });
   writeFileSync(join(out, "THIRD-PARTY-NOTICES.txt"), notices());
+  // -- WP WB6K -- the built-in AutoEQ database, beside the console's script (fetched when AutoEQ is opened)
+  cpSync(join(root, "../../crates/dspi-session/autoeq/autoeq_database.json"), join(out, "autoeq_database.json"));
   // -- WP CLEAN1 fixup cl1 -- where this build's source is, for whoever serves it
   writeFileSync(join(out, "SOURCE.txt"), sourceNotice());
   if (!sourceUrl) {
@@ -109,6 +111,8 @@ if (args.has("--unit")) {
     const testWasm = process.env.DSPI_WASM_DIR ? join(process.env.DSPI_WASM_DIR, "dspi_wasm_test.wasm") : "";
     if (testWasm && existsSync(testWasm)) cpSync(testWasm, join(out, "test/dspi_wasm_test.wasm"));
     if (wasm && existsSync(wasm)) cpSync(wasm, join(out, "test/dspi_wasm.wasm"));
+    // -- WP WB6K -- the test pages' bundles look for the built-in AutoEQ database beside them
+    cpSync(join(out, "autoeq_database.json"), join(out, "test/autoeq_database.json"));
   }
   console.log("built dist/");
 }
