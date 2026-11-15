@@ -83,11 +83,6 @@ export function SettingsScreen(props: ScreenProps) {
           </button>
         ))}
       </nav>
-      {st.error && current !== "vreg" ? (
-        <p class="error" role="alert">
-          {st.error}
-        </p>
-      ) : null}
       {current === "global" ? <GlobalPage session={session} /> : null}
       {current === "pins" ? <PinsPage session={session} /> : null}
       {current === "graphing" ? <GraphingPage /> : null}
@@ -255,7 +250,7 @@ function PinsPage(props: { session: Session }) {
   return (
     <Card
       label="Pins"
-      note="Changing a pin restarts the audio that uses it. The device refuses a pin it cannot use for the job or that something else holds, and the reason shows above."
+      note="Changing a pin restarts the audio that uses it. The device refuses a pin it cannot use for the job or that something else holds, and says so above."
     >
       <table class="settings-pins">
         <thead>
