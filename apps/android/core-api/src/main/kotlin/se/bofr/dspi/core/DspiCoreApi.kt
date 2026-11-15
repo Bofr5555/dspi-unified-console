@@ -1959,6 +1959,213 @@ interface DspiCoreApi : AutoCloseable {
     fun hubAdminEvents(): List<HubAdminEvent>
 
     /**
+     * Which of the hub's families this console's hub has, from its `hello`.
+     * All false with no live DSPi Link session. No I/O.
+     */
+    fun hubCaps(): HubCaps
+
+    /**
+     * Every DSPi the hub has seen, online or not: online first, then by
+     * last seen, newest first (`inventory.list`, read page by page, at most
+     * 1024). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `inventory` cap (nothing
+     * sent); [`DspiError::Disconnected`]; the hub's refusal (module docs).
+     */
+    @Throws(DspiException::class)
+    fun hubInventory(): List<HubDevice>
+
+    /**
+     * Identify the open device: blink its LED for `seconds` (0 stops it;
+     * at most 120) and, with `tone_output`, play its quiet identify tone
+     * once on that output (leave it empty unless the user asked for sound).
+     * On a hub with the `identify` cap this is the hub's `device.identify`
+     * (Control or Admin; the hub sends it, at most once per device per 2 s);
+     * connected directly it is the device's own `EXT_IDENTIFY`
+     * ([`DspiCore::identify`]). The answer is the device's state read after
+     * the write; `None` when that read failed (the write went out). Slow:
+     * off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] (nothing sent) on a hub without the
+     * cap and on firmware without `EXT_IDENTIFY`;
+     * [`DspiError::InvalidArgument`] for a tone output the device does not
+     * have; [`DspiError::Locked`] for a tone under another session's lock;
+     * [`DspiError::Link`] `rate_limited`, `offline`, `not_found`, `device`;
+     * [`DspiError::ReadOnly`] in read-only mode; as
+     * [`DspiCore::identify`] directly.
+     */
+    @Throws(DspiException::class)
+    fun hubIdentify(seconds: Int, toneOutput: Int?): IdentifyInfo?
+
+    /**
+     * One health record per online device of the hub (`health.get`):
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `health` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    @Throws(DspiException::class)
+    fun hubHealth(): List<HubHealth>
+
+    /**
+     * The hub's statistics (`hub.stats`): sessions, uptime, and per attached
+     * device its commands, errors, mean time and dropped notifications.
+     * Admin of the hub only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_stats` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun hubStats(): HubStats
+
+    /**
+     * Device `serial`'s history on the hub ("" the open device), with ids
+     * above `after_id`, oldest first, at most `limit` (capped at 500; 0
+     * is the hub's 100): with `after_id` 0 the newest page
+     * (`event.list`). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `events` cap;
+     * [`DspiError::Link`] `not_found` for a device with no log on the hub;
+     * [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun hubEventsRead(serial: String, afterId: Long, limit: Long): HubEventPage
+
+    /**
+     * Have the hub send each new record of device `serial`'s history ("":
+     * every device) as `event.added` (`on`), or stop (`event.watch`). The
+     * records reach [`HubServerListener`] and [`DspiCore::hub_server_events`].
+     * A watch ends with the hub session: ask again after a reconnect. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_events_read`].
+     */
+    @Throws(DspiException::class)
+    fun hubEventsWatch(on: Boolean, serial: String)
+
+    /**
+     * Register (`Some`) or clear (`None`) the listener for the hub's
+     * `event.added`, `inventory.changed` and `snapshot.changed`.
+     */
+    fun setHubServerListener(listener: HubServerListener?)
+
+    /**
+     * The hub's events of these families since the last call, oldest first
+     * (at most 64 are kept), for a binding that polls instead of a listener
+     * (the web). No I/O.
+     */
+    fun hubServerEvents(): List<HubServerEvent>
+
+    /**
+     * Device `serial`'s snapshots on the hub ("" the open device), oldest
+     * first (`snapshot.list`). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_snapshots` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    @Throws(DspiException::class)
+    fun hubSnapshotsList(serial: String): List<SnapshotInfo>
+
+    /**
+     * Snapshot `id` on the hub with its document (`snapshot.get`). Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `conflict` for a document
+     * over 61 440 bytes compact (the hub's words); as
+     * [`DspiCore::hub_snapshots_list`].
+     */
+    @Throws(DspiException::class)
+    fun hubSnapshotsGet(id: String): HubSnapshotDocument
+
+    /**
+     * File snapshot `document` (its text: a snapshot document of device
+     * `serial`, "" for the serial its `snapshot` block names) on the hub
+     * (`snapshot.put`), under the id the document carries. The same document
+     * again is `created: false`. Control or Admin of the hub. Slow: off the
+     * UI thread.
+     *
+     * A document over 61 440 bytes in its compact JSON form is refused here,
+     * with nothing sent: [`DspiError::Link`] `conflict`, "a snapshot document
+     * is at most 61440 bytes on the DSPi Link (compact JSON); this one is N",
+     * as the hub would answer.
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for text that is not a
+     * JSON object, or the hub's `bad_request` (not a snapshot of that
+     * device); [`DspiError::Link`] `conflict` (the hub holds a different
+     * snapshot with this id, or a cap is reached); [`DspiError::Denied`]
+     * for a Viewer; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_snapshots_list`].
+     */
+    @Throws(DspiException::class)
+    fun hubSnapshotsPut(serial: String, document: String): HubSnapshotPut
+
+    /**
+     * Rename snapshot `id` on the hub (`snapshot.rename`; at most 256
+     * characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_snapshots_put`].
+     */
+    @Throws(DspiException::class)
+    fun hubSnapshotsRename(id: String, name: String): SnapshotInfo
+
+    /**
+     * Set snapshot `id`'s note on the hub (`snapshot.note`; at most 4096
+     * characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_snapshots_rename`].
+     */
+    @Throws(DspiException::class)
+    fun hubSnapshotsNote(id: String, note: String): SnapshotInfo
+
+    /**
+     * Delete snapshot `id` from the hub (`snapshot.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_snapshots_rename`].
+     */
+    @Throws(DspiException::class)
+    fun hubSnapshotsDelete(id: String)
+
+    /**
+     * Recall snapshot `id` from the hub's store on device `serial` ("" the
+     * open device), written by the hub as this console's session
+     * (`snapshot.recall`). With `guard` a guarded apply begins first
+     * (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
+     * Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::ImageRefused`] for Control on a device with a
+     * limits profile or a lock (nothing written); [`DspiError::Link`]
+     * `offline`, `not_found`, `conflict` (another session's guarded apply);
+     * as [`DspiCore::hub_snapshots_put`].
+     */
+    @Throws(DspiException::class)
+    fun hubSnapshotsRecall(serial: String, id: String, guard: Boolean, timeoutMs: Long): HubSnapshotRecall
+
+    /**
+     * "Save to the hub": file this console's snapshot `id` (its own store,
+     * [`DspiCore::snapshot_set_dir`]) on the hub, under the same id and the
+     * device it was taken from. Errors: as [`DspiCore::hub_snapshots_put`],
+     * and as [`DspiCore::snapshot_export`] for the local read.
+     */
+    @Throws(DspiException::class)
+    fun hubSnapshotsSave(id: String): HubSnapshotPut
+
+    /**
+     * "Copy here": file the hub's snapshot `id` in this console's own store.
+     * Kept as the hub has it, under its capture-time id unless this store
+     * already holds that id with other content (then the copy gets the
+     * next free one: nothing is overwritten); the same snapshot already here
+     * is answered as it is. Errors: as [`DspiCore::hub_snapshots_get`], and
+     * [`DspiError::Io`] with no folder named for snapshots.
+     */
+    @Throws(DspiException::class)
+    fun hubSnapshotsCopyHere(id: String): SnapshotInfo
+
+    /**
      * The user's name for input source `source` (`REQ_GET_INPUT_SOURCE_NAME`,
      * registry `in.name`); "" when unnamed.
      *
@@ -3759,6 +3966,20 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun snapshotImport(text: String, name: String, note: String): SnapshotInfo
+
+    /**
+     * The snapshots of device `serial` ("" the open device) on both sides:
+     * this console's store ([`DspiCore::snapshot_list`]) and, on a DSPi Link
+     * session to a hub that keeps snapshots, the hub's
+     * ([`DspiCore::hub_snapshots_list`]). Each row says where it is (`local`,
+     * `hub` or `both`). **The hub's wins:** an id both sides hold with
+     * different content (any field of the entry differs) is listed as the
+     * hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. Never fails: a hub that cannot be read leaves the local
+     * rows, with `hub_notice_key` saying why. A round trip on a hub: off the
+     * UI thread.
+     */
+    fun snapshotListMerged(serial: String): SnapshotMergedList
 
     /**
      * The generator's capabilities: the `REQ_SIGGEN_GET_CAPS` header and

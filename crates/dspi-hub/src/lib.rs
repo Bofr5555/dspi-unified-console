@@ -28,6 +28,7 @@
 //! | [`history`] | the shared event history and the watchdog events | P2EV |
 //! | [`api`] | the parameter API, the action executor, hub-side recall (feature `api`) | P2PA |
 //! | [`outbound`] | notifications out: webhooks and push | P2WH |
+//! | [`rest`] | the REST mirror under `/api/v1/` and API keys (`auth.mint`) | P2RS |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -88,6 +89,12 @@ pub mod identify;
 pub mod history;
 // -- WP P2PA -- the snapshot family always; the parameter API with feature `api`
 pub mod api;
+// -- WP P2RS --
+pub mod rest;
+// -- WP P2AL -- device alarms
+pub mod device_alarms;
+// -- WP P2SC -- schedules (they run with feature `api`)
+pub mod schedule;
 
 pub use auth::AccessMode;
 pub use error::HubError;
@@ -103,6 +110,8 @@ pub use snapshot::SnapshotRefused;
 pub use usb::{BusDevice, DeviceBus};
 // -- WP HB6 --
 pub use auth::{PairedClient, SavedHub};
+// -- WP P2RS --
+pub use auth::{ClientKind, MintedKey};
 pub use dspi_link::DEFAULT_PORT;
 pub use server::NetworkControl;
 #[cfg(all(feature = "usb", not(target_os = "android")))]
@@ -119,3 +128,5 @@ pub use service::{DeviceEvent, HubService, ServiceConfig, SessionLabel};
 pub use health::HealthConfig;
 // -- WP P2EV --
 pub use history::HistoryConfig;
+// -- WP P2SC --
+pub use schedule::ScheduleConfig;

@@ -36,9 +36,9 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | draft |
 | 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | draft |
 | 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | draft |
-| 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | draft |
-| 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | draft |
-| 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | draft |
+| 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | built (P2SC) |
+| 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | built (P2MQ: 13.1); draft (P2HA: 13.2) |
+| 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | built (P2RS) |
 | 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | built |
 | 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM | draft |
 | 17 | [Deviations from the DSPi Link spec](#17-deviations-from-the-dspi-link-spec) | | | P2DOC | built (this page) |
@@ -365,20 +365,22 @@ that caused it, next to `session`) and the kinds **`unresponsive`**, **`alarm`**
 
 ## 7. Alarms
 
-*State: draft (P2AL).*
+*State: built (P2AL, `crates/dspi-hub/src/device_alarms.rs`).*
 
-Device alarms beside the audio link's, on the same alarm book. Rules in `alarms.json` (admin).
+Device alarms beside the audio link's, on an alarm book of their own. Rules in `alarms.json` (admin). The service is
+on with `ServiceConfig::alarms`.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `alarm.list` | viewer | `serial?`, `state?` (`active`: raised and acknowledged; `cleared`; `all`, the default) | `alarms`: device and audio link alarms together |
-| `alarm.ack` | control | `alarm` (its `id`) | `alarm` |
+| `alarm.list` | viewer | `serial?`, `state?` (`active`: raised and acknowledged; `cleared`; `all`, the default) | `alarms`: device and audio link alarms together, those on first (newest first), then the cleared (last cleared first), at most 500. With `serial`, the alarms about that device only |
+| `alarm.ack` | control | `alarm` (its `id`) | `alarm` (as it is now); `not_found` for an alarm that is not on |
 | `alarm.rules.get` | viewer | | `rules` |
-| `alarm.rules.set` | admin | `rules` (whole or in part; a code left out keeps its rule) | `rules` |
+| `alarm.rules.set` | admin | `rules` (whole or in part; a code left out keeps its rule, a field left out keeps its value) | `rules`; `bad_request` naming the field for a wrong type or range, and nothing changes |
 
 `system.alarms` and `system.alarm.ack` ([audio-link.md](audio-link.md)) keep working for the audio link's alarms. Event to
-every session: `alarm.changed {v, hub, alarm}` when one is raised, acknowledged or cleared, `alarm` the whole object
-below (the same object goes to notification targets, section 8, and MQTT, section 13).
+every session: `alarm.changed {v, hub, alarm}` when one is raised, raised again (`count`), acknowledged or cleared,
+`alarm` the whole object below (the same object goes to notification targets, section 8, and MQTT, section 13). The
+audio link's alarms are announced the same way, read from its book once a second (`system.alarm` still goes out too).
 
 An alarm in this family:
 
@@ -387,32 +389,37 @@ An alarm in this family:
 | `id` | a string, `"device:<n>"` or `"alink:<n>"`, unique for the hub's run |
 | `source` | `device` or `alink` |
 | `code` | below, or an audio link code |
-| `subject`, `serial` | what it is about; `serial` where it is one device |
+| `subject`, `serial` | what it is about: the serial for a device's alarm (`serial` the same), the rule's id for `schedule_failed`, `hub` for `clock_unset` (no `serial` for those two, nor for the audio link's) |
 | `severity` | `warning` or `critical` |
 | `message` | one line for a person |
 | `state` | `raised`, `acknowledged`, `cleared` |
-| `raised_at`, `cleared_at`, `acknowledged_by` | times, and who acknowledged it |
+| `raised_at`, `cleared_at`, `acknowledged_by` | times, and who acknowledged it (the session's client or principal name) |
 | `count` | how often it was raised again while on |
 
-| Code | Raised | Cleared | Default rule |
-|---|---|---|---|
-| `device_offline` | a device in the inventory gone for N s | back | on, 30 s |
-| `unresponsive` | attached, commands timing out for N s | answering | on, 10 s |
-| `device_restarted` | a watchdog, glitch or brown-out reset | acknowledged | on |
-| `clip` | clip events per minute over a threshold; on firmware without clip events, once on the latch ("clipped since cleared") | a minute under the threshold; for the latch, cleared by a person | on, 10 a minute |
-| `temperature` | over a threshold | 5 °C under it | on, 70 °C |
-| `cpu` | over a threshold for N s | under it | on, 90 % for 10 s |
-| `schedule_failed` | a schedule's action failed | acknowledged | on |
-| `clock_unset` | the hub's clock reads before its build date; schedules wait | the clock is set | on |
+| Code | Severity | Raised | Cleared | Default rule |
+|---|---|---|---|---|
+| `device_offline` | critical | a device seen in this run detached for `after_s` | attached again | on, `after_s` 30 |
+| `unresponsive` | critical | attached, silent for `after_s` (the health poll's report, section 5, comes after 10 s) | its next reading, or detached | on, `after_s` 10 |
+| `device_restarted` | warning | the device's facts show a watchdog, glitch or brown-out reset that happened during this hub run or in the last 10 minutes (one restart seen again on a re-attach is one alarm; a new one counts again) | acknowledged | on |
+| `clip` | warning | firmware with clip events: `per_minute` events within 60 s (a storm); firmware without them: once, when the sticky latch is set ("clipped since cleared") | a storm: a minute under the threshold; the latch: when someone clears it (the hub never does, section 1.7) | on, `per_minute` 10 |
+| `temperature` | critical | at or above `above_c` | 5 °C under it, or detached | on, `above_c` 70 |
+| `cpu` | warning | at or above `above_pct` for `for_s` | a reading under it, or detached | on, `above_pct` 90, `for_s` 10 |
+| `schedule_failed` | warning | a schedule's run with a failed action (`subject` the rule's id) | acknowledged | on |
+| `clock_unset` | warning | the hub's clock reads before its build date (2026-11-15 in this build); schedules wait | the clock is set | on |
 
 Rules: `{"<code>": {"on": bool, ...thresholds}, "clip": {"on": true, "per_minute": 10, "mute_on_storm": false}, ...}`
-with the fields the table names (`after_s`, `above_c`, `above_pct`, `for_s`, `per_minute`). **Mute on clip storm** is
-off by default; when on, a `clip` alarm mutes the device once per storm, as one of the hub's own writes (section 1.7):
-the mute passes the lock, the hub never unmutes, and the history records it with the rule's name in `by`.
+with the fields the table names: `after_s` (1 to 86400), `per_minute` (1 to 1000), `above_c` (0 to 150),
+`above_pct` (1 to 100), `for_s` (1 to 3600), `mute_on_storm` (bool). A code or field this hub does not know is ignored
+(section 1.1). A rule turned off clears its alarms. **Mute on clip storm** is off by default; when on, a `clip` storm
+mutes the device once per storm (the user mute, `vol.mute`), as one of the hub's own writes (section 1.7): the mute
+passes the lock, the hub never unmutes, the alarm's message says the hub muted it, and the history records the write
+with `by` `"Alarm rule: mute on clip storm"` (`source` `mute_on_storm`). Every alarm change is also a history record
+(section 6) on the device it is about.
 
 ## 8. Notifications out
 
-*State: built (P2WH, `crates/dspi-hub/src/outbound/`; MQTT publishing is section 13).*
+*State: built (P2WH, `crates/dspi-hub/src/outbound/`; HTTPS by SECOUT, `outbound/tls.rs`; MQTT publishing is
+section 13).*
 
 Opt-in targets in `outbound.json` (admin); none by default, and with none the hub runs no delivery thread. Deliveries
 go from a queue of their own (64 per target, the oldest dropped and counted past that), never from a device's worker;
@@ -423,15 +430,15 @@ across a restart; the targets are.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `outbound.get` | admin | | `targets` (secrets as `set` or `not set`), each with `queued`, `dropped`, `last` (`{at, ok, status?, msg?}`, or `null` before the first try) |
+| `outbound.get` | admin | | `targets` (secrets as `set` or `not set`), each with `queued`, `dropped`, `last` (`{at, ok, status?, msg?}`, or `null` before the first try), `encrypted`, `trust` (https only: `webpki`, `ca` or `pin`) and `notice?` |
 | `outbound.set` | admin | `targets` (the whole list, at most 16) | `targets`, and `secrets` `{<target id>: "<secret>"}` for the new ones: shown in this answer only |
 | `outbound.test` | admin | `target` (its `id`) | `delivered` (bool), `status?`, `msg?` (one delivery of kind `test`, now; recorded as its `last`) |
 
 A target: `id` (1 to 32 of `A-Z a-z 0-9 _ -`; left out, the hub gives `t1`, `t2`, ...), `name` (at most 64
 characters; the id when left out), `kind` (`webhook`: a JSON POST; `push`: an ntfy-style `text/plain` POST of
-`text`), `url` (`http://` only, at most 2048 bytes, no credentials in it; `https://` refused with the reason, section 2
-and OD-P2f), `enabled` (default `true`; a disabled target's queue is emptied), `kinds` (any of `alarm.raised`,
-`alarm.cleared`, `restart`, `schedule.ran`, `schedule.failed`; every kind when left out), and `secret`:
+`text`), `url` (`https://`, or `http://` with `plaintext`; at most 2048 bytes, no credentials in it), `enabled`
+(default `true`; a disabled target's queue is emptied), `kinds` (any of `alarm.raised`, `alarm.cleared`, `restart`,
+`schedule.ran`, `schedule.failed`; every kind when left out), the transport fields below, and `secret`:
 
 | `secret` in `outbound.set` | Means |
 |---|---|
@@ -441,7 +448,35 @@ and OD-P2f), `enabled` (default `true`; a disabled target's queue is emptied), `
 | anything else | `bad_request`: secrets are made by the hub, never typed |
 
 A refusal is `bad_request` with `msg` naming the field and `target` the entry's index; nothing is kept then. A target
-whose `id` stays keeps its queue, counts and backoff.
+whose `id` stays keeps its queue, counts and backoff, except that a changed `kind` drops what is queued (counted in
+`dropped`: a body made for one kind is never sent as the other), and a changed `url`, `plaintext`, `ca_pem` or
+`pin_sha256` starts the backoff again, so a corrected URL is tried at once.
+
+**Transport** (SECOUT, PLAN-SEC 4.8, OD-SECe/f). `https://` is the norm: TLS 1.2 or 1.3, SNI from the host (an IP
+literal is checked against the certificate's IP addresses), ALPN `http/1.1`, no redirects. What it trusts:
+
+| Field | Trust |
+|---|---|
+| neither | the public CAs (`webpki-roots`, the same on every hub platform), and the host name |
+| `ca_pem` | the CA or self-signed certificate(s) pasted here instead (PEM, at most 16, 32 KiB), and the host name. A receiver whose certificate is exactly one of them (a self-signed one, also when OpenSSL 3's `req -x509` marked it `CA:TRUE`) is accepted with its host name checked, not its dates; any other certificate must chain to them, dates checked. A CA certificate presented as the receiver's own that is not given here is refused with a reason saying so |
+| `pin_sha256` | the receiver's key: `sha256//<base64>` of its SubjectPublicKeyInfo, as curl's `--pinnedpubkey` (64 hex characters are taken too and stored in that form); no CA or host name check. Get it with `openssl x509 -in cert.pem -pubkey -noout \| openssl pkey -pubin -outform der \| openssl dgst -sha256 -binary \| base64` |
+
+`ca_pem` and `pin_sha256` are each a trust of their own: give one. Dates are checked with the CAs, not with a pin.
+
+`http://` needs `"plaintext": true` and goes only to a private (RFC 1918, IPv6 `fc00::/7`), loopback or link-local
+address. That is checked on the resolved address of every send, so a DNS change cannot send a body across the internet
+in clear: other addresses are left out, and with none left the try fails with `msg` saying why (nothing was sent). An
+`http://` IP literal outside those ranges is refused by `outbound.set` at once. Such a target is `"encrypted": false`
+in `outbound.get`. A receiver on a public address (an IPv6 global address on the LAN too) needs `https://`.
+`100.64.0.0/10` (carrier-grade NAT, which Tailscale uses) is not private here, so a plaintext webhook to a Tailscale
+address is refused: use `https://` (a `tailscale cert` certificate) or `pin_sha256`.
+
+The HMAC signature below is sent over both: it authenticates the hub to the receiver, whatever the transport.
+
+**Targets from before TLS.** An `http://` target written by an earlier hub (no `plaintext` field) loads as
+`"plaintext": true`, the file is written back with the flag, a warning goes to the log, and `outbound.get` shows a
+`notice` on it until the next `outbound.set`. One on a public address is kept but each try is refused, as above:
+change it to `https://`.
 
 Which bus events are sent: an alarm raised (`alarm.raised`; a `device_restarted` one is `restart` first) or cleared
 (`alarm.cleared`; an acknowledgement is not sent), and a schedule's run (`schedule.ran`; one with a failed action is
@@ -453,8 +488,9 @@ event carries `"schedule": {"rule", "name", "by"?, "results", "results_total"}` 
 `alarm`. `text` is at most 1024 characters. Headers `X-DSPi-Timestamp: <unix seconds>` (the time of that try) and, for
 a target with a secret, `X-DSPi-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`, keyed with the
 secret's text as shown (its 64 characters as bytes). A push target gets the same headers. A receiver checks the
-signature and that the timestamp is recent. The hub reads only the status line of the reply (at most 8 KiB; no line
-end within them is a failure); a 2xx is delivered. Timeouts: 5 s to connect, 10 s in all.
+signature and that the timestamp is recent. The hub reads only the status line of the reply (at most 8 KiB of the
+decrypted stream; no line end within them is a failure); a 2xx is delivered. Timeouts: 5 s to connect, 10 s in all,
+the name lookup and the TLS handshake included.
 
 ## 9. Parameters
 
@@ -583,17 +619,19 @@ or as the JSON object. The demo device's snapshot runs to about 80 KB pretty-pri
 
 ## 12. Schedules
 
-*State: draft (P2SC).*
+*State: built (P2SC). `crates/dspi-hub/src/schedule.rs` (on with `ServiceConfig::schedule`; the runs need the
+parameter API's executor, feature `api`), tests `crates/dspi-hub/src/schedule/tests_wp_p2sc.rs` (the clock rules)
+and `crates/dspi-hub/tests/wp_p2sc_schedule.rs` (through the server).*
 
 Rules in `schedule.json` (admin). A rule runs as the principal `Schedule: <name>` with the admin role, so the limits judge
 its writes (an image held after the fact, as for any admin).
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `schedule.list` | viewer | | `rules`, each with `next_run` and `last` (`{at, ok}`) |
-| `schedule.set` | admin | `rule` (a new one without `id`) | `rule` |
-| `schedule.delete` | admin | `rule` (its `id`) | `rule` |
-| `schedule.run_now` | admin | `rule` (its `id`) | `rule`, `name`, `at`, `by`, `results` (the run's, as `schedule.ran`) |
+| `schedule.list` | viewer | | `rules`, each with `next_run` (UTC, `null` when none within a week or while the clock is unset) and `last` (`{at, ok}`, with `skipped: true` for a time that was skipped; `null` before the first); `zone` (the time zone the rules are read in), `local_time` (the hub's local time now, `YYYY-MM-DDTHH:MM`), `clock_unset` |
+| `schedule.set` | admin | `rule` (a new one without `id`; with `id`, that rule replaced whole) | `rule`, as listed |
+| `schedule.delete` | admin | `rule` (its `id`) | `rule` (the id) |
+| `schedule.run_now` | admin | `rule` (its `id`) | `rule`, `name`, `at`, `by`, `results` (the run's, as `schedule.ran`); `conflict` while the clock is unset |
 
 A rule:
 
@@ -605,44 +643,99 @@ A rule:
  "targets": ["E46058388B1A2E2C", "E6614103E7A1B2C3"]}
 ```
 
-- `when` is `{days, time}` (local `HH:MM` on the given days) or `{once: "2026-12-24T17:00"}` (a local date and time).
-- `actions` (at most 16), each a message of this page with its device field left out: `preset.load {slot or name}`,
-  `snapshot.recall {snapshot or name}`, `system.scene.apply {scene}` (no target needed), `param.set` for `vol.master`,
-  `vol.user`, `vol.mute` and `out.mute` only.
-- `targets`: serials; `group:<id>` is reserved (phase 3, `unsupported` until then).
+- `id` is the hub's (`r1`, `r2`, ...; never reused). `name`: 1 to 48 characters. `enabled` (default `true`): a rule
+  that is off keeps its place and never runs on its schedule; `run_now` still runs it.
+- `when` is `{days, time}` (local `HH:MM` on the given days, `"mon"` to `"sun"`) or `{once: "2026-12-24T17:00"}` (a
+  local date and time). A rule whose `when` is changed may run today at its new time.
+- `actions` (1 to 16), each a message of this page with its device field left out: `preset.load {slot or name}`,
+  `snapshot.recall {snapshot or name}` (no guard), `system.scene.apply {scene}` (no target needed), `param.set {path,
+  idx?, value}` for `vol.master`, `vol.user`, `vol.mute` and `out.mute` only. Other fields are dropped. A value outside
+  the registry's range is reported by the run (`bad_request`), as the message itself answers it.
+- `targets`: at most 16 serials, each once (16 actions on 16 devices answer 256 rows, one frame); `group:<id>` is
+  reserved (phase 3, `unsupported` until then). A rule with any device action needs a target.
+- More than 256 rules is `conflict`; a malformed rule `bad_request`; an unknown `id` `not_found`.
 
-**The clock** (OD-P2h): local time in the hub machine's time zone. After downtime a rule missed by up to 5 minutes runs;
-older ones do not. A forward jump of the clock skips what it passed (and records it); a backward jump never runs a rule
-twice in a day. A local time that does not exist (spring forward) runs at the next valid minute; one that happens twice
-(fall back) runs once. While the clock reads before the build date nothing runs and `clock_unset` is raised.
+**The clock** (OD-P2h): local time in the hub machine's time zone (its zone database: `TZ`, `/etc/localtime`). At start,
+and when the clock first reads a believable time, a rule missed by up to 5 minutes runs; older ones do not. A forward jump
+of the clock (more wall time than the hub's own steady time passed) skips what it passed and records it (`last.skipped`,
+and a `schedule` line "skipped" in each target's history); a backward jump never runs a rule twice in a day (a rule runs at
+most once per local date). A local time that does not exist (spring forward) runs at the first minute after the gap (02:30
+on a 02:00-to-03:00 day runs at 03:00); one that happens twice (fall back) runs once, at the first. While the clock reads
+before the build date nothing runs (`run_now` answers `conflict`) and `schedule.list` says `clock_unset: true`; the
+`clock_unset` alarm itself is the alarms family's (section 7, P2AL), raised and cleared there against the same build date. The hub looks at the clock at least every 30 s, so a jump is seen within that.
 
 Each run answers per action and target: `results: [{serial, action, ok, code?, msg?}]`, where `action` is a string
-naming the action by its position in `actions` and its `t` (`"0:preset.load"`). An offline target fails at
-once and is not tried later; a target with a pending guarded apply is `conflict`. Event to every session:
-`schedule.ran {v, hub, rule, name, at, by?, results}` (`rule` the rule's id, since events carry no `id`; `by` the admin
-for `run_now`). Each run is recorded in the history;
-a failure raises `schedule_failed`.
+naming the action by its position in `actions` and its `t` (`"0:preset.load"`), in the rule's order (each action on
+every target, then the next action). An offline target fails at once (`offline`; a serial the hub has never seen is
+`not_found`) and is not tried later; a target with a pending guarded apply is `conflict`; a limit's refusal is
+`limit_exceeded`, nothing sent. A scene's row is one per unit it wrote (`ok` when every write of it went through), or one
+row with `serial` `""` when the scene was refused as a whole (`not_found`: no such scene). `msg` is at most 80
+characters. Event to every session: `schedule.ran {v, hub, rule, name, at, by?, results}` (`rule` the rule's id, since
+events carry no `id`; `by` the admin for `run_now`, `null` on its schedule). Each run is recorded in the history (one
+`schedule` record per device, `by` the admin or `Schedule: <name>`); a failure raises `schedule_failed`.
 
 ## 13. MQTT and Home Assistant
 
-*State: draft (P2MQ: the broker and publishing; P2HA: Home Assistant).*
+*State: 13.1 built (P2MQ, `crates/dspi-hub/src/mqtt/service.rs`; TLS: SECOUT, wired by MQWIRE); 13.2 draft (P2HA).*
 
 ### 13.1 The broker (P2MQ)
 
-MQTT 3.1.1, off by default, settings in `mqtt.json`. Plain MQTT only (section 2).
+MQTT 3.1.1, off by default, settings in `mqtt.json` (0600), over TLS or plain TCP (the `tls` object below).
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
 | `mqtt.get` | admin | | `settings` (the password as `set` or `not set`) |
 | `mqtt.set` | admin | `settings` (in part; `password` a string sets it, `null` clears it) | `settings` |
-| `mqtt.status` | admin | | `state` (`off`, `connecting`, `connected`, `failed`), `msg?` (e.g. a refused password), `since`, `queued`, `dropped` |
+| `mqtt.status` | admin | | `state` (`off`, `connecting`, `connected`, `failed`), `msg?` (e.g. a refused password), `since`, `queued`, `dropped`, `encrypted` |
 
-Settings: `enabled`, `broker` (address), `port` (1883), `client_id`, `username`, `password`, `base_topic` (default
-`dspi/<hub id>`), `ha` (section 13.2).
+Settings: `enabled`, `broker` (address), `port` (8883 with TLS, 1883 without), `client_id`, `username`,
+`password`, `base_topic` (default `dspi/<hub id>`), `tls` (below), `ha` (section 13.2).
 
-Topics: `<base>/status` is `online` (retained) and the will `offline`; each alarm and history record the hub
-publishes goes to `<base>/<serial>/event` as JSON (an alarm as section 7's object with `"kind": "alarm"`, a record as
-`{"kind": "event", "record": {...}}`).
+`tls` (SECOUT, PLAN-SEC 4.8; `crates/dspi-hub/src/mqtt/client.rs`, `MqttTls`):
+
+| Field | Means |
+|---|---|
+| `mode` | `on`: TLS 1.2 or 1.3, the broker verified before a byte of CONNECT is sent. `off` (default): plain TCP |
+| `ca_pem` | with `on`: the CA or self-signed certificate(s) to trust instead of the public CAs; the host name is checked. A broker presenting exactly one of them (self-signed, `CA:TRUE` or not) is accepted, as for webhooks (section 8) |
+| `pin_sha256` | with `on`: the broker's key, as for webhooks (section 8); replaces the CA and host name check. One of `ca_pem` and `pin_sha256` at most |
+| `client_cert_pem`, `client_key_pem` | with `on`: a client certificate and its key (PEM; PKCS#8, SEC1 or PKCS#1). The key is kept in the 0600 `mqtt.json`, shown as `set` or `not set` (sending `"set"` back keeps it) and never in the diagnostics bundle |
+| `client_cert_file`, `client_key_file` | instead: paths to PEM files; the key file must not be readable by group or others (0600) |
+| `allow_plaintext_password` | with `off`: send the password to a broker that is not on loopback too |
+
+Without TLS the password goes only to a loopback broker (`localhost`, `127.0.0.1`, `::1`) unless
+`allow_plaintext_password` is set; otherwise the connection is not made at all and `mqtt.status`'s `msg` says why. A
+broker with no password may be plain anywhere, shown as `encrypted: false`. A `mqtt.json` written before TLS (no
+`tls`) with a broker that is not on loopback loads with `allow_plaintext_password: true` and a one-time notice, so it
+keeps working (OD-SECo); the hub writes the field back, so the notice comes once: it is in the hub's log and, for
+that run, in `mqtt.get`'s and `mqtt.status`'s `notice` (until `tls` is set). `mqtt.status`'s `encrypted` is true while
+the connection is TLS. Without a `port` (or with `null`) the port is 8883 with TLS and 1883 without; `mqtt.get`
+shows the port in use, so sending its `settings` back keeps that port fixed.
+
+- `mqtt.get` shows the values in use: `client_id` and `base_topic` are the defaults when not set (`client_id`:
+  `dspi` and the first 19 letters and digits of the hub's id). In `mqtt.set`, `null` sets either back to its default.
+- `password` in `mqtt.set`: a string sets it; `null` or `"not set"` clears it; `"set"` keeps it, so `mqtt.get`'s
+  `settings` can be sent back as they are. A password needs a `username` (MQTT 3.1.1).
+- `enabled: true` needs a `broker`. A refusal is `bad_request` with `msg` naming the field; nothing is changed then.
+  A field not listed here is ignored. `tls` is changed in part too (a field left out keeps its value); `mqtt.get`
+  shows it with `ca_pem`, `pin_sha256` and `client_key_pem` as `set` or `not set`.
+- Limits: `broker` 253 bytes of `A-Z a-z 0-9 . - _ :`; `client_id` 1 to 64 of `A-Z a-z 0-9 . - _`; `username` and
+  `password` 1 to 256 bytes, no control characters; `base_topic` a topic name of at most 128 bytes, no wildcard, no
+  empty level, not starting with `$`.
+- A change of `ha` alone does not reconnect; any other change ends the connection (`offline`, below) and starts
+  a new one. `mqtt.set` answers once the old connection has ended (at most a few seconds).
+- `state`: `connecting` while trying (again), with `msg` the last reason; `failed` when the broker refused the
+  connection (a wrong password, a refused client id), with its reason in `msg`; the hub keeps trying, with a backoff
+  of 1 s doubling to 60 s. `since` is when `state` last changed (ISO-8601); `queued` and `dropped` are the publishes
+  waiting while the broker is away (at most 256) and those dropped past that, oldest first.
+
+Topics: `<base>/status` is `online` (retained, QoS 1, on every connection) and the will `offline` (retained),
+which the broker publishes when the hub goes away unannounced; a clean stop or reconfiguration publishes `offline`
+(retained) itself. Each alarm and history record the hub publishes goes to `<base>/<serial>/event` as JSON (an alarm
+as section 7's object with `"kind": "alarm"`, QoS 1, its every change: raised, acknowledged, cleared; a record as
+`{"kind": "event", "serial", "record": {...}}`, QoS 0). Both carry `v` and `hub`; an alarm also `at`, the time of this
+change. An alarm about no one device (the audio link's) goes to `<base>/hub/event`. Nothing is retained but the
+status. The hub subscribes to nothing here: nothing that arrives over MQTT reaches a device (section 13.2's `set`
+topics act as an API key's principal).
 
 ### 13.2 Home Assistant (P2HA)
 
@@ -667,60 +760,103 @@ nothing and the state stays. A forgotten device's entities are removed (empty re
 
 ## 14. REST and API keys
 
-*State: draft (P2RS).*
+*State: built (P2RS). `crates/dspi-hub/src/rest.rs`, the `/api/v1/` route and body read in `server.rs`, the client
+kind in `auth.rs` and `store.rs`; tests `crates/dspi-hub/tests/wp_p2rs_rest.rs`. **TLS: SECSRV** (PLAN-SEC): the
+mirror is read and answered over the server's stream seam, so WP SECSRV serves it over TLS on the same port, adds the
+`Host` check on every route and gives `plaintext_ok` its effect. Until then section 2 holds for all of it.*
 
 ### 14.1 API keys
 
 An API key is a paired client of kind `api`, minted without a PIN: the same table, the same cap of 64 shared with the
-consoles, the same `auth.revoke`. `auth.list` rows gain `kind` (`console` or `api`).
+consoles, the same `auth.revoke` and `auth.set_role`. `auth.list` rows gain `kind` (`console` or `api`) and
+`plaintext_ok`; `online` is also true for a key whose REST session is open.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `auth.mint` | admin | `name`, `role` (never above the minting session's) | `cid`, `name`, `role`, `kind: "api"`, `key`: shown in this answer only |
+| `auth.mint` | admin | `name`, `role` (never above the minting session's), `plaintext_ok?` (bool, default `false`) | `v`, `cid`, `name` (as cleaned), `role`, `kind: "api"`, `plaintext_ok`, `key`: shown in this answer only |
 
-On the hub's machine: `uconsole hub api-key new|list|revoke` (section 16). The key is generated by the hub; it keeps only
-its hash.
+- The key is 32 bytes from the hub's CSPRNG, base64url (43 characters), made by the hub, never typed. The hub keeps
+  only its SHA-256 (`hub-store.json`, beside the consoles' token hashes) and compares every stored hash in constant
+  time. A key is for REST (and MQTT's Home Assistant `set` topics) only: `auth.token` with a key on DSPi Link is
+  `unauthenticated`, and a console's token is no REST bearer (`401`).
+- The 65th client of either kind is refused: `auth.mint` answers `conflict`, a PIN pairing `busy` (spec 7.3). Revoke
+  one first.
+- `plaintext_ok` is stored and listed and has **no effect yet**: once the port speaks TLS (SECSRV, OD-SECk), a key
+  without it is refused over plaintext.
+- `name` and `role` are required (`bad_request`); a role above the caller's is `denied`. Rotation: mint a new key,
+  then `auth.revoke` the old one.
+- In the embedding app: `AuthStore::mint_api_key` (`NetworkControl::auth`). `uconsole hub api-key new|list|revoke`
+  is P2TM's (section 16).
 
 ### 14.2 The REST mirror
 
-Off by default; `uconsole hub --rest` turns it on, on the DSPi Link port (OD-P2p). While off, `/api/v1/` answers `404`.
+Off by default (`NetworkConfig::rest`; `uconsole hub --rest`, P2TM); on the DSPi Link port (OD-P2p). While off,
+`/api/v1/` answers `404` and `hello.caps` has no `rest`.
 
-- `Authorization: Bearer <key>` on every request (an API key, or a console's token).
-- **Any request with an `Origin` header is `403`.** The web console uses DSPi Link through its own binding; no browser
-  page needs REST, and there is no CORS.
-- Bodies: JSON, `Content-Length` only (no chunked), at most 64 KiB, read within the hub's request timeout.
+- `Authorization: Bearer <key>` on every request (an API key; a console's token is `401`), even on a hub with open access.
+  A missing, wrong or revoked key is `401` with `WWW-Authenticate: Bearer`. Five wrong keys from one address within a
+  minute shut it out for a minute (`429`, `Retry-After: 60`), as for `auth.token`.
+- **Any request with an `Origin` header is `403`**, whatever its value, before the key is looked at. The web console
+  uses DSPi Link through its own binding; no browser page needs REST, and there is no CORS (no
+  `Access-Control-Allow-*` header is ever sent).
+- Bodies: JSON objects, `Content-Length` only, at most 64 KiB (`ServerLimits::rest_max_body`), all of it within 3 s
+  of the head (`rest_body_timeout`). Over the cap: `413`, unread. No length on a `PUT`, or any `Transfer-Encoding`:
+  `411`. A length that is not one (signs, lists, two headers): `400`. Too slow: `408`. Only the length's bytes are
+  read; a body longer than its length is not taken for a next request: the connection closes after the answer, as it
+  does after every `PUT` and `POST`. A `POST` without a body is fine. A `GET` may be kept alive.
 - An answer's body is the WebSocket answer without `t` and `id`, plus `v` and `hub`. An error's body is
-  `{"v": 1, "hub": "<id>", "code": "<code>", "msg": "..."}` with the codes of section 1.6.
-- Rate-limited per key (`429` with `Retry-After`).
+  `{"v": 1, "hub": "<id>", "code": "<code>", "msg": "..."}` with the codes of section 1.6 and the message's own
+  fields (`limit`, ...); errors of the mirror itself use the same shape.
+- Rate-limited per key: 10 requests a second on average, 20 at once (`rest_rate`, `rest_burst`); past it `429` with
+  `Retry-After` (seconds) and `retry_in_ms`.
+- **Who writes.** Each key in use has one session of its own, a principal from the hub's remote range with the key's
+  client id and name (`by` in the history, `origin` for other sessions), judged by its role, the limits, the lock and
+  the voltage rule as any client. It stays open for 60 s after the key's last request (`rest_idle`), so the parameter
+  API's core for it stays warm, and closes at once when the key is revoked. A key's requests run one at a time, as a
+  WebSocket's do; one that waits past the response time is `503` `busy`.
+- A family the hub does not run (its service off) answers `501` with `unknown_type`.
+- **A guarded recall** (`{"guard": true}`) belongs to the key's session: only **the same key** can confirm or cancel
+  it (`.../apply/confirm`, `.../apply/cancel`), and it must do so within both the guard's timeout (`timeout_ms`, 30 s
+  by default) and `rest_idle` (60 s) of its last request. Otherwise it reverts: at its timeout, or when the key's idle
+  session closes.
 
-The endpoints (PLAN-P2 I1; more may be added within v1, each onto an existing message):
+The endpoints (PLAN-P2 I1; more may be added within v1, each onto an existing message). Path segments and query values
+are percent-decoded (`device%3A3`).
 
 | Method and path | Message |
 |---|---|
-| `GET /api/v1/devices` | `inventory.list` |
+| `GET /api/v1/devices?serial=&offset=<n>&limit=<n>` | `inventory.list` (paged and filtered as it is) |
 | `GET /api/v1/devices/{serial}/params/{path}?idx=0,1` | `param.get` |
-| `PUT /api/v1/devices/{serial}/params/{path}?idx=0,1` body `{"value": ..., "confirm"?: true}` | `param.set` |
+| `PUT /api/v1/devices/{serial}/params/{path}?idx=0,1` body `{"value": ..., "confirm"?: true}` | `param.set` (only `value` and `confirm` are taken from the body) |
 | `POST /api/v1/devices/{serial}/presets/{n}/load` | `preset.load {slot: n}` |
-| `POST /api/v1/devices/{serial}/snapshots/{id}/recall` body `{"guard"?: true}` | `snapshot.recall` |
-| `GET /api/v1/devices/{serial}/events?after=<id>&limit=<n>` | `event.list` |
-| `GET /api/v1/alarms` | `alarm.list` |
-| `POST /api/v1/alarms/{id}/ack` | `alarm.ack` |
-| `GET /api/v1/health` | `health.get` |
+| `POST /api/v1/devices/{serial}/snapshots/{id}/recall` body `{"guard"?: true, "timeout_ms"?: n}` | `snapshot.recall` |
+| `POST /api/v1/devices/{serial}/apply/confirm` | `apply.confirm {handle}` (the attached device's; `409` `offline` otherwise) |
+| `POST /api/v1/devices/{serial}/apply/cancel` | `apply.cancel {handle}` |
+| `GET /api/v1/devices/{serial}/events?after=<id>&limit=<n>` | `event.list` (`after` is `after_id`) |
+| `GET /api/v1/alarms?serial=&state=` | `alarm.list` (P2AL's; `501` until it is built) |
+| `POST /api/v1/alarms/{id}/ack` | `alarm.ack` (P2AL's) |
+| `GET /api/v1/health?serial=` | `health.get` |
 
 | Code | HTTP status |
 |---|---|
 | `ok` | 200 |
-| `bad_request` | 400 (413 for a body over the cap) |
+| `bad_request` | 400 (408 a body too slow, 411 no length, 413 a body over the cap) |
 | `unauthenticated` | 401 |
 | `denied`, `limit_exceeded`, `installer_lock`, `image_refused`, `confirmation_required`, an `Origin` header | 403 |
 | `not_found`, `no_device`, an unknown path | 404 |
-| a method a path does not take | 405 |
+| a method a path does not take (with `Allow`) | 405 |
 | `conflict`, `offline` | 409 |
 | `locked` | 423 |
 | `rate_limited` | 429 |
-| `internal` | 500 |
-| `unsupported` | 501 |
+| `internal`, any other code | 500 |
+| `unsupported`, `unknown_type` | 501 |
 | `busy`, `device` | 503 |
+
+```sh
+curl -s -H "Authorization: Bearer $KEY" http://hub.local:11915/api/v1/devices/E46058388B1A2E2C/params/vol.master
+curl -s -X PUT -H "Authorization: Bearer $KEY" -d '{"value": -20}' \
+     http://hub.local:11915/api/v1/devices/E46058388B1A2E2C/params/vol.master
+```
 
 ## 15. Statistics and the hub's name
 
@@ -839,7 +975,7 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `mqtt.set` | request | admin | `mqtt` | 13.1 |
 | `mqtt.status` | request | admin | `mqtt` | 13.1 |
 | `auth.mint` | request | admin | `api_keys` | 14.1 |
-| `auth.list` (gains `kind`) | existing | admin | `api_keys` | 14.1 |
+| `auth.list` (gains `kind`, `plaintext_ok`) | existing | admin | `api_keys` | 14.1 |
 | `hub.stats` | request | admin | `hub_stats` | 15 |
 | `hub.rename` | request | admin | `hub_stats` | 15 |
 | `fw.install` | existing | | | stays `unsupported` |

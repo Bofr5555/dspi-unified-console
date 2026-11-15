@@ -14,6 +14,10 @@
 //! | `events/<serial>.jsonl` | each device's event log (P0M), in its file format |
 //! | `hub/hub-store.json` | the hub's store with tokens, hashes and secrets removed |
 //! | `hub/inventory.json` | the hub's inventory (WP P2IN), secrets removed the same way |
+//! | `hub/alarms.json` | the hub's alarm rules (WP P2AL), secrets removed the same way |
+//! | `hub/outbound.json` | the hub's notification targets (WP P2WH, entry WP P2AL): each secret, CA and pin as `set` or `not set`, each URL to its host |
+//! | `hub/schedule.json` | the hub's schedule rules (WP P2SC), secrets removed the same way |
+//! | `hub/mqtt.json` | the hub's MQTT broker setting (WP P2MQ), the password and the `tls` keys, CA and pin as `set` / `not set` |
 //! | `system/os.json` | OS facts: name, architecture, release, the udev rule on Linux |
 //! | `system/usb.json` | DSPis and bootloaders on the bus, by enumeration only |
 //! | `client/<name>` | files the client adds (`uconsole doctor`'s report, a log) |
@@ -151,6 +155,13 @@ impl DspiCore {
         diag_hub_store(&mut b, &options.hub_store_dir);
         // -- WP P2IN --
         diag_hub_data(&mut b, &options.hub_store_dir, HUB_INVENTORY_FILE);
+        // -- WP P2AL --
+        diag_hub_data(&mut b, &options.hub_store_dir, HUB_ALARMS_FILE);
+        diag_hub_outbound(&mut b, &options.hub_store_dir);
+        // -- WP P2SC --
+        diag_hub_data(&mut b, &options.hub_store_dir, HUB_SCHEDULE_FILE);
+        // -- WP P2MQ --
+        diag_hub_mqtt(&mut b, &options.hub_store_dir);
         b.json("system/os.json", &os_facts());
         b.json("system/usb.json", &self.diag_usb(&scrub));
         diag_client_files(&mut b, options.files, &scrub);
@@ -509,6 +520,10 @@ fn diag_hub_store(b: &mut Bundle, dir: &str) {
 const HUB_INVENTORY_FILE: &str = "inventory.json";
 /// The largest phase-2 hub data file read (the inventory's own limit is 8 MiB).
 const HUB_DATA_MAX: u64 = 8 << 20;
+// -- WP P2SC --
+/// The hub's schedule rules in its data folder (dspi-hub `schedule.rs`; no secrets in it,
+/// redacted all the same).
+const HUB_SCHEDULE_FILE: &str = "schedule.json";
 
 /// A phase-2 data file of the hub under `dir` (PLAN-P2, review S6), redacted as the
 /// store is, as `hub/<file>`. No folder named, or no such file: nothing, and no note
@@ -533,6 +548,169 @@ fn diag_hub_data(b: &mut Bundle, dir: &str, file: &str) {
         }
         Err(_) => b.notes.push(format!(
             "hub: {} is not JSON and was left out",
+            path.display()
+        )),
+    }
+}
+
+// -- WP P2AL --
+/// The hub's alarm rules (dspi-hub `device_alarms.rs`): no secret in them, redacted anyway.
+const HUB_ALARMS_FILE: &str = "alarms.json";
+/// The hub's notification targets (dspi-hub `outbound/`).
+const HUB_OUTBOUND_FILE: &str = "outbound.json";
+/// Keys of a target whose value is shown only as `set` or `not set` (the webhook secret;
+/// the TLS trust and client keys PLAN-SEC adds).
+const SET_OR_NOT_KEYS: &[&str] = &[
+    "secret",
+    "ca_pem",
+    "pin_sha256",
+    "client_cert_pem",
+    "client_key_pem",
+];
+
+/// `outbound.json` under `dir` as `hub/outbound.json`: every value under
+/// [`SET_OR_NOT_KEYS`] as `set` or `not set` (PLAN-P2 S6, PLAN-SEC), every other secret
+/// key as the store's, and each `url` cut to its scheme and host (a path or a query can
+/// carry a token). Unreadable or not JSON: a note, and none of it.
+fn diag_hub_outbound(b: &mut Bundle, dir: &str) {
+    if dir.is_empty() {
+        return;
+    }
+    let path = Path::new(dir).join(HUB_OUTBOUND_FILE);
+    let bytes = match read_limited(&path, HUB_DATA_MAX) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            b.notes.push(format!("hub: {} unread: {e}", path.display()));
+            return;
+        }
+    };
+    match serde_json::from_slice::<Value>(&bytes) {
+        Ok(mut v) => {
+            redact_outbound(&mut v);
+            b.json(&format!("hub/{HUB_OUTBOUND_FILE}"), &v);
+        }
+        Err(_) => b.notes.push(format!(
+            "hub: {} is not JSON and was left out",
+            path.display()
+        )),
+    }
+}
+
+/// [`redact`], with [`SET_OR_NOT_KEYS`] shown as `set` or `not set` and URLs cut.
+pub(crate) fn redact_outbound(v: &mut Value) {
+    match v {
+        Value::Object(map) => {
+            for (k, child) in map.iter_mut() {
+                if SET_OR_NOT_KEYS.contains(&k.as_str()) {
+                    let set = match child {
+                        Value::Null => false,
+                        Value::String(s) => !s.is_empty() && s != "not set",
+                        _ => true,
+                    };
+                    *child = Value::String(if set { "set" } else { "not set" }.into());
+                } else if k == "url" {
+                    if let Value::String(s) = child {
+                        *child = Value::String(url_host(s));
+                    } else {
+                        *child = Value::String(REMOVED.into());
+                    }
+                } else if is_secret_key(k) {
+                    *child = Value::String(REMOVED.into());
+                } else {
+                    redact_outbound(child);
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(redact_outbound),
+        _ => {}
+    }
+}
+
+/// `scheme://host[:port]` of a URL, without credentials, path or query; "(removed)"
+/// past it, so a supporter sees where the hub sends and not what a URL may hide.
+fn url_host(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return REMOVED.into();
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = authority.rsplit('@').next().unwrap_or("");
+    let more = rest.len() > authority.len();
+    let scheme: String = scheme.chars().take(16).collect();
+    let host: String = host.chars().take(255).collect();
+    if more {
+        format!("{scheme}://{host}/{REMOVED}")
+    } else {
+        format!("{scheme}://{host}")
+    }
+}
+
+// -- WP P2MQ --
+/// The hub's MQTT setting in its data folder (dspi-hub `mqtt/service.rs`).
+const HUB_MQTT_FILE: &str = "mqtt.json";
+/// Its own limit.
+const HUB_MQTT_MAX: u64 = 64 << 10;
+/// Fields of `mqtt.json` shown only as `set` or `not set` (PLAN-P2 S6): the password.
+const HUB_MQTT_SHOWN_SET: &[&str] = &["password"];
+// -- WP MQWIRE --
+/// Fields of `mqtt.json`'s `tls` (PLAN-SEC 4.8, `MqttTls`) shown only as `set` or `not
+/// set`: the client key, and with it the trust and the certificate (a rule kept simple).
+const HUB_MQTT_TLS_SHOWN_SET: &[&str] =
+    &["client_key_pem", "client_cert_pem", "ca_pem", "pin_sha256"];
+
+/// `mqtt.json` as `hub/mqtt.json`: the password, and in `tls` the client key, certificate,
+/// CA and pin, as `set` / `not set`; `tls`'s mode, flag and file paths as they are; every
+/// other secret-named field [`REMOVED`]. No folder or no file: nothing, and no note
+/// (MQTT is off on most hubs); unreadable or not a JSON object: a note, and none of it.
+fn diag_hub_mqtt(b: &mut Bundle, dir: &str) {
+    if dir.is_empty() {
+        return;
+    }
+    let path = Path::new(dir).join(HUB_MQTT_FILE);
+    let bytes = match read_limited(&path, HUB_MQTT_MAX) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            b.notes.push(format!("hub: {} unread: {e}", path.display()));
+            return;
+        }
+    };
+    match serde_json::from_slice::<Value>(&bytes) {
+        Ok(Value::Object(mut map)) => {
+            for (k, child) in map.iter_mut() {
+                if HUB_MQTT_SHOWN_SET.contains(&k.as_str()) {
+                    let set = !child.is_null();
+                    *child = Value::String(if set { "set" } else { "not set" }.into());
+                } else if k == "tls" {
+                    // -- WP MQWIRE --
+                    match child {
+                        Value::Object(tls) => {
+                            for (tk, tv) in tls.iter_mut() {
+                                if HUB_MQTT_TLS_SHOWN_SET.contains(&tk.as_str()) {
+                                    let set = !tv.is_null();
+                                    *tv = Value::String(if set { "set" } else { "not set" }.into());
+                                } else if is_secret_key(tk) {
+                                    // `client_key_file`: a path, not the key; any other
+                                    // secret-named field goes.
+                                    if tk != "client_key_file" {
+                                        *tv = Value::String(REMOVED.into());
+                                    }
+                                }
+                            }
+                        }
+                        Value::Null => *child = Value::String("not set".into()),
+                        _ => *child = Value::String(REMOVED.into()),
+                    }
+                } else if is_secret_key(k) {
+                    *child = Value::String(REMOVED.into());
+                } else {
+                    redact(child);
+                }
+            }
+            b.json(&format!("hub/{HUB_MQTT_FILE}"), &Value::Object(map));
+        }
+        _ => b.notes.push(format!(
+            "hub: {} is not a JSON object and was left out",
             path.display()
         )),
     }
@@ -742,3 +920,15 @@ mod tests_wp_p0e;
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests_wp_p2in;
+// -- WP P2AL --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p2al;
+// -- WP P2SC --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p2sc;
+// -- WP P2MQ --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p2mq;

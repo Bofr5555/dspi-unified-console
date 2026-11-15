@@ -33,6 +33,10 @@ fn target(id: &str, kinds: &[&str]) -> (Target, HttpUrl) {
         enabled: true,
         kinds: kinds.iter().map(|k| (*k).to_owned()).collect(),
         secret: None,
+        // WP SECOUT: http:// needs the flag.
+        plaintext: true,
+        ca_pem: None,
+        pin_sha256: None,
     };
     (t, http::parse_url(&url).unwrap())
 }
@@ -318,7 +322,7 @@ fn entry(v: Value) -> Vec<Value> {
 
 #[test]
 fn wp_p2wh_set_checks_every_field_and_makes_secrets() {
-    let hook = json!({"name": "HA", "kind": "webhook", "url": "http://10.0.0.2:8123/hook", "secret": "new"});
+    let hook = json!({"name": "HA", "kind": "webhook", "url": "http://10.0.0.2:8123/hook", "plaintext": true, "secret": "new"});
     let (targets, secrets) = plan(&entry(hook.clone()), &[]).unwrap();
     let t = &targets[0].0;
     assert_eq!(t.id, "t1", "an id is given when none is");
@@ -354,12 +358,17 @@ fn wp_p2wh_set_checks_every_field_and_makes_secrets() {
     assert_eq!(plan(&entry(e), &current).unwrap().0[0].0.secret, None);
 
     let refused = |v: Value| plan(&entry(v), &[]).err().unwrap();
-    let (i, why) = refused(json!({"kind": "webhook", "url": "https://ntfy.sh/x"}));
-    assert_eq!(i, Some(0));
+    // WP SECOUT: https:// is taken; http:// needs "plaintext": true.
     assert!(
-        why.contains("https:// is not supported") && why.contains("OD-P2f"),
-        "{why}"
+        plan(
+            &entry(json!({"kind": "webhook", "url": "https://ntfy.sh/x"})),
+            &[]
+        )
+        .is_ok()
     );
+    let (i, why) = refused(json!({"kind": "webhook", "url": "http://10.0.0.2/x"}));
+    assert_eq!(i, Some(0));
+    assert!(why.contains("plaintext"), "{why}");
     let (_, why) = refused(json!({"kind": "webhook", "url": "http://h/", "secret": "0123abcd"}));
     assert!(why.contains("made by the hub"), "a typed secret: {why}");
     for bad in [
@@ -375,18 +384,18 @@ fn wp_p2wh_set_checks_every_field_and_makes_secrets() {
         refused(bad);
     }
     let dup = vec![
-        json!({"id": "a", "kind": "push", "url": "http://h/"}),
-        json!({"id": "a", "kind": "push", "url": "http://h/"}),
+        json!({"id": "a", "kind": "push", "url": "https://h/"}),
+        json!({"id": "a", "kind": "push", "url": "https://h/"}),
     ];
     assert_eq!(plan(&dup, &[]).err().unwrap().0, Some(1));
     let mut list: Vec<Value> = (0..17)
-        .map(|_| json!({"kind": "push", "url": "http://h/"}))
+        .map(|_| json!({"kind": "push", "url": "https://h/"}))
         .collect();
     assert!(plan(&list, &[]).err().unwrap().1.contains("at most 16"));
     list.pop();
     let (sixteen, _) = plan(
         &[
-            vec![json!({"id": "t2", "kind": "push", "url": "http://h/"})],
+            vec![json!({"id": "t2", "kind": "push", "url": "https://h/"})],
             list[1..].to_vec(),
         ]
         .concat(),
@@ -419,7 +428,7 @@ fn wp_p2wh_the_file_is_private_and_a_bad_one_is_set_aside() {
     assert_eq!(loaded[0].0, t, "the secret survives a restart");
 
     // One good entry, one bad one: the file is set aside, the good one kept and written.
-    let text = json!({"v": 1, "targets": [t, {"id": "b", "kind": "webhook", "url": "https://x/"}]});
+    let text = json!({"v": 1, "targets": [t, {"id": "b", "kind": "webhook", "url": "ftp://x/"}]});
     fs::write(dir.join(FILE_NAME), text.to_string()).unwrap();
     let loaded = load(&dir, 77);
     assert_eq!(loaded.len(), 1);
@@ -454,7 +463,7 @@ fn wp_p2wh_only_an_admin_reaches_the_family() {
     let h = hub.handle();
     assert!(h.service_caps().contains(&CAP), "announced");
     let set = json!({"t": "outbound.set", "id": 1, "targets": [
-        {"id": "a", "kind": "webhook", "url": "http://127.0.0.1:9/"}]});
+        {"id": "a", "kind": "webhook", "url": "http://127.0.0.1:9/", "plaintext": true}]});
     for role in [Role::Viewer, Role::Control] {
         let s = h.open_session(role, None).unwrap();
         for msg in [
