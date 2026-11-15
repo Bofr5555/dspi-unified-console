@@ -590,6 +590,9 @@ final class CoreHubService: ObservableObject, HubSharingModel {
 
     // MARK: Tests
 
+    /// Tests only: the keep-awake activity is held (sharing is on).
+    var holdsPowerActivityForTest: Bool { activityToken != nil }
+
     /// Tests only: the hub's PIN window and client list, read now (off main).
     nonisolated func statusForTest() -> HubHostStatus { host.status() }
 }

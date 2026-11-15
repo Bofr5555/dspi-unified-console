@@ -122,6 +122,8 @@ final class CoreHubSWM3Tests: XCTestCase {
         XCTAssertEqual(ad.started?.name, service.hubName)
         XCTAssertEqual(ad.started?.ad.hubID, hubID)
         XCTAssertEqual(ad.started?.ad.auth, "pin")
+        // Keep-awake while hosting (App Nap off; idle sleep only when asked).
+        XCTAssertTrue(service.holdsPowerActivityForTest)
         // The demo device is advertised once the hub lists it.
         swm3Wait(5, "the demo device in the TXT") { ad.updates.last?.deviceCount == 1 }
         XCTAssertEqual(ad.updates.last?.serials, ["DEMO0000DSPI0001"])
@@ -174,6 +176,7 @@ final class CoreHubSWM3Tests: XCTestCase {
         XCTAssertFalse(service.sharingEnabled)
         swm3Wait(10, "the hub stopped") { !service.statusForTest().running }
         XCTAssertGreaterThanOrEqual(ad.stopped, 1)
+        XCTAssertFalse(service.holdsPowerActivityForTest)
     }
 
     /// A port in use: the start fails, says why, and sharing stays off.

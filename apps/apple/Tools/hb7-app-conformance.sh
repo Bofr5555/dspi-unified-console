@@ -58,13 +58,11 @@ for cmd in ({"execute": "qmp_capabilities"},
 PY
   # Once the app's hub is up: its web page from outside the guest.
   (
-    for _ in $(seq 900); do
-      vm 'test -s ~/work/matrix/hb7-app/work/conf/hub.json' </dev/null 2>/dev/null && break
-      sleep 2
-    done
+    # No time limit: the run may wait long for the lock; the probe is killed with it.
+    until vm 'test -s ~/work/matrix/hb7-app/work/conf/hub.json' </dev/null 2>/dev/null; do sleep 3; done
     sleep 1
     code=$(curl -s -o "$out/lan-page.html" -w '%{http_code}' -m 10 "http://127.0.0.1:$lan/" || echo fail)
-    say "hb7-app: LAN check: GET http://<guest>:$lan/ from 10.0.2.2: HTTP $code, $(wc -c <"$out/lan-page.html" 2>/dev/null || echo 0) bytes"
+    say "hb7-app: LAN check: GET http://<guest>:$lan/ from 10.0.2.2: HTTP $code, $(cat "$out/lan-page.html" 2>/dev/null | wc -c) bytes"
   ) &
   probe_pid=$!
 fi
@@ -96,13 +94,14 @@ vm "set -u
       echo \"== the HB7 Swift client (swiftc)\"
       c=\$src/crates/dspi-hub/tests/conformance; l=\"\$src/apps/apple/DSPi Console/Link\"
       for f in LinkClient.swift LinkClientProtocol.swift LinkFrames.swift LinkMessages.swift LinkRole.swift DeviceTransport.swift AuthStore.swift; do cp \"\$l/\$f\" \$work/client/; done
-      cp \$c/swift/main.swift \$c/swift/Shims.swift \"\$src/apps/apple/DSPi Console/AppIdentity.swift\" \$work/client/
+      cp \$c/swift/main.swift \$c/swift/Shims.swift \$src/apps/apple/Tools/hb7_client_shims.swift \"\$src/apps/apple/DSPi Console/AppIdentity.swift\" \$work/client/
       (cd \$work/client && xcrun swiftc -O -o conformance *.swift 2>&1 | grep -E error) ; test -x \$work/client/conformance || exit 1
       echo \"== the client against the hub of the app\"
       python3 \$src/apps/apple/Tools/hb7_app_driver.py \$src/apps/apple \$work/dd \$work/client/conformance \$work
     ' </dev/null" </dev/null 2>&1 | tee -a "$log"
 status=${PIPESTATUS[0]}
 set -e
-if [ -n "$probe_pid" ]; then wait "$probe_pid" 2>/dev/null || true; fi
+# The probe ends with the run: it may still be waiting for a hub that never came.
+if [ -n "$probe_pid" ]; then kill "$probe_pid" 2>/dev/null || true; wait "$probe_pid" 2>/dev/null || true; fi
 grep -q '^DONE 13/13' "$log" && say "hb7-app: DONE 13/13 against the Mac app's hub" || say "hb7-app: not all scenarios passed (status $status)"
 exit "$status"
