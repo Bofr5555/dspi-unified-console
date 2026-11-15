@@ -180,7 +180,7 @@ impl Executor {
                 "the device's connection was just closed; try again",
             ));
         }
-        if !entry.child.follow_parent() {
+        if !entry.child.follow_parent(hub) {
             return Err(ApiError::new("unauthenticated", "the session has ended"));
         }
         let mut cx = Cx {
@@ -280,7 +280,7 @@ impl Executor {
             let mut due = Vec::new();
             entries.retain(|_, e| {
                 let idle = now.saturating_duration_since(*guard(&e.used)) >= IDLE_CLOSE;
-                let gone = e.child.parent_gone()
+                let gone = e.child.parent_gone(hub)
                     || hub
                         .device_by_serial(&e.serial)
                         .is_none_or(|d| !Arc::ptr_eq(&d, &e.device));

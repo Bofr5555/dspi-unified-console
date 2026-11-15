@@ -480,9 +480,14 @@ impl Drop for Completion {
 /// [`crate::HubHandle::close_session`] when done; it is also done once its parent is
 /// ([`ChildSession::parent_gone`]).
 ///
-/// Its lock rights are its own id's: a device lock (spec 7.7) or an installer unlock
-/// held by the parent does not pass to it (the router and the limits judge by session
-/// id).
+/// **It acts for its parent** in two things only: a device lock (spec 7.7) the parent
+/// holds lets the child's commands through (the router), and a PIN unlock the parent
+/// made is the child's too (the limits). Both links are the hub's, set when the child
+/// opens ([`crate::HubHandle::open_child`]) and on each device it reaches
+/// ([`crate::HubHandle::open_as`]), and dropped when either session closes, so a child
+/// never keeps them after its parent has gone, even if the parent's id is reused. Its
+/// role is its own (the parent's, followed on each use), and the voltage rule judges it
+/// as any network session.
 #[derive(Debug)]
 pub struct ChildSession {
     session: Arc<Session>,
@@ -514,35 +519,48 @@ impl ChildSession {
         self.parent_id
     }
 
-    /// Whether the parent has ended: gone, or its outbox closed (the hub closes it
-    /// when the session closes).
-    pub fn parent_gone(&self) -> bool {
-        self.parent.upgrade().is_none_or(|p| p.outbox().is_closed())
+    /// Whether the parent has ended: dropped, or closed by the hub (which drops the
+    /// child's link to it). An outbox the parent stopped reading does not count: a
+    /// principal that nobody reads (a schedule's) is still open.
+    pub fn parent_gone(&self, hub: &crate::hub::HubHandle) -> bool {
+        self.parent.upgrade().is_none()
+            || hub.inner.limits.acts_for(self.id()) != Some(self.parent_id)
     }
 
     /// Take the parent's role now (an Admin may have changed it since): the next
     /// command is judged by it. False once the parent has gone.
-    pub fn follow_parent(&self) -> bool {
+    pub fn follow_parent(&self, hub: &crate::hub::HubHandle) -> bool {
+        if self.parent_gone(hub) {
+            return false;
+        }
         match self.parent.upgrade() {
-            Some(p) if !p.outbox().is_closed() => {
+            Some(p) => {
                 self.session.set_role(p.role());
                 true
             }
-            _ => false,
+            None => false,
         }
     }
 }
 
 impl crate::hub::HubHandle {
     /// Open a child session of `parent` ([`ChildSession`]): its role and client, its
-    /// label's name, an id of its own from the remote range. It follows no device:
-    /// the session's relay subscription goes at once, and its outbox is closed.
+    /// label's name, an id of its own from the remote range, acting for `parent`'s device
+    /// lock and PIN unlocks. It follows no device: the session's relay subscription goes
+    /// at once, and its outbox is closed.
     pub fn open_child(&self, parent: &Arc<Session>) -> Result<ChildSession, crate::HubError> {
         let name = self.session_label(parent.id()).by().unwrap_or_default();
         let session = self.open_principal(parent.role(), parent.client_id(), &name)?;
         self.inner.relay.remove_session(session.id());
         session.outbox().close();
-        Ok(ChildSession::new(session, parent))
+        self.inner.limits.set_acts_for(session.id(), parent.id());
+        let child = ChildSession::new(session, parent);
+        // A parent closed meanwhile has had its links dropped already: none for it now.
+        if parent.outbox().is_closed() {
+            self.close_session(child.id());
+            return Err(crate::HubError::Stopped);
+        }
+        Ok(child)
     }
 }
 

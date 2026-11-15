@@ -859,3 +859,143 @@ fn wp_p2pa_an_idle_core_closes_after_its_minute() {
     assert_ne!(again, child);
     r.hub.stop();
 }
+
+// ── The child acts for its parent's device lock and PIN unlock ──────────────
+
+#[test]
+fn wp_p2pa_the_callers_own_device_lock_lets_its_api_writes_through() {
+    let r = rig("acts-lock");
+    let serial = "P2PA-ACTS";
+    let handle = r.plug(serial);
+    let mut c = r.client("Venue tablet", Role::Control);
+    let mut b = r.client("Second tablet", Role::Control);
+    // Opened before the lock, and after: both pass.
+    assert!(ok(&c.set(serial, "out.gain", json!([0]), json!(-4.0))));
+    let lock = c.ask(json!({"t": "lock.acquire", "handle": handle, "timeout_ms": 20_000}));
+    assert!(ok(&lock), "{lock}");
+    let own = c.set(serial, "out.gain", json!([0]), json!(-5.0));
+    assert_eq!(own["value"], -5.0, "the caller's own lock: {own}");
+    let load = c.ask(json!({"t": "preset.load", "serial": serial, "slot": 0}));
+    assert!(
+        ok(&load),
+        "a flow that takes the lock itself, nested: {load}"
+    );
+    assert!(
+        ok(&c.set(serial, "out.gain", json!([0]), json!(-5.5))),
+        "the lock is still the caller's"
+    );
+    // Another session meanwhile: locked.
+    let other = b.set(serial, "out.gain", json!([0]), json!(-6.0));
+    assert_eq!(code(&other), "locked", "{other}");
+    assert_eq!(
+        code(&b.ask(json!({"t": "lock.acquire", "handle": handle}))),
+        "locked"
+    );
+    // And the other way round.
+    assert!(ok(&c.ask(json!({"t": "lock.release", "handle": handle}))));
+    assert!(ok(&b.ask(
+        json!({"t": "lock.acquire", "handle": handle, "timeout_ms": 20_000})
+    )));
+    let refused = c.set(serial, "out.gain", json!([0]), json!(-7.0));
+    assert_eq!(code(&refused), "locked", "{refused}");
+    assert!(ok(&b.set(serial, "out.gain", json!([0]), json!(-8.0))));
+    r.hub.stop();
+}
+
+#[test]
+fn wp_p2pa_a_pin_unlocked_control_caller_writes_a_covered_path_through_the_api() {
+    let r = rig("acts-pin");
+    let serial = "P2PA-ACTSPIN";
+    let handle = r.plug(serial);
+    let mut admin = r.client("Installer", Role::Admin);
+    let mut p = gain_profile();
+    p["lockedPages"] = json!(["eq", "routing"]);
+    assert!(ok(&admin.ask(
+        json!({"t": "limits.set", "handle": handle, "profile": p})
+    )));
+    assert!(ok(&admin.ask(
+        json!({"t": "limits.pin", "handle": handle, "pin": "2468"})
+    )));
+    let mut c = r.client("Venue tablet", Role::Control);
+    let mut d = r.client("Second tablet", Role::Control);
+    let locked = c.set(serial, "eq.freq", json!([0, 2]), json!(700.0));
+    assert_eq!(code(&locked), "installer_lock", "{locked}");
+    let unlock = c.ask(json!({"t": "limits.unlock", "handle": handle, "pin": "2468"}));
+    assert!(ok(&unlock), "{unlock}");
+    let set = c.set(serial, "eq.freq", json!([0, 2]), json!(700.0));
+    assert_eq!(set["value"], 700.0, "unlocked by the caller's PIN: {set}");
+    // Still held to the limits.
+    assert_eq!(
+        code(&c.set(serial, "out.gain", json!([0]), json!(6.0))),
+        "limit_exceeded"
+    );
+    // A caller that did not unlock stays in the lock's scope.
+    let other = d.set(serial, "eq.freq", json!([0, 2]), json!(800.0));
+    assert_eq!(code(&other), "installer_lock", "{other}");
+    r.hub.stop();
+}
+
+#[test]
+fn wp_p2pa_a_child_never_keeps_its_parents_lock_or_unlock_after_the_parent_goes() {
+    let r = rig("acts-gone");
+    let serial = "P2PA-ACTSGONE";
+    let handle = r.plug(serial);
+    let h = r.hub.handle();
+    let gain = |db: f32| db.to_le_bytes().to_vec();
+
+    // The device lock.
+    let parent = h.open_session(Role::Control, None).unwrap();
+    let child = h.open_child(&parent).unwrap();
+    let mut t = h.open_as(serial, &child, false).unwrap();
+    h.lock_request(&parent, handle, Duration::from_secs(20))
+        .unwrap();
+    t.control_out(op::REQ_SET_OUTPUT_GAIN, 0, &gain(-3.0))
+        .unwrap();
+    h.close_session(parent.id());
+    assert!(child.parent_gone(&h));
+    let next = h.open_session(Role::Control, None).unwrap();
+    h.lock_request(&next, handle, Duration::from_secs(20))
+        .expect("the parent's lock went with it; the child did not take it");
+    assert!(matches!(
+        t.control_out(op::REQ_SET_OUTPUT_GAIN, 0, &gain(-4.0)),
+        Err(TransportError::Locked)
+    ));
+    h.lock_release(&next, handle);
+    drop(t);
+    h.close_session(child.id());
+
+    // The PIN unlock.
+    let admin = h.open_session(Role::Admin, None).unwrap();
+    let ask = |s: &dspi_hub::Session, m: Value| -> Value {
+        serde_json::from_str(&dspi_hub::limits::handle_message(&h, s, &m).unwrap()).unwrap()
+    };
+    let mut p = gain_profile();
+    p["lockedPages"] = json!(["eq"]);
+    assert!(ok(&ask(
+        &admin,
+        json!({"t": "limits.set", "id": 1, "handle": handle, "profile": p})
+    )));
+    assert!(ok(&ask(
+        &admin,
+        json!({"t": "limits.pin", "id": 2, "handle": handle, "pin": "2468"})
+    )));
+    let parent = h.open_session(Role::Control, None).unwrap();
+    let child = h.open_child(&parent).unwrap();
+    let mut t = h.open_as(serial, &child, false).unwrap();
+    assert!(ok(&ask(
+        &parent,
+        json!({"t": "limits.unlock", "id": 3, "handle": handle, "pin": "2468"})
+    )));
+    t.control_out(op::REQ_SET_OUTPUT_GAIN, 0, &gain(1.0))
+        .expect("the parent's unlock is the child's");
+    h.close_session(parent.id());
+    let refused = t
+        .control_out(op::REQ_SET_OUTPUT_GAIN, 0, &gain(2.0))
+        .unwrap_err();
+    assert_eq!(
+        refused.hub_refusal().map(|(k, _)| k),
+        Some("installer_lock"),
+        "{refused:?}"
+    );
+    r.hub.stop();
+}

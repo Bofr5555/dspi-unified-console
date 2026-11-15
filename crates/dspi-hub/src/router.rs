@@ -119,6 +119,10 @@ struct State {
     /// The hub's hold writes (`limits.rs`) let past a session's lock, once each,
     /// by request: a hold to a limits profile is the hub's, as a revert is.
     hold_pass: Vec<(u8, u16, Vec<u8>)>,
+    // -- WP P2PA --
+    /// Child sessions (the parameter API's) and the session each acts for: a device
+    /// lock the parent holds lets its child's commands through, while both are open.
+    acts_for: BTreeMap<SessionId, SessionId>,
 }
 
 // -- WP P1HL --
@@ -302,7 +306,12 @@ impl Router {
         if st.shut {
             return Err(status::NO_DEVICE);
         }
-        if !revert && !st.lock.permits(s.id, now) {
+        // -- WP P2PA -- a child session passes the lock its parent holds
+        let parents = st
+            .acts_for
+            .get(&s.id)
+            .is_some_and(|p| st.lock.holder(now) == Some(*p));
+        if !revert && !parents && !st.lock.permits(s.id, now) {
             return Err(status::LOCKED);
         }
         let count = st.inflight.entry(s.id).or_insert(0);
@@ -510,7 +519,30 @@ impl Router {
         timeout: Duration,
         now: Instant,
     ) -> Option<Duration> {
-        self.lock().lock.acquire(session, timeout, now)
+        let mut st = self.lock();
+        // -- WP P2PA -- a child inside its parent's lock: nested, nothing changes (its
+        // release, which is not the holder's, releases nothing)
+        if st
+            .acts_for
+            .get(&session)
+            .is_some_and(|p| st.lock.holder(now) == Some(*p))
+        {
+            return Some(timeout.min(crate::lock::LOCK_MAX));
+        }
+        st.lock.acquire(session, timeout, now)
+    }
+
+    // -- WP P2PA --
+    /// `child` acts for `parent` on this device: `parent`'s device lock lets `child`'s
+    /// commands through, until either session closes.
+    pub(crate) fn set_acts_for(&self, child: SessionId, parent: SessionId) {
+        self.lock().acts_for.insert(child, parent);
+    }
+
+    // -- WP P2PA --
+    /// `child` acts for nobody on this device any more.
+    pub(crate) fn clear_acts_for(&self, child: SessionId) {
+        self.lock().acts_for.remove(&child);
     }
 
     // -- WP P1HA --
@@ -581,6 +613,9 @@ impl Router {
     pub fn session_closed(&self, session: SessionId) {
         let mut st = self.lock();
         st.lock.release(session, Instant::now());
+        // -- WP P2PA -- no child acts for a closed session (its id may be reused)
+        st.acts_for
+            .retain(|child, parent| *child != session && *parent != session);
         st.rta_watchers.remove(&session);
         if let Some(queued) = st.inflight.remove(&session) {
             let left = st.closing.entry(session).or_insert(0);

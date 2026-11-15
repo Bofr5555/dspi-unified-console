@@ -91,6 +91,13 @@ impl HubHandle {
             return Err(HubError::Stopped);
         }
         let device = self.device_by_serial(serial).ok_or(HubError::NoDevice)?;
+        // The child acts for its parent's device lock here (`ChildSession`), while the
+        // parent is open: looked at again after, as its close may have come between.
+        device.router.set_acts_for(child.id(), child.parent_id());
+        if child.parent_gone(self) {
+            device.router.clear_acts_for(child.id());
+            return Err(HubError::Stopped);
+        }
         let follow = notifications.then(|| {
             let outbox = Arc::new(Outbox::new());
             let id = self.inner.relay.add(

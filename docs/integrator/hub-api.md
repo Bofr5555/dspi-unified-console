@@ -412,10 +412,10 @@ is not listed.
   Otherwise `confirmation_required` (admin) or `denied`.
 - On a locked device, control may set `vol.master`, `vol.user`, `vol.mute`, `out.mute` and load a preset only
   (`installer_lock` otherwise). Past a limit: `limit_exceeded` with `limit`, nothing sent.
-- **Lock rights are the child session's own.** A device lock (spec 7.7) the caller holds, and an installer unlock it
-  made with the PIN, do not pass to its child session: while the caller itself holds the device lock, its API writes
-  answer `locked`, and on a locked device a control caller's API writes stay in the lock's scope even after it
-  unlocked. (The router and the limits judge by session id; a later fix lets a child inherit its parent's.)
+- **The child session acts for its caller** in two things only: a device lock (spec 7.7) the caller holds lets its
+  API writes through (another session's lock answers `locked`), and a PIN unlock (`limits.unlock`) the caller made
+  is the child's too. Both end when the caller's session does; a child never keeps them. The role, the limits and
+  the voltage rule judge the child as any session.
 - A guarded apply pending on the device (another session's) refuses `param.set`, `preset.load`, `preset.save` and
   `snapshot.recall` with `conflict`; reads go on.
 - Rate: one request at a time per connection (each is answered before the next is read), each on the caller's child
