@@ -186,6 +186,25 @@ impl State {
     }
 }
 
+// -- WP WB6F --
+impl State {
+    /// `REQ_CLEAR_CLIPS`: the clip flags latched so far (by [`EXT_FAKE_CLIP`]),
+    /// as the firmware answers, and cleared, so a host's clip hold can end.
+    pub(super) fn clear_clips(&mut self) -> Vec<u8> {
+        let at = usize::from(self.num_channels())
+            .saturating_mul(2)
+            .saturating_add(2);
+        match self.status.get_mut(at..at.saturating_add(4)) {
+            Some(flags) => {
+                let old = flags.to_vec();
+                flags.fill(0);
+                old
+            }
+            None => vec![0; 4],
+        }
+    }
+}
+
 fn padded(s: &[u8], n: usize) -> Vec<u8> {
     s.iter()
         .copied()
@@ -318,5 +337,41 @@ mod tests_wp_fwx {
             !got.is_ok_and(|p| p.get(1) == Some(&NOTIFY_EVT_EXT_CLIP)),
             "no clip event"
         );
+    }
+}
+
+// -- WP WB6F --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests_wp_wb6f {
+    use super::super::{Capture, FakeDevice, FakeOptions};
+    use super::*;
+    use crate::Transport;
+    use dspi_proto::generated::opcodes as op;
+
+    #[test]
+    fn wp_wb6f_clear_clips_clears_what_a_fake_clip_latched() {
+        let mut d = FakeDevice::new(
+            Capture::demo(),
+            FakeOptions {
+                extensions: true,
+                ..FakeOptions::default()
+            },
+        );
+        let flags = |d: &mut FakeDevice| {
+            let s = d.control_in_upto(op::REQ_GET_STATUS, 9, 256).unwrap();
+            let at = (s.len() - 7) + 2;
+            u32::from_le_bytes([s[at], s[at + 1], s[at + 2], s[at + 3]])
+        };
+        assert_eq!(flags(&mut d), 0);
+        d.control_out(op::REQ_EXTENSION, EXT_FAKE_CLIP, &5u32.to_le_bytes())
+            .unwrap();
+        assert_eq!(flags(&mut d), 5, "latched");
+        // The answer is the flags it cleared, as the firmware's.
+        let r = d.control_in_upto(op::REQ_CLEAR_CLIPS, 0, 4).unwrap();
+        assert_eq!(r, 5u32.to_le_bytes());
+        assert_eq!(flags(&mut d), 0, "cleared");
+        let r = d.control_in_upto(op::REQ_CLEAR_CLIPS, 0, 4).unwrap();
+        assert_eq!(r, [0; 4]);
     }
 }
