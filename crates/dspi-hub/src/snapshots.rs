@@ -13,7 +13,7 @@
 //! | Message | Role | Answer |
 //! |---|---|---|
 //! | `snapshot.list {id, serial}` | every role | `ok {serial, snapshots: [entry]}`, oldest first |
-//! | `snapshot.get {id, snapshot}` | every role | `ok {snapshot: entry, document: text}` |
+//! | `snapshot.get {id, snapshot}` | every role | `ok {snapshot: entry, document: text}` (compact) |
 //! | `snapshot.put {id, serial, document}` | Control, Admin | `ok {snapshot: entry, created}` |
 //! | `snapshot.rename {id, snapshot, name}` | Control, Admin | `ok {snapshot: entry}` |
 //! | `snapshot.note {id, snapshot, note}` | Control, Admin | `ok {snapshot: entry}` |
@@ -38,7 +38,8 @@
 //!
 //! A document is filed pretty-printed (the form the client store's rename and note write),
 //! and every cap is measured on that form, so a rename never makes a filed snapshot
-//! unreadable. Bounded: a document is at most 256 KiB, a name 256 characters, a note 4096, a serial 64
+//! unreadable. On the wire (`snapshot.put`, `snapshot.get`) a document is at most
+//! [`MAX_WIRE_DOC_BYTES`] in its compact form, which is what `snapshot.get` answers. Bounded: a document is at most 256 KiB, a name 256 characters, a note 4096, a serial 64
 //! bytes; 200 snapshots per device and 64 MiB in all. Nothing here panics on a message or
 //! on what is on disk: a torn `index.json` is rebuilt from the documents by the client
 //! store's own `list`.
@@ -85,6 +86,21 @@ pub const MAX_NAME_CHARS: usize = 256;
 pub const MAX_NOTE_CHARS: usize = 4096;
 /// The longest serial accepted, in bytes.
 pub const MAX_SERIAL_BYTES: usize = 64;
+// -- WP P2SSFIX -- review p2b F4: the wire cap.
+/// The largest document, in its compact form, that `snapshot.put` takes and `snapshot.get`
+/// answers: the server's [`MAX_FRAME`](crate::server::MAX_FRAME) less 4 KiB for the
+/// message around it and the escaping of a document sent as text. No chunking: a larger
+/// one is `conflict`, and a client refuses it locally with the same message.
+pub const MAX_WIRE_DOC_BYTES: u64 = (crate::server::MAX_FRAME as u64).saturating_sub(4096);
+
+/// The refusal of a document over the wire cap, the same text on put and get.
+fn over_wire(len: u64) -> SnapshotError {
+    SnapshotError::Conflict(format!(
+        "a snapshot document is at most {MAX_WIRE_DOC_BYTES} bytes on the DSPi Link \
+         (compact JSON); this one is {len}"
+    ))
+}
+
 /// How much larger than the cap a document's text may be before it is parsed (its
 /// stored, pretty-printed form is what the cap measures).
 const MAX_INPUT_FACTOR: u64 = 4;
@@ -335,6 +351,22 @@ impl HubSnapshots {
         self.store.read(id).map_err(|e| map_io(id, e))
     }
 
+    // -- WP P2SSFIX --
+    /// Snapshot `id`'s entry and its document in the compact form the DSPi Link carries,
+    /// for `snapshot.get`. Errors as [`get`](Self::get), and `conflict` for a document
+    /// over [`MAX_WIRE_DOC_BYTES`] in that form.
+    pub fn get_wire(&self, id: &str) -> Result<(SnapshotEntry, String), SnapshotError> {
+        let (entry, text) = self.get(id)?;
+        let doc: Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+            .map_err(|e| SnapshotError::Io(io::Error::new(io::ErrorKind::InvalidData, e)))?;
+        let compact = serde_json::to_string(&doc).map_err(io::Error::other)?;
+        let len = u64::try_from(compact.len()).unwrap_or(u64::MAX);
+        if len > MAX_WIRE_DOC_BYTES {
+            return Err(over_wire(len));
+        }
+        Ok((entry, compact))
+    }
+
     /// File `text`, a client's snapshot document of `serial`, under the id its `snapshot`
     /// block names (see the module documentation for the checks and refusals).
     pub fn put(&self, serial: &str, text: &str) -> Result<Put, SnapshotError> {
@@ -373,6 +405,12 @@ impl HubSnapshots {
             return Err(bad("document's snapshot.id is not a store id"));
         }
         let id = id.to_string();
+        // -- WP P2SSFIX -- the wire cap, on the compact form.
+        let compact = serde_json::to_string(&doc).map_err(|e| bad(format!("document: {e}")))?;
+        let compact_len = u64::try_from(compact.len()).unwrap_or(u64::MAX);
+        if compact_len > MAX_WIRE_DOC_BYTES {
+            return Err(over_wire(compact_len));
+        }
         // -- WP P2SS -- review p2a F4: filed pretty-printed, the form the client store's
         // rename and note write, and every cap measured on that form.
         let stored =
@@ -599,7 +637,7 @@ impl HubSnapshots {
             "snapshot.get" => match snap {
                 None => Err(bad("snapshot is required")),
                 Some(s) => self
-                    .get(s)
+                    .get_wire(s)
                     .map(|(entry, doc)| json!({"snapshot": entry, "document": doc})),
             },
             "snapshot.put" => {

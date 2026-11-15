@@ -180,7 +180,8 @@ struct State {
 
 /// What every thread and handle shares.
 pub(crate) struct HubInner {
-    name: String,
+    // -- WP P2HS -- changed by `hub.rename`. A leaf lock.
+    name: Mutex<String>,
     hub_id: String,
     // -- fixup sw2x -- read by the system model's per-op role check.
     pub(crate) policy: Arc<Policy>,
@@ -314,7 +315,7 @@ impl Hub {
         let (sup_tx, sup_rx) = mpsc::channel();
         let (ev_tx, ev_rx) = mpsc::channel();
         let inner = Arc::new(HubInner {
-            name: config.name,
+            name: Mutex::new(config.name),
             hub_id: config.hub_id,
             policy: Arc::new(Policy::embedded()),
             state: Mutex::new(State {
@@ -539,9 +540,10 @@ impl std::ops::Deref for Hub {
 }
 
 impl HubHandle {
-    /// The hub's user-visible name.
-    pub fn name(&self) -> &str {
-        &self.inner.name
+    /// The hub's user-visible name. -- WP P2HS -- an owned copy, since `hub.rename`
+    /// changes it.
+    pub fn name(&self) -> String {
+        guard(&self.inner.name).clone()
     }
 
     /// `hid`.
@@ -759,6 +761,33 @@ impl HubHandle {
             outbox,
         )
         .with_hub(Arc::downgrade(inner)))
+    }
+}
+
+// -- WP P2HS --
+impl HubHandle {
+    /// Network sessions open now, principals included; not the app's own.
+    pub(crate) fn session_count(&self) -> usize {
+        guard(&self.inner.state).sessions.len()
+    }
+
+    /// Every attached device, by handle.
+    pub(crate) fn attached_devices(&self) -> Vec<Arc<DeviceShared>> {
+        guard(&self.inner.state)
+            .attached
+            .values()
+            .map(|a| Arc::clone(&a.shared))
+            .collect()
+    }
+
+    /// `hub.rename`: the name in use from now on, in the store for the next start (on
+    /// a networked hub), and announced again over mDNS while sharing.
+    pub(crate) fn set_name(&self, name: &str) {
+        name.clone_into(&mut guard(&self.inner.name));
+        if let Some(auth) = self.inner.services.auth() {
+            auth.set_name(name);
+        }
+        self.inner.readvertise();
     }
 }
 
@@ -987,7 +1016,7 @@ impl HubInner {
         let mut slot = guard(&self.advertiser);
         let (device_count, serials) = self.advertised_devices();
         let advert = HubAdvert {
-            name: self.name.clone(),
+            name: guard(&self.name).clone(),
             port,
             hub_id: self.hub_id.clone(),
             kind: "console".to_owned(),
@@ -1016,6 +1045,8 @@ impl HubInner {
         let advert = HubAdvert {
             device_count,
             serials,
+            // -- WP P2HS -- and the name `hub.rename` may have changed
+            name: guard(&self.name).clone(),
             ..advertiser.current().clone()
         };
         if let Err(e) = advertiser.update(&advert) {

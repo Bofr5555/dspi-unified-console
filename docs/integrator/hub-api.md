@@ -21,19 +21,25 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 |---|---|---|---|---|---|
 | 1 | [Conventions](#1-conventions) | | | P2DOC | built (this page) |
 | 2 | [On an unencrypted network](#2-on-an-unencrypted-network) | | | P2DOC | built (this page) |
-| 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | draft |
+| 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | built |
 | 4 | [Identify](#4-identify) | `device.identify` | `identify` | P2ID | draft |
+| 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | draft |
+| 4 | [Identify](#4-identify) | `device.identify` | `identify` | P2ID | built (P2ID) |
 | 5 | [Health](#5-health) | `health.get` | `health` | P2HP | draft |
-| 6 | [Event history](#6-event-history) | `event.*` | `events` | P2EV (records: P2EVW) | draft |
+| 6 | [Event history](#6-event-history) | `event.*` | `events` | P2EV (records: P2EVW) | built |
 | 7 | [Alarms](#7-alarms) | `alarm.*` | `alarms` | P2AL | draft |
 | 8 | [Notifications out](#8-notifications-out) | `outbound.*` | `outbound` | P2WH | draft |
+| 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | built (P2PA) |
+| 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | built (P2PA) |
+| 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | built (P2SS store, registered by P2PA; P2PA recall) |
+| 8 | [Notifications out](#8-notifications-out) | `outbound.*` | `outbound` | P2WH | built |
 | 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | draft |
 | 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | draft |
 | 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | draft |
 | 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | draft |
 | 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | draft |
 | 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | draft |
-| 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | draft |
+| 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | built |
 | 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM | draft |
 | 17 | [Deviations from the DSPi Link spec](#17-deviations-from-the-dspi-link-spec) | | | P2DOC | built (this page) |
 | 18 | [Every message](#18-every-message) | | | P2DOC | built (this page) |
@@ -221,16 +227,16 @@ passwords, webhook bodies, and every parameter.** A webhook's signature proves t
 
 ## 3. Inventory
 
-*State: draft (P2IN).*
+*State: built (P2IN). Off unless the hub's `ServiceConfig::inventory` is set; announced as `inventory` when on.*
 
 Every DSPi the hub has ever seen, online or not, persisted in `inventory.json`. `device.list` (spec 7.4: handles, a
-60 s grace) is unchanged; the inventory is keyed by serial and outlives a replug.
+60 s grace) is unchanged; the inventory is keyed by serial and outlives a replug and a restart of the hub.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `inventory.list` | viewer | `serial?` (one device) | `devices`: records, online first, then by last seen |
-| `inventory.set` | admin | `serial`, `location?`, `note?`, `tags?` (each replaces its field; `null` clears) | `device`: the record |
-| `inventory.forget` | admin | `serial`, `with_data?` (default `false`) | `serial`, `forgot`: what went (`record`, `events`, `snapshots`). `conflict` while the device is online |
+| `inventory.list` | viewer | `serial?` or `handle?` (one device), `offset?` (default 0), `limit?` (default 100, at most 500) | `devices`: records, online first, then by last seen (newest first), then by serial; `total`; `next_offset` (`null` on the last page). A page also stops before about 512 KiB |
+| `inventory.set` | admin | `serial` or `handle`, `location?`, `note?`, `tags?` (each replaces its field; `null` clears; absent keeps) | `device`: the record |
+| `inventory.forget` | admin | `serial` or `handle`, `with_data?` (default `false`) | `serial`, `forgot`: a list of what went, in order (`"record"`, then `"events"` if it had history files, then `"snapshots"` if asked and it had any). `conflict` while the device is online; `not_found` for a serial not in the inventory |
 
 A record:
 
@@ -239,55 +245,88 @@ A record:
 | `serial` | the key |
 | `handle` | the DSPi Link handle while online, else `null` |
 | `online` | `true` while attached |
-| `name` | the device's name as `device.list` gives it |
+| `name` | the device's name as `device.list` gave it when last seen |
 | `platform`, `fw`, `fw_beta`, `outputs` | from `REQ_GET_PLATFORM` (spec 7.4); `fw_beta` absent when unknown |
-| `board`, `hw_rev`, `chip`, `chip_rev` | from `EXT_IDENTIFY` where the firmware lists it, else absent |
-| `location`, `note` | set by an admin, at most 256 characters each, any Unicode |
-| `tags` | at most 16 strings of at most 32 characters |
-| `first_seen`, `last_seen` | times |
-| `last_reset` | `{reason, prev_uptime_s?, at}` from `EXT_RESET_INFO` (reasons as section 5), else absent |
+| `board`, `hw_rev`, `chip`, `chip_rev` | from `EXT_IDENTIFY` where the firmware lists it, else absent (`hw_rev` also when the build set none) |
+| `location`, `note` | set by an admin, at most 256 characters each, any Unicode but control characters (a note may hold newlines and tabs); `null` when unset |
+| `tags` | at most 16 strings of 1 to 32 characters, trimmed, duplicates dropped |
+| `first_seen`, `last_seen` | times; `last_seen` is now while online, else when it went offline |
+| `last_reset` | `{reason, prev_uptime_s?, at}` from `EXT_RESET_INFO` (reasons as section 5; `at` the reading's time less the uptime), else absent |
 
-`inventory.forget` removes the record and the device's history files; its snapshots on the hub only with
-`with_data: true`. Event to every session: `inventory.changed {v, hub, serial, device}` (`device` `null` when
-forgotten). A firmware change updates the record and records a `firmware` event in the history.
+A value past a bound answers `bad_request` and changes nothing. `inventory.forget` removes the record and the device's
+history files (`events/`); its snapshots on the hub only with `with_data: true` (each with its `snapshot.changed`). If a
+file cannot be removed, the answer is `internal` and the record stays, so the forget can be tried again. Event to every
+session: `inventory.changed {v, hub, serial, device}` (`device` `null` when forgotten, or dropped past the 1024-device
+cap, oldest offline first, with a line in the hub's log). A firmware change updates the record and puts a `firmware`
+history record on the hub's internal bus (stored by the history, section 6).
+
+The file is written atomically, 0600 on Unix, one record per line inside one JSON object, so a torn file still reads
+record by record: the hub keeps the whole file aside as `inventory.json.bad-<unix seconds>`, keeps what it could read, and
+writes the file again. The diagnostics bundle carries it as `hub/inventory.json`.
 
 ## 4. Identify
 
-*State: draft (P2ID).*
+*State: built (P2ID): `crates/dspi-hub/src/identify.rs`, on when the hub's `ServiceConfig::identify` is set.*
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
 | `device.identify` | control | `serial` or `handle`, `seconds` (0 stops; at most 120, longer is shortened), `tone_output?` (an output index) | `serial`, `status`: `{remaining_s, last_tone, chip, chip_rev, board, hw_rev}` read after the write |
+
+- `status` is `null` if the read after the write failed (the write went out). `last_tone` is the output of the last tone
+  since the device started, or `null`; `chip` is `"RP2040"`, `"RP2350"` or `"chip <n>"`.
 
 - The LED blinks for `seconds`. With `tone_output` the device also plays its quiet identify tone once (1 kHz, -40 dBFS,
   400 ms, through that output's whole chain); only when asked. There is no tone on firmware without `EXT_IDENTIFY`.
 - It is one of the hub's own writes (section 1.7): the extension opcode is admin-only in the policy, so the hub sends
   it, not the caller. The blink goes out whatever the lock; the tone answers `locked` while another session holds the
   device's lock.
-- `unsupported` (nothing sent) when the device's `EXT_LIST` lacks `EXT_IDENTIFY`; `bad_request` for a tone output the
-  device does not have; `rate_limited` within 2 s of the last request for that device.
-- Recorded in the history with the caller in `by`.
+- `unsupported` (nothing sent) when the device's `EXT_LIST` lacks `EXT_IDENTIFY` or stalls (stock firmware; read once
+  per attach); `bad_request` for a tone output the device does not have; `rate_limited` (with `retry_in_ms`) within 2 s
+  of the last request sent to that device, whoever asked. A refused request does not count against the 2 s.
+- Addressing as section 1.3: an unknown serial is `not_found` (a serial known only to the inventory, past the 60 s grace,
+  is also `not_found` here), one known but not attached `offline`. A device that refuses the write answers `device` with
+  `status`.
+- Recorded in the history with the caller in `by` (and `session`): a record with `source` `identify`, `value` the
+  seconds and `channel` the tone's output, put on the hub's bus for the history to store.
 
 ## 5. Health
 
-*State: draft (P2HP).*
+*State: built (P2HP).*
 
-The hub reads each device's status every 2 s, its temperature every 30 s and its reset record every 60 s, on the same
-poll groups the consoles use (one read whoever asks) and inside the poll budget. It reads; it never clears the clip
-latch.
+On attach the hub reads the device's `EXT_LIST`, then `EXT_IDENTIFY` (board, hardware revision, chip) and
+`EXT_RESET_INFO` where listed; firmware without the extension channel is asked nothing more. Then it reads the status
+every 2 s, the temperature every 30 s and the reset record (uptime, hang count) every 60 s. The status read is a poll on
+the same poll group the consoles' meters use (`REQ_GET_STATUS` 9 at the length a console asks for, so one read whoever
+asks), inside the poll budget; a DSPi Link poll runs at 1 Hz at least, so the hub polls at 1 Hz and reports every 2 s.
+The temperature and the reset record are single reads on the device's queue, not polls: a 1 Hz poll for a 30 s reading
+would be 30 times the reads. If the poll budget refuses the hub's poll, it reads the status itself every 2 s and asks
+again later. The hub's reads pass a session's device lock (a read changes nothing the lock protects). It reads; it
+never writes, and never clears the clip latch.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `health.get` | viewer | `serial?` | `devices`: one record per online device (or the one asked) |
+| `health.get` | viewer | `serial?` or `handle?` (both: they must name the same device) | `devices`: one record per online device (or the one asked) |
 
-A record: `serial`, `handle`, `at` (the newest read), `cpu_pct`, `clip_mask` (the sticky latch: "clipped since someone
-cleared", one bit per channel), `temp_c`, `uptime_s`, `hang_count`, `unresponsive` (`true` once commands have timed out
-for 10 s while attached), `reset` (`{reason, prev_uptime_s?}` from the last attach). A field the firmware does not give
-is absent. Reset reasons: `power_on`, `brownout`, `run_pin`, `watchdog`, `software`, `debugger`, `glitch`, `unknown`.
+A record: `serial`, `handle`, `at` (the newest read), `cpu_pct` (the busier of the two cores), `clip_mask` (the sticky
+latch: "clipped since someone cleared", one bit per channel), `temp_c` (to 0.01 °C), `uptime_s`, `hang_count`,
+`unresponsive` (`true` once the device has given no answer for 10 s while attached, until its next answer),
+`unresponsive_since` (while `unresponsive`), `reset` (`{reason, prev_uptime_s?}` from the attach, or from the read that
+found the uptime gone backwards). A field the firmware does not give, or not yet read, is absent. Reset reasons:
+`power_on`, `brownout`, `run_pin`, `watchdog`, `software`, `debugger`, `glitch`, `unknown`.
+`uptime_s` and `hang_count` come from the reset-info read, every 60 s: they are as old as that read (`at` is the
+newest read of any field), so two records 2 s apart usually carry the same uptime, and the uptime moves in 60 s
+steps.
+
+Errors: `not_found` for a serial the hub does not know, `offline` for one it knows that is not attached, `no_device` for
+an unknown handle, `bad_request` for a wrong type or a serial and handle of two devices.
+
+On the hub's internal bus (for its other services, not on the wire): `Facts` once per attach and again when the uptime
+went backwards between two reset reads (a reset not seen as a detach); `Health` every 2 s; `Unresponsive` once per
+silence. An embedder turns the service on with `ServiceConfig::health` (`HealthConfig::default()` has the periods above).
 
 ## 6. Event history
 
-*State: draft (P2EV; the record kinds and the writer: P2EVW).*
+*State: built (P2EV; the record kinds and the writer: P2EVW). Reference: `crates/dspi-hub/src/history.rs`.*
 
 One shared log per device in `events/`, in the event log's own file format and lock rule ([event-log.md](event-log.md)),
 so a diagnostics bundle and `event_log_export` read it unchanged. The writer is `EventStore`
@@ -297,11 +336,28 @@ reason, firmware changes, recalls, identify, schedule runs, alarms.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `event.list` | viewer | `serial`, `after_id?` (default 0), `limit?` | `serial`, `records` (oldest first), `more` (`true` if more follow `records`' last `id`) |
-| `event.watch` | viewer | `on` (bool), `serial?` (all devices when absent) | `on` |
-| `event.export` | admin | `serial`, `after_id?` | `serial`, `text` (the file format, whole records, at most about 48 KiB), `next_after_id` (`null` at the end) |
+| `event.list` | viewer | `serial`, `after_id?` (default 0), `limit?` (default 100, at most 500) | `serial`, `records` (oldest first; with `after_id` 0 the newest `limit`), `more` (`true` if more follow `records`' last `id`), `newest_id` (the highest id the log holds; 0 when empty) |
+| `event.watch` | viewer | `on` (bool), `serial?` (all devices when absent) | `on`, `serial` |
+| `event.export` | admin | `serial`, `after_id?` | `serial`, `text` (the file format, whole records, at most about 48 KiB), `next_after_id` (`null` at the end), `newest_id` |
 
-Event while watching: `event.added {v, hub, serial, record}`. A watch ends with the session.
+Event while watching: `event.added {v, hub, serial, record}`. A watch ends with the session. A device may be named
+by `handle` instead of `serial` (section 1.3); a serial with no log on the hub is `not_found`.
+
+**Ids can start again at 1** for a device: after `inventory.forget` removed its files, or after the total cap removed
+every file of it. A client paging with an `after_id` above `newest_id` knows the numbering started
+again and reads from 0. `after_id` 0 is a first read (the newest page); to page from a device's oldest record, take its
+id from a first read with a large `limit`, or export.
+
+A record held back for coalescing (a slider sweep, as the format does) is written out by any read of that device, or
+when its second has passed. Bus messages the history could not take in time, and records it could not write, become one
+`events_dropped` record per loss episode (`count` all of it) in the log of each device online (each device seen, when
+none is). The record is written when the episode ends (the history has caught up), or once a minute while it lasts.
+
+A device's `Facts` (its attach) record a `reset` when its uptime shows it restarted since the log last saw it, and a
+`firmware` record when its version differs from the log's; the inventory's firmware change (P2IN) and the facts'
+make one record, whichever comes first. One restart is one `reset` record, whether the facts or the next health
+reading sees it first; a health reading that repeats the last uptime (section 5: it refreshes every 60 s) is no
+restart.
 
 Records are the file format's, with what phase 2 adds: the field **`by`** (the name of the client, key, schedule or rule
 that caused it, next to `session`) and the kinds **`unresponsive`**, **`alarm`**, **`schedule`**, **`access`** and
@@ -356,69 +412,110 @@ the mute passes the lock, the hub never unmutes, and the history records it with
 
 ## 8. Notifications out
 
-*State: draft (P2WH; MQTT publishing is section 13).*
+*State: built (P2WH, `crates/dspi-hub/src/outbound/`; MQTT publishing is section 13).*
 
-Opt-in targets in `outbound.json` (admin); none by default. Deliveries go from a queue of their own, never from a
-device's worker; a dead target backs off (1 s doubling to 5 min) and never holds anything else up.
+Opt-in targets in `outbound.json` (admin); none by default, and with none the hub runs no delivery thread. Deliveries
+go from a queue of their own (64 per target, the oldest dropped and counted past that), never from a device's worker;
+each target has its own sender, so a dead or slow target never holds the bus or another target up. A failed try (no
+connection, a timeout, a status other than 2xx) is tried again after the target's backoff, 1 s doubling to 5 min and
+reset by a success; after 10 tries the delivery is dropped and counted in `dropped`. Queued deliveries are not kept
+across a restart; the targets are.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `outbound.get` | admin | | `targets` (secrets as `set` or `not set`), each with `queued`, `dropped`, `last` (`{at, ok, status?, msg?}`) |
-| `outbound.set` | admin | `targets` (the whole list); a target's `secret: "new"` makes a new one | `targets`, and `secrets` `{<target id>: "<secret>"}` for the new ones: shown in this answer only |
-| `outbound.test` | admin | `target` (its `id`) | `delivered` (bool), `status?`, `msg?` (one delivery, now) |
+| `outbound.get` | admin | | `targets` (secrets as `set` or `not set`), each with `queued`, `dropped`, `last` (`{at, ok, status?, msg?}`, or `null` before the first try) |
+| `outbound.set` | admin | `targets` (the whole list, at most 16) | `targets`, and `secrets` `{<target id>: "<secret>"}` for the new ones: shown in this answer only |
+| `outbound.test` | admin | `target` (its `id`) | `delivered` (bool), `status?`, `msg?` (one delivery of kind `test`, now; recorded as its `last`) |
 
-A target: `id`, `name`, `kind` (`webhook`: a JSON POST; `push`: an ntfy-style plain-text POST of `text`), `url`
-(`http://` only; `https://` refused with a reason, section 2), `enabled`, `kinds` (any of `alarm.raised`,
-`alarm.cleared`, `restart`, `schedule.ran`, `schedule.failed`).
+A target: `id` (1 to 32 of `A-Z a-z 0-9 _ -`; left out, the hub gives `t1`, `t2`, ...), `name` (at most 64
+characters; the id when left out), `kind` (`webhook`: a JSON POST; `push`: an ntfy-style `text/plain` POST of
+`text`), `url` (`http://` only, at most 2048 bytes, no credentials in it; `https://` refused with the reason, section 2
+and OD-P2f), `enabled` (default `true`; a disabled target's queue is emptied), `kinds` (any of `alarm.raised`,
+`alarm.cleared`, `restart`, `schedule.ran`, `schedule.failed`; every kind when left out), and `secret`:
+
+| `secret` in `outbound.set` | Means |
+|---|---|
+| `"new"` | the hub makes one (32 random bytes as 64 hex characters) and shows it in `secrets`, once |
+| `"set"` or left out | keep this id's secret, if it has one (so `outbound.get`'s list can be sent back as it is) |
+| `"not set"` or `null` | no secret: no signature |
+| anything else | `bad_request`: secrets are made by the hub, never typed |
+
+A refusal is `bad_request` with `msg` naming the field and `target` the entry's index; nothing is kept then. A target
+whose `id` stays keeps its queue, counts and backoff.
+
+Which bus events are sent: an alarm raised (`alarm.raised`; a `device_restarted` one is `restart` first) or cleared
+(`alarm.cleared`; an acknowledgement is not sent), and a schedule's run (`schedule.ran`; one with a failed action is
+`schedule.failed` first). A target gets each event once, as the first of its kinds it picked.
 
 A webhook's body: `{"v": 1, "hub": "<id>", "kind": "alarm.raised", "serial": "...", "at": "...", "text": "...",
-"alarm": {...}}` (`serial` and `alarm` where they apply). Headers `X-DSPi-Timestamp: <unix seconds>` and
-`X-DSPi-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`. A receiver checks the signature and that
-the timestamp is recent. The hub reads only the status line of the reply (at most 8 KiB); a 2xx is delivered. Timeouts:
-5 s to connect, 10 s in all.
+"alarm": {...}}` (`serial` and `alarm` where they apply; `alarm` is section 7's object with ISO times). A schedule's
+event carries `"schedule": {"rule", "name", "by"?, "results", "results_total"}` (the first 64 results) instead of
+`alarm`. `text` is at most 1024 characters. Headers `X-DSPi-Timestamp: <unix seconds>` (the time of that try) and, for
+a target with a secret, `X-DSPi-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`, keyed with the
+secret's text as shown (its 64 characters as bytes). A push target gets the same headers. A receiver checks the
+signature and that the timestamp is recent. The hub reads only the status line of the reply (at most 8 KiB; no line
+end within them is a failure); a 2xx is delivered. Timeouts: 5 s to connect, 10 s in all.
 
 ## 9. Parameters
 
-*State: draft (P2PA).*
+*State: built (P2PA). `crates/dspi-hub/src/api/` (feature `api` of `dspi-hub`; the binary that serves the
+API turns it on), tests `crates/dspi-hub/tests/wp_p2pa_api.rs`.*
 
 Read and write any registry parameter by path ([parameter-api.md](parameter-api.md)). A write runs through the same core
 code as a console's (`write_param`, every typed setter's guard), inside the hub, as a child session of the caller: same
-role, same lock rights, its own session id. The limits, the lock and the voltage rule then judge it as they judge any
-client.
+role, same client and name (`by`), its own session id from the hub's remote range. The limits, the installer lock, the
+device lock and the voltage rule then judge it as they judge any client, and other sessions see it as a foreign write.
+A read is the device's own answer (`dspi_session::Session::read`, as that child session).
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `param.list` | viewer | `serial` | `params`: one row per registry path the device offers |
-| `param.get` | viewer | `serial`, `path`, `idx?` | `path`, `idx`, `value` (and `choice`, or `value_b64`) |
-| `param.get_many` | viewer | `serial`, `items`: `[{path, idx?}]`, at most 64 | `values`: `[{path, idx, ok, value?, choice?, code?, msg?}]`, in order |
-| `param.set` | control | `serial`, `path`, `idx?`, `value`, `confirm?` | `path`, `idx`, `value`: the value read back from the device |
+| `param.list` | viewer | `serial` | `serial`, `params`: one row per registry path the device offers |
+| `param.get` | viewer | `serial`, `path`, `idx?` | `serial`, `path`, `idx`, `value` (and `choice`, or `value_b64`) |
+| `param.get_many` | viewer | `serial`, `items`: `[{path, idx?}]`, at most 64 | `serial`, `values`: `[{path, idx, ok, value?, choice?, code?, msg?}]`, in order |
+| `param.set` | control | `serial`, `path`, `idx?`, `value`, `confirm?` | `serial`, `path`, `idx`, `value`: the value read back from the device |
 
 A `param.list` row (the web binding's `describe` row): `path`, `label`, `plain`, `kind`, `unit`, `min`, `max`
 (`choices: [{value, label}]` for a choice, `max` for text), `readable`, `writable`, `routed` (`false`: not written by
-path; the row's `use` names the message or call that writes it), `indices` (how many), `layout` (the index ranges on
-this device, e.g. `[{"name": "output", "count": 9}]`), `hazard` (`none`, `audible`, `deferred`, `flash`, `reconfig`,
-`irreversible`).
+the API; the row's `use` names the message or call that writes it), `gated` (written only with `"confirm": true` by an
+admin), `indices` (how many), `layout` (the index ranges on this device, e.g. `[{"name": "output", "count": 9}]`;
+`count` is `null` where only the device knows), `hazard` (`none`, `audible`, `deferred`, `flash`, `reconfig`,
+`irreversible`). A path the device's firmware lacks (a feature it did not answer, an RP2350-only path on an RP2040)
+is not listed.
 
-- `bad_request`: a path not in the registry, a value of the wrong kind or outside the range (with `min` and `max`), a
-  path `write_param` does not write (`use` names what does), or raw bytes.
+- `bad_request`: a path not in the registry, the wrong number of indices or one the device does not have, a value of the
+  wrong kind or outside the range (with `min` and `max`), a path the API does not write (`use` names what does, where
+  the core has a call for it), or raw bytes. Not written by the API at all: `bytes` and `status` kinds, every
+  extension-opcode path, and `meters.clear` (the clip latch is shared by every console: the hub never clears it).
 - Gated paths (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) are written only by an admin with
-  `"confirm": true`: the API's explicit confirmation. Otherwise `confirmation_required` (admin) or `denied`.
+  `"confirm": true`: the API's explicit confirmation (the hub's core mints and spends the confirmation token itself).
+  Otherwise `confirmation_required` (admin) or `denied`.
 - On a locked device, control may set `vol.master`, `vol.user`, `vol.mute`, `out.mute` and load a preset only
-  (`installer_lock` otherwise). Past a limit: `limit_exceeded`, nothing sent.
-- Rate: the caller's in-flight limit (`hello.limits.max_inflight`), then `busy`.
+  (`installer_lock` otherwise). Past a limit: `limit_exceeded` with `limit`, nothing sent.
+- **The child session acts for its caller** in two things only: a device lock (spec 7.7) the caller holds lets its
+  API writes through (another session's lock answers `locked`), and a PIN unlock (`limits.unlock`) the caller made
+  is the child's too. Both end when the caller's session does; a child never keeps them. The role, the limits and
+  the voltage rule judge the child as any session.
+- A guarded apply pending on the device (another session's) refuses `param.set`, `preset.load`, `preset.save` and
+  `snapshot.recall` with `conflict`; reads go on.
+- Rate: one request at a time per connection (each is answered before the next is read), each on the caller's child
+  session, which the in-flight limit (`hello.limits.max_inflight`) bounds as any session's.
+- The hub keeps one core per (caller, device), opened on first use (a full attach: the probe and an image read) and
+  closed after 60 s unused, when the caller's session ends or when the device goes; at most 32 at once, then `busy`.
 
 ## 10. Presets
 
-*State: draft (P2PA).*
+*State: built (P2PA).*
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `preset.list` | viewer | `serial` | `slots`: `[{slot, name, used}]`, `active` (the loaded slot or `null`), `startup` |
-| `preset.load` | control | `serial`, `slot` or `name` | `slot`, `name` |
-| `preset.save` | admin | `serial`, `slot`, `name?`, `confirm: true` | `slot`, `name` |
+| `preset.list` | viewer | `serial` | `serial`, `slots`: `[{slot, name, used}]`, `active` (the loaded slot or `null`), `startup` (`{mode: "slot", slot}` or `{mode: "last_active"}`) |
+| `preset.load` | control | `serial`, `slot` or `name` | `serial`, `slot`, `name` |
+| `preset.save` | admin | `serial`, `slot`, `name?`, `confirm: true` | `serial`, `slot`, `name` |
 
-A name matches exactly (case kept); two slots with the name are `conflict`, none is `not_found`. A preset load is held
-after the fact on a device with a limits profile, as P1HL does (`limits.held` follows). The audio link's scenes stay
+Slots are 0 to 9. A name matches exactly (case kept) among the used slots; two slots with the name are `conflict`, none
+is `not_found`. Names are read from the device for each used slot. A preset load is held after the fact on a device
+with a limits profile, as P1HL does (`limits.held` follows). `preset.save` without `"confirm": true` is
+`confirmation_required`; `name` (at most 31 bytes) names the slot after the save. The audio link's scenes stay
 `system.scene.apply {scene}` ([audio-link.md](audio-link.md)).
 
 ## 11. Snapshots on the hub
@@ -432,8 +529,6 @@ copy; nothing is overwritten silently.
 
 ### 11.1 The store (P2SS)
 
-| `t` | Role | Request | Answer |
-|---|---|---|---|
 `snapshot` is a snapshot's store id (as `alarm` is an alarm's in `alarm.ack`); `id` is the request id, as on every
 message. An entry is the index's own object: `{id, name, note, serial, savedMs, platform, inputChannels,
 outputChannels, wireFormat}`.
@@ -441,7 +536,7 @@ outputChannels, wireFormat}`.
 | `t` | Role | Request | Answer |
 |---|---|---|---|
 | `snapshot.list` | viewer | `serial` | `serial`, `snapshots`: entries, oldest first (the order of the client store's `index.json`) |
-| `snapshot.get` | viewer | `snapshot` | `snapshot`: the entry, `document` (the document's text) |
+| `snapshot.get` | viewer | `snapshot` | `snapshot`: the entry, `document` (the document's text, compact JSON) |
 | `snapshot.put` | control | `serial`, `document` (its text, or the JSON object) | `snapshot`: the entry, `created` (`false` when the hub already held this snapshot with the same content) |
 | `snapshot.rename` | control | `snapshot`, `name` | `snapshot`: the entry |
 | `snapshot.note` | control | `snapshot`, `note` | `snapshot`: the entry |
@@ -449,7 +544,14 @@ outputChannels, wireFormat}`.
 
 - `document` is filed as a client's store files it: `meta.kind = "snapshot"` and a `snapshot` block naming the same
   serial as the message and the client's id. A document that is not such a snapshot, or names another device's serial,
-  is `bad_request`. At most 256 KiB.
+  is `bad_request`.
+- **Two size caps (P2SSFIX).** On the wire, a document is at most **61 440 bytes** (`max_frame` 65 536 less 4 KiB for the
+  message around it) in its **compact** JSON form, the form `snapshot.get` answers; `snapshot.put` and `snapshot.get` of
+  a larger one are `conflict`, the message naming the limit and the document's size ("a snapshot document is at most
+  61440 bytes on the DSPi Link (compact JSON); this one is N"). There is no chunking. A client measures the compact form
+  before it sends and **refuses locally with the same message**, sending nothing (P2CC1). What the hub files is the
+  document pretty-printed (the client store's own form, about 1.6 times the compact size), at most 256 KiB; rename and
+  note are measured on that form too. A demo-device snapshot is about 50 KB compact and 83 KB filed.
 - The id is the client's, taken from the document and kept (capture-time ids are unique, so one snapshot keeps one id
   on both sides); the hub never makes one. The name and note are the document's; change them with `snapshot.rename`
   and `snapshot.note`. An id the hub holds with different content, or for another device, is `conflict`: the hub's
@@ -461,14 +563,23 @@ outputChannels, wireFormat}`.
 
 ### 11.2 Recall on the hub (P2PA)
 
+*State: built (P2PA). The store's messages (11.1) are registered as the `snapshot` family on a hub with a data folder;
+each change is broadcast as `snapshot.changed` right after the answer is made.*
+
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `snapshot.recall` | control | `serial`, `snapshot` or `name`, `guard?` (bool), `timeout_ms?` | `serial`, `snapshot`, `lines` (what changed), `guard` (its id, with `guard: true`) |
+| `snapshot.recall` | control | `serial`, `snapshot` or `name`, `guard?` (bool), `timeout_ms?` | `serial`, `snapshot`, `name`, `image` (whether the image was written), `lines` (what changed), `notes` (what was not written, and why), `guard` (its id, with `guard: true`) |
 
 The hub writes the image and the settings outside it, in a recall's order, as the caller's child session. On a device
-with a limits profile or a lock, control's recall is `image_refused`; an admin's is written and then held. With
-`guard: true` a guarded apply ([hub.md](hub.md), Guarded apply) begins first; confirm it with `apply.confirm`. A
-device gone during the recall gets nothing more. Recorded in the history as a `recall` with its `lines`.
+with a limits profile or a lock, control's recall is `image_refused` (nothing written); an admin's is written and then
+held. With `guard: true` a guarded apply ([hub.md](hub.md), Guarded apply) begins first, as the caller (`timeout_ms`
+as `apply.begin`'s, 30 s by default); confirm it with `apply.confirm`, or it reverts. A recall that fails after its
+guard began is reverted at once. A device that is not attached gets nothing (`offline`). `name` matches exactly among
+the device's snapshots (two are `conflict`); a snapshot of another device is `not_found`. Recorded in the history as a
+`recall` with its `lines`, the caller's name in `by`.
+
+A document reaches the hub in one DSPi Link text frame (at most 64 KiB, `hello.limits.max_frame`): send it compact,
+or as the JSON object. The demo device's snapshot runs to about 80 KB pretty-printed, about 50 KB compact.
 
 ## 12. Schedules
 
@@ -613,14 +724,44 @@ The endpoints (PLAN-P2 I1; more may be added within v1, each onto an existing me
 
 ## 15. Statistics and the hub's name
 
-*State: draft (P2HS).*
+*State: built (P2HS).*
 
-Spec 7.9 as written, now answered:
+Spec 7.9 as written, now answered. Both are Admin only: Control and Viewer get `denied`. The cap is `hub_stats`;
+a hub built with the service off (`ServiceConfig::stats`) answers both `unsupported`, as hubs before it did.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
 | `hub.stats` | admin | | `sessions`, `uptime_s`, `devices`: `[{handle, serial, cmds, errors, avg_rtt_ms, notify_dropped}]` (`serial` added, section 17) |
 | `hub.rename` | admin | `name` | `name`. The new name is saved, in the next `hello` and `/dspi/v1/info`, and announced again over mDNS |
+
+```json
+{"t": "hub.stats", "id": 13}
+{"t": "ok", "id": 13, "v": 1, "sessions": 3, "uptime_s": 8812,
+ "devices": [{"handle": 0, "serial": "E46058388B1A2E2C", "cmds": 18233, "errors": 2, "avg_rtt_ms": 1.4, "notify_dropped": 0}]}
+{"t": "hub.rename", "id": 14, "name": "Studio Mac"}
+{"t": "ok", "id": 14, "v": 1, "name": "Studio Mac"}
+```
+
+What the fields count:
+
+- `sessions`: network sessions open now, principals (API keys, schedules) included; the embedding app's own is not.
+- `uptime_s`: seconds since the hub started.
+- One row per **attached** device, by handle; a device offline inside its grace has no row. The counts are since
+  the device attached and start again at a re-attach.
+  - `cmds`: commands that ran on the device. A command refused before it reached the device (role, lock,
+    limits, queue timeout) is not counted.
+  - `errors`: those of them whose transfer failed (stall, timeout, disconnect, bus error).
+  - `avg_rtt_ms`: their mean time on the transport, in milliseconds, three decimals; 0 before the first. Time in
+    the device's queue is not included.
+  - `notify_dropped`: this device's notifications that a full session outbox dropped (the session is sent
+    `resync` reason 0 for them, spec 8.6), over every session.
+
+`hub.rename`: control characters are dropped and the ends trimmed, as the embedders do with a start name. Empty
+after that, not a string, or longer than 64 characters is `bad_request`, and nothing changes. The name is in use at
+once (every later `hello` and `/dspi/v1/info`; sessions already open are not told), stored in the hub's store
+(`hub-store.json`), where an embedder started without a name picks it up next time, and the mDNS record is
+announced again under it (paced like every advertisement change, so a browser can see it a couple of seconds
+later). An embedder that passes a name at every start (`uconsole hub --name`) puts its own back at the next start.
 
 ## 16. Scripting
 

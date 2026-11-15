@@ -146,6 +146,22 @@ pub struct ServiceConfig {
     pub clock: Arc<dyn HubClock>,
     /// Services the embedder brings, after the hub's own (tests, a binding).
     pub extra: Vec<Arc<dyn HubService>>,
+    // -- WP P2HP --
+    /// The health poll and device facts (`crate::health`): `None` is off.
+    pub health: Option<crate::health::HealthConfig>,
+    // -- WP P2IN --
+    /// The inventory (`inventory.*`, `<data>/inventory.json`).
+    pub inventory: bool,
+    // -- WP P2ID --
+    /// `device.identify` (`identify.rs`).
+    pub identify: bool,
+    // -- WP P2HS --
+    /// `hub.stats` and `hub.rename` (spec 7.9). On by default: they are DSPi Link's own
+    /// messages, not an optional family. Off, both answer `unsupported`.
+    pub stats: bool,
+    // -- WP P2EV --
+    /// The shared event history (`events/`, `event.*`); off when `None`.
+    pub history: Option<crate::history::HistoryConfig>,
 }
 
 impl Default for ServiceConfig {
@@ -153,6 +169,16 @@ impl Default for ServiceConfig {
         Self {
             clock: Arc::new(SystemClock),
             extra: Vec::new(),
+            // -- WP P2HP --
+            health: None,
+            // -- WP P2IN --
+            inventory: false,
+            // -- WP P2ID --
+            identify: false,
+            // -- WP P2HS --
+            stats: true,
+            // -- WP P2EV --
+            history: None,
         }
     }
 }
@@ -172,11 +198,24 @@ pub struct ServiceSetup<'a> {
 
 /// The list: every service the hub runs, in the order they are consulted.
 fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn HubService>> {
-    let _ = setup;
     #[allow(unused_mut)]
     let mut list: Vec<Arc<dyn HubService>> = Vec::new();
     // One line per service, each under its WP's marker:
     //   list.extend(crate::<module>::service(config, setup));
+    // -- WP P2HP --
+    list.extend(crate::health::service(config, setup));
+    // -- WP P2IN --
+    list.extend(crate::inventory::service(config, setup));
+    // -- WP P2ID --
+    list.extend(crate::identify::service(config, setup));
+    // -- WP P2HS --
+    list.extend(crate::stats::service(config, setup));
+    // -- WP P2EV --
+    list.extend(crate::history::service(config, setup));
+    // -- WP P2PA -- the `snapshot` family (P2SS's store) and the parameter API beside it
+    list.extend(crate::api::services(setup));
+    // -- WP P2WH --
+    list.extend(crate::outbound::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
@@ -333,6 +372,12 @@ impl Services {
             data_dir,
             auth,
         }
+    }
+
+    // -- WP P2HS --
+    /// The hub's store, for `hub.rename`. `None` for an in-process hub.
+    pub(crate) fn auth(&self) -> Option<&Arc<crate::auth::AuthStore>> {
+        self.auth.as_ref()
     }
 
     pub(crate) fn set_wake(&self, tx: Option<Sender<()>>) {
