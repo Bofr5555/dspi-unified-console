@@ -360,8 +360,8 @@ console's client, all passing against this hub; the Swift hub read at `apps/appl
 
 | Point | Swift hub | Spec | This hub | Why |
 |---|---|---|---|---|
-| `hub.rename` | renames the hub | 7.9, admin; no cap names it | **`unsupported`** (admin), `denied` (others) | The name is the embedder's setting, applied at a start (HB6). TypeScript `renameHub()` rejects with `unsupported` |
-| `hub.stats` | `ok`, every field absent | 7.9, admin: sessions, uptime, per-device counts | **`unsupported`** (admin), `denied` (others) | Not in HB1's entry. TypeScript `hubStats()` rejects |
+| `hub.rename` | renames the hub | 7.9, admin; no cap names it | renames the hub (admin), `denied` (others); cap `hub_stats` (WP P2HS, `docs/integrator/hub-api.md` section 15) | Was `unsupported` until P2HS |
+| `hub.stats` | `ok`, every field absent | 7.9, admin: sessions, uptime, per-device counts | the spec's fields, plus `serial` per row (admin), `denied` (others) (WP P2HS) | Was `unsupported` until P2HS |
 | `auth.revoke` of an unknown `cid` | `ok` | not said | **`bad_request`**, "no such client" | Says the revoke did nothing |
 | The bridge's requests (`hub.config.*`, `hub.wifi.*`, `hub.auth.set`, `hub.update`, `hub.restart`, `hub.reset`) | `unknown_type` | `unknown_type` for an unknown type | `unknown_type` | Same |
 | `{"t":"ping"}`, the browser keepalive of the TypeScript client | `unknown_type` | | `unknown_type`, which that client counts as a live round trip | Same |
@@ -431,7 +431,8 @@ socket can cost.
 - `NetworkConfig` adds `bind` (tests use loopback), `mdns_name` (**HB5 sets it**, or a page opened at the
   `.local` name is refused) and `limits`.
 - `hub.stats` and `hub.rename` answer `unsupported` to an admin: not in this WP's entry. `name` in the
-  store has no caller yet, and `HubHandle::name` is fixed at start.
+  store has no caller yet, and `HubHandle::name` is fixed at start. (-- WP P2HS -- both answered now;
+  `hub.rename` changes `HubHandle::name` and the stored name.)
 - Switching `NetworkConfig::access` between starts revokes every token (spec 6.2).
 - Residual, accepted (numbers as of HB9): a host with four or more addresses (IPv4, or IPv6 /64s) can
   hold all 16 WebSocket slots for up to 30 s at a time (4 unauthenticated each), and one with three or more

@@ -581,10 +581,8 @@ fn atk_roles_against_every_route() {
         let hs = c.reply_for(16);
         eprintln!("[{role}] hub.stats -> {hs}");
         if role == "admin" {
-            assert_eq!(
-                hs["code"], "unsupported",
-                "admin hub.stats is unsupported, not denied"
-            );
+            // -- WP P2HS -- answered now (spec 7.9), no longer `unsupported`
+            assert_eq!(hs["t"], "ok", "admin hub.stats: {hs}");
         } else {
             assert_eq!(hs["code"], "denied", "[{role}] hub.stats");
         }

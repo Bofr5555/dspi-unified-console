@@ -146,6 +146,10 @@ pub struct ServiceConfig {
     pub clock: Arc<dyn HubClock>,
     /// Services the embedder brings, after the hub's own (tests, a binding).
     pub extra: Vec<Arc<dyn HubService>>,
+    // -- WP P2HS --
+    /// `hub.stats` and `hub.rename` (spec 7.9). On by default: they are DSPi Link's own
+    /// messages, not an optional family. Off, both answer `unsupported`.
+    pub stats: bool,
 }
 
 impl Default for ServiceConfig {
@@ -153,6 +157,8 @@ impl Default for ServiceConfig {
         Self {
             clock: Arc::new(SystemClock),
             extra: Vec::new(),
+            // -- WP P2HS --
+            stats: true,
         }
     }
 }
@@ -177,6 +183,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     let mut list: Vec<Arc<dyn HubService>> = Vec::new();
     // One line per service, each under its WP's marker:
     //   list.extend(crate::<module>::service(config, setup));
+    // -- WP P2HS --
+    list.extend(crate::stats::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
@@ -333,6 +341,12 @@ impl Services {
             data_dir,
             auth,
         }
+    }
+
+    // -- WP P2HS --
+    /// The hub's store, for `hub.rename`. `None` for an in-process hub.
+    pub(crate) fn auth(&self) -> Option<&Arc<crate::auth::AuthStore>> {
+        self.auth.as_ref()
     }
 
     pub(crate) fn set_wake(&self, tx: Option<Sender<()>>) {

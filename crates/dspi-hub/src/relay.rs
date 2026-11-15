@@ -89,6 +89,10 @@ pub struct Relay {
     // -- WP SW2 -- (-- WP P2SV -- generalised: the system model and the bus)
     /// What watches every device packet: the system model, the hub's bus.
     taps: Taps,
+    // -- WP P2HS --
+    /// Notifications dropped from a full outbox, by the handle of the device they were
+    /// from, since the hub started (`hub.stats`). A leaf lock, taken only after a drop.
+    dropped: Mutex<std::collections::BTreeMap<u8, u64>>,
 }
 
 // -- WP P2SV --
@@ -165,8 +169,25 @@ impl Relay {
     pub fn publish_notify(&self, handle: u8, origin: SessionId, packet: &[u8]) {
         let packet: Arc<[u8]> = Arc::from(packet);
         for s in self.lock().iter().filter(|s| follows(s, handle)) {
-            s.outbox.push_notify(handle, origin, Arc::clone(&packet));
+            // -- WP P2HS --
+            if let Some(lost) = s.outbox.push_notify(handle, origin, Arc::clone(&packet)) {
+                let mut dropped = self.dropped.lock().unwrap_or_else(PoisonError::into_inner);
+                let n = dropped.entry(lost).or_insert(0);
+                *n = n.saturating_add(1);
+            }
         }
+    }
+
+    // -- WP P2HS --
+    /// How many notifications of the device at `handle` full outboxes have dropped
+    /// since the hub started, over every session.
+    pub(crate) fn notify_dropped(&self, handle: u8) -> u64 {
+        self.dropped
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&handle)
+            .copied()
+            .unwrap_or(0)
     }
 
     // -- WP SW2 --

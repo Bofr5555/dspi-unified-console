@@ -33,7 +33,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | draft |
 | 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | draft |
 | 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | draft |
-| 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | draft |
+| 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | built |
 | 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM | draft |
 | 17 | [Deviations from the DSPi Link spec](#17-deviations-from-the-dspi-link-spec) | | | P2DOC | built (this page) |
 | 18 | [Every message](#18-every-message) | | | P2DOC | built (this page) |
@@ -613,14 +613,44 @@ The endpoints (PLAN-P2 I1; more may be added within v1, each onto an existing me
 
 ## 15. Statistics and the hub's name
 
-*State: draft (P2HS).*
+*State: built (P2HS).*
 
-Spec 7.9 as written, now answered:
+Spec 7.9 as written, now answered. Both are Admin only: Control and Viewer get `denied`. The cap is `hub_stats`;
+a hub built with the service off (`ServiceConfig::stats`) answers both `unsupported`, as hubs before it did.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
 | `hub.stats` | admin | | `sessions`, `uptime_s`, `devices`: `[{handle, serial, cmds, errors, avg_rtt_ms, notify_dropped}]` (`serial` added, section 17) |
 | `hub.rename` | admin | `name` | `name`. The new name is saved, in the next `hello` and `/dspi/v1/info`, and announced again over mDNS |
+
+```json
+{"t": "hub.stats", "id": 13}
+{"t": "ok", "id": 13, "v": 1, "sessions": 3, "uptime_s": 8812,
+ "devices": [{"handle": 0, "serial": "E46058388B1A2E2C", "cmds": 18233, "errors": 2, "avg_rtt_ms": 1.4, "notify_dropped": 0}]}
+{"t": "hub.rename", "id": 14, "name": "Studio Mac"}
+{"t": "ok", "id": 14, "v": 1, "name": "Studio Mac"}
+```
+
+What the fields count:
+
+- `sessions`: network sessions open now, principals (API keys, schedules) included; the embedding app's own is not.
+- `uptime_s`: seconds since the hub started.
+- One row per **attached** device, by handle; a device offline inside its grace has no row. The counts are since
+  the device attached and start again at a re-attach.
+  - `cmds`: commands that ran on the device. A command refused before it reached the device (role, lock,
+    limits, queue timeout) is not counted.
+  - `errors`: those of them whose transfer failed (stall, timeout, disconnect, bus error).
+  - `avg_rtt_ms`: their mean time on the transport, in milliseconds, three decimals; 0 before the first. Time in
+    the device's queue is not included.
+  - `notify_dropped`: this device's notifications that a full session outbox dropped (the session is sent
+    `resync` reason 0 for them, spec 8.6), over every session.
+
+`hub.rename`: control characters are dropped and the ends trimmed, as the embedders do with a start name. Empty
+after that, not a string, or longer than 64 characters is `bad_request`, and nothing changes. The name is in use at
+once (every later `hello` and `/dspi/v1/info`; sessions already open are not told), stored in the hub's store
+(`hub-store.json`), where an embedder started without a name picks it up next time, and the mDNS record is
+announced again under it (paced like every advertisement change, so a browser can see it a couple of seconds
+later). An embedder that passes a name at every start (`uconsole hub --name`) puts its own back at the next start.
 
 ## 16. Scripting
 
