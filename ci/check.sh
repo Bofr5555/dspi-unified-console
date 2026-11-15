@@ -268,6 +268,24 @@ for s in "${steps[@]}"; do
                    grep -rlE 'webSocketTask\(' --include='*.swift' apps/apple | grep -vE '/Link/LinkClient\.swift$|/DSPi ConsoleTests/|/DSPi Console iOSUITests/'; } || true)
         if [ -n "$stray" ]; then echo "swift: Swift's own Link client is built outside the opt-out:" >&2; echo "$stray" >&2; exit 1; fi
         echo "swift: the core's Link session is only in Core/CoreLink.swift; Swift's Link client only in the opt-out"
+        # -- WP SWS4 -- filter files are the core's (filtersInspect/Import/Export):
+        # the Swift reader and writer (the opt-out) live only in FilterFile.swift,
+        # DSPMath.swift keeps only the type codes' table, and the app reaches the
+        # opt-out only through its two entry points, each behind a no-core guard
+        # in DSPi_ConsoleApp.swift; tests excepted. AutoEQ's ParametricEQ reader
+        # (AutoEQManager.swift) is SWS11's, not a filter file.
+        app='apps/apple/DSPi Console'
+        stray=$( { grep -rlP '\bFilterFile\.(?!swift\b)|\b(parseDSPiFile|parseREWFile|generateExportString|applyREWFile|applyDSPiFile|ParsedREWFile|ParsedDSPiFile|ParsedChannelData)\b|DSPi Console Filter Settings' --include='*.swift' "$app" |
+                     grep -vE '/Core/Generated/|/FilterFile\.swift$'
+                   grep -rlE 'fileCode' --include='*.swift' "$app" | grep -vE '/FilterFile\.swift$|/DSPMath\.swift$'
+                   grep -rlE '\boptOutFilter(Import|Export)\b' --include='*.swift' "$app" | grep -vE '/FilterFile\.swift$|/DSPi_ConsoleApp\.swift$'; } || true)
+        if [ -n "$stray" ]; then echo "swift: a filter-file parser or writer outside the opt-out (FilterFile.swift):" >&2; echo "$stray" >&2; exit 1; fi
+        calls=$(grep -cE '\boptOutFilter(Import|Export)\(' "$app/DSPi_ConsoleApp.swift" || true)
+        guarded=$(grep -B1 -E '\boptOutFilter(Import|Export)\(' "$app/DSPi_ConsoleApp.swift" | grep -cE 'guard let source = vm\.transport\.coreStateSource else \{' || true)
+        if [ "$calls" != 2 ] || [ "$guarded" != 2 ]; then
+          echo "swift: the opt-out's filter files must be reached only behind a no-core guard (calls $calls, guarded $guarded)" >&2; exit 1
+        fi
+        echo "swift: filter files are the core's; the Swift reader and writer only in the opt-out (FilterFile.swift)"
       fi ;;
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)
