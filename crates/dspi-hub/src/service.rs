@@ -216,6 +216,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::api::services(setup));
     // -- WP P2WH --
     list.extend(crate::outbound::service(config, setup));
+    // -- WP P2MQ --
+    list.extend(crate::mqtt::service::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }

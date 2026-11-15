@@ -37,7 +37,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | draft |
 | 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | draft |
 | 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | draft |
-| 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | draft |
+| 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | built (P2MQ: 13.1); draft (P2HA: 13.2) |
 | 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | draft |
 | 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | built |
 | 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM | draft |
@@ -625,24 +625,46 @@ a failure raises `schedule_failed`.
 
 ## 13. MQTT and Home Assistant
 
-*State: draft (P2MQ: the broker and publishing; P2HA: Home Assistant).*
+*State: 13.1 built (P2MQ, `crates/dspi-hub/src/mqtt/service.rs`); 13.2 draft (P2HA).*
 
 ### 13.1 The broker (P2MQ)
 
-MQTT 3.1.1, off by default, settings in `mqtt.json`. Plain MQTT only (section 2).
+MQTT 3.1.1, off by default, settings in `mqtt.json` (0600). Plain MQTT only (section 2); MQTT over TLS is SECOUT's
+(PLAN-SEC 4.8), and until then `mqtt.status` says `encrypted: false`.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
 | `mqtt.get` | admin | | `settings` (the password as `set` or `not set`) |
 | `mqtt.set` | admin | `settings` (in part; `password` a string sets it, `null` clears it) | `settings` |
-| `mqtt.status` | admin | | `state` (`off`, `connecting`, `connected`, `failed`), `msg?` (e.g. a refused password), `since`, `queued`, `dropped` |
+| `mqtt.status` | admin | | `state` (`off`, `connecting`, `connected`, `failed`), `msg?` (e.g. a refused password), `since`, `queued`, `dropped`, `encrypted` |
 
-Settings: `enabled`, `broker` (address), `port` (1883), `client_id`, `username`, `password`, `base_topic` (default
-`dspi/<hub id>`), `ha` (section 13.2).
+Settings: `enabled`, `broker` (a host name or address), `port` (1883), `client_id`, `username`, `password`,
+`base_topic` (default `dspi/<hub id>`), `ha` (section 13.2).
 
-Topics: `<base>/status` is `online` (retained) and the will `offline`; each alarm and history record the hub
-publishes goes to `<base>/<serial>/event` as JSON (an alarm as section 7's object with `"kind": "alarm"`, a record as
-`{"kind": "event", "record": {...}}`).
+- `mqtt.get` shows the values in use: `client_id` and `base_topic` are the defaults when not set (`client_id`:
+  `dspi` and the first 19 letters and digits of the hub's id). In `mqtt.set`, `null` sets either back to its default.
+- `password` in `mqtt.set`: a string sets it; `null` or `"not set"` clears it; `"set"` keeps it, so `mqtt.get`'s
+  `settings` can be sent back as they are. A password needs a `username` (MQTT 3.1.1).
+- `enabled: true` needs a `broker`. A refusal is `bad_request` with `msg` naming the field; nothing is changed then.
+  A field not listed here is ignored (`tls` included: it is kept in `mqtt.json` for SECOUT and not shown).
+- Limits: `broker` 253 bytes of `A-Z a-z 0-9 . - _ :`; `client_id` 1 to 64 of `A-Z a-z 0-9 . - _`; `username` and
+  `password` 1 to 256 bytes, no control characters; `base_topic` a topic name of at most 128 bytes, no wildcard, no
+  empty level, not starting with `$`.
+- A change of `ha` alone does not reconnect; any other change ends the connection (`offline`, below) and starts
+  a new one. `mqtt.set` answers once the old connection has ended (at most a few seconds).
+- `state`: `connecting` while trying (again), with `msg` the last reason; `failed` when the broker refused the
+  connection (a wrong password, a refused client id), with its reason in `msg`; the hub keeps trying, with a backoff
+  of 1 s doubling to 60 s. `since` is when `state` last changed (ISO-8601); `queued` and `dropped` are the publishes
+  waiting while the broker is away (at most 256) and those dropped past that, oldest first.
+
+Topics: `<base>/status` is `online` (retained, QoS 1, on every connection) and the will `offline` (retained),
+which the broker publishes when the hub goes away unannounced; a clean stop or reconfiguration publishes `offline`
+(retained) itself. Each alarm and history record the hub publishes goes to `<base>/<serial>/event` as JSON (an alarm
+as section 7's object with `"kind": "alarm"`, QoS 1, its every change: raised, acknowledged, cleared; a record as
+`{"kind": "event", "serial", "record": {...}}`, QoS 0). Both carry `v` and `hub`; an alarm also `at`, the time of this
+change. An alarm about no one device (the audio link's) goes to `<base>/hub/event`. Nothing is retained but the
+status. The hub subscribes to nothing here: nothing that arrives over MQTT reaches a device (section 13.2's `set`
+topics act as an API key's principal).
 
 ### 13.2 Home Assistant (P2HA)
 
