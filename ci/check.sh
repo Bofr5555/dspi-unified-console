@@ -244,6 +244,16 @@ for s in "${steps[@]}"; do
           grep -vE '/Core/Generated/|/Core/CoreUsb\.swift$|/DSPi ConsoleTests/CoreUsbSWM1Tests\.swift$' || true)
         if [ -n "$stray" ]; then echo "swift: the raw USB pipe is used outside Core/CoreUsb.swift:" >&2; echo "$stray" >&2; exit 1; fi
         echo "swift: the raw USB pipe is only in Core/CoreUsb.swift"
+        # -- WP SW5 -- the core's MIDI handle stays in MIDI/CoreMidiPipe.swift,
+        # and the Swift MIDI engine (the opt-out) is built only by AppState's
+        # opt-out branches and by tests
+        stray=$(grep -rlE '\b(MidiInputHandle|MidiSender)\b|\.(openMidi|closePort)\(|withSender\(' --include='*.swift' apps/apple |
+          grep -vE '/Core/Generated/|/MIDI/CoreMidiPipe\.swift$' || true)
+        if [ -n "$stray" ]; then echo "swift: the core's MIDI handle is used outside MIDI/CoreMidiPipe.swift:" >&2; echo "$stray" >&2; exit 1; fi
+        stray=$(grep -rlE '\bLegacyMIDITransport\(' --include='*.swift' apps/apple |
+          grep -vE '/DSPi Console/DSPi_ConsoleApp\.swift$|/DSPi ConsoleTests/' || true)
+        if [ -n "$stray" ]; then echo "swift: the Swift MIDI engine is built outside the opt-out:" >&2; echo "$stray" >&2; exit 1; fi
+        echo "swift: the core's MIDI handle is only in MIDI/CoreMidiPipe.swift; the Swift MIDI engine only in the opt-out"
       fi ;;
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)

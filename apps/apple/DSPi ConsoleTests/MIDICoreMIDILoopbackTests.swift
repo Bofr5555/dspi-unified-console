@@ -48,7 +48,7 @@ final class MIDICoreMIDILoopbackTests: XCTestCase {
         let endpoint = try XCTUnwrap(port.endpoints.first { $0.name.contains(name) })
         XCTAssertTrue(endpoint.serial.hasPrefix("MIDI-"), "no USB serial on a virtual endpoint")
 
-        let midi = MIDITransport(port: port, autoSelect: false, readOnly: false)
+        let midi = LegacyMIDITransport(port: port, autoSelect: false, readOnly: false)
         let dspi = try XCTUnwrap(midi.availableDevices.first { $0.serial == endpoint.serial })
         midi.selectDevice(dspi)
         XCTAssertTrue(spinUntil { midi.isConnected }, "platform probe did not cross CoreMIDI")

@@ -16,14 +16,14 @@ final class MIDITransportTests: XCTestCase {
     }
 
     private func connected(_ device: FakeMIDIDevice = FakeMIDIDevice(), readOnly: Bool = false,
-                           file: StaticString = #filePath, line: UInt = #line) -> (MIDITransport, FakeMIDIControlPort) {
+                           file: StaticString = #filePath, line: UInt = #line) -> (LegacyMIDITransport, FakeMIDIControlPort) {
         let port = FakeMIDIControlPort(device: device)
-        let midi = MIDITransport(port: port, autoSelect: true, readOnly: readOnly, requestTimeout: 0.5, bulkTimeout: 1)
+        let midi = LegacyMIDITransport(port: port, autoSelect: true, readOnly: readOnly, requestTimeout: 0.5, bulkTimeout: 1)
         XCTAssertTrue(spinUntil { midi.isConnected }, "never connected", file: file, line: line)
         return (midi, port)
     }
 
-    private func get(_ midi: MIDITransport, _ request: UInt8, value: UInt16 = 0, index: UInt16 = 2,
+    private func get(_ midi: LegacyMIDITransport, _ request: UInt8, value: UInt16 = 0, index: UInt16 = 2,
                      length: UInt16 = 4) -> Result<Data, LinkStatus> {
         midi.getControlResult(request: request, value: value, index: index, length: length)
     }
@@ -44,7 +44,7 @@ final class MIDITransportTests: XCTestCase {
 
     func testReselectingTheOpenDeviceKeepsThePort() {
         let port = FakeMIDIControlPort()
-        let midi = MIDITransport(port: port, autoSelect: true, readOnly: false, requestTimeout: 0.5)
+        let midi = LegacyMIDITransport(port: port, autoSelect: true, readOnly: false, requestTimeout: 0.5)
         midi.selectDevice(midi.availableDevices[0])               // while the probe is in flight
         XCTAssertTrue(spinUntil { midi.isConnected })
         midi.selectDevice(midi.availableDevices[0])
@@ -71,7 +71,7 @@ final class MIDITransportTests: XCTestCase {
     func testSilentPortNeverConnects() {
         let device = FakeMIDIDevice { _ in nil }
         let port = FakeMIDIControlPort(device: device)
-        let midi = MIDITransport(port: port, autoSelect: true, readOnly: false, requestTimeout: 0.1)
+        let midi = LegacyMIDITransport(port: port, autoSelect: true, readOnly: false, requestTimeout: 0.1)
         XCTAssertTrue(spinUntil { midi.errorMessage != nil })
         XCTAssertFalse(midi.isConnected)
         XCTAssertEqual(device.requests.count, 3, "three platform probes")
@@ -79,7 +79,7 @@ final class MIDITransportTests: XCTestCase {
 
     func testNoDeviceWhenNothingIsOpen() {
         let port = FakeMIDIControlPort(endpoints: [])
-        let midi = MIDITransport(port: port, autoSelect: true, readOnly: false)
+        let midi = LegacyMIDITransport(port: port, autoSelect: true, readOnly: false)
         XCTAssertEqual(get(midi, REQ_GET_PLATFORM), .failure(.noDevice))
         XCTAssertNil(midi.selectedDevice)
     }
@@ -141,7 +141,7 @@ final class MIDITransportTests: XCTestCase {
         port.device.busyReplies = 2
         XCTAssertNoThrow(try get(midi, 0xD3).get())
         XCTAssertEqual(midi.stats.retries, 2)
-        port.device.busyReplies = MIDITransport.maxRetries + 1
+        port.device.busyReplies = LegacyMIDITransport.maxRetries + 1
         XCTAssertEqual(get(midi, 0xD3), .failure(.busy))
     }
 
@@ -189,7 +189,7 @@ final class MIDITransportTests: XCTestCase {
         var received: [LinkNotification] = []
         midi.addNotificationObserver { received.append($0) }.store(in: &cancellables)
         port.device.notify(FakeMIDIDevice.paramChanged(seq: 10, source: 7))       // OS volume slider
-        port.device.notify(FakeMIDIDevice.paramChanged(seq: 11, source: MIDITransport.paramSourceMIDI))
+        port.device.notify(FakeMIDIDevice.paramChanged(seq: 11, source: LegacyMIDITransport.paramSourceMIDI))
         XCTAssertTrue(spinUntil { received.count == 2 })
         XCTAssertEqual(received.map(\.eventID), [0x02, 0x02])
         XCTAssertEqual(received[0].origin, 0)
@@ -290,10 +290,10 @@ final class MIDITransportTests: XCTestCase {
         // Every write-as-read request of the firmware's command table.
         let writeAsRead: Set<UInt8> = [0x51, 0x52, 0x53, 0x7C, 0x83, 0x90, 0x91, 0x92, 0xB1, 0xB3,
                                        0xC0, 0xC2, 0xC4, 0xC6, 0xC8, 0xD6, 0xE4, 0xEC, 0xF0, 0xF1]
-        XCTAssertTrue(MIDITransport.pureReads.isDisjoint(with: writeAsRead))
-        XCTAssertTrue(MIDITransport.pureReads.isDisjoint(with: [0x0E, 0xA6, 0xA1, 0xA3, 0xF5, 0xF7]))
+        XCTAssertTrue(LegacyMIDITransport.pureReads.isDisjoint(with: writeAsRead))
+        XCTAssertTrue(LegacyMIDITransport.pureReads.isDisjoint(with: [0x0E, 0xA6, 0xA1, 0xA3, 0xF5, 0xF7]))
         for r in [REQ_GET_PLATFORM, REQ_GET_ALL_PARAMS, REQ_GET_STATUS, REQ_GET_MASTER_VOLUME] {
-            XCTAssertTrue(MIDITransport.pureReads.contains(r))
+            XCTAssertTrue(LegacyMIDITransport.pureReads.contains(r))
         }
     }
 
@@ -306,7 +306,7 @@ final class MIDITransportTests: XCTestCase {
         fake.selectDevice(FakeTransport.demoDevice)
         let device = FakeMIDIDevice.backed(by: fake)
         let port = FakeMIDIControlPort(device: device)
-        let midi = MIDITransport(port: port, autoSelect: false, readOnly: false)
+        let midi = LegacyMIDITransport(port: port, autoSelect: false, readOnly: false)
         let vm = DSPViewModel(transport: midi)
         midi.selectDevice(midi.availableDevices[0])
         XCTAssertTrue(spinUntil { midi.isConnected })

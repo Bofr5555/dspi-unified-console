@@ -1191,7 +1191,7 @@ Owner: **SwiftUI on macOS and iOS over the Rust core; Swift keeps UI only**, wit
 
 **SW4: `CoreBackedTransport`.** [DONE 23aea616] Size 1.5. **Owns:** `DSPi Console/Core/CoreBackedTransport.swift`. **Implements:** `DeviceTransport` over CG4 and the core's notifications; the core's `FakeDevice` under demo mode. **Done when:** existing `FakeTransportTests` and wire tests pass behind a launch flag on both targets. **Deps:** SW3, CG4, CG23, CG26.
 
-**SW5: CoreMIDI through the core.** [TODO] Size 1. **Owns:** `MIDI/CoreMidiPipe.swift`, reducing `MIDI/MIDITransport.swift` to I/O. **Implements:** `MidiSender`, `MidiInputHandle` with `close_port`, the relay port. **Done when:** `midi_vectors.json` passes; relay run **[HW]** on the K340. **Deps:** SW4.
+**SW5: CoreMIDI through the core.** [DONE wp/SW5: `MIDI/CoreMidiPipe.swift` under `CoreBackedTransport(link: .midi)`; the core is the default for iOS's USB MIDI and the Mac's MIDI paths, `-CoreTransport NO` opts out to `LegacyMIDITransport`] Size 1. **Owns:** `MIDI/CoreMidiPipe.swift`, reducing `MIDI/MIDITransport.swift` to I/O. **Implements:** `MidiSender`, `MidiInputHandle` with `close_port`, the relay port. **Done when:** `midi_vectors.json` passes; relay run **[HW]** on the K340. **Deps:** SW4.
 
 **SW6: Link through the core.** [TODO] Size 1.5. **Owns:** `Link/LinkClient*.swift` replaced by `Core/CoreLink.swift`; keeps `HubBrowser.swift`, `LinkTokenStore.swift`, the pairing sheet. **Implements:** Bonjour stays in Swift (the entitlement belongs to it); `expected_hub_id`; `link_retry_now` on foreground; `rta_start` after a reconnect. Checks the Local Network prompt with Rust's BSD sockets. **Done when:** the run in `A7-LINK-CLIENT-REPORT.md` passes **[HW]**. **Deps:** SW4, XC1.
 

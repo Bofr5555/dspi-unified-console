@@ -163,7 +163,7 @@ final class LinkClientIOSTests: XCTestCase {
     /// devices first (spec 3.1), and MIDI reports the board's USB serial.
     func testABoardOnMIDIAndOnAHubIsListedOnceAsLocal() {
         let port = FakeMIDIControlPort()
-        let midi = MIDITransport(port: port, autoSelect: false, readOnly: true)
+        let midi = LegacyMIDITransport(port: port, autoSelect: false, readOnly: true)
         let local = LocalTransportSet([midi, FakeTransport(autoSelect: false)])
         let composite = CompositeTransport(local: local, tokens: LinkTokenStore(service: "t-\(UUID())"),
                                            clientName: "T") { LinkClientFake() }

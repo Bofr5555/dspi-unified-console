@@ -52,7 +52,14 @@ class AppState: ObservableObject {
     /// `-MIDIRelay host:port` reaches the DSPi through a relay instead of
     /// CoreMIDI (MIDIRelayPort.swift; how the iOS Simulator gets to one).
     // -- WP SW2 -- The relay or CoreMIDI, or no device under XCTest (TestHostGuard).
-    lazy var midiTransport: MIDITransport = MIDITransport(port: TestHostGuard.midiPort())
+    // -- WP SW5 -- The Swift protocol engine: only with `-CoreTransport NO`
+    // or `-MIDIReadOnly YES` (`usesLegacyMIDI`); otherwise `midiCore`.
+    lazy var midiTransport: LegacyMIDITransport = LegacyMIDITransport(port: TestHostGuard.midiPort())
+
+    // -- WP SW5 -- `-LocalTransport midi` through the Rust core: the core's
+    // MIDI transport over CoreMIDI (or the relay), MIDI/CoreMidiPipe.swift.
+    lazy var midiCore: CoreBackedTransport =
+        CoreBackedTransport(link: .midi(CoreMidiPipe(port: TestHostGuard.midiPort())))
 
     /// True when `-LocalTransport midi` (UserDefaults `LocalTransport`).
     static var usesMIDITransport: Bool {
@@ -73,7 +80,7 @@ class AppState: ObservableObject {
     // the port by itself, so a DAW's MIDI is left alone while USB works.
     lazy var localWithMIDIFallback: LocalTransportSet = LocalTransportSet([
         localTransport,
-        MIDITransport(port: TestHostGuard.midiPort(), autoSelect: false),
+        LegacyMIDITransport(port: TestHostGuard.midiPort(), autoSelect: false),   // -- WP SW5 -- opt-out only
     ])
 
     // -- WP SW4 -- The Rust core drives the local device, over the hub's
@@ -83,25 +90,16 @@ class AppState: ObservableObject {
         ? CoreBackedTransport(link: .demo, autoSelect: true)
         : CoreBackedTransport(link: .host(localTransport, .hub))
 
-    // -- WP SW-M1 -- The core is the Mac's default: a plain launch drives the
-    // local device (and `-LocalTransport demo`) through `coreTransport`, so
-    // every "with the core attached" feature is on.  `-CoreTransport NO`, or
-    // DSPI_CORE_TRANSPORT=0, opts out for the transition: the UI then drives
-    // the hub's session 1 raw, and the demo is Swift's FakeTransport, as
-    // before SW4.  USB itself is the core's either way (CoreUsb).
-    static var usesCoreTransport: Bool {
-        if let env = ProcessInfo.processInfo.environment["DSPI_CORE_TRANSPORT"] { return env != "0" }
-        if UserDefaults.standard.object(forKey: "CoreTransport") != nil {
-            return UserDefaults.standard.bool(forKey: "CoreTransport")
-        }
-        return true
-    }
-
     // -- WP SW-M1 -- With the core: the DSPi's USB MIDI port stays the
     // fallback when the vendor interface cannot be opened, as SWF2 set up.
+    // -- WP SW5 -- The fallback is the core's MIDI transport too (a second
+    // core: the vendor path's core is bound to the hub's session 1), unless
+    // `-MIDIReadOnly YES` asks for the Swift engine's read-only filter.
     lazy var coreWithMIDIFallback: LocalTransportSet = LocalTransportSet([
         coreTransport,
-        MIDITransport(port: TestHostGuard.midiPort(), autoSelect: false),
+        AppState.usesLegacyMIDI
+            ? LegacyMIDITransport(port: TestHostGuard.midiPort(), autoSelect: false)
+            : CoreBackedTransport(link: .midi(CoreMidiPipe(port: TestHostGuard.midiPort(), autoSelect: false))),
     ])
 
     /// The transport the whole UI drives: local USB devices and devices shared
@@ -109,7 +107,8 @@ class AppState: ObservableObject {
     /// whichever owns the device.  The view model never learns which.
     lazy var transport: CompositeTransport = {
         let local: any DeviceTransport
-        if AppState.usesMIDITransport { local = midiTransport }
+        // -- WP SW5 -- MIDI through the core unless opted out
+        if AppState.usesMIDITransport { local = AppState.usesLegacyMIDI ? midiTransport : midiCore }
         // -- WP SW-M1 -- the core by default (SW4's flag became the opt-out)
         else if AppState.usesCoreTransport {
             local = AppState.usesDemoTransport ? coreTransport : coreWithMIDIFallback
@@ -138,11 +137,22 @@ class AppState: ObservableObject {
     lazy var demoTransport: FakeTransport = FakeTransport(autoSelect: FakeTransport.autoSelectAtLaunch)
 
     /// A DSPi on USB: iOS cannot open the vendor interface, so the firmware's
-    /// USB MIDI control port carries the commands (MIDITransport.swift).
+    /// USB MIDI control port carries the commands.
     /// `-MIDIRelay host:port` reaches the DSPi through a relay instead of
     /// CoreMIDI (MIDIRelayPort.swift; how the iOS Simulator gets to one).
     // -- WP SW2 -- The relay or CoreMIDI, or no device under XCTest (TestHostGuard).
-    lazy var midiTransport: MIDITransport = MIDITransport(port: TestHostGuard.midiPort())
+    // -- WP SW5 -- The Swift protocol engine: only with `-CoreTransport NO`
+    // or `-MIDIReadOnly YES` (`usesLegacyMIDI`).
+    lazy var midiTransport: LegacyMIDITransport = LegacyMIDITransport(port: TestHostGuard.midiPort())
+
+    // -- WP SW5 -- The default: the Rust core's MIDI transport over CoreMIDI
+    // (or the relay), MIDI/CoreMidiPipe.swift, so every "with the core
+    // attached" feature works on iPhone and iPad.
+    lazy var midiCore: CoreBackedTransport =
+        CoreBackedTransport(link: .midi(CoreMidiPipe(port: TestHostGuard.midiPort())))
+
+    /// -- WP SW5 -- The DSPi-on-USB member: the core's, or the Swift engine's.
+    var midiMember: any DeviceTransport { AppState.usesLegacyMIDI ? midiTransport : midiCore }
 
     /// The local side of the composite: a DSPi on USB MIDI and the demo
     /// device in one list, the DSPi first.  `-LocalTransport demo` leaves
@@ -151,7 +161,7 @@ class AppState: ObservableObject {
     // -- WP P1SW1 -- files opened offline first (as on the Mac)
     lazy var localTransports: LocalTransportSet = UserDefaults.standard.string(forKey: "LocalTransport") == "demo"
         ? LocalTransportSet([documentTransport, demoMember])
-        : LocalTransportSet([documentTransport, midiTransport, demoMember])
+        : LocalTransportSet([documentTransport, midiMember, demoMember])   // -- WP SW5 --
 
     // -- WP SW4 -- `-CoreTransport YES`: the demo device is the Rust core's.
     lazy var demoMember: any DeviceTransport = CoreBackedTransport.isEnabled
@@ -181,6 +191,39 @@ class AppState: ObservableObject {
     @MainActor lazy var linkClientCoordinator: LinkClientCoordinator =
         LinkClientCoordinator(composite: transport, ownHubID: nil)
     #endif
+
+    // -- WP SW-M1 -- The core is the Mac's default: a plain launch drives the
+    // local device (and `-LocalTransport demo`) through `coreTransport`, so
+    // every "with the core attached" feature is on.  `-CoreTransport NO`, or
+    // DSPI_CORE_TRANSPORT=0, opts out for the transition: the UI then drives
+    // the hub's session 1 raw, and the demo is Swift's FakeTransport, as
+    // before SW4.  USB itself is the core's either way (CoreUsb).
+    // -- WP SW5 -- Shared with iOS: the DSPi on USB MIDI goes through the
+    // core by default there too; the same flag opts out.  (The iOS demo
+    // device keeps SW4's opt-in, `CoreBackedTransport.isEnabled`.)
+    static var usesCoreTransport: Bool {
+        if let env = ProcessInfo.processInfo.environment["DSPI_CORE_TRANSPORT"] { return env != "0" }
+        if UserDefaults.standard.object(forKey: "CoreTransport") != nil {
+            return UserDefaults.standard.bool(forKey: "CoreTransport")
+        }
+        return true
+    }
+
+    /// -- WP SW5 -- The DSPi's USB MIDI port through the Swift protocol
+    /// engine (LegacyMIDITransport) instead of the core: the opt-out
+    /// (`-CoreTransport NO`), or `-MIDIReadOnly YES`, whose filter (only
+    /// the firmware's pure GETs go out) only the Swift engine has.
+    static var usesLegacyMIDI: Bool {
+        !usesCoreTransport || UserDefaults.standard.bool(forKey: "MIDIReadOnly")
+    }
+
+    /// -- WP SW5 -- Back in the foreground: the DSPi on USB MIDI re-checks
+    /// that it answers, then everything is re-read (or it reconnects).
+    func resumeMIDI() {
+        #if os(iOS)
+        if AppState.usesLegacyMIDI { midiTransport.resume() } else { midiCore.resumeMidi() }
+        #endif
+    }
 
     // -- WP P1SW1 -- A `.dspipreset` opened with no device (Open File...,
     // Open Template...): the core's `openDocument`, a device of its own in
