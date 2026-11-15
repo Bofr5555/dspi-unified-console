@@ -11,12 +11,16 @@ import UConsole
 // what differs from A to B.
 // -- WP P1DCFIX -- In Simple mode the window recalls and compares only: no
 // capture, rename, note, delete, import, export, rollback choice or timeout.
+// -- WP P2QT -- Over DSPi Link to a hub that keeps snapshots, an "On the Hub"
+// section lists the hub's (the hub's copy wins on an id both hold): recall one
+// from the hub, copy it here, delete it (an Admin of the hub); "Save to the
+// Hub" files the selected one of this console there.
 ToolWindow {
     id: window
     objectName: "SnapshotsWindow"
     windowId: "snapshots"
     defaultWidth: 680
-    defaultHeight: 620
+    defaultHeight: 720   // -- WP P2QT -- room for "On the Hub"
     minimumWidth: 520
     minimumHeight: 460
     title: qsTr("Snapshots")
@@ -41,8 +45,29 @@ ToolWindow {
     }
 
     // A/B's choices: A may be the device as it is now
+    // -- WP P2QT -- the hub's snapshot chosen in "On the Hub"
+    property string hubSelectedId: ""
+    readonly property var hubSelected: {
+        const rows = SnapshotsController.hubSnapshots
+        for (let i = 0; i < rows.length; ++i) if (rows[i].id === hubSelectedId) return rows[i]
+        return null
+    }
+
     readonly property var aChoices: [{ id: "", name: qsTr("Current settings") }].concat(SnapshotsController.snapshots)
     readonly property var bChoices: SnapshotsController.snapshots
+
+    QuestionDialog {
+        id: hubDeleteQuestion   // -- WP P2QT --
+        objectName: "SnapshotsWindow.hubDeleteQuestion"
+        property string snapshotId
+        title: qsTr("Delete Snapshot from the Hub")
+        acceptText: qsTr("Delete")
+        rejectText: qsTr("Cancel")
+        destructive: true
+        onAnswered: answer => {
+            if (answer === "accept") SnapshotsController.removeFromHub(snapshotId)
+        }
+    }
 
     QuestionDialog {
         id: deleteQuestion
@@ -167,6 +192,21 @@ ToolWindow {
                                 elide: Text.ElideRight
                             }
                         }
+                        // -- WP P2QT -- where it is kept too
+                        Pill {
+                            objectName: "SnapshotsWindow.onHub." + row.index
+                            visible: row.modelData.where === "both"
+                            text: qsTr("On the hub")
+                            tint: Theme.accent
+                        }
+                        Pill {
+                            objectName: "SnapshotsWindow.localCopy." + row.index
+                            visible: row.modelData.localCopy === true
+                            text: qsTr("Local copy")
+                            tint: Theme.warning
+                            ToolTip.visible: hovered
+                            ToolTip.text: qsTr("The hub holds a different snapshot under this one's id. This console keeps its own copy.")
+                        }
                         Text {
                             text: row.modelData.saved
                             font: Theme.fontMono
@@ -174,7 +214,9 @@ ToolWindow {
                         }
                     }
                     Accessible.role: Accessible.ListItem
-                    Accessible.name: [row.modelData.name, row.modelData.note, row.modelData.saved].filter(s => s && s.length).join(", ")
+                    Accessible.name: [row.modelData.name, row.modelData.note, row.modelData.saved,
+                                      row.modelData.where === "both" ? qsTr("On the hub") : "",
+                                      row.modelData.localCopy === true ? qsTr("Local copy") : ""].filter(s => s && s.length).join(", ")
                 }
 
                 Text {
@@ -304,6 +346,149 @@ ToolWindow {
                 realValue: SnapshotsController.guardTimeoutS
                 onCommitted: value => SnapshotsController.guardTimeoutS = Math.round(value)
                 Accessible.name: label
+            }
+        }
+
+        // ---- -- WP P2QT -- On the hub ----
+        SectionHeading {
+            Layout.fillWidth: true
+            Layout.topMargin: Theme.spacingSmall
+            visible: SnapshotsController.hubAvailable || SnapshotsController.hubProblem.length > 0
+            text: qsTr("On the Hub")
+            rule: true
+        }
+        Text {
+            objectName: "SnapshotsWindow.hubProblem"
+            Layout.fillWidth: true
+            visible: text.length > 0
+            text: SnapshotsController.hubProblem
+            font: Theme.fontSmall
+            color: Theme.warning
+            wrapMode: Text.Wrap
+        }
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 120
+            visible: SnapshotsController.hubAvailable
+            radius: Theme.radius
+            color: Theme.panel
+            border.color: Theme.separator
+            ListView {
+                id: hubList
+                objectName: "SnapshotsWindow.hubList"
+                anchors.fill: parent
+                anchors.margins: 1
+                clip: true
+                model: SnapshotsController.hubSnapshots
+                activeFocusOnTab: true
+                keyNavigationEnabled: true
+                ScrollBar.vertical: AppScrollBar {}
+                Accessible.role: Accessible.List
+                Accessible.name: qsTr("Snapshots on the hub")
+                onCurrentIndexChanged: if (currentIndex >= 0 && currentIndex < count) window.hubSelectedId = model[currentIndex].id
+                delegate: Rectangle {
+                    id: hubRow
+                    required property var modelData
+                    required property int index
+                    objectName: "SnapshotsWindow.hubRow." + index
+                    width: ListView.view.width
+                    height: Theme.rowHeight + 6
+                    color: window.hubSelectedId === hubRow.modelData.id ? Theme.selection
+                         : index % 2 ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.03) : "transparent"
+                    TapHandler {
+                        onTapped: {
+                            hubList.currentIndex = hubRow.index
+                            window.hubSelectedId = hubRow.modelData.id
+                        }
+                        onDoubleTapped: if (window.writable) SnapshotsController.recallFromHub(hubRow.modelData.id)
+                    }
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.spacingSmall
+                        anchors.rightMargin: Theme.spacingSmall
+                        spacing: Theme.spacingSmall
+                        Text {
+                            Layout.fillWidth: true
+                            text: hubRow.modelData.note.length
+                                  //: A snapshot's name and its note
+                                  ? qsTr("%1 · %2").arg(hubRow.modelData.name).arg(hubRow.modelData.note)
+                                  : hubRow.modelData.name
+                            font: Theme.fontBody
+                            color: Theme.text
+                            elide: Text.ElideRight
+                        }
+                        Pill {
+                            visible: hubRow.modelData.where === "both"
+                            text: qsTr("Here too")
+                            tint: Theme.accent
+                        }
+                        Text {
+                            text: hubRow.modelData.saved
+                            font: Theme.fontMono
+                            color: Theme.textMuted
+                        }
+                    }
+                    Accessible.role: Accessible.ListItem
+                    Accessible.name: [hubRow.modelData.name, hubRow.modelData.note, hubRow.modelData.saved,
+                                      hubRow.modelData.where === "both" ? qsTr("Here too") : ""].filter(s => s && s.length).join(", ")
+                }
+                Text {
+                    anchors.centerIn: parent
+                    width: parent.width - 2 * Theme.spacingLarge
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    visible: hubList.count === 0
+                    text: qsTr("The hub keeps no snapshots of this device yet.")
+                    font: Theme.fontBody
+                    color: Theme.textMuted
+                }
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            visible: SnapshotsController.hubAvailable
+            spacing: Theme.spacingSmall
+            AppButton {
+                objectName: "SnapshotsWindow.saveToHub"
+                text: qsTr("Save Selected to the Hub")
+                iconName: "network"
+                visible: !window.simple
+                enabled: window.selected !== null && window.selected.where !== "both" && !SnapshotsController.busy
+                         && !DeviceModel.readOnly
+                toolTip: qsTr("Keep the snapshot selected above on the hub too, for every console")
+                onClicked: SnapshotsController.saveToHub(window.selectedId)
+            }
+            AppButton {
+                objectName: "SnapshotsWindow.hubRecall"
+                text: qsTr("Recall")
+                Accessible.name: qsTr("Recall from the hub")
+                enabled: window.hubSelected !== null && window.writable && !SnapshotsController.guardWaiting
+                toolTip: qsTr("Put the device back to the hub's snapshot")
+                onClicked: SnapshotsController.recallFromHub(window.hubSelectedId)
+            }
+            AppButton {
+                objectName: "SnapshotsWindow.hubCopy"
+                text: qsTr("Copy Here")
+                iconName: "download"
+                visible: !window.simple
+                enabled: window.hubSelected !== null && window.hubSelected.where === "hub" && !SnapshotsController.busy
+                toolTip: qsTr("Keep a copy of the hub's snapshot on this console")
+                onClicked: SnapshotsController.copyHere(window.hubSelectedId)
+            }
+            Item { Layout.fillWidth: true }
+            AppButton {
+                objectName: "SnapshotsWindow.hubDelete"
+                text: qsTr("Delete…")
+                Accessible.name: qsTr("Delete from the hub")
+                iconName: "trash"
+                visible: !window.simple
+                enabled: window.hubSelected !== null && !DeviceModel.readOnly
+                onClicked: {
+                    hubDeleteQuestion.snapshotId = window.hubSelectedId
+                    //: %1 is the snapshot's name
+                    hubDeleteQuestion.text = qsTr("Delete the snapshot “%1” from the hub? Every console loses it; a copy kept on a console stays there.").arg(window.hubSelected.name)
+                    hubDeleteQuestion.open()
+                }
             }
         }
 
