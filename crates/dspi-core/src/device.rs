@@ -547,6 +547,13 @@ impl DspiCore {
     }
 }
 
+// -- WP SW-M1 --
+/// The DSPis on USB by enumeration only, for [`crate::usb_pipe`]: as the
+/// hotplug poll's scan, without a broker. Empty on Android and without `usb`.
+pub(crate) fn usb_scan_quiet() -> Vec<DeviceInfo> {
+    usb::scan_quiet()
+}
+
 /// USB enumeration through nusb; empty on Android and without the `usb`
 /// feature (WP CG3).
 mod usb {

@@ -12,11 +12,11 @@
 import Foundation
 
 final class USBHubDevice: HubDevice {
-    private let usb: USBDevice
+    private let usb: CoreUsb
     private var cachedInfo: HubDeviceInfo
     private let infoLock = NSLock()
 
-    init(usb: USBDevice, info: HubDeviceInfo) {
+    init(usb: CoreUsb, info: HubDeviceInfo) {
         self.usb = usb
         self.cachedInfo = info
     }
@@ -58,7 +58,7 @@ final class USBHubDevice: HubDevice {
     /// Read a device's identity over USB for the registry: REQ_GET_PLATFORM
     /// (7 bytes, via FirmwareVersion.fromPlatformReply) and REQ_GET_SERIAL.
     /// nil if the device does not answer, which the caller treats as not ready.
-    static func readInfo(from usb: USBDevice, serialFallback: String) -> HubDeviceInfo? {
+    static func readInfo(from usb: CoreUsb, serialFallback: String) -> HubDeviceInfo? {
         let serial: String
         if let s = usb.getControlRequest(request: REQ_GET_SERIAL, value: 0, index: 2, length: 16),
            let str = String(data: s.prefix(while: { $0 != 0 }), encoding: .ascii), !str.isEmpty {

@@ -18,7 +18,7 @@ final class LinkHubDeviceNameTests: XCTestCase {
         let defaults = UserDefaults(suiteName: "link-name-\(UUID().uuidString)")!
         let store = DeviceNameStore(defaults: defaults)
         if let stored { store.setName(stored, forSerial: serial) }
-        let usb = USBDevice(startMonitoring: false)
+        let usb = CoreUsb(startMonitoring: false)
         let auth = LinkAuthStore(storeURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("link-name-\(UUID().uuidString).json"))
         let hub = LinkHub(usb: usb, policy: LinkPolicy.bundled ?? .empty, auth: auth,

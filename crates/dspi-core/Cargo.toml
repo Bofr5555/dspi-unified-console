@@ -23,6 +23,8 @@ serde.workspace = true
 serde_json.workspace = true
 # Bootloader and device enumeration (WP C11). Optional since WP CG3.
 nusb = { version = "0.2", optional = true }
+# -- WP SW-M1 -- to poll nusb's hot-plug stream (usb_pipe.rs); already in the graph through nusb
+futures-core = { version = "0.3", optional = true }
 # -- WP C0 --
 # -- WP C1 --
 # -- WP C1b --
@@ -51,7 +53,7 @@ default = ["usb"]
 # wasm32-unknown-unknown (WP WB1), where nusb has no backend and does not compile;
 # the USB methods stay in the API and report no devices or `Unsupported`, so one
 # binding fits every platform.
-usb = ["dep:nusb", "dspi-transport/usb"]
+usb = ["dep:nusb", "dep:futures-core", "dspi-transport/usb"]
 # DSPi Link sessions (WP C15, over dspi-transport's Link adapter, WP T5).
 link = ["dep:dspi-link", "dspi-transport/link"]
 # -- WP CG2 --

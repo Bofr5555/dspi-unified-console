@@ -307,7 +307,7 @@ last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
 | SWF1 | Hardware tests never leave a device changed | DONE | bc1f9ff4 (review c5e) | Confirmed on the K340 (hw-mac-2) |
 | SWF2 | Mac USB beside a held MIDI port, refused writes revert, hub voltage rule | DONE | bc1f9ff4 (review c5e) | Confirmed on the K340 (hw-mac-2) |
 | SWF3 | iOS layout and version | DONE | bc1f9ff4 (review c5e) | Confirmed (hw-mac-2) |
-| SW-M1 | USB through the core | TODO |  | VM; `-CoreTransport` check needs the K340 on `macr` |
+| SW-M1 | USB through the core | DONE | wp/SWM1 | Core default on the Mac; `-CoreTransport NO` opts out. Hardware check on `macr`: see the WP report |
 | SW-M2 | Firmware through the core | TODO |  | After SW-M1 |
 | SW-M3 | Hub over `dspi-hub` | TODO |  | After SW-M1 |
 | SW-M4 | What stays Swift | TODO |  | After SW14 |
@@ -1230,7 +1230,7 @@ Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use
 
 **Mac-only additions:** about 3.5–5.5.
 
-**SW-M1: USB through the core.** [TODO] Size 1–1.5. **Owns:** `Core/CoreUsb.swift`; reduces `USBDevice.swift` and `USBNotificationReader.swift`. **Implements:** `nusb`'s `macos_iokit` through CG3's `usb` feature, including hot-plug. **Done when:** a demo run and a mock test pass; the macOS target has no IOKit vendor path left outside the hub. **Deps:** SW4.
+**SW-M1: USB through the core.** [DONE wp/SWM1: the core's `UsbPipe` under `Core/CoreUsb.swift`; USBNotificationReader removed, USBDevice.swift keeps the device model; the core is the Mac's default, `-CoreTransport NO` opts out] Size 1–1.5. **Owns:** `Core/CoreUsb.swift`; reduces `USBDevice.swift` and `USBNotificationReader.swift`. **Implements:** `nusb`'s `macos_iokit` through CG3's `usb` feature, including hot-plug. **Done when:** a demo run and a mock test pass; the macOS target has no IOKit vendor path left outside the hub. **Deps:** SW4.
 
 **SW-M2: Firmware through the core.** [TODO] Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8, CG24.
 

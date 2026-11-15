@@ -617,6 +617,7 @@ dependencies = [
  "dspi-proto",
  "dspi-session",
  "dspi-transport",
+ "futures-core",
  "libc",
  "log",
  "nusb",

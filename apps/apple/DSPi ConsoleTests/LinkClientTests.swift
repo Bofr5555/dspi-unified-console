@@ -29,7 +29,7 @@ final class LinkClientTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
 
-        let usb = USBDevice(startMonitoring: false)
+        let usb = CoreUsb(startMonitoring: false)
         storeURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("lct-\(UUID().uuidString).json")
         auth = LinkAuthStore(storeURL: storeURL)

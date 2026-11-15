@@ -32,7 +32,7 @@ enum HardwareTest {
     ///
     /// -- WP SWF1 -- It then waits for the app's view model to finish a full
     /// read of the device, and guards the device image for the rest of `test`.
-    static func requireDevice(_ test: XCTestCase, timeout: TimeInterval = 30.0) throws -> USBDevice {
+    static func requireDevice(_ test: XCTestCase, timeout: TimeInterval = 30.0) throws -> CoreUsb {
         // -- WP SW2 -- The test host opens no real device unless the run opts in.
         guard TestHostGuard.mayOpenDevices else {
             throw XCTSkip("Real devices are off under XCTest: set TEST_RUNNER_DSPI_USB_HW=1 to run live-device tests.")
@@ -155,7 +155,7 @@ enum HardwareTest {
     /// `fetch*`/parse code - so a shared encode/decode bug cannot make a
     /// round-trip falsely pass.  Ordered after the view model's writes by
     /// `settle()`.
-    static func readFloat(_ usb: USBDevice, _ request: UInt8,
+    static func readFloat(_ usb: CoreUsb, _ request: UInt8,
                           value: UInt16, index: UInt16 = 0) -> Float? {
         settle()
         guard let d = usb.getControlRequest(request: request, value: value, index: index, length: 4),
@@ -164,7 +164,7 @@ enum HardwareTest {
     }
 
     /// Synchronous unsigned-32 read (EQ type / bypass words are 4-byte ints).
-    static func readU32(_ usb: USBDevice, _ request: UInt8,
+    static func readU32(_ usb: CoreUsb, _ request: UInt8,
                         value: UInt16, index: UInt16 = 0) -> UInt32? {
         settle()
         guard let d = usb.getControlRequest(request: request, value: value, index: index, length: 4),

@@ -23,7 +23,7 @@ final class LinkLockUsageTests: XCTestCase {
     }
 
     private func makeRig() -> Rig {
-        let usb = USBDevice(startMonitoring: false)
+        let usb = CoreUsb(startMonitoring: false)
         let auth = LinkAuthStore(storeURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("lock-\(UUID().uuidString).json"))
         let hub = LinkHub(usb: usb, policy: LinkPolicy.bundled ?? .empty, auth: auth)
@@ -133,7 +133,7 @@ final class LinkLockUsageTests: XCTestCase {
     }
 
     func testUSBDeviceLockIsANoOp() {
-        let usb = USBDevice(startMonitoring: false)
+        let usb = CoreUsb(startMonitoring: false)
         XCTAssertTrue(usb.acquireDeviceLock(reason: "test", timeout: 5))
         usb.releaseDeviceLock()
     }

@@ -151,7 +151,7 @@ final class LinkRtaArbitrationTests: XCTestCase {
     /// The hub wires its own scheduler into the router, and the local UI
     /// (session 1) is held by a remote session's poll like anyone else.
     func testHubWiresSchedulerIntoStopRule() {
-        let usb = USBDevice(startMonitoring: false)
+        let usb = CoreUsb(startMonitoring: false)
         let auth = LinkAuthStore(storeURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("rta-arb-\(UUID().uuidString).json"))
         let hub = LinkHub(usb: usb, policy: LinkPolicy.bundled ?? LinkPolicy.empty, auth: auth)

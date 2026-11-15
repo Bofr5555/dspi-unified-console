@@ -103,6 +103,8 @@ mod presets;
 mod raw;
 mod rta;
 mod stats;
+// -- WP SW-M1 -- the Mac hub's USB pipe (retires at SW-M3)
+mod usb_pipe;
 // -- WP CG11 --
 mod vreg;
 // -- WP CG6 --
@@ -199,6 +201,8 @@ pub use raw::RawNotification;
 pub use raw::raw_gated_call;
 // -- WP CG26 --
 pub use host_transport::{HostTransport, HostTransportKind};
+// -- WP SW-M1 --
+pub use usb_pipe::{UsbPipe, usb_pipe_scan, usb_pipe_wait_change};
 // -- WP CG32 --
 pub use write_param::{ParamValue, write_refusal};
 // -- WP CG34 --

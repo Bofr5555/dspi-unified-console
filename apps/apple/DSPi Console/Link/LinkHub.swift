@@ -57,7 +57,7 @@ final class LinkHub {
     let auth: LinkAuthStore
     let registry: DeviceRegistry
 
-    private let usb: USBDevice
+    private let usb: CoreUsb
     private let snapshot = SnapshotCache()
     private let relay = NotifyRelay()
 
@@ -116,7 +116,7 @@ final class LinkHub {
         return sessions.count
     }
 
-    init(usb: USBDevice, policy: LinkPolicy, auth: LinkAuthStore,
+    init(usb: CoreUsb, policy: LinkPolicy, auth: LinkAuthStore,
          registry: DeviceRegistry = DeviceRegistry()) {
         self.usb = usb
         self.policy = policy
@@ -171,7 +171,7 @@ final class LinkHub {
     /// Builds the HubDevice for the current USB connection; nil means the
     /// device did not answer and is probed again.  Tests replace it to drive
     /// the switch and retry logic without hardware.
-    var usbDeviceFactory: ((USBDevice) -> HubDevice?)?
+    var usbDeviceFactory: ((CoreUsb) -> HubDevice?)?
 
     /// Pauses before each identity probe, first one immediate: about 2.5 s in
     /// all, the same patience fetchAll(afterConnect:) has for a board that is
@@ -200,7 +200,7 @@ final class LinkHub {
     /// connection it was started for is gone or replaced.
     private func usbDidConnect(generation: UInt64) {
         let usb = self.usb
-        let probe: (USBDevice) -> HubDevice? = usbDeviceFactory ?? { usb in
+        let probe: (CoreUsb) -> HubDevice? = usbDeviceFactory ?? { usb in
             let fallback = usb.selectedDevice?.serial ?? "unknown"
             return USBHubDevice.readInfo(from: usb, serialFallback: fallback)
                 .map { USBHubDevice(usb: usb, info: $0) }

@@ -193,27 +193,27 @@ final class LimiterWireTests: XCTestCase {
 
     // MARK: - Live device (skip when no DSPi is attached)
 
-    private func getParam(_ usb: USBDevice, output: Int, _ index: UInt8) -> Float? {
+    private func getParam(_ usb: CoreUsb, output: Int, _ index: UInt8) -> Float? {
         guard let d = usb.getControlRequest(request: REQ_LIMITER, value: (UInt16(output) << 8) | UInt16(index),
                                             index: 0, length: 4),
               d.count >= 4 else { return nil }
         return d.withUnsafeBytes { $0.load(as: Float.self) }
     }
 
-    private func setParam(_ usb: USBDevice, output: UInt8, _ index: UInt8, _ value: Float) {
+    private func setParam(_ usb: CoreUsb, output: UInt8, _ index: UInt8, _ value: Float) {
         var v = value
         usb.sendControlRequest(request: REQ_LIMITER, value: (UInt16(output) << 8) | UInt16(index),
                                index: 0, data: Data(bytes: &v, count: 4))
     }
 
-    private func status(_ usb: USBDevice) -> Data? {
+    private func status(_ usb: CoreUsb) -> Data? {
         guard let d = usb.getControlRequest(request: REQ_LIMITER, value: UInt16(LIMITER_GET_STATUS),
                                             index: 0, length: 4), d.count >= 4 else { return nil }
         return d
     }
 
     /// Returns the device and its output count, from the status block.
-    private func requireLimiter() throws -> (USBDevice, Int) {
+    private func requireLimiter() throws -> (CoreUsb, Int) {
         let usb = try HardwareTest.requireDevice(self)
         guard let s = status(usb) else {
             throw XCTSkip("Firmware has no output limiter (REQ_LIMITER status block STALLed).")
@@ -222,14 +222,14 @@ final class LimiterWireTests: XCTestCase {
     }
 
     /// Every parameter of every output, so a test can put the device back.
-    private func snapshot(_ usb: USBDevice, outputs: Int) -> [[Float?]] {
+    private func snapshot(_ usb: CoreUsb, outputs: Int) -> [[Float?]] {
         (0..<outputs).map { k in (0..<LIMITER_NUM_PARAMS).map { getParam(usb, output: k, $0) } }
     }
 
     /// Unlinks everything first so ganging cannot spread one output's value to
     /// another, writes each output's own values with enable last, then
     /// relinks in ascending order so each group's leader is its lowest member.
-    private func restore(_ usb: USBDevice, _ snap: [[Float?]]) {
+    private func restore(_ usb: CoreUsb, _ snap: [[Float?]]) {
         for k in snap.indices { setParam(usb, output: UInt8(k), LIMITER_PARAM_LINK_GROUP, 0) }
         for index in [LIMITER_PARAM_THRESHOLD_DB, LIMITER_PARAM_RELEASE_MS, LIMITER_PARAM_ENABLED] {
             for (k, params) in snap.enumerated() {

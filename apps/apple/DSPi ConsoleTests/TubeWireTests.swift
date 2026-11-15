@@ -348,18 +348,18 @@ final class TubeWireTests: XCTestCase {
 
     // MARK: - Live device (skip when no DSPi is attached)
 
-    private func getParam(_ usb: USBDevice, _ index: UInt16) -> Float? {
+    private func getParam(_ usb: CoreUsb, _ index: UInt16) -> Float? {
         guard let d = usb.getControlRequest(request: REQ_GET_TUBE_PARAM, value: index, index: 0, length: 4),
               d.count >= 4 else { return nil }
         return d.withUnsafeBytes { $0.load(as: Float.self) }
     }
 
-    private func setParam(_ usb: USBDevice, _ index: UInt16, _ value: Float) {
+    private func setParam(_ usb: CoreUsb, _ index: UInt16, _ value: Float) {
         var v = value
         usb.sendControlRequest(request: REQ_SET_TUBE_PARAM, value: index, index: 0, data: Data(bytes: &v, count: 4))
     }
 
-    private func requireTube() throws -> USBDevice {
+    private func requireTube() throws -> CoreUsb {
         let usb = try HardwareTest.requireDevice(self)
         guard getParam(usb, TUBE_PARAM_ENABLED) != nil else {
             throw XCTSkip("Firmware has no tube modeller (REQ_GET_TUBE_PARAM index 0 STALLed).")
@@ -368,7 +368,7 @@ final class TubeWireTests: XCTestCase {
     }
 
     /// Reads every parameter so a test can put the device back exactly.
-    private func snapshot(_ usb: USBDevice) -> [UInt16: Float] {
+    private func snapshot(_ usb: CoreUsb) -> [UInt16: Float] {
         var out: [UInt16: Float] = [:]
         for i in 0..<TUBE_NUM_PARAMS { out[i] = getParam(usb, i) }
         return out
@@ -377,7 +377,7 @@ final class TubeWireTests: XCTestCase {
     /// Restores the type first, then everything else.  A snapshot on a type
     /// holds that type's row, so the knob writes change nothing and the type
     /// survives; a snapshot on Custom gets its own knobs back.
-    private func restore(_ usb: USBDevice, _ snap: [UInt16: Float]) {
+    private func restore(_ usb: CoreUsb, _ snap: [UInt16: Float]) {
         if let t = snap[TUBE_PARAM_TUBE_TYPE] { setParam(usb, TUBE_PARAM_TUBE_TYPE, t) }
         for i in 0..<TUBE_NUM_PARAMS where i != TUBE_PARAM_TUBE_TYPE {
             if let v = snap[i] { setParam(usb, i, v) }
