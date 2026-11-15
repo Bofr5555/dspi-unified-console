@@ -333,7 +333,7 @@ fn status(ws: &mut Ws) -> Value {
     let s = ask(ws, json!({"t": "mqtt.status"}));
     assert_eq!(s["t"], "ok", "{s}");
     assert_eq!(s["v"], 1);
-    assert_eq!(s["encrypted"], false, "no TLS before SECOUT: {s}");
+    assert_eq!(s["encrypted"], false, "a plain broker: {s}");
     s
 }
 
@@ -565,10 +565,10 @@ fn wp_p2mq_a_saved_setting_connects_on_the_next_start() {
         hub.stop();
     }
     let first = broker.connects().len();
-    // A field SECOUT will own, written by a later build: kept on the next rewrite.
+    // SECOUT's `tls`, as set by hand: kept on the next rewrite (WP MQWIRE).
     let mut file: Value =
         serde_json::from_str(&std::fs::read_to_string(dir.join("mqtt.json")).unwrap()).unwrap();
-    file["tls"] = json!({"mode": "off"});
+    file["tls"] = json!({"mode": "off", "allow_plaintext_password": true});
     std::fs::write(dir.join("mqtt.json"), file.to_string()).unwrap();
 
     let hub = hub_on(&dir);
@@ -580,7 +580,11 @@ fn wp_p2mq_a_saved_setting_connects_on_the_next_start() {
     });
     let mut admin = paired(&hub.network().unwrap(), Role::Admin);
     let get = ask(&mut admin, json!({"t": "mqtt.get"}));
-    assert!(get["settings"].get("tls").is_none(), "{get}");
+    assert_eq!(
+        get["settings"]["tls"]["allow_plaintext_password"], true,
+        "{get}"
+    );
+    assert!(get.get("notice").is_none(), "{get}");
     let set = ask(
         &mut admin,
         json!({"t": "mqtt.set", "settings": {"ha": {"enabled": false}}}),
@@ -588,7 +592,11 @@ fn wp_p2mq_a_saved_setting_connects_on_the_next_start() {
     assert_eq!(set["t"], "ok", "{set}");
     let file: Value =
         serde_json::from_str(&std::fs::read_to_string(dir.join("mqtt.json")).unwrap()).unwrap();
-    assert_eq!(file["tls"], json!({"mode": "off"}), "tls kept on rewrite");
+    assert_eq!(file["tls"]["mode"], "off", "tls kept on rewrite");
+    assert_eq!(
+        file["tls"]["allow_plaintext_password"], true,
+        "tls kept on rewrite"
+    );
     drop(admin);
     hub.stop();
 }

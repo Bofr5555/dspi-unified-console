@@ -26,7 +26,9 @@ fn wp_p2mq_defaults_are_off_with_the_documented_topic_and_port() {
     assert_eq!(v["base_topic"], "dspi/6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b");
     assert_eq!(v["password"], "not set");
     assert_eq!(v["ha"], json!({"enabled": false, "key": null}));
-    assert!(v.get("tls").is_none(), "tls is SECOUT's: {v}");
+    // -- WP MQWIRE --
+    assert_eq!(v["tls"]["mode"], "off", "{v}");
+    assert_eq!(v["tls"]["encrypted"], false, "{v}");
     let id = s.client(HUB);
     assert!(id.len() <= 23 && id.starts_with("dspi"), "{id}");
     assert!(id.chars().all(|c| c.is_ascii_alphanumeric()));
@@ -41,7 +43,8 @@ fn wp_p2mq_set_is_in_part_and_all_or_nothing() {
     )
     .unwrap();
     assert!(s1.active());
-    assert_eq!(s1.port, 1883, "left out, kept");
+    assert_eq!(s1.port, None, "left out, kept");
+    assert_eq!(s1.port_in_use(), 1883);
     assert_eq!(s1.password.as_deref(), Some("pw-77"));
     // `mqtt.get`'s answer sent back keeps the password.
     let back = apply_request(&s1, &s1.view(HUB)).unwrap();
@@ -79,9 +82,17 @@ fn wp_p2mq_set_is_in_part_and_all_or_nothing() {
             "no password in a reason"
         );
     }
-    // `tls` is reserved for SECOUT: a request does not set it.
+    // -- WP MQWIRE -- `tls` in part, through `MqttTls::update`; no port: 8883 with TLS.
     let t = apply_request(&s1, &json!({"tls": {"mode": "on"}})).unwrap();
-    assert_eq!(t.tls, None);
+    assert!(t.tls.encrypted());
+    assert_eq!(t.port_in_use(), 8883);
+    assert!(!t.same_connection(&s1));
+    let bad = apply_request(&s1, &json!({"tls": {"mode": "maybe"}})).unwrap_err();
+    assert!(bad.starts_with("tls:"), "{bad}");
+    assert!(
+        apply_request(&s1, &json!({"tls": {"ca_pem": "x"}})).is_err(),
+        "off with a CA"
+    );
     // `ha` alone does not reconnect; a port does.
     let ha = apply_request(&s1, &json!({"ha": {"enabled": true, "key": 3}})).unwrap();
     assert_eq!(
@@ -120,7 +131,11 @@ fn wp_p2mq_the_file_is_0600_keeps_tls_and_reads_back() {
                 "password": "pw", "base_topic": "venue/a", "ha": {"enabled": true}}),
     )
     .unwrap();
-    s.tls = Some(json!({"mode": "off"}));
+    s.tls = MqttTls::update(
+        &json!({"mode": "off", "allow_plaintext_password": true}),
+        &s.tls,
+    )
+    .unwrap();
     save(&d, &s).unwrap();
     #[cfg(unix)]
     {
@@ -131,13 +146,14 @@ fn wp_p2mq_the_file_is_0600_keeps_tls_and_reads_back() {
             .mode();
         assert_eq!(mode & 0o777, 0o600);
     }
-    let back = load(&d, 1);
+    let (back, notice) = load(&d, 1);
     assert_eq!(back, s);
-    assert_eq!(back.tls, Some(json!({"mode": "off"})), "kept on rewrite");
+    assert_eq!(notice, None);
+    assert!(back.tls.allow_plaintext_password, "kept on rewrite");
     // A rewrite through `mqtt.set` keeps `tls` too.
     let next = apply_request(&back, &json!({"port": 1885})).unwrap();
     save(&d, &next).unwrap();
-    assert_eq!(load(&d, 2).tls, Some(json!({"mode": "off"})));
+    assert!(load(&d, 2).0.tls.allow_plaintext_password);
 }
 
 #[test]
@@ -148,21 +164,22 @@ fn wp_p2mq_a_bad_file_is_set_aside_and_its_good_fields_kept() {
         r#"{"v":1,"enabled":true,"broker":"b.lan","port":99999,"username":"u","password":"pw"}"#,
     )
     .unwrap();
-    let s = load(&d, 42);
+    let (s, notice) = load(&d, 42);
     assert_eq!(s.broker, "b.lan");
-    assert_eq!(s.port, 1883, "the bad field reads as its default");
+    assert_eq!(s.port, None, "the bad field reads as its default");
+    assert!(notice.is_some(), "no tls, a remote broker: migrated");
     assert_eq!(s.password.as_deref(), Some("pw"));
     assert!(d.join("mqtt.json.bad-42").exists());
-    assert_eq!(load(&d, 43), s, "the good fields written back");
+    assert_eq!(load(&d, 43), (s, None), "the good fields written back");
 
     // Not JSON at all: defaults, set aside, never a panic.
     fs::write(d.join(FILE_NAME), b"\xff{{").unwrap();
-    assert_eq!(load(&d, 44), MqttSettings::default());
+    assert_eq!(load(&d, 44).0, MqttSettings::default());
     assert!(d.join("mqtt.json.bad-44").exists());
 
     // Too large: defaults.
     fs::write(d.join(FILE_NAME), vec![b' '; MAX_FILE as usize + 1]).unwrap();
-    assert_eq!(load(&d, 45), MqttSettings::default());
+    assert_eq!(load(&d, 45).0, MqttSettings::default());
 
     // A password without a user name cannot be sent: off, and the password dropped.
     fs::write(
@@ -170,7 +187,7 @@ fn wp_p2mq_a_bad_file_is_set_aside_and_its_good_fields_kept() {
         r#"{"enabled":true,"broker":"b","password":"pw"}"#,
     )
     .unwrap();
-    let s = load(&d, 46);
+    let (s, _) = load(&d, 46);
     assert!(!s.enabled);
     assert_eq!(s.password, None);
 }
@@ -333,4 +350,38 @@ fn wp_p2mq_the_will_is_offline_retained_on_the_status_topic() {
     assert_eq!(will.payload, OFFLINE);
     assert!(will.retain);
     assert_eq!(will.qos, QoS::AtLeastOnce);
+}
+
+// -- WP MQWIRE --
+#[test]
+fn wp_mqwire_a_file_from_before_tls_is_migrated_once() {
+    let d = scratch("migrate");
+    // As P2MQ wrote it: `tls` null, a broker elsewhere with a password.
+    fs::write(
+        d.join(FILE_NAME),
+        r#"{"v":1,"enabled":true,"broker":"10.0.0.5","port":1883,"username":"u","password":"pw","tls":null}"#,
+    )
+    .unwrap();
+    let (s, notice) = load(&d, 1);
+    assert_eq!(notice, Some(super::super::client::MQTT_MIGRATED_NOTICE));
+    assert!(s.tls.allow_plaintext_password);
+    assert!(s.enabled);
+    assert!(
+        !d.join("mqtt.json.bad-1").exists(),
+        "migrated, not set aside"
+    );
+    let (again, notice) = load(&d, 2);
+    assert_eq!(notice, None, "the notice comes once");
+    assert_eq!(again, s);
+
+    // On loopback, or with no password: nothing to migrate.
+    for text in [
+        r#"{"enabled":true,"broker":"127.0.0.1","username":"u","password":"pw"}"#,
+        r#"{"enabled":true,"broker":"10.0.0.5"}"#,
+    ] {
+        fs::write(d.join(FILE_NAME), text).unwrap();
+        let (s, notice) = load(&d, 3);
+        assert_eq!(notice, None, "{text}");
+        assert!(!s.tls.allow_plaintext_password, "{text}");
+    }
 }

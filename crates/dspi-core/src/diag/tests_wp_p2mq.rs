@@ -38,7 +38,8 @@ fn wp_p2mq_the_bundle_carries_mqtt_json_without_the_password() {
         r#"{"v":1,"enabled":true,"broker":"broker.lan","port":1883,"client_id":null,
             "username":"hub-user","password":"mq-sekrit-91","base_topic":"venue/a",
             "ha":{"enabled":true,"key":4},
-            "tls":{"mode":"on","client_key_pem":"-----BEGIN KEY----- tls-sekrit-42"}}"#,
+            "tls":{"mode":"on","client_key_pem":"-----BEGIN KEY----- tls-sekrit-42",
+                   "ca_pem":"ca-text-43","pin_sha256":"sha256//pin-44","client_key_file":"/k.pem"}}"#,
     )
     .unwrap();
     let (names, raw) = bundle(&d);
@@ -50,8 +51,14 @@ fn wp_p2mq_the_bundle_carries_mqtt_json_without_the_password() {
         "the password is in the bundle"
     );
     assert!(!raw.contains("tls-sekrit-42"), "a TLS key is in the bundle");
+    assert!(!raw.contains("ca-text-43") && !raw.contains("pin-44"));
+    assert!(raw.contains("/k.pem"), "a key file's path is kept");
     assert!(raw.contains(r#""password": "set""#) || raw.contains(r#""password":"set""#));
-    assert!(raw.contains(r#""tls": "set""#) || raw.contains(r#""tls":"set""#));
+    // -- WP MQWIRE -- the tls object kept, its key, certificate, CA and pin as set / not set.
+    assert!(raw.contains(r#""mode": "on""#) || raw.contains(r#""mode":"on""#));
+    assert!(
+        raw.contains(r#""client_key_pem": "set""#) || raw.contains(r#""client_key_pem":"set""#)
+    );
 }
 
 #[test]

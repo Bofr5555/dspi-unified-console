@@ -31,9 +31,14 @@
 //! device. Home Assistant's `set` topics (P2HA) act as an API key's principal (OD-P2c),
 //! never as the hub; `ha` is kept here for P2HA and is not used by this module.
 //!
-//! **TLS (PLAN-SEC, SECOUT).** `tls` is reserved in `mqtt.json`: kept on every rewrite,
-//! never shown by `mqtt.get`, not settable by `mqtt.set` here. The client is started with
-//! [`MqttClient::start`] as it is, and `mqtt.status` says `encrypted: false`.
+//! **TLS (PLAN-SEC 4.8; SECOUT's [`MqttTls`], wired by WP MQWIRE).** `tls` in `mqtt.json`
+//! is read with [`MqttTls::load`]: a file written before TLS with a broker that is not on
+//! loopback keeps sending its password (`allow_plaintext_password`) with a one-time notice,
+//! written back at once so it comes once, logged and shown by `mqtt.get` and `mqtt.status`
+//! for this run. `mqtt.set` changes it with [`MqttTls::update`], `mqtt.get` shows
+//! [`MqttTls::view_json`] (the client key as `set` / `not set`). Without a `port` the port
+//! is [`MqttTls::default_port`] (8883 with TLS, 1883 without). `mqtt.status`'s `encrypted`
+//! is the client's ([`MqttStatus::encrypted`]).
 //!
 //! **Secrets.** The password is kept only in the 0600 file; it is never in an answer, a
 //! log line or a `Debug` (OD-P2e), and the diagnostics bundle shows it as `set` / `not set`.
@@ -49,7 +54,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
 
-use super::client::{DEFAULT_MQTT_PORT, MqttClient, MqttConfig, MqttEvent, MqttStatus};
+use super::client::{MqttClient, MqttConfig, MqttEvent, MqttStatus, MqttTls};
 use super::codec::{self, QoS, Will};
 use crate::bus::{Bus, BusMessage, Subscription};
 use crate::clock::HubClock;
@@ -74,8 +79,6 @@ pub const MAX_CLIENT_ID_BYTES: usize = 64;
 pub const MAX_CREDENTIAL_BYTES: usize = 256;
 /// The base topic, in bytes.
 pub const MAX_BASE_TOPIC_BYTES: usize = 128;
-/// The reserved `tls` object, encoded, in bytes.
-pub const MAX_TLS_BYTES: usize = 32 * 1024;
 /// Connection ups and downs the handler keeps for the pump; the oldest go past it.
 pub const EVENT_QUEUE_CAP: usize = 64;
 /// Bus messages the pump holds; it reads promptly, and `Alarm`/`Event` only reach it.
@@ -120,14 +123,14 @@ impl HaSetting {
 }
 
 /// The broker setting, as `mqtt.json` keeps it. Its `Debug` never shows the password.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct MqttSettings {
     /// On: the hub connects and publishes.
     pub enabled: bool,
     /// The broker's host name or address; empty for none.
     pub broker: String,
-    /// The broker's port.
-    pub port: u16,
+    /// The broker's port; `None` for [`MqttTls::default_port`].
+    pub port: Option<u16>,
     /// The client id; `None` for the default, `dspi` and the hub's id.
     pub client_id: Option<String>,
     /// The user name, if the broker wants one.
@@ -138,24 +141,8 @@ pub struct MqttSettings {
     pub base_topic: Option<String>,
     /// Home Assistant (P2HA).
     pub ha: HaSetting,
-    /// Reserved for SECOUT (PLAN-SEC 4.8): kept as it is on every rewrite.
-    pub tls: Option<Value>,
-}
-
-impl Default for MqttSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            broker: String::new(),
-            port: DEFAULT_MQTT_PORT,
-            client_id: None,
-            username: None,
-            password: None,
-            base_topic: None,
-            ha: HaSetting::default(),
-            tls: None,
-        }
-    }
+    /// TLS to the broker (PLAN-SEC 4.8).
+    pub tls: MqttTls,
 }
 
 fn shown(set: bool) -> &'static str {
@@ -173,7 +160,7 @@ impl std::fmt::Debug for MqttSettings {
             .field("password", &shown(self.password.is_some()))
             .field("base_topic", &self.base_topic)
             .field("ha", &self.ha)
-            .field("tls", &shown(self.tls.is_some()))
+            .field("tls", &self.tls)
             .finish()
     }
 }
@@ -223,17 +210,24 @@ impl MqttSettings {
         self.enabled && !self.broker.is_empty()
     }
 
-    /// What `mqtt.get` shows: the values in use, the password as `set` / `not set`, no `tls`.
+    /// The port in use: the setting, or 8883 with TLS and 1883 without.
+    pub fn port_in_use(&self) -> u16 {
+        self.port.unwrap_or_else(|| self.tls.default_port())
+    }
+
+    /// What `mqtt.get` shows: the values in use, the password and the client key as
+    /// `set` / `not set`.
     pub fn view(&self, hub_id: &str) -> Value {
         json!({
             "enabled": self.enabled,
             "broker": self.broker,
-            "port": self.port,
+            "port": self.port_in_use(),
             "client_id": self.client(hub_id),
             "username": self.username,
             "password": shown(self.password.is_some()),
             "base_topic": self.base(hub_id),
             "ha": self.ha.to_json(),
+            "tls": self.tls.view_json(),
         })
     }
 
@@ -249,7 +243,7 @@ impl MqttSettings {
             "password": self.password,
             "base_topic": self.base_topic,
             "ha": self.ha.to_json(),
-            "tls": self.tls,
+            "tls": self.tls.to_json(),
         })
     }
 
@@ -263,7 +257,8 @@ impl MqttSettings {
 
     /// The client's configuration: the will `offline`, retained, on `<base>/status`.
     pub fn client_config(&self, hub_id: &str) -> MqttConfig {
-        let mut c = MqttConfig::new(self.broker.clone(), self.port, self.client(hub_id));
+        let mut c = MqttConfig::new(self.broker.clone(), self.port_in_use(), self.client(hub_id));
+        c.tls = self.tls.clone();
         c.username = self.username.clone();
         c.password = self.password.clone();
         c.queue_cap = CLIENT_QUEUE_CAP;
@@ -415,7 +410,12 @@ fn apply_field(s: &mut MqttSettings, key: &str, v: &Value, from: Source) -> Resu
                 _ => return Err("broker: a string".into()),
             }
         }
-        "port" => s.port = parse_port(v)?,
+        "port" => {
+            s.port = match v {
+                Value::Null => None,
+                _ => Some(parse_port(v)?),
+            }
+        }
         "client_id" => s.client_id = opt_string(v, key, check_client_id)?,
         "username" => s.username = opt_string(v, key, |u| check_credential(key, u))?,
         "password" => {
@@ -427,14 +427,12 @@ fn apply_field(s: &mut MqttSettings, key: &str, v: &Value, from: Source) -> Resu
         }
         "base_topic" => s.base_topic = opt_string(v, key, check_base_topic)?,
         "ha" => s.ha = parse_ha(v, s.ha)?,
-        "tls" if from == Source::File => {
-            s.tls = match v {
-                Value::Null => None,
-                Value::Object(_) if v.to_string().len() <= MAX_TLS_BYTES => Some(v.clone()),
-                _ => return Err("tls: an object".into()),
-            }
+        // From the file, `tls` is read once every other field is (`decode`, which needs
+        // the broker for the migration).
+        "tls" if from == Source::Request => {
+            s.tls = MqttTls::update(v, &s.tls).map_err(|e| format!("tls: {e}"))?;
         }
-        // `v`, `tls` from a request (SECOUT's), anything unknown: ignored.
+        // `v`, anything unknown: ignored.
         _ => {}
     }
     Ok(())
@@ -466,18 +464,53 @@ pub fn apply_request(current: &MqttSettings, patch: &Value) -> Result<MqttSettin
     Ok(s)
 }
 
+/// What reading the file found.
+struct Decoded {
+    settings: MqttSettings,
+    /// A field that was bad (its rule, never its value).
+    bad: Option<String>,
+    /// [`MqttTls::load`]'s one-time notice: the file must be written back.
+    notice: Option<&'static str>,
+}
+
 /// The file's settings, field by field: a bad field keeps its default and is named.
-fn decode(bytes: &[u8]) -> (MqttSettings, Option<String>) {
+fn decode(bytes: &[u8]) -> Decoded {
     let mut s = MqttSettings::default();
     let map = match serde_json::from_slice::<Value>(bytes) {
         Ok(Value::Object(map)) => map,
-        Ok(_) => return (s, Some("not an object".into())),
-        Err(e) => return (s, Some(e.to_string())),
+        Ok(_) => {
+            return Decoded {
+                settings: s,
+                bad: Some("not an object".into()),
+                notice: None,
+            };
+        }
+        Err(e) => {
+            return Decoded {
+                settings: s,
+                bad: Some(e.to_string()),
+                notice: None,
+            };
+        }
     };
     let mut bad = None;
     for (k, v) in &map {
         if let Err(why) = apply_field(&mut s, k, v, Source::File) {
             bad = Some(why);
+        }
+    }
+    // -- WP MQWIRE -- `tls` last: a file without it (written before TLS) is migrated for
+    // its broker (OD-SECo). With no broker or no password there is nothing to keep
+    // working, so no flag and no notice.
+    let mut notice = None;
+    let tls = map.get("tls").filter(|v| !v.is_null());
+    if tls.is_some() || (!s.broker.is_empty() && s.password.is_some()) {
+        match MqttTls::load(tls, &s.broker) {
+            Ok((t, n)) => {
+                s.tls = t;
+                notice = n;
+            }
+            Err(e) => bad = Some(format!("tls: {e}")),
         }
     }
     if let Err(why) = check_whole(&s) {
@@ -488,7 +521,11 @@ fn decode(bytes: &[u8]) -> (MqttSettings, Option<String>) {
         }
         bad = Some(why);
     }
-    (s, bad)
+    Decoded {
+        settings: s,
+        bad,
+        notice,
+    }
 }
 
 fn read_limited(path: &Path) -> io::Result<Vec<u8>> {
@@ -504,13 +541,26 @@ fn read_limited(path: &Path) -> io::Result<Vec<u8>> {
 
 /// Read the settings. A file that is not whole is set aside as `.bad-<unix seconds>` and
 /// its good fields written back; never a panic, never a failed start.
-fn load(dir: &Path, unix_seconds: u64) -> MqttSettings {
+fn load(dir: &Path, unix_seconds: u64) -> (MqttSettings, Option<&'static str>) {
     let path = dir.join(FILE_NAME);
-    let (settings, bad) = match read_limited(&path) {
+    let Decoded {
+        settings,
+        bad,
+        notice,
+    } = match read_limited(&path) {
         Ok(bytes) => decode(&bytes),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return MqttSettings::default(),
-        Err(e) => (MqttSettings::default(), Some(e.to_string())),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            return (MqttSettings::default(), None);
+        }
+        Err(e) => Decoded {
+            settings: MqttSettings::default(),
+            bad: Some(e.to_string()),
+            notice: None,
+        },
     };
+    if let Some(n) = notice {
+        log::warn!("hub: {n}");
+    }
     if let Some(why) = bad {
         let aside = dir.join(format!("{FILE_NAME}.bad-{unix_seconds}"));
         // `why` names a field and its rule, never a value.
@@ -525,8 +575,14 @@ fn load(dir: &Path, unix_seconds: u64) -> MqttSettings {
         if let Err(e) = save(dir, &settings) {
             log::warn!("hub: cannot write {}: {e}", path.display());
         }
+    } else if notice.is_some() {
+        // -- WP MQWIRE -- written back with the flag, so the next start reads it and the
+        // notice comes once (OD-SECo).
+        if let Err(e) = save(dir, &settings) {
+            log::warn!("hub: cannot write {}: {e}", path.display());
+        }
     }
-    settings
+    (settings, notice)
 }
 
 #[cfg(unix)]
@@ -607,6 +663,10 @@ pub struct StatusView {
     pub queued: usize,
     /// Publishes the client dropped (a full queue) since it started.
     pub dropped: u64,
+    /// The connection now is TLS ([`MqttStatus::encrypted`]).
+    pub encrypted: bool,
+    /// The one-time migration notice of this run (OD-SECo), if the file was migrated.
+    pub notice: Option<&'static str>,
 }
 
 impl StatusView {
@@ -617,6 +677,8 @@ impl StatusView {
             since: at,
             queued: 0,
             dropped: 0,
+            encrypted: false,
+            notice: None,
         }
     }
 
@@ -624,6 +686,9 @@ impl StatusView {
     pub fn set(&mut self, state: LinkState, msg: Option<String>, at: u64) {
         if self.state != state {
             self.since = at;
+        }
+        if state != LinkState::Connected {
+            self.encrypted = false;
         }
         self.state = state;
         self.msg = msg;
@@ -635,7 +700,10 @@ impl StatusView {
             MqttEvent::Connected { .. } => self.set(LinkState::Connected, None, at),
             MqttEvent::Disconnected { reason } => {
                 // P2MQC's `Dropped::Refused`: "the broker refused the connection: <why>".
-                let state = if reason.contains("refused the connection") {
+                // -- WP MQWIRE -- SECOUT's `PlaintextPassword` is a setting to fix as well.
+                let state = if reason.contains("refused the connection")
+                    || reason.contains("refused to send the password")
+                {
                     LinkState::Failed
                 } else {
                     LinkState::Connecting
@@ -650,6 +718,7 @@ impl StatusView {
     pub fn counts(&mut self, s: &MqttStatus) {
         self.queued = s.queued;
         self.dropped = s.dropped;
+        self.encrypted = s.encrypted;
     }
 
     fn to_json(&self) -> Map<String, Value> {
@@ -661,8 +730,11 @@ impl StatusView {
         m.insert("since".into(), iso8601(self.since).into());
         m.insert("queued".into(), self.queued.into());
         m.insert("dropped".into(), self.dropped.into());
-        // -- PLAN-SEC: SECOUT turns this on for a TLS broker --
-        m.insert("encrypted".into(), false.into());
+        // -- WP MQWIRE -- the client's: true while the connection is TLS.
+        m.insert("encrypted".into(), self.encrypted.into());
+        if let Some(n) = self.notice {
+            m.insert("notice".into(), n.into());
+        }
         m
     }
 }
@@ -914,10 +986,14 @@ impl MqttService {
     /// The service, its setting read from `data_dir` (`None`: kept for this run only).
     /// Nothing connects until the hub's id is known (the first `run_due`, or `mqtt.set`).
     pub fn new(data_dir: Option<&Path>, clock: Arc<dyn HubClock>, bus: Arc<Bus>) -> Self {
-        let settings =
-            data_dir.map_or_else(MqttSettings::default, |d| load(d, clock.unix_seconds()));
+        let (settings, notice) = data_dir.map_or_else(
+            || (MqttSettings::default(), None),
+            |d| load(d, clock.unix_seconds()),
+        );
         let born = clock.now();
-        let status = Arc::new(Mutex::new(StatusView::new(clock.unix_seconds())));
+        let mut view = StatusView::new(clock.unix_seconds());
+        view.notice = notice;
+        let status = Arc::new(Mutex::new(view));
         Self {
             shared: Arc::new(Shared {
                 clock,
@@ -1006,6 +1082,10 @@ impl MqttService {
         let view = lock(&self.shared.settings).view(hub.hub_id());
         let mut m = Map::new();
         m.insert("settings".into(), view);
+        // -- WP MQWIRE --
+        if let Some(n) = lock(&self.shared.status).notice {
+            m.insert("notice".into(), n.into());
+        }
         reply_ok(id, m)
     }
 
@@ -1027,6 +1107,10 @@ impl MqttService {
                 return reply_err(id, "internal", "the settings could not be saved");
             }
             let changed = !next.same_connection(&current);
+            // -- WP MQWIRE -- the migration notice is answered once TLS is set again.
+            if next.tls != current.tls {
+                lock(&self.shared.status).notice = None;
+            }
             *current = next;
             (changed, current.active(), current.view(hub.hub_id()))
         };

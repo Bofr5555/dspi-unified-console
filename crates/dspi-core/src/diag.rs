@@ -14,7 +14,7 @@
 //! | `events/<serial>.jsonl` | each device's event log (P0M), in its file format |
 //! | `hub/hub-store.json` | the hub's store with tokens, hashes and secrets removed |
 //! | `hub/inventory.json` | the hub's inventory (WP P2IN), secrets removed the same way |
-//! | `hub/mqtt.json` | the hub's MQTT broker setting (WP P2MQ), the password and `tls` as `set` / `not set` |
+//! | `hub/mqtt.json` | the hub's MQTT broker setting (WP P2MQ), the password and the `tls` keys, CA and pin as `set` / `not set` |
 //! | `system/os.json` | OS facts: name, architecture, release, the udev rule on Linux |
 //! | `system/usb.json` | DSPis and bootloaders on the bus, by enumeration only |
 //! | `client/<name>` | files the client adds (`uconsole doctor`'s report, a log) |
@@ -546,11 +546,16 @@ fn diag_hub_data(b: &mut Bundle, dir: &str, file: &str) {
 const HUB_MQTT_FILE: &str = "mqtt.json";
 /// Its own limit.
 const HUB_MQTT_MAX: u64 = 64 << 10;
-/// Fields of `mqtt.json` shown only as `set` or `not set` (PLAN-P2 S6): the password,
-/// and `tls` (PLAN-SEC 4.8: a client key and certificate may be in it).
-const HUB_MQTT_SHOWN_SET: &[&str] = &["password", "tls"];
+/// Fields of `mqtt.json` shown only as `set` or `not set` (PLAN-P2 S6): the password.
+const HUB_MQTT_SHOWN_SET: &[&str] = &["password"];
+// -- WP MQWIRE --
+/// Fields of `mqtt.json`'s `tls` (PLAN-SEC 4.8, `MqttTls`) shown only as `set` or `not
+/// set`: the client key, and with it the trust and the certificate (a rule kept simple).
+const HUB_MQTT_TLS_SHOWN_SET: &[&str] =
+    &["client_key_pem", "client_cert_pem", "ca_pem", "pin_sha256"];
 
-/// `mqtt.json` as `hub/mqtt.json`: the password and `tls` as `set` / `not set`, every
+/// `mqtt.json` as `hub/mqtt.json`: the password, and in `tls` the client key, certificate,
+/// CA and pin, as `set` / `not set`; `tls`'s mode, flag and file paths as they are; every
 /// other secret-named field [`REMOVED`]. No folder or no file: nothing, and no note
 /// (MQTT is off on most hubs); unreadable or not a JSON object: a note, and none of it.
 fn diag_hub_mqtt(b: &mut Bundle, dir: &str) {
@@ -572,6 +577,26 @@ fn diag_hub_mqtt(b: &mut Bundle, dir: &str) {
                 if HUB_MQTT_SHOWN_SET.contains(&k.as_str()) {
                     let set = !child.is_null();
                     *child = Value::String(if set { "set" } else { "not set" }.into());
+                } else if k == "tls" {
+                    // -- WP MQWIRE --
+                    match child {
+                        Value::Object(tls) => {
+                            for (tk, tv) in tls.iter_mut() {
+                                if HUB_MQTT_TLS_SHOWN_SET.contains(&tk.as_str()) {
+                                    let set = !tv.is_null();
+                                    *tv = Value::String(if set { "set" } else { "not set" }.into());
+                                } else if is_secret_key(tk) {
+                                    // `client_key_file`: a path, not the key; any other
+                                    // secret-named field goes.
+                                    if tk != "client_key_file" {
+                                        *tv = Value::String(REMOVED.into());
+                                    }
+                                }
+                            }
+                        }
+                        Value::Null => *child = Value::String("not set".into()),
+                        _ => *child = Value::String(REMOVED.into()),
+                    }
                 } else if is_secret_key(k) {
                     *child = Value::String(REMOVED.into());
                 } else {

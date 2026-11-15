@@ -1,5 +1,5 @@
 //! MQTT for the hub (PLAN-P2 I6, OD-P2c): a hand-written MQTT 3.1.1 client on std threads,
-//! no async runtime and no new crate. No TLS (OD-P2f): a LAN broker over plain TCP.
+//! no async runtime and no new crate. Plain TCP or TLS (SECOUT, PLAN-SEC 4.8: `MqttTls`).
 //!
 //! | Module | What | Owner |
 //! |---|---|---|
