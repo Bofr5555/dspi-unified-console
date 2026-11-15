@@ -1,4 +1,5 @@
 import Foundation
+import dspi_core
 
 // MARK: - Bundled images
 
@@ -68,6 +69,10 @@ enum FirmwareInstallError: Error, Equatable {
     /// written: the installer's lock (the core's notice row) or a write that
     /// no person confirmed.
     case refused(String)
+    /// -- WP SW-M2 -- The core's firmware guard (CG8) did not let the image
+    /// on: its own sentence (an image that is not firmware, a risk nobody
+    /// accepted).  Nothing was written.
+    case guardRefused(String)
 
     /// One sentence fit to show a user.
     var message: String {
@@ -92,8 +97,108 @@ enum FirmwareInstallError: Error, Equatable {
             return "\(DeviceLock.lockedMessage). Try again when it has finished."
         case .refused(let words):
             return words
+        case .guardRefused(let words):
+            return words
         }
     }
+}
+
+// MARK: - The board's needs (WP SW-M2)
+
+/// What the firmware guard judges a board by: the core's record of its
+/// core-voltage needs (CG8), and its chip when known.
+struct FirmwareGuardSubject: Equatable {
+    var board: FirmwareGuardBoard
+    var chip: BootloaderBoard.Chip?
+
+    /// A board already in BOOTSEL cannot be asked: unknown, so the guard asks.
+    static var inBootloader: FirmwareGuardSubject {
+        FirmwareGuardSubject(board: firmwareGuardBoardInBootloader(), chip: nil)
+    }
+}
+
+/// Reads the connected board's needs, once per install and before it is
+/// restarted into the bootloader (the board cannot be asked afterwards).
+/// Called off the main thread.
+protocol FirmwareBoardReading {
+    func readBoard() -> FirmwareGuardSubject
+}
+
+/// No device to ask: every board is judged as one already in BOOTSEL.
+struct InBootloaderBoardReader: FirmwareBoardReading {
+    func readBoard() -> FirmwareGuardSubject { .inBootloader }
+}
+
+/// The view model's device, through the core (`firmwareGuardBoard`).  A
+/// device not driven through a core (`-CoreTransport NO`) cannot be read, so
+/// it counts as unknown and the guard asks.
+struct ViewModelBoardReader: FirmwareBoardReading {
+    let vm: DSPViewModel
+
+    func readBoard() -> FirmwareGuardSubject {
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        let (connected, source, platform): (Bool, CoreStateSource?, String) = DispatchQueue.main.sync {
+            (vm.isDeviceConnected, vm.transport.coreStateSource, vm.platformName)
+        }
+        guard connected else { return .inBootloader }
+        let chip = BootloaderBoard.Chip.allCases.first { $0.assetToken == platform }
+        guard let source, case .success(let board) = source.call({ $0.firmwareGuardBoard() }) else {
+            return FirmwareGuardSubject(board: FirmwareGuardBoard(requiredMv: 0, source: .noDevice), chip: chip)
+        }
+        return FirmwareGuardSubject(board: board, chip: chip)
+    }
+}
+
+/// The guard's question to the person: its sentence, and the words to type
+/// to go ahead anyway (the core's, compared exactly).
+struct FirmwareGuardQuestion: Equatable {
+    let message: String
+    let phrase: String
+}
+
+// MARK: - The core that writes (WP SW-M2)
+
+/// The only firmware write in the app: the core's guarded `flashConfirmed`
+/// (C11 behind CG8, with a P1TK token).  Its own `DspiCore`, with no device
+/// open: the board has left by the time its drive is there.  The client
+/// read-only mode (`-ReadOnly YES`) holds here as on the app's cores.
+///
+/// Before any byte goes out the core validates the image, reads the drive's
+/// `INFO_UF2.TXT` again, checks the image's chip against it, checks the room
+/// on the drive, and runs the guard with the board record and the typed
+/// words; without a token minted from the person's confirmation it refuses.
+final class FirmwareFlashCore {
+    private let core: DspiCore
+    private let queue = DispatchQueue(label: "com.dspi.firmware-core", qos: .userInitiated)
+
+    init(clientReadOnly: Bool = CoreBackedTransport.readOnlyLaunchFlag) {
+        core = DspiCore()
+        if clientReadOnly { try? core.setClientReadOnly(on: true) }
+    }
+
+    /// Writes `image` to `drive`, minting the token from `confirmed` now,
+    /// right before the call (the board is in BOOTSEL by then).  Blocking:
+    /// call off the main thread.
+    func flash(_ image: Data, to drive: BootloaderDrive, board: FirmwareGuardBoard,
+               typed: String, confirmed: UserConfirmation) -> Result<Void, DspiError> {
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        return queue.sync { () -> Result<Void, DspiError> in
+            do {
+                try core.flashConfirmed(image: image, drive: drive, board: board, typedConfirmation: typed,
+                                        token: confirmed.token(core, for: .firmwareFlash))
+                return .success(())
+            } catch let error as DspiError {
+                return .failure(error)
+            } catch {
+                return .failure(.Unsupported)
+            }
+        }
+    }
+
+    #if DEBUG
+    /// Tests: the core itself, to show what it refuses when called directly.
+    func withCoreForTesting<T>(_ body: (DspiCore) throws -> T) rethrows -> T { try queue.sync { try body(core) } }
+    #endif
 }
 
 // MARK: - Verification
@@ -137,7 +242,8 @@ enum FirmwareInstallState: Equatable {
     case waitingForVolume(BootloaderBoard.Chip)
     /// Exactly one board, volume mounted, ready to be written when the user says so.
     case ready(BootloaderBoard)
-    /// Writing, with the fraction of the image sent so far.
+    /// Writing.  -- WP SW-M2 -- The core writes the image in one call, so
+    /// the fraction is 0 for the whole write (the card shows no percentage).
     case writing(Double)
     /// Bytes are out and the board is rebooting; waiting for it to enumerate.
     case waitingForDevice
@@ -145,8 +251,17 @@ enum FirmwareInstallState: Equatable {
     case failed(FirmwareInstallError)
 }
 
-/// Detects a board in BOOTSEL, writes the bundled UF2 to it, and confirms the
-/// device came back running what we wrote.
+/// Detects a board in BOOTSEL, has the core write the bundled UF2 to it, and
+/// confirms the device came back running what was written.
+///
+/// -- WP SW-M2 -- UI over the core: the locator's boards come from the core,
+/// the guard's verdict is the core's (`firmwareGuardCheck`, CG8), and the
+/// write is the core's guarded `flashConfirmed` with a token minted from the
+/// person's confirmation (`FirmwareFlashCore`).  Swift writes no byte of
+/// firmware.  The installer's lock (`gate`) is asked when the install is
+/// armed and again before the write; neither it nor the guard can be left
+/// out, since both are fixed at init and the only way in is
+/// `installWhenReady(confirmed:)`.
 ///
 /// Deliberately does none of the deciding: it never flashes on its own, never
 /// chooses between two attached boards, and never touches presets.  Callers
@@ -154,14 +269,9 @@ enum FirmwareInstallState: Equatable {
 /// Tools > Firmware Update, and by the version-mismatch banner.
 final class FirmwareInstaller: ObservableObject {
     @Published private(set) var state: FirmwareInstallState = .idle
-
-    /// Fraction of the image that must be out before a write error is read as
-    /// the board rebooting rather than as a failure.  The RP2 ROM loader
-    /// reboots itself as it takes the last blocks, so the volume disappears
-    /// underneath the final write; every UF2 flasher that reports that as an
-    /// error is wrong.  Paired with a check that the volume really did vanish,
-    /// so an early genuine failure still surfaces.
-    static let rebootThreshold = 0.95
+    /// -- WP SW-M2 -- The guard's question, while it waits for the person's
+    /// typed answer (`answer(_:)`) or for them to decline it.
+    @Published private(set) var question: FirmwareGuardQuestion?
 
     /// How long to wait for the board to come back after a write.  Covers the
     /// reboot, USB re-enumeration, and the app's own reconnect and platform
@@ -169,32 +279,25 @@ final class FirmwareInstaller: ObservableObject {
     /// actually worked tells the user their device is broken when it is not.
     static let verifyTimeout: TimeInterval = 30
 
-    /// Write chunk size.  Small enough that a typical image produces a few
-    /// dozen progress updates; 64 KB moved the bar in seven jumps, which read
-    /// as a stall rather than progress.
-    static let writeChunkSize = 16 * 1024
-
     /// How long a board may sit on the USB bus with no drive before we call it
     /// a failure.  The mount always lags enumeration; treating that gap as an
     /// error meant a board plugged in while the window was open was rejected
     /// a moment before its drive appeared.
     static let volumeWaitTimeout: TimeInterval = 8
 
-    /// Whether a write error means the board rebooted, which is the ordinary
-    /// ending, rather than that the write failed.
-    ///
-    /// Two independent signals, either sufficient: nearly all the bytes are
-    /// out, or the volume has actually disappeared.  The fraction alone would
-    /// miss a board that resets early; the mount check alone would miss the
-    /// window where the volume is on its way out but still stat-able.
-    static func isRebootSignal(fractionWritten: Double, volumeStillMounted: Bool) -> Bool {
-        fractionWritten >= rebootThreshold || !volumeStillMounted
-    }
+    static let unconfirmedWords = "The firmware was not written: the install was not confirmed."
+    /// -- WP SW-M2 -- The person declined the guard's question.
+    static let declinedWords = "The firmware was not written: the core voltage risk was not accepted."
 
     private let locator: BootloaderLocating
     private let verifier: FirmwareVerifying
     private let imageProvider: (BootloaderBoard.Chip) throws -> FirmwareImage
     private let now: () -> Date
+    private let boardReader: FirmwareBoardReading
+    private let flashCore: FirmwareFlashCore
+    /// -- WP P1SW2F -- F3: what refuses a write before anything reaches the
+    /// drive (the installer's lock, in the core's words); nil lets it go.
+    private let gate: () -> FirmwareInstallError?
     private let queue = DispatchQueue(label: "com.foxdac.firmware-install")
 
     /// Set once `install` begins and cleared only by `reset()`.  While it is
@@ -215,15 +318,33 @@ final class FirmwareInstaller: ObservableObject {
     /// is ready, and only one of those two orders is a state *change*.
     private var armed = false
 
+    /// The person's confirmation the armed install was made with.
+    private(set) var flashConfirmation: UserConfirmation?
+    /// -- WP SW-M2 -- The board's needs for this run, read once when armed
+    /// (before any restart); nil until read.  A write waits for it.
+    private(set) var subject: FirmwareGuardSubject?
+    /// What the person typed for the guard's question ("" none).
+    private var typed = ""
+    /// What runs once the question is answered.
+    private var afterAnswer: (() -> Void)?
+    /// Counts runs: a reply for an earlier one (reset or abandoned since) is dropped.
+    private var run = 0
+
     init(locator: BootloaderLocating,
          verifier: FirmwareVerifying,
          imageProvider: @escaping (BootloaderBoard.Chip) throws -> FirmwareImage
             = { try FirmwareImage.bundled(for: $0) },
-         now: @escaping () -> Date = Date.init) {
+         now: @escaping () -> Date = Date.init,
+         boardReader: FirmwareBoardReading = InBootloaderBoardReader(),
+         flashCore: FirmwareFlashCore = FirmwareFlashCore(),
+         gate: @escaping () -> FirmwareInstallError? = { FirmwareFlashGate.refusal() }) {
         self.locator = locator
         self.verifier = verifier
         self.imageProvider = imageProvider
         self.now = now
+        self.boardReader = boardReader
+        self.flashCore = flashCore
+        self.gate = gate
     }
 
     // MARK: Detection
@@ -257,9 +378,15 @@ final class FirmwareInstaller: ObservableObject {
         case .writing, .waitingForDevice: return
         default: break
         }
+        run += 1
         installing = false
         armed = false
         volumeWaitStarted = nil
+        flashConfirmation = nil
+        subject = nil
+        typed = ""
+        afterAnswer = nil
+        question = nil
         applyBoards(locator.currentBoards())
     }
 
@@ -279,7 +406,7 @@ final class FirmwareInstaller: ObservableObject {
             volumeWaitStarted = nil
             next = .waitingForBoard
         case 1:
-            if boards[0].volumeURL != nil {
+            if boards[0].drive != nil {
                 volumeWaitStarted = nil
                 next = .ready(boards[0])
             } else {
@@ -299,7 +426,7 @@ final class FirmwareInstaller: ObservableObject {
         publish(next)
 
         // Committed before the board arrived: write it now that it is here.
-        if armed, case .ready(let board) = next { install(board) }
+        installIfReady()
     }
 
     // MARK: Install
@@ -307,12 +434,17 @@ final class FirmwareInstaller: ObservableObject {
     /// Records the user's decision to update, and writes as soon as there is a
     /// board to write to - immediately if one is already ready.
     ///
-    /// This is the only way callers should start an install.  Waiting for
-    /// `.ready` to *arrive* misses the common case where the board was plugged
-    /// in first and the state is already `.ready` when the user clicks.
+    /// This is the only way to start an install.  Waiting for `.ready` to
+    /// *arrive* misses the common case where the board was plugged in first
+    /// and the state is already `.ready` when the user clicks.
+    ///
+    /// -- WP SW-M2 -- The board's needs are read first (`boardReader`, off
+    /// the main thread), and when its chip is known the guard is asked now,
+    /// so a question comes while the device still runs; `restart` (the
+    /// connected device's restart into the bootloader) runs only after that.
     /// -- WP P1SW2F -- False when refused (and failed with the reason).
     @discardableResult
-    func installWhenReady(confirmed: UserConfirmation) -> Bool {
+    func installWhenReady(confirmed: UserConfirmation, restart: (() -> Void)? = nil) -> Bool {
         // -- WP P1SW2F -- F3/F5: only a person's FirmwareFlash confirmation
         // (the Install button) arms a write, and the gate (the installer's
         // lock) is asked now, while the DSPi is still connected.
@@ -321,40 +453,103 @@ final class FirmwareInstaller: ObservableObject {
             abandon(.refused(Self.unconfirmedWords))
             return false
         }
-        if let refusal = flashGate?() {
+        if let refusal = gate() {
             abandon(refusal)
             return false
         }
+        guard !installing, flashConfirmation == nil else { return false }
         flashConfirmation = confirmed
         armed = true
-        if case .ready(let board) = state { install(board) }
+
+        let run = self.run
+        let reader = boardReader
+        let imageProvider = self.imageProvider
+        queue.async { [weak self] in
+            let subject = reader.readBoard()
+            // The connected chip's image, judged now; a board already in
+            // BOOTSEL (no chip) is judged at the write.
+            var verdict: FirmwareGuardVerdict?
+            if let chip = subject.chip, let image = try? imageProvider(chip),
+               let bytes = try? Data(contentsOf: image.url) {
+                verdict = firmwareGuardCheck(image: bytes, board: subject.board, typedConfirmation: "")
+            }
+            DispatchQueue.main.async {
+                guard let self, self.run == run, self.armed else { return }
+                self.subject = subject
+                let proceed = { [weak self] in
+                    restart?()
+                    self?.installIfReady()
+                }
+                guard let verdict, !verdict.allowed else { return proceed() }
+                if verdict.decision == .needsConfirmation {
+                    self.ask(verdict, then: proceed)
+                } else {
+                    self.end(.guardRefused(verdict.message))
+                }
+            }
+        }
         return true
     }
 
-    /// -- WP P1SW2F -- F3: what refuses a write before anything reaches the
-    /// drive (the installer's lock, in the core's words); nil lets it go.
-    /// Asked when the install is armed and again before the write.
-    var flashGate: (() -> FirmwareInstallError?)?
-    /// The person's confirmation the armed install was made with.
-    private(set) var flashConfirmation: UserConfirmation?
-    static let unconfirmedWords = "The firmware was not written: the install was not confirmed."
-
     /// Whether an update has been committed to but not yet started.
     var isArmed: Bool { armed }
+
+    /// -- WP SW-M2 -- The person's answer to the guard's question.  True when
+    /// it is the question's words exactly, and the run goes on with them; the
+    /// core checks them again at the write.  False leaves the question up.
+    @discardableResult
+    func answer(_ words: String) -> Bool {
+        guard let q = question, words == q.phrase else { return false }
+        typed = words
+        question = nil
+        let next = afterAnswer
+        afterAnswer = nil
+        next?()
+        return true
+    }
+
+    /// -- WP SW-M2 -- The person declined the guard's question: nothing is
+    /// written, and the run ends until `reset()`.
+    func declineQuestion() {
+        guard question != nil else { return }
+        question = nil
+        afterAnswer = nil
+        end(.refused(Self.declinedWords))
+    }
 
     /// Abandons a committed update before anything is written, reporting why
     /// (the device could not be restarted into the bootloader).  Frozen like
     /// any other failure until `reset()`.
     func abandon(_ error: FirmwareInstallError) {
         guard !installing else { return }
+        end(error)
+    }
+
+    /// Ends the run before anything is written: frozen until `reset()`.
+    private func end(_ error: FirmwareInstallError) {
+        run += 1
         armed = false
         installing = true
+        question = nil
+        afterAnswer = nil
         publish(.failed(error))
     }
 
-    /// Writes the bundled image for `board` and verifies the result.
-    /// Call only from a state of `.ready`, after the user has confirmed.
-    func install(_ board: BootloaderBoard) {
+    private func ask(_ verdict: FirmwareGuardVerdict, then next: @escaping () -> Void) {
+        afterAnswer = next
+        question = FirmwareGuardQuestion(message: verdict.message, phrase: verdict.confirmationPhrase)
+    }
+
+    /// Writes when armed, the board's needs are read, no question is up, and
+    /// a board is ready.
+    private func installIfReady() {
+        guard armed, subject != nil, question == nil, case .ready(let board) = state else { return }
+        install(board)
+    }
+
+    /// Has the core write the bundled image for `board`, then verifies the
+    /// result.  Only from `installIfReady`: armed by a person's confirmation.
+    private func install(_ board: BootloaderBoard) {
         guard !installing else { return }
 
         // The commitment is consumed here, success or not.  Left standing, a
@@ -368,13 +563,16 @@ final class FirmwareInstaller: ObservableObject {
         // with `.ready` on the next tick, since the board is still attached.
         installing = true
 
+        guard let confirmation = flashConfirmation else {
+            publish(.failed(.refused(Self.unconfirmedWords)))
+            return
+        }
         // -- WP P1SW2F -- F3: the gate again, right before the write.
-        if let refusal = flashGate?() {
+        if let refusal = gate() {
             publish(.failed(refusal))
             return
         }
-
-        guard let volumeURL = board.volumeURL else {
+        guard let drive = board.drive else {
             publish(.failed(.volumeNotMounted(board.chip.volumeName)))
             return
         }
@@ -390,19 +588,47 @@ final class FirmwareInstaller: ObservableObject {
             return
         }
 
-        publish(.writing(0))
+        let subject = self.subject ?? .inBootloader
+        let run = self.run
+        queue.async { [weak self] in
+            guard let bytes = try? Data(contentsOf: image.url) else {
+                self?.publish(.failed(.writeFailed("could not read the bundled image")))
+                return
+            }
+            DispatchQueue.main.async {
+                guard let self, self.run == run else { return }
+                self.check(bytes, image: image, drive: drive, board: subject.board, confirmation: confirmation)
+            }
+        }
+    }
 
+    /// The guard on the image now going out (main thread): the write when it
+    /// allows it, the question when it needs the person's words.
+    private func check(_ bytes: Data, image: FirmwareImage, drive: BootloaderDrive,
+                       board: FirmwareGuardBoard, confirmation: UserConfirmation) {
+        let verdict = firmwareGuardCheck(image: bytes, board: board, typedConfirmation: typed)
+        if verdict.allowed {
+            write(bytes, image: image, drive: drive, board: board, confirmation: confirmation)
+        } else if verdict.decision == .needsConfirmation {
+            ask(verdict) { [weak self] in
+                self?.check(bytes, image: image, drive: drive, board: board, confirmation: confirmation)
+            }
+        } else {
+            publish(.failed(.guardRefused(verdict.message)))
+        }
+    }
+
+    private func write(_ bytes: Data, image: FirmwareImage, drive: BootloaderDrive,
+                       board: FirmwareGuardBoard, confirmation: UserConfirmation) {
+        publish(.writing(0))
+        let typed = self.typed
         queue.async { [weak self] in
             guard let self else { return }
-            do {
-                try self.writeImage(image, to: volumeURL) { fraction in
-                    self.publish(.writing(fraction))
-                }
-            } catch let error as FirmwareInstallError {
-                self.publish(.failed(error))
-                return
-            } catch {
-                self.publish(.failed(.writeFailed(error.localizedDescription)))
+            // The core's guarded write; `Ok` means only that the write ended
+            // or the drive went away during it (the board rebooting).
+            if case .failure(let error) = self.flashCore.flash(bytes, to: drive, board: board,
+                                                                typed: typed, confirmed: confirmation) {
+                self.publish(.failed(Self.installError(error)))
                 return
             }
 
@@ -423,61 +649,15 @@ final class FirmwareInstaller: ObservableObject {
         }
     }
 
-    /// Streams the image onto the volume in chunks, reporting progress.
-    ///
-    /// Returns normally when the board reboots mid-write, which is the ordinary
-    /// ending: past `rebootThreshold`, or once the volume has actually gone, a
-    /// write error means the ROM loader took the last block and reset. Before
-    /// that, an error is a real failure and is thrown.
-    private func writeImage(_ image: FirmwareImage,
-                            to volumeURL: URL,
-                            progress: @escaping (Double) -> Void) throws {
-        let fm = FileManager.default
-        let total = ((try? fm.attributesOfItem(atPath: image.url.path)[.size]) as? NSNumber)?.intValue ?? 0
-        let destination = volumeURL.appendingPathComponent(image.url.lastPathComponent)
-
-        guard let source = try? FileHandle(forReadingFrom: image.url) else {
-            throw FirmwareInstallError.writeFailed("could not read the bundled image")
+    /// The core's refusal or failure as the installer reports it.
+    static func installError(_ error: DspiError) -> FirmwareInstallError {
+        switch error {
+        case .FirmwareGuardBlocked(let msg), .OvervoltWordRequired(let msg): return .guardRefused(msg)
+        case .ConfirmationRequired, .InstallerLock, .ReadOnly:
+            return .refused(CoreSnapshots.words(error, clientReadOnly: true))
+        default:
+            return .writeFailed(CoreSnapshots.words(error))
         }
-        defer { try? source.close() }
-
-        guard fm.createFile(atPath: destination.path, contents: nil),
-              let sink = try? FileHandle(forWritingTo: destination) else {
-            throw FirmwareInstallError.writeFailed("could not open \(volumeURL.lastPathComponent) for writing")
-        }
-
-        var written = 0
-        while true {
-            let chunk: Data
-            do {
-                chunk = try source.read(upToCount: Self.writeChunkSize) ?? Data()
-            } catch {
-                // A failed read must not be mistaken for end-of-file: falling
-                // out of the loop here would flash a truncated image and then
-                // report only that the device never came back.
-                throw FirmwareInstallError.writeFailed("could not read the bundled image")
-            }
-            if chunk.isEmpty { break }
-
-            do {
-                try sink.write(contentsOf: chunk)
-            } catch {
-                let fraction = total > 0 ? Double(written) / Double(total) : 0
-                if Self.isRebootSignal(fractionWritten: fraction,
-                                       volumeStillMounted: fm.fileExists(atPath: volumeURL.path)) {
-                    return
-                }
-                throw FirmwareInstallError.writeFailed(error.localizedDescription)
-            }
-
-            written += chunk.count
-            progress(total > 0 ? Double(written) / Double(total) : 0)
-        }
-
-        // Both can throw once the board has gone, and by here every byte is
-        // out, so neither failure means anything.
-        try? sink.synchronize()
-        try? sink.close()
     }
 
     #if DEBUG

@@ -268,6 +268,21 @@ for s in "${steps[@]}"; do
                    grep -rlE 'webSocketTask\(' --include='*.swift' apps/apple | grep -vE '/Link/LinkClient\.swift$|/DSPi ConsoleTests/|/DSPi Console iOSUITests/'; } || true)
         if [ -n "$stray" ]; then echo "swift: Swift's own Link client is built outside the opt-out:" >&2; echo "$stray" >&2; exit 1; fi
         echo "swift: the core's Link session is only in Core/CoreLink.swift; Swift's Link client only in the opt-out"
+        # -- WP SW-M2 -- firmware reaches a bootloader drive only through the
+        # core's guarded flashConfirmed (C11 behind CG8, with a P1TK token),
+        # called only by FirmwareInstaller.swift's FirmwareFlashCore; the
+        # firmware files write no file and find no drive themselves. No Swift
+        # direct-copy path is kept, not even behind -CoreTransport NO.
+        stray=$(grep -rlE '\.flashConfirmed\(' --include='*.swift' apps/apple |
+          grep -vE '/Core/Generated/|/DSPi Console/FirmwareInstaller\.swift$|/DSPi ConsoleTests/' || true)
+        if [ -n "$stray" ]; then echo "swift: the core's firmware write is called outside FirmwareInstaller.swift:" >&2; echo "$stray" >&2; exit 1; fi
+        fw=("apps/apple/DSPi Console/FirmwareInstaller.swift" "apps/apple/DSPi Console/BootloaderLocator.swift"
+            "apps/apple/DSPi Console/FirmwareUpdateView.swift" "apps/apple/DSPi Console/FirmwareInstallUI.swift"
+            "apps/apple/DSPi Console/Onboarding/GettingStartedView.swift")
+        stray=$(grep -nE 'FileHandle\((forWritingTo|forUpdating)|createFile\(atPath|\.write\((to|contentsOf):|copyItem\(|moveItem\(|getmntinfo|IOServiceMatching|INFO_UF2' "${fw[@]}" |
+          grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+        if [ -n "$stray" ]; then echo "swift: a firmware file writes or finds a drive itself (the core's job):" >&2; echo "$stray" >&2; exit 1; fi
+        echo "swift: firmware goes to a drive only through the core's flashConfirmed, in FirmwareInstaller.swift"
       fi ;;
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)
