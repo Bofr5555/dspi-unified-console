@@ -1087,6 +1087,7 @@ struct ContentView: View {
         .overlay(alignment: .top) {
             // -- WP SW8 -- with the read-only notice under it
             VStack(spacing: 0) {
+                LinkBannerStack(center: .shared)   // -- WP SW7 -- DSPi Link lost: reconnecting, Disconnect
                 #if os(macOS)
                 FirmwareMismatchBanner(vm: vm) {
                     firmwareUpdateController.show(vm: vm)
