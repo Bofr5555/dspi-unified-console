@@ -177,6 +177,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     let mut list: Vec<Arc<dyn HubService>> = Vec::new();
     // One line per service, each under its WP's marker:
     //   list.extend(crate::<module>::service(config, setup));
+    // -- WP P2PA -- the `snapshot` family (P2SS's store) and the parameter API beside it
+    list.extend(crate::api::services(setup));
     list.extend(config.extra.iter().cloned());
     list
 }

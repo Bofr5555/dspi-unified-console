@@ -466,6 +466,86 @@ impl Drop for Completion {
     }
 }
 
+// -- WP P2PA --
+/// A child session of a principal (PLAN-P2 P2PA, the session-id rule M2): the same role
+/// and paired client as its parent, its parent's name for attribution, and **its own id
+/// from the remote range** (`next_session_id`, through
+/// [`crate::HubHandle::open_principal`]), so the policy, the limits, the lock and the
+/// voltage rule judge what it sends as any client's, and other sessions see its writes
+/// as foreign ones. Never `LOCAL_SESSION_ID`, `INTERNAL_SESSION_ID` or
+/// `GUARD_SESSION_ID`.
+///
+/// It hears nothing as a session: what it needs of a device comes through the transport
+/// opened for it ([`crate::api::transport::PrincipalTransport`]). Close it with
+/// [`crate::HubHandle::close_session`] when done; it is also done once its parent is
+/// ([`ChildSession::parent_gone`]).
+///
+/// Its lock rights are its own id's: a device lock (spec 7.7) or an installer unlock
+/// held by the parent does not pass to it (the router and the limits judge by session
+/// id).
+#[derive(Debug)]
+pub struct ChildSession {
+    session: Arc<Session>,
+    parent: std::sync::Weak<Session>,
+    parent_id: SessionId,
+}
+
+impl ChildSession {
+    pub(crate) fn new(session: Arc<Session>, parent: &Arc<Session>) -> Self {
+        Self {
+            session,
+            parent: Arc::downgrade(parent),
+            parent_id: parent.id(),
+        }
+    }
+
+    /// The child's own session.
+    pub fn session(&self) -> &Arc<Session> {
+        &self.session
+    }
+
+    /// The child's id: from the remote range, never the parent's.
+    pub fn id(&self) -> SessionId {
+        self.session.id()
+    }
+
+    /// The parent's id.
+    pub fn parent_id(&self) -> SessionId {
+        self.parent_id
+    }
+
+    /// Whether the parent has ended: gone, or its outbox closed (the hub closes it
+    /// when the session closes).
+    pub fn parent_gone(&self) -> bool {
+        self.parent.upgrade().is_none_or(|p| p.outbox().is_closed())
+    }
+
+    /// Take the parent's role now (an Admin may have changed it since): the next
+    /// command is judged by it. False once the parent has gone.
+    pub fn follow_parent(&self) -> bool {
+        match self.parent.upgrade() {
+            Some(p) if !p.outbox().is_closed() => {
+                self.session.set_role(p.role());
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+impl crate::hub::HubHandle {
+    /// Open a child session of `parent` ([`ChildSession`]): its role and client, its
+    /// label's name, an id of its own from the remote range. It follows no device:
+    /// the session's relay subscription goes at once, and its outbox is closed.
+    pub fn open_child(&self, parent: &Arc<Session>) -> Result<ChildSession, crate::HubError> {
+        let name = self.session_label(parent.id()).by().unwrap_or_default();
+        let session = self.open_principal(parent.role(), parent.client_id(), &name)?;
+        self.inner.relay.remove_session(session.id());
+        session.outbox().close();
+        Ok(ChildSession::new(session, parent))
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_hb0 {

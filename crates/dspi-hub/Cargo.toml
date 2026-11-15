@@ -22,6 +22,12 @@ usb = ["dep:nusb", "dspi-transport/usb"]
 app = ["dep:dspi-core"]
 # The Bonjour responder (advertise.rs, WP HB5), CG2's `MdnsAdvertiser`.
 mdns = ["dspi-link/mdns"]
+# -- WP P2PA --
+# The parameter API, its action executor and hub-side snapshot recall (api/): a
+# `DspiCore` per principal and device inside the hub, so every write goes through
+# `write_param` and the typed setters' guards. Off by default, as `app`: the binary
+# that serves the API (`uconsole hub`) asks for it.
+api = ["dep:dspi-core"]
 
 [dependencies]
 dspi-proto.workspace = true
@@ -94,6 +100,11 @@ required-features = ["app"]
 [[test]]
 name = "wp_hb5_advertise"
 required-features = ["mdns"]
+
+# -- WP P2PA --
+[[test]]
+name = "wp_p2pa_api"
+required-features = ["api"]
 
 # -- WP HB7 --
 # tests/conformance/: three Link clients against the hub (README.md there).
