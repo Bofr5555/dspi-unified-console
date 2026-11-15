@@ -307,14 +307,21 @@ export class SnapshotDesk {
    */
   recall(id: number, guarded = false, timeoutS = this.state.timeoutS): Promise<boolean> {
     const doc = this.doc(id);
-    if (!doc || !this.writable("Recall")) return Promise.resolve(false);
+    if (!doc) return Promise.resolve(false);
+    return this.recallText(doc.text, guarded, timeoutS);
+  }
+
+  // -- WP P2WB2 -- a document the desk does not hold (the hub's copy) recalls as a held one does
+  /** Recall a snapshot document's text, guarded as `recall` decides. */
+  recallText(text: string, guarded = false, timeoutS = this.state.timeoutS): Promise<boolean> {
+    if (!this.writable("Recall")) return Promise.resolve(false);
     return this.run("Recall", async () => {
       if (guarded || (await this.guardDefaultNow())) {
-        const g = await this.session.core.call("applyGuardedSnapshot", { text: doc.text, timeoutS });
+        const g = await this.session.core.call("applyGuardedSnapshot", { text, timeoutS });
         await this.guardStarted(g);
         return true;
       }
-      const r = await this.session.core.call("snapshotRecall", { text: doc.text });
+      const r = await this.session.core.call("snapshotRecall", { text });
       await this.after();
       this.set({ outcome: { title: `Recalled “${r.name}”`, lines: r.changes, notes: r.notes, tone: r.notes.length ? "warn" : "info" } });
       return true;

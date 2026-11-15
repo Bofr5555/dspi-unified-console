@@ -13,6 +13,7 @@ import { OutcomeLine, useDesk } from "./Bars";
 import { download, fileNameFor, type HeldDoc, type SnapshotDesk } from "./model";
 import { DiffTable } from "./DiffTable";
 import { abKeyHint } from "../../ui/keys";
+import { HubSnapshots } from "./HubSnapshots"; // -- WP P2WB2 --
 
 export function SnapshotsScreen(props: ScreenProps) {
   const desk = props.desk;
@@ -167,6 +168,8 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
           </label>
         )}
       </div>
+      {/* -- WP P2WB2 -- the hub's shared snapshots, when the hub keeps them */}
+      <HubSnapshots desk={desk} ask={ask} simple={simple} />
       <Compare desk={desk} st={st} />
     </section>
   );

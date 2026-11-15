@@ -1071,3 +1071,19 @@
 .dspi-web .vreg-warning { border: 1px solid var(--warn); border-radius: 6px; padding: 0.35rem 0.6rem; white-space: pre-wrap; }
 .dspi-web .vreg-word { display: grid; gap: 0.3rem; margin-top: 0.5rem; }
 .dspi-web .eq-readout { position: absolute; top: 4px; right: 6px; font: 10px system-ui, sans-serif; color: var(--eq-text, rgba(255,255,255,0.55)); pointer-events: none; white-space: pre; }
+
+/* -- WP P2WB2 -- the hub settings page and the Snapshots screen's "On the hub" section */
+.dspi-web .hub-settings-screen { display: grid; gap: 0.6rem; min-width: 0; }
+.dspi-web .hub-settings-screen .card { min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .hub-settings-title { margin: 0; font-size: 1.1rem; }
+.dspi-web .hub-section fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0.5rem 0; padding: 0.4rem 0.6rem; min-width: 0; }
+.dspi-web .hub-section legend { font-weight: 600; }
+.dspi-web .hub-rules { display: grid; gap: 0.2rem; }
+.dspi-web .hub-days { display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; }
+.dspi-web .hub-wide { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; margin: 0.4rem 0; }
+.dspi-web .hub-wide input { flex: 1 1 12rem; min-width: 0; width: auto; }
+.dspi-web .hub-pem { flex-direction: column; }
+.dspi-web .hub-pem textarea { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 0.8rem; min-width: 0; }
+.dspi-web .hub-action { border-top: 1px dashed var(--line); padding-top: 0.3rem; }
+.dspi-web .hub-secret code, .dspi-web .hub-snapshots code { overflow-wrap: anywhere; word-break: break-all; }
+.dspi-web .hub-snapshots .snap-what { min-width: 0; overflow-wrap: anywhere; }
