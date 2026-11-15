@@ -412,7 +412,8 @@ the mute passes the lock, the hub never unmutes, and the history records it with
 
 ## 8. Notifications out
 
-*State: built (P2WH, `crates/dspi-hub/src/outbound/`; MQTT publishing is section 13).*
+*State: built (P2WH, `crates/dspi-hub/src/outbound/`; HTTPS by SECOUT, `outbound/tls.rs`; MQTT publishing is
+section 13).*
 
 Opt-in targets in `outbound.json` (admin); none by default, and with none the hub runs no delivery thread. Deliveries
 go from a queue of their own (64 per target, the oldest dropped and counted past that), never from a device's worker;
@@ -423,15 +424,15 @@ across a restart; the targets are.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `outbound.get` | admin | | `targets` (secrets as `set` or `not set`), each with `queued`, `dropped`, `last` (`{at, ok, status?, msg?}`, or `null` before the first try) |
+| `outbound.get` | admin | | `targets` (secrets as `set` or `not set`), each with `queued`, `dropped`, `last` (`{at, ok, status?, msg?}`, or `null` before the first try), `encrypted`, `trust` (https only: `webpki`, `ca` or `pin`) and `notice?` |
 | `outbound.set` | admin | `targets` (the whole list, at most 16) | `targets`, and `secrets` `{<target id>: "<secret>"}` for the new ones: shown in this answer only |
 | `outbound.test` | admin | `target` (its `id`) | `delivered` (bool), `status?`, `msg?` (one delivery of kind `test`, now; recorded as its `last`) |
 
 A target: `id` (1 to 32 of `A-Z a-z 0-9 _ -`; left out, the hub gives `t1`, `t2`, ...), `name` (at most 64
 characters; the id when left out), `kind` (`webhook`: a JSON POST; `push`: an ntfy-style `text/plain` POST of
-`text`), `url` (`http://` only, at most 2048 bytes, no credentials in it; `https://` refused with the reason, section 2
-and OD-P2f), `enabled` (default `true`; a disabled target's queue is emptied), `kinds` (any of `alarm.raised`,
-`alarm.cleared`, `restart`, `schedule.ran`, `schedule.failed`; every kind when left out), and `secret`:
+`text`), `url` (`https://`, or `http://` with `plaintext`; at most 2048 bytes, no credentials in it), `enabled`
+(default `true`; a disabled target's queue is emptied), `kinds` (any of `alarm.raised`, `alarm.cleared`, `restart`,
+`schedule.ran`, `schedule.failed`; every kind when left out), the transport fields below, and `secret`:
 
 | `secret` in `outbound.set` | Means |
 |---|---|
@@ -441,7 +442,33 @@ and OD-P2f), `enabled` (default `true`; a disabled target's queue is emptied), `
 | anything else | `bad_request`: secrets are made by the hub, never typed |
 
 A refusal is `bad_request` with `msg` naming the field and `target` the entry's index; nothing is kept then. A target
-whose `id` stays keeps its queue, counts and backoff.
+whose `id` stays keeps its queue, counts and backoff, except that a changed `kind` drops what is queued (counted in
+`dropped`: a body made for one kind is never sent as the other), and a changed `url`, `plaintext`, `ca_pem` or
+`pin_sha256` starts the backoff again, so a corrected URL is tried at once.
+
+**Transport** (SECOUT, PLAN-SEC 4.8, OD-SECe/f). `https://` is the norm: TLS 1.2 or 1.3, SNI from the host (an IP
+literal is checked against the certificate's IP addresses), ALPN `http/1.1`, no redirects. What it trusts:
+
+| Field | Trust |
+|---|---|
+| neither | the public CAs (`webpki-roots`, the same on every hub platform), and the host name |
+| `ca_pem` | the CA or self-signed certificate(s) pasted here instead (PEM, at most 16, 32 KiB), and the host name |
+| `pin_sha256` | the receiver's key: `sha256//<base64>` of its SubjectPublicKeyInfo, as curl's `--pinnedpubkey` (64 hex characters are taken too and stored in that form); no CA or host name check. Get it with `openssl x509 -in cert.pem -pubkey -noout \| openssl pkey -pubin -outform der \| openssl dgst -sha256 -binary \| base64` |
+
+`ca_pem` and `pin_sha256` are each a trust of their own: give one. Dates are checked with the CAs, not with a pin.
+
+`http://` needs `"plaintext": true` and goes only to a private (RFC 1918, IPv6 `fc00::/7`), loopback or link-local
+address. That is checked on the resolved address of every send, so a DNS change cannot send a body across the internet
+in clear: other addresses are left out, and with none left the try fails with `msg` saying why (nothing was sent). An
+`http://` IP literal outside those ranges is refused by `outbound.set` at once. Such a target is `"encrypted": false`
+in `outbound.get`. A receiver on a public address (an IPv6 global address on the LAN too) needs `https://`.
+
+The HMAC signature below is sent over both: it authenticates the hub to the receiver, whatever the transport.
+
+**Targets from before TLS.** An `http://` target written by an earlier hub (no `plaintext` field) loads as
+`"plaintext": true`, the file is written back with the flag, a warning goes to the log, and `outbound.get` shows a
+`notice` on it until the next `outbound.set`. One on a public address is kept but each try is refused, as above:
+change it to `https://`.
 
 Which bus events are sent: an alarm raised (`alarm.raised`; a `device_restarted` one is `restart` first) or cleared
 (`alarm.cleared`; an acknowledgement is not sent), and a schedule's run (`schedule.ran`; one with a failed action is
@@ -453,8 +480,9 @@ event carries `"schedule": {"rule", "name", "by"?, "results", "results_total"}` 
 `alarm`. `text` is at most 1024 characters. Headers `X-DSPi-Timestamp: <unix seconds>` (the time of that try) and, for
 a target with a secret, `X-DSPi-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`, keyed with the
 secret's text as shown (its 64 characters as bytes). A push target gets the same headers. A receiver checks the
-signature and that the timestamp is recent. The hub reads only the status line of the reply (at most 8 KiB; no line
-end within them is a failure); a 2xx is delivered. Timeouts: 5 s to connect, 10 s in all.
+signature and that the timestamp is recent. The hub reads only the status line of the reply (at most 8 KiB of the
+decrypted stream; no line end within them is a failure); a 2xx is delivered. Timeouts: 5 s to connect, 10 s in all,
+the name lookup and the TLS handshake included.
 
 ## 9. Parameters
 
@@ -629,7 +657,7 @@ a failure raises `schedule_failed`.
 
 ### 13.1 The broker (P2MQ)
 
-MQTT 3.1.1, off by default, settings in `mqtt.json`. Plain MQTT only (section 2).
+MQTT 3.1.1, off by default, settings in `mqtt.json`, over TLS or plain TCP (the `tls` object below).
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
@@ -637,8 +665,25 @@ MQTT 3.1.1, off by default, settings in `mqtt.json`. Plain MQTT only (section 2)
 | `mqtt.set` | admin | `settings` (in part; `password` a string sets it, `null` clears it) | `settings` |
 | `mqtt.status` | admin | | `state` (`off`, `connecting`, `connected`, `failed`), `msg?` (e.g. a refused password), `since`, `queued`, `dropped` |
 
-Settings: `enabled`, `broker` (address), `port` (1883), `client_id`, `username`, `password`, `base_topic` (default
-`dspi/<hub id>`), `ha` (section 13.2).
+Settings: `enabled`, `broker` (address), `port` (8883 with TLS, 1883 without), `client_id`, `username`,
+`password`, `base_topic` (default `dspi/<hub id>`), `tls` (below), `ha` (section 13.2).
+
+`tls` (SECOUT, PLAN-SEC 4.8; `crates/dspi-hub/src/mqtt/client.rs`, `MqttTls`):
+
+| Field | Means |
+|---|---|
+| `mode` | `on`: TLS 1.2 or 1.3, the broker verified before a byte of CONNECT is sent. `off` (default): plain TCP |
+| `ca_pem` | with `on`: the CA or self-signed certificate(s) to trust instead of the public CAs; the host name is checked |
+| `pin_sha256` | with `on`: the broker's key, as for webhooks (section 8); replaces the CA and host name check. One of `ca_pem` and `pin_sha256` at most |
+| `client_cert_pem`, `client_key_pem` | with `on`: a client certificate and its key (PEM; PKCS#8, SEC1 or PKCS#1). The key is kept in the 0600 `mqtt.json`, shown as `set` or `not set` (sending `"set"` back keeps it) and never in the diagnostics bundle |
+| `client_cert_file`, `client_key_file` | instead: paths to PEM files; the key file must not be readable by group or others (0600) |
+| `allow_plaintext_password` | with `off`: send the password to a broker that is not on loopback too |
+
+Without TLS the password goes only to a loopback broker (`localhost`, `127.0.0.1`, `::1`) unless
+`allow_plaintext_password` is set; otherwise the connection is not made at all and `mqtt.status`'s `msg` says why. A
+broker with no password may be plain anywhere, shown as `encrypted: false`. A `mqtt.json` written before TLS (no
+`tls`) with a broker that is not on loopback loads with `allow_plaintext_password: true` and a one-time notice, so it
+keeps working (OD-SECo); the hub writes the field back, so the notice comes once. `mqtt.status` gains `encrypted`.
 
 Topics: `<base>/status` is `online` (retained) and the will `offline`; each alarm and history record the hub
 publishes goes to `<base>/<serial>/event` as JSON (an alarm as section 7's object with `"kind": "alarm"`, a record as
