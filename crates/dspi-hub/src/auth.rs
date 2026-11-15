@@ -130,6 +130,10 @@ pub struct Authed {
     pub role: Role,
     /// The token to hand over, on a pairing only. Never logged.
     pub token: Option<String>,
+    // -- WP P2CFIXA --
+    /// What it authenticated as: a console's token opens DSPi Link sessions only, an
+    /// API key REST (and MQTT) only. The caller refuses the other kind.
+    pub kind: ClientKind,
 }
 
 /// By hand, so a token never reaches a log.
@@ -139,6 +143,7 @@ impl fmt::Debug for Authed {
             .field("cid", &self.cid)
             .field("role", &self.role)
             .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .field("kind", &self.kind)
             .finish()
     }
 }
@@ -475,6 +480,8 @@ impl AuthStore {
             cid,
             role,
             token: Some(token),
+            // -- WP P2CFIXA --
+            kind: ClientKind::Console,
         })
     }
 
@@ -505,6 +512,8 @@ impl AuthStore {
             return Err(AuthError::Unauthenticated);
         };
         let role = client.role;
+        // -- WP P2CFIXA --
+        let kind = client.kind;
         let stale = client
             .last_seen
             .is_none_or(|seen| seconds.saturating_sub(seen) >= LAST_SEEN_RESOLUTION);
@@ -518,6 +527,8 @@ impl AuthStore {
             cid,
             role,
             token: None,
+            // -- WP P2CFIXA --
+            kind,
         })
     }
 
