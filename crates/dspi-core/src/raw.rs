@@ -468,7 +468,7 @@ fn refusal(e: TransportError) -> DspiError {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_cg4 {
-    use std::sync::atomic::{AtomicU8, Ordering};
+    use std::sync::atomic::{AtomicU16, Ordering};
     use std::sync::mpsc::{Sender, channel};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
@@ -700,20 +700,24 @@ mod tests_wp_cg4 {
         assert_eq!(image, core.get_state().bulk_raw);
     }
 
+    /// [`Dawdling::armed`] before the test arms it: no opcode.
+    const DISARMED: u16 = 0x100;
+
     /// A fake device that logs each transfer and, while armed for an opcode,
     /// lets the test know its first transfer began and then dawdles on each
     /// one, so a racing raw call has every chance to get in between.
     struct Dawdling {
         dev: FakeDevice,
         log: Arc<Mutex<Vec<u8>>>,
-        armed: Arc<AtomicU8>,
+        /// The armed opcode, or [`DISARMED`] (no opcode is 0x100).
+        armed: Arc<AtomicU16>,
         started: Sender<()>,
     }
 
     impl Dawdling {
         fn note(&self, opcode: u8) {
             self.log.lock().unwrap().push(opcode);
-            if self.armed.load(Ordering::SeqCst) == opcode {
+            if self.armed.load(Ordering::SeqCst) == u16::from(opcode) {
                 let _ = self.started.send(());
                 std::thread::sleep(Duration::from_millis(5));
             }
@@ -773,7 +777,10 @@ mod tests_wp_cg4 {
     /// both raw calls did reach the device afterwards.
     fn raw_calls_wait_for(chunk: u8, session: impl FnOnce(&DspiCore) -> Result<()>) {
         let log = Arc::new(Mutex::new(Vec::new()));
-        let armed = Arc::new(AtomicU8::new(0));
+        // -- WP FLAKE3 -- disarmed until the session: armed at 0 matched the connect's
+        // extension-channel requests (opcode 0x00), whose signals sat in the channel and
+        // let the racer go before the session had started
+        let armed = Arc::new(AtomicU16::new(DISARMED));
         let (started, wait_started) = channel();
         let dev = Dawdling {
             dev: FakeDevice::demo(),
@@ -787,7 +794,7 @@ mod tests_wp_cg4 {
         // The connect's own image is spent: the session below really reads.
         core.lock().conn().unwrap().fresh_image = false;
         log.lock().unwrap().clear();
-        armed.store(chunk, Ordering::SeqCst);
+        armed.store(u16::from(chunk), Ordering::SeqCst);
 
         let racer = {
             let core = Arc::clone(&core);
