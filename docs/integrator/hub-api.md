@@ -529,8 +529,6 @@ copy; nothing is overwritten silently.
 
 ### 11.1 The store (P2SS)
 
-| `t` | Role | Request | Answer |
-|---|---|---|---|
 `snapshot` is a snapshot's store id (as `alarm` is an alarm's in `alarm.ack`); `id` is the request id, as on every
 message. An entry is the index's own object: `{id, name, note, serial, savedMs, platform, inputChannels,
 outputChannels, wireFormat}`.
@@ -538,7 +536,7 @@ outputChannels, wireFormat}`.
 | `t` | Role | Request | Answer |
 |---|---|---|---|
 | `snapshot.list` | viewer | `serial` | `serial`, `snapshots`: entries, oldest first (the order of the client store's `index.json`) |
-| `snapshot.get` | viewer | `snapshot` | `snapshot`: the entry, `document` (the document's text) |
+| `snapshot.get` | viewer | `snapshot` | `snapshot`: the entry, `document` (the document's text, compact JSON) |
 | `snapshot.put` | control | `serial`, `document` (its text, or the JSON object) | `snapshot`: the entry, `created` (`false` when the hub already held this snapshot with the same content) |
 | `snapshot.rename` | control | `snapshot`, `name` | `snapshot`: the entry |
 | `snapshot.note` | control | `snapshot`, `note` | `snapshot`: the entry |
@@ -546,7 +544,14 @@ outputChannels, wireFormat}`.
 
 - `document` is filed as a client's store files it: `meta.kind = "snapshot"` and a `snapshot` block naming the same
   serial as the message and the client's id. A document that is not such a snapshot, or names another device's serial,
-  is `bad_request`. At most 256 KiB.
+  is `bad_request`.
+- **Two size caps (P2SSFIX).** On the wire, a document is at most **61 440 bytes** (`max_frame` 65 536 less 4 KiB for the
+  message around it) in its **compact** JSON form, the form `snapshot.get` answers; `snapshot.put` and `snapshot.get` of
+  a larger one are `conflict`, the message naming the limit and the document's size ("a snapshot document is at most
+  61440 bytes on the DSPi Link (compact JSON); this one is N"). There is no chunking. A client measures the compact form
+  before it sends and **refuses locally with the same message**, sending nothing (P2CC1). What the hub files is the
+  document pretty-printed (the client store's own form, about 1.6 times the compact size), at most 256 KiB; rename and
+  note are measured on that form too. A demo-device snapshot is about 50 KB compact and 83 KB filed.
 - The id is the client's, taken from the document and kept (capture-time ids are unique, so one snapshot keeps one id
   on both sides); the hub never makes one. The name and note are the document's; change them with `snapshot.rename`
   and `snapshot.note`. An id the hub holds with different content, or for another device, is `conflict`: the hub's
