@@ -9,15 +9,24 @@
 //!
 //! # Default channel names
 //!
-//! The rule is the firmware's `get_default_channel_name`, which the Mac
-//! (`DSPViewModel.defaultChannelNames`) and the core's preset rows
-//! (`presets.rs` `firmware_name`) follow: inputs `USB L`, `USB R`, then
-//! `USB 3`.. whatever the input source; outputs `<SPDIF|I2S> <slot> <L|R>` by
-//! each stereo slot's output type (1 is I2S, anything else S/PDIF), and the
-//! last output `PDM`. A client that named inputs by the selected source (Qt)
-//! or by its own table (Android, the TUI) switches to this one: the name is
-//! what the device shows when the user has not named the channel, so it must
-//! not depend on the client.
+//! The rule is the firmware's `get_default_channel_name`
+//! (`DSPi/firmware/DSPi/usb_audio.c:294-345`, since 78070f9), which the
+//! firmware also uses as its "still default" test when the input source or
+//! an output type changes (`channel_name_is_default`, `main.c:768`, `:3781`),
+//! so a client must produce exactly these strings:
+//!
+//! - inputs follow the selected input source: USB (0, and any source this
+//!   build does not know) `USB 1`..`USB 8`, no L/R; S/PDIF input 1 (1)
+//!   `SPDIF L`/`SPDIF R`; S/PDIF inputs 2-4 (4-6) `SPDIF 2 L`..; I2S (2)
+//!   `I2S 1 L`, `I2S 1 R`, `I2S 2 L`..; ADAT (3) `ADAT 1`..; the audio link
+//!   (7) `ALINK 1`..;
+//! - outputs `<SPDIF|I2S> <slot> <L|R>` by each stereo slot's output type (1
+//!   is I2S, anything else S/PDIF), and the last output `PDM`.
+//!
+//! Qt's `SettingsController.cpp:412-428` already follows it (without the
+//! audio link). The Mac's `DSPViewModel.defaultChannelNames` (`USB L`,
+//! `USB R`, `USB 3`.. whatever the source), Android's and the TUI's copies
+//! are the older rule and switch to this one.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -140,38 +149,74 @@ pub fn vreg_code_label(code: u8, platform_id: u8) -> String {
 // -------------------------------------------------- default channel names
 
 /// The firmware's name for each channel when the user has named none: inputs
-/// first, then outputs, `num_inputs + num_outputs` names. `output_types` is
-/// `DspState::output_types` (one byte per stereo slot, 1 for I2S); a missing
-/// entry reads as S/PDIF. The rule is in the module docs.
+/// first, then outputs, `num_inputs + num_outputs` names. `input_source` is
+/// `DspState::input_source` (it names the inputs); `output_types` is
+/// `DspState::output_types` (one byte per stereo slot, 1 for I2S), and a
+/// missing entry reads as S/PDIF. The rule is in the module docs.
 ///
 /// For a connected device pass `DspState`'s `num_input_channels`,
-/// `num_output_channels` and `output_types`; without one,
+/// `num_output_channels`, `input_source` and `output_types`; without one,
 /// [`platform_shape`]'s counts.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn default_channel_names(
     num_inputs: u8,
     num_outputs: u8,
+    input_source: u8,
     output_types: Vec<u8>,
 ) -> Vec<String> {
-    let inputs = (0..num_inputs).map(|ch| match ch {
-        0 => "USB L".to_owned(),
-        1 => "USB R".to_owned(),
-        n => format!("USB {}", u16::from(n).saturating_add(1)),
-    });
-    let outputs = (0..num_outputs).map(|out| {
-        if u16::from(out).saturating_add(1) == u16::from(num_outputs) {
-            return "PDM".to_owned();
-        }
-        let slot = out / 2;
-        let kind = if output_types.get(usize::from(slot)) == Some(&1) {
-            "I2S"
-        } else {
-            "SPDIF"
-        };
-        let side = if out % 2 == 0 { 'L' } else { 'R' };
-        format!("{kind} {} {side}", u16::from(slot).saturating_add(1))
-    });
-    inputs.chain(outputs).collect()
+    let total = u16::from(num_inputs).saturating_add(u16::from(num_outputs));
+    (0..total)
+        .filter_map(|ch| {
+            default_channel_name(
+                num_inputs,
+                num_outputs,
+                input_source,
+                &output_types,
+                ch.into(),
+            )
+        })
+        .collect()
+}
+
+/// [`default_channel_names`]' entry for wire channel `ch` (inputs first), or
+/// `None` past the last output. The one implementation; `presets.rs` reads it.
+pub(crate) fn default_channel_name(
+    num_inputs: u8,
+    num_outputs: u8,
+    input_source: u8,
+    output_types: &[u8],
+    ch: usize,
+) -> Option<String> {
+    let side = |n: usize| if n.is_multiple_of(2) { 'L' } else { 'R' };
+    let inputs = usize::from(num_inputs);
+    if ch < inputs {
+        let n = ch.saturating_add(1);
+        let pair = (ch / 2).saturating_add(1);
+        return Some(match input_source {
+            1 => format!("SPDIF {}", side(ch)),
+            2 => format!("I2S {pair} {}", side(ch)),
+            3 => format!("ADAT {n}"),
+            // SPDIF2..SPDIF4: input index + 1 (`spdif_index_for_source`).
+            4..=6 => format!("SPDIF {} {}", input_source.saturating_sub(2), side(ch)),
+            7 => format!("ALINK {n}"),
+            _ => format!("USB {n}"),
+        });
+    }
+    let out = ch.checked_sub(inputs)?;
+    let outputs = usize::from(num_outputs);
+    if out >= outputs {
+        return None;
+    }
+    if out.saturating_add(1) == outputs {
+        return Some("PDM".to_owned());
+    }
+    let slot = out / 2;
+    let kind = if output_types.get(slot) == Some(&1) {
+        "I2S"
+    } else {
+        "SPDIF"
+    };
+    Some(format!("{kind} {} {}", slot.saturating_add(1), side(out)))
 }
 
 // ------------------------------------------------------ choice labels

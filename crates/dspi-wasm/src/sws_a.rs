@@ -9,8 +9,9 @@
 //! - `platformShape {platformId}`: the platform's channel counts and
 //!   platform-bound sections (`dspi_core::PlatformShape`, camelCase).
 //! - `knownFeatureNames`: every name the `features` gate knows.
-//! - `defaultChannelNames {numInputs, numOutputs, outputTypes}`: the
-//!   firmware's names of unnamed channels, inputs then outputs.
+//! - `defaultChannelNames {numInputs, numOutputs, inputSource, outputTypes}`:
+//!   the firmware's names of unnamed channels, inputs (by the source) then
+//!   outputs.
 //! - `enumValueLabels {path}`: `[{value, key, label}]` of a choice setting;
 //!   code `invalid` for a path without labels.
 //! - `imageExtras`: the open device's image bytes `DspState` has no field
@@ -66,6 +67,8 @@ struct Names {
     num_inputs: u8,
     num_outputs: u8,
     #[serde(default)]
+    input_source: u8,
+    #[serde(default)]
     output_types: Vec<u8>,
 }
 
@@ -112,6 +115,7 @@ pub fn dispatch(core: &DspiCore, method: &str, p: Value) -> Option<CallResult> {
             json!(dspi_core::default_channel_names(
                 n.num_inputs,
                 n.num_outputs,
+                n.input_source,
                 n.output_types
             ))
         }),

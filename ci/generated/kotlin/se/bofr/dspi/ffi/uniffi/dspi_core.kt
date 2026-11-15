@@ -3522,7 +3522,7 @@ fun uniffi_dspi_core_fn_func_curve_freq(`i`: Int,uniffi_out_err: UniffiRustCallS
 ): Double
 fun uniffi_dspi_core_fn_func_curve_sections(`filters`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_func_default_channel_names(`numInputs`: Byte,`numOutputs`: Byte,`outputTypes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_dspi_core_fn_func_default_channel_names(`numInputs`: Byte,`numOutputs`: Byte,`inputSource`: Byte,`outputTypes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_enum_value_labels(`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -3771,7 +3771,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_curve_sections() != 5627.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_default_channel_names() != 54944.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_default_channel_names() != 34600.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_enum_value_labels() != 4880.toShort()) {
@@ -35244,18 +35244,19 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
 
         /**
          * The firmware's name for each channel when the user has named none: inputs
-         * first, then outputs, `num_inputs + num_outputs` names. `output_types` is
-         * `DspState::output_types` (one byte per stereo slot, 1 for I2S); a missing
-         * entry reads as S/PDIF. The rule is in the module docs.
+         * first, then outputs, `num_inputs + num_outputs` names. `input_source` is
+         * `DspState::input_source` (it names the inputs); `output_types` is
+         * `DspState::output_types` (one byte per stereo slot, 1 for I2S), and a
+         * missing entry reads as S/PDIF. The rule is in the module docs.
          *
          * For a connected device pass `DspState`'s `num_input_channels`,
-         * `num_output_channels` and `output_types`; without one,
+         * `num_output_channels`, `input_source` and `output_types`; without one,
          * [`platform_shape`]'s counts.
-         */ fun `defaultChannelNames`(`numInputs`: kotlin.UByte, `numOutputs`: kotlin.UByte, `outputTypes`: kotlin.ByteArray): List<kotlin.String> {
+         */ fun `defaultChannelNames`(`numInputs`: kotlin.UByte, `numOutputs`: kotlin.UByte, `inputSource`: kotlin.UByte, `outputTypes`: kotlin.ByteArray): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_default_channel_names(
-        FfiConverterUByte.lower(`numInputs`),FfiConverterUByte.lower(`numOutputs`),FfiConverterByteArray.lower(`outputTypes`),_status)
+        FfiConverterUByte.lower(`numInputs`),FfiConverterUByte.lower(`numOutputs`),FfiConverterUByte.lower(`inputSource`),FfiConverterByteArray.lower(`outputTypes`),_status)
 }
     )
     }

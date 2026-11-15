@@ -1487,6 +1487,7 @@ uint32_t dspi_platform_shape(uint8_t platform_id, char *buf, uint32_t len);
 uint32_t dspi_known_feature_names(char *buf, uint32_t len);
 uint32_t dspi_default_channel_names(uint8_t num_inputs,
 uint8_t num_outputs,
+uint8_t input_source,
 const uint8_t *output_types,
 uint32_t types_len,
 char *buf,

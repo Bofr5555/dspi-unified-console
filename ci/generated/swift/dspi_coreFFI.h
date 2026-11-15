@@ -2527,7 +2527,7 @@ RustBuffer uniffi_dspi_core_fn_func_curve_sections(RustBuffer filters, RustCallS
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_DEFAULT_CHANNEL_NAMES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_DEFAULT_CHANNEL_NAMES
-RustBuffer uniffi_dspi_core_fn_func_default_channel_names(uint8_t num_inputs, uint8_t num_outputs, RustBuffer output_types, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_dspi_core_fn_func_default_channel_names(uint8_t num_inputs, uint8_t num_outputs, uint8_t input_source, RustBuffer output_types, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ENUM_VALUE_LABELS

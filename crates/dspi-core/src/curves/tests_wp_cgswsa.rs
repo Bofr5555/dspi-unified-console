@@ -48,12 +48,8 @@ fn cgswsa_quantize_master_volume_is_what_the_setter_keeps() {
     core.open_demo().unwrap();
     for db in [-128.0, -127.6, -60.26, -12.74, -3.25, -0.2, 0.0, 3.0] {
         core.set_master_volume(db).unwrap();
-        // == so that the setter's -0.0 equals the quantizer's +0.0.
-        assert_eq!(
-            core.get_state().master_volume_db,
-            quantize_master_volume(db),
-            "{db}"
-        );
+        let kept = core.get_state().master_volume_db;
+        assert_eq!(kept.to_bits(), quantize_master_volume(db).to_bits(), "{db}");
     }
 }
 

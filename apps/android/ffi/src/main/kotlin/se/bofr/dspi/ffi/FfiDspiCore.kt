@@ -831,7 +831,7 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun vregCodeLabel(code: Int, platformId: Int): String = se.bofr.dspi.ffi.uniffi.vregCodeLabel(code.toUByte(), platformId.toUByte())
 
-    override fun defaultChannelNames(numInputs: Int, numOutputs: Int, outputTypes: List<Int>): List<String> = se.bofr.dspi.ffi.uniffi.defaultChannelNames(numInputs.toUByte(), numOutputs.toUByte(), ByteArray(outputTypes.size) { outputTypes[it].toByte() })
+    override fun defaultChannelNames(numInputs: Int, numOutputs: Int, inputSource: Int, outputTypes: List<Int>): List<String> = se.bofr.dspi.ffi.uniffi.defaultChannelNames(numInputs.toUByte(), numOutputs.toUByte(), inputSource.toUByte(), ByteArray(outputTypes.size) { outputTypes[it].toByte() })
 
     override fun enumValueLabels(path: String): List<EnumValueLabel> = call { se.bofr.dspi.ffi.uniffi.enumValueLabels(path).map { it.toDomain() } }
 

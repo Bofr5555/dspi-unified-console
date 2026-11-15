@@ -52,9 +52,9 @@ fn cgswsa_wasm_stateless_calls_match_the_core() {
         ok(
             h,
             "defaultChannelNames",
-            json!({ "numInputs": 2, "numOutputs": 3, "outputTypes": [1] })
+            json!({ "numInputs": 2, "numOutputs": 3, "inputSource": 2, "outputTypes": [1] })
         ),
-        json!(["USB L", "USB R", "I2S 1 L", "I2S 1 R", "PDM"])
+        json!(["I2S 1 L", "I2S 1 R", "I2S 1 L", "I2S 1 R", "PDM"])
     );
     let l = ok(h, "enumValueLabels", json!({ "path": "up.center_mode" }));
     assert_eq!(l[2], json!({ "value": 2, "key": "off", "label": "Off" }));

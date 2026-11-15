@@ -4514,17 +4514,18 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * The firmware's name for each channel when the user has named none: inputs
-     * first, then outputs, `num_inputs + num_outputs` names. `output_types` is
-     * `DspState::output_types` (one byte per stereo slot, 1 for I2S); a missing
-     * entry reads as S/PDIF. The rule is in the module docs.
+     * first, then outputs, `num_inputs + num_outputs` names. `input_source` is
+     * `DspState::input_source` (it names the inputs); `output_types` is
+     * `DspState::output_types` (one byte per stereo slot, 1 for I2S), and a
+     * missing entry reads as S/PDIF. The rule is in the module docs.
      *
      * For a connected device pass `DspState`'s `num_input_channels`,
-     * `num_output_channels` and `output_types`; without one,
+     * `num_output_channels`, `input_source` and `output_types`; without one,
      * [`platform_shape`]'s counts.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */
-    fun defaultChannelNames(numInputs: Int, numOutputs: Int, outputTypes: List<Int>): List<String>
+    fun defaultChannelNames(numInputs: Int, numOutputs: Int, inputSource: Int, outputTypes: List<Int>): List<String>
 
     /**
      * Every value of the choice setting `path` with the words the Console shows
