@@ -12556,13 +12556,6 @@ public func FfiConverterTypeRtaListener_lower(_ value: RtaListener) -> UnsafeMut
 public protocol UsbPipeProtocol: AnyObject, Sendable {
     
     /**
-     * Release the interface. Every later call fails with
-     * [`DspiError::Disconnected`]. Waits for a notification read in
-     * progress (at most its timeout). Idempotent.
-     */
-    func close() 
-    
-    /**
      * One vendor IN transfer: `opcode`, `value` as `wValue`, at most `len`
      * bytes back, as the device sent them (a short reply is not an error).
      * Blocks for the transfer.
@@ -12576,9 +12569,9 @@ public protocol UsbPipeProtocol: AnyObject, Sendable {
     func controlOut(opcode: UInt8, value: UInt16, data: Data) throws 
     
     /**
-     * Whether [`UsbPipe::close`] has run.
+     * Whether [`UsbPipe::shutdown`] has run.
      */
-    func isClosed()  -> Bool
+    func isShutDown()  -> Bool
     
     /**
      * Wait up to `timeout_ms` (at most 2 s) for one notification packet, as
@@ -12594,6 +12587,14 @@ public protocol UsbPipeProtocol: AnyObject, Sendable {
      * The serial it was opened with.
      */
     func serial()  -> String
+    
+    /**
+     * Release the interface. Every later call fails with
+     * [`DspiError::Disconnected`]. Waits for a notification read in
+     * progress (at most its timeout). Idempotent. (Not `close`: UniFFI's
+     * Kotlin objects already have `AutoCloseable.close()`.)
+     */
+    func shutdown() 
     
 }
 /**
@@ -12673,17 +12674,6 @@ public static func `open`(serial: String)throws  -> UsbPipe  {
 
     
     /**
-     * Release the interface. Every later call fails with
-     * [`DspiError::Disconnected`]. Waits for a notification read in
-     * progress (at most its timeout). Idempotent.
-     */
-open func close()  {try! rustCall() {
-    uniffi_dspi_core_fn_method_usbpipe_close(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
-    /**
      * One vendor IN transfer: `opcode`, `value` as `wValue`, at most `len`
      * bytes back, as the device sent them (a short reply is not an error).
      * Blocks for the transfer.
@@ -12712,11 +12702,11 @@ open func controlOut(opcode: UInt8, value: UInt16, data: Data)throws   {try rust
 }
     
     /**
-     * Whether [`UsbPipe::close`] has run.
+     * Whether [`UsbPipe::shutdown`] has run.
      */
-open func isClosed() -> Bool  {
+open func isShutDown() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_dspi_core_fn_method_usbpipe_is_closed(self.uniffiClonePointer(),$0
+    uniffi_dspi_core_fn_method_usbpipe_is_shut_down(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -12745,6 +12735,18 @@ open func serial() -> String  {
     uniffi_dspi_core_fn_method_usbpipe_serial(self.uniffiClonePointer(),$0
     )
 })
+}
+    
+    /**
+     * Release the interface. Every later call fails with
+     * [`DspiError::Disconnected`]. Waits for a notification read in
+     * progress (at most its timeout). Idempotent. (Not `close`: UniFFI's
+     * Kotlin objects already have `AutoCloseable.close()`.)
+     */
+open func shutdown()  {try! rustCall() {
+    uniffi_dspi_core_fn_method_usbpipe_shutdown(self.uniffiClonePointer(),$0
+    )
+}
 }
     
 
@@ -37798,6 +37800,22 @@ public func usbPipeScan() -> [DeviceInfo]  {
     )
 })
 }
+/**
+ * Wait until the bus has changed since `seen` (a device arrived or left), or
+ * `timeout_ms` (at most 2 s) has passed, and return the change count to pass
+ * next time. Start with 0. Blocks the calling thread only. Without a hot-plug
+ * watcher (no `usb` feature, Android, or the platform refused one: logged) it
+ * just waits out the timeout and returns `seen`, so the caller's scan after it
+ * is a plain poll. Never fails.
+ */
+public func usbPipeWaitChange(seen: UInt64, timeoutMs: UInt32) -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_usb_pipe_wait_change(
+        FfiConverterUInt64.lower(seen),
+        FfiConverterUInt32.lower(timeoutMs),$0
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -37935,6 +37953,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_usb_pipe_scan() != 60426) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_usb_pipe_wait_change() != 22156) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_autoeqfetch_get() != 23782) {
@@ -38993,22 +39014,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_rtalistener_on_frame() != 50042) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_usbpipe_close() != 8009) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_dspi_core_checksum_method_usbpipe_control_in() != 64205) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_usbpipe_control_out() != 57095) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_usbpipe_is_closed() != 31671) {
+    if (uniffi_dspi_core_checksum_method_usbpipe_is_shut_down() != 52551) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_usbpipe_read_notification() != 9779) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_usbpipe_serial() != 29485) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_usbpipe_shutdown() != 55083) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_constructor_dspicore_new() != 17171) {

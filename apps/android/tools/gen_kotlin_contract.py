@@ -74,7 +74,7 @@ EXCLUDED_TRAITS |= {"HostTransport"}
 EXCLUDED_ENUMS = {"HostTransportKind"}
 # -- WP SW-M1 -- The Mac hub's raw USB pipe until SW-M3; Android opens its
 # devices by fd through the core.
-EXCLUDED_METHODS |= {"usb_pipe_scan"}
+EXCLUDED_METHODS |= {"usb_pipe_scan", "usb_pipe_wait_change"}
 EXCLUDED_OBJECTS |= {"UsbPipe"}
 # -- WP CG32 -- The write by registry path is for generic screens; Android adopts it
 # with one. -- WP P0W -- Its value (`ParamValue`) is in the contract, as a sealed

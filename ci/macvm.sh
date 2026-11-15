@@ -19,7 +19,7 @@
 # shared target let a run reuse another tree's newer core build, so its own
 # older-mtime sources were never compiled (wp-P1SW3 round 2). Under the lock,
 # a run removes target dirs unused for 7 days, keeps the 6 most recently
-# used, and removes the old shared ~/work/matrix/target once nothing in it has
+# used (a run marks its own before it waits for the lock), and removes the old shared ~/work/matrix/target once nothing in it has
 # changed for 2 days (a run queued with an older copy of this script may still
 # use it until then).
 set -uo pipefail
@@ -35,7 +35,7 @@ host=${DSPI_MACVM:-macvm}
 # -- WP SW-M1 -- the tree's key: letters, digits, dot, dash, underscore only
 tree=${DSPI_MACVM_TREE:-$(basename "$(git rev-parse --show-toplevel)")}
 tree=$(printf '%s' "$tree" | tr -c 'A-Za-z0-9._-' '_')
-[ -n "$tree" ] || tree=default
+case "$tree" in ''|.|..) tree=default ;; esac   # never the targets dir itself or its parent
 vm() { ssh -o ConnectTimeout=10 -o BatchMode=yes "$host" "$@"; }
 
 who=$(vm who </dev/null 2>&1) || { echo "macvm: $host is not reachable: $who"; exit 3; }
@@ -50,6 +50,8 @@ git ls-files -z --cached --others --exclude-standard |
   tar --null --ignore-failed-read -T - -cf - 2>/dev/null |
   vm "set -u
     mkdir -p ~/work/matrix
+    # -- WP SW-M1 -- marked before waiting, so the running job's cleanup keeps a queued tree's target
+    mkdir -p ~/work/matrix/targets/$tree && touch ~/work/matrix/targets/$tree/.last-used
     while ! mkdir ~/work/matrix/lock 2>/dev/null; do
       pid=\$(cat ~/work/matrix/lock/pid 2>/dev/null)
       if [ -n \"\$pid\" ] && ! kill -0 \"\$pid\" 2>/dev/null; then rm -rf ~/work/matrix/lock; continue; fi
@@ -57,7 +59,7 @@ git ls-files -z --cached --others --exclude-standard |
     done
     echo \$\$ >~/work/matrix/lock/pid
     # -- WP SW-M1 -- one cargo target dir per tree; stale ones are removed
-    mkdir -p ~/work/matrix/targets/$tree && touch ~/work/matrix/targets/$tree/.last-used
+    touch ~/work/matrix/targets/$tree/.last-used
     for d in ~/work/matrix/targets/*/; do
       d=\${d%/}; [ \"\${d##*/}\" = $tree ] && continue
       if [ ! -e \"\$d/.last-used\" ] || [ -n \"\$(find \"\$d/.last-used\" -mtime +7)\" ]; then
