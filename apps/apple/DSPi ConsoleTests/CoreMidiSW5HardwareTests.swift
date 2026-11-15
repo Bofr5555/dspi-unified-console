@@ -55,9 +55,24 @@ final class CoreMidiSW5HardwareTests: XCTestCase {
         print("SW5-HW \(label): \(volume(t).map { "\($0)" } ?? "?") dB")
     }
 
+    /// The transport under test: the app's own (`AppState.midiCore`) when
+    /// the test host is set to the relay (the relay serves one client at a
+    /// time), else one of the test's own over `port()`.
+    private func transport() throws -> CoreBackedTransport {
+        let env = ProcessInfo.processInfo.environment
+        guard env["DSPI_MIDI_HW"] == "1", env["DSPI_SW5_HW"] == "1" else {
+            throw XCTSkip("Set TEST_RUNNER_DSPI_MIDI_HW=1 and TEST_RUNNER_DSPI_SW5_HW=1 to run against a real DSPi")
+        }
+        if UserDefaults.standard.string(forKey: "MIDIRelay")?.isEmpty == false, !AppState.usesLegacyMIDI {
+            print("SW5-HW the test host is on the relay: testing the app's own midiCore")
+            _ = AppState.shared.transport
+            return AppState.shared.midiCore
+        }
+        return CoreBackedTransport(link: .midi(CoreMidiPipe(port: try port())))
+    }
+
     func testSW5HardwareTheCoreOverMIDIReadsWritesUndoesRecallsAndRestores() throws {
-        let pipe = CoreMidiPipe(port: try port())
-        let t = CoreBackedTransport(link: .midi(pipe))
+        let t = try transport()
         guard spinUntil(30, { t.isConnected }) else {
             throw XCTSkip("No DSPi on MIDI: \(t.errorMessage ?? "no device listed")")
         }
@@ -75,7 +90,6 @@ final class CoreMidiSW5HardwareTests: XCTestCase {
             let differing = after.map { a in zip(a, image).filter { $0 != $1 }.count } ?? -1
             print("SW5-HW image at the end: \(differing == 0 ? "identical" : "\(differing) bytes differ")")
             XCTAssertEqual(after, image, "the device is as found (0xA0)")
-            t.disconnect()
         }
 
         // Read: the core's mirror is the device's.
