@@ -2481,6 +2481,21 @@ void uniffi_dspi_core_fn_init_callback_vtable_hubadminlistener(const UniffiVTabl
 void uniffi_dspi_core_fn_method_hubadminlistener_on_hub_admin_event(void*_Nonnull ptr, RustBuffer event, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HUBSECRET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HUBSECRET
+void*_Nonnull uniffi_dspi_core_fn_clone_hubsecret(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FREE_HUBSECRET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FREE_HUBSECRET
+void uniffi_dspi_core_fn_free_hubsecret(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HUBSECRET_REVEAL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HUBSECRET_REVEAL
+RustBuffer uniffi_dspi_core_fn_method_hubsecret_reveal(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HUBSERVERLISTENER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HUBSERVERLISTENER
 void*_Nonnull uniffi_dspi_core_fn_clone_hubserverlistener(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -5896,6 +5911,12 @@ uint16_t uniffi_dspi_core_checksum_method_hosttransport_unlock(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HUBADMINLISTENER_ON_HUB_ADMIN_EVENT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HUBADMINLISTENER_ON_HUB_ADMIN_EVENT
 uint16_t uniffi_dspi_core_checksum_method_hubadminlistener_on_hub_admin_event(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HUBSECRET_REVEAL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HUBSECRET_REVEAL
+uint16_t uniffi_dspi_core_checksum_method_hubsecret_reveal(void
     
 );
 #endif

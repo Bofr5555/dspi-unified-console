@@ -5003,7 +5003,7 @@ data class HubOutboundSecret(
     /**
      * The secret (64 hex characters): show it once, keep it nowhere else.
      */
-    val secret: String,
+    val secret: HubSecret,
 )
 
 /**
@@ -5222,7 +5222,7 @@ data class HubApiKeyMinted(
     /**
      * The key (43 characters): show it once; the hub keeps only its hash.
      */
-    val key: String,
+    val key: HubSecret,
 )
 
 /**
@@ -6760,4 +6760,19 @@ interface AutoEqRebuild : AutoCloseable {
      * keep polling until `finished`.
      */
     fun cancel()
+}
+
+/**
+ * A secret the hub made and shows once: an API key, a webhook's secret. An
+ * object, not a string field, so that no binding's generated record
+ * printing (Kotlin `toString`, Swift `description`) shows it: read it with
+ * [`HubSecret::reveal`] to show it once, and keep it nowhere else. Its
+ * `Debug` is `set`; serialized (the C and wasm answers) it is the plain
+ * string.
+ */
+interface HubSecret : AutoCloseable {
+    /**
+     * The secret's text, to show once. No I/O.
+     */
+    fun reveal(): String
 }

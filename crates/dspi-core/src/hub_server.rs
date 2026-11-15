@@ -52,7 +52,7 @@ pub use admin::{
     HubAlarm, HubAlarmRule, HubApiKey, HubApiKeyMinted, HubMqttSettings, HubMqttStatus, HubMqttTls,
     HubOutboundLast, HubOutboundSecret, HubOutboundSet, HubOutboundTarget, HubOutboundTest,
     HubScheduleAction, HubScheduleLast, HubScheduleResult, HubScheduleRule, HubScheduleRun,
-    HubSchedules, NOTICE_ALARM_FAMILY, NOTICE_ALARM_UNKNOWN, hub_alarm_notice,
+    HubSchedules, HubSecret, NOTICE_ALARM_FAMILY, NOTICE_ALARM_UNKNOWN, hub_alarm_notice,
 };
 
 /// Cap: `inventory.*` (hub-api.md section 3).

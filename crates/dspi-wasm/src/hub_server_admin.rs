@@ -195,4 +195,31 @@ mod tests_wp_p2cc2 {
         assert_eq!(r["value"]["title"], "Restarted at 10:30 (glitch)", "{r}");
         assert_eq!(r["value"]["key"], "alarm.device_restarted", "{r}");
     }
+
+    /// WP P2DFIXB: a secret is an object in the core, and still the plain
+    /// string in the web's answer.
+    #[test]
+    fn wp_p2dfixb_web_answers_carry_the_secret_as_a_string() {
+        let minted = dspi_core::HubApiKeyMinted {
+            cid: 6,
+            name: "Script".into(),
+            role: "viewer".into(),
+            plaintext_ok: false,
+            key: dspi_core::HubSecret::new("K".repeat(43)),
+        };
+        let v = crate::calls::tidy(&minted);
+        assert_eq!(v["key"], "K".repeat(43), "{v}");
+        let set = dspi_core::HubOutboundSet {
+            targets: Vec::new(),
+            secrets: vec![dspi_core::HubOutboundSecret {
+                target: "t1".into(),
+                secret: dspi_core::HubSecret::new("ab".repeat(32)),
+            }],
+        };
+        let v = crate::calls::tidy(&set);
+        assert_eq!(
+            v["secrets"][0],
+            json!({"target": "t1", "secret": "ab".repeat(32)})
+        );
+    }
 }

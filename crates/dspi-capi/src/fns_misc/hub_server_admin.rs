@@ -356,4 +356,34 @@ mod tests_wp_p2cc2 {
         );
         assert_eq!(n["reason"], core_says.reason.as_str());
     }
+
+    /// WP P2DFIXB: a secret is an object in the core, and still the plain
+    /// string in the C answer, once.
+    #[test]
+    fn wp_p2dfixb_c_answers_carry_the_secret_as_a_string() {
+        let minted = dspi_core::HubApiKeyMinted {
+            cid: 6,
+            name: "Script".into(),
+            role: "viewer".into(),
+            plaintext_ok: false,
+            key: dspi_core::HubSecret::new("K".repeat(43)),
+        };
+        let r: Value = serde_json::from_str(&super::super::json_reply(Ok(minted))).unwrap();
+        assert_eq!(r["ok"], true, "{r}");
+        assert_eq!(r["key"], "K".repeat(43), "{r}");
+        let set = dspi_core::HubOutboundSet {
+            targets: Vec::new(),
+            secrets: vec![dspi_core::HubOutboundSecret {
+                target: "t1".into(),
+                secret: dspi_core::HubSecret::new("ab".repeat(32)),
+            }],
+        };
+        let text = super::super::json_reply(Ok(set));
+        assert_eq!(text.matches(&"ab".repeat(32)).count(), 1, "{text}");
+        let r: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            r["secrets"][0],
+            json!({"target": "t1", "secret": "ab".repeat(32)})
+        );
+    }
 }
