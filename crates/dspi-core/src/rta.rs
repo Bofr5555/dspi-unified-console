@@ -2483,4 +2483,37 @@ mod tests_wp_cg5 {
             );
         }
     }
+
+    // -- WP ANLASTQ --
+    /// What Qt's side switch does while following, when the side switched to
+    /// has nothing chosen: a watching request with no channels, then Take
+    /// control. The console stops following (the Qt smoke "qp9: a choice while
+    /// following takes control"), and follows the next push again.
+    #[test]
+    fn wp_anlastq_a_side_switch_to_nothing_while_following_takes_control() {
+        let hub = hub();
+        let (a, sid_a) = console(&hub, "a", 0b0001);
+        until("a's push", &[&a], || pushes(&hub, sid_a) > 0);
+        let (b, sid_b) = console(&hub, "b", 0b0110);
+        until("a following", &[&a, &b], || a.rta_get_ownership().following);
+        settle(&[&a, &b]);
+        a.rta_set_request(RtaRequest {
+            watching: true,
+            ..request(0)
+        });
+        a.rta_take_control();
+        settle(&[&a, &b]);
+        assert!(!a.rta_get_ownership().following, "took control");
+        assert!(!a.lock().rta.sharing.pending());
+        assert!(
+            !b.rta_get_ownership().following,
+            "nothing of a's was pushed"
+        );
+        assert_eq!(pushes(&hub, sid_a), 1);
+        // b's next push is followed.
+        b.rta_set_request(request(0b1000));
+        until("a following b again", &[&a, &b], || {
+            a.rta_get_ownership().following && a.rta_get_ownership().origin == sid_b
+        });
+    }
 }
