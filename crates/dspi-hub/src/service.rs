@@ -146,6 +146,9 @@ pub struct ServiceConfig {
     pub clock: Arc<dyn HubClock>,
     /// Services the embedder brings, after the hub's own (tests, a binding).
     pub extra: Vec<Arc<dyn HubService>>,
+    // -- WP P2EV --
+    /// The shared event history (`events/`, `event.*`); off when `None`.
+    pub history: Option<crate::history::HistoryConfig>,
 }
 
 impl Default for ServiceConfig {
@@ -153,6 +156,8 @@ impl Default for ServiceConfig {
         Self {
             clock: Arc::new(SystemClock),
             extra: Vec::new(),
+            // -- WP P2EV --
+            history: None,
         }
     }
 }
@@ -177,6 +182,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     let mut list: Vec<Arc<dyn HubService>> = Vec::new();
     // One line per service, each under its WP's marker:
     //   list.extend(crate::<module>::service(config, setup));
+    // -- WP P2EV --
+    list.extend(crate::history::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
