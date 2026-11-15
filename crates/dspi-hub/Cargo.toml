@@ -144,6 +144,11 @@ required-features = ["api"]
 name = "wp_p2cc2_core_calls"
 required-features = ["api"]
 
+# -- WP P2FFIX --
+[[test]]
+name = "wp_p2ffix_adopted_guard"
+required-features = ["api"]
+
 # -- WP HB7 --
 # tests/conformance/: three Link clients against the hub (README.md there).
 [[test]]

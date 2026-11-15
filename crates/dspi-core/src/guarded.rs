@@ -767,7 +767,11 @@ impl DspiCore {
     /// the open connection. No I/O.
     fn lost_key(&self) -> LostKey {
         let generation = self.lock().conn.as_ref().map(|c| c.generation);
-        (self.hub_session(), generation)
+        // -- WP P2FFIX -- an adopted guard's session need not be bound
+        (
+            self.hub_session().or_else(|| self.guard_client_session()),
+            generation,
+        )
     }
 
     /// Whether the connection the guard was begun on is gone (closed, or
@@ -776,7 +780,9 @@ impl DspiCore {
         // -- WP P2CC3 -- the hub's own guard: only our hub session counts (its
         // device need not be the open one)
         if r.adopted {
-            return r.hub.is_none_or(|h| self.hub_session() != Some(h.session));
+            return r
+                .hub
+                .is_none_or(|h| self.guard_client_session() != Some(h.session));
         }
         let same = self
             .lock()
@@ -1207,6 +1213,12 @@ impl DspiCore {
         self.link_guard_target().map(|t| t.session)
     }
 
+    // -- WP P2FFIX --
+    /// This console's live hub session, bound or not.
+    fn guard_client_session(&self) -> Option<u16> {
+        self.link_client_session()
+    }
+
     /// `apply.begin` on the bound device, when the hub offers the guard.
     fn hub_begin(&self, timeout: Duration) -> Result<Option<HubGuard>> {
         let Some(t) = self.link_guard_target().filter(|t| t.has_guard) else {
@@ -1244,14 +1256,11 @@ impl DspiCore {
     /// The hub handle of the guard's device: the bound one, or for a guard
     /// the hub began on another device, that device's by serial. No I/O.
     fn guard_handle(&self, r: &Running) -> Option<u8> {
-        let target = self.link_guard_target()?;
         if !r.adopted {
-            return Some(target.handle);
+            return self.link_guard_target().map(|t| t.handle);
         }
-        let bound = self.lock().link_bound_serial().map(str::to_owned);
-        if bound.as_deref() == Some(r.serial.as_str()) {
-            return Some(target.handle);
-        }
+        // -- WP P2FFIX -- by serial in the hub's device list: no bound device
+        // needed, and a rebind mid-guard keeps it reachable
         self.link_devices()
             .into_iter()
             .find(|d| d.serial == r.serial)
@@ -1282,8 +1291,11 @@ impl DspiCore {
                 return Err(invalid(BUSY));
             }
         }
+        // -- WP P2FFIX -- (review p2f F1) the session the hub's guard will
+        // belong to, known before anything is sent: bound to a device or not
+        let session = self.guard_client_session().ok_or(DspiError::Disconnected)?;
         let rec = recall()?;
-        let (Ok(guard), Some(session)) = (rec.guard.parse::<u64>(), self.hub_session()) else {
+        let Ok(guard) = rec.guard.parse::<u64>() else {
             return Ok(rec);
         };
         let timeout = if timeout_ms == 0 {
@@ -1322,7 +1334,13 @@ impl DspiCore {
 
     /// What the hub says of our guard.
     fn hub_view(&self, r: &Running, h: HubGuard) -> HubView {
-        let Some(target) = self.link_guard_target() else {
+        // -- WP P2FFIX -- an adopted guard needs the live session only
+        let session = if r.adopted {
+            self.guard_client_session()
+        } else {
+            self.link_guard_target().map(|t| t.session)
+        };
+        let Some(session) = session else {
             return HubView::Unreachable;
         };
         // Only the same device: the hub keeps outcomes per serial.
@@ -1345,9 +1363,10 @@ impl DspiCore {
                 && v.get("serial").and_then(Value::as_str) == Some(r.serial.as_str())
         };
         if let Some(a) = reply.get("active").filter(|a| ours(a)) {
-            let session = a.get("session").and_then(Value::as_u64);
             let reverting = a.get("reverting") == Some(&Value::Bool(true));
-            return if !reverting && session == Some(u64::from(target.session)) {
+            return if !reverting
+                && a.get("session").and_then(Value::as_u64) == Some(u64::from(session))
+            {
                 HubView::Ours
             } else {
                 HubView::Ending
@@ -1373,6 +1392,9 @@ impl DspiCore {
     }
     fn hub_view(&self, _r: &Running, _h: HubGuard) -> HubView {
         HubView::Unreachable
+    }
+    fn guard_client_session(&self) -> Option<u16> {
+        None
     }
 }
 
