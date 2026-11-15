@@ -4,7 +4,7 @@
 // delay. Read only: a block opens the screen that edits it. Everything comes
 // from the core: the session's snapshot (`DspState`, the output labels), the
 // meters (`meters`, polled while the page is seen) and the input source's
-// name (the registry's choices for `in.source`).
+// title as the Inputs screen says it (`inputSourceNames`, `sourceTitle`).
 
 import type { ComponentChildren } from "preact";
 import { memo } from "preact/compat";
@@ -13,6 +13,8 @@ import type { DspState, OutputLabel, SystemStatus } from "../../core/protocol";
 import { staleText, useSessionState } from "../../ui/components";
 import type { Session } from "../../ui/session";
 import { liveInputs } from "../main/model";
+import { useSourceNames } from "../inputs/InputsScreen";
+import { sourceTitle } from "../inputs/model";
 import { blockText, chainView, meterOf, meterPct, outputText, type ChainBlock, type ChainTarget } from "./chain";
 
 /** How often the chain's meters are read while it is shown. */
@@ -45,28 +47,14 @@ function useMeters(session: Session): SystemStatus | null {
   return m;
 }
 
-/** The registry's name for the selected input source ("USB", "S/PDIF"), "" until read. */
-function useSourceName(session: Session, source: number | undefined): string {
-  const [choices, setChoices] = useState<{ value: number; label: string }[]>([]);
-  useEffect(() => {
-    let alive = true;
-    session.core.call("describe", { path: "in.source" }).then(
-      (p) => alive && setChoices(p.choices ?? []),
-      () => undefined,
-    );
-    return () => {
-      alive = false;
-    };
-  }, [session]);
-  return choices.find((c) => c.value === source)?.label ?? "";
-}
-
 export function SignalChain(props: { session: Session; open?: (t: ChainTarget) => void }) {
   const st = useSessionState(props.session);
   const snap = st.snapshot;
   const meters = useMeters(props.session);
-  const source = useSourceName(props.session, snap?.state.inputSource);
+  // -- fixup batch3 F2 -- the source's title as the Inputs screen says it: the user's name, else "USB", "S/PDIF 2"
+  const { names } = useSourceNames(props.session);
   if (!snap) return null;
+  const source = sourceTitle(snap.state, snap.state.inputSource, names ?? []);
   return <ChainView s={snap.state} labels={snap.outputLabels} meters={meters} source={source} open={props.open} />;
 }
 
@@ -101,7 +89,7 @@ function ChainView(props: { s: DspState; labels?: OutputLabel[]; meters: SystemS
       <div class={`sys-chain-cols${stale ? " stale" : ""}${chain.bypass ? " bypassed" : ""}`}>
         <section class="sys-chain-col" aria-label="Chain inputs">
           <h4>
-            Inputs{props.source ? <span class="sys-state"> · {props.source}</span> : null}
+            Inputs{props.source ? <span class="sys-state"> · Source: {props.source}</span> : null}
           </h4>
           {chain.inputs.map((i) => (
             <div class="sys-chain-row" key={i.wire} role="group" aria-label={`Chain ${i.descriptor} ${i.name}`}>

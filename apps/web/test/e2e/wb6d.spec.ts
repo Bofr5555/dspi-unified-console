@@ -58,6 +58,12 @@ test("WB6d: the chain lists the live inputs and every output with meters, blocks
   const { chain } = await openChain(page);
   const s = await core(page);
   const inputs = chain.getByRole("region", { name: "Chain inputs" }).getByRole("group");
+  // -- fixup batch3 F2 -- the source as the Inputs screen says it: the user's name, else its title ("USB"), never the registry key.
+  const names = (await page.evaluate(() => (globalThis as unknown as G).dspiClients[0]!.call("inputSourceNames", null))) as { names: string[] };
+  const src = (s as unknown as { inputSource: number }).inputSource;
+  const title = (names.names[src] ?? "").trim() || (src === 0 ? "USB" : "");
+  expect(title).not.toBe("");
+  await expect(chain.getByRole("region", { name: "Chain inputs" }).getByRole("heading")).toHaveText(`Inputs · Source: ${title}`);
   // The demo streams two USB inputs until the device says more.
   await expect(inputs).toHaveCount(2);
   await expect(chain.getByRole("region", { name: "Chain outputs" }).getByRole("group")).toHaveCount(s.numOutputChannels);
