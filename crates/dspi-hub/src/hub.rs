@@ -7,6 +7,8 @@
 
 use std::collections::BTreeMap;
 use std::panic::{self, AssertUnwindSafe};
+// -- WP P2SV --
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
@@ -85,6 +87,13 @@ pub struct HubConfig {
     /// Read each device's image as it attaches, so the first `device.snapshot` needs no
     /// read. Always on with [`HubConfig::network`]; an in-process hub has nobody to ask.
     pub warm_snapshots: bool,
+    // -- WP P2SV --
+    /// Where the hub's services keep their files (`inventory.json`, `events/`, ...).
+    /// `None`: the network store folder ([`NetworkConfig::store_dir`]), or nowhere for
+    /// an in-process hub.
+    pub data_dir: Option<PathBuf>,
+    /// The optional services (`service.rs`), each off by default, and their clock.
+    pub services: crate::service::ServiceConfig,
 }
 
 impl HubConfig {
@@ -101,6 +110,9 @@ impl HubConfig {
             // -- WP HB3 --
             names: None,
             warm_snapshots: false,
+            // -- WP P2SV --
+            data_dir: None,
+            services: crate::service::ServiceConfig::default(),
         }
     }
 }
@@ -214,6 +226,9 @@ pub(crate) struct HubInner {
     /// Limits profiles, PINs and pinned modes (`limits.rs`). A leaf lock; each
     /// device's router holds it too.
     pub(crate) limits: Arc<crate::limits::HubLimits>,
+    // -- WP P2SV --
+    /// The phase-2 services, their bus and clock (`service.rs`).
+    pub(crate) services: crate::service::Services,
 }
 
 /// A cheap, clonable way to the hub, for the server and the app's broker. It keeps
@@ -289,6 +304,13 @@ impl Hub {
         })));
         let relay = Arc::new(Relay::default());
         relay.set_tap(Arc::clone(&system));
+        // -- WP P2SV -- the services, after the system model's tap: the bus's
+        let data_dir = config
+            .data_dir
+            .take()
+            .or_else(|| network.as_ref().map(|n| n.store_dir.clone()));
+        let services =
+            crate::service::Services::new(&config.services, data_dir, auth.clone(), &relay);
         let (sup_tx, sup_rx) = mpsc::channel();
         let (ev_tx, ev_rx) = mpsc::channel();
         let inner = Arc::new(HubInner {
@@ -326,6 +348,8 @@ impl Hub {
             apply_guards: crate::apply_guard::ApplyGuards::default(),
             // -- WP P1HL --
             limits,
+            // -- WP P2SV --
+            services,
         });
         let io = |e: std::io::Error| HubError::Io(format!("cannot start a hub thread: {e}"));
         let events = {
@@ -372,6 +396,8 @@ impl Hub {
                     inner.apply_guards.set_wake(Some(stop_tx.clone()));
                     // -- WP P1HL -- and the holds to a limits profile
                     inner.limits.set_wake(Some(stop_tx.clone()));
+                    // -- WP P2SV -- and the services' timers
+                    inner.services.set_wake(Some(stop_tx.clone()));
                     Some((stop_tx, t))
                 }
                 Err(e) => {
@@ -446,6 +472,9 @@ impl Hub {
         inner.apply_guards.set_wake(None);
         // -- WP P1HL --
         inner.limits.set_wake(None);
+        // -- WP P2SV -- the services end their own threads, devices still here
+        inner.services.set_wake(None);
+        inner.services.stop();
         self.handle.apply_stop();
         // 1. Off the network: goodbye, no new connections. 2. Everyone gets their close.
         // 3. Connections go.
@@ -596,6 +625,8 @@ impl HubHandle {
                 .add(id, Scope::AllDevices, Arc::clone(session.outbox()));
             session
         };
+        // -- WP P2SV -- before anything it writes can come back as a notification
+        self.inner.services.session_opened(&session, None);
         self.inner
             .emit(HubEvent::SessionOpened { id: session.id() });
         Ok(session)
@@ -617,6 +648,8 @@ impl HubHandle {
             return;
         };
         self.inner.relay.remove_session(id);
+        // -- WP P2SV --
+        self.inner.services.session_closed(id);
         session.outbox().close();
         for d in devices {
             d.router.session_closed(id);
@@ -1084,6 +1117,11 @@ impl HubInner {
             )
         };
         self.publish(event);
+        // -- WP P2SV --
+        self.services.device(crate::service::DeviceEvent::Online {
+            serial: serial.clone(),
+            handle,
+        });
         if returning {
             self.relay.resync_all(handle, 1);
         }
@@ -1135,6 +1173,11 @@ impl HubInner {
         if let Some(event) = event {
             self.publish(event);
         }
+        // -- WP P2SV --
+        self.services.device(crate::service::DeviceEvent::Offline {
+            serial: attachment.shared.serial(),
+            handle,
+        });
         attachment.tear_down();
         true
     }
@@ -1209,6 +1252,13 @@ impl HubInner {
     fn reap(&self) {
         let events = guard(&self.state).registry.reap(Instant::now());
         for event in events {
+            // -- WP P2SV --
+            if let RegistryEvent::Removed { handle, serial } = &event {
+                self.services.device(crate::service::DeviceEvent::Removed {
+                    serial: serial.clone(),
+                    handle: *handle,
+                });
+            }
             self.publish(event);
         }
         self.sync_locks();
@@ -1334,6 +1384,8 @@ fn system_poll_loop(hub: &HubHandle, stop: &Receiver<()>) {
             .map_or(next_poll, |due| due.min(next_poll));
         // -- WP P1HL -- and the next hold to a limits profile
         let until = hub.limits_next_due().map_or(until, |due| due.min(until));
+        // -- WP P2SV -- and the earliest service timer
+        let until = hub.services_next_due().map_or(until, |due| due.min(until));
         match stop.recv_timeout(until.saturating_duration_since(Instant::now())) {
             Err(RecvTimeoutError::Timeout) => {}
             Ok(()) if !hub.is_stopped() => {}
@@ -1346,6 +1398,8 @@ fn system_poll_loop(hub: &HubHandle, stop: &Receiver<()>) {
         hub.apply_run_due();
         // -- WP P1HL --
         hub.limits_run_due();
+        // -- WP P2SV --
+        hub.services_run_due();
         if Instant::now() >= next_poll {
             let (wait, due) = hub.system_poll_due();
             if due {

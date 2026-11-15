@@ -19,6 +19,7 @@
 //! | [`system`] | the audio link's system model: installation, alignment, scenes, alarms | SW2 |
 //! | [`apply_guard`] | guarded apply: capture, confirm or revert by the hub | P1HA |
 //! | [`limits`] | limits profiles, the installer lock and pinned modes | P1HL |
+//! | [`service`], [`bus`], [`clock`] | the phase-2 service seam, its bus and time | P2SV |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -57,6 +58,10 @@ pub mod store;
 pub mod system;
 pub mod usb;
 pub mod web;
+// -- WP P2SV --
+pub mod bus;
+pub mod clock;
+pub mod service;
 
 pub use auth::AccessMode;
 pub use error::HubError;
@@ -80,3 +85,7 @@ pub use usb::UsbBus;
 pub use system::{
     AlignReport, ModelRefused, SceneReport, SystemRefused, SystemStatus, SystemStore, WriteResult,
 };
+// -- WP P2SV --
+pub use bus::{Bus, BusMessage, Subscription, TargetResult};
+pub use clock::{HubClock, SystemClock, TestClock};
+pub use service::{DeviceEvent, HubService, ServiceConfig, SessionLabel};
