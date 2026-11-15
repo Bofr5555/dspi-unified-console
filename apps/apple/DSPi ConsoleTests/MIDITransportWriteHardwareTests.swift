@@ -16,6 +16,8 @@ final class MIDITransportWriteHardwareTests: XCTestCase {
         #if os(macOS)
         guard AppState.usesMIDITransport else { throw XCTSkip("Host app is not on the MIDI transport") }
         #endif
+        // -- WP SW5 -- the app's MIDI is the core's unless opted out: this test drives the Swift engine
+        guard AppState.usesLegacyMIDI else { throw XCTSkip("The app's MIDI goes through the core: run with CoreTransport=NO (or MIDIReadOnly=YES)") }
         let midi = AppState.shared.midiTransport
         guard !midi.readOnly else { throw XCTSkip("MIDI transport is read-only") }
         _ = AppState.shared.transport

@@ -108,7 +108,7 @@ struct DSPiConsoleIOSApp: App {
                         if transport.isRemoteActive {
                             transport.reconnect()
                         } else {
-                            AppState.shared.midiTransport.resume()
+                            AppState.shared.resumeMIDI()   // -- WP SW5 --
                         }
                     }
                 }
