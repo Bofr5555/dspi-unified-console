@@ -89,6 +89,8 @@ export function App(props: { options: ConsoleOptions }) {
     const session = new Session(id, inst.id, inst.name, source, access, spawnCore(), source.kind === "hub" ? tokens : null);
     // -- WP P1WB2 -- the fleet's pinned mode for this device, if it pins one
     session.fleetMode = (await backend.pinnedMode?.(inst.id, source, deviceId).catch(() => null)) ?? "";
+    // -- WP P2WB1 -- the hub screen's Open: another DSPi of the same hub, in a session of its own
+    if (source.kind === "hub") session.openDevice = (serial) => void open(inst, { kind: "hub", url: source.url, deviceId: serial });
     setSessions((list) => [...list, session]);
     setActive(id);
     await session.open(targetFor(source));
