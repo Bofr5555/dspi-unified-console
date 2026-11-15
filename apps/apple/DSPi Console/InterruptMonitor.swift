@@ -757,7 +757,7 @@ class InterruptMonitor: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             guard let self = self, self.isActive else { return }
             #if os(macOS)
-            self.errorMessage = (self.transport as? USBDevice)?.notificationReaderError
+            self.errorMessage = (self.transport as? CoreUsb)?.notificationReaderError
             #endif
         }
     }

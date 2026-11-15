@@ -1730,6 +1730,24 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1824,6 +1842,8 @@ fun uniffi_dspi_core_checksum_func_template_list(
 fun uniffi_dspi_core_checksum_func_template_text(
 ): Short
 fun uniffi_dspi_core_checksum_func_uf2_inspect(
+): Short
+fun uniffi_dspi_core_checksum_func_usb_pipe_scan(
 ): Short
 fun uniffi_dspi_core_checksum_method_autoeqfetch_get(
 ): Short
@@ -2529,9 +2549,23 @@ fun uniffi_dspi_core_checksum_method_notifylistener_on_notifications(
 ): Short
 fun uniffi_dspi_core_checksum_method_rtalistener_on_frame(
 ): Short
+fun uniffi_dspi_core_checksum_method_usbpipe_close(
+): Short
+fun uniffi_dspi_core_checksum_method_usbpipe_control_in(
+): Short
+fun uniffi_dspi_core_checksum_method_usbpipe_control_out(
+): Short
+fun uniffi_dspi_core_checksum_method_usbpipe_is_closed(
+): Short
+fun uniffi_dspi_core_checksum_method_usbpipe_read_notification(
+): Short
+fun uniffi_dspi_core_checksum_method_usbpipe_serial(
+): Short
 fun uniffi_dspi_core_checksum_constructor_dspicore_new(
 ): Short
 fun uniffi_dspi_core_checksum_constructor_midiinputhandle_with_sender(
+): Short
+fun uniffi_dspi_core_checksum_constructor_usbpipe_open(
 ): Short
 fun ffi_dspi_core_uniffi_contract_version(
 ): Int
@@ -3358,6 +3392,24 @@ fun uniffi_dspi_core_fn_init_callback_vtable_rtalistener(`vtable`: UniffiVTableC
 ): Unit
 fun uniffi_dspi_core_fn_method_rtalistener_on_frame(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_clone_usbpipe(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
+fun uniffi_dspi_core_fn_free_usbpipe(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_constructor_usbpipe_open(`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
+fun uniffi_dspi_core_fn_method_usbpipe_close(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_usbpipe_control_in(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`len`: Short,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_usbpipe_control_out(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_usbpipe_is_closed(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_dspi_core_fn_method_usbpipe_read_notification(`ptr`: Pointer,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_usbpipe_serial(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_about_json(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_autoeq_database_info(`dbPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3437,6 +3489,8 @@ fun uniffi_dspi_core_fn_func_template_list(`userDir`: RustBuffer.ByValue,uniffi_
 fun uniffi_dspi_core_fn_func_template_text(`id`: RustBuffer.ByValue,`userDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_uf2_inspect(`image`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_usb_pipe_scan(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun ffi_dspi_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -3682,6 +3736,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_uf2_inspect() != 30039.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_usb_pipe_scan() != 60426.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_autoeqfetch_get() != 23782.toShort()) {
@@ -4740,10 +4797,31 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_rtalistener_on_frame() != 50042.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_usbpipe_close() != 8009.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_usbpipe_control_in() != 64205.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_usbpipe_control_out() != 57095.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_usbpipe_is_closed() != 31671.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_usbpipe_read_notification() != 9779.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_usbpipe_serial() != 29485.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_constructor_dspicore_new() != 17171.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_constructor_midiinputhandle_with_sender() != 29995.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_constructor_usbpipe_open() != 10863.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -19805,6 +19883,402 @@ public object FfiConverterTypeRtaListener: FfiConverter<RtaListener, Pointer> {
 }
 
 
+// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// to the live Rust struct on the other side of the FFI.
+//
+// Each instance implements core operations for working with the Rust `Arc<T>` and the
+// Kotlin Pointer to work with the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque pointer to the underlying Rust struct.
+//     Method calls need to read this pointer from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its pointer should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the pointer, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the pointer, but is interrupted
+//      before it can pass the pointer over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read pointer value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * One open DSPi on USB: its vendor interface claimed, nothing else. See the
+ * module documentation. Every method may be called from any thread; control
+ * transfers are serialised, and a notification read does not hold them up.
+ */
+public interface UsbPipeInterface {
+    
+    /**
+     * Release the interface. Every later call fails with
+     * [`DspiError::Disconnected`]. Waits for a notification read in
+     * progress (at most its timeout). Idempotent.
+     */
+    fun `close`()
+    
+    /**
+     * One vendor IN transfer: `opcode`, `value` as `wValue`, at most `len`
+     * bytes back, as the device sent them (a short reply is not an error).
+     * Blocks for the transfer.
+     */
+    fun `controlIn`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `len`: kotlin.UShort): kotlin.ByteArray
+    
+    /**
+     * One vendor OUT transfer: `opcode`, `value` as `wValue`, `data` as the
+     * payload. Success means the device took the transfer. Blocks for it.
+     */
+    fun `controlOut`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `data`: kotlin.ByteArray)
+    
+    /**
+     * Whether [`UsbPipe::close`] has run.
+     */
+    fun `isClosed`(): kotlin.Boolean
+    
+    /**
+     * Wait up to `timeout_ms` (at most 2 s) for one notification packet, as
+     * the device sent it (keep-alives included). Empty when nothing came in
+     * time. Call it from one reader thread; it blocks that thread only.
+     *
+     * Errors: [`DspiError::Disconnected`] when the device has gone or the
+     * pipe is closed (the reader should stop), others as the module says.
+     */
+    fun `readNotification`(`timeoutMs`: kotlin.UInt): kotlin.ByteArray
+    
+    /**
+     * The serial it was opened with.
+     */
+    fun `serial`(): kotlin.String
+    
+    companion object
+}
+
+/**
+ * One open DSPi on USB: its vendor interface claimed, nothing else. See the
+ * module documentation. Every method may be called from any thread; control
+ * transfers are serialised, and a notification read does not hold them up.
+ */
+open class UsbPipe: Disposable, AutoCloseable, UsbPipeInterface
+{
+
+    constructor(pointer: Pointer) {
+        this.pointer = pointer
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    /**
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noPointer: NoPointer) {
+        this.pointer = null
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    protected val pointer: Pointer?
+    protected val cleanable: UniffiCleaner.Cleanable
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithPointer(block: (ptr: Pointer) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the pointer being freed concurrently.
+        try {
+            return block(this.uniffiClonePointer())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val pointer: Pointer?) : Runnable {
+        override fun run() {
+            pointer?.let { ptr ->
+                uniffiRustCall { status ->
+                    UniffiLib.INSTANCE.uniffi_dspi_core_fn_free_usbpipe(ptr, status)
+                }
+            }
+        }
+    }
+
+    fun uniffiClonePointer(): Pointer {
+        return uniffiRustCall() { status ->
+            UniffiLib.INSTANCE.uniffi_dspi_core_fn_clone_usbpipe(pointer!!, status)
+        }
+    }
+
+    
+    /**
+     * Release the interface. Every later call fails with
+     * [`DspiError::Disconnected`]. Waits for a notification read in
+     * progress (at most its timeout). Idempotent.
+     */override fun `close`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_usbpipe_close(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * One vendor IN transfer: `opcode`, `value` as `wValue`, at most `len`
+     * bytes back, as the device sent them (a short reply is not an error).
+     * Blocks for the transfer.
+     */
+    @Throws(DspiException::class)override fun `controlIn`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `len`: kotlin.UShort): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_usbpipe_control_in(
+        it, FfiConverterUByte.lower(`opcode`),FfiConverterUShort.lower(`value`),FfiConverterUShort.lower(`len`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * One vendor OUT transfer: `opcode`, `value` as `wValue`, `data` as the
+     * payload. Success means the device took the transfer. Blocks for it.
+     */
+    @Throws(DspiException::class)override fun `controlOut`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `data`: kotlin.ByteArray)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_usbpipe_control_out(
+        it, FfiConverterUByte.lower(`opcode`),FfiConverterUShort.lower(`value`),FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Whether [`UsbPipe::close`] has run.
+     */override fun `isClosed`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_usbpipe_is_closed(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Wait up to `timeout_ms` (at most 2 s) for one notification packet, as
+     * the device sent it (keep-alives included). Empty when nothing came in
+     * time. Call it from one reader thread; it blocks that thread only.
+     *
+     * Errors: [`DspiError::Disconnected`] when the device has gone or the
+     * pipe is closed (the reader should stop), others as the module says.
+     */
+    @Throws(DspiException::class)override fun `readNotification`(`timeoutMs`: kotlin.UInt): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_usbpipe_read_notification(
+        it, FfiConverterUInt.lower(`timeoutMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The serial it was opened with.
+     */override fun `serial`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_usbpipe_serial(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+
+    
+    companion object {
+        
+    /**
+     * Open the DSPi with this serial and claim its vendor interface (only
+     * that one: the audio and MIDI interfaces stay with the system, so a DAW
+     * holding the DSPi's MIDI port does not keep it out). Blocks for the
+     * open: call it off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] if no DSPi with that serial is on
+     * the bus; [`DspiError::Transfer`] if it cannot be opened (held by
+     * another program, no permission); [`DspiError::Unsupported`] without
+     * the `usb` feature and on Android.
+     */
+    @Throws(DspiException::class) fun `open`(`serial`: kotlin.String): UsbPipe {
+            return FfiConverterTypeUsbPipe.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_constructor_usbpipe_open(
+        FfiConverterString.lower(`serial`),_status)
+}
+    )
+    }
+    
+
+        
+    }
+    
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeUsbPipe: FfiConverter<UsbPipe, Pointer> {
+
+    override fun lower(value: UsbPipe): Pointer {
+        return value.uniffiClonePointer()
+    }
+
+    override fun lift(value: Pointer): UsbPipe {
+        return UsbPipe(value)
+    }
+
+    override fun read(buf: ByteBuffer): UsbPipe {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: UsbPipe) = 8UL
+
+    override fun write(value: UsbPipe, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
 
 /**
  * Where a compare stands ([`DspiCore::ab_state`] and every A/B call).
@@ -34210,6 +34684,21 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_uf2_inspect(
         FfiConverterByteArray.lower(`image`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The DSPis on USB, by enumeration only: nothing is opened or claimed, so it
+         * is cheap enough for a half-second poll and lists a device another program
+         * holds like any other. Serial order. Empty without the `usb` feature, on
+         * Android, and when enumeration fails (logged). Never fails.
+         */ fun `usbPipeScan`(): List<DeviceInfo> {
+            return FfiConverterSequenceTypeDeviceInfo.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_usb_pipe_scan(
+        _status)
 }
     )
     }

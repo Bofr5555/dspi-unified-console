@@ -592,7 +592,7 @@ extension LinkHubCoreTests {
     private func makeHub() -> LinkHub {
         let auth = LinkAuthStore(storeURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("lhc-\(UUID().uuidString).json"))
-        return LinkHub(usb: USBDevice(startMonitoring: false), policy: makePolicy(), auth: auth)
+        return LinkHub(usb: CoreUsb(startMonitoring: false), policy: makePolicy(), auth: auth)
     }
 
     /// A socket that re-authenticates ~65k times wraps the counter; the new

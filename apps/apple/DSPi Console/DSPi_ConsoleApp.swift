@@ -15,7 +15,9 @@ class AppState: ObservableObject {
     static let shared = AppState()
     #if os(macOS)
     // -- WP SW2 -- No real device under XCTest unless the run opts in (TestHostGuard).
-    let usb = USBDevice(startMonitoring: TestHostGuard.mayOpenDevices)
+    // -- WP SW-M1 -- The local DSPi on USB through the Rust core's `usb`
+    // feature (Core/CoreUsb.swift), not the app's own IOKit driver.
+    let usb = CoreUsb(startMonitoring: TestHostGuard.mayOpenDevices)
 
     /// The DSPi Link gateway.  It owns the USB device's command path; the local
     /// UI is session 1 on it, exactly like a remote client, so ordering,
@@ -74,12 +76,33 @@ class AppState: ObservableObject {
         MIDITransport(port: TestHostGuard.midiPort(), autoSelect: false),
     ])
 
-    // -- WP SW4 -- `-CoreTransport YES`: the Rust core drives the local
-    // device, over the hub's session 1 (docs/SWIFT-SEAMS.md 5.4), or its own
-    // demo device with `-LocalTransport demo`.
+    // -- WP SW4 -- The Rust core drives the local device, over the hub's
+    // session 1 (docs/SWIFT-SEAMS.md 5.4), or its own demo device with
+    // `-LocalTransport demo`.
     lazy var coreTransport: CoreBackedTransport = AppState.usesDemoTransport
         ? CoreBackedTransport(link: .demo, autoSelect: true)
         : CoreBackedTransport(link: .host(localTransport, .hub))
+
+    // -- WP SW-M1 -- The core is the Mac's default: a plain launch drives the
+    // local device (and `-LocalTransport demo`) through `coreTransport`, so
+    // every "with the core attached" feature is on.  `-CoreTransport NO`, or
+    // DSPI_CORE_TRANSPORT=0, opts out for the transition: the UI then drives
+    // the hub's session 1 raw, and the demo is Swift's FakeTransport, as
+    // before SW4.  USB itself is the core's either way (CoreUsb).
+    static var usesCoreTransport: Bool {
+        if let env = ProcessInfo.processInfo.environment["DSPI_CORE_TRANSPORT"] { return env != "0" }
+        if UserDefaults.standard.object(forKey: "CoreTransport") != nil {
+            return UserDefaults.standard.bool(forKey: "CoreTransport")
+        }
+        return true
+    }
+
+    // -- WP SW-M1 -- With the core: the DSPi's USB MIDI port stays the
+    // fallback when the vendor interface cannot be opened, as SWF2 set up.
+    lazy var coreWithMIDIFallback: LocalTransportSet = LocalTransportSet([
+        coreTransport,
+        MIDITransport(port: TestHostGuard.midiPort(), autoSelect: false),
+    ])
 
     /// The transport the whole UI drives: local USB devices and devices shared
     /// by other hubs on the network in one list, with selection routed to
@@ -87,7 +110,10 @@ class AppState: ObservableObject {
     lazy var transport: CompositeTransport = {
         let local: any DeviceTransport
         if AppState.usesMIDITransport { local = midiTransport }
-        else if CoreBackedTransport.isEnabled { local = coreTransport }   // -- WP SW4 --
+        // -- WP SW-M1 -- the core by default (SW4's flag became the opt-out)
+        else if AppState.usesCoreTransport {
+            local = AppState.usesDemoTransport ? coreTransport : coreWithMIDIFallback
+        }
         else if AppState.usesDemoTransport { local = demoTransport }
         else { local = localWithMIDIFallback }   // -- WP SWF2 --
         let composite = CompositeTransport(
@@ -12400,8 +12426,10 @@ struct DSPi_ConsoleApp: App {
                 .keyboardShortcut("A", modifiers: [.command, .shift])
 
                 Button("Stats for nerbs") {
-                    // specific method depends on your controller's API (e.g., show, open)
-                    statsWindowController.show(transport: AppState.shared.usb)
+                    // -- WP SW-M1 -- the device the window shows, through the
+                    // core when one is attached (SW14's counters); the raw USB
+                    // pipe bypassed both the core and the hub's session 1
+                    statsWindowController.show(transport: AppState.shared.transport)
                 }
                 .keyboardShortcut("T", modifiers: [.command, .shift])
 

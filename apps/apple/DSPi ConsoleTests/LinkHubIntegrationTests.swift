@@ -15,8 +15,8 @@ import Combine
 
 final class LinkHubIntegrationTests: XCTestCase {
 
-    private func makeHub() -> (LinkHub, USBDevice) {
-        let usb = USBDevice(startMonitoring: false)
+    private func makeHub() -> (LinkHub, CoreUsb) {
+        let usb = CoreUsb(startMonitoring: false)
         let auth = LinkAuthStore(storeURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("hubint-\(UUID().uuidString).json"))
         let hub = LinkHub(usb: usb, policy: LinkPolicy.bundled ?? LinkPolicy.empty, auth: auth)
