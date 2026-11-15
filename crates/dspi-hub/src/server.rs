@@ -1840,6 +1840,12 @@ impl Connection {
             .auth
             .verify_token(token, self.peer, Instant::now())
         {
+            // -- WP P2CFIXA -- an API key is for REST and MQTT, never a DSPi Link session
+            Ok(authed) if authed.kind == crate::auth::ClientKind::Api => self.reply(err(
+                id,
+                "unauthenticated",
+                Some("an API key opens no DSPi Link session"),
+            )),
             Ok(authed) => {
                 let shared = Arc::clone(&self.shared);
                 self.open_session(authed.role, Some(authed.cid), move |session| {

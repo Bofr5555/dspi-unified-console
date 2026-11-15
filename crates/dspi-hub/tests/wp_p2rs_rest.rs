@@ -1132,14 +1132,14 @@ fn wp_p2rs_off_by_default_and_nothing_else_changes() {
         404
     );
     assert_eq!(call(on.port, "GET", "/api", Some(&key), None).status, 404);
-    // A key is a token: it may also open a WebSocket session.
+    // -- WP P2CFIXA -- a key opens no DSPi Link session (REST and MQTT only).
     let mut ws = Ws::connect(on.port);
     ws.send(json!({"t": "hello", "proto": {"major": 1, "minor": 2}}));
     let _ = ws.next("hello");
     let authed = ws.ask(json!({"t": "auth.token", "token": key}));
     assert_eq!(
-        (authed["t"].clone(), authed["role"].clone()),
-        (json!("ok"), json!("admin")),
+        (authed["t"].clone(), authed["code"].clone()),
+        (json!("err"), json!("unauthenticated")),
         "{authed}"
     );
     // Kept alive between two GETs, as a page's requests are.
@@ -1162,5 +1162,140 @@ fn wp_p2rs_off_by_default_and_nothing_else_changes() {
         tcp.read_exact(&mut body).unwrap();
     }
     on.hub.stop();
+    r.hub.stop();
+}
+
+// -- WP P2CFIXA --
+#[test]
+fn wp_p2cfixa_a_consoles_token_is_no_rest_bearer() {
+    let r = rig("console-token");
+    let net = r.hub.network().unwrap();
+    let window = net.auth().begin_pairing(Instant::now()).unwrap();
+    let token = net
+        .auth()
+        .pair(
+            &window.pin,
+            "Tablet",
+            None,
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            Instant::now(),
+        )
+        .unwrap()
+        .token
+        .unwrap();
+    let a = get(r.port, "/api/v1/health", &token);
+    assert_eq!(
+        (a.status, a.body["code"].clone()),
+        (401, json!("unauthenticated")),
+        "{}",
+        a.body
+    );
+    // The same token still opens its DSPi Link session.
+    let mut ws = Ws::connect(r.port);
+    ws.send(json!({"t": "hello", "proto": {"major": 1, "minor": 2}}));
+    let _ = ws.next("hello");
+    let authed = ws.ask(json!({"t": "auth.token", "token": token}));
+    assert_eq!(authed["t"], "ok", "{authed}");
+    r.hub.stop();
+}
+
+// -- WP P2CFIXA --
+#[test]
+fn wp_p2cfixa_devices_pass_serial_offset_and_limit_to_the_inventory() {
+    let r = rig("devices-query");
+    r.plug("P2CFIXA-A");
+    r.plug("P2CFIXA-B");
+    let key = r.key("Script", Role::Viewer);
+    let mut all = get(r.port, "/api/v1/devices", &key);
+    wait_until("both in the inventory", || {
+        all = get(r.port, "/api/v1/devices", &key);
+        all.body["devices"].as_array().is_some_and(|d| d.len() == 2)
+    });
+    let page = get(r.port, "/api/v1/devices?offset=1&limit=1", &key);
+    assert_eq!(page.status, 200, "{}", page.body);
+    assert_eq!(
+        page.body["devices"].as_array().unwrap().len(),
+        1,
+        "{}",
+        page.body
+    );
+    assert_eq!(
+        page.body["devices"][0], all.body["devices"][1],
+        "{}",
+        page.body
+    );
+    let one = get(r.port, "/api/v1/devices?serial=P2CFIXA-B", &key);
+    let devices = one.body["devices"].as_array().unwrap();
+    assert_eq!(devices.len(), 1, "{}", one.body);
+    assert!(devices[0].to_string().contains("P2CFIXA-B"), "{}", one.body);
+    assert_eq!(get(r.port, "/api/v1/devices?limit=x", &key).status, 400);
+    r.hub.stop();
+}
+
+// -- WP P2CFIXA --
+#[test]
+fn wp_p2cfixa_a_guarded_recall_over_rest_stays_when_the_key_confirms_and_reverts_when_not() {
+    let r = rig("guarded");
+    let serial = "P2CFIXA-GUARD";
+    r.plug(serial);
+    let mut admin = r.client("Installer", Role::Admin);
+    let key = r.key("Venue controller", Role::Control);
+    let other = r.key("Someone else", Role::Control);
+    let p = format!("/api/v1/devices/{serial}/params/vol.master");
+    let put = |v: f64| {
+        let a = call(
+            r.port,
+            "PUT",
+            &p,
+            Some(&key),
+            Some(&format!("{{\"value\": {v}}}")),
+        );
+        assert_eq!(a.status, 200, "{}", a.body);
+    };
+    let value = || get(r.port, &p, &key).body["value"].as_f64().unwrap();
+    put(-33.5);
+    let id = r.put_snapshot(&mut admin, serial, "Show");
+    let recall = format!("/api/v1/devices/{serial}/snapshots/{id}/recall");
+    let guarded = r#"{"guard": true, "timeout_ms": 1500}"#;
+
+    // Confirmed by the same key: kept past the timeout.
+    put(-14.5);
+    let a = call(r.port, "POST", &recall, Some(&key), Some(guarded));
+    assert_eq!(a.status, 200, "{}", a.body);
+    assert!(
+        a.body["guard"].is_string() || a.body["guard"].is_u64(),
+        "{}",
+        a.body
+    );
+    assert_eq!(value(), -33.5, "recalled");
+    let confirm = format!("/api/v1/devices/{serial}/apply/confirm");
+    let a = call(r.port, "POST", &confirm, Some(&other), None);
+    assert_ne!(a.status, 200, "another key cannot confirm it: {}", a.body);
+    let a = call(r.port, "POST", &confirm, Some(&key), None);
+    assert_eq!(a.status, 200, "{}", a.body);
+    std::thread::sleep(Duration::from_millis(2500));
+    assert_eq!(value(), -33.5, "confirmed: kept");
+
+    // Not confirmed: reverted at its timeout.
+    put(-14.5);
+    let a = call(r.port, "POST", &recall, Some(&key), Some(guarded));
+    assert_eq!(a.status, 200, "{}", a.body);
+    assert_eq!(value(), -33.5, "recalled");
+    wait_until("the revert", || value() == -14.5);
+
+    // Cancel reverts at once; an unknown device is 404.
+    let a = call(r.port, "POST", &recall, Some(&key), Some(guarded));
+    assert_eq!(a.status, 200, "{}", a.body);
+    let cancel = format!("/api/v1/devices/{serial}/apply/cancel");
+    assert_eq!(call(r.port, "POST", &cancel, Some(&key), None).status, 200);
+    assert_eq!(value(), -14.5, "cancelled");
+    let a = call(
+        r.port,
+        "POST",
+        "/api/v1/devices/NOPE/apply/confirm",
+        Some(&key),
+        None,
+    );
+    assert_eq!(a.status, 404, "{}", a.body);
     r.hub.stop();
 }

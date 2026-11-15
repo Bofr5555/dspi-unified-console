@@ -304,10 +304,27 @@ impl Rest {
                 Err(reply) => return reply,
             }
         };
-        let message = match endpoint.message(&query, &body) {
+        let mut message = match endpoint.message(&query, &body) {
             Ok(message) => message,
             Err(why) => return fail(BAD_REQUEST, "bad_request", &why),
         };
+        // -- WP P2CFIXA -- `apply.*` addresses an attached device by its handle
+        if let Endpoint::Apply { serial, .. } = &endpoint {
+            let device = ctx
+                .hub
+                .devices()
+                .into_iter()
+                .find(|d| d.identity.serial == *serial);
+            match device {
+                Some(d) if d.state == crate::registry::DeviceState::Online => {
+                    if let Some(m) = message.as_object_mut() {
+                        m.insert("handle".into(), d.handle.into());
+                    }
+                }
+                Some(_) => return fail("409 Conflict", "offline", "the device is not attached"),
+                None => return fail(NOT_FOUND, "not_found", "no such device attached"),
+            }
+        }
         let answer = match self.run(ctx, cid, role, &message) {
             Ok(answer) => answer,
             Err(reply) => return reply,
@@ -351,6 +368,10 @@ impl Rest {
             return Err(unauthenticated("Authorization: Bearer <key> is required"));
         };
         match ctx.auth.verify_token(key, peer, Instant::now()) {
+            // -- WP P2CFIXA -- a console's token is not a REST bearer: only an API key
+            Ok(authed) if authed.kind != ClientKind::Api => Err(unauthenticated(
+                "a console's token is not an API key: mint one with auth.mint",
+            )),
             Ok(authed) => Ok((authed.cid, authed.role)),
             Err(AuthError::RateLimited) => {
                 let mut reply = error_reply(
@@ -720,6 +741,8 @@ enum Endpoint {
     PresetLoad { serial: String, slot: String },
     Recall { serial: String, snapshot: String },
     Events { serial: String },
+    // -- WP P2CFIXA -- a guarded apply's end: `apply.confirm` or `apply.cancel`
+    Apply { serial: String, confirm: bool },
     Alarms,
     AlarmAck { alarm: String },
     Health,
@@ -772,6 +795,14 @@ fn route(path: &str) -> Option<(&'static [&'static str], Endpoint)> {
                 serial: owned(serial),
             },
         ),
+        // -- WP P2CFIXA --
+        ["devices", serial, "apply", end @ ("confirm" | "cancel")] if !serial.is_empty() => (
+            POST,
+            Endpoint::Apply {
+                serial: owned(serial),
+                confirm: *end == "confirm",
+            },
+        ),
         ["alarms"] => (GET, Endpoint::Alarms),
         ["alarms", alarm, "ack"] if !alarm.is_empty() => (
             POST,
@@ -804,7 +835,27 @@ impl Endpoint {
         };
         let from_query = |name: &str| query.get(name).map(String::as_str);
         let t = match self {
-            Self::Devices => "inventory.list",
+            // -- WP P2CFIXA -- paged and filtered as `inventory.list` is
+            Self::Devices => {
+                if let Some(serial) = from_query("serial") {
+                    put("serial", serial.into());
+                }
+                for name in ["offset", "limit"] {
+                    if let Some(n) = from_query(name) {
+                        put(name, number(name, n)?.into());
+                    }
+                }
+                "inventory.list"
+            }
+            // -- WP P2CFIXA -- the serial becomes the device's handle in `answer`
+            Self::Apply { serial, confirm } => {
+                put("serial", serial.as_str().into());
+                if *confirm {
+                    "apply.confirm"
+                } else {
+                    "apply.cancel"
+                }
+            }
             Self::Param { serial, path } => {
                 put("serial", serial.as_str().into());
                 put("path", path.as_str().into());

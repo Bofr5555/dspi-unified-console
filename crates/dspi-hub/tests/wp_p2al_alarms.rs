@@ -162,7 +162,8 @@ fn wp_p2al_a_raised_alarm_reaches_every_session_and_a_webhook() {
     let (url, got) = receiver();
     let set = ws.ask(
         json!({"t": "outbound.set", "targets": [
-            {"id": "ha", "kind": "webhook", "url": url, "kinds": ["alarm.raised"]}]}),
+            {"id": "ha", "kind": "webhook", "url": url, "kinds": ["alarm.raised"],
+             "plaintext": true}]}),
         1,
     );
     assert_eq!(set["t"], "ok", "{set}");

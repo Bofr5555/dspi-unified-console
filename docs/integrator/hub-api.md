@@ -468,6 +468,8 @@ address. That is checked on the resolved address of every send, so a DNS change 
 in clear: other addresses are left out, and with none left the try fails with `msg` saying why (nothing was sent). An
 `http://` IP literal outside those ranges is refused by `outbound.set` at once. Such a target is `"encrypted": false`
 in `outbound.get`. A receiver on a public address (an IPv6 global address on the LAN too) needs `https://`.
+`100.64.0.0/10` (carrier-grade NAT, which Tailscale uses) is not private here, so a plaintext webhook to a Tailscale
+address is refused: use `https://` (a `tailscale cert` certificate) or `pin_sha256`.
 
 The HMAC signature below is sent over both: it authenticates the hub to the receiver, whatever the transport.
 
@@ -775,7 +777,8 @@ consoles, the same `auth.revoke` and `auth.set_role`. `auth.list` rows gain `kin
 
 - The key is 32 bytes from the hub's CSPRNG, base64url (43 characters), made by the hub, never typed. The hub keeps
   only its SHA-256 (`hub-store.json`, beside the consoles' token hashes) and compares every stored hash in constant
-  time. A key is also a token: it may open a DSPi Link session with `auth.token`, with its role.
+  time. A key is for REST (and MQTT's Home Assistant `set` topics) only: `auth.token` with a key on DSPi Link is
+  `unauthenticated`, and a console's token is no REST bearer (`401`).
 - The 65th client of either kind is refused: `auth.mint` answers `conflict`, a PIN pairing `busy` (spec 7.3). Revoke
   one first.
 - `plaintext_ok` is stored and listed and has **no effect yet**: once the port speaks TLS (SECSRV, OD-SECk), a key
@@ -790,7 +793,7 @@ consoles, the same `auth.revoke` and `auth.set_role`. `auth.list` rows gain `kin
 Off by default (`NetworkConfig::rest`; `uconsole hub --rest`, P2TM); on the DSPi Link port (OD-P2p). While off,
 `/api/v1/` answers `404` and `hello.caps` has no `rest`.
 
-- `Authorization: Bearer <key>` on every request (an API key, or a console's token), even on a hub with open access.
+- `Authorization: Bearer <key>` on every request (an API key; a console's token is `401`), even on a hub with open access.
   A missing, wrong or revoked key is `401` with `WWW-Authenticate: Bearer`. Five wrong keys from one address within a
   minute shut it out for a minute (`429`, `Retry-After: 60`), as for `auth.token`.
 - **Any request with an `Origin` header is `403`**, whatever its value, before the key is looked at. The web console
@@ -812,17 +815,23 @@ Off by default (`NetworkConfig::rest`; `uconsole hub --rest`, P2TM); on the DSPi
   API's core for it stays warm, and closes at once when the key is revoked. A key's requests run one at a time, as a
   WebSocket's do; one that waits past the response time is `503` `busy`.
 - A family the hub does not run (its service off) answers `501` with `unknown_type`.
+- **A guarded recall** (`{"guard": true}`) belongs to the key's session: only **the same key** can confirm or cancel
+  it (`.../apply/confirm`, `.../apply/cancel`), and it must do so within both the guard's timeout (`timeout_ms`, 30 s
+  by default) and `rest_idle` (60 s) of its last request. Otherwise it reverts: at its timeout, or when the key's idle
+  session closes.
 
 The endpoints (PLAN-P2 I1; more may be added within v1, each onto an existing message). Path segments and query values
 are percent-decoded (`device%3A3`).
 
 | Method and path | Message |
 |---|---|
-| `GET /api/v1/devices` | `inventory.list` |
+| `GET /api/v1/devices?serial=&offset=<n>&limit=<n>` | `inventory.list` (paged and filtered as it is) |
 | `GET /api/v1/devices/{serial}/params/{path}?idx=0,1` | `param.get` |
 | `PUT /api/v1/devices/{serial}/params/{path}?idx=0,1` body `{"value": ..., "confirm"?: true}` | `param.set` (only `value` and `confirm` are taken from the body) |
 | `POST /api/v1/devices/{serial}/presets/{n}/load` | `preset.load {slot: n}` |
 | `POST /api/v1/devices/{serial}/snapshots/{id}/recall` body `{"guard"?: true, "timeout_ms"?: n}` | `snapshot.recall` |
+| `POST /api/v1/devices/{serial}/apply/confirm` | `apply.confirm {handle}` (the attached device's; `409` `offline` otherwise) |
+| `POST /api/v1/devices/{serial}/apply/cancel` | `apply.cancel {handle}` |
 | `GET /api/v1/devices/{serial}/events?after=<id>&limit=<n>` | `event.list` (`after` is `after_id`) |
 | `GET /api/v1/alarms?serial=&state=` | `alarm.list` (P2AL's; `501` until it is built) |
 | `POST /api/v1/alarms/{id}/ack` | `alarm.ack` (P2AL's) |
