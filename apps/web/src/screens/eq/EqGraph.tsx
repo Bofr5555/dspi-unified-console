@@ -30,6 +30,8 @@ import type { Curves } from "./curves";
 import { dotRadius, draw, type Scene, type SceneBand } from "./draw";
 import type { BandEdits } from "./edits";
 import { PopupMenu, type PopupItem } from "./Menu";
+// -- WP WB6I -- the Graphing settings
+import { readoutText, usePrefs } from "../settings/model";
 import {
   OFF_BAND,
   SHAPES,
@@ -102,7 +104,11 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [range, setRange] = useState(25);
+  // -- WP WB6I -- the Graphing settings: the frequency span, the vertical range and centre
+  const look = usePrefs().graph;
+  const [range, setRange] = useState(look.dbRange / 2);
+  useEffect(() => setRange(look.dbRange / 2), [look.dbRange]);
+  const readout = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<number | null>(null);
   const [marquee, setMarquee] = useState<Scene["marquee"]>(null);
   const [popup, setPopup] = useState<Popup | null>(null);
@@ -115,8 +121,8 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
   const keyMenuAt = useRef(0);
 
   const g: Geometry = useMemo(
-    () => ({ width: size.width, height: size.height, minFreq: 20, maxFreq: 20000, dbTop: range, dbBottom: -range }),
-    [size.width, size.height, range],
+    () => ({ width: size.width, height: size.height, minFreq: look.minFreq, maxFreq: look.maxFreq, dbTop: look.dbCenter + range, dbBottom: look.dbCenter - range }), // -- WP WB6I --
+    [size.width, size.height, range, look.minFreq, look.maxFreq, look.dbCenter],
   );
   const bands = edits.shown;
   const graphBands = useMemo(() => bands.map((p, b) => (isGraphBand(p) ? b : -1)).filter((b) => b >= 0), [bands]);
@@ -155,6 +161,16 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
     marquee,
     coarse,
     theme: { bg: "", grid: "", zero: "", text: "", ring: "" },
+    // -- WP WB6I --
+    look: {
+      freqGrid: look.showFreqGrid,
+      freqLabels: look.showFreqLabels,
+      dbGrid: look.showDbGrid,
+      dbLabels: look.showDbLabels,
+      gridAlpha: look.gridOpacity / 0.5,
+      lineWidth: look.lineWidth,
+      glow: look.showGlow,
+    },
   };
 
   const frame = useRef(0);
@@ -198,7 +214,7 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
   };
 
   // A redraw only when what is drawn changes.
-  useEffect(schedule, [g, freqs, props.others, curves, bands, selection, hovered, marquee, coarse, props.colour, props.offset]);
+  useEffect(schedule, [g, freqs, props.others, curves, bands, selection, hovered, marquee, coarse, props.colour, props.offset, look]); // -- WP WB6I -- look
 
   useEffect(() => {
     const el = wrap.current;
@@ -428,6 +444,12 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
       if (e.pointerType === "mouse") {
         const h = nodeAt(p, false) ?? lobeAt(p);
         if (h !== hovered) setHovered(h);
+        // -- WP WB6I -- the cursor readout, without a render
+        if (readout.current) {
+          const f = 10 ** (Math.log10(g.minFreq) + (p.x / Math.max(g.width, 1)) * (Math.log10(g.maxFreq) - Math.log10(g.minFreq)));
+          const db = g.dbTop - (p.y / Math.max(g.height, 1)) * (g.dbTop - g.dbBottom);
+          readout.current.textContent = readoutText(look, f, db);
+        }
       }
       return;
     }
@@ -575,6 +597,7 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
   };
 
   const onPointerLeave = (e: PointerEvent) => {
+    if (readout.current) readout.current.textContent = ""; // -- WP WB6I --
     if (e.pointerType === "mouse" && gesture.current.kind === "idle" && hovered !== null) setHovered(null);
   };
 
@@ -801,6 +824,8 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
       onKeyDown={onKeyDown}
     >
       <canvas ref={canvas} aria-hidden="true" />
+      {/* -- WP WB6I -- the cursor readout (Graphing: Show Frequency / Gain Readout) */}
+      <div ref={readout} class="eq-readout" aria-hidden="true" />
       <p id={helpId} class="visually-hidden">
         {disabled
           ? "Tab steps through the bands."
