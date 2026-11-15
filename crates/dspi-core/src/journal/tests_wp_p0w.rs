@@ -220,6 +220,9 @@ fn out_ch(core: &DspiCore, output: u8) -> u8 {
 
 /// A free GPIO for a pin move on the demo device.
 const SPARE_PIN: u8 = 22;
+// -- WP CG-SWS-b --
+const SPARE_BCK_PIN: u8 = 18;
+const SPARE_MCK_PIN: u8 = 21;
 
 // ── params.rs ───────────────────────────────────────────────────────
 
@@ -393,8 +396,10 @@ setter!(wp_p0w_set_output_type, "out.type", [1], |c| {
     let t = c.get_state().output_types[1];
     c.set_output_type(1, if t == 1 { 0 } else { 1 })
 });
+// -- WP CG-SWS-b -- a pin the pin map accepts: BCK 22 needs LRCLK 23 (power),
+// and MCK only takes a clock-output pin; the setters now check first
 pin_setter!(wp_p0w_set_i2s_bck_pin, "i2s.bck", [], |c| c
-    .set_i2s_bck_pin(0, SPARE_PIN));
+    .set_i2s_bck_pin(0, SPARE_BCK_PIN));
 pin_setter!(wp_p0w_set_i2s_clock_pin_mode, "i2s.clockpins", [], |c| {
     let m = c.get_state().i2s_clock_pin_mode;
     c.set_i2s_clock_pin_mode(1 - m.min(1))
@@ -404,7 +409,7 @@ setter!(wp_p0w_set_mck_enabled, "i2s.mck", [], |c| {
     c.set_mck_enabled(!b)
 });
 pin_setter!(wp_p0w_set_mck_pin, "i2s.mck.pin", [], |c| c
-    .set_mck_pin(SPARE_PIN));
+    .set_mck_pin(SPARE_MCK_PIN));
 setter!(wp_p0w_set_mck_multiplier, "i2s.mck.mult", [], |c| {
     let m = c.get_state().mck_multiplier;
     c.set_mck_multiplier(1 - m.min(1))

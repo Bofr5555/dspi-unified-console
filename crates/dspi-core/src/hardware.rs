@@ -47,6 +47,8 @@ use crate::journal::journal;
 use crate::presets::Holder;
 use crate::records::*;
 use crate::{Connection, DspiCore, DspiError, Inner, Result, connect, state};
+// -- WP CG-SWS-b --
+use crate::pins::{PinFunction, PinFunctionKind};
 
 // -- WP CG24 --
 /// How long `enter_bootloader` holds the device lock at most: the hub's cap.
@@ -350,6 +352,8 @@ impl DspiCore {
     /// [`DspiError::Disconnected`], [`DspiError::Locked`] (Link, reset only)
     /// or a transfer error.
     pub fn set_output_pin(&self, slot: u8, pin: u8) -> Result<()> {
+        // -- WP CG-SWS-b -- the pin map's check first
+        self.pin_gate(PinFunction::new(PinFunctionKind::Output, slot), pin)?;
         self.set_pin_with_status(
             ("out.pin", &[slot]),
             op::REQ_SET_OUTPUT_PIN,
@@ -473,6 +477,14 @@ impl DspiCore {
     /// that pair); [`DspiError::ReadOnly`], [`DspiError::Disconnected`],
     /// [`DspiError::Locked`] (Link, reset only) or a transfer error.
     pub fn set_i2s_bck_pin(&self, role: u8, pin: u8) -> Result<()> {
+        // -- WP CG-SWS-b -- the pin map's check first
+        if let Some(kind) = match role {
+            0 => Some(PinFunctionKind::I2sBck),
+            1 => Some(PinFunctionKind::I2sBckSlave),
+            _ => None,
+        } {
+            self.pin_gate(PinFunction::new(kind, 0), pin)?;
+        }
         self.set_pin_with_status(
             (
                 if role == 0 {
@@ -538,6 +550,8 @@ impl DspiCore {
     /// [`DspiError::ReadOnly`], [`DspiError::Disconnected`],
     /// [`DspiError::Locked`] (Link, reset only) or a transfer error.
     pub fn set_mck_pin(&self, pin: u8) -> Result<()> {
+        // -- WP CG-SWS-b -- the pin map's check first
+        self.pin_gate(PinFunction::new(PinFunctionKind::Mck, 0), pin)?;
         self.set_pin_with_status(
             ("i2s.mck.pin", &[]),
             op::REQ_SET_MCK_PIN,
@@ -591,6 +605,8 @@ impl DspiCore {
     /// [`DspiError::Disconnected`], [`DspiError::Locked`] (Link, reset
     /// only) or a transfer error.
     pub fn set_adat_out_pin(&self, pin: u8) -> Result<()> {
+        // -- WP CG-SWS-b -- the pin map's check first
+        self.pin_gate(PinFunction::new(PinFunctionKind::AdatOut, 0), pin)?;
         self.set_pin_with_status(
             ("adat.pin", &[]),
             op::REQ_SET_ADAT_PIN,
@@ -612,6 +628,8 @@ impl DspiCore {
     /// [`DspiError::Disconnected`], [`DspiError::Locked`] (Link, reset
     /// only) or a transfer error.
     pub fn set_spdif_rx_pin(&self, index: u8, pin: u8) -> Result<()> {
+        // -- WP CG-SWS-b -- the pin map's check first
+        self.pin_gate(PinFunction::new(PinFunctionKind::SpdifRx, index), pin)?;
         self.set_pin_with_status(
             ("in.spdif.pin", &[index]),
             op::REQ_SET_SPDIF_RX_PIN,
@@ -662,6 +680,8 @@ impl DspiCore {
     /// [`DspiError::Disconnected`], [`DspiError::Locked`] (Link, reset
     /// only) or a transfer error.
     pub fn set_i2s_rx_pin(&self, pair: u8, pin: u8) -> Result<()> {
+        // -- WP CG-SWS-b -- the pin map's check first
+        self.pin_gate(PinFunction::new(PinFunctionKind::I2sRx, pair), pin)?;
         self.set_pin_with_status(
             ("in.i2s.pin", &[pair]),
             op::REQ_SET_I2S_RX_PIN,
@@ -722,6 +742,8 @@ impl DspiCore {
     /// [`DspiError::ReadOnly`], [`DspiError::Disconnected`] or a transfer
     /// error.
     pub fn set_adat_input_pin(&self, pin: u8) -> Result<()> {
+        // -- WP CG-SWS-b -- the pin map's check first
+        self.pin_gate(PinFunction::new(PinFunctionKind::AdatIn, 0), pin)?;
         self.set_with_status(
             ("in.adat.pin", &[]),
             op::REQ_SET_ADAT_INPUT_PIN,
@@ -892,6 +914,8 @@ impl DspiCore {
         hold_ms: u16,
         release_ms: u16,
     ) -> Result<()> {
+        // -- WP CG-SWS-b -- the pin map's check first
+        self.dac_mute_gate(enabled, pin)?;
         let [h0, h1] = hold_ms.to_le_bytes();
         let [r0, r1] = release_ms.to_le_bytes();
         let mut d = [0u8; DAC_MUTE_CONFIG_LEN];
@@ -997,6 +1021,8 @@ impl DspiCore {
     /// Errors: [`DspiError::ReadOnly`], [`DspiError::Disconnected`] or a
     /// transfer error.
     pub fn set_uart(&self, config: UartConfig) -> Result<()> {
+        // -- WP CG-SWS-b -- the pin map's check first
+        self.uart_gate(config.enabled, config.tx_pin, config.rx_pin)?;
         let [b0, b1, b2, b3] = config.baud.to_le_bytes();
         let d: [u8; CTRL_CONFIG_LEN] = [
             u8::from(config.enabled),
@@ -1018,6 +1044,8 @@ impl DspiCore {
     /// Errors: [`DspiError::ReadOnly`], [`DspiError::Disconnected`] or a
     /// transfer error.
     pub fn set_i2c(&self, config: I2cConfig) -> Result<()> {
+        // -- WP CG-SWS-b -- the pin map's check first
+        self.i2c_gate(config.enabled, config.sda_pin, config.scl_pin)?;
         let d: [u8; CTRL_CONFIG_LEN] = [
             u8::from(config.enabled),
             config.sda_pin,

@@ -21,6 +21,7 @@ build refuses to build without one; `mount({ sourceUrl })` overrides it per host
 | `favicon.ico`, `favicon.svg`, `apple-touch-icon.png` | the standalone page's icons |
 | `dspi-web.js`, `dspi-web.css` | the library, for embedding (`mount()`) |
 | `worker.js`, `dspi_wasm.wasm` | one Worker per session; the core (about 1.1 MB, 360 KB gzip) |
+| `autoeq_database.json` | the built-in AutoEQ database (about 5.4 MB, fetched only when AutoEQ is opened) |
 | `THIRD-PARTY-NOTICES.txt` | Preact's licence and the Rust crates in the core; serve it with the rest |
 | `SOURCE.txt` | (DRAFT) where the source of this build is and that it comes with the console; serve it with the rest |
 | `*.map` | source maps (optional) |
@@ -125,6 +126,7 @@ which hub: it is the sign-in and access control, the hub sees one client.
 ```
 
 `worker.js` and `dspi_wasm.wasm` must sit beside `dspi-web.js` (or pass `workerUrl`).
+`autoeq_database.json` must sit beside `dspi-web.js` too.
 The `FleetBackend` contract is in `README.md` ("Embedding in a fleet server") and
 `src/fleet/types.ts`: hub URLs are the server's own `wss://` endpoints; `hubCredentials`
 hands the console the token the server holds, which the console never stores;

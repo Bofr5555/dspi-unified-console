@@ -22,6 +22,8 @@ import { channelColour } from "../eq/model";
 import { RenameDialog } from "../main/Dialog";
 import { useLiveWrite } from "../main/live";
 import { Menu } from "../main/Menu";
+// -- WP WB6J --
+import { identifyOutput } from "../analysis/siggen";
 import { inputRows, liveInputs, outputLabel, type ChannelRow } from "../main/model";
 import { CROSSPOINT_RANGE } from "../outputs/OutputCard";
 import { clamp, compactGain, delayText, enableConflict, eqWorkerRange, outputSlotName, parseLevel, pdmOutput, stepGrid } from "../outputs/model";
@@ -143,7 +145,11 @@ const MatrixView = memo(
                       <Menu
                         label={o.name}
                         disabled={ro}
-                        entries={[{ label: "Rename…", onSelect: () => setRenaming(o) }]}
+                        entries={[
+                          { label: "Rename…", onSelect: () => setRenaming(o) },
+                          // -- WP WB6J -- Identify (M46)
+                          { label: "Identify", onSelect: () => void identifyOutput(session, o.index) },
+                        ]}
                       />
                       <span class="m-desc" style={{ color: channelColour(o.wire) }}>
                         {o.descriptor}

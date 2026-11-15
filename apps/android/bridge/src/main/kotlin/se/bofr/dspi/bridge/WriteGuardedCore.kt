@@ -1016,6 +1016,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "csStatusText",
             "csFetch",
             "csPinUses",
+            // -- WP CG-SWS-b -- the pin map: from the mirror, no device I/O
+            "pinMap",
+            "pinCheck",
+            "pinHolder",
             "csSnapshot",
             "curveFreq",
             "disconnect",
@@ -1237,6 +1241,19 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "hubModePin",
             "hubAdminEvents",
             "setHubAdminListener",
+            // -- WP CG-SWS-a -- stateless tables and quantizers, and a read of
+            // the mirror's image bytes: nothing is sent to the device
+            "imageExtras",
+            "quantizeMasterVolume",
+            "curveSections",
+            "knownFeatureNames",
+            "linkParseTxt",
+            "platformShape",
+            "vregCodeMv",
+            "vregCodeLabel",
+            "defaultChannelNames",
+            "enumValueLabels",
+            "bulkImageExtras",
             // -- WP CLIP1 -- a copy reads the mirror; a clip's document is local
             "copyChannel",
             "channelClipToJson",

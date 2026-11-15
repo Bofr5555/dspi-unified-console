@@ -49,6 +49,13 @@ import { HealthRail } from "./status-rail/HealthRail";
 
 // -- WP WB6G -- the input pages
 import { InputsScreen } from "../screens/inputs/InputsScreen";
+// -- WP WB6J -- the signal generator, Stats for nerbs, the Interrupt Monitor
+import { AnalyserScreen, GeneratorScreen, MonitorScreen, StatsScreen } from "../screens/analysis/ToolsScreen";
+
+// -- WP WB6L -- the control-surface editor, the quick strip, the app shortcuts
+import { SurfacesScreen } from "../screens/surfaces/SurfacesScreen";
+import { QuickStrip, ShortcutsDialog, useAppShortcuts } from "../screens/shortcuts/Shortcuts";
+import type { OpenAction, ShortcutRow } from "../screens/shortcuts/table";
 // -- WP WB6H -- the effects (Dynamics and effects, every mode)
 import { EffectsScreen } from "../screens/effects/EffectsScreen";
 // -- WP WB6I -- Settings (M55, M56, M61, M62)
@@ -108,17 +115,27 @@ export const SCREENS: ScreenDef[] = [
   // -- WP P1DCFIX -- Simple has Snapshots as recall and A/B only)
   { id: "snapshots", label: "Snapshots", View: SnapshotsScreen },
   { id: "files", label: "Files", View: FilesScreen },
+  // -- WP WB6L -- (setting up the hardware: Advanced and Installer, as files)
+  { id: "surfaces", label: "Control Surfaces", View: SurfacesScreen },
   // -- WP WB8 -- (UI-MODES: monitoring of the Advanced and Installer modes)
   { id: "events", label: "Events", View: EventsScreen },
   // -- WP P1WB2 -- (the manifest's "Limits and power-on": the Installer mode only)
   { id: "installer", label: "Installer", View: InstallerScreen },
+  // -- WP WB6J -- (the Console's Tools windows; Advanced and Installer, before the event log; WB6L's shortcuts open them by id)
+  { id: "generator", label: "Signal Generator", View: GeneratorScreen },
+  { id: "analyser", label: "Analyser", View: AnalyserScreen },
+  { id: "stats", label: "Stats for nerbs", View: StatsScreen },
+  { id: "monitor", label: "Interrupt Monitor", View: MonitorScreen },
   // -- WP WB6I -- (every mode, last: the Console's Settings window; Core Voltage inside, the Installer mode's)
   { id: "settings", label: "Settings", View: SettingsScreen },
 ];
 
 // -- WP P1WB1 --
 /** The screens Simple leaves out besides the Pro layer's: files are for setting up (-- WP P1DCFIX -- Snapshots stay, recall and A/B only). */
-const SETUP = new Set(["files"]);
+const SETUP = new Set(["files", "surfaces" /* -- WP WB6L -- */]);
+
+// -- WP WB6J -- the tool screens, in Advanced and Installer
+const TOOLS = new Set(["generator", "analyser", "stats", "monitor"]);
 
 // -- WP SW3 --
 /**
@@ -129,14 +146,15 @@ const SETUP = new Set(["files"]);
  */
 export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
   // -- WP WB8 -- the event log last, in Advanced and Installer
-  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events" && x.id !== "installer" && x.id !== "settings"); // -- WP WB6I -- settings
+  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events" && x.id !== "installer" && !TOOLS.has(x.id) && x.id !== "settings"); // -- WP WB6J -- tools -- WP WB6I -- settings
   const settings = SCREENS.filter((x) => x.id === "settings"); // -- WP WB6I -- last, in every mode
   if (mode === "simple") return [...today.filter((x) => !SETUP.has(x.id)), ...settings]; // -- WP P1WB1 -- -- WP WB6I -- settings
+  const tools = SCREENS.filter((x) => TOOLS.has(x.id)); // -- WP WB6J --
   const system = SCREENS.find((x) => x.id === "system")!;
   const events = SCREENS.find((x) => x.id === "events")!;
   // -- WP P1WB2 -- the Installer page last, in the Installer mode
   const tail = mode === "installer" ? SCREENS.filter((x) => x.id === "installer") : [];
-  return installation ? [system, ...today, events, ...tail, ...settings] : [...today, system, events, ...tail, ...settings]; // -- WP WB6I -- settings
+  return installation ? [system, ...today, ...tools, events, ...tail, ...settings] : [...today, system, ...tools, events, ...tail, ...settings]; // -- WP WB6J -- tools -- WP WB6I -- settings
 }
 
 // -- WP P1WB2 --
@@ -266,6 +284,25 @@ export function Screens(props: { session: Session }) {
   );
   useConsoleKeys(root, onKey);
 
+  // -- WP WB6L -- a screen by id, at what it opens (an effect); the table's keys; the shortcut list
+  const openScreen = useCallback((a: OpenAction) => {
+    setTarget((a.at ? { screen: a.screen, ...a.at } : null) as ChainTarget | null);
+    setChosen(a.screen);
+  }, []);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const shownIds = new Set(shown.map((x) => x.id));
+  const shownRef = useRef(shownIds);
+  shownRef.current = shownIds;
+  const onShortcut = useCallback(
+    (r: ShortcutRow) => {
+      if (r.help) setShortcutsOpen(true);
+      else if (r.open && shownRef.current.has(r.open.screen)) openScreen(r.open);
+    },
+    [openScreen],
+  );
+  const blocked = useCallback(() => asking.current || shortcutsOpen, [shortcutsOpen]);
+  useAppShortcuts(root, onShortcut, blocked);
+
   // Closing the session (Disconnect) asks first, as the Console's device
   // switch does, whichever screen is shown.
   useEffect(() => {
@@ -316,6 +353,11 @@ export function Screens(props: { session: Session }) {
         ) : null}
         <UndoButtons session={session} state={st} />
       </div>
+      {/* -- WP WB6L -- the quick strip (M60), on every screen as the Console's sidebar row */}
+      {lockedUser ? null : (
+        <QuickStrip session={session} screens={shownIds} current={screen.id} open={openScreen} leave={() => setCurrent(shown[0]!.id)} onHelp={() => setShortcutsOpen(true)} />
+      )}
+      {shortcutsOpen ? <ShortcutsDialog screens={shownIds} onClose={() => setShortcutsOpen(false)} /> : null}
       <StepNotice session={session} notice={st.notice} />
       <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} />
       {/* -- WP SW3 -- the status rail, below the screen as a status bar */}

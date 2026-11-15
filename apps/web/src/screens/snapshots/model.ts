@@ -21,6 +21,8 @@ import {
   type ImportReport,
 } from "../../core/protocol";
 import type { Session } from "../../ui/session";
+// -- WP WB6K -- the document's input pair-link mask, both ways
+import { inputLinks } from "../inputs/model";
 
 /** A document the page holds for this visit: captured here, or opened from a file. */
 export interface HeldDoc {
@@ -481,6 +483,7 @@ export class SnapshotDesk {
       // -- WP P1WB2 -- the import was confirmed in its dialog: its token
       const token = await this.session.token("config_import");
       const r: ImportReport = await this.session.core.call("configImport", { text, options, eqChannels, ...(token ? { token } : {}) });
+      restoreLinks(this.session, r.links); // -- WP WB6K --
       await this.after();
       this.set({ outcome: { title: `Imported “${name}”`, lines: r.lines, notes: [], tone: r.clean ? "info" : "warn" } });
       return true;
@@ -489,18 +492,18 @@ export class SnapshotDesk {
 
   /** The device (or the open document) as a configuration file's text. */
   exportDoc(name: string): Promise<string | null> {
-    return this.run("Export", async () => (await this.session.core.call("configExport", { name, appVersion: "web" })).text);
+    return this.run("Export", async () => (await this.session.core.call("configExport", { name, appVersion: "web", links: inputLinks(this.session).mask })).text);
   }
 
   /** The device or document as a template's text. */
   saveTemplate(name: string): Promise<string | null> {
-    return this.run("Save as Template", async () => (await this.session.core.call("templateSave", { name, appVersion: "web" })).text);
+    return this.run("Save as Template", async () => (await this.session.core.call("templateSave", { name, appVersion: "web", links: inputLinks(this.session).mask })).text);
   }
 
   /** The open document as it now stands (offline); nothing is unsaved afterwards. */
   saveDocument(): Promise<string | null> {
     return this.run("Save File", async () => {
-      const { text } = await this.session.core.call("documentSave", { appVersion: "web" });
+      const { text } = await this.session.core.call("documentSave", { appVersion: "web", links: inputLinks(this.session).mask });
       await this.session.refresh();
       return text;
     });
@@ -515,6 +518,18 @@ export class SnapshotDesk {
   dismiss(): void {
     if (this.state.outcome) this.set({ outcome: null });
   }
+
+  // -- WP WB6K --
+  /** One of the Files screen's actions, as the desk runs its own: one at a time, a failure as the outcome. */
+  act<T>(what: string, f: () => Promise<T>, writes = true): Promise<T | null> {
+    if (writes && !this.writable(what)) return Promise.resolve(null);
+    return this.run(what, f);
+  }
+
+  /** Show `outcome` (the Files screen's actions). */
+  report(outcome: Outcome): void {
+    this.set({ outcome });
+  }
 }
 
 /** Hand `text` to the browser as a download called `fileName`. */
@@ -528,4 +543,12 @@ export function download(text: string, fileName: string): void {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// -- WP WB6K --
+/** An import's pair-link mask (null: the document has none) onto the session's links, pair by pair. */
+export function restoreLinks(session: Session, links: number | null | undefined): void {
+  if (typeof links !== "number") return;
+  const l = inputLinks(session);
+  for (let pair = 0; pair < 4; pair++) l.set(pair * 2, (links & (1 << pair)) !== 0);
 }

@@ -207,6 +207,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun featurePresent(name: String): Boolean = core.featurePresent(name)
 
+    override fun imageExtras(): BulkImageExtras = core.imageExtras().toDomain()
+
     override fun diagnosticsSave(path: String, options: DiagOptions): List<String> = call { core.diagnosticsSave(path, options.toFfi()) }
 
     override fun diagnosticsFileName(): String = core.diagnosticsFileName()
@@ -595,6 +597,12 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setTubeParam(idx: Int, value: Float) = call { core.setTubeParam(idx.toUByte(), value) }
 
+    override fun pinMap(): PinMap = core.pinMap().toDomain()
+
+    override fun pinCheck(function: PinFunction, pin: Int): PinRefusal? = core.pinCheck(function.toFfi(), pin.toUByte())?.let { it.toDomain() }
+
+    override fun pinHolder(pin: Int, excluding: PinFunction?): PinHolder? = core.pinHolder(pin.toUByte(), excluding?.let { it.toFfi() })?.let { it.toDomain() }
+
     override fun savePresetConfirmed(slot: Int, token: String?) = call { core.savePresetConfirmed(slot.toUByte(), token) }
 
     override fun loadPreset(slot: Int) = call { core.loadPreset(slot.toUByte()) }
@@ -771,6 +779,12 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun quantizeDelay(ms: Float): Float = se.bofr.dspi.ffi.uniffi.quantizeDelay(ms)
 
+    override fun quantizeMasterVolume(db: Float): Float = se.bofr.dspi.ffi.uniffi.quantizeMasterVolume(db)
+
+    override fun curveSections(filters: List<FilterParams>): List<BiquadSection> = se.bofr.dspi.ffi.uniffi.curveSections(filters.map { it.toFfi() }).map { it.toDomain() }
+
+    override fun knownFeatureNames(): List<String> = se.bofr.dspi.ffi.uniffi.knownFeatureNames()
+
     override fun configInspect(text: String): String = se.bofr.dspi.ffi.uniffi.configInspect(text)
 
     override fun configDiff(before: String, after: String): String = se.bofr.dspi.ffi.uniffi.configDiff(before, after)
@@ -803,6 +817,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun aboutJson(): String = se.bofr.dspi.ffi.uniffi.aboutJson()
 
+    override fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord = call { se.bofr.dspi.ffi.uniffi.linkParseTxt(serviceName, txt.map { it.toFfi() }).toDomain() }
+
     override fun modeManifest(): ModeManifest = se.bofr.dspi.ffi.uniffi.modeManifest().toDomain()
 
     override fun filterTypeNames(): List<FilterTypeName> = se.bofr.dspi.ffi.uniffi.filterTypeNames().map { it.toDomain() }
@@ -822,6 +838,18 @@ class FfiDspiCore : DspiCoreApi {
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = se.bofr.dspi.ffi.uniffi.outputLabelsFor(input.toFfi()).map { it.toDomain() }
 
     override fun outputCardsFor(input: OutputLabelInput): List<OutputCard> = se.bofr.dspi.ffi.uniffi.outputCardsFor(input.toFfi()).map { it.toDomain() }
+
+    override fun platformShape(platformId: Int): PlatformShape = se.bofr.dspi.ffi.uniffi.platformShape(platformId.toUByte()).toDomain()
+
+    override fun vregCodeMv(code: Int, platformId: Int): Int? = se.bofr.dspi.ffi.uniffi.vregCodeMv(code.toUByte(), platformId.toUByte())?.let { it.toInt() }
+
+    override fun vregCodeLabel(code: Int, platformId: Int): String = se.bofr.dspi.ffi.uniffi.vregCodeLabel(code.toUByte(), platformId.toUByte())
+
+    override fun defaultChannelNames(numInputs: Int, numOutputs: Int, inputSource: Int, outputTypes: List<Int>): List<String> = se.bofr.dspi.ffi.uniffi.defaultChannelNames(numInputs.toUByte(), numOutputs.toUByte(), inputSource.toUByte(), ByteArray(outputTypes.size) { outputTypes[it].toByte() })
+
+    override fun enumValueLabels(path: String): List<EnumValueLabel> = call { se.bofr.dspi.ffi.uniffi.enumValueLabels(path).map { it.toDomain() } }
+
+    override fun bulkImageExtras(bulkRaw: ByteArray): BulkImageExtras = se.bofr.dspi.ffi.uniffi.bulkImageExtras(bulkRaw.copyOf()).toDomain()
 }
 
 internal class FfiAutoEqRebuild(private val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {
@@ -2176,6 +2204,134 @@ internal fun CrossfeedPair.toFfi() =
     se.bofr.dspi.ffi.uniffi.CrossfeedPair(
         freqHz = freqHz,
         feedDb = feedDb,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.BiquadSection.toDomain() =
+    BiquadSection(
+        b0 = b0,
+        b1 = b1,
+        b2 = b2,
+        a1 = a1,
+        a2 = a2,
+    )
+
+internal fun BiquadSection.toFfi() =
+    se.bofr.dspi.ffi.uniffi.BiquadSection(
+        b0 = b0,
+        b1 = b1,
+        b2 = b2,
+        a1 = a1,
+        a2 = a2,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.PlatformShape.toDomain() =
+    PlatformShape(
+        platformId = platformId.toInt(),
+        name = name,
+        known = known,
+        numInputChannels = numInputChannels.toInt(),
+        numOutputChannels = numOutputChannels.toInt(),
+        numOutputSlots = numOutputSlots.toInt(),
+        pdmOutput = pdmOutput.toInt(),
+        pdmPinIndex = pdmPinIndex.toInt(),
+        eqWorkerFirst = eqWorkerFirst.toInt(),
+        eqWorkerLast = eqWorkerLast.toInt(),
+        i2sMaxPairs = i2sMaxPairs.toInt(),
+        multichannelI2s = multichannelI2s,
+        adat = adat,
+        upmixer = upmixer,
+        i2sConfig = i2sConfig,
+        crossfeedPairs = crossfeedPairs.toInt(),
+        maxDelayMs = maxDelayMs,
+    )
+
+internal fun PlatformShape.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PlatformShape(
+        platformId = platformId.toUByte(),
+        name = name,
+        known = known,
+        numInputChannels = numInputChannels.toUByte(),
+        numOutputChannels = numOutputChannels.toUByte(),
+        numOutputSlots = numOutputSlots.toUByte(),
+        pdmOutput = pdmOutput.toUByte(),
+        pdmPinIndex = pdmPinIndex.toUByte(),
+        eqWorkerFirst = eqWorkerFirst.toUByte(),
+        eqWorkerLast = eqWorkerLast.toUByte(),
+        i2sMaxPairs = i2sMaxPairs.toUByte(),
+        multichannelI2s = multichannelI2s,
+        adat = adat,
+        upmixer = upmixer,
+        i2sConfig = i2sConfig,
+        crossfeedPairs = crossfeedPairs.toUByte(),
+        maxDelayMs = maxDelayMs,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.BulkImageExtras.toDomain() =
+    BulkImageExtras(
+        decoded = decoded,
+        i2sBckPinSlavePresent = i2sBckPinSlavePresent,
+        i2sInputChannelsPresent = i2sInputChannelsPresent,
+        i2sRxPinExtPresent = i2sRxPinExtPresent,
+        spdifRxPinExtPresent = spdifRxPinExtPresent,
+        adatOutPinPresent = adatOutPinPresent,
+    )
+
+internal fun BulkImageExtras.toFfi() =
+    se.bofr.dspi.ffi.uniffi.BulkImageExtras(
+        decoded = decoded,
+        i2sBckPinSlavePresent = i2sBckPinSlavePresent,
+        i2sInputChannelsPresent = i2sInputChannelsPresent,
+        i2sRxPinExtPresent = i2sRxPinExtPresent,
+        spdifRxPinExtPresent = spdifRxPinExtPresent,
+        adatOutPinPresent = adatOutPinPresent,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.EnumValueLabel.toDomain() =
+    EnumValueLabel(
+        value = value.toInt(),
+        key = key,
+        label = label,
+    )
+
+internal fun EnumValueLabel.toFfi() =
+    se.bofr.dspi.ffi.uniffi.EnumValueLabel(
+        value = value.toUByte(),
+        key = key,
+        label = label,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LinkTxtEntry.toDomain() =
+    LinkTxtEntry(
+        key = key,
+        value = value,
+    )
+
+internal fun LinkTxtEntry.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LinkTxtEntry(
+        key = key,
+        value = value,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LinkTxtRecord.toDomain() =
+    LinkTxtRecord(
+        hubId = hubId,
+        name = name,
+        kind = kind,
+        auth = auth,
+        deviceCount = deviceCount.toLong(),
+        serials = serials,
+        path = path,
+    )
+
+internal fun LinkTxtRecord.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LinkTxtRecord(
+        hubId = hubId,
+        name = name,
+        kind = kind,
+        auth = auth,
+        deviceCount = deviceCount.toUInt(),
+        serials = serials,
+        path = path,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AbCompare.toDomain() =
@@ -3652,6 +3808,86 @@ internal fun OutputLabelInput.toFfi() =
         crossfeedPairMap = ByteArray(crossfeedPairMap.size) { crossfeedPairMap[it].toByte() },
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.PinFunction.toDomain() =
+    PinFunction(
+        kind = kind.toDomain(),
+        index = index.toInt(),
+    )
+
+internal fun PinFunction.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PinFunction(
+        kind = kind.toFfi(),
+        index = index.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.PinHolder.toDomain() =
+    PinHolder(
+        pin = pin.toInt(),
+        function = function.toDomain(),
+        role = role.toDomain(),
+        label = label,
+    )
+
+internal fun PinHolder.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PinHolder(
+        pin = pin.toUByte(),
+        function = function.toFfi(),
+        role = role.toFfi(),
+        label = label,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.PinFunctionInfo.toDomain() =
+    PinFunctionInfo(
+        function = function.toDomain(),
+        label = label,
+        pin = pin.toInt(),
+        holds = holds,
+        choices = choices.map { it.toInt() and 0xFF },
+        i2sAllowed = i2sAllowed,
+    )
+
+internal fun PinFunctionInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PinFunctionInfo(
+        function = function.toFfi(),
+        label = label,
+        pin = pin.toUByte(),
+        holds = holds,
+        choices = ByteArray(choices.size) { choices[it].toByte() },
+        i2sAllowed = i2sAllowed,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.PinMap.toDomain() =
+    PinMap(
+        platformId = platformId.toInt(),
+        assignable = assignable,
+        validPins = validPins.map { it.toInt() and 0xFF },
+        functions = functions.map { it.toDomain() },
+        holders = holders.map { it.toDomain() },
+    )
+
+internal fun PinMap.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PinMap(
+        platformId = platformId.toUByte(),
+        assignable = assignable,
+        validPins = ByteArray(validPins.size) { validPins[it].toByte() },
+        functions = functions.map { it.toFfi() },
+        holders = holders.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.PinRefusal.toDomain() =
+    PinRefusal(
+        reason = reason.toDomain(),
+        status = status.toInt(),
+        holder = holder?.let { it.toDomain() },
+    )
+
+internal fun PinRefusal.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PinRefusal(
+        reason = reason.toFfi(),
+        status = status.toUByte(),
+        holder = holder?.let { it.toFfi() },
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.RawNotification.toDomain() =
     RawNotification(
         packet = packet.map { it.toInt() and 0xFF },
@@ -3972,6 +4208,82 @@ internal fun NoticeKind.toFfi(): se.bofr.dspi.ffi.uniffi.NoticeKind =
         NoticeKind.INFO -> se.bofr.dspi.ffi.uniffi.NoticeKind.INFO
         NoticeKind.WARNING -> se.bofr.dspi.ffi.uniffi.NoticeKind.WARNING
         NoticeKind.ERROR -> se.bofr.dspi.ffi.uniffi.NoticeKind.ERROR
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.PinFunctionKind.toDomain(): PinFunctionKind =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.OUTPUT -> PinFunctionKind.OUTPUT
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_BCK -> PinFunctionKind.I2S_BCK
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_BCK_SLAVE -> PinFunctionKind.I2S_BCK_SLAVE
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.MCK -> PinFunctionKind.MCK
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.SPDIF_RX -> PinFunctionKind.SPDIF_RX
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_RX -> PinFunctionKind.I2S_RX
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.ADAT_OUT -> PinFunctionKind.ADAT_OUT
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.ADAT_IN -> PinFunctionKind.ADAT_IN
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.DAC_MUTE -> PinFunctionKind.DAC_MUTE
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.UART_TX -> PinFunctionKind.UART_TX
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.UART_RX -> PinFunctionKind.UART_RX
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2C_SDA -> PinFunctionKind.I2C_SDA
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2C_SCL -> PinFunctionKind.I2C_SCL
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.CONTROL_SURFACE -> PinFunctionKind.CONTROL_SURFACE
+    }
+
+internal fun PinFunctionKind.toFfi(): se.bofr.dspi.ffi.uniffi.PinFunctionKind =
+    when (this) {
+        PinFunctionKind.OUTPUT -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.OUTPUT
+        PinFunctionKind.I2S_BCK -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_BCK
+        PinFunctionKind.I2S_BCK_SLAVE -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_BCK_SLAVE
+        PinFunctionKind.MCK -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.MCK
+        PinFunctionKind.SPDIF_RX -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.SPDIF_RX
+        PinFunctionKind.I2S_RX -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_RX
+        PinFunctionKind.ADAT_OUT -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.ADAT_OUT
+        PinFunctionKind.ADAT_IN -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.ADAT_IN
+        PinFunctionKind.DAC_MUTE -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.DAC_MUTE
+        PinFunctionKind.UART_TX -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.UART_TX
+        PinFunctionKind.UART_RX -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.UART_RX
+        PinFunctionKind.I2C_SDA -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2C_SDA
+        PinFunctionKind.I2C_SCL -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2C_SCL
+        PinFunctionKind.CONTROL_SURFACE -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.CONTROL_SURFACE
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.PinHolderRole.toDomain(): PinHolderRole =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.PinHolderRole.OUTPUT -> PinHolderRole.OUTPUT
+        se.bofr.dspi.ffi.uniffi.PinHolderRole.CLOCK -> PinHolderRole.CLOCK
+        se.bofr.dspi.ffi.uniffi.PinHolderRole.INPUT -> PinHolderRole.INPUT
+        se.bofr.dspi.ffi.uniffi.PinHolderRole.CONTROL -> PinHolderRole.CONTROL
+        se.bofr.dspi.ffi.uniffi.PinHolderRole.UTILITY -> PinHolderRole.UTILITY
+    }
+
+internal fun PinHolderRole.toFfi(): se.bofr.dspi.ffi.uniffi.PinHolderRole =
+    when (this) {
+        PinHolderRole.OUTPUT -> se.bofr.dspi.ffi.uniffi.PinHolderRole.OUTPUT
+        PinHolderRole.CLOCK -> se.bofr.dspi.ffi.uniffi.PinHolderRole.CLOCK
+        PinHolderRole.INPUT -> se.bofr.dspi.ffi.uniffi.PinHolderRole.INPUT
+        PinHolderRole.CONTROL -> se.bofr.dspi.ffi.uniffi.PinHolderRole.CONTROL
+        PinHolderRole.UTILITY -> se.bofr.dspi.ffi.uniffi.PinHolderRole.UTILITY
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.PinRefusalReason.toDomain(): PinRefusalReason =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.NOT_ASSIGNABLE -> PinRefusalReason.NOT_ASSIGNABLE
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.NO_SUCH_FUNCTION -> PinRefusalReason.NO_SUCH_FUNCTION
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.INVALID_PIN -> PinRefusalReason.INVALID_PIN
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.WRONG_MUX -> PinRefusalReason.WRONG_MUX
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.IN_USE -> PinRefusalReason.IN_USE
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.OUTPUT_ACTIVE -> PinRefusalReason.OUTPUT_ACTIVE
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.CLEAR_WHILE_ENABLED -> PinRefusalReason.CLEAR_WHILE_ENABLED
+    }
+
+internal fun PinRefusalReason.toFfi(): se.bofr.dspi.ffi.uniffi.PinRefusalReason =
+    when (this) {
+        PinRefusalReason.NOT_ASSIGNABLE -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.NOT_ASSIGNABLE
+        PinRefusalReason.NO_SUCH_FUNCTION -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.NO_SUCH_FUNCTION
+        PinRefusalReason.INVALID_PIN -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.INVALID_PIN
+        PinRefusalReason.WRONG_MUX -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.WRONG_MUX
+        PinRefusalReason.IN_USE -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.IN_USE
+        PinRefusalReason.OUTPUT_ACTIVE -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.OUTPUT_ACTIVE
+        PinRefusalReason.CLEAR_WHILE_ENABLED -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.CLEAR_WHILE_ENABLED
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.VregCalPhase.toDomain(): VregCalPhase =

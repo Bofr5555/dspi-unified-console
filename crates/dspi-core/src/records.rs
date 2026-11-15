@@ -1314,3 +1314,145 @@ pub struct CrossfeedPair {
     /// Feed level, in dB.
     pub feed_db: f32,
 }
+
+// -- WP CG-SWS-a --
+/// One biquad section of a response curve ([`crate::curve_sections`]):
+/// `H(z) = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2)`, normalised so
+/// that `a0` is 1, at the device's sample rate.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BiquadSection {
+    /// Feed-forward coefficient of `z^0`.
+    pub b0: f64,
+    /// Feed-forward coefficient of `z^-1`.
+    pub b1: f64,
+    /// Feed-forward coefficient of `z^-2`.
+    pub b2: f64,
+    /// Feedback coefficient of `z^-1`.
+    pub a1: f64,
+    /// Feedback coefficient of `z^-2`.
+    pub a2: f64,
+}
+
+// -- WP CG-SWS-a --
+/// What a platform is, as the clients lay out their pages
+/// ([`crate::platform_shape`]): channel counts, where the PDM sub and the
+/// second core's EQ outputs are, and which platform-bound sections exist.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformShape {
+    /// The platform id the shape is for (0 RP2040, 1 RP2350, 2 STM32H723).
+    pub platform_id: u8,
+    /// `RP2040`, `RP2350`, `STM32H723`, or `unknown platform N`.
+    pub name: String,
+    /// False for an id this build does not know; its shape is the RP2040's,
+    /// the smallest.
+    pub known: bool,
+    /// Matrix inputs (USB channels): 2 on RP2040, 8 elsewhere.
+    pub num_input_channels: u8,
+    /// Outputs, the PDM sub included: 5 on RP2040, 9 elsewhere.
+    pub num_output_channels: u8,
+    /// Stereo output slots (S/PDIF or I2S): 2 on RP2040, 4 elsewhere.
+    pub num_output_slots: u8,
+    /// The PDM sub's output index: always the last output.
+    pub pdm_output: u8,
+    /// The PDM sub's index in the output pin list: after the slots.
+    pub pdm_pin_index: u8,
+    /// First output whose EQ runs on the second core (the other half of the
+    /// PDM interlock).
+    pub eq_worker_first: u8,
+    /// Last output whose EQ runs on the second core.
+    pub eq_worker_last: u8,
+    /// I2S input pairs: 1 on RP2040, 4 elsewhere.
+    pub i2s_max_pairs: u8,
+    /// Multichannel (more than one pair) I2S input: RP2350 only.
+    pub multichannel_i2s: bool,
+    /// ADAT output and input: RP2350 only.
+    pub adat: bool,
+    /// The stereo upmixer: RP2350 only (RP2040 stalls its writes).
+    pub upmixer: bool,
+    /// The I2S configuration page: every platform but STM32H723.
+    pub i2s_config: bool,
+    /// Crossfeed stereo pairs: 2 on RP2040, 4 elsewhere.
+    pub crossfeed_pairs: u8,
+    /// The longest delay the delay line holds, in ms: 42 on RP2350, 21
+    /// elsewhere (`dspi_proto::Platform::max_delay_ms`).
+    pub max_delay_ms: f32,
+}
+
+// -- WP CG-SWS-a --
+/// Bytes of the parameter image that `DspState` has no field for
+/// ([`crate::bulk_image_extras`]). A "present" flag is the firmware's
+/// "0 is absent, keep the last value" byte, read on the V32 layout.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkImageExtras {
+    /// The image is a whole one of this build's wire format (its first byte
+    /// is the version): the mirror was decoded from it.
+    pub decoded: bool,
+    /// The image carried the I2S slave bit clock pin.
+    pub i2s_bck_pin_slave_present: bool,
+    /// The image carried the I2S input channel count.
+    pub i2s_input_channels_present: bool,
+    /// Per I2S data input 2..4: the image carried its pin.
+    pub i2s_rx_pin_ext_present: Vec<bool>,
+    /// Per S/PDIF input 2..4: the image carried its pin.
+    pub spdif_rx_pin_ext_present: Vec<bool>,
+    /// The image carried the ADAT output pin; without it the firmware uses
+    /// its default pin.
+    pub adat_out_pin_present: bool,
+}
+
+// -- WP CG-SWS-a --
+/// One value of a choice setting and the words a client shows for it
+/// ([`crate::enum_value_labels`]).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnumValueLabel {
+    /// The value as written to the setting.
+    pub value: u8,
+    /// The registry's name for the value (`passive`, `percussive`, ...), or
+    /// the number for a numbered setting.
+    pub key: String,
+    /// What the Console shows for it.
+    pub label: String,
+}
+
+// -- WP CG-SWS-a --
+/// One key and value of a DNS-SD TXT record ([`crate::link_parse_txt`]).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkTxtEntry {
+    /// The key (`v`, `hid`, ...).
+    pub key: String,
+    /// Its value; empty for a key without one.
+    pub value: String,
+}
+
+// -- WP CG-SWS-a --
+/// A hub as its DNS-SD TXT record describes it ([`crate::link_parse_txt`]),
+/// before an address is resolved.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkTxtRecord {
+    /// The `hid`, lowercase.
+    pub hub_id: String,
+    /// The instance name, safe to show (the `hid` when it has none).
+    pub name: String,
+    /// `console`, `bridge` or `unknown`.
+    pub kind: String,
+    /// `none` or `pin`.
+    pub auth: String,
+    /// Devices the hub shares.
+    pub device_count: u32,
+    /// Their serials, when the hub lists them.
+    pub serials: Vec<String>,
+    /// The WebSocket path.
+    pub path: String,
+}

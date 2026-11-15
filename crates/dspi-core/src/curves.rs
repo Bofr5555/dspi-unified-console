@@ -21,7 +21,7 @@ use dspi_proto::enums::FilterType;
 use dspi_proto::ext::PairMap;
 use dspi_proto::xover::{self, Family};
 
-use crate::records::{CoreInfo, FilterParams};
+use crate::records::{BiquadSection, CoreInfo, FilterParams};
 
 /// Points on a magnitude or phase curve, log-spaced from 10 Hz to 20 kHz.
 pub const CURVE_POINTS: usize = dsp::POINTS;
@@ -396,6 +396,51 @@ pub fn quantize_gain(db: f32) -> f32 {
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn quantize_delay(ms: f32) -> f32 {
     snap(ms, 10_000.0)
+}
+
+// -- WP CG-SWS-a --
+/// The master volume's mute value: at or below it the volume mutes.
+const MASTER_VOLUME_MUTE_DB: f32 = -128.0;
+/// The quietest master volume that is not mute.
+const MASTER_VOLUME_MIN_DB: f32 = -127.0;
+
+/// A master volume in dB as [`crate::DspiCore::set_master_volume`] keeps
+/// it: -128 (mute) at or below -128, else on a 0.5 dB grid (halves away
+/// from zero) within -127..=0. -0 becomes +0. NaN comes back as NaN (the
+/// setter refuses it).
+///
+/// A slider shows this value while the user drags, so it shows what the
+/// device gets.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn quantize_master_volume(db: f32) -> f32 {
+    if db <= MASTER_VOLUME_MUTE_DB {
+        return MASTER_VOLUME_MUTE_DB;
+    }
+    let v = snap(db, 2.0).clamp(MASTER_VOLUME_MIN_DB, 0.0);
+    if v == 0.0 { 0.0 } else { v }
+}
+
+// -- WP CG-SWS-a --
+/// The biquad sections the curves of `filters` are computed from, in
+/// cascade order: what a GPU renderer evaluates per pixel to draw the same
+/// curve as [`compute_magnitude_curve`].
+///
+/// A bypassed or flat band adds none; a crossover type adds each of its
+/// sections as the firmware builds them; a type this build does not know,
+/// or a band whose values give a non-finite coefficient, adds a unity
+/// section. Call it with one band for that band's own sections.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn curve_sections(filters: Vec<FilterParams>) -> Vec<BiquadSection> {
+    cascade(&filters)
+        .into_iter()
+        .map(|c| BiquadSection {
+            b0: c.b0,
+            b1: c.b1,
+            b2: c.b2,
+            a1: c.a1,
+            a2: c.a2,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -981,3 +1026,9 @@ mod tests_clean1 {
         }
     }
 }
+
+// -- WP CG-SWS-a --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "curves/tests_wp_cgswsa.rs"]
+mod tests_wp_cgswsa;

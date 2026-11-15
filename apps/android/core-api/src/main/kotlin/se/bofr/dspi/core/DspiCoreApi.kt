@@ -861,9 +861,18 @@ interface DspiCoreApi : AutoCloseable {
      * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
      * answers whether the parameter image carried the clock-pin mode. False
      * with no device, before the probe, and for a name the probe does not
-     * know.
+     * know. -- WP CG-SWS-a -- The names with no probe (`first_order_pass`,
+     * `subharmonic_extended`, `stereo_upmixer`, ...) are answered from the
+     * wire format, firmware version and platform the connect read;
+     * [`known_feature_names`] lists every name.
      */
     fun featurePresent(name: String): Boolean
+
+    /**
+     * [`crate::bulk_image_extras`] of the mirror's parameter image: the
+     * bytes `DspState` has no field for. All false with no image.
+     */
+    fun imageExtras(): BulkImageExtras
 
     /**
      * Write a diagnostics bundle to `path`: one zip with versions, the open
@@ -3216,6 +3225,28 @@ interface DspiCoreApi : AutoCloseable {
     fun setTubeParam(idx: Int, value: Float)
 
     /**
+     * The pin map (WP CG-SWS-b): the platform's valid GPIOs, each function
+     * with its pin, whether it holds it and the pins it may move to, and
+     * who holds every held GPIO. From the mirror and the last
+     * control-surface read: no device I/O. Empty without a device.
+     */
+    fun pinMap(): PinMap
+
+    /**
+     * Whether `function` may move to `pin`: `None` when it may, else why
+     * not (with the status the firmware would answer and, when another
+     * function holds it, which). From the mirror: no device I/O. The pin
+     * setters run this check before they send.
+     */
+    fun pinCheck(function: PinFunction, pin: Int): PinRefusal?
+
+    /**
+     * The function holding `pin`, not counting `excluding` (a picker passes
+     * its own function), or `None` when it is free. From the mirror.
+     */
+    fun pinHolder(pin: Int, excluding: PinFunction?): PinHolder?
+
+    /**
      * Save the live state to `slot` (0..10) and wait until the device has
      * written it (it names the slot active). Runs under the device lock.
      * The slot becomes the active one and the live state its baseline.
@@ -4218,6 +4249,42 @@ interface DspiCoreApi : AutoCloseable {
     fun quantizeDelay(ms: Float): Float
 
     /**
+     * A master volume in dB as [`crate::DspiCore::set_master_volume`] keeps
+     * it: -128 (mute) at or below -128, else on a 0.5 dB grid (halves away
+     * from zero) within -127..=0. -0 becomes +0. NaN comes back as NaN (the
+     * setter refuses it).
+     *
+     * A slider shows this value while the user drags, so it shows what the
+     * device gets.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun quantizeMasterVolume(db: Float): Float
+
+    /**
+     * The biquad sections the curves of `filters` are computed from, in
+     * cascade order: what a GPU renderer evaluates per pixel to draw the same
+     * curve as [`compute_magnitude_curve`].
+     *
+     * A bypassed or flat band adds none; a crossover type adds each of its
+     * sections as the firmware builds them; a type this build does not know,
+     * or a band whose values give a non-finite coefficient, adds a unity
+     * section. Call it with one band for that band's own sections.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun curveSections(filters: List<FilterParams>): List<BiquadSection>
+
+    /**
+     * Every name [`DspiCore::feature_present`] knows: the connect probe's, then
+     * [`DERIVED_FEATURES`]. A client gates each section by one of these, never
+     * by a wire format or firmware version.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun knownFeatureNames(): List<String>
+
+    /**
      * Check a `.dspipreset` document and describe it, as JSON
      * `{ok, error, name, platform, firmware, savedUtc}`. `ok` is false, with the
      * reason in `error`, for text that is not a document this build reads: not
@@ -4377,6 +4444,26 @@ interface DspiCoreApi : AutoCloseable {
     fun aboutJson(): String
 
     /**
+     * Read a hub's TXT record. `service_name` is the DNS-SD instance name (with
+     * or without `._dspi._tcp.local.`); `txt` its keys and values in record
+     * order (of a key repeated, the first counts, RFC 6763 6.4). Where the
+     * hub is comes from resolving the service, not from here: dial it with
+     * [`crate::link_ws_url`] and `path`.
+     *
+     * Differs from the Mac's `HubBrowser.hub(fromTXT:)`
+     * (`Link/HubBrowser.swift:583-597`) by the spec and Android's `HubTxt`: a
+     * record without `v` or `hid`, or with `tls=1`, is no hub (the Mac made up a
+     * `service:<name>` id and listed it), and a missing `kind` reads `unknown`
+     * (the Mac's `console`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] saying why the record is no hub.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    @Throws(DspiException::class)
+    fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord
+
+    /**
      * The mode manifest: modes, the locked-user state, screens and operations,
      * with their titles and defaults. No I/O.
      *
@@ -4463,4 +4550,96 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun outputCardsFor(input: OutputLabelInput): List<OutputCard>
+
+    /**
+     * The shape of platform `platform_id` (`DspState::platform_id`), for laying
+     * out pages before or without a device. A connected device's own counts are
+     * in `DspState` (`num_input_channels`, `num_output_channels`); this is the
+     * platform's table, the Mac's `platformName == "RP2040" ? ... : ...` rules
+     * (`DSPViewModel.swift:1540-1543`, `:1970`, `:2346-2353`, `:2232`;
+     * `DSPi_ConsoleApp.swift:427`) in one place.
+     *
+     * An id this build does not know gets the RP2040's shape (the smallest) with
+     * `known` false, as the Mac names an unknown id `RP2040`
+     * (`Commands.swift:160-162`). The longest delay is the core's rule
+     * (`dspi_proto::Platform::max_delay_ms`: 42 ms on RP2350, 21 ms elsewhere),
+     * not the Mac's slider ceiling of 85 ms, which no platform delivers.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun platformShape(platformId: Int): PlatformShape
+
+    /**
+     * A pico-sdk `enum vreg_voltage` code in mV on platform `platform_id`, or
+     * `None` for a code the chip does not have.
+     *
+     * - Both chips: 0x06 (0.85 V) to 0x0F (1.30 V) in 50 mV steps.
+     * - RP2350 adds 0x00-0x05 (0.55-0.80 V) and 0x10-0x1F (1.35-3.30 V).
+     * - On RP2040, 0x00-0x05 all program 0.80 V, and there is nothing above
+     * 0x0F.
+     * - Any other platform (STM32H723 has no `EXT_CORE_VREG`): only the codes
+     * both chips agree on, as `dspi_proto::ext::vreg_mv`.
+     *
+     * The Mac's `VregVoltage.volts` (`ExtensionChannel.swift:272-292`) is the
+     * same table for RP2040 and RP2350.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun vregCodeMv(code: Int, platformId: Int): Int?
+
+    /**
+     * A core-voltage code as the user reads it: `1.20 V`, or `code 0x1F` for a
+     * code [`vreg_code_mv`] does not decode on that platform (the Mac's
+     * `VregVoltage.label`, `ExtensionChannel.swift:294-298`).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun vregCodeLabel(code: Int, platformId: Int): String
+
+    /**
+     * The firmware's name for each channel when the user has named none: inputs
+     * first, then outputs, `num_inputs + num_outputs` names. `input_source` is
+     * `DspState::input_source` (it names the inputs); `output_types` is
+     * `DspState::output_types` (one byte per stereo slot, 1 for I2S), and a
+     * missing entry reads as S/PDIF. The rule is in the module docs.
+     *
+     * For a connected device pass `DspState`'s `num_input_channels`,
+     * `num_output_channels`, `input_source` and `output_types`; without one,
+     * [`platform_shape`]'s counts.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun defaultChannelNames(numInputs: Int, numOutputs: Int, inputSource: Int, outputTypes: List<Int>): List<String>
+
+    /**
+     * Every value of the choice setting `path` with the words the Console shows
+     * for it, in value order: `in.source`, `lev.speed`, `cf.preset`,
+     * `up.center_mode`, `up.surround_mode`, `sub.select` and `tube.type`. The
+     * words are `dspi_session::cs_model::enum_value_label`'s, the one table the
+     * control surfaces, the TUI and now every client read (upmixer `Sinner`,
+     * `Logician`, `Off`; selectivity `All material`, `Percussive`, `Sustained`;
+     * the tube styles, 0 `Custom`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for any other path.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    @Throws(DspiException::class)
+    fun enumValueLabels(path: String): List<EnumValueLabel>
+
+    /**
+     * The parameter image's presence bytes that `DspState` has no field for:
+     * the firmware writes 0 for "absent, keep what you have" (`bulk_params.h`),
+     * and a client that keeps its own value for an absent one asks here instead
+     * of reading `bulk_raw` by offset (the Mac's `CoreMirror.raw`,
+     * `CoreMirror.swift:661-720`, `:798-807`). `bulk_raw` is
+     * `DspState::bulk_raw`; anything shorter than an image reads as absent.
+     *
+     * The custom crossfeed pair, which the Mac also reads by offset
+     * (`PresetDocumentTransfer.swift:20-28`), is
+     * [`crate::DspiCore::crossfeed_custom_pair`].
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun bulkImageExtras(bulkRaw: ByteArray): BulkImageExtras
 }

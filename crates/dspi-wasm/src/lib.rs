@@ -81,19 +81,30 @@ pub mod modes;
 pub mod hub_admin;
 // -- WP P1AQ --
 pub mod autoeq;
+// -- WP WB6K -- the AutoEQ database the page keeps, and filter files
+pub mod autoeq_db;
+pub mod filters;
 // -- WP P1WB2 -- the DAC mute for the power-on page
 pub mod power_on;
 // -- WP SW3 --
 pub mod system;
 // -- WP ROMODE -- the client read-only mode
 pub mod read_only;
+// -- WP CG-SWS-b -- the pin map
+pub mod pins;
+// -- WP WB6L -- the control-surface editor and the quick strip
+pub mod surfaces;
 // -- WP CLIP1 -- the channel clipboard
 pub mod clipboard;
 // -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
 pub mod settings;
 // -- WP WB4a --
 pub mod usb;
+// -- WP WB6J -- the analyser view, the signal generator, Stats for nerbs, the Interrupt Monitor
+pub mod tools;
 pub mod write;
+// -- WP CG-SWS-a -- small stateless facts from the core
+pub mod sws_a;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[allow(unsafe_code)]
