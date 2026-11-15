@@ -580,6 +580,28 @@ final class CoreLinkSW6RustHubTests: XCTestCase {
         XCTAssertEqual(try? refused.get(), "hub", "refused before sending, as the hub's lock")
         let unlocked = try control.transport.call { try $0.installerUnlock(pin: "2468") }.get()
         XCTAssertFalse(unlocked.locked, "the hub's PIN unlocks it")
+
+        // The Swift Installer page (CoreInstaller) over both: the hub's copy,
+        // Admin editable, Control read-only with the core's row; an Admin's
+        // change reaches Control's page through HubAdminListener.
+        let adminVM = DSPViewModel(transport: admin.transport)
+        let adminPage = CoreInstaller(vm: adminVM, folder: nil)
+        let controlVM = DSPViewModel(transport: control.transport)
+        let controlPage = CoreInstaller(vm: controlVM, folder: nil)
+        sw6Wait(20, "the admin's page") { adminPage.available && adminPage.hub != nil && !adminPage.busy }
+        sw6Wait(20, "control's page") { controlPage.available && controlPage.hub != nil && !controlPage.busy }
+        XCTAssertTrue(adminPage.hubCopy)
+        XCTAssertTrue(adminPage.editable, "Admin edits the hub's copy")
+        XCTAssertTrue(adminPage.pinSet, "the hub's PIN")
+        XCTAssertFalse(adminPage.copyLine.isEmpty)
+        XCTAssertTrue(controlPage.hubCopy)
+        XCTAssertFalse(controlPage.editable, "Control: read-only")
+        XCTAssertFalse(controlPage.readOnlyLine.isEmpty, "with the core's installer.hub_role row")
+        XCTAssertEqual(controlPage.draft.value("masterVolumeMaxDb"), -6)
+        adminPage.setLimit("masterVolumeMaxDb", -9)
+        sw6Wait(20, "the admin's change on control's page (limits.changed)") {
+            controlPage.draft.value("masterVolumeMaxDb") == -9
+        }
         control.close()
     }
 
