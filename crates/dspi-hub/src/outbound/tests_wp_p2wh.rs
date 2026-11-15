@@ -446,7 +446,7 @@ fn wp_p2wh_only_an_admin_reaches_the_family() {
     let hub = crate::Hub::start(crate::HubConfig {
         services: ServiceConfig {
             clock,
-            extra: Vec::new(),
+            ..ServiceConfig::default()
         },
         ..crate::HubConfig::in_process("P2WH roles")
     })
