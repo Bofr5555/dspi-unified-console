@@ -2280,7 +2280,10 @@ impl DspiCore {
         self.ensure_probed();
         // -- WP P1EFIX -- as a recall: no echo queued before the import lands after it
         self.settle_notifications();
-        match self.import_document(&doc, sel, &ticket) {
+        let began = dspi_transport::clock::Instant::now(); // -- WP ECHO1 --
+        let imported = self.import_document(&doc, sel, &ticket);
+        self.whole_image_ended(began); // -- WP ECHO1 --
+        match imported {
             Ok(reply) => reply.to_string(),
             Err(e) => device_refusal(&e),
         }

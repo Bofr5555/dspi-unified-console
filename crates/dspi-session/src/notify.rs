@@ -300,6 +300,24 @@ pub struct EchoFilter {
     since: Option<Instant>,
     /// When the outstanding SETs expire; `None` while one is in flight.
     expires: Option<Instant>,
+    // -- WP ECHO1 -- (review p1efix F2) the late own echo
+    /// The last whole-image write of ours: when it was sent and until when
+    /// an echo of a write sent before it may still arrive.
+    image: Option<ImageMark>,
+}
+
+// -- WP ECHO1 --
+/// The last whole-image write of ours (a bulk SET, a preset load, a factory
+/// reset), for [`EchoFilter::is_late_own_echo`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ImageMark {
+    /// When the image was sent.
+    sent: Instant,
+    /// `None` while the image is on the wire; then the end of
+    /// [`EchoFilter::LATE_ECHO`] after it finished.
+    until: Option<Instant>,
+    /// Our first single-parameter write sent after the image, if any.
+    write_after: Option<Instant>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -336,8 +354,98 @@ impl EchoFilter {
         self.bulk_source
     }
 
+    // -- WP ECHO1 --
+    /// How long after one of our whole-image writes finished the echo of a
+    /// write of ours sent before it may still arrive. Generous: over MIDI or
+    /// a hub such an echo can land during the image's own transfer, and the
+    /// bound only exists so that a `PARAM_CHANGED` that looks like ours but
+    /// is not (another app on the same USB host) is not dropped for ever.
+    pub const LATE_ECHO: Duration = Duration::from_secs(5);
+
+    // -- WP ECHO1 --
+    /// A whole image of ours is about to be sent: a bulk SET (also marked by
+    /// [`EchoFilter::bulk_write_started`]), a preset load or a factory reset.
+    /// From now on an own `PARAM_CHANGED` is the echo of a write sent before
+    /// the image until our next single-parameter write
+    /// ([`EchoFilter::param_write_sent`]).
+    pub fn whole_image_sent(&mut self, now: Instant) {
+        self.image = Some(ImageMark {
+            sent: now,
+            until: None,
+            write_after: None,
+        });
+    }
+
+    // -- WP ECHO1 --
+    /// The whole image's transfer ended, applied or not (a lost reply can
+    /// hide an applied image): late echoes are still expected for
+    /// [`EchoFilter::LATE_ECHO`].
+    pub fn whole_image_done(&mut self, now: Instant) {
+        if let Some(m) = self.image.as_mut()
+            && m.until.is_none()
+        {
+            m.until = now.checked_add(Self::LATE_ECHO);
+        }
+    }
+
+    // -- WP ECHO1 --
+    /// The whole operation around an image (a recall, an import, a preset
+    /// load), begun at `began`, ended at `now`: the writes it made after the
+    /// image (the settings outside it, the output configuration sent one by
+    /// one, the crossfeed pairs, the limits held) are part of it, not later
+    /// writes of the user's, so late echoes are expected from `now` on as
+    /// after the image itself. Nothing when no image was sent since `began`.
+    pub fn whole_image_ended(&mut self, now: Instant, began: Instant) {
+        if let Some(m) = self.image.as_mut()
+            && m.sent >= began
+        {
+            m.sent = now;
+            m.write_after = None;
+            m.until = now.checked_add(Self::LATE_ECHO);
+        }
+    }
+
+    // -- WP ECHO1 --
+    /// A write of ours that is not a whole image is about to be sent (at
+    /// `now`). An own echo received after it may be its echo, and is handled
+    /// as before.
+    pub fn param_write_sent(&mut self, now: Instant) {
+        if let Some(m) = self.image.as_mut()
+            && m.write_after.is_none()
+            && now >= m.sent
+        {
+            m.write_after = Some(now);
+        }
+    }
+
+    // -- WP ECHO1 --
+    /// Whether `note` is an own `PARAM_CHANGED` whose write was sent before
+    /// our last whole-image write: received before any single write of ours
+    /// sent after the image (so it cannot be that write's echo), and while
+    /// late echoes are still expected. Its value is older than the image's,
+    /// and it is not applied to the mirror. Foreign changes never are, nor
+    /// is anything once one of our own writes followed the image.
+    pub fn is_late_own_echo(
+        &self,
+        kind: dspi_transport::TransportKind,
+        session: Option<u16>,
+        note: &Notification,
+    ) -> bool {
+        let Event::ParamChanged { source, .. } = &note.event else {
+            return false;
+        };
+        let Some(m) = self.image else {
+            return false;
+        };
+        let received = note.received;
+        m.until.is_none_or(|until| received < until)
+            && m.write_after.is_none_or(|w| received < w)
+            && self.classify(kind, source.raw(), note.origin, session)
+    }
+
     /// Our `0xA1` (or the first `0xA3` chunk) is about to be sent.
     pub fn bulk_write_started(&mut self, now: Instant) {
+        self.whole_image_sent(now); // -- WP ECHO1 --
         self.state = BulkEcho::InFlight {
             since: now,
             claimed: false,
@@ -354,6 +462,7 @@ impl EchoFilter {
     /// failed write is no longer outstanding, whether or not it reached the
     /// device (if it did, the re-read it causes is safe).
     pub fn bulk_write_finished(&mut self, now: Instant, ok: bool) {
+        self.whole_image_done(now); // -- WP ECHO1 --
         self.state = match self.state {
             BulkEcho::InFlight {
                 since,
@@ -1644,5 +1753,201 @@ mod tests_wp_upw2 {
             assert!(!f.failed());
         }
         assert!(f.failed());
+    }
+}
+
+// -- WP ECHO1 --
+/// The late own echo (review p1efix F2): an own `PARAM_CHANGED` whose write
+/// was sent before our last whole image is recognised; foreign changes, and
+/// own echoes once a write of ours followed the image, are not.
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
+mod tests_wp_echo1 {
+    use super::*;
+    use dspi_transport::TransportKind as K;
+
+    const OURS: u16 = 7;
+
+    fn param(source: Source, origin: Option<u16>, received: Instant) -> Notification {
+        Notification {
+            seq: 0,
+            event: Event::ParamChanged {
+                offset: 4,
+                source,
+                bytes: vec![0; 4],
+            },
+            lost: false,
+            origin,
+            received,
+        }
+    }
+
+    /// Our own source on each link: (kind, own packet, foreign packet).
+    fn links(at: Instant) -> [(K, Notification, Notification); 3] {
+        [
+            (
+                K::Usb,
+                param(Source::HostSet, None, at),
+                param(Source::Gpio, None, at),
+            ),
+            (
+                K::Midi,
+                param(Source::Midi, None, at),
+                param(Source::HostSet, None, at),
+            ),
+            (
+                K::Link,
+                param(Source::HostSet, Some(OURS), at),
+                param(Source::HostSet, Some(9), at),
+            ),
+        ]
+    }
+
+    #[test]
+    fn wp_echo1_nothing_is_late_without_an_image() {
+        let f = EchoFilter::default();
+        for (kind, own, foreign) in links(Instant::now()) {
+            assert!(!f.is_late_own_echo(kind, Some(OURS), &own), "{kind:?}");
+            assert!(!f.is_late_own_echo(kind, Some(OURS), &foreign), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn wp_echo1_an_own_echo_after_the_image_and_before_our_next_write_is_late() {
+        let t0 = Instant::now();
+        for bulk in [false, true] {
+            let mut f = EchoFilter::default();
+            if bulk {
+                f.bulk_write_started(t0);
+                f.bulk_write_finished(t0 + Duration::from_millis(300), true);
+            } else {
+                f.whole_image_sent(t0);
+                f.whole_image_done(t0 + Duration::from_millis(300));
+            }
+            // During the image's transfer, after it, and before it was sent
+            // (queued, drained late) alike.
+            for at in [t0 + Duration::from_millis(100), t0 + Duration::from_secs(2)] {
+                for (kind, own, foreign) in links(at) {
+                    assert!(
+                        f.is_late_own_echo(kind, Some(OURS), &own),
+                        "{kind:?} {bulk}"
+                    );
+                    assert!(!f.is_late_own_echo(kind, Some(OURS), &foreign), "{kind:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn wp_echo1_a_write_after_the_image_ends_the_rule_from_its_send() {
+        let t0 = Instant::now();
+        let mut f = EchoFilter::default();
+        f.whole_image_sent(t0);
+        f.whole_image_done(t0 + Duration::from_millis(50));
+        let w = t0 + Duration::from_millis(200);
+        f.param_write_sent(w);
+        // A later write does not move the point.
+        f.param_write_sent(w + Duration::from_millis(100));
+        for (kind, own, _) in links(w - Duration::from_millis(1)) {
+            assert!(
+                f.is_late_own_echo(kind, Some(OURS), &own),
+                "before it: late"
+            );
+        }
+        for (kind, own, _) in links(w) {
+            assert!(
+                !f.is_late_own_echo(kind, Some(OURS), &own),
+                "{kind:?}: as before"
+            );
+        }
+        // A write sent before the image does not count.
+        let t1 = t0 + Duration::from_secs(1);
+        let mut f = EchoFilter::default();
+        f.whole_image_sent(t1);
+        f.param_write_sent(t0);
+        f.whole_image_done(t1);
+        let (kind, own, _) = &links(t1 + Duration::from_millis(10))[0];
+        assert!(f.is_late_own_echo(*kind, None, own));
+    }
+
+    #[test]
+    fn wp_echo1_a_new_image_re_marks_the_point() {
+        let t0 = Instant::now();
+        let mut f = EchoFilter::default();
+        f.whole_image_sent(t0);
+        f.whole_image_done(t0);
+        f.param_write_sent(t0 + Duration::from_millis(10));
+        let t1 = t0 + Duration::from_millis(500);
+        f.bulk_write_started(t1);
+        let (kind, own, _) = &links(t1 + Duration::from_millis(5))[0];
+        assert!(f.is_late_own_echo(*kind, None, own), "in flight: no expiry");
+        f.bulk_write_finished(t1 + Duration::from_millis(10), false);
+        assert!(
+            f.is_late_own_echo(*kind, None, own),
+            "a failed image may still have landed"
+        );
+    }
+
+    #[test]
+    fn wp_echo1_late_echoes_are_expected_only_for_a_while_after_the_image() {
+        let t0 = Instant::now();
+        let mut f = EchoFilter::default();
+        f.whole_image_sent(t0);
+        let done = t0 + Duration::from_millis(100);
+        f.whole_image_done(done);
+        let edge = done + EchoFilter::LATE_ECHO;
+        for (kind, own, _) in links(edge - Duration::from_millis(1)) {
+            assert!(f.is_late_own_echo(kind, Some(OURS), &own));
+        }
+        for (kind, own, _) in links(edge) {
+            assert!(!f.is_late_own_echo(kind, Some(OURS), &own), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn wp_echo1_the_operations_own_trailing_writes_do_not_end_the_rule() {
+        let t0 = Instant::now();
+        let mut f = EchoFilter::default();
+        let began = t0;
+        f.whole_image_sent(t0 + Duration::from_millis(10));
+        f.whole_image_done(t0 + Duration::from_millis(20));
+        f.param_write_sent(t0 + Duration::from_millis(30)); // the crossfeed pairs, say
+        let end = t0 + Duration::from_millis(40);
+        f.whole_image_ended(end, began);
+        let (kind, own, _) = &links(t0 + Duration::from_millis(50))[0];
+        assert!(f.is_late_own_echo(*kind, None, own), "still late");
+        let (kind, own, _) = &links(end + EchoFilter::LATE_ECHO)[0];
+        assert!(
+            !f.is_late_own_echo(*kind, None, own),
+            "the window runs from the end"
+        );
+        // An operation that sent no image leaves an older mark alone.
+        let mut f = EchoFilter::default();
+        f.whole_image_sent(t0);
+        f.whole_image_done(t0);
+        f.param_write_sent(t0 + Duration::from_millis(5));
+        f.whole_image_ended(end, t0 + Duration::from_millis(1));
+        let (kind, own, _) = &links(t0 + Duration::from_millis(50))[0];
+        assert!(
+            !f.is_late_own_echo(*kind, None, own),
+            "the user's write still counts"
+        );
+    }
+
+    #[test]
+    fn wp_echo1_only_param_changes_are_late_echoes() {
+        let t0 = Instant::now();
+        let mut f = EchoFilter::default();
+        f.whole_image_sent(t0);
+        let inval = Notification {
+            seq: 0,
+            event: Event::BulkInvalidated {
+                source: Source::HostSet,
+            },
+            lost: false,
+            origin: None,
+            received: t0,
+        };
+        assert!(!f.is_late_own_echo(K::Usb, None, &inval));
     }
 }

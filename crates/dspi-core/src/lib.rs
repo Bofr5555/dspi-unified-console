@@ -778,7 +778,13 @@ impl Inner {
             return Err(DspiError::ReadOnly);
         }
         crate::limits::lock_check(self)?; // -- WP P1LK -- the installer's lock
-        Ok(Writable(self.conn()?))
+        let conn = self.conn()?;
+        // -- WP ECHO1 -- every write goes out through a Writable: from here an
+        // own echo may be this write's, not one older than the last image
+        // (a whole image re-marks the point after this, see `EchoFilter`)
+        conn.echo
+            .param_write_sent(dspi_transport::clock::Instant::now());
+        Ok(Writable(conn))
     }
 }
 

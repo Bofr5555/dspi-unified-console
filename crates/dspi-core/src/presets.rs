@@ -207,13 +207,19 @@ impl DspiCore {
     pub fn load_preset(&self, slot: u8) -> Result<()> {
         let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         slot_in_range(slot)?;
+        let began = Instant::now(); // -- WP ECHO1 --
         let lines = self.with_device_lock(LOAD_REASON, |inner| {
             let before = inner.state.clone(); // -- WP P0M --
             let confirmed = {
                 let mut w = inner.writable_conn()?;
                 w.conn().fresh_image = false;
-                status(w.set_as_read(op::REQ_PRESET_LOAD, u16::from(slot))?)?;
-                wait_for(w.conn(), |c| names_active(c, slot))?
+                // -- WP ECHO1 -- a whole image: an own echo of a write sent
+                // before it is older than the preset
+                w.conn().echo.whole_image_sent(Instant::now());
+                let sent = status(w.set_as_read(op::REQ_PRESET_LOAD, u16::from(slot))?)
+                    .and_then(|()| wait_for(w.conn(), |c| names_active(c, slot)));
+                w.conn().echo.whole_image_done(Instant::now());
+                sent?
             };
             // -- WP P0W -- the history before a load is gone with the state
             journal(inner, "preset.load", &[slot], Value::Trigger);
@@ -240,6 +246,7 @@ impl DspiCore {
         // -- WP P1LM -- the slot's stored values, read back, held to the
         // limits profile (OD-P1j); reported in `limits_status`
         self.limits_after_load();
+        self.whole_image_ended(began); // -- WP ECHO1 --
         Ok(())
     }
 
@@ -596,6 +603,7 @@ impl DspiCore {
     pub(crate) fn factory_reset_with(&self, token: Option<&str>) -> Result<()> {
         let ticket = self.confirm_gate(ConfirmOp::FactoryReset, token)?;
         let lock = self.acquire_device_lock(RESET_REASON)?;
+        let began = Instant::now(); // -- WP ECHO1 --
         let sent = {
             let mut guard = self.lock();
             if lock.is_current(&guard) {
@@ -604,7 +612,13 @@ impl DspiCore {
                     .and_then(|()| guard.writable_conn())
                     .and_then(|mut w| {
                         w.conn().fresh_image = false;
-                        status(w.set_as_read(op::REQ_FACTORY_RESET, 0)?)
+                        // -- WP ECHO1 -- a whole image, as a preset load; its
+                        // late echoes are expected until the re-read below
+                        // and LATE_ECHO after the reply
+                        w.conn().echo.whole_image_sent(Instant::now());
+                        let sent = w.set_as_read(op::REQ_FACTORY_RESET, 0);
+                        w.conn().echo.whole_image_done(Instant::now());
+                        status(sent?)
                     })
                     // -- WP P0W -- the history before a reset is gone with the state
                     .map(|()| journal(&mut guard, "dev.reset", &[], Value::Trigger))
@@ -619,6 +633,7 @@ impl DspiCore {
             self.capture_baseline();
             Ok(())
         });
+        self.whole_image_ended(began); // -- WP ECHO1 --
         self.release_device_lock(lock);
         result
     }
