@@ -1540,6 +1540,45 @@ uint32_t dspi_snapshot_list_merged(struct FfiCore *core,
 const char *serial,
 char *buf,
 uint32_t len);
+uint32_t dspi_hub_alarms(struct FfiCore *core,
+const char *serial,
+const char *state,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_alarm_ack(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_hub_alarm_rules_get(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_alarm_rules_set(struct FfiCore *core,
+const char *rules_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_alarm_notice(const char *alarm_json, const char *time, char *buf, uint32_t len);
+uint32_t dspi_hub_schedules(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_schedule_set(struct FfiCore *core,
+const char *rule_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_schedule_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_hub_schedule_run_now(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_hub_outbound_get(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_outbound_set(struct FfiCore *core,
+const char *targets_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_outbound_test(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_hub_mqtt_get(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_mqtt_set(struct FfiCore *core,
+const char *settings_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_mqtt_status(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_api_keys(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_api_key_mint(struct FfiCore *core,
+const char *name,
+const char *role,
+bool plaintext_ok,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_api_key_revoke(struct FfiCore *core, uint32_t cid, char *buf, uint32_t len);
 float dspi_quantize_master_volume(float db);
 uint16_t dspi_vreg_code_mv(uint8_t code, uint8_t platform_id);
 uint32_t dspi_vreg_code_label(uint8_t code, uint8_t platform_id, char *buf, uint32_t len);

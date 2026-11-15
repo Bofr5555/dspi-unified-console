@@ -195,6 +195,17 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 assert!(has_row(family), "{family}");
                 continue;
             }
+            // -- WP P2CC2 -- the hub's alarms: no error makes these keys,
+            // `hub_alarm_notice` answers them by the alarm's code
+            if family == crate::hub_server::NOTICE_ALARM_FAMILY {
+                assert!(
+                    crate::hub_server::ALARM_CODES.contains(&code)
+                        || n.key == crate::hub_server::NOTICE_ALARM_UNKNOWN,
+                    "{}: not a code hub_server names",
+                    n.key
+                );
+                continue;
+            }
             let e = match family {
                 "dlink" => dlink(code),
                 "autoeq" => DspiError::AutoEq {
