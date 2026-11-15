@@ -548,6 +548,9 @@ export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMet
   hubRole: { params: undefined; result: { role: string } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
+  // -- WP WB6G -- the input sources' names (crates/dspi-wasm/src/inputs.rs), the core's cache, no traffic
+  /** `names[s]`: source `s`'s name ("" unnamed); `supported` false on firmware without names. Renamed by `write` of `in.name`. */
+  inputSourceNames: { params: undefined; result: { supported: boolean; names: string[] } };
 }
 
 // -- WP P1WB1 -- documents, snapshots, A/B, safe apply, offline files, limits status, notices
