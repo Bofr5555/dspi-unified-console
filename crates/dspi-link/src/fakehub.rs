@@ -371,7 +371,19 @@ struct State {
     // -- WP P0M --
     /// `GET_STATUS` 9's block instead of [`STATUS_WVALUE9`] ([`FakeHub::set_status`]).
     status: Option<Vec<u8>>,
+    // -- WP P2CC1 --
+    /// Answers for the hub's own JSON families ([`FakeHub::set_json_responder`]).
+    responder: Option<JsonResponder>,
+    /// Every request type a session sent past authentication, in order
+    /// ([`FakeHub::json_requests`]); the oldest go past 4096.
+    json_log: Vec<Value>,
 }
+
+// -- WP P2CC1 --
+/// An answer for a request this fake does not know: given the whole request,
+/// `Some` reply fields (an `ok` with them, or an `err` when they hold `code`),
+/// `None` for `unknown_type`.
+pub type JsonResponder = Arc<dyn Fn(&Value) -> Option<Value> + Send + Sync>;
 
 /// A running fake hub; stops when dropped.
 pub struct FakeHub {
@@ -867,7 +879,9 @@ impl FakeHub {
             pings_sent: 0,
             pongs_received: 0,
             tokens_seen: Vec::new(),
-            status: None, // -- WP P0M --
+            status: None,         // -- WP P0M --
+            responder: None,      // -- WP P2CC1 --
+            json_log: Vec::new(), // -- WP P2CC1 --
             fw_seq: 0,
             next_session: 12,
             sessions: HashMap::new(),
@@ -1126,6 +1140,27 @@ impl FakeHub {
     /// Every token this hub was offered, in order.
     pub fn tokens_seen(&self) -> Vec<String> {
         lock(&self.state).tokens_seen.clone()
+    }
+
+    // -- WP P2CC1 --
+    /// Answer request types this fake does not know (the hub's families past
+    /// DSPi Link: `inventory.*`, `snapshot.*`, ...) with `f`; `None` again
+    /// answers `unknown_type`.
+    pub fn set_json_responder(&self, f: Option<JsonResponder>) {
+        lock(&self.state).responder = f;
+    }
+
+    // -- WP P2CC1 --
+    /// Every request an authenticated session sent, whole, in order (the last
+    /// 4096).
+    pub fn json_requests(&self) -> Vec<Value> {
+        lock(&self.state).json_log.clone()
+    }
+
+    // -- WP P2CC1 --
+    /// Send `event` (a whole message with its `t`) to every authenticated session.
+    pub fn send_event(&self, event: Value) {
+        lock(&self.state).broadcast(event.to_string());
     }
 
     pub fn stop(&self) {
@@ -1488,6 +1523,13 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
     let id = v["id"].clone();
     let mut s = lock(state);
     let authed = s.sessions.get(&sid).is_some_and(|r| r.authed);
+    // -- WP P2CC1 -- every request past authentication, for "nothing was sent"
+    if authed && !matches!(t, "hello" | "auth.pair" | "auth.token") {
+        if s.json_log.len() >= 4096 {
+            s.json_log.remove(0);
+        }
+        s.json_log.push(v.clone());
+    }
     match t {
         "hello" => {
             let mut h = json!({
@@ -1678,7 +1720,16 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
             }
             vec![ok(&id, json!({}))]
         }
-        _ => vec![err(&id, "unknown_type", t)],
+        // -- WP P2CC1 --
+        _ => match s.responder.clone().and_then(|f| f(&v)) {
+            Some(Value::Object(mut fields)) => {
+                fields.insert("id".into(), id.clone());
+                let code = fields.get("code").cloned();
+                fields.insert("t".into(), Value::from(if code.is_some() { "err" } else { "ok" }));
+                vec![Value::Object(fields).to_string()]
+            }
+            _ => vec![err(&id, "unknown_type", t)],
+        },
     }
 }
 

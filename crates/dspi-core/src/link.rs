@@ -222,6 +222,13 @@ enum Msg {
         epoch: u64,
         event: Box<crate::hub_admin::HubAdminEvent>,
     },
+    // -- WP P2CC1 --
+    /// The hub's `event.added`, `inventory.changed` or `snapshot.changed` on
+    /// the client with this epoch.
+    HubServer {
+        epoch: u64,
+        event: Box<crate::hub_server::HubServerEvent>,
+    },
 }
 
 /// The client's events, as messages. Safe on any thread, under any lock, and
@@ -252,6 +259,12 @@ impl LinkEvents for Forward {
     fn hub_event(&self, epoch: u64, t: &str, body: &serde_json::Value) {
         if let Some(event) = crate::hub_admin::HubAdminEvent::from_hub(t, body) {
             let _ = self.tx.send(Msg::Hub {
+                epoch,
+                event: Box::new(event),
+            });
+        // -- WP P2CC1 --
+        } else if let Some(event) = crate::hub_server::HubServerEvent::from_hub(t, body) {
+            let _ = self.tx.send(Msg::HubServer {
                 epoch,
                 event: Box::new(event),
             });
@@ -1803,6 +1816,17 @@ fn on_msg(core: &DspiCore, id: u64, msg: Msg) {
                 core.hub_admin_event(*event);
             }
         }
+        // -- WP P2CC1 --
+        Msg::HubServer { epoch, event } => {
+            let current = core
+                .lock()
+                .link
+                .as_ref()
+                .is_some_and(|s| s.id == id && s.instance == epoch);
+            if current {
+                core.hub_server_event(*event);
+            }
+        }
     }
 }
 
@@ -2296,6 +2320,22 @@ impl DspiCore {
             has_limits: client.is_some_and(|c| c.hello().has_cap("limits")),
             live: client.is_some(),
         })
+    }
+}
+
+// -- WP P2CC1 --
+impl DspiCore {
+    /// The caps of this console's DSPi Link hub: `None` with no session,
+    /// `Some(None)` while its socket is down. No I/O.
+    pub(crate) fn link_hub_caps(&self) -> Option<Option<Vec<String>>> {
+        let inner = self.lock();
+        let s = inner.link.as_ref()?;
+        Some(
+            s.client
+                .as_ref()
+                .filter(|c| !c.is_closed())
+                .map(|c| c.hello().caps.clone()),
+        )
     }
 }
 

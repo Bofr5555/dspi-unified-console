@@ -143,6 +143,10 @@ pub(crate) fn check_hub_request(inner: &mut Inner, t: &str) -> Result<()> {
     if !inner.client_read_only.on || HUB_READS.contains(&t) {
         return Ok(());
     }
+    // -- WP P2CC1 -- the reads of the hub's own families
+    if crate::hub_server::HUB_SERVER_READS.contains(&t) {
+        return Ok(());
+    }
     refuse(inner)
 }
 
