@@ -30,6 +30,22 @@ export interface Scene {
   /** Dots large enough for a finger. */
   coarse: boolean;
   theme: { bg: string; grid: string; zero: string; text: string; ring: string };
+  // -- WP WB6I -- the Graphing settings; without them the graph draws as before
+  look?: GraphLook;
+}
+
+// -- WP WB6I --
+/** What the Graphing settings change in the picture (`screens/settings/model.ts`). */
+export interface GraphLook {
+  freqGrid: boolean;
+  freqLabels: boolean;
+  dbGrid: boolean;
+  dbLabels: boolean;
+  /** The grid's opacity as a multiple of the theme's (1 is the theme's own). */
+  gridAlpha: number;
+  /** The edited channel's line, px. */
+  lineWidth: number;
+  glow: boolean;
 }
 
 const FREQ_LINES = [20, 30, 40, 50, 60, 70, 80, 90, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 20000];
@@ -46,10 +62,12 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
   ctx.fillRect(0, 0, g.width, g.height);
 
   // Grid: frequency lines, dB lines, labels.
+  const look = s.look; // -- WP WB6I --
   ctx.lineWidth = 1;
   ctx.strokeStyle = theme.grid;
+  ctx.globalAlpha = Math.min(1, Math.max(0, look?.gridAlpha ?? 1)); // -- WP WB6I --
   ctx.beginPath();
-  for (const f of FREQ_LINES) {
+  for (const f of look && !look.freqGrid ? [] : FREQ_LINES) {
     const px = Math.round(xOf(g, f)) + 0.5;
     ctx.moveTo(px, 0);
     ctx.lineTo(px, g.height);
@@ -57,12 +75,13 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
   const span = g.dbTop - g.dbBottom;
   const step = span <= 30 ? 5 : span <= 60 ? 10 : 20;
   for (let db = Math.ceil(g.dbBottom / step) * step; db <= g.dbTop; db += step) {
-    if (db === 0) continue;
+    if (db === 0 || (look && !look.dbGrid)) continue; // -- WP WB6I --
     const py = Math.round(yOf(g, db)) + 0.5;
     ctx.moveTo(0, py);
     ctx.lineTo(g.width, py);
   }
   ctx.stroke();
+  ctx.globalAlpha = 1; // -- WP WB6I --
   ctx.strokeStyle = theme.zero;
   ctx.beginPath();
   const zero = Math.round(yOf(g, 0)) + 0.5;
@@ -74,7 +93,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
   ctx.font = "10px system-ui, sans-serif";
   ctx.textBaseline = "bottom";
   let lastRight = -Infinity;
-  for (const f of FREQ_LABELS) {
+  for (const f of look && !look.freqLabels ? [] : FREQ_LABELS.filter((f) => f >= g.minFreq && f <= g.maxFreq)) { // -- WP WB6I --
     const text = f >= 1000 ? `${f / 1000}k` : String(f);
     const w = ctx.measureText(text).width;
     const px = Math.min(Math.max(xOf(g, f) - w / 2, 2), g.width - w - 2);
@@ -85,7 +104,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
   ctx.textBaseline = "middle";
   for (let db = Math.ceil(g.dbBottom / step) * step; db <= g.dbTop; db += step) {
     const py = yOf(g, db);
-    if (py < 8 || py > g.height - 16) continue;
+    if (py < 8 || py > g.height - 16 || (look && !look.dbLabels)) continue; // -- WP WB6I --
     ctx.fillText(db > 0 ? `+${db}` : String(db), 3, py);
   }
 
@@ -128,10 +147,15 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
 
   // Its combined curve.
   if (s.main?.curve) {
-    ctx.lineWidth = 2;
+    ctx.lineWidth = look?.lineWidth ?? 2; // -- WP WB6I --
     ctx.strokeStyle = s.main.colour;
+    if (look?.glow) {
+      ctx.shadowColor = s.main.colour;
+      ctx.shadowBlur = 8;
+    }
     path(s.main.curve, s.main.offset);
     ctx.stroke();
+    ctx.shadowBlur = 0; // -- WP WB6I --
   }
 
   // The dots, the selected ones on top.

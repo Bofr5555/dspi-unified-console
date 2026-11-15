@@ -1786,6 +1786,14 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1820,6 +1828,10 @@ fun uniffi_dspi_core_checksum_func_bootloader_counts(
 fun uniffi_dspi_core_checksum_func_bootloader_drives(
 ): Short
 fun uniffi_dspi_core_checksum_func_bulk_image_extras(
+): Short
+fun uniffi_dspi_core_checksum_func_channel_clip_from_json(
+): Short
+fun uniffi_dspi_core_checksum_func_channel_clip_to_json(
 ): Short
 fun uniffi_dspi_core_checksum_func_compute_magnitude_curve(
 ): Short
@@ -2000,6 +2012,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_config_preview(
 fun uniffi_dspi_core_checksum_method_dspicore_confirm_token(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_connection_generation(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_copy_channel(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_copy_preset_confirmed(
 ): Short
@@ -2314,6 +2328,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_output_cards(
 fun uniffi_dspi_core_checksum_method_dspicore_output_labels(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_paste_channel(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_pin_check(
 ): Short
@@ -2818,6 +2834,8 @@ fun uniffi_dspi_core_fn_method_dspicore_confirm_token(`ptr`: Pointer,`op`: RustB
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_connection_generation(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+fun uniffi_dspi_core_fn_method_dspicore_copy_channel(`ptr`: Pointer,`ch`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_copy_preset_confirmed(`ptr`: Pointer,`source`: Byte,`dest`: Byte,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_core1_conflict_reason(`ptr`: Pointer,`output`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -3132,6 +3150,8 @@ fun uniffi_dspi_core_fn_method_dspicore_output_labels(`ptr`: Pointer,uniffi_out_
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(`ptr`: Pointer,`thresholdDb`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_paste_channel(`ptr`: Pointer,`clip`: RustBuffer.ByValue,`ch`: Byte,`options`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_pin_check(`ptr`: Pointer,`function`: RustBuffer.ByValue,`pin`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_pin_holder(`ptr`: Pointer,`pin`: Byte,`excluding`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3522,6 +3542,10 @@ fun uniffi_dspi_core_fn_func_bootloader_drives(uniffi_out_err: UniffiRustCallSta
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_bulk_image_extras(`bulkRaw`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_channel_clip_from_json(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_channel_clip_to_json(`clip`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_compute_magnitude_curve(`filters`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_compute_phase_curve(`filters`: RustBuffer.ByValue,`unwrap`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -3760,6 +3784,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_bulk_image_extras() != 22405.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_channel_clip_from_json() != 38710.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_channel_clip_to_json() != 1570.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_compute_magnitude_curve() != 49830.toShort()) {
@@ -4030,6 +4060,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_connection_generation() != 50111.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_copy_channel() != 34717.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_copy_preset_confirmed() != 9061.toShort()) {
@@ -4501,6 +4534,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter() != 24245.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_paste_channel() != 43676.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_pin_check() != 43599.toShort()) {
@@ -7038,6 +7074,17 @@ public interface DspiCoreInterface {
     fun `connectionGeneration`(): kotlin.ULong
     
     /**
+     * Copy wire channel `ch` (inputs, then outputs) into a clip, from the
+     * mirror: nothing is sent. An input gives its PEQ bank; an output its
+     * PEQ and crossover banks, gain, delay and mute.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device (or document)
+     * open;
+     * [`DspiError::InvalidArgument`] for a channel out of range.
+     */
+    fun `copyChannel`(`ch`: kotlin.UByte): ChannelClip
+    
+    /**
      * Copy the live state to `dest` and save it to `source` again, so
      * `source` stays the active preset (the Mac console's "Copy to"). Each
      * save waits for the device; one device lock covers both.
@@ -8763,6 +8810,30 @@ public interface DspiCoreInterface {
      * firmware without the output limiter, and for a NaN threshold.
      */
     fun `outputsWithoutLimiter`(`thresholdDb`: kotlin.Float): kotlin.ByteArray
+    
+    /**
+     * Paste `clip` onto wire channel `ch`, by the Console's rules (module
+     * docs): the PEQ bank (onto `options.mirror` too), and from an output
+     * to an output the crossover bank, gain, delay (clamped to this
+     * device's line) and mute. Every write goes through the typed setter,
+     * in one undo group labelled [`PASTE_LABEL`]: one undo step puts every
+     * value back.
+     *
+     * Everything is checked before the first write, and a refusal writes
+     * nothing: the clip's version, the channels, the values, the
+     * connection (no device, the client read-only mode, a read-only wire
+     * format, the installer's lock) and a limits profile over the whole
+     * paste. A transfer failure partway stops the paste; what was written
+     * stays, as one undo step.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another clip version, a
+     * channel or partner out of range (or the partner the channel itself),
+     * a non-finite value or a crossover slot of a PEQ type; the refusals
+     * of every setter ([`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::InstallerLock`], [`DspiError::LimitExceeded`]) and its
+     * transfer errors.
+     */
+    fun `pasteChannel`(`clip`: ChannelClip, `ch`: kotlin.UByte, `options`: ChannelPasteOptions)
     
     /**
      * Whether `function` may move to `pin`: `None` when it may, else why
@@ -11472,6 +11543,28 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_connection_generation(
         it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Copy wire channel `ch` (inputs, then outputs) into a clip, from the
+     * mirror: nothing is sent. An input gives its PEQ bank; an output its
+     * PEQ and crossover banks, gain, delay and mute.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device (or document)
+     * open;
+     * [`DspiError::InvalidArgument`] for a channel out of range.
+     */
+    @Throws(DspiException::class)override fun `copyChannel`(`ch`: kotlin.UByte): ChannelClip {
+            return FfiConverterTypeChannelClip.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_copy_channel(
+        it, FfiConverterUByte.lower(`ch`),_status)
 }
     }
     )
@@ -14832,6 +14925,40 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     }
     )
     }
+    
+
+    
+    /**
+     * Paste `clip` onto wire channel `ch`, by the Console's rules (module
+     * docs): the PEQ bank (onto `options.mirror` too), and from an output
+     * to an output the crossover bank, gain, delay (clamped to this
+     * device's line) and mute. Every write goes through the typed setter,
+     * in one undo group labelled [`PASTE_LABEL`]: one undo step puts every
+     * value back.
+     *
+     * Everything is checked before the first write, and a refusal writes
+     * nothing: the clip's version, the channels, the values, the
+     * connection (no device, the client read-only mode, a read-only wire
+     * format, the installer's lock) and a limits profile over the whole
+     * paste. A transfer failure partway stops the paste; what was written
+     * stays, as one undo step.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another clip version, a
+     * channel or partner out of range (or the partner the channel itself),
+     * a non-finite value or a crossover slot of a PEQ type; the refusals
+     * of every setter ([`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::InstallerLock`], [`DspiError::LimitExceeded`]) and its
+     * transfer errors.
+     */
+    @Throws(DspiException::class)override fun `pasteChannel`(`clip`: ChannelClip, `ch`: kotlin.UByte, `options`: ChannelPasteOptions)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_paste_channel(
+        it, FfiConverterTypeChannelClip.lower(`clip`),FfiConverterUByte.lower(`ch`),FfiConverterTypeChannelPasteOptions.lower(`options`),_status)
+}
+    }
+    
     
 
     
@@ -24005,6 +24132,162 @@ public object FfiConverterTypeBulkImageExtras: FfiConverterRustBuffer<BulkImageE
             FfiConverterSequenceBoolean.write(value.`i2sRxPinExtPresent`, buf)
             FfiConverterSequenceBoolean.write(value.`spdifRxPinExtPresent`, buf)
             FfiConverterBoolean.write(value.`adatOutPinPresent`, buf)
+    }
+}
+
+
+
+/**
+ * What [`DspiCore::copy_channel`] took from a channel. A value: a client
+ * keeps it as it likes, as a record or as its JSON document
+ * ([`channel_clip_to_json`]).
+ */
+data class ChannelClip (
+    /**
+     * The clip format ([`CHANNEL_CLIP_VERSION`]); a paste refuses another.
+     */
+    var `version`: kotlin.UInt, 
+    /**
+     * The wire channel it was copied from (inputs, then outputs).
+     */
+    var `sourceChannel`: kotlin.UByte, 
+    /**
+     * The source's name on the device ("" when unnamed); a client may put
+     * the name it shows here, for its "Copied ..." line.
+     */
+    var `sourceName`: kotlin.String, 
+    /**
+     * The PEQ bank, band 0 first.
+     */
+    var `filters`: List<FilterParams>, 
+    /**
+     * The crossover bank, slot 0 first: present when copied from an
+     * output, absent from an input.
+     */
+    var `crossover`: List<FilterParams>?, 
+    /**
+     * Gain, delay and mute: present when copied from an output.
+     */
+    var `output`: ChannelClipOutput?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChannelClip: FfiConverterRustBuffer<ChannelClip> {
+    override fun read(buf: ByteBuffer): ChannelClip {
+        return ChannelClip(
+            FfiConverterUInt.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeFilterParams.read(buf),
+            FfiConverterOptionalSequenceTypeFilterParams.read(buf),
+            FfiConverterOptionalTypeChannelClipOutput.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ChannelClip) = (
+            FfiConverterUInt.allocationSize(value.`version`) +
+            FfiConverterUByte.allocationSize(value.`sourceChannel`) +
+            FfiConverterString.allocationSize(value.`sourceName`) +
+            FfiConverterSequenceTypeFilterParams.allocationSize(value.`filters`) +
+            FfiConverterOptionalSequenceTypeFilterParams.allocationSize(value.`crossover`) +
+            FfiConverterOptionalTypeChannelClipOutput.allocationSize(value.`output`)
+    )
+
+    override fun write(value: ChannelClip, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`version`, buf)
+            FfiConverterUByte.write(value.`sourceChannel`, buf)
+            FfiConverterString.write(value.`sourceName`, buf)
+            FfiConverterSequenceTypeFilterParams.write(value.`filters`, buf)
+            FfiConverterOptionalSequenceTypeFilterParams.write(value.`crossover`, buf)
+            FfiConverterOptionalTypeChannelClipOutput.write(value.`output`, buf)
+    }
+}
+
+
+
+/**
+ * An output's strip as a clip carries it.
+ */
+data class ChannelClipOutput (
+    /**
+     * Output gain in dB.
+     */
+    var `gainDb`: kotlin.Float, 
+    /**
+     * Output delay in ms.
+     */
+    var `delayMs`: kotlin.Float, 
+    /**
+     * Whether the output is muted.
+     */
+    var `muted`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChannelClipOutput: FfiConverterRustBuffer<ChannelClipOutput> {
+    override fun read(buf: ByteBuffer): ChannelClipOutput {
+        return ChannelClipOutput(
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ChannelClipOutput) = (
+            FfiConverterFloat.allocationSize(value.`gainDb`) +
+            FfiConverterFloat.allocationSize(value.`delayMs`) +
+            FfiConverterBoolean.allocationSize(value.`muted`)
+    )
+
+    override fun write(value: ChannelClipOutput, buf: ByteBuffer) {
+            FfiConverterFloat.write(value.`gainDb`, buf)
+            FfiConverterFloat.write(value.`delayMs`, buf)
+            FfiConverterBoolean.write(value.`muted`, buf)
+    }
+}
+
+
+
+/**
+ * How [`DspiCore::paste_channel`] pastes.
+ */
+data class ChannelPasteOptions (
+    /**
+     * The destination's linked partner (a wire channel), when the client
+     * has the pair linked: its PEQ bank gets the same bands.
+     */
+    var `mirror`: kotlin.UByte?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChannelPasteOptions: FfiConverterRustBuffer<ChannelPasteOptions> {
+    override fun read(buf: ByteBuffer): ChannelPasteOptions {
+        return ChannelPasteOptions(
+            FfiConverterOptionalUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ChannelPasteOptions) = (
+            FfiConverterOptionalUByte.allocationSize(value.`mirror`)
+    )
+
+    override fun write(value: ChannelPasteOptions, buf: ByteBuffer) {
+            FfiConverterOptionalUByte.write(value.`mirror`, buf)
     }
 }
 
@@ -33803,6 +34086,38 @@ public object FfiConverterOptionalTypeAlinkInfo: FfiConverterRustBuffer<AlinkInf
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeChannelClipOutput: FfiConverterRustBuffer<ChannelClipOutput?> {
+    override fun read(buf: ByteBuffer): ChannelClipOutput? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeChannelClipOutput.read(buf)
+    }
+
+    override fun allocationSize(value: ChannelClipOutput?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeChannelClipOutput.allocationSize(value)
+        }
+    }
+
+    override fun write(value: ChannelClipOutput?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeChannelClipOutput.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeCoreVregInfo: FfiConverterRustBuffer<CoreVregInfo?> {
     override fun read(buf: ByteBuffer): CoreVregInfo? {
         if (buf.get().toInt() == 0) {
@@ -34113,6 +34428,38 @@ public object FfiConverterOptionalTypeParamValue: FfiConverterRustBuffer<ParamVa
         } else {
             buf.put(1)
             FfiConverterTypeParamValue.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalSequenceTypeFilterParams: FfiConverterRustBuffer<List<FilterParams>?> {
+    override fun read(buf: ByteBuffer): List<FilterParams>? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterSequenceTypeFilterParams.read(buf)
+    }
+
+    override fun allocationSize(value: List<FilterParams>?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterSequenceTypeFilterParams.allocationSize(value)
+        }
+    }
+
+    override fun write(value: List<FilterParams>?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterSequenceTypeFilterParams.write(value, buf)
         }
     }
 }
@@ -35835,6 +36182,41 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_bulk_image_extras(
         FfiConverterByteArray.lower(`bulkRaw`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A clip read back from its document ([`channel_clip_to_json`]).
+         *
+         * Errors: [`DspiError::InvalidArgument`] for text that is not a channel
+         * clip (too long, not JSON, another `kind`, a missing or mistyped field)
+         * and for a clip of another version, older or newer, named in the message.
+         */
+    @Throws(DspiException::class) fun `channelClipFromJson`(`text`: kotlin.String): ChannelClip {
+            return FfiConverterTypeChannelClip.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_channel_clip_from_json(
+        FfiConverterString.lower(`text`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A clip as a JSON document to keep: `{kind: "dspi.channelClip", version,
+         * sourceChannel, sourceName, filters: [{filterType, bypass, freq, q, gain,
+         * qp}], crossover: [...] | null, output: {gainDb, delayMs, muted} | null}`.
+         *
+         * Errors: [`DspiError::InvalidArgument`] for a clip of another version or
+         * with a non-finite value (JSON has no NaN).
+         */
+    @Throws(DspiException::class) fun `channelClipToJson`(`clip`: ChannelClip): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_channel_clip_to_json(
+        FfiConverterTypeChannelClip.lower(`clip`),_status)
 }
     )
     }

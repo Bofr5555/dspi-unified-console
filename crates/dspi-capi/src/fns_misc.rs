@@ -80,6 +80,8 @@ mod hub_admin;
 mod sws_a;
 // -- WP CG-SWS-b -- the pin map
 mod pins;
+// -- WP CLIP1 -- the channel clipboard
+mod clipboard;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

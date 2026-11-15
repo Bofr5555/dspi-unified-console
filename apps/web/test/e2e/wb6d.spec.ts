@@ -123,7 +123,7 @@ test("WB6d: a change made on another screen shows in the chain (limiter, mute)",
   expect(errors).toEqual([]);
 });
 
-test("WB6d: a block opens its screen: EQ at the channel and tab, the Matrix, the Main window", async ({ page }) => {
+test("WB6d: a block opens its screen: EQ at the channel and tab, the Matrix, the Effects, the Main window", async ({ page }) => {
   const errors = errorsOf(page);
   const { session, chain } = await openChain(page);
   const s = await core(page);
@@ -147,6 +147,16 @@ test("WB6d: a block opens its screen: EQ at the channel and tab, the Matrix, the
   await outRow(chain, o1).getByRole("button", { name: /^Routing of / }).click();
   await expect(session.getByRole("tab", { name: "Matrix", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(session.getByRole("region", { name: "Matrix Mixer" })).toBeVisible();
+  // -- fixup b4fix N3 -- a device-wide effect and an output's effect block: the Effects screen at that effect.
+  for (const list of [chain.getByRole("list", { name: "Effects" }), chain.getByRole("list", { name: /^Processing of / })]) {
+    await session.getByRole("tab", { name: "System", exact: true }).click();
+    const fxBlock = list.locator("button[data-block]:not([data-block=eq]):not([data-block=xo]):not([data-block=limiter])").first();
+    if (!(await fxBlock.count())) continue;
+    const id = (await fxBlock.getAttribute("data-block"))!;
+    await fxBlock.click();
+    await expect(session.getByRole("tab", { name: "Effects", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(session.locator(`.fx-pick[data-effect="${id}"]`)).toHaveAttribute("aria-selected", "true");
+  }
   // The volume: the Main window.
   await session.getByRole("tab", { name: "System", exact: true }).click();
   await chain.getByRole("button", { name: /^Volume / }).click();

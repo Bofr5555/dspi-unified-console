@@ -6433,6 +6433,31 @@ uint32_t dspi_pin_holder(struct FfiCore *core,
                          uint32_t len);
 
 /**
+ * Copy wire channel `ch` (inputs, then outputs) from the mirror, nothing
+ * sent: the clip document, or a JSON failure (`disconnected`, `invalid` for
+ * a channel out of range). An input gives its PEQ bank; an output its PEQ
+ * and crossover banks, gain, delay and mute.
+ */
+uint32_t dspi_copy_channel(struct FfiCore *core, uint8_t ch, char *buf, uint32_t len);
+
+/**
+ * Paste the clip document `clip` (from `dspi_copy_channel`) onto wire
+ * channel `ch`, by the Console's rules: the PEQ bank (onto `mirror` too,
+ * the linked partner's wire channel, when 0..255; a negative `mirror` is
+ * none), and from an output to an output the crossover bank, gain, delay
+ * (clamped to this device's line) and mute. One undo step. JSON `{ok}` or
+ * a failure; a refusal (`invalid` for another clip version or a bad
+ * channel or value, `read_only`, `installer_lock`, `limit_exceeded`, ...)
+ * writes nothing.
+ */
+uint32_t dspi_paste_channel(struct FfiCore *core,
+                            const char *clip,
+                            uint8_t ch,
+                            int32_t mirror,
+                            char *buf,
+                            uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

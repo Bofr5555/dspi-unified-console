@@ -82,6 +82,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqApply = throw NotImplementedError("autoeq_apply")
 
+    override fun copyChannel(ch: Int): ChannelClip = throw NotImplementedError("copy_channel")
+
+    override fun pasteChannel(clip: ChannelClip, ch: Int, options: ChannelPasteOptions): Unit = throw NotImplementedError("paste_channel")
+
     override fun confirmToken(op: ConfirmOp): String = throw NotImplementedError("confirm_token")
 
     override fun fetchAll(): Unit = throw NotImplementedError("fetch_all")
@@ -693,6 +697,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun autoeqRebuildWarning(dbPath: String): String = throw NotImplementedError("autoeq_rebuild_warning")
 
     override fun autoeqRebuildStart(dbPath: String, fetch: AutoEqFetch): AutoEqRebuild = throw NotImplementedError("autoeq_rebuild_start")
+
+    override fun channelClipToJson(clip: ChannelClip): String = throw NotImplementedError("channel_clip_to_json")
+
+    override fun channelClipFromJson(text: String): ChannelClip = throw NotImplementedError("channel_clip_from_json")
 
     override fun computeResponse(filters: List<FilterParams>, freq: Float): Float = throw NotImplementedError("compute_response")
 

@@ -14,6 +14,9 @@ import se.bofr.dspi.core.AlinkSystemSaved
 import se.bofr.dspi.core.AlinkSystemView
 import se.bofr.dspi.core.BootloaderCounts
 import se.bofr.dspi.core.BufferStats
+import se.bofr.dspi.core.ChannelClip
+import se.bofr.dspi.core.ChannelClipOutput
+import se.bofr.dspi.core.ChannelPasteOptions
 import se.bofr.dspi.core.CoreInfo
 import se.bofr.dspi.core.CoreVregInfo
 import se.bofr.dspi.core.DeviceEvents
@@ -759,6 +762,56 @@ open class FakeDspiCore(
         if (params.filterType != FILTER_FLAT && !DspMath.isCrossover(params.filterType)) bad("crossover type")
         it.copy(xover = it.xover.with(ch, it.xover[ch].with(xband, params)))
     }
+
+    // -- WP CLIPAN -- CLIP1's clipboard, as the core's in spirit: the clip from the state (no
+    // device traffic); the paste checked first (a refusal writes nothing), then the PEQ bank (and the
+    // mirror's), and output to output the crossover bank, gain, delay (clamped to the line) and mute,
+    // through the fake's setters in one "Paste Parameters" group. Not modelled: the read-only wire
+    // format, the installer's lock and the limits profile (failNext("pasteChannel") stands in).
+    override fun copyChannel(ch: Int): ChannelClip = op("copyChannel", "$ch") {
+        val s = state
+        if (ch !in 0 until s.numChannels) bad("channel $ch is out of range")
+        val out = outputOfWire(ch)
+        ChannelClip(
+            version = CHANNEL_CLIP_VERSION,
+            sourceChannel = ch,
+            sourceName = s.channelNames.getOrElse(ch) { "" },
+            filters = s.filters[ch].take(BANDS_PER_CHANNEL),
+            crossover = if (out >= 0) s.xover[ch].take(MAX_XOVER_BANDS) else null,
+            output = if (out >= 0) ChannelClipOutput(s.outputGainDb[out], s.outputDelayMs[out], s.outputMuted[out]) else null
+        )
+    }
+
+    override fun pasteChannel(clip: ChannelClip, ch: Int, options: ChannelPasteOptions) =
+        op("pasteChannel", "${clip.sourceChannel}, $ch, ${options.mirror}") {
+            val s = state
+            if (clip.version != CHANNEL_CLIP_VERSION) bad("channel clip version ${clip.version} is not $CHANNEL_CLIP_VERSION")
+            if (ch !in 0 until s.numChannels) bad("channel $ch is out of range")
+            val mirror = options.mirror
+            if (mirror != null && (mirror !in 0 until s.numChannels || mirror == ch)) bad("partner $mirror")
+            fun finite(p: FilterParams) = p.freq.isFinite() && p.q.isFinite() && p.gain.isFinite() && p.qp.isFinite()
+            if (!clip.filters.all(::finite) || clip.crossover?.all(::finite) == false) bad("a clip value is not finite")
+            val out = outputOfWire(ch)
+            val strip = clip.output?.takeIf { out >= 0 }
+            val xover = clip.crossover?.takeIf { out >= 0 }
+            if (xover?.any { it.filterType != FILTER_FLAT && !DspMath.isCrossover(it.filterType) } == true) bad("crossover type")
+            if (strip != null && !(strip.gainDb.isFinite() && strip.delayMs.isFinite())) bad("a clip value is not finite")
+            val flat = FilterParams(filterType = FILTER_FLAT, bypass = false, freq = 1000f, q = 0.707f, gain = 0f, qp = 0.707f)
+            beginGroup(CHANNEL_PASTE_LABEL)
+            try {
+                for (w in listOfNotNull(ch, mirror)) {
+                    for (b in 0 until BANDS_PER_CHANNEL) setFilter(w, b, clip.filters.getOrElse(b) { flat })
+                }
+                xover?.take(MAX_XOVER_BANDS)?.forEachIndexed { b, p -> setCrossover(ch, b, p) }
+                if (strip != null) {
+                    setOutputGain(out, strip.gainDb)
+                    setOutputDelay(out, strip.delayMs.coerceAtMost(maxDelayMs()))
+                    setOutputMute(out, strip.muted)
+                }
+            } finally {
+                endGroup()
+            }
+        }
 
     override fun setBandBypass(ch: Int, band: Int, bypass: Boolean) = set("setBandBypass", "$ch, $band, $bypass") {
         if (ch !in 0 until MAX_CHANNELS) bad("channel")
@@ -2047,6 +2100,13 @@ open class FakeDspiCore(
     companion object {
         const val MAGNITUDE_POINTS = 201
         const val DEMO_SERIAL = "DEMO0000E6614103"
+
+        // -- WP CLIPAN -- the core's channel_clip.rs CHANNEL_CLIP_VERSION and PASTE_LABEL
+        /** The clip format the core writes and reads. */
+        const val CHANNEL_CLIP_VERSION = 1L
+
+        /** The core's undo label for a paste. */
+        const val CHANNEL_PASTE_LABEL = "Paste Parameters"
 
         /** Firmware `InputSource` ids (`audio_input.h`). */
         private const val INPUT_SOURCE_I2S = 2

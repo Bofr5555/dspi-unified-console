@@ -181,6 +181,8 @@ mod tests {
             "src/fns_misc/sws_a.rs",
             // -- WP CG-SWS-b --
             "src/fns_misc/pins.rs",
+            // -- WP CLIP1 --
+            "src/fns_misc/clipboard.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

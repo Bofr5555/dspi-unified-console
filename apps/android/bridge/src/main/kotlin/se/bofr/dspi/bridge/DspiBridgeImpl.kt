@@ -30,6 +30,8 @@ import se.bofr.dspi.core.AlinkSystemAlign
 import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.AlinkSystemSaved
 import se.bofr.dspi.core.AlinkSystemView
+import se.bofr.dspi.core.ChannelClip
+import se.bofr.dspi.core.ChannelPasteOptions
 import se.bofr.dspi.core.DeviceEvents
 import se.bofr.dspi.core.DspState
 import se.bofr.dspi.core.DspiConstants
@@ -241,16 +243,11 @@ class DspiBridgeImpl(
     /** DSPi Link: the remote device attached by [attachRemote] (handle, serial). */
     private var attachedRemote: Pair<Long, String>? = null
 
-    private class ChannelClip(
-        val output: Boolean,
-        val filters: List<FilterParams>,
-        val xover: List<FilterParams>,
-        val gain: Float,
-        val delay: Float,
-        val mute: Boolean
-    )
-
+    // -- WP CLIPAN -- the clip is the core's (copy_channel); FFI thread only
     private var clip: ChannelClip? = null
+
+    /** Main: a copy has landed, so Paste Parameters is offered. */
+    private var hasClip = false
 
     // ═══ FFI-thread state ═══
 
@@ -2803,45 +2800,44 @@ class DspiBridgeImpl(
 
     // ═══ Channel clipboard ═══
 
+    // -- WP CLIPAN -- Copy / Paste Parameters are the core's (CLIP1): copy_channel reads the
+    // mirror, paste_channel applies the Console's rules in one "Paste Parameters" undo step and
+    // refuses (writing nothing) through the usual CommandFailed notice, in the core's words.
     override fun copyChannel(ch: Int) {
         val w = map.wire(ch)
         if (w < 0) return
-        val s = current
-        val out = map.outputOf(ch)
-        clip =
-            ChannelClip(
-                output = out >= 0,
-                filters = s.filters[w],
-                xover = s.xover[w],
-                gain = if (out >= 0) s.outputGainDb[out] else 0f,
-                delay = if (out >= 0) s.outputDelayMs[out] else 0f,
-                mute = out >= 0 && s.outputMuted[out]
-            )
+        scope.launch(ffi) {
+            val c =
+                try {
+                    core.copyChannel(w)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    post { emit(BridgeEvent.CommandFailed("copyChannel", e)) }
+                    return@launch
+                } catch (e: NotImplementedError) {
+                    post { emit(BridgeEvent.CommandFailed("copyChannel", e)) }
+                    return@launch
+                }
+            clip = c
+            post { hasClip = true }
+        }
     }
 
-    override fun canPaste() = clip != null
+    override fun canPaste() = hasClip
 
     override fun pasteChannel(ch: Int) {
-        val c = clip ?: return
         val w = map.wire(ch)
         if (w < 0) return
-        val out = map.outputOf(ch)
-        val t = targets(ch)
+        val partner = linkedPartner(ch)
+        val mirror = map.wire(partner).takeIf { partner >= 0 && it >= 0 }
         fire("pasteChannel", Emit.CURVES) {
-            // -- WP PAIRBAND -- the whole paste is one undo step
-            grouped(PASTE_LABEL) {
-                // Always all 10 PEQ bands (a linked input updates its partner too).
-                for (b in 0 until BANDS_PER_CHANNEL) applyFilter(t, b, c.filters[b])
-                if (c.output && out >= 0) {
-                    for (b in 0 until MAX_XOVER_BANDS) core.setCrossover(w, b, c.xover[b])
-                    core.setOutputGain(out, c.gain)
-                    // -- WP AN41 -- a clip from a longer line (RP2350 onto RP2040) takes this device's line, as the
-                    // fields do (bridge.maxDelayMs, read here on the FFI thread), instead of the core refusing the paste midway
-                    core.setOutputDelay(out, c.delay.coerceAtMost(core.maxDelayMs()))
-                    core.setOutputMute(out, c.mute)
-                }
+            val c = clip
+            if (c != null) {
+                core.pasteChannel(c, w, ChannelPasteOptions(mirror = mirror))
+                markDirty(ch)
+                if (mirror != null) markDirty(partner)
             }
-            markDirty(ch)
         }
     }
 
@@ -2904,7 +2900,6 @@ class DspiBridgeImpl(
 
         // -- WP PAIRBAND -- the core's label for a linked pair's band (set_input_pair_filter)
         const val PAIR_BAND_LABEL = "EQ band, linked pair"
-        const val PASTE_LABEL = "Paste EQ"
 
         // -- WP PAIRBANDF -- Qt's labels (P1QT2)
         const val BYPASS_ALL_LABEL = "Bypass All"

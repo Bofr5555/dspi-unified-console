@@ -11,12 +11,16 @@ import { peakDb, type DspState, type FilterParams, type OutputLabel, type System
 import { isCrossover } from "../eq/model";
 import { inputRows, outputLabel } from "../main/model";
 import { delayText, levelText, limiterSupported } from "../outputs/model";
+// -- fixup b4fix N3 -- the effect blocks open the Effects screen (WB6H) at that effect
+import { effectTarget, type EffectId } from "../effects/model";
 
 /** Where a block opens: a screen, and on the EQ screen a channel and its PEQ or XO tab. */
 export interface ChainTarget {
-  screen: "main" | "eq" | "matrix";
+  screen: "main" | "eq" | "matrix" | "effects";
   wire?: number;
   tab?: "peq" | "xo";
+  /** On the Effects screen: the effect it opens at. */
+  effect?: EffectId;
 }
 
 /** One processing block of a channel, or a device-wide effect. */
@@ -107,8 +111,8 @@ const MASK = 1;
  * whether each one is on for the device and its mask. Absent from a firmware
  * without the effect (no field, or an empty parameter list).
  */
-function maskedEffects(s: DspState): { id: string; label: string; on: boolean; mask: number }[] {
-  const fx: { id: string; label: string; on: boolean; mask: number }[] = [];
+function maskedEffects(s: DspState): { id: EffectId; label: string; on: boolean; mask: number }[] {
+  const fx: { id: EffectId; label: string; on: boolean; mask: number }[] = [];
   if (typeof s.loudnessEnabled === "boolean") fx.push({ id: "loudness", label: "Loudness", on: s.loudnessEnabled, mask: num(s.loudnessOutputMask) ?? 0 });
   if (typeof s.psybassEnabled === "boolean") fx.push({ id: "psybass", label: "Psychoacoustic bass", on: s.psybassEnabled, mask: num(s.psybassOutputMask) ?? 0 });
   const tubeOn = param(s.tube, ENABLED);
@@ -121,15 +125,15 @@ function maskedEffects(s: DspState): { id: string; label: string; on: boolean; m
 /** The effects that act on the device as a whole: crossfeed, the leveller, the upmixer. */
 function deviceEffects(s: DspState, masked: ReturnType<typeof maskedEffects>): ChainBlock[] {
   const out: ChainBlock[] = [];
-  if (typeof s.crossfeedEnabled === "boolean") out.push({ id: "crossfeed", label: "Crossfeed", on: s.crossfeedEnabled, detail: "", open: null });
-  if (typeof s.levellerEnabled === "boolean") out.push({ id: "leveller", label: "Leveller", on: s.levellerEnabled, detail: "", open: null });
+  if (typeof s.crossfeedEnabled === "boolean") out.push({ id: "crossfeed", label: "Crossfeed", on: s.crossfeedEnabled, detail: "", open: effectTarget("crossfeed") });
+  if (typeof s.levellerEnabled === "boolean") out.push({ id: "leveller", label: "Leveller", on: s.levellerEnabled, detail: "", open: effectTarget("leveller") });
   const up = param(s.upmix, ENABLED);
-  if (up !== null) out.push({ id: "upmix", label: "Upmixer", on: up >= 0.5, detail: "", open: null });
+  if (up !== null) out.push({ id: "upmix", label: "Upmixer", on: up >= 0.5, detail: "", open: effectTarget("upmix") });
   // The per-output effects are listed here too, with the outputs they act on.
   for (const f of masked) {
     const on: string[] = [];
     for (let o = 0; o < s.numOutputChannels; o++) if (bit(f.mask, o)) on.push(`OUT${o + 1}`);
-    out.push({ id: f.id, label: f.label, on: f.on, detail: f.on ? (on.length ? on.join(", ") : "No outputs") : "", open: null });
+    out.push({ id: f.id, label: f.label, on: f.on, detail: f.on ? (on.length ? on.join(", ") : "No outputs") : "", open: effectTarget(f.id) });
   }
   return out;
 }
@@ -165,7 +169,7 @@ export function chainView(s: DspState, labels: OutputLabel[] | undefined, liveIn
       const th = num(s.limiterThresholdDb?.[o]);
       blocks.push({ id: "limiter", label: "Limiter", on, detail: on && th !== null ? levelText(th, "dBFS") : "", open: at() });
     }
-    for (const f of masked) if (f.on) blocks.push({ id: f.id, label: f.label, on: bit(f.mask, o), detail: "", open: null });
+    for (const f of masked) if (f.on) blocks.push({ id: f.id, label: f.label, on: bit(f.mask, o), detail: "", open: effectTarget(f.id) });
     const routedFrom: string[] = [];
     for (let i = 0; i < s.numInputChannels; i++) if (s.matrixRouting?.[i]?.[o]) routedFrom.push(`IN${i + 1}`);
     outputs.push({

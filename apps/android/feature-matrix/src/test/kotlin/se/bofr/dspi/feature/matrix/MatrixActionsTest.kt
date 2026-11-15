@@ -335,6 +335,7 @@ class MatrixActionsTest {
         val r = rig()
         assertFalse(r.actions.canPaste())
         r.actions.copyChannelParams(0)
+        runCurrent() // -- WP CLIPAN -- the core's copy runs on the FFI dispatcher
         assertTrue(r.actions.canPaste())
         r.actions.pasteChannelParams(1)
         runCurrent()

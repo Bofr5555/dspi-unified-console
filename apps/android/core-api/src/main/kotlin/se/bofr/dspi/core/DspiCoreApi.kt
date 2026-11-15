@@ -430,6 +430,43 @@ interface DspiCoreApi : AutoCloseable {
     fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqApply
 
     /**
+     * Copy wire channel `ch` (inputs, then outputs) into a clip, from the
+     * mirror: nothing is sent. An input gives its PEQ bank; an output its
+     * PEQ and crossover banks, gain, delay and mute.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device (or document)
+     * open;
+     * [`DspiError::InvalidArgument`] for a channel out of range.
+     */
+    @Throws(DspiException::class)
+    fun copyChannel(ch: Int): ChannelClip
+
+    /**
+     * Paste `clip` onto wire channel `ch`, by the Console's rules (module
+     * docs): the PEQ bank (onto `options.mirror` too), and from an output
+     * to an output the crossover bank, gain, delay (clamped to this
+     * device's line) and mute. Every write goes through the typed setter,
+     * in one undo group labelled [`PASTE_LABEL`]: one undo step puts every
+     * value back.
+     *
+     * Everything is checked before the first write, and a refusal writes
+     * nothing: the clip's version, the channels, the values, the
+     * connection (no device, the client read-only mode, a read-only wire
+     * format, the installer's lock) and a limits profile over the whole
+     * paste. A transfer failure partway stops the paste; what was written
+     * stays, as one undo step.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another clip version, a
+     * channel or partner out of range (or the partner the channel itself),
+     * a non-finite value or a crossover slot of a PEQ type; the refusals
+     * of every setter ([`DspiError::Disconnected`], [`DspiError::ReadOnly`],
+     * [`DspiError::InstallerLock`], [`DspiError::LimitExceeded`]) and its
+     * transfer errors.
+     */
+    @Throws(DspiException::class)
+    fun pasteChannel(clip: ChannelClip, ch: Int, options: ChannelPasteOptions)
+
+    /**
      * A single-use token for `op`, valid for 10 s on the current connection:
      * mint it when the user has confirmed `op` (the confirmation dialog's OK),
      * and pass it to the gated call. No I/O.
@@ -4112,6 +4149,31 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun autoeqRebuildStart(dbPath: String, fetch: AutoEqFetch): AutoEqRebuild
+
+    /**
+     * A clip as a JSON document to keep: `{kind: "dspi.channelClip", version,
+     * sourceChannel, sourceName, filters: [{filterType, bypass, freq, q, gain,
+     * qp}], crossover: [...] | null, output: {gainDb, delayMs, muted} | null}`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a clip of another version or
+     * with a non-finite value (JSON has no NaN).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    @Throws(DspiException::class)
+    fun channelClipToJson(clip: ChannelClip): String
+
+    /**
+     * A clip read back from its document ([`channel_clip_to_json`]).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for text that is not a channel
+     * clip (too long, not JSON, another `kind`, a missing or mistyped field)
+     * and for a clip of another version, older or newer, named in the message.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    @Throws(DspiException::class)
+    fun channelClipFromJson(text: String): ChannelClip
 
     /**
      * The combined level of `filters` at `freq` Hz, in dB.

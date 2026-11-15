@@ -3701,6 +3701,69 @@ data class AutoEqApply(
 )
 
 /**
+ * An output's strip as a clip carries it.
+ */
+data class ChannelClipOutput(
+    /**
+     * Output gain in dB.
+     */
+    val gainDb: Float,
+    /**
+     * Output delay in ms.
+     */
+    val delayMs: Float,
+    /**
+     * Whether the output is muted.
+     */
+    val muted: Boolean,
+)
+
+/**
+ * What [`DspiCore::copy_channel`] took from a channel. A value: a client
+ * keeps it as it likes, as a record or as its JSON document
+ * ([`channel_clip_to_json`]).
+ */
+data class ChannelClip(
+    /**
+     * The clip format ([`CHANNEL_CLIP_VERSION`]); a paste refuses another.
+     */
+    val version: Long,
+    /**
+     * The wire channel it was copied from (inputs, then outputs).
+     */
+    val sourceChannel: Int,
+    /**
+     * The source's name on the device ("" when unnamed); a client may put
+     * the name it shows here, for its "Copied ..." line.
+     */
+    val sourceName: String,
+    /**
+     * The PEQ bank, band 0 first.
+     */
+    val filters: List<FilterParams>,
+    /**
+     * The crossover bank, slot 0 first: present when copied from an
+     * output, absent from an input.
+     */
+    val crossover: List<FilterParams>?,
+    /**
+     * Gain, delay and mute: present when copied from an output.
+     */
+    val output: ChannelClipOutput?,
+)
+
+/**
+ * How [`DspiCore::paste_channel`] pastes.
+ */
+data class ChannelPasteOptions(
+    /**
+     * The destination's linked partner (a wire channel), when the client
+     * has the pair linked: its PEQ bank gets the same bands.
+     */
+    val mirror: Int?,
+)
+
+/**
  * What `EXT_IDENTIFY` reports: the blink state and what the board is.
  */
 data class IdentifyInfo(

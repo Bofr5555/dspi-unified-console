@@ -90,6 +90,8 @@ impl From<DspiError> for CallError {
             // -- WP P1DKFIX --
             DspiError::ImageRefused { .. } => "image_refused",
             DspiError::LimitsUnknown { .. } => "limits_unknown",
+            // -- WP WB6I -- the core-voltage flow's word (CG14)
+            DspiError::OvervoltWordRequired { .. } => "overvolt_word",
             _ => "internal",
         };
         // -- WP P1NT --
@@ -295,6 +297,14 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::surfaces::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP CLIP1 -- the channel clipboard (src/clipboard.rs)
+    if let Some(r) = crate::clipboard::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP WB6I -- the Settings page (src/settings.rs)
+    if let Some(r) = crate::settings::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {
@@ -467,6 +477,9 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "inputPairPreamp" => outputs::input_pair_preamp(&core, params(req.params)?),
         // -- WP WB6G -- the input sources' names, from the core's cache
         "inputSourceNames" => crate::inputs::source_names(&core),
+        // -- WP WB6H -- the effect screens: the probe's feature names, the choices' words
+        "features" => crate::effects::features(&core, params(req.params)?),
+        "effectChoices" => Ok(crate::effects::effect_choices()),
         // -- WP PAIRBAND -- a linked input pair's band, one undo step
         "inputPairFilter" => crate::band::input_pair_filter(&core, params(req.params)?),
         "inputPairBandBypass" => crate::band::input_pair_band_bypass(&core, params(req.params)?),

@@ -116,8 +116,9 @@ test("P1WB2 lock: one line for each state; no PIN, nothing locked", () => {
 
 test("P1WB2 screens: the Installer page in the Installer mode only, last; the locked user has the front page", () => {
   const ids = (m: Parameters<typeof screensFor>[0], hub = false) => screensFor(m, hub).map((x) => x.id);
-  assert.equal(ids("installer").at(-1), "installer");
-  assert.equal(ids("installer", true).at(-1), "installer");
+  // -- WP WB6I -- Settings comes after it, in every mode
+  assert.equal(ids("installer").at(-2), "installer");
+  assert.equal(ids("installer", true).at(-2), "installer");
   assert.ok(!ids("advanced").includes("installer"));
   assert.ok(!ids("simple").includes("installer"));
   assert.deepEqual(
