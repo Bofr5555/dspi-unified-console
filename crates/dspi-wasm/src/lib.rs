@@ -83,6 +83,8 @@ pub mod power_on;
 pub mod system;
 // -- WP ROMODE -- the client read-only mode
 pub mod read_only;
+// -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
+pub mod settings;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;
