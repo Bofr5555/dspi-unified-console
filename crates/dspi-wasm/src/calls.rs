@@ -430,7 +430,15 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP P1PR -- protect all outputs, the warning list, a linked pair's preamp
         "protectAllOutputs" => outputs::protect_all(&core, params(req.params)?),
         "outputsWithoutLimiter" => Ok(outputs::without_limiter(&core, params(req.params)?)),
+        // -- WP WB6F -- the limiters' gain reduction per output in dB (`fetch_limiter_meter`,
+        // as C's `dspi_fetch_limiter_meter`), for the status rail's health panel
+        "limiterMeter" => {
+            core.link_service();
+            Ok(tidy(&core.fetch_limiter_meter()?))
+        }
         "inputPairPreamp" => outputs::input_pair_preamp(&core, params(req.params)?),
+        // -- WP WB6G -- the input sources' names, from the core's cache
+        "inputSourceNames" => crate::inputs::source_names(&core),
         // -- WP PAIRBAND -- a linked input pair's band, one undo step
         "inputPairFilter" => crate::band::input_pair_filter(&core, params(req.params)?),
         "inputPairBandBypass" => crate::band::input_pair_band_bypass(&core, params(req.params)?),
@@ -890,6 +898,9 @@ mod tests_wp_p1nt;
 // -- WP P1TK --
 #[cfg(test)]
 mod tests_wp_p1tk;
+// -- WP WB6F --
+#[cfg(test)]
+mod tests_wp_wb6f;
 
 #[cfg(test)]
 mod tests {

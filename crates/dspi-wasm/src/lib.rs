@@ -59,6 +59,8 @@ pub mod guarded;
 pub mod history;
 // -- WP WB4b --
 pub mod link;
+// -- WP WB6G -- the input pages' source names
+pub mod inputs;
 // -- WP P1OF --
 pub mod offline;
 // -- WP WB6c --

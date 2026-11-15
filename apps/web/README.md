@@ -12,7 +12,7 @@ and DSPis behind hubs over DSPi Link (WB4b; tested against dspi-link's fake hub
 behind a host that enforces the hub's `Origin` rule, in Chromium and Firefox),
 served by a real hub, by `uconsole web` on this machine and by any static host (WB7,
 [`DEPLOY.md`](DEPLOY.md)). The screens of the other clients arrive in WB6 slices;
-the main window (WB6a), the EQ (WB6b) and the outputs and matrix (WB6c) are in. Nothing here is published.
+the main window (WB6a), the EQ (WB6b), the outputs and matrix (WB6c) and the inputs (WB6g) are in. Nothing here is published.
 
 ## What it is for
 

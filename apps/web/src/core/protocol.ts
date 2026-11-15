@@ -548,6 +548,9 @@ export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMet
   hubRole: { params: undefined; result: { role: string } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
+  // -- WP WB6G -- the input sources' names (crates/dspi-wasm/src/inputs.rs), the core's cache, no traffic
+  /** `names[s]`: source `s`'s name ("" unnamed); `supported` false on firmware without names. Renamed by `write` of `in.name`. */
+  inputSourceNames: { params: undefined; result: { supported: boolean; names: string[] } };
 }
 
 // -- WP P1WB1 -- documents, snapshots, A/B, safe apply, offline files, limits status, notices
@@ -1090,6 +1093,9 @@ export interface InstallerMethods {
   protectAllOutputs: { params: undefined | { ceilingDbfs: number }; result: null };
   /** The outputs (0-based) that are on, above the threshold (default -10 dB) and without a limiter. */
   outputsWithoutLimiter: { params: undefined | { thresholdDb: number }; result: number[] };
+  // -- WP WB6F --
+  /** The limiters' gain reduction per output slot, in dB (0: none); `unsupported` without a limiter. */
+  limiterMeter: { params: undefined; result: number[] };
   /** Both inputs of a linked pair, one undo step. */
   inputPairPreamp: { params: { input: number; db: number }; result: null };
   // -- WP PAIRBAND --

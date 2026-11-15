@@ -1579,9 +1579,9 @@ impl State {
                 .to_vec(),
             ),
             op::REQ_GET_STATUS => Some(self.get_status(value)),
-            // -- WP QD6 -- The firmware answers with the flags it cleared; the capture
-            // has none latched that this models
-            op::REQ_CLEAR_CLIPS => Some(vec![0; 4]),
+            // -- WP QD6 -- The firmware answers with the flags it cleared
+            // -- WP WB6F -- and clears what EXT_FAKE_CLIP latched (fake/diag.rs)
+            op::REQ_CLEAR_CLIPS => Some(self.clear_clips()),
             // -- WP CG12 --
             op::REQ_GET_BUFFER_STATS => self.get_buffer_stats(),
             // -- WP TM16 --

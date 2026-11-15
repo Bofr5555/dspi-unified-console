@@ -90,7 +90,9 @@ export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset"
   | "protectAllOutputs"
   // -- WP PAIRBAND -- a linked input pair's band, both sides (one undo step)
   | "inputPairFilter"
-  | "inputPairBandBypass";
+  | "inputPairBandBypass"
+  // -- WP WB6G -- a linked input pair's trim, both sides (one undo step)
+  | "inputPairPreamp";
 
 // -- WP WB6b --
 /** One write of `Session.writeAll`. */

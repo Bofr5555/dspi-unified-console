@@ -355,7 +355,8 @@ test("WB6b unsaved: the session's state survives a screen switch; the host page 
   expect(await page.evaluate(() => (globalThis as unknown as { dspiUnsavedChanges: boolean[] }).dspiUnsavedChanges)).toEqual([true]);
   // The Main screen shows it too; Disconnect asks from the EQ screen as well.
   await session.getByRole("tab", { name: "Main" }).click();
-  await expect(session.getByText("Unsaved changes")).toBeVisible();
+  // -- WP WB6F -- exact: the status rail says "· unsaved changes" too
+  await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
   await session.getByRole("tab", { name: "EQ" }).click();
   await session.getByRole("button", { name: "Disconnect" }).click();
   const prompt = page.getByRole("dialog", { name: "Unsaved Changes" });

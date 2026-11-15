@@ -10,6 +10,8 @@ import type { Session } from "../../ui/session";
 import { RenameDialog } from "./Dialog";
 import { dragProps, useLiveWrite } from "./live";
 import { type ChannelRow, sameItems } from "./model";
+// -- WP WB6G -- an input's trim through its pair's link
+import { writeTrim } from "../inputs/model";
 
 export const ChannelList = memo(
   function ChannelList(props: {
@@ -81,7 +83,8 @@ const Row = memo(
 }) {
   const { session, row, info, disabled } = props;
   const path = info?.path ?? "";
-  const live = useLiveWrite((db) => session.write(path, { float: db }, [row.index]), session);
+  // -- WP WB6G -- an input's trim (`pre`) goes through its pair's link: both sides, one undo step
+  const live = useLiveWrite((db) => (path === "pre" ? writeTrim(session, row.index, db) : session.write(path, { float: db }, [row.index])), session);
   const db = live.draft ?? props.gain;
   const value = (e: Event) => Number((e.target as HTMLInputElement).value);
   const reset = (e: Event) => {

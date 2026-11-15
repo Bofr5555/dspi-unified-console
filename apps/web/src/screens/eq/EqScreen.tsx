@@ -25,6 +25,9 @@ import { OutputCard, type OutputLimits } from "../outputs/OutputCard";
 // -- WP P1WB2 -- AutoEQ with its preview on the graph
 import { AutoEqPanel } from "./AutoEq";
 import type { AutoEqPreviewRecord } from "../../core/protocol";
+// -- WP WB6G -- an input's page: its pair's link and its trim
+import { InputHeader } from "../inputs/InputsScreen";
+import { inputLinks } from "../inputs/model";
 import {
   DEFAULT_LIMITS,
   OFF_BAND,
@@ -133,7 +136,8 @@ export function EqScreen(props: ScreenProps) {
   }, [session]);
 
   if (!s || !Array.isArray(s.filters) || !named) return <p class="empty">This DSPi's filters are not known yet.</p>;
-  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} />;
+  // -- WP WB6D -- opened from the System view: at its channel and tab
+  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} target={props.target} />;
 }
 
 // -- WP WB6c --
@@ -150,6 +154,8 @@ const EqView = memo(
     /** -- BUG1 -- the outputs' labels, the snapshot's */
     labels?: OutputLabel[];
     outLimits: OutputLimits;
+    /** -- WP WB6D -- where the System view opened this screen */
+    target?: ScreenProps["target"];
   }) {
     const { session, ask, s, ro, limits } = props;
     const idBase = useMemo(() => `eq-${Math.random().toString(36).slice(2, 9)}`, []);
@@ -163,7 +169,8 @@ const EqView = memo(
       return [...ins, ...outs].map((c) => ({ ...c, colour: channelColour(c.wire) }));
     }, [channelsKey]);
 
-    const [wire, setWire] = useState<number>(() => channels[0]?.wire ?? 0);
+    // -- WP WB6D -- the System view's channel when it opened this screen (and it is listed)
+    const [wire, setWire] = useState<number>(() => (channels.some((c) => c.wire === props.target?.wire) ? props.target!.wire! : (channels[0]?.wire ?? 0)));
     const chosen = channels.find((c) => c.wire === wire) ?? channels[0];
     const cw = chosen?.wire ?? 0;
     useEffect(() => {
@@ -173,8 +180,13 @@ const EqView = memo(
     // Which other channels' curves are shown (M58): this viewer's, in this view.
     const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
     // -- WP WB6c -- an output's PEQ or XO bands (the Console's tab toggle), PEQ on every new channel
-    const [tab, setTab] = useState<"peq" | "xo">("peq");
-    useEffect(() => setTab("peq"), [cw]);
+    // -- WP WB6D -- the System view's tab, on the channel it opened
+    const opened = useRef(props.target?.wire === wire ? (props.target?.tab ?? null) : null);
+    const [tab, setTab] = useState<"peq" | "xo">(opened.current ?? "peq");
+    useEffect(() => {
+      setTab(opened.current ?? "peq");
+      opened.current = null;
+    }, [cw]);
 
     // The chosen channel's bands from the device, the same array while they are the same.
     const deviceKey = JSON.stringify(peq(s, cw));
@@ -306,7 +318,10 @@ const EqView = memo(
             disabled={ro}
             labels={props.labels}
           />
-        ) : null}
+        ) : (
+          // -- WP WB6G -- an input's page: its pair's link and its trim (the Console's InputChannelHeader)
+          <InputHeader session={session} ask={ask} s={s} input={chosen.index} name={`${chosen.descriptor} ${chosen.name}`} disabled={ro} />
+        )}
         <section class="card eq-graph-card" aria-label="Graph">
           <EqGraph
             idBase={idBase}
@@ -388,9 +403,13 @@ const EqView = memo(
             session.group("Clear All Bands", async () => {
               // The device's bands as they are now (another console may have changed them).
               await session.refresh();
-              const now = peq(session.state.snapshot?.state ?? s, cw);
-              for (let b = 0; b < now.length; b++) {
-                if (!sameFlat(now[b]!)) await session.core.call("filter", { channel: cw, band: b, ...OFF_BAND }).catch((e) => session.fail(e));
+              // -- WP WB6G -- a linked input pair: both sides, in the same step
+              const partner = chosen.output ? -1 : inputLinks(session).partner(cw);
+              for (const ch of partner >= 0 ? [cw, partner] : [cw]) {
+                const now = peq(session.state.snapshot?.state ?? s, ch);
+                for (let b = 0; b < now.length; b++) {
+                  if (!sameFlat(now[b]!)) await session.core.call("filter", { channel: ch, band: b, ...OFF_BAND }).catch((e) => session.fail(e));
+                }
               }
               await session.refresh();
             })

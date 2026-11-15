@@ -38,6 +38,15 @@ import type { ModeChoice, ModeManifest } from "../core/protocol";
 import { InstallerScreen } from "../screens/installer/InstallerScreen";
 import { LockedBanner, UnlockDialog } from "../screens/installer/Unlock";
 import { RecoveryCode } from "../screens/installer/HubAdmin"; // -- WP HUBADMIN --
+// -- WP WB6D -- the System view's blocks open the screen that edits them
+import type { ChainTarget } from "../screens/system/chain";
+
+// -- WP WB6F -- the status rail's health row and panel
+import { HealthFeed } from "./status-rail/feed";
+import { HealthRail } from "./status-rail/HealthRail";
+
+// -- WP WB6G -- the input pages
+import { InputsScreen } from "../screens/inputs/InputsScreen";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -64,6 +73,11 @@ export interface ScreenProps {
   // -- WP P1WB1 --
   /** The session's snapshots, A/B compare, safe apply and files. */
   desk?: SnapshotDesk;
+  // -- WP WB6D --
+  /** Open another screen of this session, at a channel (the System view's blocks). */
+  open?: (t: ChainTarget) => void;
+  /** Where this screen was opened at by `open`, null when its tab was chosen; read when it mounts. */
+  target?: ChainTarget | null;
 }
 
 export interface ScreenDef {
@@ -76,6 +90,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "main", label: "Main", View: MainScreen },
   // -- WP WB6b --
   { id: "eq", label: "EQ", View: EqScreen },
+  // -- WP WB6G -- (UI-MODES: "Channels and EQ", every mode)
+  { id: "inputs", label: "Inputs", View: InputsScreen },
   // -- WP WB6c --
   { id: "matrix", label: "Matrix", View: MatrixScreen },
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
@@ -131,6 +147,12 @@ export function Screens(props: { session: Session }) {
     return () => system.stop();
   }, [system]);
   const feed = useFeed(system);
+  // -- WP WB6F -- one health feed per session: problems stay until acknowledged, whichever screen is shown
+  const health = useMemo(() => new HealthFeed(session), [session]);
+  useEffect(() => {
+    health.start();
+    return () => health.stop();
+  }, [health]);
   const serial = session.state.snapshot?.device.serial || session.deviceId || session.id;
   // -- WP P1WB2 -- the user's choice, then the core's resolution of it (lock, hub or fleet pin)
   const [chosenMode, setMode] = useState<Mode>(() => loadMode(safeLocalStorage(), serial));
@@ -159,7 +181,16 @@ export function Screens(props: { session: Session }) {
   const [chosen, setChosen] = useState<string | null>(null);
   const current = chosen ?? shown[0]!.id;
   const screen = shown.find((x) => x.id === current) ?? shown[0]!;
-  const setCurrent = setChosen;
+  // -- WP WB6D -- a tab chosen opens its screen as it was; `openAt` opens one at a channel
+  const [target, setTarget] = useState<ChainTarget | null>(null);
+  const setCurrent = (id: string) => {
+    setTarget(null);
+    setChosen(id);
+  };
+  const openAt = useCallback((t: ChainTarget) => {
+    setTarget(t);
+    setChosen(t.screen);
+  }, []);
   const [question, setQuestion] = useState<(Question & { answer: (v: string) => void }) | null>(null);
   // -- WP WB8 -- undo and redo: the buttons follow the session's state; the keys act on this view
   // (-- WP P1WB2 -- `st` is read above, for the lock)
@@ -273,7 +304,7 @@ export function Screens(props: { session: Session }) {
         <UndoButtons session={session} state={st} />
       </div>
       <StepNotice session={session} notice={st.notice} />
-      <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} />
+      <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} />
       {/* -- WP SW3 -- the status rail, below the screen as a status bar */}
       <StatusRail
         feed={system}
@@ -285,7 +316,10 @@ export function Screens(props: { session: Session }) {
           saveMode(safeLocalStorage(), serial, m, every);
           setMode(m);
         }}
-      />
+      >
+        {/* -- WP WB6F -- */}
+        <HealthRail session={session} feed={health} />
+      </StatusRail>
       {question ? (
         <Dialog
           title={question.title}
