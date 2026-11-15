@@ -2,6 +2,8 @@
 #define NOTICECENTER_H
 
 #include <QHash>
+#include <QJsonObject>
+#include <QStringList>
 #include <QObject>
 #include <QString>
 #include <QVariantMap>
@@ -26,7 +28,8 @@ class NoticeCenter : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
-    // The notice on show: { text, kind, serial }; empty with none
+    // The notice on show: { text, kind, serial }; empty with none. -- WP P2QT --
+    // A hub alarm's adds { alarmId, canAck }
     Q_PROPERTY(QVariantMap current READ current NOTIFY changed)
     // Notices waiting behind it
     Q_PROPERTY(int waiting READ waiting NOTIFY changed)
@@ -69,8 +72,20 @@ public:
     Q_INVOKABLE void dismiss();
     Q_INVOKABLE void clear();
 
+    // -- WP P2QT -- The hub's alarms (P2CC2, PLAN-P2 M3) over DSPi Link: each
+    // one raised shows as a notice in its row's words (dspi_hub_alarm_notice,
+    // the time in this console's clock), the active ones read when a hub
+    // session starts and every `alarm.changed` after; one acknowledged or
+    // cleared leaves the stack. Acknowledge is the hub's `alarm.ack` (Control,
+    // Admin; a Viewer's notice offers none).
+    Q_INVOKABLE void acknowledge(const QString &alarmId);
+    // The alarm notices waiting or on show, by id (tests)
+    QStringList alarmIds() const;
+
 signals:
     void changed();
+    // -- WP P2QT -- an acknowledge finished (the smoke driver)
+    void acknowledged(const QString &alarmId, bool ok);
 
 private:
     void showNext();
@@ -81,6 +96,14 @@ private:
     QTimer m_timer;
     int m_serial = 0;
     QHash<QString, QVariantMap> m_rows;   // -- WP P1QT2 -- the core's notice table
+    // -- WP P2QT --
+    void onHubEvent(const QString &kind, const QJsonObject &event);
+    void onSnapshot();
+    void showAlarm(const QJsonObject &alarm);
+    void dropAlarm(const QString &id);
+    AppContext m_ctx;
+    bool m_hubSession = false;
+    bool m_canAck = false;
 };
 
 #endif // NOTICECENTER_H

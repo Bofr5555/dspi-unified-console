@@ -73,6 +73,20 @@ class SnapshotsController : public QObject {
     // How long a guarded apply (a recall, an import) waits for Keep, in
     // seconds: 30 unless set (Advanced), 5 to 300; remembered on this console
     Q_PROPERTY(int guardTimeoutS READ guardTimeoutS WRITE setGuardTimeoutS NOTIFY guardTimeoutSChanged)
+    // -- WP P2QT -- The hub's shared store (P2CC1, OD-P1b), over DSPi Link to a
+    // hub with the `hub_snapshots` cap: the merged list of both sides
+    // (dspi_snapshot_list_merged). The hub's copy wins: an id both sides hold
+    // with different content lists the hub's under "On the hub" and keeps this
+    // console's as a local copy (`localCopy` in `snapshots`), never overwritten.
+    // Each row of `snapshots` gains `where` ("local" or "both") and `localCopy`.
+    // The open device's snapshots are listed by the hub
+    Q_PROPERTY(bool hubAvailable READ hubAvailable NOTIFY hubChanged)
+    // The hub's, newest first: [{ id, name, note, saved, savedMs, platform,
+    // inputs, outputs, where ("hub" or "both") }]
+    Q_PROPERTY(QVariantList hubSnapshots READ hubSnapshots NOTIFY hubChanged)
+    // Why the hub's list is missing on a hub that should have it, in the
+    // core's notice row's words; "" otherwise
+    Q_PROPERTY(QString hubProblem READ hubProblem NOTIFY hubChanged)
 public:
     // How often the guard is driven while it waits (the countdown bar's tick)
     static constexpr int kGuardPollMs = 250;
@@ -136,6 +150,21 @@ public:
     // A guarded apply begun elsewhere (FilesController's import): its state
     void guardStarted(const QJsonObject &state);
 
+    // -- WP P2QT -- The hub's store
+    bool hubAvailable() const { return m_hubAvailable; }
+    QVariantList hubSnapshots() const { return m_hubSnapshots; }
+    QString hubProblem() const { return m_hubProblem; }
+    // "Save to the hub": this console's snapshot `id` filed on the hub
+    Q_INVOKABLE void saveToHub(const QString &id);
+    // "Copy here": the hub's snapshot `id` filed in this console's store
+    Q_INVOKABLE void copyHere(const QString &id);
+    // Deletes the hub's snapshot `id` (Admin of the hub)
+    Q_INVOKABLE void removeFromHub(const QString &id);
+    // Recalls the hub's snapshot `id` on the open device, from the hub's
+    // store: guarded as recall() is (the guard begun first, so Keep or Revert
+    // applies to the hub's recall too)
+    Q_INVOKABLE void recallFromHub(const QString &id);
+
 signals:
     void snapshotsChanged();
     void busyChanged();
@@ -147,6 +176,7 @@ signals:
     void stored(const QString &op, bool ok);
     void guardWaitingTextChanged();   // -- WP P1DCFIX --
     void guardTimeoutSChanged();
+    void hubChanged();   // -- WP P2QT --
 
 private:
     // A store call on the worker, its JSON reply on the GUI thread
@@ -182,6 +212,12 @@ private:
     // -- WP P1DCFIX --
     QString m_waitingText;
     int m_timeoutS = kGuardTimeoutDefaultS;
+    // -- WP P2QT --
+    void onHubEvent(const QString &kind, const QJsonObject &event);
+    bool m_hubAvailable = false;
+    QVariantList m_hubSnapshots;
+    QString m_hubProblem;
+    int m_reloads = 0;
 };
 
 #endif // SNAPSHOTSCONTROLLER_H

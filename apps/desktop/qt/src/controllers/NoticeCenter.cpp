@@ -2,18 +2,24 @@
 
 #include "DeviceModel.h"
 #include "Snapshot.h"
+// -- WP P2QT --
+#include "Core.h"
+#include "CoreWorker.h"
+#include "HubFeed.h"
 
 #include "CoreApi.h"
 
 #include <QJSEngine>
+#include <QLocale>   // -- WP P2QT --
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QDateTime>   // -- WP P2QT --
 
 static const Registrar::Controller<NoticeCenter> noticeCenter;
 static const Registrar::Banner noticeBanner("NoticeBanner", 45);
 
-NoticeCenter::NoticeCenter(const AppContext &ctx, QObject *parent) : QObject(parent) {
+NoticeCenter::NoticeCenter(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     m_timer.setSingleShot(true);
     connect(&m_timer, &QTimer::timeout, this, &NoticeCenter::dismiss);
     // -- WP P1QT2 -- the core's notice table (P1NT): a pure function of the
@@ -30,6 +36,9 @@ NoticeCenter::NoticeCenter(const AppContext &ctx, QObject *parent) : QObject(par
         connect(ctx.device, &DeviceModel::writeRefused, this, [this](const QString &, const QString &key, const QString &message) {
             if (gateKey(key)) postKey(key, message);
         });
+    // -- WP P2QT -- the hub's alarms
+    if (ctx.device) connect(ctx.device, &DeviceModel::snapshotApplied, this, &NoticeCenter::onSnapshot);
+    if (HubFeed *feed = HubFeed::of(ctx.core)) connect(feed, &HubFeed::hubEvent, this, &NoticeCenter::onHubEvent);
 }
 
 NoticeCenter *NoticeCenter::create(QQmlEngine *, QJSEngine *) {
@@ -109,4 +118,115 @@ bool NoticeCenter::gateKey(const QString &key) {
         if (key == f || (key.startsWith(f) && key.mid(f.size()).startsWith(QLatin1Char('.')))) return true;
     }
     return false;
+}
+
+// -- WP P2QT -- The hub's alarms ------------------------------------------------------
+
+namespace {
+// A notice's alarm id, "" for another notice
+QString alarmOf(const QVariant &notice) { return notice.toMap().value(QStringLiteral("alarmId")).toString(); }
+} // namespace
+
+QStringList NoticeCenter::alarmIds() const {
+    QStringList ids;
+    if (!alarmOf(m_current).isEmpty()) ids << alarmOf(m_current);
+    for (const QVariant &n : m_queue)
+        if (!alarmOf(n).isEmpty()) ids << alarmOf(n);
+    return ids;
+}
+
+// A hub session began or ended: its active alarms, or none
+void NoticeCenter::onSnapshot() {
+    if (!m_ctx.core) return;
+    const bool hub = m_ctx.device->connected() && m_ctx.device->remote();
+    m_canAck = hub && !m_ctx.device->readOnly();
+    if (hub == m_hubSession) return;
+    m_hubSession = hub;
+    if (!hub) {
+        for (const QString &id : alarmIds()) dropAlarm(id);
+        return;
+    }
+    m_ctx.core->worker()->call(
+        this,
+        [](FfiCore *c) {
+            // Unsupported (no `alarms` cap, an upstream hub) sends nothing: no notice
+            return readSized([c](char *b, uint32_t n) { return dspi_hub_alarms(c, nullptr, "active", b, n); }, 16384);
+        },
+        [this](const QByteArray &reply) {
+            if (!m_hubSession) return;
+            const QJsonObject o = QJsonDocument::fromJson(reply).object();
+            for (const QJsonValue &v : o.value(QLatin1String("value")).toArray()) showAlarm(v.toObject());
+        });
+}
+
+void NoticeCenter::onHubEvent(const QString &kind, const QJsonObject &event) {
+    if (kind != QLatin1String("alarm.changed") || !m_hubSession) return;
+    showAlarm(event.value(QLatin1String("alarm")).toObject());
+}
+
+// Raised (again): shown once while it is on; acknowledged or cleared: gone
+void NoticeCenter::showAlarm(const QJsonObject &alarm) {
+    const QString id = alarm.value(QLatin1String("id")).toString();
+    if (id.isEmpty()) return;
+    if (alarm.value(QLatin1String("state")).toString() != QLatin1String("raised")) {
+        dropAlarm(id);
+        return;
+    }
+    if (alarmIds().contains(id)) return;
+    // The time in this console's clock; the row's words from the core (no I/O)
+    const QDateTime at = QDateTime::fromString(alarm.value(QLatin1String("raisedAt")).toString(), Qt::ISODate);
+    const QByteArray time = at.isValid() ? QLocale().toString(at.toLocalTime().time(), QLocale::ShortFormat).toUtf8() : QByteArray();
+    const QByteArray json = QJsonDocument(alarm).toJson(QJsonDocument::Compact);
+    const QJsonObject n = QJsonDocument::fromJson(readSized([&](char *b, uint32_t len) {
+                                                     return dspi_hub_alarm_notice(json.constData(), time.isEmpty() ? nullptr : time.constData(), b, len);
+                                                 })).object();
+    const QString title = n.value(QLatin1String("title")).toString();
+    const QString reason = n.value(QLatin1String("reason")).toString();
+    QString text = title.isEmpty() ? alarm.value(QLatin1String("message")).toString()
+                 : reason.isEmpty() ? title
+                                    : tr("%1: %2").arg(title, reason);
+    if (text.trimmed().isEmpty()) return;
+    const QString k = n.value(QLatin1String("kind")).toString();
+    m_last = { { QStringLiteral("text"), text },
+               { QStringLiteral("kind"), k == QLatin1String("error") || k == QLatin1String("info") ? k : QStringLiteral("warning") },
+               { QStringLiteral("serial"), ++m_serial },
+               { QStringLiteral("alarmId"), id },
+               { QStringLiteral("canAck"), m_canAck } };
+    m_queue.append(m_last);
+    while (m_queue.size() > kMaxWaiting) m_queue.removeFirst();
+    if (m_current.isEmpty()) showNext();
+    else emit changed();
+}
+
+void NoticeCenter::dropAlarm(const QString &id) {
+    bool dropped = false;
+    for (qsizetype i = m_queue.size() - 1; i >= 0; --i)
+        if (alarmOf(m_queue.at(i)) == id) {
+            m_queue.removeAt(i);
+            dropped = true;
+        }
+    if (alarmOf(m_current) == id) {
+        dismiss();
+        return;
+    }
+    if (dropped) emit changed();
+}
+
+void NoticeCenter::acknowledge(const QString &alarmId) {
+    if (alarmId.isEmpty() || !m_ctx.core) return;
+    const QByteArray id = alarmId.toUtf8();
+    m_ctx.core->worker()->call(
+        this, [id](FfiCore *c) { return readSized([&](char *b, uint32_t n) { return dspi_hub_alarm_ack(c, id.constData(), b, n); }); },
+        [this, alarmId](const QByteArray &reply) {
+            const QJsonObject o = QJsonDocument::fromJson(reply).object();
+            const bool ok = o.value(QLatin1String("ok")).toBool();
+            if (ok) {
+                dropAlarm(alarmId);
+            } else {
+                const QString key = o.value(QLatin1String("noticeKey")).toString();
+                const QString error = o.value(QLatin1String("error")).toString();
+                post(!key.isEmpty() ? line(key, error) : error, QStringLiteral("error"));
+            }
+            emit acknowledged(alarmId, ok);
+        });
 }
