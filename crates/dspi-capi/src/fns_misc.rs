@@ -78,6 +78,8 @@ mod guarded;
 mod hub_admin;
 // -- WP P2CC1 --
 mod hub_server;
+// -- WP P2CC2 -- the hub's admin families
+mod hub_server_admin;
 // -- WP CG-SWS-a --
 mod sws_a;
 // -- WP CG-SWS-b -- the pin map

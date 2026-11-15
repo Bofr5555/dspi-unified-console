@@ -352,6 +352,40 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun hubSnapshotsCopyHere(id: String): SnapshotInfo = throw NotImplementedError("hub_snapshots_copy_here")
 
+    override fun hubAlarms(serial: String, state: String): List<HubAlarm> = throw NotImplementedError("hub_alarms")
+
+    override fun hubAlarmAck(id: String): HubAlarm = throw NotImplementedError("hub_alarm_ack")
+
+    override fun hubAlarmRulesGet(): List<HubAlarmRule> = throw NotImplementedError("hub_alarm_rules_get")
+
+    override fun hubAlarmRulesSet(rules: List<HubAlarmRule>): List<HubAlarmRule> = throw NotImplementedError("hub_alarm_rules_set")
+
+    override fun hubSchedules(): HubSchedules = throw NotImplementedError("hub_schedules")
+
+    override fun hubScheduleSet(rule: HubScheduleRule): HubScheduleRule = throw NotImplementedError("hub_schedule_set")
+
+    override fun hubScheduleDelete(id: String): Unit = throw NotImplementedError("hub_schedule_delete")
+
+    override fun hubScheduleRunNow(id: String): HubScheduleRun = throw NotImplementedError("hub_schedule_run_now")
+
+    override fun hubOutboundGet(): List<HubOutboundTarget> = throw NotImplementedError("hub_outbound_get")
+
+    override fun hubOutboundSet(targets: List<HubOutboundTarget>): HubOutboundSet = throw NotImplementedError("hub_outbound_set")
+
+    override fun hubOutboundTest(id: String): HubOutboundTest = throw NotImplementedError("hub_outbound_test")
+
+    override fun hubMqttGet(): HubMqttSettings = throw NotImplementedError("hub_mqtt_get")
+
+    override fun hubMqttSet(settings: HubMqttSettings): HubMqttSettings = throw NotImplementedError("hub_mqtt_set")
+
+    override fun hubMqttStatus(): HubMqttStatus = throw NotImplementedError("hub_mqtt_status")
+
+    override fun hubApiKeys(): List<HubApiKey> = throw NotImplementedError("hub_api_keys")
+
+    override fun hubApiKeyMint(name: String, role: String, plaintextOk: Boolean): HubApiKeyMinted = throw NotImplementedError("hub_api_key_mint")
+
+    override fun hubApiKeyRevoke(cid: Long): Unit = throw NotImplementedError("hub_api_key_revoke")
+
     override fun getInputSourceName(source: Int): String = throw NotImplementedError("get_input_source_name")
 
     override fun setInputSourceName(source: Int, name: String): Unit = throw NotImplementedError("set_input_source_name")
@@ -775,6 +809,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun firmwareGuardBoardInBootloader(): FirmwareGuardBoard = throw NotImplementedError("firmware_guard_board_in_bootloader")
 
     override fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict = throw NotImplementedError("firmware_guard_check")
+
+    override fun hubAlarmNotice(alarm: HubAlarm, time: String): Notice = throw NotImplementedError("hub_alarm_notice")
 
     override fun limitsFieldRanges(): List<LimitFieldRange> = throw NotImplementedError("limits_field_ranges")
 

@@ -6498,6 +6498,146 @@ uint32_t dspi_snapshot_list_merged(struct FfiCore *core,
                                    uint32_t len);
 
 /**
+ * The hub's alarms of `serial` (null or "": every alarm) in `state` (null
+ * or "": every one; `active`, `cleared`): JSON `{ok, value: [{id, source,
+ * code, subject, serial, severity, message, state, raisedAt, clearedAt,
+ * acknowledgedBy, count, reason, noticeKey}]}`.
+ */
+uint32_t dspi_hub_alarms(struct FfiCore *core,
+                         const char *serial,
+                         const char *state,
+                         char *buf,
+                         uint32_t len);
+
+/**
+ * Acknowledge alarm `id` (Control, Admin): the alarm's JSON as it is now.
+ */
+uint32_t dspi_hub_alarm_ack(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * The alarm rules: JSON `{ok, value: [{code, on, afterS, perMinute,
+ * muteOnStorm, aboveC, abovePct, forS}]}` (a field the code lacks is null).
+ */
+uint32_t dspi_hub_alarm_rules_get(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Change the alarm rules (Admin): `rules_json` a JSON list of rules as
+ * `dspi_hub_alarm_rules_get` gives (null fields keep the hub's values). The
+ * rules now, as there.
+ */
+uint32_t dspi_hub_alarm_rules_set(struct FfiCore *core,
+                                  const char *rules_json,
+                                  char *buf,
+                                  uint32_t len);
+
+/**
+ * What to tell the user about an alarm: `alarm_json` one alarm as the
+ * calls above give it, `time` the client's rendering of its `raisedAt`
+ * (null or "": the hub's ISO time). JSON `{ok, key, kind, title, reason,
+ * action, detail}`. No I/O; no core.
+ */
+uint32_t dspi_hub_alarm_notice(const char *alarm_json, const char *time, char *buf, uint32_t len);
+
+/**
+ * The hub's schedule: JSON `{ok, rules: [{id, name, enabled, days, time,
+ * once, actions: [{t, slot, name, snapshot, scene, path, idx, value,
+ * flag}], targets, nextRun, last}], zone, localTime, clockUnset}`.
+ */
+uint32_t dspi_hub_schedules(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Add (`id` "") or replace a schedule rule (Admin): `rule_json` one rule
+ * as `dspi_hub_schedules` lists it. The rule as the hub lists it.
+ */
+uint32_t dspi_hub_schedule_set(struct FfiCore *core,
+                               const char *rule_json,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * Delete schedule rule `id` (Admin): `{ok}` or a failure.
+ */
+uint32_t dspi_hub_schedule_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * Run schedule rule `id` now (Admin; it writes its targets): JSON `{ok,
+ * rule, name, at, by, results: [{serial, action, ok, code, msg}]}`.
+ */
+uint32_t dspi_hub_schedule_run_now(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * The notification targets (Admin): JSON `{ok, value: [{id, name, kind,
+ * url, enabled, kinds, secret, plaintext, caPem, pinSha256, queued,
+ * dropped, last, encrypted, trust, notice}]}`.
+ */
+uint32_t dspi_hub_outbound_get(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Replace the notification targets (Admin): `targets_json` the whole list
+ * as `dspi_hub_outbound_get` gives (`secret` `new` for a new secret). JSON
+ * `{ok, targets, secrets: [{target, secret}]}`: the new secrets, this once.
+ */
+uint32_t dspi_hub_outbound_set(struct FfiCore *core,
+                               const char *targets_json,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * One test delivery to target `id` now (Admin): JSON `{ok, delivered,
+ * status, msg}`.
+ */
+uint32_t dspi_hub_outbound_test(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * The broker setting (Admin): JSON `{ok, enabled, broker, port, clientId,
+ * username, password, baseTopic, tls: {mode, caPem, pinSha256,
+ * clientCertPem, clientKeyPem, clientCertFile, clientKeyFile,
+ * allowPlaintextPassword}, haEnabled, haKey, notice}` (the password and the
+ * client key as `set` or `not set`).
+ */
+uint32_t dspi_hub_mqtt_get(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Change the broker setting (Admin): `settings_json` as `dspi_hub_mqtt_get`
+ * gives it (`password` the password to set it, `set` or "" to keep it). The
+ * setting now, as there.
+ */
+uint32_t dspi_hub_mqtt_set(struct FfiCore *core,
+                           const char *settings_json,
+                           char *buf,
+                           uint32_t len);
+
+/**
+ * The broker connection now (Admin): JSON `{ok, state, msg, since,
+ * queued, dropped, encrypted, notice}`.
+ */
+uint32_t dspi_hub_mqtt_status(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The hub's API keys (Admin): JSON `{ok, value: [{cid, name, role,
+ * plaintextOk, online, created, lastSeen}]}`.
+ */
+uint32_t dspi_hub_api_keys(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Mint an API key `name` with `role` (`viewer`, `control`, `admin`)
+ * (Admin): JSON `{ok, cid, name, role, plaintextOk, key}`: the key, this
+ * once.
+ */
+uint32_t dspi_hub_api_key_mint(struct FfiCore *core,
+                               const char *name,
+                               const char *role,
+                               bool plaintext_ok,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * Revoke API key `cid` (Admin): `{ok}` or a failure (`invalid` for a cid
+ * that is not an API key's).
+ */
+uint32_t dspi_hub_api_key_revoke(struct FfiCore *core, uint32_t cid, char *buf, uint32_t len);
+
+/**
  * The master volume `db` as `dspi_set_master_volume` keeps it: -128 (mute)
  * at or below -128, else 0.5 dB steps within -127..=0. NaN comes back NaN.
  */

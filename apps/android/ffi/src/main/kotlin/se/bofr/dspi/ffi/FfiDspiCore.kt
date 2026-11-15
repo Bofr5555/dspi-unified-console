@@ -418,6 +418,40 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun hubSnapshotsCopyHere(id: String): SnapshotInfo = call { core.hubSnapshotsCopyHere(id).toDomain() }
 
+    override fun hubAlarms(serial: String, state: String): List<HubAlarm> = call { core.hubAlarms(serial, state).map { it.toDomain() } }
+
+    override fun hubAlarmAck(id: String): HubAlarm = call { core.hubAlarmAck(id).toDomain() }
+
+    override fun hubAlarmRulesGet(): List<HubAlarmRule> = call { core.hubAlarmRulesGet().map { it.toDomain() } }
+
+    override fun hubAlarmRulesSet(rules: List<HubAlarmRule>): List<HubAlarmRule> = call { core.hubAlarmRulesSet(rules.map { it.toFfi() }).map { it.toDomain() } }
+
+    override fun hubSchedules(): HubSchedules = call { core.hubSchedules().toDomain() }
+
+    override fun hubScheduleSet(rule: HubScheduleRule): HubScheduleRule = call { core.hubScheduleSet(rule.toFfi()).toDomain() }
+
+    override fun hubScheduleDelete(id: String) = call { core.hubScheduleDelete(id) }
+
+    override fun hubScheduleRunNow(id: String): HubScheduleRun = call { core.hubScheduleRunNow(id).toDomain() }
+
+    override fun hubOutboundGet(): List<HubOutboundTarget> = call { core.hubOutboundGet().map { it.toDomain() } }
+
+    override fun hubOutboundSet(targets: List<HubOutboundTarget>): HubOutboundSet = call { core.hubOutboundSet(targets.map { it.toFfi() }).toDomain() }
+
+    override fun hubOutboundTest(id: String): HubOutboundTest = call { core.hubOutboundTest(id).toDomain() }
+
+    override fun hubMqttGet(): HubMqttSettings = call { core.hubMqttGet().toDomain() }
+
+    override fun hubMqttSet(settings: HubMqttSettings): HubMqttSettings = call { core.hubMqttSet(settings.toFfi()).toDomain() }
+
+    override fun hubMqttStatus(): HubMqttStatus = call { core.hubMqttStatus().toDomain() }
+
+    override fun hubApiKeys(): List<HubApiKey> = call { core.hubApiKeys().map { it.toDomain() } }
+
+    override fun hubApiKeyMint(name: String, role: String, plaintextOk: Boolean): HubApiKeyMinted = call { core.hubApiKeyMint(name, role, plaintextOk).toDomain() }
+
+    override fun hubApiKeyRevoke(cid: Long) = call { core.hubApiKeyRevoke(cid.toUInt()) }
+
     override fun getInputSourceName(source: Int): String = call { core.getInputSourceName(source.toUByte()) }
 
     override fun setInputSourceName(source: Int, name: String) = call { core.setInputSourceName(source.toUByte(), name) }
@@ -842,6 +876,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict = se.bofr.dspi.ffi.uniffi.firmwareGuardCheck(ByteArray(image.size) { image[it].toByte() }, board.toFfi(), typedConfirmation).toDomain()
 
+    override fun hubAlarmNotice(alarm: HubAlarm, time: String): Notice = se.bofr.dspi.ffi.uniffi.hubAlarmNotice(alarm.toFfi(), time).toDomain()
+
     override fun limitsFieldRanges(): List<LimitFieldRange> = se.bofr.dspi.ffi.uniffi.limitsFieldRanges().map { it.toDomain() }
 
     override fun linkParseAddress(text: String): LinkAddress = call { se.bofr.dspi.ffi.uniffi.linkParseAddress(text).toDomain() }
@@ -895,12 +931,18 @@ class FfiDspiCore : DspiCoreApi {
     override fun bulkImageExtras(bulkRaw: ByteArray): BulkImageExtras = se.bofr.dspi.ffi.uniffi.bulkImageExtras(bulkRaw.copyOf()).toDomain()
 }
 
-internal class FfiAutoEqRebuild(private val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {
+internal class FfiAutoEqRebuild(internal val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {
     override fun close() = inner.close()
 
     override fun poll(): AutoEqRebuildProgress = inner.poll().toDomain()
 
     override fun cancel() = inner.cancel()
+}
+
+internal class FfiHubSecret(internal val inner: se.bofr.dspi.ffi.uniffi.HubSecret) : HubSecret {
+    override fun close() = inner.close()
+
+    override fun reveal(): String = inner.reveal()
 }
 
 // ── Error mapping ──
@@ -3485,6 +3527,12 @@ internal fun se.bofr.dspi.ffi.uniffi.HubCaps.toDomain() =
         hubSnapshots = hubSnapshots,
         paramApi = paramApi,
         hubStats = hubStats,
+        alarms = alarms,
+        outbound = outbound,
+        schedule = schedule,
+        mqtt = mqtt,
+        apiKeys = apiKeys,
+        rest = rest,
         caps = caps,
     )
 
@@ -3498,6 +3546,12 @@ internal fun HubCaps.toFfi() =
         hubSnapshots = hubSnapshots,
         paramApi = paramApi,
         hubStats = hubStats,
+        alarms = alarms,
+        outbound = outbound,
+        schedule = schedule,
+        mqtt = mqtt,
+        apiKeys = apiKeys,
+        rest = rest,
         caps = caps,
     )
 
@@ -3683,6 +3737,8 @@ internal fun se.bofr.dspi.ffi.uniffi.HubServerEvent.toDomain() =
         device = device?.let { it.toDomain() },
         snapshot = snapshot,
         change = change,
+        alarm = alarm?.let { it.toDomain() },
+        run = run?.let { it.toDomain() },
     )
 
 internal fun HubServerEvent.toFfi() =
@@ -3693,6 +3749,8 @@ internal fun HubServerEvent.toFfi() =
         device = device?.let { it.toFfi() },
         snapshot = snapshot,
         change = change,
+        alarm = alarm?.let { it.toFfi() },
+        run = run?.let { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HubSnapshotDocument.toDomain() =
@@ -3767,6 +3825,396 @@ internal fun SnapshotMergedList.toFfi() =
         entries = entries.map { it.toFfi() },
         hubListed = hubListed,
         hubNoticeKey = hubNoticeKey,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubAlarm.toDomain() =
+    HubAlarm(
+        id = id,
+        source = source,
+        code = code,
+        subject = subject,
+        serial = serial,
+        severity = severity,
+        message = message,
+        state = state,
+        raisedAt = raisedAt,
+        clearedAt = clearedAt,
+        acknowledgedBy = acknowledgedBy,
+        count = count.toLong(),
+        reason = reason,
+        noticeKey = noticeKey,
+    )
+
+internal fun HubAlarm.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubAlarm(
+        id = id,
+        source = source,
+        code = code,
+        subject = subject,
+        serial = serial,
+        severity = severity,
+        message = message,
+        state = state,
+        raisedAt = raisedAt,
+        clearedAt = clearedAt,
+        acknowledgedBy = acknowledgedBy,
+        count = count.toUInt(),
+        reason = reason,
+        noticeKey = noticeKey,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubAlarmRule.toDomain() =
+    HubAlarmRule(
+        code = code,
+        on = on,
+        afterS = afterS?.let { it.toLong() },
+        perMinute = perMinute?.let { it.toLong() },
+        muteOnStorm = muteOnStorm,
+        aboveC = aboveC,
+        abovePct = abovePct?.let { it.toLong() },
+        forS = forS?.let { it.toLong() },
+    )
+
+internal fun HubAlarmRule.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubAlarmRule(
+        code = code,
+        on = on,
+        afterS = afterS?.let { it.toUInt() },
+        perMinute = perMinute?.let { it.toUInt() },
+        muteOnStorm = muteOnStorm,
+        aboveC = aboveC,
+        abovePct = abovePct?.let { it.toUInt() },
+        forS = forS?.let { it.toUInt() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubScheduleAction.toDomain() =
+    HubScheduleAction(
+        t = t,
+        slot = slot?.let { it.toInt() },
+        name = name,
+        snapshot = snapshot,
+        scene = scene,
+        path = path,
+        idx = idx.map { it.toLong() },
+        value = value,
+        flag = flag,
+    )
+
+internal fun HubScheduleAction.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubScheduleAction(
+        t = t,
+        slot = slot?.let { it.toUByte() },
+        name = name,
+        snapshot = snapshot,
+        scene = scene,
+        path = path,
+        idx = idx.map { it.toUInt() },
+        value = value,
+        flag = flag,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubScheduleLast.toDomain() =
+    HubScheduleLast(
+        at = at,
+        ok = ok,
+        skipped = skipped,
+    )
+
+internal fun HubScheduleLast.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubScheduleLast(
+        at = at,
+        ok = ok,
+        skipped = skipped,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubScheduleRule.toDomain() =
+    HubScheduleRule(
+        id = id,
+        name = name,
+        enabled = enabled,
+        days = days,
+        time = time,
+        once = once,
+        actions = actions.map { it.toDomain() },
+        targets = targets,
+        nextRun = nextRun,
+        last = last?.let { it.toDomain() },
+    )
+
+internal fun HubScheduleRule.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubScheduleRule(
+        id = id,
+        name = name,
+        enabled = enabled,
+        days = days,
+        time = time,
+        once = once,
+        actions = actions.map { it.toFfi() },
+        targets = targets,
+        nextRun = nextRun,
+        last = last?.let { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubSchedules.toDomain() =
+    HubSchedules(
+        rules = rules.map { it.toDomain() },
+        zone = zone,
+        localTime = localTime,
+        clockUnset = clockUnset,
+    )
+
+internal fun HubSchedules.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubSchedules(
+        rules = rules.map { it.toFfi() },
+        zone = zone,
+        localTime = localTime,
+        clockUnset = clockUnset,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubScheduleResult.toDomain() =
+    HubScheduleResult(
+        serial = serial,
+        action = action,
+        ok = ok,
+        code = code,
+        msg = msg,
+    )
+
+internal fun HubScheduleResult.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubScheduleResult(
+        serial = serial,
+        action = action,
+        ok = ok,
+        code = code,
+        msg = msg,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubScheduleRun.toDomain() =
+    HubScheduleRun(
+        rule = rule,
+        name = name,
+        at = at,
+        by = by,
+        results = results.map { it.toDomain() },
+    )
+
+internal fun HubScheduleRun.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubScheduleRun(
+        rule = rule,
+        name = name,
+        at = at,
+        by = by,
+        results = results.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubOutboundLast.toDomain() =
+    HubOutboundLast(
+        at = at,
+        ok = ok,
+        status = status?.let { it.toInt() },
+        msg = msg,
+    )
+
+internal fun HubOutboundLast.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubOutboundLast(
+        at = at,
+        ok = ok,
+        status = status?.let { it.toUShort() },
+        msg = msg,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubOutboundTarget.toDomain() =
+    HubOutboundTarget(
+        id = id,
+        name = name,
+        kind = kind,
+        url = url,
+        enabled = enabled,
+        kinds = kinds,
+        secret = secret,
+        plaintext = plaintext,
+        caPem = caPem,
+        pinSha256 = pinSha256,
+        queued = queued.toLong(),
+        dropped = dropped.toLong(),
+        last = last?.let { it.toDomain() },
+        encrypted = encrypted,
+        trust = trust,
+        notice = notice,
+    )
+
+internal fun HubOutboundTarget.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubOutboundTarget(
+        id = id,
+        name = name,
+        kind = kind,
+        url = url,
+        enabled = enabled,
+        kinds = kinds,
+        secret = secret,
+        plaintext = plaintext,
+        caPem = caPem,
+        pinSha256 = pinSha256,
+        queued = queued.toUInt(),
+        dropped = dropped.toULong(),
+        last = last?.let { it.toFfi() },
+        encrypted = encrypted,
+        trust = trust,
+        notice = notice,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubOutboundSecret.toDomain() =
+    HubOutboundSecret(
+        target = target,
+        secret = FfiHubSecret(secret),
+    )
+
+internal fun HubOutboundSecret.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubOutboundSecret(
+        target = target,
+        secret = (secret as FfiHubSecret).inner,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubOutboundSet.toDomain() =
+    HubOutboundSet(
+        targets = targets.map { it.toDomain() },
+        secrets = secrets.map { it.toDomain() },
+    )
+
+internal fun HubOutboundSet.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubOutboundSet(
+        targets = targets.map { it.toFfi() },
+        secrets = secrets.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubOutboundTest.toDomain() =
+    HubOutboundTest(
+        delivered = delivered,
+        status = status?.let { it.toInt() },
+        msg = msg,
+    )
+
+internal fun HubOutboundTest.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubOutboundTest(
+        delivered = delivered,
+        status = status?.let { it.toUShort() },
+        msg = msg,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubMqttTls.toDomain() =
+    HubMqttTls(
+        mode = mode,
+        caPem = caPem,
+        pinSha256 = pinSha256,
+        clientCertPem = clientCertPem,
+        clientKeyPem = clientKeyPem,
+        clientCertFile = clientCertFile,
+        clientKeyFile = clientKeyFile,
+        allowPlaintextPassword = allowPlaintextPassword,
+    )
+
+internal fun HubMqttTls.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubMqttTls(
+        mode = mode,
+        caPem = caPem,
+        pinSha256 = pinSha256,
+        clientCertPem = clientCertPem,
+        clientKeyPem = clientKeyPem,
+        clientCertFile = clientCertFile,
+        clientKeyFile = clientKeyFile,
+        allowPlaintextPassword = allowPlaintextPassword,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubMqttSettings.toDomain() =
+    HubMqttSettings(
+        enabled = enabled,
+        broker = broker,
+        port = port?.let { it.toInt() },
+        clientId = clientId,
+        username = username,
+        password = password,
+        baseTopic = baseTopic,
+        tls = tls.toDomain(),
+        haEnabled = haEnabled,
+        haKey = haKey?.let { it.toLong() },
+        notice = notice,
+    )
+
+internal fun HubMqttSettings.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubMqttSettings(
+        enabled = enabled,
+        broker = broker,
+        port = port?.let { it.toUShort() },
+        clientId = clientId,
+        username = username,
+        password = password,
+        baseTopic = baseTopic,
+        tls = tls.toFfi(),
+        haEnabled = haEnabled,
+        haKey = haKey?.let { it.toUInt() },
+        notice = notice,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubMqttStatus.toDomain() =
+    HubMqttStatus(
+        state = state,
+        msg = msg,
+        since = since,
+        queued = queued.toLong(),
+        dropped = dropped.toLong(),
+        encrypted = encrypted,
+        notice = notice,
+    )
+
+internal fun HubMqttStatus.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubMqttStatus(
+        state = state,
+        msg = msg,
+        since = since,
+        queued = queued.toUInt(),
+        dropped = dropped.toULong(),
+        encrypted = encrypted,
+        notice = notice,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubApiKey.toDomain() =
+    HubApiKey(
+        cid = cid.toLong(),
+        name = name,
+        role = role,
+        plaintextOk = plaintextOk,
+        online = online,
+        created = created,
+        lastSeen = lastSeen,
+    )
+
+internal fun HubApiKey.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubApiKey(
+        cid = cid.toUInt(),
+        name = name,
+        role = role,
+        plaintextOk = plaintextOk,
+        online = online,
+        created = created,
+        lastSeen = lastSeen,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubApiKeyMinted.toDomain() =
+    HubApiKeyMinted(
+        cid = cid.toLong(),
+        name = name,
+        role = role,
+        plaintextOk = plaintextOk,
+        key = FfiHubSecret(key),
+    )
+
+internal fun HubApiKeyMinted.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubApiKeyMinted(
+        cid = cid.toUInt(),
+        name = name,
+        role = role,
+        plaintextOk = plaintextOk,
+        key = (key as FfiHubSecret).inner,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =

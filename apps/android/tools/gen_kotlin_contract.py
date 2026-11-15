@@ -536,6 +536,10 @@ def to_ffi(expr: str, t: str, name: str = "") -> str:
         return expr if inner == "it" else f"{expr}?.let {{ {inner} }}"
     if m := re.match(r"Arc<dyn (\w+)>$", t):
         return f"wrap{m.group(1)}({expr})"
+    # -- WP P2DFIXB -- an object back to UniFFI: the adapter's own handle (a
+    # record holding one, as HubApiKeyMinted.key, maps both ways)
+    if m := re.match(r"Arc<(\w+)>$", t):
+        return f"({expr} as Ffi{m.group(1)}).inner"
     return f"{expr}.toFfi()"
 
 
@@ -783,7 +787,7 @@ class FfiDspiCore : DspiCoreApi {
             out.append(f"\n{sig} = {body}\n")
     out.append("}\n")
     for o in surf.objects.values():
-        out.append(f"\ninternal class Ffi{o.name}(private val inner: {FFI}.{o.name}) : {o.name} {{\n")
+        out.append(f"\ninternal class Ffi{o.name}(internal val inner: {FFI}.{o.name}) : {o.name} {{\n")
         out.append("    override fun close() = inner.close()\n")
         for f in o.methods:
             ret, throws = unwrap_result(f.ret) if f.ret else ("()", False)

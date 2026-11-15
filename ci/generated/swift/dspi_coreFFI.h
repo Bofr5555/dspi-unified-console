@@ -1266,6 +1266,41 @@ void uniffi_dspi_core_fn_method_dspicore_host_notify(void*_Nonnull ptr, RustBuff
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_admin_events(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ALARM_ACK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ALARM_ACK
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_alarm_ack(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ALARM_RULES_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ALARM_RULES_GET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_alarm_rules_get(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ALARM_RULES_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ALARM_RULES_SET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_alarm_rules_set(void*_Nonnull ptr, RustBuffer rules, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ALARMS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ALARMS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_alarms(void*_Nonnull ptr, RustBuffer serial, RustBuffer state, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_API_KEY_MINT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_API_KEY_MINT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_api_key_mint(void*_Nonnull ptr, RustBuffer name, RustBuffer role, int8_t plaintext_ok, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_API_KEY_REVOKE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_API_KEY_REVOKE
+void uniffi_dspi_core_fn_method_dspicore_hub_api_key_revoke(void*_Nonnull ptr, uint32_t cid, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_API_KEYS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_API_KEYS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_api_keys(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_CAPS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_CAPS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_caps(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1316,6 +1351,36 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_limits_set(void*_Nonnull ptr,
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_mode_pin(void*_Nonnull ptr, RustBuffer role, RustBuffer mode, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MQTT_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MQTT_GET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_mqtt_get(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MQTT_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MQTT_SET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_mqtt_set(void*_Nonnull ptr, RustBuffer settings, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MQTT_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MQTT_STATUS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_mqtt_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_OUTBOUND_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_OUTBOUND_GET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_outbound_get(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_OUTBOUND_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_OUTBOUND_SET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_outbound_set(void*_Nonnull ptr, RustBuffer targets, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_OUTBOUND_TEST
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_OUTBOUND_TEST
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_outbound_test(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_PIN_CLEAR
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_PIN_CLEAR
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_pin_clear(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1324,6 +1389,26 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_pin_clear(void*_Nonnull ptr, 
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_PIN_SET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_PIN_SET
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_pin_set(void*_Nonnull ptr, RustBuffer pin, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SCHEDULE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SCHEDULE_DELETE
+void uniffi_dspi_core_fn_method_dspicore_hub_schedule_delete(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SCHEDULE_RUN_NOW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SCHEDULE_RUN_NOW
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_schedule_run_now(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SCHEDULE_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SCHEDULE_SET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_schedule_set(void*_Nonnull ptr, RustBuffer rule, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SCHEDULES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SCHEDULES
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_schedules(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SERVER_EVENTS
@@ -2396,6 +2481,21 @@ void uniffi_dspi_core_fn_init_callback_vtable_hubadminlistener(const UniffiVTabl
 void uniffi_dspi_core_fn_method_hubadminlistener_on_hub_admin_event(void*_Nonnull ptr, RustBuffer event, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HUBSECRET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HUBSECRET
+void*_Nonnull uniffi_dspi_core_fn_clone_hubsecret(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FREE_HUBSECRET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FREE_HUBSECRET
+void uniffi_dspi_core_fn_free_hubsecret(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HUBSECRET_REVEAL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_HUBSECRET_REVEAL
+RustBuffer uniffi_dspi_core_fn_method_hubsecret_reveal(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HUBSERVERLISTENER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_HUBSERVERLISTENER
 void*_Nonnull uniffi_dspi_core_fn_clone_hubserverlistener(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2720,6 +2820,11 @@ RustBuffer uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(RustCallS
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FIRMWARE_GUARD_CHECK
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FIRMWARE_GUARD_CHECK
 RustBuffer uniffi_dspi_core_fn_func_firmware_guard_check(RustBuffer image, RustBuffer board, RustBuffer typed_confirmation, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_HUB_ALARM_NOTICE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_HUB_ALARM_NOTICE
+RustBuffer uniffi_dspi_core_fn_func_hub_alarm_notice(RustBuffer alarm, RustBuffer time, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_KNOWN_FEATURE_NAMES
@@ -3304,6 +3409,12 @@ uint16_t uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FIRMWARE_GUARD_CHECK
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FIRMWARE_GUARD_CHECK
 uint16_t uniffi_dspi_core_checksum_func_firmware_guard_check(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_HUB_ALARM_NOTICE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_HUB_ALARM_NOTICE
+uint16_t uniffi_dspi_core_checksum_func_hub_alarm_notice(void
     
 );
 #endif
@@ -4381,6 +4492,48 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_admin_events(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ALARM_ACK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ALARM_ACK
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_alarm_ack(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ALARM_RULES_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ALARM_RULES_GET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_alarm_rules_get(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ALARM_RULES_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ALARM_RULES_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_alarm_rules_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ALARMS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ALARMS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_alarms(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_API_KEY_MINT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_API_KEY_MINT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_api_key_mint(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_API_KEY_REVOKE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_API_KEY_REVOKE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_api_key_revoke(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_API_KEYS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_API_KEYS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_api_keys(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_CAPS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_CAPS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_caps(void
@@ -4441,6 +4594,42 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MQTT_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MQTT_GET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_get(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MQTT_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MQTT_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MQTT_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MQTT_STATUS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_OUTBOUND_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_OUTBOUND_GET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_outbound_get(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_OUTBOUND_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_OUTBOUND_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_outbound_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_OUTBOUND_TEST
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_OUTBOUND_TEST
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_outbound_test(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_PIN_CLEAR
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_PIN_CLEAR
 uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear(void
@@ -4450,6 +4639,30 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_PIN_SET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_PIN_SET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_pin_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_SCHEDULE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_SCHEDULE_DELETE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_schedule_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_SCHEDULE_RUN_NOW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_SCHEDULE_RUN_NOW
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_schedule_run_now(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_SCHEDULE_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_SCHEDULE_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_schedule_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_SCHEDULES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_SCHEDULES
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_schedules(void
     
 );
 #endif
@@ -5698,6 +5911,12 @@ uint16_t uniffi_dspi_core_checksum_method_hosttransport_unlock(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HUBADMINLISTENER_ON_HUB_ADMIN_EVENT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HUBADMINLISTENER_ON_HUB_ADMIN_EVENT
 uint16_t uniffi_dspi_core_checksum_method_hubadminlistener_on_hub_admin_event(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HUBSECRET_REVEAL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_HUBSECRET_REVEAL
+uint16_t uniffi_dspi_core_checksum_method_hubsecret_reveal(void
     
 );
 #endif
