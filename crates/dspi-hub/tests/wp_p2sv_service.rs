@@ -137,14 +137,11 @@ fn config_with(probe: &Arc<Probe>, clock: Arc<dyn HubClock>) -> HubConfig {
         services: ServiceConfig {
             clock,
             extra: vec![Arc::clone(probe) as Arc<dyn HubService>],
-            // -- WP P2HP -- the struct gained a field
-            // -- WP P2IN -- the services' new fields stay at their defaults
-            // -- WP P2ID -- the services' fields added in wave P2-B, off
-            ..ServiceConfig::default()
             // -- WP P2HS -- off, so the probe claims `hub.stats` and `hub.rename` stays
             // `unsupported` (the hub's own answers them otherwise: tests/wp_p2hs_stats.rs)
             stats: false,
-            // -- WP P2EV -- the services' fields since P2SV, each off
+            // -- WP P2HP / P2IN / P2ID / P2EV -- the services' fields added in wave P2-B
+            // stay at their defaults (off)
             ..ServiceConfig::default()
         },
         ..HubConfig::in_process("P2SV hub")
