@@ -1828,6 +1828,66 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
 </context>
 <context>
+    <name>EventsController</name>
+    <message>
+        <source>The hub&apos;s history could not be read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>EventsWindow</name>
+    <message>
+        <source>Events</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Where the events are kept</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On This Console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the Hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Events on the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Events on this console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 (×%2)</source>
+        <extracomment>An event and how many times it happened in a row</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>by %1</source>
+        <extracomment>Who caused an event: a console, an API key or a schedule, by name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Device Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reading…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No events yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>FileBanner</name>
     <message>
         <source>File: %1. You are editing a file, not a device; nothing here reaches a DSPi.</source>
@@ -4007,6 +4067,26 @@ Groups are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>IdentifyController</name>
+    <message>
+        <source>This DSPi cannot identify itself.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Identify stopped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The DSPi blinks its LED for %1 s.</source>
+        <extracomment>%1 is a number of seconds</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The DSPi did not identify itself.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>ImportConfig</name>
     <message>
         <source>Import Device Configuration</source>
@@ -5606,6 +5686,14 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Events…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Identify</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Firmware Update…</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6253,6 +6341,17 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Change</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>NoticeBanner</name>
+    <message>
+        <source>Acknowledge</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Tell the hub and every console that you have seen this alarm</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -8893,6 +8992,21 @@ Macros are stored on the device alongside the controls and share their Save and 
         <source>There is nothing to revert.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Saved “%1” to the hub.</source>
+        <extracomment>%1 is the snapshot&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copied “%1” to this console.</source>
+        <extracomment>%1 is the snapshot&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recalled “%1” from the hub.</source>
+        <extracomment>%1 is the snapshot&apos;s name</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SnapshotsWindow</name>
@@ -8951,6 +9065,22 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>No Device Connected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete Snapshot from the Hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Local copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub holds a different snapshot under this one&apos;s id. This console keeps its own copy.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9024,6 +9154,60 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>On the Hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Snapshots on the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 · %2</source>
+        <extracomment>A snapshot&apos;s name and its note</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Here too</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub keeps no snapshots of this device yet.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save Selected to the Hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep the snapshot selected above on the hub too, for every console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recall from the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Put the device back to the hub&apos;s snapshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy Here</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep a copy of the hub&apos;s snapshot on this console</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete from the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Delete the snapshot “%1” from the hub? Every console loses it; a copy kept on a console stays there.</source>
+        <extracomment>%1 is the snapshot&apos;s name</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
