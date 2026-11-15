@@ -264,7 +264,7 @@ function fakeSession(answers: Partial<Record<string, unknown>> = {}) {
           const id = (params as { id: string }).id;
           return alarm(id, { state: "acknowledged", acknowledgedBy: "uConsole for DSPi (web)" });
         }
-        if (method === "hubIdentify") {
+        if (method === "hubIdentify" || method === "hubIdentifySerial") /* -- WP P2WB3 -- */ {
           const e = s.answers.hubIdentify;
           if (e instanceof CoreCallError) throw e;
           return e ?? { remainingS: 10, lastToneOutput: null, chip: "RP2350", chipRev: 2, chipId: 0, board: "pico2", hwRev: "" };
@@ -363,12 +363,15 @@ test("P2WB1: the health panel's source: conditions as they change; an acknowledg
 test("P2WB1: Identify answers: the blink, or the core's refusal with its notice", async () => {
   const s = fakeSession();
   const f = feedOn(s);
-  const ok = await f.identify();
+  // -- WP P2WB3 -- through hubIdentifySerial, the device named
+  f.start();
+  await f.tick();
+  const ok = await f.identify(OPEN);
   assert.equal(ok.bad, false);
-  assert.equal(ok.text, "Blinking for 10 s.");
-  assert.deepEqual(s.calls.find((c) => c.method === "hubIdentify")!.params, { seconds: 10 });
+  assert.equal(ok.text, "Stage left: blinking for 10 s.");
+  assert.deepEqual(s.calls.find((c) => c.method === "hubIdentifySerial")!.params, { serial: OPEN, seconds: 10 });
   s.answers.hubIdentify = new CoreCallError("rate_limited", "hub refused: rate_limited", "dlink.rate_limited");
-  const no = await f.identify();
+  const no = await f.identify(OPEN);
   assert.equal(no.bad, true);
   assert.match(no.text, /rate_limited|Too many/);
 });

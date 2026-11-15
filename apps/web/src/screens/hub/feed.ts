@@ -147,12 +147,49 @@ export class HubFeed {
 
   // -- the actions --
 
-  /** Identify the session's own device (the only one the core's call reaches): its LED blinks. */
-  async identify(seconds = IDENTIFY_SECONDS): Promise<Said> {
+  // -- WP P2WB3 -- Identify for any device on the hub (`hubIdentifySerial`), not only the open one
+  /** Identify device `serial` on the hub ("" the open one): its LED blinks. */
+  async identify(serial: string, seconds = IDENTIFY_SECONDS): Promise<Said> {
     try {
-      const info: IdentifyInfoRecord | null = await this.session.core.call("hubIdentify", { seconds });
+      const info: IdentifyInfoRecord | null = await this.session.core.call("hubIdentifySerial", { serial, seconds });
       const left = info?.remainingS ?? 0;
-      return { text: left > 0 ? `Blinking for ${left} s.` : seconds > 0 ? "Identify sent." : "Identify stopped.", bad: false, notice: null };
+      const who = serial ? `${this.deviceName(serial)}: ` : "";
+      return { text: `${who}${left > 0 ? `blinking for ${left} s.` : seconds > 0 ? "Identify sent." : "Identify stopped."}`, bad: false, notice: null };
+    } catch (e) {
+      return failed(e);
+    }
+  }
+
+  // -- WP P2WB3 -- an Admin's inventory edits, forget and the hub's name
+  /** Set a device's location, note and tags (Admin); the table takes the hub's record. */
+  async setDetails(serial: string, d: { location: string; note: string; tags: string[] }): Promise<Said> {
+    try {
+      const rec = await this.session.core.call("hubInventorySet", { serial, location: d.location, note: d.note, tags: d.tags });
+      if (rec && typeof rec.serial === "string") this.set({ devices: withDevice(this.view.devices, rec.serial, rec) });
+      return { text: `Saved the details of ${rec?.name || serial}.`, bad: false, notice: null };
+    } catch (e) {
+      return failed(e);
+    }
+  }
+
+  /** Forget an offline device (Admin); `withData` its snapshots on the hub too. */
+  async forget(serial: string, withData: boolean): Promise<Said> {
+    const name = this.deviceName(serial);
+    try {
+      await this.session.core.call("hubInventoryForget", { serial, withData });
+      this.set({ devices: withDevice(this.view.devices, serial, null) });
+      return { text: withData ? `Forgot ${name} and its snapshots on the hub.` : `Forgot ${name}.`, bad: false, notice: null };
+    } catch (e) {
+      return failed(e);
+    }
+  }
+
+  /** Rename the hub (Admin): the session shows the hub's answer. */
+  async rename(name: string): Promise<Said> {
+    try {
+      const now = await this.session.core.call("hubRename", { name });
+      this.session.hubRenamed(now);
+      return { text: `The hub is now called ${now}.`, bad: false, notice: null };
     } catch (e) {
       return failed(e);
     }
