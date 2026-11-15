@@ -2,7 +2,9 @@
 //! `dspi_core::read_only`.
 //!
 //! - `setClientReadOnly {on}`: turn it on or off for this session's core; it
-//!   stays for every device the session opens. Answers `{on}`.
+//!   stays for every device the session opens. Answers `{on}`. Turning it on
+//!   while a guarded apply waits fails with code `invalid` and notice key
+//!   `read_only.guard_pending` (keep or revert first).
 //! - `clientReadOnly`: `{on, refusals}`.
 //!
 //! While it is on, every write fails with code `read_only` and notice key
@@ -28,9 +30,15 @@ pub fn dispatch(core: &DspiCore, method: &str, p: Value) -> Option<CallResult> {
     Some(match method {
         "setClientReadOnly" => serde_json::from_value::<On>(p)
             .map_err(|e| CallError::new("invalid", format!("bad parameters: {e}")))
-            .map(|o| {
-                core.set_client_read_only(o.on);
-                json!({ "on": core.client_read_only() })
+            .and_then(|o| {
+                core.set_client_read_only(o.on).map_err(|e| {
+                    let key = core.notice_for_error(e.clone()).key;
+                    CallError {
+                        notice_key: Some(key),
+                        ..CallError::from(e)
+                    }
+                })?;
+                Ok(json!({ "on": core.client_read_only() }))
             }),
         "clientReadOnly" => Ok(json!({
             "on": core.client_read_only(),
@@ -100,5 +108,19 @@ mod tests_wp_romode {
         assert_eq!(r["ok"], true, "{r}");
         let r = run(h, "setClientReadOnly", json!({ "on": "yes" }));
         assert_eq!(r["code"], "invalid", "{r}");
+
+        // While a guarded apply waits, the mode is refused with its row.
+        assert_eq!(
+            run(h, "applyGuardBegin", json!({ "label": "x" }))["ok"],
+            true
+        );
+        let r = run(h, "setClientReadOnly", json!({ "on": true }));
+        assert_eq!(r["ok"], false, "{r}");
+        assert_eq!(r["code"], "invalid", "{r}");
+        assert_eq!(r["noticeKey"], "read_only.guard_pending", "{r}");
+        assert_eq!(run(h, "clientReadOnly", Value::Null)["value"]["on"], false);
+        assert_eq!(run(h, "applyRevert", json!({}))["ok"], true);
+        let r = run(h, "setClientReadOnly", json!({ "on": true }));
+        assert_eq!(r["value"]["on"], true, "{r}");
     }
 }

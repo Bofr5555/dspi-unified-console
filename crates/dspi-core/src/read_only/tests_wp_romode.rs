@@ -119,7 +119,7 @@ fn tok(core: &DspiCore, op: ConfirmOp) -> Option<String> {
 fn wp_romode_the_flag_is_off_by_default_and_stays_across_a_reconnect() {
     let core = DspiCore::new();
     assert!(!core.client_read_only());
-    core.set_client_read_only(true);
+    core.set_client_read_only(true).unwrap();
     assert!(core.client_read_only());
     core.open_demo().unwrap();
     assert!(core.client_read_only());
@@ -127,7 +127,7 @@ fn wp_romode_the_flag_is_off_by_default_and_stays_across_a_reconnect() {
     core.disconnect();
     core.open_demo().unwrap();
     refused("after a reconnect", core.set_master_volume(-3.0));
-    core.set_client_read_only(false);
+    core.set_client_read_only(false).unwrap();
     assert!(!core.client_read_only());
     core.set_master_volume(-3.0).unwrap();
     assert_eq!(core.get_state().master_volume_db, -3.0);
@@ -147,7 +147,7 @@ fn wp_romode_every_write_family_is_refused_with_nothing_sent() {
     let state = core.get_state();
     let band = state.filters[0][0];
 
-    core.set_client_read_only(true);
+    core.set_client_read_only(true).unwrap();
     log.lock().unwrap().clear();
     let image = remote.image();
     let boot_token = tok(&core, ConfirmOp::EnterBootloader);
@@ -331,14 +331,14 @@ fn wp_romode_every_write_family_is_refused_with_nothing_sent() {
     assert_eq!(core.get_state().master_volume_db, -10.0, "the mirror too");
 
     // A refused gated call did not spend its token.
-    core.set_client_read_only(false);
+    core.set_client_read_only(false).unwrap();
     core.enter_bootloader_confirmed(boot_token).unwrap();
 }
 
 #[test]
 fn wp_romode_reads_notifications_and_meters_go_on() {
     let (core, remote, log) = demo();
-    core.set_client_read_only(true);
+    core.set_client_read_only(true).unwrap();
     log.lock().unwrap().clear();
     core.fetch_all().unwrap();
     core.refresh_params().unwrap();
@@ -380,7 +380,7 @@ fn wp_romode_reads_notifications_and_meters_go_on() {
 #[test]
 fn wp_romode_the_audio_link_setters_are_refused() {
     let (core, remote, log) = demo_of(FakeDevice::demo_alink());
-    core.set_client_read_only(true);
+    core.set_client_read_only(true).unwrap();
     log.lock().unwrap().clear();
     let image = remote.image();
     let slots = core.fetch_alink_slots().unwrap();
@@ -398,7 +398,7 @@ fn wp_romode_a_refusal_has_the_client_row_and_the_firmware_one_stays() {
     core.open_demo().unwrap();
     let firmware = core.notice_for_error(DspiError::ReadOnly);
     assert_eq!(firmware.key, "read_only");
-    core.set_client_read_only(true);
+    core.set_client_read_only(true).unwrap();
     let e = core.set_master_volume(-1.0).unwrap_err();
     let n = core.notice_for_error(e.clone());
     assert_eq!(n.key, super::NOTICE_READ_ONLY_CLIENT);
@@ -411,14 +411,14 @@ fn wp_romode_a_refusal_has_the_client_row_and_the_firmware_one_stays() {
     // Other errors keep their own rows.
     assert_eq!(core.notice_for_error(DspiError::Locked).key, "locked");
     assert_eq!(core.client_notice_key("locked"), None);
-    core.set_client_read_only(false);
+    core.set_client_read_only(false).unwrap();
     assert_eq!(core.client_notice_key("read_only"), None);
 }
 
 #[test]
 fn wp_romode_hub_requests_are_refused_unless_they_read() {
     let core = DspiCore::new();
-    core.set_client_read_only(true);
+    core.set_client_read_only(true).unwrap();
     let mut inner = core.lock();
     for t in super::HUB_READS {
         assert_eq!(super::check_hub_request(&mut inner, t), Ok(()), "{t}");
@@ -450,7 +450,7 @@ fn wp_romode_hub_requests_are_refused_unless_they_read() {
 #[test]
 fn wp_romode_viewing_writes_pass_and_nothing_else_does() {
     let (core, _remote, _log) = demo();
-    core.set_client_read_only(true);
+    core.set_client_read_only(true).unwrap();
     assert!(matches!(
         core.lock().writable_conn(),
         Err(DspiError::ReadOnly)
@@ -462,4 +462,49 @@ fn wp_romode_viewing_writes_pass_and_nothing_else_does() {
     assert!(core.lock().writable_conn().is_err());
     // The ending of an A/B on its live side sends nothing either way.
     assert!(core.ab_keep(AbSide::A).is_err());
+}
+
+#[test]
+fn wp_romode_the_mode_is_refused_while_a_guarded_apply_waits_and_the_way_back_stays() {
+    let (core, remote, log) = demo();
+    let before = core.get_state().master_volume_db;
+    core.apply_guard_begin("flow".into(), 30).unwrap();
+    core.set_master_volume(before - 6.0).unwrap();
+
+    // Refused, with its own row, and nothing changed: writes still go out.
+    let e = core.set_client_read_only(true).unwrap_err();
+    assert_eq!(
+        e,
+        DspiError::InvalidArgument {
+            msg: super::GUARD_PENDING.into()
+        }
+    );
+    let n = core.notice_for_error(e);
+    assert_eq!(n.key, super::NOTICE_READ_ONLY_GUARD_PENDING);
+    assert_eq!(n.title, "A safe apply is waiting");
+    assert!(!core.client_read_only());
+    // Turning it off is never refused.
+    core.set_client_read_only(false).unwrap();
+
+    // The guard's revert puts the device back, then the mode goes on.
+    log.lock().unwrap().clear();
+    core.apply_revert().unwrap();
+    assert_eq!(core.get_state().master_volume_db, before, "reverted");
+    assert!(
+        log.lock().unwrap().iter().any(|&(out, _, _)| out),
+        "the revert wrote"
+    );
+    core.set_client_read_only(true).unwrap();
+    assert!(core.client_read_only());
+
+    // A guard can no longer begin; after Keep the mode may go on too.
+    refused("apply_guard_begin", core.apply_guard_begin("x".into(), 30));
+    core.set_client_read_only(false).unwrap();
+    core.apply_guard_begin("again".into(), 30).unwrap();
+    assert!(core.set_client_read_only(true).is_err());
+    core.apply_confirm().unwrap();
+    core.set_client_read_only(true).unwrap();
+    let image = remote.image();
+    refused("after Keep", core.set_master_volume(-1.0));
+    assert_eq!(remote.image(), image);
 }

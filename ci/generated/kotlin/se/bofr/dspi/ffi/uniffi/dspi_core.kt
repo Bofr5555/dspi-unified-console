@@ -4509,7 +4509,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_channel_name() != 8154.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_client_read_only() != 15628.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_client_read_only() != 61659.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_crossfeed() != 58844.toShort()) {
@@ -9189,6 +9189,12 @@ public interface DspiCoreInterface {
      * sent, and reads, notifications, the meters and the analyser go on. It
      * applies to every device this core opens until turned off. A client-side
      * diagnostic, not a security boundary. Waits for a call in flight.
+     *
+     * Turning it on is refused while a guarded apply waits for Keep or
+     * Revert (its revert would be refused too, leaving the device on the
+     * trial): [`DspiError::InvalidArgument`] with [`GUARD_PENDING`]'s words,
+     * the `read_only.guard_pending` row ([`DspiCore::notice_for_error`]),
+     * nothing changed. Keep or revert first. Turning it off always works.
      */
     fun `setClientReadOnly`(`on`: kotlin.Boolean)
     
@@ -15617,10 +15623,17 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * sent, and reads, notifications, the meters and the analyser go on. It
      * applies to every device this core opens until turned off. A client-side
      * diagnostic, not a security boundary. Waits for a call in flight.
-     */override fun `setClientReadOnly`(`on`: kotlin.Boolean)
+     *
+     * Turning it on is refused while a guarded apply waits for Keep or
+     * Revert (its revert would be refused too, leaving the device on the
+     * trial): [`DspiError::InvalidArgument`] with [`GUARD_PENDING`]'s words,
+     * the `read_only.guard_pending` row ([`DspiCore::notice_for_error`]),
+     * nothing changed. Keep or revert first. Turning it off always works.
+     */
+    @Throws(DspiException::class)override fun `setClientReadOnly`(`on`: kotlin.Boolean)
         = 
     callWithPointer {
-    uniffiRustCall() { _status ->
+    uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_client_read_only(
         it, FfiConverterBoolean.lower(`on`),_status)
 }

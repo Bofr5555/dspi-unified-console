@@ -18,11 +18,17 @@ to protect an installation, never this flag.
 | C | `dspi_set_client_read_only(core, on)`, `dspi_client_read_only(core)`, `dspi_client_read_only_refusals(core)` |
 | Web binding | `setClientReadOnly {on}`, `clientReadOnly` → `{on, refusals}` |
 | Terminal | `uconsole --read-only ...` (any command, any target) |
-| Swift console | `-ReadOnly YES` for every device through the core; `-MIDIReadOnly YES` for a DSPi on USB MIDI |
+| Swift console | `-ReadOnly YES` for every device through the core; `-MIDIReadOnly YES` for a DSPi on USB MIDI (the core's MIDI link; the Swift engine's own filter only under `-CoreTransport NO`) |
 | Web console | `?readonly` (and a fleet's view access): the page's sessions turn it on |
 
 It belongs to the core, not to a connection: it stays across a disconnect and
 a reconnect, for every device the core opens, until it is turned off.
+
+Turning it **on** is refused while a guarded apply (a safe apply) waits for Keep
+or Revert, since its way back would be refused too and leave the device on the
+trial: `InvalidArgument` with the `read_only.guard_pending` row
+(`notice_for_error`; C returns false, the web call fails with that `noticeKey`).
+Keep or revert first. Turning it off always works.
 
 ## What it refuses
 

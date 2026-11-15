@@ -1510,7 +1510,7 @@ mod tests_wp_c9 {
     fn wp_romode_the_analyser_runs_in_the_client_read_only_mode() {
         let (t, dev) = RtaDevice::new(TransportKind::Usb, true);
         let core = core_with(t);
-        core.set_client_read_only(true);
+        core.set_client_read_only(true).unwrap();
         core.rta_set_request(request(0b0101));
         core.rta_start();
         wait_for("caps", || core.rta_get_caps().supported);

@@ -1410,7 +1410,7 @@ uint32_t dspi_installer_lock_cover(struct FfiCore *core,
 const char *pages_json,
 char *buf,
 uint32_t len);
-void dspi_set_client_read_only(struct FfiCore *core, bool on);
+bool dspi_set_client_read_only(struct FfiCore *core, bool on);
 bool dspi_client_read_only(struct FfiCore *core);
 uint32_t dspi_client_read_only_refusals(struct FfiCore *core);
 uint32_t dspi_open_document(struct FfiCore *core,

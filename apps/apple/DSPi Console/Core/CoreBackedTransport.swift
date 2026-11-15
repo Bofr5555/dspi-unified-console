@@ -57,9 +57,9 @@ final class CoreBackedTransport: DeviceTransport {
     static var readOnlyLaunchFlag: Bool { UserDefaults.standard.bool(forKey: "ReadOnly") }
 
     /// -- WP ROMODE -- `-MIDIReadOnly YES` (or `-ReadOnly YES`): the read-only
-    /// mode for a DSPi on USB MIDI.  With the core's MIDI link (SW5) this is
-    /// the `clientReadOnly:` of that transport, so the mode no longer needs
-    /// the Swift engine's filter.
+    /// mode for a DSPi on USB MIDI, the `clientReadOnly:` of the app's MIDI
+    /// cores (`midiCore`, the Mac's fallback member), so the mode no longer
+    /// needs the Swift engine's filter.
     static var midiReadOnly: Bool {
         UserDefaults.standard.bool(forKey: "MIDIReadOnly") || readOnlyLaunchFlag
     }
@@ -232,7 +232,11 @@ final class CoreBackedTransport: DeviceTransport {
         let listener = Listener { [weak self] in self?.scheduleDrain() }
         notifyListener = listener
         coreQueue.async { [core] in
-            core.setClientReadOnly(on: readOnly)   // -- WP ROMODE -- before any device opens
+            // -- WP ROMODE -- before any device opens.  Refused only while a
+            // guarded apply waits on a core handed in (`read_only.guard_pending`).
+            do { try core.setClientReadOnly(on: readOnly) } catch {
+                CoreBackedTransport.log.error("client read-only mode not set: \(String(describing: error), privacy: .public)")
+            }
             core.notifyTapSet(enabled: true)
             core.setNotifyListener(listener: listener)
             // -- WP P1SW2 -- Tokens required (P1TK): every gated call in this

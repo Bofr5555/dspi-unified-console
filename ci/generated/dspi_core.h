@@ -6103,9 +6103,11 @@ uint32_t dspi_installer_lock_cover(struct FfiCore *core,
 /**
  * Turn the client read-only mode on or off for this handle; it stays for
  * every device the handle opens until turned off. Waits for a call in flight.
- * Nothing for a null handle.
+ * False for a null handle, and when turning it on is refused because a
+ * guarded apply waits for Keep or Revert (notice `read_only.guard_pending`;
+ * `dspi_take_failure` has the failure): keep or revert it first.
  */
-void dspi_set_client_read_only(struct FfiCore *core, bool on);
+bool dspi_set_client_read_only(struct FfiCore *core, bool on);
 
 /**
  * Whether the client read-only mode is on; false for a null handle.

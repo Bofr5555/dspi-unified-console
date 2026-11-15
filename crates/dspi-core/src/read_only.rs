@@ -53,6 +53,13 @@ use crate::{DspiCore, DspiError, Inner, Result};
 /// The notice row of a write refused by the client read-only mode.
 pub const NOTICE_READ_ONLY_CLIENT: &str = "read_only.client";
 
+/// The notice row of a refusal to turn the mode on while a guarded apply
+/// waits ([`DspiCore::set_client_read_only`]).
+pub const NOTICE_READ_ONLY_GUARD_PENDING: &str = "read_only.guard_pending";
+
+/// The words of that refusal (an `InvalidArgument`'s message).
+pub const GUARD_PENDING: &str = "A safe apply is waiting for Keep or Revert: keep or revert it before turning read-only mode on.";
+
 /// The hub requests that only read, the ones the client read-only mode lets
 /// out: the limits and pinned mode (the lock's refresh), the guarded apply's
 /// status, and the audio link's System view's reads.
@@ -150,12 +157,26 @@ impl DspiCore {
     /// sent, and reads, notifications, the meters and the analyser go on. It
     /// applies to every device this core opens until turned off. A client-side
     /// diagnostic, not a security boundary. Waits for a call in flight.
-    pub fn set_client_read_only(&self, on: bool) {
-        let mut inner = self.lock();
-        if inner.client_read_only.on != on {
-            log::info!("client read-only mode {}", if on { "on" } else { "off" });
+    ///
+    /// Turning it on is refused while a guarded apply waits for Keep or
+    /// Revert (its revert would be refused too, leaving the device on the
+    /// trial): [`DspiError::InvalidArgument`] with [`GUARD_PENDING`]'s words,
+    /// the `read_only.guard_pending` row ([`DspiCore::notice_for_error`]),
+    /// nothing changed. Keep or revert first. Turning it off always works.
+    pub fn set_client_read_only(&self, on: bool) -> Result<()> {
+        if !on {
+            self.store_client_read_only(false);
+            return Ok(());
         }
-        inner.client_read_only.on = on;
+        self.with_guard_settled(|waiting| {
+            if waiting {
+                return Err(DspiError::InvalidArgument {
+                    msg: GUARD_PENDING.to_owned(),
+                });
+            }
+            self.store_client_read_only(true);
+            Ok(())
+        })
     }
 
     /// Whether the client read-only mode is on.
@@ -172,6 +193,13 @@ impl DspiCore {
     /// this core's context: [`DspiError::ReadOnly`] while the client
     /// read-only mode is on is the `read_only.client` row.
     pub fn notice_for_error(&self, error: DspiError) -> Notice {
+        // -- the refusal to turn the mode on during a guarded apply
+        if matches!(&error, DspiError::InvalidArgument { msg } if msg == GUARD_PENDING) {
+            return notice_for_key(
+                NOTICE_READ_ONLY_GUARD_PENDING.to_owned(),
+                error.notice_detail(),
+            );
+        }
         match refine_key(self.client_read_only(), &error.notice_key()) {
             Some(key) => notice_for_key(key.to_owned(), error.notice_detail()),
             None => notice_for(error),
@@ -180,6 +208,14 @@ impl DspiCore {
 }
 
 impl DspiCore {
+    fn store_client_read_only(&self, on: bool) {
+        let mut inner = self.lock();
+        if inner.client_read_only.on != on {
+            log::info!("client read-only mode {}", if on { "on" } else { "off" });
+        }
+        inner.client_read_only.on = on;
+    }
+
     /// [`check`] for a call that starts a write without `writable_conn`
     /// (an A/B compare): refused with no device too.
     pub(crate) fn client_write_check(&self) -> Result<()> {

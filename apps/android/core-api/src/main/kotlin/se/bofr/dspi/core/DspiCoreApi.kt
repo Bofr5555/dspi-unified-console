@@ -3467,7 +3467,14 @@ interface DspiCoreApi : AutoCloseable {
      * sent, and reads, notifications, the meters and the analyser go on. It
      * applies to every device this core opens until turned off. A client-side
      * diagnostic, not a security boundary. Waits for a call in flight.
+     *
+     * Turning it on is refused while a guarded apply waits for Keep or
+     * Revert (its revert would be refused too, leaving the device on the
+     * trial): [`DspiError::InvalidArgument`] with [`GUARD_PENDING`]'s words,
+     * the `read_only.guard_pending` row ([`DspiCore::notice_for_error`]),
+     * nothing changed. Keep or revert first. Turning it off always works.
      */
+    @Throws(DspiException::class)
     fun setClientReadOnly(on: Boolean)
 
     /**

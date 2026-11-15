@@ -252,7 +252,9 @@ pub use hub_admin::{
     InstallerTarget,
 };
 // -- WP ROMODE --
-pub use read_only::{HUB_READS, NOTICE_READ_ONLY_CLIENT};
+pub use read_only::{
+    GUARD_PENDING, HUB_READS, NOTICE_READ_ONLY_CLIENT, NOTICE_READ_ONLY_GUARD_PENDING,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

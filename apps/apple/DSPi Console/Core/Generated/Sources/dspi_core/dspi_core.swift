@@ -4056,8 +4056,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * sent, and reads, notifications, the meters and the analyser go on. It
      * applies to every device this core opens until turned off. A client-side
      * diagnostic, not a security boundary. Waits for a call in flight.
+     *
+     * Turning it on is refused while a guarded apply waits for Keep or
+     * Revert (its revert would be refused too, leaving the device on the
+     * trial): [`DspiError::InvalidArgument`] with [`GUARD_PENDING`]'s words,
+     * the `read_only.guard_pending` row ([`DspiCore::notice_for_error`]),
+     * nothing changed. Keep or revert first. Turning it off always works.
      */
-    func setClientReadOnly(on: Bool) 
+    func setClientReadOnly(on: Bool) throws 
     
     /**
      * Crossfeed on (`true`) or off.
@@ -9291,8 +9297,14 @@ open func setChannelName(ch: UInt8, name: String)throws   {try rustCallWithError
      * sent, and reads, notifications, the meters and the analyser go on. It
      * applies to every device this core opens until turned off. A client-side
      * diagnostic, not a security boundary. Waits for a call in flight.
+     *
+     * Turning it on is refused while a guarded apply waits for Keep or
+     * Revert (its revert would be refused too, leaving the device on the
+     * trial): [`DspiError::InvalidArgument`] with [`GUARD_PENDING`]'s words,
+     * the `read_only.guard_pending` row ([`DspiCore::notice_for_error`]),
+     * nothing changed. Keep or revert first. Turning it off always works.
      */
-open func setClientReadOnly(on: Bool)  {try! rustCall() {
+open func setClientReadOnly(on: Bool)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_set_client_read_only(self.uniffiClonePointer(),
         FfiConverterBool.lower(on),$0
     )
@@ -38766,7 +38778,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_channel_name() != 8154) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_set_client_read_only() != 15628) {
+    if (uniffi_dspi_core_checksum_method_dspicore_set_client_read_only() != 61659) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_crossfeed() != 58844) {

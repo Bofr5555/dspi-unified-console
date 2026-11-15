@@ -605,6 +605,25 @@ impl DspiCore {
         lock(&self.guarded.state).running.clone()
     }
 
+    // -- WP ROMODE --
+    /// Run `f` with the guard's operation lock held (so no guard begins
+    /// meanwhile), after the housekeeping a begin does: a guard past its
+    /// deadline reverts, a lost one is settled. `f` gets whether a guard
+    /// still waits. Takes the core lock only inside `f`, after the op lock.
+    pub(crate) fn with_guard_settled<T>(&self, f: impl FnOnce(bool) -> T) -> T {
+        let _op = lock(&self.guarded.op);
+        if let Some(r) = self.running() {
+            if r.lost {
+                self.resolve_lost(r);
+            } else if self.connection_changed(&r) {
+                self.on_lost(r);
+            } else if now() >= r.deadline {
+                self.revert_now(r, "timeout");
+            }
+        }
+        f(self.running().is_some())
+    }
+
     /// Capture, begin the hub's guard, apply; see the API.
     fn guard_begin(
         &self,

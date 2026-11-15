@@ -75,7 +75,7 @@ final class CoreMidiSW5HardwareTests: XCTestCase {
         }
         if let saved = saved {
             guard !AppState.usesLegacyMIDI else {
-                XCTFail("the test host is on the saved relay \(saved) through the legacy engine (CoreTransport=NO or MIDIReadOnly)")
+                XCTFail("the test host is on the saved relay \(saved) through the legacy engine (CoreTransport=NO)")
                 throw XCTSkip("the host app is not on the core")
             }
             print("SW5-HW subject: the app's own midiCore over the saved relay \(saved)")

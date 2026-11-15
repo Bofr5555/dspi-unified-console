@@ -78,7 +78,10 @@ pub(crate) fn client_read_only_notice(e: &DspiError) -> Option<dspi_core::Notice
 /// Put `core` in the client read-only mode when this run asked for it.
 pub(crate) fn apply_read_only(core: &DspiCore) {
     if CLIENT_READ_ONLY.load(std::sync::atomic::Ordering::Relaxed) {
-        core.set_client_read_only(true);
+        // A fresh core: no guarded apply can be waiting, so this cannot be refused.
+        if let Err(e) = core.set_client_read_only(true) {
+            log::warn!("--read-only: {e}");
+        }
     }
 }
 

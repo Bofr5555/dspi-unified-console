@@ -633,7 +633,7 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun connectionGeneration(): Long = core.connectionGeneration().toLong()
 
-    override fun setClientReadOnly(on: Boolean) = core.setClientReadOnly(on)
+    override fun setClientReadOnly(on: Boolean) = call { core.setClientReadOnly(on) }
 
     override fun clientReadOnly(): Boolean = core.clientReadOnly()
 

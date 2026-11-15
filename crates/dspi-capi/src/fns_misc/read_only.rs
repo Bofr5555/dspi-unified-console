@@ -11,14 +11,17 @@
 use dspi_core::DspiCore;
 use serde_json::Value;
 
+use crate::fns_device::flag;
 use crate::{FfiCore, with_core};
 
 /// Turn the client read-only mode on or off for this handle; it stays for
 /// every device the handle opens until turned off. Waits for a call in flight.
-/// Nothing for a null handle.
+/// False for a null handle, and when turning it on is refused because a
+/// guarded apply waits for Keep or Revert (notice `read_only.guard_pending`;
+/// `dspi_take_failure` has the failure): keep or revert it first.
 #[unsafe(no_mangle)]
-pub extern "C" fn dspi_set_client_read_only(core: *mut FfiCore, on: bool) {
-    with_core(core, (), |h| h.core.set_client_read_only(on));
+pub extern "C" fn dspi_set_client_read_only(core: *mut FfiCore, on: bool) -> bool {
+    flag(core, |c| c.set_client_read_only(on))
 }
 
 /// Whether the client read-only mode is on; false for a null handle.
@@ -84,10 +87,10 @@ mod tests_wp_romode {
     #[test]
     fn wp_romode_through_c_writes_are_refused_with_the_client_row_and_reads_go_on() {
         assert!(!dspi_client_read_only(ptr::null_mut()));
-        dspi_set_client_read_only(ptr::null_mut(), true); // nothing, no crash
+        assert!(!dspi_set_client_read_only(ptr::null_mut(), true)); // no crash
         let h = dspi_core_new();
         assert!(!dspi_client_read_only(h));
-        dspi_set_client_read_only(h, true);
+        assert!(dspi_set_client_read_only(h, true));
         assert!(dspi_client_read_only(h));
         assert!(dspi_open_demo(h));
         // SAFETY: the handle is live; the record stays valid until the next call.
@@ -110,7 +113,7 @@ mod tests_wp_romode {
 
         // Off again: writes go out, and a refusal of the firmware's own
         // read-only mode keeps its row.
-        dspi_set_client_read_only(h, false);
+        assert!(dspi_set_client_read_only(h, false));
         assert!(dspi_set_master_volume(h, -7.0));
         // SAFETY: as above.
         assert_eq!(unsafe { (*dspi_get_state(h)).master_volume_db }, -7.0);
@@ -122,7 +125,7 @@ mod tests_wp_romode {
         let core = DspiCore::new();
         let failure = r#"{"code":"read_only","error":"x","noticeKey":"read_only","ok":false}"#;
         assert_eq!(refine_reply(&core, failure.to_owned()), failure);
-        core.set_client_read_only(true);
+        core.set_client_read_only(true).unwrap();
         let r: Value = serde_json::from_str(&refine_reply(&core, failure.to_owned())).unwrap();
         assert_eq!(r["noticeKey"], "read_only.client");
         assert_eq!(r["code"], "read_only");

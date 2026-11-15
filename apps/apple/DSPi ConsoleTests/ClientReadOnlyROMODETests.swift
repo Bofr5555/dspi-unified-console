@@ -5,8 +5,8 @@ import dspi_constants
 @testable import DSPi_Console
 
 /// WP ROMODE: the core's client read-only mode on the core path
-/// (`-ReadOnly YES`, and `-MIDIReadOnly YES` once the MIDI link is the
-/// core's): every write is refused by the core before it is sent, the edit
+/// (`-ReadOnly YES`, and `-MIDIReadOnly YES` on the core's MIDI link,
+/// CoreMidiSW5Tests): every write is refused by the core before it is sent, the edit
 /// is put back with the mode's own wording, and reads go on.
 final class ClientReadOnlyROMODETests: XCTestCase {
 
@@ -20,6 +20,14 @@ final class ClientReadOnlyROMODETests: XCTestCase {
         XCTAssertEqual(row.key, "read_only.client")
         XCTAssertEqual(DeviceLock.clientReadOnlyMessage, "\(row.title): \(row.reason)")
         XCTAssertNotEqual(DeviceLock.clientReadOnlyMessage, DeviceLock.readOnlyMessage)
+    }
+
+    /// A refused snapshot recall (or A/B, or guarded apply) says the mode's
+    /// row, not the firmware's.
+    func testROMODEASnapshotRefusalSaysTheModesRow() {
+        XCTAssertEqual(CoreSnapshots.words(.ReadOnly, clientReadOnly: true), DeviceLock.clientReadOnlyMessage)
+        XCTAssertNotEqual(CoreSnapshots.words(.ReadOnly), DeviceLock.clientReadOnlyMessage)
+        XCTAssertEqual(CoreSnapshots.words(.Locked, clientReadOnly: true), CoreSnapshots.words(.Locked))
     }
 
     func testROMODEAnEditInTheModeIsRefusedByTheCoreAndPutBack() throws {
