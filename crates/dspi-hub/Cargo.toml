@@ -70,6 +70,14 @@ data-encoding = "2"
 # system's zone database (TZ, /etc/localtime; bundled on Windows only), DST gaps
 # and repeats resolved by the zone's own transitions.
 jiff = "=0.2.39"
+# -- WP SECOUT --
+# Outbound TLS for webhooks and MQTT (src/outbound/tls.rs, PLAN-SEC 4.8): rustls with
+# ring, so nothing links the system's OpenSSL and the Windows build cross-compiles (as
+# dspi-tui's); TLS 1.2 as well as 1.3, which receivers and brokers in the wild still
+# speak; its `pki_types` reads the pasted PEMs. The default trust is webpki-roots
+# (OD-SECf). Both already in the lockfile through dspi-tui's ureq.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
 
 [dev-dependencies]
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }

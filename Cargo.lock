@@ -695,12 +695,14 @@ dependencies = [
  "mdns-sd",
  "nusb",
  "proptest",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",
  "socket2",
  "thiserror",
  "tungstenite",
+ "webpki-roots",
 ]
 
 [[package]]

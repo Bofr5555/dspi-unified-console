@@ -1,7 +1,9 @@
 //! A blocking MQTT 3.1.1 client on one thread (WP P2MQC, OD-P2c).
 //!
-//! [`MqttClient::start`] spawns the thread and returns at once. The thread connects over a
-//! plain [`TcpStream`] (no TLS, OD-P2f), sends CONNECT with the will and the credentials,
+//! [`MqttClient::start`] spawns the thread and returns at once. The thread connects over
+//! TCP, with TLS when [`MqttConfig::tls`] says so (WP SECOUT, PLAN-SEC 4.8: the shared
+//! connector [`crate::outbound::tls`], the handshake done and the broker verified before a
+//! byte of CONNECT goes out), sends CONNECT with the will and the credentials,
 //! subscribes to every filter asked for so far, and then sends what [`MqttClient::publish`]
 //! queued, answers QoS 1 publishes with PUBACK, keeps the connection alive with PINGREQ and
 //! hands what arrives to the caller's handler. When the connection ends it reconnects with
@@ -16,7 +18,9 @@
 //! publishes wait for their PUBACK; the receive buffer never holds more than one packet of
 //! `max_packet` bytes plus one read; at most [`MAX_SUBSCRIPTIONS`] filters.
 //!
-//! The password is never written to a log, an event, an error or a `Debug` (OD-P2e).
+//! The password is never written to a log, an event, an error or a `Debug` (OD-P2e), nor
+//! is a client key. Without TLS the password goes only to a loopback broker, unless
+//! [`MqttTls::allow_plaintext_password`] says otherwise (PLAN-SEC 4.8, OD-SECo).
 //!
 //! Lock order: the client's one lock is a leaf, never held across socket I/O or the handler.
 
@@ -24,14 +28,22 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{IpAddr, Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use rustls::ClientConfig;
+use serde_json::{Map, Value};
+
 use super::codec::{self, Connect, DecodeError, Packet, Publish, QoS, Will};
+use crate::outbound::tls::{self, ClientIdentity, Stream, TlsError, Trust};
 
 /// The MQTT port without TLS.
 pub const DEFAULT_MQTT_PORT: u16 = 1883;
+// -- WP SECOUT --
+/// The MQTT port with TLS.
+pub const DEFAULT_MQTTS_PORT: u16 = 8883;
 /// QoS 1 publishes sent and not yet acknowledged, at most.
 pub const MAX_INFLIGHT: usize = 16;
 /// Topic filters a client subscribes to, at most.
@@ -83,6 +95,9 @@ pub struct MqttConfig {
     pub stable_after: Duration,
     /// How often the thread looks at the queue while connected (the socket's read timeout).
     pub tick: Duration,
+    // -- WP SECOUT --
+    /// TLS to the broker, and whether the password may go out without it.
+    pub tls: MqttTls,
 }
 
 impl MqttConfig {
@@ -105,6 +120,7 @@ impl MqttConfig {
             backoff_max: Duration::from_secs(60),
             stable_after: Duration::from_secs(30),
             tick: Duration::from_millis(25),
+            tls: MqttTls::default(),
         }
     }
 }
@@ -133,7 +149,333 @@ impl fmt::Debug for MqttConfig {
             .field("backoff_max", &self.backoff_max)
             .field("stable_after", &self.stable_after)
             .field("tick", &self.tick)
+            .field("tls", &self.tls)
             .finish()
+    }
+}
+
+// ── TLS settings (WP SECOUT) ────────────────────────────────────────────────
+
+/// Whether the client speaks TLS to the broker.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MqttTlsMode {
+    /// Plain TCP.
+    #[default]
+    Off,
+    /// TLS 1.2 or 1.3, the broker verified ([`MqttTls`]).
+    On,
+}
+
+/// TLS to the broker (PLAN-SEC 4.8): `mqtt.json`'s `tls` object, `{mode: off|on, ca_pem?,
+/// pin_sha256?, client_cert_pem?, client_key_pem?, client_cert_file?, client_key_file?,
+/// allow_plaintext_password?}`. Its `Debug` shows whether a client key is set, never the key.
+///
+/// With `mode: on` the broker is verified with the `webpki-roots` CAs and its host name,
+/// or with `ca_pem` instead of the roots, or with `pin_sha256` instead of both (OD-SECf);
+/// a client certificate is sent if one is set (inline PEM, or PEM files whose key file is
+/// not readable by group or others). With `mode: off` the password goes only to a
+/// loopback broker unless `allow_plaintext_password` is set.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct MqttTls {
+    /// Off or on.
+    pub mode: MqttTlsMode,
+    /// CA or self-signed certificates to trust instead of the `webpki-roots` CAs.
+    pub ca_pem: Option<String>,
+    /// The broker's key, `sha256//<base64>` of its SubjectPublicKeyInfo.
+    pub pin_sha256: Option<String>,
+    /// The client certificate chain, PEM.
+    pub client_cert_pem: Option<String>,
+    /// The client certificate's private key, PEM. Never shown.
+    pub client_key_pem: Option<String>,
+    /// The client certificate chain as a PEM file, instead of `client_cert_pem`.
+    pub client_cert_file: Option<PathBuf>,
+    /// The client key as a PEM file (0600), instead of `client_key_pem`.
+    pub client_key_file: Option<PathBuf>,
+    /// Without TLS, send the password to a broker that is not on loopback too.
+    pub allow_plaintext_password: bool,
+}
+
+fn shown(set: bool) -> &'static str {
+    if set { "set" } else { "not set" }
+}
+
+impl fmt::Debug for MqttTls {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MqttTls")
+            .field("mode", &self.mode)
+            .field("ca_pem", &shown(self.ca_pem.is_some()))
+            .field("pin_sha256", &self.pin_sha256)
+            .field("client_cert_pem", &shown(self.client_cert_pem.is_some()))
+            .field("client_key_pem", &shown(self.client_key_pem.is_some()))
+            .field("client_cert_file", &self.client_cert_file)
+            .field("client_key_file", &self.client_key_file)
+            .field("allow_plaintext_password", &self.allow_plaintext_password)
+            .finish()
+    }
+}
+
+/// What a broker configured before TLS is told, once, when it is kept sending its password
+/// in clear (OD-SECo).
+pub const MQTT_MIGRATED_NOTICE: &str = "The MQTT broker was set up before the hub had TLS and is not on this machine. Its password still goes out unencrypted (\"allow_plaintext_password\": true was set so it keeps working). Turn TLS on (port 8883) to encrypt it.";
+
+/// A PEM file, at most [`tls::MAX_PEM_BYTES`]; a key file must not be readable by group or
+/// others (Unix).
+fn read_pem_file(what: &str, path: &Path, secret: bool) -> Result<String, MqttError> {
+    let bad = |why: String| MqttError::Config(format!("{what} {}: {why}", path.display()));
+    let file = std::fs::File::open(path).map_err(|e| bad(e.to_string()))?;
+    #[cfg(unix)]
+    if secret {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = file
+            .metadata()
+            .map_err(|e| bad(e.to_string()))?
+            .permissions()
+            .mode();
+        if mode & 0o077 != 0 {
+            return Err(bad(format!(
+                "readable by others (mode {:o}); make it 0600",
+                mode & 0o777
+            )));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = secret;
+    let mut text = String::new();
+    file.take((tls::MAX_PEM_BYTES as u64).saturating_add(1))
+        .read_to_string(&mut text)
+        .map_err(|_| bad("not a PEM text file".into()))?;
+    if text.len() > tls::MAX_PEM_BYTES {
+        return Err(bad(format!("longer than {} bytes", tls::MAX_PEM_BYTES)));
+    }
+    Ok(text)
+}
+
+/// A broker host that is loopback without a lookup: a loopback literal or `localhost`.
+pub fn host_is_loopback(host: &str) -> bool {
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<IpAddr>()
+            .is_ok_and(tls::is_loopback)
+}
+
+impl MqttTls {
+    /// The broker's port when the settings give none: 8883 with TLS, 1883 without.
+    pub fn default_port(&self) -> u16 {
+        match self.mode {
+            MqttTlsMode::On => DEFAULT_MQTTS_PORT,
+            MqttTlsMode::Off => DEFAULT_MQTT_PORT,
+        }
+    }
+
+    /// Whether the connection is TLS.
+    pub fn encrypted(&self) -> bool {
+        self.mode == MqttTlsMode::On
+    }
+
+    /// `mqtt.json`'s `tls` as read at start, for the broker `host`. Absent (or `null`): a
+    /// file written before TLS (OD-P2f), so plain TCP, and a broker not on loopback keeps
+    /// getting its password with `allow_plaintext_password` set and the notice
+    /// [`MQTT_MIGRATED_NOTICE`] answered, once: the caller writes [`MqttTls::to_json`]
+    /// back, so the next start reads the field (OD-SECo).
+    pub fn load(
+        value: Option<&Value>,
+        host: &str,
+    ) -> Result<(MqttTls, Option<&'static str>), MqttError> {
+        match value {
+            None | Some(Value::Null) => {
+                let migrate = !host_is_loopback(host);
+                let tls = MqttTls {
+                    allow_plaintext_password: migrate,
+                    ..MqttTls::default()
+                };
+                Ok((tls, migrate.then_some(MQTT_MIGRATED_NOTICE)))
+            }
+            Some(v) => MqttTls::parse(v, None).map(|t| (t, None)),
+        }
+    }
+
+    /// `mqtt.set`'s `tls`, against the current settings: `client_key_pem: "set"` keeps the
+    /// current key (so `mqtt.get`'s view can be sent back as it is).
+    pub fn update(value: &Value, current: &MqttTls) -> Result<MqttTls, MqttError> {
+        MqttTls::parse(value, Some(current))
+    }
+
+    fn parse(value: &Value, current: Option<&MqttTls>) -> Result<MqttTls, MqttError> {
+        let obj = value
+            .as_object()
+            .ok_or_else(|| MqttError::Config("tls is not an object".into()))?;
+        let text = |key: &str| -> Result<Option<String>, MqttError> {
+            match obj.get(key) {
+                None | Some(Value::Null) => Ok(None),
+                Some(Value::String(s)) if s.trim().is_empty() => Ok(None),
+                Some(Value::String(s)) => Ok(Some(s.clone())),
+                Some(_) => Err(MqttError::Config(format!("tls.{key} is not a string"))),
+            }
+        };
+        let mode = match text("mode")?.as_deref() {
+            None | Some("off") => MqttTlsMode::Off,
+            Some("on") => MqttTlsMode::On,
+            Some(_) => return Err(MqttError::Config("tls.mode must be off or on".into())),
+        };
+        let allow_plaintext_password = match obj.get("allow_plaintext_password") {
+            None | Some(Value::Null) => false,
+            Some(Value::Bool(b)) => *b,
+            Some(_) => {
+                return Err(MqttError::Config(
+                    "tls.allow_plaintext_password is not a bool".into(),
+                ));
+            }
+        };
+        let client_key_pem = match text("client_key_pem")?.as_deref() {
+            Some("set") => current.and_then(|c| c.client_key_pem.clone()),
+            Some("not set") => None,
+            _ => text("client_key_pem")?,
+        };
+        let pin_sha256 = text("pin_sha256")?
+            .map(|p| tls::parse_pin(&p).map(|pin| tls::pin_text(&pin)))
+            .transpose()
+            .map_err(|e| MqttError::Config(e.to_string()))?;
+        let tls = MqttTls {
+            mode,
+            ca_pem: text("ca_pem")?,
+            pin_sha256,
+            client_cert_pem: text("client_cert_pem")?,
+            client_key_pem,
+            client_cert_file: text("client_cert_file")?.map(PathBuf::from),
+            client_key_file: text("client_key_file")?.map(PathBuf::from),
+            allow_plaintext_password,
+        };
+        tls.check()?;
+        Ok(tls)
+    }
+
+    /// The settings' own rules: TLS fields only with `mode: on`; one trust; a client
+    /// certificate and its key together, inline or as files; every PEM parses.
+    pub fn check(&self) -> Result<(), MqttError> {
+        let cfg = |why: &str| MqttError::Config(why.to_owned());
+        let any_tls = self.ca_pem.is_some()
+            || self.pin_sha256.is_some()
+            || self.client_cert_pem.is_some()
+            || self.client_key_pem.is_some()
+            || self.client_cert_file.is_some()
+            || self.client_key_file.is_some();
+        if self.mode == MqttTlsMode::Off {
+            if any_tls {
+                return Err(cfg(
+                    "tls: ca_pem, pin_sha256 and client certificates need mode on",
+                ));
+            }
+            return Ok(());
+        }
+        if self.allow_plaintext_password {
+            return Err(cfg("tls.allow_plaintext_password is for mode off only"));
+        }
+        if self.client_cert_pem.is_some() && self.client_cert_file.is_some()
+            || self.client_key_pem.is_some() && self.client_key_file.is_some()
+        {
+            return Err(cfg(
+                "tls: a client certificate or key inline or as a file, not both",
+            ));
+        }
+        let cert = self.client_cert_pem.is_some() || self.client_cert_file.is_some();
+        let key = self.client_key_pem.is_some() || self.client_key_file.is_some();
+        if cert != key {
+            return Err(cfg(
+                "tls: a client certificate needs its key, and a key its certificate",
+            ));
+        }
+        Trust::from_settings(self.ca_pem.as_deref(), self.pin_sha256.as_deref())
+            .map_err(|e| MqttError::Config(e.to_string()))?;
+        if let Some(pem) = &self.client_cert_pem {
+            tls::parse_certs("client_cert_pem", pem)
+                .map_err(|e| MqttError::Config(e.to_string()))?;
+        }
+        if let Some(pem) = &self.client_key_pem {
+            tls::parse_key("client_key_pem", pem).map_err(|e| MqttError::Config(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    /// The client configuration for `mode: on` (`None` for off). Reads the PEM files.
+    pub fn client_config(&self) -> Result<Option<Arc<ClientConfig>>, MqttError> {
+        self.check()?;
+        if self.mode == MqttTlsMode::Off {
+            return Ok(None);
+        }
+        let config_err = |e: TlsError| MqttError::Config(e.to_string());
+        let trust = Trust::from_settings(self.ca_pem.as_deref(), self.pin_sha256.as_deref())
+            .map_err(config_err)?;
+        let cert = match (&self.client_cert_pem, &self.client_cert_file) {
+            (Some(pem), _) => Some(pem.clone()),
+            (None, Some(path)) => Some(read_pem_file("client_cert_file", path, false)?),
+            (None, None) => None,
+        };
+        let key = match (&self.client_key_pem, &self.client_key_file) {
+            (Some(pem), _) => Some(pem.clone()),
+            (None, Some(path)) => Some(read_pem_file("client_key_file", path, true)?),
+            (None, None) => None,
+        };
+        let identity = match (cert, key) {
+            (Some(c), Some(k)) => Some(ClientIdentity::from_pem(&c, &k).map_err(config_err)?),
+            _ => None,
+        };
+        tls::client_config(&trust, identity.as_ref(), &[])
+            .map(Some)
+            .map_err(config_err)
+    }
+
+    /// The `tls` object as `mqtt.json` keeps it (0600, the client key included).
+    pub fn to_json(&self) -> Value {
+        self.json(false)
+    }
+
+    /// The `tls` object for `mqtt.get` and the diagnostics bundle: the client key as `set`
+    /// or `not set`, never the key.
+    pub fn view_json(&self) -> Value {
+        self.json(true)
+    }
+
+    fn json(&self, view: bool) -> Value {
+        let mut m = Map::new();
+        let mode = match self.mode {
+            MqttTlsMode::Off => "off",
+            MqttTlsMode::On => "on",
+        };
+        m.insert("mode".into(), mode.into());
+        let mut put = |key: &str, v: &Option<String>| {
+            if let Some(v) = v {
+                m.insert(key.into(), v.clone().into());
+            }
+        };
+        put("ca_pem", &self.ca_pem);
+        put("pin_sha256", &self.pin_sha256);
+        put("client_cert_pem", &self.client_cert_pem);
+        if view {
+            m.insert(
+                "client_key_pem".into(),
+                shown(self.client_key_pem.is_some()).into(),
+            );
+        } else if let Some(k) = &self.client_key_pem {
+            m.insert("client_key_pem".into(), k.clone().into());
+        }
+        for (key, path) in [
+            ("client_cert_file", &self.client_cert_file),
+            ("client_key_file", &self.client_key_file),
+        ] {
+            if let Some(p) = path {
+                m.insert(key.into(), p.display().to_string().into());
+            }
+        }
+        m.insert(
+            "allow_plaintext_password".into(),
+            self.allow_plaintext_password.into(),
+        );
+        if view {
+            m.insert("encrypted".into(), self.encrypted().into());
+        }
+        Value::Object(m)
     }
 }
 
@@ -185,6 +527,9 @@ pub struct MqttStatus {
     /// Packets from the broker over `max_packet`, read past and dropped (the connection
     /// stays up, so an oversized retained message cannot cause a reconnect storm).
     pub oversized: u64,
+    // -- WP SECOUT --
+    /// The current connection is TLS.
+    pub encrypted: bool,
 }
 
 /// Why the client did not take a call.
@@ -282,7 +627,7 @@ struct Shared {
     stop: bool,
     status: MqttStatus,
     /// A clone of the connected socket, for [`MqttClient::stop`] to shut down under a
-    /// write that a slow broker keeps alive.
+    /// write that a slow broker keeps alive (under TLS too: the TCP socket beneath).
     stream: Option<TcpStream>,
 }
 
@@ -341,6 +686,8 @@ impl MqttClient {
         if len > config.max_packet {
             return Err(MqttError::Config("CONNECT over max_packet".into()));
         }
+        // -- WP SECOUT --
+        let tls_config = config.tls.client_config()?;
         let inner = Arc::new(Inner {
             state: Mutex::new(Shared {
                 queue: OutQueue::new(config.queue_cap),
@@ -361,6 +708,7 @@ impl MqttClient {
             inflight: VecDeque::new(),
             pending_subacks: VecDeque::new(),
             next_id: 1,
+            tls_config,
         };
         let thread = std::thread::Builder::new()
             .name("dspi-mqtt".into())
@@ -521,6 +869,13 @@ enum Dropped {
     Decode(#[from] DecodeError),
     #[error("stopped")]
     Stopped,
+    // -- WP SECOUT --
+    #[error(
+        "refused to send the password unencrypted to {0}: turn TLS on, or set tls.allow_plaintext_password"
+    )]
+    PlaintextPassword(String),
+    #[error("{0}")]
+    Tls(#[from] TlsError),
 }
 
 impl From<std::io::Error> for Dropped {
@@ -541,7 +896,7 @@ struct RxBuf {
 
 impl RxBuf {
     /// One read; a timeout is not an error.
-    fn fill(&mut self, stream: &mut TcpStream) -> Result<(), Dropped> {
+    fn fill(&mut self, stream: &mut Stream) -> Result<(), Dropped> {
         let mut chunk = [0u8; READ_CHUNK];
         match stream.read(&mut chunk) {
             Ok(0) => Err(Dropped::Closed),
@@ -605,6 +960,8 @@ struct Worker {
     pending_subacks: VecDeque<(u16, Vec<String>)>,
     next_id: u16,
     backoff: Backoff,
+    /// TLS to the broker, made once at start; `None` for plain TCP.
+    tls_config: Option<Arc<ClientConfig>>,
 }
 
 impl Worker {
@@ -614,7 +971,11 @@ impl Worker {
                 return;
             }
             let result = self.session();
-            self.inner.lock().stream = None;
+            {
+                let mut s = self.inner.lock();
+                s.stream = None;
+                s.status.encrypted = false;
+            }
             let reason = match result {
                 Ok(()) => return,
                 Err(e) => e.to_string(),
@@ -696,11 +1057,27 @@ impl Worker {
         }
     }
 
-    /// A TCP connection to the broker, all addresses together within `connect_timeout`.
-    fn open(&self) -> Result<TcpStream, Dropped> {
+    /// A connection to the broker, all addresses together within `connect_timeout`, the
+    /// TLS handshake included. Without TLS and with a password, only loopback addresses are
+    /// tried unless `allow_plaintext_password` is set: nothing is sent to the others.
+    fn open(&self) -> Result<Stream, Dropped> {
         let deadline = Instant::now().checked_add(self.cfg.connect_timeout);
+        let mut addrs = self.resolve(deadline)?;
+        // -- WP SECOUT --
+        let guard_password = self.tls_config.is_none()
+            && self.cfg.password.is_some()
+            && !self.cfg.tls.allow_plaintext_password;
+        if guard_password {
+            let first = addrs.first().map(SocketAddr::ip);
+            addrs.retain(|a| tls::is_loopback(a.ip()));
+            if addrs.is_empty() {
+                let shown = first.map_or_else(|| self.cfg.host.clone(), |ip| ip.to_string());
+                return Err(Dropped::PlaintextPassword(shown));
+            }
+        }
         let mut last = Dropped::Io(format!("{}: no address", self.cfg.host));
-        for addr in self.resolve(deadline)? {
+        let mut tcp = None;
+        for addr in addrs {
             if self.stopping() {
                 return Err(Dropped::Stopped);
             }
@@ -711,24 +1088,36 @@ impl Worker {
                 return Err(Dropped::Io(format!("{}: connect timed out", self.cfg.host)));
             }
             match TcpStream::connect_timeout(&addr, left) {
-                Ok(s) => return Ok(s),
+                Ok(s) => {
+                    tcp = Some(s);
+                    break;
+                }
                 Err(e) => last = e.into(),
             }
         }
-        Err(last)
+        let Some(tcp) = tcp else { return Err(last) };
+        match &self.tls_config {
+            None => Ok(Stream::Plain(tcp)),
+            Some(config) => {
+                let by = deadline.unwrap_or_else(Instant::now);
+                Ok(tls::connect(tcp, Arc::clone(config), &self.cfg.host, by)?)
+            }
+        }
     }
 
     /// DISCONNECT (so the broker does not publish the will), then close.
-    fn goodbye(stream: &mut TcpStream) -> Result<(), Dropped> {
+    fn goodbye(stream: &mut Stream) -> Result<(), Dropped> {
         let _ = Self::send(stream, &Packet::Disconnect);
-        let _ = stream.shutdown(Shutdown::Both);
+        stream.close();
         Ok(())
     }
 
-    fn send(stream: &mut TcpStream, packet: &Packet) -> Result<(), Dropped> {
+    fn send(stream: &mut Stream, packet: &Packet) -> Result<(), Dropped> {
         let bytes =
             codec::encode(packet).map_err(|_| Dropped::Protocol("a packet did not encode"))?;
         stream.write_all(&bytes)?;
+        // Under TLS, what was encrypted goes out here.
+        stream.flush()?;
         Ok(())
     }
 
@@ -746,7 +1135,7 @@ impl Worker {
         1
     }
 
-    fn subscribe(&mut self, stream: &mut TcpStream, subs: &[(String, QoS)]) -> Result<(), Dropped> {
+    fn subscribe(&mut self, stream: &mut Stream, subs: &[(String, QoS)]) -> Result<(), Dropped> {
         for chunk in subs.chunks(FILTERS_PER_SUBSCRIBE) {
             let packet_id = self.take_id();
             Self::send(
@@ -768,15 +1157,17 @@ impl Worker {
     /// One connection, until it fails (`Err`) or the client stops (`Ok`).
     fn session(&mut self) -> Result<(), Dropped> {
         let mut stream = self.open()?;
-        stream.set_read_timeout(Some(self.cfg.tick))?;
-        stream.set_write_timeout(Some(self.cfg.connect_timeout))?;
-        stream.set_nodelay(true)?;
+        stream.tcp().set_read_timeout(Some(self.cfg.tick))?;
+        stream
+            .tcp()
+            .set_write_timeout(Some(self.cfg.connect_timeout))?;
+        stream.tcp().set_nodelay(true)?;
         {
             let mut s = self.inner.lock();
             if s.stop {
                 return Ok(());
             }
-            s.stream = stream.try_clone().ok();
+            s.stream = stream.tcp().try_clone().ok();
         }
         let mut rx = RxBuf {
             buf: Vec::new(),
@@ -789,7 +1180,7 @@ impl Worker {
         let deadline = Instant::now().checked_add(self.cfg.connect_timeout);
         let session_present = loop {
             if self.inner.lock().stop {
-                let _ = stream.shutdown(Shutdown::Both);
+                stream.close();
                 return Ok(());
             }
             if deadline.is_some_and(|d| Instant::now() >= d) {
@@ -815,6 +1206,7 @@ impl Worker {
         let subs = {
             let mut s = self.inner.lock();
             s.status.connected = true;
+            s.status.encrypted = stream.encrypted();
             s.status.connects = s.status.connects.saturating_add(1);
             s.status.last_error = None;
             s.new_subs.clear();

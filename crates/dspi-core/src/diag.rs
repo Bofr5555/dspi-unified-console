@@ -17,6 +17,7 @@
 //! | `hub/alarms.json` | the hub's alarm rules (WP P2AL), secrets removed the same way |
 //! | `hub/outbound.json` | the hub's notification targets (WP P2WH, entry WP P2AL): each secret, CA and pin as `set` or `not set`, each URL to its host |
 //! | `hub/schedule.json` | the hub's schedule rules (WP P2SC), secrets removed the same way |
+//! | `hub/mqtt.json` | the hub's MQTT broker setting (WP P2MQ), the password and the `tls` keys, CA and pin as `set` / `not set` |
 //! | `system/os.json` | OS facts: name, architecture, release, the udev rule on Linux |
 //! | `system/usb.json` | DSPis and bootloaders on the bus, by enumeration only |
 //! | `client/<name>` | files the client adds (`uconsole doctor`'s report, a log) |
@@ -159,6 +160,8 @@ impl DspiCore {
         diag_hub_outbound(&mut b, &options.hub_store_dir);
         // -- WP P2SC --
         diag_hub_data(&mut b, &options.hub_store_dir, HUB_SCHEDULE_FILE);
+        // -- WP P2MQ --
+        diag_hub_mqtt(&mut b, &options.hub_store_dir);
         b.json("system/os.json", &os_facts());
         b.json("system/usb.json", &self.diag_usb(&scrub));
         diag_client_files(&mut b, options.files, &scrub);
@@ -642,6 +645,77 @@ fn url_host(url: &str) -> String {
     }
 }
 
+// -- WP P2MQ --
+/// The hub's MQTT setting in its data folder (dspi-hub `mqtt/service.rs`).
+const HUB_MQTT_FILE: &str = "mqtt.json";
+/// Its own limit.
+const HUB_MQTT_MAX: u64 = 64 << 10;
+/// Fields of `mqtt.json` shown only as `set` or `not set` (PLAN-P2 S6): the password.
+const HUB_MQTT_SHOWN_SET: &[&str] = &["password"];
+// -- WP MQWIRE --
+/// Fields of `mqtt.json`'s `tls` (PLAN-SEC 4.8, `MqttTls`) shown only as `set` or `not
+/// set`: the client key, and with it the trust and the certificate (a rule kept simple).
+const HUB_MQTT_TLS_SHOWN_SET: &[&str] =
+    &["client_key_pem", "client_cert_pem", "ca_pem", "pin_sha256"];
+
+/// `mqtt.json` as `hub/mqtt.json`: the password, and in `tls` the client key, certificate,
+/// CA and pin, as `set` / `not set`; `tls`'s mode, flag and file paths as they are; every
+/// other secret-named field [`REMOVED`]. No folder or no file: nothing, and no note
+/// (MQTT is off on most hubs); unreadable or not a JSON object: a note, and none of it.
+fn diag_hub_mqtt(b: &mut Bundle, dir: &str) {
+    if dir.is_empty() {
+        return;
+    }
+    let path = Path::new(dir).join(HUB_MQTT_FILE);
+    let bytes = match read_limited(&path, HUB_MQTT_MAX) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            b.notes.push(format!("hub: {} unread: {e}", path.display()));
+            return;
+        }
+    };
+    match serde_json::from_slice::<Value>(&bytes) {
+        Ok(Value::Object(mut map)) => {
+            for (k, child) in map.iter_mut() {
+                if HUB_MQTT_SHOWN_SET.contains(&k.as_str()) {
+                    let set = !child.is_null();
+                    *child = Value::String(if set { "set" } else { "not set" }.into());
+                } else if k == "tls" {
+                    // -- WP MQWIRE --
+                    match child {
+                        Value::Object(tls) => {
+                            for (tk, tv) in tls.iter_mut() {
+                                if HUB_MQTT_TLS_SHOWN_SET.contains(&tk.as_str()) {
+                                    let set = !tv.is_null();
+                                    *tv = Value::String(if set { "set" } else { "not set" }.into());
+                                } else if is_secret_key(tk) {
+                                    // `client_key_file`: a path, not the key; any other
+                                    // secret-named field goes.
+                                    if tk != "client_key_file" {
+                                        *tv = Value::String(REMOVED.into());
+                                    }
+                                }
+                            }
+                        }
+                        Value::Null => *child = Value::String("not set".into()),
+                        _ => *child = Value::String(REMOVED.into()),
+                    }
+                } else if is_secret_key(k) {
+                    *child = Value::String(REMOVED.into());
+                } else {
+                    redact(child);
+                }
+            }
+            b.json(&format!("hub/{HUB_MQTT_FILE}"), &Value::Object(map));
+        }
+        _ => b.notes.push(format!(
+            "hub: {} is not a JSON object and was left out",
+            path.display()
+        )),
+    }
+}
+
 /// Replace every value under a secret key, at any depth, with [`REMOVED`].
 pub(crate) fn redact(v: &mut Value) {
     match v {
@@ -854,3 +928,7 @@ mod tests_wp_p2al;
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests_wp_p2sc;
+// -- WP P2MQ --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p2mq;

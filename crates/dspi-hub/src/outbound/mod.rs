@@ -3,9 +3,16 @@
 //!
 //! Opt-in targets in `<data>/outbound.json` (Admin); none by default, and with none the
 //! service runs no thread and does not listen on the bus. A target is a **webhook** (a
-//! JSON POST, signed) or a **push** (an ntfy-style plain-text POST of the text), on an
-//! `http://` URL only (OD-P2f: `https://` is refused with the reason). Each target picks
-//! the kinds it wants ([`KINDS`]).
+//! JSON POST, signed) or a **push** (an ntfy-style plain-text POST of the text). Each
+//! target picks the kinds it wants ([`KINDS`]).
+//!
+//! **Transport (WP SECOUT, PLAN-SEC 4.8, OD-SECe/f).** `https://` is the norm, verified
+//! with the `webpki-roots` CAs, a target's own `ca_pem`, or its `pin_sha256` ([`tls`]).
+//! `http://` only with `"plaintext": true`, and only to a private, loopback or link-local
+//! address, checked on the resolved address of every send; `outbound.get` shows such a
+//! target as `"encrypted": false`. Targets written before TLS (`http://` without the
+//! flag) load as `plaintext: true` with a one-time notice, kept in the file and shown as
+//! `notice` until the next `outbound.set`.
 //!
 //! | Message | Role | Answer |
 //! |---|---|---|
@@ -41,6 +48,8 @@
 
 pub mod hmac;
 pub mod http;
+// -- WP SECOUT --
+pub mod tls;
 
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
@@ -62,6 +71,7 @@ use crate::service::{HubService, ServiceConfig, ServiceSetup};
 use crate::session::{Role, Session};
 use crate::system::alarms::AlarmState;
 use http::{HttpLimits, HttpUrl, Post, PostError};
+use tls::{TlsError, Trust};
 
 /// The family's cap in `hello.caps`.
 pub const CAP: &str = "outbound";
@@ -92,6 +102,8 @@ pub const KINDS: [&str; 5] = [
 ];
 /// The kind of `outbound.test`'s delivery.
 pub const TEST_KIND: &str = "test";
+/// What a target written before TLS is told once it has been kept as `plaintext: true`.
+pub const MIGRATED_NOTICE: &str = "This target uses http://, which sends unencrypted. It was set up before the hub had TLS and was kept working as \"plaintext\": true. Plain http:// goes only to private, loopback or link-local addresses; anything else is refused. Change the URL to https:// to encrypt it.";
 
 const VERSION: u32 = 1;
 const MAX_FILE: u64 = 256 * 1024;
@@ -147,7 +159,7 @@ pub struct Target {
     pub name: String,
     /// Webhook or push.
     pub kind: TargetKind,
-    /// `http://` only.
+    /// `https://`, or `http://` with [`Target::plaintext`].
     pub url: String,
     /// Off: nothing is queued for it.
     pub enabled: bool,
@@ -156,6 +168,18 @@ pub struct Target {
     /// The signing secret, 64 hex characters; never in an answer but the one that made it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret: Option<String>,
+    // -- WP SECOUT --
+    /// `http://` is allowed (to private, loopback or link-local addresses only, OD-SECe).
+    #[serde(default)]
+    pub plaintext: bool,
+    /// For `https://`: trust these CA or self-signed certificates instead of the
+    /// `webpki-roots` CAs (OD-SECf).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ca_pem: Option<String>,
+    /// For `https://`: the receiver's key, `sha256//<base64>` of its SubjectPublicKeyInfo;
+    /// replaces the CA and host name check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin_sha256: Option<String>,
 }
 
 impl std::fmt::Debug for Target {
@@ -168,6 +192,9 @@ impl std::fmt::Debug for Target {
             .field("enabled", &self.enabled)
             .field("kinds", &self.kinds)
             .field("secret", &secret_shown(self.secret.as_ref()))
+            .field("plaintext", &self.plaintext)
+            .field("ca_pem", &secret_shown(self.ca_pem.as_ref()))
+            .field("pin_sha256", &secret_shown(self.pin_sha256.as_ref()))
             .finish()
     }
 }
@@ -205,7 +232,70 @@ fn check_stored(t: &Target) -> Result<HttpUrl, String> {
     if t.secret.as_deref().is_some_and(|s| !valid_secret(s)) {
         return Err("a malformed secret".into());
     }
-    http::parse_url(&t.url).map_err(|e| e.to_string())
+    let url = http::parse_url(&t.url).map_err(|e| e.to_string())?;
+    check_transport(
+        &url,
+        t.plaintext,
+        t.ca_pem.as_deref(),
+        t.pin_sha256.as_deref(),
+    )?;
+    Ok(url)
+}
+
+// -- WP SECOUT --
+/// OD-SECe/f for one target: `https://` with at most one of `ca_pem` and `pin_sha256`, or
+/// `http://` with `plaintext` and neither. The trust it makes. Where an `http://` body may
+/// go is checked on every send ([`http::post`]).
+fn check_transport(
+    url: &HttpUrl,
+    plaintext: bool,
+    ca_pem: Option<&str>,
+    pin: Option<&str>,
+) -> Result<Trust, String> {
+    if url.tls {
+        if plaintext {
+            return Err("plaintext is for http:// URLs only".into());
+        }
+        return Trust::from_settings(ca_pem, pin).map_err(|e| e.to_string());
+    }
+    if !plaintext {
+        return Err("http:// sends unencrypted: use https://, or set \"plaintext\": true for a receiver on a private, loopback or link-local address".into());
+    }
+    if ca_pem.is_some() || pin.is_some() {
+        return Err("ca_pem and pin_sha256 are for https:// URLs only".into());
+    }
+    Ok(Trust::Roots)
+}
+
+/// `outbound.set`'s further rule: an `http://` IP literal that is not private, loopback or
+/// link-local is refused at once (a stored one is kept, and refused on every send).
+fn check_public_literal(url: &HttpUrl) -> Result<(), String> {
+    match url.host.parse::<std::net::IpAddr>() {
+        Ok(ip) if !url.tls && !tls::plaintext_allowed(ip) => Err(format!(
+            "http:// to {ip} would cross the internet unencrypted: plaintext goes only to private, loopback or link-local addresses; use https://"
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// The trust of a target that passed [`check_transport`].
+fn trust_of(t: &Target) -> Result<Trust, TlsError> {
+    Trust::from_settings(t.ca_pem.as_deref(), t.pin_sha256.as_deref())
+}
+
+/// A target written before TLS (`http://` without `plaintext: true`) is kept working as
+/// `plaintext: true` (OD-SECo's rule for webhooks): its id, if it was.
+fn migrate(entry: &mut Value) -> Option<String> {
+    let obj = entry.as_object_mut()?;
+    let url = obj.get("url")?.as_str()?;
+    if url.get(..7).map(str::to_ascii_lowercase).as_deref() != Some("http://") {
+        return None;
+    }
+    if obj.get("plaintext") == Some(&Value::Bool(true)) {
+        return None;
+    }
+    obj.insert("plaintext".into(), Value::Bool(true));
+    Some(obj.get("id")?.as_str()?.to_owned())
 }
 
 fn new_secret() -> Result<String, crate::HubError> {
@@ -232,15 +322,18 @@ fn read_limited(path: &Path) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// The good entries of `bytes`, and whether any was bad.
-fn decode(bytes: &[u8]) -> (Vec<(Target, HttpUrl)>, Option<String>) {
+/// The good entries of `bytes`, whether any was bad, and the ids migrated to
+/// `plaintext: true`.
+fn decode(bytes: &[u8]) -> (Vec<(Target, HttpUrl)>, Option<String>, Vec<String>) {
     let data: FileData = match serde_json::from_slice(bytes) {
         Ok(d) => d,
-        Err(e) => return (Vec::new(), Some(e.to_string())),
+        Err(e) => return (Vec::new(), Some(e.to_string()), Vec::new()),
     };
     let mut good: Vec<(Target, HttpUrl)> = Vec::new();
     let mut bad = None;
-    for (i, entry) in data.targets.into_iter().enumerate() {
+    let mut migrated = Vec::new();
+    for (i, mut entry) in data.targets.into_iter().enumerate() {
+        let was = migrate(&mut entry);
         let checked = serde_json::from_value::<Target>(entry)
             .map_err(|e| e.to_string())
             .and_then(|t| check_stored(&t).map(|u| (t, u)));
@@ -251,22 +344,46 @@ fn decode(bytes: &[u8]) -> (Vec<(Target, HttpUrl)>, Option<String>) {
             Ok(_) if good.len() >= MAX_TARGETS => {
                 bad = Some(format!("more than {MAX_TARGETS} targets"));
             }
-            Ok(pair) => good.push(pair),
+            Ok(pair) => {
+                if let Some(id) = was {
+                    migrated.push(id);
+                }
+                good.push(pair);
+            }
             Err(why) => bad = Some(format!("target {i}: {why}")),
         }
     }
-    (good, bad)
+    (good, bad, migrated)
 }
 
 /// Read the targets. A file that is not whole is set aside as `.bad-<unix seconds>`
 /// and its good entries written back; never a panic, never a failed start.
+#[cfg(test)]
 fn load(dir: &Path, unix_seconds: u64) -> Vec<(Target, HttpUrl)> {
+    load_migrating(dir, unix_seconds).0
+}
+
+/// [`load`], and the ids of the targets written before TLS that were kept as
+/// `plaintext: true` (the file is written back with the flag, so this happens once).
+fn load_migrating(dir: &Path, unix_seconds: u64) -> (Vec<(Target, HttpUrl)>, Vec<String>) {
     let path = dir.join(FILE_NAME);
-    let (good, bad) = match read_limited(&path) {
+    let (good, bad, migrated) = match read_limited(&path) {
         Ok(bytes) => decode(&bytes),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Vec::new(),
-        Err(e) => (Vec::new(), Some(e.to_string())),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return (Vec::new(), Vec::new()),
+        Err(e) => (Vec::new(), Some(e.to_string()), Vec::new()),
     };
+    // -- WP SECOUT --
+    for id in &migrated {
+        log::warn!(
+            "hub: outbound target {id:?} uses http://, set up before TLS: kept as \"plaintext\": true (unencrypted, private addresses only); change it to https:// to encrypt it"
+        );
+    }
+    if bad.is_none() && !migrated.is_empty() {
+        let targets: Vec<Target> = good.iter().map(|(t, _)| t.clone()).collect();
+        if let Err(e) = save(dir, &targets) {
+            log::warn!("hub: cannot write {}: {e}", path.display());
+        }
+    }
     if let Some(why) = bad {
         let aside = dir.join(format!("{FILE_NAME}.bad-{unix_seconds}"));
         log::warn!(
@@ -283,7 +400,7 @@ fn load(dir: &Path, unix_seconds: u64) -> Vec<(Target, HttpUrl)> {
             log::warn!("hub: cannot write {}: {e}", path.display());
         }
     }
-    good
+    (good, migrated)
 }
 
 #[cfg(unix)]
@@ -607,6 +724,9 @@ pub struct Job {
     pub secret: Option<String>,
     /// What.
     pub delivery: Delivery,
+    // -- WP SECOUT --
+    /// What an `https://` delivery trusts.
+    pub trust: Result<Trust, TlsError>,
 }
 
 /// What a worker is to do.
@@ -633,7 +753,14 @@ struct Slot {
     backoff: Duration,
     last: Option<Last>,
     worker: bool,
+    // -- WP SECOUT --
+    /// A one-time notice for the Admin (a target kept as `plaintext: true` on load),
+    /// shown by `outbound.get` until the next `outbound.set`.
+    notice: Option<String>,
 }
+
+/// What `outbound.test` needs of a target: where, what, its secret and its trust.
+type Found = (HttpUrl, TargetKind, Option<String>, Result<Trust, TlsError>);
 
 /// Every target's queue, backoff and last result. No threads, no sockets, no clock of
 /// its own: the caller passes the time.
@@ -656,12 +783,30 @@ impl Outbox {
 
     /// Replace the targets. A target whose id stays keeps its queue, counts and backoff;
     /// one that is now disabled loses its queue; one left out is gone (its worker stops).
+    /// A kept target whose kind changed drops its queue (counted in `dropped`: bodies made
+    /// for the other kind are never sent), and one whose destination changed (its URL or
+    /// what it trusts) starts its backoff again, so a corrected URL is tried at once.
     pub fn set_targets(&mut self, targets: Vec<(Target, HttpUrl)>) {
         let mut old = std::mem::take(&mut self.slots);
         for (target, url) in targets {
             let slot = match old.iter().position(|s| s.target.id == target.id) {
                 Some(i) => {
                     let mut s = old.swap_remove(i);
+                    // -- WP SECOUT --
+                    if s.target.kind != target.kind {
+                        let n = u64::try_from(s.queue.len()).unwrap_or(u64::MAX);
+                        s.dropped = s.dropped.saturating_add(n);
+                        s.queue.clear();
+                    }
+                    let moved = s.target.url != target.url
+                        || s.target.plaintext != target.plaintext
+                        || s.target.ca_pem != target.ca_pem
+                        || s.target.pin_sha256 != target.pin_sha256;
+                    if moved {
+                        s.backoff = BACKOFF_FIRST;
+                        s.not_before = None;
+                    }
+                    s.notice = None;
                     s.target = target;
                     s.url = url;
                     if !s.target.enabled {
@@ -682,6 +827,7 @@ impl Outbox {
                         backoff: BACKOFF_FIRST,
                         last: None,
                         worker: false,
+                        notice: None,
                     }
                 }
             };
@@ -737,6 +883,7 @@ impl Outbox {
             target: s.target.kind,
             secret: s.target.secret.clone(),
             delivery,
+            trust: trust_of(&s.target),
         })
     }
 
@@ -758,10 +905,23 @@ impl Outbox {
         s.backoff = s.backoff.saturating_mul(2).min(BACKOFF_MAX);
         let mut delivery = job.delivery;
         delivery.attempts = delivery.attempts.saturating_add(1);
-        if delivery.attempts >= MAX_ATTEMPTS || s.queue.len() >= QUEUE_CAP || !s.target.enabled {
+        // A body made for the kind the target had when it was taken is not sent as another.
+        let other_kind = job.target != s.target.kind;
+        if delivery.attempts >= MAX_ATTEMPTS
+            || s.queue.len() >= QUEUE_CAP
+            || !s.target.enabled
+            || other_kind
+        {
             s.dropped = s.dropped.saturating_add(1);
         } else {
             s.queue.push_front(delivery);
+        }
+    }
+
+    /// Show `notice` on the target `id` until the next `outbound.set`.
+    pub fn set_notice(&mut self, id: &str, notice: &str) {
+        if let Some(s) = self.slots.iter_mut().find(|s| s.target.id == id) {
+            s.notice = Some(notice.to_owned());
         }
     }
 
@@ -808,7 +968,7 @@ impl Outbox {
             .iter()
             .map(|s| {
                 let t = &s.target;
-                json!({
+                let mut v = json!({
                     "id": t.id,
                     "name": t.name,
                     "kind": t.kind.name(),
@@ -819,7 +979,26 @@ impl Outbox {
                     "queued": s.queue.len().saturating_add(usize::from(s.in_flight)),
                     "dropped": s.dropped,
                     "last": s.last,
-                })
+                });
+                // -- WP SECOUT --
+                if let Some(m) = v.as_object_mut() {
+                    m.insert("encrypted".into(), s.url.tls.into());
+                    m.insert("plaintext".into(), t.plaintext.into());
+                    if s.url.tls {
+                        let trust = trust_of(t).map_or("invalid", |tr| tr.name());
+                        m.insert("trust".into(), trust.into());
+                    }
+                    if let Some(pem) = &t.ca_pem {
+                        m.insert("ca_pem".into(), pem.clone().into());
+                    }
+                    if let Some(pin) = &t.pin_sha256 {
+                        m.insert("pin_sha256".into(), pin.clone().into());
+                    }
+                    if let Some(n) = &s.notice {
+                        m.insert("notice".into(), n.clone().into());
+                    }
+                }
+                v
             })
             .collect()
     }
@@ -842,11 +1021,15 @@ impl Outbox {
         }
     }
 
-    fn find(&self, id: &str) -> Option<(HttpUrl, TargetKind, Option<String>)> {
-        self.slots
-            .iter()
-            .find(|s| s.target.id == id)
-            .map(|s| (s.url.clone(), s.target.kind, s.target.secret.clone()))
+    fn find(&self, id: &str) -> Option<Found> {
+        self.slots.iter().find(|s| s.target.id == id).map(|s| {
+            (
+                s.url.clone(),
+                s.target.kind,
+                s.target.secret.clone(),
+                trust_of(&s.target),
+            )
+        })
     }
 }
 
@@ -867,6 +1050,9 @@ struct Entry {
     enabled: bool,
     kinds: Vec<String>,
     secret: SecretAsk,
+    plaintext: bool,
+    ca_pem: Option<String>,
+    pin_sha256: Option<String>,
 }
 
 fn parse_entry(e: &Value) -> Result<Entry, String> {
@@ -932,6 +1118,21 @@ fn parse_entry(e: &Value) -> Result<Entry, String> {
             return Err("secret is made by the hub: \"new\", \"set\" (keep) or \"not set\"".into());
         }
     };
+    // -- WP SECOUT --
+    let plaintext = match obj.get("plaintext") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err("plaintext is not a bool".into()),
+    };
+    let ca_pem = text("ca_pem")?.filter(|p| !p.trim().is_empty());
+    let pin_sha256 = text("pin_sha256")?
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| tls::parse_pin(&p).map(|pin| tls::pin_text(&pin)))
+        .transpose()
+        .map_err(|e| e.to_string())?;
+    check_transport(&parsed, plaintext, ca_pem.as_deref(), pin_sha256.as_deref())
+        .and_then(|_| check_public_literal(&parsed))
+        .map_err(|why| format!("url: {why}"))?;
     Ok(Entry {
         id,
         name,
@@ -941,6 +1142,9 @@ fn parse_entry(e: &Value) -> Result<Entry, String> {
         enabled,
         kinds,
         secret,
+        plaintext,
+        ca_pem,
+        pin_sha256,
     })
 }
 
@@ -1004,6 +1208,9 @@ fn plan(list: &[Value], current: &[Target]) -> Result<Planned, (Option<usize>, S
                 enabled: e.enabled,
                 kinds: e.kinds,
                 secret,
+                plaintext: e.plaintext,
+                ca_pem: e.ca_pem,
+                pin_sha256: e.pin_sha256,
             },
             e.parsed,
         ));
@@ -1059,6 +1266,19 @@ fn reply_err(id: &Value, code: &str, msg: &str) -> String {
 }
 
 fn deliver(job: &Job, at: u64, limits: &HttpLimits) -> Outcome {
+    // -- WP SECOUT --
+    let config = if job.url.tls {
+        let made = job
+            .trust
+            .clone()
+            .and_then(|trust| tls::client_config(&trust, None, &[http::ALPN]));
+        match made {
+            Ok(c) => Some(c),
+            Err(e) => return Outcome::Failed(e.to_string()),
+        }
+    } else {
+        None
+    };
     let body = job.delivery.body.as_bytes();
     let mut headers = vec![("X-DSPi-Timestamp", at.to_string())];
     if let Some(secret) = &job.secret {
@@ -1066,6 +1286,7 @@ fn deliver(job: &Job, at: u64, limits: &HttpLimits) -> Outcome {
     }
     let post = Post {
         url: &job.url,
+        tls: config.as_ref(),
         content_type: job.target.content_type(),
         headers: &headers,
         body,
@@ -1084,7 +1305,11 @@ impl OutboundService {
     ) -> Self {
         let mut outbox = Outbox::default();
         if let Some(dir) = data_dir {
-            outbox.set_targets(load(dir, clock.unix_seconds()));
+            let (targets, migrated) = load_migrating(dir, clock.unix_seconds());
+            outbox.set_targets(targets);
+            for id in migrated {
+                outbox.set_notice(&id, MIGRATED_NOTICE);
+            }
         }
         let born = clock.now();
         Self {
@@ -1201,7 +1426,7 @@ impl OutboundService {
         let Some(target) = msg.get("target").and_then(Value::as_str) else {
             return reply_err(id, "bad_request", "target: a target's id");
         };
-        let Some((url, kind, secret)) = lock(&self.shared.state).find(target) else {
+        let Some((url, kind, secret, trust)) = lock(&self.shared.state).find(target) else {
             return reply_err(id, "not_found", "no such target");
         };
         let at = self.shared.clock.unix_seconds();
@@ -1216,6 +1441,7 @@ impl OutboundService {
                 body: notice.payload(kind, hub.hub_id(), TEST_KIND),
                 attempts: 0,
             },
+            trust,
         };
         // On the asker's connection alone, at most the total limit.
         let outcome = deliver(&job, at, &self.shared.limits);
@@ -1363,3 +1589,6 @@ fn worker(shared: &Shared, epoch: u64) {
 
 #[cfg(test)]
 mod tests_wp_p2wh;
+// -- WP SECOUT --
+#[cfg(test)]
+mod tests_wp_secout;

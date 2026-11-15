@@ -231,6 +231,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::device_alarms::service(config, setup));
     // -- WP P2SC --
     list.extend(crate::schedule::service(config, setup));
+    // -- WP P2MQ --
+    list.extend(crate::mqtt::service::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
