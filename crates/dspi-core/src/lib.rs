@@ -143,6 +143,8 @@ pub mod modes;
 pub mod hub_admin;
 // -- WP ROMODE --
 pub mod read_only;
+// -- WP CG-SWS-b -- the pin map
+pub mod pins;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -254,6 +256,11 @@ pub use hub_admin::{
 // -- WP ROMODE --
 pub use read_only::{
     GUARD_PENDING, HUB_READS, NOTICE_READ_ONLY_CLIENT, NOTICE_READ_ONLY_GUARD_PENDING,
+};
+// -- WP CG-SWS-b --
+pub use pins::{
+    PIN_NONE, PinFunction, PinFunctionInfo, PinFunctionKind, PinHolder, PinHolderRole, PinMap,
+    PinRefusal, PinRefusalReason,
 };
 
 /// The embedder API. Create one per app with [`DspiCore::new`].

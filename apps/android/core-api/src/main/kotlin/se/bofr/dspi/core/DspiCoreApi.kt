@@ -3179,6 +3179,28 @@ interface DspiCoreApi : AutoCloseable {
     fun setTubeParam(idx: Int, value: Float)
 
     /**
+     * The pin map (WP CG-SWS-b): the platform's valid GPIOs, each function
+     * with its pin, whether it holds it and the pins it may move to, and
+     * who holds every held GPIO. From the mirror and the last
+     * control-surface read: no device I/O. Empty without a device.
+     */
+    fun pinMap(): PinMap
+
+    /**
+     * Whether `function` may move to `pin`: `None` when it may, else why
+     * not (with the status the firmware would answer and, when another
+     * function holds it, which). From the mirror: no device I/O. The pin
+     * setters run this check before they send.
+     */
+    fun pinCheck(function: PinFunction, pin: Int): PinRefusal?
+
+    /**
+     * The function holding `pin`, not counting `excluding` (a picker passes
+     * its own function), or `None` when it is free. From the mirror.
+     */
+    fun pinHolder(pin: Int, excluding: PinFunction?): PinHolder?
+
+    /**
      * Save the live state to `slot` (0..10) and wait until the device has
      * written it (it names the slot active). Runs under the device lock.
      * The slot becomes the active one and the live state its baseline.

@@ -6315,6 +6315,37 @@ bool dspi_hub_admin_set_listener(struct FfiCore *core,
                                  void *user_data);
 
 /**
+ * The pin map, JSON `{ok, platformId, assignable, validPins, functions:
+ * [{function, label, pin, holds, choices, i2sAllowed}], holders: [{pin,
+ * function, role, label}]}`. Without a device: nothing assignable and no
+ * functions. 0 for a null handle.
+ */
+uint32_t dspi_pin_map(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Whether function (`kind`, `index`) may move to GPIO `pin`: 0 when it
+ * may, else the `PIN_CONFIG_*` status the firmware would answer (1 invalid
+ * pin or wrong mux, 2 in use, 3 no such function, 4 cannot move now).
+ * 0xFF for a null handle or an unknown kind. The holder of a pin in use is
+ * [`dspi_pin_holder`]'s answer.
+ */
+uint8_t dspi_pin_check(struct FfiCore *core, uint8_t kind, uint8_t index, uint8_t pin);
+
+/**
+ * Who holds GPIO `pin`, not counting function (`exclude_kind`,
+ * `exclude_index`) (`exclude_kind` 0xFF: counting everyone): JSON `{ok,
+ * holder}`, `holder` `{pin, function, role, label}` or null when it is
+ * free. An unknown kind code is `{ok: false, code: "invalid"}`. 0 for a null
+ * handle.
+ */
+uint32_t dspi_pin_holder(struct FfiCore *core,
+                         uint8_t pin,
+                         uint8_t exclude_kind,
+                         uint8_t exclude_index,
+                         char *buf,
+                         uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

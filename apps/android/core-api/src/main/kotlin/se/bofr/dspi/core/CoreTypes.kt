@@ -4462,6 +4462,125 @@ data class OutputLabelInput(
 )
 
 /**
+ * One function: its kind and, for the indexed kinds, which one.
+ */
+data class PinFunction(
+    /**
+     * What it is.
+     */
+    val kind: PinFunctionKind,
+    /**
+     * Which one (output, input, pair or slot); 0 for the single ones.
+     */
+    val index: Int,
+)
+
+/**
+ * One GPIO and the function holding it.
+ */
+data class PinHolder(
+    /**
+     * The GPIO.
+     */
+    val pin: Int,
+    /**
+     * The function holding it (BCK's also holds LRCLK, BCK + 1).
+     */
+    val function: PinFunction,
+    /**
+     * For grouping.
+     */
+    val role: PinHolderRole,
+    /**
+     * The Console's owner name, e.g. "Output 1", "I2S LRCLK", "UART
+     * Control" (English; `function` is there to translate from).
+     */
+    val label: String,
+)
+
+/**
+ * One function of this device: its pin, whether it holds it, and the pins
+ * it may move to.
+ */
+data class PinFunctionInfo(
+    /**
+     * Which function.
+     */
+    val function: PinFunction,
+    /**
+     * Its name, e.g. "Output 1", "S/PDIF 2 RX", "UART TX".
+     */
+    val label: String,
+    /**
+     * Its GPIO, [`PIN_NONE`] when it has none.
+     */
+    val pin: Int,
+    /**
+     * Whether it holds that pin now (a disabled feature holds nothing).
+     */
+    val holds: Boolean,
+    /**
+     * The GPIOs [`pin_check`] accepts for it, its own included, in order.
+     * For a disabled optional S/PDIF input, without the pins another
+     * function holds: it could store one, but never be enabled on it.
+     * Empty where nothing is assignable.
+     */
+    val choices: List<Int>,
+    /**
+     * Output slots: whether the slot may be switched to I2S (the STM32H723's
+     * SAI rule; always on an RP2040/RP2350). False for everything else.
+     */
+    val i2sAllowed: Boolean,
+)
+
+/**
+ * The whole map.
+ */
+data class PinMap(
+    /**
+     * The platform the rules are for (`DspState.platform_id`).
+     */
+    val platformId: Int,
+    /**
+     * Whether this platform has assignable pins (RP2040 and RP2350).
+     */
+    val assignable: Boolean,
+    /**
+     * The platform's valid GPIOs, in order; empty where nothing is
+     * assignable.
+     */
+    val validPins: List<Int>,
+    /**
+     * The functions this device has, in the Console's order.
+     */
+    val functions: List<PinFunctionInfo>,
+    /**
+     * Who holds each held GPIO, in pin order; the first claim wins where
+     * two share one (the ADAT loopback shows as "ADAT Output").
+     */
+    val holders: List<PinHolder>,
+)
+
+/**
+ * A refused pin.
+ */
+data class PinRefusal(
+    /**
+     * Why.
+     */
+    val reason: PinRefusalReason,
+    /**
+     * The `PIN_CONFIG_*` status the firmware answers for it (1 invalid
+     * pin, 2 in use, 3 no such output, 4 output active).
+     */
+    val status: Int,
+    /**
+     * For [`PinRefusalReason::InUse`], the function holding the pin.
+     */
+    val holder: PinHolder?,
+)
+
+/**
  * One notification as the tap saw it (WP CG23).
  */
 data class RawNotification(
@@ -4982,6 +5101,136 @@ enum class NoticeKind {
      * Not done: something failed.
      */
     ERROR,
+}
+
+/**
+ * A function that can hold a GPIO. The C ABI passes it as its code (the
+ * number in brackets).
+ */
+enum class PinFunctionKind {
+    /**
+     * (0) A physical output, `index` 0..`num_pin_outputs`: the S/PDIF or
+     * I2S slots, then the PDM subwoofer last.
+     */
+    OUTPUT,
+    /**
+     * (1) The I2S bit clock of the master (or unified) pair; also holds
+     * LRCLK, BCK + 1.
+     */
+    I2S_BCK,
+    /**
+     * (2) The slave pair's bit clock (split clock-pin mode); also its LRCLK.
+     */
+    I2S_BCK_SLAVE,
+    /**
+     * (3) The I2S master clock.
+     */
+    MCK,
+    /**
+     * (4) An S/PDIF receiver, `index` 0..3.
+     */
+    SPDIF_RX,
+    /**
+     * (5) An I2S input data pin, `index` = stereo pair 0..3.
+     */
+    I2S_RX,
+    /**
+     * (6) The ADAT output (RP2350).
+     */
+    ADAT_OUT,
+    /**
+     * (7) The ADAT input (RP2350).
+     */
+    ADAT_IN,
+    /**
+     * (8) The DAC hardware mute line.
+     */
+    DAC_MUTE,
+    /**
+     * (9) The UART control interface's TX.
+     */
+    UART_TX,
+    /**
+     * (10) Its RX.
+     */
+    UART_RX,
+    /**
+     * (11) The I2C control interface's SDA.
+     */
+    I2C_SDA,
+    /**
+     * (12) Its SCL.
+     */
+    I2C_SCL,
+    /**
+     * (13) A control-surface binding, `index` = its slot.
+     */
+    CONTROL_SURFACE,
+}
+
+/**
+ * What a held GPIO is doing, for grouping (the Console's five roles).
+ */
+enum class PinHolderRole {
+    /**
+     * A physical or ADAT output.
+     */
+    OUTPUT,
+    /**
+     * An I2S clock.
+     */
+    CLOCK,
+    /**
+     * An audio input.
+     */
+    INPUT,
+    /**
+     * A control interface or control surface.
+     */
+    CONTROL,
+    /**
+     * The DAC mute.
+     */
+    UTILITY,
+}
+
+/**
+ * Why a pin was refused.
+ */
+enum class PinRefusalReason {
+    /**
+     * This platform's pins are fixed (STM32H723, or a platform this build
+     * does not know).
+     */
+    NOT_ASSIGNABLE,
+    /**
+     * The device has no such function (an output, input or pair past its
+     * count; ADAT on an RP2040; a feature its firmware lacks).
+     */
+    NO_SUCH_FUNCTION,
+    /**
+     * Not a GPIO this platform allows (23-25 are power and LED; BCK also
+     * needs BCK + 1).
+     */
+    INVALID_PIN,
+    /**
+     * A GPIO, but not one this function's peripheral can use: MCK off a
+     * clock-output pin, UART or I2C off its mux position or instance.
+     */
+    WRONG_MUX,
+    /**
+     * Another function holds it: see `holder`.
+     */
+    IN_USE,
+    /**
+     * The function cannot move now: MCK while enabled, the I2S clock pair
+     * while I2S outputs run on it.
+     */
+    OUTPUT_ACTIVE,
+    /**
+     * The ADAT input's pin cannot be cleared while the input is enabled.
+     */
+    CLEAR_WHILE_ENABLED,
 }
 
 /**

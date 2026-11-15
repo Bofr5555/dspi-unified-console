@@ -87,12 +87,16 @@ pub enum PinConstraint {
 }
 
 /// Every GPIO this build will offer, mirroring the firmware's
-/// `is_valid_gpio_pin()`: 0 to 22 and 26 to 28.
+/// `is_valid_gpio_pin()` (vendor_commands.c): 0 to 22 and 26 to 28 on an
+/// RP2040, and 26 to 29 on an RP2350. 23 to 25 are power and LED.
 ///
-/// 23 to 25 are power and LED. RP2350 additionally allows GPIO 29, but the
-/// list is shared with RP2040, whose highest is 28, so 29 is not offered.
-pub fn valid_pins(_platform: Platform) -> Vec<u8> {
-    (0..=22u8).chain(26..=28).collect()
+/// -- WP CG-SWS-b -- per platform, as the firmware has it: earlier this list
+/// left GPIO 29 out on the RP2350 too, so that one list served both parts.
+/// `dspi-core`'s pin map (`pins.rs`) reads this table. A platform this build
+/// does not know gets the RP2040's list, the one both parts accept.
+pub fn valid_pins(platform: Platform) -> Vec<u8> {
+    let top = if platform == Platform::Rp2350 { 29 } else { 28 };
+    (0..=22u8).chain(26..=top).collect()
 }
 
 /// The pins a picker may offer for one kind of function.
@@ -656,15 +660,29 @@ mod tests {
         PinMap::build(&mut session_from(t, platform)).expect("pin map")
     }
 
+    // -- WP CG-SWS-b -- per platform: GPIO 29 on the RP2350 only.
     #[test]
-    fn the_valid_pins_are_the_firmwares_own_list() {
-        let pins = valid_pins(Platform::Rp2350);
+    fn cgswsb_the_valid_pins_are_the_firmwares_own_list() {
+        let pins = valid_pins(Platform::Rp2040);
         assert_eq!(pins.len(), 26);
         assert!(pins.contains(&0) && pins.contains(&22));
         // 23 to 25 are power and the LED.
         assert!(!pins.contains(&23) && !pins.contains(&24) && !pins.contains(&25));
         assert!(pins.contains(&26) && pins.contains(&28));
-        assert!(!pins.contains(&29), "not offered, since RP2040 has no 29");
+        assert!(!pins.contains(&29), "an RP2040 has no GPIO 29");
+
+        let pins = valid_pins(Platform::Rp2350);
+        assert_eq!(pins.len(), 27);
+        assert!(!pins.contains(&23) && !pins.contains(&24) && !pins.contains(&25));
+        assert!(
+            pins.contains(&29),
+            "is_valid_gpio_pin takes 29 on an RP2350"
+        );
+
+        assert_eq!(
+            valid_pins(Platform::Unknown(2)),
+            valid_pins(Platform::Rp2040)
+        );
     }
 
     #[test]

@@ -83,6 +83,8 @@ pub mod power_on;
 pub mod system;
 // -- WP ROMODE -- the client read-only mode
 pub mod read_only;
+// -- WP CG-SWS-b -- the pin map
+pub mod pins;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;

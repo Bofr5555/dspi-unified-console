@@ -76,6 +76,8 @@ mod offline;
 mod guarded;
 // -- WP HUBADMIN --
 mod hub_admin;
+// -- WP CG-SWS-b -- the pin map
+mod pins;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

@@ -1511,6 +1511,21 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_output_labels(void*_Nonnull ptr, 
 RustBuffer uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(void*_Nonnull ptr, float threshold_db, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PIN_CHECK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PIN_CHECK
+RustBuffer uniffi_dspi_core_fn_method_dspicore_pin_check(void*_Nonnull ptr, RustBuffer function, uint8_t pin, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PIN_HOLDER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PIN_HOLDER
+RustBuffer uniffi_dspi_core_fn_method_dspicore_pin_holder(void*_Nonnull ptr, uint8_t pin, RustBuffer excluding, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PIN_MAP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PIN_MAP
+RustBuffer uniffi_dspi_core_fn_method_dspicore_pin_map(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_POLL_HOTPLUG
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_POLL_HOTPLUG
 void uniffi_dspi_core_fn_method_dspicore_poll_hotplug(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -4397,6 +4412,24 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_output_labels(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OUTPUTS_WITHOUT_LIMITER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_OUTPUTS_WITHOUT_LIMITER
 uint16_t uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PIN_CHECK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PIN_CHECK
+uint16_t uniffi_dspi_core_checksum_method_dspicore_pin_check(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PIN_HOLDER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PIN_HOLDER
+uint16_t uniffi_dspi_core_checksum_method_dspicore_pin_holder(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PIN_MAP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PIN_MAP
+uint16_t uniffi_dspi_core_checksum_method_dspicore_pin_map(void
     
 );
 #endif
