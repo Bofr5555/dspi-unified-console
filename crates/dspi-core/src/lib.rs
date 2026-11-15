@@ -704,14 +704,37 @@ pub(crate) fn require_feature(session: &Session, feature: &str) -> Result<()> {
 pub(crate) struct Writable<'a>(&'a mut Connection);
 
 impl Writable<'_> {
+    // -- WP ECHO1 -- (review batch1 F1)
+    /// A write of ours goes out now: from here an own echo may be its echo,
+    /// not one older than the last whole image (`EchoFilter::param_write_sent`).
+    /// Stamped by the send paths below, never by taking a `Writable` (the
+    /// analyser takes one every tick and sends no parameter). Whole images
+    /// (the bulk SET, a preset load, a factory reset) are not stamped: they
+    /// mark the image themselves.
+    fn stamp(&mut self, opcode: u8) {
+        if !matches!(
+            opcode,
+            dspi_proto::generated::opcodes::REQ_SET_ALL_PARAMS
+                | dspi_proto::generated::opcodes::REQ_SET_ALL_PARAMS_CHUNK
+                | dspi_proto::generated::opcodes::REQ_PRESET_LOAD
+                | dspi_proto::generated::opcodes::REQ_FACTORY_RESET
+        ) {
+            self.0
+                .echo
+                .param_write_sent(dspi_transport::clock::Instant::now());
+        }
+    }
+
     /// OUT transfer, errors typed.
     pub(crate) fn set(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
+        self.stamp(opcode); // -- WP ECHO1 --
         Ok(self.0.transport().control_out(opcode, value, data)?)
     }
 
     /// A write-as-read opcode (parameters in `wValue`, a status byte back):
     /// the status, 0 = applied.
     pub(crate) fn set_as_read(&mut self, opcode: u8, value: u16) -> Result<u8> {
+        self.stamp(opcode); // -- WP ECHO1 --
         let b = self.0.transport().control_in(opcode, value, 1)?;
         b.first().copied().ok_or(DspiError::Transfer {
             msg: format!("empty status reply to opcode 0x{opcode:02X}"),
@@ -721,10 +744,28 @@ impl Writable<'_> {
     /// The session, for `Session::send` (WP S1) and the session's write
     /// helpers.
     pub(crate) fn session(&mut self) -> Result<&mut Session> {
+        // -- WP ECHO1 -- the session is only taken to write through it
+        self.0
+            .echo
+            .param_write_sent(dspi_transport::clock::Instant::now());
         self.0.session()
     }
 
-    /// The connection, for reads in the middle of a write.
+    // -- WP ECHO1 --
+    /// The raw transport, to send a parameter or configuration write on it
+    /// (an extension request, a raw write): stamped as our write. Reads, the
+    /// analyser's requests and the demo device's simulated events use
+    /// [`Writable::conn`] instead.
+    pub(crate) fn sending(&mut self) -> &mut dyn Transport {
+        self.0
+            .echo
+            .param_write_sent(dspi_transport::clock::Instant::now());
+        self.0.transport()
+    }
+
+    /// The connection, for reads in the middle of a write. Not stamped as a
+    /// write (WP ECHO1): send a write with `set`, `set_as_read`, `session` or
+    /// `sending`.
     pub(crate) fn conn(&mut self) -> &mut Connection {
         self.0
     }
@@ -778,13 +819,7 @@ impl Inner {
             return Err(DspiError::ReadOnly);
         }
         crate::limits::lock_check(self)?; // -- WP P1LK -- the installer's lock
-        let conn = self.conn()?;
-        // -- WP ECHO1 -- every write goes out through a Writable: from here an
-        // own echo may be this write's, not one older than the last image
-        // (a whole image re-marks the point after this, see `EchoFilter`)
-        conn.echo
-            .param_write_sent(dspi_transport::clock::Instant::now());
-        Ok(Writable(conn))
+        Ok(Writable(self.conn()?))
     }
 }
 

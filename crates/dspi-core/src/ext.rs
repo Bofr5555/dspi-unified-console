@@ -159,7 +159,7 @@ impl DspiCore {
         };
         let request = vreg_request(op, value, floor)?;
         let mut w = inner.writable_conn()?;
-        sx::core_vreg_op(w.conn().transport(), request, word.as_deref()).map_err(write_error)?;
+        sx::core_vreg_op(w.sending(), request, word.as_deref()).map_err(write_error)?;
         // -- WP P0W -- history only: never sent again
         crate::journal::journal(&mut inner, "ext.vreg", &[op, value], Value::Trigger);
         Ok(())
@@ -191,7 +191,7 @@ pub(crate) fn set_pair_map_locked(inner: &mut Inner, map: &[u8]) -> Result<()> {
     let change = inner.journal_begin(crate::journal::EXT_PAIRMAP, &[])?;
 
     let mut w = inner.writable_conn()?;
-    let written = sx::write_pair_map(w.conn().transport(), wanted);
+    let written = sx::write_pair_map(w.sending(), wanted); // -- WP ECHO1 --
     let now = match written {
         Ok(now) => now,
         // ACKed and ignored: the read-back disagreed. Read once more for

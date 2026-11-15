@@ -292,7 +292,7 @@ impl DspiCore {
         let mut inner = self.lock();
         usb_conn(&mut inner, usb::EXT_ALINK_USB)?;
         let mut w = inner.writable_conn()?;
-        let t = w.conn().transport();
+        let t = w.sending(); // -- WP ECHO1 --
         let read = sx::read_alink_usb(t).ok();
         let before = read.as_ref().map(config_value);
         // -- WP AUSB2 -- never reset the lock-error action by writing the mode
@@ -333,7 +333,7 @@ impl DspiCore {
         let mut inner = self.lock();
         usb_conn(&mut inner, usb::EXT_ALINK_USB)?;
         let mut w = inner.writable_conn()?;
-        let t = w.conn().transport();
+        let t = w.sending(); // -- WP ECHO1 --
         let read = sx::read_alink_usb(t).map_err(read_error)?;
         let c = usb::AlinkUsbConfig {
             on_lock_error: if play_unaligned {
@@ -398,7 +398,7 @@ impl DspiCore {
         let mut inner = self.lock();
         usb_conn(&mut inner, usb::EXT_ALINK_USB_DIAG)?;
         let mut w = inner.writable_conn()?;
-        sx::clear_alink_usb_diag(w.conn().transport()).map_err(write_error)?;
+        sx::clear_alink_usb_diag(w.sending()).map_err(write_error)?;
         journal::journal(
             &mut inner,
             journal::ALINK_USB_DIAG_CLEAR,
@@ -479,7 +479,7 @@ impl DspiCore {
             return Err(DspiError::Unsupported);
         }
         let mut w = inner.writable_conn()?;
-        sx::apply_at_frame_tb(w.conn().transport(), req, tb).map_err(write_error)?;
+        sx::apply_at_frame_tb(w.sending(), req, tb).map_err(write_error)?;
         journal::journal(
             &mut inner,
             journal::ALINK_APPLY,

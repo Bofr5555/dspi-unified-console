@@ -86,11 +86,24 @@ impl DspiCore {
             // A write-as-read opcode on the Writable (§1.2); raw for any
             // reply length, and so a stall stays a refusal.
             let mut w = guard.writable_conn()?;
-            let conn = w.conn();
-            conn.fresh_image = false;
-            conn.transport()
-                .control_in_upto(opcode, value, len)
-                .map_err(refusal)
+            w.conn().fresh_image = false;
+            // -- WP ECHO1 -- (review batch1 NIT) a preset load is a whole
+            // image: an own echo of a write sent before it is older than the
+            // preset. The analyser's requests write no parameter; anything
+            // else may, and is stamped as our write.
+            if opcode == op::REQ_PRESET_LOAD {
+                let conn = w.conn();
+                conn.echo.whole_image_sent(Instant::now());
+                let r = conn.transport().control_in_upto(opcode, value, len);
+                conn.echo.whole_image_done(Instant::now());
+                return r.map_err(refusal);
+            }
+            let t = if is_analyser(opcode) {
+                w.conn().transport()
+            } else {
+                w.sending()
+            };
+            t.control_in_upto(opcode, value, len).map_err(refusal)
         }
     }
 
@@ -144,9 +157,13 @@ impl DspiCore {
         if opcode == op::REQ_OUTPUT_LATENCY {
             conn.ring_target.invalidate();
         }
-        conn.transport()
-            .control_out(opcode, value, &data)
-            .map_err(refusal)?;
+        // -- WP ECHO1 -- stamped as our write, but the analyser's requests
+        let t = if is_analyser(opcode) {
+            w.conn().transport()
+        } else {
+            w.sending()
+        };
+        t.control_out(opcode, value, &data).map_err(refusal)?;
         // -- WP P0W -- history only: nobody knows what a raw write moved
         let [lo, hi] = value.to_le_bytes();
         let after = dspi_proto::value::Value::Bytes(data);

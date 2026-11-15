@@ -410,3 +410,151 @@ fn wp_echo1_after_the_late_echo_window_an_own_looking_change_applies() {
     quiet(&core);
     assert_eq!(vol(&core), v0 - 8.0);
 }
+
+// -- review batch1 F1 -- the analyser worker takes a Writable every tick
+// without writing a parameter; it must not end the late-echo window. The
+// reviewer's probe (`probe-echo1-analyser-tests_review_batch1.rs`), adopted.
+
+/// A write, then a recall whose image lands before that write's echo, with
+/// the analyser `analyser` (started, a request `active`) and `gap_ms`
+/// between the image and the echo. The kinds whose mirror ends wrong.
+fn late_echo_with_the_analyser(analyser: bool, active: bool, gap_ms: u64) -> Vec<String> {
+    let mut bad = Vec::new();
+    for kind in KINDS {
+        let (core, _remote, held) = open(kind);
+        if analyser {
+            core.rta_start();
+            if active {
+                core.rta_set_request(crate::RtaRequest {
+                    tap: 1,
+                    mask: 0b01,
+                    wants_bins: false,
+                    fft_order: 10,
+                    avg_ms: 300,
+                    peak_decay_db_s: 12,
+                    watching: false,
+                });
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        let (v0, b) = with_b(&core);
+        held.store(true, Ordering::SeqCst);
+        core.set_master_volume(v0 - 0.5).unwrap();
+        core.snapshot_recall_document(b).unwrap();
+        assert_eq!(vol(&core), v0 - 3.0, "{kind:?}: B applied");
+        std::thread::sleep(Duration::from_millis(gap_ms));
+        held.store(false, Ordering::SeqCst);
+        quiet(&core);
+        if vol(&core) != v0 - 3.0 {
+            bad.push(format!(
+                "{kind:?}: mirror {} (device holds {})",
+                vol(&core),
+                v0 - 3.0
+            ));
+        }
+    }
+    bad
+}
+
+#[test]
+fn wp_echo1_review_batch1_probe_control_no_analyser() {
+    assert_eq!(
+        late_echo_with_the_analyser(false, false, 1500),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn wp_echo1_review_batch1_probe_analyser_idle() {
+    assert_eq!(
+        late_echo_with_the_analyser(true, false, 1500),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn wp_echo1_review_batch1_probe_analyser_active() {
+    assert_eq!(
+        late_echo_with_the_analyser(true, true, 250),
+        Vec::<String>::new()
+    );
+}
+
+/// A raw preset load (the Terminal's `raw`) marks a whole image too.
+#[test]
+fn wp_echo1_a_raw_preset_load_marks_the_image() {
+    let (core, remote, _held) = open(TransportKind::Fake);
+    core.set_master_volume_mode(1).unwrap();
+    let v0 = vol(&core);
+    core.set_master_volume(v0 - 3.0).unwrap();
+    quiet(&core);
+    core.save_preset_tok(1).unwrap();
+    core.set_master_volume(v0).unwrap();
+    quiet(&core);
+    core.raw_get(dspi_proto::generated::opcodes::REQ_PRESET_LOAD, 1, 1)
+        .unwrap();
+    quiet(&core); // the preset's invalidation re-reads the image
+    assert_eq!(vol(&core), v0 - 3.0, "the preset's volume");
+    remote.push(volume_packet(SRC_HOST, v0));
+    quiet(&core);
+    assert_eq!(vol(&core), v0 - 3.0, "the late echo is dropped");
+}
+
+/// Only a send stamps our write: taking a `Writable` does
+/// not; `set`, `set_as_read`, `session` and `sending` do.
+#[test]
+fn wp_echo1_only_a_send_ends_the_late_echo_window() {
+    use dspi_session::notify::{Event, Notification, Source};
+    let (core, _remote, _held) = open(TransportKind::Fake);
+    let late = |core: &DspiCore| {
+        let note = Notification {
+            seq: 0,
+            event: Event::ParamChanged {
+                offset: g::OFF_MASTER_VOLUME as u16,
+                source: Source::HostSet,
+                bytes: vec![0; 4],
+            },
+            lost: false,
+            origin: None,
+            received: dspi_transport::clock::Instant::now(),
+        };
+        let mut inner = core.lock();
+        let conn = inner.conn().unwrap();
+        conn.echo.is_late_own_echo(conn.caps.kind, None, &note)
+    };
+    let mark = |core: &DspiCore| {
+        let now = dspi_transport::clock::Instant::now();
+        let mut inner = core.lock();
+        let echo = &mut inner.conn().unwrap().echo;
+        echo.whole_image_sent(now);
+        echo.whole_image_done(now);
+    };
+    use dspi_proto::generated::opcodes as op;
+    type SendFn = fn(&mut crate::Writable<'_>);
+    let sends: [(&str, SendFn); 4] = [
+        ("set", |w| {
+            w.set(op::REQ_SET_PREAMP, 0, &0f32.to_le_bytes()).unwrap();
+        }),
+        ("set_as_read", |w| {
+            let _ = w.set_as_read(op::REQ_SAVE_PARAMS, 0);
+        }),
+        ("session", |w| {
+            w.session().unwrap();
+        }),
+        ("sending", |w| {
+            w.sending();
+        }),
+    ];
+    for (what, send) in sends {
+        mark(&core);
+        let _ = core.lock().writable_conn().unwrap().conn();
+        assert!(late(&core), "{what}: taking a Writable is no write");
+        {
+            let mut inner = core.lock();
+            let mut w = inner.writable_conn().unwrap();
+            send(&mut w);
+        }
+        std::thread::sleep(Duration::from_millis(2));
+        assert!(!late(&core), "{what}: a write of ours ends it");
+    }
+}

@@ -347,8 +347,7 @@ impl DspiCore {
         let mut w = guard.writable_conn()?;
         // A write, sent on the Writable (PLAN §1.2); the raw transport only
         // keeps a stall (a refusal) apart from other failures.
-        w.conn()
-            .transport()
+        w.sending() // -- WP ECHO1 --
             .control_out(op::REQ_SIGGEN_SET_CONFIG, 0, &bytes)
             .map_err(refusal)?;
         // -- WP P0W -- audible: history only
@@ -379,8 +378,7 @@ impl DspiCore {
         // A write-as-read opcode on the Writable (PLAN §1.2); raw so a stall
         // stays a refusal.
         let reply = w
-            .conn()
-            .transport()
+            .sending() // -- WP ECHO1 --
             .control_in(op::REQ_SIGGEN_CONTROL, action, 1)
             .map_err(refusal)?;
         acked(&reply)?;
