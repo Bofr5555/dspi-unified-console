@@ -1,5 +1,6 @@
 import XCTest
 import Combine
+import dspi_core
 @testable import DSPi_Console
 
 /// Pure-logic tests for firmware versioning and the installer's decisions.
@@ -52,34 +53,9 @@ final class FirmwareInstallerTests: XCTestCase {
         XCTAssertNil(FirmwareImage.versionFromAssetName("DSPi.uf2"))
     }
 
-    // MARK: - Reboot versus failure
-
-    /// The RP2 ROM loader resets itself as it takes the last blocks, so the
-    /// volume vanishes under the final write. Reporting that as an error is
-    /// the classic UF2 flasher bug.
-    func testLateWriteErrorIsAReboot() {
-        XCTAssertTrue(FirmwareInstaller.isRebootSignal(fractionWritten: 0.99,
-                                                       volumeStillMounted: true))
-    }
-
-    func testVanishedVolumeIsARebootAtAnyPoint() {
-        XCTAssertTrue(FirmwareInstaller.isRebootSignal(fractionWritten: 0.1,
-                                                       volumeStillMounted: false))
-    }
-
-    /// An error early in the write, with the volume still there, is a real
-    /// failure and must not be swallowed as a successful flash.
-    func testEarlyWriteErrorIsAFailure() {
-        XCTAssertFalse(FirmwareInstaller.isRebootSignal(fractionWritten: 0.4,
-                                                        volumeStillMounted: true))
-    }
-
-    func testThresholdBoundary() {
-        XCTAssertTrue(FirmwareInstaller.isRebootSignal(fractionWritten: FirmwareInstaller.rebootThreshold,
-                                                       volumeStillMounted: true))
-        XCTAssertFalse(FirmwareInstaller.isRebootSignal(fractionWritten: FirmwareInstaller.rebootThreshold - 0.01,
-                                                        volumeStillMounted: true))
-    }
+    // -- WP SW-M2 -- Reboot versus failure (a write error once the drive
+    // went away is the board rebooting) is the core's now (`flash_to_drive`,
+    // C11), with its tests there; Swift writes no byte.
 
     // MARK: - Which board it will act on
 
@@ -200,11 +176,9 @@ final class FirmwareInstallerTests: XCTestCase {
     /// changes no state, so anything that waits for `.ready` to *arrive* never
     /// fires and the window sits there forever.
     func testCommittingWithABoardAlreadyReadyStartsTheWrite() throws {
-        let (volume, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
-        let board = BootloaderBoard(chip: .rp2350, volumeURL: volume)
-        let installer = makeInstaller(boards: [board],
-                                      verifier: StubVerifier(version: FirmwareVersion(1, 1, 7)),
-                                      image: image)
+        let f = try SWM2Fixture(self)   // -- WP SW-M2 -- a fake drive, written by the core
+        let board = f.board
+        let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
         XCTAssertEqual(installer.state, .ready(board))
 
@@ -215,17 +189,16 @@ final class FirmwareInstallerTests: XCTestCase {
 
     /// The other order: commit first, board arrives later.
     func testCommittingBeforeTheBoardArrivesStartsTheWriteWhenItDoes() throws {
-        let (volume, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
-        let locator = FakeBootloaderLocator(boards: [])
-        let installer = FirmwareInstaller(locator: locator,
-                                          verifier: StubVerifier(version: FirmwareVersion(1, 1, 7)),
-                                          imageProvider: { _ in image })
+        let f = try SWM2Fixture(self)
+        let locator = f.locator
+        locator.boards = []
+        let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
 
         installer.installWhenReady(confirmed: .firmwareFlash())
         XCTAssertEqual(installer.state, .waitingForBoard)
 
-        locator.boards = [BootloaderBoard(chip: .rp2350, volumeURL: volume)]
+        locator.boards = [f.board]
         locator.emit()
         waitForSettledState(installer)
         XCTAssertEqual(installer.state, .verified(FirmwareVersion(1, 1, 7)))
@@ -244,61 +217,65 @@ final class FirmwareInstallerTests: XCTestCase {
     // MARK: - A flash only counts when the device comes back
 
     func testSuccessRequiresTheDeviceToReturnRunningWhatWeWrote() throws {
-        let (volume, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
-        let installer = makeInstaller(boards: [], verifier: StubVerifier(version: FirmwareVersion(1, 1, 7)),
-                                      image: image)
-        let board = BootloaderBoard(chip: .rp2350, volumeURL: volume)
-
-        installer.install(board)
+        let f = try SWM2Fixture(self)
+        let installer = f.installer(board: SWM2Fixture.stockBoard)
+        installer.beginWatching()
+        installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
 
         XCTAssertEqual(installer.state, .verified(FirmwareVersion(1, 1, 7)))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: volume.appendingPathComponent(image.url.lastPathComponent).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: f.written.path))
     }
 
     /// A clean copy that produces no working device is a failure. Only the
     /// re-enumeration can tell the two apart.
     func testDeviceNeverReturningIsAFailure() throws {
-        let (volume, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
-        let installer = makeInstaller(boards: [], verifier: StubVerifier(version: nil), image: image)
-
-        installer.install(BootloaderBoard(chip: .rp2350, volumeURL: volume))
+        let f = try SWM2Fixture(self)
+        let installer = f.installer(board: SWM2Fixture.stockBoard, verified: nil)
+        installer.beginWatching()
+        installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
 
         XCTAssertEqual(installer.state, .failed(.deviceDidNotReturn))
     }
 
     func testDeviceReturningOnTheWrongVersionIsAFailure() throws {
-        let (volume, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
-        let installer = makeInstaller(boards: [], verifier: StubVerifier(version: FirmwareVersion(1, 1, 6)),
-                                      image: image)
-
-        installer.install(BootloaderBoard(chip: .rp2350, volumeURL: volume))
+        let f = try SWM2Fixture(self)
+        let installer = f.installer(board: SWM2Fixture.stockBoard, verified: FirmwareVersion(1, 1, 6))
+        installer.beginWatching()
+        installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
 
         XCTAssertEqual(installer.state, .failed(.versionMismatch(expected: "1.1.7", got: "1.1.6")))
     }
 
-    func testInstallWithoutAVolumeFailsBeforeWriting() {
-        let installer = makeInstaller(boards: [])
-        installer.install(BootloaderBoard(chip: .rp2040, volumeURL: nil))
-        XCTAssertEqual(installer.state, .failed(.volumeNotMounted("RPI-RP2")))
+    /// -- WP SW-M2 -- The write is reachable only through a person's
+    /// confirmation: a ready board with nothing armed is never written, and a
+    /// board without a drive never becomes ready to write.
+    func testABoardWithoutAVolumeIsNeverWritten() {
+        let installer = makeInstaller(boards: [BootloaderBoard(chip: .rp2040, volumeURL: nil)])
+        installer.beginWatching()
+        installer.installWhenReady(confirmed: .firmwareFlash())
+        SWM2Fixture.spin(0.3) { false }
+        XCTAssertEqual(installer.state, .waitingForVolume(.rp2040))
     }
 
     /// A release that bumped the app version and forgot the images must fail
     /// loudly here rather than shipping and downgrading every device it meets.
     func testStaleBundledImageIsRefused() throws {
-        let (volume, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
+        let f = try SWM2Fixture(self)
         let installer = FirmwareInstaller(
-            locator: FakeBootloaderLocator(boards: []),
+            locator: f.locator,
             verifier: StubVerifier(version: nil),
             imageProvider: { _ in
                 throw FirmwareInstallError.bundledImageStale(bundled: "1.1.6", expected: "1.1.7")
-            })
-        _ = image
-
-        installer.install(BootloaderBoard(chip: .rp2350, volumeURL: volume))
+            },
+            gate: { nil })
+        installer.beginWatching()
+        installer.installWhenReady(confirmed: .firmwareFlash())
+        SWM2Fixture.spin { if case .failed = installer.state { return true }; return false }
         XCTAssertEqual(installer.state, .failed(.bundledImageStale(bundled: "1.1.6", expected: "1.1.7")))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.written.path))
     }
 
     // MARK: - Life after an install
@@ -307,11 +284,9 @@ final class FirmwareInstallerTests: XCTestCase {
     /// the board rebooting out of BOOTSEL right after a success is the normal
     /// ending, not a change that may erase the green tick.
     func testVerifiedStateSurvivesTheBoardDisappearing() throws {
-        let (volume, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
-        let locator = FakeBootloaderLocator(boards: [BootloaderBoard(chip: .rp2350, volumeURL: volume)])
-        let installer = FirmwareInstaller(locator: locator,
-                                          verifier: StubVerifier(version: FirmwareVersion(1, 1, 7)),
-                                          imageProvider: { _ in image })
+        let f = try SWM2Fixture(self)
+        let locator = f.locator
+        let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
         installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
@@ -326,11 +301,9 @@ final class FirmwareInstallerTests: XCTestCase {
     /// the installer, so the window sat on its terminal state ignoring every
     /// plug and unplug. `reset()` is the door back to detection.
     func testResetAfterAVerifiedInstallReturnsToDetection() throws {
-        let (volume, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
-        let locator = FakeBootloaderLocator(boards: [BootloaderBoard(chip: .rp2350, volumeURL: volume)])
-        let installer = FirmwareInstaller(locator: locator,
-                                          verifier: StubVerifier(version: FirmwareVersion(1, 1, 7)),
-                                          imageProvider: { _ in image })
+        let f = try SWM2Fixture(self)
+        let locator = f.locator
+        let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
         installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
@@ -344,11 +317,9 @@ final class FirmwareInstallerTests: XCTestCase {
     /// after a reset was decided about exactly zero times, so it may become
     /// ready but never start writing on its own.
     func testASecondBoardAfterResetNeedsAFreshCommit() throws {
-        let (volume, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
-        let locator = FakeBootloaderLocator(boards: [BootloaderBoard(chip: .rp2350, volumeURL: volume)])
-        let installer = FirmwareInstaller(locator: locator,
-                                          verifier: StubVerifier(version: FirmwareVersion(1, 1, 7)),
-                                          imageProvider: { _ in image })
+        let f = try SWM2Fixture(self)
+        let locator = f.locator
+        let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
         installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
@@ -371,9 +342,11 @@ final class FirmwareInstallerTests: XCTestCase {
                                           verifier: StubVerifier(version: nil),
                                           imageProvider: { chip in
                                               throw FirmwareInstallError.imageMissing(chip.displayName)
-                                          })
+                                          },
+                                          gate: { nil })
         installer.beginWatching()
         installer.installWhenReady(confirmed: .firmwareFlash())
+        SWM2Fixture.spin { if case .failed = installer.state { return true }; return false }   // -- WP SW-M2 --
         XCTAssertEqual(installer.state, .failed(.imageMissing(BootloaderBoard.Chip.rp2350.displayName)))
 
         locator.emit()
@@ -388,14 +361,13 @@ final class FirmwareInstallerTests: XCTestCase {
     /// before `reset()` it restarted the watch against a permanently frozen
     /// state machine, which looked alive and did nothing.
     func testResetAfterAWriteFailureRecovers() throws {
-        let (_, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
+        let f = try SWM2Fixture(self)
         let ghostVolume = URL(fileURLWithPath: "/nonexistent-\(UUID().uuidString)")
-        let locator = FakeBootloaderLocator(boards: [])
-        let installer = FirmwareInstaller(locator: locator,
-                                          verifier: StubVerifier(version: nil),
-                                          imageProvider: { _ in image })
+        let locator = f.locator
+        locator.boards = [BootloaderBoard(chip: .rp2350, volumeURL: ghostVolume)]
+        let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
-        installer.install(BootloaderBoard(chip: .rp2350, volumeURL: ghostVolume))
+        installer.installWhenReady(confirmed: .firmwareFlash())
         waitForSettledState(installer)
         guard case .failed(.writeFailed) = installer.state else {
             return XCTFail("expected a write failure, got \(installer.state)")
@@ -428,28 +400,6 @@ final class FirmwareInstallerTests: XCTestCase {
         XCTAssertEqual(installer.state, .waitingForDevice)
     }
 
-    /// Seven jumps of a progress bar over a whole flash read as a stall, not
-    /// as progress; the chunk size has to keep the bar visibly moving.
-    func testProgressMovesInFineSteps() throws {
-        let (volume, image) = try makeVolumeAndImage(version: FirmwareVersion(1, 1, 7))
-        let installer = makeInstaller(boards: [],
-                                      verifier: StubVerifier(version: FirmwareVersion(1, 1, 7)),
-                                      image: image)
-        var fractions = Set<Double>()
-        let watcher = installer.$state.sink { state in
-            if case .writing(let f) = state { fractions.insert(f) }
-        }
-        defer { watcher.cancel() }
-
-        installer.install(BootloaderBoard(chip: .rp2350, volumeURL: volume))
-        waitForSettledState(installer)
-
-        XCTAssertEqual(installer.state, .verified(FirmwareVersion(1, 1, 7)))
-        // The 256 KB test image should produce a distinct fraction for each
-        // chunk; a return to 64 KB chunks drops this to four.
-        XCTAssertGreaterThanOrEqual(fractions.count, 12)
-    }
-
     // MARK: - The real bundle
 
     /// Proves the shipping app actually carries an image for each chip and
@@ -465,6 +415,26 @@ final class FirmwareInstallerTests: XCTestCase {
         }
     }
 
+    /// -- WP SW-M2 -- The shipping images pass the core's UF2 check for
+    /// their own chip, and its guard: clear on a stock board, asked for the
+    /// words on a board already in BOOTSEL (unknown) and on one that needs
+    /// 1.20 V (today's images carry no voltage stamp).
+    func testSWM2BundledImagesPassTheCoresCheckAndGuard() throws {
+        for chip in BootloaderBoard.Chip.allCases {
+            let bytes = try Data(contentsOf: try FirmwareImage.bundled(for: chip).url)
+            let info = uf2Inspect(image: bytes)
+            XCTAssertTrue(info.valid, info.problem)
+            XCTAssertEqual(info.platform, chip.platform, chip.assetToken)
+            XCTAssertTrue(firmwareGuardCheck(image: bytes, board: SWM2Fixture.stockBoard, typedConfirmation: "").allowed)
+            for board in [firmwareGuardBoardInBootloader(), SWM2Fixture.atRiskBoard] {
+                let verdict = firmwareGuardCheck(image: bytes, board: board, typedConfirmation: "")
+                XCTAssertEqual(verdict.decision, .needsConfirmation, "\(chip.assetToken) \(board)")
+                XCTAssertTrue(firmwareGuardCheck(image: bytes, board: board,
+                                                 typedConfirmation: verdict.confirmationPhrase).allowed)
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private func makeInstaller(boards: [BootloaderBoard],
@@ -475,22 +445,8 @@ final class FirmwareInstallerTests: XCTestCase {
                           imageProvider: { chip in
                               if let image { return image }
                               throw FirmwareInstallError.imageMissing(chip.displayName)
-                          })
-    }
-
-    /// A scratch directory standing in for the mounted volume, plus a small
-    /// file standing in for the UF2.
-    private func makeVolumeAndImage(version: FirmwareVersion) throws -> (URL, FirmwareImage) {
-        let root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("dspi-firmware-tests-\(UUID().uuidString)")
-        let volume = root.appendingPathComponent("volume")
-        try FileManager.default.createDirectory(at: volume, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
-
-        let imageURL = root.appendingPathComponent("DSPi-RP2350-v\(version).uf2")
-        try Data(repeating: 0xAB, count: 256 * 1024).write(to: imageURL)
-
-        return (volume, FirmwareImage(chip: .rp2350, url: imageURL, version: version))
+                          },
+                          gate: { nil })
     }
 
     /// The install runs on a background queue and publishes to main; spin the

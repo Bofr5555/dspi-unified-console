@@ -102,8 +102,9 @@ final class InstallerP1SW2FTests: XCTestCase, CoreDomainTesting {
         let row = CoreInstaller.line(for: .InstallerLock(code: "locked", msg: ""))
         XCTAssertEqual(FirmwareFlashGate.refusal(i), .refused(row), "the core's row")
 
-        let fw = FirmwareInstaller(locator: P1SW2FNoBoards(), verifier: P1SW2FNeverVerifier())
-        fw.flashGate = { FirmwareFlashGate.refusal(i) }
+        // -- WP SW-M2 -- the gate is fixed when the installer is made
+        let fw = FirmwareInstaller(locator: P1SW2FNoBoards(), verifier: P1SW2FNeverVerifier(),
+                                   gate: { FirmwareFlashGate.refusal(i) })
         XCTAssertFalse(fw.installWhenReady(confirmed: .firmwareFlash()), "refused before anything is armed")
         XCTAssertEqual(fw.state, .failed(.refused(row)))
         XCTAssertFalse(fw.isArmed)
