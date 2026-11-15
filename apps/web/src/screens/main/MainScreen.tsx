@@ -15,6 +15,9 @@ import { ChannelList } from "./Channels";
 import { inputRows, liveInputs, outputRows } from "./model";
 import { PresetsCard, type PresetView } from "./Presets";
 import { VolumeCard } from "./Volume";
+// -- WP WB6J -- the analyser's bar strip (M22) and cards per row (M59)
+import { SpectrumStrip, tapNames } from "../analysis/SpectrumStrip";
+import { MAX_CARDS_PER_ROW, columnsFor, perRowLabel, perRowSummary, usePerRow } from "../analysis/dashboard";
 
 // -- WP WB6b -- the questions and the unsaved-changes prompt are the session
 // view's now (src/ui/screens.tsx), so every screen shares them.
@@ -26,6 +29,7 @@ export function MainScreen(props: ScreenProps) {
   const snap = st.snapshot;
   const ro = session.readOnlyReason !== "";
   const [ranges, setRanges] = useState<{ pre: ParamInfo | null; gain: ParamInfo | null }>({ pre: null, gain: null });
+  const [perRow, setPerRow] = usePerRow(); // -- WP WB6J --
 
   // The trims' ranges, as the core's registry gives them.
   useEffect(() => {
@@ -86,8 +90,26 @@ export function MainScreen(props: ScreenProps) {
   const inputs = inputRows(s, liveInputs(s, usbActive));
   const outputs = outputRows(s, snap?.outputLabels);
 
+  // -- WP WB6J -- Auto, or a fixed number of the four cards per row
+  const cols = perRow ? columnsFor(perRow, 4) : 0;
   return (
-    <div class="main-screen">
+    <div class={cols ? "main-screen per-row" : "main-screen"} style={cols ? { "--per-row": String(cols) } : undefined}>
+      {/* -- WP WB6J -- */}
+      <div class="main-tools">
+        <label title={perRowSummary(perRow)}>
+          <span>Layout</span>
+          <select aria-label="Dashboard layout" value={perRow} onChange={(e) => setPerRow(Number((e.target as HTMLSelectElement).value))}>
+            {Array.from({ length: MAX_CARDS_PER_ROW + 1 }, (_, n) => (
+              <option key={n} value={n}>
+                {perRowLabel(n)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div class="main-spectrum">
+        <SpectrumStrip session={session} names={tapNames(s, snap?.outputLabels)} />
+      </div>
       <VolumeCard
         session={session}
         userDb={s.userVolumeDb}

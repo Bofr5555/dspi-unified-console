@@ -286,6 +286,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::pins::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP WB6J -- the analyser's view, the signal generator, Stats for nerbs, the Interrupt Monitor (src/tools.rs)
+    if let Some(r) = crate::tools::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {

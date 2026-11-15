@@ -89,6 +89,8 @@ pub mod read_only;
 pub mod pins;
 // -- WP WB4a --
 pub mod usb;
+// -- WP WB6J -- the analyser view, the signal generator, Stats for nerbs, the Interrupt Monitor
+pub mod tools;
 pub mod write;
 // -- WP CG-SWS-a -- small stateless facts from the core
 pub mod sws_a;

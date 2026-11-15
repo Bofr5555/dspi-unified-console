@@ -47,6 +47,8 @@ import { HealthRail } from "./status-rail/HealthRail";
 
 // -- WP WB6G -- the input pages
 import { InputsScreen } from "../screens/inputs/InputsScreen";
+// -- WP WB6J -- the signal generator, Stats for nerbs, the Interrupt Monitor
+import { AnalyserScreen, GeneratorScreen, MonitorScreen, StatsScreen } from "../screens/analysis/ToolsScreen";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -104,11 +106,19 @@ export const SCREENS: ScreenDef[] = [
   { id: "events", label: "Events", View: EventsScreen },
   // -- WP P1WB2 -- (the manifest's "Limits and power-on": the Installer mode only)
   { id: "installer", label: "Installer", View: InstallerScreen },
+  // -- WP WB6J -- (the Console's Tools windows; Advanced and Installer, before the event log; WB6L's shortcuts open them by id)
+  { id: "generator", label: "Signal Generator", View: GeneratorScreen },
+  { id: "analyser", label: "Analyser", View: AnalyserScreen },
+  { id: "stats", label: "Stats for nerbs", View: StatsScreen },
+  { id: "monitor", label: "Interrupt Monitor", View: MonitorScreen },
 ];
 
 // -- WP P1WB1 --
 /** The screens Simple leaves out besides the Pro layer's: files are for setting up (-- WP P1DCFIX -- Snapshots stay, recall and A/B only). */
 const SETUP = new Set(["files"]);
+
+// -- WP WB6J -- the tool screens, in Advanced and Installer
+const TOOLS = new Set(["generator", "analyser", "stats", "monitor"]);
 
 // -- WP SW3 --
 /**
@@ -119,13 +129,14 @@ const SETUP = new Set(["files"]);
  */
 export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
   // -- WP WB8 -- the event log last, in Advanced and Installer
-  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events" && x.id !== "installer");
+  const today = SCREENS.filter((x) => x.id !== "system" && x.id !== "events" && x.id !== "installer" && !TOOLS.has(x.id)); // -- WP WB6J --
   if (mode === "simple") return today.filter((x) => !SETUP.has(x.id)); // -- WP P1WB1 --
+  const tools = SCREENS.filter((x) => TOOLS.has(x.id)); // -- WP WB6J --
   const system = SCREENS.find((x) => x.id === "system")!;
   const events = SCREENS.find((x) => x.id === "events")!;
   // -- WP P1WB2 -- the Installer page last, in the Installer mode
   const tail = mode === "installer" ? SCREENS.filter((x) => x.id === "installer") : [];
-  return installation ? [system, ...today, events, ...tail] : [...today, system, events, ...tail];
+  return installation ? [system, ...today, ...tools, events, ...tail] : [...today, system, ...tools, events, ...tail];
 }
 
 // -- WP P1WB2 --

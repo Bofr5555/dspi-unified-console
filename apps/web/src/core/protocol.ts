@@ -14,6 +14,9 @@
 // analyser's) keep the core's field names, in camelCase. Error codes are the C
 // ABI's (`read_only`).
 
+// -- WP WB6J -- the analyser view, the signal generator, Stats for nerbs, the Interrupt Monitor
+import type { ToolsMethods } from "./tools-protocol";
+
 /** Where a session's device is. A fleet server may add its own kinds later. */
 export type DeviceTarget =
   /** The core's own demo device; `readOnly` opens it as older firmware, which the core only reads. */
@@ -425,7 +428,7 @@ export type CoreEvent =
   | { event: "hubAdmin"; events: HubAdminEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */ {
+export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
