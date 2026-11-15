@@ -1090,6 +1090,9 @@ export interface InstallerMethods {
   protectAllOutputs: { params: undefined | { ceilingDbfs: number }; result: null };
   /** The outputs (0-based) that are on, above the threshold (default -10 dB) and without a limiter. */
   outputsWithoutLimiter: { params: undefined | { thresholdDb: number }; result: number[] };
+  // -- WP WB6F --
+  /** The limiters' gain reduction per output slot, in dB (0: none); `unsupported` without a limiter. */
+  limiterMeter: { params: undefined; result: number[] };
   /** Both inputs of a linked pair, one undo step. */
   inputPairPreamp: { params: { input: number; db: number }; result: null };
   // -- WP PAIRBAND --

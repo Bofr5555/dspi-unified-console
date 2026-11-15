@@ -814,3 +814,23 @@
 .dspi-web .installer-copy .notice-action { display: block; font-size: 0.85rem; }
 .dspi-web .hub-recovery { margin: 0.5rem 0; }
 .dspi-web .recovery-code code { font-size: 1.1rem; overflow-wrap: anywhere; }
+
+/* -- WP WB6F -- the status rail's health row and panel (ui/status-rail/). Colour only for
+   meaning: a problem's severity, a core over its limit. */
+.dspi-web .health-row { margin-top: 0.25rem; padding-top: 0.25rem; border-top: 1px solid var(--line); }
+.dspi-web .health-unsaved { color: var(--warn); }
+.dspi-web .health-load { font-variant-numeric: tabular-nums; }
+.dspi-web .health-load-high { color: var(--bad); font-weight: 600; }
+.dspi-web .health-sum.health-ok { color: var(--ok); }
+.dspi-web .health-sum.health-warn { color: var(--warn); border-color: var(--warn); }
+.dspi-web .health-sum.health-bad { color: var(--bad); border-color: var(--bad); font-weight: 600; }
+.dspi-web .health-panel { margin-top: 0.35rem; }
+.dspi-web .health-list { list-style: none; margin: 0; padding: 0; }
+.dspi-web .health-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid var(--line); }
+.dspi-web .health-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .health-error .sys-sev { background: var(--bad); }
+.dspi-web .health-acknowledged .sys-sev { background: none; border: 2px solid var(--warn); }
+.dspi-web .health-error.health-acknowledged .sys-sev { border-color: var(--bad); }
+.dspi-web .health-ended { opacity: 0.7; }
+.dspi-web .health-none { margin: 0.25rem 0; }
+.dspi-web .health-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin-top: 0.35rem; }
