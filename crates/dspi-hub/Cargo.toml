@@ -134,6 +134,16 @@ required-features = ["api"]
 name = "wp_p2ha_home_assistant"
 required-features = ["api"]
 
+# -- WP FLAKE4 -- their hub caps (param_api, alarms, schedule) need the API: a plain
+# `cargo test -p dspi-hub` skips them, as wp_p2pa_api.
+[[test]]
+name = "wp_p2cc1_core_calls"
+required-features = ["api"]
+
+[[test]]
+name = "wp_p2cc2_core_calls"
+required-features = ["api"]
+
 # -- WP HB7 --
 # tests/conformance/: three Link clients against the hub (README.md there).
 [[test]]

@@ -317,22 +317,21 @@ fn wp_p1lm_a_torn_write_leaves_the_previous_file() {
 
 #[test]
 fn wp_p1lm_the_pin_file_holds_a_slow_salted_hash_only() {
+    // -- WP FLAKE4 -- a PIN the file's hex salt and hash can never hold by chance
+    // ("1234" could); '~' is in no hex or number.
+    const PIN: &str = "~flake4~1234~";
     let store = LimitsStore::new(store_dir("pin"));
-    assert_eq!(
-        store.check_pin("DSPI-1", "1234").unwrap(),
-        None,
-        "no PIN set"
-    );
-    store.set_pin("DSPI-1", "1234").unwrap();
-    assert_eq!(store.check_pin("DSPI-1", "1234").unwrap(), Some(true));
+    assert_eq!(store.check_pin("DSPI-1", PIN).unwrap(), None, "no PIN set");
+    store.set_pin("DSPI-1", PIN).unwrap();
+    assert_eq!(store.check_pin("DSPI-1", PIN).unwrap(), Some(true));
     assert_eq!(store.check_pin("DSPI-1", "4321").unwrap(), Some(false));
     let text = fs::read_to_string(store.dir("DSPI-1").join(PIN_FILE)).unwrap();
-    assert!(!text.contains("1234"), "never the PIN itself");
+    assert!(!text.contains(PIN), "never the PIN itself");
     let rec = store.pin("DSPI-1").unwrap().unwrap();
     assert_eq!(rec.iterations, PIN_ITERATIONS);
     assert_eq!(rec.salt.len(), 32, "16 random bytes");
-    // A second PIN of the same digits gets another salt.
-    store.set_pin("DSPI-1", "1234").unwrap();
+    // The same PIN again gets another salt.
+    store.set_pin("DSPI-1", PIN).unwrap();
     assert_ne!(store.pin("DSPI-1").unwrap().unwrap().salt, rec.salt);
     // The profile's document never holds it.
     store.save(&profile().normalised()).unwrap();
@@ -340,9 +339,9 @@ fn wp_p1lm_the_pin_file_holds_a_slow_salted_hash_only() {
     assert!(!doc.contains(&rec.hash));
     // A corrupt PIN file is an error, never "no PIN".
     fs::write(store.dir("DSPI-1").join(PIN_FILE), "{").unwrap();
-    assert!(store.check_pin("DSPI-1", "1234").is_err());
+    assert!(store.check_pin("DSPI-1", PIN).is_err());
     store.clear_pin("DSPI-1").unwrap();
-    assert_eq!(store.check_pin("DSPI-1", "1234").unwrap(), None);
+    assert_eq!(store.check_pin("DSPI-1", PIN).unwrap(), None);
 }
 
 /// The Terminal's import path (`preset_file::apply_limited`) holds a

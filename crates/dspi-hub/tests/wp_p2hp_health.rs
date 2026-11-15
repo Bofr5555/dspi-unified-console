@@ -155,6 +155,9 @@ struct Rig {
     bus: Subscription,
     ws: Ws,
     next_id: u64,
+    // -- WP FLAKE4 -- bus messages from another device than the one waited for, kept
+    // for its own wait: Facts come once per device, and dropping one lost it for good.
+    others: Mutex<Vec<Arc<BusMessage>>>,
 }
 
 impl Rig {
@@ -190,6 +193,7 @@ impl Rig {
             bus,
             ws,
             next_id: 1,
+            others: Mutex::new(Vec::new()),
         }
     }
 
@@ -223,16 +227,38 @@ impl Rig {
         a["devices"][0].clone()
     }
 
-    /// The next bus message from `serial` that `pick` takes.
+    /// The next bus message from `serial` that `pick` takes. Messages from other
+    /// devices are kept for their own wait; `serial`'s others are passed over.
     fn next<T>(&self, serial: &str, mut pick: impl FnMut(&BusMessage) -> Option<T>) -> T {
+        // -- WP FLAKE4 -- first what an earlier wait for another device kept.
+        {
+            let mut kept = self.others.lock().unwrap();
+            let mut found = None;
+            kept.retain(|m| {
+                if found.is_some() || from(m) != Some(serial) {
+                    return true;
+                }
+                found = pick(m);
+                false
+            });
+            if let Some(t) = found {
+                return t;
+            }
+        }
         let start = Instant::now();
         loop {
             assert!(start.elapsed() < WAIT, "nothing in time from {serial}");
-            if let Some(m) = self.bus.recv_timeout(Duration::from_millis(50))
-                && from(&m) == Some(serial)
-                && let Some(t) = pick(&m)
-            {
-                return t;
+            let Some(m) = self.bus.recv_timeout(Duration::from_millis(50)) else {
+                continue;
+            };
+            match from(&m) {
+                Some(s) if s == serial => {
+                    if let Some(t) = pick(&m) {
+                        return t;
+                    }
+                }
+                Some(_) => self.others.lock().unwrap().push(m),
+                None => {}
             }
         }
     }
