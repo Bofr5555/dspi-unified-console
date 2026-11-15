@@ -12,6 +12,21 @@
 //
 // Losing the key means users have to update by hand once, to a build that
 // embeds a new public key, so keep a backup from `export` somewhere safe.
+//
+// -- WP SECREL -- The fork's own key (PLAN-SEC N12, OD-SECj). The updater no
+// longer trusts Weeb Labs' key (1PVzcgAE...); their releases are not ours.
+// Until the owner makes the fork's key, AppUpdateInstaller.publicKey holds a
+// TEST key whose private half anyone can derive (AppUpdateSECRELTests), and a
+// build carrying it installs no update, only links to the release page.
+// The owner, once, on the release Mac (offline, never in a VM image, a
+// container, a build cache or the repository):
+//   1. `generate`, then `export` to an offline backup (password manager file,
+//      encrypted stick).
+//   2. Replace the base64 on the one `static let publicKey` line in
+//      AppUpdateInstaller.swift with the printed public key. Leave
+//      `testPublicKey` as it is. Commit that line with the first signed
+//      release; the tests then check the TEST key is refused.
+//   3. `sign` each release zip and upload the .zip.sig next to it.
 
 import CryptoKit
 import Foundation
