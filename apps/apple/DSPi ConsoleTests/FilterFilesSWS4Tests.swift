@@ -211,13 +211,18 @@ final class FilterFilesSWS4Tests: XCTestCase, CoreDomainTesting {
         }
     }
 
+    private static func secondLine(_ text: String) -> String {
+        let lines = text.components(separatedBy: "\n")
+        return lines.count > 1 ? lines[1] : ""
+    }
+
     private func assertSameExport(_ vm: DSPViewModel, _ what: String,
                                   file: StaticString = #filePath, line: UInt = #line) throws {
         let core = try export(vm, file: file, line: line)
         let swift = FileMenuActions.generateExportString(vm: vm)
-        XCTAssertEqual(core.components(separatedBy: "\n")[safe: 1]?.hasPrefix("# Exported: "), true, what,
+        XCTAssertEqual(Self.secondLine(core).hasPrefix("# Exported: "), true, what,
                        file: file, line: line)
-        XCTAssertEqual(swift.components(separatedBy: "\n")[safe: 1]?.hasPrefix("# Exported: "), true, what,
+        XCTAssertEqual(Self.secondLine(swift).hasPrefix("# Exported: "), true, what,
                        file: file, line: line)
         let (a, b) = (Self.undated(core), Self.undated(swift))
         if a != b {
