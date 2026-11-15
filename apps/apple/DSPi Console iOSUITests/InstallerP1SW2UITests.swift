@@ -53,6 +53,47 @@ final class InstallerP1SW2UITests: XCTestCase {
         field.typeText(text.hasSuffix("\n") ? text : text + "\n")
     }
 
+    // -- WP SW5F -- (review-p1sw3 F7, recurring) The run failed on a different
+    // line each time (:44, :52, :110, :117, :151): every time a tap whose
+    // effect the next line assumed had been dropped by the Simulator under
+    // the full suite's load (a sheet or the keyboard still animating).  Each
+    // step now waits for its control to be hittable, taps, waits for its
+    // effect, and taps again if the effect did not come (at most `tries`).
+
+    /// Tap `element` until `effect` holds; false (and a failure naming
+    /// `what`) if it never does.
+    @discardableResult
+    private func tap(_ app: XCUIApplication, _ element: XCUIElement, until effect: @escaping () -> Bool,
+                     _ what: String, wait: TimeInterval = 5, tries: Int = 3,
+                     file: StaticString = #filePath, line: UInt = #line) -> Bool {
+        for _ in 0..<tries {
+            if effect() { return true }
+            reveal(app, element)
+            _ = element.waitForExistence(timeout: wait)
+            let hittable = Date().addingTimeInterval(wait)
+            while element.exists && !element.isHittable && Date() < hittable { pause(0.1) }
+            if element.exists && element.isHittable { element.tap() }
+            let deadline = Date().addingTimeInterval(wait)
+            while Date() < deadline {
+                if effect() { return true }
+                pause(0.1)
+            }
+        }
+        let ok = effect()
+        XCTAssertTrue(ok, what, file: file, line: line)
+        return ok
+    }
+
+    /// The field has the keyboard within 5 s.
+    private func spinFocus(_ app: XCUIApplication, _ field: XCUIElement) -> Bool {
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if field.hasKeyboardFocusSW5F || app.keyboards.firstMatch.exists { return true }
+            pause(0.1)
+        }
+        return false
+    }
+
     func testP1SW2ModeSwitchInstallerPinLockedBannerAndUnlock() {
         // 1. No PIN, iOS opens in Simple; Settings > Mode switches to Installer
         //    with no prompt.
@@ -64,10 +105,8 @@ final class InstallerP1SW2UITests: XCTestCase {
         XCTAssertTrue(now.label.contains("Simple"), "iOS opens in Simple: \(now.label)")
         keep(app, "ios-p1sw2-01-mode-simple")
         app.buttons["Installer"].firstMatch.tap()
-        app.buttons["modeSwitchApply"].firstMatch.tap()
-        let installerNow = NSPredicate(format: "label CONTAINS %@", "Installer")
-        expectation(for: installerNow, evaluatedWith: now)
-        waitForExpectations(timeout: 10)
+        tap(app, app.buttons["modeSwitchApply"].firstMatch, until: { now.label.contains("Installer") },
+            "the mode switch applies: \(now.label)")
         XCTAssertFalse(app.secureTextFields["modePin"].exists, "no PIN set: nothing asks")
         keep(app, "ios-p1sw2-02-mode-installer")
 
@@ -83,74 +122,72 @@ final class InstallerP1SW2UITests: XCTestCase {
         type(app, app.secureTextFields["installerNewPin"].firstMatch, "2468")
         type(app, app.secureTextFields["installerNewPinAgain"].firstMatch, "2468\n")   // Return: the keyboard goes
         pause(1)
-        let setPin = app.buttons["installerSetPin"].firstMatch
-        reveal(app, setPin)
-        setPin.tap()
         let code = app.staticTexts["installerRecoveryCode"].firstMatch
-        XCTAssertTrue(code.waitForExistence(timeout: 15), "the recovery code, shown once")
+        tap(app, app.buttons["installerSetPin"].firstMatch, until: { code.exists },
+            "the recovery code, shown once", wait: 10)
         keep(app, "ios-p1sw2-04-recovery-code")
-        app.buttons["installerRecoveryDone"].firstMatch.tap()
-        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: code)
-        waitForExpectations(timeout: 5)   // gone once written down
+        tap(app, app.buttons["installerRecoveryDone"].firstMatch, until: { !code.exists },
+            "the recovery code goes once written down")
 
         let cover = app.switches["installerLockSettings"].firstMatch
         reveal(app, cover)
         XCTAssertTrue(cover.waitForExistence(timeout: 10))
-        cover.switches.firstMatch.tap()
-        pause(2)
-        let lockNow = app.buttons["installerLockNow"].firstMatch
-        reveal(app, lockNow)
-        lockNow.tap()
-        // -- WP P1SW3F -- locked, the Installer pages go: wait for that, and
-        // tap once more if the first tap was lost (a full run's flake).
-        let gone = NSPredicate(format: "exists == false")
-        if XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: gone, object: lockNow)], timeout: 5) != .completed,
-           lockNow.exists {
-            lockNow.tap()
+        if let before = cover.value as? String {
+            tap(app, cover.switches.firstMatch, until: { (cover.value as? String).map { $0 != before } ?? false },
+                "the lock-settings switch turns over")
+        } else {
+            cover.switches.firstMatch.tap()
         }
         pause(1)
         // Locked: the Installer pages are gone from Settings.
-        app.buttons["Done"].firstMatch.tap()
+        let lockNow = app.buttons["installerLockNow"].firstMatch
+        tap(app, lockNow, until: { !lockNow.exists }, "Lock Now locks (the Installer pages go)")
+        pause(1)
 
         // 3. The locked user's front page: the banner, Unlock, the analyser.
         let banner = app.descendants(matching: .any)["lockBanner"].firstMatch
-        XCTAssertTrue(banner.waitForExistence(timeout: 15), "the locked-user banner")
+        tap(app, app.buttons["Done"].firstMatch, until: { banner.exists && banner.isHittable },
+            "Settings closes onto the locked-user banner", wait: 8)
         keep(app, "ios-p1sw2-05-locked-banner")
-        app.buttons["Tools"].tap()
+        tap(app, app.buttons["Tools"].firstMatch, until: { app.buttons["Spectrum Analyser"].exists }, "the Tools menu opens")
         XCTAssertTrue(app.buttons["Unlock..."].waitForExistence(timeout: 5), "Tools: Unlock")
         XCTAssertTrue(app.buttons["Spectrum Analyser"].exists, "the analyser stays")
         XCTAssertFalse(app.buttons["Matrix Mixer"].exists, "the rest is not offered")
         keep(app, "ios-p1sw2-06-locked-tools")
-        app.collectionViews.buttons["Unlock..."].firstMatch.tap()   // the Tools menu's
-
         let sheet = app.descendants(matching: .any)["unlockSheet"].firstMatch
-        XCTAssertTrue(sheet.waitForExistence(timeout: 10), "the one unlock prompt")
+        tap(app, app.collectionViews.buttons["Unlock..."].firstMatch,   // the Tools menu's
+            until: { sheet.exists }, "the one unlock prompt", wait: 8)
         let pin = app.secureTextFields["unlockPin"].firstMatch
-        pin.tap()
+        let wrong = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Wrong PIN")).firstMatch
+        tap(app, pin, until: { pin.hasKeyboardFocusSW5F || app.keyboards.firstMatch.exists },
+            "the PIN field takes the keyboard")
         pin.typeText("1111")
-        app.buttons["unlockButton"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Wrong PIN")).firstMatch
-                        .waitForExistence(timeout: 15), "a wrong PIN, in the core's words")
+        tap(app, app.buttons["unlockButton"].firstMatch, until: { wrong.exists },
+            "a wrong PIN, in the core's words", wait: 10)
         keep(app, "ios-p1sw2-07-unlock-wrong-pin")
+        let badge = app.descendants(matching: .any)["installerBadge"].firstMatch
+        XCTAssertTrue(pin.waitForExistence(timeout: 5))
+        let hittable = Date().addingTimeInterval(5)
+        while !pin.isHittable && Date() < hittable { pause(0.1) }
         pin.tap()
+        XCTAssertTrue(spinFocus(app, pin), "the PIN field takes the keyboard again")
         pin.typeText("2468")
-        app.buttons["unlockButton"].firstMatch.tap()   // (Return would also unlock)
-        XCTAssertTrue(app.descendants(matching: .any)["installerBadge"].firstMatch.waitForExistence(timeout: 15),
-                      "unlocked: the Installer line with Lock Now")
+        tap(app, app.buttons["unlockButton"].firstMatch, until: { badge.exists },   // (Return would also unlock)
+            "unlocked: the Installer line with Lock Now", wait: 10)
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: banner)
         waitForExpectations(timeout: 5)   // the banner has gone
         keep(app, "ios-p1sw2-08-unlocked")
 
         // 4. Clean up: remove the PIN on the Installer page.
-        app.buttons["Settings"].firstMatch.tap()
-        XCTAssertTrue(page.waitForExistence(timeout: 15))
-        let remove = app.buttons["installerRemovePin"].firstMatch
-        reveal(app, remove)
-        remove.tap()
+        tap(app, app.buttons["Settings"].firstMatch, until: { page.exists }, "Settings > Installer again", wait: 10)
         let confirm = app.alerts.buttons["Remove PIN"].firstMatch
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-        confirm.tap()
-        XCTAssertTrue(app.secureTextFields["installerNewPin"].firstMatch.waitForExistence(timeout: 15),
-                      "no PIN again: nothing is locked")
+        tap(app, app.buttons["installerRemovePin"].firstMatch, until: { confirm.exists }, "Remove PIN asks first")
+        let newPin = app.secureTextFields["installerNewPin"].firstMatch
+        tap(app, confirm, until: { newPin.exists }, "no PIN again: nothing is locked", wait: 10)
     }
+}
+
+private extension XCUIElement {
+    /// -- WP SW5F -- The field has the keyboard (XCUIElement's own key path).
+    var hasKeyboardFocusSW5F: Bool { (value(forKey: "hasKeyboardFocus") as? Bool) ?? false }
 }

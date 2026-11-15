@@ -86,7 +86,7 @@ final class RestoreVerifiedWrites {
     // MARK: - Helpers
 
     func get(_ request: UInt8, _ value: UInt16 = 0, index: UInt16 = 2, length: UInt16) -> [UInt8]? {
-        precondition(MIDITransport.pureReads.contains(request), "not a pure read")
+        precondition(LegacyMIDITransport.pureReads.contains(request), "not a pure read")
         if case .success(let d) = transport.getControlResult(request: request, value: value, index: index, length: length) {
             return [UInt8](d)
         }

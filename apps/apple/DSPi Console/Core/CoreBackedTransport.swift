@@ -58,6 +58,11 @@ final class CoreBackedTransport: DeviceTransport {
         /// `openDocument`, PRO1 W7): listed once `prepareDocument` names one,
         /// opened when it is selected.  Nothing touches USB.
         case document
+        /// -- WP SW5 -- The DSPi's USB MIDI control port (CoreMIDI or the
+        /// development relay): the core's MIDI transport over the pipe's
+        /// I/O (MIDI/CoreMidiPipe.swift).  Lists the pipe's devices and
+        /// follows its hot-plug.
+        case midi(CoreMidiPipe)
     }
 
     /// The kind of a host link, as the core sees it.
@@ -103,6 +108,13 @@ final class CoreBackedTransport: DeviceTransport {
     private let core: DspiCore
     private let host: (any DeviceTransport)?
     private let bridge: HostBridge?
+    // -- WP SW5 -- The MIDI port this transport drives (`Link.midi`).
+    let midi: CoreMidiPipe?
+    /// -- WP SW5 -- Bumped by every MIDI open and close (stateLock): an
+    /// open's outcome is reported only while it is still the latest.  Not
+    /// `localGeneration`, which a drain also moves when the core changes
+    /// its connection.
+    private var midiOpens: UInt64 = 0
     private var subscriptions: Set<AnyCancellable> = []
     private var notifyListener: Listener?
     // -- WP P1SW1 --
@@ -170,18 +182,27 @@ final class CoreBackedTransport: DeviceTransport {
         case .demo:
             host = nil
             bridge = nil
+            midi = nil
             session = 1
             devicesSubject = CurrentValueSubject([FakeTransport.demoDevice])
         case .document:   // -- WP P1SW1 --
             host = nil
             bridge = nil
+            midi = nil
             session = 1
             devicesSubject = CurrentValueSubject([])
         case .host(let transport, let kind):
             host = transport
             bridge = HostBridge(transport, kind: kind)
+            midi = nil
             session = kind == .hub ? transport.session : 1
             devicesSubject = CurrentValueSubject([])
+        case .midi(let pipe):   // -- WP SW5 -- the only host on the port, like USB: session 1
+            host = nil
+            bridge = nil
+            midi = pipe
+            session = 1
+            devicesSubject = CurrentValueSubject(pipe.devices)
         }
 
         let listener = Listener { [weak self] in self?.scheduleDrain() }
@@ -207,6 +228,16 @@ final class CoreBackedTransport: DeviceTransport {
                 .removeDuplicates()
                 .sink { [weak self] connected in self?.hostConnectionChanged(connected) }
                 .store(in: &subscriptions)
+        } else if let pipe = midi {
+            // -- WP SW5 -- The pipe's list and hot-plug (main thread).
+            pipe.onDevicesChanged = { [weak self] devices in self?.midiDevicesChanged(devices) }
+            pipe.onChange = { [weak self] change in self?.midiChanged(change) }
+            if let reason = pipe.unavailableReason { errorSubject.send(reason) }
+            if pipe.autoSelect, let first = pipe.devices.first {
+                DispatchQueue.main.async { [weak self] in
+                    if self?.selectedDevice == nil { self?.selectDevice(first) }
+                }
+            }
         } else if autoSelect {
             DispatchQueue.main.async { [weak self] in self?.selectDevice(FakeTransport.demoDevice) }
         }
@@ -225,6 +256,7 @@ final class CoreBackedTransport: DeviceTransport {
     func selectDevice(_ device: DSPiDevice) {
         if let host = host { host.selectDevice(device); return }
         if isDocumentLink { return selectDocument(device) }   // -- WP P1SW1 --
+        if midi != nil { return openMidiPort(device, force: false) }   // -- WP SW5 --
         guard device == FakeTransport.demoDevice else { return }
         bumpGeneration()
         selectedSubject.send(device)
@@ -235,6 +267,7 @@ final class CoreBackedTransport: DeviceTransport {
         if let host = host { host.reconnect(); return }
         guard let device = selectedDevice else { return }
         publishConnected(false)
+        if midi != nil { return openMidiPort(device, force: true) }   // -- WP SW5 --
         selectDevice(device)
     }
 
@@ -242,6 +275,10 @@ final class CoreBackedTransport: DeviceTransport {
         if let host = host { host.disconnect(); return }
         bumpGeneration()
         selectedSubject.send(nil)
+        if let pipe = midi {   // -- WP SW5 -- a request in flight fails at once
+            _ = nextMidiOpen()
+            pipe.close()
+        }
         coreQueue.async { [weak self] in self?.close() }
     }
 
@@ -266,6 +303,146 @@ final class CoreBackedTransport: DeviceTransport {
             opened(error: error)
         }
     }
+
+    // -- WP SW5 -- The DSPi's USB MIDI port (`Link.midi`).
+
+    /// Open `device`'s MIDI endpoint and run the core's connect sequence over
+    /// it.  Main thread.  Re-selecting the open device keeps the port and a
+    /// probe in progress (reopening would drop a reply in flight).
+    private func openMidiPort(_ device: DSPiDevice, force: Bool) {
+        guard let pipe = midi else { return }
+        switch pipe.open(device, force: force) {
+        case .unknown:
+            return
+        case .alreadyOpen:
+            selectedSubject.send(device)
+            // The probe on it gave up: selecting it again is a retry.
+            if !isConnected, errorMessage != nil { openMidiPort(device, force: true) }
+        case .failed(let message):
+            bumpGeneration()
+            _ = nextMidiOpen()
+            selectedSubject.send(device)
+            errorSubject.send(message)
+            publishConnected(false)
+            coreQueue.async { [weak self] in self?.close() }
+        case .opened(let connection):
+            bumpGeneration()
+            let open = nextMidiOpen()
+            selectedSubject.send(device)
+            errorSubject.send(nil)
+            coreQueue.async { [weak self] in self?.openMidiOnCore(connection, pipe: pipe, open: open) }
+        }
+    }
+
+    private func nextMidiOpen() -> UInt64 {
+        stateLock.lock(); defer { stateLock.unlock() }
+        midiOpens &+= 1
+        return midiOpens
+    }
+
+    private func isLatestMidiOpen(_ open: UInt64) -> Bool {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return midiOpens == open
+    }
+
+    // On coreQueue.  The probe proves the device answers before the
+    // transport says connected: a port can exist on firmware that ignores
+    // our SysEx.  A newer open or close (the generation moved) makes the
+    // outcome stale: it is not reported.
+    private func openMidiOnCore(_ connection: CoreMidiPipe.Connection, pipe: CoreMidiPipe, open: UInt64) {
+        guard isLatestMidiOpen(open) else { return }
+        var failure: Error?
+        do {
+            try onCore { try pipe.attach(connection, to: $0) }
+        } catch {
+            failure = error
+        }
+        guard isLatestMidiOpen(open) else { return }
+        let connected = onCore { $0.isConnected() }
+        let coreGeneration = onCore { $0.connectionGeneration() }
+        stateLock.lock(); knownCoreGeneration = coreGeneration; stateLock.unlock()
+        if let failure = failure {
+            Self.log.error("DSPi MIDI port does not answer: \(String(describing: failure), privacy: .public)")
+        }
+        DispatchQueue.main.async {
+            guard self.isLatestMidiOpen(open) else { return }
+            self.errorSubject.send(failure.map { "The DSPi's MIDI port does not answer (\(CoreBackedTransport.describe($0)))." })
+            self.publishConnected(connected)
+        }
+    }
+
+    /// -- WP SW5F -- (review sw5 F2) The pipe's list.  A selected device
+    /// that is no longer listed while nothing is open (its open was refused)
+    /// is let go, so its return is offered again; an open one's departure
+    /// comes as `.departed`.  Main thread.
+    private func midiDevicesChanged(_ devices: [DSPiDevice]) {
+        devicesSubject.send(devices)
+        if let selected = selectedDevice, !devices.contains(selected), midi?.openDevice == nil {
+            disconnect()
+        }
+    }
+
+    /// The pipe's hot-plug.  Main thread.
+    private func midiChanged(_ change: CoreMidiPipe.Change) {
+        switch change {
+        case .departed(let device):
+            guard selectedDevice == device else { return }
+            disconnect()
+        case .replugged(let device):
+            publishConnected(false)
+            openMidiPort(device, force: true)
+        case .appeared(let device):
+            if selectedDevice == nil { selectDevice(device) }
+        }
+    }
+
+    /// The app is back in the foreground (iOS).  iOS suspends a background
+    /// app, so nothing was read meanwhile and the device may have dropped
+    /// notifications for us.  -- WP SW5F -- (review sw5 F1) The core re-reads
+    /// the device (`fetchAll`: it proves the device answers and refreshes the
+    /// mirror the view model shows), the new state is published as a drain
+    /// does, and the raw observers get a BULK_INVALIDATED; if the device does
+    /// not answer, reconnect.  `fetchAll` reads the device unless it runs
+    /// right after the connect's own read (`fresh_image`), which the view
+    /// model's connect-time `readAll` has used up by then.  Main thread.
+    func resumeMidi() {
+        guard midi != nil, let device = selectedDevice else { return }
+        guard isConnected else { reconnect(); return }
+        stateLock.lock(); let open = midiOpens; stateLock.unlock()
+        coreQueue.async { [weak self] in
+            guard let self = self else { return }
+            var answered = true
+            do {
+                try self.onCore { try $0.fetchAll() }
+            } catch {
+                answered = false
+                Self.log.info("resume: fetchAll failed: \(String(describing: error), privacy: .public)")
+            }
+            if answered, self.isLatestMidiOpen(open), !self.stateFanout.isEmpty {
+                // As `drain()` publishes a change of the core's mirror.
+                let journal = self.journalOnCore()
+                self.lastJournal = journal
+                self.stateFanout.publish(CoreStateChange(flags: CoreStateChange.stateFlags,
+                                                         state: self.onCore { $0.getState() },
+                                                         presetChanges: self.onCore { $0.presetChanges() },
+                                                         journal: journal))
+            }
+            DispatchQueue.main.async {
+                guard self.isLatestMidiOpen(open), self.selectedDevice == device else { return }
+                if answered {
+                    Self.log.notice("Resumed: DSPi still answers on MIDI, re-reading state")
+                    self.fanout.publish(LinkNotification(packet: Self.resyncPacket, origin: 0, receivedAt: Date()))
+                } else {
+                    Self.log.notice("Resumed: DSPi does not answer on MIDI, reconnecting")
+                    self.reconnect()
+                }
+            }
+        }
+    }
+
+    /// v2 BULK_INVALIDATED, source UNKNOWN: version, event, flags, seq,
+    /// source, reserved x3 (HubTransport's resync).
+    static let resyncPacket = Data([0x02, 0x03, 0, 0, 0, 0, 0, 0])
 
     // -- WP P1SW1 -- Documents opened offline.
 

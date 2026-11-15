@@ -91,7 +91,7 @@ final class MIDIControlCodecTests: XCTestCase {
         XCTAssertEqual(packet.type, MIDIControlCodec.typeNotify)
         XCTAssertEqual(packet.payload.first, 0x02)                  // v2
         XCTAssertEqual(packet.payload[1], 0x02)                     // PARAM_CHANGED
-        XCTAssertEqual(packet.payload[8], MIDITransport.paramSourceMIDI)
+        XCTAssertEqual(packet.payload[8], LegacyMIDITransport.paramSourceMIDI)
 
         let bulk = try XCTUnwrap(byName["set_all_params_6136"])
         XCTAssertEqual(bulk.sysex.count, 7032)                      // the largest message (firmware spec)

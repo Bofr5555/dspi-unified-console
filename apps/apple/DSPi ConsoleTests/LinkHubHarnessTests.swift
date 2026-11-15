@@ -56,6 +56,8 @@ final class LinkHubHarnessTests: XCTestCase {
             let hub = AppState.shared.linkHub
             hub.usbDeviceFactory = { _ in nil }             // the USB path never attaches
             if hub.isDeviceAttached { hub.detachDevice() }
+            // -- WP SW5 -- the harness drives the Swift engine
+            guard AppState.usesLegacyMIDI else { throw XCTSkip("The app's MIDI goes through the core: run with CoreTransport=NO") }
             let midi = AppState.shared.midiTransport
             guard spinUntil(30, { midi.isConnected }) else { throw XCTSkip("No DSPi on MIDI") }
             let device = try XCTUnwrap(MIDIHubDevice(midi: midi), "no platform reply over MIDI")
@@ -148,12 +150,12 @@ final class LinkHubHarnessTests: XCTestCase {
 
 /// The app's MIDITransport as the hub's device (see the class comment).
 final class MIDIHubDevice: HubDevice {
-    let midi: MIDITransport
+    let midi: LegacyMIDITransport
     let info: HubDeviceInfo
     var generation: UInt64 { midi.generation }
     var isConnected: Bool { midi.isConnected }
 
-    init?(midi: MIDITransport) {
+    init?(midi: LegacyMIDITransport) {
         self.midi = midi
         guard case .success(let p) = midi.getControlResult(request: REQ_GET_PLATFORM, value: 0, index: 2, length: 7),
               let reply = FirmwareVersion.fromPlatformReply([UInt8](p)) else { return nil }
@@ -201,7 +203,7 @@ final class MIDIHubDevice: HubDevice {
         case NOTIFY_EVT_INPUT_SOURCE_NAME, NOTIFY_EVT_DEVICE_NAME: offset = 5
         default: offset = nil
         }
-        if let o = offset, packet.count > o, packet[packet.startIndex + o] == MIDITransport.paramSourceMIDI {
+        if let o = offset, packet.count > o, packet[packet.startIndex + o] == LegacyMIDITransport.paramSourceMIDI {
             packet[packet.startIndex + o] = 1
         }
         return LinkNotification(packet: packet, origin: 0, receivedAt: note.receivedAt)

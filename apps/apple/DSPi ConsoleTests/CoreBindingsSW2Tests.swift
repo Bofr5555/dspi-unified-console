@@ -40,6 +40,7 @@ final class CoreBindingsSW2Tests: XCTestCase {
         XCTAssertTrue(TestHostGuard.underXCTest)
         XCTAssertFalse(TestHostGuard.mayOpenDevices)
         XCTAssertTrue(AppState.shared.midiTransport.availableDevices.isEmpty)
+        XCTAssertTrue(AppState.shared.midiCore.availableDevices.isEmpty)   // -- WP SW5 --
         #if os(macOS)
         XCTAssertFalse(AppState.shared.usb.isConnected)
         XCTAssertTrue(AppState.shared.usb.availableDevices.isEmpty)
