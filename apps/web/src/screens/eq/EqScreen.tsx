@@ -25,6 +25,9 @@ import { OutputCard, type OutputLimits } from "../outputs/OutputCard";
 // -- WP P1WB2 -- AutoEQ with its preview on the graph
 import { AutoEqPanel } from "./AutoEq";
 import type { AutoEqPreviewRecord } from "../../core/protocol";
+// -- WP WB6G -- an input's page: its pair's link and its trim
+import { InputHeader } from "../inputs/InputsScreen";
+import { inputLinks } from "../inputs/model";
 import {
   DEFAULT_LIMITS,
   OFF_BAND,
@@ -315,7 +318,10 @@ const EqView = memo(
             disabled={ro}
             labels={props.labels}
           />
-        ) : null}
+        ) : (
+          // -- WP WB6G -- an input's page: its pair's link and its trim (the Console's InputChannelHeader)
+          <InputHeader session={session} ask={ask} s={s} input={chosen.index} name={`${chosen.descriptor} ${chosen.name}`} disabled={ro} />
+        )}
         <section class="card eq-graph-card" aria-label="Graph">
           <EqGraph
             idBase={idBase}
@@ -397,9 +403,13 @@ const EqView = memo(
             session.group("Clear All Bands", async () => {
               // The device's bands as they are now (another console may have changed them).
               await session.refresh();
-              const now = peq(session.state.snapshot?.state ?? s, cw);
-              for (let b = 0; b < now.length; b++) {
-                if (!sameFlat(now[b]!)) await session.core.call("filter", { channel: cw, band: b, ...OFF_BAND }).catch((e) => session.fail(e));
+              // -- WP WB6G -- a linked input pair: both sides, in the same step
+              const partner = chosen.output ? -1 : inputLinks(session).partner(cw);
+              for (const ch of partner >= 0 ? [cw, partner] : [cw]) {
+                const now = peq(session.state.snapshot?.state ?? s, ch);
+                for (let b = 0; b < now.length; b++) {
+                  if (!sameFlat(now[b]!)) await session.core.call("filter", { channel: ch, band: b, ...OFF_BAND }).catch((e) => session.fail(e));
+                }
               }
               await session.refresh();
             })

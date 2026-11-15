@@ -437,6 +437,8 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
             Ok(tidy(&core.fetch_limiter_meter()?))
         }
         "inputPairPreamp" => outputs::input_pair_preamp(&core, params(req.params)?),
+        // -- WP WB6G -- the input sources' names, from the core's cache
+        "inputSourceNames" => crate::inputs::source_names(&core),
         // -- WP PAIRBAND -- a linked input pair's band, one undo step
         "inputPairFilter" => crate::band::input_pair_filter(&core, params(req.params)?),
         "inputPairBandBypass" => crate::band::input_pair_band_bypass(&core, params(req.params)?),
