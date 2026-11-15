@@ -289,7 +289,7 @@ impl DspiCore {
         }
         let mut data = vec![protocol];
         data.extend_from_slice(&code.to_le_bytes());
-        match w.conn().transport().control_out(
+        match w.sending().control_out(
             dspi_proto::generated::opcodes::REQ_EXTENSION,
             dspi_transport::fake::EXT_FAKE_CS_LEARN,
             &data,

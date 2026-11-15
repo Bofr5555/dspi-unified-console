@@ -14,6 +14,8 @@ Writes  core-api/src/main/kotlin/se/bofr/dspi/core/CoreTypes.kt    (domain recor
         core-api/src/main/kotlin/se/bofr/dspi/core/DspiCoreApi.kt   (the interface)
         ffi/src/main/kotlin/se/bofr/dspi/ffi/FfiDspiCore.kt         (UniFFI adapter)
         core-api/.../UnimplementedDspiCore.kt, DspiConstants.kt
+        core-api/.../Listeners.generated.kt                          (the foreign traits'
+                                        domain interfaces; WP ANDFU)
 
 The outputs are checked in. `--check` exits 1 if they are stale (CI runs it),
 so the core's exported surface, the Kotlin interface and the adapter cannot drift.
@@ -49,9 +51,20 @@ OUT_API = ROOT / "core-api/src/main/kotlin/se/bofr/dspi/core/DspiCoreApi.kt"
 OUT_ADAPTER = ROOT / "ffi/src/main/kotlin/se/bofr/dspi/ffi/FfiDspiCore.kt"
 OUT_UNIMPL = ROOT / "core-api/src/main/kotlin/se/bofr/dspi/core/UnimplementedDspiCore.kt"
 OUT_CONSTS = ROOT / "core-api/src/main/kotlin/se/bofr/dspi/core/DspiConstants.kt"
-# -- WP HUBADMINF -- (review hubadmin item 6) the hand-written listener interfaces the
-# generated adapter and API name: every foreign trait must have one there.
-LISTENERS = ROOT / "core-api/src/main/kotlin/se/bofr/dspi/core/Listeners.kt"
+# -- WP ANDFU -- (review hubadmin item 6, option a) the foreign traits' domain
+# interfaces, generated so that a new callback cannot be missed (was the
+# hand-written Listeners.kt, which WP HUBADMINF only checked for names).
+OUT_LISTENERS = ROOT / "core-api/src/main/kotlin/se/bofr/dspi/core/Listeners.generated.kt"
+# The Android-only words a listener's doc gets after the core's (hand-written).
+LISTENER_NOTES = {
+    "DeviceEvents": ["On Android driven by USB broadcasts in `:usb` (UsbSession), not by [DspiCoreApi.pollHotplug]."],
+    "LinkListener": ["Runs on the Link client's reader thread: schedule work only."],
+    "AutoEqFetch": ["Throw [DspiException.Transfer] when no answer came."],
+    "HubAdminListener": ["Set with [DspiCoreApi.setHubAdminListener]."],
+}
+# Methods the Kotlin interface gives an empty default body (Unit only), so that
+# implementations written before them still compile. A stale entry fails.
+LISTENER_DEFAULTS = {"LinkListener": {"on_link_status_changed", "on_link_token_issued"}}
 # Firmware constants the core does not define (contract additions, coordinator E4).
 # (name, value, kdoc); provenance: firmware config.h @ [firmware].tag_sha of tools/REFERENCE.toml.
 FIRMWARE_CONSTS = [
@@ -318,8 +331,10 @@ def parse_trait(lines: list[str], i: int, doc: list[str]) -> Iface:
     if not m:
         raise SystemExit(f"expected a pub trait: {lines[i]}")
     end = block_end(lines, i)
-    # A trait's methods end in `;` where an impl's have a body.
-    body = [re.sub(r"^(\s*)fn ", r"\1pub fn ", ln.replace(";", " {") if ln.rstrip().endswith(";") else ln)
+    # A trait's methods end in `;` where an impl's have a body. -- WP ANDFU -- not a
+    # doc line's `;` (the listeners' docs are generated now)
+    body = [ln if ln.strip().startswith("//") else
+            re.sub(r"^(\s*)fn ", r"\1pub fn ", ln.replace(";", " {") if ln.rstrip().endswith(";") else ln)
             for ln in lines[i + 1:end]]
     return Iface(m.group(1), parse_fns("\n".join(body), free=False), doc)
 
@@ -662,6 +677,50 @@ def gen_wrapper(t: Iface) -> str:
             f"        object : {FFI}.{t.name} {{\n{joined}        }}\n")
 
 
+def gen_listeners(surf: Surface) -> str:
+    """-- WP ANDFU -- the domain interface of every foreign trait (the `wrapX` adapters
+    and `setXListener` name them): a `fun interface` when it has one method."""
+    for name, defaults in LISTENER_DEFAULTS.items():
+        have = {f.name for f in surf.traits[name].methods} if name in surf.traits else set()
+        if stale := defaults - have:
+            raise SystemExit(f"LISTENER_DEFAULTS[{name}] has stale entries: {sorted(stale)}")
+    if stale := set(LISTENER_NOTES) - set(surf.traits):
+        raise SystemExit(f"LISTENER_NOTES has stale entries: {sorted(stale)}")
+    out = [HEADER, """
+package se.bofr.dspi.core
+
+/*
+ * Callback interfaces (dspi-core's `uniffi::export(with_foreign)` traits). They run
+ * on core worker threads: implementations must only schedule work (post to the
+ * bridge's dispatcher) and must not call back into DspiCoreApi synchronously.
+ */
+"""]
+    for t in surf.traits.values():
+        defaults = LISTENER_DEFAULTS.get(t.name, set())
+        doc = list(t.doc)
+        if notes := LISTENER_NOTES.get(t.name):
+            doc += [""] + notes
+        single = len(t.methods) == 1 and not defaults
+        out.append("\n" + kdoc(doc, ""))
+        out.append(("fun interface" if single else "interface") + f" {t.name} {{\n")
+        body = []
+        for f in t.methods:
+            ret, throws = unwrap_result(f.ret) if f.ret else ("()", False)
+            r = kt(ret)
+            if f.name in defaults and r != "Unit":
+                raise SystemExit(f"LISTENER_DEFAULTS: {t.name}.{f.name} returns {r}, only Unit can default")
+            m = kdoc(f.doc, "    ")
+            if throws:
+                m += "    @Throws(DspiException::class)\n"
+            params = ", ".join(f"{camel(p.name)}: {kt(p.ty, p.name)}" for p in f.params)
+            m += f"    fun {camel(f.name)}({params})" + ("" if r == "Unit" else f": {r}")
+            m += " {}\n" if f.name in defaults else "\n"
+            body.append(m)
+        out.append("\n".join(body))
+        out.append("}\n")
+    return "".join(out)
+
+
 def gen_error(err: Enum) -> str:
     """Both directions, one `when` arm per variant: a new variant of the core's
     error fails the build until `DspiException.kt` has its class."""
@@ -894,14 +953,6 @@ def int_or_str(v: str):
         return float(v)
 
 
-def missing_listeners(surf) -> list[str]:
-    """-- WP HUBADMINF -- the foreign traits with no `interface`/`fun interface` of that
-    name in Listeners.kt."""
-    text = LISTENERS.read_text() if LISTENERS.exists() else ""
-    return sorted(n for n in surf.traits
-                  if not re.search(rf"^\s*(?:fun\s+)?interface\s+{re.escape(n)}\b", text, re.M))
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="fail if generated files are stale")
@@ -914,6 +965,7 @@ def main() -> int:
         OUT_ADAPTER: gen_adapter(surf),
         OUT_CONSTS: gen_consts(),
         OUT_UNIMPL: gen_unimpl(fns),
+        OUT_LISTENERS: gen_listeners(surf),  # -- WP ANDFU --
     }
     stale = []
     for path, text in outputs.items():
@@ -923,17 +975,9 @@ def main() -> int:
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
-    # -- WP HUBADMINF -- a foreign trait without its hand-written interface fails
-    # here, not first in the Kotlin compile
-    missing = missing_listeners(surf)
-    for name in missing:
-        print(f"missing: interface {name} in {LISTENERS.relative_to(ROOT)} (hand-written; the "
-              f"generated code names it)", file=sys.stderr)
     if stale:
         for p in stale:
             print(f"stale: {p.relative_to(ROOT)} (run tools/gen_kotlin_contract.py)", file=sys.stderr)
-        return 1
-    if missing:
         return 1
     print(f"records={len(surf.records)} enums={len(surf.enums)} methods={len(surf.methods)} free={len(surf.free)} "
           f"errors={len(surf.error.variants)} traits={len(surf.traits)} objects={len(surf.objects)}", file=sys.stderr)

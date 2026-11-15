@@ -666,6 +666,7 @@ impl DspiCore {
 
     /// [`DspiCore::snapshot_recall_document`] for a parsed document.
     fn recall_value(&self, doc: &Value) -> Result<SnapshotRecall> {
+        let began = dspi_transport::clock::Instant::now(); // -- WP ECHO1 --
         self.ensure_probed();
         // -- WP P1EFIX -- no echo queued before the image lands after it
         self.settle_notifications();
@@ -683,6 +684,7 @@ impl DspiCore {
         // Held, so flows inside (a control-surface macro) do not ask again.
         self.device_lock_acquire(RECALL_REASON.into(), RECALL_LEASE_MS)?;
         let result = self.recall_locked(doc, &plan, image, generation);
+        self.whole_image_ended(began); // -- WP ECHO1 --
         if !had_caller {
             self.device_lock_release();
         }

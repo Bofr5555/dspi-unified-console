@@ -21,7 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +40,8 @@ import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.Snapshots
 import se.bofr.dspi.core.GuardPhase
 import se.bofr.dspi.core.GuardedApply
+import se.bofr.dspi.ui.collectAsStateOnMain
+import se.bofr.dspi.ui.onMainThread
 import se.bofr.dspi.ui.rememberWhileVisible
 
 const val SAFE_APPLY_BAR_TAG = "safe-apply-bar"
@@ -94,7 +95,8 @@ internal fun guardBarShown(g: GuardedApply, watched: Long, endShown: Pair<Long, 
 @Composable
 fun SafeApplyBar(bridge: DspiBridge, modifier: Modifier = Modifier) {
     val snaps = bridge.snapshots
-    val g by snaps.guard.collectAsState()
+    // -- WP ANDFU -- the poll below writes the guard after its bridge call: its collector writes on main
+    val g by snaps.guard.collectAsStateOnMain()
     val visible = rememberWhileVisible()
     val scope = rememberCoroutineScope()
     val polling = g.phase == GuardPhase.WAITING || g.phase == GuardPhase.LOST
@@ -119,8 +121,13 @@ fun SafeApplyBar(bridge: DspiBridge, modifier: Modifier = Modifier) {
     var words by remember(bridge) { mutableStateOf(Snapshots.COUNTDOWN_WORDS) }
     var backstop by remember(bridge) { mutableStateOf(Snapshots.HUB_BACKSTOP_WORDS) } // -- WP P1AN2 --
     LaunchedEffect(bridge) {
-        words = snaps.countdownWords()
-        backstop = snaps.backstopWords()
+        val w = snaps.countdownWords()
+        val b = snaps.backstopWords()
+        // -- WP ANDFU -- written after the bridge's calls (FLAKE2's pattern)
+        onMainThread {
+            words = w
+            backstop = b
+        }
     }
     if (!guardBarShown(g, watched, endShown)) return
     val (first, second) = guardLines(g, words, backstop)

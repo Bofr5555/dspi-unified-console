@@ -55,6 +55,17 @@ final class CoreInstaller: ObservableObject {
     /// The user's choice of mode for the open device ("" none), as kept.
     @Published private(set) var chosen = ""
 
+    // -- WP SW6 -- HUBADMIN: a device reached through a hub that keeps
+    // limits has the hub's copy of the limits, the PIN and the pinned modes;
+    // only an Admin of the hub edits it (`installer_target`).
+    /// Which copy the page edits, as the core said (nil: not read yet, so
+    /// nothing is editable).
+    @Published private(set) var target: InstallerTarget?
+    /// The hub's copy (`hub_limits_get`), when the target is the hub's.
+    @Published private(set) var hub: HubAdminState?
+    /// The recovery code shown is the hub's (`installer_lock.hub_recovery`).
+    @Published private(set) var hubRecovery = false
+
     /// The mode manifest (the core's table; no I/O).
     let manifest = modeManifest()
     /// The limits' ranges (the core's one table; no I/O).
@@ -69,6 +80,9 @@ final class CoreInstaller: ObservableObject {
     private var noticeClear: DispatchWorkItem?
     /// What to do once the unlock prompt succeeds (the mode switch's choice).
     private var afterUnlock: (() -> Void)?
+    /// -- WP SW6 -- The core whose hub admin events reach this page.
+    private weak var listenedSource: CoreStateSource?
+    private lazy var hubEvents = HubEvents(self)
 
     static let work = DispatchQueue(label: "com.dspi.installer", qos: .userInitiated)
 
@@ -187,6 +201,37 @@ final class CoreInstaller: ObservableObject {
     /// "Installer" in the bar: unlocked with a PIN set.
     var unlockedInstaller: Bool { lock.pinSet && lock.unlocked && mode == "installer" }
 
+    // -- WP SW6 -- HUBADMIN
+
+    /// The page edits the hub's copy.
+    var hubCopy: Bool { available && target?.copy == "hub" }
+    /// The page may change its copy: not before the target is read, not the
+    /// hub's copy before it is read, and the hub's only as its Admin.
+    var editable: Bool {
+        guard available, let t = target else { return false }
+        if t.copy == "hub" && hub == nil { return false }
+        return t.editable
+    }
+    /// Which copy is edited, in the core's words (`installer.hub_copy`, ...).
+    var copyLine: String {
+        guard let key = target?.noticeKey, !key.isEmpty, key != "disconnected" else { return "" }
+        return Self.line(key)
+    }
+    /// Why the page is read-only and what to do, in the core's words ("" when
+    /// editable).
+    var readOnlyLine: String {
+        guard available, !editable, let key = target?.readOnlyKey, !key.isEmpty else { return "" }
+        let n = noticeForKey(key: key, detail: "")
+        let why = Self.line(key)
+        return n.action.isEmpty ? why : "\(why) \(n.action)"
+    }
+    /// A PIN is set on the copy the page edits.
+    var pinSet: Bool { hubCopy ? (hub?.pinSet ?? false) : lock.pinSet }
+    /// The hub's pinned mode of each role it shows.
+    var pinnedModes: [HubModePin] { hubCopy ? (hub?.pinnedModes ?? []) : [] }
+    /// The recovery code's notice row.
+    var recoveryKey: String { hubRecovery ? "installer_lock.hub_recovery" : "installer_lock.recovery" }
+
     /// The manifest's default for this platform class.
     static func defaultMode(_ m: ModeManifest) -> String {
         m.modes.first { $0.defaultOn.contains(platform) }?.id ?? "advanced"
@@ -231,6 +276,9 @@ final class CoreInstaller: ObservableObject {
         let isAvailable = connected && source != nil
         if available != isAvailable { available = isAvailable }
         chosen = Self.storedChoice(serial: vm?.selectedDevice?.serial)
+        // -- WP SW6 -- another device, another copy: nothing editable until read
+        target = nil
+        hub = nil
         guard isAvailable else {
             if lock != Self.noLock { lock = Self.noLock }
             status = nil
@@ -239,7 +287,29 @@ final class CoreInstaller: ObservableObject {
             choice = nil
             return
         }
+        listenHubEvents()
         nameFolder()
+        refresh()
+    }
+
+    // -- WP SW6 -- The hub's `limits.changed`, `limits.held` and
+    // `mode.changed` (HUBADMIN's `HubAdminListener`): the lock the core read
+    // again at once, then the page from the hub.
+    private func listenHubEvents() {
+        guard let source = source, source !== listenedSource else { return }
+        if let old = listenedSource { old.perform { $0.setHubAdminListener(listener: nil) } }
+        listenedSource = source
+        let events = hubEvents
+        source.perform { $0.setHubAdminListener(listener: events) }
+    }
+
+    /// Main thread.
+    fileprivate func hubEvent(_ event: HubAdminEvent) {
+        guard available else { return }
+        let open = target?.serial ?? vm?.selectedDevice?.serial ?? ""
+        if !event.serial.isEmpty, !open.isEmpty, event.serial != open { return }
+        if !event.lock.serial.isEmpty, lock != event.lock { lock = event.lock }
+        if event.kind == "limits.held", !event.rows.isEmpty { post(event.rows.joined(separator: "\n"), .warning) }
         refresh()
     }
 
@@ -264,13 +334,25 @@ final class CoreInstaller: ObservableObject {
     func refresh() {
         guard available else { return }
         let chosen = self.chosen
-        run({ core -> (LockState, LimitsStatus, String, Data, ModeChoice?) in
+        run({ core -> (LockState, LimitsStatus, String, Data, ModeChoice?, InstallerTarget, HubAdminState?) in
             let lock = (try? core.installerLockRefresh()) ?? core.installerLockState()
             let choice = try? core.modeResolve(platform: Self.platform, chosen: chosen)
-            return (lock, core.limitsStatus(), core.limitsProfileDocument(),
-                    core.outputsWithoutLimiter(thresholdDb: Self.withoutLimiterAboveDb), choice)
+            // -- WP SW6 -- which copy; the hub's when it is the hub's (then the
+            // target again: it takes the role the hub just answered with)
+            var target = core.installerTarget()
+            var hub: HubAdminState?
+            if target.copy == "hub" {
+                hub = try? core.hubLimitsGet()
+                target = core.installerTarget()
+            }
+            let document = target.copy == "hub" ? (hub?.profileDocument ?? "") : core.limitsProfileDocument()
+            return (lock, core.limitsStatus(), document,
+                    core.outputsWithoutLimiter(thresholdDb: Self.withoutLimiterAboveDb), choice, target, hub)
         }) { [weak self] result in
-            guard let self = self, case .success(let (lock, status, document, without, choice)) = result else { return }
+            guard let self = self, case .success(let (lock, status, document, without, choice, target, hub)) = result
+            else { return }
+            if self.target != target { self.target = target }   // -- WP SW6 --
+            if self.hub != hub { self.hub = hub }
             self.apply(lock: lock, status: status, document: document, without: without, choice: choice)
         }
     }
@@ -374,6 +456,22 @@ final class CoreInstaller: ObservableObject {
             post("The two PINs differ.", .warning)
             return
         }
+        if hubCopy {   // -- WP SW6 -- the hub's PIN: an Admin needs no current one
+            run({ try $0.hubPinSet(pin: pin) }) { [weak self] result in
+                guard let self = self else { return }
+                switch result {
+                case .success(let made):
+                    self.hubRecovery = true
+                    self.recoveryCode = made.recoveryCode
+                    self.hub = made.state
+                    self.post("Installer PIN set on the hub.")
+                case .failure(let e): self.postPinError(e)
+                }
+                self.refresh()
+            }
+            return
+        }
+        hubRecovery = false
         run({ try $0.installerPinSet(pin: pin) }) { [weak self] result in
             guard let self = self else { return }
             switch result {
@@ -419,6 +517,18 @@ final class CoreInstaller: ObservableObject {
 
     /// Remove the PIN: nothing is locked any more.
     func removePin() {
+        if hubCopy {   // -- WP SW6 --
+            run({ try $0.hubPinClear() }) { [weak self] result in
+                switch result {
+                case .success(let state):
+                    self?.hub = state
+                    self?.post("Installer PIN removed on the hub.")
+                case .failure(let e): self?.post(Self.line(for: e), .warning)
+                }
+                self?.refresh()
+            }
+            return
+        }
         run({ try $0.installerPinClear() }) { [weak self] result in
             switch result {
             case .success(let lock):
@@ -433,6 +543,11 @@ final class CoreInstaller: ObservableObject {
     /// not see (on), or nothing (off: the PIN guards the Installer pages only).
     func setCovered(_ on: Bool) {
         let pages = on ? coverPages : []
+        if hubCopy {   // -- WP SW6 -- what the hub's lock covers is its profile's lockedPages
+            draft.setLockedPages(pages)
+            sendProfile()
+            return
+        }
         run({ try $0.installerLockCover(pages: pages) }) { [weak self] result in
             switch result {
             case .success(let lock):
@@ -511,6 +626,19 @@ final class CoreInstaller: ObservableObject {
         }
     }
 
+    // -- WP SW6 --
+    /// Pin `role`'s mode on the hub ("" for the user's choice): Admin only.
+    func setModePin(role: String, mode: String) {
+        guard hubCopy else { return }
+        run({ try $0.hubModePin(role: role, mode: mode) }) { [weak self] result in
+            switch result {
+            case .success(let state): self?.hub = state
+            case .failure(let e): self?.post(Self.line(for: e), .warning)
+            }
+            self?.refresh()
+        }
+    }
+
     // MARK: - The limits profile
 
     /// Set a device-wide limit (nil: none).
@@ -543,8 +671,23 @@ final class CoreInstaller: ObservableObject {
     private func sendProfile() {
         // -- WP P1SW2F -- F1: what the lock covers is the lock's (the core's
         // state now), never a draft read before the last cover change.
-        if lock.pinSet { draft.setLockedPages(lock.covers) }
+        if lock.pinSet && !hubCopy { draft.setLockedPages(lock.covers) }
         let document = draft.document(name: "Limits profile")
+        if hubCopy {   // -- WP SW6 -- set on the hub; what it held at once is shown
+            run({ try $0.hubLimitsSet(document: document) }) { [weak self] result in
+                guard let self = self else { return }
+                switch result {
+                case .success(let set):
+                    self.hub = set.state
+                    if !set.held.isEmpty { self.post(set.held.joined(separator: "\n"), .warning) }
+                case .failure(let e):
+                    self.post(Self.line(for: e), .warning)
+                }
+                self.reread()
+                self.refresh()
+            }
+            return
+        }
         write({ try $0.limitsApplyProfile(document: document) }) { [weak self] result in
             guard let self = self else { return }
             switch result {
@@ -562,6 +705,23 @@ final class CoreInstaller: ObservableObject {
 
     /// Remove every limit.  What the lock covers stays while a PIN is set.
     func clearLimits() {
+        if hubCopy {   // -- WP SW6 -- the hub's profile goes (what its lock covers stays)
+            if pinSet, !draft.lockedPages.isEmpty {
+                draft = LimitsDraft(lockedPages: draft.lockedPages)
+                sendProfile()
+                return
+            }
+            run({ try $0.hubLimitsClear() }) { [weak self] result in
+                switch result {
+                case .success(let state):
+                    self?.hub = state
+                    self?.post("Limits removed on the hub.")
+                case .failure(let e): self?.post(Self.line(for: e), .warning)
+                }
+                self?.refresh()
+            }
+            return
+        }
         if lock.pinSet, !lock.covers.isEmpty {   // -- WP P1SW2F -- F1: the lock's
             draft = LimitsDraft(lockedPages: lock.covers)
             sendProfile()
@@ -692,5 +852,16 @@ struct LimitsDraft: Equatable {
                                   "limits": json]
         guard let data = try? JSONSerialization.data(withJSONObject: doc, options: [.sortedKeys]) else { return "" }
         return String(decoding: data, as: UTF8.self)
+    }
+}
+
+// -- WP SW6 --
+/// The hub's admin events (HUBADMIN), called on the Link session's
+/// supervisor with no core lock held: only hops to main.
+private final class HubEvents: HubAdminListener, @unchecked Sendable {
+    private weak var installer: CoreInstaller?
+    init(_ installer: CoreInstaller) { self.installer = installer }
+    func onHubAdminEvent(event: HubAdminEvent) {
+        DispatchQueue.main.async { [weak self] in self?.installer?.hubEvent(event) }
     }
 }

@@ -35,12 +35,14 @@ struct InstallerSettingsTab: View {
             } else if !installer.installerOpen {
                 unlockSection
             } else {
+                copySection   // -- WP SW6 -- HUBADMIN: which copy, and who may edit it
                 noticeSection
-                pinSection
-                limitsSection
-                outputSection
+                if installer.hubCopy { hubPinSection } else { pinSection }
+                limitsSection.disabled(!installer.editable)
+                outputSection.disabled(!installer.editable)
                 protectSection
-                textSection
+                textSection.disabled(!installer.editable)
+                if installer.hubCopy { hubModesSection }
             }
         }
         .formStyle(.grouped)
@@ -61,6 +63,78 @@ struct InstallerSettingsTab: View {
         } message: {
             Text("Nothing will be locked on this console any more, and the recovery code stops working. The limits stay.")
         }
+    }
+
+    // -- WP SW6 -- HUBADMIN (installer_target): the hub's copy or this
+    // console's, and why the page is read-only (below Admin on the hub).
+    @ViewBuilder
+    private var copySection: some View {
+        if !installer.copyLine.isEmpty || !installer.readOnlyLine.isEmpty {
+            Section {
+                if !installer.copyLine.isEmpty {
+                    Text(installer.copyLine).font(.callout)
+                        .accessibilityIdentifier("installerCopy")
+                }
+                if !installer.readOnlyLine.isEmpty {
+                    Text(installer.readOnlyLine).font(.callout).foregroundColor(.orange)
+                        .accessibilityIdentifier("installerReadOnly")
+                }
+            }
+        }
+    }
+
+    // -- WP SW6 -- The hub's installer PIN (an Admin sets it with no current
+    // one); what its lock covers is the hub profile's lockedPages.
+    @ViewBuilder
+    private var hubPinSection: some View {
+        Section {
+            if !installer.pinSet {
+                Text("No PIN is set on the hub for this DSPi.").font(.callout)
+                if installer.editable { newPinFields }
+            } else {
+                Toggle(isOn: Binding(get: { !installer.draft.lockedPages.isEmpty },
+                                     set: { installer.setCovered($0) })) {
+                    Text("Lock the settings")
+                }
+                .disabled(!installer.editable)
+                .accessibilityIdentifier("installerLockSettings")
+                HStack {
+                    if installer.hubHolds {
+                        Button("Lock Now") { installer.lockNow() }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("installerLockNow")
+                    }
+                    Spacer()
+                    if installer.editable {
+                        Button("Remove PIN...", role: .destructive) { confirmRemovePin = true }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("installerRemovePin")
+                    }
+                }
+                Text(installer.scopeLine).font(.caption).foregroundColor(.secondary)
+            }
+        } header: {
+            Label("Installer PIN on the hub", systemImage: "key")
+        }
+        .disabled(installer.busy)
+    }
+
+    // -- WP SW6 -- Each role's pinned mode on the hub (Admin only).
+    private var hubModesSection: some View {
+        Section {
+            ForEach(installer.pinnedModes, id: \.role) { pin in
+                Picker(pin.role.capitalized, selection: Binding(
+                    get: { pin.mode },
+                    set: { installer.setModePin(role: pin.role, mode: $0) })) {
+                    Text("The user's choice").tag("")
+                    ForEach(installer.modes, id: \.id) { m in Text(m.label).tag(m.id) }
+                }
+                .disabled(!installer.editable)
+            }
+        } header: {
+            Label("Mode on the hub, by role", systemImage: "person.2")
+        }
+        .disabled(installer.busy)
     }
 
     // The notice line, the standing notice of a profile that did not read,
@@ -680,8 +754,9 @@ struct RecoveryCodeView: View {
                 .font(.system(.title3, design: .monospaced))
                 .textSelection(.enabled)
                 .accessibilityIdentifier("installerRecoveryCode")
-            Text(CoreInstaller.line("installer_lock.recovery")).font(.callout).fixedSize(horizontal: false, vertical: true)
-            let action = noticeForKey(key: "installer_lock.recovery", detail: "").action
+            // -- WP SW6 -- the hub's code has the hub's row
+            Text(CoreInstaller.line(installer.recoveryKey)).font(.callout).fixedSize(horizontal: false, vertical: true)
+            let action = noticeForKey(key: installer.recoveryKey, detail: "").action
             if !action.isEmpty { Text(action).font(.caption).foregroundColor(.secondary) }
             HStack {
                 Spacer()

@@ -22,7 +22,10 @@
 //!
 //! Our own echoes are applied too (the device is authoritative: it may have
 //! clamped the value), but they are reported only when they changed the
-//! mirror. The legacy v1 master-volume packet (`[0x01, 0, 0, 0, f32]`) the
+//! mirror. An own echo of a write sent before our last whole-image write (a
+//! recall, an A/B side, an import, a preset load, a factory reset) is not
+//! applied at all: the device holds the image's value
+//! (`EchoFilter::is_late_own_echo`, WP ECHO1). The legacy v1 master-volume packet (`[0x01, 0, 0, 0, f32]`) the
 //! firmware sends ahead of every master-volume `PARAM_CHANGED` is logged and
 //! otherwise ignored: its v2 twin carries the change, with a source.
 //!
@@ -257,6 +260,20 @@ impl DspiCore {
     }
 }
 
+// -- WP ECHO1 --
+impl DspiCore {
+    /// A whole-image operation begun at `began` (a snapshot recall, an A/B
+    /// side, an import, a preset load, a factory reset) is over: the writes
+    /// it made after its image belong to it, so an own echo received before
+    /// the user's next write is still one older than the image
+    /// (`EchoFilter::whole_image_ended`).
+    pub(crate) fn whole_image_ended(&self, began: Instant) {
+        if let Some(conn) = self.lock().conn.as_mut() {
+            conn.echo.whole_image_ended(Instant::now(), began);
+        }
+    }
+}
+
 impl DspiCore {
     /// Whether the open connection's notification stream ended because the
     /// device went away (unplug, closed MIDI port, ended Link session). For
@@ -477,6 +494,12 @@ fn apply_queued(
                 // -- WP P0W -- who, for undo's foreign-change rule
                 if !own {
                     crate::journal::note_foreign(conn, *source, note.origin);
+                }
+                // -- WP ECHO1 -- (review p1efix F2) the echo of a write of ours
+                // sent before our last whole image: older than the image the
+                // device now holds, so it is not applied (nor re-read for)
+                if own && conn.echo.is_late_own_echo(kind, session, note) {
+                    continue;
                 }
                 if !patchable {
                     follow.refresh = true;
@@ -1697,3 +1720,8 @@ mod tests_wp_cg33;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_wp_p1efix2;
+
+// -- WP ECHO1 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_echo1;

@@ -10,6 +10,9 @@ internal fun VersionCatalog.int(name: String): Int = findVersion(name).get().req
 
 internal fun VersionCatalog.lib(alias: String) = findLibrary(alias).get()
 
-/** Files written by tools/gen_kotlin_contract.py / UniFFI: not linted. */
+/** Files written by tools/gen_kotlin_contract.py / UniFFI: not linted. (-- WP ANDFU -- *.generated.kt: Listeners) */
 internal val GENERATED_GLOBS =
-    listOf("!**/CoreTypes.kt", "!**/DspiConstants.kt", "!**/DspiCoreApi.kt", "!**/FfiDspiCore.kt", "!**/UnimplementedDspiCore.kt", "!**/build/**")
+    listOf(
+        "!**/CoreTypes.kt", "!**/DspiConstants.kt", "!**/DspiCoreApi.kt", "!**/FfiDspiCore.kt", "!**/UnimplementedDspiCore.kt",
+        "!**/*.generated.kt", "!**/build/**"
+    )

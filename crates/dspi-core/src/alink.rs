@@ -268,7 +268,7 @@ impl DspiCore {
         // crossfeed pair map. The value before is read from the device.
         journal::check_replay(&inner)?;
         let mut w = inner.writable_conn()?;
-        let t = w.conn().transport();
+        let t = w.sending(); // -- WP ECHO1 --
         let before = sx::read_alink_slots(t)
             .ok()
             .map(|s| Value::Bytes(s.0.to_vec()));
@@ -324,7 +324,7 @@ impl DspiCore {
         // -- fixup sw1 (F1) -- journalled, never undone: a change re-anchors
         // with a short silence (an audible hazard, so undo steps over it).
         let mut w = inner.writable_conn()?;
-        let t = w.conn().transport();
+        let t = w.sending(); // -- WP ECHO1 --
         let before = sx::read_alink_phase(t).ok().map(|b| phase_value(&b));
         sx::write_alink_phase(t, p).map_err(write_error)?;
         journal::Pending::of(journal::ALINK_PHASE, &[], before)
@@ -374,7 +374,7 @@ impl DspiCore {
         let mut inner = self.lock();
         alink_conn(&mut inner, alink::EXT_APPLY_AT_FRAME)?;
         let mut w = inner.writable_conn()?;
-        sx::apply_at_frame(w.conn().transport(), req).map_err(write_error)?;
+        sx::apply_at_frame(w.sending(), req).map_err(write_error)?;
         // -- fixup sw1 (F1) -- an action: history, never undone
         journal::journal(
             &mut inner,
@@ -402,7 +402,7 @@ impl DspiCore {
         let mut inner = self.lock();
         alink_conn(&mut inner, alink::EXT_ALINK_STATS_RESET)?;
         let mut w = inner.writable_conn()?;
-        sx::reset_alink_stats(w.conn().transport()).map_err(write_error)?;
+        sx::reset_alink_stats(w.sending()).map_err(write_error)?;
         // -- fixup sw1 (F1) -- an action: history, never undone
         journal::journal(&mut inner, journal::ALINK_STATS_RESET, &[], Value::Trigger);
         Ok(())

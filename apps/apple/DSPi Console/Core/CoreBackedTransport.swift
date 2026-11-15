@@ -57,6 +57,9 @@ final class CoreBackedTransport: DeviceTransport {
     /// DSPi reached over DSPi Link is not bound by it: Swift's own Link
     /// client (`CompositeTransport`, `NetworkTransport`) does not go through
     /// the core until SW6 moves it there, which then picks the mode up.
+    /// -- WP SW6 -- It has: a hub's transport is `Link.link` by default, a
+    /// device link like any other, so the mode covers it.  Only the opt-out
+    /// (`-CoreTransport NO`, Swift's `NetworkTransport`) is not bound by it.
     static var readOnlyLaunchFlag: Bool { UserDefaults.standard.bool(forKey: "ReadOnly") }
 
     /// -- WP ROMODE -- `-MIDIReadOnly YES` (or `-ReadOnly YES`): the read-only
@@ -83,6 +86,11 @@ final class CoreBackedTransport: DeviceTransport {
         /// I/O (MIDI/CoreMidiPipe.swift).  Lists the pipe's devices and
         /// follows its hot-plug.
         case midi(CoreMidiPipe)
+        /// -- WP SW6 -- A device on a DSPi Link hub: the core's own Link
+        /// session (`link_connect`, `link_select_device`; Core/CoreLink.swift).
+        /// Lists the hub's devices; the core's supervisor reconnects and
+        /// binds the device again.  The transport drives `CoreLink.core`.
+        case link(CoreLink)
     }
 
     /// The kind of a host link, as the core sees it.
@@ -130,6 +138,8 @@ final class CoreBackedTransport: DeviceTransport {
     private let bridge: HostBridge?
     // -- WP SW5 -- The MIDI port this transport drives (`Link.midi`).
     let midi: CoreMidiPipe?
+    // -- WP SW6 -- The hub session this transport drives (`Link.link`).
+    let linkSession: CoreLink?
     /// -- WP SW5 -- Bumped by every MIDI open and close (stateLock): an
     /// open's outcome is reported only while it is still the latest.  Not
     /// `localGeneration`, which a drain also moves when the core changes
@@ -199,10 +209,14 @@ final class CoreBackedTransport: DeviceTransport {
     ///   - link: what carries the core's link to the device.
     ///   - autoSelect: open the demo device straight away (demo only; a host
     ///     link follows its transport's own selection).
-    ///   - core: the core to drive; a new one by default.
+    ///   - core: the core to drive; a new one by default (-- WP SW6 -- the
+    ///     session's own for `Link.link`).
     ///   - clientReadOnly: -- WP ROMODE -- the core's client read-only mode;
     ///     by default `-ReadOnly YES` for a device link, off for documents.
-    init(link: Link, autoSelect: Bool = false, core: DspiCore = DspiCore(), clientReadOnly: Bool? = nil) {
+    init(link: Link, autoSelect: Bool = false, core: DspiCore? = nil, clientReadOnly: Bool? = nil) {
+        // -- WP SW6 --
+        let sessionCore: DspiCore? = { if case .link(let l) = link { return l.core }; return nil }()
+        let core = core ?? sessionCore ?? DspiCore()
         self.core = core
         coreQueue.setSpecific(key: CoreBackedTransport.onCoreQueue, value: true)
         let isDocument = { () -> Bool in if case .document = link { return true }; return false }()
@@ -214,26 +228,37 @@ final class CoreBackedTransport: DeviceTransport {
             host = nil
             bridge = nil
             midi = nil
+            linkSession = nil
             session = 1
             devicesSubject = CurrentValueSubject([FakeTransport.demoDevice])
         case .document:   // -- WP P1SW1 --
             host = nil
             bridge = nil
             midi = nil
+            linkSession = nil
             session = 1
             devicesSubject = CurrentValueSubject([])
         case .host(let transport, let kind):
             host = transport
             bridge = HostBridge(transport, kind: kind)
             midi = nil
+            linkSession = nil
             session = kind == .hub ? transport.session : 1
             devicesSubject = CurrentValueSubject([])
         case .midi(let pipe):   // -- WP SW5 -- the only host on the port, like USB: session 1
             host = nil
             bridge = nil
             midi = pipe
+            linkSession = nil
             session = 1
             devicesSubject = CurrentValueSubject(pipe.devices)
+        case .link(let session):   // -- WP SW6 -- the core's echo filter decides what is ours
+            host = nil
+            bridge = nil
+            midi = nil
+            linkSession = session
+            self.session = 1
+            devicesSubject = CurrentValueSubject([])
         }
 
         let listener = Listener { [weak self] in self?.scheduleDrain() }
@@ -276,6 +301,8 @@ final class CoreBackedTransport: DeviceTransport {
                     if self?.selectedDevice == nil { self?.selectDevice(first) }
                 }
             }
+        } else if let session = linkSession {
+            session.transport = self   // -- WP SW6 --
         } else if autoSelect {
             DispatchQueue.main.async { [weak self] in self?.selectDevice(FakeTransport.demoDevice) }
         }
@@ -308,6 +335,7 @@ final class CoreBackedTransport: DeviceTransport {
         if let host = host { host.selectDevice(device); return }
         if isDocumentLink { return selectDocument(device) }   // -- WP P1SW1 --
         if midi != nil { return openMidiPort(device, force: false) }   // -- WP SW5 --
+        if let session = linkSession { return session.bind(serial: device.serial) }   // -- WP SW6 --
         guard device == FakeTransport.demoDevice else { return }
         bumpGeneration()
         selectedSubject.send(device)
@@ -316,6 +344,8 @@ final class CoreBackedTransport: DeviceTransport {
 
     func reconnect() {
         if let host = host { host.reconnect(); return }
+        // -- WP SW6 -- the core's session tries now (`link_retry_now`), or dials
+        if let session = linkSession { return session.resume() }
         guard let device = selectedDevice else { return }
         publishConnected(false)
         if midi != nil { return openMidiPort(device, force: true) }   // -- WP SW5 --
@@ -324,6 +354,11 @@ final class CoreBackedTransport: DeviceTransport {
 
     func disconnect() {
         if let host = host { host.disconnect(); return }
+        if let session = linkSession {   // -- WP SW6 -- the selection stays: picking it again reconnects
+            session.disconnect()
+            coreQueue.async { [weak self] in self?.close() }
+            return
+        }
         bumpGeneration()
         selectedSubject.send(nil)
         if let pipe = midi {   // -- WP SW5 -- a request in flight fails at once
@@ -495,6 +530,106 @@ final class CoreBackedTransport: DeviceTransport {
     /// source, reserved x3 (HubTransport's resync).
     static let resyncPacket = Data([0x02, 0x03, 0, 0, 0, 0, 0, 0])
 
+    // -- WP SW6 -- A device on a DSPi Link hub (`Link.link`): what the
+    // session (Core/CoreLink.swift) tells the transport.  Main thread.
+
+    /// Tests only: how many rebinds `linkRebound` handled.  Main thread.
+    private(set) var reboundsForTest = 0
+
+    /// The core's session is reconnecting (stateLock).  A lost session is
+    /// not a teardown (the core's rule, link.rs): the device stays
+    /// "connected" with its last known state while the core reconnects, so
+    /// the view model keeps what it shows; writes meanwhile are refused by
+    /// the core (`Disconnected`), the status row says the core's words, and
+    /// the rebind re-reads (`linkRebound`).
+    private var linkHolding = false
+
+    /// The session's phase (main thread).
+    func linkPhaseChanged(_ phase: LinkPhase) {
+        stateLock.lock(); linkHolding = phase == .reconnecting; stateLock.unlock()
+    }
+
+    /// The hub's devices.
+    func linkDevicesChanged(_ devices: [DSPiDevice]) {
+        // `DSPiDevice` compares serials only: the handle and name count here.
+        func key(_ list: [DSPiDevice]) -> [String] {
+            list.map { "\($0.serial)|\($0.hub?.handle ?? 0)|\($0.remoteName ?? "")" }
+        }
+        if key(devicesSubject.value) != key(devices) { devicesSubject.send(devices) }
+    }
+
+    /// The picked device (the hub's entry, or a placeholder while unlisted).
+    func linkSelected(_ device: DSPiDevice?) {
+        if selectedSubject.value?.serial != device?.serial || selectedSubject.value?.hub != device?.hub
+            || selectedSubject.value?.remoteName != device?.remoteName {
+            selectedSubject.send(device)
+        }
+    }
+
+    /// The status row's line for the session (nil: none).
+    func linkError(_ text: String?) {
+        if errorSubject.value != text { errorSubject.send(text) }
+    }
+
+    /// The session ended or never started: no device.  Work issued for the
+    /// connection before is dropped.
+    func linkSessionEnded() {
+        bumpGeneration()
+        publishConnected(false)
+    }
+
+    /// Bind the core to the hub's device (`link_select_device`) on coreQueue,
+    /// as the other links open theirs; `done` on main with the failure.
+    func linkSelect(handle: UInt32, serial: String, done: @escaping (Error?) -> Void) {
+        bumpGeneration()
+        coreQueue.async { [weak self] in
+            guard let self = self else { return }
+            var failure: Error?
+            do {
+                try self.onCore { try $0.linkSelectDevice(handle: handle, serial: serial) }
+            } catch {
+                failure = error
+            }
+            self.opened(error: failure)
+            DispatchQueue.main.async { done(failure) }
+        }
+    }
+
+    /// The core bound the device again after a reconnect and re-read it
+    /// (`on_link_status_changed`): the analyser starts again (`rta_start`; a
+    /// reconnect stopped its worker), the new state is published as a drain
+    /// does, and the raw observers get a BULK_INVALIDATED (a re-read).
+    func linkRebound() {
+        reboundsForTest += 1
+        coreQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.onCore { $0.rtaStart() }
+            let connected = self.onCore { $0.isConnected() }
+            let coreGeneration = self.onCore { $0.connectionGeneration() }
+            self.stateLock.lock()
+            if coreGeneration != self.knownCoreGeneration {
+                self.knownCoreGeneration = coreGeneration
+                self.localGeneration &+= 1
+            }
+            self.stateLock.unlock()
+            if connected, !self.stateFanout.isEmpty {
+                let journal = self.journalOnCore()
+                self.lastJournal = journal
+                self.stateFanout.publish(CoreStateChange(flags: CoreStateChange.stateFlags,
+                                                         state: self.onCore { $0.getState() },
+                                                         presetChanges: self.onCore { $0.presetChanges() },
+                                                         journal: journal))
+            }
+            Self.log.notice("DSPi Link: bound again after a reconnect (connected: \(connected))")
+            DispatchQueue.main.async {
+                self.publishConnected(connected)
+                if connected {
+                    self.fanout.publish(LinkNotification(packet: Self.resyncPacket, origin: 0, receivedAt: Date()))
+                }
+            }
+        }
+    }
+
     // -- WP P1SW1 -- Documents opened offline.
 
     /// Name `text` (a `.dspipreset` document read from `fileName`) as this
@@ -629,9 +764,11 @@ final class CoreBackedTransport: DeviceTransport {
             knownCoreGeneration = coreGeneration
             localGeneration &+= 1
         }
+        // -- WP SW6 -- a DSPi Link session the core is reconnecting stays up
+        let shown = connected || linkHolding
         stateLock.unlock()
-        if result.flags & DspiConstants.NOTIFY_DISCONNECTED != 0 || connected != isConnected {
-            DispatchQueue.main.async { self.publishConnected(connected) }
+        if result.flags & DspiConstants.NOTIFY_DISCONNECTED != 0 || shown != isConnected {
+            DispatchQueue.main.async { self.publishConnected(shown) }
         }
     }
 
@@ -700,6 +837,9 @@ final class CoreBackedTransport: DeviceTransport {
         if Thread.isMainThread { noteGetFromMain(request) }
         noteRaw(request)   // -- WP SW11 --
         #endif
+        // -- WP SW6 -- A main-thread caller is not left waiting on the network
+        // (a dial or a reconnect holds no device): the answer is known now.
+        if linkSession != nil, Thread.isMainThread, !isConnected { return .failure(.noDevice) }
         return onCoreSync {
             do {
                 return .success(try self.onCore { try $0.rawGet(opcode: request, value: value, len: length) })
