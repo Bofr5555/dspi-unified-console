@@ -23,6 +23,7 @@
 //! | [`snapshots`] | the hub's shared copy of each device's snapshots | P2SS |
 //! | [`health`] | the health poll and device facts (`health.get`) | P2HP |
 //! | [`inventory`] | every DSPi the hub has seen, `inventory.*` | P2IN |
+//! | [`identify`] | `device.identify`: blink, and the quiet tone when asked | P2ID |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -73,6 +74,8 @@ pub mod service;
 pub mod health;
 // -- WP P2IN --
 pub mod inventory;
+// -- WP P2ID --
+pub mod identify;
 
 pub use auth::AccessMode;
 pub use error::HubError;

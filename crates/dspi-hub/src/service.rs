@@ -152,6 +152,9 @@ pub struct ServiceConfig {
     // -- WP P2IN --
     /// The inventory (`inventory.*`, `<data>/inventory.json`).
     pub inventory: bool,
+    // -- WP P2ID --
+    /// `device.identify` (`identify.rs`).
+    pub identify: bool,
 }
 
 impl Default for ServiceConfig {
@@ -163,6 +166,8 @@ impl Default for ServiceConfig {
             health: None,
             // -- WP P2IN --
             inventory: false,
+            // -- WP P2ID --
+            identify: false,
         }
     }
 }
@@ -190,6 +195,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::health::service(config, setup));
     // -- WP P2IN --
     list.extend(crate::inventory::service(config, setup));
+    // -- WP P2ID --
+    list.extend(crate::identify::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
