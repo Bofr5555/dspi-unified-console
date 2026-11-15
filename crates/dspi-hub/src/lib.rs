@@ -21,6 +21,7 @@
 //! | [`limits`] | limits profiles, the installer lock and pinned modes | P1HL |
 //! | [`service`], [`bus`], [`clock`] | the phase-2 service seam, its bus and time | P2SV |
 //! | [`snapshots`] | the hub's shared copy of each device's snapshots | P2SS |
+//! | [`identify`] | `device.identify`: blink, and the quiet tone when asked | P2ID |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -67,6 +68,8 @@ pub mod web;
 pub mod bus;
 pub mod clock;
 pub mod service;
+// -- WP P2ID --
+pub mod identify;
 
 pub use auth::AccessMode;
 pub use error::HubError;

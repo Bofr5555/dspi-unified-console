@@ -22,7 +22,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 1 | [Conventions](#1-conventions) | | | P2DOC | built (this page) |
 | 2 | [On an unencrypted network](#2-on-an-unencrypted-network) | | | P2DOC | built (this page) |
 | 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | draft |
-| 4 | [Identify](#4-identify) | `device.identify` | `identify` | P2ID | draft |
+| 4 | [Identify](#4-identify) | `device.identify` | `identify` | P2ID | built (P2ID) |
 | 5 | [Health](#5-health) | `health.get` | `health` | P2HP | draft |
 | 6 | [Event history](#6-event-history) | `event.*` | `events` | P2EV (records: P2EVW) | draft |
 | 7 | [Alarms](#7-alarms) | `alarm.*` | `alarms` | P2AL | draft |
@@ -253,20 +253,28 @@ forgotten). A firmware change updates the record and records a `firmware` event 
 
 ## 4. Identify
 
-*State: draft (P2ID).*
+*State: built (P2ID): `crates/dspi-hub/src/identify.rs`, on when the hub's `ServiceConfig::identify` is set.*
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
 | `device.identify` | control | `serial` or `handle`, `seconds` (0 stops; at most 120, longer is shortened), `tone_output?` (an output index) | `serial`, `status`: `{remaining_s, last_tone, chip, chip_rev, board, hw_rev}` read after the write |
+
+- `status` is `null` if the read after the write failed (the write went out). `last_tone` is the output of the last tone
+  since the device started, or `null`; `chip` is `"RP2040"`, `"RP2350"` or `"chip <n>"`.
 
 - The LED blinks for `seconds`. With `tone_output` the device also plays its quiet identify tone once (1 kHz, -40 dBFS,
   400 ms, through that output's whole chain); only when asked. There is no tone on firmware without `EXT_IDENTIFY`.
 - It is one of the hub's own writes (section 1.7): the extension opcode is admin-only in the policy, so the hub sends
   it, not the caller. The blink goes out whatever the lock; the tone answers `locked` while another session holds the
   device's lock.
-- `unsupported` (nothing sent) when the device's `EXT_LIST` lacks `EXT_IDENTIFY`; `bad_request` for a tone output the
-  device does not have; `rate_limited` within 2 s of the last request for that device.
-- Recorded in the history with the caller in `by`.
+- `unsupported` (nothing sent) when the device's `EXT_LIST` lacks `EXT_IDENTIFY` or stalls (stock firmware; read once
+  per attach); `bad_request` for a tone output the device does not have; `rate_limited` (with `retry_in_ms`) within 2 s
+  of the last request sent to that device, whoever asked. A refused request does not count against the 2 s.
+- Addressing as section 1.3: an unknown serial is `not_found` (a serial known only to the inventory, past the 60 s grace,
+  is also `not_found` here), one known but not attached `offline`. A device that refuses the write answers `device` with
+  `status`.
+- Recorded in the history with the caller in `by` (and `session`): a record with `source` `identify`, `value` the
+  seconds and `channel` the tone's output, put on the hub's bus for the history to store.
 
 ## 5. Health
 
