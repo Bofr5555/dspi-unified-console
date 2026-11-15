@@ -3,10 +3,13 @@
 // the sender, fan-outs, units, the alinks between them and the audio link channels
 // each unit takes. A device the console holds itself is a system of one unit.
 // The Installer mode adds the "Clock and audio links" panel (AlinkClock.tsx).
+// -- WP WB6d -- and, for the session's own device, its signal chain (SignalChain.tsx):
+// read only, a block opens the screen that edits it.
 
 import { useEffect, useState } from "preact/hooks";
 import type { ScreenProps } from "../../ui/screens";
 import { AlinkClock } from "./AlinkClock";
+import { SignalChain } from "./SignalChain"; // -- WP WB6D --
 import type { FeedState, SystemFeed } from "./feed";
 import { NO_ALINK, NO_USB_DIRECT, alinkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";
 
@@ -24,7 +27,13 @@ export function useFeed(feed: SystemFeed): FeedState {
 export function SystemScreen(props: ScreenProps) {
   const feed = props.system;
   if (!feed) return null;
-  return <SystemView feed={feed} installer={props.mode === "installer"} ask={props.ask} />;
+  // -- WP WB6D -- the device's signal chain, whatever the system's state
+  return (
+    <>
+      <SystemView feed={feed} installer={props.mode === "installer"} ask={props.ask} />
+      <SignalChain session={props.session} open={props.open} />
+    </>
+  );
 }
 
 function SystemView(props: { feed: SystemFeed; installer: boolean; ask: ScreenProps["ask"] }) {
