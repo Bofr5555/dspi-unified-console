@@ -558,9 +558,13 @@ pub struct DeviceAlarms {
 }
 
 impl DeviceAlarms {
-    /// No alarm yet, these rules, started at `now`.
+    /// No alarm yet, these rules, started at `now`. The clock floor is the schedule's
+    /// ([`crate::schedule::build_floor_s`]: [`BUILD_FLOOR_S`], or a later
+    /// `SOURCE_DATE_EPOCH`), so the alarm and the schedules judge the clock alike
+    /// (review/p2c merge glue).
     pub fn new(rules: Rules, now: Now) -> Self {
-        Self::with_floor(rules, now, BUILD_FLOOR_S)
+        let floor = u64::try_from(crate::schedule::build_floor_s()).unwrap_or(BUILD_FLOOR_S);
+        Self::with_floor(rules, now, floor)
     }
 
     /// [`DeviceAlarms::new`] with another clock floor.

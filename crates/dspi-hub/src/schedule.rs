@@ -87,9 +87,10 @@ pub const TICK: Duration = Duration::from_secs(30);
 /// Runs waiting for the schedule's thread; past it a run is dropped (and logged).
 pub const MAX_PENDING: usize = 64;
 /// The day this code was written (2026-11-15T00:00:00Z): the least build date. A build
-/// with `SOURCE_DATE_EPOCH` set takes that when it is later.
-// -- WP P2SC -- unify with device_alarms::BUILD_FLOOR_S at merge
-pub const SOURCE_FLOOR_S: i64 = 1_794_700_800;
+/// with `SOURCE_DATE_EPOCH` set takes that when it is later. The one constant is
+/// [`crate::device_alarms::BUILD_FLOOR_S`] (the `clock_unset` alarm's), read here as
+/// the signed seconds the clock rules count in (review/p2c merge glue).
+pub const SOURCE_FLOOR_S: i64 = crate::device_alarms::BUILD_FLOOR_S as i64;
 /// The messages of this family.
 pub const MESSAGES: [&str; 4] = [
     "schedule.list",
