@@ -23,8 +23,10 @@
 //! (as `alarm` is an alarm's in `system.alarm.ack`). An entry is the index's own object
 //! (`{id, name, note, serial, savedMs, platform, inputChannels, outputChannels,
 //! wireFormat}`). Every answer carries `"v": 1`. Each change queues one event
-//! `snapshot.changed {v, serial, snapshot, change}` (`change`: `put`, `rename`, `note`,
-//! `delete`) that the registrar drains with [`HubSnapshots::take_changed`].
+//! `snapshot.changed {v, hub, serial, snapshot, change}` (`change`: `put`, `rename`, `note`,
+//! `delete`) that the registrar drains with [`HubSnapshots::take_changed`], passing the
+//! hub's id for `hub`. The family's cap is [`CAP`], `hub_snapshots` (`snapshot` is spec
+//! 7.5's device cache).
 //!
 //! **`snapshot.put`** takes a document (its text, or the JSON object) as a client's store
 //! files it: `meta.kind = "snapshot"`, a `snapshot` block naming the same serial as the
@@ -34,7 +36,9 @@
 //! holds with different content or for another device, never an overwrite. The same
 //! document put again is `ok` with `created: false`.
 //!
-//! Bounded: a document is at most 256 KiB, a name 256 characters, a note 4096, a serial 64
+//! A document is filed pretty-printed (the form the client store's rename and note write),
+//! and every cap is measured on that form, so a rename never makes a filed snapshot
+//! unreadable. Bounded: a document is at most 256 KiB, a name 256 characters, a note 4096, a serial 64
 //! bytes; 200 snapshots per device and 64 MiB in all. Nothing here panics on a message or
 //! on what is on disk: a torn `index.json` is rebuilt from the documents by the client
 //! store's own `list`.
@@ -68,7 +72,9 @@ pub const MESSAGES: [&str; 6] = [
 ];
 
 /// The cap `hello.caps` announces for this family once registered.
-pub const CAP: &str = "snapshot";
+// -- WP P2SS -- review p2a F1: not "snapshot", which every hub already announces for
+// spec 7.5's device snapshot cache.
+pub const CAP: &str = "hub_snapshots";
 
 /// The event a change queues.
 pub const CHANGED_EVENT: &str = "snapshot.changed";
@@ -79,6 +85,9 @@ pub const MAX_NAME_CHARS: usize = 256;
 pub const MAX_NOTE_CHARS: usize = 4096;
 /// The longest serial accepted, in bytes.
 pub const MAX_SERIAL_BYTES: usize = 64;
+/// How much larger than the cap a document's text may be before it is parsed (its
+/// stored, pretty-printed form is what the cap measures).
+const MAX_INPUT_FACTOR: u64 = 4;
 /// Change events kept for the registrar; the oldest is dropped beyond it.
 const MAX_PENDING_EVENTS: usize = 64;
 
@@ -149,7 +158,7 @@ pub struct HubSnapshots {
     caps: Caps,
     /// Serialises the store's writes (several connections call in) and holds the
     /// pending change events.
-    pending: Mutex<Vec<String>>,
+    pending: Mutex<Vec<Value>>,
 }
 
 fn bad(msg: impl Into<String>) -> SnapshotError {
@@ -245,7 +254,7 @@ impl HubSnapshots {
         self.caps
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, Vec<String>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Vec<Value>> {
         // A panic elsewhere while holding it left only a list of strings behind.
         self.pending
             .lock()
@@ -313,11 +322,12 @@ impl HubSnapshots {
         let serial = self
             .holder(id)?
             .ok_or_else(|| SnapshotError::NotFound(id.to_string()))?;
-        // A document put here is at most the cap; a larger one was not put here.
+        // Every document the hub files or rewrites is at most the cap in the form it is
+        // stored in (review p2a F4); a larger one was not put here.
         let len = fs::metadata(self.doc_path(&serial, id))
             .map_err(|e| map_io(id, e))?
             .len();
-        if len > self.caps.doc_bytes.saturating_mul(2) {
+        if len > self.caps.doc_bytes {
             return Err(SnapshotError::Conflict(format!(
                 "snapshot {id}'s document is {len} bytes, over the cap"
             )));
@@ -329,10 +339,11 @@ impl HubSnapshots {
     /// block names (see the module documentation for the checks and refusals).
     pub fn put(&self, serial: &str, text: &str) -> Result<Put, SnapshotError> {
         check_serial(serial)?;
-        let len = u64::try_from(text.len()).unwrap_or(u64::MAX);
-        if len > self.caps.doc_bytes {
+        // A bound before parsing only; the cap is measured on the stored form below.
+        let raw = u64::try_from(text.len()).unwrap_or(u64::MAX);
+        if raw > self.caps.doc_bytes.saturating_mul(MAX_INPUT_FACTOR) {
             return Err(SnapshotError::Conflict(format!(
-                "a snapshot document is at most {} bytes; this one is {len}",
+                "a snapshot document is at most {} bytes; this one is {raw}",
                 self.caps.doc_bytes
             )));
         }
@@ -362,6 +373,17 @@ impl HubSnapshots {
             return Err(bad("document's snapshot.id is not a store id"));
         }
         let id = id.to_string();
+        // -- WP P2SS -- review p2a F4: filed pretty-printed, the form the client store's
+        // rename and note write, and every cap measured on that form.
+        let stored =
+            serde_json::to_string_pretty(&doc).map_err(|e| bad(format!("document: {e}")))?;
+        let len = u64::try_from(stored.len()).unwrap_or(u64::MAX);
+        if len > self.caps.doc_bytes {
+            return Err(SnapshotError::Conflict(format!(
+                "a snapshot document is at most {} bytes; this one is {len}",
+                self.caps.doc_bytes
+            )));
+        }
 
         let mut pending = self.lock();
         match self.holder(&id)? {
@@ -374,7 +396,7 @@ impl HubSnapshots {
                 let path = self.doc_path(serial, &id);
                 let same = fs::metadata(&path)
                     .ok()
-                    .filter(|m| m.len() <= self.caps.doc_bytes.saturating_mul(2))
+                    .filter(|m| m.len() <= self.caps.doc_bytes)
                     .and_then(|_| fs::read_to_string(&path).ok())
                     .and_then(|t| serde_json::from_str::<Value>(&t).ok())
                     .is_some_and(|held| held == doc);
@@ -411,7 +433,7 @@ impl HubSnapshots {
             )));
         }
         create_dir(&self.dir(serial))?;
-        write_atomic(&self.doc_path(serial, &id), text)?;
+        write_atomic(&self.doc_path(serial, &id), &stored)?;
         // The client store's list adds the new document to the index from its text.
         let entry = self
             .store
@@ -427,23 +449,42 @@ impl HubSnapshots {
         })
     }
 
-    /// The serial holding `id`, and the size its document may grow by.
-    fn editable(&self, id: &str, adds: usize) -> Result<String, SnapshotError> {
+    /// The serial holding `id`, when its document with `change` applied (as the client
+    /// store's rename or note applies it, then pretty-printed) stays within the cap.
+    fn editable(
+        &self,
+        id: &str,
+        change: impl FnOnce(&mut serde_json::Map<String, Value>),
+    ) -> Result<String, SnapshotError> {
         if !valid_id(id) {
             return Err(SnapshotError::NotFound(id.to_string()));
         }
         let serial = self
             .holder(id)?
             .ok_or_else(|| SnapshotError::NotFound(id.to_string()))?;
-        let len = fs::metadata(self.doc_path(&serial, id))
-            .map_err(|e| map_io(id, e))?
-            .len();
-        let adds = u64::try_from(adds).unwrap_or(u64::MAX);
-        if len.saturating_add(adds) > self.caps.doc_bytes {
-            return Err(SnapshotError::Conflict(format!(
+        let path = self.doc_path(&serial, id);
+        let len = fs::metadata(&path).map_err(|e| map_io(id, e))?.len();
+        let over = || {
+            SnapshotError::Conflict(format!(
                 "snapshot {id}'s document would be over {} bytes",
                 self.caps.doc_bytes
-            )));
+            ))
+        };
+        if len > self.caps.doc_bytes {
+            return Err(over());
+        }
+        let mut doc: Value = serde_json::from_str(&fs::read_to_string(&path)?)
+            .map_err(|e| SnapshotError::Io(io::Error::new(io::ErrorKind::InvalidData, e)))?;
+        let top = doc.as_object_mut().ok_or_else(|| {
+            SnapshotError::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "not a snapshot document",
+            ))
+        })?;
+        change(top);
+        let after = serde_json::to_string_pretty(&doc).map_err(io::Error::other)?;
+        if u64::try_from(after.len()).unwrap_or(u64::MAX) > self.caps.doc_bytes {
+            return Err(over());
         }
         Ok(serial)
     }
@@ -456,7 +497,12 @@ impl HubSnapshots {
             )));
         }
         let mut pending = self.lock();
-        let serial = self.editable(id, name.len())?;
+        let serial = self.editable(id, |top| {
+            let meta = top.entry("meta").or_insert_with(|| json!({}));
+            if let Some(m) = meta.as_object_mut() {
+                m.insert("name".into(), json!(name));
+            }
+        })?;
         let entry = self.store.rename(id, name).map_err(|e| map_io(id, e))?;
         self.restrict_all(&serial, id);
         push_event(&mut pending, &serial, id, "rename");
@@ -471,7 +517,15 @@ impl HubSnapshots {
             )));
         }
         let mut pending = self.lock();
-        let serial = self.editable(id, note.len())?;
+        let serial = self.editable(id, |top| {
+            let block = top.entry(BLOCK).or_insert_with(|| json!({}));
+            if !block.is_object() {
+                *block = json!({});
+            }
+            if let Some(b) = block.as_object_mut() {
+                b.insert("note".into(), json!(note));
+            }
+        })?;
         let entry = self.store.set_note(id, note).map_err(|e| map_io(id, e))?;
         self.restrict_all(&serial, id);
         push_event(&mut pending, &serial, id, "note");
@@ -499,9 +553,19 @@ impl HubSnapshots {
     }
 
     /// The `snapshot.changed` events queued since the last call, oldest first (at most 64
-    /// are kept), for the registrar to send to every session.
-    pub fn take_changed(&self) -> Vec<String> {
+    /// are kept), as the text to send to every session: `{t, v, hub, serial, snapshot,
+    /// change}`, with `hub` the hub's id the registrar passes (every hub event carries
+    /// it, PLAN-P2 section 3; review p2a F7).
+    pub fn take_changed(&self, hub: &str) -> Vec<String> {
         std::mem::take(&mut *self.lock())
+            .into_iter()
+            .map(|mut e| {
+                if let Some(m) = e.as_object_mut() {
+                    m.insert("hub".into(), json!(hub));
+                }
+                e.to_string()
+            })
+            .collect()
     }
 
     /// Answer a `snapshot.*` message of this family for a session of `role`. `None` for
@@ -582,13 +646,12 @@ impl HubSnapshots {
     }
 }
 
-fn push_event(pending: &mut Vec<String>, serial: &str, id: &str, change: &str) {
+fn push_event(pending: &mut Vec<Value>, serial: &str, id: &str, change: &str) {
     if pending.len() >= MAX_PENDING_EVENTS {
         pending.remove(0);
     }
     pending.push(
-        json!({"t": CHANGED_EVENT, "v": VERSION, "serial": serial, "snapshot": id, "change": change})
-            .to_string(),
+        json!({"t": CHANGED_EVENT, "v": VERSION, "serial": serial, "snapshot": id, "change": change}),
     );
 }
 
