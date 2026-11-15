@@ -162,6 +162,9 @@ pub struct ServiceConfig {
     // -- WP P2EV --
     /// The shared event history (`events/`, `event.*`); off when `None`.
     pub history: Option<crate::history::HistoryConfig>,
+    // -- WP P2AL --
+    /// Device alarms (`alarm.*`, `<data>/alarms.json`, `device_alarms.rs`).
+    pub alarms: bool,
 }
 
 impl Default for ServiceConfig {
@@ -179,6 +182,8 @@ impl Default for ServiceConfig {
             stats: true,
             // -- WP P2EV --
             history: None,
+            // -- WP P2AL --
+            alarms: false,
         }
     }
 }
@@ -216,6 +221,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::api::services(setup));
     // -- WP P2WH --
     list.extend(crate::outbound::service(config, setup));
+    // -- WP P2AL --
+    list.extend(crate::device_alarms::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }

@@ -88,6 +88,8 @@ pub mod identify;
 pub mod history;
 // -- WP P2PA -- the snapshot family always; the parameter API with feature `api`
 pub mod api;
+// -- WP P2AL -- device alarms
+pub mod device_alarms;
 
 pub use auth::AccessMode;
 pub use error::HubError;

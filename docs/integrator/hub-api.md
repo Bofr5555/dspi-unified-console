@@ -365,20 +365,22 @@ that caused it, next to `session`) and the kinds **`unresponsive`**, **`alarm`**
 
 ## 7. Alarms
 
-*State: draft (P2AL).*
+*State: built (P2AL, `crates/dspi-hub/src/device_alarms.rs`).*
 
-Device alarms beside the audio link's, on the same alarm book. Rules in `alarms.json` (admin).
+Device alarms beside the audio link's, on an alarm book of their own. Rules in `alarms.json` (admin). The service is
+on with `ServiceConfig::alarms`.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `alarm.list` | viewer | `serial?`, `state?` (`active`: raised and acknowledged; `cleared`; `all`, the default) | `alarms`: device and audio link alarms together |
-| `alarm.ack` | control | `alarm` (its `id`) | `alarm` |
+| `alarm.list` | viewer | `serial?`, `state?` (`active`: raised and acknowledged; `cleared`; `all`, the default) | `alarms`: device and audio link alarms together, those on first (newest first), then the cleared (last cleared first), at most 500. With `serial`, the alarms about that device only |
+| `alarm.ack` | control | `alarm` (its `id`) | `alarm` (as it is now); `not_found` for an alarm that is not on |
 | `alarm.rules.get` | viewer | | `rules` |
-| `alarm.rules.set` | admin | `rules` (whole or in part; a code left out keeps its rule) | `rules` |
+| `alarm.rules.set` | admin | `rules` (whole or in part; a code left out keeps its rule, a field left out keeps its value) | `rules`; `bad_request` naming the field for a wrong type or range, and nothing changes |
 
 `system.alarms` and `system.alarm.ack` ([audio-link.md](audio-link.md)) keep working for the audio link's alarms. Event to
-every session: `alarm.changed {v, hub, alarm}` when one is raised, acknowledged or cleared, `alarm` the whole object
-below (the same object goes to notification targets, section 8, and MQTT, section 13).
+every session: `alarm.changed {v, hub, alarm}` when one is raised, raised again (`count`), acknowledged or cleared,
+`alarm` the whole object below (the same object goes to notification targets, section 8, and MQTT, section 13). The
+audio link's alarms are announced the same way, read from its book once a second (`system.alarm` still goes out too).
 
 An alarm in this family:
 
@@ -387,28 +389,32 @@ An alarm in this family:
 | `id` | a string, `"device:<n>"` or `"alink:<n>"`, unique for the hub's run |
 | `source` | `device` or `alink` |
 | `code` | below, or an audio link code |
-| `subject`, `serial` | what it is about; `serial` where it is one device |
+| `subject`, `serial` | what it is about: the serial for a device's alarm (`serial` the same), the rule's id for `schedule_failed`, `hub` for `clock_unset` (no `serial` for those two, nor for the audio link's) |
 | `severity` | `warning` or `critical` |
 | `message` | one line for a person |
 | `state` | `raised`, `acknowledged`, `cleared` |
-| `raised_at`, `cleared_at`, `acknowledged_by` | times, and who acknowledged it |
+| `raised_at`, `cleared_at`, `acknowledged_by` | times, and who acknowledged it (the session's client or principal name) |
 | `count` | how often it was raised again while on |
 
-| Code | Raised | Cleared | Default rule |
-|---|---|---|---|
-| `device_offline` | a device in the inventory gone for N s | back | on, 30 s |
-| `unresponsive` | attached, commands timing out for N s | answering | on, 10 s |
-| `device_restarted` | a watchdog, glitch or brown-out reset | acknowledged | on |
-| `clip` | clip events per minute over a threshold; on firmware without clip events, once on the latch ("clipped since cleared") | a minute under the threshold; for the latch, cleared by a person | on, 10 a minute |
-| `temperature` | over a threshold | 5 °C under it | on, 70 °C |
-| `cpu` | over a threshold for N s | under it | on, 90 % for 10 s |
-| `schedule_failed` | a schedule's action failed | acknowledged | on |
-| `clock_unset` | the hub's clock reads before its build date; schedules wait | the clock is set | on |
+| Code | Severity | Raised | Cleared | Default rule |
+|---|---|---|---|---|
+| `device_offline` | critical | a device seen in this run detached for `after_s` | attached again | on, `after_s` 30 |
+| `unresponsive` | critical | attached, silent for `after_s` (the health poll's report, section 5, comes after 10 s) | its next reading, or detached | on, `after_s` 10 |
+| `device_restarted` | warning | the device's facts show a watchdog, glitch or brown-out reset that happened during this hub run or in the last 10 minutes (one restart seen again on a re-attach is one alarm; a new one counts again) | acknowledged | on |
+| `clip` | warning | firmware with clip events: `per_minute` events within 60 s (a storm); firmware without them: once, when the sticky latch is set ("clipped since cleared") | a storm: a minute under the threshold; the latch: when someone clears it (the hub never does, section 1.7) | on, `per_minute` 10 |
+| `temperature` | critical | at or above `above_c` | 5 °C under it, or detached | on, `above_c` 70 |
+| `cpu` | warning | at or above `above_pct` for `for_s` | a reading under it, or detached | on, `above_pct` 90, `for_s` 10 |
+| `schedule_failed` | warning | a schedule's run with a failed action (`subject` the rule's id) | acknowledged | on |
+| `clock_unset` | warning | the hub's clock reads before its build date (2026-11-15 in this build); schedules wait | the clock is set | on |
 
 Rules: `{"<code>": {"on": bool, ...thresholds}, "clip": {"on": true, "per_minute": 10, "mute_on_storm": false}, ...}`
-with the fields the table names (`after_s`, `above_c`, `above_pct`, `for_s`, `per_minute`). **Mute on clip storm** is
-off by default; when on, a `clip` alarm mutes the device once per storm, as one of the hub's own writes (section 1.7):
-the mute passes the lock, the hub never unmutes, and the history records it with the rule's name in `by`.
+with the fields the table names: `after_s` (1 to 86400), `per_minute` (1 to 1000), `above_c` (0 to 150),
+`above_pct` (1 to 100), `for_s` (1 to 3600), `mute_on_storm` (bool). A code or field this hub does not know is ignored
+(section 1.1). A rule turned off clears its alarms. **Mute on clip storm** is off by default; when on, a `clip` storm
+mutes the device once per storm (the user mute, `vol.mute`), as one of the hub's own writes (section 1.7): the mute
+passes the lock, the hub never unmutes, the alarm's message says the hub muted it, and the history records the write
+with `by` `"Alarm rule: mute on clip storm"` (`source` `mute_on_storm`). Every alarm change is also a history record
+(section 6) on the device it is about.
 
 ## 8. Notifications out
 
