@@ -6416,6 +6416,26 @@ enum class FirmwareGuardReason {
 }
 
 /**
+ * [`verify_bundled`]'s answer: is this the firmware image the app bundles?
+ */
+enum class BundledFirmware {
+    /**
+     * A bundled name, and the bytes are the ones the manifest lists.
+     */
+    VERIFIED,
+    /**
+     * Not a bundled name: label it "not a verified DSPi Console image" and
+     * keep the usual confirmations. Not a refusal.
+     */
+    NOT_BUNDLED,
+    /**
+     * A bundled name (or, before a flash, a bundled image's identity) with
+     * other bytes: a mixed-up or damaged copy. Flashing it is refused.
+     */
+    MISMATCH,
+}
+
+/**
  * Where a guarded apply stands ([`GuardedApply::phase`]).
  */
 enum class GuardPhase {

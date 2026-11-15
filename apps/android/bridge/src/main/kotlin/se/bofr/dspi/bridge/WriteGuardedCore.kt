@@ -1149,6 +1149,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "firmwareGuardBoard",
             "firmwareGuardBoardInBootloader",
             "firmwareGuardCheck",
+            // -- WP SECFWV -- a hash against the bundled-firmware manifest, stateless
+            "verifyBundled",
             "getInputSourceName",
             "getDeviceName",
             "fetchOutputLatency",

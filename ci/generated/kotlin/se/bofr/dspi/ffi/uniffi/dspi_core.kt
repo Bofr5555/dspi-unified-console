@@ -1896,6 +1896,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2016,6 +2018,8 @@ fun uniffi_dspi_core_checksum_func_uf2_inspect(
 fun uniffi_dspi_core_checksum_func_usb_pipe_scan(
 ): Short
 fun uniffi_dspi_core_checksum_func_usb_pipe_wait_change(
+): Short
+fun uniffi_dspi_core_checksum_func_verify_bundled(
 ): Short
 fun uniffi_dspi_core_checksum_func_vreg_code_label(
 ): Short
@@ -3895,6 +3899,8 @@ fun uniffi_dspi_core_fn_func_usb_pipe_scan(uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_usb_pipe_wait_change(`seen`: Long,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+fun uniffi_dspi_core_fn_func_verify_bundled(`image`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_vreg_code_label(`code`: Byte,`platformId`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_vreg_code_mv(`code`: Byte,`platformId`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -4182,6 +4188,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_usb_pipe_wait_change() != 22156.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_verify_bundled() != 23026.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_vreg_code_label() != 63774.toShort()) {
@@ -36445,6 +36454,51 @@ public object FfiConverterTypeAbSide: FfiConverterRustBuffer<AbSide> {
 
 
 /**
+ * [`verify_bundled`]'s answer: is this the firmware image the app bundles?
+ */
+
+enum class BundledFirmware {
+    
+    /**
+     * A bundled name, and the bytes are the ones the manifest lists.
+     */
+    VERIFIED,
+    /**
+     * Not a bundled name: label it "not a verified DSPi Console image" and
+     * keep the usual confirmations. Not a refusal.
+     */
+    NOT_BUNDLED,
+    /**
+     * A bundled name (or, before a flash, a bundled image's identity) with
+     * other bytes: a mixed-up or damaged copy. Flashing it is refused.
+     */
+    MISMATCH;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBundledFirmware: FfiConverterRustBuffer<BundledFirmware> {
+    override fun read(buf: ByteBuffer) = try {
+        BundledFirmware.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: BundledFirmware) = 4UL
+
+    override fun write(value: BundledFirmware, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * An operation that takes a confirmation token.
  */
 
@@ -42141,6 +42195,22 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_usb_pipe_wait_change(
         FfiConverterULong.lower(`seen`),FfiConverterUInt.lower(`timeoutMs`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Whether `image` is the bundled file `name` (a file name; a leading path
+         * is ignored), byte for byte. Pass the bundled name for a bundled image, and
+         * the picked file's name, or "", for one the user chose. A consistency check
+         * against build mix-ups and corruption, not tamper protection: the manifest
+         * ships in the same bundle as the images. Pure; hashes the image once.
+         */ fun `verifyBundled`(`image`: kotlin.ByteArray, `name`: kotlin.String): BundledFirmware {
+            return FfiConverterTypeBundledFirmware.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_verify_bundled(
+        FfiConverterByteArray.lower(`image`),FfiConverterString.lower(`name`),_status)
 }
     )
     }

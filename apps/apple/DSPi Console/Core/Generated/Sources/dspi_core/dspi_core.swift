@@ -41825,6 +41825,97 @@ extension AbSide: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * [`verify_bundled`]'s answer: is this the firmware image the app bundles?
+ */
+
+public enum BundledFirmware {
+    
+    /**
+     * A bundled name, and the bytes are the ones the manifest lists.
+     */
+    case verified
+    /**
+     * Not a bundled name: label it "not a verified DSPi Console image" and
+     * keep the usual confirmations. Not a refusal.
+     */
+    case notBundled
+    /**
+     * A bundled name (or, before a flash, a bundled image's identity) with
+     * other bytes: a mixed-up or damaged copy. Flashing it is refused.
+     */
+    case mismatch
+}
+
+
+#if compiler(>=6)
+extension BundledFirmware: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBundledFirmware: FfiConverterRustBuffer {
+    typealias SwiftType = BundledFirmware
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BundledFirmware {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .verified
+        
+        case 2: return .notBundled
+        
+        case 3: return .mismatch
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: BundledFirmware, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .verified:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .notBundled:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .mismatch:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBundledFirmware_lift(_ buf: RustBuffer) throws -> BundledFirmware {
+    return try FfiConverterTypeBundledFirmware.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBundledFirmware_lower(_ value: BundledFirmware) -> RustBuffer {
+    return FfiConverterTypeBundledFirmware.lower(value)
+}
+
+
+extension BundledFirmware: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * An operation that takes a confirmation token.
  */
 
@@ -47627,6 +47718,21 @@ public func usbPipeWaitChange(seen: UInt64, timeoutMs: UInt32) -> UInt64  {
 })
 }
 /**
+ * Whether `image` is the bundled file `name` (a file name; a leading path
+ * is ignored), byte for byte. Pass the bundled name for a bundled image, and
+ * the picked file's name, or "", for one the user chose. A consistency check
+ * against build mix-ups and corruption, not tamper protection: the manifest
+ * ships in the same bundle as the images. Pure; hashes the image once.
+ */
+public func verifyBundled(image: Data, name: String) -> BundledFirmware  {
+    return try!  FfiConverterTypeBundledFirmware_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_verify_bundled(
+        FfiConverterData.lower(image),
+        FfiConverterString.lower(name),$0
+    )
+})
+}
+/**
  * A core-voltage code as the user reads it: `1.20 V`, or `code 0x1F` for a
  * code [`vreg_code_mv`] does not decode on that platform (the Mac's
  * `VregVoltage.label`, `ExtensionChannel.swift:294-298`).
@@ -47834,6 +47940,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_usb_pipe_wait_change() != 22156) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_verify_bundled() != 23026) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_vreg_code_label() != 63774) {

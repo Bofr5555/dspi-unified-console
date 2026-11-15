@@ -876,6 +876,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict = se.bofr.dspi.ffi.uniffi.firmwareGuardCheck(ByteArray(image.size) { image[it].toByte() }, board.toFfi(), typedConfirmation).toDomain()
 
+    override fun verifyBundled(image: List<Int>, name: String): BundledFirmware = se.bofr.dspi.ffi.uniffi.verifyBundled(ByteArray(image.size) { image[it].toByte() }, name).toDomain()
+
     override fun hubAlarmNotice(alarm: HubAlarm, time: String): Notice = se.bofr.dspi.ffi.uniffi.hubAlarmNotice(alarm.toFfi(), time).toDomain()
 
     override fun limitsFieldRanges(): List<LimitFieldRange> = se.bofr.dspi.ffi.uniffi.limitsFieldRanges().map { it.toDomain() }
@@ -4943,6 +4945,20 @@ internal fun FirmwareGuardReason.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareGuardR
         FirmwareGuardReason.IMAGE_LOWER -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.IMAGE_LOWER
         FirmwareGuardReason.BOARD_UNKNOWN -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.BOARD_UNKNOWN
         FirmwareGuardReason.OVERVOLT -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.OVERVOLT
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.BundledFirmware.toDomain(): BundledFirmware =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.BundledFirmware.VERIFIED -> BundledFirmware.VERIFIED
+        se.bofr.dspi.ffi.uniffi.BundledFirmware.NOT_BUNDLED -> BundledFirmware.NOT_BUNDLED
+        se.bofr.dspi.ffi.uniffi.BundledFirmware.MISMATCH -> BundledFirmware.MISMATCH
+    }
+
+internal fun BundledFirmware.toFfi(): se.bofr.dspi.ffi.uniffi.BundledFirmware =
+    when (this) {
+        BundledFirmware.VERIFIED -> se.bofr.dspi.ffi.uniffi.BundledFirmware.VERIFIED
+        BundledFirmware.NOT_BUNDLED -> se.bofr.dspi.ffi.uniffi.BundledFirmware.NOT_BUNDLED
+        BundledFirmware.MISMATCH -> se.bofr.dspi.ffi.uniffi.BundledFirmware.MISMATCH
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.GuardPhase.toDomain(): GuardPhase =

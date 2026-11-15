@@ -4788,6 +4788,17 @@ interface DspiCoreApi : AutoCloseable {
     fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict
 
     /**
+     * Whether `image` is the bundled file `name` (a file name; a leading path
+     * is ignored), byte for byte. Pass the bundled name for a bundled image, and
+     * the picked file's name, or "", for one the user chose. A consistency check
+     * against build mix-ups and corruption, not tamper protection: the manifest
+     * ships in the same bundle as the images. Pure; hashes the image once.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun verifyBundled(image: List<Int>, name: String): BundledFirmware
+
+    /**
      * What to tell the user about `alarm`: its row `alarm.<code>`, with
      * `{time}` the client's own rendering of [`HubAlarm::raised_at`] (`time`;
      * "" leaves the hub's ISO time) and `{reason}` the reset's cause in words.
