@@ -40,6 +40,8 @@ import { LockedBanner, UnlockDialog } from "../screens/installer/Unlock";
 import { RecoveryCode } from "../screens/installer/HubAdmin"; // -- WP HUBADMIN --
 // -- WP WB6D -- the System view's blocks open the screen that edits them
 import type { ChainTarget } from "../screens/system/chain";
+// -- WP WB6E -- the scene bar: the device's ten preset slots, Recall and Store
+import { SlotBar } from "../screens/scenebar/SlotBar";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -258,6 +260,8 @@ export function Screens(props: { session: Session }) {
     <div class="session-screens" ref={root}>
       {/* -- WP SW3 -- on an installation, the scene bar */}
       {mode !== "simple" && !lockedUser ? <SceneBar feed={system} session={session} ask={ask} /> : null}
+      {/* -- WP WB6E -- the device's preset slots, in Advanced and Installer (the Pro layer; Simple keeps the Main window's picker) */}
+      {mode !== "simple" && !lockedUser ? <SlotBar session={session} ask={ask} unsaved={unsaved} /> : null}
       {/* -- WP P1WB2 -- the locked-user front page's banner; the Installer mode asking for its PIN */}
       {lockedUser && st.lock ? <LockedBanner session={session} lock={st.lock} /> : null}
       {choice?.needsPin && !lockedUser ? (

@@ -846,3 +846,19 @@
 .dspi-web .sys-chain-meter > span { display: block; height: 100%; background: var(--meter); }
 .dspi-web .sys-chain-meter.clip > span { background: var(--bad); }
 .dspi-web .sys-chain-fx { margin: 0.35rem 0; }
+
+/* -- WP WB6E -- the scene bar's preset slots: numbered buttons that wrap, names cut short, numbers only when narrow */
+.dspi-web .slot-bar .slot-active { font-weight: 600; margin-right: 0.25rem; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .slot-bar .slot-buttons { display: flex; flex-wrap: wrap; gap: 0.35rem; min-width: 0; }
+.dspi-web .slot-bar .slot { display: inline-flex; align-items: center; gap: 0.3rem; max-width: 11rem; }
+.dspi-web .slot-bar .slot-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dspi-web .slot-bar .slot.empty .slot-name { color: var(--muted); font-style: italic; }
+.dspi-web .slot-bar .slot.unsaved { border-style: dashed; }
+.dspi-web .slot-bar .slot-dot { color: var(--warn); font-weight: 700; }
+.dspi-web .slot-bar .slot-verbs { display: inline-flex; gap: 0; margin-left: auto; }
+.dspi-web .slot-bar .slot-verbs > button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
+.dspi-web .slot-bar.storing .slot { border-color: var(--warn); }
+@media (max-width: 520px) {
+  .dspi-web .slot-bar .slot-name { display: none; }
+  .dspi-web .slot-bar .slot { min-width: 2.25rem; justify-content: center; }
+}
