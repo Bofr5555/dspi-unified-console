@@ -428,7 +428,7 @@ export type CoreEvent =
   | { event: "hubAdmin"; events: HubAdminEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */ {
+export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -1266,4 +1266,67 @@ export interface FilesMethods {
   autoeqFavourites: { params: { text: string }; result: { ids: string[]; hits: AutoEqHit[] } };
   /** The favourites file's text for `ids`. */
   autoeqFavouritesText: { params: { ids: string[] }; result: { text: string } };
+
+// -- WP WB6L -- the control-surface editor and the quick strip (crates/dspi-wasm/src/surfaces.rs)
+/** A control-surface record as the core's JSON has it (`DspiCore::cs_snapshot`): a binding, a remote button, a group, a macro, a step, a display page or the display settings. */
+export type CsRecord = Record<string, unknown>;
+
+/** One row the core describes for a record (`DspiCore::cs_describe`, CG20). */
+export interface CsRow {
+  id: string;
+  title: string;
+  detail: string;
+  kind: "pick" | "number" | "toggle" | "note";
+  /** A pick's value and its words; a number's value in natural units. */
+  value?: number;
+  text?: string;
+  options?: { value: number; text: string; section?: string; owner?: string; disabled?: boolean }[];
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+  decimals?: number;
+  /** A toggle's state, and whether it may be switched on. */
+  on?: boolean;
+  enabled?: boolean;
+  /** A note that warns. */
+  warning?: boolean;
+}
+
+/** `csDescribe`: what a page shows for a record, or the core's refusal. */
+export type CsDescription = { ok: true; title: string; summary: string; rows: CsRow[] } | { ok: false; error: string };
+
+/** `csEdit`, `csNewBinding`, `csNewRecord`: the record after the change, or the core's refusal. */
+export type CsDrafted = { ok: true; draft: CsRecord } | { ok: false; error: string };
+
+/** `csApply`: `{ok, status}` (the device's code, 0 applied) plus an op's own fields, or `{ok: false, error}`. */
+export type CsReply = { ok: boolean; status?: number; error?: string; state?: number; protocol?: number; code?: number };
+
+/** One switch of the quick strip: its registry path, whether the open device has it, and whether it is on. */
+export interface QuickStripRow {
+  id: "crossfeed" | "loudness" | "leveller" | "psybass" | "bypass";
+  path: string;
+  present: boolean;
+  on: boolean;
+}
+
+export interface SurfaceMethods {
+  /** Read the whole configuration from the device (reads only), then the snapshot. */
+  csFetch: { params: undefined; result: CsRecord };
+  /** The last read: `{supported: false}` before it or without control surfaces. */
+  csSnapshot: { params: undefined; result: CsRecord };
+  /** One operation (`refresh`, `binding`, `name`, `ir`, `group`, `macro`, `displayConfig`, `displayPage`, `save`, `revert`, `learnArm`, `learnRead`, `learnCancel`, `macroFire`, `macroCancel`, `auxState`, `auxLevel`, ...). */
+  csApply: { params: { op: CsRecord }; result: CsReply };
+  csDescribe: { params: { kind: string; slot: number; draft: CsRecord }; result: CsDescription };
+  csEdit: { params: { kind: string; slot: number; draft: CsRecord; change: { id: string; value: number | boolean } }; result: CsDrafted };
+  csNewBinding: { params: { slot: number; component: number }; result: CsDrafted };
+  csNewRecord: { params: { kind: "ir" | "step" | "page" }; result: CsDrafted };
+  /** Every status code's sentence, by code ("" for none). */
+  csStatusTexts: { params: undefined; result: Record<string, string> };
+  /** The demo device only: the remote button a learn waits for was pressed. False when nothing was armed. */
+  csDemoLearn: { params: { protocol: number; code: number }; result: boolean };
+  /** The demo device only: hold it in a running revert (writes settle busy), or let it end. */
+  csDemoBusy: { params: { on: boolean }; result: null };
+  /** The quick strip's effect switches (M60), by the registry's paths and requirements. */
+  quickStrip: { params: undefined; result: QuickStripRow[] };
 }

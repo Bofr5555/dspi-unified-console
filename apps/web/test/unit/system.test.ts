@@ -156,10 +156,10 @@ test("SW3: the mode is remembered per device, or for every device, Advanced by d
   assert.equal(loadMode(null, "S1"), "advanced");
   assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["main", "eq", "inputs", "matrix", "snapshots"]); // -- WP P1DCFIX -- recall and A/B only (-- WP WB6G -- Inputs after EQ)
   // -- WP P1WB1 -- Snapshots and Files in Advanced and Installer
-  // -- WP WB6J -- the tool screens (generator, analyser, Stats for nerbs, Interrupt Monitor) before the event log
-  assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "main", "eq", "inputs", "matrix", "snapshots", "files", "generator", "analyser", "stats", "monitor", "events"]);
+  // -- WP WB6J -- the tool screens (generator, analyser, Stats for nerbs, Interrupt Monitor) before the event log; -- WP WB6L -- Control Surfaces after Files
+  assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "main", "eq", "inputs", "matrix", "snapshots", "files", "surfaces", "generator", "analyser", "stats", "monitor", "events"]);
   // -- WP P1WB2 -- the Installer page last, in the Installer mode
-  assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "inputs", "matrix", "snapshots", "files", "system", "generator", "analyser", "stats", "monitor", "events", "installer"]);
+  assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "inputs", "matrix", "snapshots", "files", "surfaces", "system", "generator", "analyser", "stats", "monitor", "events", "installer"]);
 });
 
 test("SW3: words: results, ops, frames; the rail puts alarms on first, critical first", () => {

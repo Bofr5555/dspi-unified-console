@@ -90,6 +90,8 @@ pub mod system;
 pub mod read_only;
 // -- WP CG-SWS-b -- the pin map
 pub mod pins;
+// -- WP WB6L -- the control-surface editor and the quick strip
+pub mod surfaces;
 // -- WP WB4a --
 pub mod usb;
 // -- WP WB6J -- the analyser view, the signal generator, Stats for nerbs, the Interrupt Monitor

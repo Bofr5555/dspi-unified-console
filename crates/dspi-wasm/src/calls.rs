@@ -291,6 +291,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::tools::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP WB6L -- the control-surface editor and the quick strip (src/surfaces.rs)
+    if let Some(r) = crate::surfaces::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {

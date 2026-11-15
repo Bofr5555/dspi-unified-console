@@ -50,6 +50,11 @@ import { InputsScreen } from "../screens/inputs/InputsScreen";
 // -- WP WB6J -- the signal generator, Stats for nerbs, the Interrupt Monitor
 import { AnalyserScreen, GeneratorScreen, MonitorScreen, StatsScreen } from "../screens/analysis/ToolsScreen";
 
+// -- WP WB6L -- the control-surface editor, the quick strip, the app shortcuts
+import { SurfacesScreen } from "../screens/surfaces/SurfacesScreen";
+import { QuickStrip, ShortcutsDialog, useAppShortcuts } from "../screens/shortcuts/Shortcuts";
+import type { OpenAction, ShortcutRow } from "../screens/shortcuts/table";
+
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
   title: string;
@@ -102,6 +107,8 @@ export const SCREENS: ScreenDef[] = [
   // -- WP P1DCFIX -- Simple has Snapshots as recall and A/B only)
   { id: "snapshots", label: "Snapshots", View: SnapshotsScreen },
   { id: "files", label: "Files", View: FilesScreen },
+  // -- WP WB6L -- (setting up the hardware: Advanced and Installer, as files)
+  { id: "surfaces", label: "Control Surfaces", View: SurfacesScreen },
   // -- WP WB8 -- (UI-MODES: monitoring of the Advanced and Installer modes)
   { id: "events", label: "Events", View: EventsScreen },
   // -- WP P1WB2 -- (the manifest's "Limits and power-on": the Installer mode only)
@@ -115,7 +122,7 @@ export const SCREENS: ScreenDef[] = [
 
 // -- WP P1WB1 --
 /** The screens Simple leaves out besides the Pro layer's: files are for setting up (-- WP P1DCFIX -- Snapshots stay, recall and A/B only). */
-const SETUP = new Set(["files"]);
+const SETUP = new Set(["files", "surfaces" /* -- WP WB6L -- */]);
 
 // -- WP WB6J -- the tool screens, in Advanced and Installer
 const TOOLS = new Set(["generator", "analyser", "stats", "monitor"]);
@@ -266,6 +273,25 @@ export function Screens(props: { session: Session }) {
   );
   useConsoleKeys(root, onKey);
 
+  // -- WP WB6L -- a screen by id, at what it opens (an effect); the table's keys; the shortcut list
+  const openScreen = useCallback((a: OpenAction) => {
+    setTarget((a.at ? { screen: a.screen, ...a.at } : null) as ChainTarget | null);
+    setChosen(a.screen);
+  }, []);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const shownIds = new Set(shown.map((x) => x.id));
+  const shownRef = useRef(shownIds);
+  shownRef.current = shownIds;
+  const onShortcut = useCallback(
+    (r: ShortcutRow) => {
+      if (r.help) setShortcutsOpen(true);
+      else if (r.open && shownRef.current.has(r.open.screen)) openScreen(r.open);
+    },
+    [openScreen],
+  );
+  const blocked = useCallback(() => asking.current || shortcutsOpen, [shortcutsOpen]);
+  useAppShortcuts(root, onShortcut, blocked);
+
   // Closing the session (Disconnect) asks first, as the Console's device
   // switch does, whichever screen is shown.
   useEffect(() => {
@@ -314,6 +340,11 @@ export function Screens(props: { session: Session }) {
         ) : null}
         <UndoButtons session={session} state={st} />
       </div>
+      {/* -- WP WB6L -- the quick strip (M60), on every screen as the Console's sidebar row */}
+      {lockedUser ? null : (
+        <QuickStrip session={session} screens={shownIds} current={screen.id} open={openScreen} leave={() => setCurrent(shown[0]!.id)} onHelp={() => setShortcutsOpen(true)} />
+      )}
+      {shortcutsOpen ? <ShortcutsDialog screens={shownIds} onClose={() => setShortcutsOpen(false)} /> : null}
       <StepNotice session={session} notice={st.notice} />
       <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} />
       {/* -- WP SW3 -- the status rail, below the screen as a status bar */}
