@@ -133,7 +133,8 @@ export function EqScreen(props: ScreenProps) {
   }, [session]);
 
   if (!s || !Array.isArray(s.filters) || !named) return <p class="empty">This DSPi's filters are not known yet.</p>;
-  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} />;
+  // -- WP WB6D -- opened from the System view: at its channel and tab
+  return <EqView session={session} ask={ask} s={s} ro={ro} usbActive={usbActive} limits={limits} outLimits={outLimits} labels={st.snapshot?.outputLabels} target={props.target} />;
 }
 
 // -- WP WB6c --
@@ -150,6 +151,8 @@ const EqView = memo(
     /** -- BUG1 -- the outputs' labels, the snapshot's */
     labels?: OutputLabel[];
     outLimits: OutputLimits;
+    /** -- WP WB6D -- where the System view opened this screen */
+    target?: ScreenProps["target"];
   }) {
     const { session, ask, s, ro, limits } = props;
     const idBase = useMemo(() => `eq-${Math.random().toString(36).slice(2, 9)}`, []);
@@ -163,7 +166,8 @@ const EqView = memo(
       return [...ins, ...outs].map((c) => ({ ...c, colour: channelColour(c.wire) }));
     }, [channelsKey]);
 
-    const [wire, setWire] = useState<number>(() => channels[0]?.wire ?? 0);
+    // -- WP WB6D -- the System view's channel when it opened this screen (and it is listed)
+    const [wire, setWire] = useState<number>(() => (channels.some((c) => c.wire === props.target?.wire) ? props.target!.wire! : (channels[0]?.wire ?? 0)));
     const chosen = channels.find((c) => c.wire === wire) ?? channels[0];
     const cw = chosen?.wire ?? 0;
     useEffect(() => {
@@ -173,8 +177,13 @@ const EqView = memo(
     // Which other channels' curves are shown (M58): this viewer's, in this view.
     const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
     // -- WP WB6c -- an output's PEQ or XO bands (the Console's tab toggle), PEQ on every new channel
-    const [tab, setTab] = useState<"peq" | "xo">("peq");
-    useEffect(() => setTab("peq"), [cw]);
+    // -- WP WB6D -- the System view's tab, on the channel it opened
+    const opened = useRef(props.target?.wire === wire ? (props.target?.tab ?? null) : null);
+    const [tab, setTab] = useState<"peq" | "xo">(opened.current ?? "peq");
+    useEffect(() => {
+      setTab(opened.current ?? "peq");
+      opened.current = null;
+    }, [cw]);
 
     // The chosen channel's bands from the device, the same array while they are the same.
     const deviceKey = JSON.stringify(peq(s, cw));

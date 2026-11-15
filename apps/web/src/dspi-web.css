@@ -814,3 +814,35 @@
 .dspi-web .installer-copy .notice-action { display: block; font-size: 0.85rem; }
 .dspi-web .hub-recovery { margin: 0.5rem 0; }
 .dspi-web .recovery-code code { font-size: 1.1rem; overflow-wrap: anywhere; }
+
+/* -- WP WB6D -- the System view's signal chain (src/screens/system/SignalChain.tsx): inputs
+   and outputs in two columns that fall to one on a narrow screen; each channel a row
+   of its name, its blocks (on: filled, off: outlined and muted), its level and meter */
+.dspi-web .sys-chain { margin-top: 1rem; padding-top: 0.25rem; border-top: 1px solid var(--line); min-width: 0; }
+.dspi-web .sys-chain h3 { margin-top: 0.75rem; }
+.dspi-web .sys-chain h4 { font-size: 0.9rem; margin: 0.6rem 0 0.35rem; }
+.dspi-web .sys-chain-top { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; }
+.dspi-web .sys-chain-bypass { color: var(--warn); font-size: 0.85rem; font-weight: 600; }
+.dspi-web .sys-chain-cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0.75rem; }
+@media (max-width: 760px) { .dspi-web .sys-chain-cols { grid-template-columns: minmax(0, 1fr); } }
+.dspi-web .sys-chain-cols.stale .sys-chain-meter { opacity: 0.45; filter: grayscale(1); }
+.dspi-web .sys-chain-cols.bypassed .sys-blocks { opacity: 0.55; }
+.dspi-web .sys-chain-col { border: 1px solid var(--line); border-radius: 8px; padding: 0.25rem 0.6rem 0.5rem; background: var(--panel); min-width: 0; }
+.dspi-web .sys-chain-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; padding: 0.35rem 0; border-top: 1px solid var(--line); font-size: 0.9rem; }
+.dspi-web .sys-chain-col h4 + .sys-chain-row { border-top: 0; }
+.dspi-web .sys-chain-off { color: var(--muted); }
+.dspi-web .sys-chain-go { font: inherit; padding: 0.05rem 0.4rem; min-height: 0; }
+.dspi-web .sys-chain-name { font-weight: 600; overflow-wrap: anywhere; }
+.dspi-web .sys-chain-from { font-size: 0.8rem; color: var(--muted); }
+.dspi-web .sys-blocks { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.dspi-web .sys-block-item { display: inline-flex; }
+.dspi-web .sys-block { font: 0.78rem/1.4 inherit; padding: 0 0.45rem; border-radius: 4px; border: 1px solid var(--line); white-space: nowrap; min-height: 0; }
+.dspi-web .sys-block-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.dspi-web .sys-block-off { color: var(--muted); border-style: dashed; }
+.dspi-web .sys-block-detail { font-weight: 400; }
+.dspi-web .sys-chain-level { display: inline-flex; gap: 0.5rem; font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.dspi-web .sys-chain-mute { color: var(--bad); font-weight: 600; }
+.dspi-web .sys-chain-meter { flex: 1 1 5rem; min-width: 4rem; height: 0.45rem; background: var(--line); border-radius: 3px; overflow: hidden; }
+.dspi-web .sys-chain-meter > span { display: block; height: 100%; background: var(--meter); }
+.dspi-web .sys-chain-meter.clip > span { background: var(--bad); }
+.dspi-web .sys-chain-fx { margin: 0.35rem 0; }
