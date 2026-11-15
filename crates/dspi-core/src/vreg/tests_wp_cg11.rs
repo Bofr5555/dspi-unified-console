@@ -670,7 +670,7 @@ fn wp_cg14_the_flow_asks_only_when_it_raises() {
 fn unit_at(code: u8) -> Rig {
     let r = Rig::stock();
     if code != 0x0C {
-        r.core.core_vreg_op(SET, code, word()).unwrap();
+        r.core.core_vreg_op_tok(SET, code, word()).unwrap();
     }
     r.wire.log.lock().unwrap().clear();
     r
@@ -680,9 +680,9 @@ fn unit_at(code: u8) -> Rig {
 fn wp_cg14_the_owners_example_1v25_to_1v30_at_the_transport() {
     for op in [SET, TRIAL] {
         let r = unit_at(0x0E);
-        assert!(no_word(r.core.core_vreg_op(op, 0x0F, None)));
+        assert!(no_word(r.core.core_vreg_op_tok(op, 0x0F, None)));
         assert!(r.sent().is_empty(), "refused: nothing written");
-        r.core.core_vreg_op(op, 0x0F, word()).unwrap();
+        r.core.core_vreg_op_tok(op, 0x0F, word()).unwrap();
         assert_eq!(r.sent(), vec![(op, 0x0F)]);
         assert_eq!(r.info().live_vreg, 0x0F);
     }
@@ -700,11 +700,11 @@ fn wp_cg14_each_case_at_the_transport() {
     ] {
         for op in [SET, TRIAL] {
             let r = unit_at(from);
-            let without = r.core.core_vreg_op(op, to, None);
+            let without = r.core.core_vreg_op_tok(op, to, None);
             if needs {
                 assert!(no_word(without), "{from:#x} to {to:#x}");
                 assert!(r.sent().is_empty());
-                r.core.core_vreg_op(op, to, word()).unwrap();
+                r.core.core_vreg_op_tok(op, to, word()).unwrap();
             } else {
                 without.unwrap();
             }
@@ -716,28 +716,28 @@ fn wp_cg14_each_case_at_the_transport() {
 #[test]
 fn wp_cg14_a_running_trial_counts_as_current() {
     let r = unit_at(0x0C);
-    r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
+    r.core.core_vreg_op_tok(TRIAL, 0x0E, word()).unwrap();
     // A TRIAL counts it: no raise.
-    r.core.core_vreg_op(TRIAL, 0x0E, None).unwrap();
-    r.core.core_vreg_op(TRIAL, 0x0D, None).unwrap();
-    r.core.core_vreg_op(TRIAL, 0x0E, None).unwrap_err();
-    r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
+    r.core.core_vreg_op_tok(TRIAL, 0x0E, None).unwrap();
+    r.core.core_vreg_op_tok(TRIAL, 0x0D, None).unwrap();
+    r.core.core_vreg_op_tok(TRIAL, 0x0E, None).unwrap_err();
+    r.core.core_vreg_op_tok(TRIAL, 0x0E, word()).unwrap();
     // A SET does not: RAM to flash is a raise, at the transport too.
     let before = r.sent();
-    assert!(no_word(r.core.core_vreg_op(SET, 0x0E, None)));
+    assert!(no_word(r.core.core_vreg_op_tok(SET, 0x0E, None)));
     assert_eq!(r.sent(), before);
     assert_eq!(r.info().stored_sel, 0);
-    r.core.core_vreg_op(SET, 0x0E, word()).unwrap();
+    r.core.core_vreg_op_tok(SET, 0x0E, word()).unwrap();
     assert_eq!(r.info().stored_sel, 0x0E);
     // Stored now: another trial at it, then a save, is level.
-    r.core.core_vreg_op(TRIAL, 0x0E, None).unwrap();
-    r.core.core_vreg_op(SET, 0x0E, None).unwrap();
+    r.core.core_vreg_op_tok(TRIAL, 0x0E, None).unwrap();
+    r.core.core_vreg_op_tok(SET, 0x0E, None).unwrap();
 }
 
 #[test]
 fn wp_cg14_a_kept_trial_nobody_here_confirmed_asks_before_it_is_saved() {
     let r = Rig::new();
-    r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
+    r.core.core_vreg_op_tok(TRIAL, 0x0E, word()).unwrap();
     let r2 = r.restart_app();
     assert_eq!(r2.phase(), VregCalPhase::TrialFound);
     r2.core.core_vreg_cal_keep(SOAK).unwrap();
@@ -760,7 +760,7 @@ fn wp_cg14_a_wrong_word_is_refused_at_the_transport() {
     ] {
         let r = unit_at(0x0E);
         assert!(
-            no_word(r.core.core_vreg_op(SET, 0x0F, Some(bad.into()))),
+            no_word(r.core.core_vreg_op_tok(SET, 0x0F, Some(bad.into()))),
             "{bad:?}"
         );
         assert!(r.sent().is_empty(), "{bad:?}");
@@ -773,15 +773,15 @@ fn wp_cg14_an_unreadable_unit_needs_the_word_above_1v20() {
     for reply in [vec![1u8, 2], vec![0xFF; 16]] {
         let r = Rig::new();
         *r.wire.status.lock().unwrap() = Some(reply);
-        assert!(no_word(r.core.core_vreg_op(SET, 0x0E, None)));
-        assert!(no_word(r.core.core_vreg_op(TRIAL, 0x0F, None)));
+        assert!(no_word(r.core.core_vreg_op_tok(SET, 0x0E, None)));
+        assert!(no_word(r.core.core_vreg_op_tok(TRIAL, 0x0F, None)));
         assert!(
-            no_word(r.core.core_vreg_op(SET, 0, None)),
+            no_word(r.core.core_vreg_op_tok(SET, 0, None)),
             "no known target"
         );
         assert!(r.sent().is_empty());
-        r.core.core_vreg_op(TRIAL, 0x0D, None).unwrap();
-        r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
+        r.core.core_vreg_op_tok(TRIAL, 0x0D, None).unwrap();
+        r.core.core_vreg_op_tok(TRIAL, 0x0E, word()).unwrap();
         assert_eq!(r.sent(), vec![(TRIAL, 0x0D), (TRIAL, 0x0E)]);
     }
 }
@@ -816,16 +816,16 @@ fn wp_qd28b_the_view_says_when_a_reset_needs_the_word() {
 fn wp_cg14_a_refusal_costs_only_the_status_read_and_no_host_record_helps() {
     let r = unit_at(0x0E);
     // Typed once for this unit, and it comes back down: asked again.
-    r.core.core_vreg_op(SET, 0x0F, word()).unwrap();
-    r.core.core_vreg_op(SET, 0x0E, None).unwrap();
-    assert!(no_word(r.core.core_vreg_op(SET, 0x0F, None)));
+    r.core.core_vreg_op_tok(SET, 0x0F, word()).unwrap();
+    r.core.core_vreg_op_tok(SET, 0x0E, None).unwrap();
+    assert!(no_word(r.core.core_vreg_op_tok(SET, 0x0F, None)));
     // A new app, the same unit: judged the same, from the unit.
     let again = r.restart_app();
-    assert!(no_word(again.core.core_vreg_op(SET, 0x0F, None)));
+    assert!(no_word(again.core.core_vreg_op_tok(SET, 0x0F, None)));
     // Others need no read and no word.
-    r.core.core_vreg_op(TRIAL_END, 0, None).unwrap();
-    r.core.core_vreg_op(AUTO, 1, None).unwrap();
-    r.core.core_vreg_op(CLEAR, 0, None).unwrap();
+    r.core.core_vreg_op_tok(TRIAL_END, 0, None).unwrap();
+    r.core.core_vreg_op_tok(AUTO, 1, None).unwrap();
+    r.core.core_vreg_op_tok(CLEAR, 0, None).unwrap();
 }
 
 #[test]
@@ -1042,8 +1042,8 @@ fn wp_cg11_the_warning_states_the_limits() {
 fn wp_cg11_the_fake_models_core_vreg_c() {
     let r = Rig::stock();
     // A SET ends a trial.
-    r.core.core_vreg_op(TRIAL, 0x0E, word()).unwrap();
-    r.core.core_vreg_op(SET, 0x0D, None).unwrap();
+    r.core.core_vreg_op_tok(TRIAL, 0x0E, word()).unwrap();
+    r.core.core_vreg_op_tok(SET, 0x0D, None).unwrap();
     let i = r.info();
     assert_eq!((i.trial_active, i.live_vreg), (false, 0x0D));
     // Two hangs raise the stored voltage one notch.
@@ -1057,7 +1057,7 @@ fn wp_cg11_the_fake_models_core_vreg_c() {
     );
     assert_eq!(i.hang_count, 0);
     // A further warm reset keeps a failed trial's code but not its uptime.
-    r.core.core_vreg_op(TRIAL, 0x0D, None).unwrap();
+    r.core.core_vreg_op_tok(TRIAL, 0x0D, None).unwrap();
     r.remote.vreg_sim(VregSim::Advance(50));
     r.remote.vreg_sim(VregSim::Hang);
     assert_ne!(r.info().failed_trial_uptime_s, 0);

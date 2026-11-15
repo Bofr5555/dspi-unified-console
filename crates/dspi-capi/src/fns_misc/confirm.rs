@@ -257,7 +257,10 @@ pub extern "C" fn dspi_core_vreg_manual_set_confirmed(
 /// waits in its bootloader (`firmware_flash`; `core` needs no device open,
 /// a board already in BOOTSEL has none). Blocks for the copy. JSON reply;
 /// nothing reaches the drive on a refusal (`confirmation_required`,
-/// `firmware_guard`, `invalid`). WP P1TZ retired `dspi_flash_to_drive_guarded`.
+/// `firmware_guard`, `invalid`). The only drive write of this ABI: WP P1TZ
+/// retired `dspi_flash_to_drive` and `dspi_flash_to_drive_guarded`, WP P1TZF
+/// the unguarded `dspi_flash_to_drive_confirmed`. A board in BOOTSEL: pass
+/// `board_required_mv` 0 (unknown) and the phrase the guard's verdict asks for.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_flash_confirmed(
     core: *mut FfiCore,
@@ -283,27 +286,25 @@ pub extern "C" fn dspi_flash_confirmed(
     })
 }
 
-// -- WP P1TZ -- the free dspi_flash_to_drive, with a token, on a core
-/// Write a UF2 image to the bootloader drive at `drive_path` (`platform`: 0
-/// RP2040, 1 RP2350) without the firmware guard (`dspi_flash_confirmed` is
-/// the guarded write, the one to use), with a token minted for
-/// `firmware_flash` (`core` needs no device open). Blocks for the copy. JSON
-/// `{ok}` or a failure; an invalid image, or a missing or wrong token, never
-/// reaches the drive. WP P1TZ retired `dspi_flash_to_drive`.
+// -- WP P1TZF -- the raw core-voltage operation: a SET stores it, so it takes a token
+/// One core voltage operation (`op` 0 set, 1 trial, 2 end trial, 3 auto, 4
+/// clear). `word` is what the user typed (null: nothing); raising above
+/// 1.20 V needs `OVERVOLT`. A SET takes a token minted for `vreg_save`
+/// (null for the others; one given is checked). JSON `{ok}` or a failure
+/// (`confirmation_required` for a SET without a good token, nothing sent).
+/// WP P1TZF retired `dspi_core_vreg_op`.
 #[unsafe(no_mangle)]
-pub extern "C" fn dspi_flash_to_drive_confirmed(
+pub extern "C" fn dspi_core_vreg_op_confirmed(
     core: *mut FfiCore,
-    image: *const u8,
-    image_len: u32,
-    drive_path: *const c_char,
-    platform: i8,
+    op: u8,
+    value: u8,
+    word: *const c_char,
     token: *const c_char,
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
     confirmed(core, token, buf, len, |c, t| {
-        let drive = drive_at(drive_path, platform)?;
-        c.flash_to_drive_confirmed(c_bytes(image, image_len), drive, t)
+        c.core_vreg_op_confirmed(op, value, optional_text(word, "word")?, t)
     })
 }
 

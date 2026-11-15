@@ -235,6 +235,7 @@ fn main() -> ExitCode {
             &positional(&flags),
             json,
             flag_value(&flags, "--word"),
+            yes(&flags), // -- WP P1TZF -- a SET is a gated call
         ),
         Some("autoeq") => cmd_autoeq(target, &positional(&flags), &flags),
         Some("--install-udev") => doctor::install_udev(),
@@ -1560,7 +1561,7 @@ fn autoeq_one_channel(target: &Target, entry: &dspi_session::autoeq::Entry, name
 /// change the device.
 /// The fork's extension channel (REQ_EXTENSION 0x00). Firmware without it
 /// stalls every request, which is reported as "not supported", not a crash.
-fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8 {
+fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>, yes: bool) -> u8 {
     use dspi_session::ext::{self, ExtError, VregOp};
 
     // Parse before touching the device, so a typo costs no connect.
@@ -1614,7 +1615,7 @@ fn cmd_ext(target: &Target, args: &[&str], json: bool, word: Option<&str>) -> u8
     // the core's typed `core_vreg_op`: the installer lock and the history
     // apply; the word rule (CG14) is the same function's
     if let Do::VregOp(op) = action {
-        return match core_route::vreg_op(target, op, word, &mut prompt_overvolt_word) {
+        return match core_route::vreg_op(target, op, word, yes, &mut prompt_overvolt_word) {
             Ok(()) => {
                 if json {
                     println!("{{\"ok\":true}}");
@@ -1979,6 +1980,21 @@ fn parse_num(s: &str) -> Option<u32> {
         .or_else(|| s.parse().ok())
 }
 
+// -- WP P1TZF -- (review p1tz F1) a raw request carries no confirmation: the
+// dangerous operations' opcodes go through their typed commands, which ask
+// (or take `--yes`) and mint the core's token. Checked before anything opens,
+// so the `raw` IN path, which opens the device without a core, refuses too.
+fn raw_refuses_gated(opcode: u32) -> Option<u8> {
+    let call = u8::try_from(opcode)
+        .ok()
+        .and_then(dspi_core::raw_gated_call)?;
+    eprintln!(
+        "{COMMAND}: opcode 0x{opcode:02X} is a dangerous operation that takes a confirmation, \
+         which `raw` cannot carry; use the typed command (the core's {call}), not `raw`"
+    );
+    Some(exit::USAGE)
+}
+
 fn raw_in(target: &Target, args: &[&str], json: bool) -> u8 {
     let (Some(op_s), Some(len_s)) = (args.first(), args.get(1)) else {
         eprintln!("{COMMAND}: raw needs an opcode and a length, e.g. `{COMMAND} raw 0x87 32`");
@@ -1989,6 +2005,9 @@ fn raw_in(target: &Target, args: &[&str], json: bool) -> u8 {
         eprintln!("{COMMAND}: opcode and length must be numbers");
         return exit::USAGE;
     };
+    if let Some(code) = raw_refuses_gated(opcode) {
+        return code;
+    }
     let value = args.get(2).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
 
     // -- WP TM4 --
@@ -2054,6 +2073,9 @@ fn raw_out(target: &Target, args: &[&str], json: bool) -> u8 {
         }
     };
 
+    if let Some(code) = raw_refuses_gated(opcode) {
+        return code;
+    }
     // WP CG14: this path could not carry the confirmation word.
     if dspi_session::overvolt::is_core_vreg_write(opcode as u8, value as u16) {
         eprintln!(
@@ -2122,6 +2144,9 @@ fn raw_war(target: &Target, args: &[&str], json: bool) -> u8 {
         );
         return exit::USAGE;
     };
+    if let Some(code) = raw_refuses_gated(opcode) {
+        return code;
+    }
     let value = args.get(1).and_then(|v| parse_num(v)).unwrap_or(0) as u16;
 
     // -- WP TM4 --
@@ -3340,6 +3365,48 @@ mod tests_wp_tm4 {
 
     #[test]
     fn wp_tm4_raw_passes_on_a_writable_device() {
+        assert_eq!(
+            raw_out(&Target::Demo, &["0xD2", "0", "00", "00", "A0", "C1"], true),
+            exit::OK
+        );
+    }
+
+    // -- WP P1TZF -- (review p1tz F1)
+    /// `raw` refuses the dangerous operations' opcodes in all three
+    /// directions, before anything opens, and still passes everything else.
+    #[test]
+    fn wp_p1tzf_raw_refuses_the_gated_opcodes_and_passes_the_rest() {
+        use dspi_proto::generated::opcodes as op;
+        for code in [
+            op::REQ_PRESET_SAVE,
+            op::REQ_PRESET_DELETE,
+            op::REQ_SAVE_PARAMS,
+            op::REQ_SAVE_OUTPUT_CONFIG,
+            op::REQ_FACTORY_RESET,
+            op::REQ_ENTER_BOOTLOADER,
+        ] {
+            let c = format!("0x{code:02X}");
+            assert_eq!(
+                raw_in(&Target::Demo, &[&c, "1", "1"], true),
+                exit::USAGE,
+                "in {c}"
+            );
+            assert_eq!(
+                raw_war(&Target::Demo, &[&c, "1"], true),
+                exit::USAGE,
+                "war {c}"
+            );
+            assert_eq!(
+                raw_out(&Target::Demo, &[&c, "1", "00"], true),
+                exit::USAGE,
+                "out {c}"
+            );
+        }
+        // Still raw: a read, a write-as-read that takes no token, an OUT write.
+        let get_active = format!("0x{:02X}", op::REQ_PRESET_GET_ACTIVE);
+        assert_eq!(raw_in(&Target::Demo, &[&get_active, "1"], true), exit::OK);
+        let load = format!("0x{:02X}", op::REQ_PRESET_LOAD);
+        assert_eq!(raw_war(&Target::Demo, &[&load, "0"], true), exit::OK);
         assert_eq!(
             raw_out(&Target::Demo, &["0xD2", "0", "00", "00", "A0", "C1"], true),
             exit::OK

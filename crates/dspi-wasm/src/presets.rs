@@ -152,9 +152,10 @@ pub struct ImportParams {
 
 /// `configImport`: apply the chosen blocks of a document to the open device
 /// (`DspiCore::config_import_confirmed`): its JSON reply. A text that is not
-/// a document fails as `bad_document`; a device that cannot be written, an
-/// empty selection or a missing token as `refused`; both with the core's
-/// `noticeKey`.
+/// a document fails as `bad_document`; a missing or bad token as
+/// `confirmation_required`, as every other gated call (WP P1TZF); a device
+/// that cannot be written or an empty selection as `refused`; all with the
+/// core's `noticeKey`.
 pub fn import(core: &DspiCore, p: ImportParams) -> Result<Value, CallError> {
     need_device(core)?;
     let text = core.config_import_confirmed(p.text, p.options, p.eq_channels, p.token);
@@ -165,6 +166,12 @@ pub fn import(core: &DspiCore, p: ImportParams) -> Result<Value, CallError> {
             .is_some_and(|k| k == "config.unreadable");
         if document {
             e
+        } else if e.notice_key.as_deref() == Some("confirmation_required") {
+            // -- WP P1TZF -- (review p1tz F4)
+            CallError {
+                code: "confirmation_required",
+                ..e
+            }
         } else {
             CallError {
                 code: "refused",

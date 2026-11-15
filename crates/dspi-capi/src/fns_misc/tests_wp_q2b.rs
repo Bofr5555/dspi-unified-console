@@ -73,7 +73,6 @@ fn wp_q2b_a_null_handle_gives_the_failure_value() {
         dspi_set_adat_input_clock_mode(n, 0),
         dspi_test_dac_mute(n),
         dspi_set_crossfeed_pair_map(n, p, 4),
-        dspi_core_vreg_op(n, 0, 0, null()),
     ] {
         assert_eq!(v, 0xFF);
     }
@@ -108,6 +107,8 @@ fn wp_q2b_a_null_handle_gives_the_failure_value() {
         // -- WP P1TZ -- the import, the output-config save and the bootloader
         // take a token now (their `_confirmed` forms: tests_wp_p1tk)
         dspi_config_import_confirmed(n, null(), 0, u32::MAX, null(), t, 16),
+        // -- WP P1TZF -- the core-voltage operation takes a token for a SET now
+        dspi_core_vreg_op_confirmed(n, 0, 0, null(), null(), t, 16),
         dspi_filters_export(n, 0, t, 16),
         dspi_filters_inspect(n, null(), 0, t, 16),
         dspi_filters_import(n, null(), null(), 0, t, 16),
@@ -609,7 +610,9 @@ fn wp_q2b_extension_channel_replies() {
     } else {
         assert_eq!(vreg["code"], "unsupported");
     }
-    assert_eq!(dspi_core_vreg_op(h, 99, 0, null()), 0xFF);
+    // -- WP P1TZF -- an unknown op: refused, JSON now
+    let r = read_json(|b, l| dspi_core_vreg_op_confirmed(h, 99, 0, null(), null(), b, l));
+    assert_eq!(r["ok"], false, "{r}");
     free(h);
 }
 
@@ -678,12 +681,12 @@ fn wp_q2b_firmware_functions() {
     let path = CString::new("/nonexistent/drive").unwrap();
     let c = crate::fns_device::dspi_core_new();
     let reply = with_token_for_test(c, "firmware_flash", |t, b, l| {
-        dspi_flash_to_drive_confirmed(c, junk.as_ptr(), 600, path.as_ptr(), 0, t, b, l)
+        dspi_flash_confirmed(c, junk.as_ptr(), 600, path.as_ptr(), 0, 0, null(), t, b, l)
     });
     assert_eq!(reply["ok"], false);
     assert_eq!(reply["code"], "invalid", "{reply}");
     let reply = with_token_for_test(c, "firmware_flash", |t, b, l| {
-        dspi_flash_to_drive_confirmed(c, null(), 0, null(), 0, t, b, l)
+        dspi_flash_confirmed(c, null(), 0, null(), 0, 0, null(), t, b, l)
     });
     assert_eq!(reply["ok"], false);
     crate::fns_device::dspi_core_free(c);
@@ -894,7 +897,7 @@ fn wp_q2b_added_functions_are_in_the_header() {
         "dspi_fetch_crossfeed_pair_map",
         "dspi_set_crossfeed_pair_map",
         "dspi_fetch_core_vreg",
-        "dspi_core_vreg_op",
+        // -- WP P1TZF -- dspi_core_vreg_op retired (dspi_core_vreg_op_confirmed)
         "dspi_get_input_source_name",
         "dspi_set_input_source_name",
         "dspi_get_device_name",
@@ -905,7 +908,7 @@ fn wp_q2b_added_functions_are_in_the_header() {
         "dspi_fetch_clock_diag",
         "dspi_uf2_inspect",
         "dspi_bootloader_drives",
-        // -- WP P1TZ -- dspi_flash_to_drive retired (dspi_flash_to_drive_confirmed)
+        // -- WP P1TZ -- dspi_flash_to_drive retired (dspi_flash_confirmed, WP P1TZF)
         "dspi_firmware_version_matches",
     ] {
         assert!(new.contains_key(name), "{name} missing");

@@ -613,7 +613,19 @@ impl DspiCore {
     /// longer holds); it works with no device open, and a board already in
     /// BOOTSEL has none. Without a good token, or with one for another
     /// operation, [`DspiError::ConfirmationRequired`] and nothing reaches the
-    /// drive. The write itself is as [`DspiCore::flash_to_drive_confirmed`]'s.
+    /// drive. It is the only drive write the bindings have (WP P1TZF): a
+    /// caller that knows the board passes it, and one in BOOTSEL passes
+    /// [`crate::firmware_guard_board_in_bootloader`] with the typed phrase
+    /// the verdict asks for.
+    ///
+    /// Before any byte goes out: the image is fully validated, the drive's
+    /// `INFO_UF2.TXT` is read again and must still name the board `drive`
+    /// describes, the image's family must be one that board boots, and the
+    /// drive must have room for the image. The board reboots into the new
+    /// firmware as it takes the last block, so `Ok` means only "the write
+    /// ended, or the drive went away during it": the caller confirms success
+    /// by waiting for the DSPi to re-enumerate and report the image's version
+    /// (`Uf2Info::firmware_version`); a timeout there is the failure.
     ///
     /// Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
     /// message when the image needs confirmation; then the write's.
@@ -631,55 +643,6 @@ impl DspiCore {
         // Nothing to re-check later: the write is to the drive, not the device.
         let _ticket = self.confirm_gate(crate::ConfirmOp::FirmwareFlash, token.as_deref())?;
         crate::flash_to_drive_guarded(image, drive, board, typed_confirmation)
-    }
-
-    // -- WP P1TZ -- the free flash_to_drive with a token, as a core method
-    /// Write `image` to `drive` as `firmware.uf2`, synced to the medium, with a
-    /// confirmation token, without the firmware guard ([`DspiCore::flash_confirmed`]
-    /// is the write behind the guard, the one to use wherever the core does the
-    /// writing).
-    ///
-    /// Before any byte goes out: the image is fully validated, the drive's
-    /// `INFO_UF2.TXT` is read again and must still name the board `drive`
-    /// describes, the image's family must be one that board boots, and the
-    /// drive must have room for the image. The file is then written with one
-    /// `write_all` and one `sync_all`.
-    ///
-    /// The board reboots into the new firmware as it takes the last block, so
-    /// the write or the sync can fail because the drive has gone: that (either
-    /// failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
-    /// success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
-    /// `Ok` means only "the write ended, or the drive went away during it, assumed
-    /// to be the board rebooting". **The caller must
-    /// confirm success** by waiting for the DSPi to re-enumerate and report the
-    /// image's version (`Uf2Info::firmware_version`); a timeout there is the
-    /// failure.
-    ///
-    /// The `INFO_UF2.TXT` re-check and the write are separate path-based
-    /// operations, so a different drive mounted at the same path in between
-    /// would get the file (an inherent check-then-use race; the Qt updater has
-    /// the same). The window is a few milliseconds and both boot ROMs reject an
-    /// image of the other family.
-    ///
-    /// The token ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]; WP
-    /// P1TZ): mint it once the bootloader drive is there; it works with no
-    /// device open, and a board in BOOTSEL has none. Without a good one, or with
-    /// a token for another operation, [`DspiError::ConfirmationRequired`] and
-    /// nothing reaches the drive. With a device still open, the installer lock
-    /// holds this write too (before the token is spent).
-    ///
-    /// Errors: that; [`DspiError::InvalidArgument`] for an invalid image, a drive that
-    /// is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
-    /// that has gone, is short of space, or fails the write.
-    pub fn flash_to_drive_confirmed(
-        &self,
-        image: Vec<u8>,
-        drive: BootloaderDrive,
-        token: Option<String>,
-    ) -> Result<()> {
-        crate::limits::lock_check_any(&mut self.lock())?;
-        let _ticket = self.confirm_gate(crate::ConfirmOp::FirmwareFlash, token.as_deref())?;
-        flash_to_drive(image, drive)
     }
 }
 
@@ -956,8 +919,14 @@ fn check_space(free: Option<u64>, needed: usize, drive: &str) -> Result<()> {
     }
 }
 
-/// The drive write behind [`DspiCore::flash_to_drive_confirmed`] and the
-/// guarded write: see there. Not exported (WP P1TZ: the write takes a token).
+/// Write `image` to `drive` as `firmware.uf2`, synced to the medium: the
+/// drive write behind the guarded one ([`DspiCore::flash_confirmed`], the
+/// only exported write, WP P1TZF). Validates the image, re-reads the
+/// drive's `INFO_UF2.TXT` (it must still name `drive`'s board, whose family
+/// the image must have) and checks the room first. A write or sync that
+/// fails because the drive went away counts as success (the board
+/// rebooting); the `INFO_UF2.TXT` re-check and the write are separate path
+/// operations (an inherent check-then-use race of a few milliseconds).
 pub(crate) fn flash_to_drive(image: Vec<u8>, drive: BootloaderDrive) -> Result<()> {
     let info = inspect(&image);
     if !info.valid {
@@ -1609,55 +1578,57 @@ garbage line
         assert_eq!(d.written().unwrap(), rp2350_image());
     }
 
-    /// WP P1TZ: the drive writes are core methods gated by a firmware_flash
-    /// token, with no device open (a board in BOOTSEL has no DSPi
-    /// connection); refused with nothing on the drive without one or with
-    /// another operation's.
+    /// WP P1TZ / P1TZF: the drive write is a core method gated by a
+    /// firmware_flash token, behind the firmware guard, with no device open
+    /// (a board already in BOOTSEL has no DSPi connection); refused with
+    /// nothing on the drive without a token or with another operation's.
     #[test]
-    fn wp_p1tz_the_drive_writes_take_a_firmware_token_with_no_device() {
+    fn wp_p1tzf_a_board_in_bootsel_is_flashed_with_a_token_and_no_device() {
         use crate::{ConfirmOp, DspiCore};
         let core = DspiCore::new();
-        let d = FakeDrive::new("p1tz-flash", Some(INFO_RP2040));
+        assert!(!core.is_connected());
+        let d = FakeDrive::new("p1tzf-bootsel", Some(INFO_RP2040));
         let image = rp2040_image();
+        // What a caller with a board in BOOTSEL passes: the bootloader's
+        // record and the phrase the verdict asks for.
+        let board = crate::firmware_guard_board_in_bootloader();
+        let phrase = crate::firmware_guard_check(image.clone(), board.clone(), String::new())
+            .confirmation_phrase;
         let code = |r: Result<()>| match r {
             Err(DspiError::ConfirmationRequired { code, .. }) => code,
             other => format!("{other:?}"),
         };
-        assert_eq!(
-            code(core.flash_to_drive_confirmed(image.clone(), d.record(0), None)),
-            "missing"
-        );
-        let other = core.confirm_token(ConfirmOp::SavePreset);
-        assert_eq!(
-            code(core.flash_to_drive_confirmed(image.clone(), d.record(0), Some(other))),
-            "wrong_op"
-        );
-        let board = crate::FirmwareGuardBoard::default();
-        assert_eq!(
-            code(core.flash_confirmed(
+        let flash = |token| {
+            core.flash_confirmed(
                 image.clone(),
                 d.record(0),
                 board.clone(),
-                String::new(),
-                None
-            )),
-            "missing"
-        );
+                phrase.clone(),
+                token,
+            )
+        };
+        assert_eq!(code(flash(None)), "missing");
+        let other = core.confirm_token(ConfirmOp::EnterBootloader);
+        assert_eq!(code(flash(Some(other))), "wrong_op");
         assert!(d.written().is_none(), "nothing reached the drive");
+        // Without the phrase the guard stops it, token or not.
         let t = core.confirm_token(ConfirmOp::FirmwareFlash);
-        core.flash_to_drive_confirmed(image.clone(), d.record(0), Some(t))
-            .unwrap();
-        assert_eq!(d.written().unwrap(), image);
-        // The guarded write: let through by its token, then the guard's own
-        // answer for a board whose needs are unknown; the drive untouched.
-        let d = FakeDrive::new("p1tz-flash-guarded", Some(INFO_RP2040));
-        let t = core.confirm_token(ConfirmOp::FirmwareFlash);
-        let r = core.flash_confirmed(image, d.record(0), board, String::new(), Some(t));
+        let r = core.flash_confirmed(
+            image.clone(),
+            d.record(0),
+            board.clone(),
+            String::new(),
+            Some(t),
+        );
         assert!(
             matches!(r, Err(DspiError::FirmwareGuardBlocked { .. })),
             "{r:?}"
         );
         assert!(d.written().is_none());
+        // With a token and the phrase: written.
+        let t = core.confirm_token(ConfirmOp::FirmwareFlash);
+        flash(Some(t)).unwrap();
+        assert_eq!(d.written().unwrap(), image);
     }
 
     /// A drive that fails after `room` bytes, going away first if `gone`.

@@ -92,7 +92,14 @@ final class FakeTransportTests: XCTestCase {
 
     func testPresetsSaveLoadAndName() throws {
         let (_, fake) = connectedFake()
-        XCTAssertEqual(get(fake, REQ_PRESET_SAVE, value: 4, length: 1), Data([PRESET_OK]))
+        // P1TZF: through a core a save takes a confirmation token and the raw
+        // request refuses it; the fake on its own takes the raw request.
+        if let core = fake.coreStateSource {
+            XCTAssertNil(get(fake, REQ_PRESET_SAVE, value: 4, length: 1))
+            XCTAssertNoThrow(try core.call { try $0.savePresetConfirmed(slot: 4, token: $0.confirmToken(op: .savePreset)) }.get())
+        } else {
+            XCTAssertEqual(get(fake, REQ_PRESET_SAVE, value: 4, length: 1), Data([PRESET_OK]))
+        }
         fake.sendControlRequest(request: REQ_PRESET_SET_NAME, value: 4, index: 2, data: Data("Late night".utf8))
         let dir = try XCTUnwrap(get(fake, REQ_PRESET_GET_DIR, length: 7))
         let occupied = UInt16(dir[0]) | UInt16(dir[1]) << 8

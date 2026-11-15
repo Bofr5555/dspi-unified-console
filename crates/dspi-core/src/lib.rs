@@ -195,6 +195,8 @@ pub use alink_usb::{
 };
 // -- WP CG23 --
 pub use raw::RawNotification;
+// -- WP P1TZF -- the opcodes a raw request refuses (for the Terminal's `raw`)
+pub use raw::raw_gated_call;
 // -- WP CG26 --
 pub use host_transport::{HostTransport, HostTransportKind};
 // -- WP CG32 --

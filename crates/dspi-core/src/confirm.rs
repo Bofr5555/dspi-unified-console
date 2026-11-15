@@ -332,45 +332,15 @@ impl DspiCore {
         let place = Place::of(&inner);
         inner.confirm.mint(op, clock::Instant::now(), place)
     }
-}
 
-// -- WP P1TZ -- the switch is gone from every binding: a test-only opt-out.
-impl DspiCore {
-    /// Lift (or restore) the token requirement on this core, for tests that
-    /// are not about confirmation. Compiled only for this crate's tests; no
-    /// binding and no other crate can reach it.
-    #[cfg(test)]
-    pub(crate) fn confirmation_opt_out_for_tests(&self, off: bool) {
-        self.lock().confirm.required = !off;
-    }
-
-    /// Whether gated calls need a token on this core: true unless a test
-    /// lifted it.
-    #[cfg(test)]
-    pub(crate) fn confirmation_required_for_tests(&self) -> bool {
-        self.lock().confirm.required
-    }
-}
-
-impl DspiCore {
-    /// The gate of a dangerous call: `token` accepted (and spent) for `op` on
-    /// the current connection, or no token while none is required. Takes the
-    /// core lock for the check only; the call re-checks the connection with
-    /// [`Ticket::still_on`] where it writes.
-    pub(crate) fn confirm_gate(&self, op: ConfirmOp, token: Option<&str>) -> Result<Ticket> {
-        let mut inner = self.lock();
-        let place = Place::of(&inner);
-        inner
-            .confirm
-            .accept(op, token, clock::Instant::now(), place)
-    }
-
+    // -- WP P1TZF -- exported (review p1tz F3)
     /// [`DspiCore::write_param`] with a confirmation token: a path whose typed
     /// call is gated (`preset.save`, `preset.delete`, `dev.save`,
     /// `dev.save.io`) goes through that call with `token`, and answers
     /// `Trigger` as `write_param` does for an action; any other path is
-    /// `write_param`'s, and a token given with it is refused. For the web
-    /// binding's `write`.
+    /// `write_param`'s, and a token given with it is refused. The web
+    /// binding's `write`; exported in UniFFI and C too (WP P1TZF), so a
+    /// generic screen writes the gated paths with a token.
     ///
     /// Errors: those of the gated call or of `write_param`;
     /// [`DspiError::InvalidArgument`] for a gated path with the wrong number
@@ -405,6 +375,38 @@ impl DspiCore {
             _ => Err(bad("no index")),
         }
         .map(|()| ParamValue::Trigger)
+    }
+}
+
+// -- WP P1TZ -- the switch is gone from every binding: a test-only opt-out.
+impl DspiCore {
+    /// Lift (or restore) the token requirement on this core, for tests that
+    /// are not about confirmation. Compiled only for this crate's tests; no
+    /// binding and no other crate can reach it.
+    #[cfg(test)]
+    pub(crate) fn confirmation_opt_out_for_tests(&self, off: bool) {
+        self.lock().confirm.required = !off;
+    }
+
+    /// Whether gated calls need a token on this core: true unless a test
+    /// lifted it.
+    #[cfg(test)]
+    pub(crate) fn confirmation_required_for_tests(&self) -> bool {
+        self.lock().confirm.required
+    }
+}
+
+impl DspiCore {
+    /// The gate of a dangerous call: `token` accepted (and spent) for `op` on
+    /// the current connection, or no token while none is required. Takes the
+    /// core lock for the check only; the call re-checks the connection with
+    /// [`Ticket::still_on`] where it writes.
+    pub(crate) fn confirm_gate(&self, op: ConfirmOp, token: Option<&str>) -> Result<Ticket> {
+        let mut inner = self.lock();
+        let place = Place::of(&inner);
+        inner
+            .confirm
+            .accept(op, token, clock::Instant::now(), place)
     }
 }
 

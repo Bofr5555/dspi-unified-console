@@ -465,7 +465,8 @@ final class CoreMirrorSW8Tests: XCTestCase {
     /// follows, so the loaded preset is not dirty.
     func testSW8DevicePresetLoadRebasesTheBaseline() {
         let (t, vm) = demoVM()
-        XCTAssertEqual(t.getControlRequest(request: REQ_PRESET_SAVE, value: 3, index: 2, length: 1), Data([PRESET_OK]))
+        // P1TZF: the save through its typed call and a token (the raw request refuses it).
+        XCTAssertNoThrow(try t.call { try $0.savePresetConfirmed(slot: 3, token: $0.confirmToken(op: .savePreset)) }.get())
         var packet = Data([0, 0, UInt8(FilterType.peaking.rawValue), 0])
         for v: Float in [440, 2, -6] { packet.append(Self.float(v)) }
         t.sendControlRequest(request: REQ_SET_EQ_PARAM, value: 0, index: 0, data: packet)

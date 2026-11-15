@@ -105,7 +105,7 @@ limiters inside each output entry) is opt-in. The input source goes last.
 links.
 
 <!-- WP P1DF -->
-The core's import (`config_import_selected`, `config_preview`) also applies by
+The core's import (`config_import_confirmed`, with its token; `config_preview`) also applies by
 block: with `IMPORT_BY_BLOCK` each of `IMPORT_EQ` (per channel, and the master
 EQ bypass), `IMPORT_CROSSOVER`, `IMPORT_ROUTING` (matrix, input source, preamps,
 input delays, input pair links, LG Sound Sync), `IMPORT_OUTPUTS` (gain, mute,
@@ -117,10 +117,10 @@ bringing the limiters). `config_preview` and `config_diff` say what would change
 one row per value: `{block, section, item, before, after}`.
 
 <!-- WP P1AFIX -->
-With `IMPORT_BY_BLOCK` and no block bit nothing is chosen: `config_import_selected`
+With `IMPORT_BY_BLOCK` and no block bit nothing is chosen: `config_import_confirmed`
 refuses (`noticeKey` `config.nothing_selected`) and writes, journals and logs
-nothing, so the undo history stays. Every refusal of `config_import`,
-`config_import_selected`, `config_preview`, `config_diff` and `config_inspect` is
+nothing, so the undo history stays. Every refusal of `config_import_confirmed`,
+`config_preview`, `config_diff` and `config_inspect` is
 `{ok: false, error, noticeKey}`: `config.unreadable` for a text that is not a
 document this build reads, `config.not_read` for a preview before the device's
 settings were read, otherwise the core error's own key (`disconnected`,

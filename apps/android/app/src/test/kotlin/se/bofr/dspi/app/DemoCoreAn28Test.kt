@@ -48,7 +48,6 @@ class DemoCoreAn28Test {
         val board = FirmwareGuardBoard(1200, FirmwareGuardBoardSource.values().first())
         val refused = listOf<() -> Unit>(
             { core.openFd(3, "E6614103", 0x2E8B) },
-            { core.flashToDriveConfirmed(listOf(0), drive, null) }, // -- WP P1TZ --
             { core.flashConfirmed(listOf(0), drive, board, "yes", null) }, // -- WP P1AN1 --
             { core.enterBootloaderConfirmed(null) },
             { core.firmwareGuardBoardInBootloader() },
@@ -82,9 +81,7 @@ class DemoCoreAn28Test {
             "linkSelectDevice", "linkRetryNow", "linkSetUrl", "linkFetchInfo",
             // -- WP P1AN1 -- P1OF's `open_document` and the alink USB-direct demo open only the core's fake device;
             // P1TK's confirmed bootloader and flash calls are refused too (WP P1TZ: the bootloader's only form)
-            "openDocument", "openDemoUsbDirect", "flashConfirmed", "enterBootloaderConfirmed",
-            // -- WP P1TZ -- the drive write without the guard, a core method with a token
-            "flashToDriveConfirmed"
+            "openDocument", "openDemoUsbDirect", "flashConfirmed", "enterBootloaderConfirmed"
         )
         assertEquals(guarded, names.filter { wayOut.containsMatchIn(it) }.toSet())
     }

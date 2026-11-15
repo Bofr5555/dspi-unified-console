@@ -14,10 +14,12 @@
 //! **Hidden over a hub:** a viewer's read is refused, so the extension counts
 //! as absent; a refused write hides the flow until the next connection.
 //!
-//! `core_vreg_op` keeps the firmware's limits, up to 1.30 V with the word, for
-//! the Terminal CLI. A GUI uses the calls here, which stop at 1.25 V. Both are
-//! judged by `dspi_session::overvolt` (WP CG14), and every write here goes
-//! through `core_vreg_op`, so that check runs again when it is sent.
+//! `core_vreg_op_confirmed` keeps the firmware's limits, up to 1.30 V with the
+//! word, for the Terminal CLI (a SET with a token, WP P1TZF). A GUI uses the
+//! calls here, which stop at 1.25 V. Both are judged by `dspi_session::overvolt`
+//! (WP CG14), and every write here goes through the same body
+//! (`core_vreg_op_with`, past each call's own token), so that check runs again
+//! when it is sent.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -664,7 +666,7 @@ impl DspiCore {
     /// refusal hides it for this connection.
     fn vreg_send(&self, cal: &mut CalState, request: VregOp, word: Option<&str>) -> Result<()> {
         let [code, value] = request.encode();
-        let r = self.core_vreg_op(code, value, word.map(str::to_owned));
+        let r = self.core_vreg_op_with(code, value, word.map(str::to_owned)); // -- WP P1TZF --
         if let Err(e) = &r {
             cal.last_error = Some(e.to_string());
             if *e == DspiError::Denied {

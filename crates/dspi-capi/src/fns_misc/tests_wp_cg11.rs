@@ -155,14 +155,29 @@ fn wp_cg14_raw_op_takes_the_word_through_c() {
     let lower = CString::new("overvolt").unwrap();
     let stored = |h| view(h, dspi_core_vreg_cal_poll)["status"]["storedSel"].clone();
 
-    assert_eq!(dspi_core_vreg_op(h, 0, 0x0E, word.as_ptr()), 0);
+    // -- WP P1TZF -- a SET takes a token; the word rule is the same
+    let set = |v: u8, w: *const c_char| {
+        with_token_for_test(h, "vreg_save", |t, b, l| {
+            dspi_core_vreg_op_confirmed(h, 0, v, w, t, b, l)
+        })["ok"]
+            == true
+    };
+    assert!(set(0x0E, word.as_ptr()));
     assert_eq!(stored(h), 0x0E);
-    assert_eq!(dspi_core_vreg_op(h, 0, 0x0F, ptr::null()), 0xFF);
-    assert_eq!(dspi_core_vreg_op(h, 0, 0x0F, lower.as_ptr()), 0xFF);
+    assert!(!set(0x0F, ptr::null()));
+    assert!(!set(0x0F, lower.as_ptr()));
     assert_eq!(stored(h), 0x0E, "refused: unchanged");
-    assert_eq!(dspi_core_vreg_op(h, 0, 0x0F, word.as_ptr()), 0);
+    assert!(set(0x0F, word.as_ptr()));
     assert_eq!(stored(h), 0x0F);
-    assert_eq!(dspi_core_vreg_op(h, 0, 0x0E, ptr::null()), 0, "lowering");
+    assert!(set(0x0E, ptr::null()), "lowering");
+    assert_eq!(stored(h), 0x0E);
+    // Without a token a SET is refused, nothing written.
+    let mut b = [0 as c_char; 512];
+    dspi_core_vreg_op_confirmed(h, 0, 0x0F, word.as_ptr(), ptr::null(), b.as_mut_ptr(), 512);
+    let r = unsafe { std::ffi::CStr::from_ptr(b.as_ptr()) }
+        .to_string_lossy()
+        .into_owned();
+    assert!(r.contains("\"confirmation_required\""), "{r}");
     assert_eq!(stored(h), 0x0E);
     dspi_core_free(h);
 }
