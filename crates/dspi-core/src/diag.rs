@@ -13,6 +13,7 @@
 //! | `device/interrupts.txt` | the notification monitor's lines (Interrupt Monitor) |
 //! | `events/<serial>.jsonl` | each device's event log (P0M), in its file format |
 //! | `hub/hub-store.json` | the hub's store with tokens, hashes and secrets removed |
+//! | `hub/inventory.json` | the hub's inventory (WP P2IN), secrets removed the same way |
 //! | `system/os.json` | OS facts: name, architecture, release, the udev rule on Linux |
 //! | `system/usb.json` | DSPis and bootloaders on the bus, by enumeration only |
 //! | `client/<name>` | files the client adds (`uconsole doctor`'s report, a log) |
@@ -148,6 +149,8 @@ impl DspiCore {
         b.text("device/interrupts.txt", &self.diag_interrupts());
         self.diag_events(&mut b);
         diag_hub_store(&mut b, &options.hub_store_dir);
+        // -- WP P2IN --
+        diag_hub_data(&mut b, &options.hub_store_dir, HUB_INVENTORY_FILE);
         b.json("system/os.json", &os_facts());
         b.json("system/usb.json", &self.diag_usb(&scrub));
         diag_client_files(&mut b, options.files, &scrub);
@@ -501,6 +504,40 @@ fn diag_hub_store(b: &mut Bundle, dir: &str) {
     }
 }
 
+// -- WP P2IN --
+/// The hub's inventory file in its data folder (dspi-hub `inventory.rs`).
+const HUB_INVENTORY_FILE: &str = "inventory.json";
+/// The largest phase-2 hub data file read (the inventory's own limit is 8 MiB).
+const HUB_DATA_MAX: u64 = 8 << 20;
+
+/// A phase-2 data file of the hub under `dir` (PLAN-P2, review S6), redacted as the
+/// store is, as `hub/<file>`. No folder named, or no such file: nothing, and no note
+/// (most hubs have no such file); unreadable or not JSON: a note, and none of it.
+fn diag_hub_data(b: &mut Bundle, dir: &str, file: &str) {
+    if dir.is_empty() {
+        return;
+    }
+    let path = Path::new(dir).join(file);
+    let bytes = match read_limited(&path, HUB_DATA_MAX) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            b.notes.push(format!("hub: {} unread: {e}", path.display()));
+            return;
+        }
+    };
+    match serde_json::from_slice::<Value>(&bytes) {
+        Ok(mut v) => {
+            redact(&mut v);
+            b.json(&format!("hub/{file}"), &v);
+        }
+        Err(_) => b.notes.push(format!(
+            "hub: {} is not JSON and was left out",
+            path.display()
+        )),
+    }
+}
+
 /// Replace every value under a secret key, at any depth, with [`REMOVED`].
 pub(crate) fn redact(v: &mut Value) {
     match v {
@@ -701,3 +738,7 @@ pub(crate) fn utc(ms: i64) -> (i64, u32, u32, u32, u32, u32) {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p0e;
+// -- WP P2IN --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p2in;

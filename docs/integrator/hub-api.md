@@ -21,7 +21,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 |---|---|---|---|---|---|
 | 1 | [Conventions](#1-conventions) | | | P2DOC | built (this page) |
 | 2 | [On an unencrypted network](#2-on-an-unencrypted-network) | | | P2DOC | built (this page) |
-| 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | draft |
+| 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | built |
 | 4 | [Identify](#4-identify) | `device.identify` | `identify` | P2ID | draft |
 | 5 | [Health](#5-health) | `health.get` | `health` | P2HP | draft |
 | 6 | [Event history](#6-event-history) | `event.*` | `events` | P2EV (records: P2EVW) | draft |
@@ -221,16 +221,16 @@ passwords, webhook bodies, and every parameter.** A webhook's signature proves t
 
 ## 3. Inventory
 
-*State: draft (P2IN).*
+*State: built (P2IN). Off unless the hub's `ServiceConfig::inventory` is set; announced as `inventory` when on.*
 
 Every DSPi the hub has ever seen, online or not, persisted in `inventory.json`. `device.list` (spec 7.4: handles, a
-60 s grace) is unchanged; the inventory is keyed by serial and outlives a replug.
+60 s grace) is unchanged; the inventory is keyed by serial and outlives a replug and a restart of the hub.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `inventory.list` | viewer | `serial?` (one device) | `devices`: records, online first, then by last seen |
-| `inventory.set` | admin | `serial`, `location?`, `note?`, `tags?` (each replaces its field; `null` clears) | `device`: the record |
-| `inventory.forget` | admin | `serial`, `with_data?` (default `false`) | `serial`, `forgot`: what went (`record`, `events`, `snapshots`). `conflict` while the device is online |
+| `inventory.list` | viewer | `serial?` or `handle?` (one device), `offset?` (default 0), `limit?` (default 100, at most 500) | `devices`: records, online first, then by last seen (newest first), then by serial; `total`; `next_offset` (`null` on the last page). A page also stops before about 512 KiB |
+| `inventory.set` | admin | `serial` or `handle`, `location?`, `note?`, `tags?` (each replaces its field; `null` clears; absent keeps) | `device`: the record |
+| `inventory.forget` | admin | `serial` or `handle`, `with_data?` (default `false`) | `serial`, `forgot`: a list of what went, in order (`"record"`, then `"events"` if it had history files, then `"snapshots"` if asked and it had any). `conflict` while the device is online; `not_found` for a serial not in the inventory |
 
 A record:
 
@@ -239,17 +239,24 @@ A record:
 | `serial` | the key |
 | `handle` | the DSPi Link handle while online, else `null` |
 | `online` | `true` while attached |
-| `name` | the device's name as `device.list` gives it |
+| `name` | the device's name as `device.list` gave it when last seen |
 | `platform`, `fw`, `fw_beta`, `outputs` | from `REQ_GET_PLATFORM` (spec 7.4); `fw_beta` absent when unknown |
-| `board`, `hw_rev`, `chip`, `chip_rev` | from `EXT_IDENTIFY` where the firmware lists it, else absent |
-| `location`, `note` | set by an admin, at most 256 characters each, any Unicode |
-| `tags` | at most 16 strings of at most 32 characters |
-| `first_seen`, `last_seen` | times |
-| `last_reset` | `{reason, prev_uptime_s?, at}` from `EXT_RESET_INFO` (reasons as section 5), else absent |
+| `board`, `hw_rev`, `chip`, `chip_rev` | from `EXT_IDENTIFY` where the firmware lists it, else absent (`hw_rev` also when the build set none) |
+| `location`, `note` | set by an admin, at most 256 characters each, any Unicode but control characters (a note may hold newlines and tabs); `null` when unset |
+| `tags` | at most 16 strings of 1 to 32 characters, trimmed, duplicates dropped |
+| `first_seen`, `last_seen` | times; `last_seen` is now while online, else when it went offline |
+| `last_reset` | `{reason, prev_uptime_s?, at}` from `EXT_RESET_INFO` (reasons as section 5; `at` the reading's time less the uptime), else absent |
 
-`inventory.forget` removes the record and the device's history files; its snapshots on the hub only with
-`with_data: true`. Event to every session: `inventory.changed {v, hub, serial, device}` (`device` `null` when
-forgotten). A firmware change updates the record and records a `firmware` event in the history.
+A value past a bound answers `bad_request` and changes nothing. `inventory.forget` removes the record and the device's
+history files (`events/`); its snapshots on the hub only with `with_data: true` (each with its `snapshot.changed`). If a
+file cannot be removed, the answer is `internal` and the record stays, so the forget can be tried again. Event to every
+session: `inventory.changed {v, hub, serial, device}` (`device` `null` when forgotten, or dropped past the 1024-device
+cap, oldest offline first, with a line in the hub's log). A firmware change updates the record and puts a `firmware`
+history record on the hub's internal bus (stored by the history, section 6).
+
+The file is written atomically, 0600 on Unix, one record per line inside one JSON object, so a torn file still reads
+record by record: the hub keeps the whole file aside as `inventory.json.bad-<unix seconds>`, keeps what it could read, and
+writes the file again. The diagnostics bundle carries it as `hub/inventory.json`.
 
 ## 4. Identify
 
