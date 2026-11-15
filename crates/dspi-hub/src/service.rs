@@ -149,6 +149,9 @@ pub struct ServiceConfig {
     // -- WP P2HP --
     /// The health poll and device facts (`crate::health`): `None` is off.
     pub health: Option<crate::health::HealthConfig>,
+    // -- WP P2IN --
+    /// The inventory (`inventory.*`, `<data>/inventory.json`).
+    pub inventory: bool,
 }
 
 impl Default for ServiceConfig {
@@ -158,6 +161,8 @@ impl Default for ServiceConfig {
             extra: Vec::new(),
             // -- WP P2HP --
             health: None,
+            // -- WP P2IN --
+            inventory: false,
         }
     }
 }
@@ -183,6 +188,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     //   list.extend(crate::<module>::service(config, setup));
     // -- WP P2HP --
     list.extend(crate::health::service(config, setup));
+    // -- WP P2IN --
+    list.extend(crate::inventory::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
