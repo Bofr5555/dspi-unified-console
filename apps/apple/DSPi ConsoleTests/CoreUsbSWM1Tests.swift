@@ -437,7 +437,10 @@ final class CoreUsbSWM1HardwareTests: XCTestCase {
         print("SWM1-HW hotplug: waiting for the unplug of \(serial)")
         XCTAssertTrue(spinUntil(180) { !usb.isConnected && !transport.isConnected }, "the unplug is seen")
         XCTAssertEqual(usb.errorMessage, "Device Removed")
-        XCTAssertFalse(usb.availableDevices.contains { $0.serial == serial })
+        // The notification stream ends first (CoreUsb closes at once); the
+        // bus poll drops the device from the list a moment later.
+        XCTAssertTrue(spinUntil(5) { !usb.availableDevices.contains { $0.serial == serial } },
+                      "the departed DSPi leaves the list")
         print("SWM1-HW hotplug: unplugged, waiting for the replug")
         XCTAssertTrue(spinUntil(120) { usb.isConnected && transport.isConnected
                           && transport.coreStateSource != nil }, "the replug reconnects through every layer")
