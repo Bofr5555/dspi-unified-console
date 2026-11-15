@@ -193,7 +193,7 @@ fn networked(dir: &Path, clock: Arc<dyn HubClock>) -> Hub {
         initial_scan: false,
         services: ServiceConfig {
             clock,
-            extra: Vec::new(),
+            ..ServiceConfig::default()
         },
         ..HubConfig::in_process("P2WH hub")
     })
