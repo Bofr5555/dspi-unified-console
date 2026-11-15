@@ -2725,6 +2725,11 @@ RustBuffer uniffi_dspi_core_fn_func_usb_pipe_scan(RustCallStatus *_Nonnull out_s
 uint64_t uniffi_dspi_core_fn_func_usb_pipe_wait_change(uint64_t seen, uint32_t timeout_ms, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_VERIFY_BUNDLED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_VERIFY_BUNDLED
+RustBuffer uniffi_dspi_core_fn_func_verify_bundled(RustBuffer image, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_VREG_CODE_LABEL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_VREG_CODE_LABEL
 RustBuffer uniffi_dspi_core_fn_func_vreg_code_label(uint8_t code, uint8_t platform_id, RustCallStatus *_Nonnull out_status
@@ -3324,6 +3329,12 @@ uint16_t uniffi_dspi_core_checksum_func_usb_pipe_scan(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_USB_PIPE_WAIT_CHANGE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_USB_PIPE_WAIT_CHANGE
 uint16_t uniffi_dspi_core_checksum_func_usb_pipe_wait_change(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_VERIFY_BUNDLED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_VERIFY_BUNDLED
+uint16_t uniffi_dspi_core_checksum_func_verify_bundled(void
     
 );
 #endif

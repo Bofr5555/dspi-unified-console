@@ -445,6 +445,7 @@
    "crates/dspi-transport/src/link.rs",
    "crates/dspi-transport/src/midi.rs",
    "crates/dspi-transport/src/mock.rs",
+   "firmware/manifest.json",
    "tests/fixtures/link/device/bulk_v32.bin",
    "tests/fixtures/link/device/platform.bin",
    "tests/fixtures/link/device/status_wvalue9.bin",
