@@ -138,8 +138,12 @@ void clipqtSection(SmokeDriver &d) {
     const OutputParams beforeB = paramsOf(st(d), b);
     d.check("clipqt: A and B differ before the paste", !sameParams(seeded, beforeB));
 
-    sc->copyChannel(a);
+    // -- WP CLIPQTFIX -- An older clip (B's own) on the clipboard, then a copy
+    // of A and a paste onto B at once, with no wait between: the paste must
+    // take A's copy, not the clip from before (Matrix's menu, qp6)
+    sc->copyChannel(b);
     d.waitIdle();
+    sc->copyChannel(a);
     d.check("clipqt: the copy holds the core's clip", sc->hasClipboard());
     sc->pasteChannel(b);
     d.waitIdle();
