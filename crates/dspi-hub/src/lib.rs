@@ -27,6 +27,7 @@
 //! | `stats` (private) | `hub.stats` and `hub.rename` | P2HS |
 //! | [`history`] | the shared event history and the watchdog events | P2EV |
 //! | [`api`] | the parameter API, the action executor, hub-side recall (feature `api`) | P2PA |
+//! | [`outbound`] | notifications out: webhooks and push | P2WH |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -54,6 +55,8 @@ pub mod limits;
 pub mod lock;
 // -- WP P2MQC --
 pub mod mqtt;
+// -- WP P2WH -- notifications out: webhooks and push
+pub mod outbound;
 pub mod policy;
 pub mod polls;
 pub mod registry;

@@ -32,6 +32,10 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | built (P2PA) |
 | 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | built (P2PA) |
 | 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | built (P2SS store, registered by P2PA; P2PA recall) |
+| 8 | [Notifications out](#8-notifications-out) | `outbound.*` | `outbound` | P2WH | built |
+| 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | draft |
+| 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | draft |
+| 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | draft |
 | 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | draft |
 | 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | draft |
 | 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | draft |
@@ -400,26 +404,49 @@ the mute passes the lock, the hub never unmutes, and the history records it with
 
 ## 8. Notifications out
 
-*State: draft (P2WH; MQTT publishing is section 13).*
+*State: built (P2WH, `crates/dspi-hub/src/outbound/`; MQTT publishing is section 13).*
 
-Opt-in targets in `outbound.json` (admin); none by default. Deliveries go from a queue of their own, never from a
-device's worker; a dead target backs off (1 s doubling to 5 min) and never holds anything else up.
+Opt-in targets in `outbound.json` (admin); none by default, and with none the hub runs no delivery thread. Deliveries
+go from a queue of their own (64 per target, the oldest dropped and counted past that), never from a device's worker;
+each target has its own sender, so a dead or slow target never holds the bus or another target up. A failed try (no
+connection, a timeout, a status other than 2xx) is tried again after the target's backoff, 1 s doubling to 5 min and
+reset by a success; after 10 tries the delivery is dropped and counted in `dropped`. Queued deliveries are not kept
+across a restart; the targets are.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `outbound.get` | admin | | `targets` (secrets as `set` or `not set`), each with `queued`, `dropped`, `last` (`{at, ok, status?, msg?}`) |
-| `outbound.set` | admin | `targets` (the whole list); a target's `secret: "new"` makes a new one | `targets`, and `secrets` `{<target id>: "<secret>"}` for the new ones: shown in this answer only |
-| `outbound.test` | admin | `target` (its `id`) | `delivered` (bool), `status?`, `msg?` (one delivery, now) |
+| `outbound.get` | admin | | `targets` (secrets as `set` or `not set`), each with `queued`, `dropped`, `last` (`{at, ok, status?, msg?}`, or `null` before the first try) |
+| `outbound.set` | admin | `targets` (the whole list, at most 16) | `targets`, and `secrets` `{<target id>: "<secret>"}` for the new ones: shown in this answer only |
+| `outbound.test` | admin | `target` (its `id`) | `delivered` (bool), `status?`, `msg?` (one delivery of kind `test`, now; recorded as its `last`) |
 
-A target: `id`, `name`, `kind` (`webhook`: a JSON POST; `push`: an ntfy-style plain-text POST of `text`), `url`
-(`http://` only; `https://` refused with a reason, section 2), `enabled`, `kinds` (any of `alarm.raised`,
-`alarm.cleared`, `restart`, `schedule.ran`, `schedule.failed`).
+A target: `id` (1 to 32 of `A-Z a-z 0-9 _ -`; left out, the hub gives `t1`, `t2`, ...), `name` (at most 64
+characters; the id when left out), `kind` (`webhook`: a JSON POST; `push`: an ntfy-style `text/plain` POST of
+`text`), `url` (`http://` only, at most 2048 bytes, no credentials in it; `https://` refused with the reason, section 2
+and OD-P2f), `enabled` (default `true`; a disabled target's queue is emptied), `kinds` (any of `alarm.raised`,
+`alarm.cleared`, `restart`, `schedule.ran`, `schedule.failed`; every kind when left out), and `secret`:
+
+| `secret` in `outbound.set` | Means |
+|---|---|
+| `"new"` | the hub makes one (32 random bytes as 64 hex characters) and shows it in `secrets`, once |
+| `"set"` or left out | keep this id's secret, if it has one (so `outbound.get`'s list can be sent back as it is) |
+| `"not set"` or `null` | no secret: no signature |
+| anything else | `bad_request`: secrets are made by the hub, never typed |
+
+A refusal is `bad_request` with `msg` naming the field and `target` the entry's index; nothing is kept then. A target
+whose `id` stays keeps its queue, counts and backoff.
+
+Which bus events are sent: an alarm raised (`alarm.raised`; a `device_restarted` one is `restart` first) or cleared
+(`alarm.cleared`; an acknowledgement is not sent), and a schedule's run (`schedule.ran`; one with a failed action is
+`schedule.failed` first). A target gets each event once, as the first of its kinds it picked.
 
 A webhook's body: `{"v": 1, "hub": "<id>", "kind": "alarm.raised", "serial": "...", "at": "...", "text": "...",
-"alarm": {...}}` (`serial` and `alarm` where they apply). Headers `X-DSPi-Timestamp: <unix seconds>` and
-`X-DSPi-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`. A receiver checks the signature and that
-the timestamp is recent. The hub reads only the status line of the reply (at most 8 KiB); a 2xx is delivered. Timeouts:
-5 s to connect, 10 s in all.
+"alarm": {...}}` (`serial` and `alarm` where they apply; `alarm` is section 7's object with ISO times). A schedule's
+event carries `"schedule": {"rule", "name", "by"?, "results", "results_total"}` (the first 64 results) instead of
+`alarm`. `text` is at most 1024 characters. Headers `X-DSPi-Timestamp: <unix seconds>` (the time of that try) and, for
+a target with a secret, `X-DSPi-Signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`, keyed with the
+secret's text as shown (its 64 characters as bytes). A push target gets the same headers. A receiver checks the
+signature and that the timestamp is recent. The hub reads only the status line of the reply (at most 8 KiB; no line
+end within them is a failure); a 2xx is delivered. Timeouts: 5 s to connect, 10 s in all.
 
 ## 9. Parameters
 

@@ -214,6 +214,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::history::service(config, setup));
     // -- WP P2PA -- the `snapshot` family (P2SS's store) and the parameter API beside it
     list.extend(crate::api::services(setup));
+    // -- WP P2WH --
+    list.extend(crate::outbound::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
