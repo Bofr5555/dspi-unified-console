@@ -24,6 +24,9 @@ pub mod discovery;
 pub mod frames;
 pub mod messages;
 pub mod socket;
+// -- WP SECPIPE -- native only: no sockets, rustls or ring on the web
+#[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+pub mod tls;
 
 #[cfg(feature = "fake-hub")]
 pub mod fakehub;
