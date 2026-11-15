@@ -461,6 +461,17 @@ final class FirmwareInstaller: ObservableObject {
         flashConfirmation = confirmed
         armed = true
 
+        // -- WP SW-M2 -- (review batch 2 F1) The connected device's record
+        // speaks only for the board its restart brings.  A board already on
+        // the bus in BOOTSEL is another board, or one nobody can ask: it is
+        // judged as in the bootloader (unknown, so the guard asks), and the
+        // connected device is not restarted.
+        if boardOnBus {
+            subject = .inBootloader
+            installIfReady()
+            return true
+        }
+
         let run = self.run
         let reader = boardReader
         let imageProvider = self.imageProvider
@@ -475,6 +486,13 @@ final class FirmwareInstaller: ObservableObject {
             }
             DispatchQueue.main.async {
                 guard let self, self.run == run, self.armed else { return }
+                // A board that reached the bus while the record was read was
+                // not brought by the restart either (F1).
+                if self.boardOnBus {
+                    self.subject = .inBootloader
+                    self.installIfReady()
+                    return
+                }
                 self.subject = subject
                 let proceed = { [weak self] in
                     restart?()
@@ -493,6 +511,14 @@ final class FirmwareInstaller: ObservableObject {
 
     /// Whether an update has been committed to but not yet started.
     var isArmed: Bool { armed }
+
+    /// -- WP SW-M2 -- A board in BOOTSEL is on the bus now (drive mounted or not).
+    private var boardOnBus: Bool {
+        switch state {
+        case .ready, .waitingForVolume, .failed(.multipleBoards): return true
+        default: return false
+        }
+    }
 
     /// -- WP SW-M2 -- The person's answer to the guard's question.  True when
     /// it is the question's words exactly, and the run goes on with them; the

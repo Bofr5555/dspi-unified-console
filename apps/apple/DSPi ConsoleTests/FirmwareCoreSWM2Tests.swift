@@ -10,13 +10,20 @@ final class FirmwareCoreSWM2Tests: XCTestCase {
 
     // MARK: - The fake drive gets the image, through the core
 
+    /// A stock device is connected; its restart brings the board (review
+    /// batch 2 F1: only that board is judged by the device's record).
     func testSWM2AFakeDriveGetsTheImageThroughTheCore() throws {
         let f = try SWM2Fixture(self)
-        let installer = f.installer(board: SWM2Fixture.stockBoard)
+        let installer = f.installer(board: SWM2Fixture.stockBoard, chip: .rp2350)
+        f.locator.boards = []
         installer.beginWatching()
-        XCTAssertEqual(installer.state, .ready(f.board))
+        XCTAssertEqual(installer.state, .waitingForBoard)
 
-        XCTAssertTrue(installer.installWhenReady(confirmed: .firmwareFlash()))
+        var restarts = 0
+        XCTAssertTrue(installer.installWhenReady(confirmed: .firmwareFlash(), restart: { restarts += 1 }))
+        XCTAssertTrue(SWM2Fixture.spin(2) { restarts == 1 }, "the stock device is restarted without a question")
+        f.locator.boards = [f.board]
+        f.locator.emit()
         SWM2Fixture.settle(installer)
         XCTAssertNil(installer.question, "a stock board and an unstamped image: no risk, no question")
         XCTAssertEqual(installer.state, .verified(SWM2Fixture.version))
@@ -66,12 +73,31 @@ final class FirmwareCoreSWM2Tests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: f.written), f.bytes)
     }
 
+    /// Review batch 2 F1 (the reviewer's probe): a board already in BOOTSEL
+    /// when the install is armed is not the connected device's restart, so
+    /// the connected device's record does not speak for it: the guard asks,
+    /// nothing is written, and the connected device is not restarted.
+    func testSWM2ABoardAlreadyInBootselIsNotJudgedByTheConnectedDevice() throws {
+        let f = try SWM2Fixture(self)
+        let installer = f.installer(board: SWM2Fixture.stockBoard, chip: .rp2350)
+        installer.beginWatching()
+        XCTAssertEqual(installer.state, .ready(f.board), "a board is in BOOTSEL before the click")
+        var restarts = 0
+        installer.installWhenReady(confirmed: .firmwareFlash(), restart: { restarts += 1 })
+        SWM2Fixture.settle(installer)
+        XCTAssertNotNil(installer.question, "CG8: a board already in the bootloader is unknown, so the guard asks")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.written.path),
+                       "nothing written to a BOOTSEL board without the words")
+        XCTAssertEqual(restarts, 0, "the BOOTSEL board is the target; the connected device need not restart")
+    }
+
     /// An at-risk board (it needs 1.20 V) and an image that does not say it
     /// runs at that: asked while the device still runs, so the restart waits
     /// for the answer; declined, nothing is written and nothing restarted.
     func testSWM2AnAtRiskBoardIsAskedBeforeTheRestartAndDecliningWritesNothing() throws {
         let f = try SWM2Fixture(self)
         let installer = f.installer(board: SWM2Fixture.atRiskBoard, chip: .rp2350)
+        f.locator.boards = []   // the restart brings the board
         installer.beginWatching()
         var restarts = 0
         installer.installWhenReady(confirmed: .firmwareFlash(), restart: { restarts += 1 })
@@ -90,12 +116,15 @@ final class FirmwareCoreSWM2Tests: XCTestCase {
     func testSWM2AnAtRiskBoardGoesOnWithTheWordsAndRestartsOnce() throws {
         let f = try SWM2Fixture(self)
         let installer = f.installer(board: SWM2Fixture.atRiskBoard, chip: .rp2350)
+        f.locator.boards = []   // the restart brings the board
         installer.beginWatching()
         var restarts = 0
         installer.installWhenReady(confirmed: .firmwareFlash(), restart: { restarts += 1 })
         XCTAssertTrue(SWM2Fixture.spin { installer.question != nil })
         XCTAssertTrue(installer.answer(try XCTUnwrap(installer.question).phrase))
         XCTAssertEqual(restarts, 1)
+        f.locator.boards = [f.board]
+        f.locator.emit()
         SWM2Fixture.settle(installer)
         XCTAssertNil(installer.question, "answered once, not asked again at the write")
         XCTAssertEqual(installer.state, .verified(SWM2Fixture.version))
@@ -213,8 +242,7 @@ final class FirmwareCoreSWM2Tests: XCTestCase {
         let f = try SWM2Fixture(self, chip: .rp2040, bytes: SWM2Fixture.uf2(family: 0xE48B_FF59))
         let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
-        installer.installWhenReady(confirmed: .firmwareFlash())
-        SWM2Fixture.settle(installer)
+        SWM2Fixture.installAnswering(installer)
         guard case .failed(.writeFailed) = installer.state else { return XCTFail("\(installer.state)") }
         XCTAssertFalse(FileManager.default.fileExists(atPath: f.written.path))
     }
@@ -226,8 +254,7 @@ final class FirmwareCoreSWM2Tests: XCTestCase {
         try FileManager.default.removeItem(at: f.volume.appendingPathComponent("INFO_UF2.TXT"))
         let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
-        installer.installWhenReady(confirmed: .firmwareFlash())
-        SWM2Fixture.settle(installer)
+        SWM2Fixture.installAnswering(installer)
         guard case .failed(.writeFailed) = installer.state else { return XCTFail("\(installer.state)") }
         XCTAssertFalse(FileManager.default.fileExists(atPath: f.written.path))
     }
@@ -322,6 +349,17 @@ struct SWM2Fixture {
             RunLoop.current.run(until: Date().addingTimeInterval(0.02))
         }
         return done()
+    }
+
+    /// Arms the install for a board already in BOOTSEL and gives the guard's
+    /// words when it asks (an unknown board), then waits for the outcome.
+    static func installAnswering(_ installer: FirmwareInstaller) {
+        installer.installWhenReady(confirmed: .firmwareFlash())
+        settle(installer)
+        if let q = installer.question {
+            installer.answer(q.phrase)
+            settle(installer)
+        }
     }
 
     /// Until the install ends, or the guard asks.

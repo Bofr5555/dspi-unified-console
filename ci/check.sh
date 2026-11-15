@@ -279,7 +279,7 @@ for s in "${steps[@]}"; do
         fw=("apps/apple/DSPi Console/FirmwareInstaller.swift" "apps/apple/DSPi Console/BootloaderLocator.swift"
             "apps/apple/DSPi Console/FirmwareUpdateView.swift" "apps/apple/DSPi Console/FirmwareInstallUI.swift"
             "apps/apple/DSPi Console/Onboarding/GettingStartedView.swift")
-        stray=$(grep -nE 'FileHandle\((forWritingTo|forUpdating)|createFile\(atPath|\.write\((to|contentsOf):|copyItem\(|moveItem\(|getmntinfo|IOServiceMatching|INFO_UF2' "${fw[@]}" |
+        stray=$(grep -nE 'FileHandle\((forWritingTo|forWritingAtPath|forUpdating)|createFile\(atPath|\.write\((to|toFile|contentsOf):|OutputStream\((url|toFileAtPath):|fopen\(|copyItem\(|moveItem\(|getmntinfo|IOServiceMatching|INFO_UF2' "${fw[@]}" |
           grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
         if [ -n "$stray" ]; then echo "swift: a firmware file writes or finds a drive itself (the core's job):" >&2; echo "$stray" >&2; exit 1; fi
         echo "swift: firmware goes to a drive only through the core's flashConfirmed, in FirmwareInstaller.swift"

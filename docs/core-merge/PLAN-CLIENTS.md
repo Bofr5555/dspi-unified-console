@@ -1232,7 +1232,7 @@ Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use
 
 **SW-M1: USB through the core.** [DONE wp/SWM1: the core's `UsbPipe` under `Core/CoreUsb.swift`; USBNotificationReader removed, USBDevice.swift keeps the device model; the core is the Mac's default, `-CoreTransport NO` opts out] Size 1–1.5. **Owns:** `Core/CoreUsb.swift`; reduces `USBDevice.swift` and `USBNotificationReader.swift`. **Implements:** `nusb`'s `macos_iokit` through CG3's `usb` feature, including hot-plug. **Done when:** a demo run and a mock test pass; the macOS target has no IOKit vendor path left outside the hub. **Deps:** SW4.
 
-**SW-M2: Firmware through the core.** [TODO] Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8, CG24.
+**SW-M2: Firmware through the core.** [IN REVIEW wp/SWM2] Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8, CG24.
 
 **SW-M3: Hub over `dspi-hub`.** [TODO] Size 1–2. **Owns:** a UniFFI wrapper for the hub, `NetworkingSettingsView.swift` re-pointed; Swift hub files removed at the end. **Owner decided: "once it comes into the other versions it should come in here as well".** It does not block R-Mac. The Swift hub stays as the reference harness until HB7 passes, then retires. **Done when:** HB7's Swift client passes against the wrapper from the Mac app. **Deps:** HB7, SW-M1.
 

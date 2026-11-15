@@ -160,7 +160,7 @@ mod watch {
     pub(super) fn wait(seen: u64, timeout: Duration) -> u64 {
         start();
         let Some(Some(shared)) = WATCH.get() else {
-            std::thread::sleep(timeout);
+            dspi_transport::clock::sleep(timeout); // -- WP SW-M2 -- the time seam (wasm-core)
             return seen;
         };
         let n = shared
