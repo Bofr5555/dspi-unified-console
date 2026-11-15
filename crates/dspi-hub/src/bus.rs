@@ -1,0 +1,386 @@
+//! The hub's internal event bus (WP P2SV, PLAN-P2 section 2): what the hub sees, as
+//! typed messages, for its services.
+//!
+//! A publisher never waits. Each subscriber has its own bounded queue; when it is full
+//! the oldest message goes and the subscriber's drop count rises, which it reads with
+//! [`Subscription::dropped`] (and may record, as an `events_dropped` history entry). So
+//! a slow service costs only itself: a device's reader or the relay publishing here is
+//! never delayed by it.
+//!
+//! Lock order: the subscriber list, then one subscriber's queue, both leaves. Nothing
+//! else is locked or called under either, so publishing is safe from any hub thread
+//! with any hub lock held or not.
+//!
+//! The message shapes are fixed here so wave-B services build against them, not
+//! against each other: a service that produces `Facts` or `Health` publishes them; one
+//! that consumes them subscribes.
+
+use std::collections::VecDeque;
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak};
+use std::time::{Duration, Instant};
+
+use dspi_proto::ext::{IdentifyStatus, ResetInfo};
+use dspi_session::events::EventRecord;
+use serde::Serialize;
+
+use crate::session::SessionId;
+use crate::system::alarms::AlarmState;
+
+/// Messages a subscriber holds unless it asks for another capacity.
+pub const DEFAULT_CAPACITY: usize = 256;
+/// The largest queue a subscriber may ask for.
+pub const MAX_CAPACITY: usize = 4096;
+
+/// One target's outcome in a multi-target result (`results: [{serial, ok, code?, msg?}]`,
+/// `docs/integrator/hub-api.md`), which phase 3 reuses.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TargetResult {
+    /// The device.
+    pub serial: String,
+    /// Whether the action went through on it.
+    pub ok: bool,
+    /// The error code when it did not (`offline`, `locked`, `limit_exceeded`, ...).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// A readable reason.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub msg: Option<String>,
+}
+
+/// What the hub tells its services. Cheap to share: a subscriber gets an `Arc` of it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BusMessage {
+    /// A device came online (attached, new or back within its grace).
+    DeviceOnline {
+        /// Its serial.
+        serial: String,
+        /// Its handle.
+        handle: u8,
+    },
+    /// A device went offline; it keeps its handle for the grace.
+    DeviceOffline {
+        /// Its serial.
+        serial: String,
+        /// Its handle.
+        handle: u8,
+    },
+    /// A device's grace ended: the hub forgot its handle.
+    DeviceRemoved {
+        /// Its serial.
+        serial: String,
+        /// The handle it had.
+        handle: u8,
+    },
+    /// A device notification, as relayed (every v2 packet that is not idle).
+    Notification {
+        /// The device.
+        serial: String,
+        /// The session the change is attributed to (`origin`; 0 for none).
+        session: SessionId,
+        /// That session's label ([`crate::service::SessionLabel::by`]), if it has one.
+        by: Option<String>,
+        /// The verbatim v2 packet.
+        packet: Arc<[u8]>,
+    },
+    /// What the hub learnt of a device on attach or later (WP P2HP).
+    Facts {
+        /// The device.
+        serial: String,
+        /// `EXT_IDENTIFY` IN, where the firmware lists it.
+        identify: Option<IdentifyStatus>,
+        /// `EXT_RESET_INFO` IN, where the firmware lists it.
+        reset_info: Option<ResetInfo>,
+        /// The firmware version.
+        fw: String,
+    },
+    /// One health reading of a device (WP P2HP).
+    Health {
+        /// The device.
+        serial: String,
+        /// CPU load, percent, where read.
+        cpu: Option<u8>,
+        /// The sticky clip latch, one bit per channel ("clipped since cleared").
+        clip_mask: u32,
+        /// Temperature, °C, where read.
+        temp_c: Option<f32>,
+        /// Uptime, seconds, where read.
+        uptime_s: Option<u32>,
+        /// The firmware's hang count, where read.
+        hang_count: Option<u8>,
+    },
+    /// A device stopped answering while attached.
+    Unresponsive {
+        /// The device.
+        serial: String,
+        /// Since when, Unix seconds.
+        since: u64,
+    },
+    /// An alarm changed (WP P2AL).
+    Alarm {
+        /// Its code (`device_offline`, `clip`, ...).
+        code: String,
+        /// What it is about (a serial, a rule).
+        subject: String,
+        /// Raised, acknowledged or cleared.
+        state: AlarmState,
+        /// For people.
+        text: String,
+        /// When, Unix seconds.
+        at: u64,
+    },
+    /// A schedule rule ran (WP P2SC).
+    ScheduleRan {
+        /// The rule.
+        id: String,
+        /// Per target.
+        results: Vec<TargetResult>,
+    },
+    /// A history record was written (WP P2EV).
+    Event {
+        /// The device.
+        serial: String,
+        /// The record as stored.
+        record: EventRecord,
+    },
+}
+
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    // Every section below leaves its data whole before anything that could panic.
+    m.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+#[derive(Debug, Default)]
+struct Queue {
+    messages: VecDeque<Arc<BusMessage>>,
+    dropped: u64,
+}
+
+#[derive(Debug)]
+struct Subscriber {
+    name: String,
+    capacity: usize,
+    queue: Mutex<Queue>,
+    ready: Condvar,
+}
+
+impl Subscriber {
+    /// Never blocks: a full queue loses its oldest message.
+    fn push(&self, message: &Arc<BusMessage>) {
+        let mut q = lock(&self.queue);
+        while q.messages.len() >= self.capacity {
+            q.messages.pop_front();
+            q.dropped = q.dropped.saturating_add(1);
+        }
+        q.messages.push_back(Arc::clone(message));
+        drop(q);
+        self.ready.notify_one();
+    }
+}
+
+/// The bus. One per hub ([`crate::HubHandle::bus`]).
+#[derive(Debug, Default)]
+pub struct Bus {
+    subscribers: Mutex<Vec<Weak<Subscriber>>>,
+}
+
+impl Bus {
+    /// A new bus with nobody listening.
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    /// Listen from now on, holding up to `capacity` messages (clamped to
+    /// 1..=[`MAX_CAPACITY`]). Dropping the [`Subscription`] stops it.
+    pub fn subscribe(&self, name: &str, capacity: usize) -> Subscription {
+        let sub = Arc::new(Subscriber {
+            name: name.to_owned(),
+            capacity: capacity.clamp(1, MAX_CAPACITY),
+            queue: Mutex::new(Queue::default()),
+            ready: Condvar::new(),
+        });
+        let mut list = lock(&self.subscribers);
+        list.retain(|s| s.strong_count() > 0);
+        list.push(Arc::downgrade(&sub));
+        Subscription { sub }
+    }
+
+    /// Whether anyone listens: a publisher may skip building a message nobody reads.
+    pub fn has_subscribers(&self) -> bool {
+        lock(&self.subscribers).iter().any(|s| s.strong_count() > 0)
+    }
+
+    /// Give `message` to every subscriber. Never blocks.
+    pub fn publish(&self, message: BusMessage) {
+        let live: Vec<Arc<Subscriber>> = {
+            let mut list = lock(&self.subscribers);
+            list.retain(|s| s.strong_count() > 0);
+            list.iter().filter_map(Weak::upgrade).collect()
+        };
+        if live.is_empty() {
+            return;
+        }
+        let message = Arc::new(message);
+        for s in live {
+            s.push(&message);
+        }
+    }
+}
+
+/// One subscriber's end of the bus. Read it on the service's own thread or timer.
+#[derive(Debug)]
+pub struct Subscription {
+    sub: Arc<Subscriber>,
+}
+
+impl Subscription {
+    /// The name it was opened with.
+    pub fn name(&self) -> &str {
+        &self.sub.name
+    }
+
+    /// The next message, if one is queued.
+    pub fn try_recv(&self) -> Option<Arc<BusMessage>> {
+        lock(&self.sub.queue).messages.pop_front()
+    }
+
+    /// The next message, waiting up to `timeout` (real time) for one. Blocks: only
+    /// on the subscriber's own thread.
+    pub fn recv_timeout(&self, timeout: Duration) -> Option<Arc<BusMessage>> {
+        let deadline = Instant::now().checked_add(timeout);
+        let mut q = lock(&self.sub.queue);
+        loop {
+            if let Some(m) = q.messages.pop_front() {
+                return Some(m);
+            }
+            let left = deadline?.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return None;
+            }
+            q = self
+                .sub
+                .ready
+                .wait_timeout(q, left)
+                .map(|(q, _)| q)
+                .unwrap_or_else(|p| p.into_inner().0);
+        }
+    }
+
+    /// Everything queued, oldest first.
+    pub fn drain(&self) -> Vec<Arc<BusMessage>> {
+        lock(&self.sub.queue).messages.drain(..).collect()
+    }
+
+    /// How many messages are queued.
+    pub fn len(&self) -> usize {
+        lock(&self.sub.queue).messages.len()
+    }
+
+    /// Whether nothing is queued.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// How many messages this subscriber has lost to a full queue, since it opened.
+    pub fn dropped(&self) -> u64 {
+        lock(&self.sub.queue).dropped
+    }
+
+    /// The drop count, reset to 0: for a service that records each loss once.
+    pub fn take_dropped(&self) -> u64 {
+        std::mem::take(&mut lock(&self.sub.queue).dropped)
+    }
+}
+
+#[cfg(test)]
+mod tests_wp_p2sv {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    use super::*;
+
+    fn online(n: u8) -> BusMessage {
+        BusMessage::DeviceOnline {
+            serial: format!("S{n}"),
+            handle: n,
+        }
+    }
+
+    #[test]
+    fn wp_p2sv_every_subscriber_gets_every_message_in_order() {
+        let bus = Bus::new();
+        let a = bus.subscribe("a", 8);
+        let b = bus.subscribe("b", 8);
+        bus.publish(online(0));
+        bus.publish(online(1));
+        for s in [&a, &b] {
+            let got: Vec<_> = s.drain().iter().map(|m| (**m).clone()).collect();
+            assert_eq!(got, vec![online(0), online(1)], "{}", s.name());
+            assert_eq!(s.dropped(), 0);
+        }
+    }
+
+    #[test]
+    fn wp_p2sv_a_full_queue_drops_its_oldest_and_counts() {
+        let bus = Bus::new();
+        let slow = bus.subscribe("slow", 3);
+        let fast = bus.subscribe("fast", 64);
+        for n in 0..10 {
+            bus.publish(online(n));
+        }
+        assert_eq!(slow.dropped(), 7);
+        let kept: Vec<_> = slow.drain().iter().map(|m| (**m).clone()).collect();
+        assert_eq!(
+            kept,
+            vec![online(7), online(8), online(9)],
+            "the newest stay"
+        );
+        assert_eq!(fast.len(), 10, "another subscriber lost nothing");
+        assert_eq!(fast.dropped(), 0);
+        assert_eq!(slow.take_dropped(), 7);
+        assert_eq!(slow.dropped(), 0);
+    }
+
+    #[test]
+    fn wp_p2sv_a_dropped_subscription_leaves_the_bus() {
+        let bus = Bus::new();
+        assert!(!bus.has_subscribers());
+        let s = bus.subscribe("s", 0);
+        assert!(bus.has_subscribers());
+        bus.publish(online(1));
+        bus.publish(online(2));
+        assert_eq!(s.len(), 1, "a capacity of 0 is 1");
+        drop(s);
+        assert!(!bus.has_subscribers());
+        bus.publish(online(3));
+        assert!(bus.subscribers.lock().unwrap().is_empty(), "pruned");
+    }
+
+    #[test]
+    fn wp_p2sv_recv_timeout_wakes_on_a_publish() {
+        let bus = Bus::new();
+        let s = bus.subscribe("s", 4);
+        assert!(s.recv_timeout(Duration::from_millis(10)).is_none());
+        let publisher = {
+            let bus = Arc::clone(&bus);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(20));
+                bus.publish(online(5));
+            })
+        };
+        let got = s.recv_timeout(Duration::from_secs(10)).unwrap();
+        assert_eq!(*got, online(5));
+        publisher.join().unwrap();
+    }
+
+    #[test]
+    fn wp_p2sv_a_target_result_has_the_documented_shape() {
+        let r = TargetResult {
+            serial: "S1".into(),
+            ok: false,
+            code: Some("offline".into()),
+            msg: None,
+        };
+        assert_eq!(
+            serde_json::to_value(&r).unwrap(),
+            serde_json::json!({"serial": "S1", "ok": false, "code": "offline"})
+        );
+    }
+}
