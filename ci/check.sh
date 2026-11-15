@@ -255,6 +255,19 @@ for s in "${steps[@]}"; do
           grep -vE '/DSPi Console/DSPi_ConsoleApp\.swift$|/DSPi ConsoleTests/' || true)
         if [ -n "$stray" ]; then echo "swift: the Swift MIDI engine is built outside the opt-out:" >&2; echo "$stray" >&2; exit 1; fi
         echo "swift: the core's MIDI handle is only in MIDI/CoreMidiPipe.swift; the Swift MIDI engine only in the opt-out"
+        # -- WP SW6 -- the core's DSPi Link session is driven only by
+        # Core/CoreLink.swift (and its device bind by CoreBackedTransport); Swift's
+        # own Link client (the opt-out) is built only by AppState's opt-out
+        # branches, NetworkTransport only by the composite's opt-out factory, and
+        # a raw WebSocket only by that client; tests excepted
+        stray=$(grep -rlE '\.(linkConnect|linkPair|linkSelectDevice|linkClose|linkRetryNow|linkSetUrl|setLinkListener)\(|\bLinkListener\b' --include='*.swift' apps/apple |
+          grep -vE '/Core/Generated/|/Core/CoreLink\.swift$|/Core/CoreBackedTransport\.swift$|/DSPi ConsoleTests/|/DSPi Console iOSUITests/' || true)
+        if [ -n "$stray" ]; then echo "swift: the core's Link session is driven outside Core/CoreLink.swift:" >&2; echo "$stray" >&2; exit 1; fi
+        stray=$( { grep -rlE '\bLinkClient\(\)' --include='*.swift' apps/apple | grep -vE '/DSPi Console/DSPi_ConsoleApp\.swift$|/DSPi ConsoleTests/|/DSPi Console iOSUITests/'
+                   grep -rlE '\bNetworkTransport\(' --include='*.swift' apps/apple | grep -vE '/Link/CompositeTransport\.swift$|/DSPi ConsoleTests/|/DSPi Console iOSUITests/'
+                   grep -rlE 'webSocketTask\(' --include='*.swift' apps/apple | grep -vE '/Link/LinkClient\.swift$|/DSPi ConsoleTests/|/DSPi Console iOSUITests/'; } || true)
+        if [ -n "$stray" ]; then echo "swift: Swift's own Link client is built outside the opt-out:" >&2; echo "$stray" >&2; exit 1; fi
+        echo "swift: the core's Link session is only in Core/CoreLink.swift; Swift's Link client only in the opt-out"
       fi ;;
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)

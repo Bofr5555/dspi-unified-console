@@ -117,13 +117,19 @@ class AppState: ObservableObject {
         }
         else if AppState.usesDemoTransport { local = demoTransport }
         else { local = localWithMIDIFallback }   // -- WP SWF2 --
-        let composite = CompositeTransport(
-            // -- WP P1SW1 -- files opened offline first: a member that picks
-            // its own device (a DSPi plugged in) never closes an open file
-            local: LocalTransportSet([documentTransport, local]),
-            tokens: LinkTokenStore(),
-            clientName: Host.current().localizedName ?? "uConsole for DSPi",
-            makeClient: { LinkClient() })
+        // -- WP P1SW1 -- files opened offline first: a member that picks
+        // its own device (a DSPi plugged in) never closes an open file
+        let members = LocalTransportSet([documentTransport, local])
+        let tokens = LinkTokenStore()
+        let clientName = Host.current().localizedName ?? "uConsole for DSPi"
+        // -- WP SW6 -- DSPi Link through the core by default (CoreLink.swift);
+        // `-CoreTransport NO` keeps Swift's own client.
+        let composite = AppState.usesCoreLink
+            ? CompositeTransport(local: members, tokens: tokens, makeRemote: { hub in
+                CoreLink.transport(for: hub, tokens: tokens, clientName: clientName)
+            })
+            : CompositeTransport(local: members, tokens: tokens, clientName: clientName,
+                                 makeClient: { LinkClient() })
         composite.pairingPrompt = { hubName in PairingPrompt.ask(hubName: hubName) }
         return composite
     }()
@@ -178,11 +184,16 @@ class AppState: ObservableObject {
     lazy var transport: CompositeTransport = {
         // A hub that asks for a PIN gets a sheet (IOSLinkPairing.swift); the
         // Mac's NSAlert prompt blocks the main thread, which iOS cannot do.
-        let composite = CompositeTransport(
-            local: localTransports,
-            tokens: LinkTokenStore(),
-            clientName: UIDevice.current.name,
-            makeClient: { LinkClient() })
+        let tokens = LinkTokenStore()
+        let clientName = UIDevice.current.name
+        // -- WP SW6 -- DSPi Link through the core by default (CoreLink.swift);
+        // `-CoreTransport NO` keeps Swift's own client.
+        let composite = AppState.usesCoreLink
+            ? CompositeTransport(local: localTransports, tokens: tokens, makeRemote: { hub in
+                CoreLink.transport(for: hub, tokens: tokens, clientName: clientName)
+            })
+            : CompositeTransport(local: localTransports, tokens: tokens, clientName: clientName,
+                                 makeClient: { LinkClient() })
         composite.asyncPairingPrompt = { hubName, completion in
             IOSLinkPairing.ask(hubName: hubName, completion: completion)
         }
@@ -221,6 +232,12 @@ class AppState: ObservableObject {
     static var usesLegacyMIDI: Bool {
         !usesCoreTransport
     }
+
+    /// -- WP SW6 -- A device on a DSPi Link hub goes through the core's Link
+    /// session (Core/CoreLink.swift) on both targets, unless opted out with
+    /// the same flag (`-CoreTransport NO` / DSPI_CORE_TRANSPORT=0), which
+    /// keeps Swift's `LinkClient` and `NetworkTransport`.
+    static var usesCoreLink: Bool { usesCoreTransport }
 
     /// -- WP SW5 -- Back in the foreground: the DSPi on USB MIDI re-checks
     /// that it answers, then everything is re-read (or it reconnects).

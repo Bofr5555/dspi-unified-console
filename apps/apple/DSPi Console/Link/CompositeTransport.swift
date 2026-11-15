@@ -20,9 +20,10 @@ final class CompositeTransport: DeviceTransport {
     /// surface is used, so either fits.
     private let local: any DeviceTransport
     private let tokens: LinkTokenStore
-    private let clientName: String
-    /// Builds a fresh client connection; injected so tests use a fake.
-    private let makeClient: () -> LinkClientProtocol
+    /// -- WP SW6 -- Builds a hub's transport on its first use: the core's
+    /// (`CoreLink`, the default) or Swift's `NetworkTransport` (the opt-out,
+    /// and the tests that drive it through a fake client).
+    private let makeRemote: (DiscoveredHub) -> any RemoteHubTransport
     /// Asks the user for a hub's pairing code.  nil means pairing cannot be
     /// offered (headless), and connecting to a pin hub without a token fails.
     var pairingPrompt: ((String) -> String?)?
@@ -32,7 +33,7 @@ final class CompositeTransport: DeviceTransport {
     /// the browser can look the hub's address up again.
     var hubUnreachable: ((String) -> Void)?
 
-    private var remotes: [String: NetworkTransport] = [:]      // by hub id
+    private var remotes: [String: any RemoteHubTransport] = [:]      // by hub id   -- WP SW6 --
     private var knownHubs: [DiscoveredHub] = []
     private var active: any DeviceTransport
     private let stateLock = NSLock()
@@ -65,12 +66,22 @@ final class CompositeTransport: DeviceTransport {
     /// USBDevice opens, as it would have with no hub on the network.
     private var remoteWasAutoSelected = false
 
-    init(local: any DeviceTransport, tokens: LinkTokenStore, clientName: String,
-         makeClient: @escaping () -> LinkClientProtocol) {
+    /// Swift's own client (`NetworkTransport` over `makeClient()`'s client).
+    convenience init(local: any DeviceTransport, tokens: LinkTokenStore, clientName: String,
+                     makeClient: @escaping () -> LinkClientProtocol) {
+        self.init(local: local, tokens: tokens, makeRemote: { hub in
+            NetworkTransport(client: makeClient(), hubID: hub.id, hubName: hub.name,
+                             tokens: tokens, clientName: clientName)
+        })
+    }
+
+    /// -- WP SW6 -- Each hub's transport from `makeRemote` (the core's:
+    /// `CoreLink.transport(for:tokens:clientName:)`).
+    init(local: any DeviceTransport, tokens: LinkTokenStore,
+         makeRemote: @escaping (DiscoveredHub) -> any RemoteHubTransport) {
         self.local = local
         self.tokens = tokens
-        self.clientName = clientName
-        self.makeClient = makeClient
+        self.makeRemote = makeRemote
         self.active = local
         attach(to: local)
         localDevicesCancellable = local.availableDevicesPublisher
@@ -117,23 +128,23 @@ final class CompositeTransport: DeviceTransport {
         stateLock.unlock()
         for hub in hubs {
             guard let remote = existing[hub.id], let url = hub.webSocketURL else { continue }
+            remote.hubUpdated(hub)   // -- WP SW6 -- a typed address's id, once its /info named it
             remote.hubSeen(at: url, reappeared: !previous.contains(hub.id))
         }
         pruneRemotes()
         recomputeDevices()
     }
 
-    private func remote(for hubID: String) -> NetworkTransport? {
+    private func remote(for hubID: String) -> (any RemoteHubTransport)? {
         stateLock.lock(); defer { stateLock.unlock() }
         return remotes[hubID]
     }
 
     /// The transport for a hub, connecting on first use.
-    private func remoteConnecting(to hub: DiscoveredHub) -> NetworkTransport? {
+    private func remoteConnecting(to hub: DiscoveredHub) -> (any RemoteHubTransport)? {
         if let existing = remote(for: hub.id) { return existing }
         guard let url = hub.webSocketURL else { return nil }
-        let transport = NetworkTransport(client: makeClient(), hubID: hub.id, hubName: hub.name,
-                                         tokens: tokens, clientName: clientName)
+        let transport = makeRemote(hub)   // -- WP SW6 --
         transport.pairingPrompt = pairingPrompt
         transport.asyncPairingPrompt = asyncPairingPrompt
         let hubID = hub.id
@@ -175,7 +186,7 @@ final class CompositeTransport: DeviceTransport {
         let now = Date()
         stateLock.lock()
         let hubIDs = Set(knownHubs.map { $0.id })
-        var gone: [String: NetworkTransport] = [:]
+        var gone: [String: any RemoteHubTransport] = [:]
         for (id, remote) in remotes {
             guard !hubIDs.contains(id), remote.isSessionDown else { pruneSince[id] = nil; continue }
             let since = pruneSince[id] ?? now
@@ -317,7 +328,7 @@ final class CompositeTransport: DeviceTransport {
         }
         // A hub with a transport already (its session may be up while Bonjour
         // has lost sight of it) is used as is.
-        let transport: NetworkTransport
+        let transport: any RemoteHubTransport
         if let existing = remote(for: ref.hubID) {
             transport = existing
         } else {

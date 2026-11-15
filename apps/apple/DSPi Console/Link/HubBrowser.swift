@@ -34,6 +34,10 @@ struct DiscoveredHub: Identifiable, Equatable {
     /// A typed address that turned out to be this Console's own hub.  Kept
     /// in the list so the user can remove it, never offered as a device source.
     var isSelf = false
+    /// -- WP SW6 -- A typed address's hub id as its `/info` named it (nil
+    /// until it answers; a browsed hub's `id` is its own): the core's
+    /// `expected_hub_id`, so a token goes only to that hub.
+    var infoHubID: String? = nil
 
     private var isIPv6Literal: Bool { host.contains(":") }
 
@@ -304,6 +308,7 @@ final class HubBrowser: ObservableObject {
                     if let name = info.hub.name, !name.isEmpty { self.manual[index].name = name }
                     if let kind = info.hub.kind { self.manual[index].kind = kind }
                     if let auth = info.auth { self.manual[index].authMode = auth }
+                    self.manual[index].infoHubID = info.hub.id.lowercased()   // -- WP SW6 --
                     self.manual[index].serials = serials
                     self.manual[index].deviceCount = serials.count
                 }
