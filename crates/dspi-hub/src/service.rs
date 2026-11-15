@@ -155,6 +155,10 @@ pub struct ServiceConfig {
     // -- WP P2ID --
     /// `device.identify` (`identify.rs`).
     pub identify: bool,
+    // -- WP P2HS --
+    /// `hub.stats` and `hub.rename` (spec 7.9). On by default: they are DSPi Link's own
+    /// messages, not an optional family. Off, both answer `unsupported`.
+    pub stats: bool,
 }
 
 impl Default for ServiceConfig {
@@ -168,6 +172,8 @@ impl Default for ServiceConfig {
             inventory: false,
             // -- WP P2ID --
             identify: false,
+            // -- WP P2HS --
+            stats: true,
         }
     }
 }
@@ -197,6 +203,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::inventory::service(config, setup));
     // -- WP P2ID --
     list.extend(crate::identify::service(config, setup));
+    // -- WP P2HS --
+    list.extend(crate::stats::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
@@ -353,6 +361,12 @@ impl Services {
             data_dir,
             auth,
         }
+    }
+
+    // -- WP P2HS --
+    /// The hub's store, for `hub.rename`. `None` for an in-process hub.
+    pub(crate) fn auth(&self) -> Option<&Arc<crate::auth::AuthStore>> {
+        self.auth.as_ref()
     }
 
     pub(crate) fn set_wake(&self, tx: Option<Sender<()>>) {

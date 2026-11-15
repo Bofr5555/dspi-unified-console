@@ -246,11 +246,14 @@ impl Outbox {
 
     /// Queue a notification. When the queue is full the oldest notification goes,
     /// and that device is owed a RESYNC once the queue has drained.
-    pub fn push_notify(&self, handle: u8, origin: SessionId, packet: Arc<[u8]>) {
+    ///
+    /// -- WP P2HS -- Returns the handle whose notification was dropped, if one was.
+    pub fn push_notify(&self, handle: u8, origin: SessionId, packet: Arc<[u8]>) -> Option<u8> {
         let mut s = self.lock();
         if s.closed {
-            return;
+            return None;
         }
+        let mut dropped = None;
         let seq = s.next_seq;
         s.next_seq = seq.wrapping_add(1);
         if s.notifies >= self.notify_capacity {
@@ -263,6 +266,7 @@ impl Outbox {
             {
                 s.behind.insert(lost);
                 s.notifies = s.notifies.saturating_sub(1);
+                dropped = Some(lost);
             }
         }
         s.queue.push_back(Outbound::Notify {
@@ -274,6 +278,7 @@ impl Outbox {
         s.notifies = s.notifies.saturating_add(1);
         drop(s);
         self.ready.notify_all();
+        dropped
     }
 
     /// Queue a poll result, replacing one still queued for the same slot.
