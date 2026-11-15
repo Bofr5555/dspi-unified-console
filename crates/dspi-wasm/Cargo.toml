@@ -23,6 +23,8 @@ dspi-proto = { path = "../dspi-proto" }
 # -- WP WB4b -- `link`: DSPi Link sessions over the browser's WebSocket (src/link.rs)
 dspi-core = { path = "../dspi-core", default-features = false, features = ["link"] }
 dspi-link = { path = "../dspi-link" }
+# -- WP WB6H -- the Tube Modeller's type and rectifier tables (`dspi_session::tube`), already in the graph through dspi-core
+dspi-session = { path = "../dspi-session", default-features = false }
 dspi-transport = { path = "../dspi-transport", default-features = false }
 serde.workspace = true
 serde_json.workspace = true

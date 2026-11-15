@@ -52,6 +52,8 @@ pub mod calls;
 pub mod curves;
 // -- WP WB8 --
 pub mod diag;
+// -- WP WB6H -- the effect screens' feature gates and choice words
+pub mod effects;
 pub mod guard;
 // -- WP P1SA --
 pub mod guarded;

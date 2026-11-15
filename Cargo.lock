@@ -777,6 +777,7 @@ dependencies = [
  "dspi-core",
  "dspi-link",
  "dspi-proto",
+ "dspi-session",
  "dspi-transport",
  "serde",
  "serde_json",
