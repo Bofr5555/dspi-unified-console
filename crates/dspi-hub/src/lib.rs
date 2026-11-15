@@ -88,6 +88,8 @@ pub mod identify;
 pub mod history;
 // -- WP P2PA -- the snapshot family always; the parameter API with feature `api`
 pub mod api;
+// -- WP P2SC -- schedules (they run with feature `api`)
+pub mod schedule;
 
 pub use auth::AccessMode;
 pub use error::HubError;
@@ -119,3 +121,5 @@ pub use service::{DeviceEvent, HubService, ServiceConfig, SessionLabel};
 pub use health::HealthConfig;
 // -- WP P2EV --
 pub use history::HistoryConfig;
+// -- WP P2SC --
+pub use schedule::ScheduleConfig;

@@ -162,6 +162,10 @@ pub struct ServiceConfig {
     // -- WP P2EV --
     /// The shared event history (`events/`, `event.*`); off when `None`.
     pub history: Option<crate::history::HistoryConfig>,
+    // -- WP P2SC --
+    /// Schedules (`schedule.*`, `<data>/schedule.json`); off when `None`. They run
+    /// through the parameter API's executor: feature `api`.
+    pub schedule: Option<crate::schedule::ScheduleConfig>,
 }
 
 impl Default for ServiceConfig {
@@ -179,6 +183,8 @@ impl Default for ServiceConfig {
             stats: true,
             // -- WP P2EV --
             history: None,
+            // -- WP P2SC --
+            schedule: None,
         }
     }
 }
@@ -216,6 +222,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::api::services(setup));
     // -- WP P2WH --
     list.extend(crate::outbound::service(config, setup));
+    // -- WP P2SC --
+    list.extend(crate::schedule::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
