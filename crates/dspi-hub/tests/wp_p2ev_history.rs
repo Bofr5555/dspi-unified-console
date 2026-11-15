@@ -30,7 +30,7 @@ use dspi_link::frames::CmdRequest;
 use dspi_link::status;
 use dspi_proto::ext::{Chip, ResetInfo, ResetReason};
 use dspi_proto::generated::opcodes as op;
-use dspi_session::events::{EventLog, parse_line};
+use dspi_session::events::{EventKind, EventLog, parse_line};
 use dspi_transport::FakeDevice;
 use serde_json::{Value, json};
 use tungstenite::Message;
@@ -51,7 +51,16 @@ fn scratch(name: &str) -> PathBuf {
 }
 
 fn start(dir: &Path, access: AccessMode, history: HistoryConfig) -> Hub {
-    let clock: Arc<dyn HubClock> = Arc::new(TestClock::new());
+    start_with(dir, access, history, Arc::new(TestClock::new()))
+}
+
+fn start_with(
+    dir: &Path,
+    access: AccessMode,
+    history: HistoryConfig,
+    clock: Arc<TestClock>,
+) -> Hub {
+    let clock: Arc<dyn HubClock> = clock;
     Hub::start(HubConfig {
         scan_interval: Duration::from_millis(10),
         initial_scan: false,
@@ -429,7 +438,8 @@ fn wp_p2ev_a_watchdog_reset_is_recorded_and_list_and_export_page_by_id() {
 fn wp_p2ev_a_flooded_history_writes_events_dropped() {
     let dir = scratch("flood");
     let hold = Arc::new(AtomicBool::new(false));
-    let hub = start(
+    let clock = Arc::new(TestClock::new());
+    let hub = start_with(
         &dir,
         AccessMode::Open,
         HistoryConfig {
@@ -437,6 +447,7 @@ fn wp_p2ev_a_flooded_history_writes_events_dropped() {
             test_hold: Some(Arc::clone(&hold)),
             ..HistoryConfig::default()
         },
+        Arc::clone(&clock),
     );
     let h = hub.handle();
     hub.attach(Box::new(FakeDevice::demo().with_serial(SERIAL)), 0)
@@ -454,7 +465,17 @@ fn wp_p2ev_a_flooded_history_writes_events_dropped() {
         });
     }
     hold.store(false, Ordering::SeqCst);
-    ws.wait_record(SERIAL, "events_dropped", |r| r["kind"] == "events_dropped");
+    // The episode ends after a second with no loss (on the hub's clock).
+    let start = Instant::now();
+    while !ws
+        .records(SERIAL)
+        .iter()
+        .any(|r| r["kind"] == "events_dropped")
+    {
+        assert!(start.elapsed() < WAIT, "no events_dropped");
+        std::thread::sleep(Duration::from_millis(100));
+        clock.advance(Duration::from_millis(500));
+    }
     // Every message is either written or counted lost. (Counted lost can also be the
     // history's own `Event` echoes, which share its queue: at most once each.)
     let start = Instant::now();
@@ -488,4 +509,80 @@ fn wp_p2ev_a_flooded_history_writes_events_dropped() {
     );
     drop(ws);
     hub.stop();
+}
+
+/// WP P2EVFIX F1, the review's probe: a sustained flood (the publisher outpaces the
+/// history for 0.4 s; the probe's 1.5 s overflows the device's 2 MiB log) is one loss episode, so one `events_dropped` record (a few at most,
+/// should the history catch up for a moment in the middle), and every message is either
+/// written or counted.
+#[test]
+fn wp_p2evfix_a_sustained_flood_is_one_events_dropped_record() {
+    let dir = scratch("sustained");
+    let hub = Hub::start(HubConfig {
+        data_dir: Some(dir.clone()),
+        initial_scan: false,
+        services: ServiceConfig {
+            clock: Arc::new(dspi_hub::SystemClock),
+            history: Some(HistoryConfig {
+                bus_capacity: 4,
+                ..HistoryConfig::default()
+            }),
+            ..ServiceConfig::default()
+        },
+        ..HubConfig::in_process("P2EVFIX hub")
+    })
+    .unwrap();
+    let h = hub.handle();
+    hub.attach(Box::new(FakeDevice::demo().with_serial(SERIAL)), 0)
+        .unwrap();
+    let records = |dir: &Path| -> Vec<dspi_session::events::EventRecord> {
+        EventLog::export_in(&dir.join("events"), SERIAL)
+            .lines()
+            .filter_map(parse_line)
+            .collect()
+    };
+    let start = Instant::now();
+    while !records(&dir).iter().any(|r| r.kind == EventKind::Connected) {
+        assert!(start.elapsed() < WAIT, "no connected record");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let start = Instant::now();
+    let mut sent = 0u64;
+    // Short enough that every record fits the log as `export_in` reads it.
+    while start.elapsed() < Duration::from_millis(400) {
+        h.bus().publish(BusMessage::Unresponsive {
+            serial: SERIAL.into(),
+            since: sent,
+        });
+        sent += 1;
+        let spin = Instant::now();
+        while spin.elapsed() < Duration::from_micros(50) {}
+    }
+    std::thread::sleep(Duration::from_secs(2));
+    hub.stop();
+    let rs = records(&dir);
+    let kept = rs
+        .iter()
+        .filter(|r| r.kind == EventKind::Unresponsive)
+        .count() as u64;
+    let dropped: Vec<_> = rs
+        .iter()
+        .filter(|r| r.kind == EventKind::EventsDropped)
+        .collect();
+    let lost: u64 = dropped.iter().map(|r| u64::from(r.count)).sum();
+    eprintln!(
+        "P2EVFIX flood: sent {sent}; kept {kept}; events_dropped records {}; lost {lost}",
+        dropped.len()
+    );
+    assert!(lost > 0, "the flood lost messages");
+    assert!(
+        (1..=3).contains(&dropped.len()),
+        "{} events_dropped records for one flood",
+        dropped.len()
+    );
+    assert_eq!(
+        kept + lost,
+        sent,
+        "every message written or counted, no echo counted"
+    );
 }

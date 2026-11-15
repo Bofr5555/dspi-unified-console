@@ -12,8 +12,8 @@
 //! |---|---|
 //! | `DeviceOnline`, `DeviceOffline` | `connected`, `disconnected` |
 //! | `Notification` | `notification` (`session`, `by` the writer's label), coalesced as the format does (a slider sweep is one record with a `count`); an extension clip event (0xE0) `clip`, the audio link's 0xE1-0xE3 `audio_link` |
-//! | `Facts` | `reset` with its reason, when the device restarted since the log last saw it (by its uptime). A firmware change is the inventory's `Event` (P2IN), not derived here |
-//! | `Health` | `temperature` when it crosses a 5 °C band, `reset` when the uptime went back or the hang count rose (the counters), `clip` from the sticky latch on firmware without clip events (never cleared by the hub) |
+//! | `Facts` | `reset` with its reason, when the device restarted since the log last saw it (by its uptime); `firmware` when the version differs from the log's (one record with the inventory's `Event` of the same change, P2IN). The health watch then starts from the facts' uptime, so one restart is one `reset` |
+//! | `Health` | `temperature` when it crosses a 5 °C band, `reset` when a new uptime (it refreshes every 60 s; a repeat is no reading) went back or the hang count rose (the counters), `clip` from the sticky latch on firmware without clip events (never cleared by the hub) |
 //! | `Unresponsive` | `unresponsive` (`value` the seconds silent) |
 //! | `Alarm` (a device's) | `alarm` (`source` its code, `by` who acknowledged it) |
 //! | `ScheduleRan` | `schedule`, one per device in its results (`by` the rule) |
@@ -22,7 +22,10 @@
 //! Every record written goes back on the bus as `Event` with its id (above 0), and to every
 //! session watching (`event.added`). Messages the history's bus queue dropped, and records
 //! the store could not write, become one `events_dropped {count}` record in the log of each
-//! device online (of each device seen, when none is), never silence.
+//! device online (of each device seen, when none is), never silence: one record per loss
+//! episode, written once nothing was lost for a second (or each minute while it lasts). The
+//! history takes no written records (`Event` with an id) from the bus, so its own echoes
+//! never fill its queue or count as lost.
 //!
 //! **Messages** (`event.*`, cap `events`, answers `"v": 1`):
 //!
@@ -90,6 +93,11 @@ pub const DEFAULT_BUS_CAPACITY: usize = 1024;
 
 /// How long the thread waits on the bus before it looks at the coalescing records.
 const POLL: Duration = Duration::from_millis(200);
+/// A loss episode ends when nothing more was lost for this long, ms; its count is then
+/// written as one `events_dropped`.
+const EPISODE_QUIET_MS: i64 = 1000;
+/// While a loss episode lasts, its count is written this often, ms.
+const EPISODE_MAX_MS: i64 = 60_000;
 /// How often a lost count that could not be written is tried again, ms.
 const LOST_RETRY_MS: i64 = 1000;
 const VERSION: u64 = 1;
@@ -176,6 +184,8 @@ struct Device {
     watch: Watch,
     temp_band: Option<i32>,
     clip_latch: Option<u32>,
+    /// The uptime of the last `Health`: a repeat is the same reset-info read, not news.
+    health_uptime: Option<u32>,
     /// When the history last heard of it, ms.
     seen_ms: i64,
 }
@@ -187,6 +197,10 @@ pub(crate) struct History {
     devices: BTreeMap<String, Device>,
     /// Records lost (bus drops, failed writes) not yet written as `events_dropped`.
     lost: u64,
+    /// When the loss episode began (its first loss not yet written), ms.
+    lost_since_ms: Option<i64>,
+    /// The episode's latest loss, ms.
+    lost_last_ms: i64,
     lost_tried_ms: Option<i64>,
 }
 
@@ -199,6 +213,8 @@ impl History {
             store: EventStore::open(dir, config.limits, config.total_bytes)?,
             devices: BTreeMap::new(),
             lost: 0,
+            lost_since_ms: None,
+            lost_last_ms: 0,
             lost_tried_ms: None,
         })
     }
@@ -241,6 +257,7 @@ impl History {
                 d.watch = Watch::new();
                 d.temp_band = None;
                 d.clip_latch = None;
+                d.health_uptime = None;
                 let mut r = EventRecord::new(EventKind::Connected, now.ms, "Attached to the hub");
                 r.source = Some(format!("hub, handle {handle}"));
                 out.extend(self.push(serial, r, now));
@@ -389,9 +406,17 @@ impl History {
         let d = self.device(serial, now);
         d.ext_events = identify || reset_info.is_some();
         let mut out = Vec::new();
-        // A firmware change is the inventory's to record (P2IN, as an `Event`): the facts'
-        // version is not recorded here, so the history has one record of it.
-        let _ = fw;
+        // -- WP P2EVFIX -- F9: a firmware change, from the facts too (the inventory may be
+        // off); `d.fw` keeps it one record with the inventory's `Event` (P2IN).
+        if !fw.is_empty() && d.fw.as_deref() != Some(fw) {
+            let text = match &d.fw {
+                Some(old) => format!("Firmware {fw} (was {old})"),
+                None => format!("Firmware {fw} (first seen by the hub)"),
+            };
+            let mut r = EventRecord::new(EventKind::Firmware, now.ms, text);
+            r.fw = Some(fw.to_owned());
+            out.push(r);
+        }
         if let Some(ri) = reset_info {
             let restarted = d
                 .uptime
@@ -409,6 +434,12 @@ impl History {
                 }
                 out.push(r);
             }
+            // -- WP P2EVFIX -- F2: the health watch starts from this reading, so the next
+            // `Health` with the same uptime is not the same restart again.
+            let _ = d
+                .watch
+                .uptime(ri.uptime_s, Some(ri.hang_count), now.mono, now.ms);
+            d.health_uptime = Some(ri.uptime_s);
         }
         out
     }
@@ -450,10 +481,15 @@ impl History {
                 out.push(r);
             }
         }
+        // -- WP P2EVFIX -- F3: the uptime refreshes with the reset-info read (every 60 s),
+        // `Health` every 2 s: only a new value is a reading.
         if let Some(u) = uptime_s
-            && let Some(r) = d.watch.uptime(u, hang_count, now.mono, now.ms)
+            && d.health_uptime != Some(u)
         {
-            out.push(r);
+            d.health_uptime = Some(u);
+            if let Some(r) = d.watch.uptime(u, hang_count, now.mono, now.ms) {
+                out.push(r);
+            }
         }
         // The latch is "clipped since someone cleared": a bit that rose is a new clip.
         // Firmware that sends clip events records them from the events instead.
@@ -529,7 +565,9 @@ impl History {
             .collect()
     }
 
-    /// Write out every held-back record whose window has passed at `now`, and a lost count.
+    /// Write out every held-back record whose window has passed at `now`, and a loss
+    /// episode's count once it ended (nothing lost for [`EPISODE_QUIET_MS`]) or has lasted
+    /// [`EPISODE_MAX_MS`].
     pub(crate) fn tick(&mut self, now: Now) -> Vec<EventRecord> {
         let mut due: Vec<(String, EventRecord)> = Vec::new();
         for (serial, d) in &mut self.devices {
@@ -543,7 +581,7 @@ impl History {
         for (serial, p) in due {
             out.extend(self.write(&serial, p));
         }
-        out.extend(self.write_lost(now));
+        out.extend(self.write_lost(now, false));
         out
     }
 
@@ -554,26 +592,41 @@ impl History {
         for serial in serials {
             out.extend(self.flush(&serial));
         }
-        out.extend(self.write_lost(now));
+        out.extend(self.write_lost(now, true));
         out
     }
 
-    /// `n` messages or records lost: written as `events_dropped` now if it can be.
-    pub(crate) fn lost(&mut self, n: u64, now: Now) -> Vec<EventRecord> {
-        self.lost = self.lost.saturating_add(n);
-        self.lost_tried_ms = None;
-        self.write_lost(now)
+    /// `n` messages or records lost: added to the episode's count, which
+    /// [`History::tick`] writes as one `events_dropped` when the episode ends.
+    pub(crate) fn lost(&mut self, n: u64, now: Now) {
+        self.lost_at(n, now.ms);
     }
 
-    fn write_lost(&mut self, now: Now) -> Vec<EventRecord> {
-        if self.lost == 0
-            || self
-                .lost_tried_ms
-                .is_some_and(|t| now.ms.saturating_sub(t) < LOST_RETRY_MS)
-        {
+    fn lost_at(&mut self, n: u64, ms: i64) {
+        if n == 0 {
+            return;
+        }
+        if self.lost == 0 {
+            self.lost_since_ms = Some(ms);
+        }
+        self.lost = self.lost.saturating_add(n);
+        self.lost_last_ms = ms;
+    }
+
+    /// `now_all`: the hub stops, write whatever is counted.
+    fn write_lost(&mut self, now: Now, now_all: bool) -> Vec<EventRecord> {
+        if self.lost == 0 {
             return Vec::new();
         }
-        self.lost_tried_ms = Some(now.ms);
+        let since = self.lost_since_ms.unwrap_or(now.ms);
+        let lasting = now.ms.saturating_sub(since) >= EPISODE_MAX_MS;
+        let caught_up = now_all || now.ms.saturating_sub(self.lost_last_ms) >= EPISODE_QUIET_MS;
+        let retry_wait = self
+            .lost_tried_ms
+            .is_some_and(|t| now.ms.saturating_sub(t) < LOST_RETRY_MS);
+        if (!caught_up && !lasting) || retry_wait {
+            return Vec::new();
+        }
         let online: Vec<String> = self
             .devices
             .iter()
@@ -586,6 +639,7 @@ impl History {
             online
         };
         if targets.is_empty() {
+            self.lost_tried_ms = Some(now.ms);
             return Vec::new();
         }
         let n = std::mem::take(&mut self.lost);
@@ -601,15 +655,22 @@ impl History {
             r.count = count;
             out.extend(self.push(&serial, r, now));
         }
-        if !out.iter().any(|r| r.kind == EventKind::EventsDropped) {
+        if out.iter().any(|r| r.kind == EventKind::EventsDropped) {
+            // A failed write during the attempt is a new episode's first loss.
+            self.lost_since_ms = (self.lost > 0).then_some(now.ms);
+            self.lost_last_ms = now.ms;
+            self.lost_tried_ms = None;
+        } else {
             // Nothing could be written: try again later, with what came since.
             self.lost = self.lost.saturating_add(n);
+            self.lost_tried_ms = Some(now.ms);
         }
         out
     }
 
     fn write(&mut self, serial: &str, record: EventRecord) -> Option<EventRecord> {
         self.notice_forget(serial);
+        let record_t = record.t;
         match self.store.append(serial, record) {
             Ok(r) => {
                 if let Some(d) = self.devices.get_mut(serial) {
@@ -625,7 +686,7 @@ impl History {
             }
             Err(e) => {
                 log::warn!("hub: a history record for {serial} was lost: {e}");
-                self.lost = self.lost.saturating_add(1);
+                self.lost_at(1, record_t);
                 None
             }
         }
@@ -1015,9 +1076,7 @@ impl Shared {
         let now = self.now();
         let mut h = lock(&self.history);
         let mut written = Vec::new();
-        if dropped > 0 {
-            written.extend(h.lost(dropped, now));
-        }
+        h.lost(dropped, now);
         if let Some(m) = msg {
             written.extend(h.on_message(m, now));
         }
@@ -1122,6 +1181,12 @@ impl Shared {
     }
 }
 
+/// What the history takes from the bus: everything but written records (its own echoes,
+/// and any other writer's), which it has already.
+fn wants(m: &BusMessage) -> bool {
+    !matches!(m, BusMessage::Event { record, .. } if record.id != 0)
+}
+
 /// The history as a hub service.
 pub(crate) struct HistoryService {
     shared: Arc<Shared>,
@@ -1144,7 +1209,9 @@ impl HistoryService {
             bus: Arc::clone(bus),
             clock: Arc::clone(clock),
         });
-        let sub = bus.subscribe("history", config.bus_capacity);
+        // -- WP P2EVFIX -- F1: its own echoes (records with an id) never take room in its
+        // queue, nor count as dropped.
+        let sub = bus.subscribe_filtered("history", config.bus_capacity, wants);
         let stop = Arc::new(AtomicBool::new(false));
         let thread = {
             let shared = Arc::clone(&shared);

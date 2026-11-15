@@ -313,6 +313,9 @@ latch: "clipped since someone cleared", one bit per channel), `temp_c` (to 0.01 
 `unresponsive_since` (while `unresponsive`), `reset` (`{reason, prev_uptime_s?}` from the attach, or from the read that
 found the uptime gone backwards). A field the firmware does not give, or not yet read, is absent. Reset reasons:
 `power_on`, `brownout`, `run_pin`, `watchdog`, `software`, `debugger`, `glitch`, `unknown`.
+`uptime_s` and `hang_count` come from the reset-info read, every 60 s: they are as old as that read (`at` is the
+newest read of any field), so two records 2 s apart usually carry the same uptime, and the uptime moves in 60 s
+steps.
 
 Errors: `not_found` for a serial the hub does not know, `offline` for one it knows that is not attached, `no_device` for
 an unknown handle, `bad_request` for a wrong type or a serial and handle of two devices.
@@ -347,9 +350,14 @@ id from a first read with a large `limit`, or export.
 
 A record held back for coalescing (a slider sweep, as the format does) is written out by any read of that device, or
 when its second has passed. Bus messages the history could not take in time, and records it could not write, become one
-`events_dropped` record (`count`) in the log of each device online (each device seen, when none is). Until the bus can
-filter, `count` may include the history's own echoes of records it did write (see the WP report), so it is an upper
-bound.
+`events_dropped` record per loss episode (`count` all of it) in the log of each device online (each device seen, when
+none is). The record is written when the episode ends (the history has caught up), or once a minute while it lasts.
+
+A device's `Facts` (its attach) record a `reset` when its uptime shows it restarted since the log last saw it, and a
+`firmware` record when its version differs from the log's; the inventory's firmware change (P2IN) and the facts'
+make one record, whichever comes first. One restart is one `reset` record, whether the facts or the next health
+reading sees it first; a health reading that repeats the last uptime (section 5: it refreshes every 60 s) is no
+restart.
 
 Records are the file format's, with what phase 2 adds: the field **`by`** (the name of the client, key, schedule or rule
 that caused it, next to `session`) and the kinds **`unresponsive`**, **`alarm`**, **`schedule`**, **`access`** and
