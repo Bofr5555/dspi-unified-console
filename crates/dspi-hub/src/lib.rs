@@ -20,6 +20,7 @@
 //! | [`apply_guard`] | guarded apply: capture, confirm or revert by the hub | P1HA |
 //! | [`limits`] | limits profiles, the installer lock and pinned modes | P1HL |
 //! | [`service`], [`bus`], [`clock`] | the phase-2 service seam, its bus and time | P2SV |
+//! | [`snapshots`] | the hub's shared copy of each device's snapshots | P2SS |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -53,6 +54,8 @@ pub mod router;
 pub mod server;
 pub mod session;
 pub mod snapshot;
+// -- WP P2SS -- the hub's shared snapshot store (not yet registered as a service)
+pub mod snapshots;
 pub mod store;
 // -- WP SW2 --
 pub mod system;
