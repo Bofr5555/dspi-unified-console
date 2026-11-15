@@ -445,7 +445,7 @@ final class ExtensionChannelViewModelTests: XCTestCase {
         let fake = FakeTransport(autoSelect: false)
         fake.selectDevice(FakeTransport.demoDevice)
         let port = FakeMIDIControlPort(device: FakeMIDIDevice.backed(by: fake))
-        let midi = MIDITransport(port: port, autoSelect: false, readOnly: false)
+        let midi = LegacyMIDITransport(port: port, autoSelect: false, readOnly: false)
         let vm = DSPViewModel(transport: midi)
         midi.selectDevice(midi.availableDevices[0])
         XCTAssertTrue(spinUntil { midi.isConnected })
@@ -460,7 +460,7 @@ final class ExtensionChannelViewModelTests: XCTestCase {
         let fake = FakeTransport(autoSelect: false, extensions: false)
         fake.selectDevice(FakeTransport.demoDevice)
         let port = FakeMIDIControlPort(device: FakeMIDIDevice.backed(by: fake))
-        let midi = MIDITransport(port: port, autoSelect: false, readOnly: false)
+        let midi = LegacyMIDITransport(port: port, autoSelect: false, readOnly: false)
         midi.selectDevice(midi.availableDevices[0])
         XCTAssertTrue(spinUntil { midi.isConnected })
         let result = midi.getControlResult(request: REQ_EXTENSION, value: EXT_LIST, index: EXT_WINDEX,
@@ -473,7 +473,7 @@ final class ExtensionChannelViewModelTests: XCTestCase {
         let fake = FakeTransport(autoSelect: false)
         fake.selectDevice(FakeTransport.demoDevice)
         let port = FakeMIDIControlPort(device: FakeMIDIDevice.backed(by: fake))
-        let midi = MIDITransport(port: port, autoSelect: false, readOnly: true)
+        let midi = LegacyMIDITransport(port: port, autoSelect: false, readOnly: true)
         midi.selectDevice(midi.availableDevices[0])
         XCTAssertTrue(spinUntil { midi.isConnected })
         let list = try midi.getControlResult(request: REQ_EXTENSION, value: EXT_LIST, index: EXT_WINDEX,
