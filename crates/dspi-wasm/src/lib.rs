@@ -87,6 +87,8 @@ pub mod system;
 pub mod read_only;
 // -- WP WB4a --
 pub mod usb;
+// -- WP WB6J -- the analyser view, the signal generator, Stats for nerbs, the Interrupt Monitor
+pub mod tools;
 pub mod write;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
