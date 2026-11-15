@@ -317,6 +317,66 @@ static void autoEqSection(SmokeDriver &d) {
     fetcher->wait(2000);
     delete fetcher;
     d.check(QStringLiteral("qp15: no server is no answer, with words for it"), !got.answered && !got.error.isEmpty());
+
+    // -- WP SECQTA -- https only: anything else is refused before a request
+    // goes out, loopback http (above) aside, and so is a redirect that leaves it
+    const auto fetchOff = [&](const QByteArray &u) {
+        AutoEqController::Answer a;
+        std::atomic<bool> finished{ false };
+        QThread *t = QThread::create([&]() {
+            a = AutoEqController::fetch(u, QByteArray(), "uConsole-smoke/1");
+            finished = true;
+        });
+        t->start();
+        d.waitFor(10000, [&]() { return finished.load(); });
+        t->wait(2000);
+        delete t;
+        return a;
+    };
+    const auto refused = [](const AutoEqController::Answer &a, const char *why) {
+        return !a.answered && a.status == 0 && a.error.contains(QLatin1String(why));
+    };
+    d.check(QStringLiteral("secqta: a plain http URL is refused"),
+            refused(fetchOff("http://example.com/repos/x"), "https"));
+    d.check(QStringLiteral("secqta: http to a LAN address is refused"), refused(fetchOff("http://192.168.1.10/x"), "https"));
+    d.check(QStringLiteral("secqta: http to a name for the loopback is refused"), refused(fetchOff("http://localhost:1/x"), "https"));
+    d.check(QStringLiteral("secqta: other schemes are refused"),
+            refused(fetchOff("ftp://127.0.0.1/x"), "https") && refused(fetchOff("file:///etc/passwd"), "https") &&
+                refused(fetchOff("not a url"), "https"));
+
+    // A loopback server that redirects: /hop to /end on itself (followed), /out
+    // to plain http off the loopback (refused)
+    QTcpServer hops;
+    QList<QByteArray> paths;
+    hops.listen(QHostAddress::LocalHost);
+    const QByteArray base = "http://127.0.0.1:" + QByteArray::number(hops.serverPort());
+    QObject::connect(&hops, &QTcpServer::newConnection, &hops, [&]() {
+        QTcpSocket *socket = hops.nextPendingConnection();
+        auto buffer = std::make_shared<QByteArray>();
+        QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        QObject::connect(socket, &QTcpSocket::readyRead, socket, [&, socket, buffer]() {
+            *buffer += socket->readAll();
+            if (!buffer->contains("\r\n\r\n")) return;
+            const QByteArray path = buffer->split(' ').value(1);
+            paths << path;
+            QByteArray location;
+            if (path == "/hop") location = base + "/end";
+            else if (path == "/out") location = "http://192.0.2.1/end";
+            if (!location.isEmpty())
+                socket->write("HTTP/1.1 302 Found\r\nLocation: " + location + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+            else
+                socket->write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+            socket->disconnectFromHost();
+        });
+    });
+    got = fetchOff(base + "/hop");
+    d.check(QStringLiteral("secqta: a redirect that stays allowed is followed"),
+            got.answered && got.status == 200 && got.body == "ok" && paths == QList<QByteArray>{ "/hop", "/end" });
+    paths.clear();
+    got = fetchOff(base + "/out");
+    d.check(QStringLiteral("secqta: a redirect to plain http is refused"),
+            refused(got, "redirect") && paths == QList<QByteArray>{ "/out" });
+    hops.close();
 }
 
 static const SmokeDriver::Section autoEq("qp15-autoeq", 151, &autoEqSection);

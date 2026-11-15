@@ -18,8 +18,10 @@ final class AppUpdateChecker: ObservableObject {
     static let releasesURL = URL(string: "https://api.github.com/repos/Bofr5555/dspi-unified-console/releases?per_page=30")!
     static let automaticKey = "checkForUpdatesAutomatically"
     /// Developer override for the release list, for exercising the installer
-    /// against a local feed.  Safe to honour: an install still needs a zip
-    /// signed with the release key.
+    /// against a local feed.  An install still needs a zip signed with the
+    /// release key.  -- WP SECREL -- Honoured only when it is https, or http to
+    /// a loopback address (`acceptedFeedOverride`), so a stray default cannot
+    /// point the checker at a plaintext feed on the network (PLAN-SEC N12).
     private static let feedOverrideKey = "updateFeedURLOverride"
     private static let skippedTagKey = "updateCheckSkippedTag"
     private static let lastCheckedKey = "updateCheckLastChecked"
@@ -130,9 +132,39 @@ final class AppUpdateChecker: ObservableObject {
             .0
     }
 
+    /// -- WP SECREL -- The feed override as a URL when it may be used: https
+    /// with a host, or http to localhost, 127.0.0.0/8 or ::1.  Anything else
+    /// (plain http to the network, file:, no host) is refused: nil, and the
+    /// checker uses `releasesURL`.
+    nonisolated static func acceptedFeedOverride(_ text: String?) -> URL? {
+        guard let text, let url = URL(string: text),
+              let scheme = url.scheme?.lowercased(),
+              let host = url.host?.lowercased(), !host.isEmpty
+        else { return nil }
+        switch scheme {
+        case "https": return url
+        case "http": return isLoopback(host) ? url : nil
+        default: return nil
+        }
+    }
+
+    /// -- WP SECREL -- localhost, an IPv4 address in 127.0.0.0/8, or ::1.
+    nonisolated static func isLoopback(_ host: String) -> Bool {
+        let bare = host.hasPrefix("[") && host.hasSuffix("]") ? String(host.dropFirst().dropLast()) : host
+        if bare == "localhost" || bare == "::1" || bare == "0:0:0:0:0:0:0:1" { return true }
+        let parts = bare.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return false }
+        let octets = parts.compactMap { part -> Int? in
+            guard !part.isEmpty, part.count <= 3, part.allSatisfy(\.isASCII), part.allSatisfy(\.isNumber) else { return nil }
+            return Int(part).flatMap { (0...255).contains($0) ? $0 : nil }
+        }
+        return octets.count == 4 && octets[0] == 127
+    }
+
     /// Whether `release` can be installed in place right now.
     func canInstall(_ release: Release) -> Bool {
-        AppUpdateInstaller.signedZip(in: release) != nil
+        !AppUpdateInstaller.usesTestKey  // -- WP SECREL -- a TEST-key build never installs
+            && AppUpdateInstaller.signedZip(in: release) != nil
             && AppUpdateInstaller.canReplace(Bundle.main.bundleURL)
     }
 
@@ -205,8 +237,14 @@ final class AppUpdateChecker: ObservableObject {
         isChecking = true
         defer { isChecking = false }
 
-        let feed = UserDefaults.standard.string(forKey: Self.feedOverrideKey).flatMap(URL.init(string:))
-            ?? Self.releasesURL
+        // -- WP SECREL -- https or loopback only
+        let overrideText = UserDefaults.standard.string(forKey: Self.feedOverrideKey)
+        let override = Self.acceptedFeedOverride(overrideText)
+        if overrideText != nil, override == nil {
+            NSLog("AppUpdateChecker: ignoring %@: the feed override must be https, or http to a loopback address",
+                  Self.feedOverrideKey)
+        }
+        let feed = override ?? Self.releasesURL
         var request = URLRequest(url: feed)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -223,7 +261,8 @@ final class AppUpdateChecker: ObservableObject {
 
     private func presentUpdate(_ release: Release) {
         let name = release.version?.description ?? release.tagName
-        let signed = AppUpdateInstaller.signedZip(in: release) != nil
+        // -- WP SECREL -- a TEST-key build only links to the release page
+        let signed = !AppUpdateInstaller.usesTestKey && AppUpdateInstaller.signedZip(in: release) != nil
         let replaceable = AppUpdateInstaller.canReplace(Bundle.main.bundleURL)
         let installable = signed && replaceable
 
@@ -282,6 +321,8 @@ final class AppUpdateChecker: ObservableObject {
         installTask = Task {
             var work: URL?
             do {
+                // -- WP SECREL -- never install with the TEST key embedded
+                guard !AppUpdateInstaller.usesTestKey else { throw AppUpdateInstaller.Failure.testKeyBuild }
                 guard AppUpdateInstaller.canReplace(app) else { throw AppUpdateInstaller.Failure.notWritable }
                 // Same volume as the app, so the final swap is a rename.
                 let dir = try FileManager.default.url(for: .itemReplacementDirectory, in: .userDomainMask,

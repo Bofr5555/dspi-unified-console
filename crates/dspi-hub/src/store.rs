@@ -306,7 +306,9 @@ impl HubStore {
     /// Load from `dir`, creating it and a new hub id on first use. An unreadable
     /// file is set aside, never a panic: the hub then has no paired clients.
     pub fn load(dir: &Path) -> Result<Self, HubError> {
-        fs::create_dir_all(dir).map_err(|e| io_error("cannot create", dir, &e))?;
+        // -- WP SECKEY -- 0700, as the TLS key's folder under it (PLAN-SEC 4.2)
+        crate::tls_identity::create_private_dir_all(dir)
+            .map_err(|e| io_error("cannot create", dir, &e))?;
         let path = dir.join(FILE_NAME);
         let data = match read_limited(&path) {
             Ok(bytes) => decode(&bytes).map(Some),
@@ -760,6 +762,20 @@ pub(crate) mod tests_wp_hb1 {
             .permissions()
             .mode();
         assert_eq!(mode & 0o077, 0, "{mode:o}");
+    }
+
+    // -- WP SECKEY --
+    /// The store's folder, made by the hub, is its owner's alone (PLAN-SEC 4.2).
+    #[cfg(unix)]
+    #[test]
+    fn wp_seckey_the_store_folder_is_0700() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = scratch("dirmode").join("nested").join("hub");
+        HubStore::load(&dir).unwrap();
+        for d in [&dir, &dir.parent().unwrap().to_path_buf()] {
+            let mode = fs::metadata(d).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o700, "{} {mode:o}", d.display());
+        }
     }
 
     // -- fixup ausb2 (F3) -- review ausb2's probe D

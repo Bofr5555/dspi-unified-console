@@ -21,6 +21,9 @@ thiserror.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# -- WP SECFWV -- the bundled-firmware manifest's SHA-256; already in the graph
+# through dspi-session (its limits PIN hash), so no new crate
+sha2 = "0.11"
 # Bootloader and device enumeration (WP C11). Optional since WP CG3.
 nusb = { version = "0.2", optional = true }
 # -- WP SW-M1 -- to poll nusb's hot-plug stream (usb_pipe.rs); already in the graph through nusb

@@ -7,7 +7,9 @@
 #       write DIR/SHA256SUMS over every file in DIR (sorted, `sha256sum`'s
 #       format, so `sha256sum -c SHA256SUMS` checks them), then sign it:
 #       DIR/SHA256SUMS.minisig. Then verify the signature with the public key
-#       (docs/release/minisign.pub, or --pub) when one is there.
+#       (docs/release/minisign.pub, or --pub). -- WP SECREL -- Without that
+#       public key this refuses before writing anything: a signature nobody
+#       checked is not a release (PLAN-SEC N14).
 #   ci/release-sums.sh --verify [--pub PUBLIC_KEY] DIR
 #       check DIR/SHA256SUMS.minisig, then every file in SHA256SUMS.
 #
@@ -21,14 +23,13 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 usage="usage: release-sums.sh --key SECRET_KEY [--comment TEXT] DIR | --verify [--pub PUBLIC_KEY] DIR"
 key=${DSPI_MINISIGN_KEY:-}
 pub=$here/docs/release/minisign.pub
-pub_given=0
 verify=0
 comment=
 dir=
 while [ $# -gt 0 ]; do
   case $1 in
     --key) key=${2:?$usage}; shift 2 ;;
-    --pub) pub=${2:?$usage}; pub_given=1; shift 2 ;;
+    --pub) pub=${2:?$usage}; shift 2 ;;
     --comment) comment=${2:?$usage}; shift 2 ;;
     --verify) verify=1; shift ;;
     -*) echo "$usage" >&2; exit 2 ;;
@@ -65,6 +66,16 @@ TXT
 fi
 [ -f "$key" ] || { echo "release-sums.sh: no key file at $key; nothing was written" >&2; exit 2; }
 key=$(cd "$(dirname "$key")" && pwd)/$(basename "$key")
+# -- WP SECREL -- the public key is required, checked before anything is written
+if [ ! -f "$pub" ]; then
+  cat >&2 <<TXT
+release-sums.sh: no public key at $pub, so the signature could not be checked.
+Nothing was written. The owner commits docs/release/minisign.pub once
+(docs/RELEASING.md); until then pass --pub FILE.
+TXT
+  exit 2
+fi
+pub=$(cd "$(dirname "$pub")" && pwd)/$(basename "$pub")
 
 # Every regular file at the top of DIR but the sums themselves. Subfolders are
 # refused: a release is a flat list of downloads.
@@ -82,12 +93,9 @@ mv "$dir/SHA256SUMS.part" "$dir/SHA256SUMS"
   -S -s /key/minisign.key -m /dist/SHA256SUMS -x /dist/SHA256SUMS.minisig -t "$comment"
 echo "$dir/SHA256SUMS"
 echo "$dir/SHA256SUMS.minisig"
-if [ -f "$pub" ]; then
-  pub=$(cd "$(dirname "$pub")" && pwd)/$(basename "$pub")
-  verify_sig "$pub"
-elif [ "$pub_given" = 1 ]; then
-  echo "release-sums.sh: no public key at $pub to check the signature with" >&2
+# -- WP SECREL -- always checked; a mismatch (the wrong key pair) fails the run
+verify_sig "$pub" || {
+  rm -f "$dir/SHA256SUMS" "$dir/SHA256SUMS.minisig"
+  echo "release-sums.sh: the new signature does not verify with $pub (is it the secret key's pair?); both files removed" >&2
   exit 1
-else
-  echo "release-sums.sh: not checked: no docs/release/minisign.pub yet (--pub FILE)" >&2
-fi
+}

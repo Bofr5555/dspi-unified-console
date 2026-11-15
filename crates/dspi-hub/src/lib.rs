@@ -28,6 +28,7 @@
 //! | [`history`] | the shared event history and the watchdog events | P2EV |
 //! | [`api`] | the parameter API, the action executor, hub-side recall (feature `api`) | P2PA |
 //! | [`outbound`] | notifications out: webhooks and push | P2WH |
+//! | [`tls_identity`] | the hub's TLS key, certificate, pin and rotation | SECKEY |
 //! | [`rest`] | the REST mirror under `/api/v1/` and API keys (`auth.mint`) | P2RS |
 #![warn(
     missing_docs,
@@ -89,6 +90,8 @@ pub mod identify;
 pub mod history;
 // -- WP P2PA -- the snapshot family always; the parameter API with feature `api`
 pub mod api;
+// -- WP SECKEY -- the hub's TLS key, certificate, pin and rotation
+pub mod tls_identity;
 // -- WP P2RS --
 pub mod rest;
 // -- WP P2AL -- device alarms

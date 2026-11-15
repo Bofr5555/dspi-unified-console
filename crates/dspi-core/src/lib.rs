@@ -84,6 +84,8 @@ mod doc_diff;
 mod firmware;
 // -- WP CG8 --
 mod firmware_guard;
+// -- WP SECFWV --
+mod firmware_manifest;
 mod hardware;
 mod hotplug;
 // -- WP CG26 --
@@ -188,6 +190,8 @@ pub use vreg::{VregCalPhase, VregCalView, VregChoice, VregDemoEvent};
 pub use autoeq::*;
 // -- WP CG8 --
 pub use firmware_guard::*;
+// -- WP SECFWV --
+pub use firmware_manifest::{BundledFirmware, verify_bundled};
 // -- WP CG10 --
 pub use link_text::*;
 // -- WP HB0 --

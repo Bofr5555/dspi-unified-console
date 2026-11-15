@@ -25,6 +25,13 @@ fake-hub = []
 # -- WP DISC2 -- On Windows it is Windows' own DNS-SD (dnsapi) instead of the
 # embedded daemon: each dependency exists only on its platform.
 mdns = ["dep:mdns-sd", "dep:windows-sys"]
+# -- WP SECPIPE --
+# TLS 1.3 on the DSPi Link port (tls.rs; docs/core-merge/PLAN-SEC.md 4.1-4.3):
+# the pin verifier, the split-safe TlsPipe, the SPKI hash. Native only: the
+# dependencies exist only off the web, and so does the module, so the web build
+# never has it even with the feature on. Off by default; the core turns it on
+# for native targets (SECCORE).
+tls = ["dep:rustls", "dep:rustls-webpki", "dep:ring"]
 
 [dependencies]
 # Sync WebSocket over std::net::TcpStream (RFC 6455), no TLS: the protocol is
@@ -51,6 +58,17 @@ thiserror = { workspace = true }
 # portable way (Android, Linux, macOS, Windows) without unsafe in this crate.
 # It has no wasm32-unknown-unknown backend, and there are no sockets there.
 socket2 = "=0.6.1"
+# -- WP SECPIPE -- TLS (feature `tls`), the versions the lock already holds for
+# dspi-tui's ureq. rustls with the ring provider: already licensed in deny.toml,
+# already cross-compiled for Windows and Android, no system OpenSSL and no
+# aws-lc build (C and CMake). `std`; no `tls12` (TLS 1.3 only), no `logging`.
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"], optional = true }
+# rustls's certificate parser, for the SubjectPublicKeyInfo of the hub's
+# certificate (the pin); no crypto of its own is used.
+rustls-webpki = { version = "0.103.16", default-features = false, features = ["alloc"], optional = true }
+# SHA-256 of the SPKI and the ECDSA P-256 check of a key rotation signature:
+# the crypto rustls already runs on here, rather than sha2 beside it.
+ring = { version = "0.17.14", optional = true }
 
 # -- WP CG2, DISC2 -- The embedded mDNS daemon, everywhere but Windows (see above).
 [target.'cfg(not(windows))'.dependencies]

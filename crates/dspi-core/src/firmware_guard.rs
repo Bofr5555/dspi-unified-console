@@ -256,6 +256,10 @@ pub fn firmware_guard_check(
             ..FirmwareGuardVerdict::default()
         };
     }
+    // -- WP SECFWV -- a damaged or mixed-up copy of a bundled image is refused
+    if let Some(refused) = crate::firmware_manifest::refusal(&image, &info, board.required_mv) {
+        return refused;
+    }
     decide(
         image_stamp(&image, &info),
         board.required_mv,
