@@ -63,6 +63,9 @@ import { SettingsScreen } from "../screens/settings/SettingsScreen";
 // -- WP P2WB2 -- the hub settings page, its own screen (shown when the hub has its families)
 import { HUB_SETTINGS_DEF, useHubCaps } from "../screens/hub-settings/HubSettingsScreen";
 import { hubSettingsShown, withHubSettings } from "../screens/hub-settings/model";
+// -- WP P2WB1 -- the hub's devices, health and alarms; its alarms in the health panel
+import { HubFeed, hubScreenShown } from "../screens/hub/feed";
+import { HUB_SCREEN, HUB_SCREEN_ID, HubAlarmBanner, useHubView } from "../screens/hub/HubScreen";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -94,6 +97,9 @@ export interface ScreenProps {
   open?: (t: ChainTarget) => void;
   /** Where this screen was opened at by `open`, null when its tab was chosen; read when it mounts. */
   target?: ChainTarget | null;
+  // -- WP P2WB1 --
+  /** The session's hub: its devices, health and alarms (the hub screen). */
+  hub?: HubFeed;
 }
 
 export interface ScreenDef {
@@ -166,6 +172,19 @@ export function lockedScreens(): ScreenDef[] {
   return SCREENS.filter((x) => x.id === "main");
 }
 
+// -- WP P2WB1 --
+/**
+ * `shown` with the hub screen, when the session's hub has its own families: in
+ * Advanced and Installer (monitoring, as the event log), just before the event log.
+ */
+export function withHubScreen(shown: ScreenDef[], mode: Mode, hubOn: boolean): ScreenDef[] {
+  if (!hubOn || mode === "simple") return shown;
+  const at = shown.findIndex((x) => x.id === "events");
+  const out = [...shown];
+  out.splice(at < 0 ? out.length : at, 0, HUB_SCREEN);
+  return out;
+}
+
 function isMode(m: string): m is Mode {
   return m === "simple" || m === "advanced" || m === "installer";
 }
@@ -180,7 +199,14 @@ export function Screens(props: { session: Session }) {
   }, [system]);
   const feed = useFeed(system);
   // -- WP WB6F -- one health feed per session: problems stay until acknowledged, whichever screen is shown
-  const health = useMemo(() => new HealthFeed(session), [session]);
+  // -- WP P2WB1 -- one hub feed per session; the health panel lists its alarms about this DSPi
+  const hub = useMemo(() => new HubFeed(session), [session]);
+  useEffect(() => {
+    hub.start();
+    return () => hub.stop();
+  }, [hub]);
+  const hubView = useHubView(hub);
+  const health = useMemo(() => new HealthFeed(session, { hubAlarms: hub.alarmSource() }), [session, hub]); // -- WP P2WB1 -- hubAlarms
   useEffect(() => {
     health.start();
     return () => health.stop();
@@ -210,7 +236,7 @@ export function Screens(props: { session: Session }) {
   const modes = (manifest?.modes ?? []).filter((m) => isMode(m.id)).map((m) => ({ id: m.id as Mode, label: m.label }));
   const [unlocking, setUnlocking] = useState(false);
   const hubCaps = useHubCaps(session, st.link?.phase ?? "").caps; // -- WP P2WB2 --
-  const shown = lockedUser ? lockedScreens() : withHubSettings(screensFor(mode, feed.kind === "hub"), mode, hubSettingsShown(hubCaps), HUB_SETTINGS_DEF); // -- WP P2WB2 -- withHubSettings
+  const shown = lockedUser ? lockedScreens() : withHubSettings(withHubScreen(screensFor(mode, feed.kind === "hub"), mode, hubScreenShown(hubView?.caps ?? null)), mode, hubSettingsShown(hubCaps), HUB_SETTINGS_DEF); // -- WP P2WB1 -- the hub screen; -- WP P2WB2 -- withHubSettings
   const [chosen, setChosen] = useState<string | null>(null);
   const current = chosen ?? shown[0]!.id;
   const screen = shown.find((x) => x.id === current) ?? shown[0]!;
@@ -344,6 +370,8 @@ export function Screens(props: { session: Session }) {
       {/* -- WP P1DCFIX -- the A/B toggle in every mode too (Simple has the compare) */}
       {lockedUser ? null : <AbBar desk={desk} />}
       <GuardBar desk={desk} />
+      {/* -- WP P2WB1 -- the hub's alarms to acknowledge, on every screen */}
+      {lockedUser ? null : <HubAlarmBanner feed={hub} onShow={shownIds.has(HUB_SCREEN_ID) ? () => setCurrent(HUB_SCREEN_ID) : null} />}
       {/* -- WP WB8 -- the tabs and, beside them, Undo and Redo */}
       <div class="screen-bar">
         {shown.length > 1 ? (
@@ -363,7 +391,7 @@ export function Screens(props: { session: Session }) {
       )}
       {shortcutsOpen ? <ShortcutsDialog screens={shownIds} onClose={() => setShortcutsOpen(false)} /> : null}
       <StepNotice session={session} notice={st.notice} />
-      <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} />
+      <screen.View session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ />
       {/* -- WP SW3 -- the status rail, below the screen as a status bar */}
       <StatusRail
         feed={system}

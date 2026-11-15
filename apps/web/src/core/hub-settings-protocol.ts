@@ -6,24 +6,8 @@
 // `noticeKey`. A secret (a minted key, a webhook's new secret) comes as a plain string in the
 // answer of the call that made it, once: hub-settings/model.ts wraps it in a `HubSecret` at once.
 
-/** Which of the hub's families this session's hub has (`dspi_core::hub_server::HubCaps`, no I/O). */
-export interface HubCapsRecord {
-  onHub: boolean;
-  inventory: boolean;
-  identify: boolean;
-  health: boolean;
-  events: boolean;
-  hubSnapshots: boolean;
-  paramApi: boolean;
-  hubStats: boolean;
-  alarms: boolean;
-  outbound: boolean;
-  schedule: boolean;
-  mqtt: boolean;
-  apiKeys: boolean;
-  rest: boolean;
-  caps: string[];
-}
+// The caps record and the `hubCaps` call are declared once, in protocol.ts (WP P2WB1); re-exported here for this page's importers.
+export type { HubCapsRecord } from "./protocol";
 
 /** One code's alarm rule; a field the code does not have is `null` (kept by the hub on a set). */
 export interface HubAlarmRuleRecord {
@@ -214,8 +198,7 @@ export interface HubSnapshotRecallRecord {
 }
 
 export interface HubSettingsMethods {
-  /** No I/O. */
-  hubCaps: { params: undefined; result: HubCapsRecord };
+  // `hubCaps` is declared in HubServerMethods (protocol.ts, WP P2WB1)
   hubAlarmRulesGet: { params: undefined; result: HubAlarmRuleRecord[] };
   hubAlarmRulesSet: { params: { rules: HubAlarmRuleRecord[] }; result: HubAlarmRuleRecord[] };
   hubSchedules: { params: undefined; result: HubSchedulesRecord };
