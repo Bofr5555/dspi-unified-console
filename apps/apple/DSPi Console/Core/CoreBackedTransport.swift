@@ -316,6 +316,8 @@ final class CoreBackedTransport: DeviceTransport {
             return
         case .alreadyOpen:
             selectedSubject.send(device)
+            // The probe on it gave up: selecting it again is a retry.
+            if !isConnected, errorMessage != nil { openMidi(device, force: true) }
         case .failed(let message):
             bumpGeneration()
             _ = nextMidiOpen()

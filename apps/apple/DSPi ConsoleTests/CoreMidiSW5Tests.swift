@@ -238,6 +238,25 @@ final class CoreMidiSW5Tests: XCTestCase {
         XCTAssertTrue(t.errorMessage?.hasPrefix("The DSPi's MIDI port does not answer") == true, t.errorMessage ?? "")
     }
 
+    func testSW5SelectingAgainAfterAFailedProbeRetries() throws {
+        let fake = FakeTransport(autoSelect: false)
+        fake.selectDevice(FakeTransport.demoDevice)
+        XCTAssertTrue(spinUntil(5) { fake.isConnected })
+        let device = Self.device(backedBy: fake)
+        let answer = device.respond
+        device.respond = { _ in nil }   // silent at first
+        let port = FakeMIDIControlPort(device: device)
+        let t = CoreBackedTransport(link: .midi(CoreMidiPipe(port: port)))
+        XCTAssertTrue(spinUntil(30) { t.errorMessage != nil }, "the probe gives up")
+        XCTAssertFalse(t.isConnected)
+        device.respond = answer         // the device answers now
+        let opens = port.openCount
+        t.selectDevice(try XCTUnwrap(t.selectedDevice))
+        XCTAssertTrue(spinUntil(15) { t.isConnected }, "the second selection probes again")
+        XCTAssertGreaterThan(port.openCount, opens)
+        XCTAssertNil(t.errorMessage)
+    }
+
     func testSW5APortThatCannotOpenSaysSo() throws {
         let port = RefusingPort()
         let t = CoreBackedTransport(link: .midi(CoreMidiPipe(port: port)))
