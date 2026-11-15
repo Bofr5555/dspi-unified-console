@@ -111,20 +111,68 @@ fn cgswsa_vreg_codes_elsewhere_are_the_shared_range() {
     }
 }
 
-/// The Mac's `defaultChannelNames(for:slotTypes:)`
-/// (`DSPViewModel.swift:3445-3471`) for both platforms, written out.
+/// The firmware's `get_default_channel_name`
+/// (`~/prog/DSPi-bofr/firmware/DSPi/usb_audio.c:294-345`), written out: its
+/// `snprintf` formats per source, and the output slots.
+fn firmware_name(ch: usize, inputs: usize, total: usize, source: u8, types: &[u8]) -> String {
+    let lr = |n: usize| if n.is_multiple_of(2) { 'L' } else { 'R' };
+    if ch < inputs {
+        return match source {
+            2 => format!("I2S {} {}", ch / 2 + 1, lr(ch)),
+            1 => format!("SPDIF {}", lr(ch)),
+            // spdif_index_for_source: src - INPUT_SOURCE_SPDIF2 + 1, shown + 1
+            4..=6 => format!("SPDIF {} {}", (source - 4 + 1) + 1, lr(ch)),
+            3 => format!("ADAT {}", ch + 1),
+            7 => format!("ALINK {}", ch + 1),
+            _ => format!("USB {}", ch + 1),
+        };
+    }
+    if ch == total - 1 {
+        return "PDM".into();
+    }
+    let slot = (ch - inputs) / 2;
+    let side = (ch - inputs) % 2;
+    let i2s = slot < 4 && types.get(slot) == Some(&1);
+    format!(
+        "{} {} {}",
+        if i2s { "I2S" } else { "SPDIF" },
+        slot + 1,
+        lr(side)
+    )
+}
+
 #[test]
-fn cgswsa_default_channel_names_match_the_swift_lists() {
+fn cgswsa_default_channel_names_match_the_firmware() {
+    for (inputs, outputs) in [(2u8, 5u8), (8, 9)] {
+        for source in 0..=9u8 {
+            for types in [vec![0u8, 0, 0, 0], vec![0, 1, 0, 1], vec![1, 1, 1, 1]] {
+                let total = usize::from(inputs) + usize::from(outputs);
+                let want: Vec<String> = (0..total)
+                    .map(|ch| firmware_name(ch, inputs.into(), total, source, &types))
+                    .collect();
+                assert_eq!(
+                    default_channel_names(inputs, outputs, source, types.clone()),
+                    want,
+                    "{inputs}/{outputs} source {source} {types:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn cgswsa_default_channel_names_literal_lists() {
     let rp2040 = platform_shape(0);
     assert_eq!(
         default_channel_names(
             rp2040.num_input_channels,
             rp2040.num_output_channels,
+            0,
             vec![0, 1]
         ),
         [
-            "USB L",
-            "USB R",
+            "USB 1",
+            "USB 2",
             "SPDIF 1 L",
             "SPDIF 1 R",
             "I2S 2 L",
@@ -132,61 +180,42 @@ fn cgswsa_default_channel_names_match_the_swift_lists() {
             "PDM"
         ]
     );
-    let rp2350 = platform_shape(1);
+    let names = |source| default_channel_names(8, 0, source, vec![]);
+    assert_eq!(names(1)[..2], ["SPDIF L", "SPDIF R"]);
+    assert_eq!(names(5)[..2], ["SPDIF 3 L", "SPDIF 3 R"]);
+    assert_eq!(names(2)[2..4], ["I2S 2 L", "I2S 2 R"]);
+    assert_eq!(names(3)[7], "ADAT 8");
+    assert_eq!(names(7)[0], "ALINK 1");
+    assert_eq!(names(200)[0], "USB 1", "an unknown source reads as USB");
+    // Missing slot types read as S/PDIF.
     assert_eq!(
-        default_channel_names(
-            rp2350.num_input_channels,
-            rp2350.num_output_channels,
-            vec![0, 1, 0, 1]
-        ),
-        [
-            "USB L",
-            "USB R",
-            "USB 3",
-            "USB 4",
-            "USB 5",
-            "USB 6",
-            "USB 7",
-            "USB 8",
-            "SPDIF 1 L",
-            "SPDIF 1 R",
-            "I2S 2 L",
-            "I2S 2 R",
-            "SPDIF 3 L",
-            "SPDIF 3 R",
-            "I2S 4 L",
-            "I2S 4 R",
-            "PDM",
-        ]
-    );
-    // Missing slot types read as S/PDIF, as the Mac's `slotName`.
-    assert_eq!(
-        default_channel_names(0, 3, vec![]),
+        default_channel_names(0, 3, 0, vec![]),
         ["SPDIF 1 L", "SPDIF 1 R", "PDM"]
     );
-    assert!(default_channel_names(0, 0, vec![]).is_empty());
-    assert_eq!(default_channel_names(255, 255, vec![1; 300]).len(), 510);
+    assert!(default_channel_names(0, 0, 0, vec![]).is_empty());
+    assert_eq!(default_channel_names(255, 255, 0, vec![1; 300]).len(), 510);
 }
 
 /// The core's own preset rows name an unnamed channel by the same rule
-/// (`presets.rs` `channel_label`).
+/// (`presets.rs` `channel_label`, through `firmware_name`).
 #[test]
 fn cgswsa_default_channel_names_match_the_preset_rows() {
-    for (inputs, outputs, types) in [
-        (2u8, 5u8, vec![0u8, 1]),
-        (8, 9, vec![1, 0, 1, 0]),
-        (4, 3, vec![1]),
-        (1, 1, vec![]),
+    for (inputs, outputs, source, types) in [
+        (2u8, 5u8, 0u8, vec![0u8, 1]),
+        (8, 9, 2, vec![1, 0, 1, 0]),
+        (4, 3, 5, vec![1]),
+        (8, 9, 7, vec![]),
     ] {
         let mut s: DspState = crate::state::default_state();
         s.num_input_channels = inputs;
         s.num_output_channels = outputs;
+        s.input_source = source;
         s.output_types = types.clone();
         s.channel_names = Vec::new();
         let rows: Vec<String> = (0..usize::from(inputs) + usize::from(outputs))
             .map(|ch| crate::presets::channel_label(&s, ch).unwrap())
             .collect();
-        assert_eq!(default_channel_names(inputs, outputs, types), rows);
+        assert_eq!(default_channel_names(inputs, outputs, source, types), rows);
     }
 }
 

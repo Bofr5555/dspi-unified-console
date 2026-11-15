@@ -70,13 +70,14 @@ pub extern "C" fn dspi_known_feature_names(buf: *mut c_char, len: u32) -> u32 {
 }
 
 /// The firmware's default channel names, inputs then outputs, in JSON: {ok,
-/// value: [names]}. `output_types` holds `types_len` slot types (1 is I2S);
-/// null reads as none. Returns the bytes needed including the NUL, 0 for a
+/// value: [names]}. `input_source` names the inputs (`DspState.input_source`);
+/// `output_types` holds `types_len` slot types (1 is I2S); null reads as none. Returns the bytes needed including the NUL, 0 for a
 /// panic.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_default_channel_names(
     num_inputs: u8,
     num_outputs: u8,
+    input_source: u8,
     output_types: *const u8,
     types_len: u32,
     buf: *mut c_char,
@@ -84,7 +85,7 @@ pub extern "C" fn dspi_default_channel_names(
 ) -> u32 {
     guard(0, || {
         let types = c_bytes(output_types, types_len);
-        let names = dspi_core::default_channel_names(num_inputs, num_outputs, types);
+        let names = dspi_core::default_channel_names(num_inputs, num_outputs, input_source, types);
         copy_text(&json_reply(Ok(names)), buf, len)
     })
 }

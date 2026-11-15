@@ -776,7 +776,7 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun vregCodeLabel(code: Int, platformId: Int): String = throw NotImplementedError("vreg_code_label")
 
-    override fun defaultChannelNames(numInputs: Int, numOutputs: Int, outputTypes: List<Int>): List<String> = throw NotImplementedError("default_channel_names")
+    override fun defaultChannelNames(numInputs: Int, numOutputs: Int, inputSource: Int, outputTypes: List<Int>): List<String> = throw NotImplementedError("default_channel_names")
 
     override fun enumValueLabels(path: String): List<EnumValueLabel> = throw NotImplementedError("enum_value_labels")
 

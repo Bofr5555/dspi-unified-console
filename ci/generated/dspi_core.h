@@ -6360,12 +6360,13 @@ uint32_t dspi_known_feature_names(char *buf, uint32_t len);
 
 /**
  * The firmware's default channel names, inputs then outputs, in JSON: {ok,
- * value: [names]}. `output_types` holds `types_len` slot types (1 is I2S);
- * null reads as none. Returns the bytes needed including the NUL, 0 for a
+ * value: [names]}. `input_source` names the inputs (`DspState.input_source`);
+ * `output_types` holds `types_len` slot types (1 is I2S); null reads as none. Returns the bytes needed including the NUL, 0 for a
  * panic.
  */
 uint32_t dspi_default_channel_names(uint8_t num_inputs,
                                     uint8_t num_outputs,
+                                    uint8_t input_source,
                                     const uint8_t *output_types,
                                     uint32_t types_len,
                                     char *buf,

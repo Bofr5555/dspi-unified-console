@@ -2047,34 +2047,16 @@ pub(crate) fn channel_label(s: &DspState, ch: usize) -> Option<String> {
     }
 }
 
-/// The firmware's default name of wire channel `ch` (`get_default_channel_name`):
-/// "USB L", "USB R", "USB 3".. for the inputs; for the outputs
-/// "<SPDIF|I2S> <slot> <L|R>" by the slot's type, and "PDM" for the last.
+/// The firmware's default name of wire channel `ch` (`get_default_channel_name`).
+/// -- WP CG-SWS-a -- the rule is [`crate::default_channel_names`]'.
 fn firmware_name(s: &DspState, ch: usize) -> Option<String> {
-    let inputs = usize::from(s.num_input_channels);
-    let outputs = usize::from(s.num_output_channels);
-    if ch < inputs {
-        return Some(match ch {
-            0 => "USB L".to_owned(),
-            1 => "USB R".to_owned(),
-            n => format!("USB {}", n.saturating_add(1)),
-        });
-    }
-    let out = ch.checked_sub(inputs)?;
-    if out >= outputs {
-        return None;
-    }
-    if out.saturating_add(1) == outputs {
-        return Some("PDM".to_owned());
-    }
-    let slot = out >> 1;
-    let kind = if s.output_types.get(slot) == Some(&1) {
-        "I2S"
-    } else {
-        "SPDIF"
-    };
-    let side = if out & 1 == 0 { 'L' } else { 'R' };
-    Some(format!("{kind} {} {side}", slot.saturating_add(1)))
+    crate::platform::default_channel_name(
+        s.num_input_channels,
+        s.num_output_channels,
+        s.input_source,
+        &s.output_types,
+        ch,
+    )
 }
 
 /// An input source's title: the user's name for it, else the built-in one.
@@ -3130,11 +3112,12 @@ mod tests {
                 "SPDIF 1 L limiter threshold: -1.0 → -3.0 dBFS".into(),
                 "Centre mode: Sinner → Off".into(),
                 "Leveller speed: Medium → Fast".into(),
-                "USB L delay: 0 ms → 1.25 ms".into(),
+                // -- WP CG-SWS-a -- the firmware names inputs by the (new) source
+                "I2S 1 L delay: 0 ms → 1.25 ms".into(),
                 "2 crosspoints changed".into(),
                 "SPDIF 1 R muted".into(),
                 "SPDIF 1 R gain: 0.0 dB → -1.0 dB".into(),
-                "1 band changed on USB R".into(),
+                "1 band changed on I2S 1 R".into(),
                 "2 crossover bands changed on PDM".into(),
                 "'' → 'Sub'".into(),
                 "1 pin assignment changed".into(),
@@ -3235,8 +3218,8 @@ mod tests {
         assert_eq!(
             names,
             [
-                "USB L",
-                "USB R",
+                "USB 1",
+                "USB 2",
                 "SPDIF 1 L",
                 "SPDIF 1 R",
                 "SPDIF 2 L",

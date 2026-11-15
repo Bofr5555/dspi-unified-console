@@ -67,9 +67,6 @@ const NAME_LEN_U16: u16 = {
 /// that has it, SYS2 5.1).
 const INPUT_SOURCE_MAX: u8 = crate::alink::INPUT_SOURCE_ALINK;
 
-/// The master volume value that mutes (`REQ_SET_MASTER_VOLUME`).
-const MASTER_VOL_MUTE_DB: f32 = -128.0;
-
 /// Lowest preamp the old core allowed, on both platforms.
 const PREAMP_MIN_DB: f32 = -60.0;
 
@@ -342,11 +339,8 @@ impl DspiCore {
     pub fn set_master_volume(&self, db: f32) -> Result<()> {
         let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         let db = not_nan(db, "master volume")?;
-        let val = if db <= MASTER_VOL_MUTE_DB {
-            MASTER_VOL_MUTE_DB
-        } else {
-            ((db * 2.0).round() / 2.0).clamp(-127.0, 0.0)
-        };
+        // -- WP CG-SWS-a -- the one rule, which clients read too (no -0.0)
+        let val = crate::quantize_master_volume(db);
         self.set_scalar("vol.master", Value::Float(val), |s| {
             s.master_volume_db = val;
         })

@@ -39882,19 +39882,21 @@ public func curveSections(filters: [FilterParams]) -> [BiquadSection]  {
 }
 /**
  * The firmware's name for each channel when the user has named none: inputs
- * first, then outputs, `num_inputs + num_outputs` names. `output_types` is
- * `DspState::output_types` (one byte per stereo slot, 1 for I2S); a missing
- * entry reads as S/PDIF. The rule is in the module docs.
+ * first, then outputs, `num_inputs + num_outputs` names. `input_source` is
+ * `DspState::input_source` (it names the inputs); `output_types` is
+ * `DspState::output_types` (one byte per stereo slot, 1 for I2S), and a
+ * missing entry reads as S/PDIF. The rule is in the module docs.
  *
  * For a connected device pass `DspState`'s `num_input_channels`,
- * `num_output_channels` and `output_types`; without one,
+ * `num_output_channels`, `input_source` and `output_types`; without one,
  * [`platform_shape`]'s counts.
  */
-public func defaultChannelNames(numInputs: UInt8, numOutputs: UInt8, outputTypes: Data) -> [String]  {
+public func defaultChannelNames(numInputs: UInt8, numOutputs: UInt8, inputSource: UInt8, outputTypes: Data) -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
     uniffi_dspi_core_fn_func_default_channel_names(
         FfiConverterUInt8.lower(numInputs),
         FfiConverterUInt8.lower(numOutputs),
+        FfiConverterUInt8.lower(inputSource),
         FfiConverterData.lower(outputTypes),$0
     )
 })
@@ -40395,7 +40397,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_curve_sections() != 5627) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_default_channel_names() != 54944) {
+    if (uniffi_dspi_core_checksum_func_default_channel_names() != 34600) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_enum_value_labels() != 4880) {

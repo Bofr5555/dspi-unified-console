@@ -59,12 +59,12 @@ fn cgswsa_c_tables_match_the_core() {
     );
 
     let types = [0u8, 1];
-    let dn = reply(|b, l| dspi_default_channel_names(2, 5, types.as_ptr(), 2, b, l));
+    let dn = reply(|b, l| dspi_default_channel_names(2, 5, 0, types.as_ptr(), 2, b, l));
     assert_eq!(
         dn["value"],
         serde_json::json!([
-            "USB L",
-            "USB R",
+            "USB 1",
+            "USB 2",
             "SPDIF 1 L",
             "SPDIF 1 R",
             "I2S 2 L",
@@ -72,8 +72,10 @@ fn cgswsa_c_tables_match_the_core() {
             "PDM"
         ])
     );
-    let dn = reply(|b, l| dspi_default_channel_names(0, 1, null(), 9, b, l));
+    let dn = reply(|b, l| dspi_default_channel_names(0, 1, 0, null(), 9, b, l));
     assert_eq!(dn["value"], serde_json::json!(["PDM"]));
+    let dn = reply(|b, l| dspi_default_channel_names(2, 0, 1, null(), 0, b, l));
+    assert_eq!(dn["value"], serde_json::json!(["SPDIF L", "SPDIF R"]));
 
     let path = CString::new("sub.select").unwrap();
     let labels = reply(|b, l| dspi_enum_value_labels(path.as_ptr(), b, l));
