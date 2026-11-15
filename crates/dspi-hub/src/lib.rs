@@ -91,6 +91,8 @@ pub mod history;
 pub mod api;
 // -- WP P2RS --
 pub mod rest;
+// -- WP P2AL -- device alarms
+pub mod device_alarms;
 
 pub use auth::AccessMode;
 pub use error::HubError;
