@@ -116,7 +116,7 @@ fn wp_p2ss_put_list_get_rename_note_delete_with_roles() {
 
     // One change event per change, in order.
     let ev: Vec<Value> = h
-        .take_changed()
+        .take_changed("hub-1")
         .iter()
         .map(|s| serde_json::from_str(s).unwrap())
         .collect();
@@ -124,9 +124,9 @@ fn wp_p2ss_put_list_get_rename_note_delete_with_roles() {
     assert_eq!(changes, ["put", "rename", "note", "delete"]);
     assert!(
         ev.iter()
-            .all(|e| e["t"] == "snapshot.changed" && e["serial"] == "SER1")
+            .all(|e| e["t"] == "snapshot.changed" && e["serial"] == "SER1" && e["hub"] == "hub-1")
     );
-    assert!(h.take_changed().is_empty());
+    assert!(h.take_changed("hub-1").is_empty());
 }
 
 #[test]
@@ -417,4 +417,79 @@ fn wp_p2ss_store_folder_and_files() {
         assert_eq!(mode(&h.root().join("s-S").join("index.json")), 0o600);
         assert_eq!(mode(&h.root().join("s-S")), 0o700);
     }
+}
+
+#[test]
+fn wp_p2ss_fixup_cap_name_is_not_the_device_cache_cap() {
+    // review p2a F1: `snapshot` is spec 7.5's device cache, which every hub announces.
+    assert_eq!(super::CAP, "hub_snapshots");
+}
+
+#[test]
+fn wp_p2ss_fixup_a_snapshot_at_the_cap_survives_two_renames() {
+    // review p2a F4: filed pretty-printed, every cap measured on that form.
+    let base = fresh("atcap");
+    let doc = |pad: usize| {
+        json!({
+            "meta": {"kind": "snapshot", "name": "abcd"},
+            "snapshot": {"id": "0001700000000000", "serial": "S", "image": "A".repeat(pad)}
+        })
+    };
+    let pretty_len = |v: &Value| serde_json::to_string_pretty(v).unwrap().len() as u64;
+    let cap = pretty_len(&doc(20_000));
+    let h = HubSnapshots::with_caps(
+        base.join("hub"),
+        Caps {
+            per_device: 10,
+            doc_bytes: cap,
+            total_bytes: 1 << 20,
+        },
+    );
+    // Its compact form (the handler's object form) is far under the cap, its stored form
+    // exactly at it; one byte more is refused.
+    let a = ask(
+        &h,
+        Role::Control,
+        json!({"t": "snapshot.put", "id": 1, "serial": "S", "document": doc(20_001)}),
+    );
+    assert_eq!(code(&a), "conflict", "{a}");
+    let a = ask(
+        &h,
+        Role::Control,
+        json!({"t": "snapshot.put", "id": 2, "serial": "S", "document": doc(20_000)}),
+    );
+    assert_eq!(a["t"], "ok", "{a}");
+    let path = h.root().join("s-S").join("0001700000000000.dspipreset");
+    assert_eq!(fs::metadata(&path).unwrap().len(), cap);
+    for (n, name) in ["wxyz", "efgh"].into_iter().enumerate() {
+        let a = ask(
+            &h,
+            Role::Control,
+            json!({"t": "snapshot.rename", "id": 3 + n, "snapshot": "0001700000000000", "name": name}),
+        );
+        assert_eq!(a["t"], "ok", "rename {n}: {a}");
+        assert_eq!(fs::metadata(&path).unwrap().len(), cap);
+        let g = ask(
+            &h,
+            Role::Viewer,
+            json!({"t": "snapshot.get", "id": 9, "snapshot": "0001700000000000"}),
+        );
+        assert_eq!(g["snapshot"]["name"], name, "{g}");
+    }
+    // A longer name would take it over: refused, and the snapshot stays readable.
+    let a = ask(
+        &h,
+        Role::Control,
+        json!({"t": "snapshot.rename", "id": 10, "snapshot": "0001700000000000", "name": "abcde"}),
+    );
+    assert_eq!(code(&a), "conflict", "{a}");
+    assert_eq!(h.get("0001700000000000").unwrap().0.name, "efgh");
+    // The same document put again is still recognised after the store rewrote it.
+    let mut again = doc(20_000);
+    again["meta"]["name"] = json!("efgh");
+    assert!(
+        !h.put("S", &serde_json::to_string(&again).unwrap())
+            .unwrap()
+            .created
+    );
 }
