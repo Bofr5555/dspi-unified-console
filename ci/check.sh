@@ -62,7 +62,9 @@
 #                                     difference from what is committed fails
 #                                     (ci/drift.sh)
 #       deny                          cargo-deny: licences and sources, whole
-#                                     workspace (deny.toml)
+#                                     workspace (deny.toml); -- WP SECDENY -- and
+#                                     RustSec advisories, the database fetched in
+#                                     the container (cached copy when offline)
 #       firmware-digests              -- WP SECFWV -- the Android, Qt and Apple
 #                                     bundles' .uf2 files against the digests the
 #                                     Android supply-chain test pins, and
@@ -279,7 +281,14 @@ for s in "${steps[@]}"; do
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)
       podman image exists "$DENY" || ci/container/build-images.sh
-      DSPI_IMAGE=$DENY $RUN "cargo deny --workspace --all-features --locked check licenses bans sources" ;;
+      DSPI_IMAGE=$DENY $RUN "cargo deny --workspace --all-features --locked check licenses bans sources"
+      # -- WP SECDENY -- RustSec advisories: refresh the database in the container
+      # (CARGO_HOME/advisory-dbs, the shared cargo-home), and with no network use
+      # the one fetched last; then check offline against it
+      DSPI_IMAGE=$DENY $RUN 'if cargo deny fetch db; then echo "deny: advisory database refreshed"
+        elif ls -d "$CARGO_HOME"/advisory-dbs/*/ >/dev/null 2>&1; then echo "deny: no network, using the cached advisory database" >&2
+        else echo "deny: no advisory database: run once with network" >&2; exit 1; fi
+        cargo deny --workspace --all-features --frozen check advisories' ;;
     firmware-digests)
       # -- WP SECFWV --
       python3 tools/test_firmware_manifest.py
