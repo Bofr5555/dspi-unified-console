@@ -41,6 +41,10 @@ import { RecoveryCode } from "../screens/installer/HubAdmin"; // -- WP HUBADMIN 
 // -- WP WB6D -- the System view's blocks open the screen that edits them
 import type { ChainTarget } from "../screens/system/chain";
 
+// -- WP WB6F -- the status rail's health row and panel
+import { HealthFeed } from "./status-rail/feed";
+import { HealthRail } from "./status-rail/HealthRail";
+
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
   title: string;
@@ -138,6 +142,12 @@ export function Screens(props: { session: Session }) {
     return () => system.stop();
   }, [system]);
   const feed = useFeed(system);
+  // -- WP WB6F -- one health feed per session: problems stay until acknowledged, whichever screen is shown
+  const health = useMemo(() => new HealthFeed(session), [session]);
+  useEffect(() => {
+    health.start();
+    return () => health.stop();
+  }, [health]);
   const serial = session.state.snapshot?.device.serial || session.deviceId || session.id;
   // -- WP P1WB2 -- the user's choice, then the core's resolution of it (lock, hub or fleet pin)
   const [chosenMode, setMode] = useState<Mode>(() => loadMode(safeLocalStorage(), serial));
@@ -301,7 +311,10 @@ export function Screens(props: { session: Session }) {
           saveMode(safeLocalStorage(), serial, m, every);
           setMode(m);
         }}
-      />
+      >
+        {/* -- WP WB6F -- */}
+        <HealthRail session={session} feed={health} />
+      </StatusRail>
       {question ? (
         <Dialog
           title={question.title}

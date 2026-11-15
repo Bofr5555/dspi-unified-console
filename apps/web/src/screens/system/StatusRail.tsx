@@ -4,6 +4,7 @@
 // console holds itself there is no system mute and no hub alarm.
 
 import { useState } from "preact/hooks";
+import type { ComponentChildren } from "preact"; // -- WP WB6F --
 import { Dialog } from "../main/Dialog";
 import type { Session } from "../../ui/session";
 import { useSessionState } from "../../ui/components";
@@ -23,6 +24,9 @@ export function StatusRail(props: {
   choice?: ModeChoice | null;
   /** The manifest's modes and their labels. */
   modes?: { id: Mode; label: string }[];
+  // -- WP WB6F --
+  /** The rail's health row and panel (ui/status-rail/HealthRail.tsx), below this row. */
+  children?: ComponentChildren;
 }) {
   const st = useFeed(props.feed);
   const ss = useSessionState(props.session);
@@ -76,6 +80,7 @@ export function StatusRail(props: {
           {hub ? (on.length ? `${on.length} ${on.length === 1 ? "alarm" : "alarms"}` : "No alarms") : "No hub alarms"}
         </span>
       </div>
+      {props.children /* -- WP WB6F -- device, preset, core load, health */}
       {st.mute?.error ? (
         <p class="error" role="alert">
           {st.mute.error}
