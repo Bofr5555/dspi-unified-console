@@ -481,6 +481,7 @@
 #define HUB_EVENT_SESSION_OPENED 3
 #define HUB_EVENT_SESSION_CLOSED 4
 #define HUB_EVENT_STOPPED 5
+#define HUB_EVENT_TLS_KEY 6
 typedef struct AutoEqFetchSink AutoEqFetchSink;
 typedef struct AutoEqRebuildHandle AutoEqRebuildHandle;
 typedef struct FfiCore FfiCore;

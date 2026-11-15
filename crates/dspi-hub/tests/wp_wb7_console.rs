@@ -231,8 +231,15 @@ fn wp_wb7_the_page_names_its_hub_and_the_policy_this_hubs_socket() {
             .unwrap()
             .contains(&format!("ws://localhost:{port}"))
     );
-    // A name that is not the hub's (a rebinding site, a typo) goes nowhere into the page.
-    for host in ["evil.example", "127.0.0.1:1", "x\" onload=\"y"] {
+    // -- WP SECSRV -- A rebinding site's name is not answered at all over plaintext
+    // (PLAN-SEC 4.6: `Host` on every request), nor one that is no host.
+    for host in ["evil.example", "x\" onload=\"y"] {
+        let (code, ..) = request(port, "/console/", &format!("Host: {host}\r\n"));
+        assert_eq!(code, 421, "{host}");
+    }
+    // A name that is not the hub's (another port) goes nowhere into the page.
+    {
+        let host = "127.0.0.1:1";
         let (code, head, body) = request(port, "/console/", &format!("Host: {host}\r\n"));
         assert_eq!(code, 200, "{host}");
         let page = String::from_utf8(body).unwrap();

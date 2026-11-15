@@ -2393,6 +2393,14 @@
 #define HUB_EVENT_STOPPED 5
 
 /**
+ * The hub's TLS key or certificate changed while it runs. `code`: 0 a first key, 1 the
+ * key was unreadable and replaced (every client will report that the hub's key
+ * changed), 2 the certificate was issued again for the same key, 3 the key was
+ * rotated. `text` is the key's fingerprint (`SHA256:K7Q2-…`).
+ */
+#define HUB_EVENT_TLS_KEY 6
+
+/**
  * Where a fetch callback puts its answer. Valid only during the callback.
  */
 typedef struct AutoEqFetchSink AutoEqFetchSink;

@@ -96,6 +96,12 @@ pub const HUB_EVENT_SESSION_OPENED: u8 = 3;
 pub const HUB_EVENT_SESSION_CLOSED: u8 = 4;
 /// The hub has stopped: the last event of a run. `code` is -1, `text` "".
 pub const HUB_EVENT_STOPPED: u8 = 5;
+// -- WP SECSRV --
+/// The hub's TLS key or certificate changed while it runs. `code`: 0 a first key, 1 the
+/// key was unreadable and replaced (every client will report that the hub's key
+/// changed), 2 the certificate was issued again for the same key, 3 the key was
+/// rotated. `text` is the key's fingerprint (`SHA256:K7Q2-…`).
+pub const HUB_EVENT_TLS_KEY: u8 = 6;
 
 /// What a hub is called when nobody has named it.
 const DEFAULT_HUB_NAME: &str = "DSPi Hub";
@@ -167,6 +173,17 @@ impl HubListener for ListenerSlot {
                 (HUB_EVENT_SESSION_CLOSED, i32::from(id), String::new())
             }
             HubEvent::Stopped => (HUB_EVENT_STOPPED, -1, String::new()),
+            // -- WP SECSRV --
+            HubEvent::Tls(event) => {
+                use dspi_hub::tls_identity::TlsIdentityEvent as T;
+                let (code, pin) = match event {
+                    T::Created { pin } => (0, pin),
+                    T::KeyReplaced { pin, .. } => (1, pin),
+                    T::CertificateIssued { pin, .. } => (2, pin),
+                    T::Rotated { pin, .. } => (3, pin),
+                };
+                (HUB_EVENT_TLS_KEY, code, pin.display())
+            }
         };
         // A string with an inner NUL reads as cut there, never as a failure.
         let mut text = text.into_bytes();

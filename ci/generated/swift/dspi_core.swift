@@ -34102,6 +34102,13 @@ public struct LinkTxtRecord {
      * The WebSocket path.
      */
     public var path: String
+    /**
+     * The record carried `tls=1`: the hub says its port speaks TLS. A hint
+     * (anyone on the LAN can forge or strip it) for the connect's
+     * `tls_advertised`, the "advertised TLS never falls back" rule; false
+     * for an upstream hub.
+     */
+    public var tlsAdvertised: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -34126,7 +34133,13 @@ public struct LinkTxtRecord {
          */serials: [String], 
         /**
          * The WebSocket path.
-         */path: String) {
+         */path: String, 
+        /**
+         * The record carried `tls=1`: the hub says its port speaks TLS. A hint
+         * (anyone on the LAN can forge or strip it) for the connect's
+         * `tls_advertised`, the "advertised TLS never falls back" rule; false
+         * for an upstream hub.
+         */tlsAdvertised: Bool) {
         self.hubId = hubId
         self.name = name
         self.kind = kind
@@ -34134,6 +34147,7 @@ public struct LinkTxtRecord {
         self.deviceCount = deviceCount
         self.serials = serials
         self.path = path
+        self.tlsAdvertised = tlsAdvertised
     }
 }
 
@@ -34165,6 +34179,9 @@ extension LinkTxtRecord: Equatable, Hashable {
         if lhs.path != rhs.path {
             return false
         }
+        if lhs.tlsAdvertised != rhs.tlsAdvertised {
+            return false
+        }
         return true
     }
 
@@ -34176,6 +34193,7 @@ extension LinkTxtRecord: Equatable, Hashable {
         hasher.combine(deviceCount)
         hasher.combine(serials)
         hasher.combine(path)
+        hasher.combine(tlsAdvertised)
     }
 }
 
@@ -34194,7 +34212,8 @@ public struct FfiConverterTypeLinkTxtRecord: FfiConverterRustBuffer {
                 auth: FfiConverterString.read(from: &buf), 
                 deviceCount: FfiConverterUInt32.read(from: &buf), 
                 serials: FfiConverterSequenceString.read(from: &buf), 
-                path: FfiConverterString.read(from: &buf)
+                path: FfiConverterString.read(from: &buf), 
+                tlsAdvertised: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -34206,6 +34225,7 @@ public struct FfiConverterTypeLinkTxtRecord: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.deviceCount, into: &buf)
         FfiConverterSequenceString.write(value.serials, into: &buf)
         FfiConverterString.write(value.path, into: &buf)
+        FfiConverterBool.write(value.tlsAdvertised, into: &buf)
     }
 }
 
@@ -48114,7 +48134,7 @@ public func linkParsePairLink(text: String)throws  -> LinkPairLink  {
  *
  * Differs from the Mac's `HubBrowser.hub(fromTXT:)`
  * (`Link/HubBrowser.swift:583-597`) by the spec and Android's `HubTxt`: a
- * record without `v` or `hid`, or with `tls=1`, is no hub (the Mac made up a
+ * record without `v` or `hid` is no hub (the Mac made up a
  * `service:<name>` id and listed it), and a missing `kind` reads `unknown`
  * (the Mac's `console`).
  *
@@ -48548,7 +48568,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_link_parse_pair_link() != 55250) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_link_parse_txt() != 48727) {
+    if (uniffi_dspi_core_checksum_func_link_parse_txt() != 44346) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_phase_text() != 33877) {

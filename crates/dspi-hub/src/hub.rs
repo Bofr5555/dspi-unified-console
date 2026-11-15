@@ -153,6 +153,12 @@ pub enum HubEvent {
     },
     /// The hub has stopped. The last event.
     Stopped,
+    // -- WP SECSRV --
+    /// The hub's TLS identity changed while it runs (PLAN-SEC 4.2): a new key
+    /// (`KeyReplaced`, `Rotated`: clients will report that this hub's key changed)
+    /// or a certificate issued again for the same key. Public data only. What
+    /// happened at the start is in [`crate::NetworkControl::tls`].
+    Tls(crate::tls_identity::TlsIdentityEvent),
 }
 
 /// The embedder's ear on the hub (C ABI: WP HB6).
@@ -549,6 +555,12 @@ impl HubHandle {
     /// `hid`.
     pub fn hub_id(&self) -> &str {
         &self.inner.hub_id
+    }
+
+    // -- WP SECSRV --
+    /// Hand an event to the embedder's listener, on the event thread.
+    pub(crate) fn emit(&self, event: HubEvent) {
+        self.inner.emit(event);
     }
 
     /// Whether the hub has stopped or is stopping.
@@ -1027,7 +1039,7 @@ impl HubInner {
             path: None,
             // -- WP SECDISC -- `tls=1` while TLS is served; SECSRV sets it from `--tls`
             // (`on`/`require`), and clears it in the upstream compatibility mode.
-            tls: false,
+            tls: network.advertises_tls(),
         };
         match Advertiser::start(&advert, scope) {
             Ok(advertiser) => *slot = Some(advertiser),

@@ -554,6 +554,22 @@ impl WsReceiver for TcpReceiver {
 /// `tail` is what arrived behind the upgrade request. `max_frame` limits a frame and
 /// a message from the peer, checked before anything is buffered for it.
 pub fn split_server(tcp: TcpStream, tail: Vec<u8>, max_frame: usize) -> io::Result<(WebSocket<Pipe>, WebSocket<Pipe>)> {
+    let (reader, writer) = server_pipes(tcp)?;
+    let config = server_ws_config(max_frame);
+    let reader = WebSocket::from_partially_read(reader, tail, Role::Server, Some(config));
+    let writer = WebSocket::from_raw_socket(writer, Role::Server, Some(config));
+    Ok((reader, writer))
+}
+
+/// Per socket and half, so an unauthenticated socket costs little.
+const SERVER_READ_BUFFER: usize = 16 * 1024;
+
+// -- WP SECSRV --
+/// The two halves of an accepted plain socket as [`Pipe`]s (buffered, one write
+/// lock, one broken flag), as [`split_server`] makes them, for a hub that builds
+/// its WebSocket over a stream type of its own: plain or TLS on one port. Use
+/// [`server_ws_config`] for the WebSocket.
+pub fn server_pipes(tcp: TcpStream) -> io::Result<(Pipe, Pipe)> {
     let write_half = tcp.try_clone()?;
     let wlock = Arc::new(Mutex::new(()));
     let broken = Arc::new(AtomicBool::new(false));
@@ -562,48 +578,18 @@ pub fn split_server(tcp: TcpStream, tail: Vec<u8>, max_frame: usize) -> io::Resu
         p.buffered = true;
         p
     };
-    server_pair(pipe(tcp, Arc::clone(&wlock), Arc::clone(&broken)), pipe(write_half, wlock, broken), tail, max_frame)
+    Ok((pipe(tcp, Arc::clone(&wlock), Arc::clone(&broken)), pipe(write_half, wlock, broken)))
 }
 
-// -- WP SECCORE --
-/// [`split_server`] over a TLS connection the hub accepted ([`crate::tls::accept`])
-/// and read the upgrade from: its deadline is cleared here, and both halves
-/// buffer each frame and encrypt it whole.
-#[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
-pub fn split_server_tls(
-    mut tls: TlsPipe,
-    tail: Vec<u8>,
-    max_frame: usize,
-) -> io::Result<(WebSocket<Pipe>, WebSocket<Pipe>)> {
-    tls.set_deadline(None);
-    let write_half = tls.try_clone()?;
-    let wlock = Arc::new(Mutex::new(()));
-    let broken = Arc::new(AtomicBool::new(false));
-    let mut reader = Pipe::over_tls(tls, Arc::clone(&wlock), Arc::clone(&broken), None)?;
-    let mut writer = Pipe::over_tls(write_half, wlock, broken, None)?;
-    reader.buffered = true;
-    writer.buffered = true;
-    server_pair(reader, writer, tail, max_frame)
-}
-
-/// The hub's reader and writer WebSockets over two halves.
-fn server_pair(
-    reader: Pipe,
-    writer: Pipe,
-    tail: Vec<u8>,
-    max_frame: usize,
-) -> io::Result<(WebSocket<Pipe>, WebSocket<Pipe>)> {
-    let config = WebSocketConfig::default()
+// -- WP SECSRV --
+/// The WebSocket config of [`split_server`]'s halves: `max_frame` for a frame
+/// and a message, and a small read buffer per half.
+pub fn server_ws_config(max_frame: usize) -> WebSocketConfig {
+    WebSocketConfig::default()
         .max_message_size(Some(max_frame))
         .max_frame_size(Some(max_frame))
-        .read_buffer_size(SERVER_READ_BUFFER);
-    let reader = WebSocket::from_partially_read(reader, tail, Role::Server, Some(config));
-    let writer = WebSocket::from_raw_socket(writer, Role::Server, Some(config));
-    Ok((reader, writer))
+        .read_buffer_size(SERVER_READ_BUFFER)
 }
-
-/// Per socket and half, so an unauthenticated socket costs little.
-const SERVER_READ_BUFFER: usize = 16 * 1024;
 
 impl Pipe {
     /// Unbuffered, over a plain socket.
@@ -632,14 +618,6 @@ impl Pipe {
         let mut pipe = Pipe::plain(tls.tcp().try_clone()?, wlock, broken, deadline);
         pipe.tls = Some(tls);
         Ok(pipe)
-    }
-
-    /// Whether this half goes through TLS.
-    pub fn is_tls(&self) -> bool {
-        #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
-        return self.tls.is_some();
-        #[cfg(not(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown")))))]
-        false
     }
 
     /// A write failed part way, so nothing more can be sent on this stream. A read
