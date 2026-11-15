@@ -1758,6 +1758,28 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1791,6 +1813,8 @@ fun uniffi_dspi_core_checksum_func_bootloader_counts(
 ): Short
 fun uniffi_dspi_core_checksum_func_bootloader_drives(
 ): Short
+fun uniffi_dspi_core_checksum_func_bulk_image_extras(
+): Short
 fun uniffi_dspi_core_checksum_func_compute_magnitude_curve(
 ): Short
 fun uniffi_dspi_core_checksum_func_compute_phase_curve(
@@ -1807,6 +1831,12 @@ fun uniffi_dspi_core_checksum_func_crossfeed_pair_map_valid(
 ): Short
 fun uniffi_dspi_core_checksum_func_curve_freq(
 ): Short
+fun uniffi_dspi_core_checksum_func_curve_sections(
+): Short
+fun uniffi_dspi_core_checksum_func_default_channel_names(
+): Short
+fun uniffi_dspi_core_checksum_func_enum_value_labels(
+): Short
 fun uniffi_dspi_core_checksum_func_filter_type_name(
 ): Short
 fun uniffi_dspi_core_checksum_func_filter_type_names(
@@ -1815,11 +1845,15 @@ fun uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(
 ): Short
 fun uniffi_dspi_core_checksum_func_firmware_guard_check(
 ): Short
+fun uniffi_dspi_core_checksum_func_known_feature_names(
+): Short
 fun uniffi_dspi_core_checksum_func_limits_field_ranges(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_fetch_info(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_parse_address(
+): Short
+fun uniffi_dspi_core_checksum_func_link_parse_txt(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_phase_text(
 ): Short
@@ -1843,9 +1877,13 @@ fun uniffi_dspi_core_checksum_func_output_cards_for(
 ): Short
 fun uniffi_dspi_core_checksum_func_output_labels_for(
 ): Short
+fun uniffi_dspi_core_checksum_func_platform_shape(
+): Short
 fun uniffi_dspi_core_checksum_func_quantize_delay(
 ): Short
 fun uniffi_dspi_core_checksum_func_quantize_gain(
+): Short
+fun uniffi_dspi_core_checksum_func_quantize_master_volume(
 ): Short
 fun uniffi_dspi_core_checksum_func_template_list(
 ): Short
@@ -1856,6 +1894,10 @@ fun uniffi_dspi_core_checksum_func_uf2_inspect(
 fun uniffi_dspi_core_checksum_func_usb_pipe_scan(
 ): Short
 fun uniffi_dspi_core_checksum_func_usb_pipe_wait_change(
+): Short
+fun uniffi_dspi_core_checksum_func_vreg_code_label(
+): Short
+fun uniffi_dspi_core_checksum_func_vreg_code_mv(
 ): Short
 fun uniffi_dspi_core_checksum_method_autoeqfetch_get(
 ): Short
@@ -2172,6 +2214,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear(
 fun uniffi_dspi_core_checksum_method_dspicore_hub_pin_set(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_identify(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_image_extras(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices(
 ): Short
@@ -2982,6 +3026,8 @@ fun uniffi_dspi_core_fn_method_dspicore_hub_pin_set(`ptr`: Pointer,`pin`: RustBu
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_identify(`ptr`: Pointer,`seconds`: Byte,`toneOutput`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_image_extras(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
 fun uniffi_dspi_core_fn_method_dspicore_installer_lock(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3456,6 +3502,8 @@ fun uniffi_dspi_core_fn_func_bootloader_counts(uniffi_out_err: UniffiRustCallSta
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_bootloader_drives(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_bulk_image_extras(`bulkRaw`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_compute_magnitude_curve(`filters`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_compute_phase_curve(`filters`: RustBuffer.ByValue,`unwrap`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -3472,6 +3520,12 @@ fun uniffi_dspi_core_fn_func_crossfeed_pair_map_valid(`map`: RustBuffer.ByValue,
 ): Byte
 fun uniffi_dspi_core_fn_func_curve_freq(`i`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Double
+fun uniffi_dspi_core_fn_func_curve_sections(`filters`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_default_channel_names(`numInputs`: Byte,`numOutputs`: Byte,`outputTypes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_enum_value_labels(`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_filter_type_name(`code`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_filter_type_names(uniffi_out_err: UniffiRustCallStatus, 
@@ -3480,11 +3534,15 @@ fun uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(uniffi_out_err: 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_firmware_guard_check(`image`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_known_feature_names(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_limits_field_ranges(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_fetch_info(`host`: RustBuffer.ByValue,`port`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_parse_address(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_link_parse_txt(`serviceName`: RustBuffer.ByValue,`txt`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_phase_text(`phase`: RustBuffer.ByValue,`pinSource`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -3508,9 +3566,13 @@ fun uniffi_dspi_core_fn_func_output_cards_for(`input`: RustBuffer.ByValue,uniffi
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_output_labels_for(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_platform_shape(`platformId`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_quantize_delay(`ms`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
 fun uniffi_dspi_core_fn_func_quantize_gain(`db`: Float,uniffi_out_err: UniffiRustCallStatus, 
+): Float
+fun uniffi_dspi_core_fn_func_quantize_master_volume(`db`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
 fun uniffi_dspi_core_fn_func_template_list(`userDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -3522,6 +3584,10 @@ fun uniffi_dspi_core_fn_func_usb_pipe_scan(uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_usb_pipe_wait_change(`seen`: Long,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
+fun uniffi_dspi_core_fn_func_vreg_code_label(`code`: Byte,`platformId`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_vreg_code_mv(`code`: Byte,`platformId`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun ffi_dspi_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun ffi_dspi_core_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3675,6 +3741,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_bootloader_drives() != 58490.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_func_bulk_image_extras() != 22405.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_compute_magnitude_curve() != 49830.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3699,6 +3768,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_curve_freq() != 51789.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_func_curve_sections() != 5627.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_default_channel_names() != 54944.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_enum_value_labels() != 4880.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_filter_type_name() != 9662.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3711,6 +3789,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_func_known_feature_names() != 45045.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_limits_field_ranges() != 1854.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -3718,6 +3799,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_parse_address() != 30128.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_link_parse_txt() != 48727.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_phase_text() != 33877.toShort()) {
@@ -3753,10 +3837,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_output_labels_for() != 60813.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_func_platform_shape() != 51628.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_quantize_delay() != 705.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_quantize_gain() != 25180.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_quantize_master_volume() != 60674.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_template_list() != 58721.toShort()) {
@@ -3772,6 +3862,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_usb_pipe_wait_change() != 22156.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_vreg_code_label() != 63774.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_vreg_code_mv() != 41743.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_autoeqfetch_get() != 23782.toShort()) {
@@ -4056,7 +4152,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_factory_reset_confirmed() != 19300.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_feature_present() != 18345.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_feature_present() != 29519.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status() != 51824.toShort()) {
@@ -4246,6 +4342,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_identify() != 26030.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_image_extras() != 51385.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282.toShort()) {
@@ -7450,7 +7549,10 @@ public interface DspiCoreInterface {
      * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
      * answers whether the parameter image carried the clock-pin mode. False
      * with no device, before the probe, and for a name the probe does not
-     * know.
+     * know. -- WP CG-SWS-a -- The names with no probe (`first_order_pass`,
+     * `subharmonic_extended`, `stereo_upmixer`, ...) are answered from the
+     * wire format, firmware version and platform the connect read;
+     * [`known_feature_names`] lists every name.
      */
     fun `featurePresent`(`name`: kotlin.String): kotlin.Boolean
     
@@ -8158,6 +8260,12 @@ public interface DspiCoreInterface {
      * from the link.
      */
     fun `identify`(`seconds`: kotlin.UByte, `toneOutput`: kotlin.UByte?)
+    
+    /**
+     * [`crate::bulk_image_extras`] of the mirror's parameter image: the
+     * bytes `DspState` has no field for. All false with no image.
+     */
+    fun `imageExtras`(): BulkImageExtras
     
     /**
      * DSPis the last scan saw but could not open: no permission (Linux udev
@@ -12324,7 +12432,10 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
      * answers whether the parameter image carried the clock-pin mode. False
      * with no device, before the probe, and for a name the probe does not
-     * know.
+     * know. -- WP CG-SWS-a -- The names with no probe (`first_order_pass`,
+     * `subharmonic_extended`, `stereo_upmixer`, ...) are answered from the
+     * wire format, firmware version and platform the connect read;
+     * [`known_feature_names`] lists every name.
      */override fun `featurePresent`(`name`: kotlin.String): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
@@ -13720,6 +13831,22 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * [`crate::bulk_image_extras`] of the mirror's parameter image: the
+     * bytes `DspState` has no field for. All false with no image.
+     */override fun `imageExtras`(): BulkImageExtras {
+            return FfiConverterTypeBulkImageExtras.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_image_extras(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -23488,6 +23615,70 @@ public object FfiConverterTypeAutoEqRebuildProgress: FfiConverterRustBuffer<Auto
 
 
 /**
+ * One biquad section of a response curve ([`crate::curve_sections`]):
+ * `H(z) = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2)`, normalised so
+ * that `a0` is 1, at the device's sample rate.
+ */
+data class BiquadSection (
+    /**
+     * Feed-forward coefficient of `z^0`.
+     */
+    var `b0`: kotlin.Double, 
+    /**
+     * Feed-forward coefficient of `z^-1`.
+     */
+    var `b1`: kotlin.Double, 
+    /**
+     * Feed-forward coefficient of `z^-2`.
+     */
+    var `b2`: kotlin.Double, 
+    /**
+     * Feedback coefficient of `z^-1`.
+     */
+    var `a1`: kotlin.Double, 
+    /**
+     * Feedback coefficient of `z^-2`.
+     */
+    var `a2`: kotlin.Double
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBiquadSection: FfiConverterRustBuffer<BiquadSection> {
+    override fun read(buf: ByteBuffer): BiquadSection {
+        return BiquadSection(
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: BiquadSection) = (
+            FfiConverterDouble.allocationSize(value.`b0`) +
+            FfiConverterDouble.allocationSize(value.`b1`) +
+            FfiConverterDouble.allocationSize(value.`b2`) +
+            FfiConverterDouble.allocationSize(value.`a1`) +
+            FfiConverterDouble.allocationSize(value.`a2`)
+    )
+
+    override fun write(value: BiquadSection, buf: ByteBuffer) {
+            FfiConverterDouble.write(value.`b0`, buf)
+            FfiConverterDouble.write(value.`b1`, buf)
+            FfiConverterDouble.write(value.`b2`, buf)
+            FfiConverterDouble.write(value.`a1`, buf)
+            FfiConverterDouble.write(value.`a2`, buf)
+    }
+}
+
+
+
+/**
  * How many boards in bootloader mode are attached, per chip.
  */
 data class BootloaderCounts (
@@ -23640,6 +23831,79 @@ public object FfiConverterTypeBufferStats: FfiConverterRustBuffer<BufferStats> {
             FfiConverterUShort.write(value.`sequence`, buf)
             FfiConverterSequenceTypeSpdifBufferStats.write(value.`spdif`, buf)
             FfiConverterTypePdmBufferStats.write(value.`pdm`, buf)
+    }
+}
+
+
+
+/**
+ * Bytes of the parameter image that `DspState` has no field for
+ * ([`crate::bulk_image_extras`]). A "present" flag is the firmware's
+ * "0 is absent, keep the last value" byte, read on the V32 layout.
+ */
+data class BulkImageExtras (
+    /**
+     * The image is a whole one of this build's wire format (its first byte
+     * is the version): the mirror was decoded from it.
+     */
+    var `decoded`: kotlin.Boolean, 
+    /**
+     * The image carried the I2S slave bit clock pin.
+     */
+    var `i2sBckPinSlavePresent`: kotlin.Boolean, 
+    /**
+     * The image carried the I2S input channel count.
+     */
+    var `i2sInputChannelsPresent`: kotlin.Boolean, 
+    /**
+     * Per I2S data input 2..4: the image carried its pin.
+     */
+    var `i2sRxPinExtPresent`: List<kotlin.Boolean>, 
+    /**
+     * Per S/PDIF input 2..4: the image carried its pin.
+     */
+    var `spdifRxPinExtPresent`: List<kotlin.Boolean>, 
+    /**
+     * The image carried the ADAT output pin; without it the firmware uses
+     * its default pin.
+     */
+    var `adatOutPinPresent`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBulkImageExtras: FfiConverterRustBuffer<BulkImageExtras> {
+    override fun read(buf: ByteBuffer): BulkImageExtras {
+        return BulkImageExtras(
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceBoolean.read(buf),
+            FfiConverterSequenceBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: BulkImageExtras) = (
+            FfiConverterBoolean.allocationSize(value.`decoded`) +
+            FfiConverterBoolean.allocationSize(value.`i2sBckPinSlavePresent`) +
+            FfiConverterBoolean.allocationSize(value.`i2sInputChannelsPresent`) +
+            FfiConverterSequenceBoolean.allocationSize(value.`i2sRxPinExtPresent`) +
+            FfiConverterSequenceBoolean.allocationSize(value.`spdifRxPinExtPresent`) +
+            FfiConverterBoolean.allocationSize(value.`adatOutPinPresent`)
+    )
+
+    override fun write(value: BulkImageExtras, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`decoded`, buf)
+            FfiConverterBoolean.write(value.`i2sBckPinSlavePresent`, buf)
+            FfiConverterBoolean.write(value.`i2sInputChannelsPresent`, buf)
+            FfiConverterSequenceBoolean.write(value.`i2sRxPinExtPresent`, buf)
+            FfiConverterSequenceBoolean.write(value.`spdifRxPinExtPresent`, buf)
+            FfiConverterBoolean.write(value.`adatOutPinPresent`, buf)
     }
 }
 
@@ -24975,6 +25239,56 @@ public object FfiConverterTypeDspState: FfiConverterRustBuffer<DspState> {
             FfiConverterBoolean.write(value.`spdifInputsEnabledPresent`, buf)
             FfiConverterBoolean.write(value.`adatInputEnabledPresent`, buf)
             FfiConverterBoolean.write(value.`adatInputClockModePresent`, buf)
+    }
+}
+
+
+
+/**
+ * One value of a choice setting and the words a client shows for it
+ * ([`crate::enum_value_labels`]).
+ */
+data class EnumValueLabel (
+    /**
+     * The value as written to the setting.
+     */
+    var `value`: kotlin.UByte, 
+    /**
+     * The registry's name for the value (`passive`, `percussive`, ...), or
+     * the number for a numbered setting.
+     */
+    var `key`: kotlin.String, 
+    /**
+     * What the Console shows for it.
+     */
+    var `label`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeEnumValueLabel: FfiConverterRustBuffer<EnumValueLabel> {
+    override fun read(buf: ByteBuffer): EnumValueLabel {
+        return EnumValueLabel(
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: EnumValueLabel) = (
+            FfiConverterUByte.allocationSize(value.`value`) +
+            FfiConverterString.allocationSize(value.`key`) +
+            FfiConverterString.allocationSize(value.`label`)
+    )
+
+    override fun write(value: EnumValueLabel, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`value`, buf)
+            FfiConverterString.write(value.`key`, buf)
+            FfiConverterString.write(value.`label`, buf)
     }
 }
 
@@ -27119,6 +27433,124 @@ public object FfiConverterTypeLinkStatus: FfiConverterRustBuffer<LinkStatus> {
 
 
 /**
+ * One key and value of a DNS-SD TXT record ([`crate::link_parse_txt`]).
+ */
+data class LinkTxtEntry (
+    /**
+     * The key (`v`, `hid`, ...).
+     */
+    var `key`: kotlin.String, 
+    /**
+     * Its value; empty for a key without one.
+     */
+    var `value`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkTxtEntry: FfiConverterRustBuffer<LinkTxtEntry> {
+    override fun read(buf: ByteBuffer): LinkTxtEntry {
+        return LinkTxtEntry(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkTxtEntry) = (
+            FfiConverterString.allocationSize(value.`key`) +
+            FfiConverterString.allocationSize(value.`value`)
+    )
+
+    override fun write(value: LinkTxtEntry, buf: ByteBuffer) {
+            FfiConverterString.write(value.`key`, buf)
+            FfiConverterString.write(value.`value`, buf)
+    }
+}
+
+
+
+/**
+ * A hub as its DNS-SD TXT record describes it ([`crate::link_parse_txt`]),
+ * before an address is resolved.
+ */
+data class LinkTxtRecord (
+    /**
+     * The `hid`, lowercase.
+     */
+    var `hubId`: kotlin.String, 
+    /**
+     * The instance name, safe to show (the `hid` when it has none).
+     */
+    var `name`: kotlin.String, 
+    /**
+     * `console`, `bridge` or `unknown`.
+     */
+    var `kind`: kotlin.String, 
+    /**
+     * `none` or `pin`.
+     */
+    var `auth`: kotlin.String, 
+    /**
+     * Devices the hub shares.
+     */
+    var `deviceCount`: kotlin.UInt, 
+    /**
+     * Their serials, when the hub lists them.
+     */
+    var `serials`: List<kotlin.String>, 
+    /**
+     * The WebSocket path.
+     */
+    var `path`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLinkTxtRecord: FfiConverterRustBuffer<LinkTxtRecord> {
+    override fun read(buf: ByteBuffer): LinkTxtRecord {
+        return LinkTxtRecord(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LinkTxtRecord) = (
+            FfiConverterString.allocationSize(value.`hubId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`auth`) +
+            FfiConverterUInt.allocationSize(value.`deviceCount`) +
+            FfiConverterSequenceString.allocationSize(value.`serials`) +
+            FfiConverterString.allocationSize(value.`path`)
+    )
+
+    override fun write(value: LinkTxtRecord, buf: ByteBuffer) {
+            FfiConverterString.write(value.`hubId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`auth`, buf)
+            FfiConverterUInt.write(value.`deviceCount`, buf)
+            FfiConverterSequenceString.write(value.`serials`, buf)
+            FfiConverterString.write(value.`path`, buf)
+    }
+}
+
+
+
+/**
  * The open device's installer lock on this console
  * ([`DspiCore::installer_lock_state`]).
  */
@@ -28468,6 +28900,157 @@ public object FfiConverterTypePinUse: FfiConverterRustBuffer<PinUse> {
     override fun write(value: PinUse, buf: ByteBuffer) {
             FfiConverterUByte.write(value.`pin`, buf)
             FfiConverterUByte.write(value.`slot`, buf)
+    }
+}
+
+
+
+/**
+ * What a platform is, as the clients lay out their pages
+ * ([`crate::platform_shape`]): channel counts, where the PDM sub and the
+ * second core's EQ outputs are, and which platform-bound sections exist.
+ */
+data class PlatformShape (
+    /**
+     * The platform id the shape is for (0 RP2040, 1 RP2350, 2 STM32H723).
+     */
+    var `platformId`: kotlin.UByte, 
+    /**
+     * `RP2040`, `RP2350`, `STM32H723`, or `unknown platform N`.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * False for an id this build does not know; its shape is the RP2040's,
+     * the smallest.
+     */
+    var `known`: kotlin.Boolean, 
+    /**
+     * Matrix inputs (USB channels): 2 on RP2040, 8 elsewhere.
+     */
+    var `numInputChannels`: kotlin.UByte, 
+    /**
+     * Outputs, the PDM sub included: 5 on RP2040, 9 elsewhere.
+     */
+    var `numOutputChannels`: kotlin.UByte, 
+    /**
+     * Stereo output slots (S/PDIF or I2S): 2 on RP2040, 4 elsewhere.
+     */
+    var `numOutputSlots`: kotlin.UByte, 
+    /**
+     * The PDM sub's output index: always the last output.
+     */
+    var `pdmOutput`: kotlin.UByte, 
+    /**
+     * The PDM sub's index in the output pin list: after the slots.
+     */
+    var `pdmPinIndex`: kotlin.UByte, 
+    /**
+     * First output whose EQ runs on the second core (the other half of the
+     * PDM interlock).
+     */
+    var `eqWorkerFirst`: kotlin.UByte, 
+    /**
+     * Last output whose EQ runs on the second core.
+     */
+    var `eqWorkerLast`: kotlin.UByte, 
+    /**
+     * I2S input pairs: 1 on RP2040, 4 elsewhere.
+     */
+    var `i2sMaxPairs`: kotlin.UByte, 
+    /**
+     * Multichannel (more than one pair) I2S input: RP2350 only.
+     */
+    var `multichannelI2s`: kotlin.Boolean, 
+    /**
+     * ADAT output and input: RP2350 only.
+     */
+    var `adat`: kotlin.Boolean, 
+    /**
+     * The stereo upmixer: RP2350 only (RP2040 stalls its writes).
+     */
+    var `upmixer`: kotlin.Boolean, 
+    /**
+     * The I2S configuration page: every platform but STM32H723.
+     */
+    var `i2sConfig`: kotlin.Boolean, 
+    /**
+     * Crossfeed stereo pairs: 2 on RP2040, 4 elsewhere.
+     */
+    var `crossfeedPairs`: kotlin.UByte, 
+    /**
+     * The longest delay the delay line holds, in ms: 42 on RP2350, 21
+     * elsewhere (`dspi_proto::Platform::max_delay_ms`).
+     */
+    var `maxDelayMs`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePlatformShape: FfiConverterRustBuffer<PlatformShape> {
+    override fun read(buf: ByteBuffer): PlatformShape {
+        return PlatformShape(
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PlatformShape) = (
+            FfiConverterUByte.allocationSize(value.`platformId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`known`) +
+            FfiConverterUByte.allocationSize(value.`numInputChannels`) +
+            FfiConverterUByte.allocationSize(value.`numOutputChannels`) +
+            FfiConverterUByte.allocationSize(value.`numOutputSlots`) +
+            FfiConverterUByte.allocationSize(value.`pdmOutput`) +
+            FfiConverterUByte.allocationSize(value.`pdmPinIndex`) +
+            FfiConverterUByte.allocationSize(value.`eqWorkerFirst`) +
+            FfiConverterUByte.allocationSize(value.`eqWorkerLast`) +
+            FfiConverterUByte.allocationSize(value.`i2sMaxPairs`) +
+            FfiConverterBoolean.allocationSize(value.`multichannelI2s`) +
+            FfiConverterBoolean.allocationSize(value.`adat`) +
+            FfiConverterBoolean.allocationSize(value.`upmixer`) +
+            FfiConverterBoolean.allocationSize(value.`i2sConfig`) +
+            FfiConverterUByte.allocationSize(value.`crossfeedPairs`) +
+            FfiConverterFloat.allocationSize(value.`maxDelayMs`)
+    )
+
+    override fun write(value: PlatformShape, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`platformId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`known`, buf)
+            FfiConverterUByte.write(value.`numInputChannels`, buf)
+            FfiConverterUByte.write(value.`numOutputChannels`, buf)
+            FfiConverterUByte.write(value.`numOutputSlots`, buf)
+            FfiConverterUByte.write(value.`pdmOutput`, buf)
+            FfiConverterUByte.write(value.`pdmPinIndex`, buf)
+            FfiConverterUByte.write(value.`eqWorkerFirst`, buf)
+            FfiConverterUByte.write(value.`eqWorkerLast`, buf)
+            FfiConverterUByte.write(value.`i2sMaxPairs`, buf)
+            FfiConverterBoolean.write(value.`multichannelI2s`, buf)
+            FfiConverterBoolean.write(value.`adat`, buf)
+            FfiConverterBoolean.write(value.`upmixer`, buf)
+            FfiConverterBoolean.write(value.`i2sConfig`, buf)
+            FfiConverterUByte.write(value.`crossfeedPairs`, buf)
+            FfiConverterFloat.write(value.`maxDelayMs`, buf)
     }
 }
 
@@ -33334,6 +33917,34 @@ public object FfiConverterSequenceTypeAutoEqFilter: FfiConverterRustBuffer<List<
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeBiquadSection: FfiConverterRustBuffer<List<BiquadSection>> {
+    override fun read(buf: ByteBuffer): List<BiquadSection> {
+        val len = buf.getInt()
+        return List<BiquadSection>(len) {
+            FfiConverterTypeBiquadSection.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<BiquadSection>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeBiquadSection.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<BiquadSection>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeBiquadSection.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeBootloaderDrive: FfiConverterRustBuffer<List<BootloaderDrive>> {
     override fun read(buf: ByteBuffer): List<BootloaderDrive> {
         val len = buf.getInt()
@@ -33408,6 +34019,34 @@ public object FfiConverterSequenceTypeDiagFile: FfiConverterRustBuffer<List<Diag
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeDiagFile.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeEnumValueLabel: FfiConverterRustBuffer<List<EnumValueLabel>> {
+    override fun read(buf: ByteBuffer): List<EnumValueLabel> {
+        val len = buf.getInt()
+        return List<EnumValueLabel>(len) {
+            FfiConverterTypeEnumValueLabel.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<EnumValueLabel>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeEnumValueLabel.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<EnumValueLabel>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeEnumValueLabel.write(it, buf)
         }
     }
 }
@@ -33688,6 +34327,34 @@ public object FfiConverterSequenceTypeLinkPhaseText: FfiConverterRustBuffer<List
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeLinkPhaseText.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeLinkTxtEntry: FfiConverterRustBuffer<List<LinkTxtEntry>> {
+    override fun read(buf: ByteBuffer): List<LinkTxtEntry> {
+        val len = buf.getInt()
+        return List<LinkTxtEntry>(len) {
+            FfiConverterTypeLinkTxtEntry.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LinkTxtEntry>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLinkTxtEntry.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LinkTxtEntry>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLinkTxtEntry.write(it, buf)
         }
     }
 }
@@ -34411,6 +35078,27 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
+         * The parameter image's presence bytes that `DspState` has no field for:
+         * the firmware writes 0 for "absent, keep what you have" (`bulk_params.h`),
+         * and a client that keeps its own value for an absent one asks here instead
+         * of reading `bulk_raw` by offset (the Mac's `CoreMirror.raw`,
+         * `CoreMirror.swift:661-720`, `:798-807`). `bulk_raw` is
+         * `DspState::bulk_raw`; anything shorter than an image reads as absent.
+         *
+         * The custom crossfeed pair, which the Mac also reads by offset
+         * (`PresetDocumentTransfer.swift:20-28`), is
+         * [`crate::DspiCore::crossfeed_custom_pair`].
+         */ fun `bulkImageExtras`(`bulkRaw`: kotlin.ByteArray): BulkImageExtras {
+            return FfiConverterTypeBulkImageExtras.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_bulk_image_extras(
+        FfiConverterByteArray.lower(`bulkRaw`),_status)
+}
+    )
+    }
+    
+
+        /**
          * The combined level of `filters` in dB at each of the [`CURVE_POINTS`]
          * frequencies of [`curve_freq`]. Never below -300 dB.
          */ fun `computeMagnitudeCurve`(`filters`: List<FilterParams>): List<kotlin.Double> {
@@ -34536,6 +35224,65 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
+         * The biquad sections the curves of `filters` are computed from, in
+         * cascade order: what a GPU renderer evaluates per pixel to draw the same
+         * curve as [`compute_magnitude_curve`].
+         *
+         * A bypassed or flat band adds none; a crossover type adds each of its
+         * sections as the firmware builds them; a type this build does not know,
+         * or a band whose values give a non-finite coefficient, adds a unity
+         * section. Call it with one band for that band's own sections.
+         */ fun `curveSections`(`filters`: List<FilterParams>): List<BiquadSection> {
+            return FfiConverterSequenceTypeBiquadSection.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_curve_sections(
+        FfiConverterSequenceTypeFilterParams.lower(`filters`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The firmware's name for each channel when the user has named none: inputs
+         * first, then outputs, `num_inputs + num_outputs` names. `output_types` is
+         * `DspState::output_types` (one byte per stereo slot, 1 for I2S); a missing
+         * entry reads as S/PDIF. The rule is in the module docs.
+         *
+         * For a connected device pass `DspState`'s `num_input_channels`,
+         * `num_output_channels` and `output_types`; without one,
+         * [`platform_shape`]'s counts.
+         */ fun `defaultChannelNames`(`numInputs`: kotlin.UByte, `numOutputs`: kotlin.UByte, `outputTypes`: kotlin.ByteArray): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_default_channel_names(
+        FfiConverterUByte.lower(`numInputs`),FfiConverterUByte.lower(`numOutputs`),FfiConverterByteArray.lower(`outputTypes`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Every value of the choice setting `path` with the words the Console shows
+         * for it, in value order: `in.source`, `lev.speed`, `cf.preset`,
+         * `up.center_mode`, `up.surround_mode`, `sub.select` and `tube.type`. The
+         * words are `dspi_session::cs_model::enum_value_label`'s, the one table the
+         * control surfaces, the TUI and now every client read (upmixer `Sinner`,
+         * `Logician`, `Off`; selectivity `All material`, `Percussive`, `Sustained`;
+         * the tube styles, 0 `Custom`).
+         *
+         * Errors: [`DspiError::InvalidArgument`] for any other path.
+         */
+    @Throws(DspiException::class) fun `enumValueLabels`(`path`: kotlin.String): List<EnumValueLabel> {
+            return FfiConverterSequenceTypeEnumValueLabel.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_enum_value_labels(
+        FfiConverterString.lower(`path`),_status)
+}
+    )
+    }
+    
+
+        /**
          * The name of filter type `code`; "Type 14" for a code the firmware does
          * not define (yet).
          */ fun `filterTypeName`(`code`: kotlin.UByte): kotlin.String {
@@ -34590,6 +35337,20 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
+         * Every name [`DspiCore::feature_present`] knows: the connect probe's, then
+         * [`DERIVED_FEATURES`]. A client gates each section by one of these, never
+         * by a wire format or firmware version.
+         */ fun `knownFeatureNames`(): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_known_feature_names(
+        _status)
+}
+    )
+    }
+    
+
+        /**
          * Every limits field's range, in the order an editor shows them (each
          * output's fields, then the device's): the one table every client's limits
          * editor uses (review p1e-a F7). A profile is held to the same ranges when
@@ -34630,6 +35391,31 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_parse_address(
         FfiConverterString.lower(`text`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Read a hub's TXT record. `service_name` is the DNS-SD instance name (with
+         * or without `._dspi._tcp.local.`); `txt` its keys and values in record
+         * order (of a key repeated, the first counts, RFC 6763 6.4). Where the
+         * hub is comes from resolving the service, not from here: dial it with
+         * [`crate::link_ws_url`] and `path`.
+         *
+         * Differs from the Mac's `HubBrowser.hub(fromTXT:)`
+         * (`Link/HubBrowser.swift:583-597`) by the spec and Android's `HubTxt`: a
+         * record without `v` or `hid`, or with `tls=1`, is no hub (the Mac made up a
+         * `service:<name>` id and listed it), and a missing `kind` reads `unknown`
+         * (the Mac's `console`).
+         *
+         * Errors: [`DspiError::InvalidArgument`] saying why the record is no hub.
+         */
+    @Throws(DspiException::class) fun `linkParseTxt`(`serviceName`: kotlin.String, `txt`: List<LinkTxtEntry>): LinkTxtRecord {
+            return FfiConverterTypeLinkTxtRecord.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_parse_txt(
+        FfiConverterString.lower(`serviceName`),FfiConverterSequenceTypeLinkTxtEntry.lower(`txt`),_status)
 }
     )
     }
@@ -34775,6 +35561,29 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
+         * The shape of platform `platform_id` (`DspState::platform_id`), for laying
+         * out pages before or without a device. A connected device's own counts are
+         * in `DspState` (`num_input_channels`, `num_output_channels`); this is the
+         * platform's table, the Mac's `platformName == "RP2040" ? ... : ...` rules
+         * (`DSPViewModel.swift:1540-1543`, `:1970`, `:2346-2353`, `:2232`;
+         * `DSPi_ConsoleApp.swift:427`) in one place.
+         *
+         * An id this build does not know gets the RP2040's shape (the smallest) with
+         * `known` false, as the Mac names an unknown id `RP2040`
+         * (`Commands.swift:160-162`). The longest delay is the core's rule
+         * (`dspi_proto::Platform::max_delay_ms`: 42 ms on RP2350, 21 ms elsewhere),
+         * not the Mac's slider ceiling of 85 ms, which no platform delivers.
+         */ fun `platformShape`(`platformId`: kotlin.UByte): PlatformShape {
+            return FfiConverterTypePlatformShape.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_platform_shape(
+        FfiConverterUByte.lower(`platformId`),_status)
+}
+    )
+    }
+    
+
+        /**
          * A delay in ms on a 0.0001 ms grid, as the delay setters send it.
          *
          * Halves round away from zero and -0 becomes +0. No clamping (callers bound
@@ -34798,6 +35607,24 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
             return FfiConverterFloat.lift(
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_quantize_gain(
+        FfiConverterFloat.lower(`db`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A master volume in dB as [`crate::DspiCore::set_master_volume`] keeps
+         * it: -128 (mute) at or below -128, else on a 0.5 dB grid (halves away
+         * from zero) within -127..=0. -0 becomes +0. NaN comes back as NaN (the
+         * setter refuses it).
+         *
+         * A slider shows this value while the user drags, so it shows what the
+         * device gets.
+         */ fun `quantizeMasterVolume`(`db`: kotlin.Float): kotlin.Float {
+            return FfiConverterFloat.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_quantize_master_volume(
         FfiConverterFloat.lower(`db`),_status)
 }
     )
@@ -34882,6 +35709,43 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_usb_pipe_wait_change(
         FfiConverterULong.lower(`seen`),FfiConverterUInt.lower(`timeoutMs`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A core-voltage code as the user reads it: `1.20 V`, or `code 0x1F` for a
+         * code [`vreg_code_mv`] does not decode on that platform (the Mac's
+         * `VregVoltage.label`, `ExtensionChannel.swift:294-298`).
+         */ fun `vregCodeLabel`(`code`: kotlin.UByte, `platformId`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_vreg_code_label(
+        FfiConverterUByte.lower(`code`),FfiConverterUByte.lower(`platformId`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A pico-sdk `enum vreg_voltage` code in mV on platform `platform_id`, or
+         * `None` for a code the chip does not have.
+         *
+         * - Both chips: 0x06 (0.85 V) to 0x0F (1.30 V) in 50 mV steps.
+         * - RP2350 adds 0x00-0x05 (0.55-0.80 V) and 0x10-0x1F (1.35-3.30 V).
+         * - On RP2040, 0x00-0x05 all program 0.80 V, and there is nothing above
+         * 0x0F.
+         * - Any other platform (STM32H723 has no `EXT_CORE_VREG`): only the codes
+         * both chips agree on, as `dspi_proto::ext::vreg_mv`.
+         *
+         * The Mac's `VregVoltage.volts` (`ExtensionChannel.swift:272-292`) is the
+         * same table for RP2040 and RP2350.
+         */ fun `vregCodeMv`(`code`: kotlin.UByte, `platformId`: kotlin.UByte): kotlin.UShort? {
+            return FfiConverterOptionalUShort.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_vreg_code_mv(
+        FfiConverterUByte.lower(`code`),FfiConverterUByte.lower(`platformId`),_status)
 }
     )
     }
