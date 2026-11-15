@@ -4364,6 +4364,17 @@ interface DspiCoreApi : AutoCloseable {
     fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict
 
     /**
+     * Whether `image` is the bundled file `name` (a file name; a leading path
+     * is ignored), byte for byte. Pass the bundled name for a bundled image, and
+     * the picked file's name, or "", for one the user chose. A consistency check
+     * against build mix-ups and corruption, not tamper protection: the manifest
+     * ships in the same bundle as the images. Pure; hashes the image once.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun verifyBundled(image: List<Int>, name: String): BundledFirmware
+
+    /**
      * Every limits field's range, in the order an editor shows them (each
      * output's fields, then the device's): the one table every client's limits
      * editor uses (review p1e-a F7). A profile is held to the same ranges when

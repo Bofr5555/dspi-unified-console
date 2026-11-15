@@ -738,6 +738,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict = throw NotImplementedError("firmware_guard_check")
 
+    override fun verifyBundled(image: List<Int>, name: String): BundledFirmware = throw NotImplementedError("verify_bundled")
+
     override fun limitsFieldRanges(): List<LimitFieldRange> = throw NotImplementedError("limits_field_ranges")
 
     override fun linkParseAddress(text: String): LinkAddress = throw NotImplementedError("link_parse_address")

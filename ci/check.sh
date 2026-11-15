@@ -63,6 +63,12 @@
 #                                     (ci/drift.sh)
 #       deny                          cargo-deny: licences and sources, whole
 #                                     workspace (deny.toml)
+#       firmware-digests              -- WP SECFWV -- the Android, Qt and Apple
+#                                     bundles' .uf2 files against the digests the
+#                                     Android supply-chain test pins, and
+#                                     firmware/manifest.json current
+#                                     (tools/firmware_manifest.py --check, with its
+#                                     own tests). python3 stdlib on the host
 #       ios-check                     dspi-ffi without `usb`: nusb is out of the iOS
 #                                     graph, clippy and tests pass with the feature
 #                                     off, and `cargo check` for aarch64-apple-ios
@@ -133,7 +139,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen qt-windows terminal proptest kotlin swift ios-check drift conformance-ts web); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny firmware-digests windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen qt-windows terminal proptest kotlin swift ios-check drift conformance-ts web); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
@@ -142,7 +148,8 @@ done
 if [ ${#crates[@]} -eq 0 ] && [ ${#steps[@]} -eq 0 ]; then
   # -- WP WB1 -- wasm-core
   # -- WP MR3 -- android-contract
-  steps=(fmt clippy test windows-gnu wasm-core android-contract licences deny)
+  # -- WP SECFWV -- firmware-digests
+  steps=(fmt clippy test windows-gnu wasm-core android-contract licences deny firmware-digests)
 fi
 
 ok() { printf '\n== %s: OK\n' "$1"; }
@@ -273,6 +280,10 @@ for s in "${steps[@]}"; do
     deny)
       podman image exists "$DENY" || ci/container/build-images.sh
       DSPI_IMAGE=$DENY $RUN "cargo deny --workspace --all-features --locked check licenses bans sources" ;;
+    firmware-digests)
+      # -- WP SECFWV --
+      python3 tools/test_firmware_manifest.py
+      python3 tools/firmware_manifest.py --check ;;
     drift)
       # -- WP MR2 --
       $RUN "ci/drift.sh check" ;;

@@ -79,6 +79,20 @@ release's `assets[].digest`, replace both files, update this table, the
 hashes in `Uf2ImageTest`, `FirmwareVersion.CONSOLE_VERSION` and `HomeModel.EXPECTED_FIRMWARE`
 (`FirmwareBannerWpAn18Test` checks the two agree with the asset names).
 
+<!-- WP SECFWV -->
+Then run `tools/firmware_manifest.py` from the repository root and commit
+`firmware/manifest.json`, after copying the same files into the Qt
+(`apps/desktop/qt/firmware/`) and Apple (`apps/apple/DSPi Console/Firmware/`)
+bundles. `ci/check.sh --step firmware-digests` fails unless all three bundles
+hold exactly the pinned files and the manifest is current. The core checks the
+manifest before every flash (`dspi-core` `firmware_manifest.rs`): a bundled image
+whose bytes differ is refused, and a user's own file comes back `NotBundled`
+for the "not a verified DSPi Console image" label. This is a consistency check
+against build mix-ups and corruption, **not tamper protection**: the manifest
+ships in the same bundle as the images, so whoever swaps an image can swap the
+manifest too. The controls against tampering are platform code signing and
+this CI digest test.
+
 `:feature-firmware` uses `androidx.activity:activity-compose` for its SAF
 pickers; its verification metadata is the E3 row above (no further entries).
 
