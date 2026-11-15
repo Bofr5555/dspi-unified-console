@@ -743,12 +743,20 @@ extension DSPViewModel {
     }
 
     func fetchUserVolume() {
-        if let d = transport.getControlRequest(request: REQ_GET_USER_VOLUME, value: 0, index: 0, length: 4) {
-            let val = d.withUnsafeBytes { $0.load(as: Float.self) }
-            DispatchQueue.main.async {
-                if abs(self.userVolumeDB - val) > 0.01 {
-                    self.userVolumeDB = val
-                }
+        // -- WP SW-M1 -- (fixup, review swm1) Through a core: its mirror,
+        // which the device's volume notification keeps current; no raw read.
+        let val: Float
+        if let core = typedCore {
+            val = core.readState().userVolumeDb
+        } else if let d = transport.getControlRequest(request: REQ_GET_USER_VOLUME, value: 0, index: 0, length: 4),
+                  d.count >= 4 {
+            val = d.withUnsafeBytes { $0.load(as: Float.self) }
+        } else {
+            return
+        }
+        DispatchQueue.main.async {
+            if abs(self.userVolumeDB - val) > 0.01 {
+                self.userVolumeDB = val
             }
         }
     }

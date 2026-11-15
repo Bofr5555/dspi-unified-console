@@ -202,7 +202,7 @@ pub use raw::raw_gated_call;
 // -- WP CG26 --
 pub use host_transport::{HostTransport, HostTransportKind};
 // -- WP SW-M1 --
-pub use usb_pipe::{UsbPipe, usb_pipe_scan};
+pub use usb_pipe::{UsbPipe, usb_pipe_scan, usb_pipe_wait_change};
 // -- WP CG32 --
 pub use write_param::{ParamValue, write_refusal};
 // -- WP CG34 --

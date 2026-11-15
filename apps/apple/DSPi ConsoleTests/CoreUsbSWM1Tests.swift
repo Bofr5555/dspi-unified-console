@@ -47,11 +47,11 @@ final class MockUsbPipe: UsbPipeProtocol, @unchecked Sendable {
 
     var isClosedNow: Bool { lock.lock(); defer { lock.unlock() }; return closed }
 
-    func close() {
+    func shutdown() {
         lock.lock(); closed = true; lock.broadcast(); lock.unlock()
     }
 
-    func isClosed() -> Bool { isClosedNow }
+    func isShutDown() -> Bool { isClosedNow }
 
     func serial() -> String { serialValue }
 
@@ -91,6 +91,7 @@ final class MockUsbBus: CoreUsbBus {
     /// Opens of this serial that fail first (busy), before one works.
     var busyOpens: [String: Int] = [:]
     var alwaysBusy: Set<String> = []
+    private var attemptCount: [String: Int] = [:]
 
     func plug(_ serial: String, location: UInt32 = 0x1400_0000) {
         lock.lock(); present.append(DSPiDevice(serial: serial, locationID: location)); lock.unlock()
@@ -105,11 +106,19 @@ final class MockUsbBus: CoreUsbBus {
         lock.lock(); defer { lock.unlock() }; return present
     }
 
+    /// No hot-plug events here: the fallback poll's wait.
+    func waitForChange(after seen: UInt64, timeoutMs: UInt32) -> UInt64 {
+        Thread.sleep(forTimeInterval: Double(timeoutMs) / 1000)
+        return seen
+    }
+
     func open(serial: String) throws -> UsbPipeProtocol {
         lock.lock(); defer { lock.unlock() }
+        attemptCount[serial, default: 0] += 1
         guard present.contains(where: { $0.serial == serial }) else { throw DspiError.Disconnected }
         if alwaysBusy.contains(serial) {
-            throw DspiError.Transfer(msg: "could not open interface for exclusive access")
+            // What the core's pipe gives for a held interface (fixup F4).
+            throw DspiError.Link(code: "busy", msg: "could not claim the DSPi vendor interface. Another application is probably holding it")
         }
         if let n = busyOpens[serial], n > 0 {
             busyOpens[serial] = n - 1
@@ -120,6 +129,7 @@ final class MockUsbBus: CoreUsbBus {
         return p
     }
 
+    func attempts(_ serial: String) -> Int { lock.lock(); defer { lock.unlock() }; return attemptCount[serial] ?? 0 }
     func opens(_ serial: String) -> Int { lock.lock(); defer { lock.unlock() }; return pipes[serial]?.count ?? 0 }
     func lastPipe(_ serial: String) -> MockUsbPipe? { lock.lock(); defer { lock.unlock() }; return pipes[serial]?.last }
 }
@@ -218,9 +228,63 @@ final class CoreUsbSWM1Tests: XCTestCase {
     /// stays is the retry and the wording of an open that keeps failing.
     func testSWM1AHeldDeviceOpensAfterTheRetriesOrSaysBusy() {
         XCTAssertEqual(CoreUsb.openRetryDelays, [0.1, 0.2, 0.4, 0.8, 1.0])
-        XCTAssertEqual(CoreUsb.openFailureMessage(DspiError.Transfer(msg: "could not open device for exclusive access")),
+        // Typed (fixup F4, review probe P3): the core's `busy`, whatever its
+        // text; a transfer error is a plain failure even if it says "busy".
+        let held = "could not claim the DSPi vendor interface. Another application is probably holding it: " +
+                   "quit uConsole for DSPi (or any other DSPi tool) and try again."
+        XCTAssertEqual(CoreUsb.openFailureMessage(DspiError.Link(code: "busy", msg: held)),
                        "Device busy (another app has it open)")
+        XCTAssertEqual(CoreUsb.openFailureMessage(DspiError.Transfer(msg: held)), "Could not open device")
         XCTAssertEqual(CoreUsb.openFailureMessage(DspiError.Transfer(msg: "usb error: other")), "Could not open device")
+    }
+
+    // MARK: Open chains (fixup F2, F3; review probes P1, P2, P4)
+
+    /// P1: an explicit disconnect while an open is still being retried
+    /// ends the chain: nothing opens afterwards.
+    func testSWM1ADisconnectDuringTheRetriesStaysDisconnected() {
+        let bus = MockUsbBus()
+        bus.plug("SWM1-A")
+        bus.busyOpens["SWM1-A"] = 3            // tries at 0, 0.1, 0.3 s fail; the one at 0.7 s would work
+        let usb = usb(bus)
+        XCTAssertTrue(spinUntil(2) { bus.attempts("SWM1-A") >= 2 })
+        usb.disconnect()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+        XCTAssertFalse(usb.isConnected, "the retry chain did not reconnect after the disconnect")
+        XCTAssertEqual(bus.opens("SWM1-A"), 0, "no open landed after the disconnect")
+    }
+
+    /// P2: the user selects B while A's open is still being retried: the
+    /// newer selection wins, whichever chain would finish first.
+    func testSWM1TheLastSelectionWinsOverAnOlderRetryChain() {
+        let bus = MockUsbBus()
+        bus.plug("SWM1-A")
+        bus.plug("SWM1-B")
+        bus.busyOpens["SWM1-A"] = 2            // A would work on its third try (about 0.3 s)
+        bus.busyOpens["SWM1-B"] = 3            // B works on its fourth (about 0.7 s after the choice)
+        let usb = usb(bus)
+        XCTAssertTrue(spinUntil(2) { bus.attempts("SWM1-A") >= 1 }, "auto-connect tries A first")
+        usb.selectDevice(DSPiDevice(serial: "SWM1-B", locationID: 0))
+        XCTAssertTrue(spinUntil(5) { usb.isConnected })
+        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+        XCTAssertEqual(usb.selectedDevice?.serial, "SWM1-B")
+        XCTAssertEqual(bus.opens("SWM1-A"), 0, "A's older chain stopped")
+    }
+
+    /// P4 / F3: a DSPi that leaves while its open is being retried shows the
+    /// departure, and a replug still connects.
+    func testSWM1ADepartureDuringTheRetriesSaysRemoved() {
+        let bus = MockUsbBus()
+        bus.plug("SWM1-A")
+        bus.busyOpens["SWM1-A"] = 5
+        let usb = usb(bus)
+        XCTAssertTrue(spinUntil(2) { bus.attempts("SWM1-A") >= 2 })
+        bus.unplug("SWM1-A")
+        XCTAssertTrue(spinUntil(3) { usb.errorMessage == "Device Removed" })
+        XCTAssertFalse(usb.isConnected)
+        XCTAssertTrue(spinUntil(2) { usb.availableDevices.isEmpty && usb.selectedDevice == nil })
+        bus.plug("SWM1-A")                     // the rest of its busy tries fit in a new chain
+        XCTAssertTrue(spinUntil(5) { usb.isConnected }, "a replug after the chain still connects")
     }
 
     func testSWM1DisconnectStaysClosedUntilReconnect() {
@@ -348,6 +412,20 @@ final class CoreUsbSWM1Tests: XCTestCase {
         withExtendedLifetime((hub, local)) {}
     }
 }
+/// Fixup (review swm1): the user volume's re-read after an input switch is
+/// the core's mirror, not a raw GET, whenever a core is attached.
+final class CoreUsbSWM1FetchUserVolumeTests: XCTestCase, CoreDomainTesting {
+    func testSWM1FetchUserVolumeReadsTheCoresMirror() {
+        let (core, t, vm) = demoVM()
+        t.coreQueue.sync { try? core.setUserVolume(db: -13) }
+        XCTAssertTrue(spinUntil(5) { t.coreQueue.sync { core.getState().userVolumeDb } == -13 })
+        _ = t.takeRawOpcodesForTest()
+        DispatchQueue.global().sync { vm.fetchUserVolume() }
+        XCTAssertTrue(spinUntil(5) { abs(vm.userVolumeDB - -13) < 0.01 }, "the mirror's value is shown")
+        XCTAssertFalse(t.takeRawOpcodesForTest().contains(REQ_GET_USER_VOLUME), "no raw GET with a core")
+    }
+}
+
 /// WP SW-M1 on a real DSPi (TEST_RUNNER_DSPI_USB_HW=1; skipped otherwise):
 /// the Mac's default stack, as a plain launch builds it (AppState: the core
 /// over the hub's session 1 over CoreUsb).  RAM only: nothing is saved to

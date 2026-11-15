@@ -2371,11 +2371,6 @@ void uniffi_dspi_core_fn_free_usbpipe(void*_Nonnull ptr, RustCallStatus *_Nonnul
 void*_Nonnull uniffi_dspi_core_fn_constructor_usbpipe_open(RustBuffer serial, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_CLOSE
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_CLOSE
-void uniffi_dspi_core_fn_method_usbpipe_close(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_CONTROL_IN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_CONTROL_IN
 RustBuffer uniffi_dspi_core_fn_method_usbpipe_control_in(void*_Nonnull ptr, uint8_t opcode, uint16_t value, uint16_t len, RustCallStatus *_Nonnull out_status
@@ -2386,9 +2381,9 @@ RustBuffer uniffi_dspi_core_fn_method_usbpipe_control_in(void*_Nonnull ptr, uint
 void uniffi_dspi_core_fn_method_usbpipe_control_out(void*_Nonnull ptr, uint8_t opcode, uint16_t value, RustBuffer data, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_IS_CLOSED
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_IS_CLOSED
-int8_t uniffi_dspi_core_fn_method_usbpipe_is_closed(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_IS_SHUT_DOWN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_IS_SHUT_DOWN
+int8_t uniffi_dspi_core_fn_method_usbpipe_is_shut_down(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_READ_NOTIFICATION
@@ -2399,6 +2394,11 @@ RustBuffer uniffi_dspi_core_fn_method_usbpipe_read_notification(void*_Nonnull pt
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_SERIAL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_SERIAL
 RustBuffer uniffi_dspi_core_fn_method_usbpipe_serial(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_SHUTDOWN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_USBPIPE_SHUTDOWN
+void uniffi_dspi_core_fn_method_usbpipe_shutdown(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ABOUT_JSON
@@ -2617,6 +2617,11 @@ RustBuffer uniffi_dspi_core_fn_func_uf2_inspect(RustBuffer image, RustCallStatus
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_USB_PIPE_SCAN
 RustBuffer uniffi_dspi_core_fn_func_usb_pipe_scan(RustCallStatus *_Nonnull out_status
     
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_USB_PIPE_WAIT_CHANGE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_USB_PIPE_WAIT_CHANGE
+uint64_t uniffi_dspi_core_fn_func_usb_pipe_wait_change(uint64_t seen, uint32_t timeout_ms, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_DSPI_CORE_RUSTBUFFER_ALLOC
@@ -3142,6 +3147,12 @@ uint16_t uniffi_dspi_core_checksum_func_uf2_inspect(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_USB_PIPE_SCAN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_USB_PIPE_SCAN
 uint16_t uniffi_dspi_core_checksum_func_usb_pipe_scan(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_USB_PIPE_WAIT_CHANGE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_USB_PIPE_WAIT_CHANGE
+uint16_t uniffi_dspi_core_checksum_func_usb_pipe_wait_change(void
     
 );
 #endif
@@ -5257,12 +5268,6 @@ uint16_t uniffi_dspi_core_checksum_method_rtalistener_on_frame(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_CLOSE
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_CLOSE
-uint16_t uniffi_dspi_core_checksum_method_usbpipe_close(void
-    
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_CONTROL_IN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_CONTROL_IN
 uint16_t uniffi_dspi_core_checksum_method_usbpipe_control_in(void
@@ -5275,9 +5280,9 @@ uint16_t uniffi_dspi_core_checksum_method_usbpipe_control_out(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_IS_CLOSED
-#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_IS_CLOSED
-uint16_t uniffi_dspi_core_checksum_method_usbpipe_is_closed(void
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_IS_SHUT_DOWN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_IS_SHUT_DOWN
+uint16_t uniffi_dspi_core_checksum_method_usbpipe_is_shut_down(void
     
 );
 #endif
@@ -5290,6 +5295,12 @@ uint16_t uniffi_dspi_core_checksum_method_usbpipe_read_notification(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_SERIAL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_SERIAL
 uint16_t uniffi_dspi_core_checksum_method_usbpipe_serial(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_SHUTDOWN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_USBPIPE_SHUTDOWN
+uint16_t uniffi_dspi_core_checksum_method_usbpipe_shutdown(void
     
 );
 #endif

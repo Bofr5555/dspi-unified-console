@@ -1748,6 +1748,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1844,6 +1846,8 @@ fun uniffi_dspi_core_checksum_func_template_text(
 fun uniffi_dspi_core_checksum_func_uf2_inspect(
 ): Short
 fun uniffi_dspi_core_checksum_func_usb_pipe_scan(
+): Short
+fun uniffi_dspi_core_checksum_func_usb_pipe_wait_change(
 ): Short
 fun uniffi_dspi_core_checksum_method_autoeqfetch_get(
 ): Short
@@ -2549,17 +2553,17 @@ fun uniffi_dspi_core_checksum_method_notifylistener_on_notifications(
 ): Short
 fun uniffi_dspi_core_checksum_method_rtalistener_on_frame(
 ): Short
-fun uniffi_dspi_core_checksum_method_usbpipe_close(
-): Short
 fun uniffi_dspi_core_checksum_method_usbpipe_control_in(
 ): Short
 fun uniffi_dspi_core_checksum_method_usbpipe_control_out(
 ): Short
-fun uniffi_dspi_core_checksum_method_usbpipe_is_closed(
+fun uniffi_dspi_core_checksum_method_usbpipe_is_shut_down(
 ): Short
 fun uniffi_dspi_core_checksum_method_usbpipe_read_notification(
 ): Short
 fun uniffi_dspi_core_checksum_method_usbpipe_serial(
+): Short
+fun uniffi_dspi_core_checksum_method_usbpipe_shutdown(
 ): Short
 fun uniffi_dspi_core_checksum_constructor_dspicore_new(
 ): Short
@@ -3398,18 +3402,18 @@ fun uniffi_dspi_core_fn_free_usbpipe(`ptr`: Pointer,uniffi_out_err: UniffiRustCa
 ): Unit
 fun uniffi_dspi_core_fn_constructor_usbpipe_open(`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
-fun uniffi_dspi_core_fn_method_usbpipe_close(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
 fun uniffi_dspi_core_fn_method_usbpipe_control_in(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`len`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_usbpipe_control_out(`ptr`: Pointer,`opcode`: Byte,`value`: Short,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-fun uniffi_dspi_core_fn_method_usbpipe_is_closed(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_dspi_core_fn_method_usbpipe_is_shut_down(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun uniffi_dspi_core_fn_method_usbpipe_read_notification(`ptr`: Pointer,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_usbpipe_serial(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_usbpipe_shutdown(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_func_about_json(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_autoeq_database_info(`dbPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3492,6 +3496,8 @@ fun uniffi_dspi_core_fn_func_uf2_inspect(`image`: RustBuffer.ByValue,uniffi_out_
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_usb_pipe_scan(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_usb_pipe_wait_change(`seen`: Long,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Long
 fun ffi_dspi_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun ffi_dspi_core_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3739,6 +3745,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_usb_pipe_scan() != 60426.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_usb_pipe_wait_change() != 22156.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_autoeqfetch_get() != 23782.toShort()) {
@@ -4797,22 +4806,22 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_rtalistener_on_frame() != 50042.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_usbpipe_close() != 8009.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_dspi_core_checksum_method_usbpipe_control_in() != 64205.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_usbpipe_control_out() != 57095.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_usbpipe_is_closed() != 31671.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_usbpipe_is_shut_down() != 52551.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_usbpipe_read_notification() != 9779.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_usbpipe_serial() != 29485.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_usbpipe_shutdown() != 55083.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_constructor_dspicore_new() != 17171.toShort()) {
@@ -19994,13 +20003,6 @@ public object FfiConverterTypeRtaListener: FfiConverter<RtaListener, Pointer> {
 public interface UsbPipeInterface {
     
     /**
-     * Release the interface. Every later call fails with
-     * [`DspiError::Disconnected`]. Waits for a notification read in
-     * progress (at most its timeout). Idempotent.
-     */
-    fun `close`()
-    
-    /**
      * One vendor IN transfer: `opcode`, `value` as `wValue`, at most `len`
      * bytes back, as the device sent them (a short reply is not an error).
      * Blocks for the transfer.
@@ -20014,9 +20016,9 @@ public interface UsbPipeInterface {
     fun `controlOut`(`opcode`: kotlin.UByte, `value`: kotlin.UShort, `data`: kotlin.ByteArray)
     
     /**
-     * Whether [`UsbPipe::close`] has run.
+     * Whether [`UsbPipe::shutdown`] has run.
      */
-    fun `isClosed`(): kotlin.Boolean
+    fun `isShutDown`(): kotlin.Boolean
     
     /**
      * Wait up to `timeout_ms` (at most 2 s) for one notification packet, as
@@ -20032,6 +20034,14 @@ public interface UsbPipeInterface {
      * The serial it was opened with.
      */
     fun `serial`(): kotlin.String
+    
+    /**
+     * Release the interface. Every later call fails with
+     * [`DspiError::Disconnected`]. Waits for a notification read in
+     * progress (at most its timeout). Idempotent. (Not `close`: UniFFI's
+     * Kotlin objects already have `AutoCloseable.close()`.)
+     */
+    fun `shutdown`()
     
     companion object
 }
@@ -20125,22 +20135,6 @@ open class UsbPipe: Disposable, AutoCloseable, UsbPipeInterface
 
     
     /**
-     * Release the interface. Every later call fails with
-     * [`DspiError::Disconnected`]. Waits for a notification read in
-     * progress (at most its timeout). Idempotent.
-     */override fun `close`()
-        = 
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_usbpipe_close(
-        it, _status)
-}
-    }
-    
-    
-
-    
-    /**
      * One vendor IN transfer: `opcode`, `value` as `wValue`, at most `len`
      * bytes back, as the device sent them (a short reply is not an error).
      * Blocks for the transfer.
@@ -20175,12 +20169,12 @@ open class UsbPipe: Disposable, AutoCloseable, UsbPipeInterface
 
     
     /**
-     * Whether [`UsbPipe::close`] has run.
-     */override fun `isClosed`(): kotlin.Boolean {
+     * Whether [`UsbPipe::shutdown`] has run.
+     */override fun `isShutDown`(): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_usbpipe_is_closed(
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_usbpipe_is_shut_down(
         it, _status)
 }
     }
@@ -20222,6 +20216,23 @@ open class UsbPipe: Disposable, AutoCloseable, UsbPipeInterface
     }
     )
     }
+    
+
+    
+    /**
+     * Release the interface. Every later call fails with
+     * [`DspiError::Disconnected`]. Waits for a notification read in
+     * progress (at most its timeout). Idempotent. (Not `close`: UniFFI's
+     * Kotlin objects already have `AutoCloseable.close()`.)
+     */override fun `shutdown`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_usbpipe_shutdown(
+        it, _status)
+}
+    }
+    
     
 
     
@@ -34704,6 +34715,23 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_usb_pipe_scan(
         _status)
+}
+    )
+    }
+    
+
+        /**
+         * Wait until the bus has changed since `seen` (a device arrived or left), or
+         * `timeout_ms` (at most 2 s) has passed, and return the change count to pass
+         * next time. Start with 0. Blocks the calling thread only. Without a hot-plug
+         * watcher (no `usb` feature, Android, or the platform refused one: logged) it
+         * just waits out the timeout and returns `seen`, so the caller's scan after it
+         * is a plain poll. Never fails.
+         */ fun `usbPipeWaitChange`(`seen`: kotlin.ULong, `timeoutMs`: kotlin.UInt): kotlin.ULong {
+            return FfiConverterULong.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_usb_pipe_wait_change(
+        FfiConverterULong.lower(`seen`),FfiConverterUInt.lower(`timeoutMs`),_status)
 }
     )
     }

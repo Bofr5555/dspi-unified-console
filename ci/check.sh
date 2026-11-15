@@ -236,7 +236,15 @@ for s in "${steps[@]}"; do
     kotlin|swift)
       $RUN "ci/compile-bindings.sh $s"
       # -- WP REL013M -- and the Swift macOS app's Rust crates notice is current
-      if [ "$s" = swift ]; then $RUN "python3 apps/desktop/packaging/licences/gen_rust_notices.py --swift --check"; fi ;;
+      if [ "$s" = swift ]; then $RUN "python3 apps/desktop/packaging/licences/gen_rust_notices.py --swift --check"; fi
+      # -- WP SW-M1 -- the core's raw USB pipe (no lock, no token) stays inside
+      # Core/CoreUsb.swift, the hub's device; its test mock is the one other user
+      if [ "$s" = swift ]; then
+        stray=$(grep -rlE '\b(UsbPipe|UsbPipeProtocol|usbPipeScan|usbPipeWaitChange)\b' --include='*.swift' apps/apple |
+          grep -vE '/Core/Generated/|/Core/CoreUsb\.swift$|/DSPi ConsoleTests/CoreUsbSWM1Tests\.swift$' || true)
+        if [ -n "$stray" ]; then echo "swift: the raw USB pipe is used outside Core/CoreUsb.swift:" >&2; echo "$stray" >&2; exit 1; fi
+        echo "swift: the raw USB pipe is only in Core/CoreUsb.swift"
+      fi ;;
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)
       podman image exists "$DENY" || ci/container/build-images.sh

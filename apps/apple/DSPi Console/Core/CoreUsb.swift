@@ -17,9 +17,11 @@
 //  Rust hub (`dspi-hub`, which owns USB the same way) replaces the Swift hub
 //  and this file goes.
 //
-//  Hot-plug: the bus is enumerated every half second (`usbPipeScan`, which
-//  opens nothing), as the core's own hotplug poll does; a notification stream
-//  that ends (the device went away) polls at once.
+//  Hot-plug: a thread of its own waits for the core's hot-plug events
+//  (`usbPipeWaitChange`, nusb's watcher) and enumerates the bus after each one
+//  (`usbPipeScan`, which opens nothing); without an event it still enumerates
+//  every half second, as a fallback.  A notification stream that ends (the
+//  device went away) polls at once.
 //
 
 #if os(macOS)
@@ -36,6 +38,10 @@ protocol CoreUsbBus: AnyObject {
     func scan() -> [DSPiDevice]
     /// Open and claim one.  Called on CoreUsb's transfer queue.
     func open(serial: String) throws -> UsbPipeProtocol
+    /// -- fixup -- Block until the bus may have changed since `seen` (a
+    /// hot-plug event) or `timeoutMs` passed; returns the count to pass next.
+    /// Called on CoreUsb's hot-plug thread only.
+    func waitForChange(after seen: UInt64, timeoutMs: UInt32) -> UInt64
 }
 
 /// The core's USB: `usbPipeScan()` and `UsbPipe.open(serial:)`.
@@ -46,6 +52,10 @@ final class CoreUsbCoreBus: CoreUsbBus {
 
     func open(serial: String) throws -> UsbPipeProtocol {
         try UsbPipe.open(serial: serial)
+    }
+
+    func waitForChange(after seen: UInt64, timeoutMs: UInt32) -> UInt64 {
+        usbPipeWaitChange(seen: seen, timeoutMs: timeoutMs)
     }
 }
 
@@ -81,7 +91,6 @@ final class CoreUsb: ObservableObject {
     private let transferQueue = DispatchQueue(label: "se.bofr.dspi.coreusb.transfer")
     /// The hot-plug poll.
     private let pollQueue = DispatchQueue(label: "se.bofr.dspi.coreusb.poll")
-    private var pollTimer: DispatchSourceTimer?
 
     /// The open device; touched on transferQueue only.
     private var pipe: UsbPipeProtocol?
@@ -126,18 +135,27 @@ final class CoreUsb: ObservableObject {
         if startMonitoring { startPolling() }
     }
 
-    deinit {
-        pollTimer?.cancel()
-    }
-
     // MARK: Hot-plug
 
+    /// -- fixup -- One thread: scan, then wait for a hot-plug event or the
+    /// poll interval, and again.  It holds this object only while it scans,
+    /// so it ends within one interval once the object is gone.
     private func startPolling() {
-        let timer = DispatchSource.makeTimerSource(queue: pollQueue)
-        timer.schedule(deadline: .now(), repeating: pollInterval, leeway: .milliseconds(50))
-        timer.setEventHandler { [weak self] in self?.poll() }
-        pollTimer = timer
-        timer.resume()
+        let bus = self.bus
+        let timeoutMs = UInt32(max(1, (pollInterval * 1000).rounded()))
+        let thread = Thread { [weak self] in
+            var seen: UInt64 = 0
+            while true {
+                do {
+                    guard let me = self else { return }
+                    me.pollQueue.sync { me.poll() }
+                }
+                seen = bus.waitForChange(after: seen, timeoutMs: timeoutMs)
+            }
+        }
+        thread.name = "DSPi USB hot-plug"
+        thread.qualityOfService = .utility
+        thread.start()
     }
 
     /// Poll now, off schedule (a stream that ended, `reconnect`).
@@ -194,12 +212,15 @@ final class CoreUsb: ObservableObject {
     func selectDevice(_ device: DSPiDevice) {
         transferQueue.async {
             self.closePipe()
-            self.open(device, attempt: 0)
+            self.open(device, attempt: 0, chain: self.generation)
         }
     }
 
-    /// transferQueue only.
-    private func open(_ device: DSPiDevice, attempt: Int) {
+    /// One try of an open chain.  `chain` is the generation the chain began
+    /// in: a newer selection, a disconnect or a departure moves the
+    /// generation, and the chain then stops (fixup F2).  transferQueue only.
+    private func open(_ device: DSPiDevice, attempt: Int, chain: UInt64) {
+        guard generation == chain else { return }
         do {
             let opened = try bus.open(serial: device.serial)
             pipe = opened
@@ -214,22 +235,25 @@ final class CoreUsb: ObservableObject {
             }
         } catch {
             if case .Disconnected? = error as? DspiError {
+                // -- fixup F3 -- gone during the retries: it left; never on
+                // the bus when chosen: not found.
+                let message = attempt > 0 ? "Device Removed" : "Device not found"
                 DispatchQueue.main.async {
+                    guard self.generation == chain else { return }
                     self.isConnected = false
-                    self.errorMessage = "Device not found"
+                    self.errorMessage = message
                 }
                 return
             }
             if attempt < Self.openRetryDelays.count {
                 transferQueue.asyncAfter(deadline: .now() + Self.openRetryDelays[attempt]) { [weak self] in
-                    // Another open won meanwhile: leave it.
-                    guard let self = self, self.pipe == nil else { return }
-                    self.open(device, attempt: attempt + 1)
+                    self?.open(device, attempt: attempt + 1, chain: chain)
                 }
                 return
             }
             let message = Self.openFailureMessage(error)
             DispatchQueue.main.async {
+                guard self.generation == chain else { return }
                 self.isConnected = false
                 self.errorMessage = message
             }
@@ -237,22 +261,23 @@ final class CoreUsb: ObservableObject {
     }
 
     /// The status line for an open that failed after every retry.
+    /// -- fixup F4 -- the core's typed `busy` (another program holds the
+    /// vendor interface), not a substring of its text.
     static func openFailureMessage(_ error: Error) -> String {
-        if case .Transfer(let msg)? = error as? DspiError {
-            let lower = msg.lowercased()
-            if lower.contains("exclusive") || lower.contains("busy") {
-                return "Device busy (another app has it open)"
-            }
+        if case .Link(let code, _)? = error as? DspiError, code == "busy" {
+            return "Device busy (another app has it open)"
         }
         return "Could not open device"
     }
 
-    /// Close the open device without publishing.  transferQueue only.
+    /// Close the open device without publishing, and end any open chain in
+    /// flight: the generation moves even with nothing open (fixup F2).
+    /// transferQueue only.
     private func closePipe() {
+        bumpGeneration()
         guard let open = pipe else { return }
         pipe = nil
-        bumpGeneration()
-        open.close()
+        open.shutdown()
     }
 
     func disconnect() {

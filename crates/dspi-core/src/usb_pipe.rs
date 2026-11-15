@@ -10,16 +10,25 @@
 //! writes as its own). [`UsbPipe`] is that pipe: open by serial, control IN and
 //! OUT on the vendor interface, and a blocking read of the notification
 //! endpoint. [`usb_pipe_scan`] lists the DSPis on the bus without opening
-//! any, for the app's hot-plug poll.
+//! any, and [`usb_pipe_wait_change`] waits for nusb's hot-plug events, so the
+//! app's hot-plug follows the bus at once and polls only as a fallback.
+//!
+//! The first scan starts one process-wide hot-plug watcher (`nusb::watch_devices`,
+//! a thread of its own). Besides the events, it keeps nusb's macOS event thread
+//! (`nusb-events`) alive for the process: without a registration of its own, every
+//! open spawned that thread again and waited for it, which Xcode's thread
+//! checker reported as a priority inversion (fixup round, review swm1).
 //!
 //! It replaces the app's own IOKit driver (`USBDevice.swift`) and retires at
 //! SW-M3, when the Rust hub (`dspi-hub`, which owns USB the same way) takes
 //! the Swift hub's place. Not in the C ABI or the Android contract.
 //!
 //! Errors are [`DspiError`]s: [`DspiError::Disconnected`] when the device has
-//! gone or the pipe is closed; [`DspiError::Refused`] with status 0 when the
+//! gone or the pipe is shut down; [`DspiError::Refused`] with status 0 when the
 //! device stalls (as [`crate::DspiCore::raw_get`] reports it);
-//! [`DspiError::Link`] with code `timeout` when a transfer times out;
+//! [`DspiError::Link`] with code `timeout` when a transfer times out, and with
+//! code `busy` when the vendor interface is held by another program (macOS:
+//! the claim is refused for exclusive access);
 //! [`DspiError::Transfer`] for any other failure; [`DspiError::Unsupported`]
 //! in a build without the `usb` feature (iOS, wasm) and on Android.
 
@@ -41,7 +50,147 @@ const MAX_NOTIFY_WAIT_MS: u32 = 2_000;
 /// Android, and when enumeration fails (logged). Never fails.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn usb_pipe_scan() -> Vec<DeviceInfo> {
+    watch::start();
     crate::device::usb_scan_quiet()
+}
+
+/// Wait until the bus has changed since `seen` (a device arrived or left), or
+/// `timeout_ms` (at most 2 s) has passed, and return the change count to pass
+/// next time. Start with 0. Blocks the calling thread only. Without a hot-plug
+/// watcher (no `usb` feature, Android, or the platform refused one: logged) it
+/// just waits out the timeout and returns `seen`, so the caller's scan after it
+/// is a plain poll. Never fails.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn usb_pipe_wait_change(seen: u64, timeout_ms: u32) -> u64 {
+    watch::wait(
+        seen,
+        Duration::from_millis(u64::from(timeout_ms.min(MAX_NOTIFY_WAIT_MS))),
+    )
+}
+
+/// The process-wide hot-plug watcher: one thread polling nusb's
+/// `watch_devices` stream, counting its events.
+mod watch {
+    use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
+    use std::time::Duration;
+
+    #[derive(Default)]
+    pub(super) struct Shared {
+        /// Events seen so far.
+        changes: Mutex<u64>,
+        wake: Condvar,
+    }
+
+    /// `None` once a start was tried and no watcher runs.
+    static WATCH: OnceLock<Option<&'static Shared>> = OnceLock::new();
+
+    /// Start the watcher once (no-op afterwards).
+    pub(super) fn start() {
+        WATCH.get_or_init(spawn);
+    }
+
+    #[cfg(all(feature = "usb", any(target_os = "macos", target_os = "linux")))]
+    fn spawn() -> Option<&'static Shared> {
+        let watch = match nusb::watch_devices() {
+            Ok(w) => w,
+            Err(e) => {
+                log::warn!("USB hot-plug events unavailable, polling only: {e}");
+                return None;
+            }
+        };
+        let shared: &'static Shared = Box::leak(Box::default());
+        let spawned = std::thread::Builder::new()
+            .name("dspi-usb-hotplug".into())
+            .spawn(move || run(watch, shared));
+        match spawned {
+            Ok(_) => Some(shared),
+            Err(e) => {
+                log::warn!("USB hot-plug thread not started, polling only: {e}");
+                None
+            }
+        }
+    }
+
+    #[cfg(not(all(feature = "usb", any(target_os = "macos", target_os = "linux"))))]
+    fn spawn() -> Option<&'static Shared> {
+        None
+    }
+
+    /// Poll the stream for the life of the process: park until its waker
+    /// unparks this thread, count each event.
+    #[cfg(all(feature = "usb", any(target_os = "macos", target_os = "linux")))]
+    fn run(mut watch: nusb::hotplug::HotplugWatch, shared: &'static Shared) {
+        use futures_core::Stream;
+        use std::pin::Pin;
+        use std::sync::Arc;
+        use std::task::{Context, Poll, Wake, Waker};
+
+        struct Unpark(std::thread::Thread);
+        impl Wake for Unpark {
+            fn wake(self: Arc<Self>) {
+                self.0.unpark();
+            }
+        }
+        let waker = Waker::from(Arc::new(Unpark(std::thread::current())));
+        let mut cx = Context::from_waker(&waker);
+        loop {
+            match Pin::new(&mut watch).poll_next(&mut cx) {
+                Poll::Ready(Some(_)) => shared.bump(),
+                Poll::Ready(None) => {
+                    log::warn!("USB hot-plug events ended, polling only");
+                    return;
+                }
+                Poll::Pending => std::thread::park(),
+            }
+        }
+    }
+
+    impl Shared {
+        #[cfg_attr(
+            not(all(feature = "usb", any(target_os = "macos", target_os = "linux"))),
+            allow(dead_code)
+        )]
+        fn bump(&self) {
+            let mut n = self.changes.lock().unwrap_or_else(PoisonError::into_inner);
+            *n = n.wrapping_add(1);
+            self.wake.notify_all();
+        }
+    }
+
+    pub(super) fn wait(seen: u64, timeout: Duration) -> u64 {
+        start();
+        let Some(Some(shared)) = WATCH.get() else {
+            std::thread::sleep(timeout);
+            return seen;
+        };
+        let n = shared
+            .changes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let (n, _) = shared
+            .wake
+            .wait_timeout_while(n, timeout, |n| *n == seen)
+            .unwrap_or_else(PoisonError::into_inner);
+        *n
+    }
+
+    #[cfg(test)]
+    pub(super) fn bump_for_test(shared: &Shared) {
+        shared.bump();
+    }
+
+    #[cfg(test)]
+    pub(super) fn wait_on(shared: &Shared, seen: u64, timeout: Duration) -> u64 {
+        let n = shared
+            .changes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let (n, _) = shared
+            .wake
+            .wait_timeout_while(n, timeout, |n| *n == seen)
+            .unwrap_or_else(PoisonError::into_inner);
+        *n
+    }
 }
 
 /// One open DSPi on USB: its vendor interface claimed, nothing else. See the
@@ -63,6 +212,15 @@ fn guard<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 /// The pipe's error for a transport failure (module documentation).
 fn pipe_error(e: TransportError) -> DspiError {
     match e {
+        // -- fixup F4 -- On macOS a refused claim is another program holding the
+        // vendor interface (nusb: "could not open interface for exclusive
+        // access"; dspi-transport maps it to PermissionDenied). Elsewhere it is
+        // a real permission problem and stays a transfer error with its help text.
+        #[cfg(target_os = "macos")]
+        TransportError::PermissionDenied => DspiError::Link {
+            code: "busy".into(),
+            msg: e.to_string(),
+        },
         TransportError::Stalled { .. } => DspiError::Refused { status: 0 },
         TransportError::TimedOut { .. } => DspiError::Link {
             code: "timeout".into(),
@@ -144,14 +302,15 @@ impl UsbPipe {
 
     /// Release the interface. Every later call fails with
     /// [`DspiError::Disconnected`]. Waits for a notification read in
-    /// progress (at most its timeout). Idempotent.
-    pub fn close(&self) {
+    /// progress (at most its timeout). Idempotent. (Not `close`: UniFFI's
+    /// Kotlin objects already have `AutoCloseable.close()`.)
+    pub fn shutdown(&self) {
         drop(guard(&self.control).take());
         drop(guard(&self.notes).take());
     }
 
-    /// Whether [`UsbPipe::close`] has run.
-    pub fn is_closed(&self) -> bool {
+    /// Whether [`UsbPipe::shutdown`] has run.
+    pub fn is_shut_down(&self) -> bool {
         guard(&self.control).is_none()
     }
 }
@@ -195,12 +354,12 @@ mod tests_wp_swm1 {
     }
 
     #[test]
-    fn wp_swm1_a_closed_pipe_is_disconnected_and_close_is_idempotent() {
+    fn wp_swm1_a_shut_down_pipe_is_disconnected_and_shutdown_is_idempotent() {
         let p = pipe();
-        assert!(!p.is_closed());
-        p.close();
-        p.close();
-        assert!(p.is_closed());
+        assert!(!p.is_shut_down());
+        p.shutdown();
+        p.shutdown();
+        assert!(p.is_shut_down());
         assert!(matches!(
             p.control_in(REQ_GET_PLATFORM, 0, 7),
             Err(DspiError::Disconnected)
@@ -260,6 +419,40 @@ mod tests_wp_swm1 {
             pipe_error(TransportError::Usb("busy".into())),
             DspiError::Transfer { .. }
         ));
+    }
+
+    #[test]
+    fn wp_swm1_a_held_interface_is_busy_on_macos() {
+        let e = pipe_error(TransportError::PermissionDenied);
+        if cfg!(target_os = "macos") {
+            assert!(
+                matches!(e, DspiError::Link { ref code, .. } if code == "busy"),
+                "{e:?}"
+            );
+        } else {
+            assert!(matches!(e, DspiError::Transfer { .. }), "{e:?}");
+        }
+    }
+
+    #[test]
+    fn wp_swm1_wait_change_wakes_on_an_event_and_times_out_without_one() {
+        let shared = watch::Shared::default();
+        let t = std::time::Instant::now();
+        assert_eq!(watch::wait_on(&shared, 0, Duration::from_millis(30)), 0);
+        assert!(t.elapsed() >= Duration::from_millis(25));
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                std::thread::sleep(Duration::from_millis(20));
+                watch::bump_for_test(&shared);
+            });
+            let t = std::time::Instant::now();
+            assert_eq!(watch::wait_on(&shared, 0, Duration::from_secs(5)), 1);
+            assert!(t.elapsed() < Duration::from_secs(4), "woken by the event");
+        });
+        // A change already counted returns at once.
+        assert_eq!(watch::wait_on(&shared, 0, Duration::from_secs(5)), 1);
+        // The public call never fails, watcher or not.
+        let _ = usb_pipe_wait_change(0, 10);
     }
 
     #[test]
