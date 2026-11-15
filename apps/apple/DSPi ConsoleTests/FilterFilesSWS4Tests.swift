@@ -136,24 +136,41 @@ final class FilterFilesSWS4Tests: XCTestCase, CoreDomainTesting {
     // MARK: - One undo step
 
     /// A whole import (bands, preamps, crossovers on several channels) is
-    /// one undo step: one Undo gives back the file before it, Redo the import.
+    /// one undo step: one Undo gives back the file before it, Redo the
+    /// import.  An output's enable state is the exception, by the core's
+    /// rule (an audible write: recorded, stepped over, never undone; see
+    /// journal.rs), so the files compare without it and it stays imported.
     func testSWS4AnImportIsOneUndoStep() throws {
         let (_, _, vm) = demoVM()
         XCTAssertFalse(vm.undo.canUndo, "a new connection has nothing to undo")
-        let before = Self.undated(try export(vm))
+        let before = Self.withoutEnables(try export(vm))
         _ = try importAll(try fixture("MacOSFilters.txt"), vm)
-        let after = Self.undated(try export(vm))
+        let imported = try export(vm)
+        let after = Self.withoutEnables(imported)
         XCTAssertNotEqual(after, before, "the import changed the device")
 
         XCTAssertTrue(spinUntil(5) { vm.undo.canUndo }, "Undo is enabled after the import")
         vm.undo.undo()
         XCTAssertTrue(spinUntil(10) { !vm.undo.canUndo && vm.undo.canRedo }, "one Undo, and it was the only step")
         settle(0.6)
-        XCTAssertEqual(Self.undated(try export(vm)), before, "one Undo undoes it all")
+        let undone = try export(vm)
+        XCTAssertEqual(Self.withoutEnables(undone), before, "one Undo undoes it all")
+        XCTAssertEqual(Self.enables(undone), Self.enables(imported), "the enables stay as imported (not undoable)")
         vm.undo.redo()
         XCTAssertTrue(spinUntil(10) { vm.undo.canUndo && !vm.undo.canRedo }, "one Redo")
         settle(0.6)
-        XCTAssertEqual(Self.undated(try export(vm)), after, "one Redo redoes it all")
+        XCTAssertEqual(Self.withoutEnables(try export(vm)), after, "one Redo redoes it all")
+    }
+
+    /// The export undated and without the outputs' "(Enabled)"/"(Disabled)".
+    private static func withoutEnables(_ text: String) -> String {
+        undated(text).replacingOccurrences(of: " (Enabled)]", with: "]")
+            .replacingOccurrences(of: " (Disabled)]", with: "]")
+    }
+
+    /// The output headers, with their enable state.
+    private static func enables(_ text: String) -> [String] {
+        text.components(separatedBy: "\n").filter { $0.hasPrefix("[Output ") }
     }
 
     // MARK: - A locked import
