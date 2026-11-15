@@ -22,6 +22,8 @@ use crate::error::HubError;
 use crate::registry::NameStore;
 use crate::session::Role;
 use crate::store::{HubStore, StoredClient, TokenHash, random_bytes, system_time, unix_seconds};
+// -- WP P2RS --
+pub use crate::store::ClientKind;
 
 /// Failures from one address, and failures of one PIN, before the door shuts (spec 6.2).
 const FAILURE_LIMIT: usize = 5;
@@ -81,6 +83,42 @@ pub struct PairedClient {
     pub created: SystemTime,
     /// When it last authenticated.
     pub last_seen: Option<SystemTime>,
+    // -- WP P2RS --
+    /// A console or an API key.
+    pub kind: ClientKind,
+    /// An API key that may be used over plaintext once the port speaks TLS (WP SECSRV);
+    /// no effect yet.
+    pub plaintext_ok: bool,
+}
+
+// -- WP P2RS --
+/// An API key just minted ([`AuthStore::mint_api_key`]). The key is in here and
+/// nowhere else: the store keeps its hash.
+#[derive(Clone, PartialEq, Eq)]
+pub struct MintedKey {
+    /// Its client id, for `auth.revoke`.
+    pub cid: u32,
+    /// Its name, as cleaned.
+    pub name: String,
+    /// Its role.
+    pub role: Role,
+    /// As asked.
+    pub plaintext_ok: bool,
+    /// The key. Show it once; never log it.
+    pub key: String,
+}
+
+/// By hand, so a key never reaches a log.
+impl fmt::Debug for MintedKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MintedKey")
+            .field("cid", &self.cid)
+            .field("name", &self.name)
+            .field("role", &self.role)
+            .field("plaintext_ok", &self.plaintext_ok)
+            .field("key", &"<redacted>")
+            .finish()
+    }
 }
 
 /// An authentication that succeeded.
@@ -92,6 +130,10 @@ pub struct Authed {
     pub role: Role,
     /// The token to hand over, on a pairing only. Never logged.
     pub token: Option<String>,
+    // -- WP P2CFIXA --
+    /// What it authenticated as: a console's token opens DSPi Link sessions only, an
+    /// API key REST (and MQTT) only. The caller refuses the other kind.
+    pub kind: ClientKind,
 }
 
 /// By hand, so a token never reaches a log.
@@ -101,6 +143,7 @@ impl fmt::Debug for Authed {
             .field("cid", &self.cid)
             .field("role", &self.role)
             .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .field("kind", &self.kind)
             .finish()
     }
 }
@@ -422,6 +465,9 @@ impl AuthStore {
             created: seconds,
             last_seen: Some(seconds),
             token_hash: sha256(token.as_bytes()),
+            // -- WP P2RS --
+            kind: ClientKind::Console,
+            plaintext_ok: false,
         });
         if let Err(e) = s.save() {
             log::error!("hub: pairing not stored: {e}");
@@ -434,6 +480,8 @@ impl AuthStore {
             cid,
             role,
             token: Some(token),
+            // -- WP P2CFIXA --
+            kind: ClientKind::Console,
         })
     }
 
@@ -464,6 +512,8 @@ impl AuthStore {
             return Err(AuthError::Unauthenticated);
         };
         let role = client.role;
+        // -- WP P2CFIXA --
+        let kind = client.kind;
         let stale = client
             .last_seen
             .is_none_or(|seen| seconds.saturating_sub(seen) >= LAST_SEEN_RESOLUTION);
@@ -477,6 +527,8 @@ impl AuthStore {
             cid,
             role,
             token: None,
+            // -- WP P2CFIXA --
+            kind,
         })
     }
 
@@ -492,6 +544,9 @@ impl AuthStore {
                 role: c.role,
                 created: system_time(c.created),
                 last_seen: c.last_seen.map(system_time),
+                // -- WP P2RS --
+                kind: c.kind,
+                plaintext_ok: c.plaintext_ok,
             })
             .collect()
     }
@@ -521,6 +576,54 @@ impl AuthStore {
             log::error!("hub: revocation of client {cid} not stored: {e}");
         }
         true
+    }
+
+    // -- WP P2RS --
+    /// `auth.mint`: an API key, a paired client of kind [`ClientKind::Api`] made without
+    /// a PIN (OD-P2q). It shares [`MAX_PAIRED_CLIENTS`] with the consoles
+    /// ([`AuthError::TableFull`] past it) and is revoked like one. The key is 32 bytes
+    /// from the OS's CSPRNG; only its SHA-256 is stored, and a key that would not
+    /// survive a restart is not handed out ([`AuthError::Internal`]). The caller checks
+    /// that `role` is not above its own.
+    pub fn mint_api_key(
+        &self,
+        name: &str,
+        role: Role,
+        plaintext_ok: bool,
+    ) -> Result<MintedKey, AuthError> {
+        let mut s = self.lock();
+        if s.store.clients().len() >= MAX_PAIRED_CLIENTS {
+            return Err(AuthError::TableFull);
+        }
+        let raw: [u8; 32] = random_bytes().map_err(|e| {
+            log::error!("hub: no API key made: {e}");
+            AuthError::Internal
+        })?;
+        let key = BASE64URL_NOPAD.encode(&raw);
+        let cid = s.store.take_cid();
+        let name = clean_name(name);
+        s.store.clients_mut().push(StoredClient {
+            cid,
+            name: name.clone(),
+            role,
+            created: unix_seconds(SystemTime::now()),
+            last_seen: None,
+            token_hash: sha256(key.as_bytes()),
+            kind: ClientKind::Api,
+            plaintext_ok,
+        });
+        if let Err(e) = s.save() {
+            log::error!("hub: API key not stored: {e}");
+            s.store.clients_mut().retain(|c| c.cid != cid);
+            return Err(AuthError::Internal);
+        }
+        Ok(MintedKey {
+            cid,
+            name,
+            role,
+            plaintext_ok,
+            key,
+        })
     }
 
     /// `auth.set_role`. The caller applies it to the client's live sessions.
@@ -601,6 +704,9 @@ impl SavedHub {
                     role: c.role,
                     created: system_time(c.created),
                     last_seen: c.last_seen.map(system_time),
+                    // -- WP P2RS --
+                    kind: c.kind,
+                    plaintext_ok: c.plaintext_ok,
                 })
                 .collect(),
         }))

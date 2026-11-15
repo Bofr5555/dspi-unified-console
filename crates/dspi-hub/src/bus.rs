@@ -76,6 +76,13 @@ pub enum BusMessage {
         /// The handle it had.
         handle: u8,
     },
+    // -- WP P2DFIXA --
+    /// An Admin forgot a device (`inventory.forget`, WP P2IN): it is gone from the
+    /// inventory, not only from the registry's grace ([`BusMessage::DeviceRemoved`]).
+    DeviceForgotten {
+        /// Its serial.
+        serial: String,
+    },
     /// A device notification, as relayed (every v2 packet that is not idle).
     Notification {
         /// The device.

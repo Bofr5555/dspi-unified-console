@@ -45,6 +45,11 @@ pub const NOTICE_HUB_COPY: &str = "installer.hub_copy";
 pub const NOTICE_CONSOLE_COPY: &str = "installer.console_copy";
 /// Notice row: read-only, this console's role on the hub is below Admin.
 pub const NOTICE_HUB_ROLE: &str = "installer.hub_role";
+// -- WP P2WB2 --
+/// Notice row: the hub settings pages (alarm rules, schedules, notifications,
+/// MQTT, API keys) are read-only, this console's role on the hub is below
+/// Admin; the sibling of [`NOTICE_HUB_ROLE`].
+pub const NOTICE_HUB_SETTINGS_ROLE: &str = "installer.hub_settings_role";
 /// Notice row (and the `dlink.no_limits` error's): the hub keeps no limits.
 pub const NOTICE_NO_LIMITS: &str = "dlink.no_limits";
 /// Notice row: the recovery code of a PIN set on the hub.

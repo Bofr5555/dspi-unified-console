@@ -191,9 +191,10 @@ fn sorted(mut entries: Vec<SnapshotEntry>) -> Vec<SnapshotEntry> {
 }
 
 /// The id for a snapshot taken at `saved_ms`: the time, with `-<n>` added
-/// for the `n`th that would otherwise collide.
-#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
-fn id_for(saved_ms: i64, n: u32) -> String {
+/// for the `n`th that would otherwise collide. -- WP P2WB2 -- public: the core
+/// gives a document captured with no store (the web's) this id before it
+/// files it on a hub.
+pub fn id_for(saved_ms: i64, n: u32) -> String {
     let t = saved_ms.max(0);
     if n == 0 {
         format!("{t:013}")

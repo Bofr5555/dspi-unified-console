@@ -74,6 +74,19 @@ rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "
 zeroize = "1"
 # rcgen's dates. Already in the graph through rcgen, at its version.
 time = { version = "0.3.47", default-features = false }
+# -- WP P2SC --
+# Schedules run in the hub machine's local time (OD-P2h): its time zone from the
+# system's zone database (TZ, /etc/localtime; bundled on Windows only), DST gaps
+# and repeats resolved by the zone's own transitions.
+jiff = "=0.2.39"
+# -- WP SECOUT --
+# Outbound TLS for webhooks and MQTT (src/outbound/tls.rs, PLAN-SEC 4.8): rustls with
+# ring, so nothing links the system's OpenSSL and the Windows build cross-compiles (as
+# dspi-tui's); TLS 1.2 as well as 1.3, which receivers and brokers in the wild still
+# speak; its `pki_types` reads the pasted PEMs. The default trust is webpki-roots
+# (OD-SECf). Both already in the lockfile through dspi-tui's ureq.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
 
 [dev-dependencies]
 # -- review seca -- SECPIPE's tls module (feature `tls`) for the SECKEY/SECPIPE
@@ -123,6 +136,21 @@ required-features = ["mdns"]
 # -- WP P2PA --
 [[test]]
 name = "wp_p2pa_api"
+required-features = ["api"]
+
+# -- WP P2RS --
+[[test]]
+name = "wp_p2rs_rest"
+required-features = ["api"]
+
+# -- WP P2SC --
+[[test]]
+name = "wp_p2sc_schedule"
+required-features = ["api"]
+
+# -- WP P2HA --
+[[test]]
+name = "wp_p2ha_home_assistant"
 required-features = ["api"]
 
 # -- WP HB7 --

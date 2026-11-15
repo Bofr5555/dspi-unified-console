@@ -11,9 +11,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.bridge.HubServer
 import se.bofr.dspi.core.AbCompare
 import se.bofr.dspi.core.AbSide
 import se.bofr.dspi.core.GuardedApply
+import se.bofr.dspi.core.HubCaps
+import se.bofr.dspi.core.MergedSnapshot
 import se.bofr.dspi.core.SnapshotInfo
 import se.bofr.dspi.core.SnapshotRecall
 import se.bofr.dspi.feature.presets.DocDiff
@@ -31,6 +34,19 @@ import se.bofr.dspi.ui.alert.ConsoleAlert
  * is P1AN2's, which passes the device's mode here.
  */
 enum class SnapshotsMode { SIMPLE, ADVANCED }
+
+// -- WP P2AN --
+/** How one of this console's snapshots stands to the hub's store. */
+enum class LocalMark {
+    /** The hub holds the same snapshot. */
+    ON_HUB_TOO,
+
+    /** The hub holds a different one under this id (the hub's wins; this is kept as a local copy). */
+    LOCAL_COPY,
+
+    /** Not on the hub: "Save to the hub" offered. */
+    HERE_ONLY
+}
 
 /** The A/B chooser's state: which snapshot is A ("" = the device as it is now) and which is B. */
 data class AbChoice(val aId: String = "", val bId: String = "")
@@ -92,6 +108,32 @@ class SnapshotsModel(
         _timeoutS.value = s.coerceAtLeast(0)
     }
 
+    // -- WP P2AN -- the hub's section (PLAN-P2 OD-P1b: the hub's copy wins; the core merges both sides)
+    private val hubServer get() = bridge.hubServer
+
+    /** The hub's families: the section shows only with `hub_snapshots`. */
+    val hubCaps: StateFlow<HubCaps> get() = hubServer.caps
+
+    private val _hubItems = MutableStateFlow<List<MergedSnapshot>>(emptyList())
+
+    /** "On the hub": the hub's snapshots of the open device, newest first (`where` hub or both). */
+    val hubItems: StateFlow<List<MergedSnapshot>> = _hubItems.asStateFlow()
+
+    private val _localMarks = MutableStateFlow<Map<String, LocalMark>>(emptyMap())
+
+    /** How each of this console's snapshots stands to the hub's (only while the hub's list was read). */
+    val localMarks: StateFlow<Map<String, LocalMark>> = _localMarks.asStateFlow()
+
+    private val _hubLine = MutableStateFlow("")
+
+    /** Why the hub's list is not shown ("" when it is, or with no such hub): the core's notice row. */
+    val hubLine: StateFlow<String> = _hubLine.asStateFlow()
+
+    init {
+        // Another console (or this one) changed the hub's snapshots: read both sides again
+        scope.launch { hubServer.snapshotsChanged.collect { if (folderSet || folder == null) reload() } }
+    }
+
     /** Name the store's folder (once) and read the list. */
     fun load() = once {
         if (!folderSet && folder != null) {
@@ -103,6 +145,7 @@ class SnapshotsModel(
 
     private suspend fun reload() {
         _items.value = snaps.list().sortedByDescending { it.savedMs }
+        reloadHub() // -- WP P2AN --
         val ids = _items.value.map { it.id }.toSet()
         _choice.value = _choice.value.let { c -> AbChoice(c.aId.takeIf { it in ids }.orEmpty(), c.bId.takeIf { it in ids }.orEmpty()) }
     }
@@ -205,10 +248,114 @@ class SnapshotsModel(
             _result.value = FINISH_SAFE_APPLY
             return@once
         }
+        recallNow(s)
+    }
+
+    private suspend fun recallNow(s: SnapshotInfo) {
         val guarded = snaps.guardDefault() || _safeRecall.value
         snaps.recall(s.id, guarded, _timeoutS.value.toLong()).onSuccess { o ->
             _result.value = o.recall?.let { recalledLine(it) } ?: "Recalled \"${s.name}\". Keep or Revert it in the bar below."
         }.onFailure(::show)
+    }
+
+    // -- WP P2AN --
+    private suspend fun reloadHub() {
+        if (!hubServer.caps.value.hubSnapshots) {
+            _hubItems.value = emptyList()
+            _localMarks.value = emptyMap()
+            _hubLine.value = ""
+            return
+        }
+        val m = hubServer.mergedSnapshots()
+        _hubItems.value = hubSide(m.entries)
+        _localMarks.value = if (m.hubListed) marksOf(m.entries) else emptyMap()
+        _hubLine.value = if (m.hubListed || m.hubNoticeKey.isEmpty()) "" else hubServer.noticeLine(m.hubNoticeKey) ?: HUB_UNREAD
+    }
+
+    /** Read the hub's side again (the caps arrived after the list). */
+    fun refreshHub() = once { reloadHub() }
+
+    /** "Save to the hub": this console's [s], under its id. */
+    fun saveToHub(s: SnapshotInfo) = once {
+        hubServer.saveToHub(s.id).onSuccess { p ->
+            _result.value = if (p.created) "Saved \"${s.name}\" to the hub." else "The hub already holds \"${s.name}\"."
+            reload()
+        }.onFailure(::show)
+    }
+
+    /** "Copy here": the hub's [s] into this console's own store. */
+    fun copyHere(s: SnapshotInfo) = once {
+        hubServer.copyHere(s.id).onSuccess {
+            _result.value = "Copied \"${it.name}\" here."
+            reload()
+        }.onFailure(::show)
+    }
+
+    /**
+     * Recall the hub's [m]: this console's copy when it holds the same one,
+     * else the hub's copied here first; then as [recall] (the same way back).
+     */
+    fun recallFromHub(m: MergedSnapshot) = once {
+        if (snaps.guardWaiting) {
+            _result.value = FINISH_SAFE_APPLY
+            return@once
+        }
+        val here = if (m.location == HubServer.WHERE_BOTH) Result.success(m.snapshot) else hubServer.copyHere(m.snapshot.id)
+        here.onSuccess { s ->
+            recallNow(s)
+            reload()
+        }.onFailure(::show)
+    }
+
+    fun askRenameOnHub(s: SnapshotInfo) {
+        host.show(
+            ConsoleAlert(
+                "Rename on the Hub",
+                "",
+                AlertStyle.INFORMATIONAL,
+                listOf(
+                    AlertButton("Rename", AlertButtonRole.DEFAULT) { r ->
+                        val name = r.text.trim()
+                        if (name.isNotEmpty()) once { hubServer.renameOnHub(s.id, name).onSuccess { reload() }.onFailure(::show) }
+                    },
+                    AlertButton("Cancel", AlertButtonRole.CANCEL)
+                ),
+                textField = AlertTextField("Name", s.name, NAME_MAX)
+            )
+        )
+    }
+
+    fun askNoteOnHub(s: SnapshotInfo) {
+        host.show(
+            ConsoleAlert(
+                "Snapshot Note on the Hub",
+                s.name,
+                AlertStyle.INFORMATIONAL,
+                listOf(
+                    AlertButton("Save", AlertButtonRole.DEFAULT) { r ->
+                        once { hubServer.noteOnHub(s.id, r.text.trim()).onSuccess { reload() }.onFailure(::show) }
+                    },
+                    AlertButton("Cancel", AlertButtonRole.CANCEL)
+                ),
+                textField = AlertTextField("Note", s.note, NOTE_MAX)
+            )
+        )
+    }
+
+    fun askDeleteFromHub(s: SnapshotInfo) {
+        host.show(
+            ConsoleAlert(
+                "Delete \"${s.name}\" from the hub?",
+                "The snapshot is removed from the hub for every console. A copy on this console stays.",
+                AlertStyle.WARNING,
+                listOf(
+                    AlertButton("Delete", AlertButtonRole.DESTRUCTIVE) {
+                        once { hubServer.deleteFromHub(s.id).onSuccess { reload() }.onFailure(::show) }
+                    },
+                    AlertButton("Cancel", AlertButtonRole.CANCEL)
+                )
+            )
+        )
     }
 
     /** Start A/B with the chosen pair; A "" captures the device as it is now. */
@@ -280,6 +427,24 @@ class SnapshotsModel(
 
         /** The core's refusal while a guard waits, in the plan's words (P1CFIX). */
         const val FINISH_SAFE_APPLY = "Finish the safe apply first: Keep or Revert."
+
+        // -- WP P2AN --
+        /** The hub's list could not be read and the core gave no row. */
+        const val HUB_UNREAD = "The hub's snapshots could not be read."
+
+        /** The hub's rows of a merged list (its own, not this console's local copies), newest first. */
+        fun hubSide(entries: List<MergedSnapshot>): List<MergedSnapshot> =
+            entries.filter { !it.localCopy && it.location != HubServer.WHERE_LOCAL }.sortedByDescending { it.snapshot.savedMs }
+
+        /** Each of this console's snapshots against the hub's: the same there, a differing local copy, or here only. */
+        fun marksOf(entries: List<MergedSnapshot>): Map<String, LocalMark> = entries.mapNotNull { e ->
+            when {
+                e.localCopy -> e.snapshot.id to LocalMark.LOCAL_COPY
+                e.location == HubServer.WHERE_BOTH -> e.snapshot.id to LocalMark.ON_HUB_TOO
+                e.location == HubServer.WHERE_LOCAL -> e.snapshot.id to LocalMark.HERE_ONLY
+                else -> null
+            }
+        }.toMap()
 
         fun changesLine(n: Int) = if (n == 1) "1 change" else "$n changes"
 

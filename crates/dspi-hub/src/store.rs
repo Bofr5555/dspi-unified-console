@@ -25,6 +25,37 @@ const MAX_DEVICE_NAMES: usize = 256;
 /// A SHA-256.
 pub(crate) type TokenHash = [u8; 32];
 
+// -- WP P2RS --
+/// What a paired client is (OD-P2q): a console that paired with a PIN, or an API key
+/// an Admin minted. One table, one cap ([`crate::auth::MAX_PAIRED_CLIENTS`]), one
+/// revoke for both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ClientKind {
+    /// Paired with a PIN. Every client stored before API keys existed is one.
+    #[default]
+    Console,
+    /// Minted by an Admin (`auth.mint`), without a PIN.
+    Api,
+}
+
+impl ClientKind {
+    /// Its word in `auth.list` and the store.
+    pub fn wire_name(self) -> &'static str {
+        match self {
+            Self::Console => "console",
+            Self::Api => "api",
+        }
+    }
+
+    fn parse(word: Option<&str>) -> Option<Self> {
+        match word {
+            None | Some("console") => Some(Self::Console),
+            Some("api") => Some(Self::Api),
+            Some(_) => None,
+        }
+    }
+}
+
 /// One paired client, as stored: the hash, never the token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StoredClient {
@@ -34,6 +65,11 @@ pub(crate) struct StoredClient {
     pub(crate) created: u64,
     pub(crate) last_seen: Option<u64>,
     pub(crate) token_hash: TokenHash,
+    // -- WP P2RS --
+    pub(crate) kind: ClientKind,
+    /// May be used over plaintext once the Link port speaks TLS (OD-SECk, WP SECSRV).
+    /// Stored and listed; no effect yet.
+    pub(crate) plaintext_ok: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -45,6 +81,11 @@ struct ClientRecord {
     #[serde(default)]
     last_seen: Option<u64>,
     token_sha256: String,
+    // -- WP P2RS -- absent for a console, so an older hub reads the file unchanged
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kind: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    plaintext_ok: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -255,6 +296,9 @@ fn stored_client(record: ClientRecord) -> Option<StoredClient> {
         created: record.created,
         last_seen: record.last_seen,
         token_hash,
+        // -- WP P2RS -- an unknown kind is dropped alone, as a mangled record is
+        kind: ClientKind::parse(record.kind.as_deref())?,
+        plaintext_ok: record.plaintext_ok,
     })
 }
 
@@ -386,6 +430,9 @@ impl HubStore {
                     created: c.created,
                     last_seen: c.last_seen,
                     token_sha256: HEXLOWER.encode(&c.token_hash),
+                    // -- WP P2RS --
+                    kind: (c.kind != ClientKind::Console).then(|| c.kind.wire_name().to_owned()),
+                    plaintext_ok: c.plaintext_ok,
                 })
                 .collect(),
             device_names: self.device_names.clone(),
@@ -609,6 +656,8 @@ pub(crate) mod tests_wp_hb1 {
             created: 1,
             last_seen: None,
             token_hash: [7; 32],
+            kind: ClientKind::Console,
+            plaintext_ok: false,
         }
     }
 

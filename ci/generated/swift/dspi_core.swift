@@ -2963,6 +2963,155 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func hubAdminEvents()  -> [HubAdminEvent]
     
     /**
+     * Acknowledge alarm `id` (`alarm.ack`): the alarm as it is now. A
+     * `device_restarted` or `schedule_failed` alarm is cleared by it.
+     * Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` for an alarm that is not on;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_alarms`].
+     */
+    func hubAlarmAck(id: String) throws  -> HubAlarm
+    
+    /**
+     * The alarm rules (`alarm.rules.get`), one row per code. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_alarms`].
+     */
+    func hubAlarmRulesGet() throws  -> [HubAlarmRule]
+    
+    /**
+     * Change the alarm rules (`alarm.rules.set`): the codes given, each
+     * with `on` and the fields that are `Some` (the others keep the hub's
+     * values); a code left out keeps its rule. All or nothing. The rules
+     * now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a rule without a code or a
+     * code given twice (nothing sent), and the hub's `bad_request` naming a
+     * field out of range; [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_alarms`].
+     */
+    func hubAlarmRulesSet(rules: [HubAlarmRule]) throws  -> [HubAlarmRule]
+    
+    /**
+     * The hub's alarms (`alarm.list`): the device's and the audio link's,
+     * those on first (newest first), then the cleared, at most 500.
+     * `serial` "" for every alarm, else only that device's; `state` ""
+     * (every one), `active` (raised or acknowledged) or `cleared`. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `alarms` cap (nothing
+     * sent); [`DspiError::InvalidArgument`] for another `state`;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    func hubAlarms(serial: String, state: String) throws  -> [HubAlarm]
+    
+    /**
+     * Mint an API key `name` with `role` (`viewer`, `control`, `admin`;
+     * never above this session's) for REST and Home Assistant
+     * (`auth.mint`). The key is in this answer only: show it once. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another role (nothing
+     * sent) or the hub's `bad_request`; [`DspiError::Denied`] below Admin or
+     * for a role above this session's; [`DspiError::Link`] `conflict` with
+     * 64 clients and keys; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_api_keys`].
+     */
+    func hubApiKeyMint(name: String, role: String, plaintextOk: Bool) throws  -> HubApiKeyMinted
+    
+    /**
+     * Revoke API key `cid` (`auth.revoke`): its REST session ends. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a `cid` that is not an API
+     * key's here (nothing sent, so a console's pairing is never revoked by
+     * this call) or that the hub does not know; as
+     * [`DspiCore::hub_api_key_mint`].
+     */
+    func hubApiKeyRevoke(cid: UInt32) throws 
+    
+    /**
+     * The hub's API keys (`auth.list`'s rows of kind `api`; the consoles'
+     * pairings are left out). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `api_keys` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    func hubApiKeys() throws  -> [HubApiKey]
+    
+    /**
+     * Which of the hub's families this console's hub has, from its `hello`.
+     * All false with no live DSPi Link session. No I/O.
+     */
+    func hubCaps()  -> HubCaps
+    
+    /**
+     * Device `serial`'s history on the hub ("" the open device), with ids
+     * above `after_id`, oldest first, at most `limit` (capped at 500; 0
+     * is the hub's 100): with `after_id` 0 the newest page
+     * (`event.list`). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `events` cap;
+     * [`DspiError::Link`] `not_found` for a device with no log on the hub;
+     * [`DspiError::Disconnected`].
+     */
+    func hubEventsRead(serial: String, afterId: UInt64, limit: UInt32) throws  -> HubEventPage
+    
+    /**
+     * Have the hub send each new record of device `serial`'s history ("":
+     * every device) as `event.added` (`on`), or stop (`event.watch`). The
+     * records reach [`HubServerListener`] and [`DspiCore::hub_server_events`].
+     * A watch ends with the hub session: ask again after a reconnect. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_events_read`].
+     */
+    func hubEventsWatch(on: Bool, serial: String) throws 
+    
+    /**
+     * One health record per online device of the hub (`health.get`):
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `health` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    func hubHealth() throws  -> [HubHealth]
+    
+    /**
+     * Identify the open device: blink its LED for `seconds` (0 stops it;
+     * at most 120) and, with `tone_output`, play its quiet identify tone
+     * once on that output (leave it empty unless the user asked for sound).
+     * On a hub with the `identify` cap this is the hub's `device.identify`
+     * (Control or Admin; the hub sends it, at most once per device per 2 s);
+     * connected directly it is the device's own `EXT_IDENTIFY`
+     * ([`DspiCore::identify`]). The answer is the device's state read after
+     * the write; `None` when that read failed (the write went out). Slow:
+     * off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] (nothing sent) on a hub without the
+     * cap and on firmware without `EXT_IDENTIFY`;
+     * [`DspiError::InvalidArgument`] for a tone output the device does not
+     * have; [`DspiError::Locked`] for a tone under another session's lock;
+     * [`DspiError::Link`] `rate_limited`, `offline`, `not_found`, `device`;
+     * [`DspiError::ReadOnly`] in read-only mode; as
+     * [`DspiCore::identify`] directly.
+     */
+    func hubIdentify(seconds: UInt8, toneOutput: UInt8?) throws  -> IdentifyInfo?
+    
+    /**
+     * Every DSPi the hub has seen, online or not: online first, then by
+     * last seen, newest first (`inventory.list`, read page by page, at most
+     * 1024). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `inventory` cap (nothing
+     * sent); [`DspiError::Disconnected`]; the hub's refusal (module docs).
+     */
+    func hubInventory() throws  -> [HubDevice]
+    
+    /**
      * Remove the hub's limits profile for the open device (nothing on the
      * device changes; with it goes what the lock covers). Admin of the hub
      * only. Slow: off the UI thread.
@@ -3005,6 +3154,70 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func hubModePin(role: String, mode: String) throws  -> HubAdminState
     
     /**
+     * The broker setting (`mqtt.get`): the values in use, the password and
+     * a client key as `set` or `not set`. Admin of the hub. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `mqtt` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    func hubMqttGet() throws  -> HubMqttSettings
+    
+    /**
+     * Change the broker setting (`mqtt.set`): every field as given (what
+     * [`DspiCore::hub_mqtt_get`] answered can be sent back as it is; see
+     * [`HubMqttSettings`] for "" and the password). Any change but Home
+     * Assistant's ends the connection and starts a new one. The setting
+     * now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with the hub's words naming the
+     * field (nothing changed); as [`DspiCore::hub_mqtt_get`];
+     * [`DspiError::ReadOnly`].
+     */
+    func hubMqttSet(settings: HubMqttSettings) throws  -> HubMqttSettings
+    
+    /**
+     * The broker connection now (`mqtt.status`). Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_mqtt_get`].
+     */
+    func hubMqttStatus() throws  -> HubMqttStatus
+    
+    /**
+     * The notification targets (`outbound.get`), secrets as `set` or `not
+     * set`, with each one's queue and last try. Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `outbound` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    func hubOutboundGet() throws  -> [HubOutboundTarget]
+    
+    /**
+     * Replace the notification targets (`outbound.set`, the whole list, at
+     * most 16). A target with `secret` `new` gets a secret made by the hub:
+     * in [`HubOutboundSet::secrets`], this once. The list as
+     * [`DspiCore::hub_outbound_get`] gives can be sent back as it is. Admin
+     * of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with the hub's words naming the
+     * entry and field (nothing kept); as [`DspiCore::hub_outbound_get`];
+     * [`DspiError::ReadOnly`].
+     */
+    func hubOutboundSet(targets: [HubOutboundTarget]) throws  -> HubOutboundSet
+    
+    /**
+     * Send target `id` one delivery of kind `test` now (`outbound.test`),
+     * recorded as its last try. Admin of the hub. Slow (up to 10 s): off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_outbound_set`].
+     */
+    func hubOutboundTest(id: String) throws  -> HubOutboundTest
+    
+    /**
      * Remove the hub's installer PIN for the open device (and its recovery
      * code): the hub's lock is off. Admin of the hub only. Slow: off the UI
      * thread.
@@ -3024,6 +3237,165 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiCore::hub_limits_set`].
      */
     func hubPinSet(pin: String) throws  -> HubPinSet
+    
+    /**
+     * Delete rule `id` (`schedule.delete`). Admin of the hub. Slow: off the
+     * UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_schedule_set`].
+     */
+    func hubScheduleDelete(id: String) throws 
+    
+    /**
+     * Run rule `id` now (`schedule.run_now`), whether it is enabled or not:
+     * the hub writes its targets as `Schedule: <name>`, and the run's
+     * results come back (one row per action and target; a failed row is not
+     * a failed call). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`, `conflict` while the hub's
+     * clock is unset; as [`DspiCore::hub_schedule_set`].
+     */
+    func hubScheduleRunNow(id: String) throws  -> HubScheduleRun
+    
+    /**
+     * Add a rule (`id` "") or replace rule `id` whole (`schedule.set`); its
+     * `next_run` and `last` are not sent. The rule as the hub lists it.
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for both `days` and `once`, a
+     * `param.set` without a value (nothing sent) and the hub's
+     * `bad_request`; [`DspiError::Link`] `not_found` (no rule `id`),
+     * `conflict` (256 rules); [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_schedules`].
+     */
+    func hubScheduleSet(rule: HubScheduleRule) throws  -> HubScheduleRule
+    
+    /**
+     * The hub's schedule (`schedule.list`): the rules with their next and
+     * last runs, the time zone, the hub's local time and whether its clock
+     * is unset. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `schedule` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    func hubSchedules() throws  -> HubSchedules
+    
+    /**
+     * The hub's events of these families since the last call, oldest first
+     * (at most 64 are kept), for a binding that polls instead of a listener
+     * (the web). No I/O.
+     */
+    func hubServerEvents()  -> [HubServerEvent]
+    
+    /**
+     * "Copy here": file the hub's snapshot `id` in this console's own store.
+     * Kept as the hub has it, under its capture-time id unless this store
+     * already holds that id with other content (then the copy gets the
+     * next free one: nothing is overwritten); the same snapshot already here
+     * is answered as it is. Errors: as [`DspiCore::hub_snapshots_get`], and
+     * [`DspiError::Io`] with no folder named for snapshots.
+     */
+    func hubSnapshotsCopyHere(id: String) throws  -> SnapshotInfo
+    
+    /**
+     * Delete snapshot `id` from the hub (`snapshot.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_snapshots_rename`].
+     */
+    func hubSnapshotsDelete(id: String) throws 
+    
+    /**
+     * Snapshot `id` on the hub with its document (`snapshot.get`). Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `conflict` for a document
+     * over 61 440 bytes compact (the hub's words); as
+     * [`DspiCore::hub_snapshots_list`].
+     */
+    func hubSnapshotsGet(id: String) throws  -> HubSnapshotDocument
+    
+    /**
+     * Device `serial`'s snapshots on the hub ("" the open device), oldest
+     * first (`snapshot.list`). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_snapshots` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    func hubSnapshotsList(serial: String) throws  -> [SnapshotInfo]
+    
+    /**
+     * Set snapshot `id`'s note on the hub (`snapshot.note`; at most 4096
+     * characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_snapshots_rename`].
+     */
+    func hubSnapshotsNote(id: String, note: String) throws  -> SnapshotInfo
+    
+    /**
+     * File snapshot `document` (its text: a snapshot document of device
+     * `serial`, "" for the serial its `snapshot` block names) on the hub
+     * (`snapshot.put`), under the id the document carries. The same document
+     * again is `created: false`. Control or Admin of the hub. Slow: off the
+     * UI thread.
+     *
+     * A document over 61 440 bytes in its compact JSON form is refused here,
+     * with nothing sent: [`DspiError::Link`] `conflict`, "a snapshot document
+     * is at most 61440 bytes on the DSPi Link (compact JSON); this one is N",
+     * as the hub would answer.
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for text that is not a
+     * JSON object, or the hub's `bad_request` (not a snapshot of that
+     * device); [`DspiError::Link`] `conflict` (the hub holds a different
+     * snapshot with this id, or a cap is reached); [`DspiError::Denied`]
+     * for a Viewer; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_snapshots_list`].
+     */
+    func hubSnapshotsPut(serial: String, document: String) throws  -> HubSnapshotPut
+    
+    /**
+     * Recall snapshot `id` from the hub's store on device `serial` ("" the
+     * open device), written by the hub as this console's session
+     * (`snapshot.recall`). With `guard` a guarded apply begins first
+     * (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
+     * Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::ImageRefused`] for Control on a device with a
+     * limits profile or a lock (nothing written); [`DspiError::Link`]
+     * `offline`, `not_found`, `conflict` (another session's guarded apply);
+     * as [`DspiCore::hub_snapshots_put`].
+     */
+    func hubSnapshotsRecall(serial: String, id: String, `guard`: Bool, timeoutMs: UInt32) throws  -> HubSnapshotRecall
+    
+    /**
+     * Rename snapshot `id` on the hub (`snapshot.rename`; at most 256
+     * characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_snapshots_put`].
+     */
+    func hubSnapshotsRename(id: String, name: String) throws  -> SnapshotInfo
+    
+    /**
+     * "Save to the hub": file this console's snapshot `id` (its own store,
+     * [`DspiCore::snapshot_set_dir`]) on the hub, under the same id and the
+     * device it was taken from. Errors: as [`DspiCore::hub_snapshots_put`],
+     * and as [`DspiCore::snapshot_export`] for the local read.
+     */
+    func hubSnapshotsSave(id: String) throws  -> HubSnapshotPut
+    
+    /**
+     * The hub's statistics (`hub.stats`): sessions, uptime, and per attached
+     * device its commands, errors, mean time and dropped notifications.
+     * Admin of the hub only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_stats` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    func hubStats() throws  -> HubStats
     
     /**
      * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
@@ -4306,6 +4678,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func setHubAdminListener(listener: HubAdminListener?) 
     
     /**
+     * Register (`Some`) or clear (`None`) the listener for the hub's
+     * `event.added`, `inventory.changed` and `snapshot.changed`.
+     */
+    func setHubServerListener(listener: HubServerListener?) 
+    
+    /**
      * Send an I2C target control-interface config (pins, 7-bit address).
      * Applied and persisted later, as [`DspiCore::set_uart`]; read the
      * outcome with [`DspiCore::fetch_ctrl_ifaces`].
@@ -5042,6 +5420,20 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * a damaged index is rebuilt from the documents.
      */
     func snapshotList(serial: String)  -> [SnapshotInfo]
+    
+    /**
+     * The snapshots of device `serial` ("" the open device) on both sides:
+     * this console's store ([`DspiCore::snapshot_list`]) and, on a DSPi Link
+     * session to a hub that keeps snapshots, the hub's
+     * ([`DspiCore::hub_snapshots_list`]). Each row says where it is (`local`,
+     * `hub` or `both`). **The hub's wins:** an id both sides hold with
+     * different content (any field of the entry differs) is listed as the
+     * hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. Never fails: a hub that cannot be read leaves the local
+     * rows, with `hub_notice_key` saying why. A round trip on a hub: off the
+     * UI thread.
+     */
+    func snapshotListMerged(serial: String)  -> SnapshotMergedList
     
     /**
      * Recall snapshot `id` on the open device: the settings outside the
@@ -7783,6 +8175,233 @@ open func hubAdminEvents() -> [HubAdminEvent]  {
 }
     
     /**
+     * Acknowledge alarm `id` (`alarm.ack`): the alarm as it is now. A
+     * `device_restarted` or `schedule_failed` alarm is cleared by it.
+     * Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` for an alarm that is not on;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_alarms`].
+     */
+open func hubAlarmAck(id: String)throws  -> HubAlarm  {
+    return try  FfiConverterTypeHubAlarm_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_alarm_ack(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * The alarm rules (`alarm.rules.get`), one row per code. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_alarms`].
+     */
+open func hubAlarmRulesGet()throws  -> [HubAlarmRule]  {
+    return try  FfiConverterSequenceTypeHubAlarmRule.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_alarm_rules_get(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Change the alarm rules (`alarm.rules.set`): the codes given, each
+     * with `on` and the fields that are `Some` (the others keep the hub's
+     * values); a code left out keeps its rule. All or nothing. The rules
+     * now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a rule without a code or a
+     * code given twice (nothing sent), and the hub's `bad_request` naming a
+     * field out of range; [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_alarms`].
+     */
+open func hubAlarmRulesSet(rules: [HubAlarmRule])throws  -> [HubAlarmRule]  {
+    return try  FfiConverterSequenceTypeHubAlarmRule.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_alarm_rules_set(self.uniffiClonePointer(),
+        FfiConverterSequenceTypeHubAlarmRule.lower(rules),$0
+    )
+})
+}
+    
+    /**
+     * The hub's alarms (`alarm.list`): the device's and the audio link's,
+     * those on first (newest first), then the cleared, at most 500.
+     * `serial` "" for every alarm, else only that device's; `state` ""
+     * (every one), `active` (raised or acknowledged) or `cleared`. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `alarms` cap (nothing
+     * sent); [`DspiError::InvalidArgument`] for another `state`;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+open func hubAlarms(serial: String, state: String)throws  -> [HubAlarm]  {
+    return try  FfiConverterSequenceTypeHubAlarm.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_alarms(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),
+        FfiConverterString.lower(state),$0
+    )
+})
+}
+    
+    /**
+     * Mint an API key `name` with `role` (`viewer`, `control`, `admin`;
+     * never above this session's) for REST and Home Assistant
+     * (`auth.mint`). The key is in this answer only: show it once. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another role (nothing
+     * sent) or the hub's `bad_request`; [`DspiError::Denied`] below Admin or
+     * for a role above this session's; [`DspiError::Link`] `conflict` with
+     * 64 clients and keys; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_api_keys`].
+     */
+open func hubApiKeyMint(name: String, role: String, plaintextOk: Bool)throws  -> HubApiKeyMinted  {
+    return try  FfiConverterTypeHubApiKeyMinted_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_api_key_mint(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(role),
+        FfiConverterBool.lower(plaintextOk),$0
+    )
+})
+}
+    
+    /**
+     * Revoke API key `cid` (`auth.revoke`): its REST session ends. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a `cid` that is not an API
+     * key's here (nothing sent, so a console's pairing is never revoked by
+     * this call) or that the hub does not know; as
+     * [`DspiCore::hub_api_key_mint`].
+     */
+open func hubApiKeyRevoke(cid: UInt32)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_api_key_revoke(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(cid),$0
+    )
+}
+}
+    
+    /**
+     * The hub's API keys (`auth.list`'s rows of kind `api`; the consoles'
+     * pairings are left out). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `api_keys` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+open func hubApiKeys()throws  -> [HubApiKey]  {
+    return try  FfiConverterSequenceTypeHubApiKey.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_api_keys(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Which of the hub's families this console's hub has, from its `hello`.
+     * All false with no live DSPi Link session. No I/O.
+     */
+open func hubCaps() -> HubCaps  {
+    return try!  FfiConverterTypeHubCaps_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_hub_caps(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Device `serial`'s history on the hub ("" the open device), with ids
+     * above `after_id`, oldest first, at most `limit` (capped at 500; 0
+     * is the hub's 100): with `after_id` 0 the newest page
+     * (`event.list`). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `events` cap;
+     * [`DspiError::Link`] `not_found` for a device with no log on the hub;
+     * [`DspiError::Disconnected`].
+     */
+open func hubEventsRead(serial: String, afterId: UInt64, limit: UInt32)throws  -> HubEventPage  {
+    return try  FfiConverterTypeHubEventPage_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_events_read(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),
+        FfiConverterUInt64.lower(afterId),
+        FfiConverterUInt32.lower(limit),$0
+    )
+})
+}
+    
+    /**
+     * Have the hub send each new record of device `serial`'s history ("":
+     * every device) as `event.added` (`on`), or stop (`event.watch`). The
+     * records reach [`HubServerListener`] and [`DspiCore::hub_server_events`].
+     * A watch ends with the hub session: ask again after a reconnect. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_events_read`].
+     */
+open func hubEventsWatch(on: Bool, serial: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_events_watch(self.uniffiClonePointer(),
+        FfiConverterBool.lower(on),
+        FfiConverterString.lower(serial),$0
+    )
+}
+}
+    
+    /**
+     * One health record per online device of the hub (`health.get`):
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `health` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+open func hubHealth()throws  -> [HubHealth]  {
+    return try  FfiConverterSequenceTypeHubHealth.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_health(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Identify the open device: blink its LED for `seconds` (0 stops it;
+     * at most 120) and, with `tone_output`, play its quiet identify tone
+     * once on that output (leave it empty unless the user asked for sound).
+     * On a hub with the `identify` cap this is the hub's `device.identify`
+     * (Control or Admin; the hub sends it, at most once per device per 2 s);
+     * connected directly it is the device's own `EXT_IDENTIFY`
+     * ([`DspiCore::identify`]). The answer is the device's state read after
+     * the write; `None` when that read failed (the write went out). Slow:
+     * off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] (nothing sent) on a hub without the
+     * cap and on firmware without `EXT_IDENTIFY`;
+     * [`DspiError::InvalidArgument`] for a tone output the device does not
+     * have; [`DspiError::Locked`] for a tone under another session's lock;
+     * [`DspiError::Link`] `rate_limited`, `offline`, `not_found`, `device`;
+     * [`DspiError::ReadOnly`] in read-only mode; as
+     * [`DspiCore::identify`] directly.
+     */
+open func hubIdentify(seconds: UInt8, toneOutput: UInt8?)throws  -> IdentifyInfo?  {
+    return try  FfiConverterOptionTypeIdentifyInfo.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_identify(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(seconds),
+        FfiConverterOptionUInt8.lower(toneOutput),$0
+    )
+})
+}
+    
+    /**
+     * Every DSPi the hub has seen, online or not: online first, then by
+     * last seen, newest first (`inventory.list`, read page by page, at most
+     * 1024). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `inventory` cap (nothing
+     * sent); [`DspiError::Disconnected`]; the hub's refusal (module docs).
+     */
+open func hubInventory()throws  -> [HubDevice]  {
+    return try  FfiConverterSequenceTypeHubDevice.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_inventory(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Remove the hub's limits profile for the open device (nothing on the
      * device changes; with it goes what the lock covers). Admin of the hub
      * only. Slow: off the UI thread.
@@ -7848,6 +8467,103 @@ open func hubModePin(role: String, mode: String)throws  -> HubAdminState  {
 }
     
     /**
+     * The broker setting (`mqtt.get`): the values in use, the password and
+     * a client key as `set` or `not set`. Admin of the hub. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `mqtt` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+open func hubMqttGet()throws  -> HubMqttSettings  {
+    return try  FfiConverterTypeHubMqttSettings_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_mqtt_get(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Change the broker setting (`mqtt.set`): every field as given (what
+     * [`DspiCore::hub_mqtt_get`] answered can be sent back as it is; see
+     * [`HubMqttSettings`] for "" and the password). Any change but Home
+     * Assistant's ends the connection and starts a new one. The setting
+     * now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with the hub's words naming the
+     * field (nothing changed); as [`DspiCore::hub_mqtt_get`];
+     * [`DspiError::ReadOnly`].
+     */
+open func hubMqttSet(settings: HubMqttSettings)throws  -> HubMqttSettings  {
+    return try  FfiConverterTypeHubMqttSettings_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_mqtt_set(self.uniffiClonePointer(),
+        FfiConverterTypeHubMqttSettings_lower(settings),$0
+    )
+})
+}
+    
+    /**
+     * The broker connection now (`mqtt.status`). Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_mqtt_get`].
+     */
+open func hubMqttStatus()throws  -> HubMqttStatus  {
+    return try  FfiConverterTypeHubMqttStatus_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_mqtt_status(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The notification targets (`outbound.get`), secrets as `set` or `not
+     * set`, with each one's queue and last try. Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `outbound` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+open func hubOutboundGet()throws  -> [HubOutboundTarget]  {
+    return try  FfiConverterSequenceTypeHubOutboundTarget.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_outbound_get(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Replace the notification targets (`outbound.set`, the whole list, at
+     * most 16). A target with `secret` `new` gets a secret made by the hub:
+     * in [`HubOutboundSet::secrets`], this once. The list as
+     * [`DspiCore::hub_outbound_get`] gives can be sent back as it is. Admin
+     * of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with the hub's words naming the
+     * entry and field (nothing kept); as [`DspiCore::hub_outbound_get`];
+     * [`DspiError::ReadOnly`].
+     */
+open func hubOutboundSet(targets: [HubOutboundTarget])throws  -> HubOutboundSet  {
+    return try  FfiConverterTypeHubOutboundSet_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_outbound_set(self.uniffiClonePointer(),
+        FfiConverterSequenceTypeHubOutboundTarget.lower(targets),$0
+    )
+})
+}
+    
+    /**
+     * Send target `id` one delivery of kind `test` now (`outbound.test`),
+     * recorded as its last try. Admin of the hub. Slow (up to 10 s): off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_outbound_set`].
+     */
+open func hubOutboundTest(id: String)throws  -> HubOutboundTest  {
+    return try  FfiConverterTypeHubOutboundTest_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_outbound_test(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
      * Remove the hub's installer PIN for the open device (and its recovery
      * code): the hub's lock is off. Admin of the hub only. Slow: off the UI
      * thread.
@@ -7875,6 +8591,256 @@ open func hubPinSet(pin: String)throws  -> HubPinSet  {
     return try  FfiConverterTypeHubPinSet_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_hub_pin_set(self.uniffiClonePointer(),
         FfiConverterString.lower(pin),$0
+    )
+})
+}
+    
+    /**
+     * Delete rule `id` (`schedule.delete`). Admin of the hub. Slow: off the
+     * UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_schedule_set`].
+     */
+open func hubScheduleDelete(id: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_schedule_delete(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+}
+}
+    
+    /**
+     * Run rule `id` now (`schedule.run_now`), whether it is enabled or not:
+     * the hub writes its targets as `Schedule: <name>`, and the run's
+     * results come back (one row per action and target; a failed row is not
+     * a failed call). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`, `conflict` while the hub's
+     * clock is unset; as [`DspiCore::hub_schedule_set`].
+     */
+open func hubScheduleRunNow(id: String)throws  -> HubScheduleRun  {
+    return try  FfiConverterTypeHubScheduleRun_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_schedule_run_now(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * Add a rule (`id` "") or replace rule `id` whole (`schedule.set`); its
+     * `next_run` and `last` are not sent. The rule as the hub lists it.
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for both `days` and `once`, a
+     * `param.set` without a value (nothing sent) and the hub's
+     * `bad_request`; [`DspiError::Link`] `not_found` (no rule `id`),
+     * `conflict` (256 rules); [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_schedules`].
+     */
+open func hubScheduleSet(rule: HubScheduleRule)throws  -> HubScheduleRule  {
+    return try  FfiConverterTypeHubScheduleRule_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_schedule_set(self.uniffiClonePointer(),
+        FfiConverterTypeHubScheduleRule_lower(rule),$0
+    )
+})
+}
+    
+    /**
+     * The hub's schedule (`schedule.list`): the rules with their next and
+     * last runs, the time zone, the hub's local time and whether its clock
+     * is unset. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `schedule` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+open func hubSchedules()throws  -> HubSchedules  {
+    return try  FfiConverterTypeHubSchedules_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_schedules(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The hub's events of these families since the last call, oldest first
+     * (at most 64 are kept), for a binding that polls instead of a listener
+     * (the web). No I/O.
+     */
+open func hubServerEvents() -> [HubServerEvent]  {
+    return try!  FfiConverterSequenceTypeHubServerEvent.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_hub_server_events(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * "Copy here": file the hub's snapshot `id` in this console's own store.
+     * Kept as the hub has it, under its capture-time id unless this store
+     * already holds that id with other content (then the copy gets the
+     * next free one: nothing is overwritten); the same snapshot already here
+     * is answered as it is. Errors: as [`DspiCore::hub_snapshots_get`], and
+     * [`DspiError::Io`] with no folder named for snapshots.
+     */
+open func hubSnapshotsCopyHere(id: String)throws  -> SnapshotInfo  {
+    return try  FfiConverterTypeSnapshotInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_snapshots_copy_here(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * Delete snapshot `id` from the hub (`snapshot.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_snapshots_rename`].
+     */
+open func hubSnapshotsDelete(id: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_snapshots_delete(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+}
+}
+    
+    /**
+     * Snapshot `id` on the hub with its document (`snapshot.get`). Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `conflict` for a document
+     * over 61 440 bytes compact (the hub's words); as
+     * [`DspiCore::hub_snapshots_list`].
+     */
+open func hubSnapshotsGet(id: String)throws  -> HubSnapshotDocument  {
+    return try  FfiConverterTypeHubSnapshotDocument_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_snapshots_get(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * Device `serial`'s snapshots on the hub ("" the open device), oldest
+     * first (`snapshot.list`). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_snapshots` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+open func hubSnapshotsList(serial: String)throws  -> [SnapshotInfo]  {
+    return try  FfiConverterSequenceTypeSnapshotInfo.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_snapshots_list(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),$0
+    )
+})
+}
+    
+    /**
+     * Set snapshot `id`'s note on the hub (`snapshot.note`; at most 4096
+     * characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_snapshots_rename`].
+     */
+open func hubSnapshotsNote(id: String, note: String)throws  -> SnapshotInfo  {
+    return try  FfiConverterTypeSnapshotInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_snapshots_note(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(note),$0
+    )
+})
+}
+    
+    /**
+     * File snapshot `document` (its text: a snapshot document of device
+     * `serial`, "" for the serial its `snapshot` block names) on the hub
+     * (`snapshot.put`), under the id the document carries. The same document
+     * again is `created: false`. Control or Admin of the hub. Slow: off the
+     * UI thread.
+     *
+     * A document over 61 440 bytes in its compact JSON form is refused here,
+     * with nothing sent: [`DspiError::Link`] `conflict`, "a snapshot document
+     * is at most 61440 bytes on the DSPi Link (compact JSON); this one is N",
+     * as the hub would answer.
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for text that is not a
+     * JSON object, or the hub's `bad_request` (not a snapshot of that
+     * device); [`DspiError::Link`] `conflict` (the hub holds a different
+     * snapshot with this id, or a cap is reached); [`DspiError::Denied`]
+     * for a Viewer; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_snapshots_list`].
+     */
+open func hubSnapshotsPut(serial: String, document: String)throws  -> HubSnapshotPut  {
+    return try  FfiConverterTypeHubSnapshotPut_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_snapshots_put(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),
+        FfiConverterString.lower(document),$0
+    )
+})
+}
+    
+    /**
+     * Recall snapshot `id` from the hub's store on device `serial` ("" the
+     * open device), written by the hub as this console's session
+     * (`snapshot.recall`). With `guard` a guarded apply begins first
+     * (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
+     * Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::ImageRefused`] for Control on a device with a
+     * limits profile or a lock (nothing written); [`DspiError::Link`]
+     * `offline`, `not_found`, `conflict` (another session's guarded apply);
+     * as [`DspiCore::hub_snapshots_put`].
+     */
+open func hubSnapshotsRecall(serial: String, id: String, `guard`: Bool, timeoutMs: UInt32)throws  -> HubSnapshotRecall  {
+    return try  FfiConverterTypeHubSnapshotRecall_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_snapshots_recall(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),
+        FfiConverterString.lower(id),
+        FfiConverterBool.lower(`guard`),
+        FfiConverterUInt32.lower(timeoutMs),$0
+    )
+})
+}
+    
+    /**
+     * Rename snapshot `id` on the hub (`snapshot.rename`; at most 256
+     * characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_snapshots_put`].
+     */
+open func hubSnapshotsRename(id: String, name: String)throws  -> SnapshotInfo  {
+    return try  FfiConverterTypeSnapshotInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_snapshots_rename(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(name),$0
+    )
+})
+}
+    
+    /**
+     * "Save to the hub": file this console's snapshot `id` (its own store,
+     * [`DspiCore::snapshot_set_dir`]) on the hub, under the same id and the
+     * device it was taken from. Errors: as [`DspiCore::hub_snapshots_put`],
+     * and as [`DspiCore::snapshot_export`] for the local read.
+     */
+open func hubSnapshotsSave(id: String)throws  -> HubSnapshotPut  {
+    return try  FfiConverterTypeHubSnapshotPut_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_snapshots_save(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * The hub's statistics (`hub.stats`): sessions, uptime, and per attached
+     * device its commands, errors, mean time and dropped notifications.
+     * Admin of the hub only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_stats` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+open func hubStats()throws  -> HubStats  {
+    return try  FfiConverterTypeHubStats_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_stats(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -9744,6 +10710,17 @@ open func setHubAdminListener(listener: HubAdminListener?)  {try! rustCall() {
 }
     
     /**
+     * Register (`Some`) or clear (`None`) the listener for the hub's
+     * `event.added`, `inventory.changed` and `snapshot.changed`.
+     */
+open func setHubServerListener(listener: HubServerListener?)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_set_hub_server_listener(self.uniffiClonePointer(),
+        FfiConverterOptionTypeHubServerListener.lower(listener),$0
+    )
+}
+}
+    
+    /**
      * Send an I2C target control-interface config (pins, 7-bit address).
      * Applied and persisted later, as [`DspiCore::set_uart`]; read the
      * outcome with [`DspiCore::fetch_ctrl_ifaces`].
@@ -10867,6 +11844,26 @@ open func snapshotList(serial: String) -> [SnapshotInfo]  {
 }
     
     /**
+     * The snapshots of device `serial` ("" the open device) on both sides:
+     * this console's store ([`DspiCore::snapshot_list`]) and, on a DSPi Link
+     * session to a hub that keeps snapshots, the hub's
+     * ([`DspiCore::hub_snapshots_list`]). Each row says where it is (`local`,
+     * `hub` or `both`). **The hub's wins:** an id both sides hold with
+     * different content (any field of the entry differs) is listed as the
+     * hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. Never fails: a hub that cannot be read leaves the local
+     * rows, with `hub_notice_key` saying why. A round trip on a hub: off the
+     * UI thread.
+     */
+open func snapshotListMerged(serial: String) -> SnapshotMergedList  {
+    return try!  FfiConverterTypeSnapshotMergedList_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_snapshot_list_merged(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),$0
+    )
+})
+}
+    
+    /**
      * Recall snapshot `id` on the open device: the settings outside the
      * image that differ (device and source names, output latency, control
      * surfaces), then the image as one bulk write, under the device lock.
@@ -11724,6 +12721,341 @@ public func FfiConverterTypeHubAdminListener_lift(_ pointer: UnsafeMutableRawPoi
 #endif
 public func FfiConverterTypeHubAdminListener_lower(_ value: HubAdminListener) -> UnsafeMutableRawPointer {
     return FfiConverterTypeHubAdminListener.lower(value)
+}
+
+
+
+
+
+
+/**
+ * A secret the hub made and shows once: an API key, a webhook's secret. An
+ * object, not a string field, so that no binding's generated record
+ * printing (Kotlin `toString`, Swift `description`) shows it: read it with
+ * [`HubSecret::reveal`] to show it once, and keep it nowhere else. Its
+ * `Debug` is `set`; serialized (the C and wasm answers) it is the plain
+ * string.
+ */
+public protocol HubSecretProtocol: AnyObject, Sendable {
+    
+    /**
+     * The secret's text, to show once. No I/O.
+     */
+    func reveal()  -> String
+    
+}
+/**
+ * A secret the hub made and shows once: an API key, a webhook's secret. An
+ * object, not a string field, so that no binding's generated record
+ * printing (Kotlin `toString`, Swift `description`) shows it: read it with
+ * [`HubSecret::reveal`] to show it once, and keep it nowhere else. Its
+ * `Debug` is `set`; serialized (the C and wasm answers) it is the plain
+ * string.
+ */
+open class HubSecret: HubSecretProtocol, @unchecked Sendable {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_dspi_core_fn_clone_hubsecret(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_dspi_core_fn_free_hubsecret(pointer, $0) }
+    }
+
+    
+
+    
+    /**
+     * The secret's text, to show once. No I/O.
+     */
+open func reveal() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_hubsecret_reveal(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubSecret: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = HubSecret
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> HubSecret {
+        return HubSecret(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: HubSecret) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubSecret {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: HubSecret, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSecret_lift(_ pointer: UnsafeMutableRawPointer) throws -> HubSecret {
+    return try FfiConverterTypeHubSecret.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSecret_lower(_ value: HubSecret) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeHubSecret.lower(value)
+}
+
+
+
+
+
+
+/**
+ * The hub's events of these families reach the app here (WP P2CC1): set with
+ * [`DspiCore::set_hub_server_listener`].
+ */
+public protocol HubServerListener: AnyObject, Sendable {
+    
+    /**
+     * A record was added to a watched history, the inventory or the hub's
+     * snapshots changed. Called on the Link session's supervisor, no core
+     * lock held: post the work to the app's own thread and return.
+     */
+    func onHubServerEvent(event: HubServerEvent) 
+    
+}
+/**
+ * The hub's events of these families reach the app here (WP P2CC1): set with
+ * [`DspiCore::set_hub_server_listener`].
+ */
+open class HubServerListenerImpl: HubServerListener, @unchecked Sendable {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_dspi_core_fn_clone_hubserverlistener(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_dspi_core_fn_free_hubserverlistener(pointer, $0) }
+    }
+
+    
+
+    
+    /**
+     * A record was added to a watched history, the inventory or the hub's
+     * snapshots changed. Called on the Link session's supervisor, no core
+     * lock held: post the work to the app's own thread and return.
+     */
+open func onHubServerEvent(event: HubServerEvent)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_hubserverlistener_on_hub_server_event(self.uniffiClonePointer(),
+        FfiConverterTypeHubServerEvent_lower(event),$0
+    )
+}
+}
+    
+
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceHubServerListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // This creates 1-element array, since this seems to be the only way to construct a const
+    // pointer that we can pass to the Rust code.
+    static let vtable: [UniffiVTableCallbackInterfaceHubServerListener] = [UniffiVTableCallbackInterfaceHubServerListener(
+        onHubServerEvent: { (
+            uniffiHandle: UInt64,
+            event: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeHubServerListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onHubServerEvent(
+                     event: try FfiConverterTypeHubServerEvent_lift(event)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            let result = try? FfiConverterTypeHubServerListener.handleMap.remove(handle: uniffiHandle)
+            if result == nil {
+                print("Uniffi callback interface HubServerListener: handle missing in uniffiFree")
+            }
+        }
+    )]
+}
+
+private func uniffiCallbackInitHubServerListener() {
+    uniffi_dspi_core_fn_init_callback_vtable_hubserverlistener(UniffiCallbackInterfaceHubServerListener.vtable)
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubServerListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<HubServerListener>()
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = HubServerListener
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> HubServerListener {
+        return HubServerListenerImpl(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: HubServerListener) -> UnsafeMutableRawPointer {
+        guard let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: handleMap.insert(obj: value))) else {
+            fatalError("Cast to UnsafeMutableRawPointer failed")
+        }
+        return ptr
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubServerListener {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: HubServerListener, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubServerListener_lift(_ pointer: UnsafeMutableRawPointer) throws -> HubServerListener {
+    return try FfiConverterTypeHubServerListener.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubServerListener_lower(_ value: HubServerListener) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeHubServerListener.lower(value)
 }
 
 
@@ -24785,6 +26117,1850 @@ public func FfiConverterTypeHubAdminState_lower(_ value: HubAdminState) -> RustB
 
 
 /**
+ * One alarm of the hub's (`alarm.list`, `alarm.ack`, `alarm.changed`).
+ */
+public struct HubAlarm {
+    /**
+     * `device:<n>` or `alink:<n>`, unique for the hub's run.
+     */
+    public var id: String
+    /**
+     * `device` or `alink`.
+     */
+    public var source: String
+    /**
+     * One of [`ALARM_CODES`] (or a code a newer hub adds).
+     */
+    public var code: String
+    /**
+     * What it is about: the serial, a schedule rule's id, `hub`, or an
+     * audio link unit.
+     */
+    public var subject: String
+    /**
+     * The device's serial; "" for an alarm about no one device.
+     */
+    public var serial: String
+    /**
+     * `warning` or `critical`.
+     */
+    public var severity: String
+    /**
+     * The hub's line for a person (also the notice's detail).
+     */
+    public var message: String
+    /**
+     * `raised`, `acknowledged` or `cleared`.
+     */
+    public var state: String
+    /**
+     * When it was raised (ISO-8601 UTC).
+     */
+    public var raisedAt: String
+    /**
+     * When it was cleared; "" while on.
+     */
+    public var clearedAt: String
+    /**
+     * Who acknowledged it (a client's or principal's name); "" when none.
+     */
+    public var acknowledgedBy: String
+    /**
+     * How often it was raised again while on.
+     */
+    public var count: UInt32
+    /**
+     * `device_restarted`'s reset reason (`watchdog`, `glitch`, `brownout`,
+     * ...), read from the hub's message; "" otherwise.
+     */
+    public var reason: String
+    /**
+     * Its notice row: `alarm.<code>`, or [`NOTICE_ALARM_UNKNOWN`].
+     */
+    public var noticeKey: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `device:<n>` or `alink:<n>`, unique for the hub's run.
+         */id: String, 
+        /**
+         * `device` or `alink`.
+         */source: String, 
+        /**
+         * One of [`ALARM_CODES`] (or a code a newer hub adds).
+         */code: String, 
+        /**
+         * What it is about: the serial, a schedule rule's id, `hub`, or an
+         * audio link unit.
+         */subject: String, 
+        /**
+         * The device's serial; "" for an alarm about no one device.
+         */serial: String, 
+        /**
+         * `warning` or `critical`.
+         */severity: String, 
+        /**
+         * The hub's line for a person (also the notice's detail).
+         */message: String, 
+        /**
+         * `raised`, `acknowledged` or `cleared`.
+         */state: String, 
+        /**
+         * When it was raised (ISO-8601 UTC).
+         */raisedAt: String, 
+        /**
+         * When it was cleared; "" while on.
+         */clearedAt: String, 
+        /**
+         * Who acknowledged it (a client's or principal's name); "" when none.
+         */acknowledgedBy: String, 
+        /**
+         * How often it was raised again while on.
+         */count: UInt32, 
+        /**
+         * `device_restarted`'s reset reason (`watchdog`, `glitch`, `brownout`,
+         * ...), read from the hub's message; "" otherwise.
+         */reason: String, 
+        /**
+         * Its notice row: `alarm.<code>`, or [`NOTICE_ALARM_UNKNOWN`].
+         */noticeKey: String) {
+        self.id = id
+        self.source = source
+        self.code = code
+        self.subject = subject
+        self.serial = serial
+        self.severity = severity
+        self.message = message
+        self.state = state
+        self.raisedAt = raisedAt
+        self.clearedAt = clearedAt
+        self.acknowledgedBy = acknowledgedBy
+        self.count = count
+        self.reason = reason
+        self.noticeKey = noticeKey
+    }
+}
+
+#if compiler(>=6)
+extension HubAlarm: Sendable {}
+#endif
+
+
+extension HubAlarm: Equatable, Hashable {
+    public static func ==(lhs: HubAlarm, rhs: HubAlarm) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.source != rhs.source {
+            return false
+        }
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.subject != rhs.subject {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.severity != rhs.severity {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.raisedAt != rhs.raisedAt {
+            return false
+        }
+        if lhs.clearedAt != rhs.clearedAt {
+            return false
+        }
+        if lhs.acknowledgedBy != rhs.acknowledgedBy {
+            return false
+        }
+        if lhs.count != rhs.count {
+            return false
+        }
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.noticeKey != rhs.noticeKey {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(source)
+        hasher.combine(code)
+        hasher.combine(subject)
+        hasher.combine(serial)
+        hasher.combine(severity)
+        hasher.combine(message)
+        hasher.combine(state)
+        hasher.combine(raisedAt)
+        hasher.combine(clearedAt)
+        hasher.combine(acknowledgedBy)
+        hasher.combine(count)
+        hasher.combine(reason)
+        hasher.combine(noticeKey)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubAlarm: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubAlarm {
+        return
+            try HubAlarm(
+                id: FfiConverterString.read(from: &buf), 
+                source: FfiConverterString.read(from: &buf), 
+                code: FfiConverterString.read(from: &buf), 
+                subject: FfiConverterString.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                severity: FfiConverterString.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf), 
+                raisedAt: FfiConverterString.read(from: &buf), 
+                clearedAt: FfiConverterString.read(from: &buf), 
+                acknowledgedBy: FfiConverterString.read(from: &buf), 
+                count: FfiConverterUInt32.read(from: &buf), 
+                reason: FfiConverterString.read(from: &buf), 
+                noticeKey: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubAlarm, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.source, into: &buf)
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterString.write(value.subject, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.severity, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterString.write(value.raisedAt, into: &buf)
+        FfiConverterString.write(value.clearedAt, into: &buf)
+        FfiConverterString.write(value.acknowledgedBy, into: &buf)
+        FfiConverterUInt32.write(value.count, into: &buf)
+        FfiConverterString.write(value.reason, into: &buf)
+        FfiConverterString.write(value.noticeKey, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubAlarm_lift(_ buf: RustBuffer) throws -> HubAlarm {
+    return try FfiConverterTypeHubAlarm.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubAlarm_lower(_ value: HubAlarm) -> RustBuffer {
+    return FfiConverterTypeHubAlarm.lower(value)
+}
+
+
+/**
+ * One code's alarm rule (`alarm.rules.get`/`set`). A field the code does not
+ * have is `None`; in [`DspiCore::hub_alarm_rules_set`] a `None` keeps the
+ * hub's value.
+ */
+public struct HubAlarmRule {
+    /**
+     * The alarm code.
+     */
+    public var code: String
+    /**
+     * The rule is on (off clears its alarms).
+     */
+    public var on: Bool
+    /**
+     * `device_offline`, `unresponsive`: seconds (1 to 86 400).
+     */
+    public var afterS: UInt32?
+    /**
+     * `clip`: clip events within a minute (1 to 1000).
+     */
+    public var perMinute: UInt32?
+    /**
+     * `clip`: mute the device once per storm (off by default).
+     */
+    public var muteOnStorm: Bool?
+    /**
+     * `temperature`: °C (0 to 150).
+     */
+    public var aboveC: Double?
+    /**
+     * `cpu`: % (1 to 100).
+     */
+    public var abovePct: UInt32?
+    /**
+     * `cpu`: for so many seconds (1 to 3600).
+     */
+    public var forS: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The alarm code.
+         */code: String, 
+        /**
+         * The rule is on (off clears its alarms).
+         */on: Bool, 
+        /**
+         * `device_offline`, `unresponsive`: seconds (1 to 86 400).
+         */afterS: UInt32?, 
+        /**
+         * `clip`: clip events within a minute (1 to 1000).
+         */perMinute: UInt32?, 
+        /**
+         * `clip`: mute the device once per storm (off by default).
+         */muteOnStorm: Bool?, 
+        /**
+         * `temperature`: °C (0 to 150).
+         */aboveC: Double?, 
+        /**
+         * `cpu`: % (1 to 100).
+         */abovePct: UInt32?, 
+        /**
+         * `cpu`: for so many seconds (1 to 3600).
+         */forS: UInt32?) {
+        self.code = code
+        self.on = on
+        self.afterS = afterS
+        self.perMinute = perMinute
+        self.muteOnStorm = muteOnStorm
+        self.aboveC = aboveC
+        self.abovePct = abovePct
+        self.forS = forS
+    }
+}
+
+#if compiler(>=6)
+extension HubAlarmRule: Sendable {}
+#endif
+
+
+extension HubAlarmRule: Equatable, Hashable {
+    public static func ==(lhs: HubAlarmRule, rhs: HubAlarmRule) -> Bool {
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.on != rhs.on {
+            return false
+        }
+        if lhs.afterS != rhs.afterS {
+            return false
+        }
+        if lhs.perMinute != rhs.perMinute {
+            return false
+        }
+        if lhs.muteOnStorm != rhs.muteOnStorm {
+            return false
+        }
+        if lhs.aboveC != rhs.aboveC {
+            return false
+        }
+        if lhs.abovePct != rhs.abovePct {
+            return false
+        }
+        if lhs.forS != rhs.forS {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(code)
+        hasher.combine(on)
+        hasher.combine(afterS)
+        hasher.combine(perMinute)
+        hasher.combine(muteOnStorm)
+        hasher.combine(aboveC)
+        hasher.combine(abovePct)
+        hasher.combine(forS)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubAlarmRule: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubAlarmRule {
+        return
+            try HubAlarmRule(
+                code: FfiConverterString.read(from: &buf), 
+                on: FfiConverterBool.read(from: &buf), 
+                afterS: FfiConverterOptionUInt32.read(from: &buf), 
+                perMinute: FfiConverterOptionUInt32.read(from: &buf), 
+                muteOnStorm: FfiConverterOptionBool.read(from: &buf), 
+                aboveC: FfiConverterOptionDouble.read(from: &buf), 
+                abovePct: FfiConverterOptionUInt32.read(from: &buf), 
+                forS: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubAlarmRule, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterBool.write(value.on, into: &buf)
+        FfiConverterOptionUInt32.write(value.afterS, into: &buf)
+        FfiConverterOptionUInt32.write(value.perMinute, into: &buf)
+        FfiConverterOptionBool.write(value.muteOnStorm, into: &buf)
+        FfiConverterOptionDouble.write(value.aboveC, into: &buf)
+        FfiConverterOptionUInt32.write(value.abovePct, into: &buf)
+        FfiConverterOptionUInt32.write(value.forS, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubAlarmRule_lift(_ buf: RustBuffer) throws -> HubAlarmRule {
+    return try FfiConverterTypeHubAlarmRule.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubAlarmRule_lower(_ value: HubAlarmRule) -> RustBuffer {
+    return FfiConverterTypeHubAlarmRule.lower(value)
+}
+
+
+/**
+ * An API key of the hub (`auth.list`'s rows of kind `api`).
+ */
+public struct HubApiKey {
+    /**
+     * Its client id: what [`DspiCore::hub_api_key_revoke`] takes.
+     */
+    public var cid: UInt32
+    /**
+     * Its name.
+     */
+    public var name: String
+    /**
+     * `viewer`, `control` or `admin`.
+     */
+    public var role: String
+    /**
+     * Kept for when the port speaks TLS; no effect yet.
+     */
+    public var plaintextOk: Bool
+    /**
+     * Its REST session is open.
+     */
+    public var online: Bool
+    /**
+     * When it was minted (ISO-8601 UTC).
+     */
+    public var created: String
+    /**
+     * When it was last used; "" for never.
+     */
+    public var lastSeen: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its client id: what [`DspiCore::hub_api_key_revoke`] takes.
+         */cid: UInt32, 
+        /**
+         * Its name.
+         */name: String, 
+        /**
+         * `viewer`, `control` or `admin`.
+         */role: String, 
+        /**
+         * Kept for when the port speaks TLS; no effect yet.
+         */plaintextOk: Bool, 
+        /**
+         * Its REST session is open.
+         */online: Bool, 
+        /**
+         * When it was minted (ISO-8601 UTC).
+         */created: String, 
+        /**
+         * When it was last used; "" for never.
+         */lastSeen: String) {
+        self.cid = cid
+        self.name = name
+        self.role = role
+        self.plaintextOk = plaintextOk
+        self.online = online
+        self.created = created
+        self.lastSeen = lastSeen
+    }
+}
+
+#if compiler(>=6)
+extension HubApiKey: Sendable {}
+#endif
+
+
+extension HubApiKey: Equatable, Hashable {
+    public static func ==(lhs: HubApiKey, rhs: HubApiKey) -> Bool {
+        if lhs.cid != rhs.cid {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.plaintextOk != rhs.plaintextOk {
+            return false
+        }
+        if lhs.online != rhs.online {
+            return false
+        }
+        if lhs.created != rhs.created {
+            return false
+        }
+        if lhs.lastSeen != rhs.lastSeen {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(cid)
+        hasher.combine(name)
+        hasher.combine(role)
+        hasher.combine(plaintextOk)
+        hasher.combine(online)
+        hasher.combine(created)
+        hasher.combine(lastSeen)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubApiKey: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubApiKey {
+        return
+            try HubApiKey(
+                cid: FfiConverterUInt32.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf), 
+                plaintextOk: FfiConverterBool.read(from: &buf), 
+                online: FfiConverterBool.read(from: &buf), 
+                created: FfiConverterString.read(from: &buf), 
+                lastSeen: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubApiKey, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.cid, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterBool.write(value.plaintextOk, into: &buf)
+        FfiConverterBool.write(value.online, into: &buf)
+        FfiConverterString.write(value.created, into: &buf)
+        FfiConverterString.write(value.lastSeen, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubApiKey_lift(_ buf: RustBuffer) throws -> HubApiKey {
+    return try FfiConverterTypeHubApiKey.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubApiKey_lower(_ value: HubApiKey) -> RustBuffer {
+    return FfiConverterTypeHubApiKey.lower(value)
+}
+
+
+/**
+ * A key the hub just minted (`auth.mint`): [`HubApiKeyMinted::key`] is
+ * shown in this answer only.
+ */
+public struct HubApiKeyMinted {
+    /**
+     * Its client id.
+     */
+    public var cid: UInt32
+    /**
+     * Its name, as the hub cleaned it.
+     */
+    public var name: String
+    /**
+     * Its role.
+     */
+    public var role: String
+    /**
+     * As asked.
+     */
+    public var plaintextOk: Bool
+    /**
+     * The key (43 characters): show it once; the hub keeps only its hash.
+     */
+    public var key: HubSecret
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its client id.
+         */cid: UInt32, 
+        /**
+         * Its name, as the hub cleaned it.
+         */name: String, 
+        /**
+         * Its role.
+         */role: String, 
+        /**
+         * As asked.
+         */plaintextOk: Bool, 
+        /**
+         * The key (43 characters): show it once; the hub keeps only its hash.
+         */key: HubSecret) {
+        self.cid = cid
+        self.name = name
+        self.role = role
+        self.plaintextOk = plaintextOk
+        self.key = key
+    }
+}
+
+#if compiler(>=6)
+extension HubApiKeyMinted: Sendable {}
+#endif
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubApiKeyMinted: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubApiKeyMinted {
+        return
+            try HubApiKeyMinted(
+                cid: FfiConverterUInt32.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf), 
+                plaintextOk: FfiConverterBool.read(from: &buf), 
+                key: FfiConverterTypeHubSecret.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubApiKeyMinted, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.cid, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterBool.write(value.plaintextOk, into: &buf)
+        FfiConverterTypeHubSecret.write(value.key, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubApiKeyMinted_lift(_ buf: RustBuffer) throws -> HubApiKeyMinted {
+    return try FfiConverterTypeHubApiKeyMinted.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubApiKeyMinted_lower(_ value: HubApiKeyMinted) -> RustBuffer {
+    return FfiConverterTypeHubApiKeyMinted.lower(value)
+}
+
+
+/**
+ * Which of the hub's families this console's hub has ([`DspiCore::hub_caps`]).
+ */
+public struct HubCaps {
+    /**
+     * This console has a live DSPi Link session.
+     */
+    public var onHub: Bool
+    /**
+     * `inventory.*` ([`DspiCore::hub_inventory`]).
+     */
+    public var inventory: Bool
+    /**
+     * `device.identify` ([`DspiCore::hub_identify`] on a hub).
+     */
+    public var identify: Bool
+    /**
+     * `health.get` ([`DspiCore::hub_health`]).
+     */
+    public var health: Bool
+    /**
+     * `event.*` ([`DspiCore::hub_events_read`]).
+     */
+    public var events: Bool
+    /**
+     * The hub's snapshot store (`hub_snapshots_*`).
+     */
+    public var hubSnapshots: Bool
+    /**
+     * The parameter API and presets by name.
+     */
+    public var paramApi: Bool
+    /**
+     * `hub.stats` ([`DspiCore::hub_stats`]).
+     */
+    public var hubStats: Bool
+    /**
+     * `alarm.*` ([`DspiCore::hub_alarms`]).
+     */
+    public var alarms: Bool
+    /**
+     * `outbound.*` ([`DspiCore::hub_outbound_get`]).
+     */
+    public var outbound: Bool
+    /**
+     * `schedule.*` ([`DspiCore::hub_schedules`]).
+     */
+    public var schedule: Bool
+    /**
+     * `mqtt.*` ([`DspiCore::hub_mqtt_get`]).
+     */
+    public var mqtt: Bool
+    /**
+     * API keys ([`DspiCore::hub_api_keys`]).
+     */
+    public var apiKeys: Bool
+    /**
+     * The REST mirror is on (the hub runs with `--rest`).
+     */
+    public var rest: Bool
+    /**
+     * Every cap of the hub's `hello`, as it sent them.
+     */
+    public var caps: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * This console has a live DSPi Link session.
+         */onHub: Bool, 
+        /**
+         * `inventory.*` ([`DspiCore::hub_inventory`]).
+         */inventory: Bool, 
+        /**
+         * `device.identify` ([`DspiCore::hub_identify`] on a hub).
+         */identify: Bool, 
+        /**
+         * `health.get` ([`DspiCore::hub_health`]).
+         */health: Bool, 
+        /**
+         * `event.*` ([`DspiCore::hub_events_read`]).
+         */events: Bool, 
+        /**
+         * The hub's snapshot store (`hub_snapshots_*`).
+         */hubSnapshots: Bool, 
+        /**
+         * The parameter API and presets by name.
+         */paramApi: Bool, 
+        /**
+         * `hub.stats` ([`DspiCore::hub_stats`]).
+         */hubStats: Bool, 
+        /**
+         * `alarm.*` ([`DspiCore::hub_alarms`]).
+         */alarms: Bool, 
+        /**
+         * `outbound.*` ([`DspiCore::hub_outbound_get`]).
+         */outbound: Bool, 
+        /**
+         * `schedule.*` ([`DspiCore::hub_schedules`]).
+         */schedule: Bool, 
+        /**
+         * `mqtt.*` ([`DspiCore::hub_mqtt_get`]).
+         */mqtt: Bool, 
+        /**
+         * API keys ([`DspiCore::hub_api_keys`]).
+         */apiKeys: Bool, 
+        /**
+         * The REST mirror is on (the hub runs with `--rest`).
+         */rest: Bool, 
+        /**
+         * Every cap of the hub's `hello`, as it sent them.
+         */caps: [String]) {
+        self.onHub = onHub
+        self.inventory = inventory
+        self.identify = identify
+        self.health = health
+        self.events = events
+        self.hubSnapshots = hubSnapshots
+        self.paramApi = paramApi
+        self.hubStats = hubStats
+        self.alarms = alarms
+        self.outbound = outbound
+        self.schedule = schedule
+        self.mqtt = mqtt
+        self.apiKeys = apiKeys
+        self.rest = rest
+        self.caps = caps
+    }
+}
+
+#if compiler(>=6)
+extension HubCaps: Sendable {}
+#endif
+
+
+extension HubCaps: Equatable, Hashable {
+    public static func ==(lhs: HubCaps, rhs: HubCaps) -> Bool {
+        if lhs.onHub != rhs.onHub {
+            return false
+        }
+        if lhs.inventory != rhs.inventory {
+            return false
+        }
+        if lhs.identify != rhs.identify {
+            return false
+        }
+        if lhs.health != rhs.health {
+            return false
+        }
+        if lhs.events != rhs.events {
+            return false
+        }
+        if lhs.hubSnapshots != rhs.hubSnapshots {
+            return false
+        }
+        if lhs.paramApi != rhs.paramApi {
+            return false
+        }
+        if lhs.hubStats != rhs.hubStats {
+            return false
+        }
+        if lhs.alarms != rhs.alarms {
+            return false
+        }
+        if lhs.outbound != rhs.outbound {
+            return false
+        }
+        if lhs.schedule != rhs.schedule {
+            return false
+        }
+        if lhs.mqtt != rhs.mqtt {
+            return false
+        }
+        if lhs.apiKeys != rhs.apiKeys {
+            return false
+        }
+        if lhs.rest != rhs.rest {
+            return false
+        }
+        if lhs.caps != rhs.caps {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(onHub)
+        hasher.combine(inventory)
+        hasher.combine(identify)
+        hasher.combine(health)
+        hasher.combine(events)
+        hasher.combine(hubSnapshots)
+        hasher.combine(paramApi)
+        hasher.combine(hubStats)
+        hasher.combine(alarms)
+        hasher.combine(outbound)
+        hasher.combine(schedule)
+        hasher.combine(mqtt)
+        hasher.combine(apiKeys)
+        hasher.combine(rest)
+        hasher.combine(caps)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubCaps: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubCaps {
+        return
+            try HubCaps(
+                onHub: FfiConverterBool.read(from: &buf), 
+                inventory: FfiConverterBool.read(from: &buf), 
+                identify: FfiConverterBool.read(from: &buf), 
+                health: FfiConverterBool.read(from: &buf), 
+                events: FfiConverterBool.read(from: &buf), 
+                hubSnapshots: FfiConverterBool.read(from: &buf), 
+                paramApi: FfiConverterBool.read(from: &buf), 
+                hubStats: FfiConverterBool.read(from: &buf), 
+                alarms: FfiConverterBool.read(from: &buf), 
+                outbound: FfiConverterBool.read(from: &buf), 
+                schedule: FfiConverterBool.read(from: &buf), 
+                mqtt: FfiConverterBool.read(from: &buf), 
+                apiKeys: FfiConverterBool.read(from: &buf), 
+                rest: FfiConverterBool.read(from: &buf), 
+                caps: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubCaps, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.onHub, into: &buf)
+        FfiConverterBool.write(value.inventory, into: &buf)
+        FfiConverterBool.write(value.identify, into: &buf)
+        FfiConverterBool.write(value.health, into: &buf)
+        FfiConverterBool.write(value.events, into: &buf)
+        FfiConverterBool.write(value.hubSnapshots, into: &buf)
+        FfiConverterBool.write(value.paramApi, into: &buf)
+        FfiConverterBool.write(value.hubStats, into: &buf)
+        FfiConverterBool.write(value.alarms, into: &buf)
+        FfiConverterBool.write(value.outbound, into: &buf)
+        FfiConverterBool.write(value.schedule, into: &buf)
+        FfiConverterBool.write(value.mqtt, into: &buf)
+        FfiConverterBool.write(value.apiKeys, into: &buf)
+        FfiConverterBool.write(value.rest, into: &buf)
+        FfiConverterSequenceString.write(value.caps, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubCaps_lift(_ buf: RustBuffer) throws -> HubCaps {
+    return try FfiConverterTypeHubCaps.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubCaps_lower(_ value: HubCaps) -> RustBuffer {
+    return FfiConverterTypeHubCaps.lower(value)
+}
+
+
+/**
+ * One device of the hub's inventory ([`DspiCore::hub_inventory`]).
+ */
+public struct HubDevice {
+    /**
+     * The key.
+     */
+    public var serial: String
+    /**
+     * Its DSPi Link handle while online.
+     */
+    public var handle: UInt8?
+    /**
+     * Attached now.
+     */
+    public var online: Bool
+    /**
+     * Its name when last seen.
+     */
+    public var name: String
+    /**
+     * `RP2040`, `RP2350` (`unknown platform N` for an id this build does
+     * not know); "" when unknown.
+     */
+    public var platform: String
+    /**
+     * The firmware version.
+     */
+    public var fw: String
+    /**
+     * A beta build; `None` when unknown.
+     */
+    public var fwBeta: Bool?
+    /**
+     * Output channels.
+     */
+    public var outputs: UInt8
+    /**
+     * The board the firmware was built for; "" when unknown.
+     */
+    public var board: String
+    /**
+     * The hardware revision; "" when unknown or unset.
+     */
+    public var hwRev: String
+    /**
+     * The chip; "" when unknown.
+     */
+    public var chip: String
+    /**
+     * The chip's revision, when known.
+     */
+    public var chipRev: UInt8?
+    /**
+     * Set by an Admin; "" when unset.
+     */
+    public var location: String
+    /**
+     * Set by an Admin; "" when unset.
+     */
+    public var note: String
+    /**
+     * Set by an Admin.
+     */
+    public var tags: [String]
+    /**
+     * First seen (ISO-8601 UTC).
+     */
+    public var firstSeen: String
+    /**
+     * Last seen: now while online, else when it went offline.
+     */
+    public var lastSeen: String
+    /**
+     * Its last reset, when the hub read one.
+     */
+    public var lastReset: HubReset?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The key.
+         */serial: String, 
+        /**
+         * Its DSPi Link handle while online.
+         */handle: UInt8?, 
+        /**
+         * Attached now.
+         */online: Bool, 
+        /**
+         * Its name when last seen.
+         */name: String, 
+        /**
+         * `RP2040`, `RP2350` (`unknown platform N` for an id this build does
+         * not know); "" when unknown.
+         */platform: String, 
+        /**
+         * The firmware version.
+         */fw: String, 
+        /**
+         * A beta build; `None` when unknown.
+         */fwBeta: Bool?, 
+        /**
+         * Output channels.
+         */outputs: UInt8, 
+        /**
+         * The board the firmware was built for; "" when unknown.
+         */board: String, 
+        /**
+         * The hardware revision; "" when unknown or unset.
+         */hwRev: String, 
+        /**
+         * The chip; "" when unknown.
+         */chip: String, 
+        /**
+         * The chip's revision, when known.
+         */chipRev: UInt8?, 
+        /**
+         * Set by an Admin; "" when unset.
+         */location: String, 
+        /**
+         * Set by an Admin; "" when unset.
+         */note: String, 
+        /**
+         * Set by an Admin.
+         */tags: [String], 
+        /**
+         * First seen (ISO-8601 UTC).
+         */firstSeen: String, 
+        /**
+         * Last seen: now while online, else when it went offline.
+         */lastSeen: String, 
+        /**
+         * Its last reset, when the hub read one.
+         */lastReset: HubReset?) {
+        self.serial = serial
+        self.handle = handle
+        self.online = online
+        self.name = name
+        self.platform = platform
+        self.fw = fw
+        self.fwBeta = fwBeta
+        self.outputs = outputs
+        self.board = board
+        self.hwRev = hwRev
+        self.chip = chip
+        self.chipRev = chipRev
+        self.location = location
+        self.note = note
+        self.tags = tags
+        self.firstSeen = firstSeen
+        self.lastSeen = lastSeen
+        self.lastReset = lastReset
+    }
+}
+
+#if compiler(>=6)
+extension HubDevice: Sendable {}
+#endif
+
+
+extension HubDevice: Equatable, Hashable {
+    public static func ==(lhs: HubDevice, rhs: HubDevice) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.handle != rhs.handle {
+            return false
+        }
+        if lhs.online != rhs.online {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.platform != rhs.platform {
+            return false
+        }
+        if lhs.fw != rhs.fw {
+            return false
+        }
+        if lhs.fwBeta != rhs.fwBeta {
+            return false
+        }
+        if lhs.outputs != rhs.outputs {
+            return false
+        }
+        if lhs.board != rhs.board {
+            return false
+        }
+        if lhs.hwRev != rhs.hwRev {
+            return false
+        }
+        if lhs.chip != rhs.chip {
+            return false
+        }
+        if lhs.chipRev != rhs.chipRev {
+            return false
+        }
+        if lhs.location != rhs.location {
+            return false
+        }
+        if lhs.note != rhs.note {
+            return false
+        }
+        if lhs.tags != rhs.tags {
+            return false
+        }
+        if lhs.firstSeen != rhs.firstSeen {
+            return false
+        }
+        if lhs.lastSeen != rhs.lastSeen {
+            return false
+        }
+        if lhs.lastReset != rhs.lastReset {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(handle)
+        hasher.combine(online)
+        hasher.combine(name)
+        hasher.combine(platform)
+        hasher.combine(fw)
+        hasher.combine(fwBeta)
+        hasher.combine(outputs)
+        hasher.combine(board)
+        hasher.combine(hwRev)
+        hasher.combine(chip)
+        hasher.combine(chipRev)
+        hasher.combine(location)
+        hasher.combine(note)
+        hasher.combine(tags)
+        hasher.combine(firstSeen)
+        hasher.combine(lastSeen)
+        hasher.combine(lastReset)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubDevice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubDevice {
+        return
+            try HubDevice(
+                serial: FfiConverterString.read(from: &buf), 
+                handle: FfiConverterOptionUInt8.read(from: &buf), 
+                online: FfiConverterBool.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                platform: FfiConverterString.read(from: &buf), 
+                fw: FfiConverterString.read(from: &buf), 
+                fwBeta: FfiConverterOptionBool.read(from: &buf), 
+                outputs: FfiConverterUInt8.read(from: &buf), 
+                board: FfiConverterString.read(from: &buf), 
+                hwRev: FfiConverterString.read(from: &buf), 
+                chip: FfiConverterString.read(from: &buf), 
+                chipRev: FfiConverterOptionUInt8.read(from: &buf), 
+                location: FfiConverterString.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf), 
+                tags: FfiConverterSequenceString.read(from: &buf), 
+                firstSeen: FfiConverterString.read(from: &buf), 
+                lastSeen: FfiConverterString.read(from: &buf), 
+                lastReset: FfiConverterOptionTypeHubReset.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubDevice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterOptionUInt8.write(value.handle, into: &buf)
+        FfiConverterBool.write(value.online, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.platform, into: &buf)
+        FfiConverterString.write(value.fw, into: &buf)
+        FfiConverterOptionBool.write(value.fwBeta, into: &buf)
+        FfiConverterUInt8.write(value.outputs, into: &buf)
+        FfiConverterString.write(value.board, into: &buf)
+        FfiConverterString.write(value.hwRev, into: &buf)
+        FfiConverterString.write(value.chip, into: &buf)
+        FfiConverterOptionUInt8.write(value.chipRev, into: &buf)
+        FfiConverterString.write(value.location, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+        FfiConverterSequenceString.write(value.tags, into: &buf)
+        FfiConverterString.write(value.firstSeen, into: &buf)
+        FfiConverterString.write(value.lastSeen, into: &buf)
+        FfiConverterOptionTypeHubReset.write(value.lastReset, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubDevice_lift(_ buf: RustBuffer) throws -> HubDevice {
+    return try FfiConverterTypeHubDevice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubDevice_lower(_ value: HubDevice) -> RustBuffer {
+    return FfiConverterTypeHubDevice.lower(value)
+}
+
+
+/**
+ * A page of a device's history on the hub ([`DspiCore::hub_events_read`]).
+ */
+public struct HubEventPage {
+    /**
+     * The device.
+     */
+    public var serial: String
+    /**
+     * Oldest first.
+     */
+    public var records: [HubEventRecord]
+    /**
+     * More follow the last record's id.
+     */
+    public var more: Bool
+    /**
+     * The highest id the hub's log holds (0: empty). An `after_id` above
+     * it means the numbering started again: read from 0.
+     */
+    public var newestId: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The device.
+         */serial: String, 
+        /**
+         * Oldest first.
+         */records: [HubEventRecord], 
+        /**
+         * More follow the last record's id.
+         */more: Bool, 
+        /**
+         * The highest id the hub's log holds (0: empty). An `after_id` above
+         * it means the numbering started again: read from 0.
+         */newestId: UInt64) {
+        self.serial = serial
+        self.records = records
+        self.more = more
+        self.newestId = newestId
+    }
+}
+
+#if compiler(>=6)
+extension HubEventPage: Sendable {}
+#endif
+
+
+extension HubEventPage: Equatable, Hashable {
+    public static func ==(lhs: HubEventPage, rhs: HubEventPage) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.records != rhs.records {
+            return false
+        }
+        if lhs.more != rhs.more {
+            return false
+        }
+        if lhs.newestId != rhs.newestId {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(records)
+        hasher.combine(more)
+        hasher.combine(newestId)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubEventPage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubEventPage {
+        return
+            try HubEventPage(
+                serial: FfiConverterString.read(from: &buf), 
+                records: FfiConverterSequenceTypeHubEventRecord.read(from: &buf), 
+                more: FfiConverterBool.read(from: &buf), 
+                newestId: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubEventPage, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterSequenceTypeHubEventRecord.write(value.records, into: &buf)
+        FfiConverterBool.write(value.more, into: &buf)
+        FfiConverterUInt64.write(value.newestId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubEventPage_lift(_ buf: RustBuffer) throws -> HubEventPage {
+    return try FfiConverterTypeHubEventPage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubEventPage_lower(_ value: HubEventPage) -> RustBuffer {
+    return FfiConverterTypeHubEventPage.lower(value)
+}
+
+
+/**
+ * One record of a device's history on the hub: the event log's record
+ * (`EventEntry`'s fields) and who caused it by name.
+ */
+public struct HubEventRecord {
+    /**
+     * Rising per device; numbering can start again (hub-api.md section 6).
+     */
+    public var id: UInt64
+    /**
+     * When, ms since the Unix epoch.
+     */
+    public var timeMs: Int64
+    /**
+     * The record's kind (`notification`, `connected`, `recall`, `identify`,
+     * `alarm`, ...; `unknown` for a kind this build does not know).
+     */
+    public var kind: String
+    /**
+     * The device's serial.
+     */
+    public var serial: String
+    /**
+     * One readable line.
+     */
+    public var text: String
+    /**
+     * Who or what caused it, as the log's `source`; "" when none.
+     */
+    public var source: String
+    /**
+     * The DSPi Link session that caused it.
+     */
+    public var session: UInt32?
+    /**
+     * Who caused it, by name: the client, key, schedule or rule; "" when
+     * none.
+     */
+    public var by: String
+    /**
+     * A wire channel, or a preset slot.
+     */
+    public var channel: UInt8?
+    /**
+     * A number: °C, a counter's total, Identify's seconds.
+     */
+    public var value: Double?
+    /**
+     * The firmware version, on connects and firmware changes.
+     */
+    public var fw: String?
+    /**
+     * The device's uptime, s.
+     */
+    public var uptimeS: UInt32?
+    /**
+     * Detail lines: what a recall or an import changed.
+     */
+    public var lines: [String]
+    /**
+     * Occurrences this record stands for.
+     */
+    public var count: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Rising per device; numbering can start again (hub-api.md section 6).
+         */id: UInt64, 
+        /**
+         * When, ms since the Unix epoch.
+         */timeMs: Int64, 
+        /**
+         * The record's kind (`notification`, `connected`, `recall`, `identify`,
+         * `alarm`, ...; `unknown` for a kind this build does not know).
+         */kind: String, 
+        /**
+         * The device's serial.
+         */serial: String, 
+        /**
+         * One readable line.
+         */text: String, 
+        /**
+         * Who or what caused it, as the log's `source`; "" when none.
+         */source: String, 
+        /**
+         * The DSPi Link session that caused it.
+         */session: UInt32?, 
+        /**
+         * Who caused it, by name: the client, key, schedule or rule; "" when
+         * none.
+         */by: String, 
+        /**
+         * A wire channel, or a preset slot.
+         */channel: UInt8?, 
+        /**
+         * A number: °C, a counter's total, Identify's seconds.
+         */value: Double?, 
+        /**
+         * The firmware version, on connects and firmware changes.
+         */fw: String?, 
+        /**
+         * The device's uptime, s.
+         */uptimeS: UInt32?, 
+        /**
+         * Detail lines: what a recall or an import changed.
+         */lines: [String], 
+        /**
+         * Occurrences this record stands for.
+         */count: UInt32) {
+        self.id = id
+        self.timeMs = timeMs
+        self.kind = kind
+        self.serial = serial
+        self.text = text
+        self.source = source
+        self.session = session
+        self.by = by
+        self.channel = channel
+        self.value = value
+        self.fw = fw
+        self.uptimeS = uptimeS
+        self.lines = lines
+        self.count = count
+    }
+}
+
+#if compiler(>=6)
+extension HubEventRecord: Sendable {}
+#endif
+
+
+extension HubEventRecord: Equatable, Hashable {
+    public static func ==(lhs: HubEventRecord, rhs: HubEventRecord) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.timeMs != rhs.timeMs {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        if lhs.source != rhs.source {
+            return false
+        }
+        if lhs.session != rhs.session {
+            return false
+        }
+        if lhs.by != rhs.by {
+            return false
+        }
+        if lhs.channel != rhs.channel {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.fw != rhs.fw {
+            return false
+        }
+        if lhs.uptimeS != rhs.uptimeS {
+            return false
+        }
+        if lhs.lines != rhs.lines {
+            return false
+        }
+        if lhs.count != rhs.count {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(timeMs)
+        hasher.combine(kind)
+        hasher.combine(serial)
+        hasher.combine(text)
+        hasher.combine(source)
+        hasher.combine(session)
+        hasher.combine(by)
+        hasher.combine(channel)
+        hasher.combine(value)
+        hasher.combine(fw)
+        hasher.combine(uptimeS)
+        hasher.combine(lines)
+        hasher.combine(count)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubEventRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubEventRecord {
+        return
+            try HubEventRecord(
+                id: FfiConverterUInt64.read(from: &buf), 
+                timeMs: FfiConverterInt64.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf), 
+                source: FfiConverterString.read(from: &buf), 
+                session: FfiConverterOptionUInt32.read(from: &buf), 
+                by: FfiConverterString.read(from: &buf), 
+                channel: FfiConverterOptionUInt8.read(from: &buf), 
+                value: FfiConverterOptionDouble.read(from: &buf), 
+                fw: FfiConverterOptionString.read(from: &buf), 
+                uptimeS: FfiConverterOptionUInt32.read(from: &buf), 
+                lines: FfiConverterSequenceString.read(from: &buf), 
+                count: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubEventRecord, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterInt64.write(value.timeMs, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterString.write(value.source, into: &buf)
+        FfiConverterOptionUInt32.write(value.session, into: &buf)
+        FfiConverterString.write(value.by, into: &buf)
+        FfiConverterOptionUInt8.write(value.channel, into: &buf)
+        FfiConverterOptionDouble.write(value.value, into: &buf)
+        FfiConverterOptionString.write(value.fw, into: &buf)
+        FfiConverterOptionUInt32.write(value.uptimeS, into: &buf)
+        FfiConverterSequenceString.write(value.lines, into: &buf)
+        FfiConverterUInt32.write(value.count, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubEventRecord_lift(_ buf: RustBuffer) throws -> HubEventRecord {
+    return try FfiConverterTypeHubEventRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubEventRecord_lower(_ value: HubEventRecord) -> RustBuffer {
+    return FfiConverterTypeHubEventRecord.lower(value)
+}
+
+
+/**
+ * One online device's health ([`DspiCore::hub_health`]). A field the
+ * firmware does not give, or the hub has not read yet, is `None`.
+ */
+public struct HubHealth {
+    /**
+     * The device.
+     */
+    public var serial: String
+    /**
+     * Its handle.
+     */
+    public var handle: UInt8
+    /**
+     * The newest read (ISO-8601 UTC); "" before the first.
+     */
+    public var at: String
+    /**
+     * The busier core's load, %.
+     */
+    public var cpuPct: UInt8?
+    /**
+     * The sticky clip latch, one bit per channel (never cleared by the hub).
+     */
+    public var clipMask: UInt32?
+    /**
+     * °C, to 0.01.
+     */
+    public var tempC: Double?
+    /**
+     * Uptime, s (from the reset-info read, every 60 s).
+     */
+    public var uptimeS: UInt32?
+    /**
+     * Watchdog hangs not yet acted on.
+     */
+    public var hangCount: UInt8?
+    /**
+     * No answer for 10 s while attached.
+     */
+    public var unresponsive: Bool
+    /**
+     * Since when, while [`HubHealth::unresponsive`]; "" otherwise.
+     */
+    public var unresponsiveSince: String
+    /**
+     * The reset seen at attach or since.
+     */
+    public var reset: HubReset?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The device.
+         */serial: String, 
+        /**
+         * Its handle.
+         */handle: UInt8, 
+        /**
+         * The newest read (ISO-8601 UTC); "" before the first.
+         */at: String, 
+        /**
+         * The busier core's load, %.
+         */cpuPct: UInt8?, 
+        /**
+         * The sticky clip latch, one bit per channel (never cleared by the hub).
+         */clipMask: UInt32?, 
+        /**
+         * °C, to 0.01.
+         */tempC: Double?, 
+        /**
+         * Uptime, s (from the reset-info read, every 60 s).
+         */uptimeS: UInt32?, 
+        /**
+         * Watchdog hangs not yet acted on.
+         */hangCount: UInt8?, 
+        /**
+         * No answer for 10 s while attached.
+         */unresponsive: Bool, 
+        /**
+         * Since when, while [`HubHealth::unresponsive`]; "" otherwise.
+         */unresponsiveSince: String, 
+        /**
+         * The reset seen at attach or since.
+         */reset: HubReset?) {
+        self.serial = serial
+        self.handle = handle
+        self.at = at
+        self.cpuPct = cpuPct
+        self.clipMask = clipMask
+        self.tempC = tempC
+        self.uptimeS = uptimeS
+        self.hangCount = hangCount
+        self.unresponsive = unresponsive
+        self.unresponsiveSince = unresponsiveSince
+        self.reset = reset
+    }
+}
+
+#if compiler(>=6)
+extension HubHealth: Sendable {}
+#endif
+
+
+extension HubHealth: Equatable, Hashable {
+    public static func ==(lhs: HubHealth, rhs: HubHealth) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.handle != rhs.handle {
+            return false
+        }
+        if lhs.at != rhs.at {
+            return false
+        }
+        if lhs.cpuPct != rhs.cpuPct {
+            return false
+        }
+        if lhs.clipMask != rhs.clipMask {
+            return false
+        }
+        if lhs.tempC != rhs.tempC {
+            return false
+        }
+        if lhs.uptimeS != rhs.uptimeS {
+            return false
+        }
+        if lhs.hangCount != rhs.hangCount {
+            return false
+        }
+        if lhs.unresponsive != rhs.unresponsive {
+            return false
+        }
+        if lhs.unresponsiveSince != rhs.unresponsiveSince {
+            return false
+        }
+        if lhs.reset != rhs.reset {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(handle)
+        hasher.combine(at)
+        hasher.combine(cpuPct)
+        hasher.combine(clipMask)
+        hasher.combine(tempC)
+        hasher.combine(uptimeS)
+        hasher.combine(hangCount)
+        hasher.combine(unresponsive)
+        hasher.combine(unresponsiveSince)
+        hasher.combine(reset)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubHealth: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubHealth {
+        return
+            try HubHealth(
+                serial: FfiConverterString.read(from: &buf), 
+                handle: FfiConverterUInt8.read(from: &buf), 
+                at: FfiConverterString.read(from: &buf), 
+                cpuPct: FfiConverterOptionUInt8.read(from: &buf), 
+                clipMask: FfiConverterOptionUInt32.read(from: &buf), 
+                tempC: FfiConverterOptionDouble.read(from: &buf), 
+                uptimeS: FfiConverterOptionUInt32.read(from: &buf), 
+                hangCount: FfiConverterOptionUInt8.read(from: &buf), 
+                unresponsive: FfiConverterBool.read(from: &buf), 
+                unresponsiveSince: FfiConverterString.read(from: &buf), 
+                reset: FfiConverterOptionTypeHubReset.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubHealth, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterUInt8.write(value.handle, into: &buf)
+        FfiConverterString.write(value.at, into: &buf)
+        FfiConverterOptionUInt8.write(value.cpuPct, into: &buf)
+        FfiConverterOptionUInt32.write(value.clipMask, into: &buf)
+        FfiConverterOptionDouble.write(value.tempC, into: &buf)
+        FfiConverterOptionUInt32.write(value.uptimeS, into: &buf)
+        FfiConverterOptionUInt8.write(value.hangCount, into: &buf)
+        FfiConverterBool.write(value.unresponsive, into: &buf)
+        FfiConverterString.write(value.unresponsiveSince, into: &buf)
+        FfiConverterOptionTypeHubReset.write(value.reset, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubHealth_lift(_ buf: RustBuffer) throws -> HubHealth {
+    return try FfiConverterTypeHubHealth.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubHealth_lower(_ value: HubHealth) -> RustBuffer {
+    return FfiConverterTypeHubHealth.lower(value)
+}
+
+
+/**
  * A profile set on the hub ([`DspiCore::hub_limits_set`]).
  */
 public struct HubLimitsSet {
@@ -24955,6 +28131,1182 @@ public func FfiConverterTypeHubModePin_lower(_ value: HubModePin) -> RustBuffer 
 
 
 /**
+ * The broker setting (`mqtt.get`, `mqtt.set`). In
+ * [`DspiCore::hub_mqtt_set`] "" in `client_id`, `base_topic` (and a `None`
+ * `port`) is the hub's default, "" in `broker`/`username` none.
+ */
+public struct HubMqttSettings {
+    /**
+     * The hub connects and publishes.
+     */
+    public var enabled: Bool
+    /**
+     * The broker's host name or address.
+     */
+    public var broker: String
+    /**
+     * Its port (read: the one in use).
+     */
+    public var port: UInt16?
+    /**
+     * The client id (read: the one in use).
+     */
+    public var clientId: String
+    /**
+     * The user name; "" for none.
+     */
+    public var username: String
+    /**
+     * Read: `set` or `not set`. To set: the password itself (typed by the
+     * Admin); `set` or "" keeps it; `not set` clears it. Never logged.
+     */
+    public var password: String
+    /**
+     * The base topic (read: the one in use).
+     */
+    public var baseTopic: String
+    /**
+     * TLS.
+     */
+    public var tls: HubMqttTls
+    /**
+     * Home Assistant discovery and `set` topics on (section 13.2).
+     */
+    public var haEnabled: Bool
+    /**
+     * The API key (its `cid`) Home Assistant's `set` topics act as.
+     */
+    public var haKey: UInt32?
+    /**
+     * A one-time notice of this run (a file migrated). Read only.
+     */
+    public var notice: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The hub connects and publishes.
+         */enabled: Bool, 
+        /**
+         * The broker's host name or address.
+         */broker: String, 
+        /**
+         * Its port (read: the one in use).
+         */port: UInt16?, 
+        /**
+         * The client id (read: the one in use).
+         */clientId: String, 
+        /**
+         * The user name; "" for none.
+         */username: String, 
+        /**
+         * Read: `set` or `not set`. To set: the password itself (typed by the
+         * Admin); `set` or "" keeps it; `not set` clears it. Never logged.
+         */password: String, 
+        /**
+         * The base topic (read: the one in use).
+         */baseTopic: String, 
+        /**
+         * TLS.
+         */tls: HubMqttTls, 
+        /**
+         * Home Assistant discovery and `set` topics on (section 13.2).
+         */haEnabled: Bool, 
+        /**
+         * The API key (its `cid`) Home Assistant's `set` topics act as.
+         */haKey: UInt32?, 
+        /**
+         * A one-time notice of this run (a file migrated). Read only.
+         */notice: String) {
+        self.enabled = enabled
+        self.broker = broker
+        self.port = port
+        self.clientId = clientId
+        self.username = username
+        self.password = password
+        self.baseTopic = baseTopic
+        self.tls = tls
+        self.haEnabled = haEnabled
+        self.haKey = haKey
+        self.notice = notice
+    }
+}
+
+#if compiler(>=6)
+extension HubMqttSettings: Sendable {}
+#endif
+
+
+extension HubMqttSettings: Equatable, Hashable {
+    public static func ==(lhs: HubMqttSettings, rhs: HubMqttSettings) -> Bool {
+        if lhs.enabled != rhs.enabled {
+            return false
+        }
+        if lhs.broker != rhs.broker {
+            return false
+        }
+        if lhs.port != rhs.port {
+            return false
+        }
+        if lhs.clientId != rhs.clientId {
+            return false
+        }
+        if lhs.username != rhs.username {
+            return false
+        }
+        if lhs.password != rhs.password {
+            return false
+        }
+        if lhs.baseTopic != rhs.baseTopic {
+            return false
+        }
+        if lhs.tls != rhs.tls {
+            return false
+        }
+        if lhs.haEnabled != rhs.haEnabled {
+            return false
+        }
+        if lhs.haKey != rhs.haKey {
+            return false
+        }
+        if lhs.notice != rhs.notice {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(enabled)
+        hasher.combine(broker)
+        hasher.combine(port)
+        hasher.combine(clientId)
+        hasher.combine(username)
+        hasher.combine(password)
+        hasher.combine(baseTopic)
+        hasher.combine(tls)
+        hasher.combine(haEnabled)
+        hasher.combine(haKey)
+        hasher.combine(notice)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubMqttSettings: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubMqttSettings {
+        return
+            try HubMqttSettings(
+                enabled: FfiConverterBool.read(from: &buf), 
+                broker: FfiConverterString.read(from: &buf), 
+                port: FfiConverterOptionUInt16.read(from: &buf), 
+                clientId: FfiConverterString.read(from: &buf), 
+                username: FfiConverterString.read(from: &buf), 
+                password: FfiConverterString.read(from: &buf), 
+                baseTopic: FfiConverterString.read(from: &buf), 
+                tls: FfiConverterTypeHubMqttTls.read(from: &buf), 
+                haEnabled: FfiConverterBool.read(from: &buf), 
+                haKey: FfiConverterOptionUInt32.read(from: &buf), 
+                notice: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubMqttSettings, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.enabled, into: &buf)
+        FfiConverterString.write(value.broker, into: &buf)
+        FfiConverterOptionUInt16.write(value.port, into: &buf)
+        FfiConverterString.write(value.clientId, into: &buf)
+        FfiConverterString.write(value.username, into: &buf)
+        FfiConverterString.write(value.password, into: &buf)
+        FfiConverterString.write(value.baseTopic, into: &buf)
+        FfiConverterTypeHubMqttTls.write(value.tls, into: &buf)
+        FfiConverterBool.write(value.haEnabled, into: &buf)
+        FfiConverterOptionUInt32.write(value.haKey, into: &buf)
+        FfiConverterString.write(value.notice, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMqttSettings_lift(_ buf: RustBuffer) throws -> HubMqttSettings {
+    return try FfiConverterTypeHubMqttSettings.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMqttSettings_lower(_ value: HubMqttSettings) -> RustBuffer {
+    return FfiConverterTypeHubMqttSettings.lower(value)
+}
+
+
+/**
+ * The broker connection now (`mqtt.status`).
+ */
+public struct HubMqttStatus {
+    /**
+     * `off`, `connecting`, `connected` or `failed`.
+     */
+    public var state: String
+    /**
+     * The last reason, for a person (a refused password).
+     */
+    public var msg: String
+    /**
+     * When `state` last changed (ISO-8601 UTC).
+     */
+    public var since: String
+    /**
+     * Publishes waiting while the broker is away.
+     */
+    public var queued: UInt32
+    /**
+     * Publishes dropped past that.
+     */
+    public var dropped: UInt64
+    /**
+     * The connection is TLS.
+     */
+    public var encrypted: Bool
+    /**
+     * A one-time notice of this run.
+     */
+    public var notice: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `off`, `connecting`, `connected` or `failed`.
+         */state: String, 
+        /**
+         * The last reason, for a person (a refused password).
+         */msg: String, 
+        /**
+         * When `state` last changed (ISO-8601 UTC).
+         */since: String, 
+        /**
+         * Publishes waiting while the broker is away.
+         */queued: UInt32, 
+        /**
+         * Publishes dropped past that.
+         */dropped: UInt64, 
+        /**
+         * The connection is TLS.
+         */encrypted: Bool, 
+        /**
+         * A one-time notice of this run.
+         */notice: String) {
+        self.state = state
+        self.msg = msg
+        self.since = since
+        self.queued = queued
+        self.dropped = dropped
+        self.encrypted = encrypted
+        self.notice = notice
+    }
+}
+
+#if compiler(>=6)
+extension HubMqttStatus: Sendable {}
+#endif
+
+
+extension HubMqttStatus: Equatable, Hashable {
+    public static func ==(lhs: HubMqttStatus, rhs: HubMqttStatus) -> Bool {
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.msg != rhs.msg {
+            return false
+        }
+        if lhs.since != rhs.since {
+            return false
+        }
+        if lhs.queued != rhs.queued {
+            return false
+        }
+        if lhs.dropped != rhs.dropped {
+            return false
+        }
+        if lhs.encrypted != rhs.encrypted {
+            return false
+        }
+        if lhs.notice != rhs.notice {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(state)
+        hasher.combine(msg)
+        hasher.combine(since)
+        hasher.combine(queued)
+        hasher.combine(dropped)
+        hasher.combine(encrypted)
+        hasher.combine(notice)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubMqttStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubMqttStatus {
+        return
+            try HubMqttStatus(
+                state: FfiConverterString.read(from: &buf), 
+                msg: FfiConverterString.read(from: &buf), 
+                since: FfiConverterString.read(from: &buf), 
+                queued: FfiConverterUInt32.read(from: &buf), 
+                dropped: FfiConverterUInt64.read(from: &buf), 
+                encrypted: FfiConverterBool.read(from: &buf), 
+                notice: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubMqttStatus, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterString.write(value.msg, into: &buf)
+        FfiConverterString.write(value.since, into: &buf)
+        FfiConverterUInt32.write(value.queued, into: &buf)
+        FfiConverterUInt64.write(value.dropped, into: &buf)
+        FfiConverterBool.write(value.encrypted, into: &buf)
+        FfiConverterString.write(value.notice, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMqttStatus_lift(_ buf: RustBuffer) throws -> HubMqttStatus {
+    return try FfiConverterTypeHubMqttStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMqttStatus_lower(_ value: HubMqttStatus) -> RustBuffer {
+    return FfiConverterTypeHubMqttStatus.lower(value)
+}
+
+
+/**
+ * TLS to the broker (`mqtt.get`'s `tls`). PEMs and file paths "" for none.
+ */
+public struct HubMqttTls {
+    /**
+     * `on` or `off` ("" is off).
+     */
+    public var mode: String
+    /**
+     * The CA or self-signed certificate(s) to trust (PEM).
+     */
+    public var caPem: String
+    /**
+     * The broker's key pin.
+     */
+    public var pinSha256: String
+    /**
+     * A client certificate (PEM).
+     */
+    public var clientCertPem: String
+    /**
+     * Its key. Read: `set` or `not set`; send `set` back to keep it, a PEM
+     * to set it, "" or `not set` to clear it.
+     */
+    public var clientKeyPem: String
+    /**
+     * A client certificate's file on the hub's machine.
+     */
+    public var clientCertFile: String
+    /**
+     * Its key's file (0600) on the hub's machine.
+     */
+    public var clientKeyFile: String
+    /**
+     * Without TLS, send the password to a broker not on loopback too.
+     */
+    public var allowPlaintextPassword: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `on` or `off` ("" is off).
+         */mode: String, 
+        /**
+         * The CA or self-signed certificate(s) to trust (PEM).
+         */caPem: String, 
+        /**
+         * The broker's key pin.
+         */pinSha256: String, 
+        /**
+         * A client certificate (PEM).
+         */clientCertPem: String, 
+        /**
+         * Its key. Read: `set` or `not set`; send `set` back to keep it, a PEM
+         * to set it, "" or `not set` to clear it.
+         */clientKeyPem: String, 
+        /**
+         * A client certificate's file on the hub's machine.
+         */clientCertFile: String, 
+        /**
+         * Its key's file (0600) on the hub's machine.
+         */clientKeyFile: String, 
+        /**
+         * Without TLS, send the password to a broker not on loopback too.
+         */allowPlaintextPassword: Bool) {
+        self.mode = mode
+        self.caPem = caPem
+        self.pinSha256 = pinSha256
+        self.clientCertPem = clientCertPem
+        self.clientKeyPem = clientKeyPem
+        self.clientCertFile = clientCertFile
+        self.clientKeyFile = clientKeyFile
+        self.allowPlaintextPassword = allowPlaintextPassword
+    }
+}
+
+#if compiler(>=6)
+extension HubMqttTls: Sendable {}
+#endif
+
+
+extension HubMqttTls: Equatable, Hashable {
+    public static func ==(lhs: HubMqttTls, rhs: HubMqttTls) -> Bool {
+        if lhs.mode != rhs.mode {
+            return false
+        }
+        if lhs.caPem != rhs.caPem {
+            return false
+        }
+        if lhs.pinSha256 != rhs.pinSha256 {
+            return false
+        }
+        if lhs.clientCertPem != rhs.clientCertPem {
+            return false
+        }
+        if lhs.clientKeyPem != rhs.clientKeyPem {
+            return false
+        }
+        if lhs.clientCertFile != rhs.clientCertFile {
+            return false
+        }
+        if lhs.clientKeyFile != rhs.clientKeyFile {
+            return false
+        }
+        if lhs.allowPlaintextPassword != rhs.allowPlaintextPassword {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(mode)
+        hasher.combine(caPem)
+        hasher.combine(pinSha256)
+        hasher.combine(clientCertPem)
+        hasher.combine(clientKeyPem)
+        hasher.combine(clientCertFile)
+        hasher.combine(clientKeyFile)
+        hasher.combine(allowPlaintextPassword)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubMqttTls: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubMqttTls {
+        return
+            try HubMqttTls(
+                mode: FfiConverterString.read(from: &buf), 
+                caPem: FfiConverterString.read(from: &buf), 
+                pinSha256: FfiConverterString.read(from: &buf), 
+                clientCertPem: FfiConverterString.read(from: &buf), 
+                clientKeyPem: FfiConverterString.read(from: &buf), 
+                clientCertFile: FfiConverterString.read(from: &buf), 
+                clientKeyFile: FfiConverterString.read(from: &buf), 
+                allowPlaintextPassword: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubMqttTls, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.mode, into: &buf)
+        FfiConverterString.write(value.caPem, into: &buf)
+        FfiConverterString.write(value.pinSha256, into: &buf)
+        FfiConverterString.write(value.clientCertPem, into: &buf)
+        FfiConverterString.write(value.clientKeyPem, into: &buf)
+        FfiConverterString.write(value.clientCertFile, into: &buf)
+        FfiConverterString.write(value.clientKeyFile, into: &buf)
+        FfiConverterBool.write(value.allowPlaintextPassword, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMqttTls_lift(_ buf: RustBuffer) throws -> HubMqttTls {
+    return try FfiConverterTypeHubMqttTls.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMqttTls_lower(_ value: HubMqttTls) -> RustBuffer {
+    return FfiConverterTypeHubMqttTls.lower(value)
+}
+
+
+/**
+ * A target's last delivery try.
+ */
+public struct HubOutboundLast {
+    /**
+     * When (ISO-8601 UTC).
+     */
+    public var at: String
+    /**
+     * It was delivered.
+     */
+    public var ok: Bool
+    /**
+     * The receiver's HTTP status, if it answered.
+     */
+    public var status: UInt16?
+    /**
+     * Why not, for a person.
+     */
+    public var msg: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * When (ISO-8601 UTC).
+         */at: String, 
+        /**
+         * It was delivered.
+         */ok: Bool, 
+        /**
+         * The receiver's HTTP status, if it answered.
+         */status: UInt16?, 
+        /**
+         * Why not, for a person.
+         */msg: String) {
+        self.at = at
+        self.ok = ok
+        self.status = status
+        self.msg = msg
+    }
+}
+
+#if compiler(>=6)
+extension HubOutboundLast: Sendable {}
+#endif
+
+
+extension HubOutboundLast: Equatable, Hashable {
+    public static func ==(lhs: HubOutboundLast, rhs: HubOutboundLast) -> Bool {
+        if lhs.at != rhs.at {
+            return false
+        }
+        if lhs.ok != rhs.ok {
+            return false
+        }
+        if lhs.status != rhs.status {
+            return false
+        }
+        if lhs.msg != rhs.msg {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(at)
+        hasher.combine(ok)
+        hasher.combine(status)
+        hasher.combine(msg)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubOutboundLast: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubOutboundLast {
+        return
+            try HubOutboundLast(
+                at: FfiConverterString.read(from: &buf), 
+                ok: FfiConverterBool.read(from: &buf), 
+                status: FfiConverterOptionUInt16.read(from: &buf), 
+                msg: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubOutboundLast, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.at, into: &buf)
+        FfiConverterBool.write(value.ok, into: &buf)
+        FfiConverterOptionUInt16.write(value.status, into: &buf)
+        FfiConverterString.write(value.msg, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOutboundLast_lift(_ buf: RustBuffer) throws -> HubOutboundLast {
+    return try FfiConverterTypeHubOutboundLast.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOutboundLast_lower(_ value: HubOutboundLast) -> RustBuffer {
+    return FfiConverterTypeHubOutboundLast.lower(value)
+}
+
+
+/**
+ * A secret the hub made for a target, shown once ([`HubOutboundSet`]).
+ */
+public struct HubOutboundSecret {
+    /**
+     * The target's id.
+     */
+    public var target: String
+    /**
+     * The secret (64 hex characters): show it once, keep it nowhere else.
+     */
+    public var secret: HubSecret
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The target's id.
+         */target: String, 
+        /**
+         * The secret (64 hex characters): show it once, keep it nowhere else.
+         */secret: HubSecret) {
+        self.target = target
+        self.secret = secret
+    }
+}
+
+#if compiler(>=6)
+extension HubOutboundSecret: Sendable {}
+#endif
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubOutboundSecret: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubOutboundSecret {
+        return
+            try HubOutboundSecret(
+                target: FfiConverterString.read(from: &buf), 
+                secret: FfiConverterTypeHubSecret.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubOutboundSecret, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.target, into: &buf)
+        FfiConverterTypeHubSecret.write(value.secret, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOutboundSecret_lift(_ buf: RustBuffer) throws -> HubOutboundSecret {
+    return try FfiConverterTypeHubOutboundSecret.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOutboundSecret_lower(_ value: HubOutboundSecret) -> RustBuffer {
+    return FfiConverterTypeHubOutboundSecret.lower(value)
+}
+
+
+/**
+ * `outbound.set`'s answer.
+ */
+public struct HubOutboundSet {
+    /**
+     * The targets now.
+     */
+    public var targets: [HubOutboundTarget]
+    /**
+     * The secrets made by this call: in this answer only.
+     */
+    public var secrets: [HubOutboundSecret]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The targets now.
+         */targets: [HubOutboundTarget], 
+        /**
+         * The secrets made by this call: in this answer only.
+         */secrets: [HubOutboundSecret]) {
+        self.targets = targets
+        self.secrets = secrets
+    }
+}
+
+#if compiler(>=6)
+extension HubOutboundSet: Sendable {}
+#endif
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubOutboundSet: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubOutboundSet {
+        return
+            try HubOutboundSet(
+                targets: FfiConverterSequenceTypeHubOutboundTarget.read(from: &buf), 
+                secrets: FfiConverterSequenceTypeHubOutboundSecret.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubOutboundSet, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeHubOutboundTarget.write(value.targets, into: &buf)
+        FfiConverterSequenceTypeHubOutboundSecret.write(value.secrets, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOutboundSet_lift(_ buf: RustBuffer) throws -> HubOutboundSet {
+    return try FfiConverterTypeHubOutboundSet.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOutboundSet_lower(_ value: HubOutboundSet) -> RustBuffer {
+    return FfiConverterTypeHubOutboundSet.lower(value)
+}
+
+
+/**
+ * A notification target (`outbound.get`, `outbound.set`).
+ */
+public struct HubOutboundTarget {
+    /**
+     * 1 to 32 of `A-Z a-z 0-9 _ -`; "" for a new one (the hub names it).
+     */
+    public var id: String
+    /**
+     * At most 64 characters; "" for the id.
+     */
+    public var name: String
+    /**
+     * `webhook` (a JSON POST) or `push` (an ntfy-style text POST).
+     */
+    public var kind: String
+    /**
+     * `https://`, or `http://` with [`HubOutboundTarget::plaintext`].
+     */
+    public var url: String
+    /**
+     * Deliveries go out.
+     */
+    public var enabled: Bool
+    /**
+     * Of `alarm.raised`, `alarm.cleared`, `restart`, `schedule.ran`,
+     * `schedule.failed`; empty sends none.
+     */
+    public var kinds: [String]
+    /**
+     * Read: `set` or `not set`. In [`DspiCore::hub_outbound_set`]: `new`
+     * (the hub makes one, shown once), `set` or "" (keep), `not set`
+     * (none). A secret is never typed.
+     */
+    public var secret: String
+    /**
+     * `http://` to a private address, unencrypted.
+     */
+    public var plaintext: Bool
+    /**
+     * The CA or self-signed certificate(s) to trust instead of the public
+     * CAs (PEM); "" for none.
+     */
+    public var caPem: String
+    /**
+     * The receiver's key pin (`sha256//<base64>`); "" for none.
+     */
+    public var pinSha256: String
+    /**
+     * Deliveries waiting. Read only.
+     */
+    public var queued: UInt32
+    /**
+     * Deliveries dropped. Read only.
+     */
+    public var dropped: UInt64
+    /**
+     * The last try. Read only.
+     */
+    public var last: HubOutboundLast?
+    /**
+     * Sent over TLS. Read only.
+     */
+    public var encrypted: Bool
+    /**
+     * `webpki`, `ca` or `pin` (https only); "" otherwise. Read only.
+     */
+    public var trust: String
+    /**
+     * A notice for the Admin (a target kept from before TLS). Read only.
+     */
+    public var notice: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 1 to 32 of `A-Z a-z 0-9 _ -`; "" for a new one (the hub names it).
+         */id: String, 
+        /**
+         * At most 64 characters; "" for the id.
+         */name: String, 
+        /**
+         * `webhook` (a JSON POST) or `push` (an ntfy-style text POST).
+         */kind: String, 
+        /**
+         * `https://`, or `http://` with [`HubOutboundTarget::plaintext`].
+         */url: String, 
+        /**
+         * Deliveries go out.
+         */enabled: Bool, 
+        /**
+         * Of `alarm.raised`, `alarm.cleared`, `restart`, `schedule.ran`,
+         * `schedule.failed`; empty sends none.
+         */kinds: [String], 
+        /**
+         * Read: `set` or `not set`. In [`DspiCore::hub_outbound_set`]: `new`
+         * (the hub makes one, shown once), `set` or "" (keep), `not set`
+         * (none). A secret is never typed.
+         */secret: String, 
+        /**
+         * `http://` to a private address, unencrypted.
+         */plaintext: Bool, 
+        /**
+         * The CA or self-signed certificate(s) to trust instead of the public
+         * CAs (PEM); "" for none.
+         */caPem: String, 
+        /**
+         * The receiver's key pin (`sha256//<base64>`); "" for none.
+         */pinSha256: String, 
+        /**
+         * Deliveries waiting. Read only.
+         */queued: UInt32, 
+        /**
+         * Deliveries dropped. Read only.
+         */dropped: UInt64, 
+        /**
+         * The last try. Read only.
+         */last: HubOutboundLast?, 
+        /**
+         * Sent over TLS. Read only.
+         */encrypted: Bool, 
+        /**
+         * `webpki`, `ca` or `pin` (https only); "" otherwise. Read only.
+         */trust: String, 
+        /**
+         * A notice for the Admin (a target kept from before TLS). Read only.
+         */notice: String) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.url = url
+        self.enabled = enabled
+        self.kinds = kinds
+        self.secret = secret
+        self.plaintext = plaintext
+        self.caPem = caPem
+        self.pinSha256 = pinSha256
+        self.queued = queued
+        self.dropped = dropped
+        self.last = last
+        self.encrypted = encrypted
+        self.trust = trust
+        self.notice = notice
+    }
+}
+
+#if compiler(>=6)
+extension HubOutboundTarget: Sendable {}
+#endif
+
+
+extension HubOutboundTarget: Equatable, Hashable {
+    public static func ==(lhs: HubOutboundTarget, rhs: HubOutboundTarget) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.url != rhs.url {
+            return false
+        }
+        if lhs.enabled != rhs.enabled {
+            return false
+        }
+        if lhs.kinds != rhs.kinds {
+            return false
+        }
+        if lhs.secret != rhs.secret {
+            return false
+        }
+        if lhs.plaintext != rhs.plaintext {
+            return false
+        }
+        if lhs.caPem != rhs.caPem {
+            return false
+        }
+        if lhs.pinSha256 != rhs.pinSha256 {
+            return false
+        }
+        if lhs.queued != rhs.queued {
+            return false
+        }
+        if lhs.dropped != rhs.dropped {
+            return false
+        }
+        if lhs.last != rhs.last {
+            return false
+        }
+        if lhs.encrypted != rhs.encrypted {
+            return false
+        }
+        if lhs.trust != rhs.trust {
+            return false
+        }
+        if lhs.notice != rhs.notice {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(kind)
+        hasher.combine(url)
+        hasher.combine(enabled)
+        hasher.combine(kinds)
+        hasher.combine(secret)
+        hasher.combine(plaintext)
+        hasher.combine(caPem)
+        hasher.combine(pinSha256)
+        hasher.combine(queued)
+        hasher.combine(dropped)
+        hasher.combine(last)
+        hasher.combine(encrypted)
+        hasher.combine(trust)
+        hasher.combine(notice)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubOutboundTarget: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubOutboundTarget {
+        return
+            try HubOutboundTarget(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                url: FfiConverterString.read(from: &buf), 
+                enabled: FfiConverterBool.read(from: &buf), 
+                kinds: FfiConverterSequenceString.read(from: &buf), 
+                secret: FfiConverterString.read(from: &buf), 
+                plaintext: FfiConverterBool.read(from: &buf), 
+                caPem: FfiConverterString.read(from: &buf), 
+                pinSha256: FfiConverterString.read(from: &buf), 
+                queued: FfiConverterUInt32.read(from: &buf), 
+                dropped: FfiConverterUInt64.read(from: &buf), 
+                last: FfiConverterOptionTypeHubOutboundLast.read(from: &buf), 
+                encrypted: FfiConverterBool.read(from: &buf), 
+                trust: FfiConverterString.read(from: &buf), 
+                notice: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubOutboundTarget, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterBool.write(value.enabled, into: &buf)
+        FfiConverterSequenceString.write(value.kinds, into: &buf)
+        FfiConverterString.write(value.secret, into: &buf)
+        FfiConverterBool.write(value.plaintext, into: &buf)
+        FfiConverterString.write(value.caPem, into: &buf)
+        FfiConverterString.write(value.pinSha256, into: &buf)
+        FfiConverterUInt32.write(value.queued, into: &buf)
+        FfiConverterUInt64.write(value.dropped, into: &buf)
+        FfiConverterOptionTypeHubOutboundLast.write(value.last, into: &buf)
+        FfiConverterBool.write(value.encrypted, into: &buf)
+        FfiConverterString.write(value.trust, into: &buf)
+        FfiConverterString.write(value.notice, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOutboundTarget_lift(_ buf: RustBuffer) throws -> HubOutboundTarget {
+    return try FfiConverterTypeHubOutboundTarget.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOutboundTarget_lower(_ value: HubOutboundTarget) -> RustBuffer {
+    return FfiConverterTypeHubOutboundTarget.lower(value)
+}
+
+
+/**
+ * `outbound.test`'s answer.
+ */
+public struct HubOutboundTest {
+    /**
+     * It was delivered.
+     */
+    public var delivered: Bool
+    /**
+     * The receiver's HTTP status, if it answered.
+     */
+    public var status: UInt16?
+    /**
+     * Why not, for a person.
+     */
+    public var msg: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * It was delivered.
+         */delivered: Bool, 
+        /**
+         * The receiver's HTTP status, if it answered.
+         */status: UInt16?, 
+        /**
+         * Why not, for a person.
+         */msg: String) {
+        self.delivered = delivered
+        self.status = status
+        self.msg = msg
+    }
+}
+
+#if compiler(>=6)
+extension HubOutboundTest: Sendable {}
+#endif
+
+
+extension HubOutboundTest: Equatable, Hashable {
+    public static func ==(lhs: HubOutboundTest, rhs: HubOutboundTest) -> Bool {
+        if lhs.delivered != rhs.delivered {
+            return false
+        }
+        if lhs.status != rhs.status {
+            return false
+        }
+        if lhs.msg != rhs.msg {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(delivered)
+        hasher.combine(status)
+        hasher.combine(msg)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubOutboundTest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubOutboundTest {
+        return
+            try HubOutboundTest(
+                delivered: FfiConverterBool.read(from: &buf), 
+                status: FfiConverterOptionUInt16.read(from: &buf), 
+                msg: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubOutboundTest, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.delivered, into: &buf)
+        FfiConverterOptionUInt16.write(value.status, into: &buf)
+        FfiConverterString.write(value.msg, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOutboundTest_lift(_ buf: RustBuffer) throws -> HubOutboundTest {
+    return try FfiConverterTypeHubOutboundTest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOutboundTest_lower(_ value: HubOutboundTest) -> RustBuffer {
+    return FfiConverterTypeHubOutboundTest.lower(value)
+}
+
+
+/**
  * A PIN set on the hub ([`DspiCore::hub_pin_set`]).
  */
 public struct HubPinSet {
@@ -25040,6 +29392,1702 @@ public func FfiConverterTypeHubPinSet_lift(_ buf: RustBuffer) throws -> HubPinSe
 #endif
 public func FfiConverterTypeHubPinSet_lower(_ value: HubPinSet) -> RustBuffer {
     return FfiConverterTypeHubPinSet.lower(value)
+}
+
+
+/**
+ * A reset as the hub saw it (`EXT_RESET_INFO`).
+ */
+public struct HubReset {
+    /**
+     * `power_on`, `brownout`, `run_pin`, `watchdog`, `software`,
+     * `debugger`, `glitch` or `unknown`.
+     */
+    public var reason: String
+    /**
+     * How long the run before it lasted, s; `None` when unknown.
+     */
+    public var prevUptimeS: UInt32?
+    /**
+     * When it happened (ISO-8601 UTC); "" where the hub gives no time.
+     */
+    public var at: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `power_on`, `brownout`, `run_pin`, `watchdog`, `software`,
+         * `debugger`, `glitch` or `unknown`.
+         */reason: String, 
+        /**
+         * How long the run before it lasted, s; `None` when unknown.
+         */prevUptimeS: UInt32?, 
+        /**
+         * When it happened (ISO-8601 UTC); "" where the hub gives no time.
+         */at: String) {
+        self.reason = reason
+        self.prevUptimeS = prevUptimeS
+        self.at = at
+    }
+}
+
+#if compiler(>=6)
+extension HubReset: Sendable {}
+#endif
+
+
+extension HubReset: Equatable, Hashable {
+    public static func ==(lhs: HubReset, rhs: HubReset) -> Bool {
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.prevUptimeS != rhs.prevUptimeS {
+            return false
+        }
+        if lhs.at != rhs.at {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(reason)
+        hasher.combine(prevUptimeS)
+        hasher.combine(at)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubReset: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubReset {
+        return
+            try HubReset(
+                reason: FfiConverterString.read(from: &buf), 
+                prevUptimeS: FfiConverterOptionUInt32.read(from: &buf), 
+                at: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubReset, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.reason, into: &buf)
+        FfiConverterOptionUInt32.write(value.prevUptimeS, into: &buf)
+        FfiConverterString.write(value.at, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubReset_lift(_ buf: RustBuffer) throws -> HubReset {
+    return try FfiConverterTypeHubReset.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubReset_lower(_ value: HubReset) -> RustBuffer {
+    return FfiConverterTypeHubReset.lower(value)
+}
+
+
+/**
+ * One action of a schedule rule. Which fields count depends on `t`:
+ * `preset.load` (`slot` or `name`), `snapshot.recall` (`snapshot` or
+ * `name`), `system.scene.apply` (`scene`), `param.set` (`path`, `idx`, and
+ * `value` for a number or `flag` for `vol.mute`/`out.mute`).
+ */
+public struct HubScheduleAction {
+    /**
+     * The message: `preset.load`, `snapshot.recall`, `system.scene.apply`
+     * or `param.set`.
+     */
+    public var t: String
+    /**
+     * `preset.load`'s slot (0 to 9).
+     */
+    public var slot: UInt8?
+    /**
+     * A preset's or a snapshot's name ("" for none).
+     */
+    public var name: String
+    /**
+     * `snapshot.recall`'s snapshot id.
+     */
+    public var snapshot: String
+    /**
+     * `system.scene.apply`'s scene.
+     */
+    public var scene: String
+    /**
+     * `param.set`'s path: `vol.master`, `vol.user`, `vol.mute`, `out.mute`.
+     */
+    public var path: String
+    /**
+     * `param.set`'s indices.
+     */
+    public var idx: [UInt32]
+    /**
+     * `param.set`'s value, a number (dB).
+     */
+    public var value: Double?
+    /**
+     * `param.set`'s value, true or false (a mute).
+     */
+    public var flag: Bool?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The message: `preset.load`, `snapshot.recall`, `system.scene.apply`
+         * or `param.set`.
+         */t: String, 
+        /**
+         * `preset.load`'s slot (0 to 9).
+         */slot: UInt8?, 
+        /**
+         * A preset's or a snapshot's name ("" for none).
+         */name: String, 
+        /**
+         * `snapshot.recall`'s snapshot id.
+         */snapshot: String, 
+        /**
+         * `system.scene.apply`'s scene.
+         */scene: String, 
+        /**
+         * `param.set`'s path: `vol.master`, `vol.user`, `vol.mute`, `out.mute`.
+         */path: String, 
+        /**
+         * `param.set`'s indices.
+         */idx: [UInt32], 
+        /**
+         * `param.set`'s value, a number (dB).
+         */value: Double?, 
+        /**
+         * `param.set`'s value, true or false (a mute).
+         */flag: Bool?) {
+        self.t = t
+        self.slot = slot
+        self.name = name
+        self.snapshot = snapshot
+        self.scene = scene
+        self.path = path
+        self.idx = idx
+        self.value = value
+        self.flag = flag
+    }
+}
+
+#if compiler(>=6)
+extension HubScheduleAction: Sendable {}
+#endif
+
+
+extension HubScheduleAction: Equatable, Hashable {
+    public static func ==(lhs: HubScheduleAction, rhs: HubScheduleAction) -> Bool {
+        if lhs.t != rhs.t {
+            return false
+        }
+        if lhs.slot != rhs.slot {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.snapshot != rhs.snapshot {
+            return false
+        }
+        if lhs.scene != rhs.scene {
+            return false
+        }
+        if lhs.path != rhs.path {
+            return false
+        }
+        if lhs.idx != rhs.idx {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.flag != rhs.flag {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(t)
+        hasher.combine(slot)
+        hasher.combine(name)
+        hasher.combine(snapshot)
+        hasher.combine(scene)
+        hasher.combine(path)
+        hasher.combine(idx)
+        hasher.combine(value)
+        hasher.combine(flag)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubScheduleAction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubScheduleAction {
+        return
+            try HubScheduleAction(
+                t: FfiConverterString.read(from: &buf), 
+                slot: FfiConverterOptionUInt8.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                snapshot: FfiConverterString.read(from: &buf), 
+                scene: FfiConverterString.read(from: &buf), 
+                path: FfiConverterString.read(from: &buf), 
+                idx: FfiConverterSequenceUInt32.read(from: &buf), 
+                value: FfiConverterOptionDouble.read(from: &buf), 
+                flag: FfiConverterOptionBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubScheduleAction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.t, into: &buf)
+        FfiConverterOptionUInt8.write(value.slot, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.snapshot, into: &buf)
+        FfiConverterString.write(value.scene, into: &buf)
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterSequenceUInt32.write(value.idx, into: &buf)
+        FfiConverterOptionDouble.write(value.value, into: &buf)
+        FfiConverterOptionBool.write(value.flag, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubScheduleAction_lift(_ buf: RustBuffer) throws -> HubScheduleAction {
+    return try FfiConverterTypeHubScheduleAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubScheduleAction_lower(_ value: HubScheduleAction) -> RustBuffer {
+    return FfiConverterTypeHubScheduleAction.lower(value)
+}
+
+
+/**
+ * What a rule last did.
+ */
+public struct HubScheduleLast {
+    /**
+     * When (ISO-8601 UTC).
+     */
+    public var at: String
+    /**
+     * Every action went through.
+     */
+    public var ok: Bool
+    /**
+     * The time was skipped (a clock jump).
+     */
+    public var skipped: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * When (ISO-8601 UTC).
+         */at: String, 
+        /**
+         * Every action went through.
+         */ok: Bool, 
+        /**
+         * The time was skipped (a clock jump).
+         */skipped: Bool) {
+        self.at = at
+        self.ok = ok
+        self.skipped = skipped
+    }
+}
+
+#if compiler(>=6)
+extension HubScheduleLast: Sendable {}
+#endif
+
+
+extension HubScheduleLast: Equatable, Hashable {
+    public static func ==(lhs: HubScheduleLast, rhs: HubScheduleLast) -> Bool {
+        if lhs.at != rhs.at {
+            return false
+        }
+        if lhs.ok != rhs.ok {
+            return false
+        }
+        if lhs.skipped != rhs.skipped {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(at)
+        hasher.combine(ok)
+        hasher.combine(skipped)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubScheduleLast: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubScheduleLast {
+        return
+            try HubScheduleLast(
+                at: FfiConverterString.read(from: &buf), 
+                ok: FfiConverterBool.read(from: &buf), 
+                skipped: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubScheduleLast, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.at, into: &buf)
+        FfiConverterBool.write(value.ok, into: &buf)
+        FfiConverterBool.write(value.skipped, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubScheduleLast_lift(_ buf: RustBuffer) throws -> HubScheduleLast {
+    return try FfiConverterTypeHubScheduleLast.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubScheduleLast_lower(_ value: HubScheduleLast) -> RustBuffer {
+    return FfiConverterTypeHubScheduleLast.lower(value)
+}
+
+
+/**
+ * One row of a run: an action on a target.
+ */
+public struct HubScheduleResult {
+    /**
+     * The device ("" for a scene refused as a whole).
+     */
+    public var serial: String
+    /**
+     * The action, by position and `t` (`0:preset.load`).
+     */
+    public var action: String
+    /**
+     * It went through.
+     */
+    public var ok: Bool
+    /**
+     * The hub's code when not (`offline`, `limit_exceeded`, ...).
+     */
+    public var code: String
+    /**
+     * Why, for a person.
+     */
+    public var msg: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The device ("" for a scene refused as a whole).
+         */serial: String, 
+        /**
+         * The action, by position and `t` (`0:preset.load`).
+         */action: String, 
+        /**
+         * It went through.
+         */ok: Bool, 
+        /**
+         * The hub's code when not (`offline`, `limit_exceeded`, ...).
+         */code: String, 
+        /**
+         * Why, for a person.
+         */msg: String) {
+        self.serial = serial
+        self.action = action
+        self.ok = ok
+        self.code = code
+        self.msg = msg
+    }
+}
+
+#if compiler(>=6)
+extension HubScheduleResult: Sendable {}
+#endif
+
+
+extension HubScheduleResult: Equatable, Hashable {
+    public static func ==(lhs: HubScheduleResult, rhs: HubScheduleResult) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.action != rhs.action {
+            return false
+        }
+        if lhs.ok != rhs.ok {
+            return false
+        }
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.msg != rhs.msg {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(action)
+        hasher.combine(ok)
+        hasher.combine(code)
+        hasher.combine(msg)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubScheduleResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubScheduleResult {
+        return
+            try HubScheduleResult(
+                serial: FfiConverterString.read(from: &buf), 
+                action: FfiConverterString.read(from: &buf), 
+                ok: FfiConverterBool.read(from: &buf), 
+                code: FfiConverterString.read(from: &buf), 
+                msg: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubScheduleResult, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.action, into: &buf)
+        FfiConverterBool.write(value.ok, into: &buf)
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterString.write(value.msg, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubScheduleResult_lift(_ buf: RustBuffer) throws -> HubScheduleResult {
+    return try FfiConverterTypeHubScheduleResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubScheduleResult_lower(_ value: HubScheduleResult) -> RustBuffer {
+    return FfiConverterTypeHubScheduleResult.lower(value)
+}
+
+
+/**
+ * A schedule rule (`schedule.list`, `schedule.set`).
+ */
+public struct HubScheduleRule {
+    /**
+     * The hub's id (`r1`, ...); "" for a new rule.
+     */
+    public var id: String
+    /**
+     * 1 to 48 characters.
+     */
+    public var name: String
+    /**
+     * On its schedule (`run_now` runs it either way).
+     */
+    public var enabled: Bool
+    /**
+     * Weekly: `mon` to `sun` (with [`HubScheduleRule::time`]); empty for a
+     * one-off.
+     */
+    public var days: [String]
+    /**
+     * Weekly: local `HH:MM`.
+     */
+    public var time: String
+    /**
+     * One-off: a local `YYYY-MM-DDTHH:MM` ("" for a weekly rule).
+     */
+    public var once: String
+    /**
+     * 1 to 16.
+     */
+    public var actions: [HubScheduleAction]
+    /**
+     * At most 16 serials.
+     */
+    public var targets: [String]
+    /**
+     * The next run (ISO-8601 UTC); "" when none within a week or while the
+     * clock is unset. Read only.
+     */
+    public var nextRun: String
+    /**
+     * The last run. Read only.
+     */
+    public var last: HubScheduleLast?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The hub's id (`r1`, ...); "" for a new rule.
+         */id: String, 
+        /**
+         * 1 to 48 characters.
+         */name: String, 
+        /**
+         * On its schedule (`run_now` runs it either way).
+         */enabled: Bool, 
+        /**
+         * Weekly: `mon` to `sun` (with [`HubScheduleRule::time`]); empty for a
+         * one-off.
+         */days: [String], 
+        /**
+         * Weekly: local `HH:MM`.
+         */time: String, 
+        /**
+         * One-off: a local `YYYY-MM-DDTHH:MM` ("" for a weekly rule).
+         */once: String, 
+        /**
+         * 1 to 16.
+         */actions: [HubScheduleAction], 
+        /**
+         * At most 16 serials.
+         */targets: [String], 
+        /**
+         * The next run (ISO-8601 UTC); "" when none within a week or while the
+         * clock is unset. Read only.
+         */nextRun: String, 
+        /**
+         * The last run. Read only.
+         */last: HubScheduleLast?) {
+        self.id = id
+        self.name = name
+        self.enabled = enabled
+        self.days = days
+        self.time = time
+        self.once = once
+        self.actions = actions
+        self.targets = targets
+        self.nextRun = nextRun
+        self.last = last
+    }
+}
+
+#if compiler(>=6)
+extension HubScheduleRule: Sendable {}
+#endif
+
+
+extension HubScheduleRule: Equatable, Hashable {
+    public static func ==(lhs: HubScheduleRule, rhs: HubScheduleRule) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.enabled != rhs.enabled {
+            return false
+        }
+        if lhs.days != rhs.days {
+            return false
+        }
+        if lhs.time != rhs.time {
+            return false
+        }
+        if lhs.once != rhs.once {
+            return false
+        }
+        if lhs.actions != rhs.actions {
+            return false
+        }
+        if lhs.targets != rhs.targets {
+            return false
+        }
+        if lhs.nextRun != rhs.nextRun {
+            return false
+        }
+        if lhs.last != rhs.last {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(enabled)
+        hasher.combine(days)
+        hasher.combine(time)
+        hasher.combine(once)
+        hasher.combine(actions)
+        hasher.combine(targets)
+        hasher.combine(nextRun)
+        hasher.combine(last)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubScheduleRule: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubScheduleRule {
+        return
+            try HubScheduleRule(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                enabled: FfiConverterBool.read(from: &buf), 
+                days: FfiConverterSequenceString.read(from: &buf), 
+                time: FfiConverterString.read(from: &buf), 
+                once: FfiConverterString.read(from: &buf), 
+                actions: FfiConverterSequenceTypeHubScheduleAction.read(from: &buf), 
+                targets: FfiConverterSequenceString.read(from: &buf), 
+                nextRun: FfiConverterString.read(from: &buf), 
+                last: FfiConverterOptionTypeHubScheduleLast.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubScheduleRule, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.enabled, into: &buf)
+        FfiConverterSequenceString.write(value.days, into: &buf)
+        FfiConverterString.write(value.time, into: &buf)
+        FfiConverterString.write(value.once, into: &buf)
+        FfiConverterSequenceTypeHubScheduleAction.write(value.actions, into: &buf)
+        FfiConverterSequenceString.write(value.targets, into: &buf)
+        FfiConverterString.write(value.nextRun, into: &buf)
+        FfiConverterOptionTypeHubScheduleLast.write(value.last, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubScheduleRule_lift(_ buf: RustBuffer) throws -> HubScheduleRule {
+    return try FfiConverterTypeHubScheduleRule.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubScheduleRule_lower(_ value: HubScheduleRule) -> RustBuffer {
+    return FfiConverterTypeHubScheduleRule.lower(value)
+}
+
+
+/**
+ * A schedule's run (`schedule.run_now`'s answer, `schedule.ran`).
+ */
+public struct HubScheduleRun {
+    /**
+     * The rule's id.
+     */
+    public var rule: String
+    /**
+     * Its name.
+     */
+    public var name: String
+    /**
+     * When (ISO-8601 UTC).
+     */
+    public var at: String
+    /**
+     * The admin who ran it now; "" on its schedule.
+     */
+    public var by: String
+    /**
+     * Each action on each target, in the rule's order.
+     */
+    public var results: [HubScheduleResult]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The rule's id.
+         */rule: String, 
+        /**
+         * Its name.
+         */name: String, 
+        /**
+         * When (ISO-8601 UTC).
+         */at: String, 
+        /**
+         * The admin who ran it now; "" on its schedule.
+         */by: String, 
+        /**
+         * Each action on each target, in the rule's order.
+         */results: [HubScheduleResult]) {
+        self.rule = rule
+        self.name = name
+        self.at = at
+        self.by = by
+        self.results = results
+    }
+}
+
+#if compiler(>=6)
+extension HubScheduleRun: Sendable {}
+#endif
+
+
+extension HubScheduleRun: Equatable, Hashable {
+    public static func ==(lhs: HubScheduleRun, rhs: HubScheduleRun) -> Bool {
+        if lhs.rule != rhs.rule {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.at != rhs.at {
+            return false
+        }
+        if lhs.by != rhs.by {
+            return false
+        }
+        if lhs.results != rhs.results {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(rule)
+        hasher.combine(name)
+        hasher.combine(at)
+        hasher.combine(by)
+        hasher.combine(results)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubScheduleRun: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubScheduleRun {
+        return
+            try HubScheduleRun(
+                rule: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                at: FfiConverterString.read(from: &buf), 
+                by: FfiConverterString.read(from: &buf), 
+                results: FfiConverterSequenceTypeHubScheduleResult.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubScheduleRun, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.rule, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.at, into: &buf)
+        FfiConverterString.write(value.by, into: &buf)
+        FfiConverterSequenceTypeHubScheduleResult.write(value.results, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubScheduleRun_lift(_ buf: RustBuffer) throws -> HubScheduleRun {
+    return try FfiConverterTypeHubScheduleRun.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubScheduleRun_lower(_ value: HubScheduleRun) -> RustBuffer {
+    return FfiConverterTypeHubScheduleRun.lower(value)
+}
+
+
+/**
+ * The hub's schedule (`schedule.list`).
+ */
+public struct HubSchedules {
+    /**
+     * The rules.
+     */
+    public var rules: [HubScheduleRule]
+    /**
+     * The time zone the rules are read in.
+     */
+    public var zone: String
+    /**
+     * The hub's local time now (`YYYY-MM-DDTHH:MM`).
+     */
+    public var localTime: String
+    /**
+     * The hub's clock reads before its build date: nothing runs.
+     */
+    public var clockUnset: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The rules.
+         */rules: [HubScheduleRule], 
+        /**
+         * The time zone the rules are read in.
+         */zone: String, 
+        /**
+         * The hub's local time now (`YYYY-MM-DDTHH:MM`).
+         */localTime: String, 
+        /**
+         * The hub's clock reads before its build date: nothing runs.
+         */clockUnset: Bool) {
+        self.rules = rules
+        self.zone = zone
+        self.localTime = localTime
+        self.clockUnset = clockUnset
+    }
+}
+
+#if compiler(>=6)
+extension HubSchedules: Sendable {}
+#endif
+
+
+extension HubSchedules: Equatable, Hashable {
+    public static func ==(lhs: HubSchedules, rhs: HubSchedules) -> Bool {
+        if lhs.rules != rhs.rules {
+            return false
+        }
+        if lhs.zone != rhs.zone {
+            return false
+        }
+        if lhs.localTime != rhs.localTime {
+            return false
+        }
+        if lhs.clockUnset != rhs.clockUnset {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(rules)
+        hasher.combine(zone)
+        hasher.combine(localTime)
+        hasher.combine(clockUnset)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubSchedules: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubSchedules {
+        return
+            try HubSchedules(
+                rules: FfiConverterSequenceTypeHubScheduleRule.read(from: &buf), 
+                zone: FfiConverterString.read(from: &buf), 
+                localTime: FfiConverterString.read(from: &buf), 
+                clockUnset: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubSchedules, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeHubScheduleRule.write(value.rules, into: &buf)
+        FfiConverterString.write(value.zone, into: &buf)
+        FfiConverterString.write(value.localTime, into: &buf)
+        FfiConverterBool.write(value.clockUnset, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSchedules_lift(_ buf: RustBuffer) throws -> HubSchedules {
+    return try FfiConverterTypeHubSchedules.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSchedules_lower(_ value: HubSchedules) -> RustBuffer {
+    return FfiConverterTypeHubSchedules.lower(value)
+}
+
+
+/**
+ * One of the hub's events of these families ([`HubServerListener`]).
+ */
+public struct HubServerEvent {
+    /**
+     * `event.added`, `inventory.changed` or `snapshot.changed`; P2CC2:
+     * `alarm.changed`, `schedule.ran`.
+     */
+    public var kind: String
+    /**
+     * The device it concerns.
+     */
+    public var serial: String
+    /**
+     * `event.added`'s record.
+     */
+    public var record: HubEventRecord?
+    /**
+     * `inventory.changed`'s record; `None` when the device was forgotten.
+     */
+    public var device: HubDevice?
+    /**
+     * `snapshot.changed`'s snapshot id.
+     */
+    public var snapshot: String
+    /**
+     * `snapshot.changed`'s change: `put`, `rename`, `note`, `delete`.
+     */
+    public var change: String
+    /**
+     * `alarm.changed`'s alarm (raised, raised again, acknowledged or
+     * cleared).
+     */
+    public var alarm: HubAlarm?
+    /**
+     * `schedule.ran`'s run.
+     */
+    public var run: HubScheduleRun?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `event.added`, `inventory.changed` or `snapshot.changed`; P2CC2:
+         * `alarm.changed`, `schedule.ran`.
+         */kind: String, 
+        /**
+         * The device it concerns.
+         */serial: String, 
+        /**
+         * `event.added`'s record.
+         */record: HubEventRecord?, 
+        /**
+         * `inventory.changed`'s record; `None` when the device was forgotten.
+         */device: HubDevice?, 
+        /**
+         * `snapshot.changed`'s snapshot id.
+         */snapshot: String, 
+        /**
+         * `snapshot.changed`'s change: `put`, `rename`, `note`, `delete`.
+         */change: String, 
+        /**
+         * `alarm.changed`'s alarm (raised, raised again, acknowledged or
+         * cleared).
+         */alarm: HubAlarm?, 
+        /**
+         * `schedule.ran`'s run.
+         */run: HubScheduleRun?) {
+        self.kind = kind
+        self.serial = serial
+        self.record = record
+        self.device = device
+        self.snapshot = snapshot
+        self.change = change
+        self.alarm = alarm
+        self.run = run
+    }
+}
+
+#if compiler(>=6)
+extension HubServerEvent: Sendable {}
+#endif
+
+
+extension HubServerEvent: Equatable, Hashable {
+    public static func ==(lhs: HubServerEvent, rhs: HubServerEvent) -> Bool {
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.record != rhs.record {
+            return false
+        }
+        if lhs.device != rhs.device {
+            return false
+        }
+        if lhs.snapshot != rhs.snapshot {
+            return false
+        }
+        if lhs.change != rhs.change {
+            return false
+        }
+        if lhs.alarm != rhs.alarm {
+            return false
+        }
+        if lhs.run != rhs.run {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(kind)
+        hasher.combine(serial)
+        hasher.combine(record)
+        hasher.combine(device)
+        hasher.combine(snapshot)
+        hasher.combine(change)
+        hasher.combine(alarm)
+        hasher.combine(run)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubServerEvent: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubServerEvent {
+        return
+            try HubServerEvent(
+                kind: FfiConverterString.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                record: FfiConverterOptionTypeHubEventRecord.read(from: &buf), 
+                device: FfiConverterOptionTypeHubDevice.read(from: &buf), 
+                snapshot: FfiConverterString.read(from: &buf), 
+                change: FfiConverterString.read(from: &buf), 
+                alarm: FfiConverterOptionTypeHubAlarm.read(from: &buf), 
+                run: FfiConverterOptionTypeHubScheduleRun.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubServerEvent, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterOptionTypeHubEventRecord.write(value.record, into: &buf)
+        FfiConverterOptionTypeHubDevice.write(value.device, into: &buf)
+        FfiConverterString.write(value.snapshot, into: &buf)
+        FfiConverterString.write(value.change, into: &buf)
+        FfiConverterOptionTypeHubAlarm.write(value.alarm, into: &buf)
+        FfiConverterOptionTypeHubScheduleRun.write(value.run, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubServerEvent_lift(_ buf: RustBuffer) throws -> HubServerEvent {
+    return try FfiConverterTypeHubServerEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubServerEvent_lower(_ value: HubServerEvent) -> RustBuffer {
+    return FfiConverterTypeHubServerEvent.lower(value)
+}
+
+
+/**
+ * A snapshot on the hub with its document ([`DspiCore::hub_snapshots_get`]).
+ */
+public struct HubSnapshotDocument {
+    /**
+     * Its entry.
+     */
+    public var snapshot: SnapshotInfo
+    /**
+     * The document's text (compact JSON).
+     */
+    public var document: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its entry.
+         */snapshot: SnapshotInfo, 
+        /**
+         * The document's text (compact JSON).
+         */document: String) {
+        self.snapshot = snapshot
+        self.document = document
+    }
+}
+
+#if compiler(>=6)
+extension HubSnapshotDocument: Sendable {}
+#endif
+
+
+extension HubSnapshotDocument: Equatable, Hashable {
+    public static func ==(lhs: HubSnapshotDocument, rhs: HubSnapshotDocument) -> Bool {
+        if lhs.snapshot != rhs.snapshot {
+            return false
+        }
+        if lhs.document != rhs.document {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(snapshot)
+        hasher.combine(document)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubSnapshotDocument: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubSnapshotDocument {
+        return
+            try HubSnapshotDocument(
+                snapshot: FfiConverterTypeSnapshotInfo.read(from: &buf), 
+                document: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubSnapshotDocument, into buf: inout [UInt8]) {
+        FfiConverterTypeSnapshotInfo.write(value.snapshot, into: &buf)
+        FfiConverterString.write(value.document, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSnapshotDocument_lift(_ buf: RustBuffer) throws -> HubSnapshotDocument {
+    return try FfiConverterTypeHubSnapshotDocument.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSnapshotDocument_lower(_ value: HubSnapshotDocument) -> RustBuffer {
+    return FfiConverterTypeHubSnapshotDocument.lower(value)
+}
+
+
+/**
+ * A snapshot filed on the hub ([`DspiCore::hub_snapshots_put`]).
+ */
+public struct HubSnapshotPut {
+    /**
+     * Its entry on the hub.
+     */
+    public var snapshot: SnapshotInfo
+    /**
+     * False: the hub already held this snapshot with the same content.
+     */
+    public var created: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its entry on the hub.
+         */snapshot: SnapshotInfo, 
+        /**
+         * False: the hub already held this snapshot with the same content.
+         */created: Bool) {
+        self.snapshot = snapshot
+        self.created = created
+    }
+}
+
+#if compiler(>=6)
+extension HubSnapshotPut: Sendable {}
+#endif
+
+
+extension HubSnapshotPut: Equatable, Hashable {
+    public static func ==(lhs: HubSnapshotPut, rhs: HubSnapshotPut) -> Bool {
+        if lhs.snapshot != rhs.snapshot {
+            return false
+        }
+        if lhs.created != rhs.created {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(snapshot)
+        hasher.combine(created)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubSnapshotPut: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubSnapshotPut {
+        return
+            try HubSnapshotPut(
+                snapshot: FfiConverterTypeSnapshotInfo.read(from: &buf), 
+                created: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubSnapshotPut, into buf: inout [UInt8]) {
+        FfiConverterTypeSnapshotInfo.write(value.snapshot, into: &buf)
+        FfiConverterBool.write(value.created, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSnapshotPut_lift(_ buf: RustBuffer) throws -> HubSnapshotPut {
+    return try FfiConverterTypeHubSnapshotPut.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSnapshotPut_lower(_ value: HubSnapshotPut) -> RustBuffer {
+    return FfiConverterTypeHubSnapshotPut.lower(value)
+}
+
+
+/**
+ * What a recall on the hub did ([`DspiCore::hub_snapshots_recall`]).
+ */
+public struct HubSnapshotRecall {
+    /**
+     * The device.
+     */
+    public var serial: String
+    /**
+     * The snapshot's id.
+     */
+    public var snapshot: String
+    /**
+     * Its name.
+     */
+    public var name: String
+    /**
+     * Whether the image was written.
+     */
+    public var image: Bool
+    /**
+     * What changed.
+     */
+    public var lines: [String]
+    /**
+     * What was not written, and why.
+     */
+    public var notes: [String]
+    /**
+     * The guarded apply's id with `guard`; "" without one. Confirm it as
+     * any guarded apply, or it reverts.
+     */
+    public var `guard`: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The device.
+         */serial: String, 
+        /**
+         * The snapshot's id.
+         */snapshot: String, 
+        /**
+         * Its name.
+         */name: String, 
+        /**
+         * Whether the image was written.
+         */image: Bool, 
+        /**
+         * What changed.
+         */lines: [String], 
+        /**
+         * What was not written, and why.
+         */notes: [String], 
+        /**
+         * The guarded apply's id with `guard`; "" without one. Confirm it as
+         * any guarded apply, or it reverts.
+         */`guard`: String) {
+        self.serial = serial
+        self.snapshot = snapshot
+        self.name = name
+        self.image = image
+        self.lines = lines
+        self.notes = notes
+        self.`guard` = `guard`
+    }
+}
+
+#if compiler(>=6)
+extension HubSnapshotRecall: Sendable {}
+#endif
+
+
+extension HubSnapshotRecall: Equatable, Hashable {
+    public static func ==(lhs: HubSnapshotRecall, rhs: HubSnapshotRecall) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.snapshot != rhs.snapshot {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.image != rhs.image {
+            return false
+        }
+        if lhs.lines != rhs.lines {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        if lhs.`guard` != rhs.`guard` {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(snapshot)
+        hasher.combine(name)
+        hasher.combine(image)
+        hasher.combine(lines)
+        hasher.combine(notes)
+        hasher.combine(`guard`)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubSnapshotRecall: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubSnapshotRecall {
+        return
+            try HubSnapshotRecall(
+                serial: FfiConverterString.read(from: &buf), 
+                snapshot: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                image: FfiConverterBool.read(from: &buf), 
+                lines: FfiConverterSequenceString.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf), 
+                guard: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubSnapshotRecall, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.snapshot, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.image, into: &buf)
+        FfiConverterSequenceString.write(value.lines, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+        FfiConverterString.write(value.`guard`, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSnapshotRecall_lift(_ buf: RustBuffer) throws -> HubSnapshotRecall {
+    return try FfiConverterTypeHubSnapshotRecall.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSnapshotRecall_lower(_ value: HubSnapshotRecall) -> RustBuffer {
+    return FfiConverterTypeHubSnapshotRecall.lower(value)
+}
+
+
+/**
+ * The hub's statistics ([`DspiCore::hub_stats`], Admin of the hub only).
+ */
+public struct HubStats {
+    /**
+     * Network sessions open now.
+     */
+    public var sessions: UInt32
+    /**
+     * Seconds since the hub started.
+     */
+    public var uptimeS: UInt64
+    /**
+     * One row per attached device.
+     */
+    public var devices: [HubStatsDevice]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Network sessions open now.
+         */sessions: UInt32, 
+        /**
+         * Seconds since the hub started.
+         */uptimeS: UInt64, 
+        /**
+         * One row per attached device.
+         */devices: [HubStatsDevice]) {
+        self.sessions = sessions
+        self.uptimeS = uptimeS
+        self.devices = devices
+    }
+}
+
+#if compiler(>=6)
+extension HubStats: Sendable {}
+#endif
+
+
+extension HubStats: Equatable, Hashable {
+    public static func ==(lhs: HubStats, rhs: HubStats) -> Bool {
+        if lhs.sessions != rhs.sessions {
+            return false
+        }
+        if lhs.uptimeS != rhs.uptimeS {
+            return false
+        }
+        if lhs.devices != rhs.devices {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(sessions)
+        hasher.combine(uptimeS)
+        hasher.combine(devices)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubStats: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubStats {
+        return
+            try HubStats(
+                sessions: FfiConverterUInt32.read(from: &buf), 
+                uptimeS: FfiConverterUInt64.read(from: &buf), 
+                devices: FfiConverterSequenceTypeHubStatsDevice.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubStats, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.sessions, into: &buf)
+        FfiConverterUInt64.write(value.uptimeS, into: &buf)
+        FfiConverterSequenceTypeHubStatsDevice.write(value.devices, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubStats_lift(_ buf: RustBuffer) throws -> HubStats {
+    return try FfiConverterTypeHubStats.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubStats_lower(_ value: HubStats) -> RustBuffer {
+    return FfiConverterTypeHubStats.lower(value)
+}
+
+
+/**
+ * One attached device's counts in [`HubStats`].
+ */
+public struct HubStatsDevice {
+    /**
+     * Its handle.
+     */
+    public var handle: UInt8
+    /**
+     * Its serial.
+     */
+    public var serial: String
+    /**
+     * Commands that ran on it since it attached.
+     */
+    public var cmds: UInt64
+    /**
+     * Those whose transfer failed.
+     */
+    public var errors: UInt64
+    /**
+     * Their mean time on the transport, ms.
+     */
+    public var avgRttMs: Double
+    /**
+     * Its notifications a full session outbox dropped.
+     */
+    public var notifyDropped: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its handle.
+         */handle: UInt8, 
+        /**
+         * Its serial.
+         */serial: String, 
+        /**
+         * Commands that ran on it since it attached.
+         */cmds: UInt64, 
+        /**
+         * Those whose transfer failed.
+         */errors: UInt64, 
+        /**
+         * Their mean time on the transport, ms.
+         */avgRttMs: Double, 
+        /**
+         * Its notifications a full session outbox dropped.
+         */notifyDropped: UInt64) {
+        self.handle = handle
+        self.serial = serial
+        self.cmds = cmds
+        self.errors = errors
+        self.avgRttMs = avgRttMs
+        self.notifyDropped = notifyDropped
+    }
+}
+
+#if compiler(>=6)
+extension HubStatsDevice: Sendable {}
+#endif
+
+
+extension HubStatsDevice: Equatable, Hashable {
+    public static func ==(lhs: HubStatsDevice, rhs: HubStatsDevice) -> Bool {
+        if lhs.handle != rhs.handle {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.cmds != rhs.cmds {
+            return false
+        }
+        if lhs.errors != rhs.errors {
+            return false
+        }
+        if lhs.avgRttMs != rhs.avgRttMs {
+            return false
+        }
+        if lhs.notifyDropped != rhs.notifyDropped {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(handle)
+        hasher.combine(serial)
+        hasher.combine(cmds)
+        hasher.combine(errors)
+        hasher.combine(avgRttMs)
+        hasher.combine(notifyDropped)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubStatsDevice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubStatsDevice {
+        return
+            try HubStatsDevice(
+                handle: FfiConverterUInt8.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                cmds: FfiConverterUInt64.read(from: &buf), 
+                errors: FfiConverterUInt64.read(from: &buf), 
+                avgRttMs: FfiConverterDouble.read(from: &buf), 
+                notifyDropped: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubStatsDevice, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.handle, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterUInt64.write(value.cmds, into: &buf)
+        FfiConverterUInt64.write(value.errors, into: &buf)
+        FfiConverterDouble.write(value.avgRttMs, into: &buf)
+        FfiConverterUInt64.write(value.notifyDropped, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubStatsDevice_lift(_ buf: RustBuffer) throws -> HubStatsDevice {
+    return try FfiConverterTypeHubStatsDevice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubStatsDevice_lower(_ value: HubStatsDevice) -> RustBuffer {
+    return FfiConverterTypeHubStatsDevice.lower(value)
 }
 
 
@@ -27865,6 +33913,107 @@ public func FfiConverterTypeLockState_lift(_ buf: RustBuffer) throws -> LockStat
 #endif
 public func FfiConverterTypeLockState_lower(_ value: LockState) -> RustBuffer {
     return FfiConverterTypeLockState.lower(value)
+}
+
+
+/**
+ * One row of the merged snapshot list ([`DspiCore::snapshot_list_merged`]).
+ */
+public struct MergedSnapshot {
+    /**
+     * The entry: the hub's where it holds the id (the hub's wins).
+     */
+    public var snapshot: SnapshotInfo
+    /**
+     * [`WHERE_LOCAL`], [`WHERE_HUB`] or [`WHERE_BOTH`] (`where` in JSON).
+     */
+    public var location: String
+    /**
+     * This console's own copy of an id the hub holds with different content:
+     * listed beside the hub's, never overwritten by it.
+     */
+    public var localCopy: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The entry: the hub's where it holds the id (the hub's wins).
+         */snapshot: SnapshotInfo, 
+        /**
+         * [`WHERE_LOCAL`], [`WHERE_HUB`] or [`WHERE_BOTH`] (`where` in JSON).
+         */location: String, 
+        /**
+         * This console's own copy of an id the hub holds with different content:
+         * listed beside the hub's, never overwritten by it.
+         */localCopy: Bool) {
+        self.snapshot = snapshot
+        self.location = location
+        self.localCopy = localCopy
+    }
+}
+
+#if compiler(>=6)
+extension MergedSnapshot: Sendable {}
+#endif
+
+
+extension MergedSnapshot: Equatable, Hashable {
+    public static func ==(lhs: MergedSnapshot, rhs: MergedSnapshot) -> Bool {
+        if lhs.snapshot != rhs.snapshot {
+            return false
+        }
+        if lhs.location != rhs.location {
+            return false
+        }
+        if lhs.localCopy != rhs.localCopy {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(snapshot)
+        hasher.combine(location)
+        hasher.combine(localCopy)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMergedSnapshot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MergedSnapshot {
+        return
+            try MergedSnapshot(
+                snapshot: FfiConverterTypeSnapshotInfo.read(from: &buf), 
+                location: FfiConverterString.read(from: &buf), 
+                localCopy: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MergedSnapshot, into buf: inout [UInt8]) {
+        FfiConverterTypeSnapshotInfo.write(value.snapshot, into: &buf)
+        FfiConverterString.write(value.location, into: &buf)
+        FfiConverterBool.write(value.localCopy, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMergedSnapshot_lift(_ buf: RustBuffer) throws -> MergedSnapshot {
+    return try FfiConverterTypeMergedSnapshot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMergedSnapshot_lower(_ value: MergedSnapshot) -> RustBuffer {
+    return FfiConverterTypeMergedSnapshot.lower(value)
 }
 
 
@@ -33564,6 +39713,109 @@ public func FfiConverterTypeSnapshotInfo_lower(_ value: SnapshotInfo) -> RustBuf
 
 
 /**
+ * The snapshots of both sides ([`DspiCore::snapshot_list_merged`]).
+ */
+public struct SnapshotMergedList {
+    /**
+     * Oldest first; on an id both sides hold with different content the
+     * hub's row comes first, then the local copy.
+     */
+    public var entries: [MergedSnapshot]
+    /**
+     * The hub's list is in it (a hub with `hub_snapshots` answered).
+     */
+    public var hubListed: Bool
+    /**
+     * Why the hub's list is not in it, as a notice row; "" when it is, or
+     * when there is no such hub.
+     */
+    public var hubNoticeKey: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Oldest first; on an id both sides hold with different content the
+         * hub's row comes first, then the local copy.
+         */entries: [MergedSnapshot], 
+        /**
+         * The hub's list is in it (a hub with `hub_snapshots` answered).
+         */hubListed: Bool, 
+        /**
+         * Why the hub's list is not in it, as a notice row; "" when it is, or
+         * when there is no such hub.
+         */hubNoticeKey: String) {
+        self.entries = entries
+        self.hubListed = hubListed
+        self.hubNoticeKey = hubNoticeKey
+    }
+}
+
+#if compiler(>=6)
+extension SnapshotMergedList: Sendable {}
+#endif
+
+
+extension SnapshotMergedList: Equatable, Hashable {
+    public static func ==(lhs: SnapshotMergedList, rhs: SnapshotMergedList) -> Bool {
+        if lhs.entries != rhs.entries {
+            return false
+        }
+        if lhs.hubListed != rhs.hubListed {
+            return false
+        }
+        if lhs.hubNoticeKey != rhs.hubNoticeKey {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(entries)
+        hasher.combine(hubListed)
+        hasher.combine(hubNoticeKey)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSnapshotMergedList: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SnapshotMergedList {
+        return
+            try SnapshotMergedList(
+                entries: FfiConverterSequenceTypeMergedSnapshot.read(from: &buf), 
+                hubListed: FfiConverterBool.read(from: &buf), 
+                hubNoticeKey: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SnapshotMergedList, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeMergedSnapshot.write(value.entries, into: &buf)
+        FfiConverterBool.write(value.hubListed, into: &buf)
+        FfiConverterString.write(value.hubNoticeKey, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSnapshotMergedList_lift(_ buf: RustBuffer) throws -> SnapshotMergedList {
+    return try FfiConverterTypeSnapshotMergedList.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSnapshotMergedList_lower(_ value: SnapshotMergedList) -> RustBuffer {
+    return FfiConverterTypeSnapshotMergedList.lower(value)
+}
+
+
+/**
  * What a recall did ([`DspiCore::snapshot_recall`]).
  */
 public struct SnapshotRecall {
@@ -38383,6 +44635,30 @@ fileprivate struct FfiConverterOptionTypeHubAdminListener: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeHubServerListener: FfiConverterRustBuffer {
+    typealias SwiftType = HubServerListener?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubServerListener.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubServerListener.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeLinkListener: FfiConverterRustBuffer {
     typealias SwiftType = LinkListener?
 
@@ -38567,6 +44843,198 @@ fileprivate struct FfiConverterOptionTypeHistoryEntry: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeHistoryEntry.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubAlarm: FfiConverterRustBuffer {
+    typealias SwiftType = HubAlarm?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubAlarm.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubAlarm.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubDevice: FfiConverterRustBuffer {
+    typealias SwiftType = HubDevice?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubDevice.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubDevice.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubEventRecord: FfiConverterRustBuffer {
+    typealias SwiftType = HubEventRecord?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubEventRecord.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubEventRecord.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubOutboundLast: FfiConverterRustBuffer {
+    typealias SwiftType = HubOutboundLast?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubOutboundLast.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubOutboundLast.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubReset: FfiConverterRustBuffer {
+    typealias SwiftType = HubReset?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubReset.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubReset.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubScheduleLast: FfiConverterRustBuffer {
+    typealias SwiftType = HubScheduleLast?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubScheduleLast.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubScheduleLast.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubScheduleRun: FfiConverterRustBuffer {
+    typealias SwiftType = HubScheduleRun?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubScheduleRun.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubScheduleRun.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeIdentifyInfo: FfiConverterRustBuffer {
+    typealias SwiftType = IdentifyInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeIdentifyInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeIdentifyInfo.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -38808,6 +45276,31 @@ fileprivate struct FfiConverterSequenceUInt16: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterUInt16.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt32]
+
+    public static func write(_ value: [UInt32], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt32.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt32] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt32]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterUInt32.read(from: &buf))
         }
         return seq
     }
@@ -39441,6 +45934,156 @@ fileprivate struct FfiConverterSequenceTypeHubAdminEvent: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeHubAlarm: FfiConverterRustBuffer {
+    typealias SwiftType = [HubAlarm]
+
+    public static func write(_ value: [HubAlarm], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubAlarm.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubAlarm] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubAlarm]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubAlarm.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubAlarmRule: FfiConverterRustBuffer {
+    typealias SwiftType = [HubAlarmRule]
+
+    public static func write(_ value: [HubAlarmRule], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubAlarmRule.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubAlarmRule] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubAlarmRule]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubAlarmRule.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubApiKey: FfiConverterRustBuffer {
+    typealias SwiftType = [HubApiKey]
+
+    public static func write(_ value: [HubApiKey], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubApiKey.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubApiKey] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubApiKey]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubApiKey.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubDevice: FfiConverterRustBuffer {
+    typealias SwiftType = [HubDevice]
+
+    public static func write(_ value: [HubDevice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubDevice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubDevice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubDevice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubDevice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubEventRecord: FfiConverterRustBuffer {
+    typealias SwiftType = [HubEventRecord]
+
+    public static func write(_ value: [HubEventRecord], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubEventRecord.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubEventRecord] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubEventRecord]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubEventRecord.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubHealth: FfiConverterRustBuffer {
+    typealias SwiftType = [HubHealth]
+
+    public static func write(_ value: [HubHealth], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubHealth.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubHealth] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubHealth]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubHealth.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeHubModePin: FfiConverterRustBuffer {
     typealias SwiftType = [HubModePin]
 
@@ -39458,6 +46101,181 @@ fileprivate struct FfiConverterSequenceTypeHubModePin: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeHubModePin.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubOutboundSecret: FfiConverterRustBuffer {
+    typealias SwiftType = [HubOutboundSecret]
+
+    public static func write(_ value: [HubOutboundSecret], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubOutboundSecret.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubOutboundSecret] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubOutboundSecret]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubOutboundSecret.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubOutboundTarget: FfiConverterRustBuffer {
+    typealias SwiftType = [HubOutboundTarget]
+
+    public static func write(_ value: [HubOutboundTarget], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubOutboundTarget.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubOutboundTarget] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubOutboundTarget]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubOutboundTarget.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubScheduleAction: FfiConverterRustBuffer {
+    typealias SwiftType = [HubScheduleAction]
+
+    public static func write(_ value: [HubScheduleAction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubScheduleAction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubScheduleAction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubScheduleAction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubScheduleAction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubScheduleResult: FfiConverterRustBuffer {
+    typealias SwiftType = [HubScheduleResult]
+
+    public static func write(_ value: [HubScheduleResult], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubScheduleResult.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubScheduleResult] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubScheduleResult]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubScheduleResult.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubScheduleRule: FfiConverterRustBuffer {
+    typealias SwiftType = [HubScheduleRule]
+
+    public static func write(_ value: [HubScheduleRule], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubScheduleRule.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubScheduleRule] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubScheduleRule]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubScheduleRule.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubServerEvent: FfiConverterRustBuffer {
+    typealias SwiftType = [HubServerEvent]
+
+    public static func write(_ value: [HubServerEvent], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubServerEvent.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubServerEvent] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubServerEvent]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubServerEvent.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubStatsDevice: FfiConverterRustBuffer {
+    typealias SwiftType = [HubStatsDevice]
+
+    public static func write(_ value: [HubStatsDevice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubStatsDevice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubStatsDevice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubStatsDevice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubStatsDevice.read(from: &buf))
         }
         return seq
     }
@@ -39583,6 +46401,31 @@ fileprivate struct FfiConverterSequenceTypeLinkTxtEntry: FfiConverterRustBuffer 
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeLinkTxtEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMergedSnapshot: FfiConverterRustBuffer {
+    typealias SwiftType = [MergedSnapshot]
+
+    public static func write(_ value: [MergedSnapshot], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMergedSnapshot.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MergedSnapshot] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MergedSnapshot]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMergedSnapshot.read(from: &buf))
         }
         return seq
     }
@@ -40536,6 +47379,21 @@ public func firmwareGuardCheck(image: Data, board: FirmwareGuardBoard, typedConf
 })
 }
 /**
+ * What to tell the user about `alarm`: its row `alarm.<code>`, with
+ * `{time}` the client's own rendering of [`HubAlarm::raised_at`] (`time`;
+ * "" leaves the hub's ISO time) and `{reason}` the reset's cause in words.
+ * The detail is the hub's message. A code this build does not know gets
+ * [`NOTICE_ALARM_UNKNOWN`]'s row.
+ */
+public func hubAlarmNotice(alarm: HubAlarm, time: String) -> Notice  {
+    return try!  FfiConverterTypeNotice_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_hub_alarm_notice(
+        FfiConverterTypeHubAlarm_lower(alarm),
+        FfiConverterString.lower(time),$0
+    )
+})
+}
+/**
  * Every name [`DspiCore::feature_present`] knows: the connect probe's, then
  * [`DERIVED_FEATURES`]. A client gates each section by one of these, never
  * by a wire format or firmware version.
@@ -41004,6 +47862,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_known_feature_names() != 45045) {
@@ -41546,6 +48407,45 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_hub_admin_events() != 40604) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_alarm_ack() != 9013) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_alarm_rules_get() != 1011) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_alarm_rules_set() != 15599) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_alarms() != 57749) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_api_key_mint() != 54068) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_api_key_revoke() != 48856) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_api_keys() != 44563) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_caps() != 24842) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_events_read() != 19645) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_events_watch() != 53028) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_health() != 16703) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_identify() != 8517) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_inventory() != 11241) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_limits_clear() != 57758) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -41558,10 +48458,73 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin() != 57304) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_get() != 13447) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_set() != 24497) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_status() != 18466) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_outbound_get() != 61571) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_outbound_set() != 54229) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_outbound_test() != 42070) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear() != 63217) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_pin_set() != 62268) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_schedule_delete() != 22406) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_schedule_run_now() != 34268) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_schedule_set() != 17176) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_schedules() != 14122) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_server_events() != 27123) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_copy_here() != 13825) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_delete() != 57760) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_get() != 20029) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_list() != 48115) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_note() != 34481) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_put() != 8801) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_recall() != 36034) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_rename() != 10752) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_save() != 43667) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_stats() != 22518) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_identify() != 26030) {
@@ -41891,6 +48854,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_set_hub_admin_listener() != 10270) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_hub_server_listener() != 7297) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_set_i2c() != 62416) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -42098,6 +49064,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_snapshot_list() != 29663) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_snapshot_list_merged() != 60124) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_snapshot_recall() != 16323) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -42147,6 +49116,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_hubadminlistener_on_hub_admin_event() != 29874) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_hubsecret_reveal() != 43175) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_hubserverlistener_on_hub_server_event() != 5783) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed() != 16214) {
@@ -42208,6 +49183,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitDeviceEvents()
     uniffiCallbackInitHostTransport()
     uniffiCallbackInitHubAdminListener()
+    uniffiCallbackInitHubServerListener()
     uniffiCallbackInitLinkListener()
     uniffiCallbackInitMidiSender()
     uniffiCallbackInitNotifyListener()

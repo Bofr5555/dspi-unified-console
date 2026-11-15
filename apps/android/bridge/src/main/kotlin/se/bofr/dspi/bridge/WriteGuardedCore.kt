@@ -18,6 +18,10 @@ import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.GuardedApply
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.HubLimitsSet
+// -- WP P2CC2 --
+import se.bofr.dspi.core.HubScheduleRun
+import se.bofr.dspi.core.HubSnapshotRecall
+import se.bofr.dspi.core.IdentifyInfo
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.LimitsApply
 import se.bofr.dspi.core.LockState
@@ -733,6 +737,26 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.applyGuardedSnapshotDocument(text, timeoutS)
     }
 
+    // -- WP P2CC1 -- Identify through the hub (or the device's own EXT_IDENTIFY
+    // directly) blinks the LED and may play a tone; a recall on the hub writes
+    // the device as this session
+    override fun hubIdentify(seconds: Int, toneOutput: Int?): IdentifyInfo? {
+        guard("hubIdentify")
+        return inner.hubIdentify(seconds, toneOutput)
+    }
+
+    override fun hubSnapshotsRecall(serial: String, id: String, guard: Boolean, timeoutMs: Long): HubSnapshotRecall {
+        this.guard("hubSnapshotsRecall") // `guard` here is the parameter
+        return inner.hubSnapshotsRecall(serial, id, guard, timeoutMs)
+    }
+
+    // -- WP P2CC2 -- a schedule run now writes its target devices (as the
+    // schedule's principal, on the hub)
+    override fun hubScheduleRunNow(id: String): HubScheduleRun {
+        guard("hubScheduleRunNow")
+        return inner.hubScheduleRunNow(id)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -933,7 +957,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P1AQ --
             "autoeqApply",
             // -- WP CLIP1 --
-            "pasteChannel"
+            "pasteChannel",
+            // -- WP P2CC1 --
+            "hubIdentify",
+            "hubSnapshotsRecall",
+            // -- WP P2CC2 --
+            "hubScheduleRunNow"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1259,7 +1288,49 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP CLIP1 -- a copy reads the mirror; a clip's document is local
             "copyChannel",
             "channelClipToJson",
-            "channelClipFromJson"
+            "channelClipFromJson",
+            // -- WP P2CC1 -- the hub's own families: reads, the watch and the
+            // events, and the hub's snapshot store (the hub's files, as the
+            // local store is the app's; nothing written to the device; the
+            // hub's role check and the core's read-only mode gate them)
+            "hubCaps",
+            "hubInventory",
+            "hubHealth",
+            "hubStats",
+            "hubEventsRead",
+            "hubEventsWatch",
+            "hubServerEvents",
+            "setHubServerListener",
+            "hubSnapshotsList",
+            "hubSnapshotsGet",
+            "hubSnapshotsPut",
+            "hubSnapshotsRename",
+            "hubSnapshotsNote",
+            "hubSnapshotsDelete",
+            "hubSnapshotsSave",
+            "hubSnapshotsCopyHere",
+            "snapshotListMerged",
+            // -- WP P2CC2 -- the hub's admin families: reads, the notice, and
+            // the hub's own settings (alarms, schedules, notifications out,
+            // MQTT, API keys); nothing written to a device (the hub's role
+            // check and the core's read-only mode gate them)
+            "hubAlarms",
+            "hubAlarmAck",
+            "hubAlarmRulesGet",
+            "hubAlarmRulesSet",
+            "hubAlarmNotice",
+            "hubSchedules",
+            "hubScheduleSet",
+            "hubScheduleDelete",
+            "hubOutboundGet",
+            "hubOutboundSet",
+            "hubOutboundTest",
+            "hubMqttGet",
+            "hubMqttSet",
+            "hubMqttStatus",
+            "hubApiKeys",
+            "hubApiKeyMint",
+            "hubApiKeyRevoke"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

@@ -143,6 +143,8 @@ mod guarded;
 pub mod modes;
 // -- WP HUBADMIN --
 pub mod hub_admin;
+// -- WP P2CC1 -- the hub's own families (inventory, identify, health, stats, history, snapshots)
+pub mod hub_server;
 // -- WP ROMODE --
 pub mod read_only;
 // -- WP CG-SWS-a --
@@ -262,6 +264,19 @@ pub use guarded::NOTICE_GUARD_HUB_BACKSTOP;
 pub use hub_admin::{
     HubAdminEvent, HubAdminListener, HubAdminState, HubLimitsSet, HubModePin, HubPinSet,
     InstallerTarget,
+};
+// -- WP P2CC1 --
+pub use hub_server::{
+    HubCaps, HubDevice, HubEventPage, HubEventRecord, HubHealth, HubReset, HubServerEvent,
+    HubServerListener, HubSnapshotDocument, HubSnapshotPut, HubSnapshotRecall, HubStats,
+    HubStatsDevice, MergedSnapshot, SnapshotMergedList,
+};
+// -- WP P2CC2 --
+pub use hub_server::{
+    HubAlarm, HubAlarmRule, HubApiKey, HubApiKeyMinted, HubMqttSettings, HubMqttStatus, HubMqttTls,
+    HubOutboundLast, HubOutboundSecret, HubOutboundSet, HubOutboundTarget, HubOutboundTest,
+    HubScheduleAction, HubScheduleLast, HubScheduleResult, HubScheduleRule, HubScheduleRun,
+    HubSchedules, HubSecret, hub_alarm_notice,
 };
 // -- WP ROMODE --
 pub use read_only::{
@@ -905,6 +920,8 @@ pub(crate) struct Listeners {
     pub(crate) link: Slot<dyn LinkListener>,
     // -- WP HUBADMIN -- the hub's admin events: listener and queue
     pub(crate) hub_admin: hub_admin::Events,
+    // -- WP P2CC1 -- the hub's inventory, history and snapshot events
+    pub(crate) hub_server: hub_server::Events,
 }
 
 #[cfg_attr(feature = "uniffi", uniffi::export)]

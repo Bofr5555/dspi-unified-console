@@ -6326,6 +6326,318 @@ bool dspi_hub_admin_set_listener(struct FfiCore *core,
                                  void *user_data);
 
 /**
+ * Which of the hub's families this console's hub has: JSON `{ok, onHub,
+ * inventory, identify, health, events, hubSnapshots, paramApi, hubStats,
+ * caps}`. No I/O.
+ */
+uint32_t dspi_hub_caps(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Every DSPi the hub has seen: JSON `{ok, value: [{serial, handle, online,
+ * name, platform, fw, fwBeta, outputs, board, hwRev, chip, chipRev,
+ * location, note, tags, firstSeen, lastSeen, lastReset}]}`.
+ */
+uint32_t dspi_hub_inventory(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Identify the open device for `seconds` (0 stops), with the quiet tone on
+ * `tone_output` (0xFF: none; pass 0xFF unless the user asked for sound):
+ * through the hub on a hub, the device's own `EXT_IDENTIFY` directly. JSON
+ * `{ok, remainingS, lastToneOutput, chip, chipRev, chipId, board, hwRev}`,
+ * `{ok, value: null}` when the state could not be read after the write, or
+ * a failure (`link` with `dlink.rate_limited` within 2 s on a hub).
+ */
+uint32_t dspi_hub_identify(struct FfiCore *core,
+                           uint8_t seconds,
+                           uint8_t tone_output,
+                           char *buf,
+                           uint32_t len);
+
+/**
+ * One health record per online device: JSON `{ok, value: [{serial,
+ * handle, at, cpuPct, clipMask, tempC, uptimeS, hangCount, unresponsive,
+ * unresponsiveSince, reset}]}`.
+ */
+uint32_t dspi_hub_health(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The hub's statistics (Admin of the hub): JSON `{ok, sessions, uptimeS,
+ * devices: [{handle, serial, cmds, errors, avgRttMs, notifyDropped}]}`.
+ */
+uint32_t dspi_hub_stats(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Device `serial`'s history on the hub (null or "" the open device), ids
+ * above `after_id`, at most `limit` (0: the hub's 100; at most 500): JSON
+ * `{ok, serial, records: [{id, timeMs, kind, serial, text, source, session,
+ * by, channel, value, fw, uptimeS, lines, count}], more, newestId}`.
+ */
+uint32_t dspi_hub_events_read(struct FfiCore *core,
+                              const char *serial,
+                              uint64_t after_id,
+                              uint32_t limit,
+                              char *buf,
+                              uint32_t len);
+
+/**
+ * Have the hub send each new history record of `serial` (null or "": every
+ * device) as an event (`on`), or stop: `{ok}` or a failure. The records
+ * come through [`dspi_hub_server_events`] and the listener.
+ */
+uint32_t dspi_hub_events_watch(struct FfiCore *core,
+                               bool on,
+                               const char *serial,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * The hub's `event.added`, `inventory.changed` and `snapshot.changed` since
+ * the last call, oldest first: JSON `{ok, value: [{kind, serial, record,
+ * device, snapshot, change}]}`. No I/O.
+ */
+uint32_t dspi_hub_server_events(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Set (or with a null `callback`, clear) the listener for the hub's events
+ * of these families. False for a null core, or when called from the
+ * callback itself.
+ */
+bool dspi_hub_server_set_listener(struct FfiCore *core,
+                                  void (*callback)(const char *kind,
+                                                   const char *event_json,
+                                                   void *user_data),
+                                  void *user_data);
+
+/**
+ * Device `serial`'s snapshots on the hub (null or "" the open device):
+ * JSON `{ok, value: [{id, name, note, serial, savedMs, platform,
+ * inputChannels, outputChannels, wireFormat}]}`.
+ */
+uint32_t dspi_hub_snapshots_list(struct FfiCore *core, const char *serial, char *buf, uint32_t len);
+
+/**
+ * Snapshot `id` on the hub: JSON `{ok, snapshot: {entry}, document}` (the
+ * document's compact text).
+ */
+uint32_t dspi_hub_snapshots_get(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * File snapshot `document` (its text) of `serial` (null or "": the one its
+ * `snapshot` block names) on the hub: JSON `{ok, snapshot, created}`. A
+ * document over 61 440 bytes compact fails here with `link`, `noticeKey`
+ * `dlink.conflict` and the hub's words, and nothing is sent.
+ */
+uint32_t dspi_hub_snapshots_put(struct FfiCore *core,
+                                const char *serial,
+                                const char *document,
+                                char *buf,
+                                uint32_t len);
+
+/**
+ * Rename snapshot `id` on the hub: the entry's JSON, or a failure.
+ */
+uint32_t dspi_hub_snapshots_rename(struct FfiCore *core,
+                                   const char *id,
+                                   const char *name,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * Set snapshot `id`'s note on the hub: the entry's JSON, or a failure.
+ */
+uint32_t dspi_hub_snapshots_note(struct FfiCore *core,
+                                 const char *id,
+                                 const char *note,
+                                 char *buf,
+                                 uint32_t len);
+
+/**
+ * Delete snapshot `id` from the hub (Admin of the hub): `{ok}` or a
+ * failure.
+ */
+uint32_t dspi_hub_snapshots_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * Recall snapshot `id` of the hub's store on `serial` (null or "" the open
+ * device), with a guarded apply first when `guard` (`timeout_ms`, 0 for the
+ * hub's 30 s): JSON `{ok, serial, snapshot, name, image, lines, notes,
+ * guard}`.
+ */
+uint32_t dspi_hub_snapshots_recall(struct FfiCore *core,
+                                   const char *serial,
+                                   const char *id,
+                                   bool guard,
+                                   uint32_t timeout_ms,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * "Save to the hub": this console's snapshot `id` filed on the hub: JSON
+ * `{ok, snapshot, created}`.
+ */
+uint32_t dspi_hub_snapshots_save(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * "Copy here": the hub's snapshot `id` filed in this console's store: the
+ * local entry's JSON.
+ */
+uint32_t dspi_hub_snapshots_copy_here(struct FfiCore *core,
+                                      const char *id,
+                                      char *buf,
+                                      uint32_t len);
+
+/**
+ * The snapshots of `serial` (null or "" the open device) on both sides:
+ * JSON `{ok, entries: [{snapshot, where, localCopy}], hubListed,
+ * hubNoticeKey}` (`where`: `local`, `hub` or `both`). Never fails but for a
+ * null core.
+ */
+uint32_t dspi_snapshot_list_merged(struct FfiCore *core,
+                                   const char *serial,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * The hub's alarms of `serial` (null or "": every alarm) in `state` (null
+ * or "": every one; `active`, `cleared`): JSON `{ok, value: [{id, source,
+ * code, subject, serial, severity, message, state, raisedAt, clearedAt,
+ * acknowledgedBy, count, reason, noticeKey}]}`.
+ */
+uint32_t dspi_hub_alarms(struct FfiCore *core,
+                         const char *serial,
+                         const char *state,
+                         char *buf,
+                         uint32_t len);
+
+/**
+ * Acknowledge alarm `id` (Control, Admin): the alarm's JSON as it is now.
+ */
+uint32_t dspi_hub_alarm_ack(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * The alarm rules: JSON `{ok, value: [{code, on, afterS, perMinute,
+ * muteOnStorm, aboveC, abovePct, forS}]}` (a field the code lacks is null).
+ */
+uint32_t dspi_hub_alarm_rules_get(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Change the alarm rules (Admin): `rules_json` a JSON list of rules as
+ * `dspi_hub_alarm_rules_get` gives (null fields keep the hub's values). The
+ * rules now, as there.
+ */
+uint32_t dspi_hub_alarm_rules_set(struct FfiCore *core,
+                                  const char *rules_json,
+                                  char *buf,
+                                  uint32_t len);
+
+/**
+ * What to tell the user about an alarm: `alarm_json` one alarm as the
+ * calls above give it, `time` the client's rendering of its `raisedAt`
+ * (null or "": the hub's ISO time). JSON `{ok, key, kind, title, reason,
+ * action, detail}`. No I/O; no core.
+ */
+uint32_t dspi_hub_alarm_notice(const char *alarm_json, const char *time, char *buf, uint32_t len);
+
+/**
+ * The hub's schedule: JSON `{ok, rules: [{id, name, enabled, days, time,
+ * once, actions: [{t, slot, name, snapshot, scene, path, idx, value,
+ * flag}], targets, nextRun, last}], zone, localTime, clockUnset}`.
+ */
+uint32_t dspi_hub_schedules(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Add (`id` "") or replace a schedule rule (Admin): `rule_json` one rule
+ * as `dspi_hub_schedules` lists it. The rule as the hub lists it.
+ */
+uint32_t dspi_hub_schedule_set(struct FfiCore *core,
+                               const char *rule_json,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * Delete schedule rule `id` (Admin): `{ok}` or a failure.
+ */
+uint32_t dspi_hub_schedule_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * Run schedule rule `id` now (Admin; it writes its targets): JSON `{ok,
+ * rule, name, at, by, results: [{serial, action, ok, code, msg}]}`.
+ */
+uint32_t dspi_hub_schedule_run_now(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * The notification targets (Admin): JSON `{ok, value: [{id, name, kind,
+ * url, enabled, kinds, secret, plaintext, caPem, pinSha256, queued,
+ * dropped, last, encrypted, trust, notice}]}`.
+ */
+uint32_t dspi_hub_outbound_get(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Replace the notification targets (Admin): `targets_json` the whole list
+ * as `dspi_hub_outbound_get` gives (`secret` `new` for a new secret). JSON
+ * `{ok, targets, secrets: [{target, secret}]}`: the new secrets, this once.
+ */
+uint32_t dspi_hub_outbound_set(struct FfiCore *core,
+                               const char *targets_json,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * One test delivery to target `id` now (Admin): JSON `{ok, delivered,
+ * status, msg}`.
+ */
+uint32_t dspi_hub_outbound_test(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * The broker setting (Admin): JSON `{ok, enabled, broker, port, clientId,
+ * username, password, baseTopic, tls: {mode, caPem, pinSha256,
+ * clientCertPem, clientKeyPem, clientCertFile, clientKeyFile,
+ * allowPlaintextPassword}, haEnabled, haKey, notice}` (the password and the
+ * client key as `set` or `not set`).
+ */
+uint32_t dspi_hub_mqtt_get(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Change the broker setting (Admin): `settings_json` as `dspi_hub_mqtt_get`
+ * gives it (`password` the password to set it, `set` or "" to keep it). The
+ * setting now, as there.
+ */
+uint32_t dspi_hub_mqtt_set(struct FfiCore *core,
+                           const char *settings_json,
+                           char *buf,
+                           uint32_t len);
+
+/**
+ * The broker connection now (Admin): JSON `{ok, state, msg, since,
+ * queued, dropped, encrypted, notice}`.
+ */
+uint32_t dspi_hub_mqtt_status(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The hub's API keys (Admin): JSON `{ok, value: [{cid, name, role,
+ * plaintextOk, online, created, lastSeen}]}`.
+ */
+uint32_t dspi_hub_api_keys(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Mint an API key `name` with `role` (`viewer`, `control`, `admin`)
+ * (Admin): JSON `{ok, cid, name, role, plaintextOk, key}`: the key, this
+ * once.
+ */
+uint32_t dspi_hub_api_key_mint(struct FfiCore *core,
+                               const char *name,
+                               const char *role,
+                               bool plaintext_ok,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * Revoke API key `cid` (Admin): `{ok}` or a failure (`invalid` for a cid
+ * that is not an API key's).
+ */
+uint32_t dspi_hub_api_key_revoke(struct FfiCore *core, uint32_t cid, char *buf, uint32_t len);
+
+/**
  * The master volume `db` as `dspi_set_master_volume` keeps it: -128 (mute)
  * at or below -128, else 0.5 dB steps within -127..=0. NaN comes back NaN.
  */

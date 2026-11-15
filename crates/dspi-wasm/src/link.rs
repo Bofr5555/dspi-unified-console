@@ -192,6 +192,8 @@ pub fn tick(core: &DspiCore) -> Value {
         "waitMs": wait,
         "status": status_json(&core.link_status()),
         "hubEvents": crate::calls::tidy(&core.hub_admin_events()),
+        // -- WP P2CC1 -- the hub's history, inventory and snapshot events of this turn
+        "hubServerEvents": crate::calls::tidy(&core.hub_server_events()),
     })
 }
 

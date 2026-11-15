@@ -2003,7 +2003,10 @@ fn wp_hb1_stop_closes_everyone_with_4003_and_frees_the_port() {
     b.hub.stop();
 
     assert!(b.hub.network().is_none());
-    assert_eq!(close_code(&mut session), Some(4003));
+    // -- WP P2MQ -- raw: the session has pings waiting before the close, and answering
+    // one on the socket the hub has closed fails before the close is read (seen as a
+    // flake once the `hello` grew by a cap).
+    assert_eq!(raw_close_code(session.get_mut()), Some(4003));
     assert_eq!(close_code(&mut waiting), Some(4003));
     assert!(is_closed_by_peer(&mut in_http));
     assert_eq!(b.net.connections(), 0);

@@ -15,6 +15,7 @@
 // ABI's (`read_only`).
 
 // -- WP WB6J -- the analyser view, the signal generator, Stats for nerbs, the Interrupt Monitor
+import type { HubSettingsMethods } from "./hub-settings-protocol"; // -- WP P2WB2 --
 import type { ToolsMethods } from "./tools-protocol";
 
 /** Where a session's device is. A fleet server may add its own kinds later. */
@@ -425,10 +426,12 @@ export type CoreEvent =
   /** The connection is gone (unplugged, the core stopped). */
   | { event: "lost"; reason: string }
   // -- WP HUBADMIN -- the hub's `limits.changed`, `limits.held`, `mode.changed` of a Link turn (`linkTick`'s `hubEvents`)
-  | { event: "hubAdmin"; events: HubAdminEventRecord[] };
+  | { event: "hubAdmin"; events: HubAdminEventRecord[] }
+  // -- WP P2WB1 -- the hub's `event.added`, `inventory.changed`, `snapshot.changed`, `alarm.changed`, `schedule.ran` of a Link turn (`linkTick`'s `hubServerEvents`)
+  | { event: "hubServer"; events: HubServerEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */ {
+export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -1195,6 +1198,172 @@ export interface HubAdminMethods {
   hubModePin: { params: { role: string; mode: string }; result: HubAdminStateRecord };
   /** The hub's admin events since the last call (also handed out by `linkTick`). */
   hubAdminEvents: { params: undefined; result: HubAdminEventRecord[] };
+}
+
+// -- WP P2WB1 -- the hub's own families (crates/dspi-wasm/src/hub_server.rs and
+// hub_server_admin.rs over dspi_core::hub_server, docs/integrator/hub-api.md): the
+// inventory, health, statistics, Identify, the shared history and the alarms.
+
+/** Which of the hub's families this console's hub has (`dspi_core::HubCaps`). */
+export interface HubCapsRecord {
+  onHub: boolean;
+  inventory: boolean;
+  identify: boolean;
+  health: boolean;
+  events: boolean;
+  hubSnapshots: boolean;
+  paramApi: boolean;
+  hubStats: boolean;
+  alarms: boolean;
+  outbound: boolean;
+  schedule: boolean;
+  mqtt: boolean;
+  apiKeys: boolean;
+  rest: boolean;
+  caps: string[];
+}
+
+/** A reset as the hub saw it (`dspi_core::HubReset`). */
+export interface HubResetRecord {
+  /** `power_on`, `brownout`, `run_pin`, `watchdog`, `software`, `debugger`, `glitch`, `unknown`. */
+  reason: string;
+  prevUptimeS: number | null;
+  /** ISO-8601 UTC; "" when the hub gives no time. */
+  at: string;
+}
+
+/** One device of the hub's inventory (`dspi_core::HubDevice`). */
+export interface HubDeviceRecord {
+  serial: string;
+  handle: number | null;
+  online: boolean;
+  name: string;
+  platform: string;
+  fw: string;
+  fwBeta: boolean | null;
+  outputs: number;
+  board: string;
+  hwRev: string;
+  chip: string;
+  chipRev: number | null;
+  location: string;
+  note: string;
+  tags: string[];
+  firstSeen: string;
+  lastSeen: string;
+  lastReset: HubResetRecord | null;
+}
+
+/** One online device's health (`dspi_core::HubHealth`). */
+export interface HubHealthRecord {
+  serial: string;
+  handle: number;
+  at: string;
+  cpuPct: number | null;
+  clipMask: number | null;
+  tempC: number | null;
+  uptimeS: number | null;
+  hangCount: number | null;
+  unresponsive: boolean;
+  unresponsiveSince: string;
+  reset: HubResetRecord | null;
+}
+
+/** The hub's statistics (`dspi_core::HubStats`, Admin only). */
+export interface HubStatsRecord {
+  sessions: number;
+  uptimeS: number;
+  devices: { handle: number; serial: string; cmds: number; errors: number; avgRttMs: number; notifyDropped: number }[];
+}
+
+/** One record of a device's history on the hub (`dspi_core::HubEventRecord`). */
+export interface HubHistoryRecord {
+  id: number;
+  timeMs: number;
+  kind: string;
+  serial: string;
+  text: string;
+  source: string;
+  session: number | null;
+  /** Who caused it, by name (a client, key, schedule or rule); "" when none. */
+  by: string;
+  channel: number | null;
+  value: number | null;
+  fw: string | null;
+  uptimeS: number | null;
+  lines: string[];
+  count: number;
+}
+
+/** A page of a device's history on the hub (`dspi_core::HubEventPage`). */
+export interface HubHistoryPage {
+  serial: string;
+  records: HubHistoryRecord[];
+  more: boolean;
+  newestId: number;
+}
+
+/** One of the hub's alarms (`dspi_core::HubAlarm`). */
+export interface HubAlarmRecord {
+  id: string;
+  source: string;
+  code: string;
+  subject: string;
+  serial: string;
+  severity: string;
+  message: string;
+  /** `raised`, `acknowledged` or `cleared`. */
+  state: string;
+  raisedAt: string;
+  clearedAt: string;
+  acknowledgedBy: string;
+  count: number;
+  reason: string;
+  noticeKey: string;
+}
+
+/** One of the hub's events (`dspi_core::HubServerEvent`); the fields its kind does not use are null or "". */
+export interface HubServerEventRecord {
+  kind: string;
+  serial: string;
+  record: HubHistoryRecord | null;
+  device: HubDeviceRecord | null;
+  snapshot: string;
+  change: string;
+  alarm: HubAlarmRecord | null;
+  run: unknown;
+}
+
+/** What `EXT_IDENTIFY` reads back (`dspi_core::IdentifyInfo`). */
+export interface IdentifyInfoRecord {
+  remainingS: number;
+  lastToneOutput: number | null;
+  chip: string;
+  chipRev: number;
+  chipId: number;
+  board: string;
+  hwRev: string;
+}
+
+export interface HubServerMethods {
+  /** No I/O. */
+  hubCaps: { params: undefined; result: HubCapsRecord };
+  hubInventory: { params: undefined; result: HubDeviceRecord[] };
+  hubHealth: { params: undefined; result: HubHealthRecord[] };
+  /** Admin of the hub only (`denied`). */
+  hubStats: { params: undefined; result: HubStatsRecord };
+  /** The open device: the hub's `device.identify` (Control, Admin), or the device's own directly. */
+  hubIdentify: { params: { seconds: number; toneOutput?: number }; result: IdentifyInfoRecord | null };
+  /** `serial` "" the open device; `afterId` 0 the newest page. */
+  hubEventsRead: { params: { serial?: string; afterId?: number; limit?: number }; result: HubHistoryPage };
+  hubEventsWatch: { params: { on: boolean; serial?: string }; result: null };
+  hubServerEvents: { params: undefined; result: HubServerEventRecord[] };
+  /** `serial` "" every device's; `state` "", `active` or `cleared`. */
+  hubAlarms: { params: { serial?: string; state?: string }; result: HubAlarmRecord[] };
+  /** Control or Admin. */
+  hubAlarmAck: { params: { id: string }; result: HubAlarmRecord };
+  /** The alarm's notice row filled in (`time`: this page's rendering of its time). */
+  hubAlarmNotice: { params: { alarm: HubAlarmRecord; time?: string }; result: NoticeRecord };
 }
 
 // -- WP WB6K -- filter files and the AutoEQ database the page keeps

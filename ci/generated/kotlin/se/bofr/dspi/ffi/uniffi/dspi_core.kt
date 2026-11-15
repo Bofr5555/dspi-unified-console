@@ -681,6 +681,9 @@ internal interface UniffiCallbackInterfaceHostTransportMethod4 : com.sun.jna.Cal
 internal interface UniffiCallbackInterfaceHubAdminListenerMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`event`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfaceHubServerListenerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`event`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceLinkListenerMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -777,6 +780,22 @@ internal open class UniffiVTableCallbackInterfaceHubAdminListener(
 
    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceHubAdminListener) {
         `onHubAdminEvent` = other.`onHubAdminEvent`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
+}
+@Structure.FieldOrder("onHubServerEvent", "uniffiFree")
+internal open class UniffiVTableCallbackInterfaceHubServerListener(
+    @JvmField internal var `onHubServerEvent`: UniffiCallbackInterfaceHubServerListenerMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `onHubServerEvent`: UniffiCallbackInterfaceHubServerListenerMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfaceHubServerListener(`onHubServerEvent`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceHubServerListener) {
+        `onHubServerEvent` = other.`onHubServerEvent`
         `uniffiFree` = other.`uniffiFree`
     }
 
@@ -1796,6 +1815,89 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1864,6 +1966,8 @@ fun uniffi_dspi_core_checksum_func_filter_type_names(
 fun uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(
 ): Short
 fun uniffi_dspi_core_checksum_func_firmware_guard_check(
+): Short
+fun uniffi_dspi_core_checksum_func_hub_alarm_notice(
 ): Short
 fun uniffi_dspi_core_checksum_func_known_feature_names(
 ): Short
@@ -2225,6 +2329,32 @@ fun uniffi_dspi_core_checksum_method_dspicore_host_notify(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_admin_events(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_alarm_ack(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_alarm_rules_get(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_alarm_rules_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_alarms(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_api_key_mint(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_api_key_revoke(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_api_keys(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_caps(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_events_read(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_events_watch(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_health(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_identify(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_inventory(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_limits_clear(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_limits_get(
@@ -2233,9 +2363,51 @@ fun uniffi_dspi_core_checksum_method_dspicore_hub_limits_set(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_get(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_status(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_outbound_get(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_outbound_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_outbound_test(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_pin_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_schedule_delete(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_schedule_run_now(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_schedule_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_schedules(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_server_events(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_copy_here(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_delete(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_get(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_list(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_note(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_put(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_recall(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_rename(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_save(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_stats(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_identify(
 ): Short
@@ -2455,6 +2627,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_set_hotplug_callback(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_hub_admin_listener(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_hub_server_listener(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_i2c(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_i2s_bck_pin(
@@ -2593,6 +2767,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_snapshot_import(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_snapshot_list(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_snapshot_list_merged(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_snapshot_recall(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_snapshot_recall_document(
@@ -2626,6 +2802,10 @@ fun uniffi_dspi_core_checksum_method_hosttransport_lock(
 fun uniffi_dspi_core_checksum_method_hosttransport_unlock(
 ): Short
 fun uniffi_dspi_core_checksum_method_hubadminlistener_on_hub_admin_event(
+): Short
+fun uniffi_dspi_core_checksum_method_hubsecret_reveal(
+): Short
+fun uniffi_dspi_core_checksum_method_hubserverlistener_on_hub_server_event(
 ): Short
 fun uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed(
 ): Short
@@ -2705,6 +2885,7 @@ internal interface UniffiLib : Library {
             uniffiCallbackInterfaceDeviceEvents.register(lib)
             uniffiCallbackInterfaceHostTransport.register(lib)
             uniffiCallbackInterfaceHubAdminListener.register(lib)
+            uniffiCallbackInterfaceHubServerListener.register(lib)
             uniffiCallbackInterfaceLinkListener.register(lib)
             uniffiCallbackInterfaceMidiSender.register(lib)
             uniffiCallbackInterfaceNotifyListener.register(lib)
@@ -3046,6 +3227,32 @@ fun uniffi_dspi_core_fn_method_dspicore_host_notify(`ptr`: Pointer,`packet`: Rus
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_hub_admin_events(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_alarm_ack(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_alarm_rules_get(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_alarm_rules_set(`ptr`: Pointer,`rules`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_alarms(`ptr`: Pointer,`serial`: RustBuffer.ByValue,`state`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_api_key_mint(`ptr`: Pointer,`name`: RustBuffer.ByValue,`role`: RustBuffer.ByValue,`plaintextOk`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_api_key_revoke(`ptr`: Pointer,`cid`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_hub_api_keys(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_caps(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_events_read(`ptr`: Pointer,`serial`: RustBuffer.ByValue,`afterId`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_events_watch(`ptr`: Pointer,`on`: Byte,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_hub_health(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_identify(`ptr`: Pointer,`seconds`: Byte,`toneOutput`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_inventory(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_limits_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_limits_get(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3054,9 +3261,51 @@ fun uniffi_dspi_core_fn_method_dspicore_hub_limits_set(`ptr`: Pointer,`document`
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_mode_pin(`ptr`: Pointer,`role`: RustBuffer.ByValue,`mode`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_mqtt_get(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_mqtt_set(`ptr`: Pointer,`settings`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_mqtt_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_outbound_get(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_outbound_set(`ptr`: Pointer,`targets`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_outbound_test(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_pin_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_pin_set(`ptr`: Pointer,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_schedule_delete(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_hub_schedule_run_now(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_schedule_set(`ptr`: Pointer,`rule`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_schedules(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_server_events(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_snapshots_copy_here(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_snapshots_delete(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_hub_snapshots_get(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_snapshots_list(`ptr`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_snapshots_note(`ptr`: Pointer,`id`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_snapshots_put(`ptr`: Pointer,`serial`: RustBuffer.ByValue,`document`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_snapshots_recall(`ptr`: Pointer,`serial`: RustBuffer.ByValue,`id`: RustBuffer.ByValue,`guard`: Byte,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_snapshots_rename(`ptr`: Pointer,`id`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_snapshots_save(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_identify(`ptr`: Pointer,`seconds`: Byte,`toneOutput`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3276,6 +3525,8 @@ fun uniffi_dspi_core_fn_method_dspicore_set_hotplug_callback(`ptr`: Pointer,`lis
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_hub_admin_listener(`ptr`: Pointer,`listener`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_hub_server_listener(`ptr`: Pointer,`listener`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_i2c(`ptr`: Pointer,`config`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_i2s_bck_pin(`ptr`: Pointer,`role`: Byte,`pin`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -3414,6 +3665,8 @@ fun uniffi_dspi_core_fn_method_dspicore_snapshot_import(`ptr`: Pointer,`text`: R
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_snapshot_list(`ptr`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_snapshot_list_merged(`ptr`: Pointer,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_snapshot_recall(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_snapshot_recall_document(`ptr`: Pointer,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3459,6 +3712,20 @@ fun uniffi_dspi_core_fn_free_hubadminlistener(`ptr`: Pointer,uniffi_out_err: Uni
 fun uniffi_dspi_core_fn_init_callback_vtable_hubadminlistener(`vtable`: UniffiVTableCallbackInterfaceHubAdminListener,
 ): Unit
 fun uniffi_dspi_core_fn_method_hubadminlistener_on_hub_admin_event(`ptr`: Pointer,`event`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_clone_hubsecret(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
+fun uniffi_dspi_core_fn_free_hubsecret(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_hubsecret_reveal(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_clone_hubserverlistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
+fun uniffi_dspi_core_fn_free_hubserverlistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_init_callback_vtable_hubserverlistener(`vtable`: UniffiVTableCallbackInterfaceHubServerListener,
+): Unit
+fun uniffi_dspi_core_fn_method_hubserverlistener_on_hub_server_event(`ptr`: Pointer,`event`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_clone_linklistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
@@ -3579,6 +3846,8 @@ fun uniffi_dspi_core_fn_func_filter_type_names(uniffi_out_err: UniffiRustCallSta
 fun uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_firmware_guard_check(`image`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_hub_alarm_notice(`alarm`: RustBuffer.ByValue,`time`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_known_feature_names(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -3841,6 +4110,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_known_feature_names() != 45045.toShort()) {
@@ -4383,6 +4655,45 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_admin_events() != 40604.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_alarm_ack() != 9013.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_alarm_rules_get() != 1011.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_alarm_rules_set() != 15599.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_alarms() != 57749.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_api_key_mint() != 54068.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_api_key_revoke() != 48856.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_api_keys() != 44563.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_caps() != 24842.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_events_read() != 19645.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_events_watch() != 53028.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_health() != 16703.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_identify() != 8517.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_inventory() != 11241.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_limits_clear() != 57758.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4395,10 +4706,73 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin() != 57304.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_get() != 13447.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_set() != 24497.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_status() != 18466.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_outbound_get() != 61571.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_outbound_set() != 54229.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_outbound_test() != 42070.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear() != 63217.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_pin_set() != 62268.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_schedule_delete() != 22406.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_schedule_run_now() != 34268.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_schedule_set() != 17176.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_schedules() != 14122.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_server_events() != 27123.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_copy_here() != 13825.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_delete() != 57760.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_get() != 20029.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_list() != 48115.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_note() != 34481.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_put() != 8801.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_recall() != 36034.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_rename() != 10752.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_save() != 43667.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_stats() != 22518.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_identify() != 26030.toShort()) {
@@ -4728,6 +5102,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_hub_admin_listener() != 10270.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_hub_server_listener() != 7297.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_i2c() != 62416.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4935,6 +5312,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_list() != 29663.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_list_merged() != 60124.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_snapshot_recall() != 16323.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4984,6 +5364,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_hubadminlistener_on_hub_admin_event() != 29874.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_hubsecret_reveal() != 43175.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_hubserverlistener_on_hub_server_event() != 5783.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_linklistener_on_link_devices_changed() != 16214.toShort()) {
@@ -8267,6 +8653,155 @@ public interface DspiCoreInterface {
     fun `hubAdminEvents`(): List<HubAdminEvent>
     
     /**
+     * Acknowledge alarm `id` (`alarm.ack`): the alarm as it is now. A
+     * `device_restarted` or `schedule_failed` alarm is cleared by it.
+     * Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` for an alarm that is not on;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_alarms`].
+     */
+    fun `hubAlarmAck`(`id`: kotlin.String): HubAlarm
+    
+    /**
+     * The alarm rules (`alarm.rules.get`), one row per code. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_alarms`].
+     */
+    fun `hubAlarmRulesGet`(): List<HubAlarmRule>
+    
+    /**
+     * Change the alarm rules (`alarm.rules.set`): the codes given, each
+     * with `on` and the fields that are `Some` (the others keep the hub's
+     * values); a code left out keeps its rule. All or nothing. The rules
+     * now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a rule without a code or a
+     * code given twice (nothing sent), and the hub's `bad_request` naming a
+     * field out of range; [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_alarms`].
+     */
+    fun `hubAlarmRulesSet`(`rules`: List<HubAlarmRule>): List<HubAlarmRule>
+    
+    /**
+     * The hub's alarms (`alarm.list`): the device's and the audio link's,
+     * those on first (newest first), then the cleared, at most 500.
+     * `serial` "" for every alarm, else only that device's; `state` ""
+     * (every one), `active` (raised or acknowledged) or `cleared`. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `alarms` cap (nothing
+     * sent); [`DspiError::InvalidArgument`] for another `state`;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    fun `hubAlarms`(`serial`: kotlin.String, `state`: kotlin.String): List<HubAlarm>
+    
+    /**
+     * Mint an API key `name` with `role` (`viewer`, `control`, `admin`;
+     * never above this session's) for REST and Home Assistant
+     * (`auth.mint`). The key is in this answer only: show it once. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another role (nothing
+     * sent) or the hub's `bad_request`; [`DspiError::Denied`] below Admin or
+     * for a role above this session's; [`DspiError::Link`] `conflict` with
+     * 64 clients and keys; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_api_keys`].
+     */
+    fun `hubApiKeyMint`(`name`: kotlin.String, `role`: kotlin.String, `plaintextOk`: kotlin.Boolean): HubApiKeyMinted
+    
+    /**
+     * Revoke API key `cid` (`auth.revoke`): its REST session ends. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a `cid` that is not an API
+     * key's here (nothing sent, so a console's pairing is never revoked by
+     * this call) or that the hub does not know; as
+     * [`DspiCore::hub_api_key_mint`].
+     */
+    fun `hubApiKeyRevoke`(`cid`: kotlin.UInt)
+    
+    /**
+     * The hub's API keys (`auth.list`'s rows of kind `api`; the consoles'
+     * pairings are left out). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `api_keys` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    fun `hubApiKeys`(): List<HubApiKey>
+    
+    /**
+     * Which of the hub's families this console's hub has, from its `hello`.
+     * All false with no live DSPi Link session. No I/O.
+     */
+    fun `hubCaps`(): HubCaps
+    
+    /**
+     * Device `serial`'s history on the hub ("" the open device), with ids
+     * above `after_id`, oldest first, at most `limit` (capped at 500; 0
+     * is the hub's 100): with `after_id` 0 the newest page
+     * (`event.list`). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `events` cap;
+     * [`DspiError::Link`] `not_found` for a device with no log on the hub;
+     * [`DspiError::Disconnected`].
+     */
+    fun `hubEventsRead`(`serial`: kotlin.String, `afterId`: kotlin.ULong, `limit`: kotlin.UInt): HubEventPage
+    
+    /**
+     * Have the hub send each new record of device `serial`'s history ("":
+     * every device) as `event.added` (`on`), or stop (`event.watch`). The
+     * records reach [`HubServerListener`] and [`DspiCore::hub_server_events`].
+     * A watch ends with the hub session: ask again after a reconnect. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_events_read`].
+     */
+    fun `hubEventsWatch`(`on`: kotlin.Boolean, `serial`: kotlin.String)
+    
+    /**
+     * One health record per online device of the hub (`health.get`):
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `health` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    fun `hubHealth`(): List<HubHealth>
+    
+    /**
+     * Identify the open device: blink its LED for `seconds` (0 stops it;
+     * at most 120) and, with `tone_output`, play its quiet identify tone
+     * once on that output (leave it empty unless the user asked for sound).
+     * On a hub with the `identify` cap this is the hub's `device.identify`
+     * (Control or Admin; the hub sends it, at most once per device per 2 s);
+     * connected directly it is the device's own `EXT_IDENTIFY`
+     * ([`DspiCore::identify`]). The answer is the device's state read after
+     * the write; `None` when that read failed (the write went out). Slow:
+     * off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] (nothing sent) on a hub without the
+     * cap and on firmware without `EXT_IDENTIFY`;
+     * [`DspiError::InvalidArgument`] for a tone output the device does not
+     * have; [`DspiError::Locked`] for a tone under another session's lock;
+     * [`DspiError::Link`] `rate_limited`, `offline`, `not_found`, `device`;
+     * [`DspiError::ReadOnly`] in read-only mode; as
+     * [`DspiCore::identify`] directly.
+     */
+    fun `hubIdentify`(`seconds`: kotlin.UByte, `toneOutput`: kotlin.UByte?): IdentifyInfo?
+    
+    /**
+     * Every DSPi the hub has seen, online or not: online first, then by
+     * last seen, newest first (`inventory.list`, read page by page, at most
+     * 1024). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `inventory` cap (nothing
+     * sent); [`DspiError::Disconnected`]; the hub's refusal (module docs).
+     */
+    fun `hubInventory`(): List<HubDevice>
+    
+    /**
      * Remove the hub's limits profile for the open device (nothing on the
      * device changes; with it goes what the lock covers). Admin of the hub
      * only. Slow: off the UI thread.
@@ -8309,6 +8844,70 @@ public interface DspiCoreInterface {
     fun `hubModePin`(`role`: kotlin.String, `mode`: kotlin.String): HubAdminState
     
     /**
+     * The broker setting (`mqtt.get`): the values in use, the password and
+     * a client key as `set` or `not set`. Admin of the hub. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `mqtt` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    fun `hubMqttGet`(): HubMqttSettings
+    
+    /**
+     * Change the broker setting (`mqtt.set`): every field as given (what
+     * [`DspiCore::hub_mqtt_get`] answered can be sent back as it is; see
+     * [`HubMqttSettings`] for "" and the password). Any change but Home
+     * Assistant's ends the connection and starts a new one. The setting
+     * now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with the hub's words naming the
+     * field (nothing changed); as [`DspiCore::hub_mqtt_get`];
+     * [`DspiError::ReadOnly`].
+     */
+    fun `hubMqttSet`(`settings`: HubMqttSettings): HubMqttSettings
+    
+    /**
+     * The broker connection now (`mqtt.status`). Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_mqtt_get`].
+     */
+    fun `hubMqttStatus`(): HubMqttStatus
+    
+    /**
+     * The notification targets (`outbound.get`), secrets as `set` or `not
+     * set`, with each one's queue and last try. Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `outbound` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    fun `hubOutboundGet`(): List<HubOutboundTarget>
+    
+    /**
+     * Replace the notification targets (`outbound.set`, the whole list, at
+     * most 16). A target with `secret` `new` gets a secret made by the hub:
+     * in [`HubOutboundSet::secrets`], this once. The list as
+     * [`DspiCore::hub_outbound_get`] gives can be sent back as it is. Admin
+     * of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with the hub's words naming the
+     * entry and field (nothing kept); as [`DspiCore::hub_outbound_get`];
+     * [`DspiError::ReadOnly`].
+     */
+    fun `hubOutboundSet`(`targets`: List<HubOutboundTarget>): HubOutboundSet
+    
+    /**
+     * Send target `id` one delivery of kind `test` now (`outbound.test`),
+     * recorded as its last try. Admin of the hub. Slow (up to 10 s): off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_outbound_set`].
+     */
+    fun `hubOutboundTest`(`id`: kotlin.String): HubOutboundTest
+    
+    /**
      * Remove the hub's installer PIN for the open device (and its recovery
      * code): the hub's lock is off. Admin of the hub only. Slow: off the UI
      * thread.
@@ -8328,6 +8927,165 @@ public interface DspiCoreInterface {
      * [`DspiCore::hub_limits_set`].
      */
     fun `hubPinSet`(`pin`: kotlin.String): HubPinSet
+    
+    /**
+     * Delete rule `id` (`schedule.delete`). Admin of the hub. Slow: off the
+     * UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_schedule_set`].
+     */
+    fun `hubScheduleDelete`(`id`: kotlin.String)
+    
+    /**
+     * Run rule `id` now (`schedule.run_now`), whether it is enabled or not:
+     * the hub writes its targets as `Schedule: <name>`, and the run's
+     * results come back (one row per action and target; a failed row is not
+     * a failed call). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`, `conflict` while the hub's
+     * clock is unset; as [`DspiCore::hub_schedule_set`].
+     */
+    fun `hubScheduleRunNow`(`id`: kotlin.String): HubScheduleRun
+    
+    /**
+     * Add a rule (`id` "") or replace rule `id` whole (`schedule.set`); its
+     * `next_run` and `last` are not sent. The rule as the hub lists it.
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for both `days` and `once`, a
+     * `param.set` without a value (nothing sent) and the hub's
+     * `bad_request`; [`DspiError::Link`] `not_found` (no rule `id`),
+     * `conflict` (256 rules); [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_schedules`].
+     */
+    fun `hubScheduleSet`(`rule`: HubScheduleRule): HubScheduleRule
+    
+    /**
+     * The hub's schedule (`schedule.list`): the rules with their next and
+     * last runs, the time zone, the hub's local time and whether its clock
+     * is unset. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `schedule` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    fun `hubSchedules`(): HubSchedules
+    
+    /**
+     * The hub's events of these families since the last call, oldest first
+     * (at most 64 are kept), for a binding that polls instead of a listener
+     * (the web). No I/O.
+     */
+    fun `hubServerEvents`(): List<HubServerEvent>
+    
+    /**
+     * "Copy here": file the hub's snapshot `id` in this console's own store.
+     * Kept as the hub has it, under its capture-time id unless this store
+     * already holds that id with other content (then the copy gets the
+     * next free one: nothing is overwritten); the same snapshot already here
+     * is answered as it is. Errors: as [`DspiCore::hub_snapshots_get`], and
+     * [`DspiError::Io`] with no folder named for snapshots.
+     */
+    fun `hubSnapshotsCopyHere`(`id`: kotlin.String): SnapshotInfo
+    
+    /**
+     * Delete snapshot `id` from the hub (`snapshot.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_snapshots_rename`].
+     */
+    fun `hubSnapshotsDelete`(`id`: kotlin.String)
+    
+    /**
+     * Snapshot `id` on the hub with its document (`snapshot.get`). Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `conflict` for a document
+     * over 61 440 bytes compact (the hub's words); as
+     * [`DspiCore::hub_snapshots_list`].
+     */
+    fun `hubSnapshotsGet`(`id`: kotlin.String): HubSnapshotDocument
+    
+    /**
+     * Device `serial`'s snapshots on the hub ("" the open device), oldest
+     * first (`snapshot.list`). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_snapshots` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    fun `hubSnapshotsList`(`serial`: kotlin.String): List<SnapshotInfo>
+    
+    /**
+     * Set snapshot `id`'s note on the hub (`snapshot.note`; at most 4096
+     * characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_snapshots_rename`].
+     */
+    fun `hubSnapshotsNote`(`id`: kotlin.String, `note`: kotlin.String): SnapshotInfo
+    
+    /**
+     * File snapshot `document` (its text: a snapshot document of device
+     * `serial`, "" for the serial its `snapshot` block names) on the hub
+     * (`snapshot.put`), under the id the document carries. The same document
+     * again is `created: false`. Control or Admin of the hub. Slow: off the
+     * UI thread.
+     *
+     * A document over 61 440 bytes in its compact JSON form is refused here,
+     * with nothing sent: [`DspiError::Link`] `conflict`, "a snapshot document
+     * is at most 61440 bytes on the DSPi Link (compact JSON); this one is N",
+     * as the hub would answer.
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for text that is not a
+     * JSON object, or the hub's `bad_request` (not a snapshot of that
+     * device); [`DspiError::Link`] `conflict` (the hub holds a different
+     * snapshot with this id, or a cap is reached); [`DspiError::Denied`]
+     * for a Viewer; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_snapshots_list`].
+     */
+    fun `hubSnapshotsPut`(`serial`: kotlin.String, `document`: kotlin.String): HubSnapshotPut
+    
+    /**
+     * Recall snapshot `id` from the hub's store on device `serial` ("" the
+     * open device), written by the hub as this console's session
+     * (`snapshot.recall`). With `guard` a guarded apply begins first
+     * (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
+     * Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::ImageRefused`] for Control on a device with a
+     * limits profile or a lock (nothing written); [`DspiError::Link`]
+     * `offline`, `not_found`, `conflict` (another session's guarded apply);
+     * as [`DspiCore::hub_snapshots_put`].
+     */
+    fun `hubSnapshotsRecall`(`serial`: kotlin.String, `id`: kotlin.String, `guard`: kotlin.Boolean, `timeoutMs`: kotlin.UInt): HubSnapshotRecall
+    
+    /**
+     * Rename snapshot `id` on the hub (`snapshot.rename`; at most 256
+     * characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_snapshots_put`].
+     */
+    fun `hubSnapshotsRename`(`id`: kotlin.String, `name`: kotlin.String): SnapshotInfo
+    
+    /**
+     * "Save to the hub": file this console's snapshot `id` (its own store,
+     * [`DspiCore::snapshot_set_dir`]) on the hub, under the same id and the
+     * device it was taken from. Errors: as [`DspiCore::hub_snapshots_put`],
+     * and as [`DspiCore::snapshot_export`] for the local read.
+     */
+    fun `hubSnapshotsSave`(`id`: kotlin.String): HubSnapshotPut
+    
+    /**
+     * The hub's statistics (`hub.stats`): sessions, uptime, and per attached
+     * device its commands, errors, mean time and dropped notifications.
+     * Admin of the hub only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_stats` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    fun `hubStats`(): HubStats
     
     /**
      * `EXT_IDENTIFY`: blink the device's LED for `seconds` (0 stops it; over
@@ -9610,6 +10368,12 @@ public interface DspiCoreInterface {
     fun `setHubAdminListener`(`listener`: HubAdminListener?)
     
     /**
+     * Register (`Some`) or clear (`None`) the listener for the hub's
+     * `event.added`, `inventory.changed` and `snapshot.changed`.
+     */
+    fun `setHubServerListener`(`listener`: HubServerListener?)
+    
+    /**
      * Send an I2C target control-interface config (pins, 7-bit address).
      * Applied and persisted later, as [`DspiCore::set_uart`]; read the
      * outcome with [`DspiCore::fetch_ctrl_ifaces`].
@@ -10346,6 +11110,20 @@ public interface DspiCoreInterface {
      * a damaged index is rebuilt from the documents.
      */
     fun `snapshotList`(`serial`: kotlin.String): List<SnapshotInfo>
+    
+    /**
+     * The snapshots of device `serial` ("" the open device) on both sides:
+     * this console's store ([`DspiCore::snapshot_list`]) and, on a DSPi Link
+     * session to a hub that keeps snapshots, the hub's
+     * ([`DspiCore::hub_snapshots_list`]). Each row says where it is (`local`,
+     * `hub` or `both`). **The hub's wins:** an id both sides hold with
+     * different content (any field of the entry differs) is listed as the
+     * hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. Never fails: a hub that cannot be read leaves the local
+     * rows, with `hub_notice_key` saying why. A round trip on a hub: off the
+     * UI thread.
+     */
+    fun `snapshotListMerged`(`serial`: kotlin.String): SnapshotMergedList
     
     /**
      * Recall snapshot `id` on the open device: the settings outside the
@@ -13832,6 +14610,295 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Acknowledge alarm `id` (`alarm.ack`): the alarm as it is now. A
+     * `device_restarted` or `schedule_failed` alarm is cleared by it.
+     * Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` for an alarm that is not on;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_alarms`].
+     */
+    @Throws(DspiException::class)override fun `hubAlarmAck`(`id`: kotlin.String): HubAlarm {
+            return FfiConverterTypeHubAlarm.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_alarm_ack(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The alarm rules (`alarm.rules.get`), one row per code. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_alarms`].
+     */
+    @Throws(DspiException::class)override fun `hubAlarmRulesGet`(): List<HubAlarmRule> {
+            return FfiConverterSequenceTypeHubAlarmRule.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_alarm_rules_get(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Change the alarm rules (`alarm.rules.set`): the codes given, each
+     * with `on` and the fields that are `Some` (the others keep the hub's
+     * values); a code left out keeps its rule. All or nothing. The rules
+     * now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a rule without a code or a
+     * code given twice (nothing sent), and the hub's `bad_request` naming a
+     * field out of range; [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_alarms`].
+     */
+    @Throws(DspiException::class)override fun `hubAlarmRulesSet`(`rules`: List<HubAlarmRule>): List<HubAlarmRule> {
+            return FfiConverterSequenceTypeHubAlarmRule.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_alarm_rules_set(
+        it, FfiConverterSequenceTypeHubAlarmRule.lower(`rules`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The hub's alarms (`alarm.list`): the device's and the audio link's,
+     * those on first (newest first), then the cleared, at most 500.
+     * `serial` "" for every alarm, else only that device's; `state` ""
+     * (every one), `active` (raised or acknowledged) or `cleared`. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `alarms` cap (nothing
+     * sent); [`DspiError::InvalidArgument`] for another `state`;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    @Throws(DspiException::class)override fun `hubAlarms`(`serial`: kotlin.String, `state`: kotlin.String): List<HubAlarm> {
+            return FfiConverterSequenceTypeHubAlarm.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_alarms(
+        it, FfiConverterString.lower(`serial`),FfiConverterString.lower(`state`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Mint an API key `name` with `role` (`viewer`, `control`, `admin`;
+     * never above this session's) for REST and Home Assistant
+     * (`auth.mint`). The key is in this answer only: show it once. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another role (nothing
+     * sent) or the hub's `bad_request`; [`DspiError::Denied`] below Admin or
+     * for a role above this session's; [`DspiError::Link`] `conflict` with
+     * 64 clients and keys; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_api_keys`].
+     */
+    @Throws(DspiException::class)override fun `hubApiKeyMint`(`name`: kotlin.String, `role`: kotlin.String, `plaintextOk`: kotlin.Boolean): HubApiKeyMinted {
+            return FfiConverterTypeHubApiKeyMinted.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_api_key_mint(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`role`),FfiConverterBoolean.lower(`plaintextOk`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Revoke API key `cid` (`auth.revoke`): its REST session ends. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a `cid` that is not an API
+     * key's here (nothing sent, so a console's pairing is never revoked by
+     * this call) or that the hub does not know; as
+     * [`DspiCore::hub_api_key_mint`].
+     */
+    @Throws(DspiException::class)override fun `hubApiKeyRevoke`(`cid`: kotlin.UInt)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_api_key_revoke(
+        it, FfiConverterUInt.lower(`cid`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The hub's API keys (`auth.list`'s rows of kind `api`; the consoles'
+     * pairings are left out). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `api_keys` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubApiKeys`(): List<HubApiKey> {
+            return FfiConverterSequenceTypeHubApiKey.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_api_keys(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Which of the hub's families this console's hub has, from its `hello`.
+     * All false with no live DSPi Link session. No I/O.
+     */override fun `hubCaps`(): HubCaps {
+            return FfiConverterTypeHubCaps.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_caps(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Device `serial`'s history on the hub ("" the open device), with ids
+     * above `after_id`, oldest first, at most `limit` (capped at 500; 0
+     * is the hub's 100): with `after_id` 0 the newest page
+     * (`event.list`). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `events` cap;
+     * [`DspiError::Link`] `not_found` for a device with no log on the hub;
+     * [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubEventsRead`(`serial`: kotlin.String, `afterId`: kotlin.ULong, `limit`: kotlin.UInt): HubEventPage {
+            return FfiConverterTypeHubEventPage.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_events_read(
+        it, FfiConverterString.lower(`serial`),FfiConverterULong.lower(`afterId`),FfiConverterUInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Have the hub send each new record of device `serial`'s history ("":
+     * every device) as `event.added` (`on`), or stop (`event.watch`). The
+     * records reach [`HubServerListener`] and [`DspiCore::hub_server_events`].
+     * A watch ends with the hub session: ask again after a reconnect. Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_events_read`].
+     */
+    @Throws(DspiException::class)override fun `hubEventsWatch`(`on`: kotlin.Boolean, `serial`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_events_watch(
+        it, FfiConverterBoolean.lower(`on`),FfiConverterString.lower(`serial`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * One health record per online device of the hub (`health.get`):
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `health` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    @Throws(DspiException::class)override fun `hubHealth`(): List<HubHealth> {
+            return FfiConverterSequenceTypeHubHealth.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_health(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Identify the open device: blink its LED for `seconds` (0 stops it;
+     * at most 120) and, with `tone_output`, play its quiet identify tone
+     * once on that output (leave it empty unless the user asked for sound).
+     * On a hub with the `identify` cap this is the hub's `device.identify`
+     * (Control or Admin; the hub sends it, at most once per device per 2 s);
+     * connected directly it is the device's own `EXT_IDENTIFY`
+     * ([`DspiCore::identify`]). The answer is the device's state read after
+     * the write; `None` when that read failed (the write went out). Slow:
+     * off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] (nothing sent) on a hub without the
+     * cap and on firmware without `EXT_IDENTIFY`;
+     * [`DspiError::InvalidArgument`] for a tone output the device does not
+     * have; [`DspiError::Locked`] for a tone under another session's lock;
+     * [`DspiError::Link`] `rate_limited`, `offline`, `not_found`, `device`;
+     * [`DspiError::ReadOnly`] in read-only mode; as
+     * [`DspiCore::identify`] directly.
+     */
+    @Throws(DspiException::class)override fun `hubIdentify`(`seconds`: kotlin.UByte, `toneOutput`: kotlin.UByte?): IdentifyInfo? {
+            return FfiConverterOptionalTypeIdentifyInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_identify(
+        it, FfiConverterUByte.lower(`seconds`),FfiConverterOptionalUByte.lower(`toneOutput`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Every DSPi the hub has seen, online or not: online first, then by
+     * last seen, newest first (`inventory.list`, read page by page, at most
+     * 1024). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `inventory` cap (nothing
+     * sent); [`DspiError::Disconnected`]; the hub's refusal (module docs).
+     */
+    @Throws(DspiException::class)override fun `hubInventory`(): List<HubDevice> {
+            return FfiConverterSequenceTypeHubDevice.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_inventory(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Remove the hub's limits profile for the open device (nothing on the
      * device changes; with it goes what the lock covers). Admin of the hub
      * only. Slow: off the UI thread.
@@ -13918,6 +14985,136 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The broker setting (`mqtt.get`): the values in use, the password and
+     * a client key as `set` or `not set`. Admin of the hub. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `mqtt` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubMqttGet`(): HubMqttSettings {
+            return FfiConverterTypeHubMqttSettings.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_mqtt_get(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Change the broker setting (`mqtt.set`): every field as given (what
+     * [`DspiCore::hub_mqtt_get`] answered can be sent back as it is; see
+     * [`HubMqttSettings`] for "" and the password). Any change but Home
+     * Assistant's ends the connection and starts a new one. The setting
+     * now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with the hub's words naming the
+     * field (nothing changed); as [`DspiCore::hub_mqtt_get`];
+     * [`DspiError::ReadOnly`].
+     */
+    @Throws(DspiException::class)override fun `hubMqttSet`(`settings`: HubMqttSettings): HubMqttSettings {
+            return FfiConverterTypeHubMqttSettings.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_mqtt_set(
+        it, FfiConverterTypeHubMqttSettings.lower(`settings`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The broker connection now (`mqtt.status`). Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_mqtt_get`].
+     */
+    @Throws(DspiException::class)override fun `hubMqttStatus`(): HubMqttStatus {
+            return FfiConverterTypeHubMqttStatus.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_mqtt_status(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The notification targets (`outbound.get`), secrets as `set` or `not
+     * set`, with each one's queue and last try. Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `outbound` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubOutboundGet`(): List<HubOutboundTarget> {
+            return FfiConverterSequenceTypeHubOutboundTarget.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_outbound_get(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Replace the notification targets (`outbound.set`, the whole list, at
+     * most 16). A target with `secret` `new` gets a secret made by the hub:
+     * in [`HubOutboundSet::secrets`], this once. The list as
+     * [`DspiCore::hub_outbound_get`] gives can be sent back as it is. Admin
+     * of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with the hub's words naming the
+     * entry and field (nothing kept); as [`DspiCore::hub_outbound_get`];
+     * [`DspiError::ReadOnly`].
+     */
+    @Throws(DspiException::class)override fun `hubOutboundSet`(`targets`: List<HubOutboundTarget>): HubOutboundSet {
+            return FfiConverterTypeHubOutboundSet.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_outbound_set(
+        it, FfiConverterSequenceTypeHubOutboundTarget.lower(`targets`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Send target `id` one delivery of kind `test` now (`outbound.test`),
+     * recorded as its last try. Admin of the hub. Slow (up to 10 s): off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_outbound_set`].
+     */
+    @Throws(DspiException::class)override fun `hubOutboundTest`(`id`: kotlin.String): HubOutboundTest {
+            return FfiConverterTypeHubOutboundTest.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_outbound_test(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Remove the hub's installer PIN for the open device (and its recovery
      * code): the hub's lock is off. Admin of the hub only. Slow: off the UI
      * thread.
@@ -13953,6 +15150,327 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_pin_set(
         it, FfiConverterString.lower(`pin`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Delete rule `id` (`schedule.delete`). Admin of the hub. Slow: off the
+     * UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_schedule_set`].
+     */
+    @Throws(DspiException::class)override fun `hubScheduleDelete`(`id`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_schedule_delete(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Run rule `id` now (`schedule.run_now`), whether it is enabled or not:
+     * the hub writes its targets as `Schedule: <name>`, and the run's
+     * results come back (one row per action and target; a failed row is not
+     * a failed call). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`, `conflict` while the hub's
+     * clock is unset; as [`DspiCore::hub_schedule_set`].
+     */
+    @Throws(DspiException::class)override fun `hubScheduleRunNow`(`id`: kotlin.String): HubScheduleRun {
+            return FfiConverterTypeHubScheduleRun.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_schedule_run_now(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Add a rule (`id` "") or replace rule `id` whole (`schedule.set`); its
+     * `next_run` and `last` are not sent. The rule as the hub lists it.
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for both `days` and `once`, a
+     * `param.set` without a value (nothing sent) and the hub's
+     * `bad_request`; [`DspiError::Link`] `not_found` (no rule `id`),
+     * `conflict` (256 rules); [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_schedules`].
+     */
+    @Throws(DspiException::class)override fun `hubScheduleSet`(`rule`: HubScheduleRule): HubScheduleRule {
+            return FfiConverterTypeHubScheduleRule.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_schedule_set(
+        it, FfiConverterTypeHubScheduleRule.lower(`rule`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The hub's schedule (`schedule.list`): the rules with their next and
+     * last runs, the time zone, the hub's local time and whether its clock
+     * is unset. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `schedule` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    @Throws(DspiException::class)override fun `hubSchedules`(): HubSchedules {
+            return FfiConverterTypeHubSchedules.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_schedules(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The hub's events of these families since the last call, oldest first
+     * (at most 64 are kept), for a binding that polls instead of a listener
+     * (the web). No I/O.
+     */override fun `hubServerEvents`(): List<HubServerEvent> {
+            return FfiConverterSequenceTypeHubServerEvent.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_server_events(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * "Copy here": file the hub's snapshot `id` in this console's own store.
+     * Kept as the hub has it, under its capture-time id unless this store
+     * already holds that id with other content (then the copy gets the
+     * next free one: nothing is overwritten); the same snapshot already here
+     * is answered as it is. Errors: as [`DspiCore::hub_snapshots_get`], and
+     * [`DspiError::Io`] with no folder named for snapshots.
+     */
+    @Throws(DspiException::class)override fun `hubSnapshotsCopyHere`(`id`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_snapshots_copy_here(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Delete snapshot `id` from the hub (`snapshot.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_snapshots_rename`].
+     */
+    @Throws(DspiException::class)override fun `hubSnapshotsDelete`(`id`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_snapshots_delete(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Snapshot `id` on the hub with its document (`snapshot.get`). Every
+     * role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `conflict` for a document
+     * over 61 440 bytes compact (the hub's words); as
+     * [`DspiCore::hub_snapshots_list`].
+     */
+    @Throws(DspiException::class)override fun `hubSnapshotsGet`(`id`: kotlin.String): HubSnapshotDocument {
+            return FfiConverterTypeHubSnapshotDocument.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_snapshots_get(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Device `serial`'s snapshots on the hub ("" the open device), oldest
+     * first (`snapshot.list`). Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_snapshots` cap;
+     * [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    @Throws(DspiException::class)override fun `hubSnapshotsList`(`serial`: kotlin.String): List<SnapshotInfo> {
+            return FfiConverterSequenceTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_snapshots_list(
+        it, FfiConverterString.lower(`serial`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Set snapshot `id`'s note on the hub (`snapshot.note`; at most 4096
+     * characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_snapshots_rename`].
+     */
+    @Throws(DspiException::class)override fun `hubSnapshotsNote`(`id`: kotlin.String, `note`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_snapshots_note(
+        it, FfiConverterString.lower(`id`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * File snapshot `document` (its text: a snapshot document of device
+     * `serial`, "" for the serial its `snapshot` block names) on the hub
+     * (`snapshot.put`), under the id the document carries. The same document
+     * again is `created: false`. Control or Admin of the hub. Slow: off the
+     * UI thread.
+     *
+     * A document over 61 440 bytes in its compact JSON form is refused here,
+     * with nothing sent: [`DspiError::Link`] `conflict`, "a snapshot document
+     * is at most 61440 bytes on the DSPi Link (compact JSON); this one is N",
+     * as the hub would answer.
+     *
+     * Errors: that; [`DspiError::InvalidArgument`] for text that is not a
+     * JSON object, or the hub's `bad_request` (not a snapshot of that
+     * device); [`DspiError::Link`] `conflict` (the hub holds a different
+     * snapshot with this id, or a cap is reached); [`DspiError::Denied`]
+     * for a Viewer; [`DspiError::ReadOnly`]; as
+     * [`DspiCore::hub_snapshots_list`].
+     */
+    @Throws(DspiException::class)override fun `hubSnapshotsPut`(`serial`: kotlin.String, `document`: kotlin.String): HubSnapshotPut {
+            return FfiConverterTypeHubSnapshotPut.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_snapshots_put(
+        it, FfiConverterString.lower(`serial`),FfiConverterString.lower(`document`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Recall snapshot `id` from the hub's store on device `serial` ("" the
+     * open device), written by the hub as this console's session
+     * (`snapshot.recall`). With `guard` a guarded apply begins first
+     * (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
+     * Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::ImageRefused`] for Control on a device with a
+     * limits profile or a lock (nothing written); [`DspiError::Link`]
+     * `offline`, `not_found`, `conflict` (another session's guarded apply);
+     * as [`DspiCore::hub_snapshots_put`].
+     */
+    @Throws(DspiException::class)override fun `hubSnapshotsRecall`(`serial`: kotlin.String, `id`: kotlin.String, `guard`: kotlin.Boolean, `timeoutMs`: kotlin.UInt): HubSnapshotRecall {
+            return FfiConverterTypeHubSnapshotRecall.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_snapshots_recall(
+        it, FfiConverterString.lower(`serial`),FfiConverterString.lower(`id`),FfiConverterBoolean.lower(`guard`),FfiConverterUInt.lower(`timeoutMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Rename snapshot `id` on the hub (`snapshot.rename`; at most 256
+     * characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; as
+     * [`DspiCore::hub_snapshots_put`].
+     */
+    @Throws(DspiException::class)override fun `hubSnapshotsRename`(`id`: kotlin.String, `name`: kotlin.String): SnapshotInfo {
+            return FfiConverterTypeSnapshotInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_snapshots_rename(
+        it, FfiConverterString.lower(`id`),FfiConverterString.lower(`name`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * "Save to the hub": file this console's snapshot `id` (its own store,
+     * [`DspiCore::snapshot_set_dir`]) on the hub, under the same id and the
+     * device it was taken from. Errors: as [`DspiCore::hub_snapshots_put`],
+     * and as [`DspiCore::snapshot_export`] for the local read.
+     */
+    @Throws(DspiException::class)override fun `hubSnapshotsSave`(`id`: kotlin.String): HubSnapshotPut {
+            return FfiConverterTypeHubSnapshotPut.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_snapshots_save(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The hub's statistics (`hub.stats`): sessions, uptime, and per attached
+     * device its commands, errors, mean time and dropped notifications.
+     * Admin of the hub only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_stats` cap;
+     * [`DspiError::Denied`] below Admin; [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubStats`(): HubStats {
+            return FfiConverterTypeHubStats.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_stats(
+        it, _status)
 }
     }
     )
@@ -16333,6 +17851,21 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Register (`Some`) or clear (`None`) the listener for the hub's
+     * `event.added`, `inventory.changed` and `snapshot.changed`.
+     */override fun `setHubServerListener`(`listener`: HubServerListener?)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_hub_server_listener(
+        it, FfiConverterOptionalTypeHubServerListener.lower(`listener`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Send an I2C target control-interface config (pins, 7-bit address).
      * Applied and persisted later, as [`DspiCore::set_uart`]; read the
      * outcome with [`DspiCore::fetch_ctrl_ifaces`].
@@ -17766,6 +19299,30 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The snapshots of device `serial` ("" the open device) on both sides:
+     * this console's store ([`DspiCore::snapshot_list`]) and, on a DSPi Link
+     * session to a hub that keeps snapshots, the hub's
+     * ([`DspiCore::hub_snapshots_list`]). Each row says where it is (`local`,
+     * `hub` or `both`). **The hub's wins:** an id both sides hold with
+     * different content (any field of the entry differs) is listed as the
+     * hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. Never fails: a hub that cannot be read leaves the local
+     * rows, with `hub_notice_key` saying why. A round trip on a hub: off the
+     * UI thread.
+     */override fun `snapshotListMerged`(`serial`: kotlin.String): SnapshotMergedList {
+            return FfiConverterTypeSnapshotMergedList.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_snapshot_list_merged(
+        it, FfiConverterString.lower(`serial`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Recall snapshot `id` on the open device: the settings outside the
      * image that differ (device and source names, output latency, control
      * surfaces), then the image as one bulk write, under the device lock.
@@ -18827,6 +20384,552 @@ public object FfiConverterTypeHubAdminListener: FfiConverter<HubAdminListener, P
     override fun allocationSize(value: HubAdminListener) = 8UL
 
     override fun write(value: HubAdminListener, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// to the live Rust struct on the other side of the FFI.
+//
+// Each instance implements core operations for working with the Rust `Arc<T>` and the
+// Kotlin Pointer to work with the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque pointer to the underlying Rust struct.
+//     Method calls need to read this pointer from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its pointer should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the pointer, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the pointer, but is interrupted
+//      before it can pass the pointer over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read pointer value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * A secret the hub made and shows once: an API key, a webhook's secret. An
+ * object, not a string field, so that no binding's generated record
+ * printing (Kotlin `toString`, Swift `description`) shows it: read it with
+ * [`HubSecret::reveal`] to show it once, and keep it nowhere else. Its
+ * `Debug` is `set`; serialized (the C and wasm answers) it is the plain
+ * string.
+ */
+public interface HubSecretInterface {
+    
+    /**
+     * The secret's text, to show once. No I/O.
+     */
+    fun `reveal`(): kotlin.String
+    
+    companion object
+}
+
+/**
+ * A secret the hub made and shows once: an API key, a webhook's secret. An
+ * object, not a string field, so that no binding's generated record
+ * printing (Kotlin `toString`, Swift `description`) shows it: read it with
+ * [`HubSecret::reveal`] to show it once, and keep it nowhere else. Its
+ * `Debug` is `set`; serialized (the C and wasm answers) it is the plain
+ * string.
+ */
+open class HubSecret: Disposable, AutoCloseable, HubSecretInterface
+{
+
+    constructor(pointer: Pointer) {
+        this.pointer = pointer
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    /**
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noPointer: NoPointer) {
+        this.pointer = null
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    protected val pointer: Pointer?
+    protected val cleanable: UniffiCleaner.Cleanable
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithPointer(block: (ptr: Pointer) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the pointer being freed concurrently.
+        try {
+            return block(this.uniffiClonePointer())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val pointer: Pointer?) : Runnable {
+        override fun run() {
+            pointer?.let { ptr ->
+                uniffiRustCall { status ->
+                    UniffiLib.INSTANCE.uniffi_dspi_core_fn_free_hubsecret(ptr, status)
+                }
+            }
+        }
+    }
+
+    fun uniffiClonePointer(): Pointer {
+        return uniffiRustCall() { status ->
+            UniffiLib.INSTANCE.uniffi_dspi_core_fn_clone_hubsecret(pointer!!, status)
+        }
+    }
+
+    
+    /**
+     * The secret's text, to show once. No I/O.
+     */override fun `reveal`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_hubsecret_reveal(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+
+    
+    
+    companion object
+    
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubSecret: FfiConverter<HubSecret, Pointer> {
+
+    override fun lower(value: HubSecret): Pointer {
+        return value.uniffiClonePointer()
+    }
+
+    override fun lift(value: Pointer): HubSecret {
+        return HubSecret(value)
+    }
+
+    override fun read(buf: ByteBuffer): HubSecret {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: HubSecret) = 8UL
+
+    override fun write(value: HubSecret, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// to the live Rust struct on the other side of the FFI.
+//
+// Each instance implements core operations for working with the Rust `Arc<T>` and the
+// Kotlin Pointer to work with the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque pointer to the underlying Rust struct.
+//     Method calls need to read this pointer from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its pointer should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the pointer, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the pointer, but is interrupted
+//      before it can pass the pointer over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read pointer value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * The hub's events of these families reach the app here (WP P2CC1): set with
+ * [`DspiCore::set_hub_server_listener`].
+ */
+public interface HubServerListener {
+    
+    /**
+     * A record was added to a watched history, the inventory or the hub's
+     * snapshots changed. Called on the Link session's supervisor, no core
+     * lock held: post the work to the app's own thread and return.
+     */
+    fun `onHubServerEvent`(`event`: HubServerEvent)
+    
+    companion object
+}
+
+/**
+ * The hub's events of these families reach the app here (WP P2CC1): set with
+ * [`DspiCore::set_hub_server_listener`].
+ */
+open class HubServerListenerImpl: Disposable, AutoCloseable, HubServerListener
+{
+
+    constructor(pointer: Pointer) {
+        this.pointer = pointer
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    /**
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noPointer: NoPointer) {
+        this.pointer = null
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    protected val pointer: Pointer?
+    protected val cleanable: UniffiCleaner.Cleanable
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithPointer(block: (ptr: Pointer) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the pointer being freed concurrently.
+        try {
+            return block(this.uniffiClonePointer())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val pointer: Pointer?) : Runnable {
+        override fun run() {
+            pointer?.let { ptr ->
+                uniffiRustCall { status ->
+                    UniffiLib.INSTANCE.uniffi_dspi_core_fn_free_hubserverlistener(ptr, status)
+                }
+            }
+        }
+    }
+
+    fun uniffiClonePointer(): Pointer {
+        return uniffiRustCall() { status ->
+            UniffiLib.INSTANCE.uniffi_dspi_core_fn_clone_hubserverlistener(pointer!!, status)
+        }
+    }
+
+    
+    /**
+     * A record was added to a watched history, the inventory or the hub's
+     * snapshots changed. Called on the Link session's supervisor, no core
+     * lock held: post the work to the app's own thread and return.
+     */override fun `onHubServerEvent`(`event`: HubServerEvent)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_hubserverlistener_on_hub_server_event(
+        it, FfiConverterTypeHubServerEvent.lower(`event`),_status)
+}
+    }
+    
+    
+
+    
+
+    
+    
+    companion object
+    
+}
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceHubServerListener {
+    internal object `onHubServerEvent`: UniffiCallbackInterfaceHubServerListenerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`event`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeHubServerListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onHubServerEvent`(
+                    FfiConverterTypeHubServerEvent.lift(`event`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeHubServerListener.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceHubServerListener.UniffiByValue(
+        `onHubServerEvent`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_dspi_core_fn_init_callback_vtable_hubserverlistener(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubServerListener: FfiConverter<HubServerListener, Pointer> {
+    internal val handleMap = UniffiHandleMap<HubServerListener>()
+
+    override fun lower(value: HubServerListener): Pointer {
+        return Pointer(handleMap.insert(value))
+    }
+
+    override fun lift(value: Pointer): HubServerListener {
+        return HubServerListenerImpl(value)
+    }
+
+    override fun read(buf: ByteBuffer): HubServerListener {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: HubServerListener) = 8UL
+
+    override fun write(value: HubServerListener, buf: ByteBuffer) {
         // The Rust code always expects pointers written as 8 bytes,
         // and will fail to compile if they don't fit.
         buf.putLong(Pointer.nativeValue(lower(value)))
@@ -26583,6 +28686,944 @@ public object FfiConverterTypeHubAdminState: FfiConverterRustBuffer<HubAdminStat
 
 
 /**
+ * One alarm of the hub's (`alarm.list`, `alarm.ack`, `alarm.changed`).
+ */
+data class HubAlarm (
+    /**
+     * `device:<n>` or `alink:<n>`, unique for the hub's run.
+     */
+    var `id`: kotlin.String, 
+    /**
+     * `device` or `alink`.
+     */
+    var `source`: kotlin.String, 
+    /**
+     * One of [`ALARM_CODES`] (or a code a newer hub adds).
+     */
+    var `code`: kotlin.String, 
+    /**
+     * What it is about: the serial, a schedule rule's id, `hub`, or an
+     * audio link unit.
+     */
+    var `subject`: kotlin.String, 
+    /**
+     * The device's serial; "" for an alarm about no one device.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * `warning` or `critical`.
+     */
+    var `severity`: kotlin.String, 
+    /**
+     * The hub's line for a person (also the notice's detail).
+     */
+    var `message`: kotlin.String, 
+    /**
+     * `raised`, `acknowledged` or `cleared`.
+     */
+    var `state`: kotlin.String, 
+    /**
+     * When it was raised (ISO-8601 UTC).
+     */
+    var `raisedAt`: kotlin.String, 
+    /**
+     * When it was cleared; "" while on.
+     */
+    var `clearedAt`: kotlin.String, 
+    /**
+     * Who acknowledged it (a client's or principal's name); "" when none.
+     */
+    var `acknowledgedBy`: kotlin.String, 
+    /**
+     * How often it was raised again while on.
+     */
+    var `count`: kotlin.UInt, 
+    /**
+     * `device_restarted`'s reset reason (`watchdog`, `glitch`, `brownout`,
+     * ...), read from the hub's message; "" otherwise.
+     */
+    var `reason`: kotlin.String, 
+    /**
+     * Its notice row: `alarm.<code>`, or [`NOTICE_ALARM_UNKNOWN`].
+     */
+    var `noticeKey`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubAlarm: FfiConverterRustBuffer<HubAlarm> {
+    override fun read(buf: ByteBuffer): HubAlarm {
+        return HubAlarm(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubAlarm) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`source`) +
+            FfiConverterString.allocationSize(value.`code`) +
+            FfiConverterString.allocationSize(value.`subject`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`severity`) +
+            FfiConverterString.allocationSize(value.`message`) +
+            FfiConverterString.allocationSize(value.`state`) +
+            FfiConverterString.allocationSize(value.`raisedAt`) +
+            FfiConverterString.allocationSize(value.`clearedAt`) +
+            FfiConverterString.allocationSize(value.`acknowledgedBy`) +
+            FfiConverterUInt.allocationSize(value.`count`) +
+            FfiConverterString.allocationSize(value.`reason`) +
+            FfiConverterString.allocationSize(value.`noticeKey`)
+    )
+
+    override fun write(value: HubAlarm, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`source`, buf)
+            FfiConverterString.write(value.`code`, buf)
+            FfiConverterString.write(value.`subject`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`severity`, buf)
+            FfiConverterString.write(value.`message`, buf)
+            FfiConverterString.write(value.`state`, buf)
+            FfiConverterString.write(value.`raisedAt`, buf)
+            FfiConverterString.write(value.`clearedAt`, buf)
+            FfiConverterString.write(value.`acknowledgedBy`, buf)
+            FfiConverterUInt.write(value.`count`, buf)
+            FfiConverterString.write(value.`reason`, buf)
+            FfiConverterString.write(value.`noticeKey`, buf)
+    }
+}
+
+
+
+/**
+ * One code's alarm rule (`alarm.rules.get`/`set`). A field the code does not
+ * have is `None`; in [`DspiCore::hub_alarm_rules_set`] a `None` keeps the
+ * hub's value.
+ */
+data class HubAlarmRule (
+    /**
+     * The alarm code.
+     */
+    var `code`: kotlin.String, 
+    /**
+     * The rule is on (off clears its alarms).
+     */
+    var `on`: kotlin.Boolean, 
+    /**
+     * `device_offline`, `unresponsive`: seconds (1 to 86 400).
+     */
+    var `afterS`: kotlin.UInt?, 
+    /**
+     * `clip`: clip events within a minute (1 to 1000).
+     */
+    var `perMinute`: kotlin.UInt?, 
+    /**
+     * `clip`: mute the device once per storm (off by default).
+     */
+    var `muteOnStorm`: kotlin.Boolean?, 
+    /**
+     * `temperature`: °C (0 to 150).
+     */
+    var `aboveC`: kotlin.Double?, 
+    /**
+     * `cpu`: % (1 to 100).
+     */
+    var `abovePct`: kotlin.UInt?, 
+    /**
+     * `cpu`: for so many seconds (1 to 3600).
+     */
+    var `forS`: kotlin.UInt?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubAlarmRule: FfiConverterRustBuffer<HubAlarmRule> {
+    override fun read(buf: ByteBuffer): HubAlarmRule {
+        return HubAlarmRule(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubAlarmRule) = (
+            FfiConverterString.allocationSize(value.`code`) +
+            FfiConverterBoolean.allocationSize(value.`on`) +
+            FfiConverterOptionalUInt.allocationSize(value.`afterS`) +
+            FfiConverterOptionalUInt.allocationSize(value.`perMinute`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`muteOnStorm`) +
+            FfiConverterOptionalDouble.allocationSize(value.`aboveC`) +
+            FfiConverterOptionalUInt.allocationSize(value.`abovePct`) +
+            FfiConverterOptionalUInt.allocationSize(value.`forS`)
+    )
+
+    override fun write(value: HubAlarmRule, buf: ByteBuffer) {
+            FfiConverterString.write(value.`code`, buf)
+            FfiConverterBoolean.write(value.`on`, buf)
+            FfiConverterOptionalUInt.write(value.`afterS`, buf)
+            FfiConverterOptionalUInt.write(value.`perMinute`, buf)
+            FfiConverterOptionalBoolean.write(value.`muteOnStorm`, buf)
+            FfiConverterOptionalDouble.write(value.`aboveC`, buf)
+            FfiConverterOptionalUInt.write(value.`abovePct`, buf)
+            FfiConverterOptionalUInt.write(value.`forS`, buf)
+    }
+}
+
+
+
+/**
+ * An API key of the hub (`auth.list`'s rows of kind `api`).
+ */
+data class HubApiKey (
+    /**
+     * Its client id: what [`DspiCore::hub_api_key_revoke`] takes.
+     */
+    var `cid`: kotlin.UInt, 
+    /**
+     * Its name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * `viewer`, `control` or `admin`.
+     */
+    var `role`: kotlin.String, 
+    /**
+     * Kept for when the port speaks TLS; no effect yet.
+     */
+    var `plaintextOk`: kotlin.Boolean, 
+    /**
+     * Its REST session is open.
+     */
+    var `online`: kotlin.Boolean, 
+    /**
+     * When it was minted (ISO-8601 UTC).
+     */
+    var `created`: kotlin.String, 
+    /**
+     * When it was last used; "" for never.
+     */
+    var `lastSeen`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubApiKey: FfiConverterRustBuffer<HubApiKey> {
+    override fun read(buf: ByteBuffer): HubApiKey {
+        return HubApiKey(
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubApiKey) = (
+            FfiConverterUInt.allocationSize(value.`cid`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterBoolean.allocationSize(value.`plaintextOk`) +
+            FfiConverterBoolean.allocationSize(value.`online`) +
+            FfiConverterString.allocationSize(value.`created`) +
+            FfiConverterString.allocationSize(value.`lastSeen`)
+    )
+
+    override fun write(value: HubApiKey, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`cid`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterBoolean.write(value.`plaintextOk`, buf)
+            FfiConverterBoolean.write(value.`online`, buf)
+            FfiConverterString.write(value.`created`, buf)
+            FfiConverterString.write(value.`lastSeen`, buf)
+    }
+}
+
+
+
+/**
+ * A key the hub just minted (`auth.mint`): [`HubApiKeyMinted::key`] is
+ * shown in this answer only.
+ */
+data class HubApiKeyMinted (
+    /**
+     * Its client id.
+     */
+    var `cid`: kotlin.UInt, 
+    /**
+     * Its name, as the hub cleaned it.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Its role.
+     */
+    var `role`: kotlin.String, 
+    /**
+     * As asked.
+     */
+    var `plaintextOk`: kotlin.Boolean, 
+    /**
+     * The key (43 characters): show it once; the hub keeps only its hash.
+     */
+    var `key`: HubSecret
+) : Disposable {
+    
+    @Suppress("UNNECESSARY_SAFE_CALL") // codegen is much simpler if we unconditionally emit safe calls here
+    override fun destroy() {
+        
+    Disposable.destroy(
+        this.`cid`,
+        this.`name`,
+        this.`role`,
+        this.`plaintextOk`,
+        this.`key`
+    )
+    }
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubApiKeyMinted: FfiConverterRustBuffer<HubApiKeyMinted> {
+    override fun read(buf: ByteBuffer): HubApiKeyMinted {
+        return HubApiKeyMinted(
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeHubSecret.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubApiKeyMinted) = (
+            FfiConverterUInt.allocationSize(value.`cid`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterBoolean.allocationSize(value.`plaintextOk`) +
+            FfiConverterTypeHubSecret.allocationSize(value.`key`)
+    )
+
+    override fun write(value: HubApiKeyMinted, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`cid`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterBoolean.write(value.`plaintextOk`, buf)
+            FfiConverterTypeHubSecret.write(value.`key`, buf)
+    }
+}
+
+
+
+/**
+ * Which of the hub's families this console's hub has ([`DspiCore::hub_caps`]).
+ */
+data class HubCaps (
+    /**
+     * This console has a live DSPi Link session.
+     */
+    var `onHub`: kotlin.Boolean, 
+    /**
+     * `inventory.*` ([`DspiCore::hub_inventory`]).
+     */
+    var `inventory`: kotlin.Boolean, 
+    /**
+     * `device.identify` ([`DspiCore::hub_identify`] on a hub).
+     */
+    var `identify`: kotlin.Boolean, 
+    /**
+     * `health.get` ([`DspiCore::hub_health`]).
+     */
+    var `health`: kotlin.Boolean, 
+    /**
+     * `event.*` ([`DspiCore::hub_events_read`]).
+     */
+    var `events`: kotlin.Boolean, 
+    /**
+     * The hub's snapshot store (`hub_snapshots_*`).
+     */
+    var `hubSnapshots`: kotlin.Boolean, 
+    /**
+     * The parameter API and presets by name.
+     */
+    var `paramApi`: kotlin.Boolean, 
+    /**
+     * `hub.stats` ([`DspiCore::hub_stats`]).
+     */
+    var `hubStats`: kotlin.Boolean, 
+    /**
+     * `alarm.*` ([`DspiCore::hub_alarms`]).
+     */
+    var `alarms`: kotlin.Boolean, 
+    /**
+     * `outbound.*` ([`DspiCore::hub_outbound_get`]).
+     */
+    var `outbound`: kotlin.Boolean, 
+    /**
+     * `schedule.*` ([`DspiCore::hub_schedules`]).
+     */
+    var `schedule`: kotlin.Boolean, 
+    /**
+     * `mqtt.*` ([`DspiCore::hub_mqtt_get`]).
+     */
+    var `mqtt`: kotlin.Boolean, 
+    /**
+     * API keys ([`DspiCore::hub_api_keys`]).
+     */
+    var `apiKeys`: kotlin.Boolean, 
+    /**
+     * The REST mirror is on (the hub runs with `--rest`).
+     */
+    var `rest`: kotlin.Boolean, 
+    /**
+     * Every cap of the hub's `hello`, as it sent them.
+     */
+    var `caps`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubCaps: FfiConverterRustBuffer<HubCaps> {
+    override fun read(buf: ByteBuffer): HubCaps {
+        return HubCaps(
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubCaps) = (
+            FfiConverterBoolean.allocationSize(value.`onHub`) +
+            FfiConverterBoolean.allocationSize(value.`inventory`) +
+            FfiConverterBoolean.allocationSize(value.`identify`) +
+            FfiConverterBoolean.allocationSize(value.`health`) +
+            FfiConverterBoolean.allocationSize(value.`events`) +
+            FfiConverterBoolean.allocationSize(value.`hubSnapshots`) +
+            FfiConverterBoolean.allocationSize(value.`paramApi`) +
+            FfiConverterBoolean.allocationSize(value.`hubStats`) +
+            FfiConverterBoolean.allocationSize(value.`alarms`) +
+            FfiConverterBoolean.allocationSize(value.`outbound`) +
+            FfiConverterBoolean.allocationSize(value.`schedule`) +
+            FfiConverterBoolean.allocationSize(value.`mqtt`) +
+            FfiConverterBoolean.allocationSize(value.`apiKeys`) +
+            FfiConverterBoolean.allocationSize(value.`rest`) +
+            FfiConverterSequenceString.allocationSize(value.`caps`)
+    )
+
+    override fun write(value: HubCaps, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`onHub`, buf)
+            FfiConverterBoolean.write(value.`inventory`, buf)
+            FfiConverterBoolean.write(value.`identify`, buf)
+            FfiConverterBoolean.write(value.`health`, buf)
+            FfiConverterBoolean.write(value.`events`, buf)
+            FfiConverterBoolean.write(value.`hubSnapshots`, buf)
+            FfiConverterBoolean.write(value.`paramApi`, buf)
+            FfiConverterBoolean.write(value.`hubStats`, buf)
+            FfiConverterBoolean.write(value.`alarms`, buf)
+            FfiConverterBoolean.write(value.`outbound`, buf)
+            FfiConverterBoolean.write(value.`schedule`, buf)
+            FfiConverterBoolean.write(value.`mqtt`, buf)
+            FfiConverterBoolean.write(value.`apiKeys`, buf)
+            FfiConverterBoolean.write(value.`rest`, buf)
+            FfiConverterSequenceString.write(value.`caps`, buf)
+    }
+}
+
+
+
+/**
+ * One device of the hub's inventory ([`DspiCore::hub_inventory`]).
+ */
+data class HubDevice (
+    /**
+     * The key.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * Its DSPi Link handle while online.
+     */
+    var `handle`: kotlin.UByte?, 
+    /**
+     * Attached now.
+     */
+    var `online`: kotlin.Boolean, 
+    /**
+     * Its name when last seen.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * `RP2040`, `RP2350` (`unknown platform N` for an id this build does
+     * not know); "" when unknown.
+     */
+    var `platform`: kotlin.String, 
+    /**
+     * The firmware version.
+     */
+    var `fw`: kotlin.String, 
+    /**
+     * A beta build; `None` when unknown.
+     */
+    var `fwBeta`: kotlin.Boolean?, 
+    /**
+     * Output channels.
+     */
+    var `outputs`: kotlin.UByte, 
+    /**
+     * The board the firmware was built for; "" when unknown.
+     */
+    var `board`: kotlin.String, 
+    /**
+     * The hardware revision; "" when unknown or unset.
+     */
+    var `hwRev`: kotlin.String, 
+    /**
+     * The chip; "" when unknown.
+     */
+    var `chip`: kotlin.String, 
+    /**
+     * The chip's revision, when known.
+     */
+    var `chipRev`: kotlin.UByte?, 
+    /**
+     * Set by an Admin; "" when unset.
+     */
+    var `location`: kotlin.String, 
+    /**
+     * Set by an Admin; "" when unset.
+     */
+    var `note`: kotlin.String, 
+    /**
+     * Set by an Admin.
+     */
+    var `tags`: List<kotlin.String>, 
+    /**
+     * First seen (ISO-8601 UTC).
+     */
+    var `firstSeen`: kotlin.String, 
+    /**
+     * Last seen: now while online, else when it went offline.
+     */
+    var `lastSeen`: kotlin.String, 
+    /**
+     * Its last reset, when the hub read one.
+     */
+    var `lastReset`: HubReset?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubDevice: FfiConverterRustBuffer<HubDevice> {
+    override fun read(buf: ByteBuffer): HubDevice {
+        return HubDevice(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeHubReset.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubDevice) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterOptionalUByte.allocationSize(value.`handle`) +
+            FfiConverterBoolean.allocationSize(value.`online`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`platform`) +
+            FfiConverterString.allocationSize(value.`fw`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`fwBeta`) +
+            FfiConverterUByte.allocationSize(value.`outputs`) +
+            FfiConverterString.allocationSize(value.`board`) +
+            FfiConverterString.allocationSize(value.`hwRev`) +
+            FfiConverterString.allocationSize(value.`chip`) +
+            FfiConverterOptionalUByte.allocationSize(value.`chipRev`) +
+            FfiConverterString.allocationSize(value.`location`) +
+            FfiConverterString.allocationSize(value.`note`) +
+            FfiConverterSequenceString.allocationSize(value.`tags`) +
+            FfiConverterString.allocationSize(value.`firstSeen`) +
+            FfiConverterString.allocationSize(value.`lastSeen`) +
+            FfiConverterOptionalTypeHubReset.allocationSize(value.`lastReset`)
+    )
+
+    override fun write(value: HubDevice, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterOptionalUByte.write(value.`handle`, buf)
+            FfiConverterBoolean.write(value.`online`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`platform`, buf)
+            FfiConverterString.write(value.`fw`, buf)
+            FfiConverterOptionalBoolean.write(value.`fwBeta`, buf)
+            FfiConverterUByte.write(value.`outputs`, buf)
+            FfiConverterString.write(value.`board`, buf)
+            FfiConverterString.write(value.`hwRev`, buf)
+            FfiConverterString.write(value.`chip`, buf)
+            FfiConverterOptionalUByte.write(value.`chipRev`, buf)
+            FfiConverterString.write(value.`location`, buf)
+            FfiConverterString.write(value.`note`, buf)
+            FfiConverterSequenceString.write(value.`tags`, buf)
+            FfiConverterString.write(value.`firstSeen`, buf)
+            FfiConverterString.write(value.`lastSeen`, buf)
+            FfiConverterOptionalTypeHubReset.write(value.`lastReset`, buf)
+    }
+}
+
+
+
+/**
+ * A page of a device's history on the hub ([`DspiCore::hub_events_read`]).
+ */
+data class HubEventPage (
+    /**
+     * The device.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * Oldest first.
+     */
+    var `records`: List<HubEventRecord>, 
+    /**
+     * More follow the last record's id.
+     */
+    var `more`: kotlin.Boolean, 
+    /**
+     * The highest id the hub's log holds (0: empty). An `after_id` above
+     * it means the numbering started again: read from 0.
+     */
+    var `newestId`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubEventPage: FfiConverterRustBuffer<HubEventPage> {
+    override fun read(buf: ByteBuffer): HubEventPage {
+        return HubEventPage(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeHubEventRecord.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubEventPage) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterSequenceTypeHubEventRecord.allocationSize(value.`records`) +
+            FfiConverterBoolean.allocationSize(value.`more`) +
+            FfiConverterULong.allocationSize(value.`newestId`)
+    )
+
+    override fun write(value: HubEventPage, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterSequenceTypeHubEventRecord.write(value.`records`, buf)
+            FfiConverterBoolean.write(value.`more`, buf)
+            FfiConverterULong.write(value.`newestId`, buf)
+    }
+}
+
+
+
+/**
+ * One record of a device's history on the hub: the event log's record
+ * (`EventEntry`'s fields) and who caused it by name.
+ */
+data class HubEventRecord (
+    /**
+     * Rising per device; numbering can start again (hub-api.md section 6).
+     */
+    var `id`: kotlin.ULong, 
+    /**
+     * When, ms since the Unix epoch.
+     */
+    var `timeMs`: kotlin.Long, 
+    /**
+     * The record's kind (`notification`, `connected`, `recall`, `identify`,
+     * `alarm`, ...; `unknown` for a kind this build does not know).
+     */
+    var `kind`: kotlin.String, 
+    /**
+     * The device's serial.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * One readable line.
+     */
+    var `text`: kotlin.String, 
+    /**
+     * Who or what caused it, as the log's `source`; "" when none.
+     */
+    var `source`: kotlin.String, 
+    /**
+     * The DSPi Link session that caused it.
+     */
+    var `session`: kotlin.UInt?, 
+    /**
+     * Who caused it, by name: the client, key, schedule or rule; "" when
+     * none.
+     */
+    var `by`: kotlin.String, 
+    /**
+     * A wire channel, or a preset slot.
+     */
+    var `channel`: kotlin.UByte?, 
+    /**
+     * A number: °C, a counter's total, Identify's seconds.
+     */
+    var `value`: kotlin.Double?, 
+    /**
+     * The firmware version, on connects and firmware changes.
+     */
+    var `fw`: kotlin.String?, 
+    /**
+     * The device's uptime, s.
+     */
+    var `uptimeS`: kotlin.UInt?, 
+    /**
+     * Detail lines: what a recall or an import changed.
+     */
+    var `lines`: List<kotlin.String>, 
+    /**
+     * Occurrences this record stands for.
+     */
+    var `count`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubEventRecord: FfiConverterRustBuffer<HubEventRecord> {
+    override fun read(buf: ByteBuffer): HubEventRecord {
+        return HubEventRecord(
+            FfiConverterULong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubEventRecord) = (
+            FfiConverterULong.allocationSize(value.`id`) +
+            FfiConverterLong.allocationSize(value.`timeMs`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterString.allocationSize(value.`source`) +
+            FfiConverterOptionalUInt.allocationSize(value.`session`) +
+            FfiConverterString.allocationSize(value.`by`) +
+            FfiConverterOptionalUByte.allocationSize(value.`channel`) +
+            FfiConverterOptionalDouble.allocationSize(value.`value`) +
+            FfiConverterOptionalString.allocationSize(value.`fw`) +
+            FfiConverterOptionalUInt.allocationSize(value.`uptimeS`) +
+            FfiConverterSequenceString.allocationSize(value.`lines`) +
+            FfiConverterUInt.allocationSize(value.`count`)
+    )
+
+    override fun write(value: HubEventRecord, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`id`, buf)
+            FfiConverterLong.write(value.`timeMs`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterString.write(value.`source`, buf)
+            FfiConverterOptionalUInt.write(value.`session`, buf)
+            FfiConverterString.write(value.`by`, buf)
+            FfiConverterOptionalUByte.write(value.`channel`, buf)
+            FfiConverterOptionalDouble.write(value.`value`, buf)
+            FfiConverterOptionalString.write(value.`fw`, buf)
+            FfiConverterOptionalUInt.write(value.`uptimeS`, buf)
+            FfiConverterSequenceString.write(value.`lines`, buf)
+            FfiConverterUInt.write(value.`count`, buf)
+    }
+}
+
+
+
+/**
+ * One online device's health ([`DspiCore::hub_health`]). A field the
+ * firmware does not give, or the hub has not read yet, is `None`.
+ */
+data class HubHealth (
+    /**
+     * The device.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * Its handle.
+     */
+    var `handle`: kotlin.UByte, 
+    /**
+     * The newest read (ISO-8601 UTC); "" before the first.
+     */
+    var `at`: kotlin.String, 
+    /**
+     * The busier core's load, %.
+     */
+    var `cpuPct`: kotlin.UByte?, 
+    /**
+     * The sticky clip latch, one bit per channel (never cleared by the hub).
+     */
+    var `clipMask`: kotlin.UInt?, 
+    /**
+     * °C, to 0.01.
+     */
+    var `tempC`: kotlin.Double?, 
+    /**
+     * Uptime, s (from the reset-info read, every 60 s).
+     */
+    var `uptimeS`: kotlin.UInt?, 
+    /**
+     * Watchdog hangs not yet acted on.
+     */
+    var `hangCount`: kotlin.UByte?, 
+    /**
+     * No answer for 10 s while attached.
+     */
+    var `unresponsive`: kotlin.Boolean, 
+    /**
+     * Since when, while [`HubHealth::unresponsive`]; "" otherwise.
+     */
+    var `unresponsiveSince`: kotlin.String, 
+    /**
+     * The reset seen at attach or since.
+     */
+    var `reset`: HubReset?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubHealth: FfiConverterRustBuffer<HubHealth> {
+    override fun read(buf: ByteBuffer): HubHealth {
+        return HubHealth(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeHubReset.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubHealth) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterUByte.allocationSize(value.`handle`) +
+            FfiConverterString.allocationSize(value.`at`) +
+            FfiConverterOptionalUByte.allocationSize(value.`cpuPct`) +
+            FfiConverterOptionalUInt.allocationSize(value.`clipMask`) +
+            FfiConverterOptionalDouble.allocationSize(value.`tempC`) +
+            FfiConverterOptionalUInt.allocationSize(value.`uptimeS`) +
+            FfiConverterOptionalUByte.allocationSize(value.`hangCount`) +
+            FfiConverterBoolean.allocationSize(value.`unresponsive`) +
+            FfiConverterString.allocationSize(value.`unresponsiveSince`) +
+            FfiConverterOptionalTypeHubReset.allocationSize(value.`reset`)
+    )
+
+    override fun write(value: HubHealth, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterUByte.write(value.`handle`, buf)
+            FfiConverterString.write(value.`at`, buf)
+            FfiConverterOptionalUByte.write(value.`cpuPct`, buf)
+            FfiConverterOptionalUInt.write(value.`clipMask`, buf)
+            FfiConverterOptionalDouble.write(value.`tempC`, buf)
+            FfiConverterOptionalUInt.write(value.`uptimeS`, buf)
+            FfiConverterOptionalUByte.write(value.`hangCount`, buf)
+            FfiConverterBoolean.write(value.`unresponsive`, buf)
+            FfiConverterString.write(value.`unresponsiveSince`, buf)
+            FfiConverterOptionalTypeHubReset.write(value.`reset`, buf)
+    }
+}
+
+
+
+/**
  * A profile set on the hub ([`DspiCore::hub_limits_set`]).
  */
 data class HubLimitsSet (
@@ -26665,6 +29706,619 @@ public object FfiConverterTypeHubModePin: FfiConverterRustBuffer<HubModePin> {
 
 
 /**
+ * The broker setting (`mqtt.get`, `mqtt.set`). In
+ * [`DspiCore::hub_mqtt_set`] "" in `client_id`, `base_topic` (and a `None`
+ * `port`) is the hub's default, "" in `broker`/`username` none.
+ */
+data class HubMqttSettings (
+    /**
+     * The hub connects and publishes.
+     */
+    var `enabled`: kotlin.Boolean, 
+    /**
+     * The broker's host name or address.
+     */
+    var `broker`: kotlin.String, 
+    /**
+     * Its port (read: the one in use).
+     */
+    var `port`: kotlin.UShort?, 
+    /**
+     * The client id (read: the one in use).
+     */
+    var `clientId`: kotlin.String, 
+    /**
+     * The user name; "" for none.
+     */
+    var `username`: kotlin.String, 
+    /**
+     * Read: `set` or `not set`. To set: the password itself (typed by the
+     * Admin); `set` or "" keeps it; `not set` clears it. Never logged.
+     */
+    var `password`: kotlin.String, 
+    /**
+     * The base topic (read: the one in use).
+     */
+    var `baseTopic`: kotlin.String, 
+    /**
+     * TLS.
+     */
+    var `tls`: HubMqttTls, 
+    /**
+     * Home Assistant discovery and `set` topics on (section 13.2).
+     */
+    var `haEnabled`: kotlin.Boolean, 
+    /**
+     * The API key (its `cid`) Home Assistant's `set` topics act as.
+     */
+    var `haKey`: kotlin.UInt?, 
+    /**
+     * A one-time notice of this run (a file migrated). Read only.
+     */
+    var `notice`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubMqttSettings: FfiConverterRustBuffer<HubMqttSettings> {
+    override fun read(buf: ByteBuffer): HubMqttSettings {
+        return HubMqttSettings(
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUShort.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeHubMqttTls.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubMqttSettings) = (
+            FfiConverterBoolean.allocationSize(value.`enabled`) +
+            FfiConverterString.allocationSize(value.`broker`) +
+            FfiConverterOptionalUShort.allocationSize(value.`port`) +
+            FfiConverterString.allocationSize(value.`clientId`) +
+            FfiConverterString.allocationSize(value.`username`) +
+            FfiConverterString.allocationSize(value.`password`) +
+            FfiConverterString.allocationSize(value.`baseTopic`) +
+            FfiConverterTypeHubMqttTls.allocationSize(value.`tls`) +
+            FfiConverterBoolean.allocationSize(value.`haEnabled`) +
+            FfiConverterOptionalUInt.allocationSize(value.`haKey`) +
+            FfiConverterString.allocationSize(value.`notice`)
+    )
+
+    override fun write(value: HubMqttSettings, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`enabled`, buf)
+            FfiConverterString.write(value.`broker`, buf)
+            FfiConverterOptionalUShort.write(value.`port`, buf)
+            FfiConverterString.write(value.`clientId`, buf)
+            FfiConverterString.write(value.`username`, buf)
+            FfiConverterString.write(value.`password`, buf)
+            FfiConverterString.write(value.`baseTopic`, buf)
+            FfiConverterTypeHubMqttTls.write(value.`tls`, buf)
+            FfiConverterBoolean.write(value.`haEnabled`, buf)
+            FfiConverterOptionalUInt.write(value.`haKey`, buf)
+            FfiConverterString.write(value.`notice`, buf)
+    }
+}
+
+
+
+/**
+ * The broker connection now (`mqtt.status`).
+ */
+data class HubMqttStatus (
+    /**
+     * `off`, `connecting`, `connected` or `failed`.
+     */
+    var `state`: kotlin.String, 
+    /**
+     * The last reason, for a person (a refused password).
+     */
+    var `msg`: kotlin.String, 
+    /**
+     * When `state` last changed (ISO-8601 UTC).
+     */
+    var `since`: kotlin.String, 
+    /**
+     * Publishes waiting while the broker is away.
+     */
+    var `queued`: kotlin.UInt, 
+    /**
+     * Publishes dropped past that.
+     */
+    var `dropped`: kotlin.ULong, 
+    /**
+     * The connection is TLS.
+     */
+    var `encrypted`: kotlin.Boolean, 
+    /**
+     * A one-time notice of this run.
+     */
+    var `notice`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubMqttStatus: FfiConverterRustBuffer<HubMqttStatus> {
+    override fun read(buf: ByteBuffer): HubMqttStatus {
+        return HubMqttStatus(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubMqttStatus) = (
+            FfiConverterString.allocationSize(value.`state`) +
+            FfiConverterString.allocationSize(value.`msg`) +
+            FfiConverterString.allocationSize(value.`since`) +
+            FfiConverterUInt.allocationSize(value.`queued`) +
+            FfiConverterULong.allocationSize(value.`dropped`) +
+            FfiConverterBoolean.allocationSize(value.`encrypted`) +
+            FfiConverterString.allocationSize(value.`notice`)
+    )
+
+    override fun write(value: HubMqttStatus, buf: ByteBuffer) {
+            FfiConverterString.write(value.`state`, buf)
+            FfiConverterString.write(value.`msg`, buf)
+            FfiConverterString.write(value.`since`, buf)
+            FfiConverterUInt.write(value.`queued`, buf)
+            FfiConverterULong.write(value.`dropped`, buf)
+            FfiConverterBoolean.write(value.`encrypted`, buf)
+            FfiConverterString.write(value.`notice`, buf)
+    }
+}
+
+
+
+/**
+ * TLS to the broker (`mqtt.get`'s `tls`). PEMs and file paths "" for none.
+ */
+data class HubMqttTls (
+    /**
+     * `on` or `off` ("" is off).
+     */
+    var `mode`: kotlin.String, 
+    /**
+     * The CA or self-signed certificate(s) to trust (PEM).
+     */
+    var `caPem`: kotlin.String, 
+    /**
+     * The broker's key pin.
+     */
+    var `pinSha256`: kotlin.String, 
+    /**
+     * A client certificate (PEM).
+     */
+    var `clientCertPem`: kotlin.String, 
+    /**
+     * Its key. Read: `set` or `not set`; send `set` back to keep it, a PEM
+     * to set it, "" or `not set` to clear it.
+     */
+    var `clientKeyPem`: kotlin.String, 
+    /**
+     * A client certificate's file on the hub's machine.
+     */
+    var `clientCertFile`: kotlin.String, 
+    /**
+     * Its key's file (0600) on the hub's machine.
+     */
+    var `clientKeyFile`: kotlin.String, 
+    /**
+     * Without TLS, send the password to a broker not on loopback too.
+     */
+    var `allowPlaintextPassword`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubMqttTls: FfiConverterRustBuffer<HubMqttTls> {
+    override fun read(buf: ByteBuffer): HubMqttTls {
+        return HubMqttTls(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubMqttTls) = (
+            FfiConverterString.allocationSize(value.`mode`) +
+            FfiConverterString.allocationSize(value.`caPem`) +
+            FfiConverterString.allocationSize(value.`pinSha256`) +
+            FfiConverterString.allocationSize(value.`clientCertPem`) +
+            FfiConverterString.allocationSize(value.`clientKeyPem`) +
+            FfiConverterString.allocationSize(value.`clientCertFile`) +
+            FfiConverterString.allocationSize(value.`clientKeyFile`) +
+            FfiConverterBoolean.allocationSize(value.`allowPlaintextPassword`)
+    )
+
+    override fun write(value: HubMqttTls, buf: ByteBuffer) {
+            FfiConverterString.write(value.`mode`, buf)
+            FfiConverterString.write(value.`caPem`, buf)
+            FfiConverterString.write(value.`pinSha256`, buf)
+            FfiConverterString.write(value.`clientCertPem`, buf)
+            FfiConverterString.write(value.`clientKeyPem`, buf)
+            FfiConverterString.write(value.`clientCertFile`, buf)
+            FfiConverterString.write(value.`clientKeyFile`, buf)
+            FfiConverterBoolean.write(value.`allowPlaintextPassword`, buf)
+    }
+}
+
+
+
+/**
+ * A target's last delivery try.
+ */
+data class HubOutboundLast (
+    /**
+     * When (ISO-8601 UTC).
+     */
+    var `at`: kotlin.String, 
+    /**
+     * It was delivered.
+     */
+    var `ok`: kotlin.Boolean, 
+    /**
+     * The receiver's HTTP status, if it answered.
+     */
+    var `status`: kotlin.UShort?, 
+    /**
+     * Why not, for a person.
+     */
+    var `msg`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubOutboundLast: FfiConverterRustBuffer<HubOutboundLast> {
+    override fun read(buf: ByteBuffer): HubOutboundLast {
+        return HubOutboundLast(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUShort.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubOutboundLast) = (
+            FfiConverterString.allocationSize(value.`at`) +
+            FfiConverterBoolean.allocationSize(value.`ok`) +
+            FfiConverterOptionalUShort.allocationSize(value.`status`) +
+            FfiConverterString.allocationSize(value.`msg`)
+    )
+
+    override fun write(value: HubOutboundLast, buf: ByteBuffer) {
+            FfiConverterString.write(value.`at`, buf)
+            FfiConverterBoolean.write(value.`ok`, buf)
+            FfiConverterOptionalUShort.write(value.`status`, buf)
+            FfiConverterString.write(value.`msg`, buf)
+    }
+}
+
+
+
+/**
+ * A secret the hub made for a target, shown once ([`HubOutboundSet`]).
+ */
+data class HubOutboundSecret (
+    /**
+     * The target's id.
+     */
+    var `target`: kotlin.String, 
+    /**
+     * The secret (64 hex characters): show it once, keep it nowhere else.
+     */
+    var `secret`: HubSecret
+) : Disposable {
+    
+    @Suppress("UNNECESSARY_SAFE_CALL") // codegen is much simpler if we unconditionally emit safe calls here
+    override fun destroy() {
+        
+    Disposable.destroy(
+        this.`target`,
+        this.`secret`
+    )
+    }
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubOutboundSecret: FfiConverterRustBuffer<HubOutboundSecret> {
+    override fun read(buf: ByteBuffer): HubOutboundSecret {
+        return HubOutboundSecret(
+            FfiConverterString.read(buf),
+            FfiConverterTypeHubSecret.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubOutboundSecret) = (
+            FfiConverterString.allocationSize(value.`target`) +
+            FfiConverterTypeHubSecret.allocationSize(value.`secret`)
+    )
+
+    override fun write(value: HubOutboundSecret, buf: ByteBuffer) {
+            FfiConverterString.write(value.`target`, buf)
+            FfiConverterTypeHubSecret.write(value.`secret`, buf)
+    }
+}
+
+
+
+/**
+ * `outbound.set`'s answer.
+ */
+data class HubOutboundSet (
+    /**
+     * The targets now.
+     */
+    var `targets`: List<HubOutboundTarget>, 
+    /**
+     * The secrets made by this call: in this answer only.
+     */
+    var `secrets`: List<HubOutboundSecret>
+) : Disposable {
+    
+    @Suppress("UNNECESSARY_SAFE_CALL") // codegen is much simpler if we unconditionally emit safe calls here
+    override fun destroy() {
+        
+    Disposable.destroy(
+        this.`targets`,
+        this.`secrets`
+    )
+    }
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubOutboundSet: FfiConverterRustBuffer<HubOutboundSet> {
+    override fun read(buf: ByteBuffer): HubOutboundSet {
+        return HubOutboundSet(
+            FfiConverterSequenceTypeHubOutboundTarget.read(buf),
+            FfiConverterSequenceTypeHubOutboundSecret.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubOutboundSet) = (
+            FfiConverterSequenceTypeHubOutboundTarget.allocationSize(value.`targets`) +
+            FfiConverterSequenceTypeHubOutboundSecret.allocationSize(value.`secrets`)
+    )
+
+    override fun write(value: HubOutboundSet, buf: ByteBuffer) {
+            FfiConverterSequenceTypeHubOutboundTarget.write(value.`targets`, buf)
+            FfiConverterSequenceTypeHubOutboundSecret.write(value.`secrets`, buf)
+    }
+}
+
+
+
+/**
+ * A notification target (`outbound.get`, `outbound.set`).
+ */
+data class HubOutboundTarget (
+    /**
+     * 1 to 32 of `A-Z a-z 0-9 _ -`; "" for a new one (the hub names it).
+     */
+    var `id`: kotlin.String, 
+    /**
+     * At most 64 characters; "" for the id.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * `webhook` (a JSON POST) or `push` (an ntfy-style text POST).
+     */
+    var `kind`: kotlin.String, 
+    /**
+     * `https://`, or `http://` with [`HubOutboundTarget::plaintext`].
+     */
+    var `url`: kotlin.String, 
+    /**
+     * Deliveries go out.
+     */
+    var `enabled`: kotlin.Boolean, 
+    /**
+     * Of `alarm.raised`, `alarm.cleared`, `restart`, `schedule.ran`,
+     * `schedule.failed`; empty sends none.
+     */
+    var `kinds`: List<kotlin.String>, 
+    /**
+     * Read: `set` or `not set`. In [`DspiCore::hub_outbound_set`]: `new`
+     * (the hub makes one, shown once), `set` or "" (keep), `not set`
+     * (none). A secret is never typed.
+     */
+    var `secret`: kotlin.String, 
+    /**
+     * `http://` to a private address, unencrypted.
+     */
+    var `plaintext`: kotlin.Boolean, 
+    /**
+     * The CA or self-signed certificate(s) to trust instead of the public
+     * CAs (PEM); "" for none.
+     */
+    var `caPem`: kotlin.String, 
+    /**
+     * The receiver's key pin (`sha256//<base64>`); "" for none.
+     */
+    var `pinSha256`: kotlin.String, 
+    /**
+     * Deliveries waiting. Read only.
+     */
+    var `queued`: kotlin.UInt, 
+    /**
+     * Deliveries dropped. Read only.
+     */
+    var `dropped`: kotlin.ULong, 
+    /**
+     * The last try. Read only.
+     */
+    var `last`: HubOutboundLast?, 
+    /**
+     * Sent over TLS. Read only.
+     */
+    var `encrypted`: kotlin.Boolean, 
+    /**
+     * `webpki`, `ca` or `pin` (https only); "" otherwise. Read only.
+     */
+    var `trust`: kotlin.String, 
+    /**
+     * A notice for the Admin (a target kept from before TLS). Read only.
+     */
+    var `notice`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubOutboundTarget: FfiConverterRustBuffer<HubOutboundTarget> {
+    override fun read(buf: ByteBuffer): HubOutboundTarget {
+        return HubOutboundTarget(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterOptionalTypeHubOutboundLast.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubOutboundTarget) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`url`) +
+            FfiConverterBoolean.allocationSize(value.`enabled`) +
+            FfiConverterSequenceString.allocationSize(value.`kinds`) +
+            FfiConverterString.allocationSize(value.`secret`) +
+            FfiConverterBoolean.allocationSize(value.`plaintext`) +
+            FfiConverterString.allocationSize(value.`caPem`) +
+            FfiConverterString.allocationSize(value.`pinSha256`) +
+            FfiConverterUInt.allocationSize(value.`queued`) +
+            FfiConverterULong.allocationSize(value.`dropped`) +
+            FfiConverterOptionalTypeHubOutboundLast.allocationSize(value.`last`) +
+            FfiConverterBoolean.allocationSize(value.`encrypted`) +
+            FfiConverterString.allocationSize(value.`trust`) +
+            FfiConverterString.allocationSize(value.`notice`)
+    )
+
+    override fun write(value: HubOutboundTarget, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`url`, buf)
+            FfiConverterBoolean.write(value.`enabled`, buf)
+            FfiConverterSequenceString.write(value.`kinds`, buf)
+            FfiConverterString.write(value.`secret`, buf)
+            FfiConverterBoolean.write(value.`plaintext`, buf)
+            FfiConverterString.write(value.`caPem`, buf)
+            FfiConverterString.write(value.`pinSha256`, buf)
+            FfiConverterUInt.write(value.`queued`, buf)
+            FfiConverterULong.write(value.`dropped`, buf)
+            FfiConverterOptionalTypeHubOutboundLast.write(value.`last`, buf)
+            FfiConverterBoolean.write(value.`encrypted`, buf)
+            FfiConverterString.write(value.`trust`, buf)
+            FfiConverterString.write(value.`notice`, buf)
+    }
+}
+
+
+
+/**
+ * `outbound.test`'s answer.
+ */
+data class HubOutboundTest (
+    /**
+     * It was delivered.
+     */
+    var `delivered`: kotlin.Boolean, 
+    /**
+     * The receiver's HTTP status, if it answered.
+     */
+    var `status`: kotlin.UShort?, 
+    /**
+     * Why not, for a person.
+     */
+    var `msg`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubOutboundTest: FfiConverterRustBuffer<HubOutboundTest> {
+    override fun read(buf: ByteBuffer): HubOutboundTest {
+        return HubOutboundTest(
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUShort.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubOutboundTest) = (
+            FfiConverterBoolean.allocationSize(value.`delivered`) +
+            FfiConverterOptionalUShort.allocationSize(value.`status`) +
+            FfiConverterString.allocationSize(value.`msg`)
+    )
+
+    override fun write(value: HubOutboundTest, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`delivered`, buf)
+            FfiConverterOptionalUShort.write(value.`status`, buf)
+            FfiConverterString.write(value.`msg`, buf)
+    }
+}
+
+
+
+/**
  * A PIN set on the hub ([`DspiCore::hub_pin_set`]).
  */
 data class HubPinSet (
@@ -26702,6 +30356,836 @@ public object FfiConverterTypeHubPinSet: FfiConverterRustBuffer<HubPinSet> {
     override fun write(value: HubPinSet, buf: ByteBuffer) {
             FfiConverterString.write(value.`recoveryCode`, buf)
             FfiConverterTypeHubAdminState.write(value.`state`, buf)
+    }
+}
+
+
+
+/**
+ * A reset as the hub saw it (`EXT_RESET_INFO`).
+ */
+data class HubReset (
+    /**
+     * `power_on`, `brownout`, `run_pin`, `watchdog`, `software`,
+     * `debugger`, `glitch` or `unknown`.
+     */
+    var `reason`: kotlin.String, 
+    /**
+     * How long the run before it lasted, s; `None` when unknown.
+     */
+    var `prevUptimeS`: kotlin.UInt?, 
+    /**
+     * When it happened (ISO-8601 UTC); "" where the hub gives no time.
+     */
+    var `at`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubReset: FfiConverterRustBuffer<HubReset> {
+    override fun read(buf: ByteBuffer): HubReset {
+        return HubReset(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubReset) = (
+            FfiConverterString.allocationSize(value.`reason`) +
+            FfiConverterOptionalUInt.allocationSize(value.`prevUptimeS`) +
+            FfiConverterString.allocationSize(value.`at`)
+    )
+
+    override fun write(value: HubReset, buf: ByteBuffer) {
+            FfiConverterString.write(value.`reason`, buf)
+            FfiConverterOptionalUInt.write(value.`prevUptimeS`, buf)
+            FfiConverterString.write(value.`at`, buf)
+    }
+}
+
+
+
+/**
+ * One action of a schedule rule. Which fields count depends on `t`:
+ * `preset.load` (`slot` or `name`), `snapshot.recall` (`snapshot` or
+ * `name`), `system.scene.apply` (`scene`), `param.set` (`path`, `idx`, and
+ * `value` for a number or `flag` for `vol.mute`/`out.mute`).
+ */
+data class HubScheduleAction (
+    /**
+     * The message: `preset.load`, `snapshot.recall`, `system.scene.apply`
+     * or `param.set`.
+     */
+    var `t`: kotlin.String, 
+    /**
+     * `preset.load`'s slot (0 to 9).
+     */
+    var `slot`: kotlin.UByte?, 
+    /**
+     * A preset's or a snapshot's name ("" for none).
+     */
+    var `name`: kotlin.String, 
+    /**
+     * `snapshot.recall`'s snapshot id.
+     */
+    var `snapshot`: kotlin.String, 
+    /**
+     * `system.scene.apply`'s scene.
+     */
+    var `scene`: kotlin.String, 
+    /**
+     * `param.set`'s path: `vol.master`, `vol.user`, `vol.mute`, `out.mute`.
+     */
+    var `path`: kotlin.String, 
+    /**
+     * `param.set`'s indices.
+     */
+    var `idx`: List<kotlin.UInt>, 
+    /**
+     * `param.set`'s value, a number (dB).
+     */
+    var `value`: kotlin.Double?, 
+    /**
+     * `param.set`'s value, true or false (a mute).
+     */
+    var `flag`: kotlin.Boolean?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubScheduleAction: FfiConverterRustBuffer<HubScheduleAction> {
+    override fun read(buf: ByteBuffer): HubScheduleAction {
+        return HubScheduleAction(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceUInt.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubScheduleAction) = (
+            FfiConverterString.allocationSize(value.`t`) +
+            FfiConverterOptionalUByte.allocationSize(value.`slot`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`snapshot`) +
+            FfiConverterString.allocationSize(value.`scene`) +
+            FfiConverterString.allocationSize(value.`path`) +
+            FfiConverterSequenceUInt.allocationSize(value.`idx`) +
+            FfiConverterOptionalDouble.allocationSize(value.`value`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`flag`)
+    )
+
+    override fun write(value: HubScheduleAction, buf: ByteBuffer) {
+            FfiConverterString.write(value.`t`, buf)
+            FfiConverterOptionalUByte.write(value.`slot`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`snapshot`, buf)
+            FfiConverterString.write(value.`scene`, buf)
+            FfiConverterString.write(value.`path`, buf)
+            FfiConverterSequenceUInt.write(value.`idx`, buf)
+            FfiConverterOptionalDouble.write(value.`value`, buf)
+            FfiConverterOptionalBoolean.write(value.`flag`, buf)
+    }
+}
+
+
+
+/**
+ * What a rule last did.
+ */
+data class HubScheduleLast (
+    /**
+     * When (ISO-8601 UTC).
+     */
+    var `at`: kotlin.String, 
+    /**
+     * Every action went through.
+     */
+    var `ok`: kotlin.Boolean, 
+    /**
+     * The time was skipped (a clock jump).
+     */
+    var `skipped`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubScheduleLast: FfiConverterRustBuffer<HubScheduleLast> {
+    override fun read(buf: ByteBuffer): HubScheduleLast {
+        return HubScheduleLast(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubScheduleLast) = (
+            FfiConverterString.allocationSize(value.`at`) +
+            FfiConverterBoolean.allocationSize(value.`ok`) +
+            FfiConverterBoolean.allocationSize(value.`skipped`)
+    )
+
+    override fun write(value: HubScheduleLast, buf: ByteBuffer) {
+            FfiConverterString.write(value.`at`, buf)
+            FfiConverterBoolean.write(value.`ok`, buf)
+            FfiConverterBoolean.write(value.`skipped`, buf)
+    }
+}
+
+
+
+/**
+ * One row of a run: an action on a target.
+ */
+data class HubScheduleResult (
+    /**
+     * The device ("" for a scene refused as a whole).
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * The action, by position and `t` (`0:preset.load`).
+     */
+    var `action`: kotlin.String, 
+    /**
+     * It went through.
+     */
+    var `ok`: kotlin.Boolean, 
+    /**
+     * The hub's code when not (`offline`, `limit_exceeded`, ...).
+     */
+    var `code`: kotlin.String, 
+    /**
+     * Why, for a person.
+     */
+    var `msg`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubScheduleResult: FfiConverterRustBuffer<HubScheduleResult> {
+    override fun read(buf: ByteBuffer): HubScheduleResult {
+        return HubScheduleResult(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubScheduleResult) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`action`) +
+            FfiConverterBoolean.allocationSize(value.`ok`) +
+            FfiConverterString.allocationSize(value.`code`) +
+            FfiConverterString.allocationSize(value.`msg`)
+    )
+
+    override fun write(value: HubScheduleResult, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`action`, buf)
+            FfiConverterBoolean.write(value.`ok`, buf)
+            FfiConverterString.write(value.`code`, buf)
+            FfiConverterString.write(value.`msg`, buf)
+    }
+}
+
+
+
+/**
+ * A schedule rule (`schedule.list`, `schedule.set`).
+ */
+data class HubScheduleRule (
+    /**
+     * The hub's id (`r1`, ...); "" for a new rule.
+     */
+    var `id`: kotlin.String, 
+    /**
+     * 1 to 48 characters.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * On its schedule (`run_now` runs it either way).
+     */
+    var `enabled`: kotlin.Boolean, 
+    /**
+     * Weekly: `mon` to `sun` (with [`HubScheduleRule::time`]); empty for a
+     * one-off.
+     */
+    var `days`: List<kotlin.String>, 
+    /**
+     * Weekly: local `HH:MM`.
+     */
+    var `time`: kotlin.String, 
+    /**
+     * One-off: a local `YYYY-MM-DDTHH:MM` ("" for a weekly rule).
+     */
+    var `once`: kotlin.String, 
+    /**
+     * 1 to 16.
+     */
+    var `actions`: List<HubScheduleAction>, 
+    /**
+     * At most 16 serials.
+     */
+    var `targets`: List<kotlin.String>, 
+    /**
+     * The next run (ISO-8601 UTC); "" when none within a week or while the
+     * clock is unset. Read only.
+     */
+    var `nextRun`: kotlin.String, 
+    /**
+     * The last run. Read only.
+     */
+    var `last`: HubScheduleLast?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubScheduleRule: FfiConverterRustBuffer<HubScheduleRule> {
+    override fun read(buf: ByteBuffer): HubScheduleRule {
+        return HubScheduleRule(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeHubScheduleAction.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeHubScheduleLast.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubScheduleRule) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`enabled`) +
+            FfiConverterSequenceString.allocationSize(value.`days`) +
+            FfiConverterString.allocationSize(value.`time`) +
+            FfiConverterString.allocationSize(value.`once`) +
+            FfiConverterSequenceTypeHubScheduleAction.allocationSize(value.`actions`) +
+            FfiConverterSequenceString.allocationSize(value.`targets`) +
+            FfiConverterString.allocationSize(value.`nextRun`) +
+            FfiConverterOptionalTypeHubScheduleLast.allocationSize(value.`last`)
+    )
+
+    override fun write(value: HubScheduleRule, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`enabled`, buf)
+            FfiConverterSequenceString.write(value.`days`, buf)
+            FfiConverterString.write(value.`time`, buf)
+            FfiConverterString.write(value.`once`, buf)
+            FfiConverterSequenceTypeHubScheduleAction.write(value.`actions`, buf)
+            FfiConverterSequenceString.write(value.`targets`, buf)
+            FfiConverterString.write(value.`nextRun`, buf)
+            FfiConverterOptionalTypeHubScheduleLast.write(value.`last`, buf)
+    }
+}
+
+
+
+/**
+ * A schedule's run (`schedule.run_now`'s answer, `schedule.ran`).
+ */
+data class HubScheduleRun (
+    /**
+     * The rule's id.
+     */
+    var `rule`: kotlin.String, 
+    /**
+     * Its name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * When (ISO-8601 UTC).
+     */
+    var `at`: kotlin.String, 
+    /**
+     * The admin who ran it now; "" on its schedule.
+     */
+    var `by`: kotlin.String, 
+    /**
+     * Each action on each target, in the rule's order.
+     */
+    var `results`: List<HubScheduleResult>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubScheduleRun: FfiConverterRustBuffer<HubScheduleRun> {
+    override fun read(buf: ByteBuffer): HubScheduleRun {
+        return HubScheduleRun(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeHubScheduleResult.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubScheduleRun) = (
+            FfiConverterString.allocationSize(value.`rule`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`at`) +
+            FfiConverterString.allocationSize(value.`by`) +
+            FfiConverterSequenceTypeHubScheduleResult.allocationSize(value.`results`)
+    )
+
+    override fun write(value: HubScheduleRun, buf: ByteBuffer) {
+            FfiConverterString.write(value.`rule`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`at`, buf)
+            FfiConverterString.write(value.`by`, buf)
+            FfiConverterSequenceTypeHubScheduleResult.write(value.`results`, buf)
+    }
+}
+
+
+
+/**
+ * The hub's schedule (`schedule.list`).
+ */
+data class HubSchedules (
+    /**
+     * The rules.
+     */
+    var `rules`: List<HubScheduleRule>, 
+    /**
+     * The time zone the rules are read in.
+     */
+    var `zone`: kotlin.String, 
+    /**
+     * The hub's local time now (`YYYY-MM-DDTHH:MM`).
+     */
+    var `localTime`: kotlin.String, 
+    /**
+     * The hub's clock reads before its build date: nothing runs.
+     */
+    var `clockUnset`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubSchedules: FfiConverterRustBuffer<HubSchedules> {
+    override fun read(buf: ByteBuffer): HubSchedules {
+        return HubSchedules(
+            FfiConverterSequenceTypeHubScheduleRule.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubSchedules) = (
+            FfiConverterSequenceTypeHubScheduleRule.allocationSize(value.`rules`) +
+            FfiConverterString.allocationSize(value.`zone`) +
+            FfiConverterString.allocationSize(value.`localTime`) +
+            FfiConverterBoolean.allocationSize(value.`clockUnset`)
+    )
+
+    override fun write(value: HubSchedules, buf: ByteBuffer) {
+            FfiConverterSequenceTypeHubScheduleRule.write(value.`rules`, buf)
+            FfiConverterString.write(value.`zone`, buf)
+            FfiConverterString.write(value.`localTime`, buf)
+            FfiConverterBoolean.write(value.`clockUnset`, buf)
+    }
+}
+
+
+
+/**
+ * One of the hub's events of these families ([`HubServerListener`]).
+ */
+data class HubServerEvent (
+    /**
+     * `event.added`, `inventory.changed` or `snapshot.changed`; P2CC2:
+     * `alarm.changed`, `schedule.ran`.
+     */
+    var `kind`: kotlin.String, 
+    /**
+     * The device it concerns.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * `event.added`'s record.
+     */
+    var `record`: HubEventRecord?, 
+    /**
+     * `inventory.changed`'s record; `None` when the device was forgotten.
+     */
+    var `device`: HubDevice?, 
+    /**
+     * `snapshot.changed`'s snapshot id.
+     */
+    var `snapshot`: kotlin.String, 
+    /**
+     * `snapshot.changed`'s change: `put`, `rename`, `note`, `delete`.
+     */
+    var `change`: kotlin.String, 
+    /**
+     * `alarm.changed`'s alarm (raised, raised again, acknowledged or
+     * cleared).
+     */
+    var `alarm`: HubAlarm?, 
+    /**
+     * `schedule.ran`'s run.
+     */
+    var `run`: HubScheduleRun?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubServerEvent: FfiConverterRustBuffer<HubServerEvent> {
+    override fun read(buf: ByteBuffer): HubServerEvent {
+        return HubServerEvent(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeHubEventRecord.read(buf),
+            FfiConverterOptionalTypeHubDevice.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeHubAlarm.read(buf),
+            FfiConverterOptionalTypeHubScheduleRun.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubServerEvent) = (
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterOptionalTypeHubEventRecord.allocationSize(value.`record`) +
+            FfiConverterOptionalTypeHubDevice.allocationSize(value.`device`) +
+            FfiConverterString.allocationSize(value.`snapshot`) +
+            FfiConverterString.allocationSize(value.`change`) +
+            FfiConverterOptionalTypeHubAlarm.allocationSize(value.`alarm`) +
+            FfiConverterOptionalTypeHubScheduleRun.allocationSize(value.`run`)
+    )
+
+    override fun write(value: HubServerEvent, buf: ByteBuffer) {
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterOptionalTypeHubEventRecord.write(value.`record`, buf)
+            FfiConverterOptionalTypeHubDevice.write(value.`device`, buf)
+            FfiConverterString.write(value.`snapshot`, buf)
+            FfiConverterString.write(value.`change`, buf)
+            FfiConverterOptionalTypeHubAlarm.write(value.`alarm`, buf)
+            FfiConverterOptionalTypeHubScheduleRun.write(value.`run`, buf)
+    }
+}
+
+
+
+/**
+ * A snapshot on the hub with its document ([`DspiCore::hub_snapshots_get`]).
+ */
+data class HubSnapshotDocument (
+    /**
+     * Its entry.
+     */
+    var `snapshot`: SnapshotInfo, 
+    /**
+     * The document's text (compact JSON).
+     */
+    var `document`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubSnapshotDocument: FfiConverterRustBuffer<HubSnapshotDocument> {
+    override fun read(buf: ByteBuffer): HubSnapshotDocument {
+        return HubSnapshotDocument(
+            FfiConverterTypeSnapshotInfo.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubSnapshotDocument) = (
+            FfiConverterTypeSnapshotInfo.allocationSize(value.`snapshot`) +
+            FfiConverterString.allocationSize(value.`document`)
+    )
+
+    override fun write(value: HubSnapshotDocument, buf: ByteBuffer) {
+            FfiConverterTypeSnapshotInfo.write(value.`snapshot`, buf)
+            FfiConverterString.write(value.`document`, buf)
+    }
+}
+
+
+
+/**
+ * A snapshot filed on the hub ([`DspiCore::hub_snapshots_put`]).
+ */
+data class HubSnapshotPut (
+    /**
+     * Its entry on the hub.
+     */
+    var `snapshot`: SnapshotInfo, 
+    /**
+     * False: the hub already held this snapshot with the same content.
+     */
+    var `created`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubSnapshotPut: FfiConverterRustBuffer<HubSnapshotPut> {
+    override fun read(buf: ByteBuffer): HubSnapshotPut {
+        return HubSnapshotPut(
+            FfiConverterTypeSnapshotInfo.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubSnapshotPut) = (
+            FfiConverterTypeSnapshotInfo.allocationSize(value.`snapshot`) +
+            FfiConverterBoolean.allocationSize(value.`created`)
+    )
+
+    override fun write(value: HubSnapshotPut, buf: ByteBuffer) {
+            FfiConverterTypeSnapshotInfo.write(value.`snapshot`, buf)
+            FfiConverterBoolean.write(value.`created`, buf)
+    }
+}
+
+
+
+/**
+ * What a recall on the hub did ([`DspiCore::hub_snapshots_recall`]).
+ */
+data class HubSnapshotRecall (
+    /**
+     * The device.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * The snapshot's id.
+     */
+    var `snapshot`: kotlin.String, 
+    /**
+     * Its name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Whether the image was written.
+     */
+    var `image`: kotlin.Boolean, 
+    /**
+     * What changed.
+     */
+    var `lines`: List<kotlin.String>, 
+    /**
+     * What was not written, and why.
+     */
+    var `notes`: List<kotlin.String>, 
+    /**
+     * The guarded apply's id with `guard`; "" without one. Confirm it as
+     * any guarded apply, or it reverts.
+     */
+    var `guard`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubSnapshotRecall: FfiConverterRustBuffer<HubSnapshotRecall> {
+    override fun read(buf: ByteBuffer): HubSnapshotRecall {
+        return HubSnapshotRecall(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubSnapshotRecall) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`snapshot`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`image`) +
+            FfiConverterSequenceString.allocationSize(value.`lines`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`) +
+            FfiConverterString.allocationSize(value.`guard`)
+    )
+
+    override fun write(value: HubSnapshotRecall, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`snapshot`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`image`, buf)
+            FfiConverterSequenceString.write(value.`lines`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+            FfiConverterString.write(value.`guard`, buf)
+    }
+}
+
+
+
+/**
+ * The hub's statistics ([`DspiCore::hub_stats`], Admin of the hub only).
+ */
+data class HubStats (
+    /**
+     * Network sessions open now.
+     */
+    var `sessions`: kotlin.UInt, 
+    /**
+     * Seconds since the hub started.
+     */
+    var `uptimeS`: kotlin.ULong, 
+    /**
+     * One row per attached device.
+     */
+    var `devices`: List<HubStatsDevice>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubStats: FfiConverterRustBuffer<HubStats> {
+    override fun read(buf: ByteBuffer): HubStats {
+        return HubStats(
+            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterSequenceTypeHubStatsDevice.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubStats) = (
+            FfiConverterUInt.allocationSize(value.`sessions`) +
+            FfiConverterULong.allocationSize(value.`uptimeS`) +
+            FfiConverterSequenceTypeHubStatsDevice.allocationSize(value.`devices`)
+    )
+
+    override fun write(value: HubStats, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`sessions`, buf)
+            FfiConverterULong.write(value.`uptimeS`, buf)
+            FfiConverterSequenceTypeHubStatsDevice.write(value.`devices`, buf)
+    }
+}
+
+
+
+/**
+ * One attached device's counts in [`HubStats`].
+ */
+data class HubStatsDevice (
+    /**
+     * Its handle.
+     */
+    var `handle`: kotlin.UByte, 
+    /**
+     * Its serial.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * Commands that ran on it since it attached.
+     */
+    var `cmds`: kotlin.ULong, 
+    /**
+     * Those whose transfer failed.
+     */
+    var `errors`: kotlin.ULong, 
+    /**
+     * Their mean time on the transport, ms.
+     */
+    var `avgRttMs`: kotlin.Double, 
+    /**
+     * Its notifications a full session outbox dropped.
+     */
+    var `notifyDropped`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubStatsDevice: FfiConverterRustBuffer<HubStatsDevice> {
+    override fun read(buf: ByteBuffer): HubStatsDevice {
+        return HubStatsDevice(
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubStatsDevice) = (
+            FfiConverterUByte.allocationSize(value.`handle`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterULong.allocationSize(value.`cmds`) +
+            FfiConverterULong.allocationSize(value.`errors`) +
+            FfiConverterDouble.allocationSize(value.`avgRttMs`) +
+            FfiConverterULong.allocationSize(value.`notifyDropped`)
+    )
+
+    override fun write(value: HubStatsDevice, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`handle`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterULong.write(value.`cmds`, buf)
+            FfiConverterULong.write(value.`errors`, buf)
+            FfiConverterDouble.write(value.`avgRttMs`, buf)
+            FfiConverterULong.write(value.`notifyDropped`, buf)
     }
 }
 
@@ -28088,6 +32572,55 @@ public object FfiConverterTypeLockState: FfiConverterRustBuffer<LockState> {
             FfiConverterString.write(value.`detail`, buf)
             FfiConverterString.write(value.`heldBy`, buf)
             FfiConverterString.write(value.`hubPinnedMode`, buf)
+    }
+}
+
+
+
+/**
+ * One row of the merged snapshot list ([`DspiCore::snapshot_list_merged`]).
+ */
+data class MergedSnapshot (
+    /**
+     * The entry: the hub's where it holds the id (the hub's wins).
+     */
+    var `snapshot`: SnapshotInfo, 
+    /**
+     * [`WHERE_LOCAL`], [`WHERE_HUB`] or [`WHERE_BOTH`] (`where` in JSON).
+     */
+    var `location`: kotlin.String, 
+    /**
+     * This console's own copy of an id the hub holds with different content:
+     * listed beside the hub's, never overwritten by it.
+     */
+    var `localCopy`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMergedSnapshot: FfiConverterRustBuffer<MergedSnapshot> {
+    override fun read(buf: ByteBuffer): MergedSnapshot {
+        return MergedSnapshot(
+            FfiConverterTypeSnapshotInfo.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MergedSnapshot) = (
+            FfiConverterTypeSnapshotInfo.allocationSize(value.`snapshot`) +
+            FfiConverterString.allocationSize(value.`location`) +
+            FfiConverterBoolean.allocationSize(value.`localCopy`)
+    )
+
+    override fun write(value: MergedSnapshot, buf: ByteBuffer) {
+            FfiConverterTypeSnapshotInfo.write(value.`snapshot`, buf)
+            FfiConverterString.write(value.`location`, buf)
+            FfiConverterBoolean.write(value.`localCopy`, buf)
     }
 }
 
@@ -30877,6 +35410,56 @@ public object FfiConverterTypeSnapshotInfo: FfiConverterRustBuffer<SnapshotInfo>
             FfiConverterUByte.write(value.`inputChannels`, buf)
             FfiConverterUByte.write(value.`outputChannels`, buf)
             FfiConverterUByte.write(value.`wireFormat`, buf)
+    }
+}
+
+
+
+/**
+ * The snapshots of both sides ([`DspiCore::snapshot_list_merged`]).
+ */
+data class SnapshotMergedList (
+    /**
+     * Oldest first; on an id both sides hold with different content the
+     * hub's row comes first, then the local copy.
+     */
+    var `entries`: List<MergedSnapshot>, 
+    /**
+     * The hub's list is in it (a hub with `hub_snapshots` answered).
+     */
+    var `hubListed`: kotlin.Boolean, 
+    /**
+     * Why the hub's list is not in it, as a notice row; "" when it is, or
+     * when there is no such hub.
+     */
+    var `hubNoticeKey`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSnapshotMergedList: FfiConverterRustBuffer<SnapshotMergedList> {
+    override fun read(buf: ByteBuffer): SnapshotMergedList {
+        return SnapshotMergedList(
+            FfiConverterSequenceTypeMergedSnapshot.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: SnapshotMergedList) = (
+            FfiConverterSequenceTypeMergedSnapshot.allocationSize(value.`entries`) +
+            FfiConverterBoolean.allocationSize(value.`hubListed`) +
+            FfiConverterString.allocationSize(value.`hubNoticeKey`)
+    )
+
+    override fun write(value: SnapshotMergedList, buf: ByteBuffer) {
+            FfiConverterSequenceTypeMergedSnapshot.write(value.`entries`, buf)
+            FfiConverterBoolean.write(value.`hubListed`, buf)
+            FfiConverterString.write(value.`hubNoticeKey`, buf)
     }
 }
 
@@ -34012,6 +38595,38 @@ public object FfiConverterOptionalTypeHubAdminListener: FfiConverterRustBuffer<H
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeHubServerListener: FfiConverterRustBuffer<HubServerListener?> {
+    override fun read(buf: ByteBuffer): HubServerListener? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubServerListener.read(buf)
+    }
+
+    override fun allocationSize(value: HubServerListener?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubServerListener.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubServerListener?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubServerListener.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeLinkListener: FfiConverterRustBuffer<LinkListener?> {
     override fun read(buf: ByteBuffer): LinkListener? {
         if (buf.get().toInt() == 0) {
@@ -34258,6 +38873,262 @@ public object FfiConverterOptionalTypeHistoryEntry: FfiConverterRustBuffer<Histo
         } else {
             buf.put(1)
             FfiConverterTypeHistoryEntry.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubAlarm: FfiConverterRustBuffer<HubAlarm?> {
+    override fun read(buf: ByteBuffer): HubAlarm? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubAlarm.read(buf)
+    }
+
+    override fun allocationSize(value: HubAlarm?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubAlarm.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubAlarm?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubAlarm.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubDevice: FfiConverterRustBuffer<HubDevice?> {
+    override fun read(buf: ByteBuffer): HubDevice? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubDevice.read(buf)
+    }
+
+    override fun allocationSize(value: HubDevice?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubDevice.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubDevice?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubDevice.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubEventRecord: FfiConverterRustBuffer<HubEventRecord?> {
+    override fun read(buf: ByteBuffer): HubEventRecord? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubEventRecord.read(buf)
+    }
+
+    override fun allocationSize(value: HubEventRecord?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubEventRecord.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubEventRecord?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubEventRecord.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubOutboundLast: FfiConverterRustBuffer<HubOutboundLast?> {
+    override fun read(buf: ByteBuffer): HubOutboundLast? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubOutboundLast.read(buf)
+    }
+
+    override fun allocationSize(value: HubOutboundLast?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubOutboundLast.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubOutboundLast?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubOutboundLast.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubReset: FfiConverterRustBuffer<HubReset?> {
+    override fun read(buf: ByteBuffer): HubReset? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubReset.read(buf)
+    }
+
+    override fun allocationSize(value: HubReset?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubReset.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubReset?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubReset.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubScheduleLast: FfiConverterRustBuffer<HubScheduleLast?> {
+    override fun read(buf: ByteBuffer): HubScheduleLast? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubScheduleLast.read(buf)
+    }
+
+    override fun allocationSize(value: HubScheduleLast?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubScheduleLast.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubScheduleLast?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubScheduleLast.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubScheduleRun: FfiConverterRustBuffer<HubScheduleRun?> {
+    override fun read(buf: ByteBuffer): HubScheduleRun? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubScheduleRun.read(buf)
+    }
+
+    override fun allocationSize(value: HubScheduleRun?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubScheduleRun.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubScheduleRun?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubScheduleRun.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeIdentifyInfo: FfiConverterRustBuffer<IdentifyInfo?> {
+    override fun read(buf: ByteBuffer): IdentifyInfo? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeIdentifyInfo.read(buf)
+    }
+
+    override fun allocationSize(value: IdentifyInfo?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeIdentifyInfo.allocationSize(value)
+        }
+    }
+
+    override fun write(value: IdentifyInfo?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeIdentifyInfo.write(value, buf)
         }
     }
 }
@@ -34574,6 +39445,34 @@ public object FfiConverterSequenceUShort: FfiConverterRustBuffer<List<kotlin.USh
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterUShort.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceUInt: FfiConverterRustBuffer<List<kotlin.UInt>> {
+    override fun read(buf: ByteBuffer): List<kotlin.UInt> {
+        val len = buf.getInt()
+        return List<kotlin.UInt>(len) {
+            FfiConverterUInt.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.UInt>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterUInt.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.UInt>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterUInt.write(it, buf)
         }
     }
 }
@@ -35284,6 +40183,174 @@ public object FfiConverterSequenceTypeHubAdminEvent: FfiConverterRustBuffer<List
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeHubAlarm: FfiConverterRustBuffer<List<HubAlarm>> {
+    override fun read(buf: ByteBuffer): List<HubAlarm> {
+        val len = buf.getInt()
+        return List<HubAlarm>(len) {
+            FfiConverterTypeHubAlarm.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubAlarm>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubAlarm.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubAlarm>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubAlarm.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubAlarmRule: FfiConverterRustBuffer<List<HubAlarmRule>> {
+    override fun read(buf: ByteBuffer): List<HubAlarmRule> {
+        val len = buf.getInt()
+        return List<HubAlarmRule>(len) {
+            FfiConverterTypeHubAlarmRule.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubAlarmRule>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubAlarmRule.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubAlarmRule>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubAlarmRule.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubApiKey: FfiConverterRustBuffer<List<HubApiKey>> {
+    override fun read(buf: ByteBuffer): List<HubApiKey> {
+        val len = buf.getInt()
+        return List<HubApiKey>(len) {
+            FfiConverterTypeHubApiKey.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubApiKey>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubApiKey.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubApiKey>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubApiKey.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubDevice: FfiConverterRustBuffer<List<HubDevice>> {
+    override fun read(buf: ByteBuffer): List<HubDevice> {
+        val len = buf.getInt()
+        return List<HubDevice>(len) {
+            FfiConverterTypeHubDevice.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubDevice>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubDevice.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubDevice>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubDevice.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubEventRecord: FfiConverterRustBuffer<List<HubEventRecord>> {
+    override fun read(buf: ByteBuffer): List<HubEventRecord> {
+        val len = buf.getInt()
+        return List<HubEventRecord>(len) {
+            FfiConverterTypeHubEventRecord.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubEventRecord>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubEventRecord.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubEventRecord>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubEventRecord.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubHealth: FfiConverterRustBuffer<List<HubHealth>> {
+    override fun read(buf: ByteBuffer): List<HubHealth> {
+        val len = buf.getInt()
+        return List<HubHealth>(len) {
+            FfiConverterTypeHubHealth.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubHealth>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubHealth.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubHealth>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubHealth.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeHubModePin: FfiConverterRustBuffer<List<HubModePin>> {
     override fun read(buf: ByteBuffer): List<HubModePin> {
         val len = buf.getInt()
@@ -35302,6 +40369,202 @@ public object FfiConverterSequenceTypeHubModePin: FfiConverterRustBuffer<List<Hu
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeHubModePin.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubOutboundSecret: FfiConverterRustBuffer<List<HubOutboundSecret>> {
+    override fun read(buf: ByteBuffer): List<HubOutboundSecret> {
+        val len = buf.getInt()
+        return List<HubOutboundSecret>(len) {
+            FfiConverterTypeHubOutboundSecret.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubOutboundSecret>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubOutboundSecret.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubOutboundSecret>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubOutboundSecret.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubOutboundTarget: FfiConverterRustBuffer<List<HubOutboundTarget>> {
+    override fun read(buf: ByteBuffer): List<HubOutboundTarget> {
+        val len = buf.getInt()
+        return List<HubOutboundTarget>(len) {
+            FfiConverterTypeHubOutboundTarget.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubOutboundTarget>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubOutboundTarget.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubOutboundTarget>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubOutboundTarget.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubScheduleAction: FfiConverterRustBuffer<List<HubScheduleAction>> {
+    override fun read(buf: ByteBuffer): List<HubScheduleAction> {
+        val len = buf.getInt()
+        return List<HubScheduleAction>(len) {
+            FfiConverterTypeHubScheduleAction.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubScheduleAction>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubScheduleAction.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubScheduleAction>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubScheduleAction.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubScheduleResult: FfiConverterRustBuffer<List<HubScheduleResult>> {
+    override fun read(buf: ByteBuffer): List<HubScheduleResult> {
+        val len = buf.getInt()
+        return List<HubScheduleResult>(len) {
+            FfiConverterTypeHubScheduleResult.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubScheduleResult>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubScheduleResult.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubScheduleResult>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubScheduleResult.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubScheduleRule: FfiConverterRustBuffer<List<HubScheduleRule>> {
+    override fun read(buf: ByteBuffer): List<HubScheduleRule> {
+        val len = buf.getInt()
+        return List<HubScheduleRule>(len) {
+            FfiConverterTypeHubScheduleRule.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubScheduleRule>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubScheduleRule.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubScheduleRule>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubScheduleRule.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubServerEvent: FfiConverterRustBuffer<List<HubServerEvent>> {
+    override fun read(buf: ByteBuffer): List<HubServerEvent> {
+        val len = buf.getInt()
+        return List<HubServerEvent>(len) {
+            FfiConverterTypeHubServerEvent.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubServerEvent>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubServerEvent.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubServerEvent>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubServerEvent.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubStatsDevice: FfiConverterRustBuffer<List<HubStatsDevice>> {
+    override fun read(buf: ByteBuffer): List<HubStatsDevice> {
+        val len = buf.getInt()
+        return List<HubStatsDevice>(len) {
+            FfiConverterTypeHubStatsDevice.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubStatsDevice>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubStatsDevice.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubStatsDevice>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubStatsDevice.write(it, buf)
         }
     }
 }
@@ -35442,6 +40705,34 @@ public object FfiConverterSequenceTypeLinkTxtEntry: FfiConverterRustBuffer<List<
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeLinkTxtEntry.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMergedSnapshot: FfiConverterRustBuffer<List<MergedSnapshot>> {
+    override fun read(buf: ByteBuffer): List<MergedSnapshot> {
+        val len = buf.getInt()
+        return List<MergedSnapshot>(len) {
+            FfiConverterTypeMergedSnapshot.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MergedSnapshot>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMergedSnapshot.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MergedSnapshot>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMergedSnapshot.write(it, buf)
         }
     }
 }
@@ -36510,6 +41801,22 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_firmware_guard_check(
         FfiConverterByteArray.lower(`image`),FfiConverterTypeFirmwareGuardBoard.lower(`board`),FfiConverterString.lower(`typedConfirmation`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * What to tell the user about `alarm`: its row `alarm.<code>`, with
+         * `{time}` the client's own rendering of [`HubAlarm::raised_at`] (`time`;
+         * "" leaves the hub's ISO time) and `{reason}` the reset's cause in words.
+         * The detail is the hub's message. A code this build does not know gets
+         * [`NOTICE_ALARM_UNKNOWN`]'s row.
+         */ fun `hubAlarmNotice`(`alarm`: HubAlarm, `time`: kotlin.String): Notice {
+            return FfiConverterTypeNotice.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_hub_alarm_notice(
+        FfiConverterTypeHubAlarm.lower(`alarm`),FfiConverterString.lower(`time`),_status)
 }
     )
     }

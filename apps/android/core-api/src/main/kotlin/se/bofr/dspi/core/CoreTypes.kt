@@ -4114,6 +4114,1118 @@ data class HubAdminEvent(
 )
 
 /**
+ * Which of the hub's families this console's hub has ([`DspiCore::hub_caps`]).
+ */
+data class HubCaps(
+    /**
+     * This console has a live DSPi Link session.
+     */
+    val onHub: Boolean,
+    /**
+     * `inventory.*` ([`DspiCore::hub_inventory`]).
+     */
+    val inventory: Boolean,
+    /**
+     * `device.identify` ([`DspiCore::hub_identify`] on a hub).
+     */
+    val identify: Boolean,
+    /**
+     * `health.get` ([`DspiCore::hub_health`]).
+     */
+    val health: Boolean,
+    /**
+     * `event.*` ([`DspiCore::hub_events_read`]).
+     */
+    val events: Boolean,
+    /**
+     * The hub's snapshot store (`hub_snapshots_*`).
+     */
+    val hubSnapshots: Boolean,
+    /**
+     * The parameter API and presets by name.
+     */
+    val paramApi: Boolean,
+    /**
+     * `hub.stats` ([`DspiCore::hub_stats`]).
+     */
+    val hubStats: Boolean,
+    /**
+     * `alarm.*` ([`DspiCore::hub_alarms`]).
+     */
+    val alarms: Boolean,
+    /**
+     * `outbound.*` ([`DspiCore::hub_outbound_get`]).
+     */
+    val outbound: Boolean,
+    /**
+     * `schedule.*` ([`DspiCore::hub_schedules`]).
+     */
+    val schedule: Boolean,
+    /**
+     * `mqtt.*` ([`DspiCore::hub_mqtt_get`]).
+     */
+    val mqtt: Boolean,
+    /**
+     * API keys ([`DspiCore::hub_api_keys`]).
+     */
+    val apiKeys: Boolean,
+    /**
+     * The REST mirror is on (the hub runs with `--rest`).
+     */
+    val rest: Boolean,
+    /**
+     * Every cap of the hub's `hello`, as it sent them.
+     */
+    val caps: List<String>,
+)
+
+/**
+ * A reset as the hub saw it (`EXT_RESET_INFO`).
+ */
+data class HubReset(
+    /**
+     * `power_on`, `brownout`, `run_pin`, `watchdog`, `software`,
+     * `debugger`, `glitch` or `unknown`.
+     */
+    val reason: String,
+    /**
+     * How long the run before it lasted, s; `None` when unknown.
+     */
+    val prevUptimeS: Long?,
+    /**
+     * When it happened (ISO-8601 UTC); "" where the hub gives no time.
+     */
+    val at: String,
+)
+
+/**
+ * One device of the hub's inventory ([`DspiCore::hub_inventory`]).
+ */
+data class HubDevice(
+    /**
+     * The key.
+     */
+    val serial: String,
+    /**
+     * Its DSPi Link handle while online.
+     */
+    val handle: Int?,
+    /**
+     * Attached now.
+     */
+    val online: Boolean,
+    /**
+     * Its name when last seen.
+     */
+    val name: String,
+    /**
+     * `RP2040`, `RP2350` (`unknown platform N` for an id this build does
+     * not know); "" when unknown.
+     */
+    val platform: String,
+    /**
+     * The firmware version.
+     */
+    val fw: String,
+    /**
+     * A beta build; `None` when unknown.
+     */
+    val fwBeta: Boolean?,
+    /**
+     * Output channels.
+     */
+    val outputs: Int,
+    /**
+     * The board the firmware was built for; "" when unknown.
+     */
+    val board: String,
+    /**
+     * The hardware revision; "" when unknown or unset.
+     */
+    val hwRev: String,
+    /**
+     * The chip; "" when unknown.
+     */
+    val chip: String,
+    /**
+     * The chip's revision, when known.
+     */
+    val chipRev: Int?,
+    /**
+     * Set by an Admin; "" when unset.
+     */
+    val location: String,
+    /**
+     * Set by an Admin; "" when unset.
+     */
+    val note: String,
+    /**
+     * Set by an Admin.
+     */
+    val tags: List<String>,
+    /**
+     * First seen (ISO-8601 UTC).
+     */
+    val firstSeen: String,
+    /**
+     * Last seen: now while online, else when it went offline.
+     */
+    val lastSeen: String,
+    /**
+     * Its last reset, when the hub read one.
+     */
+    val lastReset: HubReset?,
+)
+
+/**
+ * One online device's health ([`DspiCore::hub_health`]). A field the
+ * firmware does not give, or the hub has not read yet, is `None`.
+ */
+data class HubHealth(
+    /**
+     * The device.
+     */
+    val serial: String,
+    /**
+     * Its handle.
+     */
+    val handle: Int,
+    /**
+     * The newest read (ISO-8601 UTC); "" before the first.
+     */
+    val at: String,
+    /**
+     * The busier core's load, %.
+     */
+    val cpuPct: Int?,
+    /**
+     * The sticky clip latch, one bit per channel (never cleared by the hub).
+     */
+    val clipMask: Long?,
+    /**
+     * °C, to 0.01.
+     */
+    val tempC: Double?,
+    /**
+     * Uptime, s (from the reset-info read, every 60 s).
+     */
+    val uptimeS: Long?,
+    /**
+     * Watchdog hangs not yet acted on.
+     */
+    val hangCount: Int?,
+    /**
+     * No answer for 10 s while attached.
+     */
+    val unresponsive: Boolean,
+    /**
+     * Since when, while [`HubHealth::unresponsive`]; "" otherwise.
+     */
+    val unresponsiveSince: String,
+    /**
+     * The reset seen at attach or since.
+     */
+    val reset: HubReset?,
+)
+
+/**
+ * One attached device's counts in [`HubStats`].
+ */
+data class HubStatsDevice(
+    /**
+     * Its handle.
+     */
+    val handle: Int,
+    /**
+     * Its serial.
+     */
+    val serial: String,
+    /**
+     * Commands that ran on it since it attached.
+     */
+    val cmds: Long,
+    /**
+     * Those whose transfer failed.
+     */
+    val errors: Long,
+    /**
+     * Their mean time on the transport, ms.
+     */
+    val avgRttMs: Double,
+    /**
+     * Its notifications a full session outbox dropped.
+     */
+    val notifyDropped: Long,
+)
+
+/**
+ * The hub's statistics ([`DspiCore::hub_stats`], Admin of the hub only).
+ */
+data class HubStats(
+    /**
+     * Network sessions open now.
+     */
+    val sessions: Long,
+    /**
+     * Seconds since the hub started.
+     */
+    val uptimeS: Long,
+    /**
+     * One row per attached device.
+     */
+    val devices: List<HubStatsDevice>,
+)
+
+/**
+ * One record of a device's history on the hub: the event log's record
+ * (`EventEntry`'s fields) and who caused it by name.
+ */
+data class HubEventRecord(
+    /**
+     * Rising per device; numbering can start again (hub-api.md section 6).
+     */
+    val id: Long,
+    /**
+     * When, ms since the Unix epoch.
+     */
+    val timeMs: Long,
+    /**
+     * The record's kind (`notification`, `connected`, `recall`, `identify`,
+     * `alarm`, ...; `unknown` for a kind this build does not know).
+     */
+    val kind: String,
+    /**
+     * The device's serial.
+     */
+    val serial: String,
+    /**
+     * One readable line.
+     */
+    val text: String,
+    /**
+     * Who or what caused it, as the log's `source`; "" when none.
+     */
+    val source: String,
+    /**
+     * The DSPi Link session that caused it.
+     */
+    val session: Long?,
+    /**
+     * Who caused it, by name: the client, key, schedule or rule; "" when
+     * none.
+     */
+    val by: String,
+    /**
+     * A wire channel, or a preset slot.
+     */
+    val channel: Int?,
+    /**
+     * A number: °C, a counter's total, Identify's seconds.
+     */
+    val value: Double?,
+    /**
+     * The firmware version, on connects and firmware changes.
+     */
+    val fw: String?,
+    /**
+     * The device's uptime, s.
+     */
+    val uptimeS: Long?,
+    /**
+     * Detail lines: what a recall or an import changed.
+     */
+    val lines: List<String>,
+    /**
+     * Occurrences this record stands for.
+     */
+    val count: Long,
+)
+
+/**
+ * A page of a device's history on the hub ([`DspiCore::hub_events_read`]).
+ */
+data class HubEventPage(
+    /**
+     * The device.
+     */
+    val serial: String,
+    /**
+     * Oldest first.
+     */
+    val records: List<HubEventRecord>,
+    /**
+     * More follow the last record's id.
+     */
+    val more: Boolean,
+    /**
+     * The highest id the hub's log holds (0: empty). An `after_id` above
+     * it means the numbering started again: read from 0.
+     */
+    val newestId: Long,
+)
+
+/**
+ * One of the hub's events of these families ([`HubServerListener`]).
+ */
+data class HubServerEvent(
+    /**
+     * `event.added`, `inventory.changed` or `snapshot.changed`; P2CC2:
+     * `alarm.changed`, `schedule.ran`.
+     */
+    val kind: String,
+    /**
+     * The device it concerns.
+     */
+    val serial: String,
+    /**
+     * `event.added`'s record.
+     */
+    val record: HubEventRecord?,
+    /**
+     * `inventory.changed`'s record; `None` when the device was forgotten.
+     */
+    val device: HubDevice?,
+    /**
+     * `snapshot.changed`'s snapshot id.
+     */
+    val snapshot: String,
+    /**
+     * `snapshot.changed`'s change: `put`, `rename`, `note`, `delete`.
+     */
+    val change: String,
+    /**
+     * `alarm.changed`'s alarm (raised, raised again, acknowledged or
+     * cleared).
+     */
+    val alarm: HubAlarm?,
+    /**
+     * `schedule.ran`'s run.
+     */
+    val run: HubScheduleRun?,
+)
+
+/**
+ * A snapshot on the hub with its document ([`DspiCore::hub_snapshots_get`]).
+ */
+data class HubSnapshotDocument(
+    /**
+     * Its entry.
+     */
+    val snapshot: SnapshotInfo,
+    /**
+     * The document's text (compact JSON).
+     */
+    val document: String,
+)
+
+/**
+ * A snapshot filed on the hub ([`DspiCore::hub_snapshots_put`]).
+ */
+data class HubSnapshotPut(
+    /**
+     * Its entry on the hub.
+     */
+    val snapshot: SnapshotInfo,
+    /**
+     * False: the hub already held this snapshot with the same content.
+     */
+    val created: Boolean,
+)
+
+/**
+ * What a recall on the hub did ([`DspiCore::hub_snapshots_recall`]).
+ */
+data class HubSnapshotRecall(
+    /**
+     * The device.
+     */
+    val serial: String,
+    /**
+     * The snapshot's id.
+     */
+    val snapshot: String,
+    /**
+     * Its name.
+     */
+    val name: String,
+    /**
+     * Whether the image was written.
+     */
+    val image: Boolean,
+    /**
+     * What changed.
+     */
+    val lines: List<String>,
+    /**
+     * What was not written, and why.
+     */
+    val notes: List<String>,
+    /**
+     * The guarded apply's id with `guard`; "" without one. Confirm it as
+     * any guarded apply, or it reverts.
+     */
+    val guard: String,
+)
+
+/**
+ * One row of the merged snapshot list ([`DspiCore::snapshot_list_merged`]).
+ */
+data class MergedSnapshot(
+    /**
+     * The entry: the hub's where it holds the id (the hub's wins).
+     */
+    val snapshot: SnapshotInfo,
+    /**
+     * [`WHERE_LOCAL`], [`WHERE_HUB`] or [`WHERE_BOTH`] (`where` in JSON).
+     */
+    val location: String,
+    /**
+     * This console's own copy of an id the hub holds with different content:
+     * listed beside the hub's, never overwritten by it.
+     */
+    val localCopy: Boolean,
+)
+
+/**
+ * The snapshots of both sides ([`DspiCore::snapshot_list_merged`]).
+ */
+data class SnapshotMergedList(
+    /**
+     * Oldest first; on an id both sides hold with different content the
+     * hub's row comes first, then the local copy.
+     */
+    val entries: List<MergedSnapshot>,
+    /**
+     * The hub's list is in it (a hub with `hub_snapshots` answered).
+     */
+    val hubListed: Boolean,
+    /**
+     * Why the hub's list is not in it, as a notice row; "" when it is, or
+     * when there is no such hub.
+     */
+    val hubNoticeKey: String,
+)
+
+/**
+ * One alarm of the hub's (`alarm.list`, `alarm.ack`, `alarm.changed`).
+ */
+data class HubAlarm(
+    /**
+     * `device:<n>` or `alink:<n>`, unique for the hub's run.
+     */
+    val id: String,
+    /**
+     * `device` or `alink`.
+     */
+    val source: String,
+    /**
+     * One of [`ALARM_CODES`] (or a code a newer hub adds).
+     */
+    val code: String,
+    /**
+     * What it is about: the serial, a schedule rule's id, `hub`, or an
+     * audio link unit.
+     */
+    val subject: String,
+    /**
+     * The device's serial; "" for an alarm about no one device.
+     */
+    val serial: String,
+    /**
+     * `warning` or `critical`.
+     */
+    val severity: String,
+    /**
+     * The hub's line for a person (also the notice's detail).
+     */
+    val message: String,
+    /**
+     * `raised`, `acknowledged` or `cleared`.
+     */
+    val state: String,
+    /**
+     * When it was raised (ISO-8601 UTC).
+     */
+    val raisedAt: String,
+    /**
+     * When it was cleared; "" while on.
+     */
+    val clearedAt: String,
+    /**
+     * Who acknowledged it (a client's or principal's name); "" when none.
+     */
+    val acknowledgedBy: String,
+    /**
+     * How often it was raised again while on.
+     */
+    val count: Long,
+    /**
+     * `device_restarted`'s reset reason (`watchdog`, `glitch`, `brownout`,
+     * ...), read from the hub's message; "" otherwise.
+     */
+    val reason: String,
+    /**
+     * Its notice row: `alarm.<code>`, or [`NOTICE_ALARM_UNKNOWN`].
+     */
+    val noticeKey: String,
+)
+
+/**
+ * One code's alarm rule (`alarm.rules.get`/`set`). A field the code does not
+ * have is `None`; in [`DspiCore::hub_alarm_rules_set`] a `None` keeps the
+ * hub's value.
+ */
+data class HubAlarmRule(
+    /**
+     * The alarm code.
+     */
+    val code: String,
+    /**
+     * The rule is on (off clears its alarms).
+     */
+    val on: Boolean,
+    /**
+     * `device_offline`, `unresponsive`: seconds (1 to 86 400).
+     */
+    val afterS: Long?,
+    /**
+     * `clip`: clip events within a minute (1 to 1000).
+     */
+    val perMinute: Long?,
+    /**
+     * `clip`: mute the device once per storm (off by default).
+     */
+    val muteOnStorm: Boolean?,
+    /**
+     * `temperature`: °C (0 to 150).
+     */
+    val aboveC: Double?,
+    /**
+     * `cpu`: % (1 to 100).
+     */
+    val abovePct: Long?,
+    /**
+     * `cpu`: for so many seconds (1 to 3600).
+     */
+    val forS: Long?,
+)
+
+/**
+ * One action of a schedule rule. Which fields count depends on `t`:
+ * `preset.load` (`slot` or `name`), `snapshot.recall` (`snapshot` or
+ * `name`), `system.scene.apply` (`scene`), `param.set` (`path`, `idx`, and
+ * `value` for a number or `flag` for `vol.mute`/`out.mute`).
+ */
+data class HubScheduleAction(
+    /**
+     * The message: `preset.load`, `snapshot.recall`, `system.scene.apply`
+     * or `param.set`.
+     */
+    val t: String,
+    /**
+     * `preset.load`'s slot (0 to 9).
+     */
+    val slot: Int?,
+    /**
+     * A preset's or a snapshot's name ("" for none).
+     */
+    val name: String,
+    /**
+     * `snapshot.recall`'s snapshot id.
+     */
+    val snapshot: String,
+    /**
+     * `system.scene.apply`'s scene.
+     */
+    val scene: String,
+    /**
+     * `param.set`'s path: `vol.master`, `vol.user`, `vol.mute`, `out.mute`.
+     */
+    val path: String,
+    /**
+     * `param.set`'s indices.
+     */
+    val idx: List<Long>,
+    /**
+     * `param.set`'s value, a number (dB).
+     */
+    val value: Double?,
+    /**
+     * `param.set`'s value, true or false (a mute).
+     */
+    val flag: Boolean?,
+)
+
+/**
+ * What a rule last did.
+ */
+data class HubScheduleLast(
+    /**
+     * When (ISO-8601 UTC).
+     */
+    val at: String,
+    /**
+     * Every action went through.
+     */
+    val ok: Boolean,
+    /**
+     * The time was skipped (a clock jump).
+     */
+    val skipped: Boolean,
+)
+
+/**
+ * A schedule rule (`schedule.list`, `schedule.set`).
+ */
+data class HubScheduleRule(
+    /**
+     * The hub's id (`r1`, ...); "" for a new rule.
+     */
+    val id: String,
+    /**
+     * 1 to 48 characters.
+     */
+    val name: String,
+    /**
+     * On its schedule (`run_now` runs it either way).
+     */
+    val enabled: Boolean,
+    /**
+     * Weekly: `mon` to `sun` (with [`HubScheduleRule::time`]); empty for a
+     * one-off.
+     */
+    val days: List<String>,
+    /**
+     * Weekly: local `HH:MM`.
+     */
+    val time: String,
+    /**
+     * One-off: a local `YYYY-MM-DDTHH:MM` ("" for a weekly rule).
+     */
+    val once: String,
+    /**
+     * 1 to 16.
+     */
+    val actions: List<HubScheduleAction>,
+    /**
+     * At most 16 serials.
+     */
+    val targets: List<String>,
+    /**
+     * The next run (ISO-8601 UTC); "" when none within a week or while the
+     * clock is unset. Read only.
+     */
+    val nextRun: String,
+    /**
+     * The last run. Read only.
+     */
+    val last: HubScheduleLast?,
+)
+
+/**
+ * The hub's schedule (`schedule.list`).
+ */
+data class HubSchedules(
+    /**
+     * The rules.
+     */
+    val rules: List<HubScheduleRule>,
+    /**
+     * The time zone the rules are read in.
+     */
+    val zone: String,
+    /**
+     * The hub's local time now (`YYYY-MM-DDTHH:MM`).
+     */
+    val localTime: String,
+    /**
+     * The hub's clock reads before its build date: nothing runs.
+     */
+    val clockUnset: Boolean,
+)
+
+/**
+ * One row of a run: an action on a target.
+ */
+data class HubScheduleResult(
+    /**
+     * The device ("" for a scene refused as a whole).
+     */
+    val serial: String,
+    /**
+     * The action, by position and `t` (`0:preset.load`).
+     */
+    val action: String,
+    /**
+     * It went through.
+     */
+    val ok: Boolean,
+    /**
+     * The hub's code when not (`offline`, `limit_exceeded`, ...).
+     */
+    val code: String,
+    /**
+     * Why, for a person.
+     */
+    val msg: String,
+)
+
+/**
+ * A schedule's run (`schedule.run_now`'s answer, `schedule.ran`).
+ */
+data class HubScheduleRun(
+    /**
+     * The rule's id.
+     */
+    val rule: String,
+    /**
+     * Its name.
+     */
+    val name: String,
+    /**
+     * When (ISO-8601 UTC).
+     */
+    val at: String,
+    /**
+     * The admin who ran it now; "" on its schedule.
+     */
+    val by: String,
+    /**
+     * Each action on each target, in the rule's order.
+     */
+    val results: List<HubScheduleResult>,
+)
+
+/**
+ * A target's last delivery try.
+ */
+data class HubOutboundLast(
+    /**
+     * When (ISO-8601 UTC).
+     */
+    val at: String,
+    /**
+     * It was delivered.
+     */
+    val ok: Boolean,
+    /**
+     * The receiver's HTTP status, if it answered.
+     */
+    val status: Int?,
+    /**
+     * Why not, for a person.
+     */
+    val msg: String,
+)
+
+/**
+ * A notification target (`outbound.get`, `outbound.set`).
+ */
+data class HubOutboundTarget(
+    /**
+     * 1 to 32 of `A-Z a-z 0-9 _ -`; "" for a new one (the hub names it).
+     */
+    val id: String,
+    /**
+     * At most 64 characters; "" for the id.
+     */
+    val name: String,
+    /**
+     * `webhook` (a JSON POST) or `push` (an ntfy-style text POST).
+     */
+    val kind: String,
+    /**
+     * `https://`, or `http://` with [`HubOutboundTarget::plaintext`].
+     */
+    val url: String,
+    /**
+     * Deliveries go out.
+     */
+    val enabled: Boolean,
+    /**
+     * Of `alarm.raised`, `alarm.cleared`, `restart`, `schedule.ran`,
+     * `schedule.failed`; empty sends none.
+     */
+    val kinds: List<String>,
+    /**
+     * Read: `set` or `not set`. In [`DspiCore::hub_outbound_set`]: `new`
+     * (the hub makes one, shown once), `set` or "" (keep), `not set`
+     * (none). A secret is never typed.
+     */
+    val secret: String,
+    /**
+     * `http://` to a private address, unencrypted.
+     */
+    val plaintext: Boolean,
+    /**
+     * The CA or self-signed certificate(s) to trust instead of the public
+     * CAs (PEM); "" for none.
+     */
+    val caPem: String,
+    /**
+     * The receiver's key pin (`sha256//<base64>`); "" for none.
+     */
+    val pinSha256: String,
+    /**
+     * Deliveries waiting. Read only.
+     */
+    val queued: Long,
+    /**
+     * Deliveries dropped. Read only.
+     */
+    val dropped: Long,
+    /**
+     * The last try. Read only.
+     */
+    val last: HubOutboundLast?,
+    /**
+     * Sent over TLS. Read only.
+     */
+    val encrypted: Boolean,
+    /**
+     * `webpki`, `ca` or `pin` (https only); "" otherwise. Read only.
+     */
+    val trust: String,
+    /**
+     * A notice for the Admin (a target kept from before TLS). Read only.
+     */
+    val notice: String,
+)
+
+/**
+ * A secret the hub made for a target, shown once ([`HubOutboundSet`]).
+ */
+data class HubOutboundSecret(
+    /**
+     * The target's id.
+     */
+    val target: String,
+    /**
+     * The secret (64 hex characters): show it once, keep it nowhere else.
+     */
+    val secret: HubSecret,
+)
+
+/**
+ * `outbound.set`'s answer.
+ */
+data class HubOutboundSet(
+    /**
+     * The targets now.
+     */
+    val targets: List<HubOutboundTarget>,
+    /**
+     * The secrets made by this call: in this answer only.
+     */
+    val secrets: List<HubOutboundSecret>,
+)
+
+/**
+ * `outbound.test`'s answer.
+ */
+data class HubOutboundTest(
+    /**
+     * It was delivered.
+     */
+    val delivered: Boolean,
+    /**
+     * The receiver's HTTP status, if it answered.
+     */
+    val status: Int?,
+    /**
+     * Why not, for a person.
+     */
+    val msg: String,
+)
+
+/**
+ * TLS to the broker (`mqtt.get`'s `tls`). PEMs and file paths "" for none.
+ */
+data class HubMqttTls(
+    /**
+     * `on` or `off` ("" is off).
+     */
+    val mode: String,
+    /**
+     * The CA or self-signed certificate(s) to trust (PEM).
+     */
+    val caPem: String,
+    /**
+     * The broker's key pin.
+     */
+    val pinSha256: String,
+    /**
+     * A client certificate (PEM).
+     */
+    val clientCertPem: String,
+    /**
+     * Its key. Read: `set` or `not set`; send `set` back to keep it, a PEM
+     * to set it, "" or `not set` to clear it.
+     */
+    val clientKeyPem: String,
+    /**
+     * A client certificate's file on the hub's machine.
+     */
+    val clientCertFile: String,
+    /**
+     * Its key's file (0600) on the hub's machine.
+     */
+    val clientKeyFile: String,
+    /**
+     * Without TLS, send the password to a broker not on loopback too.
+     */
+    val allowPlaintextPassword: Boolean,
+)
+
+/**
+ * The broker setting (`mqtt.get`, `mqtt.set`). In
+ * [`DspiCore::hub_mqtt_set`] "" in `client_id`, `base_topic` (and a `None`
+ * `port`) is the hub's default, "" in `broker`/`username` none.
+ */
+data class HubMqttSettings(
+    /**
+     * The hub connects and publishes.
+     */
+    val enabled: Boolean,
+    /**
+     * The broker's host name or address.
+     */
+    val broker: String,
+    /**
+     * Its port (read: the one in use).
+     */
+    val port: Int?,
+    /**
+     * The client id (read: the one in use).
+     */
+    val clientId: String,
+    /**
+     * The user name; "" for none.
+     */
+    val username: String,
+    /**
+     * Read: `set` or `not set`. To set: the password itself (typed by the
+     * Admin); `set` or "" keeps it; `not set` clears it. Never logged.
+     */
+    val password: String,
+    /**
+     * The base topic (read: the one in use).
+     */
+    val baseTopic: String,
+    /**
+     * TLS.
+     */
+    val tls: HubMqttTls,
+    /**
+     * Home Assistant discovery and `set` topics on (section 13.2).
+     */
+    val haEnabled: Boolean,
+    /**
+     * The API key (its `cid`) Home Assistant's `set` topics act as.
+     */
+    val haKey: Long?,
+    /**
+     * A one-time notice of this run (a file migrated). Read only.
+     */
+    val notice: String,
+)
+
+/**
+ * The broker connection now (`mqtt.status`).
+ */
+data class HubMqttStatus(
+    /**
+     * `off`, `connecting`, `connected` or `failed`.
+     */
+    val state: String,
+    /**
+     * The last reason, for a person (a refused password).
+     */
+    val msg: String,
+    /**
+     * When `state` last changed (ISO-8601 UTC).
+     */
+    val since: String,
+    /**
+     * Publishes waiting while the broker is away.
+     */
+    val queued: Long,
+    /**
+     * Publishes dropped past that.
+     */
+    val dropped: Long,
+    /**
+     * The connection is TLS.
+     */
+    val encrypted: Boolean,
+    /**
+     * A one-time notice of this run.
+     */
+    val notice: String,
+)
+
+/**
+ * An API key of the hub (`auth.list`'s rows of kind `api`).
+ */
+data class HubApiKey(
+    /**
+     * Its client id: what [`DspiCore::hub_api_key_revoke`] takes.
+     */
+    val cid: Long,
+    /**
+     * Its name.
+     */
+    val name: String,
+    /**
+     * `viewer`, `control` or `admin`.
+     */
+    val role: String,
+    /**
+     * Kept for when the port speaks TLS; no effect yet.
+     */
+    val plaintextOk: Boolean,
+    /**
+     * Its REST session is open.
+     */
+    val online: Boolean,
+    /**
+     * When it was minted (ISO-8601 UTC).
+     */
+    val created: String,
+    /**
+     * When it was last used; "" for never.
+     */
+    val lastSeen: String,
+)
+
+/**
+ * A key the hub just minted (`auth.mint`): [`HubApiKeyMinted::key`] is
+ * shown in this answer only.
+ */
+data class HubApiKeyMinted(
+    /**
+     * Its client id.
+     */
+    val cid: Long,
+    /**
+     * Its name, as the hub cleaned it.
+     */
+    val name: String,
+    /**
+     * Its role.
+     */
+    val role: String,
+    /**
+     * As asked.
+     */
+    val plaintextOk: Boolean,
+    /**
+     * The key (43 characters): show it once; the hub keeps only its hash.
+     */
+    val key: HubSecret,
+)
+
+/**
  * One change in the history ([`DspiCore::history`]).
  */
 data class HistoryEntry(
@@ -5668,4 +6780,19 @@ interface AutoEqRebuild : AutoCloseable {
      * keep polling until `finished`.
      */
     fun cancel()
+}
+
+/**
+ * A secret the hub made and shows once: an API key, a webhook's secret. An
+ * object, not a string field, so that no binding's generated record
+ * printing (Kotlin `toString`, Swift `description`) shows it: read it with
+ * [`HubSecret::reveal`] to show it once, and keep it nowhere else. Its
+ * `Debug` is `set`; serialized (the C and wasm answers) it is the plain
+ * string.
+ */
+interface HubSecret : AutoCloseable {
+    /**
+     * The secret's text, to show once. No I/O.
+     */
+    fun reveal(): String
 }

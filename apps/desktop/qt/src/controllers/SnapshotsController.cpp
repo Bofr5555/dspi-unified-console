@@ -6,6 +6,7 @@
 #include "CoreWorker.h"
 #include "DeviceModel.h"
 #include "FilesController.h"
+#include "HubFeed.h"   // -- WP P2QT --
 #include "NoticeCenter.h"
 #include "Shell.h"
 #include "Snapshot.h"
@@ -17,11 +18,13 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QHash>
 #include <QJSEngine>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
 #include <QSettings>
 #include <QWindow>
 #include <QStandardPaths>
@@ -120,6 +123,8 @@ SnapshotsController::SnapshotsController(const AppContext &ctx, QObject *parent)
     m_waitingText = isOk(notice) && notice.value(QLatin1String("key")).toString() == QLatin1String(kWaitingNotice)
                         ? title + QLatin1Char(' ') + reason
                         : tr("Keep these settings? They go back in {s} s unless you press Keep.");
+    // -- WP P2QT -- the hub's store changed (any console's save, rename or delete)
+    if (HubFeed *feed = HubFeed::of(ctx.core)) connect(feed, &HubFeed::hubEvent, this, &SnapshotsController::onHubEvent);
 }
 
 void SnapshotsController::setGuardTimeoutS(int seconds) {
@@ -166,6 +171,13 @@ void SnapshotsController::failed(const QJsonObject &reply, const QString &fallba
         if (isOk(notice) && notice.value(QLatin1String("key")).toString().toUtf8() == key)
             error = notice.value(QLatin1String("title")).toString() + QLatin1String(": ") + notice.value(QLatin1String("reason")).toString();
     }
+    // -- WP P2QT -- the hub's refusals of its store (`dlink.not_found`,
+    // `dlink.conflict`, ...): the row's title before the hub's words
+    if (key.startsWith("dlink.")) {
+        auto *notices = Registrar::instance<NoticeCenter>();
+        const QString title = notices ? notices->row(QString::fromUtf8(key)).value(QStringLiteral("title")).toString() : QString();
+        if (!title.isEmpty()) error = error.isEmpty() ? notices->line(QString::fromUtf8(key)) : title + QLatin1String(": ") + error;
+    }
     if (auto *notices = Registrar::instance<NoticeCenter>()) notices->post(error.isEmpty() ? fallback : error, QStringLiteral("error"));
 }
 
@@ -210,25 +222,86 @@ void SnapshotsController::storeCall(const QString &op, std::function<QByteArray(
     });
 }
 
+// -- WP P2QT -- both sides on a hub: this console's list and the merged one
+namespace {
+struct Lists {
+    QByteArray local;
+    QByteArray merged;
+};
+} // namespace
+
 void SnapshotsController::reload() {
     if (!m_ctx.device->connected()) {
         if (!m_snapshots.isEmpty()) {
             m_snapshots.clear();
             emit snapshotsChanged();
         }
+        if (m_hubAvailable || !m_hubSnapshots.isEmpty() || !m_hubProblem.isEmpty()) {
+            m_hubAvailable = false;
+            m_hubSnapshots.clear();
+            m_hubProblem.clear();
+            emit hubChanged();
+        }
         return;
     }
     track(1);
+    const int n = ++m_reloads;
+    const bool remote = m_ctx.device->remote();
     m_ctx.core->worker()->call(
-        this, [](FfiCore *c) { return readSized([c](char *b, uint32_t n) { return dspi_snapshot_list(c, nullptr, b, n); }); },
-        [this](QByteArray reply) {
+        this,
+        [remote](FfiCore *c) {
+            Lists l;
+            l.local = readSized([c](char *b, uint32_t n) { return dspi_snapshot_list(c, nullptr, b, n); });
+            // Off a hub the merged list is this console's alone: not asked
+            if (remote) l.merged = readSized([c](char *b, uint32_t n) { return dspi_snapshot_list_merged(c, nullptr, b, n); }, 16384);
+            return l;
+        },
+        [this, n](const Lists &l) {
             track(-1);
+            if (n != m_reloads) return;   // a newer read follows
+            // The merged list's word on each id: where it is, and the local copies
+            const QJsonObject merged = object(l.merged);
+            QHash<QString, QString> where;
+            QSet<QString> localCopies;
+            QVariantList hubRows;
+            const QJsonArray entries = merged.value(QLatin1String("entries")).toArray();
+            for (qsizetype i = entries.size() - 1; i >= 0; --i) {
+                const QJsonObject e = entries.at(i).toObject();
+                const QJsonObject snap = e.value(QLatin1String("snapshot")).toObject();
+                const QString id = snap.value(QLatin1String("id")).toString();
+                const QString w = e.value(QLatin1String("where")).toString();
+                if (e.value(QLatin1String("localCopy")).toBool()) {
+                    localCopies.insert(id);
+                    continue;
+                }
+                where.insert(id, w);
+                if (w == QLatin1String("hub") || w == QLatin1String("both")) {
+                    QVariantMap r = row(snap);
+                    r.insert(QStringLiteral("where"), w);
+                    hubRows.append(r);
+                }
+            }
             QVariantList rows;
-            const QJsonArray list = object(reply).value(QLatin1String("value")).toArray();
+            const QJsonArray list = object(l.local).value(QLatin1String("value")).toArray();
             // Newest first, as the History window lists its changes
-            for (qsizetype i = list.size() - 1; i >= 0; --i) rows.append(row(list.at(i).toObject()));
+            for (qsizetype i = list.size() - 1; i >= 0; --i) {
+                QVariantMap r = row(list.at(i).toObject());
+                const QString id = r.value(QStringLiteral("id")).toString();
+                const bool copy = localCopies.contains(id);
+                r.insert(QStringLiteral("localCopy"), copy);
+                r.insert(QStringLiteral("where"), !copy && where.value(id) == QLatin1String("both") ? QStringLiteral("both")
+                                                                                                    : QStringLiteral("local"));
+                rows.append(r);
+            }
             m_snapshots = rows;
             emit snapshotsChanged();
+            const bool listed = merged.value(QLatin1String("hubListed")).toBool();
+            const QString key = merged.value(QLatin1String("hubNoticeKey")).toString();
+            auto *notices = Registrar::instance<NoticeCenter>();
+            m_hubAvailable = listed;
+            m_hubSnapshots = listed ? hubRows : QVariantList();
+            m_hubProblem = !listed && !key.isEmpty() && notices ? notices->line(key, key) : QString();
+            emit hubChanged();
         });
 }
 
@@ -516,4 +589,94 @@ void SnapshotsController::revert() {
             if (isOk(o)) setGuard(o);
             else failed(o, tr("There is nothing to revert."));
         });
+}
+
+// ---- -- WP P2QT -- The hub's store ---------------------------------------------------------
+
+void SnapshotsController::onHubEvent(const QString &kind, const QJsonObject &event) {
+    if (kind != QLatin1String("snapshot.changed") || !m_ctx.device->connected()) return;
+    const QString serial = event.value(QLatin1String("serial")).toString();
+    if (serial.isEmpty() || serial == m_ctx.device->serial()) reload();
+}
+
+void SnapshotsController::saveToHub(const QString &id) {
+    const QByteArray i = id.toUtf8();
+    storeCall(QStringLiteral("hub-save"), [i](FfiCore *c) {
+        return readSized([&](char *b, uint32_t len) { return dspi_hub_snapshots_save(c, i.constData(), b, len); });
+    },
+              [](const QJsonObject &o) {
+                  auto *notices = Registrar::instance<NoticeCenter>();
+                  const QString name = o.value(QLatin1String("snapshot")).toObject().value(QLatin1String("name")).toString();
+                  //: %1 is the snapshot's name
+                  if (notices) notices->post(SnapshotsController::tr("Saved “%1” to the hub.").arg(name));
+              });
+}
+
+void SnapshotsController::copyHere(const QString &id) {
+    const QByteArray i = id.toUtf8();
+    storeCall(QStringLiteral("hub-copy"), [i](FfiCore *c) {
+        return readSized([&](char *b, uint32_t len) { return dspi_hub_snapshots_copy_here(c, i.constData(), b, len); });
+    },
+              [](const QJsonObject &o) {
+                  auto *notices = Registrar::instance<NoticeCenter>();
+                  //: %1 is the snapshot's name
+                  if (notices) notices->post(SnapshotsController::tr("Copied “%1” to this console.").arg(o.value(QLatin1String("name")).toString()));
+              });
+}
+
+void SnapshotsController::removeFromHub(const QString &id) {
+    const QByteArray i = id.toUtf8();
+    storeCall(QStringLiteral("hub-delete"), [i](FfiCore *c) {
+        return readSized([&](char *b, uint32_t len) { return dspi_hub_snapshots_delete(c, i.constData(), b, len); });
+    });
+}
+
+void SnapshotsController::recallFromHub(const QString &id) {
+    if (guardWaiting()) {
+        failed({}, tr("Finish the safe apply first: Keep or Revert."));
+        return;
+    }
+    QString name;
+    for (const QVariant &v : m_hubSnapshots)
+        if (v.toMap().value(QStringLiteral("id")).toString() == id) name = v.toMap().value(QStringLiteral("name")).toString();
+    const QByteArray i = id.toUtf8();
+    const QByteArray label = (name.isEmpty() ? id : name).toUtf8();
+    const bool guarded = m_guardDefault || m_rollback;
+    writeCall(QStringLiteral("hub snapshot recall"),
+              [i, label, guarded, t = uint32_t(m_timeoutS)](FfiCore *c) {
+                  // The guard first (the hub's own on a hub with it), so Keep
+                  // and Revert cover the hub's recall like any other
+                  QJsonObject begun;
+                  if (guarded) {
+                      begun = object(once([&](char *b, uint32_t n) { return dspi_apply_guard_begin(c, label.constData(), t, b, n); }));
+                      if (!isOk(begun)) return QJsonDocument(begun).toJson(QJsonDocument::Compact);
+                  }
+                  QJsonObject r = object(once([&](char *b, uint32_t n) {
+                      return dspi_hub_snapshots_recall(c, nullptr, i.constData(), false, 0, b, n);
+                  }));
+                  if (guarded && !isOk(r)) {
+                      // Nothing to keep: the settings from before, now
+                      r.insert(QStringLiteral("guardState"),
+                               object(once([&](char *b, uint32_t n) { return dspi_apply_revert(c, b, n); })));
+                  } else if (guarded) {
+                      r.insert(QStringLiteral("guardState"), begun);
+                  }
+                  return QJsonDocument(r).toJson(QJsonDocument::Compact);
+              },
+              [this](bool ok, const QJsonObject &o) {
+                  const QJsonObject state = o.value(QLatin1String("guardState")).toObject();
+                  if (!ok) failed(o, tr("The snapshot was not recalled."));
+                  if (isOk(state)) setGuard(state);
+                  reloadAb();
+                  emit stored(QStringLiteral("hub-recall"), ok);
+                  if (!ok || !state.isEmpty()) return;
+                  auto *notices = Registrar::instance<NoticeCenter>();
+                  if (!notices) return;
+                  QStringList notes;
+                  for (const QJsonValue &v : o.value(QLatin1String("notes")).toArray()) notes.append(v.toString());
+                  //: %1 is the snapshot's name
+                  const QString text = tr("Recalled “%1” from the hub.").arg(o.value(QLatin1String("name")).toString());
+                  if (notes.isEmpty()) notices->post(text);
+                  else notices->post(text + QLatin1Char(' ') + notes.join(QLatin1Char(' ')), QStringLiteral("warning"));
+              });
 }

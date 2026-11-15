@@ -173,6 +173,7 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                         crate::hub_admin::NOTICE_HUB_COPY,
                         crate::hub_admin::NOTICE_CONSOLE_COPY,
                         crate::hub_admin::NOTICE_HUB_ROLE,
+                        crate::hub_admin::NOTICE_HUB_SETTINGS_ROLE, // -- WP P2WB2 --
                     ]
                     .contains(&n.key.as_str()),
                     "{}: not a key hub_admin.rs names",
@@ -193,6 +194,17 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                     n.key
                 );
                 assert!(has_row(family), "{family}");
+                continue;
+            }
+            // -- WP P2CC2 -- the hub's alarms: no error makes these keys,
+            // `hub_alarm_notice` answers them by the alarm's code
+            if family == crate::hub_server::NOTICE_ALARM_FAMILY {
+                assert!(
+                    crate::hub_server::ALARM_CODES.contains(&code)
+                        || n.key == crate::hub_server::NOTICE_ALARM_UNKNOWN,
+                    "{}: not a code hub_server names",
+                    n.key
+                );
                 continue;
             }
             let e = match family {

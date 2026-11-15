@@ -287,6 +287,24 @@ uconsole web [--demo]                 # this machine only: http://localhost:1191
                                   # WebUSB and Link in one page (uconsole hub --local)
 ```
 
+The hub API (WP P2TM; [`docs/integrator/hub-api.md`](../../docs/integrator/hub-api.md)
+section 16). A hub runs every family (health, inventory, Identify, history, alarms,
+schedules), each turned off with `--no-health`, `--no-inventory`, `--no-identify`,
+`--no-history`, `--no-alarms` or `--no-schedule`; the REST mirror only with `--rest`:
+
+```sh
+uconsole hub --rest [--data <dir>]    # /api/v1/ on the same port, for API keys
+uconsole hub api-key new <name> [viewer|control|admin]
+                                      # mint a key, shown once (hub stopped; at a running
+                                      # hub's prompt: api-key new|list|revoke)
+uconsole --hub api inventory.list     # any hub message; the answer's fields as JSON
+uconsole --hub api param.get '{"serial": "E46058388B1A2E2C", "path": "vol.master"}' --json
+```
+
+At the running hub's prompt, `inventory`, `alarms` and `schedule` list those. `uconsole
+api` exits by the hub's answer: 0 ok, 2 not found, 3 another refusal, 4 no hub, 5 denied,
+6 offline, 7 past the limits, 8 a bad request, 9 busy (`uconsole api --help`).
+
 ## Device access
 
 - **Windows**: nothing to install. The firmware ships MS OS 2.0 descriptors, so

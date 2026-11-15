@@ -162,6 +162,13 @@ pub struct ServiceConfig {
     // -- WP P2EV --
     /// The shared event history (`events/`, `event.*`); off when `None`.
     pub history: Option<crate::history::HistoryConfig>,
+    // -- WP P2AL --
+    /// Device alarms (`alarm.*`, `<data>/alarms.json`, `device_alarms.rs`).
+    pub alarms: bool,
+    // -- WP P2SC --
+    /// Schedules (`schedule.*`, `<data>/schedule.json`); off when `None`. They run
+    /// through the parameter API's executor: feature `api`.
+    pub schedule: Option<crate::schedule::ScheduleConfig>,
 }
 
 impl Default for ServiceConfig {
@@ -179,6 +186,10 @@ impl Default for ServiceConfig {
             stats: true,
             // -- WP P2EV --
             history: None,
+            // -- WP P2AL --
+            alarms: false,
+            // -- WP P2SC --
+            schedule: None,
         }
     }
 }
@@ -216,6 +227,12 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::api::services(setup));
     // -- WP P2WH --
     list.extend(crate::outbound::service(config, setup));
+    // -- WP P2AL --
+    list.extend(crate::device_alarms::service(config, setup));
+    // -- WP P2SC --
+    list.extend(crate::schedule::service(config, setup));
+    // -- WP P2MQ --
+    list.extend(crate::mqtt::service::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
@@ -514,6 +531,16 @@ impl HubHandle {
     /// The services' answer to a control-plane message, if one claims it.
     pub(crate) fn service_message(&self, session: &Arc<Session>, msg: &Value) -> Option<String> {
         self.inner.services.message(self, session, msg)
+    }
+
+    // -- WP P2TM --
+    /// A phase-2 family's answer to `msg` for `session`, as a client on DSPi Link
+    /// would get it (the whole reply text), or `None` when no service runs that
+    /// family. For the embedder's own console (`uconsole hub`'s prompt): open the
+    /// session as a principal ([`HubHandle::open_principal`]) and close it after.
+    /// Only the services answer here: no `device.*`, `auth.*` or `limits.*`.
+    pub fn service_request(&self, session: &Arc<Session>, msg: &Value) -> Option<String> {
+        self.service_message(session, msg)
     }
 
     /// Every service's caps, for `hello`.

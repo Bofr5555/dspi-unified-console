@@ -14,6 +14,9 @@ import type { ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { useFeed } from "../system/SystemScreen";
 import { alarmRow, fullTime, merged, recordRow, rowsText, shownRows, timeText, unitsOf, type EventRow } from "./model";
+// -- WP P2WB1 -- "On the hub": the hub's shared history of this DSPi, with who did it
+import { useHubView } from "../hub/HubScreen";
+import { HubHistory } from "./HubHistory";
 
 /** How often the log is read while shown. */
 export const EVENTS_POLL_MS = 1000;
@@ -66,6 +69,11 @@ export function EventsScreen(props: ScreenProps) {
   const snap = session.state.snapshot;
   const [unit, setUnit] = useState("");
   const [copied, setCopied] = useState("");
+  // -- WP P2WB1 -- which log: this console's, or the hub's (when the hub keeps one)
+  const hubView = useHubView(props.hub);
+  const hubLog = !!hubView?.caps?.events;
+  const [source, setSource] = useState<"console" | "hub">("console");
+  const onHub = hubLog && source === "hub";
 
   const rows = useMemo(() => {
     const own = snap?.device;
@@ -111,7 +119,18 @@ export function EventsScreen(props: ScreenProps) {
     <section class="card events" aria-label="Event log">
       <div class="card-head events-head">
         <h2>Event log</h2>
-        <label class="events-unit">
+        {/* -- WP P2WB1 -- */}
+        {hubLog ? (
+          <label class="events-source">
+            Source
+            <select value={source} onChange={(e) => setSource((e.target as HTMLSelectElement).value === "hub" ? "hub" : "console")}>
+              <option value="console">This console</option>
+              <option value="hub">On the hub</option>
+            </select>
+          </label>
+        ) : null}
+        {/* -- WP P2WB1 -- the unit and the copy are this console's log's */}
+        {onHub ? null : <label class="events-unit">
           Unit
           <select value={unit} onChange={(e) => setUnit((e.target as HTMLSelectElement).value)}>
             <option value="">Every unit</option>
@@ -121,10 +140,10 @@ export function EventsScreen(props: ScreenProps) {
               </option>
             ))}
           </select>
-        </label>
-        <button type="button" disabled={!shown.length} onClick={() => void copy()}>
+        </label>}
+        {onHub ? null : <button type="button" disabled={!shown.length} onClick={() => void copy()}>
           Copy as Text
-        </button>
+        </button>}
         <Diagnostics session={session} />
       </div>
       {copied ? (
@@ -151,7 +170,10 @@ export function EventsScreen(props: ScreenProps) {
           {log.error}
         </p>
       ) : null}
-      {shown.length ? (
+      {/* -- WP P2WB1 -- the hub's records instead of this console's */}
+      {onHub ? (
+        <HubHistory session={session} />
+      ) : shown.length ? (
         <table class="event-list">
           <thead>
             <tr>

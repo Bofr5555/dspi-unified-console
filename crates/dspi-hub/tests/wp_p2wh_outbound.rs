@@ -3,7 +3,8 @@
 //!
 //! A raised alarm on the bus reaches a webhook signed so the receiver can check it;
 //! secrets are shown once and never by `outbound.get`; `outbound.test` delivers now;
-//! `https://` is refused with the reason. A refusing target backs off on the hub's
+//! `http://` without `"plaintext": true` is refused with the reason (WP SECOUT: `https://`
+//! is the norm, tests/wp_secout_tls.rs). A refusing target backs off on the hub's
 //! clock (1 s, then 2 s), a dead and a silent one hold nothing up: not the bus, not
 //! another target.
 #![allow(
@@ -231,28 +232,26 @@ fn wp_p2wh_a_raised_alarm_reaches_a_webhook_signed() {
     let (get, _) = ws.ask(json!({"t": "outbound.get"}), 1);
     assert_eq!(get["targets"], json!([]), "none by default: {get}");
 
-    // https:// is refused, with the reason, and nothing is kept.
+    // WP SECOUT: http:// without "plaintext": true is refused, with the reason, and
+    // nothing is kept.
     let (https, _) = ws.ask(
         json!({"t": "outbound.set", "targets": [
-            {"id": "ha", "kind": "webhook", "url": "https://10.0.0.2/hook"}]}),
+            {"id": "ha", "kind": "webhook", "url": "http://10.0.0.2/hook"}]}),
         2,
     );
     assert_eq!(https["code"], "bad_request", "{https}");
     assert_eq!(https["target"], 0);
     assert!(
-        https["msg"]
-            .as_str()
-            .unwrap()
-            .contains("https:// is not supported"),
+        https["msg"].as_str().unwrap().contains("plaintext"),
         "{https}"
     );
     assert!(!dir.join("outbound.json").exists());
 
     let (set, set_text) = ws.ask(
         json!({"t": "outbound.set", "targets": [
-            {"id": "ha", "name": "Home Assistant", "kind": "webhook", "url": url,
+            {"id": "ha", "name": "Home Assistant", "kind": "webhook", "url": url, "plaintext": true,
              "kinds": ["alarm.raised"], "secret": "new"},
-            {"id": "phone", "kind": "push", "url": push_url, "kinds": ["alarm.raised"]}]}),
+            {"id": "phone", "kind": "push", "url": push_url, "plaintext": true, "kinds": ["alarm.raised"]}]}),
         3,
     );
     assert_eq!(set["t"], "ok", "{set}");
@@ -426,10 +425,10 @@ fn wp_p2wh_dead_targets_back_off_and_never_block_the_bus() {
     );
     let (set, _) = ws.ask(
         json!({"t": "outbound.set", "targets": [
-            {"id": "silent", "kind": "webhook", "url": silent},
-            {"id": "dead", "kind": "webhook", "url": dead},
-            {"id": "refusing", "kind": "webhook", "url": refusing},
-            {"id": "good", "kind": "webhook", "url": good}]}),
+            {"id": "silent", "kind": "webhook", "url": silent, "plaintext": true},
+            {"id": "dead", "kind": "webhook", "url": dead, "plaintext": true},
+            {"id": "refusing", "kind": "webhook", "url": refusing, "plaintext": true},
+            {"id": "good", "kind": "webhook", "url": good, "plaintext": true}]}),
         1,
     );
     assert_eq!(set["t"], "ok", "{set}");
