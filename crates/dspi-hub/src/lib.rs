@@ -44,6 +44,8 @@ pub mod local;
 // -- WP P1HL --
 pub mod limits;
 pub mod lock;
+// -- WP P2MQC --
+pub mod mqtt;
 pub mod policy;
 pub mod polls;
 pub mod registry;
