@@ -130,7 +130,10 @@ same sequence; no console's clock is compared.
   choice was made: released before its push went out, or refused until the
   engine gives up. A refusal is any failed push of our choice: the device's
   STALL for a configuration it cannot hold, or the hub's `LOCKED` or `DENIED`
-  (WP ANLASTF F1). A choice changed again before its push keeps what was seen
+  (WP ANLASTF F1). One exception: **Take control** with nothing of ours to
+  push (a side switch to a side with nothing chosen, or Clear, while
+  following) stops following and drives nothing, as before ANLAST; the next
+  push by anyone is followed (WP ANLASTQ). A choice changed again before its push keeps what was seen
   meanwhile (F3). If the echo is lost, a readback that leaves our
   configuration after holding it still means a later push, named by the event
   seen meanwhile when there was one (F4).
