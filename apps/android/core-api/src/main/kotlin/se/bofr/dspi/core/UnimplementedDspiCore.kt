@@ -386,6 +386,14 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun hubApiKeyRevoke(cid: Long): Unit = throw NotImplementedError("hub_api_key_revoke")
 
+    override fun hubInventorySet(serial: String, location: String?, note: String?, tags: List<String>?): HubDevice = throw NotImplementedError("hub_inventory_set")
+
+    override fun hubInventoryForget(serial: String, withData: Boolean): HubInventoryForgot = throw NotImplementedError("hub_inventory_forget")
+
+    override fun hubRename(name: String): String = throw NotImplementedError("hub_rename")
+
+    override fun hubIdentifySerial(serial: String, seconds: Int, toneOutput: Int?): IdentifyInfo? = throw NotImplementedError("hub_identify_serial")
+
     override fun getInputSourceName(source: Int): String = throw NotImplementedError("get_input_source_name")
 
     override fun setInputSourceName(source: Int, name: String): Unit = throw NotImplementedError("set_input_source_name")

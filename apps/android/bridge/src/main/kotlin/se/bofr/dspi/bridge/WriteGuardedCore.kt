@@ -1,7 +1,7 @@
 // G1 (owner decision): the bridge's last line of defence for read-only mode.
 package se.bofr.dspi.bridge
 
-// -- WP P1AB --
+// -- WP P1AB, P2CC2, P2CC3 -- (one sorted block: ktlint import-ordering)
 import se.bofr.dspi.core.AbCompare
 import se.bofr.dspi.core.AbSide
 import se.bofr.dspi.core.AlinkSceneRecall
@@ -17,12 +17,13 @@ import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.GuardedApply
 import se.bofr.dspi.core.HistoryMove
+import se.bofr.dspi.core.HubDevice
+import se.bofr.dspi.core.HubInventoryForgot
 import se.bofr.dspi.core.HubLimitsSet
-// -- WP P2CC2 --
 import se.bofr.dspi.core.HubScheduleRun
 import se.bofr.dspi.core.HubSnapshotRecall
-import se.bofr.dspi.core.IdentifyInfo
 import se.bofr.dspi.core.I2cConfig
+import se.bofr.dspi.core.IdentifyInfo
 import se.bofr.dspi.core.LimitsApply
 import se.bofr.dspi.core.LockState
 import se.bofr.dspi.core.SiggenConfig
@@ -757,6 +758,29 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.hubScheduleRunNow(id)
     }
 
+    // -- WP P2CC3 -- the hub's device and name writes: Identify of any device
+    // on the hub blinks it (and may play a tone); the inventory's edits, a
+    // forget and a rename change what the hub keeps
+    override fun hubInventorySet(serial: String, location: String?, note: String?, tags: List<String>?): HubDevice {
+        guard("hubInventorySet")
+        return inner.hubInventorySet(serial, location, note, tags)
+    }
+
+    override fun hubInventoryForget(serial: String, withData: Boolean): HubInventoryForgot {
+        guard("hubInventoryForget")
+        return inner.hubInventoryForget(serial, withData)
+    }
+
+    override fun hubRename(name: String): String {
+        guard("hubRename")
+        return inner.hubRename(name)
+    }
+
+    override fun hubIdentifySerial(serial: String, seconds: Int, toneOutput: Int?): IdentifyInfo? {
+        guard("hubIdentifySerial")
+        return inner.hubIdentifySerial(serial, seconds, toneOutput)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -962,7 +986,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "hubIdentify",
             "hubSnapshotsRecall",
             // -- WP P2CC2 --
-            "hubScheduleRunNow"
+            "hubScheduleRunNow",
+            // -- WP P2CC3 --
+            "hubInventorySet",
+            "hubInventoryForget",
+            "hubRename",
+            "hubIdentifySerial"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */

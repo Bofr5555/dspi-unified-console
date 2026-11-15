@@ -184,6 +184,9 @@ fn wp_p0e_without_a_device_the_bundle_says_so_and_is_still_written() {
 
 #[test]
 fn wp_p0e_the_hub_store_loses_its_tokens_and_secrets() {
+    // -- WP FLAKE4 -- a PIN no bundle can hold by chance ("123456" could, in a
+    // stamp or a zip header); '~' is in no number, hex or base64.
+    const PIN: &str = "~flake4~123456~";
     let d = dir("hub");
     let hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
     std::fs::write(
@@ -201,7 +204,7 @@ fn wp_p0e_the_hub_store_loses_its_tokens_and_secrets() {
             ],
             "device_names": { "SER1": "Kitchen" },
             "future": { "apiKey": "k-123", "nested": [{ "Client-Secret": "s-456" }] },
-            "pin": "123456"
+            "pin": PIN
         })
         .to_string(),
     )
@@ -213,7 +216,7 @@ fn wp_p0e_the_hub_store_loses_its_tokens_and_secrets() {
     };
     let zip = core.diagnostics_zip(options).unwrap();
     let raw = String::from_utf8_lossy(&zip);
-    for secret in [hash, &"aa".repeat(32), "k-123", "s-456", "123456"] {
+    for secret in [hash, &"aa".repeat(32), "k-123", "s-456", PIN] {
         assert!(!raw.contains(secret), "{secret} is in the bundle");
     }
     let files = unzip(&zip);

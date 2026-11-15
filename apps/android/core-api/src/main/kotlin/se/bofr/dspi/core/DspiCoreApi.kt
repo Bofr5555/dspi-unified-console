@@ -2137,6 +2137,14 @@ interface DspiCoreApi : AutoCloseable {
      * (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
      * Control or Admin. Slow: off the UI thread.
      *
+     * WP P2CC3: a guarded recall is this core's guarded apply, as one begun
+     * here: [`DspiCore::apply_status`] reports it (`hub: true`, the
+     * recall's changes), [`DspiCore::apply_confirm`] keeps it and
+     * [`DspiCore::apply_revert`] (or the timeout, through
+     * [`DspiCore::apply_poll`]) has the hub put back what it captured, as
+     * this session. While another guarded apply waits it is refused with
+     * [`DspiError::InvalidArgument`], nothing sent.
+     *
      * Errors: [`DspiError::ImageRefused`] for Control on a device with a
      * limits profile or a lock (nothing written); [`DspiError::Link`]
      * `offline`, `not_found`, `conflict` (another session's guarded apply);
@@ -2367,6 +2375,76 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun hubApiKeyRevoke(cid: Long)
+
+    /**
+     * Set device `serial`'s location, note and tags in the hub's inventory
+     * ("" the open device; `inventory.set`). Each `Some` replaces its field
+     * and an empty one clears it (`Some("")`, `Some(vec![])`); `None` keeps
+     * it. The hub's bounds: a location and a note at most 256 characters, no
+     * control characters (a note may hold newlines and tabs); at most 16
+     * tags of 1 to 32 characters, trimmed, duplicates dropped. The answer is
+     * the record as the hub now has it. Admin of the hub. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `inventory` cap (nothing
+     * sent); [`DspiError::InvalidArgument`] for a value past a bound (the
+     * hub's `bad_request`, nothing changed); [`DspiError::Link`] `not_found`
+     * for a serial not in the inventory; [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun hubInventorySet(serial: String, location: String?, note: String?, tags: List<String>?): HubDevice
+
+    /**
+     * Forget device `serial` on the hub (`inventory.forget`): its record and
+     * its history files, and with `with_data` its snapshots on the hub too.
+     * Only an offline device: the hub refuses one that is attached. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an empty `serial` (nothing
+     * sent); [`DspiError::Link`] `conflict` while the device is online,
+     * `not_found` for a serial not in the inventory, `internal` when a file
+     * could not be removed (the record stays: try again); as
+     * [`DspiCore::hub_inventory_set`].
+     */
+    @Throws(DspiException::class)
+    fun hubInventoryForget(serial: String, withData: Boolean): HubInventoryForgot
+
+    /**
+     * Rename the hub (`hub.rename`): control characters dropped and the ends
+     * trimmed by the hub, at most 64 characters. The answer is the name the
+     * hub now uses (in every later `hello`, `/dspi/v1/info` and its mDNS
+     * record). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_stats` cap
+     * (nothing sent); [`DspiError::InvalidArgument`] for a name empty after
+     * that or too long (nothing changed); [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun hubRename(name: String): String
+
+    /**
+     * Identify device `serial` on the hub ("" the open device;
+     * `device.identify`): blink its LED for `seconds` (0 stops it; at most
+     * 120, longer is shortened) and, with `tone_output`, play its quiet
+     * identify tone once on that output (leave it empty unless the user
+     * asked for sound). Any device on the hub, open here or not; the hub
+     * sends it, at most once per device per 2 s, whoever asked. The answer
+     * is the device's state read after the write; `None` when that read
+     * failed (the write went out). Control or Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] (nothing sent) on no hub, on a hub
+     * without the `identify` cap, and on firmware without `EXT_IDENTIFY`;
+     * [`DspiError::InvalidArgument`] for a tone output the device does not
+     * have; [`DspiError::Locked`] for a tone under another session's lock;
+     * [`DspiError::Link`] `rate_limited`, `offline`, `not_found`, `device`;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`] (nothing
+     * sent); [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun hubIdentifySerial(serial: String, seconds: Int, toneOutput: Int?): IdentifyInfo?
 
     /**
      * The user's name for input source `source` (`REQ_GET_INPUT_SOURCE_NAME`,

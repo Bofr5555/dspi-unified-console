@@ -138,7 +138,9 @@ test.describe("P2WB1 on a hub", () => {
     const awayRow = devices.getByRole("row", { name: "Bar" });
     await expect(awayRow).toContainText("Offline");
     await expect(awayRow).toContainText(AWAY);
-    await expect(awayRow.getByRole("button")).toHaveCount(0);
+    // -- WP P2WB3 -- an offline DSPi is not identified or opened; an Admin edits or forgets it
+    await expect(awayRow.getByRole("button", { name: /^(Identify|Open)$/ })).toHaveCount(0);
+    await expect(awayRow.getByRole("button")).toHaveCount(2);
     const own = devices.getByRole("row").filter({ hasText: DEMO });
     await expect(own).toContainText("Online (open here)");
     await expect(own).toContainText("1.1.6");
@@ -148,7 +150,7 @@ test.describe("P2WB1 on a hub", () => {
 
     // Identify answers: the blink, or (firmware without EXT_IDENTIFY, as the demo) the hub's refusal in the core's words.
     await own.getByRole("button", { name: "Identify" }).click();
-    const said = devices.getByRole("status", { name: "Identify" });
+    const said = devices.getByRole("status", { name: "Action result" });
     await expect(said).toBeVisible();
     await expect(said).not.toBeEmpty();
 

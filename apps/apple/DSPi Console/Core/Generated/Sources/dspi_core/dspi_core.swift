@@ -3102,6 +3102,27 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func hubIdentify(seconds: UInt8, toneOutput: UInt8?) throws  -> IdentifyInfo?
     
     /**
+     * Identify device `serial` on the hub ("" the open device;
+     * `device.identify`): blink its LED for `seconds` (0 stops it; at most
+     * 120, longer is shortened) and, with `tone_output`, play its quiet
+     * identify tone once on that output (leave it empty unless the user
+     * asked for sound). Any device on the hub, open here or not; the hub
+     * sends it, at most once per device per 2 s, whoever asked. The answer
+     * is the device's state read after the write; `None` when that read
+     * failed (the write went out). Control or Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] (nothing sent) on no hub, on a hub
+     * without the `identify` cap, and on firmware without `EXT_IDENTIFY`;
+     * [`DspiError::InvalidArgument`] for a tone output the device does not
+     * have; [`DspiError::Locked`] for a tone under another session's lock;
+     * [`DspiError::Link`] `rate_limited`, `offline`, `not_found`, `device`;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`] (nothing
+     * sent); [`DspiError::Disconnected`].
+     */
+    func hubIdentifySerial(serial: String, seconds: UInt8, toneOutput: UInt8?) throws  -> IdentifyInfo?
+    
+    /**
      * Every DSPi the hub has seen, online or not: online first, then by
      * last seen, newest first (`inventory.list`, read page by page, at most
      * 1024). Every role. Slow: off the UI thread.
@@ -3110,6 +3131,38 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * sent); [`DspiError::Disconnected`]; the hub's refusal (module docs).
      */
     func hubInventory() throws  -> [HubDevice]
+    
+    /**
+     * Forget device `serial` on the hub (`inventory.forget`): its record and
+     * its history files, and with `with_data` its snapshots on the hub too.
+     * Only an offline device: the hub refuses one that is attached. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an empty `serial` (nothing
+     * sent); [`DspiError::Link`] `conflict` while the device is online,
+     * `not_found` for a serial not in the inventory, `internal` when a file
+     * could not be removed (the record stays: try again); as
+     * [`DspiCore::hub_inventory_set`].
+     */
+    func hubInventoryForget(serial: String, withData: Bool) throws  -> HubInventoryForgot
+    
+    /**
+     * Set device `serial`'s location, note and tags in the hub's inventory
+     * ("" the open device; `inventory.set`). Each `Some` replaces its field
+     * and an empty one clears it (`Some("")`, `Some(vec![])`); `None` keeps
+     * it. The hub's bounds: a location and a note at most 256 characters, no
+     * control characters (a note may hold newlines and tabs); at most 16
+     * tags of 1 to 32 characters, trimmed, duplicates dropped. The answer is
+     * the record as the hub now has it. Admin of the hub. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `inventory` cap (nothing
+     * sent); [`DspiError::InvalidArgument`] for a value past a bound (the
+     * hub's `bad_request`, nothing changed); [`DspiError::Link`] `not_found`
+     * for a serial not in the inventory; [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
+     */
+    func hubInventorySet(serial: String, location: String?, note: String?, tags: [String]?) throws  -> HubDevice
     
     /**
      * Remove the hub's limits profile for the open device (nothing on the
@@ -3239,6 +3292,19 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func hubPinSet(pin: String) throws  -> HubPinSet
     
     /**
+     * Rename the hub (`hub.rename`): control characters dropped and the ends
+     * trimmed by the hub, at most 64 characters. The answer is the name the
+     * hub now uses (in every later `hello`, `/dspi/v1/info` and its mDNS
+     * record). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_stats` cap
+     * (nothing sent); [`DspiError::InvalidArgument`] for a name empty after
+     * that or too long (nothing changed); [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
+     */
+    func hubRename(name: String) throws  -> String
+    
+    /**
      * Delete rule `id` (`schedule.delete`). Admin of the hub. Slow: off the
      * UI thread.
      *
@@ -3362,6 +3428,14 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * (`snapshot.recall`). With `guard` a guarded apply begins first
      * (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
      * Control or Admin. Slow: off the UI thread.
+     *
+     * WP P2CC3: a guarded recall is this core's guarded apply, as one begun
+     * here: [`DspiCore::apply_status`] reports it (`hub: true`, the
+     * recall's changes), [`DspiCore::apply_confirm`] keeps it and
+     * [`DspiCore::apply_revert`] (or the timeout, through
+     * [`DspiCore::apply_poll`]) has the hub put back what it captured, as
+     * this session. While another guarded apply waits it is refused with
+     * [`DspiError::InvalidArgument`], nothing sent.
      *
      * Errors: [`DspiError::ImageRefused`] for Control on a device with a
      * limits profile or a lock (nothing written); [`DspiError::Link`]
@@ -8387,6 +8461,35 @@ open func hubIdentify(seconds: UInt8, toneOutput: UInt8?)throws  -> IdentifyInfo
 }
     
     /**
+     * Identify device `serial` on the hub ("" the open device;
+     * `device.identify`): blink its LED for `seconds` (0 stops it; at most
+     * 120, longer is shortened) and, with `tone_output`, play its quiet
+     * identify tone once on that output (leave it empty unless the user
+     * asked for sound). Any device on the hub, open here or not; the hub
+     * sends it, at most once per device per 2 s, whoever asked. The answer
+     * is the device's state read after the write; `None` when that read
+     * failed (the write went out). Control or Admin of the hub. Slow: off
+     * the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] (nothing sent) on no hub, on a hub
+     * without the `identify` cap, and on firmware without `EXT_IDENTIFY`;
+     * [`DspiError::InvalidArgument`] for a tone output the device does not
+     * have; [`DspiError::Locked`] for a tone under another session's lock;
+     * [`DspiError::Link`] `rate_limited`, `offline`, `not_found`, `device`;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`] (nothing
+     * sent); [`DspiError::Disconnected`].
+     */
+open func hubIdentifySerial(serial: String, seconds: UInt8, toneOutput: UInt8?)throws  -> IdentifyInfo?  {
+    return try  FfiConverterOptionTypeIdentifyInfo.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_identify_serial(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),
+        FfiConverterUInt8.lower(seconds),
+        FfiConverterOptionUInt8.lower(toneOutput),$0
+    )
+})
+}
+    
+    /**
      * Every DSPi the hub has seen, online or not: online first, then by
      * last seen, newest first (`inventory.list`, read page by page, at most
      * 1024). Every role. Slow: off the UI thread.
@@ -8397,6 +8500,54 @@ open func hubIdentify(seconds: UInt8, toneOutput: UInt8?)throws  -> IdentifyInfo
 open func hubInventory()throws  -> [HubDevice]  {
     return try  FfiConverterSequenceTypeHubDevice.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_hub_inventory(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Forget device `serial` on the hub (`inventory.forget`): its record and
+     * its history files, and with `with_data` its snapshots on the hub too.
+     * Only an offline device: the hub refuses one that is attached. Admin of
+     * the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an empty `serial` (nothing
+     * sent); [`DspiError::Link`] `conflict` while the device is online,
+     * `not_found` for a serial not in the inventory, `internal` when a file
+     * could not be removed (the record stays: try again); as
+     * [`DspiCore::hub_inventory_set`].
+     */
+open func hubInventoryForget(serial: String, withData: Bool)throws  -> HubInventoryForgot  {
+    return try  FfiConverterTypeHubInventoryForgot_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_inventory_forget(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),
+        FfiConverterBool.lower(withData),$0
+    )
+})
+}
+    
+    /**
+     * Set device `serial`'s location, note and tags in the hub's inventory
+     * ("" the open device; `inventory.set`). Each `Some` replaces its field
+     * and an empty one clears it (`Some("")`, `Some(vec![])`); `None` keeps
+     * it. The hub's bounds: a location and a note at most 256 characters, no
+     * control characters (a note may hold newlines and tabs); at most 16
+     * tags of 1 to 32 characters, trimmed, duplicates dropped. The answer is
+     * the record as the hub now has it. Admin of the hub. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `inventory` cap (nothing
+     * sent); [`DspiError::InvalidArgument`] for a value past a bound (the
+     * hub's `bad_request`, nothing changed); [`DspiError::Link`] `not_found`
+     * for a serial not in the inventory; [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
+     */
+open func hubInventorySet(serial: String, location: String?, note: String?, tags: [String]?)throws  -> HubDevice  {
+    return try  FfiConverterTypeHubDevice_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_inventory_set(self.uniffiClonePointer(),
+        FfiConverterString.lower(serial),
+        FfiConverterOptionString.lower(location),
+        FfiConverterOptionString.lower(note),
+        FfiConverterOptionSequenceString.lower(tags),$0
     )
 })
 }
@@ -8596,6 +8747,25 @@ open func hubPinSet(pin: String)throws  -> HubPinSet  {
 }
     
     /**
+     * Rename the hub (`hub.rename`): control characters dropped and the ends
+     * trimmed by the hub, at most 64 characters. The answer is the name the
+     * hub now uses (in every later `hello`, `/dspi/v1/info` and its mDNS
+     * record). Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `hub_stats` cap
+     * (nothing sent); [`DspiError::InvalidArgument`] for a name empty after
+     * that or too long (nothing changed); [`DspiError::Denied`] below Admin;
+     * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
+     */
+open func hubRename(name: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_rename(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),$0
+    )
+})
+}
+    
+    /**
      * Delete rule `id` (`schedule.delete`). Admin of the hub. Slow: off the
      * UI thread.
      *
@@ -8783,6 +8953,14 @@ open func hubSnapshotsPut(serial: String, document: String)throws  -> HubSnapsho
      * (`snapshot.recall`). With `guard` a guarded apply begins first
      * (`timeout_ms`, 0 for the hub's 30 s): confirm it, or it reverts.
      * Control or Admin. Slow: off the UI thread.
+     *
+     * WP P2CC3: a guarded recall is this core's guarded apply, as one begun
+     * here: [`DspiCore::apply_status`] reports it (`hub: true`, the
+     * recall's changes), [`DspiCore::apply_confirm`] keeps it and
+     * [`DspiCore::apply_revert`] (or the timeout, through
+     * [`DspiCore::apply_poll`]) has the hub put back what it captured, as
+     * this session. While another guarded apply waits it is refused with
+     * [`DspiError::InvalidArgument`], nothing sent.
      *
      * Errors: [`DspiError::ImageRefused`] for Control on a device with a
      * limits profile or a lock (nothing written); [`DspiError::Link`]
@@ -27961,6 +28139,93 @@ public func FfiConverterTypeHubHealth_lower(_ value: HubHealth) -> RustBuffer {
 
 
 /**
+ * What [`DspiCore::hub_inventory_forget`] removed.
+ */
+public struct HubInventoryForgot {
+    /**
+     * The device.
+     */
+    public var serial: String
+    /**
+     * What went, in order: `record`, then `events` if it had history files,
+     * then `snapshots` if asked and it had any.
+     */
+    public var forgot: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The device.
+         */serial: String, 
+        /**
+         * What went, in order: `record`, then `events` if it had history files,
+         * then `snapshots` if asked and it had any.
+         */forgot: [String]) {
+        self.serial = serial
+        self.forgot = forgot
+    }
+}
+
+#if compiler(>=6)
+extension HubInventoryForgot: Sendable {}
+#endif
+
+
+extension HubInventoryForgot: Equatable, Hashable {
+    public static func ==(lhs: HubInventoryForgot, rhs: HubInventoryForgot) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.forgot != rhs.forgot {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(forgot)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubInventoryForgot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubInventoryForgot {
+        return
+            try HubInventoryForgot(
+                serial: FfiConverterString.read(from: &buf), 
+                forgot: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubInventoryForgot, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterSequenceString.write(value.forgot, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubInventoryForgot_lift(_ buf: RustBuffer) throws -> HubInventoryForgot {
+    return try FfiConverterTypeHubInventoryForgot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubInventoryForgot_lower(_ value: HubInventoryForgot) -> RustBuffer {
+    return FfiConverterTypeHubInventoryForgot.lower(value)
+}
+
+
+/**
  * A profile set on the hub ([`DspiCore::hub_limits_set`]).
  */
 public struct HubLimitsSet {
@@ -45211,6 +45476,30 @@ fileprivate struct FfiConverterOptionTypeParamValue: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceString.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionSequenceTypeFilterParams: FfiConverterRustBuffer {
     typealias SwiftType = [FilterParams]?
 
@@ -48443,7 +48732,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_hub_identify() != 8517) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_identify_serial() != 15672) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_inventory() != 11241) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_inventory_forget() != 47841) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_inventory_set() != 23396) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_limits_clear() != 57758) {
@@ -48482,6 +48780,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_hub_pin_set() != 62268) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_rename() != 39300) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_schedule_delete() != 22406) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -48515,7 +48816,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_put() != 8801) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_recall() != 36034) {
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_recall() != 38397) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_snapshots_rename() != 10752) {

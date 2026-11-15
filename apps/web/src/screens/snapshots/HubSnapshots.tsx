@@ -4,8 +4,9 @@
 //
 // - Save to the hub: the device now (captured) or a held document (`hubSnapshotsPut`, Control and
 //   Admin; over 61 440 bytes compact the core refuses it in its words and sends nothing).
-// - Recall: where this session's recalls are guarded (DSPi Link to a hub with the guard), the hub's
-//   document is recalled here as a held one is, with Keep or Revert; otherwise the hub recalls it.
+// - Recall: the hub recalls it (WP P2WB3); where this session's recalls are guarded (DSPi Link to a
+//   hub with the guard) the hub guards it and the core adopts the guard: the bar's Keep or Revert.
+// - The list follows the hub's `snapshot.changed` (WP P2WB3), whichever console changed it.
 // - Copy here: the hub's document held in this visit's list (download it from there).
 // - Rename (Control, Admin), Delete (Admin): the hub refuses below in its words.
 
@@ -45,6 +46,14 @@ export function HubSnapshots(props: { desk: SnapshotDesk; ask: ScreenProps["ask"
   useEffect(() => {
     void read();
   }, [session, phase, serial]);
+  // -- WP P2WB3 -- the hub's `snapshot.changed` (any console's put, rename, note, delete): this DSPi's list again
+  useEffect(
+    () =>
+      session.watchHub((events) => {
+        if (events.some((e) => e.kind === "snapshot.changed" && (!serial || !e.serial || e.serial === serial))) void read();
+      }),
+    [session, serial],
+  );
   if (!caps?.hubSnapshots) return null;
 
   const act = async (f: () => Promise<string>) => {
@@ -88,23 +97,16 @@ export function HubSnapshots(props: { desk: SnapshotDesk; ask: ScreenProps["ask"
     }
     setProblem("");
     setDone("");
-    const guarded = await session.core.call("applyGuardDefault", undefined).catch(() => false);
-    if (guarded) {
-      // The hub's document, recalled here with Keep or Revert (the desk's guard and countdown).
-      try {
-        const doc = await session.core.call("hubSnapshotsGet", { id: r.snapshot.id });
-        await desk.recallText(doc.document);
-      } catch (e) {
-        setProblem(hubFailure(e));
-      }
-      return;
-    }
-    await desk.act("Recall", async () => {
-      const x = await session.core.call("hubSnapshotsRecall", { ...(serial ? { serial } : {}), id: r.snapshot.id });
-      await session.refresh();
-      desk.report({ title: `Recalled “${x.name}” on the hub`, lines: x.lines, notes: x.notes, tone: x.notes.length ? "warn" : "info" });
-      return true;
-    });
+    // -- WP P2WB3 -- recalled on the hub; guarded, the hub's own guard (the core adopts it: the bar's Keep or Revert)
+    const id = r.snapshot.id;
+    await desk.recallOnHub(
+      async (guard, timeoutMs) => {
+        const x = await session.core.call("hubSnapshotsRecall", { ...(serial ? { serial } : {}), id, ...(guard ? { guard, timeoutMs } : {}) });
+        await session.refresh();
+        return x;
+      },
+      async () => (await session.core.call("hubSnapshotsGet", { id })).document,
+    );
   };
   const copyHere = (r: MergedSnapshotRecord) =>
     act(async () => {

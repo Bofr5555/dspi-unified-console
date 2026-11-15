@@ -80,6 +80,8 @@ mod hub_admin;
 mod hub_server;
 // -- WP P2CC2 -- the hub's admin families
 mod hub_server_admin;
+// -- WP P2CC3 -- the hub's device and name writes
+mod hub_server_manage;
 // -- WP CG-SWS-a --
 mod sws_a;
 // -- WP CG-SWS-b -- the pin map

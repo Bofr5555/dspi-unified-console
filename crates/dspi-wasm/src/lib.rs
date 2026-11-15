@@ -83,6 +83,8 @@ pub mod hub_admin;
 pub mod hub_server;
 // -- WP P2CC2 -- the hub's admin families (alarms, schedules, outbound, MQTT, API keys)
 pub mod hub_server_admin;
+// -- WP P2CC3 -- the hub's device and name writes (inventory set/forget, rename, identify by serial)
+pub mod hub_server_manage;
 // -- WP P1AQ --
 pub mod autoeq;
 // -- WP WB6K -- the AutoEQ database the page keeps, and filter files

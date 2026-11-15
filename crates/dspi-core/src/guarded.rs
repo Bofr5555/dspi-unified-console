@@ -50,6 +50,13 @@
 //! (PLAN-CLIENTS 5.9): the revert is a snapshot recall, which P1LM lets pass,
 //! and the hub's own write passes every lock (P1HA).
 //!
+//! **A guarded recall on the hub** (WP P2CC3,
+//! [`DspiCore::hub_snapshots_recall`] with `guard`): the hub begins the guard
+//! itself, as this session. The core adopts it: the status shows it, Keep
+//! sends `apply.confirm`, Revert and the timeout `apply.cancel` (the hub puts
+//! back what it captured; nothing was captured here), for the recalled
+//! device, which need not be the open one.
+//!
 //! The countdown and the outcome are a state the client reads
 //! ([`DspiCore::apply_status`], no I/O, for the countdown bar) and drives
 //! ([`DspiCore::apply_poll`], off the UI thread: it may revert).
@@ -89,6 +96,15 @@ pub const APPLY_GUARD_MAX_TIMEOUT_S: u32 = 590;
 // Without DSPi Link there is no hub to guard with.
 #[cfg_attr(not(feature = "link"), allow(dead_code))]
 const HUB_MARGIN: Duration = Duration::from_secs(5);
+
+// -- WP P2CC3 --
+/// The longest guard the hub runs (its `apply.begin` cap): an adopted
+/// guard's deadline is at most this.
+#[cfg_attr(not(feature = "link"), allow(dead_code))]
+const HUB_GUARD_MAX: Duration = Duration::from_secs(600);
+/// The shortest (the hub's floor).
+#[cfg_attr(not(feature = "link"), allow(dead_code))]
+const HUB_GUARD_MIN: Duration = Duration::from_secs(1);
 
 /// The name of the snapshot taken before an apply (its note is the label).
 const BEFORE_NAME: &str = "Before a guarded apply";
@@ -188,6 +204,12 @@ struct Running {
     unreachable_on: Option<LostKey>,
     changes: Vec<String>,
     notes: Vec<String>,
+    // -- WP P2CC3 --
+    /// The hub began it itself (a guarded recall on the hub,
+    /// [`DspiCore::hub_snapshots_recall`]): nothing was captured here
+    /// (`before` is empty), the hub's own capture is the way back, and its
+    /// device need not be the open one.
+    adopted: bool,
 }
 
 // -- WP P1CFIX -- N3
@@ -472,10 +494,10 @@ impl DspiCore {
         if self.connection_changed(&r) {
             return Ok(self.on_lost(r));
         }
-        let Some(h) = r.hub else {
+        if r.hub.is_none() {
             return Ok(self.finish(r, GuardPhase::Kept, "confirmed", "Kept.", Vec::new()));
-        };
-        match self.hub_end(h, "apply.confirm") {
+        }
+        match self.hub_end(&r, "apply.confirm") {
             Ok(_) => Ok(self.finish(r, GuardPhase::Kept, "confirmed", "Kept.", Vec::new())),
             // The hub ended it first (its timeout, another console's lock).
             Err(DspiError::Link { code, .. })
@@ -687,6 +709,7 @@ impl DspiCore {
                 unreachable_on: None,
                 changes: Vec::new(),
                 notes: Vec::new(),
+                adopted: false, // -- WP P2CC3 --
             });
             st.last.clone()
         };
@@ -707,8 +730,8 @@ impl DspiCore {
                 };
                 if sent_nothing(&e) {
                     // Nothing to put back: end the hub's guard and forget it.
-                    if let Some(h) = r.hub {
-                        let _ = self.hub_end(h, "apply.confirm");
+                    if r.hub.is_some() {
+                        let _ = self.hub_end(&r, "apply.confirm");
                     }
                     let mut st = lock(&self.guarded.state);
                     st.running = None;
@@ -744,12 +767,23 @@ impl DspiCore {
     /// the open connection. No I/O.
     fn lost_key(&self) -> LostKey {
         let generation = self.lock().conn.as_ref().map(|c| c.generation);
-        (self.hub_session(), generation)
+        // -- WP P2FFIX -- an adopted guard's session need not be bound
+        (
+            self.hub_session().or_else(|| self.guard_client_session()),
+            generation,
+        )
     }
 
     /// Whether the connection the guard was begun on is gone (closed, or
     /// another one, or another device), or, over Link, our hub session.
     fn connection_changed(&self, r: &Running) -> bool {
+        // -- WP P2CC3 -- the hub's own guard: only our hub session counts (its
+        // device need not be the open one)
+        if r.adopted {
+            return r
+                .hub
+                .is_none_or(|h| self.guard_client_session() != Some(h.session));
+        }
         let same = self
             .lock()
             .conn
@@ -829,6 +863,10 @@ impl DspiCore {
 
     /// Put the snapshot back now (the timeout, Revert, a failed apply).
     fn revert_now(&self, r: Running, reason: &str) -> GuardedApply {
+        // -- WP P2CC3 --
+        if r.adopted {
+            return self.revert_adopted(r, reason);
+        }
         // Over Link: is the hub's guard still ours? If it ended (its timeout,
         // another console's lock), its outcome is what happened.
         if let Some(h) = r.hub {
@@ -850,7 +888,7 @@ impl DspiCore {
         let recall = self.recall_before(r.before.clone());
         // The hub's guard ends with its own write of the same image: the end
         // everyone hears is "reverted".
-        let hub_end = r.hub.map(|h| self.hub_end(h, "apply.cancel"));
+        let hub_end = r.hub.map(|_| self.hub_end(&r, "apply.cancel"));
         let message = match reason {
             "timeout" => format!(
                 "No Keep within {} s: the settings from before are back.",
@@ -889,6 +927,49 @@ impl DspiCore {
                 let message = format!("The settings from before could not be put back: {e}.");
                 self.finish(r, GuardPhase::RevertFailed, reason, &message, Vec::new())
             }
+        }
+    }
+
+    // -- WP P2CC3 --
+    /// Revert (or time out) a guard the hub began: the hub puts back what it
+    /// captured (`apply.cancel`), as this session; nothing is recalled here.
+    fn revert_adopted(&self, r: Running, reason: &str) -> GuardedApply {
+        let Some(h) = r.hub else {
+            return self.apply_status();
+        };
+        match self.hub_view(&r, h) {
+            HubView::Ours => match self.hub_end(&r, "apply.cancel") {
+                Ok(mut o) => {
+                    if reason == "timeout"
+                        && let Some(m) = o.as_object_mut()
+                    {
+                        m.insert("reason".into(), "timeout".into());
+                    }
+                    self.finish_from_hub(r, &o)
+                }
+                // The hub ended it first (its own timeout): how?
+                Err(DspiError::Link { code, .. })
+                    if matches!(code.as_str(), "no_guard" | "conflict" | "denied") =>
+                {
+                    match self.hub_view(&r, h) {
+                        HubView::Ended(o) => self.finish_from_hub(r, &o),
+                        HubView::Ending => self.apply_status(),
+                        _ => self.on_lost(r),
+                    }
+                }
+                Err(_) => self.on_lost(r),
+            },
+            HubView::Ended(o) => self.finish_from_hub(r, &o),
+            // The hub is putting it back (its deadline): ask again next time.
+            HubView::Ending => self.apply_status(),
+            HubView::Unreachable => self.on_lost(r),
+            HubView::Unknown => self.finish(
+                r,
+                GuardPhase::Lost,
+                "connection_lost",
+                "The hub no longer knows how this apply ended; check the settings.",
+                Vec::new(),
+            ),
         }
     }
 
@@ -1132,6 +1213,12 @@ impl DspiCore {
         self.link_guard_target().map(|t| t.session)
     }
 
+    // -- WP P2FFIX --
+    /// This console's live hub session, bound or not.
+    fn guard_client_session(&self) -> Option<u16> {
+        self.link_client_session()
+    }
+
     /// `apply.begin` on the bound device, when the hub offers the guard.
     fn hub_begin(&self, timeout: Duration) -> Result<Option<HubGuard>> {
         let Some(t) = self.link_guard_target().filter(|t| t.has_guard) else {
@@ -1157,24 +1244,117 @@ impl DspiCore {
     }
 
     /// `apply.confirm` or `apply.cancel` for our guard; the hub's answer.
-    fn hub_end(&self, _h: HubGuard, t: &str) -> Result<Value> {
-        let target = self.link_guard_target().ok_or(DspiError::Disconnected)?;
+    fn hub_end(&self, r: &Running, t: &str) -> Result<Value> {
+        // -- WP P2CC3 -- the guard's device, which an adopted one names
+        let handle = self.guard_handle(r).ok_or(DspiError::Disconnected)?;
         let mut f = serde_json::Map::new();
-        f.insert("handle".into(), target.handle.into());
+        f.insert("handle".into(), handle.into());
         self.link_hub_request(t, f)
+    }
+
+    // -- WP P2CC3 --
+    /// The hub handle of the guard's device: the bound one, or for a guard
+    /// the hub began on another device, that device's by serial. No I/O.
+    fn guard_handle(&self, r: &Running) -> Option<u8> {
+        if !r.adopted {
+            return self.link_guard_target().map(|t| t.handle);
+        }
+        // -- WP P2FFIX -- by serial in the hub's device list: no bound device
+        // needed, and a rebind mid-guard keeps it reachable
+        self.link_devices()
+            .into_iter()
+            .find(|d| d.serial == r.serial)
+            .and_then(|d| u8::try_from(d.handle).ok())
+    }
+
+    // -- WP P2CC3 --
+    /// Run `recall` (a guarded `snapshot.recall` on the hub) with the guard's
+    /// operation lock held, and adopt the guard its answer names, so
+    /// [`DspiCore::apply_status`], [`DspiCore::apply_confirm`],
+    /// [`DspiCore::apply_revert`] and [`DspiCore::apply_poll`] track it.
+    /// Refused with nothing sent while another guard waits.
+    pub(crate) fn guard_adopt_recall(
+        &self,
+        timeout_ms: u32,
+        recall: impl FnOnce() -> Result<crate::hub_server::HubSnapshotRecall>,
+    ) -> Result<crate::hub_server::HubSnapshotRecall> {
+        let _op = lock(&self.guarded.op);
+        if let Some(r) = self.running() {
+            if r.lost {
+                self.resolve_lost(r);
+            } else if self.connection_changed(&r) {
+                self.on_lost(r);
+            } else if now() >= r.deadline {
+                self.revert_now(r, "timeout");
+            }
+            if self.running().is_some() {
+                return Err(invalid(BUSY));
+            }
+        }
+        // -- WP P2FFIX -- (review p2f F1) the session the hub's guard will
+        // belong to, known before anything is sent: bound to a device or not
+        let session = self.guard_client_session().ok_or(DspiError::Disconnected)?;
+        let rec = recall()?;
+        let Ok(guard) = rec.guard.parse::<u64>() else {
+            return Ok(rec);
+        };
+        let timeout = if timeout_ms == 0 {
+            Duration::from_secs(u64::from(APPLY_GUARD_DEFAULT_TIMEOUT_S))
+        } else {
+            Duration::from_millis(u64::from(timeout_ms)).clamp(HUB_GUARD_MIN, HUB_GUARD_MAX)
+        };
+        let generation = self.lock().conn.as_ref().map_or(0, |c| c.generation);
+        let start = now();
+        let label = if rec.name.is_empty() {
+            "a snapshot on the hub".to_owned()
+        } else {
+            rec.name.clone()
+        };
+        let mut st = lock(&self.guarded.state);
+        st.next_id = st.next_id.wrapping_add(1).max(1);
+        st.orphan = None;
+        st.running = Some(Running {
+            id: st.next_id,
+            label,
+            before: String::new(),
+            serial: rec.serial.clone(),
+            generation,
+            deadline: start.checked_add(timeout).unwrap_or(start),
+            timeout,
+            hub: Some(HubGuard { guard, session }),
+            lost: false,
+            unreachable_on: None,
+            changes: rec.lines.clone(),
+            notes: rec.notes.clone(),
+            adopted: true,
+        });
+        drop(st);
+        Ok(rec)
     }
 
     /// What the hub says of our guard.
     fn hub_view(&self, r: &Running, h: HubGuard) -> HubView {
-        let Some(target) = self.link_guard_target() else {
+        // -- WP P2FFIX -- an adopted guard needs the live session only
+        let session = if r.adopted {
+            self.guard_client_session()
+        } else {
+            self.link_guard_target().map(|t| t.session)
+        };
+        let Some(session) = session else {
             return HubView::Unreachable;
         };
         // Only the same device: the hub keeps outcomes per serial.
-        if self.lock().conn.as_ref().map(|c| c.serial.as_str()) != Some(r.serial.as_str()) {
+        // -- WP P2CC3 -- an adopted guard's device need not be the open one
+        if !r.adopted
+            && self.lock().conn.as_ref().map(|c| c.serial.as_str()) != Some(r.serial.as_str())
+        {
             return HubView::Unreachable;
         }
+        let Some(handle) = self.guard_handle(r) else {
+            return HubView::Unreachable;
+        };
         let mut f = serde_json::Map::new();
-        f.insert("handle".into(), target.handle.into());
+        f.insert("handle".into(), handle.into());
         let Ok(reply) = self.link_hub_request("apply.status", f) else {
             return HubView::Unreachable;
         };
@@ -1183,9 +1363,10 @@ impl DspiCore {
                 && v.get("serial").and_then(Value::as_str) == Some(r.serial.as_str())
         };
         if let Some(a) = reply.get("active").filter(|a| ours(a)) {
-            let session = a.get("session").and_then(Value::as_u64);
             let reverting = a.get("reverting") == Some(&Value::Bool(true));
-            return if !reverting && session == Some(u64::from(target.session)) {
+            return if !reverting
+                && a.get("session").and_then(Value::as_u64) == Some(u64::from(session))
+            {
                 HubView::Ours
             } else {
                 HubView::Ending
@@ -1206,11 +1387,14 @@ impl DspiCore {
     fn hub_begin(&self, _timeout: Duration) -> Result<Option<HubGuard>> {
         Ok(None)
     }
-    fn hub_end(&self, _h: HubGuard, _t: &str) -> Result<Value> {
+    fn hub_end(&self, _r: &Running, _t: &str) -> Result<Value> {
         Err(DspiError::Unsupported)
     }
     fn hub_view(&self, _r: &Running, _h: HubGuard) -> HubView {
         HubView::Unreachable
+    }
+    fn guard_client_session(&self) -> Option<u16> {
+        None
     }
 }
 

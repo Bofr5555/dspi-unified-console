@@ -1326,9 +1326,24 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_health(void*_Nonnull ptr, Rus
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_identify(void*_Nonnull ptr, uint8_t seconds, RustBuffer tone_output, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_IDENTIFY_SERIAL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_IDENTIFY_SERIAL
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_identify_serial(void*_Nonnull ptr, RustBuffer serial, uint8_t seconds, RustBuffer tone_output, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_INVENTORY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_INVENTORY
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_inventory(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_INVENTORY_FORGET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_INVENTORY_FORGET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_inventory_forget(void*_Nonnull ptr, RustBuffer serial, int8_t with_data, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_INVENTORY_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_INVENTORY_SET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_inventory_set(void*_Nonnull ptr, RustBuffer serial, RustBuffer location, RustBuffer note, RustBuffer tags, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_LIMITS_CLEAR
@@ -1389,6 +1404,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_pin_clear(void*_Nonnull ptr, 
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_PIN_SET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_PIN_SET
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_pin_set(void*_Nonnull ptr, RustBuffer pin, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_RENAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_RENAME
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_rename(void*_Nonnull ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SCHEDULE_DELETE
@@ -4575,9 +4595,27 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_identify(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_IDENTIFY_SERIAL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_IDENTIFY_SERIAL
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_identify_serial(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_INVENTORY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_INVENTORY
 uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_inventory(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_INVENTORY_FORGET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_INVENTORY_FORGET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_inventory_forget(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_INVENTORY_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_INVENTORY_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_inventory_set(void
     
 );
 #endif
@@ -4650,6 +4688,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_PIN_SET
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_PIN_SET
 uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_pin_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_RENAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_RENAME
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_rename(void
     
 );
 #endif

@@ -5226,6 +5226,21 @@ data class HubApiKeyMinted(
 )
 
 /**
+ * What [`DspiCore::hub_inventory_forget`] removed.
+ */
+data class HubInventoryForgot(
+    /**
+     * The device.
+     */
+    val serial: String,
+    /**
+     * What went, in order: `record`, then `events` if it had history files,
+     * then `snapshots` if asked and it had any.
+     */
+    val forgot: List<String>,
+)
+
+/**
  * One change in the history ([`DspiCore::history`]).
  */
 data class HistoryEntry(

@@ -1,6 +1,6 @@
 // WP P2WB1: the hub screen of a session on a hub that has the hub's own
 // families (PRO phase 2): every DSPi the hub has seen, online or not, with its
-// health; Identify for this session's DSPi and Open for the others; an Admin
+// health; Identify on every online DSPi and Open for the others; an Admin
 // sees the hub's statistics; the alarm board with Acknowledge. Everything
 // comes from the core's typed calls through `HubFeed`; on a hub without these
 // families (an upstream hub) the screen is not offered.
@@ -10,7 +10,8 @@ import { useEffect, useState } from "preact/hooks";
 import type { HubAlarmRecord, HubStatsRecord } from "../../core/protocol";
 import type { ScreenDef, ScreenProps } from "../../ui/screens";
 import { HubFeed, type HubView, type Said } from "./feed";
-import { alarmSummary, alarmTitle, deviceRows, durationText, shortTime, type HubRow } from "./model";
+import { alarmSummary, alarmTitle, deviceRows, durationText, rowActions, shortTime, tagsFrom, type HubRow } from "./model";
+import { useSessionState } from "../../ui/components";
 
 /** The screen's entry (screens.tsx shows it when `hubScreenShown`). */
 export const HUB_SCREEN_ID = "hub";
@@ -31,12 +32,15 @@ export function useHubView(feed: HubFeed | undefined): HubView | null {
 export const HubScreen: FunctionComponent<ScreenProps> = (props) => {
   const feed = props.hub;
   const view = useHubView(feed);
+  const hubName = useSessionState(props.session).hubName; // -- WP P2WB3 --
   if (!feed || !view) return null;
   return (
     <div class="hub-screen">
       {/* -- SEC hook (SECWEB, PLAN-SEC section 6) -- the "unencrypted" banner and the hub's fingerprint go here */}
       <HubDevices feed={feed} view={view} props={props} />
       {view.caps?.alarms ? <AlarmBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} /> : null}
+      {/* -- WP P2WB3 -- */}
+      {view.caps?.hubStats && view.role === "admin" && !props.session.readOnlyReason ? <HubName feed={feed} name={hubName} /> : null}
       {view.stats ? <HubStats stats={view.stats} name={(s) => feed.deviceName(s)} /> : null}
     </div>
   );
@@ -50,13 +54,37 @@ function HubDevices(p: { feed: HubFeed; view: HubView; props: ScreenProps }) {
   const rows = deviceRows(view.devices, view.health, feed.openSerial());
   const [said, setSaid] = useState<Said | null>(null);
   const [busy, setBusy] = useState(false);
-  const identify = async () => {
+  // -- WP P2WB3 -- the device whose details an Admin edits, and the form's text
+  const [editing, setEditing] = useState<{ serial: string; location: string; note: string; tags: string } | null>(null);
+  const run = async (f: () => Promise<Said>) => {
     setBusy(true);
-    setSaid(await feed.identify());
+    setSaid(await f());
     setBusy(false);
   };
   const readOnly = session.readOnlyReason;
-  const viewer = view.role === "viewer";
+  const opts = { role: view.role, identify: !!view.caps?.identify, inventory: !!view.caps?.inventory, readOnly, canOpen: !!session.openDevice };
+  const forget = async (r: HubRow) => {
+    const a = await props.ask({
+      title: "Forget the DSPi",
+      body: (
+        <>
+          <p>
+            Forget {r.name} ({r.serial}) on the hub? Its record and its history on the hub go. It is listed again the next time it is attached.
+          </p>
+          <p>Its snapshots on the hub stay unless you delete them too.</p>
+        </>
+      ),
+      buttons: [
+        { label: "Forget", value: "forget", danger: true },
+        { label: "Forget and Delete Its Snapshots", value: "with-data", danger: true },
+        { label: "Cancel", value: "cancel" },
+      ],
+    });
+    if (a !== "forget" && a !== "with-data") return;
+    if (editing?.serial === r.serial) setEditing(null);
+    await run(() => feed.forget(r.serial, a === "with-data"));
+  };
+  const edited = editing ? rows.find((r) => r.serial === editing.serial) : undefined;
   return (
     <section class="card hub-devices" aria-label="Devices on the hub">
       <div class="card-head">
@@ -68,8 +96,9 @@ function HubDevices(p: { feed: HubFeed; view: HubView; props: ScreenProps }) {
           {view.error}
         </p>
       ) : null}
+      {/* -- WP P2WB3 -- every action's line (Identify, Edit, Forget), not only Identify's */}
       {said ? (
-        <p class={said.bad ? "error" : "note"} role="status" aria-label="Identify" data-key={said.notice?.key}>
+        <p class={said.bad ? "error" : "note"} role="status" aria-label="Action result" data-key={said.notice?.key}>
           {said.text}
           {said.notice?.reason ? ` ${said.notice.reason}` : ""}
         </p>
@@ -92,47 +121,162 @@ function HubDevices(p: { feed: HubFeed; view: HubView; props: ScreenProps }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.serial} class={r.online ? undefined : "offline"} aria-label={r.name}>
-                  <td>
-                    <span class="hub-name">{r.name}</span>
-                    <span class="hub-serial">{r.serial}</span>
-                    {r.tags.length ? <span class="hub-tags">{r.tags.join(", ")}</span> : null}
-                    {r.note ? <span class="hub-note">{r.note}</span> : null}
-                  </td>
-                  <td>{r.location || "–"}</td>
-                  <td>
-                    <StateWord row={r} />
-                  </td>
-                  <td>{r.firmware || "–"}</td>
-                  <td>{r.cpu === null ? "–" : `${r.cpu}%`}</td>
-                  <td>{r.tempC === null ? "–" : `${r.tempC.toFixed(1)} °C`}</td>
-                  <td>{r.restart || "–"}</td>
-                  <td class="hub-actions">
-                    {r.isOpen ? (
-                      view.caps?.identify ? (
-                        <button
-                          type="button"
-                          disabled={busy || !!readOnly || viewer}
-                          title={readOnly || (viewer ? "A Viewer cannot identify a DSPi" : "Blink this DSPi's LED")}
-                          onClick={() => void identify()}
-                        >
-                          Identify
-                        </button>
-                      ) : null
-                    ) : r.online && session.openDevice ? (
-                      <button type="button" onClick={() => session.openDevice!(r.serial)}>
-                        Open
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const may = rowActions(r, opts);
+                return (
+                  <tr key={r.serial} class={r.online ? undefined : "offline"} aria-label={r.name}>
+                    <td>
+                      <span class="hub-name">{r.name}</span>
+                      <span class="hub-serial">{r.serial}</span>
+                      {r.tags.length ? <span class="hub-tags">{r.tags.join(", ")}</span> : null}
+                      {r.note ? <span class="hub-note">{r.note}</span> : null}
+                    </td>
+                    <td>{r.location || "–"}</td>
+                    <td>
+                      <StateWord row={r} />
+                    </td>
+                    <td>{r.firmware || "–"}</td>
+                    <td>{r.cpu === null ? "–" : `${r.cpu}%`}</td>
+                    <td>{r.tempC === null ? "–" : `${r.tempC.toFixed(1)} °C`}</td>
+                    <td>{r.restart || "–"}</td>
+                    <td class="hub-actions">
+                      <div class="hub-action-row">
+                        {may.identify ? (
+                          <button
+                            type="button"
+                            disabled={busy || !!may.identifyOff}
+                            title={may.identifyOff || "Blink this DSPi's LED"}
+                            onClick={() => void run(() => feed.identify(r.serial))}
+                          >
+                            Identify
+                          </button>
+                        ) : null}
+                        {may.open ? (
+                          <button type="button" onClick={() => session.openDevice!(r.serial)}>
+                            Open
+                          </button>
+                        ) : null}
+                        {may.edit ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            aria-label={`Edit the details of ${r.name}`}
+                            onClick={() => setEditing({ serial: r.serial, location: r.location, note: r.note, tags: r.tags.join(", ") })}
+                          >
+                            Edit…
+                          </button>
+                        ) : null}
+                        {may.forget ? (
+                          <button type="button" class="danger-text" disabled={busy} aria-label={`Forget ${r.name}`} onClick={() => void forget(r)}>
+                            Forget…
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ) : view.caps?.inventory ? (
         <p class="note">The hub has seen no DSPi yet.</p>
+      ) : null}
+      {editing && edited ? (
+        <form
+          class="hub-edit"
+          aria-label={`Details of ${edited.name}`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const d = { location: editing.location.trim(), note: editing.note, tags: tagsFrom(editing.tags) };
+            void run(async () => {
+              const r = await feed.setDetails(editing.serial, d);
+              if (!r.bad) setEditing(null);
+              return r;
+            });
+          }}
+        >
+          <h3>Details of {edited.name}</h3>
+          <label>
+            Location
+            <input value={editing.location} maxLength={256} onInput={(e) => setEditing({ ...editing, location: (e.target as HTMLInputElement).value })} />
+          </label>
+          <label>
+            Note
+            <textarea value={editing.note} maxLength={256} rows={2} onInput={(e) => setEditing({ ...editing, note: (e.target as HTMLTextAreaElement).value })} />
+          </label>
+          <label>
+            Tags (separated by commas)
+            <input value={editing.tags} onInput={(e) => setEditing({ ...editing, tags: (e.target as HTMLInputElement).value })} />
+          </label>
+          <div class="hub-edit-actions">
+            <button type="submit" disabled={busy}>
+              Save
+            </button>
+            <button type="button" onClick={() => setEditing(null)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
+// -- WP P2WB3 --
+/** The hub's name, and (Admin, a hub with `hub_stats`) Rename. */
+function HubName(props: { feed: HubFeed; name: string }) {
+  const [text, setText] = useState<string | null>(null);
+  const [said, setSaid] = useState<Said | null>(null);
+  const [busy, setBusy] = useState(false);
+  const save = async (name: string) => {
+    setBusy(true);
+    const r = await props.feed.rename(name.trim());
+    setSaid(r);
+    if (!r.bad) setText(null);
+    setBusy(false);
+  };
+  return (
+    <section class="card hub-name-card" aria-label="The hub">
+      <div class="card-head">
+        <h2>The hub</h2>
+      </div>
+      <p>
+        Called <strong class="hub-own-name">{props.name || "–"}</strong>.{" "}
+        {text === null ? (
+          <button type="button" onClick={() => setText(props.name)}>
+            Rename the Hub…
+          </button>
+        ) : null}
+      </p>
+      {said ? (
+        <p class={said.bad ? "error" : "note"} role="status" aria-label="Rename" data-key={said.notice?.key}>
+          {said.text}
+          {said.bad && said.notice?.reason ? ` ${said.notice.reason}` : ""}
+        </p>
+      ) : null}
+      {text !== null ? (
+        <form
+          class="hub-edit"
+          aria-label="Rename the hub"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (text.trim()) void save(text);
+          }}
+        >
+          <label>
+            New name
+            <input value={text} maxLength={64} onInput={(e) => setText((e.target as HTMLInputElement).value)} />
+          </label>
+          <div class="hub-edit-actions">
+            <button type="submit" disabled={busy || !text.trim()}>
+              Rename
+            </button>
+            <button type="button" onClick={() => setText(null)}>
+              Cancel
+            </button>
+          </div>
+        </form>
       ) : null}
     </section>
   );

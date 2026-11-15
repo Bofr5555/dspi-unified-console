@@ -272,3 +272,30 @@ export function mergeHistory(old: readonly HubHistoryRecord[], fresh: readonly H
   const all = [...byId.values()].sort((a, b) => a.id - b.id);
   return all.slice(Math.max(0, all.length - HISTORY_KEEP));
 }
+
+// -- WP P2WB3 --
+/** Tags as typed ("main, stage"): trimmed, empty ones and repeats dropped (the hub bounds them). */
+export function tagsFrom(text: string): string[] {
+  const out: string[] = [];
+  for (const t of text.split(",")) {
+    const v = t.trim();
+    if (v && !out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
+/**
+ * Which of the row's actions this session is offered: Identify on every online row (off, with
+ * the reason, for a Viewer or a read-only session), Open on the others online, and for an Admin
+ * Edit on every row and Forget on an offline one. The hub refuses below in its words.
+ */
+export function rowActions(r: HubRow, o: { role: string; identify: boolean; inventory: boolean; readOnly: string; canOpen: boolean }) {
+  const admin = o.role === "admin" && !o.readOnly;
+  return {
+    identify: r.online && o.identify,
+    identifyOff: o.readOnly || (o.role === "viewer" ? "A Viewer cannot identify a DSPi" : ""),
+    open: r.online && !r.isOpen && o.canOpen,
+    edit: admin && o.inventory,
+    forget: admin && o.inventory && !r.online,
+  };
+}

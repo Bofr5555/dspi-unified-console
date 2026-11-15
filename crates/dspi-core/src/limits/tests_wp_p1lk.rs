@@ -13,7 +13,9 @@ use crate::consts::IMPORT_ALL_BLOCKS;
 use crate::notice_text::notice_for;
 use crate::write_param::ParamValue;
 
-const PIN: &str = "2468";
+// -- WP FLAKE4 -- a PIN no file can hold by chance: "2468" once matched the end of
+// the random PBKDF2 hash (hex). '~' is in no hex, base64, number or name the core writes.
+const PIN: &str = "~flake4~2468~";
 
 fn demo() -> Arc<DspiCore> {
     let core = DspiCore::new();
