@@ -28,6 +28,12 @@ mdns = ["dspi-link/mdns"]
 # `write_param` and the typed setters' guards. Off by default, as `app`: the binary
 # that serves the API (`uconsole hub`) asks for it.
 api = ["dep:dspi-core"]
+# -- WP SECSRV --
+# Test only, never in a shipped build: `NetworkConfig::new` takes its TLS mode from
+# DSPI_HUB_TEST_TLS (off, on, compat, require), so the existing suites run unchanged
+# against a hub that sniffs and serves TLS (`ci/run.sh 'DSPI_HUB_TEST_TLS=compat
+# cargo test -p dspi-hub --features api,test-tls-mode'`).
+test-tls-mode = []
 
 [dependencies]
 dspi-proto.workspace = true
@@ -35,7 +41,9 @@ dspi-proto.workspace = true
 # and the network one read a hub's answer the same way. No USB unless asked.
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
 # The frame types and codec the hub shares with the client.
-dspi-link.workspace = true
+# -- WP SECSRV -- and its `tls` module (feature `tls`): TLS on the Link port, the
+# split-safe TlsPipe, the first-byte sniff and the SPKI pin (PLAN-SEC 4.1).
+dspi-link = { workspace = true, features = ["tls"] }
 # -- WP HB2 --
 # `overvolt`, the owner's voltage rule, and the status read it goes by: one rule, the one
 # the clients run. Without default features: none of what they add is used here.
@@ -89,10 +97,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 webpki-roots = "1"
 
 [dev-dependencies]
-# -- review seca -- SECPIPE's tls module (feature `tls`) for the SECKEY/SECPIPE
-# cross tests (tests/review_seca_tls_cross.rs; PLAN-SEC M2: one hash for one
-# key). Dev only: the shipped hub gains rustls with SECSRV, which then also
-# replaces tls_identity's pub(crate) helper copies with dspi_link::tls::SpkiHash.
+# -- review seca -- SECPIPE's tls module for the SECKEY/SECPIPE cross tests
+# (tests/review_seca_tls_cross.rs). -- WP SECSRV -- now a normal dependency too.
 dspi-link = { workspace = true, features = ["tls"] }
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
 # -- WP HB2 --

@@ -41,9 +41,8 @@
 //! rustls config), and never in a `Debug` string, a log line, an event or an error.
 //! A diagnostics bundle reads named files only and never this folder's key.
 //!
-//! The SPKI hash and its display forms are copies of SECPIPE's helpers in
-//! `dspi_link::tls` (PLAN-SEC M2): the merge replaces them with those functions, and a
-//! test there asserts both give the same hash for one key.
+//! The SPKI hash, its display forms and the rotation message are SECPIPE's
+//! (`dspi_link::tls`; -- WP SECSRV --): one hash for one key on both ends.
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -52,7 +51,7 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use data_encoding::{BASE64, BASE64URL_NOPAD, HEXLOWER};
+use data_encoding::{BASE64, HEXLOWER};
 use rcgen::{
     CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa, KeyPair,
     KeyUsagePurpose, PKCS_ECDSA_P256_SHA256, PublicKeyData, SanType, SerialNumber, SigningKey,
@@ -82,84 +81,17 @@ pub const ROTATION_DAYS: u64 = 30;
 /// 2025-01-01T00:00:00Z. A wall clock before it is not the real time.
 pub const CLOCK_FLOOR: u64 = 1_735_689_600;
 /// What a rotation signature is over, before `hid` and the new pin.
-pub const ROTATE_CONTEXT: &[u8] = b"dspi-key-rotate\0";
+pub const ROTATE_CONTEXT: &[u8] = dspi_link::tls::ROTATION_CONTEXT;
 const META_VERSION: u32 = 1;
 
-// -- copy of SECPIPE's helpers (PLAN-SEC M2); the merge replaces them with dspi_link::tls --
+// -- WP SECSRV -- SECKEY's copies of SECPIPE's helpers replaced by them (PLAN-SEC M2)
 
-/// SHA-256 of a DER SubjectPublicKeyInfo: the pin.
-pub(crate) fn spki_sha256(spki_der: &[u8]) -> [u8; 32] {
-    Sha256::digest(spki_der).into()
-}
-
-/// Crockford's base32: no I, L, O or U, so nothing reads as another letter.
-const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-/// `SHA256:` and the first 80 bits in base32, as four groups of four (`SHA256:K7Q2-M9XD-…`).
-pub(crate) fn display_pin(pin: &[u8; 32]) -> String {
-    let mut bits: u128 = 0;
-    for b in pin.iter().take(10) {
-        bits = (bits << 8) | u128::from(*b);
-    }
-    let mut out = String::from("SHA256:");
-    for i in 0..16u32 {
-        if i > 0 && i % 4 == 0 {
-            out.push('-');
-        }
-        let shift = 75u32.saturating_sub(i.saturating_mul(5));
-        let index = usize::try_from((bits >> shift) & 0x1F).unwrap_or(0);
-        out.push(char::from(*CROCKFORD.get(index).unwrap_or(&b'0')));
-    }
-    out
-}
-
-// -- end of the copy --
+/// A hub key's pin: SHA-256 of its SubjectPublicKeyInfo ([`SpkiHash`], dspi-link's,
+/// the one the clients pin). Public, so `Debug` shows it.
+pub use dspi_link::tls::SpkiHash;
 
 fn sha256(bytes: &[u8]) -> [u8; 32] {
     Sha256::digest(bytes).into()
-}
-
-/// A hub key's pin: SHA-256 of its SubjectPublicKeyInfo. Public, so `Debug` shows it.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SpkiPin(pub [u8; 32]);
-
-impl SpkiPin {
-    /// The pin of a DER SubjectPublicKeyInfo.
-    pub fn of_spki(spki_der: &[u8]) -> Self {
-        Self(spki_sha256(spki_der))
-    }
-
-    /// For people: `SHA256:K7Q2-M9XD-…`, 80 bits.
-    pub fn display(&self) -> String {
-        display_pin(&self.0)
-    }
-
-    /// Lowercase hex, all 256 bits.
-    pub fn hex(&self) -> String {
-        HEXLOWER.encode(&self.0)
-    }
-
-    /// `sha256//<base64>`, for `curl --pinnedpubkey`.
-    pub fn curl(&self) -> String {
-        format!("sha256//{}", BASE64.encode(&self.0))
-    }
-
-    /// base64url with no padding: a QR code's `k=` and the `v2` credential's pin.
-    pub fn base64url(&self) -> String {
-        BASE64URL_NOPAD.encode(&self.0)
-    }
-}
-
-impl fmt::Debug for SpkiPin {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SpkiPin({})", self.display())
-    }
-}
-
-impl fmt::Display for SpkiPin {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.display())
-    }
 }
 
 /// The names a certificate is issued for, besides `localhost` and the hub's stable
@@ -231,7 +163,7 @@ fn is_dns_name(name: &str) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyNext {
     /// The pin of the key the hub now serves.
-    pub spki: SpkiPin,
+    pub spki: SpkiHash,
     /// The old key's SubjectPublicKeyInfo, DER: a client checks its SHA-256 against the
     /// pin it holds, then the signature with it.
     pub prev_spki_der: Vec<u8>,
@@ -242,19 +174,9 @@ pub struct KeyNext {
     pub until: u64,
 }
 
-/// `"dspi-key-rotate\0" || hid || new_pin`: what a rotation signature is over.
-pub fn rotation_message(hid: &str, new_pin: &SpkiPin) -> Vec<u8> {
-    let mut m = Vec::with_capacity(
-        ROTATE_CONTEXT
-            .len()
-            .saturating_add(hid.len())
-            .saturating_add(32),
-    );
-    m.extend_from_slice(ROTATE_CONTEXT);
-    m.extend_from_slice(hid.as_bytes());
-    m.extend_from_slice(&new_pin.0);
-    m
-}
+/// `"dspi-key-rotate\0" || hid || new_pin`: what a rotation signature is over
+/// (-- WP SECSRV -- dspi-link's, which the clients verify with).
+pub use dspi_link::tls::rotation_message;
 
 /// Why a certificate was issued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -277,28 +199,28 @@ pub enum TlsIdentityEvent {
     /// A first key, on a hub that had none.
     Created {
         /// The new pin.
-        pin: SpkiPin,
+        pin: SpkiHash,
     },
     /// The key could not be read and a new one was made: clients will see "key changed".
     KeyReplaced {
         /// The new pin.
-        pin: SpkiPin,
+        pin: SpkiHash,
         /// Where the unreadable file went, if it was there.
         set_aside: Option<PathBuf>,
     },
     /// The certificate was issued again for the same key: no client notices.
     CertificateIssued {
         /// The pin, unchanged.
-        pin: SpkiPin,
+        pin: SpkiHash,
         /// Why.
         reason: IssueReason,
     },
     /// [`TlsIdentity::rotate`] made a new key.
     Rotated {
         /// The new pin.
-        pin: SpkiPin,
+        pin: SpkiHash,
         /// The old one.
-        previous: SpkiPin,
+        previous: SpkiHash,
         /// Whether the old key signed the new one (not with `forget_old`).
         signed: bool,
     },
@@ -341,7 +263,7 @@ pub struct TlsIdentity {
     dir: PathBuf,
     hid: String,
     key: SecretDer,
-    pin: SpkiPin,
+    pin: SpkiHash,
     spki_der: Vec<u8>,
     cert_der: Vec<u8>,
     cert_pem: String,
@@ -674,7 +596,7 @@ impl TlsIdentity {
             )?;
         }
         let spki_der = key.subject_public_key_info();
-        let pin = SpkiPin::of_spki(&spki_der);
+        let pin = SpkiHash::of_spki(&spki_der);
         if let Some((replaced, set_aside)) = new {
             events.push(if replaced {
                 TlsIdentityEvent::KeyReplaced { pin, set_aside }
@@ -685,7 +607,7 @@ impl TlsIdentity {
         }
 
         // The certificate and what it is for; either unreadable means issuing anew.
-        let meta = read_meta(&meta_path).filter(|m| m.pin == pin.hex());
+        let meta = read_meta(&meta_path).filter(|m| m.pin == pin.to_hex());
         let cert = meta
             .as_ref()
             .and_then(|m| read_cert(&dir.join(CERT_FILE), m));
@@ -794,7 +716,7 @@ impl TlsIdentity {
         let old = self.key_pair()?;
         let new = new_key()?;
         let new_spki = new.subject_public_key_info();
-        let new_pin = SpkiPin::of_spki(&new_spki);
+        let new_pin = SpkiHash::of_spki(&new_spki);
         let rotation = if forget_old {
             None
         } else {
@@ -840,7 +762,7 @@ impl TlsIdentity {
         let issued = issue(key, &self.hid, &sans, now)?;
         self.meta = Meta {
             v: META_VERSION,
-            pin: self.pin.hex(),
+            pin: self.pin.to_hex(),
             cert_sha256: HEXLOWER.encode(&sha256(&issued.der)),
             names: sans,
             not_before: issued.not_before,
@@ -868,7 +790,7 @@ impl TlsIdentity {
     }
 
     /// The pin clients keep.
-    pub fn pin(&self) -> SpkiPin {
+    pub fn pin(&self) -> SpkiHash {
         self.pin
     }
 
@@ -909,7 +831,6 @@ impl TlsIdentity {
 
     /// The private key, PKCS#8 DER, for the server's rustls config. Crate-only, and
     /// never to be logged.
-    #[allow(dead_code)] // -- WP SECKEY -- SECSRV's server config reads it
     pub(crate) fn private_key_der(&self) -> &[u8] {
         &self.key.0
     }

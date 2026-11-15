@@ -469,6 +469,29 @@ pub fn split_server(tcp: TcpStream, tail: Vec<u8>, max_frame: usize) -> io::Resu
 /// Per socket and half, so an unauthenticated socket costs little.
 const SERVER_READ_BUFFER: usize = 16 * 1024;
 
+// -- WP SECSRV --
+/// The two halves of an accepted plain socket as [`Pipe`]s (buffered, one write
+/// lock, one broken flag), as [`split_server`] makes them, for a hub that builds
+/// its WebSocket over a stream type of its own: plain or TLS on one port. Use
+/// [`server_ws_config`] for the WebSocket.
+pub fn server_pipes(tcp: TcpStream) -> io::Result<(Pipe, Pipe)> {
+    let write_half = tcp.try_clone()?;
+    let wlock = Arc::new(Mutex::new(()));
+    let broken = Arc::new(AtomicBool::new(false));
+    let pipe = |tcp, wlock, broken| Pipe { tcp, buffered: true, out: Vec::new(), wlock, broken, deadline: None };
+    Ok((pipe(tcp, Arc::clone(&wlock), Arc::clone(&broken)), pipe(write_half, wlock, broken)))
+}
+
+// -- WP SECSRV --
+/// The WebSocket config of [`split_server`]'s halves: `max_frame` for a frame
+/// and a message, and a small read buffer per half.
+pub fn server_ws_config(max_frame: usize) -> WebSocketConfig {
+    WebSocketConfig::default()
+        .max_message_size(Some(max_frame))
+        .max_frame_size(Some(max_frame))
+        .read_buffer_size(SERVER_READ_BUFFER)
+}
+
 impl Pipe {
     /// A write failed part way, so nothing more can be sent on this stream. A read
     /// timeout means nothing while this is set: it may be that write's timeout.
