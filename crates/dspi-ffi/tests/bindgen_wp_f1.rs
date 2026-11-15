@@ -60,10 +60,11 @@ const NOT_EXPORTED: &[&str] = &[
     // -- WP FWX -- The clip events' hand-off to WP P0M's clip hold and history
     // (ext_diag.rs), Rust-only until a client needs it.
     "take_clip_mask",
-    // -- WP P1CFIX -- F7: P1TK's `write_param` with a token (confirm.rs, the
-    // non-exported `impl`), for the web binding's `write`; the UniFFI clients
-    // call the gated typed calls with their token.
-    "write_param_confirmed",
+    // -- WP P1TZF -- `write_param_confirmed` is exported now (review p1tz F3).
+    // TMCORE's image read for the Terminal's own `Session` over the core
+    // (raw.rs, doc(hidden)); Rust-only. Missing here since TMCORE: this test
+    // runs only with --all-features, which no step ran on dspi-ffi.
+    "read_image_bytes",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.
@@ -282,7 +283,7 @@ fn wp_f1_kotlin_surface_is_the_cores_public_api() {
         "fun `firmwareVersionMatches`",
         "fun `computeMagnitudeCurve`",
         "fun `uf2Inspect`",
-        "fun `flashToDriveConfirmed`", // -- WP P1TZ -- a core method with a token
+        "fun `flashConfirmed`", // -- WP P1TZF -- the one drive write, with a token
         "fun `configInspect`",
         "class DspiException",
         "data class DspState",

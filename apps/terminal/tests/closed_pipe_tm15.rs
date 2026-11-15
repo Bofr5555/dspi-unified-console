@@ -117,14 +117,15 @@ const PRINTING: &[&[&str]] = &[
     &["--demo", "eq", "usb.1", "3", "peak", "2856", "3.58", "-8.6"],
     &["--demo", "undo"],
     &["--demo", "redo"],
-    &["--demo", "raw", "0x51", "1"],
-    &["--demo", "raw", "0x51", "1", "--json"],
+    // -- WP P1TZF -- 0x51 (save params) takes a confirmation now; `raw` refuses it
+    &["--demo", "raw", "0x9A", "1"],
+    &["--demo", "raw", "0x9A", "1", "--json"],
     &["--demo", "raw", "out", "0x42", "0", "08", "03", "01", "00"],
     &[
         "--demo", "raw", "out", "0x42", "0", "08", "03", "01", "00", "--json",
     ],
-    &["--demo", "raw", "war", "0x51", "0"],
-    &["--demo", "raw", "war", "0x51", "0", "--json"],
+    &["--demo", "raw", "war", "0x9A", "0"],
+    &["--demo", "raw", "war", "0x9A", "0", "--json"],
     // Prints, and then exits 3 for the device's refusal.
     &["--demo", "raw", "war", "0xC3", "0"],
     &["--demo", "ext"],

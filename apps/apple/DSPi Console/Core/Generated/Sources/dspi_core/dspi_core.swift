@@ -1916,13 +1916,22 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * needs `word`, exactly `OVERVOLT`, or nothing is written. This is the
      * one path to 1.30 V; the GUIs' flow stops at 1.25 V (`core_vreg_cal_*`).
      *
-     * Errors: `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
+     * -- WP P1TZF -- A SET stores the voltage in flash: it takes a
+     * confirmation token ([`crate::ConfirmOp::VregSave`], as
+     * [`DspiCore::core_vreg_manual_set_confirmed`]), checked first, before
+     * anything is sent. The other operations (a trial, its end, AUTO, CLEAR)
+     * take none, as the plan says; a token given with one is still checked
+     * and spent. Mint one per try: a refusal for the word after the token
+     * was accepted has spent it.
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] for a SET without a good
+     * token; `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
      * a read-only connection;
      * `Unsupported` when the device has no usable core-voltage extension;
      * `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
      * request anyway; `Denied`, `Locked` or `Transfer` from the link.
      */
-    func coreVregOp(op: UInt8, value: UInt8, word: String?) throws 
+    func coreVregOpConfirmed(op: UInt8, value: UInt8, word: String?, token: String?) throws 
     
     /**
      * End a trial, or abort a run, with `TRIAL_END`, at any time but while a
@@ -2819,53 +2828,24 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * longer holds); it works with no device open, and a board already in
      * BOOTSEL has none. Without a good token, or with one for another
      * operation, [`DspiError::ConfirmationRequired`] and nothing reaches the
-     * drive. The write itself is as [`DspiCore::flash_to_drive_confirmed`]'s.
+     * drive. It is the only drive write the bindings have (WP P1TZF): a
+     * caller that knows the board passes it, and one in BOOTSEL passes
+     * [`crate::firmware_guard_board_in_bootloader`] with the typed phrase
+     * the verdict asks for.
+     *
+     * Before any byte goes out: the image is fully validated, the drive's
+     * `INFO_UF2.TXT` is read again and must still name the board `drive`
+     * describes, the image's family must be one that board boots, and the
+     * drive must have room for the image. The board reboots into the new
+     * firmware as it takes the last block, so `Ok` means only "the write
+     * ended, or the drive went away during it": the caller confirms success
+     * by waiting for the DSPi to re-enumerate and report the image's version
+     * (`Uf2Info::firmware_version`); a timeout there is the failure.
      *
      * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
      * message when the image needs confirmation; then the write's.
      */
     func flashConfirmed(image: Data, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?) throws 
-    
-    /**
-     * Write `image` to `drive` as `firmware.uf2`, synced to the medium, with a
-     * confirmation token, without the firmware guard ([`DspiCore::flash_confirmed`]
-     * is the write behind the guard, the one to use wherever the core does the
-     * writing).
-     *
-     * Before any byte goes out: the image is fully validated, the drive's
-     * `INFO_UF2.TXT` is read again and must still name the board `drive`
-     * describes, the image's family must be one that board boots, and the
-     * drive must have room for the image. The file is then written with one
-     * `write_all` and one `sync_all`.
-     *
-     * The board reboots into the new firmware as it takes the last block, so
-     * the write or the sync can fail because the drive has gone: that (either
-     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
-     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
-     * `Ok` means only "the write ended, or the drive went away during it, assumed
-     * to be the board rebooting". **The caller must
-     * confirm success** by waiting for the DSPi to re-enumerate and report the
-     * image's version (`Uf2Info::firmware_version`); a timeout there is the
-     * failure.
-     *
-     * The `INFO_UF2.TXT` re-check and the write are separate path-based
-     * operations, so a different drive mounted at the same path in between
-     * would get the file (an inherent check-then-use race; the Qt updater has
-     * the same). The window is a few milliseconds and both boot ROMs reject an
-     * image of the other family.
-     *
-     * The token ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]; WP
-     * P1TZ): mint it once the bootloader drive is there; it works with no
-     * device open, and a board in BOOTSEL has none. Without a good one, or with
-     * a token for another operation, [`DspiError::ConfirmationRequired`] and
-     * nothing reaches the drive. With a device still open, the installer lock
-     * holds this write too (before the token is spent).
-     *
-     * Errors: that; [`DspiError::InvalidArgument`] for an invalid image, a drive that
-     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
-     * that has gone, is short of space, or fails the write.
-     */
-    func flashToDriveConfirmed(image: Data, drive: BootloaderDrive, token: String?) throws 
     
     /**
      * Reads the name of wire channel `ch` from the device
@@ -3620,8 +3600,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * An opcode that is not a plain read (`REQ_PRESET_LOAD`,
      * `REQ_RTA_CONTROL`, ...) is a write-as-read and is treated as a write.
      * A plain read is any `*_GET_*` opcode, `REQ_EXTENSION`, `REQ_LIMITER`,
-     * `REQ_OUTPUT_LATENCY`, and the three §1.2 exceptions: `REQ_CLEAR_CLIPS`,
-     * `REQ_RESET_BUFFER_STATS` and `REQ_ENTER_BOOTLOADER`.
+     * `REQ_OUTPUT_LATENCY`, and the §1.2 exceptions `REQ_CLEAR_CLIPS` and
+     * `REQ_RESET_BUFFER_STATS` (`REQ_ENTER_BOOTLOADER`, the third, is refused
+     * here since WP P1TZF: it takes a token, through
+     * `enter_bootloader_confirmed`).
      *
      * The mirror does not change here. A device change reaches it through
      * the notification, like anyone else's. Over DSPi Link the
@@ -3633,7 +3615,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * thread. `REQ_GET_ALL_PARAMS` for a whole image is the slow case.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS` and
-     * the chunk opcodes (nothing is sent); [`DspiError::Disconnected`];
+     * the chunk opcodes, and for an opcode behind a confirmation token
+     * ([`raw_gated_call`]: preset save and delete, parameter and output
+     * configuration save, factory reset, the bootloader), naming the
+     * `_confirmed` call to use (nothing is sent; WP P1TZF);
+     * [`DspiError::Disconnected`];
      * [`DspiError::ReadOnly`] for a write-as-read on a read-only connection
      * (nothing is sent); [`DspiError::Refused`] with status 0 when the
      * device stalls; [`DspiError::Denied`], [`DspiError::Locked`] or
@@ -3650,8 +3636,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * transfer with the core's lock held: call it off the UI thread.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS`, the
-     * chunk opcodes, an `EXT_CORE_VREG` request, or more than 65535 bytes of
-     * `data` (nothing is sent);
+     * chunk opcodes, an opcode behind a confirmation token ([`raw_gated_call`],
+     * as for `raw_get`), an `EXT_CORE_VREG` request, or more than 65535
+     * bytes of `data` (nothing is sent);
      * [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a read-only
      * connection (nothing is sent); [`DspiError::Refused`] with status 0
      * when the device stalls; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -5072,6 +5059,21 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      */
     func writeParam(path: String, indices: Data, value: ParamValue) throws  -> ParamValue
     
+    /**
+     * [`DspiCore::write_param`] with a confirmation token: a path whose typed
+     * call is gated (`preset.save`, `preset.delete`, `dev.save`,
+     * `dev.save.io`) goes through that call with `token`, and answers
+     * `Trigger` as `write_param` does for an action; any other path is
+     * `write_param`'s, and a token given with it is refused. The web
+     * binding's `write`; exported in UniFFI and C too (WP P1TZF), so a
+     * generic screen writes the gated paths with a token.
+     *
+     * Errors: those of the gated call or of `write_param`;
+     * [`DspiError::InvalidArgument`] for a gated path with the wrong number
+     * of indices or a value that is not `Trigger`.
+     */
+    func writeParamConfirmed(path: String, indices: Data, value: ParamValue, token: String?) throws  -> ParamValue
+    
 }
 /**
  * The embedder API. Create one per app with [`DspiCore::new`].
@@ -6130,17 +6132,27 @@ open func coreVregManualTrial(value: UInt8, typed: String?)throws   {try rustCal
      * needs `word`, exactly `OVERVOLT`, or nothing is written. This is the
      * one path to 1.30 V; the GUIs' flow stops at 1.25 V (`core_vreg_cal_*`).
      *
-     * Errors: `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
+     * -- WP P1TZF -- A SET stores the voltage in flash: it takes a
+     * confirmation token ([`crate::ConfirmOp::VregSave`], as
+     * [`DspiCore::core_vreg_manual_set_confirmed`]), checked first, before
+     * anything is sent. The other operations (a trial, its end, AUTO, CLEAR)
+     * take none, as the plan says; a token given with one is still checked
+     * and spent. Mint one per try: a refusal for the word after the token
+     * was accepted has spent it.
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] for a SET without a good
+     * token; `OvervoltWordRequired` as above; `Disconnected`; `ReadOnly` on
      * a read-only connection;
      * `Unsupported` when the device has no usable core-voltage extension;
      * `Refused { status: EXT_WRITE_REFUSED }` when the device stalls the
      * request anyway; `Denied`, `Locked` or `Transfer` from the link.
      */
-open func coreVregOp(op: UInt8, value: UInt8, word: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_core_vreg_op(self.uniffiClonePointer(),
+open func coreVregOpConfirmed(op: UInt8, value: UInt8, word: String?, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_core_vreg_op_confirmed(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(op),
         FfiConverterUInt8.lower(value),
-        FfiConverterOptionString.lower(word),$0
+        FfiConverterOptionString.lower(word),
+        FfiConverterOptionString.lower(token),$0
     )
 }
 }
@@ -7453,7 +7465,19 @@ open func firmwareVersionMatches(version: String)throws  -> Bool  {
      * longer holds); it works with no device open, and a board already in
      * BOOTSEL has none. Without a good token, or with one for another
      * operation, [`DspiError::ConfirmationRequired`] and nothing reaches the
-     * drive. The write itself is as [`DspiCore::flash_to_drive_confirmed`]'s.
+     * drive. It is the only drive write the bindings have (WP P1TZF): a
+     * caller that knows the board passes it, and one in BOOTSEL passes
+     * [`crate::firmware_guard_board_in_bootloader`] with the typed phrase
+     * the verdict asks for.
+     *
+     * Before any byte goes out: the image is fully validated, the drive's
+     * `INFO_UF2.TXT` is read again and must still name the board `drive`
+     * describes, the image's family must be one that board boots, and the
+     * drive must have room for the image. The board reboots into the new
+     * firmware as it takes the last block, so `Ok` means only "the write
+     * ended, or the drive went away during it": the caller confirms success
+     * by waiting for the DSPi to re-enumerate and report the image's version
+     * (`Uf2Info::firmware_version`); a timeout there is the failure.
      *
      * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
      * message when the image needs confirmation; then the write's.
@@ -7464,54 +7488,6 @@ open func flashConfirmed(image: Data, drive: BootloaderDrive, board: FirmwareGua
         FfiConverterTypeBootloaderDrive_lower(drive),
         FfiConverterTypeFirmwareGuardBoard_lower(board),
         FfiConverterString.lower(typedConfirmation),
-        FfiConverterOptionString.lower(token),$0
-    )
-}
-}
-    
-    /**
-     * Write `image` to `drive` as `firmware.uf2`, synced to the medium, with a
-     * confirmation token, without the firmware guard ([`DspiCore::flash_confirmed`]
-     * is the write behind the guard, the one to use wherever the core does the
-     * writing).
-     *
-     * Before any byte goes out: the image is fully validated, the drive's
-     * `INFO_UF2.TXT` is read again and must still name the board `drive`
-     * describes, the image's family must be one that board boots, and the
-     * drive must have room for the image. The file is then written with one
-     * `write_all` and one `sync_all`.
-     *
-     * The board reboots into the new firmware as it takes the last block, so
-     * the write or the sync can fail because the drive has gone: that (either
-     * failed and the drive's `INFO_UF2.TXT` is no longer readable) counts as
-     * success, logged at warn level. It cannot be told apart from a cable pulled mid-write, so
-     * `Ok` means only "the write ended, or the drive went away during it, assumed
-     * to be the board rebooting". **The caller must
-     * confirm success** by waiting for the DSPi to re-enumerate and report the
-     * image's version (`Uf2Info::firmware_version`); a timeout there is the
-     * failure.
-     *
-     * The `INFO_UF2.TXT` re-check and the write are separate path-based
-     * operations, so a different drive mounted at the same path in between
-     * would get the file (an inherent check-then-use race; the Qt updater has
-     * the same). The window is a few milliseconds and both boot ROMs reject an
-     * image of the other family.
-     *
-     * The token ([`crate::confirm`], [`crate::ConfirmOp::FirmwareFlash`]; WP
-     * P1TZ): mint it once the bootloader drive is there; it works with no
-     * device open, and a board in BOOTSEL has none. Without a good one, or with
-     * a token for another operation, [`DspiError::ConfirmationRequired`] and
-     * nothing reaches the drive. With a device still open, the installer lock
-     * holds this write too (before the token is spent).
-     *
-     * Errors: that; [`DspiError::InvalidArgument`] for an invalid image, a drive that
-     * is not a boot ROM's, or a family mismatch; [`DspiError::Io`] for a drive
-     * that has gone, is short of space, or fails the write.
-     */
-open func flashToDriveConfirmed(image: Data, drive: BootloaderDrive, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
-    uniffi_dspi_core_fn_method_dspicore_flash_to_drive_confirmed(self.uniffiClonePointer(),
-        FfiConverterData.lower(image),
-        FfiConverterTypeBootloaderDrive_lower(drive),
         FfiConverterOptionString.lower(token),$0
     )
 }
@@ -8631,8 +8607,10 @@ open func protectAllOutputs(ceilingDbfs: Float)throws   {try rustCallWithError(F
      * An opcode that is not a plain read (`REQ_PRESET_LOAD`,
      * `REQ_RTA_CONTROL`, ...) is a write-as-read and is treated as a write.
      * A plain read is any `*_GET_*` opcode, `REQ_EXTENSION`, `REQ_LIMITER`,
-     * `REQ_OUTPUT_LATENCY`, and the three §1.2 exceptions: `REQ_CLEAR_CLIPS`,
-     * `REQ_RESET_BUFFER_STATS` and `REQ_ENTER_BOOTLOADER`.
+     * `REQ_OUTPUT_LATENCY`, and the §1.2 exceptions `REQ_CLEAR_CLIPS` and
+     * `REQ_RESET_BUFFER_STATS` (`REQ_ENTER_BOOTLOADER`, the third, is refused
+     * here since WP P1TZF: it takes a token, through
+     * `enter_bootloader_confirmed`).
      *
      * The mirror does not change here. A device change reaches it through
      * the notification, like anyone else's. Over DSPi Link the
@@ -8644,7 +8622,11 @@ open func protectAllOutputs(ceilingDbfs: Float)throws   {try rustCallWithError(F
      * thread. `REQ_GET_ALL_PARAMS` for a whole image is the slow case.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS` and
-     * the chunk opcodes (nothing is sent); [`DspiError::Disconnected`];
+     * the chunk opcodes, and for an opcode behind a confirmation token
+     * ([`raw_gated_call`]: preset save and delete, parameter and output
+     * configuration save, factory reset, the bootloader), naming the
+     * `_confirmed` call to use (nothing is sent; WP P1TZF);
+     * [`DspiError::Disconnected`];
      * [`DspiError::ReadOnly`] for a write-as-read on a read-only connection
      * (nothing is sent); [`DspiError::Refused`] with status 0 when the
      * device stalls; [`DspiError::Denied`], [`DspiError::Locked`] or
@@ -8669,8 +8651,9 @@ open func rawGet(opcode: UInt8, value: UInt16, len: UInt16)throws  -> Data  {
      * transfer with the core's lock held: call it off the UI thread.
      *
      * Errors: [`DspiError::InvalidArgument`] for `REQ_SET_ALL_PARAMS`, the
-     * chunk opcodes, an `EXT_CORE_VREG` request, or more than 65535 bytes of
-     * `data` (nothing is sent);
+     * chunk opcodes, an opcode behind a confirmation token ([`raw_gated_call`],
+     * as for `raw_get`), an `EXT_CORE_VREG` request, or more than 65535
+     * bytes of `data` (nothing is sent);
      * [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a read-only
      * connection (nothing is sent); [`DspiError::Refused`] with status 0
      * when the device stalls; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -10792,6 +10775,30 @@ open func writeParam(path: String, indices: Data, value: ParamValue)throws  -> P
         FfiConverterString.lower(path),
         FfiConverterData.lower(indices),
         FfiConverterTypeParamValue_lower(value),$0
+    )
+})
+}
+    
+    /**
+     * [`DspiCore::write_param`] with a confirmation token: a path whose typed
+     * call is gated (`preset.save`, `preset.delete`, `dev.save`,
+     * `dev.save.io`) goes through that call with `token`, and answers
+     * `Trigger` as `write_param` does for an action; any other path is
+     * `write_param`'s, and a token given with it is refused. The web
+     * binding's `write`; exported in UniFFI and C too (WP P1TZF), so a
+     * generic screen writes the gated paths with a token.
+     *
+     * Errors: those of the gated call or of `write_param`;
+     * [`DspiError::InvalidArgument`] for a gated path with the wrong number
+     * of indices or a value that is not `Trigger`.
+     */
+open func writeParamConfirmed(path: String, indices: Data, value: ParamValue, token: String?)throws  -> ParamValue  {
+    return try  FfiConverterTypeParamValue_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_write_param_confirmed(self.uniffiClonePointer(),
+        FfiConverterString.lower(path),
+        FfiConverterData.lower(indices),
+        FfiConverterTypeParamValue_lower(value),
+        FfiConverterOptionString.lower(token),$0
     )
 })
 }
@@ -37838,7 +37845,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_manual_trial() != 30445) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_op() != 61912) {
+    if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_op_confirmed() != 18762) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_core_vreg_trial_end() != 31305) {
@@ -38072,10 +38079,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 17722) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_dspi_core_checksum_method_dspicore_flash_to_drive_confirmed() != 45420) {
+    if (uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 19319) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_get_channel_name() != 25587) {
@@ -38282,10 +38286,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_protect_all_outputs() != 26211) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_raw_get() != 1394) {
+    if (uniffi_dspi_core_checksum_method_dspicore_raw_get() != 27846) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_raw_set() != 35984) {
+    if (uniffi_dspi_core_checksum_method_dspicore_raw_set() != 34786) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_redo() != 52269) {
@@ -38667,6 +38671,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_write_param() != 19910) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_write_param_confirmed() != 4621) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_hosttransport_control_in() != 18930) {

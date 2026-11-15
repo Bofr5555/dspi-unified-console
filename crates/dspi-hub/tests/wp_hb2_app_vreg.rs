@@ -63,15 +63,23 @@ fn unit(hub: &Hub, s: &Session) -> CoreVregStatus {
     CoreVregStatus::decode(&reply.payload).unwrap()
 }
 
+/// -- WP P1TZF -- a SET stores the voltage: it takes a token (as a client
+/// mints it after its dialog); the other operations take none.
+fn tok(core: &dspi_core::DspiCore, op: u8) -> Option<String> {
+    (op == SET).then(|| core.confirm_token(dspi_core::ConfirmOp::VregSave))
+}
+
 /// Someone at the machine typed the word: sharing being on makes no difference, and the
 /// owner's example from 1.25 V to 1.30 V goes through too.
 #[test]
 fn wp_hb2_the_apps_raise_with_the_word_reaches_the_unit_through_the_hub() {
     let (hub, core, _link, _remote) = app_at(V120);
     let admin = hub.open_session(Role::Admin, None).unwrap();
-    core.core_vreg_op(SET, V125, Some(WORD.into())).unwrap();
+    core.core_vreg_op_confirmed(SET, V125, Some(WORD.into()), tok(&core, SET))
+        .unwrap();
     assert_eq!(unit(&hub, &admin).stored_sel, V125);
-    core.core_vreg_op(SET, V130, Some(WORD.into())).unwrap();
+    core.core_vreg_op_confirmed(SET, V130, Some(WORD.into()), tok(&core, SET))
+        .unwrap();
     assert_eq!(unit(&hub, &admin).stored_sel, V130);
 }
 
@@ -86,7 +94,7 @@ fn wp_hb2_the_apps_raise_without_the_word_is_refused_by_its_core_through_the_hub
         (SET, V125, Some("overvolt".to_owned())),
         (TRIAL, V130, Some(String::new())),
     ] {
-        let refused = core.core_vreg_op(op_code, code, word.clone());
+        let refused = core.core_vreg_op_confirmed(op_code, code, word.clone(), tok(&core, op_code));
         assert!(
             matches!(refused, Err(DspiError::OvervoltWordRequired { .. })),
             "{op_code} {code:#04x} {word:?}: {refused:?}"
@@ -117,7 +125,8 @@ fn wp_hb2_a_network_admin_stays_refused_beside_the_app() {
     assert_eq!(answer.status, status::DENIED);
     assert_eq!(unit(&hub, &admin).stored_sel, 0);
 
-    core.core_vreg_op(SET, V125, Some(WORD.into())).unwrap();
+    core.core_vreg_op_confirmed(SET, V125, Some(WORD.into()), tok(&core, SET))
+        .unwrap();
     let answer = command(&hub, &admin, Dir::Set, g::EXT_CORE_VREG, set(V130));
     assert_eq!(answer.status, status::DENIED);
     assert_eq!(unit(&hub, &admin).stored_sel, V125);

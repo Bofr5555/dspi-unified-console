@@ -17,7 +17,7 @@ use super::{arg, json_reply, text};
 use crate::{FfiCore, with_core};
 
 /// Import the `.dspipreset` document `doc` with a way back: `options` and
-/// `eq_channels` as `dspi_config_import_selected` takes them, `timeout_s`
+/// `eq_channels` as `dspi_config_import_confirmed` takes them, `timeout_s`
 /// seconds for the Keep (0: 30; at most 590). No confirmation token. JSON:
 /// the state (`waiting`, with the changes), or a failure (`invalid` for no
 /// document, an empty selection, or another apply waiting; the hub's refusal

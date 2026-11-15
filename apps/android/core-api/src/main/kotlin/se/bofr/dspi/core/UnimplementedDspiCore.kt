@@ -168,7 +168,7 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun fetchCoreVreg(): CoreVregInfo = throw NotImplementedError("fetch_core_vreg")
 
-    override fun coreVregOp(op: Int, value: Int, word: String?): Unit = throw NotImplementedError("core_vreg_op")
+    override fun coreVregOpConfirmed(op: Int, value: Int, word: String?, token: String?): Unit = throw NotImplementedError("core_vreg_op_confirmed")
 
     override fun identify(seconds: Int, toneOutput: Int?): Unit = throw NotImplementedError("identify")
 
@@ -195,8 +195,6 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun firmwareVersionMatches(version: String): Boolean = throw NotImplementedError("firmware_version_matches")
 
     override fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?): Unit = throw NotImplementedError("flash_confirmed")
-
-    override fun flashToDriveConfirmed(image: List<Int>, drive: BootloaderDrive, token: String?): Unit = throw NotImplementedError("flash_to_drive_confirmed")
 
     override fun firmwareGuardBoard(): FirmwareGuardBoard = throw NotImplementedError("firmware_guard_board")
 

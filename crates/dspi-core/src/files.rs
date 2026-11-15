@@ -1898,8 +1898,19 @@ fn document_refusal(error: &str) -> String {
 }
 
 /// The refusal for a device that could not be written or read: the core
-/// error's own notice key.
+/// error's own notice key. -- WP P1TZF -- (review p1tz F4) a token refusal
+/// also carries `code` `confirmation_required`, as every other `_confirmed`
+/// reply through C and wasm does.
 fn device_refusal(e: &DspiError) -> String {
+    if let DspiError::ConfirmationRequired { .. } = e {
+        return json!({
+            "ok": false,
+            "code": "confirmation_required",
+            "error": write_error(e),
+            "noticeKey": e.notice_key(),
+        })
+        .to_string();
+    }
     keyed_refusal(&write_error(e), &e.notice_key())
 }
 

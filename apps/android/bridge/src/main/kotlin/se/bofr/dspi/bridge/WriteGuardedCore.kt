@@ -67,9 +67,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.setOutputLatency(id)
     }
 
-    override fun coreVregOp(op: Int, value: Int, word: String?) {
-        guard("coreVregOp")
-        return inner.coreVregOp(op, value, word)
+    // -- WP P1TZF -- the core-voltage operation's only form: a SET takes a token
+    override fun coreVregOpConfirmed(op: Int, value: Int, word: String?, token: String?) {
+        guard("coreVregOpConfirmed")
+        return inner.coreVregOpConfirmed(op, value, word, token)
     }
 
     // -- WP FWX -- blinks the LED, and with a tone output plays a tone
@@ -848,7 +849,7 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "setDeviceName",
             "setInputSourceName",
             "setOutputLatency",
-            "coreVregOp",
+            "coreVregOpConfirmed",
             "rawSet",
             // -- WP P0W --
             "undo",
@@ -1186,8 +1187,6 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "confirmToken",
             "enterBootloaderConfirmed",
             "flashConfirmed",
-            // -- WP P1TZ -- the free drive write, now a core method with a token (as flashConfirmed)
-            "flashToDriveConfirmed",
             // -- WP P1LM -- the profile's files and status: the app's files,
             // nothing sent
             "limitsSetDir",
