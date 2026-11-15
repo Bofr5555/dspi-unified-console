@@ -141,6 +141,8 @@ mod guarded;
 pub mod modes;
 // -- WP HUBADMIN --
 pub mod hub_admin;
+// -- WP ROMODE --
+pub mod read_only;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -249,6 +251,8 @@ pub use hub_admin::{
     HubAdminEvent, HubAdminListener, HubAdminState, HubLimitsSet, HubModePin, HubPinSet,
     InstallerTarget,
 };
+// -- WP ROMODE --
+pub use read_only::{HUB_READS, NOTICE_READ_ONLY_CLIENT};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -397,6 +401,9 @@ pub(crate) struct Inner {
     // -- WP P1LM --
     /// The open device's limits profile (`limits.rs`).
     pub(crate) limits: limits::Limits,
+    // -- WP ROMODE --
+    /// The client read-only mode (`read_only.rs`).
+    pub(crate) client_read_only: read_only::ClientReadOnly,
 }
 
 /// An open device.
@@ -746,9 +753,10 @@ impl Inner {
             events: Arc::default(),
             // -- WP P0W --
             history_seen: None,
-            dragging: None,                       // -- WP QTGAP1 --
-            confirm: confirm::Confirm::default(), // -- WP P1TK --
-            limits: limits::Limits::default(),    // -- WP P1LM --
+            dragging: None,                                         // -- WP QTGAP1 --
+            confirm: confirm::Confirm::default(),                   // -- WP P1TK --
+            limits: limits::Limits::default(),                      // -- WP P1LM --
+            client_read_only: read_only::ClientReadOnly::default(), // -- WP ROMODE --
         }
     }
 
@@ -760,6 +768,8 @@ impl Inner {
     /// The open connection as a [`Writable`], if its state may be written
     /// ([`DspiError::ReadOnly`] for another wire format).
     pub(crate) fn writable_conn(&mut self) -> Result<Writable<'_>> {
+        self.conn()?;
+        read_only::check(self)?; // -- WP ROMODE -- the client read-only mode
         if !self.conn()?.writable() {
             // -- WP QD6 --
             self.read_only_refusals = self.read_only_refusals.saturating_add(1);

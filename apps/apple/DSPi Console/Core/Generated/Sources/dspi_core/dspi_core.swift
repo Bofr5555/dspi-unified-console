@@ -1664,6 +1664,16 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func clearClips() throws 
     
     /**
+     * Whether the client read-only mode is on.
+     */
+    func clientReadOnly()  -> Bool
+    
+    /**
+     * How many writes the client read-only mode has refused on this core.
+     */
+    func clientReadOnlyRefusals()  -> UInt32
+    
+    /**
      * Close the device opened by [`DspiCore::open_fd`] (the same as
      * [`DspiCore::disconnect`]); afterwards the app may close its
      * `UsbDeviceConnection`. Not called `close` because UniFFI's Kotlin
@@ -3352,6 +3362,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func monitorRead(afterId: UInt64)  -> MonitorBatch
     
     /**
+     * What to tell the user about `error`, as [`notice_for`] does, but in
+     * this core's context: [`DspiError::ReadOnly`] while the client
+     * read-only mode is on is the `read_only.client` row.
+     */
+    func noticeForError(error: DspiError)  -> Notice
+    
+    /**
      * The notifications kept since the last drain, oldest first. The tap
      * keeps the last 512; when older ones were dropped, the oldest returned
      * has `lost` set. Empty while the tap is off. Never fails.
@@ -4032,6 +4049,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * connection and transfer errors of every setter.
      */
     func setChannelName(ch: UInt8, name: String) throws 
+    
+    /**
+     * Turn the client read-only mode on or off (module docs): while on,
+     * every write is refused with [`DspiError::ReadOnly`] before anything is
+     * sent, and reads, notifications, the meters and the analyser go on. It
+     * applies to every device this core opens until turned off. A client-side
+     * diagnostic, not a security boundary. Waits for a call in flight.
+     */
+    func setClientReadOnly(on: Bool) 
     
     /**
      * Crossfeed on (`true`) or off.
@@ -5760,6 +5786,26 @@ open func clearClips()throws   {try rustCallWithError(FfiConverterTypeDspiError_
     uniffi_dspi_core_fn_method_dspicore_clear_clips(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * Whether the client read-only mode is on.
+     */
+open func clientReadOnly() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_client_read_only(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * How many writes the client read-only mode has refused on this core.
+     */
+open func clientReadOnlyRefusals() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_client_read_only_refusals(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -8262,6 +8308,19 @@ open func monitorRead(afterId: UInt64) -> MonitorBatch  {
 }
     
     /**
+     * What to tell the user about `error`, as [`notice_for`] does, but in
+     * this core's context: [`DspiError::ReadOnly`] while the client
+     * read-only mode is on is the `read_only.client` row.
+     */
+open func noticeForError(error: DspiError) -> Notice  {
+    return try!  FfiConverterTypeNotice_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_notice_for_error(self.uniffiClonePointer(),
+        FfiConverterTypeDspiError_lower(error),$0
+    )
+})
+}
+    
+    /**
      * The notifications kept since the last drain, oldest first. The tap
      * keeps the last 512; when older ones were dropped, the oldest returned
      * has `lost` set. Empty while the tap is off. Never fails.
@@ -9222,6 +9281,20 @@ open func setChannelName(ch: UInt8, name: String)throws   {try rustCallWithError
     uniffi_dspi_core_fn_method_dspicore_set_channel_name(self.uniffiClonePointer(),
         FfiConverterUInt8.lower(ch),
         FfiConverterString.lower(name),$0
+    )
+}
+}
+    
+    /**
+     * Turn the client read-only mode on or off (module docs): while on,
+     * every write is refused with [`DspiError::ReadOnly`] before anything is
+     * sent, and reads, notifications, the meters and the analyser go on. It
+     * applies to every device this core opens until turned off. A client-side
+     * diagnostic, not a security boundary. Waits for a call in flight.
+     */
+open func setClientReadOnly(on: Bool)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_set_client_read_only(self.uniffiClonePointer(),
+        FfiConverterBool.lower(on),$0
     )
 }
 }
@@ -38078,6 +38151,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_clear_clips() != 25742) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_client_read_only() != 3116) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_client_read_only_refusals() != 27004) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_close_fd() != 20694) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -38522,6 +38601,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_monitor_read() != 27200) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_notice_for_error() != 47414) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain() != 2545) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -38682,6 +38764,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_channel_name() != 8154) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_set_client_read_only() != 15628) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_set_crossfeed() != 58844) {

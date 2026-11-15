@@ -1177,6 +1177,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "noticeFor",
             "noticeForKey",
             "noticeTexts",
+            // -- WP ROMODE -- the core's client read-only mode: a switch that
+            // refuses writes in the core (it sends nothing), its reading, and
+            // the notice in that context.
+            "setClientReadOnly",
+            "clientReadOnly",
+            "clientReadOnlyRefusals",
+            "noticeForError",
             // -- WP P1EFIX -- stateless: the limits editor's range table
             "limitsFieldRanges",
             // -- WP P1PR -- the warning list, from the mirror: a read

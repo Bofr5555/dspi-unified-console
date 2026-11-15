@@ -140,6 +140,12 @@ mod exit {
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flags: Vec<&str> = args.iter().map(String::as_str).collect();
+    // -- WP ROMODE -- `--read-only`, anywhere: the client read-only mode
+    let (read_only_flag, flags): (Vec<&str>, Vec<&str>) =
+        flags.into_iter().partition(|f| *f == "--read-only");
+    if !read_only_flag.is_empty() {
+        core_route::CLIENT_READ_ONLY.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 
     // Where the device is comes off first, so the rest reads the same on every
     // link: `uconsole --demo dump` and `uconsole dump --demo` are one command.
@@ -727,6 +733,9 @@ OPTIONS:
                              device (no hardware needed)
     --theme <name>           calm (default), console, amber, dark or mono
     --dry-run                report what would be written, write nothing
+    --read-only              read-only mode: every write is refused before it
+                             is sent, reads and the meters go on (a
+                             diagnostic, not a security boundary)
     --quiet                  do not echo each change
     --keep-going             in a script, carry on past a failing line
     --force                  agree to a change that needs a decision, such as

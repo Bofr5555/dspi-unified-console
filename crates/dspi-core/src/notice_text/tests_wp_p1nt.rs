@@ -180,6 +180,13 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 );
                 continue;
             }
+            // -- WP ROMODE -- the client read-only mode's refusal: a `ReadOnly`
+            // the core answers with this row while the mode is on
+            if family == "read_only" {
+                assert_eq!(n.key, crate::read_only::NOTICE_READ_ONLY_CLIENT);
+                assert!(has_row(family), "{family}");
+                continue;
+            }
             let e = match family {
                 "dlink" => dlink(code),
                 "autoeq" => DspiError::AutoEq {

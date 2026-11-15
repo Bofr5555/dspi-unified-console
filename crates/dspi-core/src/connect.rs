@@ -940,6 +940,7 @@ fn parse_status(data: &[u8], n: usize) -> Option<SystemStatus> {
 /// [`DspiCore::apply_all_params`]'s refusals, before any lock or transfer.
 fn check_apply_allowed(inner: &mut Inner) -> Result<()> {
     let wire = inner.conn()?.wire;
+    crate::read_only::check(inner)?; // -- WP ROMODE --
     if matches!(
         inner.state.compat,
         COMPAT_FIRMWARE_TOO_OLD | COMPAT_FIRMWARE_TOO_NEW

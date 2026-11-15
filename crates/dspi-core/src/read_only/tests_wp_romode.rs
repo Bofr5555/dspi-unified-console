@@ -1,0 +1,465 @@
+//! WP ROMODE: the client read-only mode refuses every write family with
+//! nothing sent, and reads, notifications and the meters go on.
+
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use dspi_proto::generated::{self as g, opcodes as op};
+use dspi_transport::{
+    DeviceDescriptor, FakeDevice, FakeRemote, NotificationSource, Transport, TransportCaps,
+};
+
+use crate::{
+    AbSide, BootloaderDrive, ConfirmOp, DspiCore, DspiError, FirmwareGuardBoard,
+    FirmwareGuardBoardSource, ParamValue, SiggenConfig,
+};
+
+/// Every transfer the core made: (OUT, opcode, wValue).
+type Log = Arc<Mutex<Vec<(bool, u8, u16)>>>;
+
+/// The demo device, every transfer logged.
+struct Spy {
+    inner: FakeDevice,
+    log: Log,
+}
+
+impl Spy {
+    fn note(&self, out: bool, op: u8, value: u16) {
+        self.log.lock().unwrap().push((out, op, value));
+    }
+}
+
+impl Transport for Spy {
+    fn control_in(&mut self, op: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        self.note(false, op, value);
+        self.inner.control_in(op, value, len)
+    }
+    fn control_in_upto(&mut self, op: u8, value: u16, len: u16) -> dspi_transport::Result<Vec<u8>> {
+        self.note(false, op, value);
+        self.inner.control_in_upto(op, value, len)
+    }
+    fn control_out(&mut self, op: u8, value: u16, data: &[u8]) -> dspi_transport::Result<()> {
+        self.note(true, op, value);
+        self.inner.control_out(op, value, data)
+    }
+    fn descriptor(&self) -> &DeviceDescriptor {
+        self.inner.descriptor()
+    }
+    fn max_transfer(&self) -> usize {
+        self.inner.max_transfer()
+    }
+    fn notifications(&self) -> Option<Box<dyn NotificationSource>> {
+        self.inner.notifications()
+    }
+    fn caps(&self) -> TransportCaps {
+        self.inner.caps()
+    }
+}
+
+fn demo_of(dev: FakeDevice) -> (Arc<DspiCore>, FakeRemote, Log) {
+    let remote = dev.remote();
+    let log = Log::default();
+    let core = DspiCore::new();
+    core.attach_probed(
+        Box::new(Spy {
+            inner: dev,
+            log: log.clone(),
+        }),
+        "DEMO".into(),
+        0,
+    )
+    .unwrap();
+    settle(&core);
+    (core, remote, log)
+}
+
+fn demo() -> (Arc<DspiCore>, FakeRemote, Log) {
+    demo_of(FakeDevice::demo())
+}
+
+fn settle(core: &DspiCore) {
+    let mut quiet = 0;
+    while quiet < 10 {
+        std::thread::sleep(Duration::from_millis(5));
+        let r = core.process_notifications();
+        quiet = if r.flags == 0 { quiet + 1 } else { 0 };
+    }
+}
+
+/// What reached the device that was not a pure read: every OUT, and every
+/// IN of an opcode the registry does not call a pure read.
+fn writes(log: &Log) -> Vec<(bool, u8, u16)> {
+    log.lock()
+        .unwrap()
+        .iter()
+        .copied()
+        .filter(|&(out, op, _)| out || !dspi_proto::registry::is_pure_read(op))
+        .collect()
+}
+
+fn refused<T: std::fmt::Debug>(name: &str, r: crate::Result<T>) {
+    assert!(matches!(r, Err(DspiError::ReadOnly)), "{name}: {r:?}");
+}
+
+/// A JSON reply that is a refusal.
+fn refused_reply(name: &str, reply: &str) {
+    let v: serde_json::Value = serde_json::from_str(reply).unwrap();
+    assert_eq!(v["ok"], false, "{name}: {reply}");
+    assert!(
+        reply.contains("read-only") || reply.contains("read_only"),
+        "{name}: {reply}"
+    );
+}
+
+fn tok(core: &DspiCore, op: ConfirmOp) -> Option<String> {
+    Some(core.confirm_token(op))
+}
+
+#[test]
+fn wp_romode_the_flag_is_off_by_default_and_stays_across_a_reconnect() {
+    let core = DspiCore::new();
+    assert!(!core.client_read_only());
+    core.set_client_read_only(true);
+    assert!(core.client_read_only());
+    core.open_demo().unwrap();
+    assert!(core.client_read_only());
+    refused("no device swap", core.set_master_volume(-3.0));
+    core.disconnect();
+    core.open_demo().unwrap();
+    refused("after a reconnect", core.set_master_volume(-3.0));
+    core.set_client_read_only(false);
+    assert!(!core.client_read_only());
+    core.set_master_volume(-3.0).unwrap();
+    assert_eq!(core.get_state().master_volume_db, -3.0);
+}
+
+#[test]
+fn wp_romode_every_write_family_is_refused_with_nothing_sent() {
+    let (core, remote, log) = demo();
+    // Before the mode: documents to import and recall, and one undo step.
+    let config = core.config_export("x".into(), "t".into(), 0).unwrap();
+    let filters = core.filters_export(0).unwrap();
+    let snapshot = core
+        .snapshot_capture_document("s".into(), String::new())
+        .unwrap();
+    core.set_master_volume(-10.0).unwrap();
+    assert!(core.can_undo());
+    let state = core.get_state();
+    let band = state.filters[0][0];
+
+    core.set_client_read_only(true);
+    log.lock().unwrap().clear();
+    let image = remote.image();
+    let boot_token = tok(&core, ConfirmOp::EnterBootloader);
+
+    // Typed setters, one or more per family.
+    refused("set_master_volume", core.set_master_volume(-6.0));
+    refused("set_user_volume", core.set_user_volume(-6.0));
+    refused("save_master_volume", core.save_master_volume());
+    refused("set_preamp", core.set_preamp(-1.0));
+    refused(
+        "set_filter",
+        core.set_filter(0, 0, crate::FilterParams { gain: 3.0, ..band }),
+    );
+    refused("set_bypass", core.set_bypass(true));
+    refused("set_output_gain", core.set_output_gain(0, -2.0));
+    refused("set_output_mute", core.set_output_mute(0, true));
+    refused("set_output_delay", core.set_output_delay(0, 1.0));
+    refused(
+        "set_matrix_route",
+        core.set_matrix_route(0, 0, true, -1.0, false),
+    );
+    refused("set_channel_name", core.set_channel_name(0, "x".into()));
+    refused("set_device_name", core.set_device_name("x".into()));
+    refused("set_output_pin", core.set_output_pin(0, 6));
+    refused("set_dac_mute", core.set_dac_mute(true, false, 5, 10, 10));
+    refused("set_limiter_param", core.set_limiter_param(0, 0, -1.0));
+    refused("set_loudness", core.set_loudness(true));
+    refused("set_crossfeed", core.set_crossfeed(true));
+    refused("set_leveller_enabled", core.set_leveller_enabled(true));
+    refused("set_output_latency", core.set_output_latency(1));
+    refused(
+        "write_param",
+        core.write_param("vol.master".into(), vec![], ParamValue::Float(-6.0)),
+    );
+    // Presets.
+    refused("load_preset", core.load_preset(1));
+    refused("set_preset_name", core.set_preset_name(1, "x".into()));
+    refused("load_params", core.load_params());
+    // The gated calls, each with a good token.
+    refused(
+        "write_param_confirmed",
+        core.write_param_confirmed(
+            "dev.save".into(),
+            vec![],
+            ParamValue::Trigger,
+            tok(&core, ConfirmOp::SaveParams),
+        ),
+    );
+    refused(
+        "save_preset_confirmed",
+        core.save_preset_confirmed(1, tok(&core, ConfirmOp::SavePreset)),
+    );
+    refused(
+        "copy_preset_confirmed",
+        core.copy_preset_confirmed(1, 2, tok(&core, ConfirmOp::CopyPreset)),
+    );
+    refused(
+        "delete_preset_confirmed",
+        core.delete_preset_confirmed(1, tok(&core, ConfirmOp::DeletePreset)),
+    );
+    refused(
+        "save_params_confirmed",
+        core.save_params_confirmed(tok(&core, ConfirmOp::SaveParams)),
+    );
+    refused(
+        "save_output_config_confirmed",
+        core.save_output_config_confirmed(tok(&core, ConfirmOp::SaveOutputConfig)),
+    );
+    refused(
+        "factory_reset_confirmed",
+        core.factory_reset_confirmed(tok(&core, ConfirmOp::FactoryReset)),
+    );
+    refused(
+        "enter_bootloader_confirmed",
+        core.enter_bootloader_confirmed(boot_token.clone()),
+    );
+    refused(
+        "core_vreg_op_confirmed",
+        core.core_vreg_op_confirmed(0, 10, None, tok(&core, ConfirmOp::VregSave)),
+    );
+    refused(
+        "core_vreg_manual_set_confirmed",
+        core.core_vreg_manual_set_confirmed(10, None, tok(&core, ConfirmOp::VregSave)),
+    );
+    refused(
+        "flash_confirmed",
+        core.flash_confirmed(
+            vec![0; 512],
+            BootloaderDrive {
+                path: "nowhere".into(),
+                platform: 1,
+                info: String::new(),
+            },
+            FirmwareGuardBoard {
+                required_mv: 1150,
+                source: FirmwareGuardBoardSource::NoDevice,
+            },
+            String::new(),
+            tok(&core, ConfirmOp::FirmwareFlash),
+        ),
+    );
+    // The core voltage without a token, the signal generator (identify, absent
+    // on the demo, takes the same `writable_conn`).
+    refused("core_vreg_manual_auto", core.core_vreg_manual_auto(true));
+    refused("siggen_control", core.siggen_control(1));
+    refused(
+        "siggen_set_config",
+        core.siggen_set_config(SiggenConfig {
+            channel_mask: 1,
+            p: vec![1000.0; 4],
+            ..SiggenConfig::default()
+        }),
+    );
+    // Imports, recalls, A/B, the guarded apply, the whole image, undo.
+    refused_reply(
+        "config_import_confirmed",
+        &core.config_import_confirmed(
+            config.clone(),
+            0,
+            u32::MAX,
+            tok(&core, ConfirmOp::ConfigImport),
+        ),
+    );
+    refused_reply("filters_import", &core.filters_import(filters, vec![]));
+    refused(
+        "snapshot_recall_document",
+        core.snapshot_recall_document(snapshot.clone()),
+    );
+    refused(
+        "ab_start_documents",
+        core.ab_start_documents(String::new(), snapshot.clone()),
+    );
+    refused("ab_toggle", core.ab_toggle());
+    assert!(!core.ab_state().active);
+    refused(
+        "apply_guarded_snapshot_document",
+        core.apply_guarded_snapshot_document(snapshot.clone(), 30),
+    );
+    refused(
+        "apply_guarded_import",
+        core.apply_guarded_import(config, 0, u32::MAX, 30),
+    );
+    refused("apply_guard_begin", core.apply_guard_begin("x".into(), 30));
+    refused("apply_all_params", core.apply_all_params());
+    refused("undo", core.undo());
+    assert!(core.can_undo(), "the step stays to be undone");
+    // A control surface.
+    refused_reply(
+        "cs_apply",
+        &core.cs_apply(r#"{"op":"name","index":0,"name":"x"}"#.into()),
+    );
+    // Raw: no write, no write-as-read, not even the §1.2 housekeeping.
+    refused(
+        "raw_set",
+        core.raw_set(
+            op::REQ_SET_MASTER_VOLUME,
+            0,
+            (-6.0f32).to_le_bytes().to_vec(),
+        ),
+    );
+    for code in [
+        op::REQ_PRESET_LOAD,
+        op::REQ_RTA_CONTROL,
+        op::REQ_SIGGEN_CONTROL,
+        op::REQ_CLEAR_CLIPS,
+        op::REQ_RESET_BUFFER_STATS,
+        op::REQ_LIMITER,
+        0x01,
+    ] {
+        refused(&format!("raw_get 0x{code:02X}"), core.raw_get(code, 1, 1));
+    }
+
+    assert_eq!(
+        writes(&log),
+        [],
+        "nothing but pure reads reached the device"
+    );
+    assert_eq!(remote.image(), image, "the device is unchanged");
+    assert!(core.client_read_only_refusals() >= 50);
+    assert_eq!(core.read_only_refusals(), 0, "the connection is writable");
+    assert_eq!(core.get_state().master_volume_db, -10.0, "the mirror too");
+
+    // A refused gated call did not spend its token.
+    core.set_client_read_only(false);
+    core.enter_bootloader_confirmed(boot_token).unwrap();
+}
+
+#[test]
+fn wp_romode_reads_notifications_and_meters_go_on() {
+    let (core, remote, log) = demo();
+    core.set_client_read_only(true);
+    log.lock().unwrap().clear();
+    core.fetch_all().unwrap();
+    core.refresh_params().unwrap();
+    core.fetch_status().unwrap();
+    core.get_preset_directory().unwrap();
+    assert!(!core.raw_get(op::REQ_GET_PLATFORM, 0, 7).unwrap().is_empty());
+    assert!(!core.read_image_bytes().unwrap().is_empty());
+    // §1.2's housekeeping, typed, as on a read-only connection.
+    core.clear_clips().unwrap();
+    core.reset_buffer_stats().unwrap();
+    // Another console's change reaches the mirror.
+    assert!(remote.poke(
+        g::OFF_MASTER_VOLUME,
+        &(-12.0f32).to_le_bytes(),
+        g::notify::PARAM_SRC_UAC1 as u8
+    ));
+    let until = Instant::now() + Duration::from_secs(5);
+    while core.get_state().master_volume_db != -12.0 {
+        assert!(Instant::now() < until, "the notification never arrived");
+        core.process_notifications();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(core.client_read_only_refusals(), 0);
+    assert!(
+        writes(&log)
+            .iter()
+            .all(|&(out, op, _)| !out
+                && matches!(op, op::REQ_CLEAR_CLIPS | op::REQ_RESET_BUFFER_STATS)),
+        "{:?}",
+        writes(&log)
+    );
+    // Reads of local state: a snapshot, an export, the history.
+    core.snapshot_capture_document("s".into(), String::new())
+        .unwrap();
+    core.config_export("x".into(), "t".into(), 0).unwrap();
+    let _ = core.history(10);
+}
+
+#[test]
+fn wp_romode_the_audio_link_setters_are_refused() {
+    let (core, remote, log) = demo_of(FakeDevice::demo_alink());
+    core.set_client_read_only(true);
+    log.lock().unwrap().clear();
+    let image = remote.image();
+    let slots = core.fetch_alink_slots().unwrap();
+    refused("set_alink_slots", core.set_alink_slots(slots));
+    refused("set_alink_phase", core.set_alink_phase(1, 0, 0));
+    refused("apply_at_frame", core.apply_at_frame(1_000_000, 0, 0, 0));
+    refused("reset_alink_stats", core.reset_alink_stats());
+    assert_eq!(writes(&log), []);
+    assert_eq!(remote.image(), image);
+}
+
+#[test]
+fn wp_romode_a_refusal_has_the_client_row_and_the_firmware_one_stays() {
+    let core = DspiCore::new();
+    core.open_demo().unwrap();
+    let firmware = core.notice_for_error(DspiError::ReadOnly);
+    assert_eq!(firmware.key, "read_only");
+    core.set_client_read_only(true);
+    let e = core.set_master_volume(-1.0).unwrap_err();
+    let n = core.notice_for_error(e.clone());
+    assert_eq!(n.key, super::NOTICE_READ_ONLY_CLIENT);
+    assert_eq!(n.title, "Read-only mode");
+    assert_eq!(n.kind, crate::NoticeKind::Warning);
+    assert_eq!(
+        core.client_notice_key(&e.notice_key()),
+        Some(super::NOTICE_READ_ONLY_CLIENT)
+    );
+    // Other errors keep their own rows.
+    assert_eq!(core.notice_for_error(DspiError::Locked).key, "locked");
+    assert_eq!(core.client_notice_key("locked"), None);
+    core.set_client_read_only(false);
+    assert_eq!(core.client_notice_key("read_only"), None);
+}
+
+#[test]
+fn wp_romode_hub_requests_are_refused_unless_they_read() {
+    let core = DspiCore::new();
+    core.set_client_read_only(true);
+    let mut inner = core.lock();
+    for t in super::HUB_READS {
+        assert_eq!(super::check_hub_request(&mut inner, t), Ok(()), "{t}");
+    }
+    for t in [
+        "system.set",
+        "system.align",
+        "system.mute",
+        "system.scene.apply",
+        "system.alarm.ack",
+        "apply.begin",
+        "apply.confirm",
+        "limits.set",
+        "limits.lock",
+        "limits.unlock",
+        "limits.pin",
+        "mode.pin",
+    ] {
+        assert_eq!(
+            super::check_hub_request(&mut inner, t),
+            Err(DspiError::ReadOnly),
+            "{t}"
+        );
+    }
+    inner.client_read_only.on = false;
+    assert_eq!(super::check_hub_request(&mut inner, "system.set"), Ok(()));
+}
+
+#[test]
+fn wp_romode_viewing_writes_pass_and_nothing_else_does() {
+    let (core, _remote, _log) = demo();
+    core.set_client_read_only(true);
+    assert!(matches!(
+        core.lock().writable_conn(),
+        Err(DspiError::ReadOnly)
+    ));
+    {
+        let _v = super::Viewing::allow();
+        assert!(core.lock().writable_conn().is_ok());
+    }
+    assert!(core.lock().writable_conn().is_err());
+    // The ending of an A/B on its live side sends nothing either way.
+    assert!(core.ab_keep(AbSide::A).is_err());
+}

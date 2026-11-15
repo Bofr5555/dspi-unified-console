@@ -403,6 +403,9 @@ impl DspiCore {
     /// [`Ticket::still_on`] where it writes.
     pub(crate) fn confirm_gate(&self, op: ConfirmOp, token: Option<&str>) -> Result<Ticket> {
         let mut inner = self.lock();
+        // -- WP ROMODE -- every gated call is a write: refused before the
+        // token is checked, so it is not spent
+        crate::read_only::check(&mut inner)?;
         let place = Place::of(&inner);
         inner
             .confirm

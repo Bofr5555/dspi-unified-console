@@ -287,7 +287,11 @@ pub(crate) fn text(
     len: u32,
     f: impl FnOnce(&DspiCore) -> String,
 ) -> u32 {
-    with_core(core, 0, |h| copy_text(&f(&h.core), buf, len))
+    with_core(core, 0, |h| {
+        // -- WP ROMODE -- a refusal of the client read-only mode has its own row
+        let reply = crate::fns_misc::read_only::refine_reply(&h.core, f(&h.core));
+        copy_text(&reply, buf, len)
+    })
 }
 
 /// A name read into `out` of `len` bytes, cut to fit ([`copy_out`]). False
