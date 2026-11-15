@@ -137,6 +137,8 @@ fn config_with(probe: &Arc<Probe>, clock: Arc<dyn HubClock>) -> HubConfig {
         services: ServiceConfig {
             clock,
             extra: vec![Arc::clone(probe) as Arc<dyn HubService>],
+            // -- WP P2HP -- the struct gained a field
+            ..ServiceConfig::default()
         },
         ..HubConfig::in_process("P2SV hub")
     }

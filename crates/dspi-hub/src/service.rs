@@ -146,6 +146,9 @@ pub struct ServiceConfig {
     pub clock: Arc<dyn HubClock>,
     /// Services the embedder brings, after the hub's own (tests, a binding).
     pub extra: Vec<Arc<dyn HubService>>,
+    // -- WP P2HP --
+    /// The health poll and device facts (`crate::health`): `None` is off.
+    pub health: Option<crate::health::HealthConfig>,
 }
 
 impl Default for ServiceConfig {
@@ -153,6 +156,8 @@ impl Default for ServiceConfig {
         Self {
             clock: Arc::new(SystemClock),
             extra: Vec::new(),
+            // -- WP P2HP --
+            health: None,
         }
     }
 }
@@ -172,11 +177,12 @@ pub struct ServiceSetup<'a> {
 
 /// The list: every service the hub runs, in the order they are consulted.
 fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn HubService>> {
-    let _ = setup;
     #[allow(unused_mut)]
     let mut list: Vec<Arc<dyn HubService>> = Vec::new();
     // One line per service, each under its WP's marker:
     //   list.extend(crate::<module>::service(config, setup));
+    // -- WP P2HP --
+    list.extend(crate::health::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
