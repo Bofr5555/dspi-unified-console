@@ -37,6 +37,11 @@ pub const MAX_CAPACITY: usize = 4096;
 pub struct TargetResult {
     /// The device.
     pub serial: String,
+    // -- fixup p2a F3 --
+    /// Which action of a schedule's row this is, `"<index>:<type>"` (`"0:preset.load"`,
+    /// hub-api.md section 12).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
     /// Whether the action went through on it.
     pub ok: bool,
     /// The error code when it did not (`offline`, `locked`, `limit_exceeded`, ...).
@@ -115,24 +120,51 @@ pub enum BusMessage {
         /// Since when, Unix seconds.
         since: u64,
     },
-    /// An alarm changed (WP P2AL).
+    /// An alarm changed (WP P2AL): hub-api.md section 7's alarm object, with `at` the
+    /// time of this change.
     Alarm {
+        // -- fixup p2a F3 --
+        /// `"device:<n>"` or `"alink:<n>"`, unique for the hub's run (what `alarm.ack` takes).
+        id: String,
+        /// `device` or `alink`.
+        source: String,
         /// Its code (`device_offline`, `clip`, ...).
         code: String,
         /// What it is about (a serial, a rule).
         subject: String,
+        // -- fixup p2a F3 --
+        /// The device, for a device alarm.
+        serial: Option<String>,
+        /// `warning` or `critical`.
+        severity: String,
         /// Raised, acknowledged or cleared.
         state: AlarmState,
         /// For people.
-        text: String,
-        /// When, Unix seconds.
+        message: String,
+        /// When this change happened, Unix seconds.
         at: u64,
+        // -- fixup p2a F3 --
+        /// When it was raised, Unix seconds.
+        raised_at: u64,
+        /// When it was cleared, Unix seconds.
+        cleared_at: Option<u64>,
+        /// Who acknowledged it (a session's `by`).
+        acknowledged_by: Option<String>,
+        /// How often it was raised while on.
+        count: u32,
     },
-    /// A schedule rule ran (WP P2SC).
+    /// A schedule rule ran (WP P2SC): `schedule.ran {rule, name, at, by?, results}`.
     ScheduleRan {
-        /// The rule.
-        id: String,
-        /// Per target.
+        /// The rule's id (`rule` in the event; `id` is only ever a request's).
+        rule: String,
+        // -- fixup p2a F3 --
+        /// The rule's name.
+        name: String,
+        /// When it ran, Unix seconds.
+        at: u64,
+        /// The admin who ran it now (`schedule.run_now`); `None` on its schedule.
+        by: Option<String>,
+        /// Per action and target.
         results: Vec<TargetResult>,
     },
     /// A history record was written (WP P2EV).
@@ -372,8 +404,9 @@ mod tests_wp_p2sv {
 
     #[test]
     fn wp_p2sv_a_target_result_has_the_documented_shape() {
-        let r = TargetResult {
+        let mut r = TargetResult {
             serial: "S1".into(),
+            action: None,
             ok: false,
             code: Some("offline".into()),
             msg: None,
@@ -381,6 +414,12 @@ mod tests_wp_p2sv {
         assert_eq!(
             serde_json::to_value(&r).unwrap(),
             serde_json::json!({"serial": "S1", "ok": false, "code": "offline"})
+        );
+        // -- fixup p2a F3 -- a schedule's row names its action
+        r.action = Some("0:preset.load".into());
+        assert_eq!(
+            serde_json::to_value(&r).unwrap(),
+            serde_json::json!({"serial": "S1", "action": "0:preset.load", "ok": false, "code": "offline"})
         );
     }
 }
