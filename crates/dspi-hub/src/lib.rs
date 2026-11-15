@@ -25,6 +25,7 @@
 //! | [`inventory`] | every DSPi the hub has seen, `inventory.*` | P2IN |
 //! | [`identify`] | `device.identify`: blink, and the quiet tone when asked | P2ID |
 //! | `stats` (private) | `hub.stats` and `hub.rename` | P2HS |
+//! | [`history`] | the shared event history and the watchdog events | P2EV |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -79,6 +80,8 @@ pub mod health;
 pub mod inventory;
 // -- WP P2ID --
 pub mod identify;
+// -- WP P2EV --
+pub mod history;
 
 pub use auth::AccessMode;
 pub use error::HubError;
@@ -108,3 +111,5 @@ pub use clock::{HubClock, SystemClock, TestClock};
 pub use service::{DeviceEvent, HubService, ServiceConfig, SessionLabel};
 // -- WP P2HP --
 pub use health::HealthConfig;
+// -- WP P2EV --
+pub use history::HistoryConfig;

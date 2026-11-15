@@ -144,6 +144,8 @@ fn config_with(probe: &Arc<Probe>, clock: Arc<dyn HubClock>) -> HubConfig {
             // -- WP P2HS -- off, so the probe claims `hub.stats` and `hub.rename` stays
             // `unsupported` (the hub's own answers them otherwise: tests/wp_p2hs_stats.rs)
             stats: false,
+            // -- WP P2EV -- the services' fields since P2SV, each off
+            ..ServiceConfig::default()
         },
         ..HubConfig::in_process("P2SV hub")
     }

@@ -26,7 +26,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | draft |
 | 4 | [Identify](#4-identify) | `device.identify` | `identify` | P2ID | built (P2ID) |
 | 5 | [Health](#5-health) | `health.get` | `health` | P2HP | draft |
-| 6 | [Event history](#6-event-history) | `event.*` | `events` | P2EV (records: P2EVW) | draft |
+| 6 | [Event history](#6-event-history) | `event.*` | `events` | P2EV (records: P2EVW) | built |
 | 7 | [Alarms](#7-alarms) | `alarm.*` | `alarms` | P2AL | draft |
 | 8 | [Notifications out](#8-notifications-out) | `outbound.*` | `outbound` | P2WH | draft |
 | 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | draft |
@@ -319,7 +319,7 @@ silence. An embedder turns the service on with `ServiceConfig::health` (`HealthC
 
 ## 6. Event history
 
-*State: draft (P2EV; the record kinds and the writer: P2EVW).*
+*State: built (P2EV; the record kinds and the writer: P2EVW). Reference: `crates/dspi-hub/src/history.rs`.*
 
 One shared log per device in `events/`, in the event log's own file format and lock rule ([event-log.md](event-log.md)),
 so a diagnostics bundle and `event_log_export` read it unchanged. The writer is `EventStore`
@@ -329,11 +329,23 @@ reason, firmware changes, recalls, identify, schedule runs, alarms.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `event.list` | viewer | `serial`, `after_id?` (default 0), `limit?` | `serial`, `records` (oldest first), `more` (`true` if more follow `records`' last `id`) |
-| `event.watch` | viewer | `on` (bool), `serial?` (all devices when absent) | `on` |
-| `event.export` | admin | `serial`, `after_id?` | `serial`, `text` (the file format, whole records, at most about 48 KiB), `next_after_id` (`null` at the end) |
+| `event.list` | viewer | `serial`, `after_id?` (default 0), `limit?` (default 100, at most 500) | `serial`, `records` (oldest first; with `after_id` 0 the newest `limit`), `more` (`true` if more follow `records`' last `id`), `newest_id` (the highest id the log holds; 0 when empty) |
+| `event.watch` | viewer | `on` (bool), `serial?` (all devices when absent) | `on`, `serial` |
+| `event.export` | admin | `serial`, `after_id?` | `serial`, `text` (the file format, whole records, at most about 48 KiB), `next_after_id` (`null` at the end), `newest_id` |
 
-Event while watching: `event.added {v, hub, serial, record}`. A watch ends with the session.
+Event while watching: `event.added {v, hub, serial, record}`. A watch ends with the session. A device may be named
+by `handle` instead of `serial` (section 1.3); a serial with no log on the hub is `not_found`.
+
+**Ids can start again at 1** for a device: after `inventory.forget` removed its files, or after the total cap removed
+every file of it. A client paging with an `after_id` above `newest_id` knows the numbering started
+again and reads from 0. `after_id` 0 is a first read (the newest page); to page from a device's oldest record, take its
+id from a first read with a large `limit`, or export.
+
+A record held back for coalescing (a slider sweep, as the format does) is written out by any read of that device, or
+when its second has passed. Bus messages the history could not take in time, and records it could not write, become one
+`events_dropped` record (`count`) in the log of each device online (each device seen, when none is). Until the bus can
+filter, `count` may include the history's own echoes of records it did write (see the WP report), so it is an upper
+bound.
 
 Records are the file format's, with what phase 2 adds: the field **`by`** (the name of the client, key, schedule or rule
 that caused it, next to `session`) and the kinds **`unresponsive`**, **`alarm`**, **`schedule`**, **`access`** and

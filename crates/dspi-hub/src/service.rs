@@ -159,6 +159,9 @@ pub struct ServiceConfig {
     /// `hub.stats` and `hub.rename` (spec 7.9). On by default: they are DSPi Link's own
     /// messages, not an optional family. Off, both answer `unsupported`.
     pub stats: bool,
+    // -- WP P2EV --
+    /// The shared event history (`events/`, `event.*`); off when `None`.
+    pub history: Option<crate::history::HistoryConfig>,
 }
 
 impl Default for ServiceConfig {
@@ -174,6 +177,8 @@ impl Default for ServiceConfig {
             identify: false,
             // -- WP P2HS --
             stats: true,
+            // -- WP P2EV --
+            history: None,
         }
     }
 }
@@ -205,6 +210,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::identify::service(config, setup));
     // -- WP P2HS --
     list.extend(crate::stats::service(config, setup));
+    // -- WP P2EV --
+    list.extend(crate::history::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }
