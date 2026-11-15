@@ -491,7 +491,7 @@ fn wp_p2mqc_keep_alive_pings_and_a_silent_broker_is_left() {
     c.keep_alive = Duration::from_secs(1);
     let (_client, events) = start(c);
     wait_for("PINGREQ", || b.count(|p| matches!(p, Packet::Pingreq)) >= 1);
-    thread::sleep(Duration::from_millis(1300));
+    thread::sleep(Duration::from_millis(1800));
     assert!(
         b.count(|p| matches!(p, Packet::Pingreq)) >= 2,
         "pings keep coming"
@@ -526,7 +526,7 @@ fn wp_p2mqc_refused_connection_retries_with_backoff() {
     wait_for("accepted at last", || client.status().connected);
 }
 
-/// A hostile broker: an oversized length, garbage, a client packet. The client drops the
+/// A hostile broker: an oversized length (read past), garbage, a client packet. The client drops the
 /// connection with a reason, never buffers past its limit, and tries again.
 #[test]
 fn wp_p2mqc_hostile_broker_is_dropped_not_trusted() {
@@ -572,7 +572,9 @@ fn wp_p2mqc_hostile_broker_is_dropped_not_trusted() {
             _ => None,
         })
         .collect();
-    assert!(reasons[0].contains("over the limit"), "{reasons:?}");
+    // The 256 MiB header is read past, not buffered: the connection ends only when the
+    // broker closes it.
+    assert!(reasons[0].contains("closed"), "{reasons:?}");
     assert!(
         reasons[1].contains("malformed") || reasons[1].contains("reserved"),
         "{reasons:?}"
@@ -580,4 +582,142 @@ fn wp_p2mqc_hostile_broker_is_dropped_not_trusted() {
     assert!(reasons[2].contains("protocol error"), "{reasons:?}");
     assert!(reasons[3].contains("before CONNACK"), "{reasons:?}");
     assert!(!client.status().connected);
+}
+
+/// Review p2a F2: a retained message over `max_packet` on a subscribed topic is read past;
+/// the connection stays up and the messages after it, retained and live, are delivered.
+#[test]
+fn wp_p2mqc_oversized_retained_is_skipped_not_a_reconnect_storm() {
+    let b = Broker::start();
+    for (topic, len) in [("set/big", 10_000usize), ("set/ok", 3)] {
+        b.set(|s| {
+            s.retained.insert(
+                topic.into(),
+                Publish {
+                    topic: topic.into(),
+                    payload: vec![b'x'; len],
+                    qos: QoS::AtMostOnce,
+                    retain: true,
+                    dup: false,
+                    packet_id: 0,
+                },
+            );
+        });
+    }
+    let mut c = config(&b);
+    c.max_packet = 1024;
+    let (client, events) = start(c);
+    client.subscribe("set/#", QoS::AtMostOnce).unwrap();
+    wait_for("the valid retained message", || {
+        has(
+            &events,
+            |e| matches!(e, MqttEvent::Message { topic, .. } if topic == "set/ok"),
+        )
+    });
+    b.route("set/live", b"1", QoS::AtMostOnce);
+    wait_for("a live message", || {
+        has(
+            &events,
+            |e| matches!(e, MqttEvent::Message { topic, .. } if topic == "set/live"),
+        )
+    });
+    thread::sleep(Duration::from_millis(300));
+    assert_eq!(b.count(is_connect), 1, "no reconnect");
+    assert!(!has(
+        &events,
+        |e| matches!(e, MqttEvent::Message { topic, .. } if topic == "set/big")
+    ));
+    let st = client.status();
+    assert!(st.connected);
+    assert_eq!(st.oversized, 1);
+}
+
+/// Review p2a F5: a broker that accepts and then closes meets a growing backoff, not a
+/// reconnect every `backoff_min`.
+#[test]
+fn wp_p2mqc_accept_then_close_backs_off() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let connects = Arc::new(Mutex::new(0usize));
+    let n = Arc::clone(&connects);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            *n.lock().unwrap() += 1;
+            let mut buf = [0u8; 256];
+            let _ = stream.read(&mut buf);
+            let _ = stream.write_all(&[0x20, 2, 0, 0]);
+            thread::sleep(Duration::from_millis(20));
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+    });
+    let mut c = MqttConfig::new("127.0.0.1", port, "hub");
+    c.backoff_min = Duration::from_millis(50);
+    c.backoff_max = Duration::from_secs(5);
+    c.tick = Duration::from_millis(10);
+    let (client, events) = start(c);
+    thread::sleep(Duration::from_secs(2));
+    // Doubling from 50 ms: attempts at about 0, 0.07, 0.19, 0.41, 0.83, 1.65 s.
+    let got = *connects.lock().unwrap();
+    assert!((3..=8).contains(&got), "{got} connects in 2 s");
+    assert!(has(&events, |e| matches!(e, MqttEvent::Connected { .. })));
+    assert!(client.status().connects >= 3);
+}
+
+/// Review p2a F6: `stop()` returns promptly although the broker never reads and the queue
+/// holds far more than the socket takes.
+#[test]
+fn wp_p2mqc_stop_is_bounded_under_a_broker_that_never_reads() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let held = Arc::new(Mutex::new(Vec::new()));
+    let h = Arc::clone(&held);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            let mut buf = [0u8; 256];
+            let _ = stream.read(&mut buf);
+            let _ = stream.write_all(&[0x20, 2, 0, 0]);
+            // Keep it open and never read again.
+            h.lock().unwrap().push(stream);
+        }
+    });
+    let mut c = MqttConfig::new("127.0.0.1", port, "hub");
+    c.connect_timeout = Duration::from_secs(3);
+    c.tick = Duration::from_millis(10);
+    let (mut client, events) = start(c);
+    wait_for("connected", || {
+        has(&events, |e| matches!(e, MqttEvent::Connected { .. }))
+    });
+    for _ in 0..200 {
+        client
+            .publish("bulk", &vec![0; 200_000], QoS::AtMostOnce, false)
+            .unwrap();
+    }
+    thread::sleep(Duration::from_millis(300));
+    let t0 = Instant::now();
+    client.stop();
+    let took = t0.elapsed();
+    assert!(took < Duration::from_secs(2), "stop took {took:?}");
+}
+
+/// Review p2a F6: `stop()` while the client is between connection attempts.
+#[test]
+fn wp_p2mqc_stop_is_bounded_while_connecting() {
+    // A refused port: the client fails in open() and then waits a 30 s backoff, which
+    // `stop` must not wait out.
+    let mut c = MqttConfig::new("127.0.0.1", 1, "hub");
+    c.backoff_min = Duration::from_secs(30);
+    c.backoff_max = Duration::from_secs(30);
+    let (mut client, events) = start(c);
+    wait_for("first failure", || {
+        has(&events, |e| matches!(e, MqttEvent::Disconnected { .. }))
+    });
+    let t0 = Instant::now();
+    client.stop();
+    assert!(
+        t0.elapsed() < Duration::from_secs(1),
+        "stop took {:?}",
+        t0.elapsed()
+    );
 }

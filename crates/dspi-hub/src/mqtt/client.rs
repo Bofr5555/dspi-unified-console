@@ -6,7 +6,10 @@
 //! queued, answers QoS 1 publishes with PUBACK, keeps the connection alive with PINGREQ and
 //! hands what arrives to the caller's handler. When the connection ends it reconnects with
 //! a doubling backoff and subscribes again; QoS 1 publishes not yet acknowledged are sent
-//! again with the dup flag.
+//! again with the dup flag. The backoff starts again from its minimum only after a
+//! connection has stayed up for `stable_after`. A packet from the broker over `max_packet`
+//! is read past and counted ([`MqttStatus::oversized`]), not a reason to reconnect.
+//! [`MqttClient::stop`] is bounded by about `connect_timeout`, whatever the broker does.
 //!
 //! Bounded everything: the outgoing queue keeps at most `queue_cap` publishes and drops the
 //! oldest when full (counted in [`MqttStatus::dropped`]); at most [`MAX_INFLIGHT`] QoS 1
@@ -20,8 +23,8 @@
 use std::collections::VecDeque;
 use std::fmt;
 use std::io::{ErrorKind, Read, Write};
-use std::net::{Shutdown, TcpStream, ToSocketAddrs};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::net::{IpAddr, Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -39,6 +42,12 @@ const FILTERS_PER_SUBSCRIBE: usize = 16;
 const MAX_PENDING_SUBACKS: usize = 64;
 /// One read from the socket.
 const READ_CHUNK: usize = 4096;
+/// Bytes of publishes written per pass before the thread looks at `stop` and the socket
+/// again (at least one publish per pass).
+const MAX_BATCH_BYTES: usize = 256 * 1024;
+/// How long [`MqttClient::stop`] waits for the thread to send DISCONNECT by itself before
+/// it shuts the socket under it.
+const STOP_GRACE: Duration = Duration::from_millis(500);
 
 /// How to reach the broker and how the client behaves. Its `Debug` shows whether a
 /// password is set, never the password.
@@ -68,13 +77,18 @@ pub struct MqttConfig {
     pub backoff_min: Duration,
     /// The longest wait; each failure doubles the wait up to this.
     pub backoff_max: Duration,
+    /// How long a connection must stay up before the backoff starts again from
+    /// `backoff_min`. A broker that accepts and then closes (a client-id takeover, an ACL
+    /// kick) therefore meets a growing wait, not a reconnect every `backoff_min`.
+    pub stable_after: Duration,
     /// How often the thread looks at the queue while connected (the socket's read timeout).
     pub tick: Duration,
 }
 
 impl MqttConfig {
     /// A configuration with the defaults: no credentials, no will, keep-alive 30 s, 256
-    /// queued publishes, 256 KiB packets, 5 s connect timeout, backoff 1 s to 60 s.
+    /// queued publishes, 256 KiB packets, 5 s connect timeout, backoff 1 s to 60 s, reset
+    /// after a connection has stayed up 30 s.
     pub fn new(host: impl Into<String>, port: u16, client_id: impl Into<String>) -> MqttConfig {
         MqttConfig {
             host: host.into(),
@@ -89,6 +103,7 @@ impl MqttConfig {
             connect_timeout: Duration::from_secs(5),
             backoff_min: Duration::from_secs(1),
             backoff_max: Duration::from_secs(60),
+            stable_after: Duration::from_secs(30),
             tick: Duration::from_millis(25),
         }
     }
@@ -116,6 +131,7 @@ impl fmt::Debug for MqttConfig {
             .field("connect_timeout", &self.connect_timeout)
             .field("backoff_min", &self.backoff_min)
             .field("backoff_max", &self.backoff_max)
+            .field("stable_after", &self.stable_after)
             .field("tick", &self.tick)
             .finish()
     }
@@ -166,6 +182,9 @@ pub struct MqttStatus {
     pub connects: u64,
     /// Why the last connection ended or failed.
     pub last_error: Option<String>,
+    /// Packets from the broker over `max_packet`, read past and dropped (the connection
+    /// stays up, so an oversized retained message cannot cause a reconnect storm).
+    pub oversized: u64,
 }
 
 /// Why the client did not take a call.
@@ -262,6 +281,9 @@ struct Shared {
     new_subs: Vec<(String, QoS)>,
     stop: bool,
     status: MqttStatus,
+    /// A clone of the connected socket, for [`MqttClient::stop`] to shut down under a
+    /// write that a slow broker keeps alive.
+    stream: Option<TcpStream>,
 }
 
 struct Inner {
@@ -303,6 +325,11 @@ impl MqttClient {
         if config.password.is_some() && config.username.is_none() {
             return Err(MqttError::Config("a password needs a user name".into()));
         }
+        if config.max_packet > codec::MAX_REMAINING_LENGTH {
+            return Err(MqttError::Config(
+                "max_packet over the protocol's limit".into(),
+            ));
+        }
         if config.tick.is_zero() {
             return Err(MqttError::Config("tick must not be zero".into()));
         }
@@ -321,6 +348,7 @@ impl MqttClient {
                 new_subs: Vec::new(),
                 stop: false,
                 status: MqttStatus::default(),
+                stream: None,
             }),
             wake: Condvar::new(),
         });
@@ -409,14 +437,29 @@ impl MqttClient {
 
     /// Sends DISCONNECT if connected (so the broker does not publish the will) and stops
     /// the thread; waits for it unless called on that thread.
+    ///
+    /// Bounded: the thread looks at `stop` every `tick` and between publishes; if it has
+    /// not finished within half a second (a broker that does not read), the socket is shut
+    /// down under it. A TCP connect in progress ends within `connect_timeout`, a name
+    /// lookup is waited for at most `tick`. So `stop` returns within about
+    /// `connect_timeout`, whatever the broker does.
     pub fn stop(&mut self) {
         self.inner.lock().stop = true;
         self.inner.wake.notify_all();
-        if let Some(t) = self.thread.take()
-            && t.thread().id() != std::thread::current().id()
-        {
-            let _ = t.join();
+        let Some(t) = self.thread.take() else { return };
+        if t.thread().id() == std::thread::current().id() {
+            return;
         }
+        let grace = Instant::now().checked_add(STOP_GRACE);
+        while !t.is_finished() && grace.is_some_and(|g| Instant::now() < g) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        if !t.is_finished()
+            && let Some(stream) = self.inner.lock().stream.take()
+        {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        let _ = t.join();
     }
 }
 
@@ -476,6 +519,8 @@ enum Dropped {
     Protocol(&'static str),
     #[error("{0}")]
     Decode(#[from] DecodeError),
+    #[error("stopped")]
+    Stopped,
 }
 
 impl From<std::io::Error> for Dropped {
@@ -488,6 +533,10 @@ impl From<std::io::Error> for Dropped {
 struct RxBuf {
     buf: Vec<u8>,
     max_packet: usize,
+    /// Bytes of an oversized packet still to read past.
+    skip: usize,
+    /// Oversized packets read past on this connection.
+    skipped: u64,
 }
 
 impl RxBuf {
@@ -497,7 +546,11 @@ impl RxBuf {
         match stream.read(&mut chunk) {
             Ok(0) => Err(Dropped::Closed),
             Ok(n) => {
-                self.buf.extend_from_slice(chunk.get(..n).unwrap_or(&[]));
+                let got = chunk.get(..n).unwrap_or(&[]);
+                let dropped = self.skip.min(got.len());
+                self.skip = self.skip.saturating_sub(dropped);
+                self.buf
+                    .extend_from_slice(got.get(dropped..).unwrap_or(&[]));
                 Ok(())
             }
             Err(e)
@@ -512,14 +565,32 @@ impl RxBuf {
         }
     }
 
+    /// The next whole packet. A packet over `max_packet` is read past, not kept: its fixed
+    /// header gives its length, so its bytes are dropped as they arrive and the next packet
+    /// is read as usual. Anything else that is not a packet ends the connection.
     fn take(&mut self) -> Result<Option<Packet>, Dropped> {
-        match codec::decode(&self.buf, self.max_packet)? {
-            Some((p, used)) => {
-                // `decode` never reports more than it was given.
-                self.buf.drain(..used.min(self.buf.len()));
-                Ok(Some(p))
+        loop {
+            if self.skip > 0 {
+                return Ok(None);
             }
-            None => Ok(None),
+            match codec::decode(&self.buf, self.max_packet) {
+                Ok(Some((p, used))) => {
+                    // `decode` never reports more than it was given.
+                    self.buf.drain(..used.min(self.buf.len()));
+                    return Ok(Some(p));
+                }
+                Ok(None) => return Ok(None),
+                Err(DecodeError::TooLarge { len, max }) => {
+                    log::warn!(
+                        "mqtt: dropped a packet of {len} bytes from the broker (limit {max})"
+                    );
+                    self.skipped = self.skipped.saturating_add(1);
+                    let here = len.min(self.buf.len());
+                    self.buf.drain(..here);
+                    self.skip = len.saturating_sub(here);
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
     }
 }
@@ -542,12 +613,18 @@ impl Worker {
             if self.inner.lock().stop {
                 return;
             }
-            let reason = match self.session() {
+            let result = self.session();
+            self.inner.lock().stream = None;
+            let reason = match result {
                 Ok(()) => return,
                 Err(e) => e.to_string(),
             };
             {
                 let mut s = self.inner.lock();
+                if s.stop {
+                    s.status.connected = false;
+                    return;
+                }
                 s.status.connected = false;
                 s.status.last_error = Some(reason.clone());
             }
@@ -571,15 +648,81 @@ impl Worker {
         }
     }
 
+    fn stopping(&self) -> bool {
+        self.inner.lock().stop
+    }
+
+    /// The broker's addresses. An IP address needs no lookup; a name is looked up on a
+    /// short-lived thread of its own, because `to_socket_addrs` has no timeout: the client
+    /// waits for it at most `connect_timeout` and looks at `stop` every `tick` meanwhile. A
+    /// lookup that hangs is left to the system resolver's own timeout and its answer dropped.
+    fn resolve(&self, deadline: Option<Instant>) -> Result<Vec<SocketAddr>, Dropped> {
+        if let Ok(ip) = self.cfg.host.parse::<IpAddr>() {
+            return Ok(vec![SocketAddr::new(ip, self.cfg.port)]);
+        }
+        let (tx, rx) = mpsc::sync_channel(1);
+        let target = (self.cfg.host.clone(), self.cfg.port);
+        std::thread::Builder::new()
+            .name("dspi-mqtt-dns".into())
+            .spawn(move || {
+                let r = target
+                    .to_socket_addrs()
+                    .map(|a| a.collect::<Vec<_>>())
+                    .map_err(|e| e.to_string());
+                let _ = tx.send(r);
+            })
+            .map_err(|e| Dropped::Io(format!("name lookup: {e}")))?;
+        loop {
+            if self.stopping() {
+                return Err(Dropped::Stopped);
+            }
+            match rx.recv_timeout(self.cfg.tick) {
+                Ok(Ok(addrs)) => return Ok(addrs),
+                Ok(Err(e)) => return Err(Dropped::Io(format!("{}: {e}", self.cfg.host))),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    return Err(Dropped::Io(format!(
+                        "{}: name lookup failed",
+                        self.cfg.host
+                    )));
+                }
+            }
+            if deadline.is_some_and(|d| Instant::now() >= d) {
+                return Err(Dropped::Io(format!(
+                    "{}: name lookup timed out",
+                    self.cfg.host
+                )));
+            }
+        }
+    }
+
+    /// A TCP connection to the broker, all addresses together within `connect_timeout`.
     fn open(&self) -> Result<TcpStream, Dropped> {
+        let deadline = Instant::now().checked_add(self.cfg.connect_timeout);
         let mut last = Dropped::Io(format!("{}: no address", self.cfg.host));
-        for addr in (self.cfg.host.as_str(), self.cfg.port).to_socket_addrs()? {
-            match TcpStream::connect_timeout(&addr, self.cfg.connect_timeout) {
+        for addr in self.resolve(deadline)? {
+            if self.stopping() {
+                return Err(Dropped::Stopped);
+            }
+            let left = deadline.map_or(self.cfg.connect_timeout, |d| {
+                d.saturating_duration_since(Instant::now())
+            });
+            if left.is_zero() {
+                return Err(Dropped::Io(format!("{}: connect timed out", self.cfg.host)));
+            }
+            match TcpStream::connect_timeout(&addr, left) {
                 Ok(s) => return Ok(s),
                 Err(e) => last = e.into(),
             }
         }
         Err(last)
+    }
+
+    /// DISCONNECT (so the broker does not publish the will), then close.
+    fn goodbye(stream: &mut TcpStream) -> Result<(), Dropped> {
+        let _ = Self::send(stream, &Packet::Disconnect);
+        let _ = stream.shutdown(Shutdown::Both);
+        Ok(())
     }
 
     fn send(stream: &mut TcpStream, packet: &Packet) -> Result<(), Dropped> {
@@ -628,9 +771,18 @@ impl Worker {
         stream.set_read_timeout(Some(self.cfg.tick))?;
         stream.set_write_timeout(Some(self.cfg.connect_timeout))?;
         stream.set_nodelay(true)?;
+        {
+            let mut s = self.inner.lock();
+            if s.stop {
+                return Ok(());
+            }
+            s.stream = stream.try_clone().ok();
+        }
         let mut rx = RxBuf {
             buf: Vec::new(),
             max_packet: self.cfg.max_packet,
+            skip: 0,
+            skipped: 0,
         };
         Self::send(&mut stream, &connect_packet(&self.cfg))?;
 
@@ -657,7 +809,9 @@ impl Worker {
             }
         };
 
-        self.backoff.reset();
+        // The backoff starts again only once this connection has stayed up (`stable_after`).
+        let connected_at = Instant::now();
+        let mut stable = false;
         let subs = {
             let mut s = self.inner.lock();
             s.status.connected = true;
@@ -680,35 +834,39 @@ impl Worker {
         let mut last_sent = Instant::now();
         let mut ping_sent: Option<Instant> = None;
         loop {
-            let (stop, new_subs, batch) = {
+            let (stop, new_subs) = {
                 let mut s = self.inner.lock();
-                let new_subs = std::mem::take(&mut s.new_subs);
-                let mut batch = Vec::new();
-                let mut room = MAX_INFLIGHT.saturating_sub(self.inflight.len());
-                while let Some(front) = s.queue.items.front() {
-                    if front.qos == QoS::AtLeastOnce {
-                        if room == 0 {
-                            break;
-                        }
-                        room = room.saturating_sub(1);
-                    }
-                    if let Some(p) = s.queue.items.pop_front() {
-                        batch.push(p);
-                    }
-                }
-                s.status.queued = s.queue.items.len();
-                (s.stop, new_subs, batch)
+                (s.stop, std::mem::take(&mut s.new_subs))
             };
             if stop {
-                let _ = Self::send(&mut stream, &Packet::Disconnect);
-                let _ = stream.shutdown(Shutdown::Both);
-                return Ok(());
+                return Self::goodbye(&mut stream);
             }
             if !new_subs.is_empty() {
                 self.subscribe(&mut stream, &new_subs)?;
                 last_sent = Instant::now();
             }
-            for mut p in batch {
+            // One publish at a time, `stop` looked at before each, at most MAX_BATCH_BYTES
+            // per pass, so neither a long queue nor a slow broker holds the thread.
+            let mut written: usize = 0;
+            while written < MAX_BATCH_BYTES {
+                let next = {
+                    let mut s = self.inner.lock();
+                    if s.stop {
+                        drop(s);
+                        return Self::goodbye(&mut stream);
+                    }
+                    let room = self.inflight.len() < MAX_INFLIGHT;
+                    let p = match s.queue.items.front() {
+                        Some(front) if front.qos == QoS::AtMostOnce || room => {
+                            s.queue.items.pop_front()
+                        }
+                        _ => None,
+                    };
+                    s.status.queued = s.queue.items.len();
+                    p
+                };
+                let Some(mut p) = next else { break };
+                written = written.saturating_add(publish_len(&p));
                 if p.qos == QoS::AtLeastOnce {
                     p.packet_id = self.take_id();
                     self.inflight.push_back(p.clone());
@@ -716,7 +874,16 @@ impl Worker {
                 Self::send(&mut stream, &Packet::Publish(p))?;
                 last_sent = Instant::now();
             }
-            self.inner.lock().status.inflight = self.inflight.len();
+            {
+                let mut s = self.inner.lock();
+                s.status.inflight = self.inflight.len();
+                s.status.oversized = s.status.oversized.saturating_add(rx.skipped);
+                rx.skipped = 0;
+            }
+            if !stable && connected_at.elapsed() >= self.cfg.stable_after {
+                stable = true;
+                self.backoff.reset();
+            }
 
             let now = Instant::now();
             if !keep_alive.is_zero() {
@@ -849,6 +1016,38 @@ mod tests_wp_p2mqc {
                 codec::encode(&Packet::Publish(p.clone())).unwrap().len()
             );
         }
+    }
+
+    #[test]
+    fn wp_p2mqc_oversized_packet_is_read_past() {
+        let big = codec::encode(&Packet::Publish(Publish {
+            topic: "set/big".into(),
+            payload: vec![7; 2000],
+            qos: QoS::AtMostOnce,
+            retain: true,
+            dup: false,
+            packet_id: 0,
+        }))
+        .unwrap();
+        let ok = codec::encode(&Packet::Pingresp).unwrap();
+        // Whole in the buffer: dropped, and the next packet read.
+        let mut rx = RxBuf {
+            buf: [big.clone(), ok.clone()].concat(),
+            max_packet: 1024,
+            skip: 0,
+            skipped: 0,
+        };
+        assert_eq!(rx.take().unwrap(), Some(Packet::Pingresp));
+        assert_eq!((rx.skipped, rx.skip, rx.buf.len()), (1, 0, 0));
+        // Only its head in: the rest is still to skip, nothing is kept.
+        let mut rx = RxBuf {
+            buf: big[..100].to_vec(),
+            max_packet: 1024,
+            skip: 0,
+            skipped: 0,
+        };
+        assert_eq!(rx.take().unwrap(), None);
+        assert_eq!((rx.skip, rx.buf.len()), (big.len() - 100, 0));
     }
 
     #[test]
