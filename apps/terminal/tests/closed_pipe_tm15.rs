@@ -137,6 +137,8 @@ const PRINTING: &[&[&str]] = &[
     &["autoeq", "search", "no-such-headphone-at-all"],
     &["--demo", "-f", "script.dspi"],
     &["--demo", "--json", "-f", "script.dspi"],
+    // -- WP P2TM -- a hub's command; its help prints anywhere
+    &["api", "--help"],
 ];
 
 /// The files `import` and `-f` read.

@@ -1,0 +1,39 @@
+# The hub's REST mirror in Home Assistant's configuration.yaml (docs/integrator/hub-api.md,
+# section 16). For most homes MQTT discovery (section 13) is the better fit: it makes the
+# entities by itself. This is for a hub without a broker.
+#
+# The hub runs with --rest. Mint a key on the hub's machine, control for a volume slider,
+# viewer for sensors only:   uconsole hub api-key new "Home Assistant"
+# and put "Bearer <key>" in secrets.yaml as dspi_bearer. Replace the serial and the address.
+# Home Assistant sends no Origin header, which the hub would refuse.
+
+rest_command:
+  dspi_set_volume:
+    url: "http://hub.local:11915/api/v1/devices/E46058388B1A2E2C/params/vol.master"
+    method: put
+    headers:
+      Authorization: !secret dspi_bearer
+    content_type: "application/json"
+    payload: '{"value": {{ volume | float }}}'
+  dspi_load_preset:
+    url: "http://hub.local:11915/api/v1/devices/E46058388B1A2E2C/presets/{{ slot | int }}/load"
+    method: post
+    headers:
+      Authorization: !secret dspi_bearer
+
+sensor:
+  - platform: rest
+    name: "DSPi master volume"
+    resource: "http://hub.local:11915/api/v1/devices/E46058388B1A2E2C/params/vol.master"
+    headers:
+      Authorization: !secret dspi_bearer
+    value_template: "{{ value_json.value }}"
+    unit_of_measurement: "dB"
+    scan_interval: 30
+  - platform: rest
+    name: "DSPi alarms on"
+    resource: "http://hub.local:11915/api/v1/alarms?state=active"
+    headers:
+      Authorization: !secret dspi_bearer
+    value_template: "{{ value_json.alarms | length }}"
+    scan_interval: 30

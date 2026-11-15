@@ -50,12 +50,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant, SystemTime};
 
-use dspi_hub::auth::AuthStore;
+use dspi_hub::auth::{AuthError, AuthStore};
 use dspi_hub::store::HubStore;
 use dspi_hub::{
     AccessMode, DEFAULT_PORT, DeviceState, Hub, HubConfig, HubError, HubEvent, HubHandle,
     HubListener, NetworkConfig, NetworkControl, PairedClient, Role, SavedHub, UsbBus,
 };
+// -- WP P2TM --
+use dspi_hub::{ClientKind, HealthConfig, HistoryConfig, MintedKey, ScheduleConfig};
 use dspi_transport::FakeDevice;
 // -- WP SW3 --
 use dspi_proto::ext::alink::AlinkRole;
@@ -172,6 +174,53 @@ struct RunOptions {
     /// USB-direct unit Rear L/R's host is out of range from the start, so it
     /// is in lock error (muted, or unaligned as set).
     with_usb_lock_error: bool,
+    // -- WP P2TM --
+    /// `--rest`: the REST mirror under `/api/v1/`.
+    rest: bool,
+    /// `--data <dir>`: the services' folder; `None`: the store.
+    data: Option<PathBuf>,
+    /// Which phase-2 services run (`--no-<name>` turns one off).
+    services: Services,
+}
+
+// -- WP P2TM --
+/// The phase-2 services `uconsole hub` runs: every one unless turned off.
+/// The parameter API, snapshots, statistics, MQTT and notifications out are
+/// always registered (MQTT and notifications stay off until an Admin sets
+/// them up).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Services {
+    health: bool,
+    inventory: bool,
+    identify: bool,
+    history: bool,
+    alarms: bool,
+    schedule: bool,
+}
+
+impl Default for Services {
+    fn default() -> Self {
+        Self {
+            health: true,
+            inventory: true,
+            identify: true,
+            history: true,
+            alarms: true,
+            schedule: true,
+        }
+    }
+}
+
+impl Services {
+    /// Into the hub's switches, at their defaults.
+    fn apply(self, config: &mut dspi_hub::ServiceConfig) {
+        config.health = self.health.then(HealthConfig::default);
+        config.inventory = self.inventory;
+        config.identify = self.identify;
+        config.history = self.history.then(HistoryConfig::default);
+        config.alarms = self.alarms;
+        config.schedule = self.schedule.then(ScheduleConfig::default);
+    }
 }
 
 /// One `uconsole hub` command.
@@ -188,6 +237,19 @@ enum HubCommand {
         role: Role,
     },
     Revoke {
+        store: PathBuf,
+        cid: u32,
+    },
+    // -- WP P2TM --
+    ApiKeyNew {
+        store: PathBuf,
+        name: String,
+        role: Role,
+    },
+    ApiKeyList {
+        store: PathBuf,
+    },
+    ApiKeyRevoke {
         store: PathBuf,
         cid: u32,
     },
@@ -227,6 +289,16 @@ pub fn run(target: &Target, flags: &[&str], json: bool) -> u8 {
         }
         HubCommand::Revoke { store, cid } => offline_edit(&store, cid, |auth| auth.revoke(cid))
             .map(|()| println!("client {cid} revoked: it must pair again")),
+        // -- WP P2TM --
+        HubCommand::ApiKeyNew { store, name, role } => {
+            offline_auth(&store, |auth| mint_key(auth, &name, role))
+                .map(|key| print_minted(&key, json))
+        }
+        HubCommand::ApiKeyList { store } => offline_keys(&store, json),
+        HubCommand::ApiKeyRevoke { store, cid } => {
+            offline_auth(&store, |auth| revoke_key(auth, cid, |c| auth.revoke(c)))
+                .map(|()| say_key_revoked(cid, json))
+        }
     };
     match done {
         Ok(()) => exit::OK,
@@ -263,6 +335,13 @@ USAGE:
     {COMMAND} hub role <cid> viewer|control|admin
                               change a client's role (hub stopped)
     {COMMAND} hub revoke <cid>     forget a client; it must pair again (hub stopped)
+    {COMMAND} hub api-key new <name> [viewer|control|admin]
+                              mint an API key for REST (default control); the
+                              key is shown once (hub stopped; while it runs,
+                              type `api-key new ...` at its prompt)
+    {COMMAND} hub api-key list     the API keys (hub stopped)
+    {COMMAND} hub api-key revoke <cid>
+                              revoke an API key (hub stopped)
 
 OPTIONS:
     --name <name>             the hub's name, kept for the next start
@@ -302,6 +381,17 @@ OPTIONS:
     --store <dir>             where the hub keeps its id, clients and device names
                               (default: {})
     --json                    one JSON object per line
+    --rest                    the REST mirror at /api/v1/ on the same port, for
+                              API keys (`api-key new`); off by default
+    --data <dir>              where the services keep their files (inventory,
+                              history, alarms, schedules, snapshots, MQTT,
+                              notifications); default: the store
+    --no-health               no health poll of the devices (health.get)
+    --no-inventory            no inventory of every device seen (inventory.*)
+    --no-identify             no Identify (device.identify)
+    --no-history              no shared event history (event.*)
+    --no-alarms               no device alarms (alarm.*)
+    --no-schedule             no schedules (schedule.*)
 
 WHILE IT RUNS, on a terminal, type:
     pair                      open pairing for 2 minutes and show the PIN
@@ -310,6 +400,12 @@ WHILE IT RUNS, on a terminal, type:
     role <cid> <role>         change a client's role, live
     revoke <cid>              forget a client and disconnect it
     devices                   the devices being shared
+    inventory                 every device the hub has seen, online or not
+    alarms                    the alarms that are on
+    schedule                  the schedule's rules and their next runs
+    api-key new <name> [role] mint an API key (default control), shown once
+    api-key list              the API keys
+    api-key revoke <cid>      revoke an API key, at once
     status                    the hub's address and access
     quit                      stop sharing
 
@@ -347,6 +443,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     // -- WP HWLK1F --
     let (mut with_usb, mut with_plain_unit) = (false, false);
     let mut with_usb_lock_error = false; // -- WP AUSB2 --
+    // -- WP P2TM --
+    let (mut rest_api, mut data, mut services) = (false, None, Services::default());
     let mut port_given = false;
     let mut words = Vec::new();
 
@@ -402,6 +500,18 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             "--with-usb" => with_usb = true,
             "--with-plain-unit" => with_plain_unit = true,
             "--with-usb-lock-error" => with_usb_lock_error = true,
+            // -- WP P2TM --
+            "--rest" => rest_api = true,
+            "--data" => {
+                data = Some(PathBuf::from(value("a directory")?));
+                run_only.push("--data");
+            }
+            "--no-health" => services.health = false,
+            "--no-inventory" => services.inventory = false,
+            "--no-identify" => services.identify = false,
+            "--no-history" => services.history = false,
+            "--no-alarms" => services.alarms = false,
+            "--no-schedule" => services.schedule = false,
             f if f.starts_with('-') => return Err(usage(format!("`{f}` is not a hub option"))),
             word => words.push(word),
         }
@@ -420,6 +530,14 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 | "--with-usb"
                 | "--with-plain-unit"
                 | "--with-usb-lock-error"
+                // -- WP P2TM --
+                | "--rest"
+                | "--no-health"
+                | "--no-inventory"
+                | "--no-identify"
+                | "--no-history"
+                | "--no-alarms"
+                | "--no-schedule"
         ) {
             run_only.push(flag);
         }
@@ -495,6 +613,10 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 with_usb,
                 with_plain_unit,
                 with_usb_lock_error,
+                // -- WP P2TM --
+                rest: rest_api,
+                data,
+                services,
             }));
         }
         ["help"] => return Ok(HubCommand::Help),
@@ -505,6 +627,17 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             role: parse_role(rest.get(1).copied())?,
         },
         ["revoke", rest @ ..] if rest.len() <= 1 => HubCommand::Revoke {
+            store: store()?,
+            cid: cid(rest.first())?,
+        },
+        // -- WP P2TM --
+        ["api-key", "new", rest @ ..] if rest.len() <= 2 => HubCommand::ApiKeyNew {
+            store: store()?,
+            name: key_name(rest.first().copied())?,
+            role: key_role(rest.get(1).copied())?,
+        },
+        ["api-key", "list"] => HubCommand::ApiKeyList { store: store()? },
+        ["api-key", "revoke", rest @ ..] if rest.len() <= 1 => HubCommand::ApiKeyRevoke {
             store: store()?,
             cid: cid(rest.first())?,
         },
@@ -649,6 +782,8 @@ struct Running {
     access: AccessMode,
     // -- WP WB7 -- where a browser finds the console, when served
     console_url: Option<String>,
+    // -- WP P2TM -- `--rest`
+    rest: bool,
     _awake: Option<awake::KeepAwake>,
     _lock: File,
 }
@@ -695,8 +830,17 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     // -- WP TM26 -- The port is ours from here; clients wait until the device is in
     // (hw-1 M2: they were told "No DSPi found" for the first 0.3 s).
     network.hold_accepts = true;
+    // -- WP P2TM -- the REST mirror, off unless asked
+    network.rest = opts.rest;
     let mut config = HubConfig::in_process(&name);
     config.network = Some(network);
+    // -- WP P2TM -- the phase-2 services, each on unless turned off
+    if let Some(dir) = &opts.data {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| Failure::Failed(format!("the data folder {}: {e}", dir.display())))?;
+        config.data_dir = Some(dir.clone());
+    }
+    opts.services.apply(&mut config.services);
     // A scan only once the listener is in, below.
     config.initial_scan = false;
     // -- WP WB7 -- `uconsole web` leaves USB to the browser unless asked.
@@ -734,6 +878,7 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
         name,
         access: opts.access,
         console_url,
+        rest: opts.rest, // -- WP P2TM --
         _awake: opts.keep_awake.then(awake::KeepAwake::begin).flatten(),
         _lock: lock,
     };
@@ -1166,6 +1311,29 @@ fn command(running: &Running, line: &str, json: bool) -> bool {
             Ok(cid) => say(&format!("no paired client {cid}")),
             Err(_) => say("revoke <cid>"),
         },
+        // -- WP P2TM --
+        ["inventory"] => inventory(running, json),
+        ["alarms"] => alarms(running, json),
+        ["schedule"] => schedule(running, json),
+        ["api-key", "new", rest @ ..] if rest.len() <= 2 => {
+            match key_name(rest.first().copied())
+                .and_then(|name| Ok((name, key_role(rest.get(1).copied())?)))
+                .and_then(|(name, role)| mint_key(running.control.auth(), &name, role))
+            {
+                Ok(key) => print_minted(&key, json),
+                Err(Failure::Usage(m) | Failure::Failed(m)) => say(&m),
+            }
+        }
+        ["api-key", "list"] => print_keys(&running.control.auth().clients(), json),
+        ["api-key", "revoke", cid] => match cid.parse::<u32>() {
+            Ok(cid) => match revoke_key(running.control.auth(), cid, |c| running.control.revoke(c))
+            {
+                Ok(()) => say_key_revoked(cid, json),
+                Err(Failure::Usage(m) | Failure::Failed(m)) => say(&m),
+            },
+            Err(_) => say("api-key revoke <cid>"),
+        },
+        ["api-key", ..] => say("api-key new <name> [viewer|control|admin] | list | revoke <cid>"),
         _ => say(&format!(
             "`{}`: not a hub command; type `help`",
             printable(line.trim())
@@ -1190,6 +1358,8 @@ fn status(running: &Running, json: bool) {
                 "tokensRevoked": running.control.auth().tokens_revoked_at_start(),
                 // -- WP WB7 --
                 "console": running.console_url,
+                // -- WP P2TM --
+                "rest": running.rest,
             })
         );
     } else {
@@ -1201,6 +1371,10 @@ fn status(running: &Running, json: bool) {
         // -- WP WB7 --
         if let Some(url) = &running.console_url {
             println!("Web console: {url}");
+        }
+        // -- WP P2TM --
+        if running.rest {
+            println!("REST: /api/v1/ on port {port}, with an API key (`api-key new <name>`)");
         }
     }
 }
@@ -1313,6 +1487,7 @@ fn print_clients(clients: &[PairedClient], online: Option<&dyn Fn(u32) -> bool>,
                     "role": role_name(c.role),
                     "created": unix(c.created),
                     "lastSeen": c.last_seen.map(unix),
+                    "kind": c.kind.wire_name(), // -- WP P2TM --
                     // Only a running hub knows.
                     "online": online.map(|f| f(c.cid)),
                 })
@@ -1330,8 +1505,14 @@ fn print_clients(clients: &[PairedClient], online: Option<&dyn Fn(u32) -> bool>,
             Some(f) if f(c.cid) => "  connected",
             _ => "",
         };
+        // -- WP P2TM --
+        let kind = if c.kind == ClientKind::Api {
+            "  [API key]"
+        } else {
+            ""
+        };
         println!(
-            "{:>4}  {:<7}  {}  (last seen {seen}){live}",
+            "{:>4}  {:<7}  {}  (last seen {seen}){live}{kind}",
             c.cid,
             role_name(c.role),
             printable(&c.name),
@@ -1356,6 +1537,21 @@ fn offline_edit(
     cid: u32,
     edit: impl FnOnce(&AuthStore) -> bool,
 ) -> Result<(), Failure> {
+    offline_auth(store, |auth| {
+        if edit(auth) {
+            Ok(())
+        } else {
+            Err(Failure::Usage(format!("no paired client {cid}")))
+        }
+    })
+}
+
+/// -- WP P2TM -- [`offline_edit`]'s way into a stopped hub's store, for any
+/// change of its clients (an API key minted or revoked).
+fn offline_auth<T>(
+    store: &Path,
+    edit: impl FnOnce(&AuthStore) -> Result<T, Failure>,
+) -> Result<T, Failure> {
     let Some(saved) = SavedHub::peek(store)? else {
         return Err(Failure::Usage(format!(
             "no hub has run with {} yet",
@@ -1369,10 +1565,312 @@ fn offline_edit(
         AccessMode::Pin
     };
     let auth = AuthStore::new(HubStore::load(store)?, mode)?;
-    if edit(&auth) {
-        Ok(())
+    edit(&auth)
+}
+
+// -- WP P2TM --
+/// Who the prompt's reads are, in the hub's labels.
+const PROMPT_PRINCIPAL: &str = "Hub console";
+
+/// A service's answer to `t` for the person at this hub's prompt: a Viewer
+/// principal (the session-id rule), opened for this one read and closed.
+fn ask_service(running: &Running, t: &str, fields: Value) -> Result<Value, String> {
+    let mut msg = json!({ "t": t, "id": 1 });
+    if let (Some(m), Value::Object(f)) = (msg.as_object_mut(), fields) {
+        m.extend(f);
+    }
+    let session = running
+        .handle
+        .open_principal(Role::Viewer, None, PROMPT_PRINCIPAL)
+        .map_err(|e| format!("{t}: {e}"))?;
+    let reply = running.handle.service_request(&session, &msg);
+    running.handle.close_session(session.id());
+    let reply = reply.ok_or_else(|| format!("{t}: that service is off on this hub"))?;
+    let v: Value = serde_json::from_str(&reply).map_err(|e| format!("{t}: {e}"))?;
+    if v.get("t").and_then(Value::as_str) == Some("ok") {
+        Ok(v)
     } else {
-        Err(Failure::Usage(format!("no paired client {cid}")))
+        Err(format!("{t}: {} ({})", field(&v, "msg"), field(&v, "code")))
+    }
+}
+
+/// A string field of the hub's, fit for a terminal; "" when absent.
+fn field(v: &Value, key: &str) -> String {
+    match v.get(key) {
+        Some(Value::String(s)) => printable(s),
+        Some(Value::Null) | None => String::new(),
+        Some(other) => printable(&other.to_string()),
+    }
+}
+
+/// The prompt's way to say a read failed.
+fn say_error(m: &str, json: bool) {
+    if json {
+        println!("{}", json!({ "event": "error", "error": m }));
+    } else {
+        println!("{m}");
+    }
+}
+
+/// `inventory` at the prompt: `inventory.list`, one page of 500.
+fn inventory(running: &Running, json: bool) {
+    let v = match ask_service(running, "inventory.list", json!({ "limit": 500 })) {
+        Ok(v) => v,
+        Err(m) => return say_error(&m, json),
+    };
+    let devices = v
+        .get("devices")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if json {
+        println!(
+            "{}",
+            json!({ "event": "inventory", "devices": devices, "total": v.get("total") })
+        );
+        return;
+    }
+    if devices.is_empty() {
+        println!("no devices seen yet");
+    }
+    for d in &devices {
+        let online = d.get("online").and_then(Value::as_bool) == Some(true);
+        let place = field(d, "location");
+        println!(
+            "{}  {:<7}  {}  fw {}{}",
+            field(d, "serial"),
+            if online { "online" } else { "offline" },
+            field(d, "name"),
+            field(d, "fw"),
+            if place.is_empty() {
+                String::new()
+            } else {
+                format!("  at {place}")
+            },
+        );
+    }
+}
+
+/// `alarms` at the prompt: the alarms that are on (`alarm.list`, active).
+fn alarms(running: &Running, json: bool) {
+    let v = match ask_service(running, "alarm.list", json!({ "state": "active" })) {
+        Ok(v) => v,
+        Err(m) => return say_error(&m, json),
+    };
+    let list = v
+        .get("alarms")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if json {
+        println!("{}", json!({ "event": "alarms", "alarms": list }));
+        return;
+    }
+    if list.is_empty() {
+        println!("no alarms on");
+    }
+    for a in &list {
+        println!(
+            "{}  {:<8}  {}  {}: {}  ({})",
+            field(a, "id"),
+            field(a, "severity"),
+            field(a, "code"),
+            field(a, "subject"),
+            field(a, "message"),
+            field(a, "state"),
+        );
+    }
+}
+
+/// `schedule` at the prompt: the rules (`schedule.list`).
+fn schedule(running: &Running, json: bool) {
+    let v = match ask_service(running, "schedule.list", json!({})) {
+        Ok(v) => v,
+        Err(m) => return say_error(&m, json),
+    };
+    let rules = v
+        .get("rules")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if json {
+        println!(
+            "{}",
+            json!({
+                "event": "schedule",
+                "rules": rules,
+                "zone": v.get("zone"),
+                "localTime": v.get("local_time"),
+                "clockUnset": v.get("clock_unset"),
+            })
+        );
+        return;
+    }
+    println!(
+        "Time zone {}, local time {}",
+        field(&v, "zone"),
+        field(&v, "local_time")
+    );
+    if v.get("clock_unset").and_then(Value::as_bool) == Some(true) {
+        println!("The clock is not set: no rule runs until it is");
+    }
+    if rules.is_empty() {
+        println!("no rules");
+    }
+    for r in &rules {
+        let on = r.get("enabled").and_then(Value::as_bool) != Some(false);
+        let next = field(r, "next_run");
+        let last = match r.get("last") {
+            Some(l) if l.is_object() => {
+                let ok = l.get("ok").and_then(Value::as_bool) == Some(true);
+                format!(
+                    ", last {} {}",
+                    field(l, "at"),
+                    if ok { "ok" } else { "failed" }
+                )
+            }
+            _ => String::new(),
+        };
+        println!(
+            "{:>4}  {}  {}, next {}{last}",
+            field(r, "id"),
+            field(r, "name"),
+            if on { "on" } else { "off" },
+            if next.is_empty() {
+                "none".to_owned()
+            } else {
+                next
+            },
+        );
+    }
+}
+
+/// An API key's name, as a client's: required, cleaned.
+fn key_name(word: Option<&str>) -> Result<String, Failure> {
+    let usage = || Failure::Usage("which name? api-key new <name> [viewer|control|admin]".into());
+    let cleaned: String = word
+        .ok_or_else(usage)?
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_NAME)
+        .collect();
+    let cleaned = cleaned.trim();
+    if cleaned.is_empty() {
+        return Err(usage());
+    }
+    Ok(cleaned.to_owned())
+}
+
+/// An API key's role: control unless named.
+fn key_role(word: Option<&str>) -> Result<Role, Failure> {
+    match word {
+        None => Ok(Role::Control),
+        some => parse_role(some),
+    }
+}
+
+/// `auth.mint` on this machine: an API key of `role`, shown once.
+fn mint_key(auth: &AuthStore, name: &str, role: Role) -> Result<MintedKey, Failure> {
+    auth.mint_api_key(name, role, false).map_err(|e| match e {
+        AuthError::TableFull => {
+            Failure::Failed("64 paired clients and API keys already: revoke one first".into())
+        }
+        e => Failure::Failed(format!("no API key made ({e}); the log says why")),
+    })
+}
+
+fn print_minted(key: &MintedKey, json: bool) {
+    if json {
+        println!(
+            "{}",
+            json!({
+                "event": "apiKey",
+                "cid": key.cid,
+                "name": key.name,
+                "role": role_name(key.role),
+                "kind": ClientKind::Api.wire_name(),
+                "key": key.key,
+            })
+        );
+        return;
+    }
+    println!(
+        "API key {} \"{}\", {}:\n{}",
+        key.cid,
+        printable(&key.name),
+        role_name(key.role),
+        key.key
+    );
+    println!(
+        "Shown this once: keep it now. Send it as `Authorization: Bearer <key>` to /api/v1/ \
+         on this hub's port (with --rest). It crosses the network in plain text: use it on a \
+         network you trust. Revoke it with `api-key revoke {}`.",
+        key.cid
+    );
+}
+
+/// The API keys among `clients`.
+fn print_keys(clients: &[PairedClient], json: bool) {
+    let keys: Vec<&PairedClient> = clients
+        .iter()
+        .filter(|c| c.kind == ClientKind::Api)
+        .collect();
+    if json {
+        let list: Vec<Value> = keys
+            .iter()
+            .map(|c| {
+                json!({
+                    "cid": c.cid,
+                    "name": c.name,
+                    "role": role_name(c.role),
+                    "created": unix(c.created),
+                    "lastSeen": c.last_seen.map(unix),
+                })
+            })
+            .collect();
+        println!("{}", json!({ "event": "apiKeys", "keys": list }));
+        return;
+    }
+    if keys.is_empty() {
+        println!("no API keys");
+    }
+    for c in keys {
+        let seen = c.last_seen.map_or_else(|| "never".to_owned(), ago);
+        println!(
+            "{:>4}  {:<7}  {}  (last used {seen})",
+            c.cid,
+            role_name(c.role),
+            printable(&c.name)
+        );
+    }
+}
+
+/// `uconsole hub api-key list`, with no hub running.
+fn offline_keys(store: &Path, json: bool) -> Result<(), Failure> {
+    match SavedHub::peek(store)? {
+        Some(saved) => print_keys(&saved.clients, json),
+        None => print_keys(&[], json),
+    }
+    Ok(())
+}
+
+/// Revoke `cid` with `revoke` if it is an API key; a console is `revoke <cid>`'s.
+fn revoke_key(auth: &AuthStore, cid: u32, revoke: impl FnOnce(u32) -> bool) -> Result<(), Failure> {
+    match auth.clients().iter().find(|c| c.cid == cid).map(|c| c.kind) {
+        Some(ClientKind::Api) if revoke(cid) => Ok(()),
+        Some(ClientKind::Console) => Err(Failure::Usage(format!(
+            "client {cid} is a console, not an API key: `revoke {cid}` forgets it"
+        ))),
+        _ => Err(Failure::Usage(format!("no API key {cid}"))),
+    }
+}
+
+fn say_key_revoked(cid: u32, json: bool) {
+    if json {
+        println!("{}", json!({ "event": "apiKeyRevoked", "cid": cid }));
+    } else {
+        println!("API key {cid} revoked: it no longer works");
     }
 }
 
@@ -1539,6 +2037,10 @@ mod tests_wp_tm11 {
             with_usb: false,
             with_plain_unit: false,
             with_usb_lock_error: false,
+            // -- WP P2TM --
+            rest: false,
+            data: None,
+            services: Services::default(),
         }
     }
 
@@ -2503,6 +3005,10 @@ mod tests_wp_sw3 {
             with_usb: false,
             with_plain_unit: false,
             with_usb_lock_error: false,
+            // -- WP P2TM --
+            rest: false,
+            data: None,
+            services: Services::default(),
         }
     }
 }
@@ -2597,6 +3103,10 @@ mod tests_wp_hwlk1f {
             with_usb: false,
             with_plain_unit: false,
             with_usb_lock_error: false,
+            // -- WP P2TM --
+            rest: false,
+            data: None,
+            services: Services::default(),
         }
     }
 
@@ -2661,5 +3171,475 @@ mod tests_wp_hwlk1f {
         assert!(!r.on_time);
         drop(running);
         let _ = std::fs::remove_dir_all(&store);
+    }
+}
+
+// -- WP P2TM --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod tests_wp_p2tm {
+    use super::*;
+    use crate::api::status;
+    use crate::api::tests_wp_p2tm::api_call;
+    use dspi_tui::shell::connect::LinkTarget;
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    /// The demo device's serial (every fake's).
+    const DEMO: &str = "DEMO0000DSPI0001";
+    const WAIT: Duration = Duration::from_secs(20);
+
+    fn scratch(name: &str) -> PathBuf {
+        // Beside the test binary, in the target directory: never on tmpfs.
+        let dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("wp_p2tm")
+            .join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn parsed(args: &[&str]) -> Result<HubCommand, Failure> {
+        parse(args, false, Some(PathBuf::from("/store")))
+    }
+
+    fn run_options(args: &[&str]) -> RunOptions {
+        match parse(args, true, Some(PathBuf::from("/store"))) {
+            Ok(HubCommand::Run(o)) => o,
+            other => panic!("{args:?}: {other:?}"),
+        }
+    }
+
+    fn options(store: &Path) -> RunOptions {
+        let mut o = run_options(&["--port", "0", "--loopback", "--no-keep-awake"]);
+        o.name = Some("P2TM test hub".into());
+        o.store = store.to_owned();
+        o
+    }
+
+    fn client(port: u16, pin: Option<&str>, tokens: &Path) -> Target {
+        let mut l = LinkTarget::parse(&format!("127.0.0.1:{port}")).unwrap();
+        l.pin = pin.map(str::to_owned);
+        l.tokens = Some(tokens.join("link-tokens.toml"));
+        Target::Link(l)
+    }
+
+    fn pin_of(running: &Running) -> String {
+        running
+            .control
+            .auth()
+            .begin_pairing(Instant::now())
+            .unwrap()
+            .pin
+    }
+
+    fn wait_until(what: &str, mut cond: impl FnMut() -> bool) {
+        let start = Instant::now();
+        while !cond() {
+            assert!(start.elapsed() < WAIT, "timed out waiting for {what}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    /// One HTTP request to the hub's port; the status code and the body.
+    fn http(port: u16, method: &str, path: &str, key: Option<&str>) -> (u16, String) {
+        let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        s.set_read_timeout(Some(WAIT)).unwrap();
+        let auth = key.map_or_else(String::new, |k| format!("Authorization: Bearer {k}\r\n"));
+        let body = if method == "GET" {
+            ""
+        } else {
+            "Content-Length: 0\r\n"
+        };
+        write!(
+            s,
+            "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{auth}{body}Connection: close\r\n\r\n"
+        )
+        .unwrap();
+        let mut out = String::new();
+        let _ = s.read_to_string(&mut out);
+        let code = out
+            .split(' ')
+            .nth(1)
+            .and_then(|c| c.parse().ok())
+            .unwrap_or(0);
+        let body = out.split_once("\r\n\r\n").map_or("", |(_, b)| b).to_owned();
+        (code, body)
+    }
+
+    #[test]
+    fn wp_p2tm_every_service_is_on_by_default_and_each_turns_off() {
+        let o = run_options(&[]);
+        assert_eq!(o.services, Services::default());
+        assert!(!o.rest, "REST is off by default");
+        assert_eq!(o.data, None);
+        let mut config = dspi_hub::ServiceConfig::default();
+        o.services.apply(&mut config);
+        assert!(config.health.is_some() && config.history.is_some() && config.schedule.is_some());
+        assert!(config.inventory && config.identify && config.alarms && config.stats);
+
+        let o = run_options(&[
+            "--rest",
+            "--data",
+            "/data",
+            "--no-health",
+            "--no-inventory",
+            "--no-identify",
+            "--no-history",
+            "--no-alarms",
+            "--no-schedule",
+        ]);
+        assert!(o.rest);
+        assert_eq!(o.data, Some(PathBuf::from("/data")));
+        let mut config = dspi_hub::ServiceConfig::default();
+        o.services.apply(&mut config);
+        assert!(config.health.is_none() && config.history.is_none() && config.schedule.is_none());
+        assert!(!config.inventory && !config.identify && !config.alarms);
+        // `--data=DIR` too; each is for running a hub only.
+        assert_eq!(run_options(&["--data=/d"]).data, Some(PathBuf::from("/d")));
+        for bad in [
+            &["clients", "--rest"][..],
+            &["clients", "--no-alarms"],
+            &["revoke", "1", "--data", "/d"],
+            &["api-key", "list", "--rest"],
+            &["--data"],
+        ] {
+            assert!(
+                matches!(parsed(bad), Err(Failure::Usage(_))),
+                "{bad:?}: {:?}",
+                parsed(bad)
+            );
+        }
+    }
+
+    #[test]
+    fn wp_p2tm_api_key_commands_parse() {
+        let store = PathBuf::from("/store");
+        assert_eq!(
+            parsed(&["api-key", "new", "Home Assistant"]).unwrap(),
+            HubCommand::ApiKeyNew {
+                store: store.clone(),
+                name: "Home Assistant".into(),
+                role: Role::Control,
+            }
+        );
+        assert_eq!(
+            parsed(&["api-key", "new", "Dashboard", "viewer", "--store", "/s"]).unwrap(),
+            HubCommand::ApiKeyNew {
+                store: PathBuf::from("/s"),
+                name: "Dashboard".into(),
+                role: Role::Viewer,
+            }
+        );
+        assert_eq!(
+            parsed(&["api-key", "list"]).unwrap(),
+            HubCommand::ApiKeyList {
+                store: store.clone()
+            }
+        );
+        assert_eq!(
+            parsed(&["api-key", "revoke", "7"]).unwrap(),
+            HubCommand::ApiKeyRevoke { store, cid: 7 }
+        );
+        for bad in [
+            &["api-key"][..],
+            &["api-key", "new"],
+            &["api-key", "new", "  "],
+            &["api-key", "new", "x", "boss"],
+            &["api-key", "new", "x", "control", "more"],
+            &["api-key", "revoke"],
+            &["api-key", "revoke", "x"],
+            &["api-key", "frob"],
+        ] {
+            assert!(matches!(parsed(bad), Err(Failure::Usage(_))), "{bad:?}");
+        }
+        assert!(parse(&["api-key", "list"], true, Some(PathBuf::from("/s"))).is_err());
+    }
+
+    /// The entry's first done criterion: `uconsole --hub HOST api ...` against
+    /// an in-process hub with the demo device, and its exit codes.
+    #[test]
+    fn wp_p2tm_api_calls_the_hub_and_exits_by_its_code() {
+        let store = scratch("api");
+        let running = start(&options(&store), false).unwrap();
+        let port = running.control.port();
+        let pin = pin_of(&running);
+        let target = client(port, Some(&pin), &store);
+        let get = json!({"serial": DEMO, "path": "vol.master"});
+
+        // Paired with the PIN: control. A read and a write.
+        assert_eq!(api_call(&target, "param.get", get.clone()), exit::OK);
+        assert_eq!(
+            api_call(
+                &target,
+                "param.set",
+                json!({"serial": DEMO, "path": "vol.master", "value": -30.0})
+            ),
+            exit::OK
+        );
+        assert_eq!(api_call(&target, "inventory.list", json!({})), exit::OK);
+        assert_eq!(api_call(&target, "schedule.list", json!({})), exit::OK);
+        assert_eq!(api_call(&target, "alarm.list", json!({})), exit::OK);
+        assert_eq!(api_call(&target, "health.get", json!({})), exit::OK);
+        // not_found, bad_request, unknown_type; hub.stats is the admin's.
+        assert_eq!(
+            api_call(
+                &target,
+                "param.get",
+                json!({"serial": "NOPE", "path": "vol.master"})
+            ),
+            exit::NO_DEVICE
+        );
+        assert_eq!(
+            api_call(&target, "param.get", json!({"path": "vol.master"})),
+            status::BAD_REQUEST
+        );
+        assert_eq!(
+            api_call(&target, "no.such_message", json!({})),
+            status::BAD_REQUEST
+        );
+        assert_eq!(api_call(&target, "hub.stats", json!({})), status::DENIED);
+
+        // denied: a viewer may read, not write.
+        let cid = running.control.auth().clients()[0].cid;
+        assert!(command(&running, &format!("role {cid} viewer"), false));
+        assert_eq!(api_call(&target, "param.get", get.clone()), exit::OK);
+        assert_eq!(
+            api_call(
+                &target,
+                "param.set",
+                json!({"serial": DEMO, "path": "vol.master", "value": -20.0})
+            ),
+            status::DENIED
+        );
+
+        // limit_exceeded: an admin sets a profile, control crosses it.
+        assert!(command(&running, &format!("role {cid} admin"), false));
+        assert_eq!(api_call(&target, "hub.stats", json!({})), exit::OK);
+        let handle = running.handle.devices()[0].handle;
+        assert_eq!(
+            api_call(
+                &target,
+                "limits.set",
+                json!({"handle": handle, "profile": {"masterVolumeMaxDb": -10.0}})
+            ),
+            exit::OK
+        );
+        assert!(command(&running, &format!("role {cid} control"), false));
+        assert_eq!(
+            api_call(
+                &target,
+                "param.set",
+                json!({"serial": DEMO, "path": "vol.master", "value": -3.0})
+            ),
+            status::LIMIT
+        );
+        assert_eq!(
+            api_call(
+                &target,
+                "param.set",
+                json!({"serial": DEMO, "path": "vol.master", "value": -12.0})
+            ),
+            exit::OK
+        );
+
+        // offline: known to the hub, not attached; nothing sent.
+        running.handle.detach(handle).unwrap();
+        assert_eq!(api_call(&target, "param.get", get), status::OFFLINE);
+        drop(running);
+    }
+
+    /// The prompt's `inventory`, `alarms` and `schedule`, and a service off.
+    #[test]
+    fn wp_p2tm_the_prompt_reads_the_inventory_alarms_and_schedule() {
+        let store = scratch("prompt");
+        let data = store.join("data");
+        let mut o = options(&store.join("store"));
+        o.data = Some(data.clone());
+        let running = start(&o, false).unwrap();
+        wait_until("the inventory has the demo device", || {
+            ask_service(&running, "inventory.list", json!({})).is_ok_and(|v| {
+                v["devices"]
+                    .as_array()
+                    .is_some_and(|d| d.iter().any(|d| d["serial"] == DEMO))
+            })
+        });
+        let alarms = ask_service(&running, "alarm.list", json!({"state": "active"})).unwrap();
+        assert!(alarms["alarms"].is_array(), "{alarms}");
+        let rules = ask_service(&running, "schedule.list", json!({})).unwrap();
+        assert!(
+            rules["rules"].is_array() && rules["zone"].is_string(),
+            "{rules}"
+        );
+        for line in ["inventory", "alarms", "schedule", "api-key list"] {
+            assert!(command(&running, line, false), "{line}");
+            assert!(command(&running, line, true), "{line} --json");
+        }
+        // The services keep their files in --data, not in the store.
+        wait_until("inventory.json in the data folder", || {
+            data.join("inventory.json").exists()
+        });
+        assert!(!store.join("store").join("inventory.json").exists());
+        // Writes are not the prompt's reader's: it is a viewer.
+        let denied = ask_service(&running, "inventory.forget", json!({"serial": DEMO}));
+        assert!(denied.is_err_and(|e| e.contains("denied")));
+        drop(running);
+
+        let mut o = options(&scratch("prompt-off"));
+        o.services.schedule = false;
+        o.services.inventory = false;
+        let running = start(&o, false).unwrap();
+        let off = ask_service(&running, "schedule.list", json!({})).unwrap_err();
+        assert!(off.contains("off"), "{off}");
+        assert!(ask_service(&running, "inventory.list", json!({})).is_err());
+        assert!(ask_service(&running, "alarm.list", json!({})).is_ok());
+        assert!(command(&running, "schedule", false));
+        drop(running);
+    }
+
+    /// The entry's second: an API key minted at the prompt works for REST,
+    /// and stops working when revoked there.
+    #[test]
+    fn wp_p2tm_a_key_minted_at_the_prompt_works_for_rest() {
+        let store = scratch("rest");
+        let mut o = options(&store);
+        o.rest = true;
+        let running = start(&o, false).unwrap();
+        let port = running.control.port();
+        let key = mint_key(running.control.auth(), "Script", Role::Control).unwrap();
+        assert_eq!((key.role, key.key.len()), (Role::Control, 43));
+        assert!(command(&running, "api-key new Dashboard viewer", false));
+        assert!(command(&running, "api-key new Bot", true));
+        assert!(command(&running, "api-key list", false));
+        let keys: Vec<_> = running
+            .control
+            .auth()
+            .clients()
+            .into_iter()
+            .filter(|c| c.kind == ClientKind::Api)
+            .collect();
+        assert_eq!(keys.len(), 3);
+        assert!(
+            keys.iter()
+                .any(|c| c.name == "Dashboard" && c.role == Role::Viewer)
+        );
+        assert!(
+            keys.iter()
+                .any(|c| c.name == "Bot" && c.role == Role::Control)
+        );
+
+        let path = format!("/api/v1/devices/{DEMO}/params/vol.master");
+        let (code, body) = http(port, "GET", &path, Some(&key.key));
+        assert_eq!(code, 200, "{body}");
+        assert!(body.contains("\"value\""), "{body}");
+        let (code, _) = http(port, "GET", "/api/v1/health", Some(&key.key));
+        assert_eq!(code, 200);
+        let (code, _) = http(port, "GET", &path, None);
+        assert_eq!(code, 401);
+
+        // A console is not an API key; an unknown cid is none.
+        assert!(revoke_key(running.control.auth(), 9999, |_| true).is_err());
+        assert!(command(
+            &running,
+            &format!("api-key revoke {}", key.cid),
+            false
+        ));
+        assert!(
+            !running
+                .control
+                .auth()
+                .clients()
+                .iter()
+                .any(|c| c.cid == key.cid)
+        );
+        let (code, _) = http(port, "GET", &path, Some(&key.key));
+        assert_eq!(code, 401, "a revoked key");
+        drop(running);
+
+        // Without --rest, /api/v1/ is not there.
+        let running = start(&options(&store), false).unwrap();
+        let bot = running
+            .control
+            .auth()
+            .clients()
+            .into_iter()
+            .find(|c| c.name == "Bot")
+            .unwrap();
+        let (code, _) = http(running.control.port(), "GET", "/api/v1/health", None);
+        assert_eq!(code, 404);
+        // A console is refused by `api-key revoke`.
+        let pin = pin_of(&running);
+        let target = client(running.control.port(), Some(&pin), &store);
+        assert_eq!(api_call(&target, "inventory.list", json!({})), exit::OK);
+        let console = running
+            .control
+            .auth()
+            .clients()
+            .into_iter()
+            .find(|c| c.kind == ClientKind::Console)
+            .unwrap();
+        let refused = revoke_key(running.control.auth(), console.cid, |c| {
+            running.control.revoke(c)
+        });
+        assert!(matches!(refused, Err(Failure::Usage(m)) if m.contains("console")));
+        assert!(
+            running
+                .control
+                .auth()
+                .clients()
+                .iter()
+                .any(|c| c.cid == console.cid)
+        );
+        assert!(
+            running
+                .control
+                .auth()
+                .clients()
+                .iter()
+                .any(|c| c.cid == bot.cid)
+        );
+        drop(running);
+    }
+
+    /// `uconsole hub api-key ...` with the hub stopped, through the store; refused
+    /// while it runs.
+    #[test]
+    fn wp_p2tm_api_keys_are_minted_and_revoked_with_the_hub_stopped() {
+        let store = scratch("offline");
+        assert!(offline_auth(&store, |a| mint_key(a, "Early", Role::Viewer)).is_err());
+        let mut o = options(&store);
+        o.rest = true;
+        let running = start(&o, false).unwrap();
+        let busy = offline_auth(&store, |a| mint_key(a, "Now", Role::Viewer));
+        assert!(busy.is_err(), "the hub holds its store");
+        drop(running);
+
+        let key = offline_auth(&store, |a| mint_key(a, "Cron", Role::Viewer)).unwrap();
+        assert_eq!(key.role, Role::Viewer);
+        assert!(offline_keys(&store, false).is_ok());
+        let running = start(&o, false).unwrap();
+        let port = running.control.port();
+        let path = format!("/api/v1/devices/{DEMO}/params/vol.master");
+        let (code, body) = http(port, "GET", &path, Some(&key.key));
+        assert_eq!(code, 200, "{body}");
+        // A viewer key may not write.
+        let (code, _) = http(
+            port,
+            "POST",
+            &format!("/api/v1/devices/{DEMO}/presets/1/load"),
+            Some(&key.key),
+        );
+        assert_eq!(code, 403);
+        drop(running);
+
+        offline_auth(&store, |a| revoke_key(a, key.cid, |c| a.revoke(c))).unwrap();
+        assert!(offline_auth(&store, |a| revoke_key(a, key.cid, |c| a.revoke(c))).is_err());
+        let running = start(&o, false).unwrap();
+        let (code, _) = http(running.control.port(), "GET", &path, Some(&key.key));
+        assert_eq!(code, 401);
+        drop(running);
     }
 }

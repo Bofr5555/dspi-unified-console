@@ -112,6 +112,8 @@ mod pro;
 mod usb_direct_gen;
 // -- WP TMCORE -- the write path through the console core
 mod core_route;
+// -- WP P2TM -- `uconsole api`: any hub API message
+mod api;
 
 use dspi_cmd::COMMAND;
 use std::process::ExitCode;
@@ -256,6 +258,8 @@ fn main() -> ExitCode {
         Some("flash") => flash::cmd_flash(target, &flags),
         // -- WP TM11 --
         Some("hub") => hub::run(target, &flags, json),
+        // -- WP P2TM --
+        Some("api") => api::run(target, &flags, json),
         // -- WP WB7 --
         Some("web") => hub::run(target, &flags, json),
         Some("dump") => cmd_dump(target, json),
@@ -694,6 +698,10 @@ USAGE:
     {COMMAND} --install-udev  install the Linux udev rule (needs root)
     {COMMAND} hub [run]       share this machine's devices on the network, with
                              PIN pairing; clients, roles: {COMMAND} hub --help
+    {COMMAND} --hub api <type> ['<json>' | -]
+                             send any hub API message and print the answer
+                             (--json: the whole answer; exit codes by the
+                             hub's code: {COMMAND} api --help)
     {COMMAND} web             the web console on this machine, at
                              http://localhost:11916/console/ ({COMMAND} hub --local)
     {COMMAND} --version       show app and protocol versions, and credits
