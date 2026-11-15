@@ -96,8 +96,12 @@ fn wp_p0m_the_clip_hold_ends_and_clears_the_device() {
     std::thread::sleep(Duration::from_millis(80));
     // The hold ends; the core sends REQ_CLEAR_CLIPS, which the fake answers.
     assert_eq!(core.fetch_status().unwrap().clip_hold, 0);
-    // The fake keeps reporting the bit, as a channel that keeps clipping sets
-    // it again: a read after the clear lights the hold again (review p0m F1).
+    // -- WP P0MFIX -- The fake clears the sticky bit as the firmware does
+    // (WB6F): the device reads clear until the channel clips again.
+    assert_eq!(core.fetch_status().unwrap().clip_hold, 0);
+    // A channel that keeps clipping sets it again: a read after the clear
+    // lights the hold again (review p0m F1).
+    remote.set_status(block(n, &[], out1));
     assert_eq!(core.fetch_status().unwrap().clip_hold, out1);
     let clips: Vec<EventEntry> = core
         .event_log_read(String::new(), 0, 100)
