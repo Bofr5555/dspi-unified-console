@@ -316,6 +316,42 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun hubAdminEvents(): List<HubAdminEvent> = throw NotImplementedError("hub_admin_events")
 
+    override fun hubCaps(): HubCaps = throw NotImplementedError("hub_caps")
+
+    override fun hubInventory(): List<HubDevice> = throw NotImplementedError("hub_inventory")
+
+    override fun hubIdentify(seconds: Int, toneOutput: Int?): IdentifyInfo? = throw NotImplementedError("hub_identify")
+
+    override fun hubHealth(): List<HubHealth> = throw NotImplementedError("hub_health")
+
+    override fun hubStats(): HubStats = throw NotImplementedError("hub_stats")
+
+    override fun hubEventsRead(serial: String, afterId: Long, limit: Long): HubEventPage = throw NotImplementedError("hub_events_read")
+
+    override fun hubEventsWatch(on: Boolean, serial: String): Unit = throw NotImplementedError("hub_events_watch")
+
+    override fun setHubServerListener(listener: HubServerListener?): Unit = throw NotImplementedError("set_hub_server_listener")
+
+    override fun hubServerEvents(): List<HubServerEvent> = throw NotImplementedError("hub_server_events")
+
+    override fun hubSnapshotsList(serial: String): List<SnapshotInfo> = throw NotImplementedError("hub_snapshots_list")
+
+    override fun hubSnapshotsGet(id: String): HubSnapshotDocument = throw NotImplementedError("hub_snapshots_get")
+
+    override fun hubSnapshotsPut(serial: String, document: String): HubSnapshotPut = throw NotImplementedError("hub_snapshots_put")
+
+    override fun hubSnapshotsRename(id: String, name: String): SnapshotInfo = throw NotImplementedError("hub_snapshots_rename")
+
+    override fun hubSnapshotsNote(id: String, note: String): SnapshotInfo = throw NotImplementedError("hub_snapshots_note")
+
+    override fun hubSnapshotsDelete(id: String): Unit = throw NotImplementedError("hub_snapshots_delete")
+
+    override fun hubSnapshotsRecall(serial: String, id: String, guard: Boolean, timeoutMs: Long): HubSnapshotRecall = throw NotImplementedError("hub_snapshots_recall")
+
+    override fun hubSnapshotsSave(id: String): HubSnapshotPut = throw NotImplementedError("hub_snapshots_save")
+
+    override fun hubSnapshotsCopyHere(id: String): SnapshotInfo = throw NotImplementedError("hub_snapshots_copy_here")
+
     override fun getInputSourceName(source: Int): String = throw NotImplementedError("get_input_source_name")
 
     override fun setInputSourceName(source: Int, name: String): Unit = throw NotImplementedError("set_input_source_name")
@@ -627,6 +663,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun snapshotExport(id: String): String = throw NotImplementedError("snapshot_export")
 
     override fun snapshotImport(text: String, name: String, note: String): SnapshotInfo = throw NotImplementedError("snapshot_import")
+
+    override fun snapshotListMerged(serial: String): SnapshotMergedList = throw NotImplementedError("snapshot_list_merged")
 
     override fun siggenFetchCaps(): SiggenCaps = throw NotImplementedError("siggen_fetch_caps")
 

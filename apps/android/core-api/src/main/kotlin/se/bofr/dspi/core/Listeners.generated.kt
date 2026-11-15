@@ -126,3 +126,16 @@ fun interface HubAdminListener {
      */
     fun onHubAdminEvent(event: HubAdminEvent)
 }
+
+/**
+ * The hub's events of these families reach the app here (WP P2CC1): set with
+ * [`DspiCore::set_hub_server_listener`].
+ */
+fun interface HubServerListener {
+    /**
+     * A record was added to a watched history, the inventory or the hub's
+     * snapshots changed. Called on the Link session's supervisor, no core
+     * lock held: post the work to the app's own thread and return.
+     */
+    fun onHubServerEvent(event: HubServerEvent)
+}

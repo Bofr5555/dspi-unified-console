@@ -56,6 +56,8 @@ use dspi_session::preset_file::MetaKind;
 use dspi_session::snapshot_store::{SnapshotEntry, SnapshotStore};
 use serde_json::{Map, Value, json};
 
+// -- WP P2CC1 --
+use crate::hub_server::SnapshotMergedList;
 use crate::presets::Holder;
 use crate::records::DspState;
 use crate::{DspiCore, DspiError, Result, state};
@@ -536,6 +538,62 @@ impl DspiCore {
         note: String,
     ) -> Result<SnapshotInfo> {
         self.import_into_store(&text, &name, &note)
+    }
+}
+
+// -- WP P2CC1 -- the merged list: this console's store and the hub's
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// The snapshots of device `serial` ("" the open device) on both sides:
+    /// this console's store ([`DspiCore::snapshot_list`]) and, on a DSPi Link
+    /// session to a hub that keeps snapshots, the hub's
+    /// ([`DspiCore::hub_snapshots_list`]). Each row says where it is (`local`,
+    /// `hub` or `both`). **The hub's wins:** an id both sides hold with
+    /// different content (any field of the entry differs) is listed as the
+    /// hub's, and this console's as a local copy beside it; nothing is
+    /// overwritten. Never fails: a hub that cannot be read leaves the local
+    /// rows, with `hub_notice_key` saying why. A round trip on a hub: off the
+    /// UI thread.
+    pub fn snapshot_list_merged(&self, serial: String) -> SnapshotMergedList {
+        let serial = if serial.is_empty() {
+            self.lock()
+                .conn
+                .as_ref()
+                .map(|c| c.serial.clone())
+                .unwrap_or_default()
+        } else {
+            serial
+        };
+        let local = if serial.is_empty() {
+            Vec::new()
+        } else {
+            self.list_store(serial.clone())
+        };
+        let (hub, hub_listed, hub_notice_key) = if serial.is_empty() {
+            (Vec::new(), false, String::new())
+        } else {
+            match self.hub_snapshots_for_merge(&serial) {
+                Ok(Some(list)) => (list, true, String::new()),
+                Ok(None) => (Vec::new(), false, String::new()),
+                Err(e) => (Vec::new(), false, e.notice_key()),
+            }
+        };
+        SnapshotMergedList {
+            entries: crate::hub_server::merge(local, hub),
+            hub_listed,
+            hub_notice_key,
+        }
+    }
+}
+
+// -- WP P2CC1 --
+impl DspiCore {
+    /// File a copy of a hub's snapshot document `text` of `serial` in this
+    /// console's store, as it is (its capture time makes its id where free).
+    pub(crate) fn snapshot_file_copy(&self, serial: &str, text: &str) -> Result<SnapshotInfo> {
+        let doc = crate::files::parse_config(text).map_err(invalid)?;
+        check_snapshot(&doc)?;
+        self.file_copy_in_store(serial, doc)
     }
 }
 
@@ -1155,6 +1213,18 @@ impl DspiCore {
         self.store()?.delete(id).map_err(io_error)
     }
 
+    // -- WP P2CC1 --
+    fn file_copy_in_store(&self, serial: &str, mut doc: Value) -> Result<SnapshotInfo> {
+        let store = self.store()?;
+        let saved = at(&doc, &[BLOCK, "savedMs"])
+            .as_i64()
+            .unwrap_or_else(crate::events::now_ms);
+        store
+            .save(serial, &mut doc, saved)
+            .map(SnapshotInfo::from)
+            .map_err(io_error)
+    }
+
     fn import_into_store(&self, text: &str, name: &str, note: &str) -> Result<SnapshotInfo> {
         let store = self.store()?;
         let mut doc = crate::files::parse_config(text).map_err(invalid)?;
@@ -1224,6 +1294,10 @@ impl DspiCore {
         Err(DspiError::Unsupported)
     }
     fn import_into_store(&self, _text: &str, _name: &str, _note: &str) -> Result<SnapshotInfo> {
+        Err(DspiError::Unsupported)
+    }
+    // -- WP P2CC1 --
+    fn file_copy_in_store(&self, _serial: &str, _doc: Value) -> Result<SnapshotInfo> {
         Err(DspiError::Unsupported)
     }
 }
