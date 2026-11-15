@@ -265,7 +265,7 @@ void hardwareSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp11: a pin picker keeps its pin and leaves out the held ones"),
             holds(choices, pin0) && !holds(choices, device->state()->output_pins[1])
                 && !holds(choices, device->state()->i2s_bck_pin));
-    // The demo has no pin setter: the bus of slot 2 is the live change here
+    // The bus of slot 2 is the live change here
     const int type1 = device->state()->output_types[1];
     ui.choose(QStringLiteral("Outputs.type.1"), type1 == 0 ? 1 : 0);
     d.check(QStringLiteral("qp11: a bus change applies at once"),
@@ -274,8 +274,26 @@ void hardwareSection(SmokeDriver &d) {
             d.waitFor(1000, [&]() { return hw->statusText().startsWith(QLatin1String("Output 2 set to")) && !hw->statusError(); })
                 && ui.shown(QStringLiteral("Outputs.status")));
     // A refused one says why
-    hw->setOutputPin(0, pin0);
-    d.check(QStringLiteral("qp11: a refused pin change says so"), d.waitFor(3000, [&]() { return hw->statusError(); }));
+    // -- WP CG-SWS-b -- the demo answers pin requests now, and moving to the pin an
+    // output already has is a no-op: refuse a move onto Output 2's pin (the core's
+    // pin map refuses it before sending, PIN_IN_USE), then move to a free one
+    const int pin1 = device->state()->output_pins[1];
+    hw->setOutputPin(0, pin1);
+    d.check(QStringLiteral("qp11: a refused pin change says so"),
+            d.waitFor(3000, [&]() { return hw->statusError() && hw->statusText().contains(QString::number(pin1)); })
+                && device->state()->output_pins[0] == pin0);
+    int freePin = -1;
+    for (const QVariant &c : choices) {
+        const int p = c.toMap().value(QStringLiteral("pin")).toInt();
+        if (p != pin0 && freePin < 0) freePin = p;
+    }
+    if (freePin >= 0) {
+        hw->setOutputPin(0, freePin);
+        d.check(QStringLiteral("qp11: a pin change to a free pin applies"),
+                d.waitFor(3000, [&]() { return device->state()->output_pins[0] == freePin && !hw->statusError(); }));
+        hw->setOutputPin(0, pin0);
+        d.waitFor(3000, [&]() { return device->state()->output_pins[0] == pin0; });
+    }
     d.check(QStringLiteral("qp11: and the bar offers to keep it"), hw->pending() && ui.barShown());
     d.app().core->worker()->post([](FfiCore *c) { dspi_demo_output_save_status(c, 1); });
     hw->save();
