@@ -65,6 +65,11 @@ sha2 = "0.11"
 getrandom = "0.4"
 # base64url for tokens and hex for their hashes. Already in the graph through dspi-link.
 data-encoding = "2"
+# -- WP P2SC --
+# Schedules run in the hub machine's local time (OD-P2h): its time zone from the
+# system's zone database (TZ, /etc/localtime; bundled on Windows only), DST gaps
+# and repeats resolved by the zone's own transitions.
+jiff = "=0.2.39"
 
 [dev-dependencies]
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
@@ -109,6 +114,11 @@ required-features = ["api"]
 # -- WP P2RS --
 [[test]]
 name = "wp_p2rs_rest"
+required-features = ["api"]
+
+# -- WP P2SC --
+[[test]]
+name = "wp_p2sc_schedule"
 required-features = ["api"]
 
 # -- WP HB7 --

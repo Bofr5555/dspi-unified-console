@@ -362,6 +362,29 @@ impl HubService for ApiService {
     }
 }
 
+// -- WP P2SC --
+#[cfg(feature = "api")]
+/// Run one action of another family (schedules) through this executor, as `session`:
+/// `param.set`, `preset.load` or `snapshot.recall`, with the message's fields (its
+/// device in `serial`). The same handlers, checks and answers as over DSPi Link.
+pub(crate) fn run_action(
+    exec: &exec::Executor,
+    store: Option<&HubSnapshots>,
+    hub: &HubHandle,
+    session: &Arc<Session>,
+    t: &str,
+    msg: &Value,
+) -> Result<Value, ApiError> {
+    match t {
+        "param.set" => params::handle(exec, hub, session, t, msg),
+        "preset.load" => presets::handle(exec, hub, session, t, msg),
+        "snapshot.recall" => recall::handle(exec, store, hub, session, msg),
+        _ => Err(ApiError::bad(format!(
+            "{t} is not an action of the executor"
+        ))),
+    }
+}
+
 // ── Shared checks of the actions ────────────────────────────────────────────
 
 #[cfg(feature = "api")]

@@ -36,7 +36,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | draft |
 | 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | draft |
 | 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | draft |
-| 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | draft |
+| 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | built (P2SC) |
 | 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | draft |
 | 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | built (P2RS) |
 | 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | built |
@@ -589,17 +589,19 @@ or as the JSON object. The demo device's snapshot runs to about 80 KB pretty-pri
 
 ## 12. Schedules
 
-*State: draft (P2SC).*
+*State: built (P2SC). `crates/dspi-hub/src/schedule.rs` (on with `ServiceConfig::schedule`; the runs need the
+parameter API's executor, feature `api`), tests `crates/dspi-hub/src/schedule/tests_wp_p2sc.rs` (the clock rules)
+and `crates/dspi-hub/tests/wp_p2sc_schedule.rs` (through the server).*
 
 Rules in `schedule.json` (admin). A rule runs as the principal `Schedule: <name>` with the admin role, so the limits judge
 its writes (an image held after the fact, as for any admin).
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `schedule.list` | viewer | | `rules`, each with `next_run` and `last` (`{at, ok}`) |
-| `schedule.set` | admin | `rule` (a new one without `id`) | `rule` |
-| `schedule.delete` | admin | `rule` (its `id`) | `rule` |
-| `schedule.run_now` | admin | `rule` (its `id`) | `rule`, `name`, `at`, `by`, `results` (the run's, as `schedule.ran`) |
+| `schedule.list` | viewer | | `rules`, each with `next_run` (UTC, `null` when none within a week or while the clock is unset) and `last` (`{at, ok}`, with `skipped: true` for a time that was skipped; `null` before the first); `zone` (the time zone the rules are read in), `local_time` (the hub's local time now, `YYYY-MM-DDTHH:MM`), `clock_unset` |
+| `schedule.set` | admin | `rule` (a new one without `id`; with `id`, that rule replaced whole) | `rule`, as listed |
+| `schedule.delete` | admin | `rule` (its `id`) | `rule` (the id) |
+| `schedule.run_now` | admin | `rule` (its `id`) | `rule`, `name`, `at`, `by`, `results` (the run's, as `schedule.ran`); `conflict` while the clock is unset |
 
 A rule:
 
@@ -611,23 +613,36 @@ A rule:
  "targets": ["E46058388B1A2E2C", "E6614103E7A1B2C3"]}
 ```
 
-- `when` is `{days, time}` (local `HH:MM` on the given days) or `{once: "2026-12-24T17:00"}` (a local date and time).
-- `actions` (at most 16), each a message of this page with its device field left out: `preset.load {slot or name}`,
-  `snapshot.recall {snapshot or name}`, `system.scene.apply {scene}` (no target needed), `param.set` for `vol.master`,
-  `vol.user`, `vol.mute` and `out.mute` only.
-- `targets`: serials; `group:<id>` is reserved (phase 3, `unsupported` until then).
+- `id` is the hub's (`r1`, `r2`, ...; never reused). `name`: 1 to 48 characters. `enabled` (default `true`): a rule
+  that is off keeps its place and never runs on its schedule; `run_now` still runs it.
+- `when` is `{days, time}` (local `HH:MM` on the given days, `"mon"` to `"sun"`) or `{once: "2026-12-24T17:00"}` (a
+  local date and time). A rule whose `when` is changed may run today at its new time.
+- `actions` (1 to 16), each a message of this page with its device field left out: `preset.load {slot or name}`,
+  `snapshot.recall {snapshot or name}` (no guard), `system.scene.apply {scene}` (no target needed), `param.set {path,
+  idx?, value}` for `vol.master`, `vol.user`, `vol.mute` and `out.mute` only. Other fields are dropped. A value outside
+  the registry's range is reported by the run (`bad_request`), as the message itself answers it.
+- `targets`: at most 16 serials, each once (16 actions on 16 devices answer 256 rows, one frame); `group:<id>` is
+  reserved (phase 3, `unsupported` until then). A rule with any device action needs a target.
+- More than 256 rules is `conflict`; a malformed rule `bad_request`; an unknown `id` `not_found`.
 
-**The clock** (OD-P2h): local time in the hub machine's time zone. After downtime a rule missed by up to 5 minutes runs;
-older ones do not. A forward jump of the clock skips what it passed (and records it); a backward jump never runs a rule
-twice in a day. A local time that does not exist (spring forward) runs at the next valid minute; one that happens twice
-(fall back) runs once. While the clock reads before the build date nothing runs and `clock_unset` is raised.
+**The clock** (OD-P2h): local time in the hub machine's time zone (its zone database: `TZ`, `/etc/localtime`). At start,
+and when the clock first reads a believable time, a rule missed by up to 5 minutes runs; older ones do not. A forward jump
+of the clock (more wall time than the hub's own steady time passed) skips what it passed and records it (`last.skipped`,
+and a `schedule` line "skipped" in each target's history); a backward jump never runs a rule twice in a day (a rule runs at
+most once per local date). A local time that does not exist (spring forward) runs at the first minute after the gap (02:30
+on a 02:00-to-03:00 day runs at 03:00); one that happens twice (fall back) runs once, at the first. While the clock reads
+before the build date nothing runs (`run_now` answers `conflict`) and `schedule.list` says `clock_unset: true`; the
+`clock_unset` alarm itself is the alarms family's (section 7, P2AL), raised and cleared there against the same build date. The hub looks at the clock at least every 30 s, so a jump is seen within that.
 
 Each run answers per action and target: `results: [{serial, action, ok, code?, msg?}]`, where `action` is a string
-naming the action by its position in `actions` and its `t` (`"0:preset.load"`). An offline target fails at
-once and is not tried later; a target with a pending guarded apply is `conflict`. Event to every session:
-`schedule.ran {v, hub, rule, name, at, by?, results}` (`rule` the rule's id, since events carry no `id`; `by` the admin
-for `run_now`). Each run is recorded in the history;
-a failure raises `schedule_failed`.
+naming the action by its position in `actions` and its `t` (`"0:preset.load"`), in the rule's order (each action on
+every target, then the next action). An offline target fails at once (`offline`; a serial the hub has never seen is
+`not_found`) and is not tried later; a target with a pending guarded apply is `conflict`; a limit's refusal is
+`limit_exceeded`, nothing sent. A scene's row is one per unit it wrote (`ok` when every write of it went through), or one
+row with `serial` `""` when the scene was refused as a whole (`not_found`: no such scene). `msg` is at most 80
+characters. Event to every session: `schedule.ran {v, hub, rule, name, at, by?, results}` (`rule` the rule's id, since
+events carry no `id`; `by` the admin for `run_now`, `null` on its schedule). Each run is recorded in the history (one
+`schedule` record per device, `by` the admin or `Schedule: <name>`); a failure raises `schedule_failed`.
 
 ## 13. MQTT and Home Assistant
 

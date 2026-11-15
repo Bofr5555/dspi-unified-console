@@ -93,6 +93,8 @@ pub mod api;
 pub mod rest;
 // -- WP P2AL -- device alarms
 pub mod device_alarms;
+// -- WP P2SC -- schedules (they run with feature `api`)
+pub mod schedule;
 
 pub use auth::AccessMode;
 pub use error::HubError;
@@ -126,3 +128,5 @@ pub use service::{DeviceEvent, HubService, ServiceConfig, SessionLabel};
 pub use health::HealthConfig;
 // -- WP P2EV --
 pub use history::HistoryConfig;
+// -- WP P2SC --
+pub use schedule::ScheduleConfig;

@@ -16,6 +16,7 @@
 //! | `hub/inventory.json` | the hub's inventory (WP P2IN), secrets removed the same way |
 //! | `hub/alarms.json` | the hub's alarm rules (WP P2AL), secrets removed the same way |
 //! | `hub/outbound.json` | the hub's notification targets (WP P2WH, entry WP P2AL): each secret, CA and pin as `set` or `not set`, each URL to its host |
+//! | `hub/schedule.json` | the hub's schedule rules (WP P2SC), secrets removed the same way |
 //! | `system/os.json` | OS facts: name, architecture, release, the udev rule on Linux |
 //! | `system/usb.json` | DSPis and bootloaders on the bus, by enumeration only |
 //! | `client/<name>` | files the client adds (`uconsole doctor`'s report, a log) |
@@ -156,6 +157,8 @@ impl DspiCore {
         // -- WP P2AL --
         diag_hub_data(&mut b, &options.hub_store_dir, HUB_ALARMS_FILE);
         diag_hub_outbound(&mut b, &options.hub_store_dir);
+        // -- WP P2SC --
+        diag_hub_data(&mut b, &options.hub_store_dir, HUB_SCHEDULE_FILE);
         b.json("system/os.json", &os_facts());
         b.json("system/usb.json", &self.diag_usb(&scrub));
         diag_client_files(&mut b, options.files, &scrub);
@@ -514,6 +517,10 @@ fn diag_hub_store(b: &mut Bundle, dir: &str) {
 const HUB_INVENTORY_FILE: &str = "inventory.json";
 /// The largest phase-2 hub data file read (the inventory's own limit is 8 MiB).
 const HUB_DATA_MAX: u64 = 8 << 20;
+// -- WP P2SC --
+/// The hub's schedule rules in its data folder (dspi-hub `schedule.rs`; no secrets in it,
+/// redacted all the same).
+const HUB_SCHEDULE_FILE: &str = "schedule.json";
 
 /// A phase-2 data file of the hub under `dir` (PLAN-P2, review S6), redacted as the
 /// store is, as `hub/<file>`. No folder named, or no such file: nothing, and no note
@@ -843,3 +850,7 @@ mod tests_wp_p2in;
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests_wp_p2al;
+// -- WP P2SC --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p2sc;
