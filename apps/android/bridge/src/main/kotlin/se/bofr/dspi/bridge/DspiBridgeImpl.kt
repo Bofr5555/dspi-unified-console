@@ -310,6 +310,9 @@ class DspiBridgeImpl(
     // -- WP P1AN2 --
     override val installer: Installer by lazy { InstallerImpl(this) }
 
+    // -- WP P2AN --
+    override val hubServer: HubServer by lazy { HubServerImpl(this) }
+
     private var uiVisible = true
     private var pollJob: Job? = null
     private var hotplugJob: Job? = null
