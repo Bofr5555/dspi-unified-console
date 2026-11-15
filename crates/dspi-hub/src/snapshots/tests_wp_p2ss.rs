@@ -493,3 +493,113 @@ fn wp_p2ss_fixup_a_snapshot_at_the_cap_survives_two_renames() {
             .created
     );
 }
+
+// -- WP P2SSFIX -- review p2b F4: the wire cap on the compact form.
+
+/// A snapshot of the demo device's size: a real three-way preset made a snapshot, with a
+/// bulk image padded to `image` characters (about 50 KB compact, 75 KB pretty at 19 000).
+fn wp_p2ssfix_demo_doc(serial: &str, id: &str, image: usize) -> Value {
+    let mut doc: Value = serde_json::from_str(include_str!(
+        "../../../../assets/templates/3way-rp2350.dspipreset"
+    ))
+    .unwrap();
+    doc["meta"]["kind"] = json!("snapshot");
+    doc["snapshot"] = json!({"id": id, "serial": serial, "savedMs": 1_700_000_000_000_i64, "image": "Q".repeat(image)});
+    doc
+}
+
+#[test]
+fn wp_p2ssfix_a_demo_size_document_puts_and_gets_under_the_wire_cap() {
+    let (h, _) = hub_and_client("wire-demo");
+    let doc = wp_p2ssfix_demo_doc("DEMO", "0001700000000001", 19_000);
+    let compact = serde_json::to_string(&doc).unwrap();
+    let pretty = serde_json::to_string_pretty(&doc).unwrap();
+    assert!(
+        (45_000..55_000).contains(&compact.len()),
+        "compact {}",
+        compact.len()
+    );
+    // Filed pretty, which is over the wire cap: the wire never carries that form.
+    assert!(
+        pretty.len() as u64 > super::MAX_WIRE_DOC_BYTES,
+        "pretty {}",
+        pretty.len()
+    );
+
+    // As text, the frame a client sends is under MAX_FRAME.
+    let put = json!({"t": "snapshot.put", "id": 1, "serial": "DEMO", "document": compact});
+    assert!(put.to_string().len() < crate::server::MAX_FRAME as usize);
+    let a = ask(&h, Role::Control, put);
+    assert_eq!(a["t"], "ok", "{a}");
+    let path = h.root().join("s-DEMO").join("0001700000000001.dspipreset");
+    assert_eq!(fs::read_to_string(&path).unwrap(), pretty);
+
+    // The answer is compact, valid, the same document, and fits a frame.
+    let raw = h
+        .handle_message(
+            Role::Viewer,
+            &json!({"t": "snapshot.get", "id": 2, "snapshot": "0001700000000001"}),
+        )
+        .unwrap();
+    assert!(
+        raw.len() < crate::server::MAX_FRAME as usize,
+        "answer {}",
+        raw.len()
+    );
+    let g: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(g["t"], "ok", "{g}");
+    let text = g["document"].as_str().unwrap();
+    assert_eq!(text, compact);
+    assert!(!text.contains('\n'));
+    assert_eq!(serde_json::from_str::<Value>(text).unwrap(), doc);
+    // The hub's own reads (recall) still get the filed text.
+    assert_eq!(h.get("0001700000000001").unwrap().1, pretty);
+}
+
+#[test]
+fn wp_p2ssfix_an_oversize_compact_document_is_refused_with_its_size() {
+    let (h, _) = hub_and_client("wire-over");
+    let doc = wp_p2ssfix_demo_doc("DEMO", "0001700000000002", 40_000);
+    let compact_len = serde_json::to_string(&doc).unwrap().len();
+    assert!(compact_len as u64 > super::MAX_WIRE_DOC_BYTES);
+    // Under the filing cap: only the wire cap refuses it.
+    assert!((serde_json::to_string_pretty(&doc).unwrap().len() as u64) < Caps::default().doc_bytes);
+    for document in [json!(serde_json::to_string(&doc).unwrap()), doc.clone()] {
+        let a = ask(
+            &h,
+            Role::Admin,
+            json!({"t": "snapshot.put", "id": 1, "serial": "DEMO", "document": document}),
+        );
+        assert_eq!(code(&a), "conflict", "{a}");
+        let msg = a["msg"].as_str().unwrap();
+        assert!(msg.contains(&compact_len.to_string()), "{msg}");
+        assert!(
+            msg.contains(&super::MAX_WIRE_DOC_BYTES.to_string()),
+            "{msg}"
+        );
+    }
+    assert!(h.list("DEMO").unwrap().is_empty());
+
+    // A document filed by hand over the wire cap is not answered either, with its size.
+    let dir = h.root().join("s-DEMO");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("0001700000000002.dspipreset"),
+        serde_json::to_string_pretty(&doc).unwrap(),
+    )
+    .unwrap();
+    let g = ask(
+        &h,
+        Role::Viewer,
+        json!({"t": "snapshot.get", "id": 2, "snapshot": "0001700000000002"}),
+    );
+    assert_eq!(code(&g), "conflict", "{g}");
+    assert!(
+        g["msg"]
+            .as_str()
+            .unwrap()
+            .contains(&compact_len.to_string()),
+        "{g}"
+    );
+    assert_eq!(super::MAX_WIRE_DOC_BYTES, 65536 - 4096);
+}
