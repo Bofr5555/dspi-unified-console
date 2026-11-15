@@ -3454,3 +3454,7 @@ mod tests_wp_cs1;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1df;
+// -- WP RATEFIX --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_ratefix;
