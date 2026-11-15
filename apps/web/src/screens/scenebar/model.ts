@@ -52,11 +52,15 @@ export function slotLabel(v: SlotView, storing: boolean): string {
   return `${storing ? "Store in" : "Recall"} ${v.number}: ${v.name}${state ? ` (${state})` : ""}`;
 }
 
-/** The line beside the bar's label: the active slot, and whether its settings are saved. */
-export function activeLine(views: SlotView[]): string {
+/**
+ * The line beside the bar's label: the active slot. -- fixup b4fix F1 -- whether its
+ * settings are saved is a mark of its own (`unsaved`), always laid out and only shown
+ * when true, so the bar keeps its size as the mark comes and goes.
+ */
+export function activeLine(views: SlotView[]): { text: string; unsaved: boolean } {
   const a = views.find((v) => v.active);
-  if (!a) return "";
-  return `${a.number}: ${a.name}${a.unsaved ? " · Unsaved" : ""}`;
+  if (!a) return { text: "", unsaved: false };
+  return { text: `${a.number}: ${a.name}`, unsaved: a.unsaved };
 }
 
 /**

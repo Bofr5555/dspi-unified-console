@@ -66,14 +66,22 @@ test("WB6e: ten numbered slots, the active one marked, and its unsaved state onc
   await expect(slot(bar, a + 1)).toHaveAccessibleName(`Recall ${a + 1}: ${st.presetNames[a]} (active)`);
   const empty = [...Array(10).keys()].find((i) => (st.presetOccupied & (1 << i)) === 0)!;
   await expect(slot(bar, empty + 1)).toHaveAccessibleName(`Recall ${empty + 1}: Empty`);
-  await expect(bar.getByLabel("Active preset")).toHaveText(`${a + 1}: ${st.presetNames[a]}`);
+  const line = bar.getByLabel("Active preset");
+  await expect(line).toHaveText(new RegExp(`^${a + 1}: ${st.presetNames[a]}`));
+  await expect(line.locator(".slot-unsaved")).toBeHidden();
+  // -- fixup b4fix F1 -- the bar's size, to compare once the unsaved mark shows
+  const before = await bar.boundingBox();
   // Recall is the verb on; Store is off.
   await expect(bar.getByRole("button", { name: "Recall", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(bar.getByRole("button", { name: "Store", exact: true })).toHaveAttribute("aria-pressed", "false");
 
   await setGain(session, -6);
   await expect(slot(bar, a + 1)).toHaveAccessibleName(/\(active, unsaved\)$/);
-  await expect(bar.getByLabel("Active preset")).toHaveText(`${a + 1}: ${st.presetNames[a]} · Unsaved`);
+  await expect(line.locator(".slot-unsaved")).toBeVisible();
+  await expect(line.locator(".slot-unsaved")).toHaveText("· Unsaved");
+  // The mark keeps its room while hidden: the bar is the same size with it (nothing below moves).
+  const after = await bar.boundingBox();
+  expect([after!.width, after!.height]).toEqual([before!.width, before!.height]);
   expect(errors).toEqual([]);
 });
 
@@ -159,7 +167,11 @@ test("WB6e: Store arms the bar; the next slot stores the live settings there, as
 
   const storeBtn = bar.getByRole("button", { name: "Store", exact: true });
   // Armed, then disarmed by Escape and by Recall: nothing stored.
+  // -- fixup b4fix F1 -- arming Store changes the bar's words, never its size
+  const size = await bar.boundingBox();
   await storeBtn.click();
+  const armed = await bar.boundingBox();
+  expect([armed!.width, armed!.height]).toEqual([size!.width, size!.height]);
   await expect(storeBtn).toHaveAttribute("aria-pressed", "true");
   await expect(slot(bar, empty + 1)).toHaveAccessibleName(`Store in ${empty + 1}: Empty`);
   await expect(bar.getByRole("status")).toContainText("Choose the slot");

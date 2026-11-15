@@ -162,7 +162,8 @@ test("WB6d: effects: per-output ones only while on, by their output mask; device
       ["subharm", false, ""],
     ],
   );
-  assert.ok(c.deviceEffects.every((b) => b.open === null), "the effects have no screen yet");
+  // -- fixup b4fix N3 -- each opens the Effects screen at itself
+  assert.ok(c.deviceEffects.every((b) => b.open?.screen === "effects" && b.open.effect === b.id), "the effects open their screen");
   // A firmware without an effect has no field for it: not listed.
   const bare = chainView(state({ tube: [], subharm: undefined as unknown as number[], crossfeedEnabled: undefined }), LABELS, 2);
   assert.deepEqual(

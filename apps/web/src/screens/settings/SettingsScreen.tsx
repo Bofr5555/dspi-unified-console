@@ -516,7 +516,7 @@ function AdvancedPage(props: ScreenProps & { vregShown: boolean; onVreg: () => v
             <dd>{session.source.kind}</dd>
             <dt>Mode</dt>
             <dd>{props.mode ?? "-"}</dd>
-            <dt>Link</dt>
+            <dt>DSPi Link</dt>
             <dd>{st.link?.phase ?? "-"}</dd>
             <dt>Read only</dt>
             <dd>{session.readOnlyReason || "no"}</dd>

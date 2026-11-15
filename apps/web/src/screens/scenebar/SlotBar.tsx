@@ -2,7 +2,8 @@
 // slots as numbered recall buttons, the active one and its unsaved state
 // marked, and Recall and Store as explicit verbs: a number recalls its slot
 // while Recall is on; Store arms the bar so the next number stores the live
-// settings there instead (asked first), and Recall or Escape disarms it. Every action is the core's (see
+// settings there instead (asked first), and Recall or Escape disarms it.
+// -- fixup b4fix F1 -- the bar's size never changes with its state (see dspi-web.css). Every action is the core's (see
 // model.ts). Off while read only, and one action at a time.
 
 import { useState } from "preact/hooks";
@@ -21,6 +22,7 @@ export function SlotBar(props: { session: Session; ask: Ask; unsaved: () => Prom
   const ro = session.readOnlyReason;
   const dirty = st.unsaved.length > 0 && !ro;
   const views = slotViews(s, dirty);
+  const line = activeLine(views);
   const verbs = { session, ask: props.ask, unsaved: props.unsaved };
 
   const run = async (f: () => Promise<unknown>) => {
@@ -55,32 +57,22 @@ export function SlotBar(props: { session: Session; ask: Ask; unsaved: () => Prom
         }
       }}
     >
-      <div class="sys-scene-row">
+      {/* -- fixup b4fix F1 -- a size set by the width alone: the head is one line (label, the
+          active slot or the Store hint, the verbs) and the slots wrap below by width; nothing
+          below moves as the unsaved mark or Store comes and goes */}
+      <div class="sys-scene-row slot-head">
         <span class="sys-label">Presets</span>
-        <span class="slot-active" aria-label="Active preset">
-          {activeLine(views)}
-        </span>
-        <span class="slot-buttons">
-          {views.map((v) => (
-            <button
-              type="button"
-              key={v.slot}
-              class={`sys-scene slot${v.active ? " active" : ""}${v.occupied ? "" : " empty"}${v.unsaved ? " unsaved" : ""}`}
-              aria-current={v.active ? "true" : undefined}
-              aria-label={slotLabel(v, storing)}
-              title={ro || slotLabel(v, storing)}
-              disabled={off}
-              onClick={() => press(v.slot)}
-            >
-              <span class="sys-scene-n">{v.number}</span>
-              <span class="slot-name">{v.name}</span>
-              {v.unsaved ? (
-                <span class="slot-dot" aria-hidden="true">
-                  •
-                </span>
-              ) : null}
-            </button>
-          ))}
+        <span class="slot-line" role="status">
+          {storing ? (
+            "Choose the slot to store in"
+          ) : (
+            <span class="slot-active" aria-label="Active preset">
+              {line.text}
+              <span class={`slot-unsaved${line.unsaved ? " on" : ""}`} aria-hidden={!line.unsaved}>
+                {" · Unsaved"}
+              </span>
+            </span>
+          )}
         </span>
         <span class="slot-verbs" role="group" aria-label="What a slot button does">
           <button
@@ -105,11 +97,27 @@ export function SlotBar(props: { session: Session; ask: Ask; unsaved: () => Prom
           </button>
         </span>
       </div>
-      {storing ? (
-        <p class="sys-note" role="status">
-          Choose the slot to store the current settings in, or Recall to go back.
-        </p>
-      ) : null}
+      <div class="slot-buttons">
+        {views.map((v) => (
+          <button
+            type="button"
+            key={v.slot}
+            class={`sys-scene slot${v.active ? " active" : ""}${v.occupied ? "" : " empty"}${v.unsaved ? " unsaved" : ""}`}
+            aria-current={v.active ? "true" : undefined}
+            aria-label={slotLabel(v, storing)}
+            title={ro || slotLabel(v, storing)}
+            disabled={off}
+            onClick={() => press(v.slot)}
+          >
+            <span class="sys-scene-n">{v.number}</span>
+            <span class="slot-name">{v.name}</span>
+            {/* -- fixup b4fix F1 -- every button keeps the dot's room */}
+            <span class={`slot-dot${v.unsaved ? " on" : ""}`} aria-hidden="true">
+              •
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

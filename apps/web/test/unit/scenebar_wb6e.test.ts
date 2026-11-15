@@ -36,8 +36,8 @@ test("WB6e: ten numbered slots, the active one and its unsaved state marked, emp
   assert.equal(slotLabel(v[2]!, false), "Recall 3: Preset 3 (active, unsaved)");
   assert.equal(slotLabel(v[0]!, false), "Recall 1: Demo");
   assert.equal(slotLabel(v[1]!, true), "Store in 2: Empty");
-  assert.equal(activeLine(v), "3: Preset 3 · Unsaved");
-  assert.equal(activeLine(slotViews(slots(0, 1, ["Demo"]), false)), "1: Demo");
+  assert.deepEqual(activeLine(v), { text: "3: Preset 3", unsaved: true });
+  assert.deepEqual(activeLine(slotViews(slots(0, 1, ["Demo"]), false)), { text: "1: Demo", unsaved: false });
 });
 
 test("WB6e: a recall asks only when something unsaved would be lost", () => {
