@@ -445,7 +445,11 @@ fn wp_p1lm_no_document_or_bundle_holds_the_pin_hash() {
     apply(&core, &profile());
     let store = LimitsStore::new(&d);
     let s = serial(&core);
-    store.set_pin(&s, "4711").unwrap();
+    // -- WP FLAKE3 -- a PIN no document can hold by chance: "4711" matched digits in a
+    // snapshot's own numbers. '~' is in no number, hex, base64 or name the core writes,
+    // and JSON writes it as it is.
+    let pin = "~flake3~4711~";
+    store.set_pin(&s, pin).unwrap();
     let rec = store.pin(&s).unwrap().unwrap();
     assert!(store.dir(&s).join(PIN_FILE).exists());
 
@@ -465,6 +469,29 @@ fn wp_p1lm_no_document_or_bundle_holds_the_pin_hash() {
         })
         .unwrap();
     let zip = String::from_utf8_lossy(&zip).into_owned();
+    // The PIN as JSON would write it too, should an encoder escape it.
+    let escaped = serde_json::to_string(pin).unwrap();
+    let escaped = escaped.trim_matches('"').to_owned();
+    let leak = |text: &str| -> Option<&'static str> {
+        if text.contains(&rec.hash) {
+            Some("the PIN hash")
+        } else if text.contains(&rec.salt) {
+            Some("the PIN salt")
+        } else if text.contains(pin) || text.contains(&escaped) {
+            Some("the PIN")
+        } else {
+            None
+        }
+    };
+    // The check catches a real leak: each secret, set into a document as a field.
+    for secret in [pin, rec.hash.as_str(), rec.salt.as_str()] {
+        let mut doc: Value = serde_json::from_str(&snapshot).unwrap();
+        doc["meta"]["leak"] = json!(secret);
+        assert!(
+            leak(&doc.to_string()).is_some(),
+            "a leaked {secret} is found"
+        );
+    }
     for (what, text) in [
         ("export", &export),
         ("snapshot", &snapshot),
@@ -472,9 +499,7 @@ fn wp_p1lm_no_document_or_bundle_holds_the_pin_hash() {
         ("profile", &profile_doc),
         ("bundle", &zip),
     ] {
-        assert!(!text.contains(&rec.hash), "{what} holds the PIN hash");
-        assert!(!text.contains(&rec.salt), "{what} holds the PIN salt");
-        assert!(!text.contains("4711"), "{what} holds the PIN");
+        assert_eq!(leak(text), None, "{what} holds a PIN secret");
     }
 }
 
