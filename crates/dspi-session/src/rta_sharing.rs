@@ -87,7 +87,28 @@ pub struct Sharing {
     /// A choice of ours whose echo has not come through the event sequence yet.
     /// Never set while following.
     pending: Option<Pending>,
+    // -- WP CORENITS --
+    /// Our pushes whose echo has not been drained yet, oldest first, at most
+    /// [`OWN_PUSHES_MAX`]. An event matching one is ours even when the hub
+    /// attributes it to nobody (ANLAST N1), and one the device is known to
+    /// have left since is stale and ignored (N2).
+    own_pushes: Vec<OwnPush>,
 }
+
+// -- WP CORENITS --
+/// A push of ours not yet echoed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OwnPush {
+    config: RtaConfig,
+    /// A readback showed the device holding another console's configuration
+    /// after this went out: its echo, when drained, is older than that.
+    left: bool,
+}
+
+// -- WP CORENITS --
+/// Unechoed pushes kept; only firmware without the event (no echo ever) or
+/// lost echoes fill it, and the oldest goes first.
+const OWN_PUSHES_MAX: usize = 4;
 
 // -- WP ANLAST --
 /// A choice of ours the device has not been seen to apply yet.
@@ -359,6 +380,19 @@ impl Sharing {
         else {
             return false;
         };
+        // -- WP CORENITS -- an echo of a push of ours: the echo rule says so,
+        // or the hub attributes it to nobody (its window passed) and we sent
+        // it. One the device has left since is stale and changes nothing (N2);
+        // one attributed to nobody is still ours (N1).
+        let echoed = if own || origin == 0 {
+            self.take_own_push(&config)
+        } else {
+            None
+        };
+        if echoed == Some(true) {
+            return true;
+        }
+        let own = own || echoed.is_some();
         self.epoch = self.epoch.wrapping_add(1);
         // While released this is judged against what we last asked for, so a
         // later request follows a change made in the meantime.
@@ -384,6 +418,20 @@ impl Sharing {
             // superseded by one still in flight.
         }
         true
+    }
+
+    // -- WP CORENITS --
+    /// Drop the oldest unechoed push matching `config`, with every older one
+    /// (events come in push order, so their echoes are gone); `Some(left)` if
+    /// there was one.
+    fn take_own_push(&mut self, config: &RtaConfig) -> Option<bool> {
+        let at = self
+            .own_pushes
+            .iter()
+            .position(|p| same_choice(&p.config, config))?;
+        let left = self.own_pushes.get(at).map(|p| p.left);
+        self.own_pushes.drain(..=at);
+        left
     }
 
     /// One poll of `engine`: pushes are held back while following, and the
@@ -422,6 +470,18 @@ impl Sharing {
     pub fn finish_poll(&mut self, share: &PollShare, caps: Option<&RtaCaps>) {
         if share.pushed {
             self.agreed = false;
+        }
+        // -- WP CORENITS -- remember it until its echo. A config pushed again
+        // replaces its older entry: an echo cannot tell the two apart.
+        if let Some(sent) = share.pushed_config {
+            self.own_pushes.retain(|p| !same_choice(&p.config, &sent));
+            if self.own_pushes.len() >= OWN_PUSHES_MAX {
+                self.own_pushes.remove(0);
+            }
+            self.own_pushes.push(OwnPush {
+                config: sent,
+                left: false,
+            });
         }
         // -- WP ANLAST -- our pending choice really went out.
         if let (Some(p), Some(sent), Some(mine)) =
@@ -490,6 +550,11 @@ impl Sharing {
                 .and_then(|p| p.earlier)
                 .filter(|e| same_choice(&e.config, &read))
                 .map_or(0, |e| e.origin);
+            // -- WP CORENITS -- N2: the device left every push of ours made
+            // before this reading; their echoes still queued are stale.
+            for p in &mut self.own_pushes {
+                p.left = true;
+            }
             self.following = Some(Followed {
                 config: read,
                 origin,
@@ -2228,5 +2293,186 @@ mod tests_wp_anlastf {
             }
             w.settle(seed);
         }
+    }
+}
+
+/// WP CORENITS: the ANLAST re-review's nits N1 and N2, with its probes R9 and
+/// R6 (review/anlast-probe2 73017a03) adopted as passing tests.
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_corenits {
+    use super::*;
+
+    fn caps() -> RtaCaps {
+        RtaCaps {
+            input_channels: 2,
+            output_channels: 16,
+            order_min: 8,
+            order_max: 10,
+            ..RtaCaps::default()
+        }
+    }
+
+    fn config(mask: u16) -> RtaConfig {
+        RtaConfig {
+            tap: TAP_OUTPUT,
+            channel_mask: mask,
+            fft_order: 10,
+            avg_ms: 300,
+            peak_decay_db_s: 12,
+            flags: 0,
+        }
+    }
+
+    /// One poll whose push of `c` went out, as `Held` records it.
+    fn pushed(s: &mut Sharing, c: RtaConfig) {
+        let mut p = s.begin_poll();
+        p.pushed = true;
+        p.pushed_config = Some(c);
+        p.attempted_config = Some(c);
+        s.finish_poll(&p, Some(&caps()));
+    }
+
+    fn readback(s: &mut Sharing, c: RtaConfig) {
+        let mut p = s.begin_poll();
+        p.note_readback(c);
+        s.finish_poll(&p, Some(&caps()));
+    }
+
+    /// Driving 0b01, our echo seen.
+    fn driving() -> Sharing {
+        let mut s = Sharing::default();
+        s.judge_own(Some(config(0b01)));
+        pushed(&mut s, config(0b01));
+        assert!(s.note_config(&config(0b01).encode(), true, 7, Some(&caps())));
+        assert!(!s.pending() && s.following().is_none());
+        s
+    }
+
+    /// N1 / R9: an older push of ours whose echo the hub attributes to nobody
+    /// (origin 0) is ours, not another console's: when the re-choice is
+    /// refused, nothing of anyone else's is followed.
+    #[test]
+    fn wp_corenits_r9_own_older_echo_attributed_to_nobody_is_ours() {
+        let caps = caps();
+        let mut s = driving();
+        s.judge_own(Some(config(0b100)));
+        pushed(&mut s, config(0b100));
+        s.judge_own(Some(config(0b1000))); // re-choice before the echo
+        assert!(s.note_config(&config(0b100).encode(), false, 0, Some(&caps)));
+        assert!(s.pending());
+        let mut p = s.begin_poll();
+        p.attempted_config = Some(config(0b1000)); // refused
+        s.finish_poll(&p, Some(&caps));
+        s.engine_gave_up(true);
+        assert_eq!(
+            s.following(),
+            None,
+            "not our own older push as another console's"
+        );
+    }
+
+    /// N1: an origin-0 event that is no push of ours is still another
+    /// console's: followed while driving, and the fallback while pending.
+    #[test]
+    fn wp_corenits_an_unattributed_push_that_is_not_ours_still_counts() {
+        let caps = caps();
+        let mut s = driving();
+        assert!(s.note_config(&config(0b10).encode(), false, 0, Some(&caps)));
+        assert_eq!(
+            s.following().map(|f| (f.origin, f.config.channel_mask)),
+            Some((0, 0b10))
+        );
+
+        let mut s = driving();
+        s.judge_own(Some(config(0b100)));
+        pushed(&mut s, config(0b100));
+        s.judge_own(Some(config(0b1000)));
+        assert!(s.note_config(&config(0b10).encode(), false, 0, Some(&caps)));
+        let mut p = s.begin_poll();
+        p.attempted_config = Some(config(0b1000));
+        s.finish_poll(&p, Some(&caps));
+        s.engine_gave_up(true);
+        assert_eq!(s.following().map(|f| f.config.channel_mask), Some(0b10));
+    }
+
+    /// N1: a hub that names another session is believed, even for a
+    /// configuration we pushed too.
+    #[test]
+    fn wp_corenits_an_attributed_push_of_the_same_config_is_theirs() {
+        let mut s = driving();
+        s.judge_own(Some(config(0b100)));
+        pushed(&mut s, config(0b100));
+        s.judge_own(Some(config(0b1000)));
+        assert!(s.note_config(&config(0b100).encode(), false, 3, Some(&caps())));
+        let mut p = s.begin_poll();
+        p.attempted_config = Some(config(0b1000));
+        s.finish_poll(&p, Some(&caps()));
+        s.engine_gave_up(true);
+        assert_eq!(s.following().map(|f| f.origin), Some(3));
+    }
+
+    /// N2 / R6: our Z pushed, read back (agreed), then A's later Y read back
+    /// (following Y); the queue then drains our stale Z echo and Y's event.
+    /// The stale echo changes nothing: following throughout.
+    #[test]
+    fn wp_corenits_r6_stale_own_echo_after_a_readback_moved_us_to_following() {
+        let caps = caps();
+        let mut s = driving();
+        s.judge_own(Some(config(0b100)));
+        pushed(&mut s, config(0b100));
+        readback(&mut s, config(0b100));
+        assert!(s.agreed() && s.pending());
+        readback(&mut s, config(0b10));
+        assert_eq!(s.following().map(|f| f.config.channel_mask), Some(0b10));
+        assert!(!s.pending());
+        assert!(s.note_config(&config(0b100).encode(), true, 7, Some(&caps)));
+        let between = s.following();
+        assert!(s.note_config(&config(0b10).encode(), false, 3, Some(&caps)));
+        assert_eq!(
+            s.following().map(|f| (f.origin, f.config.channel_mask)),
+            Some((3, 0b10))
+        );
+        assert_eq!(
+            between.map(|f| f.config.channel_mask),
+            Some(0b10),
+            "after our stale echo the device still holds A's 0b10"
+        );
+    }
+
+    /// N2: the stale echo is used up; taking control afterwards pushes ours
+    /// again, and that push's echo makes us drive. The last choice wins.
+    #[test]
+    fn wp_corenits_after_a_stale_echo_a_new_push_of_ours_drives() {
+        let caps = caps();
+        let mut s = driving();
+        s.judge_own(Some(config(0b100)));
+        pushed(&mut s, config(0b100));
+        readback(&mut s, config(0b100));
+        readback(&mut s, config(0b10));
+        assert!(s.note_config(&config(0b100).encode(), true, 7, Some(&caps)));
+        assert!(s.note_config(&config(0b10).encode(), false, 3, Some(&caps)));
+        s.take_control();
+        pushed(&mut s, config(0b100));
+        assert!(s.note_config(&config(0b100).encode(), true, 7, Some(&caps)));
+        assert!(!s.pending());
+        assert_eq!(s.following(), None);
+        // And a later push of A's is followed.
+        assert!(s.note_config(&config(0b1000).encode(), false, 3, Some(&caps)));
+        assert_eq!(s.following().map(|f| f.origin), Some(3));
+    }
+
+    /// The unechoed list stays bounded on firmware without the event.
+    #[test]
+    fn wp_corenits_unechoed_pushes_are_bounded() {
+        let mut s = Sharing::default();
+        for m in 1..=20u16 {
+            s.judge_own(Some(config(m)));
+            pushed(&mut s, config(m));
+        }
+        assert_eq!(s.own_pushes.len(), OWN_PUSHES_MAX);
+        assert_eq!(s.own_pushes.last().map(|p| p.config.channel_mask), Some(20));
+        s.reset();
+        assert!(s.own_pushes.is_empty());
     }
 }

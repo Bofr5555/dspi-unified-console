@@ -137,10 +137,12 @@ impl DspiCore {
         word: Option<String>,
         token: Option<String>,
     ) -> Result<()> {
-        if op == VREG_OP_SET || token.is_some() {
-            let _ticket = self.confirm_gate(crate::ConfirmOp::VregSave, token.as_deref())?;
-        }
-        self.core_vreg_op_with(op, value, word)
+        let ticket = if op == VREG_OP_SET || token.is_some() {
+            Some(self.confirm_gate(crate::ConfirmOp::VregSave, token.as_deref())?)
+        } else {
+            None
+        };
+        self.core_vreg_op_gated(ticket.as_ref(), op, value, word) // -- WP CORENITS --
     }
 }
 
@@ -151,8 +153,26 @@ impl DspiCore {
     /// The body of [`DspiCore::core_vreg_op_confirmed`] past its token, for
     /// the calibration flow, whose own calls have passed their gate (WP P1TZF).
     pub(crate) fn core_vreg_op_with(&self, op: u8, value: u8, word: Option<String>) -> Result<()> {
+        self.core_vreg_op_gated(None, op, value, word) // -- WP CORENITS --
+    }
+
+    // -- WP CORENITS --
+    /// The body itself. `ticket`, the gate's verdict when there was one, is
+    /// checked again under the device lock, as every gated body does: a
+    /// connection that changed since the token was accepted gets
+    /// `Disconnected` and nothing is sent.
+    fn core_vreg_op_gated(
+        &self,
+        ticket: Option<&crate::confirm::Ticket>,
+        op: u8,
+        value: u8,
+        word: Option<String>,
+    ) -> Result<()> {
         self.ensure_probed(); // -- WP LK4 --
         let mut inner = self.lock();
+        if let Some(ticket) = ticket {
+            ticket.still_on(&inner)?;
+        }
         let floor = match &inner.conn()?.ext.core_vreg {
             Some(s) => s.default_vreg,
             None => return Err(DspiError::Unsupported),
@@ -342,5 +362,58 @@ mod tests_wp_qpi2 {
         assert_eq!(pairs(0), 2, "RP2040");
         assert_eq!(pairs(1), 4, "RP2350");
         assert_eq!(pairs(2), 4, "STM32H723");
+    }
+}
+
+// -- WP CORENITS --
+#[cfg(test)]
+mod tests_wp_corenits {
+    use std::sync::atomic::Ordering;
+
+    use dspi_transport::{Capture, FakeDevice};
+
+    use super::tests_wp_c8::{Counting, Faults, k340, k340_options};
+    use super::*;
+    use crate::ConfirmOp;
+
+    /// A SET's token accepted on one connection, then a reconnect before the
+    /// body takes the device lock: refused with `Disconnected`, and nothing
+    /// is written to the new device.
+    #[test]
+    fn wp_corenits_a_vreg_set_whose_ticket_went_stale_is_refused_unsent() {
+        let p = k340();
+        let token = p.core.confirm_token(ConfirmOp::VregSave);
+        let ticket = p
+            .core
+            .confirm_gate(ConfirmOp::VregSave, Some(&token))
+            .unwrap();
+        // Another connection in between.
+        p.core.disconnect();
+        let dev = FakeDevice::new(Capture::demo(), k340_options());
+        let t = Counting::new(dev, Faults::default());
+        let outs = t.outs.clone();
+        p.core
+            .attach_probed(Box::new(t), "CORENITS".into(), 0)
+            .unwrap();
+        let floor = p.core.fetch_core_vreg().unwrap().default_vreg;
+        let sent = outs.load(Ordering::SeqCst);
+
+        assert_eq!(
+            p.core
+                .core_vreg_op_gated(Some(&ticket), VREG_OP_SET, floor, None),
+            Err(DspiError::Disconnected)
+        );
+        assert_eq!(outs.load(Ordering::SeqCst), sent, "nothing written");
+
+        // A ticket from the gate on this connection still goes through.
+        let token = p.core.confirm_token(ConfirmOp::VregSave);
+        let ticket = p
+            .core
+            .confirm_gate(ConfirmOp::VregSave, Some(&token))
+            .unwrap();
+        p.core
+            .core_vreg_op_gated(Some(&ticket), VREG_OP_SET, floor, None)
+            .unwrap();
+        assert!(outs.load(Ordering::SeqCst) > sent);
     }
 }
