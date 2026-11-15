@@ -1682,7 +1682,9 @@ impl Connection {
                         // -- WP P1HL -- `limits.*` and `mode.*`
                         .or_else(|| {
                             crate::limits::handle_message(&self.shared.hub, &session, &value)
-                        });
+                        })
+                        // -- WP P2SV -- the services (`service.rs`), after the limits
+                        .or_else(|| self.shared.hub.service_message(&session, &value));
                     match answer {
                         Some(answer) => self.reply(answer),
                         None => self.on_request(t, id, message, &session),
@@ -1882,7 +1884,8 @@ impl Connection {
             },
             "auth.set_role" => self.auth_set_role(id, message),
             // `fw.install` is later work (PLAN-CLIENTS), and the hub messages are not in
-            // HB1's entry.
+            // HB1's entry. -- WP P2SV -- `hub.stats` and `hub.rename` reach here only when
+            // no service answered them (the services run first, in `on_text`).
             "hub.stats" | "hub.rename" if !admin => denied(),
             "fw.install" | "hub.stats" | "hub.rename" => err(id, "unsupported", None),
             // -- WP SW2 --
@@ -2266,6 +2269,12 @@ impl Shared {
         caps.push(crate::apply_guard::CAP);
         // -- WP P1HL --
         caps.push(crate::limits::CAP);
+        // -- WP P2SV -- each service's
+        for cap in self.hub.service_caps() {
+            if !caps.contains(&cap) {
+                caps.push(cap);
+            }
+        }
         if self.web {
             caps.push("web");
         }
