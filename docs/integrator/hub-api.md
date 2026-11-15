@@ -458,7 +458,7 @@ literal is checked against the certificate's IP addresses), ALPN `http/1.1`, no 
 | Field | Trust |
 |---|---|
 | neither | the public CAs (`webpki-roots`, the same on every hub platform), and the host name |
-| `ca_pem` | the CA or self-signed certificate(s) pasted here instead (PEM, at most 16, 32 KiB), and the host name |
+| `ca_pem` | the CA or self-signed certificate(s) pasted here instead (PEM, at most 16, 32 KiB), and the host name. A receiver whose certificate is exactly one of them (a self-signed one, also when OpenSSL 3's `req -x509` marked it `CA:TRUE`) is accepted with its host name checked, not its dates; any other certificate must chain to them, dates checked. A CA certificate presented as the receiver's own that is not given here is refused with a reason saying so |
 | `pin_sha256` | the receiver's key: `sha256//<base64>` of its SubjectPublicKeyInfo, as curl's `--pinnedpubkey` (64 hex characters are taken too and stored in that form); no CA or host name check. Get it with `openssl x509 -in cert.pem -pubkey -noout \| openssl pkey -pubin -outform der \| openssl dgst -sha256 -binary \| base64` |
 
 `ca_pem` and `pin_sha256` are each a trust of their own: give one. Dates are checked with the CAs, not with a pin.
@@ -696,7 +696,7 @@ Settings: `enabled`, `broker` (address), `port` (8883 with TLS, 1883 without), `
 | Field | Means |
 |---|---|
 | `mode` | `on`: TLS 1.2 or 1.3, the broker verified before a byte of CONNECT is sent. `off` (default): plain TCP |
-| `ca_pem` | with `on`: the CA or self-signed certificate(s) to trust instead of the public CAs; the host name is checked |
+| `ca_pem` | with `on`: the CA or self-signed certificate(s) to trust instead of the public CAs; the host name is checked. A broker presenting exactly one of them (self-signed, `CA:TRUE` or not) is accepted, as for webhooks (section 8) |
 | `pin_sha256` | with `on`: the broker's key, as for webhooks (section 8); replaces the CA and host name check. One of `ca_pem` and `pin_sha256` at most |
 | `client_cert_pem`, `client_key_pem` | with `on`: a client certificate and its key (PEM; PKCS#8, SEC1 or PKCS#1). The key is kept in the 0600 `mqtt.json`, shown as `set` or `not set` (sending `"set"` back keeps it) and never in the diagnostics bundle |
 | `client_cert_file`, `client_key_file` | instead: paths to PEM files; the key file must not be readable by group or others (0600) |

@@ -26,6 +26,10 @@ use rustls::{ServerConfig, ServerConnection, StreamOwned};
 const CA: &[u8] = include_bytes!("../../../dspi-tui/testdata/tm12/ca.der");
 const LEAF: &[u8] = include_bytes!("../../../dspi-tui/testdata/tm12/leaf.der");
 const LEAF_KEY: &[u8] = include_bytes!("../../../dspi-tui/testdata/tm12/leaf-key.der");
+// -- WP P2CFIXB --
+/// `openssl req -x509` (OpenSSL 3) for DNS:localhost: self-signed and marked CA:TRUE.
+const SELF_CA_TRUE: &[u8] = include_bytes!("../../testdata/p2cfixb/self-ca-true.der");
+const SELF_CA_TRUE_KEY: &[u8] = include_bytes!("../../testdata/p2cfixb/self-ca-true-key.der");
 /// `openssl x509 -pubkey | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary
 /// | base64`, of each.
 const LEAF_PIN: &str = "sha256//QIoTMalqjAmU7cqIfPIw0djIOMn8E2uRqx/dfg0/EiE=";
@@ -236,11 +240,11 @@ enum Got {
     Request(Vec<u8>),
 }
 
-fn leaf_key() -> PrivateKeyDer<'static> {
-    PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(LEAF_KEY.to_vec()))
+fn server_config(tls12_only: bool) -> Arc<ServerConfig> {
+    server_config_with(LEAF, LEAF_KEY, tls12_only)
 }
 
-fn server_config(tls12_only: bool) -> Arc<ServerConfig> {
+fn server_config_with(cert: &[u8], key: &[u8], tls12_only: bool) -> Arc<ServerConfig> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let versions: &[&rustls::SupportedProtocolVersion] = if tls12_only {
         &[&rustls::version::TLS12]
@@ -252,17 +256,26 @@ fn server_config(tls12_only: bool) -> Arc<ServerConfig> {
             .with_protocol_versions(versions)
             .unwrap()
             .with_no_client_auth()
-            .with_single_cert(vec![CertificateDer::from(LEAF.to_vec())], leaf_key())
+            .with_single_cert(
+                vec![CertificateDer::from(cert.to_vec())],
+                PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.to_vec())),
+            )
             .unwrap(),
     )
 }
 
 /// A TLS receiver answering each request with `reply`.
 fn tls_receiver(reply: &'static [u8], tls12_only: bool) -> (u16, mpsc::Receiver<Got>) {
+    tls_receiver_with(server_config(tls12_only), reply)
+}
+
+fn tls_receiver_with(
+    config: Arc<ServerConfig>,
+    reply: &'static [u8],
+) -> (u16, mpsc::Receiver<Got>) {
     let l = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = l.local_addr().unwrap().port();
     let (tx, rx) = mpsc::channel();
-    let config = server_config(tls12_only);
     std::thread::spawn(move || {
         for s in l.incoming() {
             let Ok(mut s) = s else { return };
@@ -362,15 +375,57 @@ fn wp_secout_https_delivered_with_a_pin_and_with_a_ca() {
         Ok(204)
     );
     assert!(matches!(got(&rx), Got::Request(_)));
-    // The leaf as the trust: not self-signed (the CA signed it), so as an anchor it names
-    // the wrong issuer. Refused, without a byte of the request.
+    // WP P2CFIXB: the receiver's exact certificate as the trust is taken (its name checked),
+    // whoever issued it.
     let own = tls::Trust::from_settings(Some(&pem("CERTIFICATE", LEAF)), None).unwrap();
-    let r = send(&format!("https://localhost:{port}/x"), &own);
+    assert_eq!(send(&format!("https://localhost:{port}/x"), &own), Ok(204));
+    assert!(matches!(got(&rx), Got::Request(_)));
+    let r = send(&format!("https://127.0.0.1:{port}/x"), &own);
     assert!(
-        matches!(r, Err(PostError::Tls(TlsError::Certificate(_)))),
+        matches!(&r, Err(PostError::Tls(TlsError::Certificate(why))) if why.contains("not for 127.0.0.1")),
         "{r:?}"
     );
     assert!(matches!(got(&rx), Got::Refused(why, 0) if !why.is_empty()));
+}
+
+// -- WP P2CFIXB --
+#[test]
+fn wp_p2cfixb_a_ca_true_self_signed_receiver_given_as_ca_pem_is_trusted() {
+    let (port, rx) = tls_receiver_with(
+        server_config_with(SELF_CA_TRUE, SELF_CA_TRUE_KEY, false),
+        b"HTTP/1.1 204 No Content\r\n\r\n",
+    );
+    let exact = tls::Trust::from_settings(Some(&pem("CERTIFICATE", SELF_CA_TRUE)), None).unwrap();
+    assert_eq!(
+        send(&format!("https://localhost:{port}/x"), &exact),
+        Ok(204)
+    );
+    assert!(matches!(got(&rx), Got::Request(_)));
+    // The name is still checked.
+    let r = send(&format!("https://127.0.0.1:{port}/x"), &exact);
+    assert!(
+        matches!(&r, Err(PostError::Tls(TlsError::Certificate(why))) if why.contains("not for 127.0.0.1")),
+        "{r:?}"
+    );
+    assert!(matches!(got(&rx), Got::Refused(_, 0)));
+    // Given something else (another CA, or the public roots): refused, saying what to do.
+    for other in [ca_trust(), tls::Trust::Roots] {
+        let r = send(&format!("https://localhost:{port}/x"), &other);
+        assert_eq!(
+            r,
+            Err(PostError::Tls(TlsError::Certificate(
+                tls::CA_AS_END_ENTITY.into()
+            ))),
+            "{other:?}"
+        );
+        assert!(matches!(got(&rx), Got::Refused(_, 0)));
+    }
+    // Its pin works too.
+    let pin = tls::pin_text(&tls::spki_sha256(SELF_CA_TRUE).unwrap());
+    assert_eq!(
+        send(&format!("https://127.0.0.1:{port}/x"), &pin_trust(&pin)),
+        Ok(204)
+    );
 }
 
 #[test]
