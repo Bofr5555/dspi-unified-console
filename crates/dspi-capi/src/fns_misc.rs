@@ -76,6 +76,8 @@ mod offline;
 mod guarded;
 // -- WP HUBADMIN --
 mod hub_admin;
+// -- WP CLIP1 -- the channel clipboard
+mod clipboard;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

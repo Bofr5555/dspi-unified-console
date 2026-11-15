@@ -83,6 +83,8 @@ pub mod power_on;
 pub mod system;
 // -- WP ROMODE -- the client read-only mode
 pub mod read_only;
+// -- WP CLIP1 -- the channel clipboard
+pub mod clipboard;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;

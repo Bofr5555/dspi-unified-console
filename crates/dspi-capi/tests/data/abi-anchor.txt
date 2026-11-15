@@ -1476,6 +1476,13 @@ void (*callback)(const char *kind,
 const char *event_json,
 void *user_data),
 void *user_data);
+uint32_t dspi_copy_channel(struct FfiCore *core, uint8_t ch, char *buf, uint32_t len);
+uint32_t dspi_paste_channel(struct FfiCore *core,
+const char *clip,
+uint8_t ch,
+int32_t mirror,
+char *buf,
+uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,
