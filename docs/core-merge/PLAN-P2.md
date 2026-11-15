@@ -511,7 +511,7 @@ risk). The hub serves the page (`--web`), so a desktop user gets the multi-devic
 ## 4. Decisions
 
 **Recorded 2026-11-15 (coordinator, after the Fable review):** OD-P2a, c and e to q are **DECIDED as recommended** below
-(firm). **OD-P2b** and **OD-P2d part (2)** are the **owner's and open**; phase 2 does not depend on either
+(firm). **OD-P2b** and **OD-P2d part (2)** were the owner's; **answered 2026-11-15: OD-P2b yes (unattended flashing allowed, phase 3), OD-P2d (2) no upstream PRs for now** (the questions below are kept for the record); phase 2 does not depend on either
 (`fw.install` stays `unsupported`, and phase 2 uses the firmware items on `bofr-main` whatever happens upstream). Owner
 questions, one line each:
 
