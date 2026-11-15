@@ -35,8 +35,11 @@ export function isApple(): boolean {
   return appleKeys(platform());
 }
 
-/** The table's keys for the console whose view is `root`. `act` runs a row; `blocked` is true while a question is asked. */
-export function useAppShortcuts(root: RefObject<HTMLElement | null>, act: (r: ShortcutRow) => void, blocked: () => boolean): void {
+/**
+ * The table's keys for the console whose view is `root`. `act` runs a row; `blocked` is true while a question is asked.
+ * -- WP WBCLIP -- `act` answering false leaves the key to the browser (a clipboard key with no channel to act on).
+ */
+export function useAppShortcuts(root: RefObject<HTMLElement | null>, act: (r: ShortcutRow) => boolean | void, blocked: () => boolean): void {
   useEffect(() => {
     const apple = isApple();
     const onKey = (e: KeyboardEvent) => {
@@ -51,12 +54,21 @@ export function useAppShortcuts(root: RefObject<HTMLElement | null>, act: (r: Sh
       const nowhere = !focus || focus === document.body || focus === document.documentElement;
       const mine = nowhere ? document.querySelector(".dspi-web .session-screens") === here : here.contains(focus);
       if (!mine) return;
+      // -- WP WBCLIP -- text the user selected on the page is the browser's to copy
+      if (row.clip === "copy" && hasTextSelection()) return;
+      if (act(row) === false) return;
       e.preventDefault();
-      act(row);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [root, act, blocked]);
+}
+
+// -- WP WBCLIP --
+/** Whether the page has selected text, which Ctrl+C copies as text. */
+function hasTextSelection(): boolean {
+  const sel = typeof window === "undefined" ? null : window.getSelection?.();
+  return !!sel && !sel.isCollapsed && sel.toString().length > 0;
 }
 
 /** The Keyboard Shortcuts list: every key this console has, by the Console's menus. */

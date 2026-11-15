@@ -56,6 +56,8 @@ import { AnalyserScreen, GeneratorScreen, MonitorScreen, StatsScreen } from "../
 import { SurfacesScreen } from "../screens/surfaces/SurfacesScreen";
 import { QuickStrip, ShortcutsDialog, useAppShortcuts } from "../screens/shortcuts/Shortcuts";
 import type { OpenAction, ShortcutRow } from "../screens/shortcuts/table";
+// -- WP WBCLIP -- the channel clipboard's keys
+import { channelClipboard, clipKey } from "../screens/clipboard/model";
 // -- WP WB6H -- the effects (Dynamics and effects, every mode)
 import { EffectsScreen } from "../screens/effects/EffectsScreen";
 // -- WP WB6I -- Settings (M55, M56, M61, M62)
@@ -294,11 +296,13 @@ export function Screens(props: { session: Session }) {
   const shownRef = useRef(shownIds);
   shownRef.current = shownIds;
   const onShortcut = useCallback(
-    (r: ShortcutRow) => {
+    (r: ShortcutRow): boolean | void => {
+      // -- WP WBCLIP -- Copy and Paste Parameters on the EQ screen's chosen channel; nothing chosen, the browser's key
+      if (r.clip) return session.state.status === "open" && clipKey(channelClipboard(session), r.clip);
       if (r.help) setShortcutsOpen(true);
       else if (r.open && shownRef.current.has(r.open.screen)) openScreen(r.open);
     },
-    [openScreen],
+    [openScreen, session],
   );
   const blocked = useCallback(() => asking.current || shortcutsOpen, [shortcutsOpen]);
   useAppShortcuts(root, onShortcut, blocked);

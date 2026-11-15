@@ -1071,3 +1071,7 @@
 .dspi-web .vreg-warning { border: 1px solid var(--warn); border-radius: 6px; padding: 0.35rem 0.6rem; white-space: pre-wrap; }
 .dspi-web .vreg-word { display: grid; gap: 0.3rem; margin-top: 0.5rem; }
 .dspi-web .eq-readout { position: absolute; top: 4px; right: 6px; font: 10px system-ui, sans-serif; color: var(--eq-text, rgba(255,255,255,0.55)); pointer-events: none; white-space: pre; }
+
+/* -- WP WBCLIP -- the EQ screen's channel menu: as the tools beside it, opening rightwards from its button */
+.dspi-web .eq-tools > .menu > button { line-height: 20px; padding-top: 5px; padding-bottom: 5px; }
+.dspi-web .eq-tools > .menu [role="menu"] { right: auto; left: 0; }

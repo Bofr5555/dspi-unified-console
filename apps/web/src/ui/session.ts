@@ -92,7 +92,9 @@ export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset"
   | "inputPairFilter"
   | "inputPairBandBypass"
   // -- WP WB6G -- a linked input pair's trim, both sides (one undo step)
-  | "inputPairPreamp";
+  | "inputPairPreamp"
+  // -- WP WBCLIP -- Paste Parameters (one undo step, the linked partner too)
+  | "pasteChannel";
 
 // -- WP WB6b --
 /** One write of `Session.writeAll`. */
