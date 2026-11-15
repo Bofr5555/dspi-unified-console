@@ -324,11 +324,16 @@ final class CoreLink {
         scheduleFollow()
     }
 
-    /// Back in the foreground, or the user's Reconnect: the core's session
-    /// tries at once (`link_retry_now`); with none, dial again.
+    /// Back in the foreground, or the user's Reconnect: a session that is
+    /// still wanted and that the core is reconnecting tries at once
+    /// (`link_retry_now`, which the core ignores in any other phase).
+    /// -- WP SW7 -- fixup (review batch 2 F2): the user's Disconnect holds,
+    /// and so does an end that needs a person (`.closed`, `.refused`, a
+    /// cancelled PIN): with no session, nothing is dialled here; picking the
+    /// hub's device again (`bind`, `connect(to:)`) does that.
     func resume() {
-        if !wantConnection, boundSerial != nil { wantConnection = true }
-        if sessionLive { retryNow() } else { dial() }
+        guard wantConnection, sessionLive else { return }
+        retryNow()
     }
 
     /// Leave the hub: the session closes (its slot goes back to the hub) and

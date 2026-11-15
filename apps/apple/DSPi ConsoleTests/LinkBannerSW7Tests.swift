@@ -17,6 +17,7 @@
 import XCTest
 import Combine
 import SwiftUI
+import Network
 import dspi_core
 @testable import DSPi_Console
 
@@ -240,6 +241,77 @@ private final class SW7Client {
     }
 }
 
+/// SW6's relay with one more mode: `forbidding` answers a new connection's
+/// WebSocket upgrade with HTTP 403, which the core takes as a refusal that
+/// needs a person (`.refused`, no retry).
+private final class SW7Relay {
+    private let listener: NWListener
+    private let targetPort: NWEndpoint.Port
+    private let queue = DispatchQueue(label: "sw7.relay")
+    private let lock = NSLock()
+    private var connections: [NWConnection] = []
+    private var forbiddingValue = false
+    private var acceptedValue = 0
+
+    var forbidding: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return forbiddingValue }
+        set { lock.lock(); forbiddingValue = newValue; lock.unlock() }
+    }
+    var accepted: Int { lock.lock(); defer { lock.unlock() }; return acceptedValue }
+
+    init(port: UInt16) throws {
+        targetPort = NWEndpoint.Port(rawValue: port)!
+        let params = NWParameters.tcp
+        params.requiredInterfaceType = .loopback
+        listener = try NWListener(using: params, on: .any)
+        let ready = DispatchSemaphore(value: 0)
+        listener.stateUpdateHandler = { state in
+            if case .ready = state { ready.signal() }
+            if case .failed = state { ready.signal() }
+        }
+        listener.newConnectionHandler = { [weak self] c in self?.accept(c) }
+        listener.start(queue: queue)
+        _ = ready.wait(timeout: .now() + 5)
+    }
+
+    deinit { listener.cancel(); dropAll() }
+
+    var url: URL { URL(string: "ws://127.0.0.1:\(listener.port?.rawValue ?? 0)/dspi/v1")! }
+
+    func dropAll() {
+        lock.lock(); let all = connections; connections = []; lock.unlock()
+        all.forEach { $0.forceCancel() }
+    }
+
+    private func accept(_ inbound: NWConnection) {
+        lock.lock(); acceptedValue += 1; let forbid = forbiddingValue; lock.unlock()
+        inbound.start(queue: queue)
+        if forbid {
+            inbound.receive(minimumIncompleteLength: 1, maximumLength: 65536) { _, _, _, _ in
+                let reply = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                inbound.send(content: Data(reply.utf8), completion: .contentProcessed { _ in inbound.cancel() })
+            }
+            return
+        }
+        let outbound = NWConnection(host: "127.0.0.1", port: targetPort, using: .tcp)
+        lock.lock(); connections += [inbound, outbound]; lock.unlock()
+        outbound.start(queue: queue)
+        pipe(inbound, outbound)
+        pipe(outbound, inbound)
+    }
+
+    private func pipe(_ from: NWConnection, _ to: NWConnection) {
+        from.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, done, error in
+            if let data = data, !data.isEmpty { to.send(content: data, completion: .contentProcessed { _ in }) }
+            if done || error != nil {
+                from.forceCancel(); to.forceCancel()
+                return
+            }
+            self?.pipe(from, to)
+        }
+    }
+}
+
 final class LinkBannerSW7FakeHubTests: XCTestCase {
 
     private var keep: [AnyObject] = []
@@ -368,6 +440,69 @@ final class LinkBannerSW7FakeHubTests: XCTestCase {
         sw7Wait(5, "the view model re-read") { vm.preampDB.first == before }
         sw7Settle(1)
         XCTAssertEqual(try XCTUnwrap(c.deviceState()).preampDb, before, "nor a moment later")
+        c.transport.disconnect()
+        sw7Settle(0.2)
+    }
+    /// -- fixup (review batch 2 F2, the reviewer's probe) -- The user's
+    /// Disconnect holds: back from the background the iOS app calls
+    /// `transport.reconnect()` (IOSApp), which must not dial the hub again;
+    /// picking the hub's device again does.
+    func testSW7TheUsersDisconnectHoldsAcrossAForegroundResume() throws {
+        let hub = try SW7SwiftHub()
+        let relay = try SW6Relay(host: "127.0.0.1", port: UInt16(hub.port))
+        let tokens = LinkTokenStore(service: "sw7-test-\(UUID().uuidString)")
+        let (c, vm) = client(hub, tokens, via: relay.url)
+        keep += [c, vm, relay, hub]
+        relay.refusing = true
+        relay.dropAll()
+        sw7Wait(10, "the banner") { !c.banner.entries.isEmpty }
+        let entry = try XCTUnwrap(c.banner.entries.first)
+        c.banner.disconnect(entry.id)
+        sw7Wait(5, "the core's session closed") { c.link.core.linkStatus().phase != .reconnecting }
+        XCTAssertFalse(c.link.wantConnection)
+
+        relay.refusing = false
+        let accepted = relay.accepted
+        c.transport.reconnect()   // what IOSApp does when the scene comes back from the background
+        sw7Settle(4)
+        XCTAssertEqual(relay.accepted, accepted, "the user's Disconnect holds across a foreground resume (no re-dial)")
+        XCTAssertFalse(c.link.wantConnection, "wantConnection stays off after the user's Disconnect")
+        XCTAssertFalse(c.transport.isConnected)
+        XCTAssertTrue(c.banner.entries.isEmpty)
+
+        // The user picks the hub's device again: that dials.
+        c.transport.bind(serial: hub.serial)
+        sw7Wait(20, "connected again on the user's pick") { c.transport.isConnected && c.link.phase == .bound }
+        XCTAssertGreaterThan(relay.accepted, accepted)
+        c.transport.disconnect()
+        sw7Settle(0.2)
+    }
+
+    /// -- fixup (review batch 2 F2) -- An end that needs a person holds too:
+    /// the hub refuses the reconnect's handshake (HTTP 403, `.refused`); a
+    /// foreground resume dials nothing, no banner stays; the user's pick does.
+    func testSW7ARefusedSessionIsNotDialledByAForegroundResume() throws {
+        let hub = try SW7SwiftHub()
+        let relay = try SW7Relay(port: UInt16(hub.port))
+        let tokens = LinkTokenStore(service: "sw7-test-\(UUID().uuidString)")
+        let (c, vm) = client(hub, tokens, via: relay.url)
+        keep += [c, vm, relay, hub]
+        relay.forbidding = true
+        relay.dropAll()
+        sw7Wait(20, "the refusal") { c.link.lastStatus?.phase == .refused && !c.link.sessionLive }
+        XCTAssertTrue(c.banner.entries.isEmpty, "refused is not reconnecting: no banner")
+        XCTAssertFalse(c.transport.isConnected)
+
+        relay.forbidding = false
+        let accepted = relay.accepted
+        c.transport.reconnect()   // IOSApp, back from the background
+        sw7Settle(4)
+        XCTAssertEqual(relay.accepted, accepted, "a refused session is not dialled again by a resume")
+        XCTAssertFalse(c.transport.isConnected)
+
+        c.transport.bind(serial: hub.serial)
+        sw7Wait(20, "connected again on the user's pick") { c.transport.isConnected && c.link.phase == .bound }
+        XCTAssertGreaterThan(relay.accepted, accepted)
         c.transport.disconnect()
         sw7Settle(0.2)
     }

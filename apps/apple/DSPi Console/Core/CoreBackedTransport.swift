@@ -344,7 +344,7 @@ final class CoreBackedTransport: DeviceTransport {
 
     func reconnect() {
         if let host = host { host.reconnect(); return }
-        // -- WP SW6 -- the core's session tries now (`link_retry_now`), or dials
+        // -- WP SW6 -- the core's session tries now (`link_retry_now`); -- WP SW7 -- no dial after a Disconnect or an end
         if let session = linkSession { return session.resume() }
         guard let device = selectedDevice else { return }
         publishConnected(false)
