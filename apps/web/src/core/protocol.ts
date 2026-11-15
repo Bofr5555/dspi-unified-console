@@ -548,6 +548,11 @@ export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMet
   hubRole: { params: undefined; result: { role: string } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
+  // -- WP WB6H -- the effect screens (crates/dspi-wasm/src/effects.rs)
+  /** Whether the connect probe found each named feature (`DspiCore::feature_present`); all false with no device. At most 64 names. */
+  features: { params: { names: string[] }; result: Record<string, boolean> };
+  /** The effects' choice parameters in the Console's words, by registry path (`cf.preset`, `tube.type`, ...). */
+  effectChoices: { params: undefined; result: Record<string, { value: number; label: string; detail: string }[]> };
 }
 
 // -- WP P1WB1 -- documents, snapshots, A/B, safe apply, offline files, limits status, notices

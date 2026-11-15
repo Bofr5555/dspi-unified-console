@@ -814,3 +814,28 @@
 .dspi-web .installer-copy .notice-action { display: block; font-size: 0.85rem; }
 .dspi-web .hub-recovery { margin: 0.5rem 0; }
 .dspi-web .recovery-code code { font-size: 1.1rem; overflow-wrap: anywhere; }
+/* -- WP WB6H -- the effects: the list of effects with their state beside the open one's panel; one column on a phone */
+/* a container: the list beside the panel only where the session's column has room (an embedding page's half may not), so its rows never widen that column */
+.dspi-web .effects-screen { container-type: inline-size; min-width: 0; }
+.dspi-web .fx-layout { display: grid; gap: 0.75rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.dspi-web .fx-list { display: flex; flex-direction: row; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
+@container (min-width: 40rem) {
+  .dspi-web .fx-layout { grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr); }
+  .dspi-web .fx-list { flex-direction: column; flex-wrap: nowrap; }
+}
+.dspi-web .fx-pick { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; text-align: left; min-width: 0; }
+.dspi-web .fx-pick[aria-selected="true"] { border-color: var(--accent); background: var(--bg); }
+.dspi-web .fx-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .fx-state { font-size: 0.75rem; color: var(--muted); }
+.dspi-web .fx-state.on { color: var(--accent); font-weight: 700; }
+.dspi-web .fx-switch[aria-checked="true"], .dspi-web .fx-bool [aria-checked="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .fx-plain { margin: 0 0 0.5rem; color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
+.dspi-web .fx-split { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
+.dspi-web .fx-split [aria-pressed="true"] { border-color: var(--accent); }
+.dspi-web .fx-params { display: grid; gap: 0.6rem 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); align-items: start; }
+.dspi-web .fx-row { min-width: 0; }
+.dspi-web .fx-bool, .dspi-web .fx-choice label { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.dspi-web .fx-detail { display: block; color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; overflow-wrap: anywhere; }
+.dspi-web .fx-mask { grid-column: 1 / -1; }
+.dspi-web .fx-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem; }
+.dspi-web .fx-chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }

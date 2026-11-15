@@ -38,6 +38,8 @@ import type { ModeChoice, ModeManifest } from "../core/protocol";
 import { InstallerScreen } from "../screens/installer/InstallerScreen";
 import { LockedBanner, UnlockDialog } from "../screens/installer/Unlock";
 import { RecoveryCode } from "../screens/installer/HubAdmin"; // -- WP HUBADMIN --
+// -- WP WB6H -- the effects (Dynamics and effects, every mode)
+import { EffectsScreen } from "../screens/effects/EffectsScreen";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -78,6 +80,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "eq", label: "EQ", View: EqScreen },
   // -- WP WB6c --
   { id: "matrix", label: "Matrix", View: MatrixScreen },
+  // -- WP WB6H -- (UI-MODES: "Dynamics and effects", in every mode)
+  { id: "effects", label: "Effects", View: EffectsScreen },
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
   { id: "system", label: "System", View: SystemScreen },
   // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
