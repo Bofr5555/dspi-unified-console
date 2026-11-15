@@ -145,6 +145,10 @@ final class CoreLink {
 
     private var listener: LinkEvents?
 
+    /// -- WP SW7 -- The lost-connection banner this session feeds
+    /// (Core/LinkBannerView.swift); a test gives its own.  Main thread.
+    var banner: LinkBannerCenter = .shared
+
     /// - Parameters:
     ///   - expectedHubID: the hub's id when known ("" otherwise).
     ///   - core: the core to drive (a new one by default).
@@ -163,6 +167,9 @@ final class CoreLink {
     }
 
     deinit {
+        // -- WP SW7 -- no banner for a session that is gone
+        let banner = self.banner, id = ObjectIdentifier(self)
+        if Thread.isMainThread { banner.clear(id) } else { DispatchQueue.main.async { banner.clear(id) } }
         let core = self.core
         statusQueue.async {
             core.setLinkListener(listener: nil)
@@ -342,6 +349,7 @@ final class CoreLink {
         binding = false
         sawReconnecting = false
         phase = .idle
+        banner.clear(ObjectIdentifier(self))   // -- WP SW7 --
         let core = self.core
         statusQueue.async { core.linkClose() }
         transport?.linkSessionEnded()
@@ -450,6 +458,7 @@ final class CoreLink {
         let previous = phase
         phase = status.phase
         transport?.linkPhaseChanged(phase)
+        reportToBanner(status)   // -- WP SW7 -- the owner's banner while reconnecting
         if status.connected || !devices.isEmpty { self.devices = devices }
         publishDevices()
         switch status.phase {

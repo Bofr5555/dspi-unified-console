@@ -1195,7 +1195,7 @@ Owner: **SwiftUI on macOS and iOS over the Rust core; Swift keeps UI only**, wit
 
 **SW6: Link through the core.** [DONE wp/SW6: `Core/CoreLink.swift` drives the core's Link session under `CoreBackedTransport(link: .link)`; the core is the default for DSPi Link on Mac and iOS, `-CoreTransport NO` opts out to Swift's `LinkClient`; checked against the Swift hub in process and the Rust demo hub (see the WP report)] Size 1.5. **Owns:** `Link/LinkClient*.swift` replaced by `Core/CoreLink.swift`; keeps `HubBrowser.swift`, `LinkTokenStore.swift`, the pairing sheet. **Implements:** Bonjour stays in Swift (the entitlement belongs to it); `expected_hub_id`; `link_retry_now` on foreground; `rta_start` after a reconnect. Checks the Local Network prompt with Rust's BSD sockets. **Done when:** the run in `A7-LINK-CLIENT-REPORT.md` passes **[HW]**. **Deps:** SW4, XC1.
 
-**SW7: Banner and errors.** [TODO] Size 0.5. **Owns:** `Core/LinkBannerView.swift`. **Done when:** the owner's rule holds in a fake-hub run; CG10's wording. **Deps:** SW6, CG10.
+**SW7: Banner and errors.** [IN REVIEW wp/SW7] Size 0.5. **Owns:** `Core/LinkBannerView.swift`. **Done when:** the owner's rule holds in a fake-hub run; CG10's wording. **Deps:** SW6, CG10.
 
 **SW8: Reads and the mirror.** [DONE, merged in review c6b] Size 3–3.5 (SW3). **SW-V1 and OD3 follow it.** **Owns:** `Commands.swift` "Bulk Parameter Transfer" and "Notification → State Mirroring" (about 840 lines). **Implements:** view-model state from `DspState`, notifications from the core, older firmware read-only. **Done when:** every view shows correct values on the demo device and fixtures; no echo flicker. **Deps:** SW4.
 
