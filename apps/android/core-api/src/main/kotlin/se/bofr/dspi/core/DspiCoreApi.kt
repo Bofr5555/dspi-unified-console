@@ -4976,7 +4976,7 @@ interface DspiCoreApi : AutoCloseable {
      *
      * Differs from the Mac's `HubBrowser.hub(fromTXT:)`
      * (`Link/HubBrowser.swift:583-597`) by the spec and Android's `HubTxt`: a
-     * record without `v` or `hid`, or with `tls=1`, is no hub (the Mac made up a
+     * record without `v` or `hid` is no hub (the Mac made up a
      * `service:<name>` id and listed it), and a missing `kind` reads `unknown`
      * (the Mac's `console`).
      *

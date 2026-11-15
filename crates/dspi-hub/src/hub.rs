@@ -1025,6 +1025,9 @@ impl HubInner {
             serials,
             web: network.web,
             path: None,
+            // -- WP SECDISC -- `tls=1` while TLS is served; SECSRV sets it from `--tls`
+            // (`on`/`require`), and clears it in the upstream compatibility mode.
+            tls: false,
         };
         match Advertiser::start(&advert, scope) {
             Ok(advertiser) => *slot = Some(advertiser),

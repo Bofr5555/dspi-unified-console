@@ -146,6 +146,7 @@ fn adv(name: &str, hid: &str, port: u16, secs: u64, every: Option<u64>) {
         serials: vec!["E66164084319392D".into()],
         web: true,
         path: None,
+        tls: false, // -- WP SECDISC --
     };
     let mut a = LanAdvertiser::start(&advert).expect("advertise");
     line(t0, &format!("advertising n={}", advert.device_count));

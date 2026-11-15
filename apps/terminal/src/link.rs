@@ -165,6 +165,7 @@ mod tests_wp_tm9 {
             serials: vec!["AAA".into(), "BBB".into()],
             web: false,
             path: None,
+            tls: false, // -- WP SECDISC --
         }
     }
 

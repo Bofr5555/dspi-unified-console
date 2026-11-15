@@ -95,7 +95,9 @@ pub struct BrowsedHub {
     pub port: u16,
     /// WebSocket path.
     pub path: String,
-    /// `ws://host:port/path`, for `link_connect`.
+    /// `ws://host:port/path`, for `link_connect`. The plaintext form even when
+    /// [`Self::tls_advertised`]: whether to speak TLS is the connect rule's call
+    /// (TLS first, PLAN-SEC 4.3), not the URL's.
     pub url: String,
     /// Every usable address, best first: IPv4, then routable IPv6, then IPv4
     /// link-local. IPv6 link-local is left out: it needs a zone, which the
@@ -103,6 +105,13 @@ pub struct BrowsedHub {
     /// `.local` host name when the source gives one (WP DISC2, Windows), which
     /// the system resolves when dialling, zone and all.
     pub addresses: Vec<String>,
+    // -- WP SECDISC --
+    /// The record carried `tls=1` (spec 3.1): the hub says its port speaks TLS.
+    /// A hint, never trust, since anyone on the LAN can send a TXT record or strip
+    /// one: it is the input to the client's "advertised TLS never falls back"
+    /// ratchet (PLAN-SEC 4.3 rule 2a, `ConnectOptions.tls_advertised`), and pinned
+    /// clients ignore it. False for an upstream hub, which never writes `tls`.
+    pub tls_advertised: bool,
 }
 
 /// One service instance as a [`BrowseSource`] resolved it, not yet read.
@@ -131,9 +140,6 @@ pub enum Rejected {
     /// `hid` is absent, empty, too long or not printable.
     #[error("no usable hub id")]
     HubId,
-    /// `tls=1`: no hub offers TLS and this client does not speak it.
-    #[error("TLS is not supported")]
-    Tls,
     /// Port 0.
     #[error("no port")]
     Port,
@@ -256,10 +262,9 @@ pub fn parse_service(record: &ServiceRecord) -> Result<BrowsedHub, Rejected> {
     if id.is_empty() || id.len() > MAX_HUB_ID_BYTES || !id.bytes().all(|b| b.is_ascii_graphic()) {
         return Err(Rejected::HubId);
     }
-    // Only as the spec writes it, as on both reference clients: `tls=0` is plaintext.
-    if txt_value(txt, "tls") == Some("1") {
-        return Err(Rejected::Tls);
-    }
+    // -- WP SECDISC -- `tls=1` is listed (the refusal is gone). Only as the spec
+    // writes it, as on both reference clients: `tls=0`, or anything else, is plaintext.
+    let tls_advertised = txt_value(txt, "tls") == Some("1");
     if record.port == 0 {
         return Err(Rejected::Port);
     }
@@ -304,6 +309,7 @@ pub fn parse_service(record: &ServiceRecord) -> Result<BrowsedHub, Rejected> {
         path,
         url,
         addresses,
+        tls_advertised,
     })
 }
 
@@ -328,6 +334,13 @@ pub struct HubAdvert {
     pub web: bool,
     /// The WebSocket path when it is not the default.
     pub path: Option<String>,
+    // -- WP SECDISC --
+    /// `tls=1`: the port speaks TLS. Set it whenever the hub serves TLS, in `on` and
+    /// `require` alike, and clear it while it serves plaintext only (`off`, or the
+    /// upstream compatibility mode, where an upstream client would read `tls=1` as
+    /// "use `wss://`" and fail on the self-signed certificate). No key hint goes with
+    /// it: the TXT record is unauthenticated, so the pin comes from pairing.
+    pub tls: bool,
 }
 
 impl HubAdvert {
@@ -342,6 +355,10 @@ impl HubAdvert {
             ("auth".into(), self.auth.clone()),
             ("n".into(), self.device_count.to_string()),
         ];
+        // -- WP SECDISC -- where macOS writes it (`LinkDiscovery.swift`)
+        if self.tls {
+            pairs.push(("tls".into(), "1".into()));
+        }
         if self.web {
             pairs.push(("web".into(), "1".into()));
         }
@@ -560,6 +577,28 @@ impl HubList {
                 }
                 Ok(hub) if hub.id == self.own_hub_id => {
                     self.hubs.remove(&record.instance);
+                }
+                // -- WP SECDISC -- TLS ranked first. Two instances claiming one `hid`
+                // are a renamed hub or a spoofer, and a plaintext record does not
+                // push out a TLS one still standing (one that has not said goodbye):
+                // stripping `tls=1` would otherwise be a single forged packet. The
+                // other way round, the latest news wins as before. A hub renamed
+                // while turning TLS off without a goodbye shows once the old record
+                // expires, or at once after a failed dial's `verify`.
+                Ok(hub)
+                    if !hub.tls_advertised
+                        && self.hubs.iter().any(|(instance, h)| {
+                            h.id == hub.id
+                                && h.tls_advertised
+                                && *instance != record.instance
+                                && !self.leaving.contains_key(instance)
+                        }) =>
+                {
+                    self.hubs.remove(&record.instance);
+                    log::debug!(
+                        "hub {} not listed: another record of its hub advertises TLS",
+                        sanitize_hub_text(&record.instance)
+                    );
                 }
                 Ok(hub) => {
                     // A renamed hub announces a new instance while the old one is
@@ -1334,3 +1373,9 @@ mod tests_wp_cg2;
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "discovery/tests_wp_disc2.rs"]
 mod tests_wp_disc2;
+
+// -- WP SECDISC --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "discovery/tests_wp_secdisc.rs"]
+mod tests_wp_secdisc;

@@ -2416,6 +2416,7 @@ internal fun se.bofr.dspi.ffi.uniffi.LinkTxtRecord.toDomain() =
         deviceCount = deviceCount.toLong(),
         serials = serials,
         path = path,
+        tlsAdvertised = tlsAdvertised,
     )
 
 internal fun LinkTxtRecord.toFfi() =
@@ -2427,6 +2428,7 @@ internal fun LinkTxtRecord.toFfi() =
         deviceCount = deviceCount.toUInt(),
         serials = serials,
         path = path,
+        tlsAdvertised = tlsAdvertised,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AbCompare.toDomain() =
