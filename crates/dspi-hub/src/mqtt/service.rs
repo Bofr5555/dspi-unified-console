@@ -27,9 +27,13 @@
 //! client, whose queue drops its oldest when the broker is away. With MQTT off there is
 //! no thread and no bus subscription.
 //!
-//! **No writes.** P2MQ subscribes to nothing, so nothing that arrives over MQTT reaches a
-//! device. Home Assistant's `set` topics (P2HA) act as an API key's principal (OD-P2c),
-//! never as the hub; `ha` is kept here for P2HA and is not used by this module.
+//! **Writes: Home Assistant only (WP P2HA, [`super::ha`]).** With `ha.enabled` the pump
+//! also runs Home Assistant ([`HaRuntime`]): discovery and state topics, and it subscribes
+//! to `<base>/+/+/set`. The client's handler only puts such a message on P2HA's bounded
+//! inbound queue ([`HaShared::offer`]); the pump parses it, and P2HA's own worker thread
+//! carries it out as the `ha.key` API key's principal through the control plane (OD-P2c),
+//! never as the hub and never on the client's or the pump's thread. Turning `ha` on
+//! without a key mints a control key named `Home Assistant` (`mqtt.set`).
 //!
 //! **TLS (PLAN-SEC 4.8; SECOUT's [`MqttTls`], wired by WP MQWIRE).** `tls` in `mqtt.json`
 //! is read with [`MqttTls::load`]: a file written before TLS with a broker that is not on
@@ -56,6 +60,8 @@ use serde_json::{Map, Value, json};
 
 use super::client::{MqttClient, MqttConfig, MqttEvent, MqttStatus, MqttTls};
 use super::codec::{self, QoS, Will};
+// -- WP P2HA --
+use super::ha::{self, HaRuntime, HaShared};
 use crate::bus::{Bus, BusMessage, Subscription};
 use crate::clock::HubClock;
 use crate::hub::HubHandle;
@@ -107,7 +113,8 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
-/// `ha`: Home Assistant (P2HA's). Kept, checked for shape, not used here.
+/// `ha`: Home Assistant (P2HA's, [`super::ha`]): checked for shape here, the key by
+/// [`ha::settle_key`] in `mqtt.set`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HaSetting {
     /// Discovery and `set` topics on.
@@ -884,6 +891,9 @@ struct Shared {
     /// When the service was made: its first due time (a fixed time, never later than the
     /// timer's `now`), so the hub's id is learnt and a saved setting connects.
     born: Instant,
+    // -- WP P2HA --
+    /// Home Assistant's setting and inbound queue, shared with the pump and the client.
+    ha: Arc<HaShared>,
 }
 
 /// The `mqtt` family: the broker setting and the hub's one connection.
@@ -921,22 +931,29 @@ struct Pump {
     clock: Arc<dyn HubClock>,
     base: String,
     hub: String,
+    // -- WP P2HA --
+    ha: HaRuntime,
 }
 
 impl Pump {
-    fn run(self) {
+    fn run(mut self) {
         let status_topic = status_topic(&self.base);
         while !self.stop.load(Ordering::SeqCst) {
             for e in self.events.drain() {
-                if matches!(e, MqttEvent::Connected { .. })
-                    && let Err(err) =
+                if matches!(e, MqttEvent::Connected { .. }) {
+                    if let Err(err) =
                         self.client
                             .publish(&status_topic, ONLINE, QoS::AtLeastOnce, true)
-                {
-                    log::warn!("hub: MQTT status not published: {err}");
+                    {
+                        log::warn!("hub: MQTT status not published: {err}");
+                    }
+                    // -- WP P2HA --
+                    self.ha.on_connected(&self.client);
                 }
                 lock(&self.status).on_event(&e, self.clock.unix_seconds());
             }
+            // -- WP P2HA --
+            self.ha.tick(&self.client);
             if let Some(first) = self.sub.recv_timeout(PUMP_TICK) {
                 self.send(&first);
                 for _ in 1..PUMP_BATCH {
@@ -965,6 +982,8 @@ impl Pump {
     /// A clean stop: `offline` (the broker drops the will on DISCONNECT), given a moment
     /// to go out, then the client.
     fn goodbye(mut self, status_topic: &str) {
+        // -- WP P2HA -- its worker stops first: nothing writes once the pump ends.
+        self.ha.end(&self.client);
         if self.client.status().connected {
             let _ = self
                 .client
@@ -991,6 +1010,8 @@ impl MqttService {
             |d| load(d, clock.unix_seconds()),
         );
         let born = clock.now();
+        // -- WP P2HA --
+        let ha = HaShared::new(settings.ha);
         let mut view = StatusView::new(clock.unix_seconds());
         view.notice = notice;
         let status = Arc::new(Mutex::new(view));
@@ -1006,6 +1027,8 @@ impl MqttService {
                 stopped: AtomicBool::new(false),
                 begun: AtomicBool::new(false),
                 born,
+                // -- WP P2HA --
+                ha,
             }),
         }
     }
@@ -1018,7 +1041,7 @@ impl MqttService {
     /// End the running connection, if any, and start one for the setting now if it is
     /// on. On the caller's thread: ending takes at most about the client's connect timeout
     /// and [`FLUSH_WAIT`].
-    fn restart(&self) {
+    fn restart(&self, hub: &HubHandle) {
         let shared = &self.shared;
         let mut rt = lock(&shared.runtime);
         if let Some(old) = rt.take() {
@@ -1036,9 +1059,12 @@ impl MqttService {
         let base = settings.base(hub_id);
         let events = Arc::new(EventQueue::default());
         let handler_events = Arc::clone(&events);
+        // -- WP P2HA -- a `set` message goes on P2HA's bounded queue, nothing more.
+        let handler_ha = Arc::clone(&shared.ha);
         // Subscribe before connecting, so nothing raised meanwhile is missed.
         let sub = shared.bus.subscribe_filtered("mqtt", BUS_CAPACITY, wanted);
         let client = match MqttClient::start(settings.client_config(hub_id), move |e| {
+            handler_ha.offer(&e);
             handler_events.push(e);
         }) {
             Ok(c) => c,
@@ -1062,6 +1088,13 @@ impl MqttService {
             stop: Arc::clone(&stop),
             status: Arc::clone(&shared.status),
             clock: Arc::clone(&shared.clock),
+            // -- WP P2HA --
+            ha: HaRuntime::new(
+                Arc::clone(&shared.ha),
+                hub.clone(),
+                Arc::clone(&shared.bus),
+                base.clone(),
+            ),
             base,
             hub: hub_id.clone(),
         };
@@ -1096,16 +1129,25 @@ impl MqttService {
         let _ = self.shared.hub_id.set(hub.hub_id().to_owned());
         let (changed, active, view) = {
             let mut current = lock(&self.shared.settings);
-            let next = match apply_request(&current, patch) {
+            let mut next = match apply_request(&current, patch) {
                 Ok(n) => n,
                 Err(why) => return reply_err(id, "bad_request", &why),
+            };
+            // -- WP P2HA -- `ha.key` checked, or a key minted for `ha` turned on without one.
+            let minted = match ha::settle_key(hub, current.ha, &mut next.ha) {
+                Ok(m) => m,
+                Err((code, why)) => return reply_err(id, code, &why),
             };
             if let Some(dir) = &self.shared.data_dir
                 && let Err(e) = save(dir, &next)
             {
                 log::error!("hub: cannot write {}: {e}", dir.join(FILE_NAME).display());
+                // -- WP P2HA -- a key minted for a setting that was not kept goes again.
+                ha::unmint(hub, minted);
                 return reply_err(id, "internal", "the settings could not be saved");
             }
+            // -- WP P2HA --
+            self.shared.ha.set(next.ha);
             let changed = !next.same_connection(&current);
             // -- WP MQWIRE -- the migration notice is answered once TLS is set again.
             if next.tls != current.tls {
@@ -1119,7 +1161,7 @@ impl MqttService {
         let reconnect = changed || (active && lock(&self.shared.runtime).is_none());
         self.shared.begun.store(true, Ordering::SeqCst);
         if reconnect {
-            self.restart();
+            self.restart(hub);
         }
         let mut m = Map::new();
         m.insert("settings".into(), view);
@@ -1169,7 +1211,7 @@ impl HubService for MqttService {
         let _ = now;
         let _ = self.shared.hub_id.set(hub.hub_id().to_owned());
         if !self.shared.begun.swap(true, Ordering::SeqCst) {
-            self.restart();
+            self.restart(hub);
         }
     }
 
