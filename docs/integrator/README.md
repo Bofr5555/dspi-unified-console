@@ -23,7 +23,8 @@ Licensing of the software described here: see [`NOTICE.md`](../../NOTICE.md).
 | [firmware-control.md](firmware-control.md) | Controlling the device over its UART and I2C, without a computer | exists in the firmware; page is an outline |
 | [audio-link.md](audio-link.md) | The audio link's system model on the hub: topology, alignment, scenes at a frame, alarms, `system.*` messages | exists (host side; firmware partial) |
 | [usb-direct-home-theater.md](usb-direct-home-theater.md) | A home theatre fed over USB from one computer: cables, multi-TT hubs, isolators, power, capacity, PipeWire (`uconsole usb-direct generate`), D, lock and lock error (WP AUSB3) | guide; bench not run yet |
-| [parameter-api.md](parameter-api.md) | A stable parameter API for other programs (PRO1 I1) | placeholder |
+| [hub-api.md](hub-api.md) | The hub API of PRO phase 2: inventory, Identify, health, the shared history, alarms, notifications out, parameters, presets and snapshots by name, schedules, MQTT and Home Assistant, the REST mirror and API keys, statistics; the deviations from the DSPi Link spec (WP P2DOC) | v1, experimental; each section draft until its WP builds it |
+| [parameter-api.md](parameter-api.md) | The parameter API for other programs (PRO1 I1): a summary of hub-api.md's parameter sections | draft (P2PA) |
 | [control-protocols.md](control-protocols.md) | OSC, MIDI and MQTT control (PRO1 I-series) | placeholder |
 | [limits-profiles.md](limits-profiles.md) | Limits profiles: ranges an installation locks down (PRO1 S1) | built (P1LM) |
 | [installer-lock.md](installer-lock.md) | The installer's PIN, the locked-user state and the mode manifest (PRO1 S4, U7) | built (P1LK) |

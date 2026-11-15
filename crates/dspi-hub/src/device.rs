@@ -647,7 +647,8 @@ fn ingest(packet: &[u8], kind: TransportKind, shared: &DeviceShared, relay: &Rel
     // -- WP P1HL -- a whole-state change is held to the limits profile soon
     crate::limits::note_packet(shared, origin, packet);
     // -- fixup sw2x (F5) -- the system model follows units by serial.
-    relay.tap_packet(packet, || shared.serial());
+    // -- WP P2SV -- and the hub's bus, with the session it is attributed to.
+    relay.tap_packet(packet, origin, || shared.serial());
     relay.publish_notify(shared.handle, origin, packet);
 }
 
