@@ -86,9 +86,45 @@ struct Subscriber {
 pub struct Relay {
     subscribers: Mutex<Vec<Subscriber>>,
     next_id: AtomicU64,
-    // -- WP SW2 --
-    /// The system model, which watches the link's events.
-    tap: Mutex<Option<Arc<crate::system::SystemShared>>>,
+    // -- WP SW2 -- (-- WP P2SV -- generalised: the system model and the bus)
+    /// What watches every device packet: the system model, the hub's bus.
+    taps: Taps,
+    // -- WP P2HS --
+    /// Notifications dropped from a full outbox, by the handle of the device they were
+    /// from, since the hub started (`hub.stats`). A leaf lock, taken only after a drop.
+    dropped: Mutex<std::collections::BTreeMap<u8, u64>>,
+}
+
+// -- WP P2SV --
+/// A read-only watcher of every relayed device packet, with the device's serial and
+/// the session it is attributed to. Called on the device's reader with no relay lock
+/// held, so it must not block; it may broadcast through the relay it is given.
+pub(crate) trait PacketTap: Send + Sync {
+    /// Whether it looks at this packet: `serial` is worked out only if one does.
+    fn wants(&self, packet: &[u8]) -> bool;
+    /// The packet, from the device `serial`, attributed to `origin`.
+    fn on_packet(&self, relay: &Relay, serial: &str, origin: SessionId, packet: &[u8]);
+}
+
+#[derive(Default)]
+struct Taps(Mutex<Vec<Arc<dyn PacketTap>>>);
+
+impl std::fmt::Debug for Taps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let n = self.0.lock().unwrap_or_else(PoisonError::into_inner).len();
+        write!(f, "Taps({n})")
+    }
+}
+
+// -- WP SW2 -- the system model follows the audio link's events (0xE1, 0xE3).
+impl PacketTap for crate::system::SystemShared {
+    fn wants(&self, packet: &[u8]) -> bool {
+        crate::system::SystemShared::wants(packet)
+    }
+
+    fn on_packet(&self, relay: &Relay, serial: &str, _origin: SessionId, packet: &[u8]) {
+        crate::system::SystemShared::on_packet(self, relay, serial, packet);
+    }
 }
 
 impl Relay {
@@ -133,31 +169,69 @@ impl Relay {
     pub fn publish_notify(&self, handle: u8, origin: SessionId, packet: &[u8]) {
         let packet: Arc<[u8]> = Arc::from(packet);
         for s in self.lock().iter().filter(|s| follows(s, handle)) {
-            s.outbox.push_notify(handle, origin, Arc::clone(&packet));
+            // -- WP P2HS --
+            if let Some(lost) = s.outbox.push_notify(handle, origin, Arc::clone(&packet)) {
+                let mut dropped = self.dropped.lock().unwrap_or_else(PoisonError::into_inner);
+                let n = dropped.entry(lost).or_insert(0);
+                *n = n.saturating_add(1);
+            }
         }
+    }
+
+    // -- WP P2HS --
+    /// How many notifications of the device at `handle` full outboxes have dropped
+    /// since the hub started, over every session.
+    pub(crate) fn notify_dropped(&self, handle: u8) -> u64 {
+        self.dropped
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&handle)
+            .copied()
+            .unwrap_or(0)
     }
 
     // -- WP SW2 --
     /// Watch every device packet with the system model.
     pub(crate) fn set_tap(&self, tap: Arc<crate::system::SystemShared>) {
-        *self.tap.lock().unwrap_or_else(PoisonError::into_inner) = Some(tap);
+        self.add_tap(tap);
     }
 
-    // -- fixup sw2x (F5) --
-    /// Show a device's packet to the system model, by the device's serial, which
-    /// `serial` gives only for a packet the model looks at. The tap broadcasts
-    /// through `self`, so it is taken without the lock.
-    pub(crate) fn tap_packet(&self, packet: &[u8], serial: impl FnOnce() -> String) {
-        if !crate::system::SystemShared::wants(packet) {
-            return;
-        }
-        let tap = self
-            .tap
+    // -- WP P2SV --
+    /// Add a watcher of every device packet, after those already there.
+    pub(crate) fn add_tap(&self, tap: Arc<dyn PacketTap>) {
+        self.taps
+            .0
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone();
-        if let Some(tap) = tap {
-            tap.on_packet(self, &serial(), packet);
+            .push(tap);
+    }
+
+    // -- fixup sw2x (F5) -- (-- WP P2SV -- every tap, with the packet's session)
+    /// Show a device's packet to every tap that wants it, with the device's serial,
+    /// which `serial` gives once and only if one does, and the session `origin` it is
+    /// attributed to. The taps may broadcast through `self`, so they are called
+    /// without the subscriber lock, and with their own list's lock released.
+    pub(crate) fn tap_packet(
+        &self,
+        packet: &[u8],
+        origin: SessionId,
+        serial: impl FnOnce() -> String,
+    ) {
+        let taps: Vec<Arc<dyn PacketTap>> = self
+            .taps
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .filter(|t| t.wants(packet))
+            .cloned()
+            .collect();
+        if taps.is_empty() {
+            return;
+        }
+        let serial = serial();
+        for tap in taps {
+            tap.on_packet(self, &serial, origin, packet);
         }
     }
 
@@ -376,5 +450,87 @@ mod tests_wp_hb2 {
         assert_eq!(net.pop(NOW), resync);
         assert_eq!(app.pop(NOW), resync);
         assert_eq!(other.pop(NOW), Pop::Idle);
+    }
+}
+
+// -- WP P2SV --
+#[cfg(test)]
+mod tests_wp_p2sv {
+    #![allow(clippy::unwrap_used)]
+    use std::sync::atomic::AtomicUsize;
+
+    use super::*;
+
+    type Seen = Mutex<Vec<(String, SessionId, Vec<u8>)>>;
+
+    #[derive(Default)]
+    struct Recorder {
+        only_param_changed: bool,
+        seen: Seen,
+    }
+
+    impl PacketTap for Recorder {
+        fn wants(&self, packet: &[u8]) -> bool {
+            !self.only_param_changed || packet.get(1) == Some(&EVT_PARAM_CHANGED)
+        }
+
+        fn on_packet(&self, _relay: &Relay, serial: &str, origin: SessionId, packet: &[u8]) {
+            self.seen
+                .lock()
+                .unwrap()
+                .push((serial.to_owned(), origin, packet.to_vec()));
+        }
+    }
+
+    /// Every tap sees what it wants with the serial and the session; the serial is
+    /// worked out once, and not at all when no tap wants the packet.
+    #[test]
+    fn wp_p2sv_every_tap_sees_the_packet_with_its_serial_and_session() {
+        let relay = Relay::default();
+        let all = Arc::new(Recorder::default());
+        let some = Arc::new(Recorder {
+            only_param_changed: true,
+            ..Recorder::default()
+        });
+        relay.add_tap(Arc::clone(&all) as Arc<dyn PacketTap>);
+        relay.add_tap(Arc::clone(&some) as Arc<dyn PacketTap>);
+        let asked = AtomicUsize::new(0);
+        let serial = || {
+            asked.fetch_add(1, Ordering::SeqCst);
+            "P2SV-T".to_owned()
+        };
+        relay.tap_packet(&[2, EVT_PARAM_CHANGED, 0, 1], 7, serial);
+        relay.tap_packet(&[2, EVT_BULK_INVALIDATED, 0, 1], 0, serial);
+        assert_eq!(asked.load(Ordering::SeqCst), 2, "once per packet");
+        let all = all.seen.lock().unwrap().clone();
+        assert_eq!(
+            all,
+            vec![
+                ("P2SV-T".to_owned(), 7, vec![2, EVT_PARAM_CHANGED, 0, 1]),
+                ("P2SV-T".to_owned(), 0, vec![2, EVT_BULK_INVALIDATED, 0, 1]),
+            ]
+        );
+        assert_eq!(some.seen.lock().unwrap().len(), 1, "only what it wants");
+
+        let none = Relay::default();
+        none.add_tap(Arc::new(Recorder {
+            only_param_changed: true,
+            ..Recorder::default()
+        }));
+        none.tap_packet(&[2, EVT_BULK_INVALIDATED, 0, 1], 0, serial);
+        assert_eq!(asked.load(Ordering::SeqCst), 2, "nobody wanted it");
+    }
+
+    /// The system model is a tap like any other: it still gets the audio link's
+    /// events, and not the rest (`wp_ausb2_lock_error` follows one to its alarm).
+    #[test]
+    fn wp_p2sv_the_system_model_is_still_a_tap() {
+        let system = Arc::new(crate::system::SystemShared::new(None));
+        let tap: &dyn PacketTap = &*system;
+        assert!(!tap.wants(&[2, EVT_PARAM_CHANGED, 0, 1]));
+        assert!(tap.wants(&[2, dspi_proto::ext::alink::NOTIFY_EVT_ALINK_STATE, 0, 0]));
+        let relay = Relay::default();
+        relay.set_tap(Arc::clone(&system));
+        assert_eq!(format!("{relay:?}").matches("Taps(1)").count(), 1);
     }
 }

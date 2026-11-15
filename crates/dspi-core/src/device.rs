@@ -28,7 +28,7 @@ use dspi_transport::{FakeDevice, Transport, TransportError};
 
 use crate::callbacks::MidiSender;
 use crate::consts::{COMPAT_FIRMWARE_TOO_NEW, COMPAT_FIRMWARE_TOO_OLD};
-use crate::records::{DeviceInfo, DspState};
+use crate::records::{BulkImageExtras, DeviceInfo, DspState};
 use crate::{Connection, DspiCore, DspiError, Result, rta, state};
 
 /// The legacy USB vendor id of firmware before May 2026 (`USB_VID` is the
@@ -513,12 +513,19 @@ impl DspiCore {
     /// without comparing versions. `i2s_clock_pin_mode`, which has no probe,
     /// answers whether the parameter image carried the clock-pin mode. False
     /// with no device, before the probe, and for a name the probe does not
-    /// know.
+    /// know. -- WP CG-SWS-a -- The names with no probe (`first_order_pass`,
+    /// `subharmonic_extended`, `stereo_upmixer`, ...) are answered from the
+    /// wire format, firmware version and platform the connect read;
+    /// [`known_feature_names`] lists every name.
     pub fn feature_present(&self, name: &str) -> bool {
         self.ensure_probed();
         let mut inner = self.lock();
         if name == "i2s_clock_pin_mode" {
             return inner.conn.is_some() && inner.state.i2s_clock_pin_mode_present;
+        }
+        // -- WP CG-SWS-a -- the names with no probe of their own
+        if let Some(present) = derived_feature(&inner.state, name) {
+            return inner.conn.is_some() && present;
         }
         let Ok(conn) = inner.conn() else {
             return false;
@@ -529,6 +536,113 @@ impl DspiCore {
                 .iter()
                 .any(|f| f.name == name && f.present)
         })
+    }
+}
+
+// -- WP CG-SWS-a --
+/// The probe's feature names (`dspi_session::probe`), in its order.
+const PROBED_FEATURES: [&str; 23] = [
+    "input_source",
+    "loudness_output_mask",
+    "crossfeed_output_mask",
+    "leveller_masks",
+    "psychoacoustic_bass",
+    "upmixer",
+    "adat_output",
+    "adat_input",
+    "i2s_slave_clock",
+    "i2s_input_channels",
+    "spdif_multi_input",
+    "lg_sound_sync",
+    "dac_hardware_mute",
+    "uart_control",
+    "i2c_control",
+    "test_signals",
+    "subharmonic_synth",
+    "tube_preamp",
+    "output_limiter",
+    "spectrum_analyser",
+    "input_source_names",
+    "device_name",
+    "output_latency",
+];
+
+// -- WP CG-SWS-a --
+/// The feature names with no probe of their own, which
+/// [`DspiCore::feature_present`] answers from what the connect read: the
+/// parameter image's wire format, the firmware version and the platform.
+/// Each replaces a client's version test (the Mac's `firmwareSupports*`,
+/// `DSPViewModel.swift:2116-2232`, 2288-2310):
+///
+/// - `crossover_filters`: V11 (every format the core reads);
+/// - `first_order_allpass`: V13; `first_order_shelves`: V14;
+/// - `first_order_pass`: V28, the first that surely has first-order low and
+///   high pass (`wire_compat::feat::SPDIF_IN4`);
+/// - `linkwitz_transform`: V22 (`feat::LINKWITZ`);
+/// - `upmixer_presence`: V26 (`feat::UPMIX_PRESENCE`);
+/// - `stereo_upmixer`: V26 on an RP2350, the Mac's whole upmixer gate (the
+///   RP2040 answers the probe but stalls the writes);
+/// - `subharmonic_extended`: V30, the subharmonic synthesizer's third band,
+///   selectivity, depth, hold, ceiling and pair link (`feat::SUBHARM_EXT`;
+///   Qt's gate on that bit), whose reads stall on V29;
+/// - `notch_filter`, `allpass_filter`, `band_bypass`: firmware 1.1.4.
+const DERIVED_FEATURES: [&str; 12] = [
+    "crossover_filters",
+    "first_order_allpass",
+    "first_order_shelves",
+    "first_order_pass",
+    "linkwitz_transform",
+    "upmixer_presence",
+    "stereo_upmixer",
+    "subharmonic_extended",
+    "notch_filter",
+    "allpass_filter",
+    "band_bypass",
+    "i2s_clock_pin_mode",
+];
+
+/// A [`DERIVED_FEATURES`] name's answer from `s`, `None` for another name.
+/// `i2s_clock_pin_mode` is answered by its own branch in `feature_present`.
+fn derived_feature(s: &DspState, name: &str) -> Option<bool> {
+    use dspi_proto::wire_compat::{feat, features};
+    let v = s.format_version;
+    let bits = features(v);
+    let fw_114 = (s.fw_major, s.fw_minor, s.fw_patch) >= (1, 1, 4);
+    Some(match name {
+        "crossover_filters" => v >= 11,
+        "first_order_allpass" => v >= 13,
+        "first_order_shelves" => v >= 14,
+        "first_order_pass" => bits & feat::SPDIF_IN4 != 0,
+        "linkwitz_transform" => bits & feat::LINKWITZ != 0,
+        "upmixer_presence" => bits & feat::UPMIX_PRESENCE != 0,
+        "stereo_upmixer" => bits & feat::UPMIX_PRESENCE != 0 && s.platform_id == 1,
+        "subharmonic_extended" => bits & feat::SUBHARM_EXT != 0,
+        "notch_filter" | "allpass_filter" | "band_bypass" => fw_114,
+        _ => return None,
+    })
+}
+
+// -- WP CG-SWS-a --
+/// Every name [`DspiCore::feature_present`] knows: the connect probe's, then
+/// [`DERIVED_FEATURES`]. A client gates each section by one of these, never
+/// by a wire format or firmware version.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn known_feature_names() -> Vec<String> {
+    PROBED_FEATURES
+        .iter()
+        .chain(DERIVED_FEATURES.iter())
+        .map(|n| (*n).to_owned())
+        .collect()
+}
+
+// -- WP CG-SWS-a --
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// [`crate::bulk_image_extras`] of the mirror's parameter image: the
+    /// bytes `DspState` has no field for. All false with no image.
+    pub fn image_extras(&self) -> BulkImageExtras {
+        let raw = self.lock().state.bulk_raw.clone();
+        crate::bulk_image_extras(raw)
     }
 }
 
@@ -1421,3 +1535,9 @@ impl DspiCore {
         Ok(())
     }
 }
+
+// -- WP CG-SWS-a --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "device/tests_wp_cgswsa.rs"]
+mod tests_wp_cgswsa;

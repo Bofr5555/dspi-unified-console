@@ -82,6 +82,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun autoeqApply(profile: AutoEqProfile, left: Int, right: Int, applyLevel: Boolean?): AutoEqApply = throw NotImplementedError("autoeq_apply")
 
+    override fun copyChannel(ch: Int): ChannelClip = throw NotImplementedError("copy_channel")
+
+    override fun pasteChannel(clip: ChannelClip, ch: Int, options: ChannelPasteOptions): Unit = throw NotImplementedError("paste_channel")
+
     override fun confirmToken(op: ConfirmOp): String = throw NotImplementedError("confirm_token")
 
     override fun fetchAll(): Unit = throw NotImplementedError("fetch_all")
@@ -141,6 +145,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun openDemo(): Unit = throw NotImplementedError("open_demo")
 
     override fun featurePresent(name: String): Boolean = throw NotImplementedError("feature_present")
+
+    override fun imageExtras(): BulkImageExtras = throw NotImplementedError("image_extras")
 
     override fun diagnosticsSave(path: String, options: DiagOptions): List<String> = throw NotImplementedError("diagnostics_save")
 
@@ -530,6 +536,12 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setTubeParam(idx: Int, value: Float): Unit = throw NotImplementedError("set_tube_param")
 
+    override fun pinMap(): PinMap = throw NotImplementedError("pin_map")
+
+    override fun pinCheck(function: PinFunction, pin: Int): PinRefusal? = throw NotImplementedError("pin_check")
+
+    override fun pinHolder(pin: Int, excluding: PinFunction?): PinHolder? = throw NotImplementedError("pin_holder")
+
     override fun savePresetConfirmed(slot: Int, token: String?): Unit = throw NotImplementedError("save_preset_confirmed")
 
     override fun loadPreset(slot: Int): Unit = throw NotImplementedError("load_preset")
@@ -686,6 +698,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun autoeqRebuildStart(dbPath: String, fetch: AutoEqFetch): AutoEqRebuild = throw NotImplementedError("autoeq_rebuild_start")
 
+    override fun channelClipToJson(clip: ChannelClip): String = throw NotImplementedError("channel_clip_to_json")
+
+    override fun channelClipFromJson(text: String): ChannelClip = throw NotImplementedError("channel_clip_from_json")
+
     override fun computeResponse(filters: List<FilterParams>, freq: Float): Float = throw NotImplementedError("compute_response")
 
     override fun computeMagnitudeCurve(filters: List<FilterParams>): List<Double> = throw NotImplementedError("compute_magnitude_curve")
@@ -701,6 +717,12 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun quantizeGain(db: Float): Float = throw NotImplementedError("quantize_gain")
 
     override fun quantizeDelay(ms: Float): Float = throw NotImplementedError("quantize_delay")
+
+    override fun quantizeMasterVolume(db: Float): Float = throw NotImplementedError("quantize_master_volume")
+
+    override fun curveSections(filters: List<FilterParams>): List<BiquadSection> = throw NotImplementedError("curve_sections")
+
+    override fun knownFeatureNames(): List<String> = throw NotImplementedError("known_feature_names")
 
     override fun configInspect(text: String): String = throw NotImplementedError("config_inspect")
 
@@ -734,6 +756,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun aboutJson(): String = throw NotImplementedError("about_json")
 
+    override fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord = throw NotImplementedError("link_parse_txt")
+
     override fun modeManifest(): ModeManifest = throw NotImplementedError("mode_manifest")
 
     override fun filterTypeNames(): List<FilterTypeName> = throw NotImplementedError("filter_type_names")
@@ -753,4 +777,16 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = throw NotImplementedError("output_labels_for")
 
     override fun outputCardsFor(input: OutputLabelInput): List<OutputCard> = throw NotImplementedError("output_cards_for")
+
+    override fun platformShape(platformId: Int): PlatformShape = throw NotImplementedError("platform_shape")
+
+    override fun vregCodeMv(code: Int, platformId: Int): Int? = throw NotImplementedError("vreg_code_mv")
+
+    override fun vregCodeLabel(code: Int, platformId: Int): String = throw NotImplementedError("vreg_code_label")
+
+    override fun defaultChannelNames(numInputs: Int, numOutputs: Int, inputSource: Int, outputTypes: List<Int>): List<String> = throw NotImplementedError("default_channel_names")
+
+    override fun enumValueLabels(path: String): List<EnumValueLabel> = throw NotImplementedError("enum_value_labels")
+
+    override fun bulkImageExtras(bulkRaw: ByteArray): BulkImageExtras = throw NotImplementedError("bulk_image_extras")
 }

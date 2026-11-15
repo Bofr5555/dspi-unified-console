@@ -13,7 +13,7 @@ import se.bofr.dspi.fake.FakeDspiCore
 /**
  * WP PAIRBANDF (review pairband F1, F2) over the fake's undo groups (F3): Bypass All
  * on a linked pair is the pair call per band in one "Bypass All" step; Link Inputs
- * with a kept side copies in one "Link Inputs" step; a paste is one "Paste EQ" step.
+ * with a kept side copies in one "Link Inputs" step; a paste is one "Paste Parameters" step (the core's, CLIPAN).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class GroupsWpPairbandfTest {
@@ -73,7 +73,7 @@ class GroupsWpPairbandfTest {
         b.copyChannel(out)
         b.pasteChannel(0)
         runCurrent()
-        assertEquals("Paste EQ", core.history(1).first().label)
+        assertEquals("Paste Parameters", core.history(1).first().label)
         b.undo()
         assertEquals(before, b.channelBands(0)!!.peq to b.channelBands(1)!!.peq)
     }

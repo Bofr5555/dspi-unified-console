@@ -308,12 +308,12 @@ test("WB6a tools: Commit, Revert to Saved and Factory Reset ask first, then the 
   await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-2);
   await expect(session.getByRole("region", { name: "Outputs" }).locator(".ch-value").first()).toHaveText("-2.0 dB");
 
-  // Factory Reset: the defaults (bypass off, trims at 0).
-  await session.getByRole("button", { name: "Bypass" }).click();
+  // Factory Reset: the defaults (bypass off, trims at 0). // -- WP WB6L -- exact: the quick strip has "Bypass Master EQ"
+  await session.getByRole("button", { name: "Bypass", exact: true }).click();
   await expect.poll(async () => (await coreState(page)).bypass).toBe(true);
   await menu(session, "Factory Reset…");
   await page.getByRole("dialog", { name: "Factory Reset" }).getByRole("button", { name: "Reset" }).click();
-  await expect(session.getByRole("button", { name: "Bypass" })).toHaveAttribute("aria-pressed", "false");
+  await expect(session.getByRole("button", { name: "Bypass", exact: true })).toHaveAttribute("aria-pressed", "false");
   const st = await coreState(page);
   expect(st.bypass).toBe(false);
   expect(st.outputGainDb[0]).toBe(0);
@@ -370,7 +370,8 @@ test("WB6a channels: inputs and outputs are renamed, trimmed and muted, each rea
 test("WB6a: Disconnect with unsaved changes asks first", async ({ page }) => {
   const session = await openControl(page);
   await setRange(session.getByRole("region", { name: "Outputs" }).getByRole("slider").first(), -5);
-  await expect(session.getByText("Unsaved changes")).toBeVisible();
+  // -- WP WB6F -- exact: the status rail says "· unsaved changes" too
+  await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
   await session.getByRole("button", { name: "Disconnect" }).click();
   const prompt = page.getByRole("dialog", { name: "Unsaved Changes" });
   await prompt.getByRole("button", { name: "Cancel" }).click();
@@ -426,7 +427,8 @@ test.describe("375 px, in every browser", () => {
     // Unsaved, muted, renamed long, menu open: the same height, still no sideways scroll.
     const outputs = session.getByRole("region", { name: "Outputs" });
     await setRange(outputs.getByRole("slider").first(), -6);
-    await expect(session.getByText("Unsaved changes")).toBeVisible();
+    // -- WP WB6F -- exact: the status rail says "· unsaved changes" too
+    await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
     await outputs.locator(".ch-mute").first().click();
     await expect(outputs.locator(".ch-mute").first()).toHaveAttribute("aria-pressed", "true");
     await session.getByRole("button", { name: "Mute", exact: true }).click();

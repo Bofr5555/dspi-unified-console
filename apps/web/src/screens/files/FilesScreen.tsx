@@ -12,6 +12,8 @@ import type { ScreenProps } from "../../ui/screens";
 import { OutcomeLine, useDesk } from "../snapshots/Bars";
 import { BLOCKS, DiffTable } from "../snapshots/DiffTable";
 import { docMeta, download, fileNameFor, type SnapshotDesk } from "../snapshots/model";
+// -- WP WB6K -- filter files, the saves to the device, the AutoEQ database
+import { AutoEqDatabaseCard, DeviceSaveCard, FilterPicker, FiltersCard, type PendingFilters } from "./FilesCards";
 
 export function FilesScreen(props: ScreenProps) {
   const desk = props.desk;
@@ -40,6 +42,7 @@ function FilesView(props: { desk: SnapshotDesk }) {
   const [template, setTemplate] = useState("");
   const [pending, setPending] = useState<Pending | null>(null);
   const [readError, setReadError] = useState("");
+  const [filters, setFilters] = useState<PendingFilters | null>(null); // -- WP WB6K --
   const file = useRef<HTMLInputElement>(null);
 
   const exportName = name.trim() || doc?.name || activeName || "Configuration";
@@ -70,6 +73,8 @@ function FilesView(props: { desk: SnapshotDesk }) {
       ) : null}
       {pending ? (
         <ImportPreview desk={desk} pending={pending} onDone={() => setPending(null)} />
+      ) : filters ? (
+        <FilterPicker desk={desk} pending={filters} onDone={() => setFilters(null)} />
       ) : (
         <>
           <div class="card">
@@ -144,6 +149,10 @@ function FilesView(props: { desk: SnapshotDesk }) {
               </button>
             </div>
           </div>
+          {/* -- WP WB6K -- */}
+          <FiltersCard desk={desk} onChosen={setFilters} />
+          <DeviceSaveCard desk={desk} />
+          <AutoEqDatabaseCard desk={desk} />
         </>
       )}
     </section>

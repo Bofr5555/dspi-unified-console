@@ -10,6 +10,8 @@ import se.bofr.dspi.core.AlinkSystemEdits
 import se.bofr.dspi.core.AlinkSystemSaved
 import se.bofr.dspi.core.AutoEqApply
 import se.bofr.dspi.core.AutoEqProfile
+import se.bofr.dspi.core.ChannelClip
+import se.bofr.dspi.core.ChannelPasteOptions
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FilterParams
@@ -758,6 +760,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.protectAllOutputs(ceilingDbfs)
     }
 
+    // -- WP CLIP1 -- a paste writes the destination (and its partner)
+    override fun pasteChannel(clip: ChannelClip, ch: Int, options: ChannelPasteOptions) {
+        guard("pasteChannel")
+        return inner.pasteChannel(clip, ch, options)
+    }
+
     override fun csApply(op: String): String {
         if (!isCsRead(op)) guard("csApply")
         return inner.csApply(op)
@@ -923,7 +931,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "applyGuardedSnapshot",
             "applyGuardedSnapshotDocument",
             // -- WP P1AQ --
-            "autoeqApply"
+            "autoeqApply",
+            // -- WP CLIP1 --
+            "pasteChannel"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1006,6 +1016,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "csStatusText",
             "csFetch",
             "csPinUses",
+            // -- WP CG-SWS-b -- the pin map: from the mirror, no device I/O
+            "pinMap",
+            "pinCheck",
+            "pinHolder",
             "csSnapshot",
             "curveFreq",
             "disconnect",
@@ -1226,7 +1240,24 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "hubPinClear",
             "hubModePin",
             "hubAdminEvents",
-            "setHubAdminListener"
+            "setHubAdminListener",
+            // -- WP CG-SWS-a -- stateless tables and quantizers, and a read of
+            // the mirror's image bytes: nothing is sent to the device
+            "imageExtras",
+            "quantizeMasterVolume",
+            "curveSections",
+            "knownFeatureNames",
+            "linkParseTxt",
+            "platformShape",
+            "vregCodeMv",
+            "vregCodeLabel",
+            "defaultChannelNames",
+            "enumValueLabels",
+            "bulkImageExtras",
+            // -- WP CLIP1 -- a copy reads the mirror; a clip's document is local
+            "copyChannel",
+            "channelClipToJson",
+            "channelClipFromJson"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

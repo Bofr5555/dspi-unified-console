@@ -10,6 +10,7 @@
 #include <QtQml/qqmlregistration.h>
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 #include "CoreApi.h"
 #include "Registrar.h"
@@ -32,7 +33,9 @@ class QWindow;
 //   linkedPartner() reads it for the highlight and for Paste's mirroring.
 // - The channel clipboard: copy and paste a channel's bands (and, between
 //   outputs, crossover, gain, delay and mute); Edit > Copy / Paste act on the
-//   selected channel.
+//   selected channel. -- WP CLIPQT -- The core copies and pastes
+//   (dspi_copy_channel / dspi_paste_channel, its rules and its one undo step
+//   "Paste Parameters"); the clip kept here is the core's JSON document.
 // - Presets, source, volume and the quick strip's switches.
 //
 // Every write goes through apply() and DeviceModel::write().
@@ -107,8 +110,8 @@ public:
     int inactiveOutputs() const;
     QStringList slotNames() const;
     bool derivedLabels() const;
-    bool hasClipboard() const { return m_clipboard.valid; }
-    QString clipboardName() const { return m_clipboard.name; }
+    bool hasClipboard() const { return m_hasClip; }   // -- WP CLIPQT --
+    QString clipboardName() const { return m_clipName; }
     bool identifySupported() const { return m_siggenMask != 0; }
     QString volumeMode() const { return m_masterMode ? QStringLiteral("master") : QStringLiteral("user"); }
     void setVolumeMode(const QString &mode);
@@ -199,16 +202,6 @@ signals:
     void presetFailed(const QString &title, const QString &text);
 
 private:
-    struct Clipboard {
-        bool valid = false;
-        bool fromOutput = false;
-        QString name;
-        QVector<FilterParams> filters;
-        QVector<FilterParams> crossover;
-        float gainDb = 0;
-        float delayMs = 0;
-        bool muted = false;
-    };
     // Facts read after each snapshot on the worker (no device traffic)
     struct Extras {
         bool dirty = false;
@@ -241,7 +234,19 @@ private:
     int m_selected = -1;
     int m_highlighted = 0;
     bool m_watchingLinks = false;
-    Clipboard m_clipboard;
+    // -- WP CLIPQT -- the core's clip document (dspi.channelClip), and the
+    // label the copied row showed
+    QByteArray m_clip;
+    QString m_clipName;
+    // -- WP CLIPQTFIX -- A copy counts from the moment it is asked for: the
+    // worker's own clip (`m_workerClip`, read and written only on the worker)
+    // is what a paste takes, so a paste asked for right after a copy pastes
+    // that copy, whatever the GUI has heard back yet (the worker runs its
+    // jobs in the order posted). `m_copies` numbers the copies, so a late
+    // answer to an older one changes nothing.
+    bool m_hasClip = false;
+    quint64 m_copies = 0;
+    std::shared_ptr<QByteArray> m_workerClip = std::make_shared<QByteArray>();
     bool m_masterMode = false;
     int m_sidebarWidth = 0;
     QVariantList m_sources;

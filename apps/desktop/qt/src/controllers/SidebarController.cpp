@@ -1,6 +1,7 @@
 // -- WP QP1 -- The sidebar's state and writes (SidebarController.h).
 #include "SidebarController.h"
 #include "Confirm.h"   // -- WP P1QT2 --
+#include "NoticeCenter.h"   // -- WP CLIPQT --
 
 #include "ChannelController.h"
 #include "Core.h"
@@ -347,55 +348,80 @@ bool SidebarController::renameChannel(int channel, const QString &name) {
     return m_ctx.device->setChannelName(channel, trimmed);
 }
 
+// -- WP CLIPQT -- The core copies from its mirror (nothing sent), on the
+// worker after the writes queued before it; the clip is its JSON document.
+// -- WP CLIPQTFIX -- The worker keeps it for the pastes behind it, and the
+// clipboard counts as filled at once (Paste needs no wait for the answer).
 void SidebarController::copyChannel(int channel) {
-    const DspState *s = m_ctx.device->state();
-    if (!s || channel < 0 || channel >= MAX_CHANNELS) return;
-    Clipboard cb;
-    cb.valid = true;
+    if (!m_ctx.device->state() || channel < 0 || channel >= MAX_CHANNELS) return;
     const int row = m_ctx.device->channels()->rowOfChannel(channel);
-    cb.name = row >= 0 ? m_ctx.device->channels()->get(row, QStringLiteral("label")).toString() : QString();
-    for (int b = 0; b < BANDS_PER_CHANNEL; ++b) cb.filters.append(s->filters[channel][b]);
-    const int output = channel - int(s->num_input_channels);
-    if (output >= 0 && output < MAX_OUTPUTS) {
-        cb.fromOutput = true;
-        for (int b = 0; b < MAX_XOVER_BANDS; ++b) cb.crossover.append(s->xover[channel][b]);
-        cb.gainDb = s->output_gain_db[output];
-        cb.delayMs = s->output_delay_ms[output];
-        cb.muted = s->output_muted[output];
-    }
-    m_clipboard = cb;
+    const QString name = row >= 0 ? m_ctx.device->channels()->get(row, QStringLiteral("label")).toString() : QString();
+    const quint64 copy = ++m_copies;
+    m_hasClip = true;
+    m_clipName = name;
     emit clipboardChanged();
+    std::shared_ptr<QByteArray> held = m_workerClip;
+    m_ctx.core->worker()->call(
+        this,
+        [channel, held](FfiCore *c) {
+            QByteArray doc = readSized([c, channel](char *b, uint32_t n) { return dspi_copy_channel(c, uint8_t(channel), b, n); }, 8192);
+            const bool clip = QJsonDocument::fromJson(doc).object().value(QLatin1String("kind")).toString() == QLatin1String("dspi.channelClip");
+            // A failed copy leaves nothing to paste, not the copy before it
+            *held = clip ? doc : QByteArray();
+            return doc;
+        },
+        [this, copy](QByteArray doc) {
+            const QJsonObject o = QJsonDocument::fromJson(doc).object();
+            const bool clip = o.value(QLatin1String("kind")).toString() == QLatin1String("dspi.channelClip");
+            if (!clip) {
+                const QString key = o.value(QLatin1String("noticeKey")).toString();
+                if (auto *notices = Registrar::instance<NoticeCenter>(); notices && !key.isEmpty())
+                    notices->postKey(key, o.value(QLatin1String("error")).toString());
+            }
+            if (copy != m_copies) return;   // a newer copy was asked for since
+            m_clip = clip ? doc : QByteArray();
+            if (!clip) {
+                m_hasClip = false;
+                m_clipName.clear();
+                emit clipboardChanged();
+            }
+        });
 }
 
-// The bands, mirrored onto a linked partner (the pair must not drift apart);
-// crossover, gain, delay and mute only from one output to another
+// -- WP CLIPQT -- The core's paste (the Console's pasteChannelParams rules):
+// the bands, mirrored onto a linked partner (the pair must not drift apart);
+// crossover, gain, delay and mute only from one output to another. One undo
+// step, "Paste Parameters"; a refusal (the lock, read-only, a limit) writes
+// nothing and shows the core's notice. -- WP CLIPQTFIX -- The clip is the
+// worker's, read when the paste runs: the last copy asked for before it.
 void SidebarController::pasteChannel(int channel) {
-    const DspState *s = m_ctx.device->state();
-    if (!m_clipboard.valid || !s || channel < 0 || channel >= MAX_CHANNELS) return;
-    const Clipboard cb = m_clipboard;
+    if (!m_hasClip || !m_ctx.device->state() || channel < 0 || channel >= MAX_CHANNELS) return;
+    std::shared_ptr<QByteArray> held = m_workerClip;
     const int partner = linkedPartner(channel);
-    const int output = channel - int(s->num_input_channels);
-    const bool toOutput = output >= 0 && output < MAX_OUTPUTS;
-    apply(QStringLiteral("paste channel %1").arg(channel), [cb, channel, partner, output, toOutput](FfiCore *c) {
-        // -- WP PAIRBAND -- the whole paste is one undo step
-        dspi_undo_group_begin(c, "Paste EQ");
-        bool ok = true;
-        for (int b = 0; b < BANDS_PER_CHANNEL; ++b) {
-            const FilterParams f = b < cb.filters.size() ? cb.filters.at(b) : FilterParams{};
-            ok = dspi_set_filter(c, uint8_t(channel), uint8_t(b), f) && ok;
-            if (partner >= 0) ok = dspi_set_filter(c, uint8_t(partner), uint8_t(b), f) && ok;
-        }
-        if (toOutput && cb.fromOutput) {
-            for (int b = 0; b < cb.crossover.size(); ++b)
-                ok = dspi_set_crossover(c, uint8_t(channel), uint8_t(b), cb.crossover.at(b)) && ok;
-            ok = dspi_set_output_gain(c, uint8_t(output), cb.gainDb) && ok;
-            // -- WP QP16 -- a delay past this device's line is held at the line (behaviour.md §15)
-            ok = dspi_set_output_delay(c, uint8_t(output), qMin(cb.delayMs, dspi_max_delay_ms(c))) && ok;
-            ok = dspi_set_output_mute(c, uint8_t(output), cb.muted) && ok;
-        }
-        dspi_undo_group_end(c);   // -- WP PAIRBAND --
-        return ok;
-    });
+    auto reply = std::make_shared<QJsonObject>();
+    apply(
+        QStringLiteral("paste channel %1").arg(channel),
+        [held, channel, partner, reply](FfiCore *c) {
+            if (held->isEmpty()) return false;   // the copy failed: nothing to paste
+            const QByteArray clip = *held;
+            // One call, one buffer: a paste is never repeated to size it
+            QByteArray buf(16 * 1024, '\0');
+            const uint32_t need = dspi_paste_channel(c, clip.constData(), uint8_t(channel), int32_t(partner), buf.data(), uint32_t(buf.size()));
+            if (need > 0 && need <= uint32_t(buf.size())) buf.truncate(int(need) - 1);
+            else buf.clear();
+            *reply = QJsonDocument::fromJson(buf).object();
+            if (reply->isEmpty()) reply->insert(QStringLiteral("ok"), false);
+            return reply->value(QLatin1String("ok")).toBool();
+        },
+        [this, reply](bool ok) {
+            if (ok) return;
+            NoticeCenter *notices = Registrar::instance<NoticeCenter>();
+            if (!notices) return;
+            const QString key = reply->value(QLatin1String("noticeKey")).toString();
+            if (!key.isEmpty()) notices->postKey(key, reply->value(QLatin1String("error")).toString());
+            // Refused here before the core saw it: a device this app only reads
+            else if (reply->isEmpty() && m_ctx.device->readOnly()) notices->postKey(QStringLiteral("read_only"));
+        });
 }
 
 // -- WP QPI3 -- the generator's controller plays it (one owner of its writes)

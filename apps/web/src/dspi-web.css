@@ -814,3 +814,260 @@
 .dspi-web .installer-copy .notice-action { display: block; font-size: 0.85rem; }
 .dspi-web .hub-recovery { margin: 0.5rem 0; }
 .dspi-web .recovery-code code { font-size: 1.1rem; overflow-wrap: anywhere; }
+
+/* -- WP WB6D -- the System view's signal chain (src/screens/system/SignalChain.tsx): inputs
+   and outputs in two columns that fall to one on a narrow screen; each channel a row
+   of its name, its blocks (on: filled, off: outlined and muted), its level and meter */
+.dspi-web .sys-chain { margin-top: 1rem; padding-top: 0.25rem; border-top: 1px solid var(--line); min-width: 0; }
+.dspi-web .sys-chain h3 { margin-top: 0.75rem; }
+.dspi-web .sys-chain h4 { font-size: 0.9rem; margin: 0.6rem 0 0.35rem; }
+.dspi-web .sys-chain-top { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; }
+.dspi-web .sys-chain-bypass { color: var(--warn); font-size: 0.85rem; font-weight: 600; }
+.dspi-web .sys-chain-cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 0.75rem; }
+@media (max-width: 760px) { .dspi-web .sys-chain-cols { grid-template-columns: minmax(0, 1fr); } }
+.dspi-web .sys-chain-cols.stale .sys-chain-meter { opacity: 0.45; filter: grayscale(1); }
+.dspi-web .sys-chain-cols.bypassed .sys-blocks { opacity: 0.55; }
+.dspi-web .sys-chain-col { border: 1px solid var(--line); border-radius: 8px; padding: 0.25rem 0.6rem 0.5rem; background: var(--panel); min-width: 0; }
+.dspi-web .sys-chain-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; padding: 0.35rem 0; border-top: 1px solid var(--line); font-size: 0.9rem; }
+.dspi-web .sys-chain-col h4 + .sys-chain-row { border-top: 0; }
+.dspi-web .sys-chain-off { color: var(--muted); }
+.dspi-web .sys-chain-go { font: inherit; padding: 0.05rem 0.4rem; min-height: 0; }
+.dspi-web .sys-chain-name { font-weight: 600; overflow-wrap: anywhere; }
+.dspi-web .sys-chain-from { font-size: 0.8rem; color: var(--muted); }
+.dspi-web .sys-blocks { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.dspi-web .sys-block-item { display: inline-flex; }
+.dspi-web .sys-block { font: 0.78rem/1.4 inherit; padding: 0 0.45rem; border-radius: 4px; border: 1px solid var(--line); white-space: nowrap; min-height: 0; }
+.dspi-web .sys-block-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.dspi-web .sys-block-off { color: var(--muted); border-style: dashed; }
+.dspi-web .sys-block-detail { font-weight: 400; }
+.dspi-web .sys-chain-level { display: inline-flex; gap: 0.5rem; font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.dspi-web .sys-chain-mute { color: var(--bad); font-weight: 600; }
+.dspi-web .sys-chain-meter { flex: 1 1 5rem; min-width: 4rem; height: 0.45rem; background: var(--line); border-radius: 3px; overflow: hidden; }
+.dspi-web .sys-chain-meter > span { display: block; height: 100%; background: var(--meter); }
+.dspi-web .sys-chain-meter.clip > span { background: var(--bad); }
+.dspi-web .sys-chain-fx { margin: 0.35rem 0; }
+
+/* -- WP WB6F -- the status rail's health row and panel (ui/status-rail/). Colour only for
+   meaning: a problem's severity, a core over its limit. */
+.dspi-web .health-row { margin-top: 0.25rem; padding-top: 0.25rem; border-top: 1px solid var(--line); }
+.dspi-web .health-unsaved { color: var(--warn); }
+.dspi-web .health-load { font-variant-numeric: tabular-nums; }
+.dspi-web .health-load-high { color: var(--bad); font-weight: 600; }
+.dspi-web .health-sum.health-ok { color: var(--ok); }
+.dspi-web .health-sum.health-warn { color: var(--warn); border-color: var(--warn); }
+.dspi-web .health-sum.health-bad { color: var(--bad); border-color: var(--bad); font-weight: 600; }
+.dspi-web .health-panel { margin-top: 0.35rem; }
+.dspi-web .health-list { list-style: none; margin: 0; padding: 0; }
+.dspi-web .health-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid var(--line); }
+.dspi-web .health-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .health-error .sys-sev { background: var(--bad); }
+.dspi-web .health-acknowledged .sys-sev { background: none; border: 2px solid var(--warn); }
+.dspi-web .health-error.health-acknowledged .sys-sev { border-color: var(--bad); }
+.dspi-web .health-ended { opacity: 0.7; }
+.dspi-web .health-none { margin: 0.25rem 0; }
+.dspi-web .health-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; margin-top: 0.35rem; }
+
+/* -- WP WB6G -- the input pages: trims by pair with their link, an input's header on the EQ, the source names, the matrix's trims */
+.dspi-web .inputs-screen { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); align-items: start; }
+.dspi-web .input-pair { display: grid; gap: 0.3rem; padding: 0.4rem 0; border-top: 1px solid var(--line); min-width: 0; }
+.dspi-web .input-pair:first-of-type { border-top: 0; }
+.dspi-web .input-pair.linked { border-left: 3px solid var(--accent); padding-left: 0.4rem; }
+.dspi-web .input-link { justify-self: start; font-size: 0.8rem; padding: 0.15rem 0.5rem; }
+.dspi-web .input-link[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .input-trim { display: grid; grid-template-columns: 2.9rem minmax(0, 1fr) 5.6rem; grid-template-rows: auto auto; column-gap: 0.4rem; row-gap: 0.15rem; align-items: center; min-width: 0; }
+.dspi-web .input-trim .ch-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dspi-web .input-trim .ch-gain { grid-column: 1 / -1; grid-row: 2; }
+.dspi-web .input-trim .value-field input { width: 100%; }
+.dspi-web .input-header { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.75rem; align-items: center; margin: 6px 0; }
+@media (max-width: 520px) { .dspi-web .input-header { grid-template-columns: minmax(0, 1fr); } }
+.dspi-web .source-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
+.dspi-web .source-row label { display: grid; grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr); gap: 0.5rem; align-items: center; }
+.dspi-web .source-row input { width: 100%; min-width: 0; }
+.dspi-web .source-active { color: var(--accent); font-size: 0.8rem; }
+.dspi-web .m-trim { display: block; margin-top: 0.2rem; }
+
+/* -- WP WB6J -- the analyser (bar strip, overlay), the tools screen, cards per row */
+.dspi-web { --rta-bar: #3aa76d; --rta-peak: #d49a00; }
+.dspi-web .main-screen.per-row { grid-template-columns: repeat(var(--per-row), minmax(0, 1fr)); }
+@media (max-width: 40rem) {
+  .dspi-web .main-screen.per-row { grid-template-columns: minmax(0, 1fr); }
+}
+.dspi-web .main-tools, .dspi-web .main-spectrum { grid-column: 1 / -1; min-width: 0; }
+.dspi-web .main-tools { display: flex; justify-content: flex-end; }
+.dspi-web .main-tools label { display: inline-flex; gap: 0.4rem; align-items: center; color: var(--muted); font-size: 0.85rem; }
+.dspi-web .seg { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.dspi-web .seg [aria-pressed="true"], .dspi-web .seg [aria-selected="true"],
+.dspi-web .rta-channels [aria-pressed="true"], .dspi-web .siggen-outputs [aria-pressed="true"],
+.dspi-web .siggen-types [aria-checked="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .rta-chooser { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.4rem; }
+.dspi-web .rta-channels { display: flex; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
+.dspi-web .rta-grid { display: grid; gap: 0.5rem; }
+.dspi-web .rta-cell { margin: 0; min-width: 0; }
+.dspi-web .rta-cell figcaption { font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dspi-web .rta-cell canvas { display: block; width: 100%; height: 5rem; background: var(--eq-bg, #151518); border-radius: 4px; }
+.dspi-web .rta-following { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; font-size: 0.85rem; color: var(--warn); margin: 0.3rem 0; }
+.dspi-web .rta-host { position: relative; min-width: 0; }
+.dspi-web .rta-host canvas.rta-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.dspi-web .rta-overlay-note { position: absolute; left: 0.4rem; top: 0.2rem; right: 0.4rem; pointer-events: none; }
+.dspi-web .rta-overlay-note button { pointer-events: auto; }
+.dspi-web .eq-tools > button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .siggen { display: grid; gap: 0.6rem; }
+.dspi-web .siggen-transport { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.dspi-web .siggen-transport > div { flex: 1 1 12rem; min-width: 0; }
+.dspi-web .siggen-detail, .dspi-web .siggen-blurb, .dspi-web .muted { color: var(--muted); font-size: 0.85rem; }
+.dspi-web .siggen-blurb { margin: 0; }
+.dspi-web .siggen-types, .dspi-web .siggen-outputs, .dspi-web .siggen-options { display: flex; flex-wrap: wrap; gap: 0.3rem 0.6rem; }
+.dspi-web .siggen-level { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 0.5rem; align-items: center; }
+.dspi-web .siggen-params { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.dspi-web .siggen-params label { display: inline-flex; gap: 0.35rem; align-items: center; }
+.dspi-web .siggen-number { width: 6rem; }
+.dspi-web .stats-head, .dspi-web .monitor-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+.dspi-web .monitor-tools { justify-content: flex-start; }
+.dspi-web .stats-grid { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); align-items: start; }
+.dspi-web .stat-rows { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.15rem 0.75rem; margin: 0; font-size: 0.85rem; }
+.dspi-web .stat-rows dt { color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .stat-rows dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+.dspi-web .stat-dot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; margin-right: 0.3rem; background: var(--muted); }
+.dspi-web .stat-dot.good { background: var(--ok); }
+.dspi-web .stat-dot.warn { background: var(--warn); }
+.dspi-web .stat-dot.bad { background: var(--bad); }
+.dspi-web .monitor-lines { list-style: none; margin: 0; padding: 0.4rem; max-height: 24rem; overflow: auto; font-size: 0.8rem; border: 1px solid var(--line); border-radius: 6px; }
+.dspi-web .monitor-lines li { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dspi-web .monitor-lines time { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* -- WP WB6K -- the AutoEQ profile list and the database card */
+.dspi-web .autoeq-hits { list-style: none; margin: 0.25rem 0; padding: 0; max-height: 16rem; overflow-y: auto; min-width: 0; }
+.dspi-web .autoeq-hit { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; padding: 0.15rem 0; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .autoeq-hit .heart { min-width: 2rem; }
+.dspi-web .autoeq-browse input[type="search"] { min-width: 0; max-width: 100%; }
+.dspi-web .autoeq-db h4 { margin: 0.75rem 0 0.25rem; }
+
+/* -- WP WB6L -- the quick strip, the shortcut list, the control-surface editor */
+.dspi-web .quick-strip { display: flex; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
+.dspi-web .strip-button { min-width: 2.4rem; padding: 0.25rem 0.5rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+.dspi-web .strip-button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .strip-help { margin-left: auto; }
+.dspi-web .shortcut-list { display: grid; gap: 0.5rem; max-height: 60vh; overflow-y: auto; }
+.dspi-web .shortcut-list h3 { margin: 0.25rem 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.dspi-web .shortcut-list dl { margin: 0; display: grid; gap: 0.15rem; }
+.dspi-web .shortcut-row { display: flex; justify-content: space-between; gap: 1rem; min-width: 0; }
+.dspi-web .shortcut-row dt { min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .shortcut-row dd { margin: 0; flex: none; }
+.dspi-web kbd { font: 0.8rem ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 0.3rem; }
+.dspi-web .surfaces-screen { display: grid; gap: 0.75rem; min-width: 0; }
+.dspi-web .cs-card-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; min-width: 0; }
+.dspi-web .cs-title { display: grid; gap: 0.1rem; flex: 1 1 10rem; min-width: 0; }
+.dspi-web .cs-name { font: inherit; font-weight: 600; max-width: 18rem; min-width: 0; }
+.dspi-web .cs-summary { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
+.dspi-web .cs-summary.running { color: var(--ok); }
+.dspi-web .cs-pill.good { border-color: var(--ok); color: var(--ok); }
+.dspi-web .cs-warning { color: var(--warn); }
+.dspi-web .cs-body { display: grid; gap: 0.5rem; margin: 0.5rem 0 0 1.5rem; min-width: 0; }
+.dspi-web .cs-rows { display: grid; gap: 0.35rem; min-width: 0; }
+.dspi-web .cs-row { display: grid; grid-template-columns: minmax(6rem, 12rem) minmax(0, 1fr); gap: 0.5rem; align-items: center; min-width: 0; }
+.dspi-web .cs-row select, .dspi-web .cs-row input[type="number"], .dspi-web .cs-row input[type="range"] { min-width: 0; max-width: 100%; }
+.dspi-web .cs-row input[type="checkbox"] { justify-self: start; }
+.dspi-web .cs-number { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+.dspi-web .cs-number input { width: 7rem; }
+.dspi-web .cs-unit { color: var(--muted); font-size: 0.85rem; }
+.dspi-web .cs-note { margin: 0; color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; white-space: pre-line; }
+.dspi-web .cs-note.warn { color: var(--warn); }
+.dspi-web .cs-note.error, .dspi-web .cs-message.error { color: var(--bad); }
+.dspi-web .cs-apply { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; min-width: 0; }
+.dspi-web .cs-message { flex: 1 1 8rem; min-width: 0; font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
+.dspi-web .cs-apply .primary { border-color: var(--accent); font-weight: 600; }
+.dspi-web .cs-remotes, .dspi-web .cs-display { display: grid; gap: 0.5rem; border-top: 1px solid var(--line); padding-top: 0.5rem; min-width: 0; }
+.dspi-web .cs-remotes h4, .dspi-web .cs-display h4 { margin: 0; font-size: 0.85rem; }
+.dspi-web .cs-remote, .dspi-web .cs-page, .dspi-web .cs-step { display: grid; gap: 0.35rem; border: 1px solid var(--line); border-radius: 6px; padding: 0.4rem 0.5rem; min-width: 0; }
+.dspi-web .cs-remote-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; min-width: 0; }
+.dspi-web .cs-remote-head > span { flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .cs-code { font-family: ui-monospace, monospace; }
+.dspi-web .cs-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.4rem; }
+.dspi-web .cs-add { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.dspi-web .cs-add select { min-width: 0; max-width: 100%; }
+.dspi-web .cs-tabs { display: flex; gap: 0.25rem; }
+.dspi-web .cs-display .ok { color: var(--ok); }
+@media (max-width: 480px) {
+  .dspi-web .cs-row { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; }
+  .dspi-web .cs-body { margin-left: 0; }
+}
+
+/* -- WP WB6E -- the scene bar's preset slots
+   -- fixup b4fix F1 -- a head of one line (label, the active slot or the Store hint, cut short;
+   the verbs) and the slots below, wrapping by width only; numbers only when the bar is narrow (a container query: a console may be narrow on a wide page). The
+   unsaved marks keep their room when hidden. Nothing below the bar moves as they change. */
+.dspi-web .slot-bar { container-type: inline-size; }
+.dspi-web .slot-bar .slot-head { flex-wrap: nowrap; min-width: 0; }
+.dspi-web .slot-bar .slot-line { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .slot-bar .slot-active { font-weight: 600; }
+.dspi-web .slot-bar.storing .slot-line { color: var(--warn); }
+.dspi-web .slot-bar .slot-unsaved { visibility: hidden; }
+.dspi-web .slot-bar .slot-buttons { display: flex; flex-wrap: wrap; gap: 0.35rem; min-width: 0; margin-top: 4px; }
+.dspi-web .slot-bar .slot { flex: none; display: inline-flex; align-items: center; gap: 0.3rem; max-width: 11rem; }
+.dspi-web .slot-bar .slot-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dspi-web .slot-bar .slot.empty .slot-name { color: var(--muted); font-style: italic; }
+.dspi-web .slot-bar .slot.unsaved { border-style: dashed; }
+.dspi-web .slot-bar .slot-dot { color: var(--warn); font-weight: 700; visibility: hidden; }
+.dspi-web .slot-bar .slot-dot.on, .dspi-web .slot-bar .slot-unsaved.on { visibility: visible; }
+.dspi-web .slot-bar .slot-verbs { flex: none; display: inline-flex; gap: 0; }
+.dspi-web .slot-bar .slot-verbs > button.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
+.dspi-web .slot-bar.storing .slot { border-color: var(--warn); }
+@container (max-width: 560px) {
+  .dspi-web .slot-bar .slot-name { display: none; }
+  .dspi-web .slot-bar .slot { min-width: 2rem; justify-content: center; gap: 0.15rem; padding: 1px 5px; }
+}
+
+
+/* -- WP WB6H -- the effects: the list of effects with their state beside the open one's panel; one column on a phone */
+/* a container: the list beside the panel only where the session's column has room (an embedding page's half may not), so its rows never widen that column */
+.dspi-web .effects-screen { container-type: inline-size; min-width: 0; }
+.dspi-web .fx-layout { display: grid; gap: 0.75rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.dspi-web .fx-list { display: flex; flex-direction: row; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
+@container (min-width: 40rem) {
+  .dspi-web .fx-layout { grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr); }
+  .dspi-web .fx-list { flex-direction: column; flex-wrap: nowrap; }
+}
+.dspi-web .fx-pick { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; text-align: left; min-width: 0; }
+.dspi-web .fx-pick[aria-selected="true"] { border-color: var(--accent); background: var(--bg); }
+.dspi-web .fx-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .fx-state { font-size: 0.75rem; color: var(--muted); }
+.dspi-web .fx-state.on { color: var(--accent); font-weight: 700; }
+.dspi-web .fx-switch[aria-checked="true"], .dspi-web .fx-bool [aria-checked="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .fx-plain { margin: 0 0 0.5rem; color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
+.dspi-web .fx-split { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
+.dspi-web .fx-split [aria-pressed="true"] { border-color: var(--accent); }
+.dspi-web .fx-params { display: grid; gap: 0.6rem 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); align-items: start; }
+.dspi-web .fx-row { min-width: 0; }
+.dspi-web .fx-bool, .dspi-web .fx-choice label { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.dspi-web .fx-detail { display: block; color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; overflow-wrap: anywhere; }
+.dspi-web .fx-mask { grid-column: 1 / -1; }
+.dspi-web .fx-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem; }
+.dspi-web .fx-chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+/* -- WP WB6I -- Settings: the pages, rows, toggles, pins, core voltage; the EQ graph's cursor readout */
+.dspi-web .settings-screen { display: grid; gap: 0.75rem; min-width: 0; }
+.dspi-web .settings-screen .card { min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .settings-nav { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.dspi-web .settings-nav button[aria-current="page"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; margin: 0.35rem 0; min-width: 0; }
+.dspi-web .settings-row > span { flex: 1 1 12rem; min-width: 0; }
+.dspi-web .settings-row input[type="text"] { max-width: 100%; }
+.dspi-web .settings-buttons { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0; }
+.dspi-web .settings-toggle { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0.35rem 0; }
+.dspi-web .settings-toggle small { display: block; color: var(--muted); }
+.dspi-web .settings-slider { display: grid; gap: 0.2rem; margin: 0.45rem 0; }
+.dspi-web .settings-slider input { width: 100%; max-width: 24rem; }
+.dspi-web .settings-picker { display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.dspi-web .settings-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.2rem 0.75rem; margin: 0.25rem 0; }
+.dspi-web .settings-facts dt { color: var(--muted); }
+.dspi-web .settings-facts dd { margin: 0; overflow-wrap: anywhere; }
+.dspi-web .settings-facts.mono dd, .dspi-web .settings-facts .mono { font-family: ui-monospace, monospace; }
+.dspi-web .settings-group { border-top: 1px solid var(--line); padding-top: 0.4rem; margin-top: 0.4rem; }
+.dspi-web .settings-group h4 { margin: 0 0 0.3rem; font-size: 0.9rem; }
+.dspi-web .settings-pins { border-collapse: collapse; width: 100%; }
+.dspi-web .settings-pins th, .dspi-web .settings-pins td { text-align: left; padding: 0.2rem 0.4rem 0.2rem 0; vertical-align: middle; }
+.dspi-web .settings-pins input { width: 4.5rem; }
+.dspi-web .settings-links { margin: 0.25rem 0; padding-left: 1.2rem; }
+.dspi-web .vreg-warning { border: 1px solid var(--warn); border-radius: 6px; padding: 0.35rem 0.6rem; white-space: pre-wrap; }
+.dspi-web .vreg-word { display: grid; gap: 0.3rem; margin-top: 0.5rem; }
+.dspi-web .eq-readout { position: absolute; top: 4px; right: 6px; font: 10px system-ui, sans-serif; color: var(--eq-text, rgba(255,255,255,0.55)); pointer-events: none; white-space: pre; }

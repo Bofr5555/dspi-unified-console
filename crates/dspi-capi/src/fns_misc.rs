@@ -76,6 +76,12 @@ mod offline;
 mod guarded;
 // -- WP HUBADMIN --
 mod hub_admin;
+// -- WP CG-SWS-a --
+mod sws_a;
+// -- WP CG-SWS-b -- the pin map
+mod pins;
+// -- WP CLIP1 -- the channel clipboard
+mod clipboard;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

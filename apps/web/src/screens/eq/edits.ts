@@ -15,6 +15,8 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { FilterParams } from "../../core/protocol";
 import type { Session } from "../../ui/session";
 import { bandWrites, sameBand } from "./model";
+// -- WP WB6G -- a linked input pair's bands go to both sides
+import { inputLinks } from "../inputs/model";
 
 /** -- WP WB8 -- the PEQ bands, 0..9, which `filter` takes whole. */
 const PEQ_BANDS = 10;
@@ -85,11 +87,15 @@ export function useBandEdits(session: Session, wire: number, device: FilterParam
       // -- WP WB8 -- during a drag a PEQ band goes whole (`filter`), so the core
       // journals one change of it per tick and joins the ticks into one step
       const whole = mark.current.on ? [...take].filter(([b, p]) => b < PEQ_BANDS && now[b] && now[b]!.filterType === p.filterType && !sameBand(now[b]!, p)) : [];
-      const rest = [...take].filter(([b]) => !whole.some(([w]) => w === b));
+      // -- WP WB6G -- half of a linked input pair: every PEQ band edit goes whole to both
+      // sides through the core's pair call (one undo step; a drag's ticks join its step)
+      const paired = inputLinks(session).partner(wire) >= 0 ? [...take].filter(([b]) => b < PEQ_BANDS && now[b]) : [];
+      const rest = [...take].filter(([b]) => !whole.some(([w]) => w === b) && !paired.some(([w]) => w === b));
       const writes = rest.flatMap(([b, p]) => (now[b] ? bandWrites(wire, b, now[b]!, p) : []));
-      if (!writes.length && !whole.length) continue;
+      if (!writes.length && !whole.length && !paired.length) continue;
       let ok = true;
-      for (const [b, p] of whole) if (ok) ok = await session.change("filter", { channel: wire, band: b, ...p });
+      for (const [b, p] of paired) if (ok) ok = await session.change("inputPairFilter", { input: wire, band: b, ...p }); // -- WP WB6G --
+      for (const [b, p] of whole) if (ok && !paired.some(([w]) => w === b)) ok = await session.change("filter", { channel: wire, band: b, ...p });
       if (ok && writes.length) ok = await session.writeAll(writes);
       if (!ok) {
         failed = true;

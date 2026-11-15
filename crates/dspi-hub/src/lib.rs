@@ -19,6 +19,15 @@
 //! | [`system`] | the audio link's system model: installation, alignment, scenes, alarms | SW2 |
 //! | [`apply_guard`] | guarded apply: capture, confirm or revert by the hub | P1HA |
 //! | [`limits`] | limits profiles, the installer lock and pinned modes | P1HL |
+//! | [`service`], [`bus`], [`clock`] | the phase-2 service seam, its bus and time | P2SV |
+//! | [`snapshots`] | the hub's shared copy of each device's snapshots | P2SS |
+//! | [`health`] | the health poll and device facts (`health.get`) | P2HP |
+//! | [`inventory`] | every DSPi the hub has seen, `inventory.*` | P2IN |
+//! | [`identify`] | `device.identify`: blink, and the quiet tone when asked | P2ID |
+//! | `stats` (private) | `hub.stats` and `hub.rename` | P2HS |
+//! | [`history`] | the shared event history and the watchdog events | P2EV |
+//! | [`api`] | the parameter API, the action executor, hub-side recall (feature `api`) | P2PA |
+//! | [`outbound`] | notifications out: webhooks and push | P2WH |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -44,6 +53,10 @@ pub mod local;
 // -- WP P1HL --
 pub mod limits;
 pub mod lock;
+// -- WP P2MQC --
+pub mod mqtt;
+// -- WP P2WH -- notifications out: webhooks and push
+pub mod outbound;
 pub mod policy;
 pub mod polls;
 pub mod registry;
@@ -52,11 +65,29 @@ pub mod router;
 pub mod server;
 pub mod session;
 pub mod snapshot;
+// -- WP P2SS -- the hub's shared snapshot store (not yet registered as a service)
+pub mod snapshots;
+// -- WP P2HS -- `hub.stats` and `hub.rename`
+mod stats;
 pub mod store;
 // -- WP SW2 --
 pub mod system;
 pub mod usb;
 pub mod web;
+// -- WP P2SV --
+pub mod bus;
+pub mod clock;
+pub mod service;
+// -- WP P2HP -- the health poll and device facts
+pub mod health;
+// -- WP P2IN --
+pub mod inventory;
+// -- WP P2ID --
+pub mod identify;
+// -- WP P2EV --
+pub mod history;
+// -- WP P2PA -- the snapshot family always; the parameter API with feature `api`
+pub mod api;
 
 pub use auth::AccessMode;
 pub use error::HubError;
@@ -80,3 +111,11 @@ pub use usb::UsbBus;
 pub use system::{
     AlignReport, ModelRefused, SceneReport, SystemRefused, SystemStatus, SystemStore, WriteResult,
 };
+// -- WP P2SV --
+pub use bus::{Bus, BusMessage, Subscription, TargetResult};
+pub use clock::{HubClock, SystemClock, TestClock};
+pub use service::{DeviceEvent, HubService, ServiceConfig, SessionLabel};
+// -- WP P2HP --
+pub use health::HealthConfig;
+// -- WP P2EV --
+pub use history::HistoryConfig;

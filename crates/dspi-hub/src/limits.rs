@@ -218,6 +218,10 @@ struct State {
     due: BTreeMap<String, Instant>,
     /// The last hold's rows, by serial.
     held: BTreeMap<String, Vec<String>>,
+    // -- WP P2PA --
+    /// Child sessions (the parameter API's) and the session each acts for: a PIN
+    /// unlock of the parent is the child's too, while the parent is open.
+    acts_for: BTreeMap<SessionId, SessionId>,
 }
 
 /// The hub's limits, PINs and pinned modes. A leaf lock: never held across a
@@ -353,13 +357,30 @@ impl HubLimits {
         guard(&self.state).stored.profiles.get(serial).cloned()
     }
 
-    /// Whether `session` has unlocked `serial` (an Admin always has).
+    /// Whether `session` has unlocked `serial` (an Admin always has). -- WP P2PA -- a
+    /// child session has when the session it acts for has.
     pub fn unlocked(&self, serial: &str, session: SessionId, role: Role) -> bool {
-        role == Role::Admin
-            || guard(&self.state)
-                .unlocked
-                .get(serial)
-                .is_some_and(|s| s.contains(&session))
+        if role == Role::Admin {
+            return true;
+        }
+        let st = guard(&self.state);
+        let parent = st.acts_for.get(&session).copied();
+        st.unlocked
+            .get(serial)
+            .is_some_and(|s| s.contains(&session) || parent.is_some_and(|p| s.contains(&p)))
+    }
+
+    // -- WP P2PA --
+    /// `child` acts for `parent` (a child session of the parameter API): `parent`'s PIN
+    /// unlocks are `child`'s, until either closes ([`Self::session_closed`]).
+    pub(crate) fn set_acts_for(&self, child: SessionId, parent: SessionId) {
+        guard(&self.state).acts_for.insert(child, parent);
+    }
+
+    // -- WP P2PA --
+    /// The session `child` acts for, while both are open.
+    pub(crate) fn acts_for(&self, child: SessionId) -> Option<SessionId> {
+        guard(&self.state).acts_for.get(&child).copied()
     }
 
     /// Whether `serial` is locked for `session`: locked, and not unlocked by it.
@@ -538,11 +559,15 @@ impl HubLimits {
         }
     }
 
-    /// A session ended: its unlocks go (ids are reused).
+    /// A session ended: its unlocks go (ids are reused). -- WP P2PA -- and so does
+    /// every child's link to it, and its own to its parent.
     pub fn session_closed(&self, session: SessionId) {
-        for s in guard(&self.state).unlocked.values_mut() {
+        let mut st = guard(&self.state);
+        for s in st.unlocked.values_mut() {
             s.remove(&session);
         }
+        st.acts_for
+            .retain(|child, parent| *child != session && *parent != session);
     }
 
     /// The mode pinned for `role`, if any.

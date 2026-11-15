@@ -95,6 +95,81 @@ pub(crate) struct DeviceShared {
     stopping: AtomicBool,
     /// A [`Job::SnapshotRead`] is queued and has not started.
     snapshot_read_queued: AtomicBool,
+    // -- WP P2HS --
+    /// What `hub.stats` reports of this attachment.
+    pub(crate) counters: DeviceCounters,
+}
+
+// -- WP P2HS --
+/// One attachment's counts for `hub.stats` (spec 7.9), since it attached: the commands
+/// that ran on the device, those whose transfer failed, their time on the transport,
+/// and the relay's count of this handle's dropped notifications when it attached.
+#[derive(Debug, Default)]
+pub(crate) struct DeviceCounters {
+    /// A leaf lock, taken once per command by the worker and by `hub.stats`.
+    counts: std::sync::Mutex<Counts>,
+    /// [`Relay::notify_dropped`] for this handle at attach.
+    dropped_at_attach: u64,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct Counts {
+    cmds: u64,
+    errors: u64,
+    /// Sum of the commands' times on the transport, in microseconds.
+    rtt_us: u64,
+}
+
+impl DeviceCounters {
+    fn new(dropped_at_attach: u64) -> Self {
+        Self {
+            dropped_at_attach,
+            ..Self::default()
+        }
+    }
+
+    fn counts(&self) -> Counts {
+        *self.counts.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// A command ran on the device for `took`, and its transfer failed or not.
+    /// Saturating: a count that reached `u64::MAX` stays there.
+    fn ran(&self, took: Duration, failed: bool) {
+        let us = u64::try_from(took.as_micros()).unwrap_or(u64::MAX);
+        let mut c = self.counts.lock().unwrap_or_else(PoisonError::into_inner);
+        c.cmds = c.cmds.saturating_add(1);
+        c.rtt_us = c.rtt_us.saturating_add(us);
+        if failed {
+            c.errors = c.errors.saturating_add(1);
+        }
+    }
+
+    /// Commands run.
+    pub(crate) fn cmds(&self) -> u64 {
+        self.counts().cmds
+    }
+
+    /// Commands whose transfer failed.
+    pub(crate) fn errors(&self) -> u64 {
+        self.counts().errors
+    }
+
+    /// The mean time on the transport, in ms; 0 before the first command.
+    pub(crate) fn avg_rtt_ms(&self) -> f64 {
+        let c = self.counts();
+        if c.cmds == 0 {
+            return 0.0;
+        }
+        // Precision, not range: a mean of microseconds as a float of milliseconds.
+        #[allow(clippy::cast_precision_loss)]
+        let ms = c.rtt_us as f64 / c.cmds as f64 / 1000.0;
+        ms
+    }
+
+    /// Notifications of this handle dropped since it attached, from the relay's count.
+    pub(crate) fn notify_dropped(&self, relay_count: u64) -> u64 {
+        relay_count.saturating_sub(self.dropped_at_attach)
+    }
 }
 
 impl DeviceShared {
@@ -216,6 +291,8 @@ impl Attachment {
             tx,
             stopping: AtomicBool::new(false),
             snapshot_read_queued: AtomicBool::new(false),
+            // -- WP P2HS --
+            counters: DeviceCounters::new(relay.notify_dropped(handle)),
         });
         // -- WP HB3 --
         if source.is_none() {
@@ -434,10 +511,13 @@ fn run_command(
     };
     let busy_retry = shared.router.retries_stall(req) && busy.is_open(now);
     // -- WP BULKFIX --
+    let started = Instant::now();
     let result = match chunks.take(t, req, write_bulk) {
         Some(held) => held,
         None => execute(t, req, busy_retry),
     };
+    // -- WP P2HS --
+    shared.counters.ran(started.elapsed(), result.is_err());
     if shared.router.mutates(req) {
         busy.note_write(Instant::now());
     }
@@ -647,7 +727,8 @@ fn ingest(packet: &[u8], kind: TransportKind, shared: &DeviceShared, relay: &Rel
     // -- WP P1HL -- a whole-state change is held to the limits profile soon
     crate::limits::note_packet(shared, origin, packet);
     // -- fixup sw2x (F5) -- the system model follows units by serial.
-    relay.tap_packet(packet, || shared.serial());
+    // -- WP P2SV -- and the hub's bus, with the session it is attributed to.
+    relay.tap_packet(packet, origin, || shared.serial());
     relay.publish_notify(shared.handle, origin, packet);
 }
 
@@ -858,6 +939,7 @@ mod tests_wp_hb0 {
             tx,
             stopping: AtomicBool::new(false),
             snapshot_read_queued: AtomicBool::new(false),
+            counters: DeviceCounters::default(),
         };
         for _ in 0..1000 {
             shared.queue_snapshot_read();
@@ -924,6 +1006,7 @@ mod tests_wp_hb0 {
             tx,
             stopping: AtomicBool::new(false),
             snapshot_read_queued: AtomicBool::new(false),
+            counters: DeviceCounters::default(),
         };
         let ctx = SessionCtx {
             id: 9,
@@ -1048,5 +1131,30 @@ mod tests_wp_hb3 {
             read_board_name(&mut m),
             Err(TransportError::Disconnected)
         ));
+    }
+}
+
+// -- WP P2HS --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_p2hs {
+    use super::*;
+
+    #[test]
+    fn wp_p2hs_counters_count_commands_errors_and_time() {
+        let c = DeviceCounters::new(5);
+        assert_eq!((c.cmds(), c.errors(), c.avg_rtt_ms()), (0, 0, 0.0));
+        c.ran(Duration::from_micros(1000), false);
+        c.ran(Duration::from_micros(3000), true);
+        assert_eq!((c.cmds(), c.errors()), (2, 1));
+        assert!((c.avg_rtt_ms() - 2.0).abs() < 1e-9, "{}", c.avg_rtt_ms());
+        // The relay's count is the hub's; the row's is since this attachment.
+        assert_eq!(c.notify_dropped(5), 0);
+        assert_eq!(c.notify_dropped(9), 4);
+        assert_eq!(c.notify_dropped(0), 0, "never below zero");
+        // A transfer longer than u64 microseconds saturates, never wraps.
+        c.ran(Duration::MAX, false);
+        c.ran(Duration::MAX, false);
+        assert_eq!(c.counts().rtt_us, u64::MAX);
     }
 }

@@ -2073,6 +2073,216 @@ data class CrossfeedPair(
 )
 
 /**
+ * One biquad section of a response curve ([`crate::curve_sections`]):
+ * `H(z) = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2)`, normalised so
+ * that `a0` is 1, at the device's sample rate.
+ */
+data class BiquadSection(
+    /**
+     * Feed-forward coefficient of `z^0`.
+     */
+    val b0: Double,
+    /**
+     * Feed-forward coefficient of `z^-1`.
+     */
+    val b1: Double,
+    /**
+     * Feed-forward coefficient of `z^-2`.
+     */
+    val b2: Double,
+    /**
+     * Feedback coefficient of `z^-1`.
+     */
+    val a1: Double,
+    /**
+     * Feedback coefficient of `z^-2`.
+     */
+    val a2: Double,
+)
+
+/**
+ * What a platform is, as the clients lay out their pages
+ * ([`crate::platform_shape`]): channel counts, where the PDM sub and the
+ * second core's EQ outputs are, and which platform-bound sections exist.
+ */
+data class PlatformShape(
+    /**
+     * The platform id the shape is for (0 RP2040, 1 RP2350, 2 STM32H723).
+     */
+    val platformId: Int,
+    /**
+     * `RP2040`, `RP2350`, `STM32H723`, or `unknown platform N`.
+     */
+    val name: String,
+    /**
+     * False for an id this build does not know; its shape is the RP2040's,
+     * the smallest.
+     */
+    val known: Boolean,
+    /**
+     * Matrix inputs (USB channels): 2 on RP2040, 8 elsewhere.
+     */
+    val numInputChannels: Int,
+    /**
+     * Outputs, the PDM sub included: 5 on RP2040, 9 elsewhere.
+     */
+    val numOutputChannels: Int,
+    /**
+     * Stereo output slots (S/PDIF or I2S): 2 on RP2040, 4 elsewhere.
+     */
+    val numOutputSlots: Int,
+    /**
+     * The PDM sub's output index: always the last output.
+     */
+    val pdmOutput: Int,
+    /**
+     * The PDM sub's index in the output pin list: after the slots.
+     */
+    val pdmPinIndex: Int,
+    /**
+     * First output whose EQ runs on the second core (the other half of the
+     * PDM interlock).
+     */
+    val eqWorkerFirst: Int,
+    /**
+     * Last output whose EQ runs on the second core.
+     */
+    val eqWorkerLast: Int,
+    /**
+     * I2S input pairs: 1 on RP2040, 4 elsewhere.
+     */
+    val i2sMaxPairs: Int,
+    /**
+     * Multichannel (more than one pair) I2S input: RP2350 only.
+     */
+    val multichannelI2s: Boolean,
+    /**
+     * ADAT output and input: RP2350 only.
+     */
+    val adat: Boolean,
+    /**
+     * The stereo upmixer: RP2350 only (RP2040 stalls its writes).
+     */
+    val upmixer: Boolean,
+    /**
+     * The I2S configuration page: every platform but STM32H723.
+     */
+    val i2sConfig: Boolean,
+    /**
+     * Crossfeed stereo pairs: 2 on RP2040, 4 elsewhere.
+     */
+    val crossfeedPairs: Int,
+    /**
+     * The longest delay the delay line holds, in ms: 42 on RP2350, 21
+     * elsewhere (`dspi_proto::Platform::max_delay_ms`).
+     */
+    val maxDelayMs: Float,
+)
+
+/**
+ * Bytes of the parameter image that `DspState` has no field for
+ * ([`crate::bulk_image_extras`]). A "present" flag is the firmware's
+ * "0 is absent, keep the last value" byte, read on the V32 layout.
+ */
+data class BulkImageExtras(
+    /**
+     * The image is a whole one of this build's wire format (its first byte
+     * is the version): the mirror was decoded from it.
+     */
+    val decoded: Boolean,
+    /**
+     * The image carried the I2S slave bit clock pin.
+     */
+    val i2sBckPinSlavePresent: Boolean,
+    /**
+     * The image carried the I2S input channel count.
+     */
+    val i2sInputChannelsPresent: Boolean,
+    /**
+     * Per I2S data input 2..4: the image carried its pin.
+     */
+    val i2sRxPinExtPresent: List<Boolean>,
+    /**
+     * Per S/PDIF input 2..4: the image carried its pin.
+     */
+    val spdifRxPinExtPresent: List<Boolean>,
+    /**
+     * The image carried the ADAT output pin; without it the firmware uses
+     * its default pin.
+     */
+    val adatOutPinPresent: Boolean,
+)
+
+/**
+ * One value of a choice setting and the words a client shows for it
+ * ([`crate::enum_value_labels`]).
+ */
+data class EnumValueLabel(
+    /**
+     * The value as written to the setting.
+     */
+    val value: Int,
+    /**
+     * The registry's name for the value (`passive`, `percussive`, ...), or
+     * the number for a numbered setting.
+     */
+    val key: String,
+    /**
+     * What the Console shows for it.
+     */
+    val label: String,
+)
+
+/**
+ * One key and value of a DNS-SD TXT record ([`crate::link_parse_txt`]).
+ */
+data class LinkTxtEntry(
+    /**
+     * The key (`v`, `hid`, ...).
+     */
+    val key: String,
+    /**
+     * Its value; empty for a key without one.
+     */
+    val value: String,
+)
+
+/**
+ * A hub as its DNS-SD TXT record describes it ([`crate::link_parse_txt`]),
+ * before an address is resolved.
+ */
+data class LinkTxtRecord(
+    /**
+     * The `hid`, lowercase.
+     */
+    val hubId: String,
+    /**
+     * The instance name, safe to show (the `hid` when it has none).
+     */
+    val name: String,
+    /**
+     * `console`, `bridge` or `unknown`.
+     */
+    val kind: String,
+    /**
+     * `none` or `pin`.
+     */
+    val auth: String,
+    /**
+     * Devices the hub shares.
+     */
+    val deviceCount: Long,
+    /**
+     * Their serials, when the hub lists them.
+     */
+    val serials: List<String>,
+    /**
+     * The WebSocket path.
+     */
+    val path: String,
+)
+
+/**
  * Where a compare stands ([`DspiCore::ab_state`] and every A/B call).
  */
 data class AbCompare(
@@ -3491,6 +3701,69 @@ data class AutoEqApply(
 )
 
 /**
+ * An output's strip as a clip carries it.
+ */
+data class ChannelClipOutput(
+    /**
+     * Output gain in dB.
+     */
+    val gainDb: Float,
+    /**
+     * Output delay in ms.
+     */
+    val delayMs: Float,
+    /**
+     * Whether the output is muted.
+     */
+    val muted: Boolean,
+)
+
+/**
+ * What [`DspiCore::copy_channel`] took from a channel. A value: a client
+ * keeps it as it likes, as a record or as its JSON document
+ * ([`channel_clip_to_json`]).
+ */
+data class ChannelClip(
+    /**
+     * The clip format ([`CHANNEL_CLIP_VERSION`]); a paste refuses another.
+     */
+    val version: Long,
+    /**
+     * The wire channel it was copied from (inputs, then outputs).
+     */
+    val sourceChannel: Int,
+    /**
+     * The source's name on the device ("" when unnamed); a client may put
+     * the name it shows here, for its "Copied ..." line.
+     */
+    val sourceName: String,
+    /**
+     * The PEQ bank, band 0 first.
+     */
+    val filters: List<FilterParams>,
+    /**
+     * The crossover bank, slot 0 first: present when copied from an
+     * output, absent from an input.
+     */
+    val crossover: List<FilterParams>?,
+    /**
+     * Gain, delay and mute: present when copied from an output.
+     */
+    val output: ChannelClipOutput?,
+)
+
+/**
+ * How [`DspiCore::paste_channel`] pastes.
+ */
+data class ChannelPasteOptions(
+    /**
+     * The destination's linked partner (a wire channel), when the client
+     * has the pair linked: its PEQ bank gets the same bands.
+     */
+    val mirror: Int?,
+)
+
+/**
  * What `EXT_IDENTIFY` reports: the blink state and what the board is.
  */
 data class IdentifyInfo(
@@ -4462,6 +4735,125 @@ data class OutputLabelInput(
 )
 
 /**
+ * One function: its kind and, for the indexed kinds, which one.
+ */
+data class PinFunction(
+    /**
+     * What it is.
+     */
+    val kind: PinFunctionKind,
+    /**
+     * Which one (output, input, pair or slot); 0 for the single ones.
+     */
+    val index: Int,
+)
+
+/**
+ * One GPIO and the function holding it.
+ */
+data class PinHolder(
+    /**
+     * The GPIO.
+     */
+    val pin: Int,
+    /**
+     * The function holding it (BCK's also holds LRCLK, BCK + 1).
+     */
+    val function: PinFunction,
+    /**
+     * For grouping.
+     */
+    val role: PinHolderRole,
+    /**
+     * The Console's owner name, e.g. "Output 1", "I2S LRCLK", "UART
+     * Control" (English; `function` is there to translate from).
+     */
+    val label: String,
+)
+
+/**
+ * One function of this device: its pin, whether it holds it, and the pins
+ * it may move to.
+ */
+data class PinFunctionInfo(
+    /**
+     * Which function.
+     */
+    val function: PinFunction,
+    /**
+     * Its name, e.g. "Output 1", "S/PDIF 2 RX", "UART TX".
+     */
+    val label: String,
+    /**
+     * Its GPIO, [`PIN_NONE`] when it has none.
+     */
+    val pin: Int,
+    /**
+     * Whether it holds that pin now (a disabled feature holds nothing).
+     */
+    val holds: Boolean,
+    /**
+     * The GPIOs [`pin_check`] accepts for it, its own included, in order.
+     * For a disabled optional S/PDIF input, without the pins another
+     * function holds: it could store one, but never be enabled on it.
+     * Empty where nothing is assignable.
+     */
+    val choices: List<Int>,
+    /**
+     * Output slots: whether the slot may be switched to I2S (the STM32H723's
+     * SAI rule; always on an RP2040/RP2350). False for everything else.
+     */
+    val i2sAllowed: Boolean,
+)
+
+/**
+ * The whole map.
+ */
+data class PinMap(
+    /**
+     * The platform the rules are for (`DspState.platform_id`).
+     */
+    val platformId: Int,
+    /**
+     * Whether this platform has assignable pins (RP2040 and RP2350).
+     */
+    val assignable: Boolean,
+    /**
+     * The platform's valid GPIOs, in order; empty where nothing is
+     * assignable.
+     */
+    val validPins: List<Int>,
+    /**
+     * The functions this device has, in the Console's order.
+     */
+    val functions: List<PinFunctionInfo>,
+    /**
+     * Who holds each held GPIO, in pin order; the first claim wins where
+     * two share one (the ADAT loopback shows as "ADAT Output").
+     */
+    val holders: List<PinHolder>,
+)
+
+/**
+ * A refused pin.
+ */
+data class PinRefusal(
+    /**
+     * Why.
+     */
+    val reason: PinRefusalReason,
+    /**
+     * The `PIN_CONFIG_*` status the firmware answers for it (1 invalid
+     * pin, 2 in use, 3 no such output, 4 output active).
+     */
+    val status: Int,
+    /**
+     * For [`PinRefusalReason::InUse`], the function holding the pin.
+     */
+    val holder: PinHolder?,
+)
+
+/**
  * One notification as the tap saw it (WP CG23).
  */
 data class RawNotification(
@@ -4982,6 +5374,136 @@ enum class NoticeKind {
      * Not done: something failed.
      */
     ERROR,
+}
+
+/**
+ * A function that can hold a GPIO. The C ABI passes it as its code (the
+ * number in brackets).
+ */
+enum class PinFunctionKind {
+    /**
+     * (0) A physical output, `index` 0..`num_pin_outputs`: the S/PDIF or
+     * I2S slots, then the PDM subwoofer last.
+     */
+    OUTPUT,
+    /**
+     * (1) The I2S bit clock of the master (or unified) pair; also holds
+     * LRCLK, BCK + 1.
+     */
+    I2S_BCK,
+    /**
+     * (2) The slave pair's bit clock (split clock-pin mode); also its LRCLK.
+     */
+    I2S_BCK_SLAVE,
+    /**
+     * (3) The I2S master clock.
+     */
+    MCK,
+    /**
+     * (4) An S/PDIF receiver, `index` 0..3.
+     */
+    SPDIF_RX,
+    /**
+     * (5) An I2S input data pin, `index` = stereo pair 0..3.
+     */
+    I2S_RX,
+    /**
+     * (6) The ADAT output (RP2350).
+     */
+    ADAT_OUT,
+    /**
+     * (7) The ADAT input (RP2350).
+     */
+    ADAT_IN,
+    /**
+     * (8) The DAC hardware mute line.
+     */
+    DAC_MUTE,
+    /**
+     * (9) The UART control interface's TX.
+     */
+    UART_TX,
+    /**
+     * (10) Its RX.
+     */
+    UART_RX,
+    /**
+     * (11) The I2C control interface's SDA.
+     */
+    I2C_SDA,
+    /**
+     * (12) Its SCL.
+     */
+    I2C_SCL,
+    /**
+     * (13) A control-surface binding, `index` = its slot.
+     */
+    CONTROL_SURFACE,
+}
+
+/**
+ * What a held GPIO is doing, for grouping (the Console's five roles).
+ */
+enum class PinHolderRole {
+    /**
+     * A physical or ADAT output.
+     */
+    OUTPUT,
+    /**
+     * An I2S clock.
+     */
+    CLOCK,
+    /**
+     * An audio input.
+     */
+    INPUT,
+    /**
+     * A control interface or control surface.
+     */
+    CONTROL,
+    /**
+     * The DAC mute.
+     */
+    UTILITY,
+}
+
+/**
+ * Why a pin was refused.
+ */
+enum class PinRefusalReason {
+    /**
+     * This platform's pins are fixed (STM32H723, or a platform this build
+     * does not know).
+     */
+    NOT_ASSIGNABLE,
+    /**
+     * The device has no such function (an output, input or pair past its
+     * count; ADAT on an RP2040; a feature its firmware lacks).
+     */
+    NO_SUCH_FUNCTION,
+    /**
+     * Not a GPIO this platform allows (23-25 are power and LED; BCK also
+     * needs BCK + 1).
+     */
+    INVALID_PIN,
+    /**
+     * A GPIO, but not one this function's peripheral can use: MCK off a
+     * clock-output pin, UART or I2C off its mux position or instance.
+     */
+    WRONG_MUX,
+    /**
+     * Another function holds it: see `holder`.
+     */
+    IN_USE,
+    /**
+     * The function cannot move now: MCK while enabled, the I2S clock pair
+     * while I2S outputs run on it.
+     */
+    OUTPUT_ACTIVE,
+    /**
+     * The ADAT input's pin cannot be cleared while the input is enabled.
+     */
+    CLEAR_WHILE_ENABLED,
 }
 
 /**

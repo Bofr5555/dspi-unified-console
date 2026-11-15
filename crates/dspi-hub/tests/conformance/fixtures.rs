@@ -266,28 +266,29 @@ fn wp_hb7_the_hubs_messages() {
 }
 
 /// What the Swift hub answers otherwise (`LinkSessionHandler.swift:345-366`), recorded in
-/// `docs/core-merge/HUB.md` section 8: it renames itself and answers `hub.stats` with
-/// an empty body, and revokes an unknown client with `ok`.
+/// `docs/core-merge/HUB.md` section 8: it answers `hub.stats` with an empty body, and
+/// revokes an unknown client with `ok`. -- WP P2HS -- `hub.stats` and `hub.rename` are
+/// answered as spec 7.9 has them (hub-api.md section 15): the spec's own example is the
+/// shape, plus `serial` in each row.
 #[test]
 fn wp_hb7_where_this_hub_answers_otherwise_than_the_swift_one() {
     let b = Bench::pin_hub("swift-diff");
     let mut ws = admin(&b);
     let stats = request(&mut ws, &json!({"t": "hub.stats", "id": 40}));
-    assert_eq!(
-        (&stats["t"], &stats["code"]),
-        (&json!("err"), &json!("unsupported")),
-        "{stats}"
-    );
+    let spec = json!({"t": "ok", "id": 40, "sessions": 3, "uptime_s": 8812,
+        "devices": [{"handle": 0, "cmds": 18233, "errors": 2, "avg_rtt_ms": 1.4, "notify_dropped": 0}]});
+    assert_shape(&spec, &stats, &[], "hub.stats");
+    assert!(stats["devices"][0]["serial"].is_string(), "{stats}");
     let rename = request(
         &mut ws,
         &json!({"t": "hub.rename", "id": 41, "name": "Other"}),
     );
     assert_eq!(
-        (&rename["t"], &rename["code"]),
-        (&json!("err"), &json!("unsupported")),
+        (&rename["t"], &rename["name"]),
+        (&json!("ok"), &json!("Other")),
         "{rename}"
     );
-    assert_eq!(b.hub.name(), HUB_NAME);
+    assert_eq!(b.hub.name(), "Other");
     let revoke = request(&mut ws, &json!({"t": "auth.revoke", "id": 42, "cid": 999}));
     assert_eq!(
         (&revoke["t"], &revoke["code"]),

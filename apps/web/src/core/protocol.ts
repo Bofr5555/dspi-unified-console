@@ -14,6 +14,9 @@
 // analyser's) keep the core's field names, in camelCase. Error codes are the C
 // ABI's (`read_only`).
 
+// -- WP WB6J -- the analyser view, the signal generator, Stats for nerbs, the Interrupt Monitor
+import type { ToolsMethods } from "./tools-protocol";
+
 /** Where a session's device is. A fleet server may add its own kinds later. */
 export type DeviceTarget =
   /** The core's own demo device; `readOnly` opens it as older firmware, which the core only reads. */
@@ -425,7 +428,7 @@ export type CoreEvent =
   | { event: "hubAdmin"; events: HubAdminEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */ {
+export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -548,6 +551,14 @@ export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMet
   hubRole: { params: undefined; result: { role: string } };
   /** Tests only: make the stub core lose its link. The real core answers `unknown_method`. */
   simulate: { params: { what: "link-lost" | "link-closed" }; result: null };
+  // -- WP WB6G -- the input sources' names (crates/dspi-wasm/src/inputs.rs), the core's cache, no traffic
+  /** `names[s]`: source `s`'s name ("" unnamed); `supported` false on firmware without names. Renamed by `write` of `in.name`. */
+  inputSourceNames: { params: undefined; result: { supported: boolean; names: string[] } };
+  // -- WP WB6H -- the effect screens (crates/dspi-wasm/src/effects.rs)
+  /** Whether the connect probe found each named feature (`DspiCore::feature_present`); all false with no device. At most 64 names. */
+  features: { params: { names: string[] }; result: Record<string, boolean> };
+  /** The effects' choice parameters in the Console's words, by registry path (`cf.preset`, `tube.type`, ...). */
+  effectChoices: { params: undefined; result: Record<string, { value: number; label: string; detail: string }[]> };
 }
 
 // -- WP P1WB1 -- documents, snapshots, A/B, safe apply, offline files, limits status, notices
@@ -1090,6 +1101,9 @@ export interface InstallerMethods {
   protectAllOutputs: { params: undefined | { ceilingDbfs: number }; result: null };
   /** The outputs (0-based) that are on, above the threshold (default -10 dB) and without a limiter. */
   outputsWithoutLimiter: { params: undefined | { thresholdDb: number }; result: number[] };
+  // -- WP WB6F --
+  /** The limiters' gain reduction per output slot, in dB (0: none); `unsupported` without a limiter. */
+  limiterMeter: { params: undefined; result: number[] };
   /** Both inputs of a linked pair, one undo step. */
   inputPairPreamp: { params: { input: number; db: number }; result: null };
   // -- WP PAIRBAND --
@@ -1181,4 +1195,264 @@ export interface HubAdminMethods {
   hubModePin: { params: { role: string; mode: string }; result: HubAdminStateRecord };
   /** The hub's admin events since the last call (also handed out by `linkTick`). */
   hubAdminEvents: { params: undefined; result: HubAdminEventRecord[] };
+}
+
+// -- WP WB6K -- filter files and the AutoEQ database the page keeps
+// (crates/dspi-wasm/src/{filters,autoeq_db}.rs over dspi_core::AutoEqLibrary)
+
+/** A channel of a filter file's picker (`DspiCore::filters_inspect`). */
+export interface FilterFileChannel {
+  wire: number;
+  label: string;
+  bands: number;
+  checked: boolean;
+}
+
+/** What a filter file holds: a Console file (`native`), a REW or AutoEQ list (`rew`), or `error`. */
+export interface FilterFileInspect {
+  kind: "native" | "rew" | "error";
+  channels: FilterFileChannel[];
+  /** `native`: a newer format wrote it. */
+  newer?: boolean;
+  /** `rew`: the filters it lists, and its preamp (null without one). */
+  filters?: number;
+  preamp?: number | null;
+  error?: string;
+}
+
+/** A filter import's report. */
+export interface FilterImportReport {
+  ok: boolean;
+  error: string;
+  lines: string[];
+}
+
+/** The AutoEQ database the session holds (`dspi_core::AutoEqDatabaseInfo`). */
+export interface AutoEqDatabaseRecord {
+  /** It is the person's own (imported or downloaded), so Reset to Built-in is offered. */
+  hasUserDatabase: boolean;
+  problem: string | null;
+  version: number;
+  generatedAt: string;
+  entryCount: number;
+}
+
+/** One profile as a list shows it (`dspi_core::AutoEqHit`). */
+export interface AutoEqHit {
+  id: string;
+  name: string;
+  source: string;
+  formFactor: string;
+  filters: number;
+  preampDb: number;
+}
+
+export interface FilesMethods {
+  /** Every channel's bands as a filter file: the first `inputs` inputs, then every output. */
+  filtersExport: { params: { inputs: number }; result: { text: string } };
+  /** What a filter file holds, for the channel picker; nothing written. */
+  filtersInspect: { params: { text: string; inputs: number }; result: FilterFileInspect };
+  /** Apply a filter file to the chosen wire channels, one undo step. */
+  filtersImport: { params: { text: string; wires: number[] }; result: FilterImportReport };
+  /** Check a database's text and keep it for the session (`user`: the person's own). */
+  autoeqDatabaseLoad: { params: { text: string; user?: boolean }; result: AutoEqDatabaseRecord };
+  /** The page's GET of `url`, its answer read by the core as a download; kept on success. */
+  autoeqDatabaseDownload: {
+    params: { url: string; status: number; body: string; retryAfterS?: number; rateLimitRemaining?: number; rateLimitReset?: number };
+    result: AutoEqDatabaseRecord;
+  };
+  /** The session's database, null with none loaded. */
+  autoeqDatabaseInfo: { params: undefined; result: AutoEqDatabaseRecord | null };
+  /** Profiles matching `query`, at most `limit` (default 50). */
+  autoeqSearch: { params: { query: string; limit?: number }; result: { hits: AutoEqHit[]; total: number } };
+  /** One profile as the database has it: the `profile` autoeqPreview takes. */
+  autoeqEntry: { params: { id: string }; result: unknown };
+  /** The favourites file's ids, and the profiles of those the database holds. */
+  autoeqFavourites: { params: { text: string }; result: { ids: string[]; hits: AutoEqHit[] } };
+  /** The favourites file's text for `ids`. */
+  autoeqFavouritesText: { params: { ids: string[] }; result: { text: string } };
+}
+
+// -- WP WB6L -- the control-surface editor and the quick strip (crates/dspi-wasm/src/surfaces.rs)
+/** A control-surface record as the core's JSON has it (`DspiCore::cs_snapshot`): a binding, a remote button, a group, a macro, a step, a display page or the display settings. */
+export type CsRecord = Record<string, unknown>;
+
+/** One row the core describes for a record (`DspiCore::cs_describe`, CG20). */
+export interface CsRow {
+  id: string;
+  title: string;
+  detail: string;
+  kind: "pick" | "number" | "toggle" | "note";
+  /** A pick's value and its words; a number's value in natural units. */
+  value?: number;
+  text?: string;
+  options?: { value: number; text: string; section?: string; owner?: string; disabled?: boolean }[];
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+  decimals?: number;
+  /** A toggle's state, and whether it may be switched on. */
+  on?: boolean;
+  enabled?: boolean;
+  /** A note that warns. */
+  warning?: boolean;
+}
+
+/** `csDescribe`: what a page shows for a record, or the core's refusal. */
+export type CsDescription = { ok: true; title: string; summary: string; rows: CsRow[] } | { ok: false; error: string };
+
+/** `csEdit`, `csNewBinding`, `csNewRecord`: the record after the change, or the core's refusal. */
+export type CsDrafted = { ok: true; draft: CsRecord } | { ok: false; error: string };
+
+/** `csApply`: `{ok, status}` (the device's code, 0 applied) plus an op's own fields, or `{ok: false, error}`. */
+export type CsReply = { ok: boolean; status?: number; error?: string; state?: number; protocol?: number; code?: number };
+
+/** One switch of the quick strip: its registry path, whether the open device has it, and whether it is on. */
+export interface QuickStripRow {
+  id: "crossfeed" | "loudness" | "leveller" | "psybass" | "bypass";
+  path: string;
+  present: boolean;
+  on: boolean;
+}
+
+export interface SurfaceMethods {
+  /** Read the whole configuration from the device (reads only), then the snapshot. */
+  csFetch: { params: undefined; result: CsRecord };
+  /** The last read: `{supported: false}` before it or without control surfaces. */
+  csSnapshot: { params: undefined; result: CsRecord };
+  /** One operation (`refresh`, `binding`, `name`, `ir`, `group`, `macro`, `displayConfig`, `displayPage`, `save`, `revert`, `learnArm`, `learnRead`, `learnCancel`, `macroFire`, `macroCancel`, `auxState`, `auxLevel`, ...). */
+  csApply: { params: { op: CsRecord }; result: CsReply };
+  csDescribe: { params: { kind: string; slot: number; draft: CsRecord }; result: CsDescription };
+  csEdit: { params: { kind: string; slot: number; draft: CsRecord; change: { id: string; value: number | boolean } }; result: CsDrafted };
+  csNewBinding: { params: { slot: number; component: number }; result: CsDrafted };
+  csNewRecord: { params: { kind: "ir" | "step" | "page" }; result: CsDrafted };
+  /** Every status code's sentence, by code ("" for none). */
+  csStatusTexts: { params: undefined; result: Record<string, string> };
+  /** The demo device only: the remote button a learn waits for was pressed. False when nothing was armed. */
+  csDemoLearn: { params: { protocol: number; code: number }; result: boolean };
+  /** The demo device only: hold it in a running revert (writes settle busy), or let it end. */
+  csDemoBusy: { params: { on: boolean }; result: null };
+  /** The quick strip's effect switches (M60), by the registry's paths and requirements. */
+  quickStrip: { params: undefined; result: QuickStripRow[] };
+}
+
+// -- WP WB6I -- the Settings page (crates/dspi-wasm/src/settings.rs)
+
+/** One output-latency option the device offers (the core's `OutputLatencyOption`). */
+export interface OutputLatencyOption {
+  id: number;
+  streamOnly: boolean;
+  available: boolean;
+  latencyUs: number;
+  batchUs: number;
+  effectiveUs: number;
+}
+
+/** `outputLatency`: the device's request and its options; `supported` false without the setting. */
+export interface OutputLatencyRecord {
+  supported: boolean;
+  requestedId: number;
+  effectiveId: number;
+  effectiveUs: number;
+  pending: boolean;
+  options: OutputLatencyOption[];
+}
+
+/** The core's `CoreVregInfo`: the device's core-voltage status. */
+export interface CoreVregInfo {
+  liveVreg: number;
+  millivolts: number;
+  storedSel: number;
+  defaultVreg: number;
+  autoRaised: boolean;
+  autoDisabled: boolean;
+  hangCount: number;
+  trialActive: boolean;
+  trialVreg: number;
+  failedTrialVreg: number;
+  failedTrialUptimeS: number;
+  uptimeS: number;
+}
+
+/** A voltage the flow offers (the core's `VregChoice`). */
+export interface VregChoice {
+  code: number;
+  millivolts: number;
+  /** A trial of it needs the confirmation word now (the core's rule). */
+  needsWord: boolean;
+  /** A save of it needs the word now. */
+  saveNeedsWord: boolean;
+}
+
+/** The core-voltage flow as the core shows it (`VregCalView`, WP CG11). */
+export interface VregCalView {
+  available: boolean;
+  phase:
+    | "idle"
+    | "review"
+    | "clearing"
+    | "starting_trial"
+    | "soaking"
+    | "passed"
+    | "failed"
+    | "unknown"
+    | "trial_found"
+    | "trial_left_running"
+    | "ending"
+    | "ended"
+    | "committing"
+    | "committed"
+    | "verify_failed";
+  messageKey: string;
+  message: string;
+  warning: string;
+  soakNote: string;
+  choices: VregChoice[];
+  confirmationWord: string;
+  commitNeedsWord: boolean;
+  resetNeedsWord: boolean;
+  defaultSoakS: number;
+  minSoakS: number;
+  targetVreg: number;
+  soakS: number;
+  elapsedS: number;
+  failedVreg: number;
+  ranS: number | null;
+  uptimeAtHangS: number;
+  nextVreg: number;
+  hardwareProblem: boolean;
+  unknownReason: string | null;
+  linkLost: boolean;
+  canStart: boolean;
+  canKeep: boolean;
+  canCommit: boolean;
+  status: CoreVregInfo | null;
+  lastError: string | null;
+}
+
+export interface SettingsMethods {
+  /** The device's name as last known, no traffic; `supported` false on firmware without names. */
+  deviceName: { params: undefined; result: { supported: boolean; name: string } };
+  /** The output latency's request and options (two reads). */
+  outputLatency: { params: undefined; result: OutputLatencyRecord };
+  /** The core-voltage flow from memory. */
+  vregView: { params: undefined; result: VregCalView };
+  /** Read the device and advance the flow: on open and about once a second while shown. */
+  vregPoll: { params: undefined; result: VregCalView };
+  vregOpen: { params: undefined; result: VregCalView };
+  vregClose: { params: undefined; result: VregCalView };
+  /** Start a run: `typed` is what the user typed when the core asks for the word. */
+  vregStart: { params: { code: number; soakS: number; typed?: string }; result: VregCalView };
+  vregKeep: { params: { soakS: number }; result: VregCalView };
+  /** Save the voltage that passed: a `vreg_save` token, the word when `commitNeedsWord`. */
+  vregCommit: { params: { typed?: string; token?: string }; result: VregCalView };
+  vregTrialEnd: { params: undefined; result: VregCalView };
+  /** Manual save; `value` 0 is the build default. A `vreg_save` token. */
+  vregSet: { params: { value: number; typed?: string; token?: string }; result: VregCalView };
+  vregTrial: { params: { value: number; typed?: string }; result: VregCalView };
+  vregAuto: { params: { on: boolean }; result: VregCalView };
+  vregClear: { params: undefined; result: VregCalView };
+  /** The demo device only: `hang`, `reboot`, `power_cycle`, `advance`. */
+  vregDemoEvent: { params: { event: "hang" | "reboot" | "power_cycle" | "advance"; seconds?: number }; result: null };
 }

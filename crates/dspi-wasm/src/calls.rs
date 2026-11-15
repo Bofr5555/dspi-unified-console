@@ -90,6 +90,8 @@ impl From<DspiError> for CallError {
             // -- WP P1DKFIX --
             DspiError::ImageRefused { .. } => "image_refused",
             DspiError::LimitsUnknown { .. } => "limits_unknown",
+            // -- WP WB6I -- the core-voltage flow's word (CG14)
+            DspiError::OvervoltWordRequired { .. } => "overvolt_word",
             _ => "internal",
         };
         // -- WP P1NT --
@@ -201,6 +203,7 @@ pub fn session_free(h: u32) -> Result<bool, Refusal> {
     Ok(match taken {
         Some(s) => {
             s.core.disconnect();
+            crate::autoeq_db::forget(h); // -- WP WB6K --
             true
         }
         None => false,
@@ -276,6 +279,30 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     }
     // -- WP ROMODE -- the client read-only mode (src/read_only.rs)
     if let Some(r) = crate::read_only::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP CG-SWS-a -- small stateless facts from the core (src/sws_a.rs)
+    if let Some(r) = crate::sws_a::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP CG-SWS-b -- the pin map (src/pins.rs)
+    if let Some(r) = crate::pins::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP WB6J -- the analyser's view, the signal generator, Stats for nerbs, the Interrupt Monitor (src/tools.rs)
+    if let Some(r) = crate::tools::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP WB6L -- the control-surface editor and the quick strip (src/surfaces.rs)
+    if let Some(r) = crate::surfaces::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP CLIP1 -- the channel clipboard (src/clipboard.rs)
+    if let Some(r) = crate::clipboard::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP WB6I -- the Settings page (src/settings.rs)
+    if let Some(r) = crate::settings::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
     match req.method.as_str() {
@@ -399,6 +426,17 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP P1AQ -- AutoEQ preview and apply to a channel pair (src/autoeq.rs)
         "autoeqPreview" => crate::autoeq::preview(&core, params(req.params)?),
         "autoeqApply" => crate::autoeq::apply(&core, params(req.params)?),
+        // -- WP WB6K -- the AutoEQ database the page keeps (src/autoeq_db.rs), filter files (src/filters.rs)
+        "autoeqDatabaseLoad" => crate::autoeq_db::load(h, params(req.params)?),
+        "autoeqDatabaseDownload" => crate::autoeq_db::download(h, params(req.params)?),
+        "autoeqDatabaseInfo" => Ok(crate::autoeq_db::info(h)),
+        "autoeqSearch" => crate::autoeq_db::search(h, params(req.params)?),
+        "autoeqEntry" => crate::autoeq_db::entry(h, params(req.params)?),
+        "autoeqFavourites" => Ok(crate::autoeq_db::favourites(h, params(req.params)?)),
+        "autoeqFavouritesText" => Ok(crate::autoeq_db::favourites_text(params(req.params)?)),
+        "filtersExport" => crate::filters::export(&core, params(req.params)?),
+        "filtersInspect" => crate::filters::inspect(&core, params(req.params)?),
+        "filtersImport" => crate::filters::import(&core, params(req.params)?),
         // -- WP P1SA -- safe apply with rollback (src/guarded.rs)
         "applyGuardedImport" => crate::guarded::import(&core, params(req.params)?),
         "applyGuardedSnapshot" => crate::guarded::snapshot(&core, params(req.params)?),
@@ -430,7 +468,18 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP P1PR -- protect all outputs, the warning list, a linked pair's preamp
         "protectAllOutputs" => outputs::protect_all(&core, params(req.params)?),
         "outputsWithoutLimiter" => Ok(outputs::without_limiter(&core, params(req.params)?)),
+        // -- WP WB6F -- the limiters' gain reduction per output in dB (`fetch_limiter_meter`,
+        // as C's `dspi_fetch_limiter_meter`), for the status rail's health panel
+        "limiterMeter" => {
+            core.link_service();
+            Ok(tidy(&core.fetch_limiter_meter()?))
+        }
         "inputPairPreamp" => outputs::input_pair_preamp(&core, params(req.params)?),
+        // -- WP WB6G -- the input sources' names, from the core's cache
+        "inputSourceNames" => crate::inputs::source_names(&core),
+        // -- WP WB6H -- the effect screens: the probe's feature names, the choices' words
+        "features" => crate::effects::features(&core, params(req.params)?),
+        "effectChoices" => Ok(crate::effects::effect_choices()),
         // -- WP PAIRBAND -- a linked input pair's band, one undo step
         "inputPairFilter" => crate::band::input_pair_filter(&core, params(req.params)?),
         "inputPairBandBypass" => crate::band::input_pair_band_bypass(&core, params(req.params)?),
@@ -890,6 +939,9 @@ mod tests_wp_p1nt;
 // -- WP P1TK --
 #[cfg(test)]
 mod tests_wp_p1tk;
+// -- WP WB6F --
+#[cfg(test)]
+mod tests_wp_wb6f;
 
 #[cfg(test)]
 mod tests {
