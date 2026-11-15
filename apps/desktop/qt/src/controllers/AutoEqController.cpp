@@ -19,6 +19,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
+#include <QHostAddress>   // -- WP SECQTA --
 #include <QFile>
 #include <QFileInfo>
 #include <QJSEngine>
@@ -97,6 +98,20 @@ qint64 headerNumber(const QNetworkReply *reply, const char *name) {
     bool ok = false;
     const qint64 v = reply->rawHeader(name).trimmed().toLongLong(&ok);
     return ok ? v : -1;
+}
+
+// -- WP SECQTA -- What the fetch may ask for, the first URL and every redirect:
+// https only (PLAN-SEC N16), except plain http to the loopback interface, which
+// is the smoke driver's local server (SmokeAutoEq). The core asks only for
+// https, so this refuses what it never sends.
+bool fetchUrlAllowed(const QUrl &url) {
+    if (!url.isValid() || url.host().isEmpty()) return false;
+    const QString scheme = url.scheme().toLower();
+    if (scheme == QLatin1String("https")) return true;
+    if (scheme != QLatin1String("http")) return false;
+    // A loopback address literal, not a name a resolver could answer for
+    const QHostAddress address(url.host());
+    return !address.isNull() && address.isLoopback();
 }
 } // namespace
 
@@ -678,18 +693,37 @@ void AutoEqController::fetchThunk(void *, const char *url, const char *accept, c
 // the GUI thread
 AutoEqController::Answer AutoEqController::fetch(const QByteArray &url, const QByteArray &accept, const QByteArray &userAgent) {
     Answer out;
+    // -- WP SECQTA -- refused before any request goes out
+    const QUrl target = QUrl::fromEncoded(url);
+    if (!fetchUrlAllowed(target)) {
+        out.error = QStringLiteral("refused: AutoEQ downloads must use https");
+        return out;
+    }
     QNetworkAccessManager manager;
-    QNetworkRequest request(QUrl::fromEncoded(url));
+    QNetworkRequest request(target);
     request.setRawHeader("User-Agent", userAgent);
     if (!accept.isEmpty()) request.setRawHeader("Accept", accept);
     request.setTransferTimeout(kFetchTimeoutMs);
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    // -- WP SECQTA -- every redirect is checked like the first URL: an http
+    // redirect is refused, from https and from the loopback alike
+    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::UserVerifiedRedirectPolicy);
     QNetworkReply *reply = manager.get(request);
+    bool redirectRefused = false;
+    QObject::connect(reply, &QNetworkReply::redirected, reply, [reply, &redirectRefused](const QUrl &next) {
+        if (fetchUrlAllowed(reply->url().resolved(next))) {
+            emit reply->redirectAllowed();
+        } else {
+            redirectRefused = true;
+            reply->abort();
+        }
+    });
     QEventLoop loop;
     QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
     if (!reply->isFinished()) loop.exec();
-    out.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    if (out.status == 0) {
+    out.status = redirectRefused ? 0 : reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (redirectRefused) {
+        out.error = QStringLiteral("refused: a redirect left https");
+    } else if (out.status == 0) {
         out.error = reply->errorString();
     } else {
         out.answered = true;
