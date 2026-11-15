@@ -6882,7 +6882,8 @@ void dspi_link_browse_verify(struct FfiCore *core, const char *hub_id);
  * maxInflight, tokenRefused}. Blocks up to about 15 s. All strings are
  * required.
  *
- * `token`: the token stored for this hub, "" = none. `expected_hub_id`: the
+ * `token`: the credential stored for this hub (-- WP SECCORE -- a bare token
+ * or a `v2` pinned one; `dspi_link_security` gives the one to store), "" = none. `expected_hub_id`: the
  * id it was stored under. With it, a token goes out only after the hello
  * has named that hub, and another hub at the address gets code `wrong_hub`
  * having seen no token. "" = not known: the token goes to whichever hub
@@ -6900,6 +6901,31 @@ uint32_t dspi_link_connect(struct FfiCore *core,
                            const char *expected_hub_id,
                            char *buf,
                            uint32_t len);
+
+/**
+ * `dspi_link_connect` with the hub's DNS-SD advert: `tls_advertised` (the
+ * browsed record's `tlsAdvertised`, spec 3.1 `tls=1`) makes TLS required,
+ * and its failure is code `tls_refused`, never a plaintext retry. `token` is
+ * the stored credential (`v1` or `v2`). Same reply and rules as
+ * `dspi_link_connect`; read `dspi_link_security` after it.
+ */
+uint32_t dspi_link_connect_advertised(struct FfiCore *core,
+                                      const char *url,
+                                      const char *client_name,
+                                      const char *app_version,
+                                      const char *token,
+                                      const char *expected_hub_id,
+                                      bool tls_advertised,
+                                      char *buf,
+                                      uint32_t len);
+
+/**
+ * The session's encryption: JSON {ok, encrypted, hubKey, hubKeyNew,
+ * credential}. `encrypted` false: show the "unencrypted" badge. `credential`:
+ * store it when it differs from the stored one ("" without a token).
+ * Returns the length needed.
+ */
+uint32_t dspi_link_security(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * Pair with the PIN the user typed: JSON {ok, token}; store the token
@@ -6981,6 +7007,21 @@ bool dspi_link_set_listener(struct FfiCore *core,
  * JSON {ok, host, port}. Returns the length needed; 0 for a panic.
  */
 uint32_t dspi_link_parse_address(const char *text, char *buf, uint32_t len);
+
+/**
+ * Parse a pairing link `dspi://pair?h=&a=&k=&p=` (the hub's QR code): JSON
+ * {ok, hubId, host, port, url, hubKey, credential, pin}. Connect with `url`,
+ * `credential` and `hubId`, show `hubKey` for the user to confirm, then pair
+ * with `pin`. Returns the length needed; 0 for a panic.
+ */
+uint32_t dspi_link_parse_pair_link(const char *text, char *buf, uint32_t len);
+
+/**
+ * The hub key fingerprint a stored credential is pinned to, as plain text;
+ * "" for a `v1` credential. Returns the length needed; 0 for a null or
+ * non-UTF-8 `credential`.
+ */
+uint32_t dspi_link_credential_hub_key(const char *credential, char *buf, uint32_t len);
 
 /**
  * The WebSocket URL for a hub, as plain text. `path` null or "" is the

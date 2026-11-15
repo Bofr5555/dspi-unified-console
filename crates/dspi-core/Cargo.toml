@@ -58,7 +58,9 @@ default = ["usb"]
 # binding fits every platform.
 usb = ["dep:nusb", "dep:futures-core", "dspi-transport/usb"]
 # DSPi Link sessions (WP C15, over dspi-transport's Link adapter, WP T5).
-link = ["dep:dspi-link", "dspi-transport/link"]
+# -- WP SECCORE -- with TLS (dspi-link `tls`): native targets only; the web
+# build has neither the module nor rustls/ring, the feature notwithstanding
+link = ["dep:dspi-link", "dspi-transport/link", "dspi-link/tls"]
 # -- WP CG2 --
 # Finding hubs over mDNS (link_browse.rs). Desktop only: dspi-ffi must not enable it
 # (tests/wp_cg2_mobile_no_mdns.rs).
@@ -88,7 +90,8 @@ proptest = "1"
 # -- WP C14 --
 # -- WP C15 --
 # The fake hub, for the Link session and fault-injection tests.
-dspi-link = { path = "../dspi-link", features = ["fake-hub"] }
+# -- WP SECCORE -- `tls`: the fake hub serves TLS
+dspi-link = { path = "../dspi-link", features = ["fake-hub", "tls"] }
 # -- WP F1 --
 
 [target.'cfg(unix)'.dependencies]

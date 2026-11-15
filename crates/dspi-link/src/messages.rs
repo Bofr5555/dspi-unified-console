@@ -37,6 +37,27 @@ pub struct HubInfo {
     pub kind: String,
     #[serde(default)]
     pub version: Option<String>,
+    // -- WP SECCORE --
+    /// `hello.hub.key_next` (PLAN-SEC 4.2): the hub has moved to a new key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_next: Option<KeyNext>,
+}
+
+// -- WP SECCORE --
+/// `hello.hub.key_next`: the pin of the key the hub now serves, signed by the
+/// old one. All base64url without padding; all public.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct KeyNext {
+    /// SHA-256 of the new key's SubjectPublicKeyInfo (32 bytes).
+    #[serde(default)]
+    pub spki: String,
+    /// The old key's DER SubjectPublicKeyInfo: its hash must be the client's pin.
+    #[serde(default)]
+    pub prev_spki: String,
+    /// The old key's ECDSA P-256 SHA-256 signature (ASN.1 DER) over
+    /// `"dspi-key-rotate\0" || hid || new pin`.
+    #[serde(default)]
+    pub sig: String,
 }
 
 /// `hello.limits` (spec 7.2). Missing values fall back to the spec minimums.
@@ -157,6 +178,11 @@ pub struct AuthOk {
     pub token: Option<String>,
     #[serde(default)]
     pub policy: Option<Policy>,
+    // -- WP SECCORE --
+    /// The hub's key pin (base64url), which the client checks against the TLS key
+    /// (PLAN-SEC 4.3). Absent from hubs without TLS.
+    #[serde(default)]
+    pub hub_key: Option<String>,
 }
 
 /// By hand, so a token never reaches a log.

@@ -87,6 +87,9 @@ use dspi_link::{
     AuthState, ConnectOptions, Dir, LinkClient, LinkError, LinkEvents, RetryAdvice, SessionConfig,
     SessionState, Timing,
 };
+// -- WP SECCORE --
+use dspi_link::TlsOptions;
+use dspi_link::credential::{Credential, Pin};
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::packets::RtaBandFrame;
 use dspi_transport::link::map_status;
@@ -286,6 +289,64 @@ struct Target {
     connector: Arc<dyn WsConnector>,
     timing: Timing,
     clock: Arc<dyn Clock>,
+    // -- WP SECCORE --
+    /// The key the hub must present (PLAN-SEC 4.3 rule 1), and the successor it
+    /// announced; `None`: no pin yet (a v1 credential, or first contact).
+    pin: Option<Pin>,
+    pin_next: Option<Pin>,
+    /// The hub's advert said TLS (ratchet (a)).
+    tls_advertised: bool,
+    /// An unpinned hub that refused TLS earlier in this session: reconnects go
+    /// straight to plaintext.
+    plaintext_known: bool,
+}
+
+// -- WP SECCORE --
+impl Target {
+    /// The credential to store: `v2` once pinned, else the bare token (`v1`).
+    /// Empty without a token.
+    fn credential(&self) -> String {
+        if self.token.is_empty() {
+            return String::new();
+        }
+        Credential {
+            token: self.token.clone(),
+            pin: self.pin,
+            next: self.pin_next,
+        }
+        .encode()
+    }
+
+    /// What the client is told about TLS.
+    fn tls_options(&self) -> TlsOptions {
+        TlsOptions {
+            pin: self.pin,
+            pin_next: self.pin_next,
+            advertised: self.tls_advertised,
+            plaintext_known: self.plaintext_known,
+        }
+    }
+
+    /// Takes in what `client`'s connection met: a key is pinned only with a
+    /// token or a pairing (rule 2), a pinned key moves only as the client
+    /// judged it (a proven rotation). Returns whether the credential changed.
+    fn learn(&mut self, client: &LinkClient, state: &AuthState) -> bool {
+        let Some(seen) = client.tls() else {
+            if self.pin.is_none() && !self.tls_advertised {
+                self.plaintext_known = true;
+            }
+            return false;
+        };
+        self.plaintext_known = false;
+        let keep = self.pin.is_some() || !self.token.is_empty() || state.needs_pin();
+        if !keep {
+            return false;
+        }
+        let before = (self.pin, self.pin_next);
+        self.pin = Some(seen.key);
+        self.pin_next = seen.next;
+        before != (self.pin, self.pin_next)
+    }
 }
 
 /// What `link_close` needs without the `Inner` lock, which a command on a
@@ -379,6 +440,10 @@ pub(crate) struct LinkSession {
     // -- WP LKUI1 --
     /// The audio link installation as last read (`system.rs`).
     system: alink_system::Cache,
+    // -- WP SECCORE --
+    /// The last connection set a new pin (first use or a rotation): show the
+    /// fingerprint once.
+    key_new: bool,
 }
 
 impl Drop for LinkSession {
@@ -458,7 +523,15 @@ impl LinkSession {
                 let reason = error.map_or_else(String::new, ToString::to_string);
                 self.retry = None;
                 self.ended = true;
-                self.refused = matches!(error, Some(LinkError::HandshakeRefused { .. }));
+                // -- WP SECCORE -- a changed key ends as a refusal: pair again
+                self.refused = matches!(
+                    error,
+                    Some(
+                        LinkError::HandshakeRefused { .. }
+                            | LinkError::HubKeyChanged
+                            | LinkError::HubKeyUnverified
+                    )
+                );
                 self.unreported_end = Some((None, reason));
             }
         }
@@ -594,6 +667,18 @@ impl DspiCore {
     /// seconds), `handshake_refused` (trying again will not help),
     /// `rate_limited` (the token stays good; wait a minute), `protocol`,
     /// `timeout`, `closed`, or the hub's own.
+    ///
+    /// -- WP SECCORE -- `token` is the stored **credential** (PLAN-SEC 4.3): a
+    /// bare token (`v1`) or a `v2` string with the hub's key pin, as
+    /// `link_pair`, [`LinkListener::on_link_token_issued`] and
+    /// `link_security().credential` give it; store those whenever they change.
+    /// TLS is tried first. A pinned hub is reached over TLS only, with its key
+    /// checked before the token goes out: `hub_key_changed` when it is another
+    /// key (pair again), `hub_key_unverified` for a pairing link's pin,
+    /// `tls_refused` when TLS fails; never plaintext. An unpinned hub without
+    /// TLS (an upstream hub) connects unencrypted, as before
+    /// (`link_security().encrypted` false). Same as
+    /// [`DspiCore::link_connect_advertised`] with no advert.
     pub fn link_connect(
         &self,
         url: String,
@@ -610,6 +695,54 @@ impl DspiCore {
             expected_hub_id,
             Tuning::default(),
         )
+    }
+
+    // -- WP SECCORE --
+    /// [`DspiCore::link_connect`] with what the hub's DNS-SD advert said:
+    /// `tls_advertised` (the browsed record's `tls_advertised`, spec 3.1
+    /// `tls=1`): TLS is then required even without a pin, and its failure is
+    /// `tls_refused`, never a plaintext retry (ratchet (a)). A pinned hub needs
+    /// TLS whatever the advert says.
+    pub fn link_connect_advertised(
+        &self,
+        url: String,
+        client_name: String,
+        app_version: String,
+        credential: String,
+        expected_hub_id: String,
+        tls_advertised: bool,
+    ) -> Result<LinkHello> {
+        self.link_connect_hinted(
+            url,
+            client_name,
+            app_version,
+            credential,
+            expected_hub_id,
+            Advert {
+                tls: tls_advertised,
+            },
+            Tuning::default(),
+        )
+    }
+
+    // -- WP SECCORE --
+    /// The current session's encryption, for the hub's status and settings.
+    pub fn link_security(&self) -> LinkSecurity {
+        let inner = self.lock();
+        let Some(s) = inner.link.as_ref() else {
+            return LinkSecurity::default();
+        };
+        let seen = s.client.as_ref().and_then(LinkClient::tls);
+        LinkSecurity {
+            encrypted: seen.is_some(),
+            hub_key: seen
+                .map(|t| t.key)
+                .or(s.target.pin)
+                .map(|k| dspi_link::credential::pin_display(&k))
+                .unwrap_or_default(),
+            hub_key_new: s.key_new,
+            credential: s.target.credential(),
+        }
     }
 
     /// Pair with the PIN the user typed (role `control`, as the macOS
@@ -634,6 +767,15 @@ impl DspiCore {
         if let Some(s) = inner.link.as_mut().filter(|s| s.instance == instance) {
             s.paired(&token);
             let _ = s.tx.send(Msg::Kick);
+            // -- WP SECCORE -- the credential: pinned when the pairing ran over TLS
+            if !token.is_empty() {
+                return Ok(Credential {
+                    token,
+                    pin: s.target.pin,
+                    next: s.target.pin_next,
+                }
+                .encode());
+            }
         }
         Ok(token)
     }
@@ -929,17 +1071,46 @@ impl DspiCore {
         expected_hub_id: String,
         tuning: Tuning,
     ) -> Result<LinkHello> {
-        self.close_session(REPLACE_WAIT);
-        let (tx, rx) = mpsc::channel();
-        let mut target = Target {
+        self.link_connect_hinted(
             url,
             client_name,
             app_version,
             token,
+            expected_hub_id,
+            Advert::default(),
+            tuning,
+        )
+    }
+
+    // -- WP SECCORE --
+    /// [`DspiCore::link_connect_with`] with the hub's advert.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn link_connect_hinted(
+        &self,
+        url: String,
+        client_name: String,
+        app_version: String,
+        credential: String,
+        expected_hub_id: String,
+        advert: Advert,
+        tuning: Tuning,
+    ) -> Result<LinkHello> {
+        self.close_session(REPLACE_WAIT);
+        let (tx, rx) = mpsc::channel();
+        let credential = Credential::parse(&credential);
+        let mut target = Target {
+            url,
+            client_name,
+            app_version,
+            token: credential.token,
             hub_id: expected_hub_id.to_lowercase(),
             connector: Arc::clone(&tuning.connector),
             timing: tuning.timing,
             clock: Arc::clone(&tuning.clock),
+            pin: credential.pin,
+            pin_next: credential.next,
+            tls_advertised: advert.tls,
+            plaintext_known: false,
         };
         // -- WP WB4b -- decided on the caller's thread, as the client's own mode is
         let pumped = dspi_link::client::caller_driven();
@@ -1000,6 +1171,9 @@ impl DspiCore {
         if hello.token_refused {
             target.token.clear();
         }
+        // -- WP SECCORE -- the app reads the (possibly upgraded) credential from
+        // `link_security`, which the listener also delivers when it changes
+        let key_new = target.learn(&client, &state);
         let instance = client.epoch();
         let session = LinkSession {
             id,
@@ -1028,6 +1202,7 @@ impl DspiCore {
             tx,
             // -- WP LKUI1 --
             system: alink_system::Cache::default(),
+            key_new, // -- WP SECCORE --
         };
         let (me, id) = (self.me.clone(), session.id);
         let kick = session.tx.clone();
@@ -1109,6 +1284,7 @@ impl DspiCore {
             return Err(DspiError::Disconnected);
         };
         s.pin_source = client.hello().pin_source().to_owned();
+        s.key_new |= s.target.learn(&client, &state); // -- WP SECCORE --
         s.client = Some(client.clone());
         s.instance = instance;
         s.loss_seen = false;
@@ -1356,11 +1532,18 @@ impl DspiCore {
             }
             return false;
         };
+        let mut changed = None; // -- WP SECCORE --
         match dialled {
             Ok((client, state)) => {
                 if matches!(state, AuthState::TokenRefused { .. }) {
                     s.target.token.clear();
                     s.token_refused = true;
+                }
+                // -- WP SECCORE -- a v1 credential upgraded, or a rotation: the app stores it
+                let new_key = s.target.learn(&client, &state);
+                s.key_new = new_key;
+                if new_key && !s.target.token.is_empty() {
+                    changed = Some((s.target.hub_id.clone(), s.target.credential()));
                 }
                 s.pin_source = client.hello().pin_source().to_owned();
                 s.instance = client.epoch();
@@ -1381,6 +1564,13 @@ impl DspiCore {
                 s.last_close = Some((None, e.to_string()));
                 s.schedule_retry(Some(&e), now);
             }
+        }
+        // -- WP SECCORE --
+        drop(inner);
+        if let Some((hub_id, credential)) = changed {
+            self.listeners
+                .link
+                .call(|l| l.on_link_token_issued(hub_id, credential));
         }
         true
     }
@@ -1587,6 +1777,14 @@ impl DspiCore {
                 }
             }
         }
+        // -- WP SECCORE -- the credential, pinned when the pairing ran over TLS
+        let token = {
+            let inner = self.lock();
+            match inner.link.as_ref() {
+                Some(s) if s.target.token == token => s.target.credential(),
+                _ => token,
+            }
+        };
         self.listeners
             .link
             .call(|l| l.on_link_token_issued(hub_id, token));
@@ -2063,13 +2261,28 @@ fn dial(
         clock: Arc::clone(&target.clock),
         token_for: lookup,
     };
-    LinkClient::connect_with(
+    // -- WP SECCORE -- TLS first (PLAN-SEC 4.3)
+    LinkClient::connect_tls(
         target.connector.as_ref(),
         &target.url,
         &opts,
         Some(Arc::new(Forward { tx: tx.clone() })),
         &cfg,
+        &target.tls_options(),
     )
+    .map_err(|e| match e {
+        // A pin with no token is a pairing link's: its key was not met
+        LinkError::HubKeyChanged if target.token.is_empty() => LinkError::HubKeyUnverified,
+        e => e,
+    })
+}
+
+// -- WP SECCORE --
+/// What a hub's DNS-SD advert said about TLS (SECDISC's result).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Advert {
+    /// The browsed record's `tls_advertised` (spec 3.1 `tls=1`).
+    pub(crate) tls: bool,
 }
 
 // -- WP LK4 --
@@ -2126,6 +2339,10 @@ fn dial_first(
         let Some(by) = retry.filter(|_| !cancel.load(Ordering::SeqCst)) else {
             return Err(e);
         };
+        // -- WP SECCORE -- a TLS the hub must have and refused: say so now
+        if matches!(e, LinkError::TlsRefused { .. }) {
+            return Err(e);
+        }
         let RetryAdvice::Retry { min_delay } = e.retry_advice() else {
             return Err(e);
         };
@@ -2157,9 +2374,10 @@ fn closed_by_client() -> LinkError {
     }
 }
 
-/// Whether `url` is `ws://host[:port][/path]`.
+/// Whether `url` is `ws://host[:port][/path]` (-- WP SECCORE -- or `wss://`).
 fn valid_ws_url(url: &str) -> bool {
     url.strip_prefix("ws://")
+        .or_else(|| url.strip_prefix("wss://"))
         .and_then(|rest| rest.split('/').next())
         .is_some_and(|authority| dspi_link::address::parse_address(authority).is_some())
 }
@@ -2394,6 +2612,10 @@ fn map_error(e: LinkError) -> DspiError {
         LinkError::WrongPin { .. } => "wrong_pin",
         LinkError::RateLimited { .. } => "rate_limited",
         LinkError::Rejected { code, .. } => code,
+        // -- WP SECCORE --
+        LinkError::HubKeyChanged => "hub_key_changed",
+        LinkError::HubKeyUnverified => "hub_key_unverified",
+        LinkError::TlsRefused { .. } => "tls_refused",
     };
     DspiError::Link {
         code: code.to_owned(),
@@ -3404,6 +3626,41 @@ pub fn link_fetch_info(host: String, port: u16) -> Result<LinkInfo> {
     })
 }
 
+// -- WP SECCORE --
+/// Parse a pairing link, `dspi://pair?h=<hid>&a=<host:port>&k=<key>&p=<pin>`
+/// (the hub's QR code; PLAN-SEC 4.3). A hint, never a bypass: connect with
+/// [`LinkPairLink::credential`] (pinned to `k`) and `hub_id`, then `link_pair`
+/// with `pin` after the user has confirmed the hub name and fingerprint. A hub
+/// presenting another key fails the connect with `hub_key_unverified`,
+/// before any PIN goes out.
+///
+/// Errors: [`DspiError::InvalidArgument`] when it is not a valid pairing link.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn link_parse_pair_link(text: String) -> Result<LinkPairLink> {
+    let link = dspi_link::credential::parse_pair_link(&text)
+        .map_err(|e| DspiError::InvalidArgument { msg: e.to_string() })?;
+    Ok(LinkPairLink {
+        url: dspi_link::address::ws_url(&link.host, link.port, None),
+        hub_key: dspi_link::credential::pin_display(&link.key),
+        credential: link.credential().encode(),
+        hub_id: link.hub_id,
+        host: link.host,
+        port: link.port,
+        pin: link.pin_code,
+    })
+}
+
+// -- WP SECCORE --
+/// The hub key fingerprint a stored credential is pinned to
+/// (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" for a `v1` credential (no TLS yet).
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn link_credential_hub_key(credential: String) -> String {
+    Credential::parse(&credential)
+        .pin
+        .map(|k| dspi_link::credential::pin_display(&k))
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "link/tests_wp_c15.rs"]
@@ -3434,6 +3691,12 @@ mod tests_wp_lk4;
 #[cfg(test)]
 #[path = "link/tests_wp_wb4b.rs"]
 mod tests_wp_wb4b;
+
+// -- WP SECCORE --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "link/tests_wp_seccore.rs"]
+mod tests_wp_seccore;
 
 // -- WP LKCLOSE --
 #[cfg(test)]

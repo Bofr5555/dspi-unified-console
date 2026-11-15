@@ -6,7 +6,9 @@
 //! OkHttp) as a foreign implementation later (CONSOLE-UNIFICATION-STUDY.md
 //! section 6.2, "byte-pipe transports"). [`TcpConnector`] is the built-in
 //! one: `tungstenite` over a blocking `std::net::TcpStream`, plaintext
-//! (`ws://`; no hub implements TLS, spec 6.4).
+//! (`ws://`) or, with feature `tls` off the web, TLS 1.3 to a pinned or
+//! first-use key ([`WsConnector::connect_tls`], `wss://`; WP SECCORE,
+//! PLAN-SEC 4.3) over [`crate::tls::TlsPipe`].
 //!
 //! Concurrency: one reader thread blocks in [`WsReceiver::recv`] while any
 //! thread may send. tungstenite has no split API, so the stream is cloned
@@ -37,6 +39,10 @@ use tungstenite::protocol::{CloseFrame, Role, WebSocketConfig};
 use tungstenite::{Message, WebSocket};
 
 use crate::LinkError;
+// -- WP SECCORE --
+use crate::credential::Pin;
+#[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+use crate::tls::TlsPipe;
 
 /// One whole WebSocket message.
 #[derive(Clone, PartialEq, Eq)]
@@ -101,6 +107,39 @@ pub type WsPair = (Box<dyn WsSender>, Box<dyn WsReceiver>);
 /// Opens a WebSocket to `url` requesting sub-protocol `protocol`.
 pub trait WsConnector: Send + Sync {
     fn connect(&self, url: &str, protocol: &str) -> Result<WsPair, LinkError>;
+
+    // -- WP SECCORE --
+    /// [`Self::connect`] over TLS 1.3 (PLAN-SEC 4.3): `url` may say `ws://` or
+    /// `wss://`, the hub is the same. Returns the pin of the key the hub
+    /// presented, whose handshake signature has been verified; with
+    /// [`TlsTrust::Pinned`] another key is reported rather than refused
+    /// (rotation mode: the caller withholds every secret until it has judged
+    /// it). The TLS handshake must finish within `handshake_within` when given.
+    ///
+    /// A TLS handshake that fails (refused, reset, not TLS, too slow) is
+    /// [`LinkError::TlsRefused`]; a failure before it (name, TCP) or after it
+    /// (the upgrade) is the error [`Self::connect`] would give. The default: a
+    /// connector without TLS (the browser's, test fakes) refuses.
+    fn connect_tls(
+        &self,
+        url: &str,
+        protocol: &str,
+        trust: TlsTrust,
+        handshake_within: Option<Duration>,
+    ) -> Result<(WsPair, Pin), LinkError> {
+        let _ = (url, protocol, trust, handshake_within);
+        Err(LinkError::TlsRefused { advertised: false })
+    }
+}
+
+// -- WP SECCORE --
+/// What a TLS dial trusts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TlsTrust {
+    /// Any key (first contact, or a `v1` credential): the caller decides.
+    FirstUse,
+    /// This key; any other is reported, not trusted (rotation mode).
+    Pinned(Pin),
 }
 
 /// Largest message accepted from a hub (its `max_frame` is at most 64 KiB in
@@ -143,10 +182,21 @@ pub struct Pipe {
     broken: Arc<AtomicBool>,
     /// During the handshake: reads end here however slowly bytes trickle in.
     deadline: Option<Instant>,
+    // -- WP SECCORE --
+    /// The TLS connection this half reads and writes through; `tcp` is then a
+    /// clone of its socket, for timeouts and the shutdown.
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    tls: Option<TlsPipe>,
 }
 
 impl Read for Pipe {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // -- WP SECCORE --
+        #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+        if let Some(tls) = self.tls.as_mut() {
+            tls.set_deadline(self.deadline);
+            return tls.read(buf);
+        }
         if let Some(deadline) = self.deadline {
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
@@ -164,6 +214,11 @@ impl Write for Pipe {
             self.out.extend_from_slice(buf);
             Ok(buf.len())
         } else {
+            // -- WP SECCORE --
+            #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+            if let Some(tls) = self.tls.as_mut() {
+                return tls.write(buf);
+            }
             self.tcp.write(buf)
         }
     }
@@ -175,6 +230,13 @@ impl Write for Pipe {
         }
         if !self.out.is_empty() {
             let _g = self.wlock.lock().unwrap_or_else(|p| p.into_inner());
+            // -- WP SECCORE -- a frame is encrypted whole, in order (TlsPipe)
+            #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+            let r = match self.tls.as_mut() {
+                Some(tls) => tls.write_all(&self.out),
+                None => self.tcp.write_all(&self.out),
+            };
+            #[cfg(not(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown")))))]
             let r = self.tcp.write_all(&self.out);
             self.out.clear();
             if let Err(e) = r {
@@ -197,18 +259,22 @@ fn io_err(e: tungstenite::Error) -> io::Error {
     }
 }
 
-/// Host and port out of `ws://host:port/...` (brackets kept off IPv6).
+/// Host and port out of `ws://host:port/...` or `wss://...` (brackets kept off
+/// IPv6). -- WP SECCORE -- `wss://`; its port defaults to 443.
 fn authority(url: &str) -> Option<(String, u16)> {
-    let rest = url.strip_prefix("ws://")?;
+    let (rest, default_port) = match url.strip_prefix("ws://") {
+        Some(rest) => (rest, 80),
+        None => (url.strip_prefix("wss://")?, 443),
+    };
     let auth = rest.split('/').next()?;
     if let Some(v6) = auth.strip_prefix('[') {
         let (host, tail) = v6.split_once(']')?;
-        let port = tail.strip_prefix(':').map(str::parse).transpose().ok()?.unwrap_or(80);
+        let port = tail.strip_prefix(':').map(str::parse).transpose().ok()?.unwrap_or(default_port);
         return Some((host.to_owned(), port));
     }
     match auth.rsplit_once(':') {
         Some((h, p)) => Some((h.to_owned(), p.parse().ok()?)),
-        None => Some((auth.to_owned(), 80)),
+        None => Some((auth.to_owned(), default_port)),
     }
 }
 
@@ -306,55 +372,95 @@ fn tune(tcp: &TcpStream) {
 impl WsConnector for TcpConnector {
     fn connect(&self, url: &str, protocol: &str) -> Result<WsPair, LinkError> {
         let deadline = Instant::now() + self.connect_timeout;
-        let (host, port) = authority(url).ok_or_else(|| LinkError::Io(format!("not a ws:// URL: {url}")))?;
-        let addrs = resolve(&host, port, deadline)?;
-        let tcp = connect_any(&addrs, deadline)?;
-        tune(&tcp);
-        tcp.set_write_timeout(Some(WRITE_TIMEOUT)).map_err(|e| LinkError::Io(e.to_string()))?;
-
-        let mut request = url.into_client_request().map_err(|e| LinkError::Handshake(e.to_string()))?;
-        request.headers_mut().insert(
-            "Sec-WebSocket-Protocol",
-            protocol.parse().map_err(|_| LinkError::Handshake("bad sub-protocol".into()))?,
-        );
+        if url.starts_with("wss://") {
+            return Err(LinkError::Io(format!("a wss:// URL needs TLS: {url}")));
+        }
+        let tcp = dial_tcp(url, deadline)?;
         let wlock = Arc::new(Mutex::new(()));
         let write_half = tcp.try_clone().map_err(|e| LinkError::Io(e.to_string()))?;
-        let broken = Arc::new(AtomicBool::new(false));
-        let pipe = Pipe {
-            tcp,
-            buffered: false,
-            out: Vec::new(),
-            wlock: Arc::clone(&wlock),
-            broken: Arc::clone(&broken),
-            deadline: Some(deadline),
-        };
-        let (mut reader, response) =
-            tungstenite::client::client_with_config(request, pipe, Some(config())).map_err(handshake_error)?;
-        match response.headers().get("Sec-WebSocket-Protocol").and_then(|v| v.to_str().ok()) {
-            Some(p) if p.eq_ignore_ascii_case(protocol) => {}
-            other => log::warn!("dspi-link: hub did not echo sub-protocol {protocol} (got {other:?})"),
-        }
-        reader.get_mut().buffered = true;
-        reader.get_mut().deadline = None;
-        reader.get_ref().tcp.set_read_timeout(Some(READ_TICK)).map_err(|e| LinkError::Io(e.to_string()))?;
         let shutdown = write_half.try_clone().map_err(|e| LinkError::Io(e.to_string()))?;
-        let writer = WebSocket::from_raw_socket(
-            Pipe {
-                tcp: write_half,
-                buffered: true,
-                out: Vec::new(),
-                wlock,
-                broken: Arc::clone(&broken),
-                deadline: None,
-            },
-            Role::Client,
-            Some(config()),
-        );
-        Ok((
-            Box::new(TcpSender { ws: Mutex::new(writer), shutdown }),
-            Box::new(TcpReceiver { ws: reader, close_code: None, broken }),
-        ))
+        let broken = Arc::new(AtomicBool::new(false));
+        let reader = Pipe::plain(tcp, Arc::clone(&wlock), Arc::clone(&broken), Some(deadline));
+        let mut writer = Pipe::plain(write_half, wlock, Arc::clone(&broken), None);
+        writer.buffered = true;
+        upgrade(url, protocol, reader, writer, shutdown, broken)
     }
+
+    // -- WP SECCORE --
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    fn connect_tls(
+        &self,
+        url: &str,
+        protocol: &str,
+        trust: TlsTrust,
+        handshake_within: Option<Duration>,
+    ) -> Result<(WsPair, Pin), LinkError> {
+        use crate::tls::{PinMode, SpkiHash};
+        let deadline = Instant::now() + self.connect_timeout;
+        let (host, _) = authority(url).ok_or_else(|| LinkError::Io(format!("not a ws:// URL: {url}")))?;
+        let tcp = dial_tcp(url, deadline)?;
+        let handshake_by = handshake_within.map_or(deadline, |d| (Instant::now() + d).min(deadline));
+        let mode = match trust {
+            TlsTrust::FirstUse => PinMode::FirstUse,
+            TlsTrust::Pinned(pin) => PinMode::Rotating(SpkiHash(pin)),
+        };
+        let (tls, outcome) = crate::tls::connect(tcp, &host, mode, handshake_by).map_err(|e| {
+            log::info!("dspi-link: no TLS at {host}: {e}");
+            LinkError::TlsRefused { advertised: false }
+        })?;
+        let io = |e: io::Error| LinkError::Io(e.to_string());
+        let wlock = Arc::new(Mutex::new(()));
+        let broken = Arc::new(AtomicBool::new(false));
+        let write_tls = tls.try_clone().map_err(io)?;
+        let shutdown = tls.tcp().try_clone().map_err(io)?;
+        let reader = Pipe::over_tls(tls, Arc::clone(&wlock), Arc::clone(&broken), Some(deadline)).map_err(io)?;
+        let mut writer = Pipe::over_tls(write_tls, wlock, Arc::clone(&broken), None).map_err(io)?;
+        writer.buffered = true;
+        let wss = url.strip_prefix("ws://").map_or_else(|| url.to_owned(), |rest| format!("wss://{rest}"));
+        let pair = upgrade(&wss, protocol, reader, writer, shutdown, broken)?;
+        Ok((pair, outcome.presented().0))
+    }
+}
+
+/// Name lookup and TCP connect by `deadline`, tuned, with the write-stall timeout.
+fn dial_tcp(url: &str, deadline: Instant) -> Result<TcpStream, LinkError> {
+    let (host, port) = authority(url).ok_or_else(|| LinkError::Io(format!("not a ws:// URL: {url}")))?;
+    let addrs = resolve(&host, port, deadline)?;
+    let tcp = connect_any(&addrs, deadline)?;
+    tune(&tcp);
+    tcp.set_write_timeout(Some(WRITE_TIMEOUT)).map_err(|e| LinkError::Io(e.to_string()))?;
+    Ok(tcp)
+}
+
+/// The WebSocket upgrade over `reader` (which carries the deadline), then the
+/// split into the sender (over `writer`, buffered) and the receiver.
+fn upgrade(
+    url: &str,
+    protocol: &str,
+    reader: Pipe,
+    writer: Pipe,
+    shutdown: TcpStream,
+    broken: Arc<AtomicBool>,
+) -> Result<WsPair, LinkError> {
+    let mut request = url.into_client_request().map_err(|e| LinkError::Handshake(e.to_string()))?;
+    request.headers_mut().insert(
+        "Sec-WebSocket-Protocol",
+        protocol.parse().map_err(|_| LinkError::Handshake("bad sub-protocol".into()))?,
+    );
+    let (mut reader, response) =
+        tungstenite::client::client_with_config(request, reader, Some(config())).map_err(handshake_error)?;
+    match response.headers().get("Sec-WebSocket-Protocol").and_then(|v| v.to_str().ok()) {
+        Some(p) if p.eq_ignore_ascii_case(protocol) => {}
+        other => log::warn!("dspi-link: hub did not echo sub-protocol {protocol} (got {other:?})"),
+    }
+    reader.get_mut().buffered = true;
+    reader.get_mut().deadline = None;
+    reader.get_ref().tcp.set_read_timeout(Some(READ_TICK)).map_err(|e| LinkError::Io(e.to_string()))?;
+    let writer = WebSocket::from_raw_socket(writer, Role::Client, Some(config()));
+    Ok((
+        Box::new(TcpSender { ws: Mutex::new(writer), shutdown }),
+        Box::new(TcpReceiver { ws: reader, close_code: None, broken }),
+    ))
 }
 
 struct TcpSender {
@@ -451,18 +557,48 @@ pub fn split_server(tcp: TcpStream, tail: Vec<u8>, max_frame: usize) -> io::Resu
     let write_half = tcp.try_clone()?;
     let wlock = Arc::new(Mutex::new(()));
     let broken = Arc::new(AtomicBool::new(false));
-    let pipe = |tcp, wlock, broken| Pipe { tcp, buffered: true, out: Vec::new(), wlock, broken, deadline: None };
+    let pipe = |tcp, wlock, broken| {
+        let mut p = Pipe::plain(tcp, wlock, broken, None);
+        p.buffered = true;
+        p
+    };
+    server_pair(pipe(tcp, Arc::clone(&wlock), Arc::clone(&broken)), pipe(write_half, wlock, broken), tail, max_frame)
+}
+
+// -- WP SECCORE --
+/// [`split_server`] over a TLS connection the hub accepted ([`crate::tls::accept`])
+/// and read the upgrade from: its deadline is cleared here, and both halves
+/// buffer each frame and encrypt it whole.
+#[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+pub fn split_server_tls(
+    mut tls: TlsPipe,
+    tail: Vec<u8>,
+    max_frame: usize,
+) -> io::Result<(WebSocket<Pipe>, WebSocket<Pipe>)> {
+    tls.set_deadline(None);
+    let write_half = tls.try_clone()?;
+    let wlock = Arc::new(Mutex::new(()));
+    let broken = Arc::new(AtomicBool::new(false));
+    let mut reader = Pipe::over_tls(tls, Arc::clone(&wlock), Arc::clone(&broken), None)?;
+    let mut writer = Pipe::over_tls(write_half, wlock, broken, None)?;
+    reader.buffered = true;
+    writer.buffered = true;
+    server_pair(reader, writer, tail, max_frame)
+}
+
+/// The hub's reader and writer WebSockets over two halves.
+fn server_pair(
+    reader: Pipe,
+    writer: Pipe,
+    tail: Vec<u8>,
+    max_frame: usize,
+) -> io::Result<(WebSocket<Pipe>, WebSocket<Pipe>)> {
     let config = WebSocketConfig::default()
         .max_message_size(Some(max_frame))
         .max_frame_size(Some(max_frame))
         .read_buffer_size(SERVER_READ_BUFFER);
-    let reader = WebSocket::from_partially_read(
-        pipe(tcp, Arc::clone(&wlock), Arc::clone(&broken)),
-        tail,
-        Role::Server,
-        Some(config),
-    );
-    let writer = WebSocket::from_raw_socket(pipe(write_half, wlock, broken), Role::Server, Some(config));
+    let reader = WebSocket::from_partially_read(reader, tail, Role::Server, Some(config));
+    let writer = WebSocket::from_raw_socket(writer, Role::Server, Some(config));
     Ok((reader, writer))
 }
 
@@ -470,9 +606,49 @@ pub fn split_server(tcp: TcpStream, tail: Vec<u8>, max_frame: usize) -> io::Resu
 const SERVER_READ_BUFFER: usize = 16 * 1024;
 
 impl Pipe {
+    /// Unbuffered, over a plain socket.
+    fn plain(tcp: TcpStream, wlock: Arc<Mutex<()>>, broken: Arc<AtomicBool>, deadline: Option<Instant>) -> Pipe {
+        Pipe {
+            tcp,
+            buffered: false,
+            out: Vec::new(),
+            wlock,
+            broken,
+            deadline,
+            #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+            tls: None,
+        }
+    }
+
+    // -- WP SECCORE --
+    /// Unbuffered, over one half of a TLS connection.
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    fn over_tls(
+        tls: TlsPipe,
+        wlock: Arc<Mutex<()>>,
+        broken: Arc<AtomicBool>,
+        deadline: Option<Instant>,
+    ) -> io::Result<Pipe> {
+        let mut pipe = Pipe::plain(tls.tcp().try_clone()?, wlock, broken, deadline);
+        pipe.tls = Some(tls);
+        Ok(pipe)
+    }
+
+    /// Whether this half goes through TLS.
+    pub fn is_tls(&self) -> bool {
+        #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+        return self.tls.is_some();
+        #[cfg(not(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown")))))]
+        false
+    }
+
     /// A write failed part way, so nothing more can be sent on this stream. A read
     /// timeout means nothing while this is set: it may be that write's timeout.
     pub fn is_broken(&self) -> bool {
+        #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+        if self.tls.as_ref().is_some_and(TlsPipe::is_broken) {
+            return true;
+        }
         self.broken.load(Ordering::SeqCst)
     }
 
@@ -513,14 +689,8 @@ mod tests {
         let _peer_never_reads = listener.accept().unwrap();
         tcp.set_write_timeout(Some(Duration::from_millis(20))).unwrap();
         let broken = Arc::new(AtomicBool::new(false));
-        let mut pipe = Pipe {
-            tcp,
-            buffered: true,
-            out: Vec::new(),
-            wlock: Arc::new(Mutex::new(())),
-            broken: Arc::clone(&broken),
-            deadline: None,
-        };
+        let mut pipe = Pipe::plain(tcp, Arc::new(Mutex::new(())), Arc::clone(&broken), None);
+        pipe.buffered = true;
         pipe.write_all(&vec![0u8; 64 << 20]).unwrap();
         assert!(pipe.flush().is_err(), "more than the socket buffers can hold");
         assert!(broken.load(Ordering::SeqCst));

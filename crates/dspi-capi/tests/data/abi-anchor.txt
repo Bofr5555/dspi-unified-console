@@ -1651,6 +1651,16 @@ const char *token,
 const char *expected_hub_id,
 char *buf,
 uint32_t len);
+uint32_t dspi_link_connect_advertised(struct FfiCore *core,
+const char *url,
+const char *client_name,
+const char *app_version,
+const char *token,
+const char *expected_hub_id,
+bool tls_advertised,
+char *buf,
+uint32_t len);
+uint32_t dspi_link_security(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_link_pair(struct FfiCore *core, const char *pin, char *buf, uint32_t len);
 uint32_t dspi_link_devices(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_link_status(struct FfiCore *core, char *buf, uint32_t len);
@@ -1670,6 +1680,8 @@ const char *token,
 void *user_data),
 void *user_data);
 uint32_t dspi_link_parse_address(const char *text, char *buf, uint32_t len);
+uint32_t dspi_link_parse_pair_link(const char *text, char *buf, uint32_t len);
+uint32_t dspi_link_credential_hub_key(const char *credential, char *buf, uint32_t len);
 uint32_t dspi_link_ws_url(const char *host,
 uint16_t port,
 const char *path,

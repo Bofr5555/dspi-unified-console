@@ -3683,8 +3683,29 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * seconds), `handshake_refused` (trying again will not help),
      * `rate_limited` (the token stays good; wait a minute), `protocol`,
      * `timeout`, `closed`, or the hub's own.
+     *
+     * -- WP SECCORE -- `token` is the stored **credential** (PLAN-SEC 4.3): a
+     * bare token (`v1`) or a `v2` string with the hub's key pin, as
+     * `link_pair`, [`LinkListener::on_link_token_issued`] and
+     * `link_security().credential` give it; store those whenever they change.
+     * TLS is tried first. A pinned hub is reached over TLS only, with its key
+     * checked before the token goes out: `hub_key_changed` when it is another
+     * key (pair again), `hub_key_unverified` for a pairing link's pin,
+     * `tls_refused` when TLS fails; never plaintext. An unpinned hub without
+     * TLS (an upstream hub) connects unencrypted, as before
+     * (`link_security().encrypted` false). Same as
+     * [`DspiCore::link_connect_advertised`] with no advert.
      */
     func linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String) throws  -> LinkHello
+    
+    /**
+     * [`DspiCore::link_connect`] with what the hub's DNS-SD advert said:
+     * `tls_advertised` (the browsed record's `tls_advertised`, spec 3.1
+     * `tls=1`): TLS is then required even without a pin, and its failure is
+     * `tls_refused`, never a plaintext retry (ratchet (a)). A pinned hub needs
+     * TLS whatever the advert says.
+     */
+    func linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Bool) throws  -> LinkHello
     
     /**
      * The hub's devices (empty before authentication).
@@ -3715,6 +3736,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * says the network is back). A no-op unless reconnecting.
      */
     func linkRetryNow() 
+    
+    /**
+     * The current session's encryption, for the hub's status and settings.
+     */
+    func linkSecurity()  -> LinkSecurity
     
     /**
      * Bind the core to the hub's device `handle` (as `open_fd` does for
@@ -9328,6 +9354,18 @@ open func linkClose()  {try! rustCall() {
      * seconds), `handshake_refused` (trying again will not help),
      * `rate_limited` (the token stays good; wait a minute), `protocol`,
      * `timeout`, `closed`, or the hub's own.
+     *
+     * -- WP SECCORE -- `token` is the stored **credential** (PLAN-SEC 4.3): a
+     * bare token (`v1`) or a `v2` string with the hub's key pin, as
+     * `link_pair`, [`LinkListener::on_link_token_issued`] and
+     * `link_security().credential` give it; store those whenever they change.
+     * TLS is tried first. A pinned hub is reached over TLS only, with its key
+     * checked before the token goes out: `hub_key_changed` when it is another
+     * key (pair again), `hub_key_unverified` for a pairing link's pin,
+     * `tls_refused` when TLS fails; never plaintext. An unpinned hub without
+     * TLS (an upstream hub) connects unencrypted, as before
+     * (`link_security().encrypted` false). Same as
+     * [`DspiCore::link_connect_advertised`] with no advert.
      */
 open func linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String)throws  -> LinkHello  {
     return try  FfiConverterTypeLinkHello_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -9337,6 +9375,26 @@ open func linkConnect(url: String, clientName: String, appVersion: String, token
         FfiConverterString.lower(appVersion),
         FfiConverterString.lower(token),
         FfiConverterString.lower(expectedHubId),$0
+    )
+})
+}
+    
+    /**
+     * [`DspiCore::link_connect`] with what the hub's DNS-SD advert said:
+     * `tls_advertised` (the browsed record's `tls_advertised`, spec 3.1
+     * `tls=1`): TLS is then required even without a pin, and its failure is
+     * `tls_refused`, never a plaintext retry (ratchet (a)). A pinned hub needs
+     * TLS whatever the advert says.
+     */
+open func linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Bool)throws  -> LinkHello  {
+    return try  FfiConverterTypeLinkHello_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_link_connect_advertised(self.uniffiClonePointer(),
+        FfiConverterString.lower(url),
+        FfiConverterString.lower(clientName),
+        FfiConverterString.lower(appVersion),
+        FfiConverterString.lower(credential),
+        FfiConverterString.lower(expectedHubId),
+        FfiConverterBool.lower(tlsAdvertised),$0
     )
 })
 }
@@ -9384,6 +9442,16 @@ open func linkRetryNow()  {try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_link_retry_now(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+    /**
+     * The current session's encryption, for the hub's status and settings.
+     */
+open func linkSecurity() -> LinkSecurity  {
+    return try!  FfiConverterTypeLinkSecurity_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_link_security(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -13270,6 +13338,8 @@ public protocol LinkListener: AnyObject, Sendable {
     /**
      * The hub issued a token: store it now against `hub_id`. Comes as soon as
      * the hub's answer arrives, even if `link_pair` has already timed out.
+     * -- WP SECCORE -- `token` is the credential to store (`v2` when pinned),
+     * and it also comes when a reconnect upgrades or re-pins it.
      */
     func onLinkTokenIssued(hubId: String, token: String) 
     
@@ -13367,6 +13437,8 @@ open func onLinkStatusChanged()  {try! rustCall() {
     /**
      * The hub issued a token: store it now against `hub_id`. Comes as soon as
      * the hub's answer arrives, even if `link_pair` has already timed out.
+     * -- WP SECCORE -- `token` is the credential to store (`v2` when pinned),
+     * and it also comes when a reconnect upgrades or re-pins it.
      */
 open func onLinkTokenIssued(hubId: String, token: String)  {try! rustCall() {
     uniffi_dspi_core_fn_method_linklistener_on_link_token_issued(self.uniffiClonePointer(),
@@ -33267,6 +33339,161 @@ public func FfiConverterTypeLinkInfo_lower(_ value: LinkInfo) -> RustBuffer {
 
 
 /**
+ * A parsed pairing link (`link_parse_pair_link`).
+ */
+public struct LinkPairLink {
+    /**
+     * The hub's id: `expected_hub_id`.
+     */
+    public var hubId: String
+    /**
+     * Where it answers.
+     */
+    public var host: String
+    /**
+     * TCP port.
+     */
+    public var port: UInt16
+    /**
+     * The `link_connect` URL.
+     */
+    public var url: String
+    /**
+     * The fingerprint of the key it must present: show it on the pairing screen.
+     */
+    public var hubKey: String
+    /**
+     * The `link_connect` credential: pinned to that key, no token yet.
+     */
+    public var credential: String
+    /**
+     * The PIN to pair with after the user's tap ("" when the link has none).
+     */
+    public var pin: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The hub's id: `expected_hub_id`.
+         */hubId: String, 
+        /**
+         * Where it answers.
+         */host: String, 
+        /**
+         * TCP port.
+         */port: UInt16, 
+        /**
+         * The `link_connect` URL.
+         */url: String, 
+        /**
+         * The fingerprint of the key it must present: show it on the pairing screen.
+         */hubKey: String, 
+        /**
+         * The `link_connect` credential: pinned to that key, no token yet.
+         */credential: String, 
+        /**
+         * The PIN to pair with after the user's tap ("" when the link has none).
+         */pin: String) {
+        self.hubId = hubId
+        self.host = host
+        self.port = port
+        self.url = url
+        self.hubKey = hubKey
+        self.credential = credential
+        self.pin = pin
+    }
+}
+
+#if compiler(>=6)
+extension LinkPairLink: Sendable {}
+#endif
+
+
+extension LinkPairLink: Equatable, Hashable {
+    public static func ==(lhs: LinkPairLink, rhs: LinkPairLink) -> Bool {
+        if lhs.hubId != rhs.hubId {
+            return false
+        }
+        if lhs.host != rhs.host {
+            return false
+        }
+        if lhs.port != rhs.port {
+            return false
+        }
+        if lhs.url != rhs.url {
+            return false
+        }
+        if lhs.hubKey != rhs.hubKey {
+            return false
+        }
+        if lhs.credential != rhs.credential {
+            return false
+        }
+        if lhs.pin != rhs.pin {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(hubId)
+        hasher.combine(host)
+        hasher.combine(port)
+        hasher.combine(url)
+        hasher.combine(hubKey)
+        hasher.combine(credential)
+        hasher.combine(pin)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkPairLink: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkPairLink {
+        return
+            try LinkPairLink(
+                hubId: FfiConverterString.read(from: &buf), 
+                host: FfiConverterString.read(from: &buf), 
+                port: FfiConverterUInt16.read(from: &buf), 
+                url: FfiConverterString.read(from: &buf), 
+                hubKey: FfiConverterString.read(from: &buf), 
+                credential: FfiConverterString.read(from: &buf), 
+                pin: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkPairLink, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.hubId, into: &buf)
+        FfiConverterString.write(value.host, into: &buf)
+        FfiConverterUInt16.write(value.port, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterString.write(value.hubKey, into: &buf)
+        FfiConverterString.write(value.credential, into: &buf)
+        FfiConverterString.write(value.pin, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPairLink_lift(_ buf: RustBuffer) throws -> LinkPairLink {
+    return try FfiConverterTypeLinkPairLink.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkPairLink_lower(_ value: LinkPairLink) -> RustBuffer {
+    return FfiConverterTypeLinkPairLink.lower(value)
+}
+
+
+/**
  * What to tell the user about a [`LinkPhase`].
  */
 public struct LinkPhaseText {
@@ -33396,6 +33623,125 @@ public func FfiConverterTypeLinkPhaseText_lift(_ buf: RustBuffer) throws -> Link
 #endif
 public func FfiConverterTypeLinkPhaseText_lower(_ value: LinkPhaseText) -> RustBuffer {
     return FfiConverterTypeLinkPhaseText.lower(value)
+}
+
+
+/**
+ * The current Link session's encryption (`link_security`; PLAN-SEC 4.3).
+ */
+public struct LinkSecurity {
+    /**
+     * The session runs over TLS with a verified hub key. False: unencrypted
+     * (a hub without TLS, such as an upstream one): show the badge.
+     */
+    public var encrypted: Bool
+    /**
+     * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
+     */
+    public var hubKey: String
+    /**
+     * The last connection set a new pin (first use, or a rotation the old key
+     * signed): show "Encrypted connection set up; hub key ..." once.
+     */
+    public var hubKeyNew: Bool
+    /**
+     * The credential to store for the hub ("" without a token): save it when it
+     * differs from the stored one.
+     */
+    public var credential: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The session runs over TLS with a verified hub key. False: unencrypted
+         * (a hub without TLS, such as an upstream one): show the badge.
+         */encrypted: Bool, 
+        /**
+         * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
+         */hubKey: String, 
+        /**
+         * The last connection set a new pin (first use, or a rotation the old key
+         * signed): show "Encrypted connection set up; hub key ..." once.
+         */hubKeyNew: Bool, 
+        /**
+         * The credential to store for the hub ("" without a token): save it when it
+         * differs from the stored one.
+         */credential: String) {
+        self.encrypted = encrypted
+        self.hubKey = hubKey
+        self.hubKeyNew = hubKeyNew
+        self.credential = credential
+    }
+}
+
+#if compiler(>=6)
+extension LinkSecurity: Sendable {}
+#endif
+
+
+extension LinkSecurity: Equatable, Hashable {
+    public static func ==(lhs: LinkSecurity, rhs: LinkSecurity) -> Bool {
+        if lhs.encrypted != rhs.encrypted {
+            return false
+        }
+        if lhs.hubKey != rhs.hubKey {
+            return false
+        }
+        if lhs.hubKeyNew != rhs.hubKeyNew {
+            return false
+        }
+        if lhs.credential != rhs.credential {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(encrypted)
+        hasher.combine(hubKey)
+        hasher.combine(hubKeyNew)
+        hasher.combine(credential)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkSecurity: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkSecurity {
+        return
+            try LinkSecurity(
+                encrypted: FfiConverterBool.read(from: &buf), 
+                hubKey: FfiConverterString.read(from: &buf), 
+                hubKeyNew: FfiConverterBool.read(from: &buf), 
+                credential: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkSecurity, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.encrypted, into: &buf)
+        FfiConverterString.write(value.hubKey, into: &buf)
+        FfiConverterBool.write(value.hubKeyNew, into: &buf)
+        FfiConverterString.write(value.credential, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSecurity_lift(_ buf: RustBuffer) throws -> LinkSecurity {
+    return try FfiConverterTypeLinkSecurity.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkSecurity_lower(_ value: LinkSecurity) -> RustBuffer {
+    return FfiConverterTypeLinkSecurity.lower(value)
 }
 
 
@@ -47707,6 +48053,17 @@ public func limitsFieldRanges() -> [LimitFieldRange]  {
 })
 }
 /**
+ * The hub key fingerprint a stored credential is pinned to
+ * (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" for a `v1` credential (no TLS yet).
+ */
+public func linkCredentialHubKey(credential: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_link_credential_hub_key(
+        FfiConverterString.lower(credential),$0
+    )
+})
+}
+/**
  * `GET /dspi/v1/info` (spec 3.2). Blocks up to a few seconds.
  *
  * Errors: [`DspiError::Link`] with `io` or `protocol`.
@@ -47727,6 +48084,23 @@ public func linkFetchInfo(host: String, port: UInt16)throws  -> LinkInfo  {
 public func linkParseAddress(text: String)throws  -> LinkAddress  {
     return try  FfiConverterTypeLinkAddress_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_func_link_parse_address(
+        FfiConverterString.lower(text),$0
+    )
+})
+}
+/**
+ * Parse a pairing link, `dspi://pair?h=<hid>&a=<host:port>&k=<key>&p=<pin>`
+ * (the hub's QR code; PLAN-SEC 4.3). A hint, never a bypass: connect with
+ * [`LinkPairLink::credential`] (pinned to `k`) and `hub_id`, then `link_pair`
+ * with `pin` after the user has confirmed the hub name and fingerprint. A hub
+ * presenting another key fails the connect with `hub_key_unverified`,
+ * before any PIN goes out.
+ *
+ * Errors: [`DspiError::InvalidArgument`] when it is not a valid pairing link.
+ */
+public func linkParsePairLink(text: String)throws  -> LinkPairLink  {
+    return try  FfiConverterTypeLinkPairLink_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_func_link_parse_pair_link(
         FfiConverterString.lower(text),$0
     )
 })
@@ -48162,10 +48536,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_limits_field_ranges() != 1854) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_link_credential_hub_key() != 32759) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_link_fetch_info() != 23971) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_parse_address() != 30128) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_link_parse_pair_link() != 55250) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_parse_txt() != 48727) {
@@ -48882,7 +49262,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_link_close() != 64450) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_link_connect() != 52855) {
+    if (uniffi_dspi_core_checksum_method_dspicore_link_connect() != 64342) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised() != 37895) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_devices() != 29326) {
@@ -48892,6 +49275,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_retry_now() != 18334) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_link_security() != 42975) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_select_device() != 47133) {
@@ -49434,7 +49820,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_linklistener_on_link_status_changed() != 34386) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_linklistener_on_link_token_issued() != 24336) {
+    if (uniffi_dspi_core_checksum_method_linklistener_on_link_token_issued() != 47398) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_midiinputhandle_close_port() != 24616) {

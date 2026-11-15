@@ -942,6 +942,65 @@ pub struct LinkAddress {
     pub port: u16,
 }
 
+// -- WP SECCORE --
+/// The current Link session's encryption (`link_security`; PLAN-SEC 4.3).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct LinkSecurity {
+    /// The session runs over TLS with a verified hub key. False: unencrypted
+    /// (a hub without TLS, such as an upstream one): show the badge.
+    pub encrypted: bool,
+    /// The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
+    pub hub_key: String,
+    /// The last connection set a new pin (first use, or a rotation the old key
+    /// signed): show "Encrypted connection set up; hub key ..." once.
+    pub hub_key_new: bool,
+    /// The credential to store for the hub ("" without a token): save it when it
+    /// differs from the stored one.
+    pub credential: String,
+}
+
+// -- WP SECCORE --
+/// A parsed pairing link (`link_parse_pair_link`).
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Clone, PartialEq, Default)]
+pub struct LinkPairLink {
+    /// The hub's id: `expected_hub_id`.
+    pub hub_id: String,
+    /// Where it answers.
+    pub host: String,
+    /// TCP port.
+    pub port: u16,
+    /// The `link_connect` URL.
+    pub url: String,
+    /// The fingerprint of the key it must present: show it on the pairing screen.
+    pub hub_key: String,
+    /// The `link_connect` credential: pinned to that key, no token yet.
+    pub credential: String,
+    /// The PIN to pair with after the user's tap ("" when the link has none).
+    pub pin: String,
+}
+
+/// By hand: the PIN stays out of logs.
+impl std::fmt::Debug for LinkPairLink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LinkPairLink")
+            .field("hub_id", &self.hub_id)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("hub_key", &self.hub_key)
+            .field(
+                "pin",
+                &if self.pin.is_empty() {
+                    ""
+                } else {
+                    "<redacted>"
+                },
+            )
+            .finish_non_exhaustive()
+    }
+}
+
 // ------------------------------------------------------ extension channel
 
 /// What the extension channel supports.

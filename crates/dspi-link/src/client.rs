@@ -36,6 +36,10 @@ use crate::frames::{status, CmdRequest, CmdResponse, Dir, Frame, PollFrame};
 use crate::messages::{out, AuthOk, ClientInfo, DeviceInfo, HelloHub, Inbound, PollGrant, PollSpec, Snapshot};
 use crate::socket::{WsConnector, WsMessage, WsReceiver, WsRecv, WsSender};
 use crate::LinkError;
+// -- WP SECCORE --
+use crate::credential::{pin_eq, Pin};
+use crate::messages::KeyNext;
+use crate::socket::{TlsTrust, WsPair};
 
 /// Sub-protocol the hub requires and echoes (spec 4).
 pub const SUB_PROTOCOL: &str = "dspi-link-1";
@@ -220,6 +224,46 @@ impl fmt::Debug for ConnectOptions {
             .field("token", &self.token.as_ref().map(|_| "<redacted>"))
             .finish()
     }
+}
+
+// -- WP SECCORE --
+/// How long a TLS try may take that is allowed to fall back to plaintext (an
+/// unpinned hub that did not advertise TLS). A hub with TLS answers within a
+/// round trip; one without either refuses at once or waits for an HTTP head
+/// that never ends (PLAN-SEC 4.3 rule 2).
+pub const TLS_TRY_WITHIN: Duration = Duration::from_secs(2);
+
+// -- WP SECCORE --
+/// What [`LinkClient::connect_tls`] knows of the hub's TLS (PLAN-SEC 4.3).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TlsOptions {
+    /// The key the hub must present (rule 1): TLS only, never plaintext,
+    /// whatever the advert says. Another key is accepted only as a rotation
+    /// proven by this key's signature, before any secret is sent.
+    pub pin: Option<Pin>,
+    /// A successor [`Self::pin`]'s key announced earlier (verified then).
+    pub pin_next: Option<Pin>,
+    /// The advert said TLS (spec 3.1 `tls=1`): a failed TLS handshake is
+    /// [`LinkError::TlsRefused`], no plaintext (ratchet (a)).
+    pub advertised: bool,
+    /// This hub was found plaintext earlier (unpinned, not advertised): do not
+    /// try TLS first. Ignored with a pin or an advert.
+    pub plaintext_known: bool,
+}
+
+// -- WP SECCORE --
+/// The TLS a session runs over ([`LinkClient::tls`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TlsSeen {
+    /// The hub's key, verified for this session: the pin from now on.
+    pub key: Pin,
+    /// There was no pin: trusted on first use.
+    pub first_use: bool,
+    /// The pinned key moved to [`Self::key`] by a proven rotation.
+    pub rotated: bool,
+    /// The hub announced a successor of [`Self::key`], signed by it: accepted
+    /// directly next time.
+    pub next: Option<Pin>,
 }
 
 /// Where authentication stands after [`LinkClient::connect`].
@@ -415,6 +459,9 @@ struct Inner {
     rx: Mutex<Option<Box<dyn WsReceiver>>>,
     /// When the keepalive last pinged (caller-driven; the thread keeps its own).
     last_ping: Mutex<Instant>,
+    // -- WP SECCORE --
+    /// `None`: plaintext.
+    tls: Option<TlsSeen>,
 }
 
 impl Drop for Inner {
@@ -449,6 +496,49 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
 }
 
+// -- WP SECCORE --
+/// Rule 1 and 2's judgement of the key a TLS handshake met (its signature is
+/// verified already), with the hello in hand and nothing sent yet.
+fn judge_key(options: &TlsOptions, key: Pin, hello: &HelloHub) -> Result<TlsSeen, LinkError> {
+    let seen = |first_use, rotated, next| TlsSeen { key, first_use, rotated, next };
+    let Some(pin) = options.pin else {
+        return Ok(seen(true, false, None));
+    };
+    let announced = hello.hub.key_next.as_ref().and_then(|n| successor(&pin, &hello.hub.id, n));
+    if pin_eq(&key, &pin) {
+        return Ok(seen(false, false, announced.filter(|n| !pin_eq(n, &pin))));
+    }
+    if options.pin_next.is_some_and(|n| pin_eq(&n, &key)) || announced.is_some_and(|n| pin_eq(&n, &key)) {
+        log::info!("dspi-link: the hub moved to a new key, signed by the pinned one");
+        return Ok(seen(false, true, None));
+    }
+    log::warn!("dspi-link: the hub presented another key than the pinned one, with no valid rotation");
+    Err(LinkError::HubKeyChanged)
+}
+
+/// The successor `key_next` announces, if the pinned key signed it.
+#[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+fn successor(pin: &Pin, hid: &str, n: &KeyNext) -> Option<Pin> {
+    use crate::tls::{verify_rotation, SpkiHash};
+    use data_encoding::BASE64URL_NOPAD;
+    let new = crate::credential::pin_from_b64url(&n.spki)?;
+    let prev = BASE64URL_NOPAD.decode(n.prev_spki.trim_end_matches('=').as_bytes()).ok()?;
+    let sig = BASE64URL_NOPAD.decode(n.sig.trim_end_matches('=').as_bytes()).ok()?;
+    match verify_rotation(&SpkiHash(*pin), &prev, hid, &SpkiHash(new), &sig) {
+        Ok(()) => Some(new),
+        Err(e) => {
+            log::warn!("dspi-link: hello.hub.key_next refused: {e}");
+            None
+        }
+    }
+}
+
+/// No TLS on the web: nothing is ever announced over it.
+#[cfg(not(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown")))))]
+fn successor(_pin: &Pin, _hid: &str, _n: &KeyNext) -> Option<Pin> {
+    None
+}
+
 impl LinkClient {
     /// Open `url` (`ws://host:port/dspi/v1`), exchange hellos and
     /// authenticate as far as possible without a PIN. When the result is
@@ -470,7 +560,64 @@ impl LinkClient {
         events: Option<Arc<dyn LinkEvents>>,
         cfg: &SessionConfig,
     ) -> Result<(LinkClient, AuthState), LinkError> {
-        let (sender, mut receiver) = connector.connect(url, SUB_PROTOCOL)?;
+        let pair = connector.connect(url, SUB_PROTOCOL)?;
+        Self::connect_over(pair, opts, events, cfg, None)
+    }
+
+    // -- WP SECCORE --
+    /// [`Self::connect_with`], TLS first (PLAN-SEC 4.3, client side):
+    /// 1. pinned: TLS only; the key must be the pin, or a successor proven by
+    ///    the pin's signature (`hello.hub.key_next`, or [`TlsOptions::pin_next`]),
+    ///    judged after the hello and before any token or PIN goes out. Else
+    ///    [`LinkError::HubKeyChanged`], and no plaintext;
+    /// 2. unpinned: TLS first ([`TLS_TRY_WITHIN`]), the key trusted on first
+    ///    use ([`TlsSeen::first_use`]; the caller pins it only with a token or a
+    ///    pairing). A refused TLS falls back to plaintext unless the hub
+    ///    `advertised` TLS (ratchet (a)) or the URL is `wss://`:
+    ///    [`LinkError::TlsRefused`] then.
+    ///
+    /// [`Self::tls`] says what the session runs over.
+    pub fn connect_tls(
+        connector: &dyn WsConnector,
+        url: &str,
+        opts: &ConnectOptions,
+        events: Option<Arc<dyn LinkEvents>>,
+        cfg: &SessionConfig,
+        tls: &TlsOptions,
+    ) -> Result<(LinkClient, AuthState), LinkError> {
+        let wss = url.starts_with("wss://");
+        let required = tls.pin.is_some() || tls.advertised || wss;
+        if required || !tls.plaintext_known {
+            let trust = tls.pin.map_or(TlsTrust::FirstUse, TlsTrust::Pinned);
+            let within = (!required).then_some(TLS_TRY_WITHIN);
+            match connector.connect_tls(url, SUB_PROTOCOL, trust, within) {
+                Ok((pair, key)) => return Self::connect_over(pair, opts, events, cfg, Some((tls, key))),
+                Err(LinkError::TlsRefused { .. }) if required => {
+                    return Err(LinkError::TlsRefused { advertised: tls.pin.is_none() })
+                }
+                Err(LinkError::TlsRefused { .. }) => {
+                    log::info!("dspi-link: the hub has no TLS; connecting unencrypted");
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        let pair = connector.connect(url, SUB_PROTOCOL)?;
+        Self::connect_over(pair, opts, events, cfg, None)
+    }
+
+    /// The TLS this session runs over; `None`: plaintext.
+    pub fn tls(&self) -> Option<TlsSeen> {
+        self.inner.tls
+    }
+
+    /// The session over an open WebSocket: hellos, then authentication.
+    fn connect_over(
+        (sender, mut receiver): WsPair,
+        opts: &ConnectOptions,
+        events: Option<Arc<dyn LinkEvents>>,
+        cfg: &SessionConfig,
+        tls: Option<(&TlsOptions, Pin)>,
+    ) -> Result<(LinkClient, AuthState), LinkError> {
         // Each step gets what is left. The step limit is this budget, not
         // request_timeout: the embedder must not sit in connect for the sum of them
         let deadline = Instant::now() + cfg.timing.connect_budget;
@@ -492,6 +639,14 @@ impl LinkClient {
             sender.close(1000);
             return Err(LinkError::Protocol(format!("hub speaks protocol {}", hello.proto.major)));
         }
+        // -- WP SECCORE -- the key judged before any token or PIN goes out
+        let tls = match tls.map(|(options, key)| judge_key(options, key, &hello)).transpose() {
+            Ok(seen) => seen,
+            Err(e) => {
+                sender.close(1000);
+                return Err(e);
+            }
+        };
         let inner = Arc::new(Inner {
             sender,
             hello,
@@ -523,6 +678,7 @@ impl LinkClient {
             caller_driven: caller_driven(),
             rx: Mutex::new(None),
             last_ping: Mutex::new(cfg.clock.now()),
+            tls, // -- WP SECCORE --
         });
         let c = LinkClient { inner };
         // -- WP WB4b --
@@ -636,7 +792,14 @@ impl LinkClient {
             }
             e => typed_refusal(e),
         })?;
-        let token = self.paired(&v);
+        // -- WP SECCORE -- a hub key the TLS key contradicts: nothing is kept
+        let token = match self.paired(&v) {
+            Ok(token) => token,
+            Err(e) => {
+                self.close();
+                return Err(e);
+            }
+        };
         // The token is safe from here on; a list that fails is for the caller to
         // read in session_state() and retry, not a failed pairing
         if let Err(e) = self.refresh_devices() {
@@ -647,9 +810,17 @@ impl LinkClient {
 
     /// The hub accepted a PIN: the session is ready and the embedder has the
     /// token before anything else can fail.
-    fn paired(&self, v: &Value) -> String {
-        self.became_ready(v);
+    fn paired(&self, v: &Value) -> Result<String, LinkError> {
         let ok: AuthOk = serde_json::from_value(v.clone()).unwrap_or_default();
+        // -- WP SECCORE -- `ok.hub_key` must name the key TLS met (a proxy between
+        // would show here); a hub without TLS sends none
+        if let (Some(seen), Some(said)) = (self.inner.tls, ok.hub_key.as_deref()) {
+            if crate::credential::pin_from_b64url(said).is_none_or(|k| !pin_eq(&k, &seen.key)) {
+                log::warn!("dspi-link: the hub's ok.hub_key is not the key TLS met; the token is not kept");
+                return Err(LinkError::HubKeyUnverified);
+            }
+        }
+        self.became_ready(v);
         let token = ok.token.unwrap_or_default();
         if !token.is_empty() {
             let ev = lock(&self.inner.events).clone();
@@ -657,7 +828,7 @@ impl LinkClient {
                 ev.token_issued(&self.inner.hello.hub.id, &token);
             }
         }
-        token
+        Ok(token)
     }
 
     fn became_ready(&self, v: &Value) {
@@ -1401,8 +1572,11 @@ impl LinkClient {
                 } else if lock(&self.inner.open_pairs).remove(&id) {
                     // pair() gave up on this reply. The list cannot be read from
                     // the reader thread: the embedder does, on this event
-                    self.paired(&body);
-                    self.fire_devices_changed();
+                    if self.paired(&body).is_ok() {
+                        self.fire_devices_changed();
+                    } else {
+                        self.close();
+                    }
                 }
             }
             Inbound::Err(e) => {
