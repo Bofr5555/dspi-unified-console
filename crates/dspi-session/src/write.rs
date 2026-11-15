@@ -810,6 +810,10 @@ impl Session {
         if d.path == SIG_CONTROL {
             return self.read_siggen_state().map(siggen_control_of);
         }
+        // -- WP RATEFIX --
+        if get == op::REQ_GET_INPUT_RATE {
+            return self.read_stored_input_rate(d, indices);
+        }
         let wvalue = self.build_read_wvalue(d, indices);
         let repr = d.repr();
         // EQ scalars always answer four bytes regardless of the field's
@@ -849,6 +853,42 @@ impl Session {
         }
 
         Ok(decode_read(d, &bytes))
+    }
+
+    // -- WP RATEFIX --
+    /// `in.rate`: the STORED input rate, the one `REQ_SET_INPUT_RATE` writes.
+    ///
+    /// REQ_GET_INPUT_RATE answers two words (i2s_input_spec.md section 3.5,
+    /// vendor_commands.c `{audio_state.freq, i2s_input_rate}`): word 0 is the
+    /// LIVE pipeline rate, which follows the USB host, the S/PDIF stream or a
+    /// slave clock; word 1 is the stored I2S/ADAT master rate (the bulk
+    /// `input_config.i2s_input_rate`). The parameter is the setting, so it
+    /// reads word 1: a document captured while the host plays 96 kHz must not
+    /// set the master rate to 96 kHz when it is imported. The live rate stays
+    /// a status value of its own (status wValue 15, `fetch_input_rate`).
+    ///
+    /// A reply without word 1 is not a stored rate, so it is
+    /// [`WriteError::Unavailable`] (the key is left out of a document) rather
+    /// than the live word passed off as one, or a short read that fails the
+    /// whole capture.
+    fn read_stored_input_rate(
+        &mut self,
+        d: &ParamDesc,
+        indices: &[u8],
+    ) -> Result<Value, WriteError> {
+        let get = op::REQ_GET_INPUT_RATE;
+        let wvalue = self.build_read_wvalue(d, indices);
+        let kind = self.transport.caps().kind;
+        let bytes = with_busy_retry(kind, || self.transport.control_in_upto(get, wvalue, 8), get)?;
+        match bytes.get(4..8) {
+            Some(w) => Ok(Value::Int(
+                u32::from_le_bytes([w[0], w[1], w[2], w[3]]) as i64
+            )),
+            None => Err(WriteError::Unavailable {
+                path: d.path.into(),
+                why: "the device did not report its stored input rate".into(),
+            }),
+        }
     }
 
     // -- WP TM26 --

@@ -789,6 +789,11 @@ pub struct IoBlock {
     pub i2s_rx_pins: Vec<u8>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub i2s_input_channels: Option<i32>,
+    // -- WP RATEFIX --
+    /// `i2sInputRateHz`: the STORED I2S/ADAT master rate (`in.rate`, word 1
+    /// of REQ_GET_INPUT_RATE, the bulk `input_config.i2s_input_rate`), never
+    /// the live pipeline rate. The key keeps its name, so every older file,
+    /// whichever client wrote it, is read the same way: as the stored rate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub i2s_input_rate_hz: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2403,7 +2408,17 @@ fn apply_io(session: &mut Session, io: &IoBlock, report: &mut ApplyReport) {
             Value::Int(*want as i64),
         );
     }
-    if let Some(want) = io.i2s_input_rate_hz {
+    // -- WP RATEFIX -- `in.rate` reads the stored rate (word 1 of
+    // REQ_GET_INPUT_RATE), so an unchanged rate is left alone: a rate write is
+    // a full pipeline reconfiguration.
+    if let Some(want) = io.i2s_input_rate_hz
+        && session
+            .read("in.rate", &[])
+            .ok()
+            .and_then(|v| v.as_f32())
+            .map(|hz| hz as u32)
+            != Some(want)
+    {
         let _ = put(session, report, "in.rate", &[], Value::Int(want as i64));
     }
 
@@ -4800,7 +4815,11 @@ mod io_tests {
             .data(op::REQ_SET_I2S_RX_PIN, vec![0])
             .data(op::REQ_GET_I2S_INPUT_CHANNELS, vec![2])
             .data(op::REQ_SET_I2S_INPUT_CHANNELS, vec![0])
-            .data(op::REQ_GET_INPUT_RATE, 44100u32.to_le_bytes().to_vec())
+            // {live Hz, stored Hz} (i2s_input_spec.md 3.5): live 48k, stored 44.1k.
+            .data(
+                op::REQ_GET_INPUT_RATE,
+                [48_000u32.to_le_bytes(), 44_100u32.to_le_bytes()].concat(),
+            )
             .data(op::REQ_SET_INPUT_RATE, vec![0])
             // Deferred OUT writes: the confirming readback has to see the new
             // value, or a correct write looks like a silent rejection.
@@ -7579,5 +7598,105 @@ mod wp_p1df_tests {
             parse(&write(&doc)).unwrap().meta.kind.as_deref(),
             Some("scene-v9")
         );
+    }
+}
+
+// -- WP RATEFIX --
+/// `in.rate` is the STORED input rate (REQ_GET_INPUT_RATE word 1), so an
+/// export taken while the live rate differs does not move the setting on
+/// import. The demo device's live rate is 48 kHz whatever is stored.
+#[cfg(test)]
+mod tests_wp_ratefix {
+    use super::*;
+    use dspi_proto::generated::opcodes as op;
+    use dspi_transport::{FakeDevice, MockTransport, Transport};
+
+    const MAC: &str = include_str!("../../../tests/fixtures/preset/mac-swift-v32.dspipreset");
+    const ALL_IO: ApplyOptions = ApplyOptions {
+        audio_processing: true,
+        volume_levels: false,
+        hardware_io: true,
+    };
+
+    /// A demo session whose stored rate is `hz`, its live rate 48 kHz.
+    fn demo(hz: u32) -> Session {
+        let mut t = FakeDevice::demo();
+        t.control_out(op::REQ_SET_INPUT_RATE, 0, &hz.to_le_bytes())
+            .unwrap();
+        let caps = crate::probe::probe(&mut t).unwrap();
+        Session::new(Box::new(t), caps).unwrap()
+    }
+
+    /// `(live, stored)` straight off the wire.
+    fn rates(s: &mut Session) -> (u32, u32) {
+        let d = s
+            .transport_mut()
+            .control_in(op::REQ_GET_INPUT_RATE, 0, 8)
+            .unwrap();
+        let w = |o: usize| u32::from_le_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]]);
+        (w(0), w(4))
+    }
+
+    #[test]
+    fn wp_ratefix_in_rate_reads_the_stored_word() {
+        let mut s = demo(96_000);
+        assert_eq!(rates(&mut s), (48_000, 96_000));
+        assert_eq!(s.read("in.rate", &[]).unwrap(), Value::Int(96_000));
+        // A write confirms against the stored word, not the live one.
+        s.write("in.rate", &[], Value::Int(44_100)).unwrap();
+        assert_eq!(rates(&mut s), (48_000, 44_100));
+        assert_eq!(s.read("in.rate", &[]).unwrap(), Value::Int(44_100));
+    }
+
+    /// A reply without word 1 holds no stored rate: unavailable, never the
+    /// live word passed off as the setting.
+    #[test]
+    fn wp_ratefix_a_reply_without_the_stored_word_is_unavailable() {
+        let t = MockTransport::new().data(op::REQ_GET_INPUT_RATE, 96_000u32.to_le_bytes().to_vec());
+        let caps = crate::probe::probe(&mut FakeDevice::demo()).unwrap();
+        let mut s = Session::new(Box::new(t), caps).unwrap();
+        assert!(matches!(
+            s.read("in.rate", &[]),
+            Err(crate::WriteError::Unavailable { .. })
+        ));
+    }
+
+    #[test]
+    fn wp_ratefix_export_then_import_keeps_the_stored_rate() {
+        let mut s = demo(96_000);
+        let doc = capture(&mut s, None).unwrap();
+        assert_eq!(
+            doc.io.i2s_input_rate_hz,
+            Some(96_000),
+            "not the live 48 kHz"
+        );
+        let text = write(&doc);
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(v["io"]["i2sInputRateHz"], 96_000);
+
+        // Back onto the same device: unchanged, and no rate write was needed.
+        let report = apply(&mut s, &parse(&text).unwrap(), ALL_IO);
+        assert!(
+            !report.refused.iter().any(|r| r.contains("in.rate")),
+            "{report:?}"
+        );
+        assert_eq!(rates(&mut s), (48_000, 96_000));
+
+        // Onto a device storing 44.1 kHz: the document's stored rate lands.
+        let mut other = demo(44_100);
+        apply(&mut other, &parse(&text).unwrap(), ALL_IO);
+        assert_eq!(rates(&mut other), (48_000, 96_000));
+    }
+
+    /// An older document's `i2sInputRateHz` is read as the stored rate.
+    #[test]
+    fn wp_ratefix_an_old_document_sets_the_stored_rate() {
+        let mut v: serde_json::Value = serde_json::from_str(MAC).unwrap();
+        v["io"]["i2sInputRateHz"] = 44_100.into();
+        let doc = parse(&v.to_string()).unwrap();
+        assert_eq!(doc.io.i2s_input_rate_hz, Some(44_100));
+        let mut s = demo(96_000);
+        apply(&mut s, &doc, ALL_IO);
+        assert_eq!(rates(&mut s), (48_000, 44_100));
     }
 }
