@@ -143,6 +143,8 @@ pub mod modes;
 pub mod hub_admin;
 // -- WP ROMODE --
 pub mod read_only;
+// -- WP CLIP1 -- the channel clipboard (Copy / Paste Parameters)
+mod channel_clip;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -254,6 +256,11 @@ pub use hub_admin::{
 // -- WP ROMODE --
 pub use read_only::{
     GUARD_PENDING, HUB_READS, NOTICE_READ_ONLY_CLIENT, NOTICE_READ_ONLY_GUARD_PENDING,
+};
+// -- WP CLIP1 --
+pub use channel_clip::{
+    CHANNEL_CLIP_KIND, CHANNEL_CLIP_VERSION, ChannelClip, ChannelClipOutput, ChannelPasteOptions,
+    PASTE_LABEL, channel_clip_from_json, channel_clip_to_json,
 };
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
