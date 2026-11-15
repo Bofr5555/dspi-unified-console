@@ -163,6 +163,7 @@ fn advert(name: &str, hub_id: &str) -> HubAdvert {
         serials: vec!["E46058388B1A2E2C".to_owned()],
         web: false,
         path: None,
+        tls: false, // -- WP SECDISC --
     }
 }
 

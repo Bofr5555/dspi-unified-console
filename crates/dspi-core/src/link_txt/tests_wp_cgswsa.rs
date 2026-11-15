@@ -39,6 +39,7 @@ fn cgswsa_link_parse_txt_reads_the_spec_keys() {
             device_count: 2,
             serials: vec!["SN1".into(), "SN2".into()],
             path: "/dspi/v2".into(),
+            tls_advertised: false, // -- WP SECDISC --
         }
     );
 }
@@ -92,7 +93,7 @@ fn cgswsa_link_parse_txt_falls_back_and_refuses_like_the_spec() {
         txt(&[("v", "0"), ("hid", "x")]),
         txt(&[("v", "1")]),
         txt(&[("v", "1"), ("hid", "")]),
-        txt(&[("v", "1"), ("hid", "x"), ("tls", "1")]),
+        // -- WP SECDISC -- `tls=1` is a hub now (tests_wp_secdisc.rs)
         Vec::new(),
     ] {
         assert!(

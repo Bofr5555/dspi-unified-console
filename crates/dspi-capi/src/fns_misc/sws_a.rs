@@ -117,7 +117,7 @@ pub extern "C" fn dspi_image_extras(core: *mut FfiCore, buf: *mut c_char, len: u
 }
 
 /// A hub's DNS-SD TXT record in JSON: {ok, hubId, name, kind, auth,
-/// deviceCount, serials, path}, or {ok:false, code:"invalid"} when it is no
+/// deviceCount, serials, path, tlsAdvertised}, or {ok:false, code:"invalid"} when it is no
 /// hub's. `service_name` is the instance name (null reads as empty);
 /// `txt_json` a JSON object of string keys and values. Returns the bytes
 /// needed including the NUL, 0 for a null `txt_json` or a panic.

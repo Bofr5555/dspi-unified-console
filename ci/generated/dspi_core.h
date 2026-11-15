@@ -6753,7 +6753,7 @@ uint32_t dspi_image_extras(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * A hub's DNS-SD TXT record in JSON: {ok, hubId, name, kind, auth,
- * deviceCount, serials, path}, or {ok:false, code:"invalid"} when it is no
+ * deviceCount, serials, path, tlsAdvertised}, or {ok:false, code:"invalid"} when it is no
  * hub's. `service_name` is the instance name (null reads as empty);
  * `txt_json` a JSON object of string keys and values. Returns the bytes
  * needed including the NUL, 0 for a null `txt_json` or a panic.
@@ -6845,8 +6845,9 @@ void dspi_link_browse_stop(struct FfiCore *core);
 /**
  * The browse as JSON: `{"ok":true,"browsing":bool,"error":text or null,"hubs":[{"id",
  * "name","kind","auth","deviceCount","serials","host","port","path","url",
- * "addresses"}]}`, sorted by name. Not browsing and no hubs when none runs. `url`
- * goes to the connect function. Returns the length needed.
+ * "addresses","tlsAdvertised"}]}`, sorted by name. Not browsing and no hubs when none
+ * runs. `url` goes to the connect function. `tlsAdvertised` (WP SECDISC): the record
+ * carried `tls=1`, a hint for the connect's no-fallback rule. Returns the length needed.
  */
 uint32_t dspi_link_browse_hubs(struct FfiCore *core, char *buf, uint32_t len);
 

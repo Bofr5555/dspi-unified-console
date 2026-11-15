@@ -4151,7 +4151,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_link_parse_address() != 30128.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_func_link_parse_txt() != 48727.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_func_link_parse_txt() != 44346.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_phase_text() != 33877.toShort()) {
@@ -32652,7 +32652,14 @@ data class LinkTxtRecord (
     /**
      * The WebSocket path.
      */
-    var `path`: kotlin.String
+    var `path`: kotlin.String, 
+    /**
+     * The record carried `tls=1`: the hub says its port speaks TLS. A hint
+     * (anyone on the LAN can forge or strip it) for the connect's
+     * `tls_advertised`, the "advertised TLS never falls back" rule; false
+     * for an upstream hub.
+     */
+    var `tlsAdvertised`: kotlin.Boolean
 ) {
     
     companion object
@@ -32671,6 +32678,7 @@ public object FfiConverterTypeLinkTxtRecord: FfiConverterRustBuffer<LinkTxtRecor
             FfiConverterUInt.read(buf),
             FfiConverterSequenceString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -32681,7 +32689,8 @@ public object FfiConverterTypeLinkTxtRecord: FfiConverterRustBuffer<LinkTxtRecor
             FfiConverterString.allocationSize(value.`auth`) +
             FfiConverterUInt.allocationSize(value.`deviceCount`) +
             FfiConverterSequenceString.allocationSize(value.`serials`) +
-            FfiConverterString.allocationSize(value.`path`)
+            FfiConverterString.allocationSize(value.`path`) +
+            FfiConverterBoolean.allocationSize(value.`tlsAdvertised`)
     )
 
     override fun write(value: LinkTxtRecord, buf: ByteBuffer) {
@@ -32692,6 +32701,7 @@ public object FfiConverterTypeLinkTxtRecord: FfiConverterRustBuffer<LinkTxtRecor
             FfiConverterUInt.write(value.`deviceCount`, buf)
             FfiConverterSequenceString.write(value.`serials`, buf)
             FfiConverterString.write(value.`path`, buf)
+            FfiConverterBoolean.write(value.`tlsAdvertised`, buf)
     }
 }
 
@@ -42193,7 +42203,7 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
          *
          * Differs from the Mac's `HubBrowser.hub(fromTXT:)`
          * (`Link/HubBrowser.swift:583-597`) by the spec and Android's `HubTxt`: a
-         * record without `v` or `hid`, or with `tls=1`, is no hub (the Mac made up a
+         * record without `v` or `hid` is no hub (the Mac made up a
          * `service:<name>` id and listed it), and a missing `kind` reads `unknown`
          * (the Mac's `console`).
          *

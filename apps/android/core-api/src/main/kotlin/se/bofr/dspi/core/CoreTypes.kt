@@ -2280,6 +2280,13 @@ data class LinkTxtRecord(
      * The WebSocket path.
      */
     val path: String,
+    /**
+     * The record carried `tls=1`: the hub says its port speaks TLS. A hint
+     * (anyone on the LAN can forge or strip it) for the connect's
+     * `tls_advertised`, the "advertised TLS never falls back" rule; false
+     * for an upstream hub.
+     */
+    val tlsAdvertised: Boolean,
 )
 
 /**

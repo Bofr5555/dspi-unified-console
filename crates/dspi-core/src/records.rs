@@ -1455,4 +1455,10 @@ pub struct LinkTxtRecord {
     pub serials: Vec<String>,
     /// The WebSocket path.
     pub path: String,
+    // -- WP SECDISC --
+    /// The record carried `tls=1`: the hub says its port speaks TLS. A hint
+    /// (anyone on the LAN can forge or strip it) for the connect's
+    /// `tls_advertised`, the "advertised TLS never falls back" rule; false
+    /// for an upstream hub.
+    pub tls_advertised: bool,
 }

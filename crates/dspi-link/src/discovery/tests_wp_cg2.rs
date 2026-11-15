@@ -40,6 +40,7 @@ fn advert(name: &str, id: &str) -> HubAdvert {
         serials: vec!["E46058388B1A2E2C".into()],
         web: false,
         path: None,
+        tls: false, // -- WP SECDISC --
     }
 }
 
@@ -85,8 +86,9 @@ fn wp_cg2_what_cannot_be_used_is_rejected_with_its_reason() {
     assert_eq!(parse_service(&record(&[("v", "1"), ("hid", "a\u{1b}[2J")])), Err(Rejected::HubId));
     let long = "a".repeat(MAX_HUB_ID_BYTES + 1);
     assert_eq!(parse_service(&record(&[("v", "1"), ("hid", &long)])), Err(Rejected::HubId));
-    assert_eq!(parse_service(&record(&[("v", "1"), ("hid", HID), ("tls", "1")])), Err(Rejected::Tls));
-    assert!(parse_service(&record(&[("v", "1"), ("hid", HID), ("tls", "0")])).is_ok());
+    // -- WP SECDISC -- `tls=1` is listed now (tests_wp_secdisc.rs)
+    assert!(parse_service(&record(&[("v", "1"), ("hid", HID), ("tls", "1")])).unwrap().tls_advertised);
+    assert!(!parse_service(&record(&[("v", "1"), ("hid", HID), ("tls", "0")])).unwrap().tls_advertised);
     let mut r = record(SPEC);
     r.port = 0;
     assert_eq!(parse_service(&r), Err(Rejected::Port));
