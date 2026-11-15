@@ -50,6 +50,8 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
   7.1): one object per text frame, a string `t`, an integer `id` on requests, replies `ok` or `err` echoing `id`, events
   without `id`. JSON keys are `snake_case`. Unknown fields are ignored by both sides; an unknown request type answers
   `unknown_type`; a client drops unknown event types.
+- `id` is only ever the request id. A field naming one thing of a family uses the family's noun instead (`snapshot`,
+  `alarm`, `rule`, `target`), as `system.alarm.ack {alarm}` does; inside a returned object its own `id` is fine.
 - Every answer and every event of these families carries `"v": 1` (the P1HA and P1HL convention). Every event and
   every REST answer also carries `hub`, the hub's id from `hello.hub.id`, so a later fleet server can merge several hubs
   without reshaping anything (PLAN-P2 section 3).
@@ -319,7 +321,8 @@ Device alarms beside the audio link's, on the same alarm book. Rules in `alarms.
 | `alarm.rules.set` | admin | `rules` (whole or in part; a code left out keeps its rule) | `rules` |
 
 `system.alarms` and `system.alarm.ack` ([audio-link.md](audio-link.md)) keep working for the audio link's alarms. Event to
-every session: `alarm.changed {v, hub, alarm}` when one is raised, acknowledged or cleared.
+every session: `alarm.changed {v, hub, alarm}` when one is raised, acknowledged or cleared, `alarm` the whole object
+below (the same object goes to notification targets, section 8, and MQTT, section 13).
 
 An alarm in this family:
 
@@ -362,7 +365,7 @@ device's worker; a dead target backs off (1 s doubling to 5 min) and never holds
 |---|---|---|---|
 | `outbound.get` | admin | | `targets` (secrets as `set` or `not set`), each with `queued`, `dropped`, `last` (`{at, ok, status?, msg?}`) |
 | `outbound.set` | admin | `targets` (the whole list); a target's `secret: "new"` makes a new one | `targets`, and `secrets` `{<target id>: "<secret>"}` for the new ones: shown in this answer only |
-| `outbound.test` | admin | `target` (its `id`) | `ok`, `status?`, `msg?` (one delivery, now) |
+| `outbound.test` | admin | `target` (its `id`) | `delivered` (bool), `status?`, `msg?` (one delivery, now) |
 
 A target: `id`, `name`, `kind` (`webhook`: a JSON POST; `push`: an ntfy-style plain-text POST of `text`), `url`
 (`http://` only; `https://` refused with a reason, section 2), `enabled`, `kinds` (any of `alarm.raised`,
@@ -431,25 +434,36 @@ copy; nothing is overwritten silently.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `snapshot.list` | viewer | `serial` | `serial`, `snapshots`: index entries (`id`, `name`, `note`, `serial`, `savedMs`, `platform`, `inputChannels`, `outputChannels`, `wireFormat`), newest first |
-| `snapshot.get` | viewer | `id` | `entry`, `document` (the document's text) |
-| `snapshot.put` | control | `serial`, `document` (text), `id?`, `name?`, `note?` | `entry`, `stored` (`false` when the hub already held this id with the same text) |
-| `snapshot.rename` | control | `id`, `name` | `entry` |
-| `snapshot.note` | control | `id`, `note` | `entry` |
-| `snapshot.delete` | admin | `id` | `id` |
+`snapshot` is a snapshot's store id (as `alarm` is an alarm's in `alarm.ack`); `id` is the request id, as on every
+message. An entry is the index's own object: `{id, name, note, serial, savedMs, platform, inputChannels,
+outputChannels, wireFormat}`.
 
-- `document` must parse as a document with `meta.kind = "snapshot"` for that `serial` (`bad_request` otherwise; another
-  device's serial is `bad_request`). At most 256 KiB.
-- `id` is the client store's id (capture-time ids, unique, so one snapshot keeps one id on both sides); absent, the hub
-  makes one. The same id with different text is `conflict`: the hub's copy stays.
-- Names and notes take any Unicode. A cap reached (200 per device, 64 MiB in all) is `conflict`.
-- Event to every session: `snapshot.changed {v, hub, serial, id, change}` (`added`, `renamed`, `noted`, `deleted`).
+| `t` | Role | Request | Answer |
+|---|---|---|---|
+| `snapshot.list` | viewer | `serial` | `serial`, `snapshots`: entries, oldest first (the order of the client store's `index.json`) |
+| `snapshot.get` | viewer | `snapshot` | `snapshot`: the entry, `document` (the document's text) |
+| `snapshot.put` | control | `serial`, `document` (its text, or the JSON object) | `snapshot`: the entry, `created` (`false` when the hub already held this snapshot with the same content) |
+| `snapshot.rename` | control | `snapshot`, `name` | `snapshot`: the entry |
+| `snapshot.note` | control | `snapshot`, `note` | `snapshot`: the entry |
+| `snapshot.delete` | admin | `snapshot` | `serial`, `snapshot`: the id |
+
+- `document` is filed as a client's store files it: `meta.kind = "snapshot"` and a `snapshot` block naming the same
+  serial as the message and the client's id. A document that is not such a snapshot, or names another device's serial,
+  is `bad_request`. At most 256 KiB.
+- The id is the client's, taken from the document and kept (capture-time ids are unique, so one snapshot keeps one id
+  on both sides); the hub never makes one. The name and note are the document's; change them with `snapshot.rename`
+  and `snapshot.note`. An id the hub holds with different content, or for another device, is `conflict`: the hub's
+  copy stays, never overwritten.
+- Names (at most 256 characters) and notes (at most 4096) take any Unicode. A cap reached (200 per device, 64 MiB in
+  all) is `conflict`.
+- Event to every session: `snapshot.changed {v, hub, serial, snapshot, change}` (`change`: `put`, `rename`, `note`,
+  `delete`; `snapshot` the id).
 
 ### 11.2 Recall on the hub (P2PA)
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `snapshot.recall` | control | `serial`, `id` or `name`, `guard?` (bool), `timeout_ms?` | `serial`, `id`, `lines` (what changed), `guard` (its id, with `guard: true`) |
+| `snapshot.recall` | control | `serial`, `snapshot` or `name`, `guard?` (bool), `timeout_ms?` | `serial`, `snapshot`, `lines` (what changed), `guard` (its id, with `guard: true`) |
 
 The hub writes the image and the settings outside it, in a recall's order, as the caller's child session. On a device
 with a limits profile or a lock, control's recall is `image_refused`; an admin's is written and then held. With
@@ -467,8 +481,8 @@ its writes (an image held after the fact, as for any admin).
 |---|---|---|---|
 | `schedule.list` | viewer | | `rules`, each with `next_run` and `last` (`{at, ok}`) |
 | `schedule.set` | admin | `rule` (a new one without `id`) | `rule` |
-| `schedule.delete` | admin | `id` | `id` |
-| `schedule.run_now` | admin | `id` | `results` (the run's, as `schedule.ran`) |
+| `schedule.delete` | admin | `rule` (its `id`) | `rule` |
+| `schedule.run_now` | admin | `rule` (its `id`) | `rule`, `name`, `at`, `by`, `results` (the run's, as `schedule.ran`) |
 
 A rule:
 
@@ -482,7 +496,7 @@ A rule:
 
 - `when` is `{days, time}` (local `HH:MM` on the given days) or `{once: "2026-12-24T17:00"}` (a local date and time).
 - `actions` (at most 16), each a message of this page with its device field left out: `preset.load {slot or name}`,
-  `snapshot.recall {id or name}`, `system.scene.apply {scene}` (no target needed), `param.set` for `vol.master`,
+  `snapshot.recall {snapshot or name}`, `system.scene.apply {scene}` (no target needed), `param.set` for `vol.master`,
   `vol.user`, `vol.mute` and `out.mute` only.
 - `targets`: serials; `group:<id>` is reserved (phase 3, `unsupported` until then).
 
@@ -491,9 +505,11 @@ older ones do not. A forward jump of the clock skips what it passed (and records
 twice in a day. A local time that does not exist (spring forward) runs at the next valid minute; one that happens twice
 (fall back) runs once. While the clock reads before the build date nothing runs and `clock_unset` is raised.
 
-Each run answers per action and target: `results: [{serial, action, ok, code?, msg?}]`. An offline target fails at
+Each run answers per action and target: `results: [{serial, action, ok, code?, msg?}]`, where `action` is a string
+naming the action by its position in `actions` and its `t` (`"0:preset.load"`). An offline target fails at
 once and is not tried later; a target with a pending guarded apply is `conflict`. Event to every session:
-`schedule.ran {v, hub, id, name, at, by?, results}` (`by` the admin for `run_now`). Each run is recorded in the history;
+`schedule.ran {v, hub, rule, name, at, by?, results}` (`rule` the rule's id, since events carry no `id`; `by` the admin
+for `run_now`). Each run is recorded in the history;
 a failure raises `schedule_failed`.
 
 ## 13. MQTT and Home Assistant
