@@ -74,12 +74,13 @@ final class SWF4ReadOnlyTests: XCTestCase {
         XCTAssertEqual(storedMasterVolume(fake), -20, "nothing reached the device")
     }
 
-    /// N1: a write-as-read (a preset save) on read-only firmware is refused
-    /// with the same wording.
+    /// N1: a write-as-read (a preset load; P1TZF: a save is refused raw
+    /// anyway, it takes a token) on read-only firmware is refused with the
+    /// same wording.
     func testSWF4APresetSaveOnReadOnlyFirmwareIsRefusedWithTheWording() throws {
         let (_, core, _, monitor) = try olderFirmware()
         defer { monitor.stop() }
-        let saved = core.getControlResult(request: REQ_PRESET_SAVE, value: 3, index: 2, length: 1)
+        let saved = core.getControlResult(request: REQ_PRESET_LOAD, value: 3, index: 2, length: 1)
         XCTAssertEqual(saved, .failure(.denied), "refused, as MIDITransport's read-only mode refuses it")
         XCTAssertTrue(spinUntil(3) { DeviceLock.notice.message == DeviceLock.readOnlyMessage })
     }
