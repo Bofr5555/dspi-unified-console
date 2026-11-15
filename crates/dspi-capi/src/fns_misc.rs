@@ -68,6 +68,8 @@ pub(crate) use confirm::*;
 mod limits;
 // -- WP P1LK --
 mod modes;
+// -- WP ROMODE --
+pub(crate) mod read_only;
 // -- WP P1OF --
 mod offline;
 // -- WP P1SA --

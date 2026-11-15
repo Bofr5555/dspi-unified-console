@@ -145,6 +145,7 @@ export class Session {
   // -- WP P1WB1 -- offline editing (P1OF): a document opened with no device
   /** Open the `.dspipreset` document `text` as this session's device; nothing touches USB. */
   async openDocument(text: string, fileName: string): Promise<void> {
+    await this.applyAccess(); // -- WP ROMODE --
     try {
       const r = await this.core.call("documentOpen", { text, fileName });
       const { document, ...snapshot } = r;
@@ -176,7 +177,19 @@ export class Session {
     this.set({ error: text });
   }
 
+  // -- WP ROMODE --
+  /**
+   * A view-only session (`?readonly`, or a fleet's view access) puts its core in the client
+   * read-only mode before anything opens, so a write that got past the page is refused by the
+   * core too, with nothing sent. A core without the call (the tests' stub) is left as it is.
+   */
+  private async applyAccess(): Promise<void> {
+    if (this.access !== "view") return;
+    await this.core.call("setClientReadOnly", { on: true }).catch(() => undefined);
+  }
+
   async open(target: DeviceTarget): Promise<void> {
+    await this.applyAccess(); // -- WP ROMODE --
     if (target.kind === "hub") return this.openHub(target.url, target.deviceId);
     try {
       await this.load(target);

@@ -3462,6 +3462,39 @@ interface DspiCoreApi : AutoCloseable {
     fun connectionGeneration(): Long
 
     /**
+     * Turn the client read-only mode on or off (module docs): while on,
+     * every write is refused with [`DspiError::ReadOnly`] before anything is
+     * sent, and reads, notifications, the meters and the analyser go on. It
+     * applies to every device this core opens until turned off. A client-side
+     * diagnostic, not a security boundary. Waits for a call in flight.
+     *
+     * Turning it on is refused while a guarded apply waits for Keep or
+     * Revert (its revert would be refused too, leaving the device on the
+     * trial): [`DspiError::InvalidArgument`] with [`GUARD_PENDING`]'s words,
+     * the `read_only.guard_pending` row ([`DspiCore::notice_for_error`]),
+     * nothing changed. Keep or revert first. Turning it off always works.
+     */
+    @Throws(DspiException::class)
+    fun setClientReadOnly(on: Boolean)
+
+    /**
+     * Whether the client read-only mode is on.
+     */
+    fun clientReadOnly(): Boolean
+
+    /**
+     * How many writes the client read-only mode has refused on this core.
+     */
+    fun clientReadOnlyRefusals(): Long
+
+    /**
+     * What to tell the user about `error`, as [`notice_for`] does, but in
+     * this core's context: [`DspiError::ReadOnly`] while the client
+     * read-only mode is on is the `read_only.client` row.
+     */
+    fun noticeForError(error: DspiException): Notice
+
+    /**
      * Register (Some) or clear (None) the analyser wake-up listener. Once it
      * returns after None, no call is in progress (on another thread).
      * Replacing (Some -> Some) does not wait, and the old listener may then

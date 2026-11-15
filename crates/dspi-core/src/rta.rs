@@ -125,6 +125,7 @@ impl DspiCore {
         let mut inner = self.lock();
         // -- WP P1DKFIX -- F7: the analyser runs while the installer's lock is on.
         let _analyser = crate::limits::LockScope::allow();
+        let _viewing = crate::read_only::Viewing::allow(); // -- WP ROMODE --
         if inner.rta.worker.is_some() || inner.writable_conn().is_err() {
             return;
         }
@@ -988,6 +989,7 @@ fn poll_once(c: &DspiCore, id: u64, probed: &mut bool, refused: &mut bool) -> Po
     // The analyser's configuration push and STOP are writes; the installer's
     // lock lets them through (-- WP P1DKFIX -- F7: they change no audio).
     let _analyser = crate::limits::LockScope::allow();
+    let _viewing = crate::read_only::Viewing::allow(); // -- WP ROMODE --
     if inner.writable_conn().is_err() {
         return Polled {
             changed: false,
@@ -1062,6 +1064,7 @@ fn poll(inner: &mut Inner, id: u64, probed: &mut bool, refused: &mut bool, now: 
     let alive = (|| {
         // -- WP P1DKFIX -- F7: the push and STOP pass the installer's lock.
         let _analyser = crate::limits::LockScope::allow();
+        let _viewing = crate::read_only::Viewing::allow(); // -- WP ROMODE --
         let mut w = inner.writable_conn().ok()?;
         let t = w.conn().transport();
         if !*probed {
@@ -1500,6 +1503,29 @@ mod tests_wp_c9 {
         );
         assert!(count(&dev, op::REQ_RTA_GET_BANDS_ALL) > 0);
         assert_eq!(count(&dev, op::REQ_RTA_GET_BANDS), 0);
+    }
+
+    // -- WP ROMODE --
+    #[test]
+    fn wp_romode_the_analyser_runs_in_the_client_read_only_mode() {
+        let (t, dev) = RtaDevice::new(TransportKind::Usb, true);
+        let core = core_with(t);
+        core.set_client_read_only(true).unwrap();
+        core.rta_set_request(request(0b0101));
+        core.rta_start();
+        wait_for("caps", || core.rta_get_caps().supported);
+        wait_for("frames", || core.rta_get_snapshot().count == 2);
+        assert_eq!(
+            dev.lock().unwrap().config.unwrap().channel_mask,
+            0b0101,
+            "the request was pushed"
+        );
+        assert_eq!(core.client_read_only_refusals(), 0);
+        // Everything else stays refused.
+        assert_eq!(
+            core.set_master_volume(-3.0),
+            Err(crate::DspiError::ReadOnly)
+        );
     }
 
     #[test]

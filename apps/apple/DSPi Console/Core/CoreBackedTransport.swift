@@ -47,6 +47,23 @@ final class CoreBackedTransport: DeviceTransport {
         return UserDefaults.standard.bool(forKey: "CoreTransport")
     }
 
+    // -- WP ROMODE --
+    /// `-ReadOnly YES` (UserDefaults `ReadOnly`): every core-backed device
+    /// link starts in the core's client read-only mode, where the core
+    /// refuses every write before anything is sent and reads, notifications,
+    /// the meters and the analyser go on.  A diagnostic for watching a unit
+    /// that must not change, not a security boundary.  Documents opened
+    /// offline are not devices and are left writable.
+    static var readOnlyLaunchFlag: Bool { UserDefaults.standard.bool(forKey: "ReadOnly") }
+
+    /// -- WP ROMODE -- `-MIDIReadOnly YES` (or `-ReadOnly YES`): the read-only
+    /// mode for a DSPi on USB MIDI, the `clientReadOnly:` of the app's MIDI
+    /// cores (`midiCore`, the Mac's fallback member), so the mode no longer
+    /// needs the Swift engine's filter.
+    static var midiReadOnly: Bool {
+        UserDefaults.standard.bool(forKey: "MIDIReadOnly") || readOnlyLaunchFlag
+    }
+
     /// What carries the core's link to the device.
     enum Link {
         /// The core's built-in demo device, offered as `FakeTransport.demoDevice`.
@@ -120,6 +137,8 @@ final class CoreBackedTransport: DeviceTransport {
     // -- WP P1SW1 --
     /// This transport carries documents opened offline (`Link.document`).
     let isDocumentLink: Bool
+    /// -- WP ROMODE -- The core is in its client read-only mode.
+    let clientReadOnly: Bool
     /// The document to open when its device is selected (stateLock).
     private var document: (device: DSPiDevice, text: String, fileName: String)?
     private var documentCount = 0
@@ -174,10 +193,15 @@ final class CoreBackedTransport: DeviceTransport {
     ///   - autoSelect: open the demo device straight away (demo only; a host
     ///     link follows its transport's own selection).
     ///   - core: the core to drive; a new one by default.
-    init(link: Link, autoSelect: Bool = false, core: DspiCore = DspiCore()) {
+    ///   - clientReadOnly: -- WP ROMODE -- the core's client read-only mode;
+    ///     by default `-ReadOnly YES` for a device link, off for documents.
+    init(link: Link, autoSelect: Bool = false, core: DspiCore = DspiCore(), clientReadOnly: Bool? = nil) {
         self.core = core
         coreQueue.setSpecific(key: CoreBackedTransport.onCoreQueue, value: true)
-        isDocumentLink = { () -> Bool in if case .document = link { return true }; return false }()   // -- WP P1SW1 --
+        let isDocument = { () -> Bool in if case .document = link { return true }; return false }()
+        isDocumentLink = isDocument   // -- WP P1SW1 --
+        let readOnly = clientReadOnly ?? (!isDocument && CoreBackedTransport.readOnlyLaunchFlag)
+        self.clientReadOnly = readOnly
         switch link {
         case .demo:
             host = nil
@@ -208,6 +232,11 @@ final class CoreBackedTransport: DeviceTransport {
         let listener = Listener { [weak self] in self?.scheduleDrain() }
         notifyListener = listener
         coreQueue.async { [core] in
+            // -- WP ROMODE -- before any device opens.  Refused only while a
+            // guarded apply waits on a core handed in (`read_only.guard_pending`).
+            do { try core.setClientReadOnly(on: readOnly) } catch {
+                CoreBackedTransport.log.error("client read-only mode not set: \(String(describing: error), privacy: .public)")
+            }
             core.notifyTapSet(enabled: true)
             core.setNotifyListener(listener: listener)
             // -- WP P1SW2 -- Tokens required (P1TK): every gated call in this
@@ -623,7 +652,7 @@ final class CoreBackedTransport: DeviceTransport {
         case .Denied?: RefusedWrite.handle(.denied, fanout: fanout)
         case .Locked?: RefusedWrite.handle(.locked, fanout: fanout)
         // -- WP SWF4 -- Read-only firmware: put the edit back too.
-        case .ReadOnly?: RefusedWrite.handleReadOnly(fanout: fanout)
+        case .ReadOnly?: RefusedWrite.handleReadOnly(fanout: fanout, client: clientReadOnly)
         // -- WP SW9 -- A typed setter refused the value before sending it:
         // say why and show the device's value again.
         case .InvalidArgument(let msg)?: RefusedWrite.handleInvalid(msg, fanout: fanout)
@@ -657,7 +686,7 @@ final class CoreBackedTransport: DeviceTransport {
                 if status == .locked { DeviceLock.notice.post() }
                 // -- WP SWF4 -- A write-as-read (preset load or save, commit)
                 // on read-only firmware: what the caller showed goes back.
-                if case .ReadOnly? = error as? DspiError { RefusedWrite.handleReadOnly(fanout: self.fanout) }
+                if case .ReadOnly? = error as? DspiError { RefusedWrite.handleReadOnly(fanout: self.fanout, client: self.clientReadOnly) }
                 return .failure(status)
             }
         }
@@ -920,7 +949,7 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
                 // As a raw write's failure.
                 switch failure {
                 case .Locked: DeviceLock.notice.post()
-                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout)
+                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout, client: self.clientReadOnly)
                 default: break
                 }
                 result = .failure(failure)
@@ -1089,7 +1118,7 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
                 let failure = error as? DspiError ?? .Transfer(msg: String(describing: error))
                 switch failure {
                 case .Locked: DeviceLock.notice.post()
-                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout)
+                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout, client: self.clientReadOnly)
                 // -- WP SW9 -- fixup sw9 N1: a hub's refusal, as for a write.
                 case .Denied: RefusedWrite.handle(.denied, fanout: self.fanout)
                 default: break
@@ -1111,7 +1140,7 @@ extension CoreBackedTransport: CoreStateSource, CoreStateSourceProviding {
                 case .Locked: DeviceLock.notice.post()
                 // -- WP P1SW2 -- the lock or the limits refused it: the core's row
                 case let e where CoreInstaller.isNamedRefusal(e): DeviceLock.notice.post(CoreInstaller.line(for: e))
-                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout)
+                case .ReadOnly: RefusedWrite.handleReadOnly(fanout: self.fanout, client: self.clientReadOnly)
                 default: break
                 }
                 return .failure(failure)

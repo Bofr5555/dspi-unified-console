@@ -41,14 +41,14 @@ final class CoreMidiSW5Tests: XCTestCase {
         let fake: FakeTransport
     }
 
-    private func rig(autoSelect: Bool = true, connect: Bool = true,
+    private func rig(autoSelect: Bool = true, connect: Bool = true, readOnly: Bool = false,   // -- WP ROMODE --
                      file: StaticString = #filePath, line: UInt = #line) -> Rig {
         let fake = FakeTransport(autoSelect: false)
         fake.selectDevice(FakeTransport.demoDevice)
         XCTAssertTrue(spinUntil(5) { fake.isConnected }, "the demo device is up", file: file, line: line)
         let port = FakeMIDIControlPort(device: Self.device(backedBy: fake))
         let pipe = CoreMidiPipe(port: port, autoSelect: autoSelect)
-        let t = CoreBackedTransport(link: .midi(pipe))
+        let t = CoreBackedTransport(link: .midi(pipe), clientReadOnly: readOnly)
         if connect {
             XCTAssertTrue(spinUntil(15) { t.isConnected }, "the core connects over the MIDI pipe", file: file, line: line)
         }
@@ -113,6 +113,27 @@ final class CoreMidiSW5Tests: XCTestCase {
         XCTAssertEqual(notes.first { $0.packet[3] == 77 }?.origin, 0)
     }
 
+    // -- WP ROMODE -- `-MIDIReadOnly YES` on the core path: the core's client
+    // read-only mode refuses the write before it reaches the port; reads go on.
+    func testROMODETheMIDICoreInReadOnlyModeSendsOnlyReads() throws {
+        let r = rig(readOnly: true)
+        XCTAssertTrue(r.transport.clientReadOnly)
+        let volume = try XCTUnwrap(masterVolume(r.fake))
+        let before = r.port.device.requests.count
+        let got = offMain { r.transport.getControlResult(request: REQ_GET_MASTER_VOLUME, value: 0, index: 0, length: 4) }
+        guard case .success? = got else { return XCTFail("a pure read is refused: \(String(describing: got))") }
+        r.transport.sendControlRequest(request: REQ_SET_MASTER_VOLUME, value: 0, index: 0,
+                                       data: withUnsafeBytes(of: Float(volume - 6)) { Data($0) })
+        XCTAssertTrue(spinUntil(3) { DeviceLock.notice.message == DeviceLock.clientReadOnlyMessage },
+                      "refused in the mode's words")
+        let wrote = offMain { r.transport.getControlResult(request: REQ_PRESET_LOAD, value: 1, index: 2, length: 1) }
+        XCTAssertEqual(wrote, .failure(.denied), "a write-as-read is refused too")
+        let fresh = r.port.device.requests.dropFirst(before)
+        XCTAssertFalse(fresh.contains { $0.frame.request == REQ_SET_MASTER_VOLUME || $0.frame.request == REQ_PRESET_LOAD },
+                       "nothing but reads reached the port")
+        XCTAssertEqual(masterVolume(r.fake), volume, "the device is unchanged")
+    }
+
     func testSW5RawRequestsGoThroughTheCore() throws {
         let r = rig()
         let before = r.port.device.requests.count
@@ -143,7 +164,8 @@ final class CoreMidiSW5Tests: XCTestCase {
         XCTAssertTrue(AppState.shared.midiMember === AppState.shared.midiCore)
         #endif
 
-        // The opt-out, and the read-only mode only the Swift engine has.
+        // The opt-out.  -- WP ROMODE -- `MIDIReadOnly` no longer picks the
+        // Swift engine: it is the core's client read-only mode on `midiCore`.
         // -- WP SW5F -- (review sw5 F4) put back whatever happens
         defer {
             d.removeObject(forKey: "CoreTransport")
@@ -152,8 +174,10 @@ final class CoreMidiSW5Tests: XCTestCase {
         d.set(false, forKey: "CoreTransport")
         XCTAssertTrue(AppState.usesLegacyMIDI)
         d.removeObject(forKey: "CoreTransport")
+        XCTAssertFalse(CoreBackedTransport.midiReadOnly)
         d.set(true, forKey: "MIDIReadOnly")
-        XCTAssertTrue(AppState.usesLegacyMIDI)
+        XCTAssertFalse(AppState.usesLegacyMIDI, "-- WP ROMODE -- the core's MIDI, read-only")
+        XCTAssertTrue(CoreBackedTransport.midiReadOnly)
         d.removeObject(forKey: "MIDIReadOnly")
         XCTAssertFalse(AppState.usesLegacyMIDI)
     }

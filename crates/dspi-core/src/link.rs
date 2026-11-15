@@ -2184,13 +2184,18 @@ impl DspiCore {
         t: &str,
         fields: serde_json::Map<String, serde_json::Value>,
     ) -> Result<serde_json::Value> {
-        let client = self
-            .lock()
-            .link
-            .as_ref()
-            .and_then(|s| s.client.clone())
-            .filter(|c| !c.is_closed())
-            .ok_or(DspiError::Disconnected)?;
+        let client = {
+            let mut inner = self.lock();
+            let client = inner
+                .link
+                .as_ref()
+                .and_then(|s| s.client.clone())
+                .filter(|c| !c.is_closed())
+                .ok_or(DspiError::Disconnected)?;
+            // -- WP ROMODE -- the client read-only mode: the hub's reads only
+            crate::read_only::check_hub_request(&mut inner, t)?;
+            client
+        };
         client
             .request_json(t, fields, HUB_REQUEST_TIMEOUT)
             .map_err(map_error)

@@ -691,6 +691,16 @@ void uniffi_dspi_core_fn_method_dspicore_clear_alink_usb_diag(void*_Nonnull ptr,
 void uniffi_dspi_core_fn_method_dspicore_clear_clips(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CLIENT_READ_ONLY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CLIENT_READ_ONLY
+int8_t uniffi_dspi_core_fn_method_dspicore_client_read_only(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CLIENT_READ_ONLY_REFUSALS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CLIENT_READ_ONLY_REFUSALS
+uint32_t uniffi_dspi_core_fn_method_dspicore_client_read_only_refusals(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CLOSE_FD
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_CLOSE_FD
 void uniffi_dspi_core_fn_method_dspicore_close_fd(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1431,6 +1441,11 @@ void uniffi_dspi_core_fn_method_dspicore_monitor_clear(void*_Nonnull ptr, RustCa
 RustBuffer uniffi_dspi_core_fn_method_dspicore_monitor_read(void*_Nonnull ptr, uint64_t after_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTICE_FOR_ERROR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTICE_FOR_ERROR
+RustBuffer uniffi_dspi_core_fn_method_dspicore_notice_for_error(void*_Nonnull ptr, RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
 RustBuffer uniffi_dspi_core_fn_method_dspicore_notify_tap_drain(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1699,6 +1714,11 @@ void uniffi_dspi_core_fn_method_dspicore_set_bypass(void*_Nonnull ptr, int8_t en
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_CHANNEL_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_CHANNEL_NAME
 void uniffi_dspi_core_fn_method_dspicore_set_channel_name(void*_Nonnull ptr, uint8_t ch, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_CLIENT_READ_ONLY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_CLIENT_READ_ONLY
+void uniffi_dspi_core_fn_method_dspicore_set_client_read_only(void*_Nonnull ptr, int8_t on, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_SET_CROSSFEED
@@ -3396,6 +3416,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_clear_clips(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CLIENT_READ_ONLY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CLIENT_READ_ONLY
+uint16_t uniffi_dspi_core_checksum_method_dspicore_client_read_only(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CLIENT_READ_ONLY_REFUSALS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CLIENT_READ_ONLY_REFUSALS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_client_read_only_refusals(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CLOSE_FD
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_CLOSE_FD
 uint16_t uniffi_dspi_core_checksum_method_dspicore_close_fd(void
@@ -4284,6 +4316,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_monitor_read(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTICE_FOR_ERROR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTICE_FOR_ERROR
+uint16_t uniffi_dspi_core_checksum_method_dspicore_notice_for_error(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_NOTIFY_TAP_DRAIN
 uint16_t uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain(void
@@ -4605,6 +4643,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_set_bypass(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_CHANNEL_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_CHANNEL_NAME
 uint16_t uniffi_dspi_core_checksum_method_dspicore_set_channel_name(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_CLIENT_READ_ONLY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_SET_CLIENT_READ_ONLY
+uint16_t uniffi_dspi_core_checksum_method_dspicore_set_client_read_only(void
     
 );
 #endif

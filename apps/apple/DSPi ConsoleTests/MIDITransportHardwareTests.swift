@@ -15,7 +15,7 @@ final class MIDITransportHardwareTests: XCTestCase {
             throw XCTSkip("Set DSPI_MIDI_HW=1 to run against a real DSPi")
         }
         // -- WP SW5 -- the app's MIDI is the core's unless opted out: this test drives the Swift engine
-        guard AppState.usesLegacyMIDI else { throw XCTSkip("The app's MIDI goes through the core: run with CoreTransport=NO (or MIDIReadOnly=YES)") }
+        guard AppState.usesLegacyMIDI else { throw XCTSkip("The app's MIDI goes through the core: run with CoreTransport=NO and MIDIReadOnly=YES") }
         #if os(macOS)
         guard AppState.usesMIDITransport else { throw XCTSkip("Host app is not on the MIDI transport (LocalTransport=midi)") }
         let midi = AppState.shared.midiTransport
