@@ -6,6 +6,7 @@
 //! | [`codec`] | the packets, pure encode and decode with length limits | P2MQC |
 //! | [`client`] | one blocking client thread: keep-alive, reconnect, a bounded queue | P2MQC |
 //! | [`service`] | the hub's broker setting (`mqtt.*`, `mqtt.json`) and what it publishes | P2MQ |
+//! | [`ha`] | Home Assistant: discovery, state topics, `set` topics as an API key | P2HA |
 //!
 //! P2MQ registers it as the `mqtt` service ([`service`], `mqtt.json`); P2HA adds Home Assistant.
 
@@ -13,6 +14,8 @@ pub mod client;
 pub mod codec;
 // -- WP P2MQ --
 pub mod service;
+// -- WP P2HA -- Home Assistant: discovery, state and `set` topics
+pub mod ha;
 
 pub use client::{MqttClient, MqttConfig, MqttError, MqttEvent, MqttStatus};
 pub use codec::{QoS, Will};

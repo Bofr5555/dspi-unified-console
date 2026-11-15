@@ -129,6 +129,11 @@ required-features = ["api"]
 name = "wp_p2sc_schedule"
 required-features = ["api"]
 
+# -- WP P2HA --
+[[test]]
+name = "wp_p2ha_home_assistant"
+required-features = ["api"]
+
 # -- WP HB7 --
 # tests/conformance/: three Link clients against the hub (README.md there).
 [[test]]

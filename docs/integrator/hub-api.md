@@ -37,7 +37,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | draft |
 | 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | draft |
 | 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | built (P2SC) |
-| 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | built (P2MQ: 13.1); draft (P2HA: 13.2) |
+| 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | built (P2MQ: 13.1; P2HA: 13.2) |
 | 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | built (P2RS) |
 | 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | built |
 | 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM | draft |
@@ -676,7 +676,8 @@ events carry no `id`; `by` the admin for `run_now`, `null` on its schedule). Eac
 
 ## 13. MQTT and Home Assistant
 
-*State: 13.1 built (P2MQ, `crates/dspi-hub/src/mqtt/service.rs`; TLS: SECOUT, wired by MQWIRE); 13.2 draft (P2HA).*
+*State: 13.1 built (P2MQ, `crates/dspi-hub/src/mqtt/service.rs`; TLS: SECOUT, wired by MQWIRE); 13.2 built (P2HA,
+`crates/dspi-hub/src/mqtt/ha.rs`; tests `crates/dspi-hub/tests/wp_p2ha_home_assistant.rs`).*
 
 ### 13.1 The broker (P2MQ)
 
@@ -734,29 +735,51 @@ which the broker publishes when the hub goes away unannounced; a clean stop or r
 as section 7's object with `"kind": "alarm"`, QoS 1, its every change: raised, acknowledged, cleared; a record as
 `{"kind": "event", "serial", "record": {...}}`, QoS 0). Both carry `v` and `hub`; an alarm also `at`, the time of this
 change. An alarm about no one device (the audio link's) goes to `<base>/hub/event`. Nothing is retained but the
-status. The hub subscribes to nothing here: nothing that arrives over MQTT reaches a device (section 13.2's `set`
-topics act as an API key's principal).
+status. Without Home Assistant the hub subscribes to nothing: nothing that arrives over MQTT reaches a device
+(section 13.2's `set` topics act as an API key's principal).
 
 ### 13.2 Home Assistant (P2HA)
 
-`ha: {"enabled": bool, "key": <cid>}`: the API key (section 14) whose principal `set` topics act as. Turned on
-without `key`, the hub mints one named `Home Assistant` with the control role (revoked or changed like any key). The
-limits, the lock and attribution apply to every `set`.
+`ha: {"enabled": bool, "key": <cid>}` in `mqtt.set`: the API key (section 14) whose principal `set` topics act as.
+Turned on without `key` (or with `null`), the hub mints one named `Home Assistant` with the control role and answers
+its `cid` in `settings.ha.key` (the key itself is never shown: Home Assistant needs only its principal; revoke or
+change its role like any key). A `key` must be an API key the hub has (`bad_request` for a console's `cid` or an
+unknown one); a hub with no network store has no keys (`unsupported`). Changing `ha` does not reconnect; turning it
+off removes every entity (below) and ignores `set` messages from then on.
 
-Per device, retained discovery under `homeassistant/<component>/<hub>_<serial>_<entity>/config`, with a device block
-(name, serial, firmware, model from the facts):
+Per device the hub sees (online, or offline within its grace), retained discovery under
+`homeassistant/<component>/<hub>_<serial>_<entity>/config` (letters, digits, `-`, `_` of the hub's id and the
+serial), each with a device block (`identifiers: ["dspi_<serial>"]`, the device's name, `serial_number`,
+`sw_version` the firmware, `model` the board and hardware revision from the facts or else the platform,
+`manufacturer: "DSPi"`) and `availability`: `<base>/status` (section 13.1) **and** `<base>/<serial>/availability`
+(`online`/`offline`, retained), `availability_mode: all`.
 
-| Entity | Component | State | Set |
+| Entity | Component | State (`<base>/<serial>/<entity>/state`, retained) | `set` (`<base>/<serial>/<entity>/set`) |
 |---|---|---|---|
-| `master_volume` | `number` (range from the registry) | `vol.master` | `param.set vol.master` |
-| `mute` | `switch` | `vol.mute` | `param.set vol.mute` |
-| `preset` | `select` (names from the device) | the loaded slot | `preset.load` |
-| `identify` | `button` | | `device.identify` (10 s, no tone) |
-| `temperature`, `cpu` | `sensor` | health | |
-| `clip` | `binary_sensor` | the clip latch | |
+| `master_volume` | `number`, `min`/`max` from the registry (`vol.master`: -128 to 0 dB), step 0.5 | dB, from the master volume's notifications | a number in that range: `param.set vol.master` |
+| `mute` | `switch` | `ON`/`OFF`, from the user mute's notifications | `ON`/`OFF`: `param.set vol.mute` |
+| `preset` | `select`, `options` the used slots' names (an unnamed one `Slot <n>`, a repeated name ` (slot <n>)`); left out while no slot is used | the loaded preset's option, from `PRESET_LOADED` | an option: `preset.load {slot}` |
+| `identify` | `button` | | `PRESS`: `device.identify` (10 s, no tone) |
+| `temperature` | `sensor` (°C) | from health | |
+| `cpu` | `sensor` (%) | from health | |
+| `clip` | `binary_sensor` (`problem`) | `ON` while the clip latch is set (the hub never clears it) | |
 
-State topics `<base>/<serial>/<entity>/state`, set topics `<base>/<serial>/<entity>/set`. A refused set changes
-nothing and the state stays. A forgotten device's entities are removed (empty retained configs).
+- **Who writes.** Every `set` is sent through the control plane, as a WebSocket or REST request is, on the key's
+  principal session (a remote-range session id, the key's role, attributed to the key's name): the role, limits
+  (section 9's refusals), the installer lock (which lets volume, mute and preset through), the device lock, a
+  pending guarded apply (`conflict`) and the read-only rule judge it. A refused set changes nothing, and the hub
+  publishes the state again as it is, so Home Assistant's control moves back; the refusal is in the hub's log. A
+  Viewer-role key, or a revoked one, writes nothing. The hub reads the volume, the mute and the preset names as the
+  same principal when a device comes online, after a preset is loaded and when its settings image changed.
+- **What is taken.** A `set` payload of at most 64 bytes of text, exactly as the table says; anything else, a
+  retained `set` (a write is never replayed), a topic that is not `<base>/<serial>/<entity>/set` of a settable entity
+  of a device with entities, is dropped. At most 64 messages wait for the hub (the oldest go); a newer set of the
+  same entity of a device replaces one still waiting.
+- **Removal.** When the hub forgets a device (its grace after going offline ended), its configs, states and
+  availability are cleared with empty retained payloads, and Home Assistant removes it; it is discovered again when
+  it comes back. Within the grace it is only unavailable. `inventory.forget` itself sends nothing over MQTT.
+- On every connection the hub publishes every entity again. A clean stop or a lost hub leaves the entities
+  retained and unavailable (`<base>/status` is `offline`).
 
 ## 14. REST and API keys
 
