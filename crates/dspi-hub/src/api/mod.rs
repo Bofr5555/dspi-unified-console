@@ -42,8 +42,9 @@ use crate::snapshots::HubSnapshots;
 
 pub mod transport;
 
+// The action executor, for the later families (schedules, MQTT) in this crate.
 #[cfg(feature = "api")]
-mod exec;
+pub(crate) mod exec;
 #[cfg(feature = "api")]
 mod params;
 #[cfg(feature = "api")]
