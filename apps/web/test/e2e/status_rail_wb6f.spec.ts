@@ -1,7 +1,7 @@
 // WP WB6f e2e: the status rail's health row and panel, in Chromium, Firefox and
 // Chromium at 375 px. On the core's demo device through the embedding page: the
-// device, the preset and its unsaved state, the two cores' load, a clip and its
-// acknowledgement. A lost DSPi Link on dspi-link's fake hub (DSPI_FAKEHUB, as
+// device, the preset and its unsaved state, the two cores' load, a clip that ends
+// and stays listed until acknowledged, a clip acknowledged while on. A lost DSPi Link on dspi-link's fake hub (DSPI_FAKEHUB, as
 // link.spec.ts), in CG10's words: raised while the core reconnects, kept after it
 // is back until acknowledged.
 //
@@ -89,12 +89,37 @@ test("WB6F rail: the device, the preset and its unsaved changes, the two cores' 
   expect(errors).toEqual([]);
 });
 
-// The demo's clip flags stay latched (the fake answers REQ_CLEAR_CLIPS without clearing
-// them), so a demo clip stays on: an ended problem kept until acknowledged is shown on the
-// DSPi Link below and in the unit tests.
+// -- fixup WB6F -- a demo clip ends once the core's clip hold is over (the fake's
+// REQ_CLEAR_CLIPS clears the latched flags): it stays listed until acknowledged.
+test("WB6F health: a clip that ends stays listed, marked ended, until acknowledged", async ({ page }) => {
+  const errors = errorsOf(page);
+  const session = await openDemo(page);
+  // A short clip hold, so the clip ends within the test.
+  await core(page, "setMeterBallistics", { holdMs: 1000, decayPerS: 0.5, clipHoldMs: 800 });
+  const names = ((await core(page, "state")) as { state: { channelNames: string[] } }).state.channelNames;
+  await core(page, "demo", { action: "clip", mask: 1 });
+  const p = panel(session);
+  const item = p.getByRole("listitem").filter({ hasText: `Clipping on ${names[0]}` });
+  await expect(item).toBeVisible({ timeout: 10_000 });
+  await expect(item).toHaveAttribute("data-state", "ended", { timeout: 10_000 });
+  await expect(item).toContainText(/since \d\d:\d\d:\d\d · ended \d\d:\d\d:\d\d/);
+  await expect(healthButton(session)).toHaveText("Health: 1 problem");
+  // It stays: still listed a while later, and on another screen.
+  await page.waitForTimeout(1500);
+  await session.getByRole("tab", { name: "EQ" }).click();
+  await expect(item).toHaveAttribute("data-state", "ended");
+  await shot(page, "clip-ended", rail(session));
+  await item.getByRole("button", { name: "Acknowledge" }).click();
+  await expect(p.getByRole("listitem")).toHaveCount(0);
+  await expect(healthButton(session)).toHaveText("Health: OK");
+  expect(errors).toEqual([]);
+});
+
 test("WB6F health: a clip opens the panel; acknowledged while on, it stays marked; a new one opens it again", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
+  // A long clip hold: the clip stays on for the whole test.
+  await core(page, "setMeterBallistics", { holdMs: 1000, decayPerS: 0.5, clipHoldMs: 60_000 });
   const names = ((await core(page, "state")) as { state: { channelNames: string[] } }).state.channelNames;
   await core(page, "demo", { action: "clip", mask: 1 });
   const p = panel(session);
@@ -125,6 +150,8 @@ test("WB6F health: a clip opens the panel; acknowledged while on, it stays marke
 test("WB6F health: Acknowledge All marks every problem that is still on", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
+  // A long clip hold: the clip stays on for the whole test.
+  await core(page, "setMeterBallistics", { holdMs: 1000, decayPerS: 0.5, clipHoldMs: 60_000 });
   await core(page, "demo", { action: "clip", mask: 0b11 });
   const p = panel(session);
   await expect(p.getByRole("listitem")).toHaveCount(2, { timeout: 10_000 });

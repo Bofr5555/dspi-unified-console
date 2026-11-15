@@ -370,7 +370,8 @@ test("WB6a channels: inputs and outputs are renamed, trimmed and muted, each rea
 test("WB6a: Disconnect with unsaved changes asks first", async ({ page }) => {
   const session = await openControl(page);
   await setRange(session.getByRole("region", { name: "Outputs" }).getByRole("slider").first(), -5);
-  await expect(session.getByText("Unsaved changes")).toBeVisible();
+  // -- WP WB6F -- exact: the status rail says "· unsaved changes" too
+  await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
   await session.getByRole("button", { name: "Disconnect" }).click();
   const prompt = page.getByRole("dialog", { name: "Unsaved Changes" });
   await prompt.getByRole("button", { name: "Cancel" }).click();
@@ -426,7 +427,8 @@ test.describe("375 px, in every browser", () => {
     // Unsaved, muted, renamed long, menu open: the same height, still no sideways scroll.
     const outputs = session.getByRole("region", { name: "Outputs" });
     await setRange(outputs.getByRole("slider").first(), -6);
-    await expect(session.getByText("Unsaved changes")).toBeVisible();
+    // -- WP WB6F -- exact: the status rail says "· unsaved changes" too
+    await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
     await outputs.locator(".ch-mute").first().click();
     await expect(outputs.locator(".ch-mute").first()).toHaveAttribute("aria-pressed", "true");
     await session.getByRole("button", { name: "Mute", exact: true }).click();
