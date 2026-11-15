@@ -15,6 +15,7 @@
 // ABI's (`read_only`).
 
 // -- WP WB6J -- the analyser view, the signal generator, Stats for nerbs, the Interrupt Monitor
+import type { HubSettingsMethods } from "./hub-settings-protocol"; // -- WP P2WB2 --
 import type { ToolsMethods } from "./tools-protocol";
 
 /** Where a session's device is. A fleet server may add its own kinds later. */
@@ -428,7 +429,7 @@ export type CoreEvent =
   | { event: "hubAdmin"; events: HubAdminEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */ {
+export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**

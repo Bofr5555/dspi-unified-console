@@ -60,6 +60,9 @@ import type { OpenAction, ShortcutRow } from "../screens/shortcuts/table";
 import { EffectsScreen } from "../screens/effects/EffectsScreen";
 // -- WP WB6I -- Settings (M55, M56, M61, M62)
 import { SettingsScreen } from "../screens/settings/SettingsScreen";
+// -- WP P2WB2 -- the hub settings page, its own screen (shown when the hub has its families)
+import { HUB_SETTINGS_DEF, useHubCaps } from "../screens/hub-settings/HubSettingsScreen";
+import { hubSettingsShown, withHubSettings } from "../screens/hub-settings/model";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -206,7 +209,8 @@ export function Screens(props: { session: Session }) {
   const mode: Mode = choice && isMode(choice.mode) ? choice.mode : lockedUser ? "simple" : chosenMode;
   const modes = (manifest?.modes ?? []).filter((m) => isMode(m.id)).map((m) => ({ id: m.id as Mode, label: m.label }));
   const [unlocking, setUnlocking] = useState(false);
-  const shown = lockedUser ? lockedScreens() : screensFor(mode, feed.kind === "hub");
+  const hubCaps = useHubCaps(session, st.link?.phase ?? "").caps; // -- WP P2WB2 --
+  const shown = lockedUser ? lockedScreens() : withHubSettings(screensFor(mode, feed.kind === "hub"), mode, hubSettingsShown(hubCaps), HUB_SETTINGS_DEF); // -- WP P2WB2 -- withHubSettings
   const [chosen, setChosen] = useState<string | null>(null);
   const current = chosen ?? shown[0]!.id;
   const screen = shown.find((x) => x.id === current) ?? shown[0]!;
