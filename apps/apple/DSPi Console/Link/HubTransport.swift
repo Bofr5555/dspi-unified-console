@@ -15,7 +15,7 @@ import Combine
 
 final class HubTransport: DeviceTransport {
     private let hub: LinkHub
-    private let usb: USBDevice
+    private let usb: CoreUsb
     private let localSession: LinkHubSession
     private let notifyFanout = NotificationFanout()
 
@@ -29,7 +29,7 @@ final class HubTransport: DeviceTransport {
     /// well past any legitimate queue depth.
     var syncWaitTimeout: TimeInterval = 10
 
-    init(hub: LinkHub, usb: USBDevice) {
+    init(hub: LinkHub, usb: CoreUsb) {
         self.hub = hub
         self.usb = usb
         self.localSession = hub.openSession(role: .admin, id: LinkHub.localSessionID)

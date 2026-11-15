@@ -39,6 +39,9 @@ final class CoreBackedTransport: DeviceTransport {
     // MARK: - The launch flag
 
     /// `-CoreTransport YES` (UserDefaults) or DSPI_CORE_TRANSPORT=1.
+    /// -- WP SW-M1 -- This is the tests' switch (CoreTransportUnderTest) and
+    /// the iOS demo member's.  The Mac app uses the core by default
+    /// (`AppState.usesCoreTransport`), where `-CoreTransport NO` opts out.
     static var isEnabled: Bool {
         if ProcessInfo.processInfo.environment["DSPI_CORE_TRANSPORT"] == "1" { return true }
         return UserDefaults.standard.bool(forKey: "CoreTransport")

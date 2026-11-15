@@ -12546,6 +12546,263 @@ public func FfiConverterTypeRtaListener_lower(_ value: RtaListener) -> UnsafeMut
 
 
 
+
+
+/**
+ * One open DSPi on USB: its vendor interface claimed, nothing else. See the
+ * module documentation. Every method may be called from any thread; control
+ * transfers are serialised, and a notification read does not hold them up.
+ */
+public protocol UsbPipeProtocol: AnyObject, Sendable {
+    
+    /**
+     * Release the interface. Every later call fails with
+     * [`DspiError::Disconnected`]. Waits for a notification read in
+     * progress (at most its timeout). Idempotent.
+     */
+    func close() 
+    
+    /**
+     * One vendor IN transfer: `opcode`, `value` as `wValue`, at most `len`
+     * bytes back, as the device sent them (a short reply is not an error).
+     * Blocks for the transfer.
+     */
+    func controlIn(opcode: UInt8, value: UInt16, len: UInt16) throws  -> Data
+    
+    /**
+     * One vendor OUT transfer: `opcode`, `value` as `wValue`, `data` as the
+     * payload. Success means the device took the transfer. Blocks for it.
+     */
+    func controlOut(opcode: UInt8, value: UInt16, data: Data) throws 
+    
+    /**
+     * Whether [`UsbPipe::close`] has run.
+     */
+    func isClosed()  -> Bool
+    
+    /**
+     * Wait up to `timeout_ms` (at most 2 s) for one notification packet, as
+     * the device sent it (keep-alives included). Empty when nothing came in
+     * time. Call it from one reader thread; it blocks that thread only.
+     *
+     * Errors: [`DspiError::Disconnected`] when the device has gone or the
+     * pipe is closed (the reader should stop), others as the module says.
+     */
+    func readNotification(timeoutMs: UInt32) throws  -> Data
+    
+    /**
+     * The serial it was opened with.
+     */
+    func serial()  -> String
+    
+}
+/**
+ * One open DSPi on USB: its vendor interface claimed, nothing else. See the
+ * module documentation. Every method may be called from any thread; control
+ * transfers are serialised, and a notification read does not hold them up.
+ */
+open class UsbPipe: UsbPipeProtocol, @unchecked Sendable {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_dspi_core_fn_clone_usbpipe(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_dspi_core_fn_free_usbpipe(pointer, $0) }
+    }
+
+    
+    /**
+     * Open the DSPi with this serial and claim its vendor interface (only
+     * that one: the audio and MIDI interfaces stay with the system, so a DAW
+     * holding the DSPi's MIDI port does not keep it out). Blocks for the
+     * open: call it off the UI thread.
+     *
+     * Errors: [`DspiError::Disconnected`] if no DSPi with that serial is on
+     * the bus; [`DspiError::Transfer`] if it cannot be opened (held by
+     * another program, no permission); [`DspiError::Unsupported`] without
+     * the `usb` feature and on Android.
+     */
+public static func `open`(serial: String)throws  -> UsbPipe  {
+    return try  FfiConverterTypeUsbPipe_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_constructor_usbpipe_open(
+        FfiConverterString.lower(serial),$0
+    )
+})
+}
+    
+
+    
+    /**
+     * Release the interface. Every later call fails with
+     * [`DspiError::Disconnected`]. Waits for a notification read in
+     * progress (at most its timeout). Idempotent.
+     */
+open func close()  {try! rustCall() {
+    uniffi_dspi_core_fn_method_usbpipe_close(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * One vendor IN transfer: `opcode`, `value` as `wValue`, at most `len`
+     * bytes back, as the device sent them (a short reply is not an error).
+     * Blocks for the transfer.
+     */
+open func controlIn(opcode: UInt8, value: UInt16, len: UInt16)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_usbpipe_control_in(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(opcode),
+        FfiConverterUInt16.lower(value),
+        FfiConverterUInt16.lower(len),$0
+    )
+})
+}
+    
+    /**
+     * One vendor OUT transfer: `opcode`, `value` as `wValue`, `data` as the
+     * payload. Success means the device took the transfer. Blocks for it.
+     */
+open func controlOut(opcode: UInt8, value: UInt16, data: Data)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_usbpipe_control_out(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(opcode),
+        FfiConverterUInt16.lower(value),
+        FfiConverterData.lower(data),$0
+    )
+}
+}
+    
+    /**
+     * Whether [`UsbPipe::close`] has run.
+     */
+open func isClosed() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_usbpipe_is_closed(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Wait up to `timeout_ms` (at most 2 s) for one notification packet, as
+     * the device sent it (keep-alives included). Empty when nothing came in
+     * time. Call it from one reader thread; it blocks that thread only.
+     *
+     * Errors: [`DspiError::Disconnected`] when the device has gone or the
+     * pipe is closed (the reader should stop), others as the module says.
+     */
+open func readNotification(timeoutMs: UInt32)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_usbpipe_read_notification(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(timeoutMs),$0
+    )
+})
+}
+    
+    /**
+     * The serial it was opened with.
+     */
+open func serial() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_usbpipe_serial(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeUsbPipe: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = UsbPipe
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> UsbPipe {
+        return UsbPipe(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: UsbPipe) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UsbPipe {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: UsbPipe, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUsbPipe_lift(_ pointer: UnsafeMutableRawPointer) throws -> UsbPipe {
+    return try FfiConverterTypeUsbPipe.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUsbPipe_lower(_ value: UsbPipe) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeUsbPipe.lower(value)
+}
+
+
+
+
 /**
  * Where a compare stands ([`DspiCore::ab_state`] and every A/B call).
  */
@@ -37529,6 +37786,18 @@ public func uf2Inspect(image: Data) -> Uf2Info  {
     )
 })
 }
+/**
+ * The DSPis on USB, by enumeration only: nothing is opened or claimed, so it
+ * is cheap enough for a half-second poll and lists a device another program
+ * holds like any other. Serial order. Empty without the `usb` feature, on
+ * Android, and when enumeration fails (logged). Never fails.
+ */
+public func usbPipeScan() -> [DeviceInfo]  {
+    return try!  FfiConverterSequenceTypeDeviceInfo.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_usb_pipe_scan($0
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -37663,6 +37932,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_uf2_inspect() != 30039) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_usb_pipe_scan() != 60426) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_autoeqfetch_get() != 23782) {
@@ -38721,10 +38993,31 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_rtalistener_on_frame() != 50042) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_usbpipe_close() != 8009) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_usbpipe_control_in() != 64205) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_usbpipe_control_out() != 57095) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_usbpipe_is_closed() != 31671) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_usbpipe_read_notification() != 9779) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_usbpipe_serial() != 29485) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_constructor_dspicore_new() != 17171) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_constructor_midiinputhandle_with_sender() != 29995) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_constructor_usbpipe_open() != 10863) {
         return InitializationResult.apiChecksumMismatch
     }
 

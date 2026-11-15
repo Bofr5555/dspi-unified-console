@@ -134,10 +134,10 @@ final class RtaWireTests: XCTestCase {
     /// writer is someone else.
     func testRtaConfigAttributedOrigin() {
         let cfg = RtaConfig()
-        XCTAssertEqual(USBNotificationReader.attributedOrigin(rtaConfigPacket(cfg, source: 1), session: 5), 5)
-        XCTAssertEqual(USBNotificationReader.attributedOrigin(rtaConfigPacket(cfg, source: PARAM_SRC_UART),
-                                                              session: 5), 0)
-        XCTAssertEqual(USBNotificationReader.attributedOrigin(rtaConfigPacket(cfg, source: 1).prefix(16),
+        XCTAssertEqual(CoreUsb.attributedOrigin(rtaConfigPacket(cfg, source: 1), session: 5), 5)
+        XCTAssertEqual(CoreUsb.attributedOrigin(rtaConfigPacket(cfg, source: PARAM_SRC_UART),
+                                                                session: 5), 0)
+        XCTAssertEqual(CoreUsb.attributedOrigin(rtaConfigPacket(cfg, source: 1).prefix(16),
                                                               session: 5), 0, "no source byte")
     }
 

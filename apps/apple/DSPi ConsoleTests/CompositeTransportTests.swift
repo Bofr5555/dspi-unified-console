@@ -9,7 +9,7 @@ import XCTest
 final class CompositeTransportTests: XCTestCase {
 
     private func makeLocal() -> (HubTransport, LinkHub, LinkFakeDevice) {
-        let usb = USBDevice(startMonitoring: false)
+        let usb = CoreUsb(startMonitoring: false)
         let auth = LinkAuthStore(storeURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("ct-\(UUID().uuidString).json"))
         let hub = LinkHub(usb: usb, policy: LinkPolicy.bundled ?? .empty, auth: auth)
@@ -73,8 +73,8 @@ final class CompositeTransportTests: XCTestCase {
 
     /// A local board with nothing attached to the hub: only USBDevice's
     /// published list and selection, which is all the composite watches.
-    private func makeBareLocal() -> (HubTransport, USBDevice) {
-        let usb = USBDevice(startMonitoring: false)
+    private func makeBareLocal() -> (HubTransport, CoreUsb) {
+        let usb = CoreUsb(startMonitoring: false)
         let auth = LinkAuthStore(storeURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("ct-\(UUID().uuidString).json"))
         let hub = LinkHub(usb: usb, policy: LinkPolicy.bundled ?? .empty, auth: auth)

@@ -1243,7 +1243,7 @@ extension DSPViewModel {
     /// Creates a preview-safe view model with mock data (no USB connection)
     static var preview: DSPViewModel {
         #if os(macOS)
-        let vm = DSPViewModel(transport: USBDevice())
+        let vm = DSPViewModel(transport: CoreUsb(startMonitoring: false))
         #else
         let vm = DSPViewModel(transport: FakeTransport(autoSelect: false))
         #endif

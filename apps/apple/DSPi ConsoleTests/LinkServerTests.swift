@@ -13,7 +13,7 @@ import XCTest
 final class LinkServerTests: XCTestCase {
 
     private func makeStack() -> (LinkHub, LinkAuthStore, LinkPolicy) {
-        let usb = USBDevice(startMonitoring: false)
+        let usb = CoreUsb(startMonitoring: false)
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("lst-\(UUID().uuidString).json")
         let auth = LinkAuthStore(storeURL: url)
@@ -121,7 +121,7 @@ extension LinkServerTests {
     /// With the built dspi-link-js app shipped in the bundle, the hub serves
     /// it at / and advertises it.
     func testWebBundleIsServedAndAdvertised() throws {
-        let usb = USBDevice(startMonitoring: false)
+        let usb = CoreUsb(startMonitoring: false)
         let auth = LinkAuthStore(storeURL: FileManager.default.temporaryDirectory
             .appendingPathComponent("web-\(UUID().uuidString).json"))
         let policy = LinkPolicy.bundled ?? LinkPolicy.empty

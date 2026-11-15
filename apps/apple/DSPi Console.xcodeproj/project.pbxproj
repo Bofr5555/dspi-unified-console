@@ -61,7 +61,6 @@
 				AppUpdateChecker.swift,
 				AppUpdateInstaller.swift,
 				MenuBarMode.swift,
-				USBNotificationReader.swift,
 				Link/PollScheduler.swift,
 				NetworkingSettingsView.swift,
 				Link/LinkServer.swift,

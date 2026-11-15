@@ -137,16 +137,8 @@ final class SWF2LocalFallbackTests: XCTestCase {
         XCTAssertEqual(midi.lockCalls, 0)
     }
 
-    #if os(macOS)
-    func testSWF2AHeldDeviceIsSharedAfterTheRetries() {
-        XCTAssertEqual(USBDevice.openPlan(after: kIOReturnSuccess, attempt: 0), .connected)
-        XCTAssertEqual(USBDevice.openPlan(after: kIOReturnExclusiveAccess, attempt: 0), .retry(after: 0.1))
-        XCTAssertEqual(USBDevice.openPlan(after: kIOReturnExclusiveAccess, attempt: 4), .retry(after: 1.0))
-        XCTAssertEqual(USBDevice.openPlan(after: kIOReturnExclusiveAccess, attempt: 5), .shareDevice,
-                       "held by CoreMIDI's driver: use it without the device-level open")
-        XCTAssertEqual(USBDevice.openPlan(after: kIOReturnNotResponding, attempt: 5), .failed)
-    }
-    #endif
+    // -- WP SW-M1 -- the held-device case moved with USB to the core:
+    // CoreUsbSWM1Tests.testSWM1AHeldDeviceOpensAfterTheRetriesOrSaysBusy.
 }
 
 // MARK: - F3: a refused write is put back on screen
