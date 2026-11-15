@@ -154,11 +154,12 @@ test("SW3: the mode is remembered per device, or for every device, Advanced by d
   mem.set("dspi-web.mode", "{nonsense");
   assert.equal(loadMode(store, "S1"), "advanced");
   assert.equal(loadMode(null, "S1"), "advanced");
-  assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["main", "eq", "inputs", "matrix", "snapshots"]); // -- WP P1DCFIX -- recall and A/B only (-- WP WB6G -- Inputs after EQ)
+  // -- WP WB6H -- the effects after the matrix, in every mode
+  assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["main", "eq", "inputs", "matrix", "effects", "snapshots"]); // -- WP P1DCFIX -- recall and A/B only (-- WP WB6G -- Inputs after EQ)
   // -- WP P1WB1 -- Snapshots and Files in Advanced and Installer
-  assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "main", "eq", "inputs", "matrix", "snapshots", "files", "events"]);
+  assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "main", "eq", "inputs", "matrix", "effects", "snapshots", "files", "events"]);
   // -- WP P1WB2 -- the Installer page last, in the Installer mode
-  assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "inputs", "matrix", "snapshots", "files", "system", "events", "installer"]);
+  assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "inputs", "matrix", "effects", "snapshots", "files", "system", "events", "installer"]);
 });
 
 test("SW3: words: results, ops, frames; the rail puts alarms on first, critical first", () => {

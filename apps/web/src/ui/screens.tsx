@@ -49,6 +49,8 @@ import { HealthRail } from "./status-rail/HealthRail";
 
 // -- WP WB6G -- the input pages
 import { InputsScreen } from "../screens/inputs/InputsScreen";
+// -- WP WB6H -- the effects (Dynamics and effects, every mode)
+import { EffectsScreen } from "../screens/effects/EffectsScreen";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -96,6 +98,8 @@ export const SCREENS: ScreenDef[] = [
   { id: "inputs", label: "Inputs", View: InputsScreen },
   // -- WP WB6c --
   { id: "matrix", label: "Matrix", View: MatrixScreen },
+  // -- WP WB6H -- (UI-MODES: "Dynamics and effects", in every mode)
+  { id: "effects", label: "Effects", View: EffectsScreen },
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
   { id: "system", label: "System", View: SystemScreen },
   // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
