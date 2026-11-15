@@ -90,6 +90,8 @@ impl From<DspiError> for CallError {
             // -- WP P1DKFIX --
             DspiError::ImageRefused { .. } => "image_refused",
             DspiError::LimitsUnknown { .. } => "limits_unknown",
+            // -- WP WB6I -- the core-voltage flow's word (CG14)
+            DspiError::OvervoltWordRequired { .. } => "overvolt_word",
             _ => "internal",
         };
         // -- WP P1NT --
@@ -280,6 +282,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     }
     // -- WP CLIP1 -- the channel clipboard (src/clipboard.rs)
     if let Some(r) = crate::clipboard::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP WB6I -- the Settings page (src/settings.rs)
+    if let Some(r) = crate::settings::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
     match req.method.as_str() {

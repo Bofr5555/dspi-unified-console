@@ -927,3 +927,31 @@
 .dspi-web .fx-mask { grid-column: 1 / -1; }
 .dspi-web .fx-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem; }
 .dspi-web .fx-chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+/* -- WP WB6I -- Settings: the pages, rows, toggles, pins, core voltage; the EQ graph's cursor readout */
+.dspi-web .settings-screen { display: grid; gap: 0.75rem; min-width: 0; }
+.dspi-web .settings-screen .card { min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .settings-nav { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.dspi-web .settings-nav button[aria-current="page"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .settings-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; margin: 0.35rem 0; min-width: 0; }
+.dspi-web .settings-row > span { flex: 1 1 12rem; min-width: 0; }
+.dspi-web .settings-row input[type="text"] { max-width: 100%; }
+.dspi-web .settings-buttons { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0; }
+.dspi-web .settings-toggle { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0.35rem 0; }
+.dspi-web .settings-toggle small { display: block; color: var(--muted); }
+.dspi-web .settings-slider { display: grid; gap: 0.2rem; margin: 0.45rem 0; }
+.dspi-web .settings-slider input { width: 100%; max-width: 24rem; }
+.dspi-web .settings-picker { display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.dspi-web .settings-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.2rem 0.75rem; margin: 0.25rem 0; }
+.dspi-web .settings-facts dt { color: var(--muted); }
+.dspi-web .settings-facts dd { margin: 0; overflow-wrap: anywhere; }
+.dspi-web .settings-facts.mono dd, .dspi-web .settings-facts .mono { font-family: ui-monospace, monospace; }
+.dspi-web .settings-group { border-top: 1px solid var(--line); padding-top: 0.4rem; margin-top: 0.4rem; }
+.dspi-web .settings-group h4 { margin: 0 0 0.3rem; font-size: 0.9rem; }
+.dspi-web .settings-pins { border-collapse: collapse; width: 100%; }
+.dspi-web .settings-pins th, .dspi-web .settings-pins td { text-align: left; padding: 0.2rem 0.4rem 0.2rem 0; vertical-align: middle; }
+.dspi-web .settings-pins input { width: 4.5rem; }
+.dspi-web .settings-links { margin: 0.25rem 0; padding-left: 1.2rem; }
+.dspi-web .vreg-warning { border: 1px solid var(--warn); border-radius: 6px; padding: 0.35rem 0.6rem; white-space: pre-wrap; }
+.dspi-web .vreg-word { display: grid; gap: 0.3rem; margin-top: 0.5rem; }
+.dspi-web .eq-readout { position: absolute; top: 4px; right: 6px; font: 10px system-ui, sans-serif; color: var(--eq-text, rgba(255,255,255,0.55)); pointer-events: none; white-space: pre; }

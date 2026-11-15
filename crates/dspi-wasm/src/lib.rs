@@ -89,6 +89,8 @@ pub mod system;
 pub mod read_only;
 // -- WP CLIP1 -- the channel clipboard
 pub mod clipboard;
+// -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
+pub mod settings;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;
