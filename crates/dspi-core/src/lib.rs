@@ -267,6 +267,13 @@ pub use hub_server::{
     HubServerListener, HubSnapshotDocument, HubSnapshotPut, HubSnapshotRecall, HubStats,
     HubStatsDevice, MergedSnapshot, SnapshotMergedList,
 };
+// -- WP P2CC2 --
+pub use hub_server::{
+    HubAlarm, HubAlarmRule, HubApiKey, HubApiKeyMinted, HubMqttSettings, HubMqttStatus, HubMqttTls,
+    HubOutboundLast, HubOutboundSecret, HubOutboundSet, HubOutboundTarget, HubOutboundTest,
+    HubScheduleAction, HubScheduleLast, HubScheduleResult, HubScheduleRule, HubScheduleRun,
+    HubSchedules, hub_alarm_notice,
+};
 // -- WP ROMODE --
 pub use read_only::{
     GUARD_PENDING, HUB_READS, NOTICE_READ_ONLY_CLIENT, NOTICE_READ_ONLY_GUARD_PENDING,

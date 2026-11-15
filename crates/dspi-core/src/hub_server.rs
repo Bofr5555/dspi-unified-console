@@ -31,6 +31,10 @@
 //! its notice row `dlink.<code>`. A write past the client read-only mode is
 //! [`DspiError::ReadOnly`], with nothing sent ([`HUB_SERVER_READS`] are the
 //! reads it lets out). Each call is a round trip: off the UI thread.
+//!
+//! The second section (WP P2CC2, [`admin`]): alarms, schedules, notifications
+//! out, MQTT and API keys, with `alarm.changed` and `schedule.ran` through
+//! the same listener.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -40,6 +44,16 @@ use serde_json::Value;
 
 use crate::snapshot::SnapshotInfo;
 use crate::{DspiCore, DspiError, IdentifyInfo, Result, Slot};
+
+// -- WP P2CC2 -- the hub's admin families
+pub mod admin;
+pub use admin::{
+    ALARM_CODES, CAP_ALARMS, CAP_API_KEYS, CAP_MQTT, CAP_OUTBOUND, CAP_REST, CAP_SCHEDULE,
+    HubAlarm, HubAlarmRule, HubApiKey, HubApiKeyMinted, HubMqttSettings, HubMqttStatus, HubMqttTls,
+    HubOutboundLast, HubOutboundSecret, HubOutboundSet, HubOutboundTarget, HubOutboundTest,
+    HubScheduleAction, HubScheduleLast, HubScheduleResult, HubScheduleRule, HubScheduleRun,
+    HubSchedules, NOTICE_ALARM_FAMILY, NOTICE_ALARM_UNKNOWN, hub_alarm_notice,
+};
 
 /// Cap: `inventory.*` (hub-api.md section 3).
 pub const CAP_INVENTORY: &str = "inventory";
@@ -80,9 +94,10 @@ pub const HUB_ERR_DEVICE: &str = "device";
 /// The hub requests of these families that only read: the client read-only
 /// mode lets them out (`read_only.rs`), and refuses every other request of
 /// them (`device.identify`, `snapshot.put`/`rename`/`note`/`delete`/`recall`,
-/// `inventory.set`/`forget`, `hub.rename`). `event.watch` only asks for
-/// events.
-pub const HUB_SERVER_READS: [&str; 8] = [
+/// `inventory.set`/`forget`, `hub.rename`; P2CC2: `alarm.ack`,
+/// `alarm.rules.set`, `schedule.set`/`delete`/`run_now`, `outbound.set`/`test`,
+/// `mqtt.set`, `auth.mint`/`revoke`). `event.watch` only asks for events.
+pub const HUB_SERVER_READS: [&str; 15] = [
     "inventory.list",
     "health.get",
     "hub.stats",
@@ -91,6 +106,14 @@ pub const HUB_SERVER_READS: [&str; 8] = [
     "event.export",
     "snapshot.list",
     "snapshot.get",
+    // -- WP P2CC2 -- reads only
+    "alarm.list",
+    "alarm.rules.get",
+    "schedule.list",
+    "outbound.get",
+    "mqtt.get",
+    "mqtt.status",
+    "auth.list",
 ];
 
 /// [`MergedSnapshot::location`]: only in this console's store.
@@ -142,6 +165,19 @@ pub struct HubCaps {
     pub param_api: bool,
     /// `hub.stats` ([`DspiCore::hub_stats`]).
     pub hub_stats: bool,
+    // -- WP P2CC2 --
+    /// `alarm.*` ([`DspiCore::hub_alarms`]).
+    pub alarms: bool,
+    /// `outbound.*` ([`DspiCore::hub_outbound_get`]).
+    pub outbound: bool,
+    /// `schedule.*` ([`DspiCore::hub_schedules`]).
+    pub schedule: bool,
+    /// `mqtt.*` ([`DspiCore::hub_mqtt_get`]).
+    pub mqtt: bool,
+    /// API keys ([`DspiCore::hub_api_keys`]).
+    pub api_keys: bool,
+    /// The REST mirror is on (the hub runs with `--rest`).
+    pub rest: bool,
     /// Every cap of the hub's `hello`, as it sent them.
     pub caps: Vec<String>,
 }
@@ -325,7 +361,8 @@ pub struct HubEventPage {
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HubServerEvent {
-    /// `event.added`, `inventory.changed` or `snapshot.changed`.
+    /// `event.added`, `inventory.changed` or `snapshot.changed`; P2CC2:
+    /// `alarm.changed`, `schedule.ran`.
     pub kind: String,
     /// The device it concerns.
     pub serial: String,
@@ -337,6 +374,12 @@ pub struct HubServerEvent {
     pub snapshot: String,
     /// `snapshot.changed`'s change: `put`, `rename`, `note`, `delete`.
     pub change: String,
+    // -- WP P2CC2 --
+    /// `alarm.changed`'s alarm (raised, raised again, acknowledged or
+    /// cleared).
+    pub alarm: Option<HubAlarm>,
+    /// `schedule.ran`'s run.
+    pub run: Option<HubScheduleRun>,
 }
 
 /// A snapshot on the hub with its document ([`DspiCore::hub_snapshots_get`]).
@@ -434,7 +477,14 @@ pub(crate) struct Events {
 
 /// The kinds of [`HubServerEvent`].
 #[cfg_attr(not(feature = "link"), allow(dead_code))]
-const KINDS: [&str; 3] = ["event.added", "inventory.changed", "snapshot.changed"];
+const KINDS: [&str; 5] = [
+    "event.added",
+    "inventory.changed",
+    "snapshot.changed",
+    // -- WP P2CC2 --
+    "alarm.changed",
+    "schedule.ran",
+];
 
 impl HubServerEvent {
     /// The event in a hub message of type `t`; `None` for any other message.
@@ -443,9 +493,24 @@ impl HubServerEvent {
         if !KINDS.contains(&t) {
             return None;
         }
+        // -- WP P2CC2 --
+        let alarm = (t == "alarm.changed")
+            .then(|| {
+                body.get("alarm")
+                    .filter(|a| a.is_object())
+                    .map(admin::alarm_from)
+            })
+            .flatten();
+        let run = (t == "schedule.ran").then(|| admin::run_from(body));
+        let serial = match &alarm {
+            Some(a) => a.serial.clone(),
+            None => text(body.get("serial")),
+        };
         Some(Self {
             kind: t.to_owned(),
-            serial: text(body.get("serial")),
+            serial,
+            alarm,
+            run,
             record: body
                 .get("record")
                 .filter(|r| r.is_object())
@@ -733,6 +798,13 @@ fn caps_of(on_hub: bool, caps: Vec<String>) -> HubCaps {
         hub_snapshots: has(CAP_HUB_SNAPSHOTS),
         param_api: has(CAP_PARAM_API),
         hub_stats: has(CAP_HUB_STATS),
+        // -- WP P2CC2 --
+        alarms: has(CAP_ALARMS),
+        outbound: has(CAP_OUTBOUND),
+        schedule: has(CAP_SCHEDULE),
+        mqtt: has(CAP_MQTT),
+        api_keys: has(CAP_API_KEYS),
+        rest: has(CAP_REST),
         caps,
     }
 }

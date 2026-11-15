@@ -18,6 +18,8 @@ import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.GuardedApply
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.HubLimitsSet
+// -- WP P2CC2 --
+import se.bofr.dspi.core.HubScheduleRun
 import se.bofr.dspi.core.HubSnapshotRecall
 import se.bofr.dspi.core.IdentifyInfo
 import se.bofr.dspi.core.I2cConfig
@@ -748,6 +750,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.hubSnapshotsRecall(serial, id, guard, timeoutMs)
     }
 
+    // -- WP P2CC2 -- a schedule run now writes its target devices (as the
+    // schedule's principal, on the hub)
+    override fun hubScheduleRunNow(id: String): HubScheduleRun {
+        guard("hubScheduleRunNow")
+        return inner.hubScheduleRunNow(id)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -951,7 +960,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "pasteChannel",
             // -- WP P2CC1 --
             "hubIdentify",
-            "hubSnapshotsRecall"
+            "hubSnapshotsRecall",
+            // -- WP P2CC2 --
+            "hubScheduleRunNow"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1296,7 +1307,28 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "hubSnapshotsDelete",
             "hubSnapshotsSave",
             "hubSnapshotsCopyHere",
-            "snapshotListMerged"
+            "snapshotListMerged",
+            // -- WP P2CC2 -- the hub's admin families: reads, the notice, and
+            // the hub's own settings (alarms, schedules, notifications out,
+            // MQTT, API keys); nothing written to a device (the hub's role
+            // check and the core's read-only mode gate them)
+            "hubAlarms",
+            "hubAlarmAck",
+            "hubAlarmRulesGet",
+            "hubAlarmRulesSet",
+            "hubAlarmNotice",
+            "hubSchedules",
+            "hubScheduleSet",
+            "hubScheduleDelete",
+            "hubOutboundGet",
+            "hubOutboundSet",
+            "hubOutboundTest",
+            "hubMqttGet",
+            "hubMqttSet",
+            "hubMqttStatus",
+            "hubApiKeys",
+            "hubApiKeyMint",
+            "hubApiKeyRevoke"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */
