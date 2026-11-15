@@ -318,6 +318,8 @@ fn wp_p1hl_no_profile_and_a_compliant_device_hold_nothing() {
 
 #[test]
 fn wp_p1hl_the_pin_is_kept_salted_and_slow_and_wrong_pins_wait() {
+    // -- WP FLAKE4 -- a PIN the hex hash can never hold by chance ("4711" could).
+    const PIN: &str = "~flake4~4711~";
     let l = HubLimits::new(None);
     assert!(!l.pin_set("S"));
     // No PIN: unlocking passes, nothing is locked.
@@ -326,13 +328,14 @@ fn wp_p1hl_the_pin_is_kept_salted_and_slow_and_wrong_pins_wait() {
         l.set_pin("S", Some("12")),
         Err(PinRefused::BadPin)
     ));
-    l.set_pin("S", Some("4711")).unwrap();
+    l.set_pin("S", Some(PIN)).unwrap();
     let rec = guard(&l.state).stored.pins["S"].clone();
     assert_eq!(rec.kdf, "pbkdf2-sha256");
     assert!(rec.iterations >= 100_000);
-    assert!(!rec.hash.contains("4711") && !rec.salt.is_empty());
+    assert!(!rec.hash.contains(PIN) && !rec.salt.is_empty());
+    assert!(rec.hash.len() == 64 && rec.hash.bytes().all(|b| b.is_ascii_hexdigit()));
     // Another device's record never matches this one's PIN.
-    assert!(!rec.matches("T", "4711"));
+    assert!(!rec.matches("T", PIN));
     let t0 = Instant::now();
     // -- WP P1DKFIX -- the core's rule: the free tries, then the window.
     for _ in 0..=LOCK_FREE_TRIES {
@@ -342,11 +345,11 @@ fn wp_p1hl_the_pin_is_kept_salted_and_slow_and_wrong_pins_wait() {
         ));
     }
     assert!(matches!(
-        l.unlock("S", 5, "4711", t0),
+        l.unlock("S", 5, PIN, t0),
         Err(PinRefused::Later(_))
     ));
     let later = t0 + Duration::from_millis(LOCK_FIRST_WAIT_MS);
-    l.unlock("S", 5, "4711", later).unwrap();
+    l.unlock("S", 5, PIN, later).unwrap();
     assert!(l.unlocked("S", 5, Role::Control));
     assert!(!l.unlocked("S", 6, Role::Control));
     assert!(l.unlocked("S", 6, Role::Admin), "an Admin needs no PIN");
