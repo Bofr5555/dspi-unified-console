@@ -4252,6 +4252,17 @@ bool dspi_compute_magnitude_curve(const struct FilterParams *filters,
                                   double *out_magnitudes);
 
 /**
+ * The biquad sections of a chain's curve, in cascade order, in JSON: {ok,
+ * value: [{b0, b1, b2, a1, a2}]} (`a0` is 1), what a GPU renderer evaluates
+ * to draw the same curve as `dspi_compute_magnitude_curve`. A null chain has
+ * none. Returns the bytes needed including the NUL, 0 for a panic.
+ */
+uint32_t dspi_curve_sections(const struct FilterParams *filters,
+                             uint32_t num_filters,
+                             char *buf,
+                             uint32_t len);
+
+/**
  * The phase curve of a chain, in degrees, unwrapped if asked, into
  * `out_phases`: `MAGNITUDE_POINTS` doubles. False for a null `out_phases`.
  */
@@ -6313,6 +6324,113 @@ bool dspi_hub_admin_set_listener(struct FfiCore *core,
                                                   const char *event_json,
                                                   void *user_data),
                                  void *user_data);
+
+/**
+ * The master volume `db` as `dspi_set_master_volume` keeps it: -128 (mute)
+ * at or below -128, else 0.5 dB steps within -127..=0. NaN comes back NaN.
+ */
+float dspi_quantize_master_volume(float db);
+
+/**
+ * Core-voltage code `code` in mV on platform `platform_id`, 0 for a code
+ * the chip does not have.
+ */
+uint16_t dspi_vreg_code_mv(uint8_t code, uint8_t platform_id);
+
+/**
+ * Core-voltage code `code` as shown (`1.20 V`, or `code 0x1F`), plain text.
+ * Returns the bytes needed including the NUL, 0 for a panic.
+ */
+uint32_t dspi_vreg_code_label(uint8_t code, uint8_t platform_id, char *buf, uint32_t len);
+
+/**
+ * Platform `platform_id`'s shape in JSON: {ok, platformId, name, known,
+ * numInputChannels, numOutputChannels, numOutputSlots, pdmOutput,
+ * pdmPinIndex, eqWorkerFirst, eqWorkerLast, i2sMaxPairs, multichannelI2s,
+ * adat, upmixer, i2sConfig, crossfeedPairs, maxDelayMs}. Returns the bytes
+ * needed including the NUL, 0 for a panic.
+ */
+uint32_t dspi_platform_shape(uint8_t platform_id, char *buf, uint32_t len);
+
+/**
+ * Every feature name `dspi_feature_present` knows, in JSON: {ok, value:
+ * [names]}. Returns the bytes needed including the NUL, 0 for a panic.
+ */
+uint32_t dspi_known_feature_names(char *buf, uint32_t len);
+
+/**
+ * The firmware's default channel names, inputs then outputs, in JSON: {ok,
+ * value: [names]}. `input_source` names the inputs (`DspState.input_source`);
+ * `output_types` holds `types_len` slot types (1 is I2S); null reads as none. Returns the bytes needed including the NUL, 0 for a
+ * panic.
+ */
+uint32_t dspi_default_channel_names(uint8_t num_inputs,
+                                    uint8_t num_outputs,
+                                    uint8_t input_source,
+                                    const uint8_t *output_types,
+                                    uint32_t types_len,
+                                    char *buf,
+                                    uint32_t len);
+
+/**
+ * The values of choice setting `path` with the Console's words, in JSON:
+ * {ok, value: [{value, key, label}]}, or {ok:false, code:"invalid"} for a
+ * path without labels. Returns the bytes needed including the NUL, 0 for a
+ * null `path` or a panic.
+ */
+uint32_t dspi_enum_value_labels(const char *path, char *buf, uint32_t len);
+
+/**
+ * The open device's parameter-image bytes that `DspState` has no field for,
+ * in JSON: {ok, decoded, i2sBckPinSlavePresent, i2sInputChannelsPresent,
+ * i2sRxPinExtPresent:[3], spdifRxPinExtPresent:[3], adatOutPinPresent}.
+ * Returns the bytes needed including the NUL, 0 for a null handle or a
+ * panic.
+ */
+uint32_t dspi_image_extras(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * A hub's DNS-SD TXT record in JSON: {ok, hubId, name, kind, auth,
+ * deviceCount, serials, path}, or {ok:false, code:"invalid"} when it is no
+ * hub's. `service_name` is the instance name (null reads as empty);
+ * `txt_json` a JSON object of string keys and values. Returns the bytes
+ * needed including the NUL, 0 for a null `txt_json` or a panic.
+ */
+uint32_t dspi_link_parse_txt(const char *service_name,
+                             const char *txt_json,
+                             char *buf,
+                             uint32_t len);
+
+/**
+ * The pin map, JSON `{ok, platformId, assignable, validPins, functions:
+ * [{function, label, pin, holds, choices, i2sAllowed}], holders: [{pin,
+ * function, role, label}]}`. Without a device: nothing assignable and no
+ * functions. 0 for a null handle.
+ */
+uint32_t dspi_pin_map(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Whether function (`kind`, `index`) may move to GPIO `pin`: 0 when it
+ * may, else the `PIN_CONFIG_*` status the firmware would answer (1 invalid
+ * pin or wrong mux, 2 in use, 3 no such function, 4 cannot move now).
+ * 0xFF for a null handle or an unknown kind. The holder of a pin in use is
+ * [`dspi_pin_holder`]'s answer.
+ */
+uint8_t dspi_pin_check(struct FfiCore *core, uint8_t kind, uint8_t index, uint8_t pin);
+
+/**
+ * Who holds GPIO `pin`, not counting function (`exclude_kind`,
+ * `exclude_index`) (`exclude_kind` 0xFF: counting everyone): JSON `{ok,
+ * holder}`, `holder` `{pin, function, role, label}` or null when it is
+ * free. An unknown kind code is `{ok: false, code: "invalid"}`. 0 for a null
+ * handle.
+ */
+uint32_t dspi_pin_holder(struct FfiCore *core,
+                         uint8_t pin,
+                         uint8_t exclude_kind,
+                         uint8_t exclude_index,
+                         char *buf,
+                         uint32_t len);
 
 /**
  * Copy wire channel `ch` (inputs, then outputs) from the mirror, nothing

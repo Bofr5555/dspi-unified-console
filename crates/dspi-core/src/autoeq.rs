@@ -32,6 +32,9 @@ use crate::{DspiError, Result};
 // -- WP P1AQ -- preview and apply to any channel pair (PRO1 T6)
 mod pair;
 pub use pair::*;
+// -- WP WB6K -- a database the host keeps itself (the web)
+mod library;
+pub use library::*;
 
 /// One GET the host is asked to make.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]

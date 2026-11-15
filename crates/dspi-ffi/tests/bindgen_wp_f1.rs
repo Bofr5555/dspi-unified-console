@@ -459,3 +459,49 @@ fn wp_cg34_filter_type_names_are_exported() {
         assert!(swift.contains(item), "{item} is not in the Swift binding");
     }
 }
+
+// -- WP CG-SWS-a --
+#[test]
+fn cgswsa_small_core_exports_are_in_both_bindings() {
+    let kotlin = std::fs::read_to_string(find(&generate("kotlin"), "dspi_core.kt")).unwrap();
+    let swift = std::fs::read_to_string(find(&generate("swift"), "dspi_core.swift")).unwrap();
+    for f in [
+        "quantizeMasterVolume",
+        "curveSections",
+        "vregCodeMv",
+        "vregCodeLabel",
+        "platformShape",
+        "knownFeatureNames",
+        "defaultChannelNames",
+        "enumValueLabels",
+        "bulkImageExtras",
+        "linkParseTxt",
+        "imageExtras",
+    ] {
+        assert!(
+            kotlin.contains(&format!("fun `{f}`")),
+            "{f} is not in the Kotlin binding"
+        );
+        assert!(
+            swift.contains(&format!("func {f}(")),
+            "{f} is not in the Swift binding"
+        );
+    }
+    for r in [
+        "BiquadSection",
+        "PlatformShape",
+        "BulkImageExtras",
+        "EnumValueLabel",
+        "LinkTxtRecord",
+        "LinkTxtEntry",
+    ] {
+        assert!(
+            kotlin.contains(&format!("data class {r}")),
+            "{r} is not in the Kotlin binding"
+        );
+        assert!(
+            swift.contains(&format!("struct {r}")),
+            "{r} is not in the Swift binding"
+        );
+    }
+}

@@ -941,6 +941,10 @@ float dspi_compute_response(const struct FilterParams *filters, uint32_t num_fil
 bool dspi_compute_magnitude_curve(const struct FilterParams *filters,
 uint32_t num_filters,
 double *out_magnitudes);
+uint32_t dspi_curve_sections(const struct FilterParams *filters,
+uint32_t num_filters,
+char *buf,
+uint32_t len);
 bool dspi_compute_phase_curve(const struct FilterParams *filters,
 uint32_t num_filters,
 bool unwrap,
@@ -1476,6 +1480,32 @@ void (*callback)(const char *kind,
 const char *event_json,
 void *user_data),
 void *user_data);
+float dspi_quantize_master_volume(float db);
+uint16_t dspi_vreg_code_mv(uint8_t code, uint8_t platform_id);
+uint32_t dspi_vreg_code_label(uint8_t code, uint8_t platform_id, char *buf, uint32_t len);
+uint32_t dspi_platform_shape(uint8_t platform_id, char *buf, uint32_t len);
+uint32_t dspi_known_feature_names(char *buf, uint32_t len);
+uint32_t dspi_default_channel_names(uint8_t num_inputs,
+uint8_t num_outputs,
+uint8_t input_source,
+const uint8_t *output_types,
+uint32_t types_len,
+char *buf,
+uint32_t len);
+uint32_t dspi_enum_value_labels(const char *path, char *buf, uint32_t len);
+uint32_t dspi_image_extras(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_link_parse_txt(const char *service_name,
+const char *txt_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_pin_map(struct FfiCore *core, char *buf, uint32_t len);
+uint8_t dspi_pin_check(struct FfiCore *core, uint8_t kind, uint8_t index, uint8_t pin);
+uint32_t dspi_pin_holder(struct FfiCore *core,
+uint8_t pin,
+uint8_t exclude_kind,
+uint8_t exclude_index,
+char *buf,
+uint32_t len);
 uint32_t dspi_copy_channel(struct FfiCore *core, uint8_t ch, char *buf, uint32_t len);
 uint32_t dspi_paste_channel(struct FfiCore *core,
 const char *clip,

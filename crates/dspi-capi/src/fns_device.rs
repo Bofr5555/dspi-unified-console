@@ -1103,6 +1103,26 @@ pub extern "C" fn dspi_compute_magnitude_curve(
     })
 }
 
+// -- WP CG-SWS-a --
+/// The biquad sections of a chain's curve, in cascade order, in JSON: {ok,
+/// value: [{b0, b1, b2, a1, a2}]} (`a0` is 1), what a GPU renderer evaluates
+/// to draw the same curve as `dspi_compute_magnitude_curve`. A null chain has
+/// none. Returns the bytes needed including the NUL, 0 for a panic.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_curve_sections(
+    filters: *const FilterParams,
+    num_filters: u32,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    guard(0, || {
+        let sections = dspi_core::curve_sections(chain(filters, num_filters));
+        let reply = serde_json::to_string(&serde_json::json!({ "ok": true, "value": sections }))
+            .unwrap_or_default();
+        copy_text(&reply, buf, len)
+    })
+}
+
 /// The phase curve of a chain, in degrees, unwrapped if asked, into
 /// `out_phases`: `MAGNITUDE_POINTS` doubles. False for a null `out_phases`.
 #[unsafe(no_mangle)]

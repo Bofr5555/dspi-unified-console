@@ -11,6 +11,8 @@ import type { AutoEqPreviewRecord } from "../../core/protocol";
 import type { Session } from "../../ui/session";
 import { noticeOf } from "../../ui/texts";
 import { download } from "../snapshots/model";
+// -- WP WB6K -- the AutoEQ database: search, favourites
+import { ProfileBrowser } from "../files/ProfileBrowser";
 
 /** A channel as the EQ screen lists it. */
 export interface PairChannel {
@@ -57,7 +59,7 @@ export function AutoEqPanel(props: {
     pairs.findIndex((p) => p.left.wire === props.wire || p.right.wire === props.wire),
   );
   const [pair, setPair] = useState(near);
-  const [profile, setProfile] = useState<{ name: string; entry: unknown } | null>(null);
+  const [profile, setProfile] = useState<{ name: string; entry: unknown; id?: string } | null>(null);
   const [applyLevel, setApplyLevel] = useState(false);
   const [preview, setPreview] = useState<AutoEqPreviewRecord | null>(null);
   const [outcome, setOutcome] = useState<{ lines: string[]; before: string; tone: "info" | "warn" | "error" } | null>(null);
@@ -135,6 +137,17 @@ export function AutoEqPanel(props: {
         <input ref={file} type="file" hidden accept=".json,application/json" aria-label="AutoEQ profile" onChange={(e) => void load(e.target as HTMLInputElement)} />
         <span class="autoeq-name">{profile ? profile.name : "No profile chosen"}</span>
       </div>
+      {/* -- WP WB6K -- */}
+      <ProfileBrowser
+        session={session}
+        chosen={profile?.id ?? ""}
+        onChoose={(name, id, entry) => {
+          setProfile({ name, entry, id });
+          show(null);
+          setOutcome(null);
+        }}
+        onError={(text) => setOutcome({ lines: [text], before: "", tone: "error" })}
+      />
       <div class="autoeq-row">
         <label>
           Channel pair{" "}

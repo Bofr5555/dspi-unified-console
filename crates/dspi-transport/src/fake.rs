@@ -75,13 +75,15 @@
 //! - **Control surfaces** (with [`FakeOptions::surfaces`], `fake/surfaces.rs`,
 //!   WP CG16): the record store, the firmware's refusal rules, save and revert,
 //!   aux outputs, macros, IR learning and the display status. Off, they stall.
+//! - **Pins** (`fake/pins.rs`, WP CG-SWS-b): the pin SETs (output pins, BCK
+//!   and the slave pair, MCK, S/PDIF and I2S RX, ADAT out and in), the
+//!   output-pin GET and the I2S clock-pin mode, with the firmware's statuses
+//!   and its `is_pin_in_use` (no control-interface or control-surface claims).
 //! - **Everything else stalls**, in both directions, by default: a fake
 //!   that stalls makes a missing model visible. The firmware ACKs every
 //!   unhandled OUT request on USB except `REQ_EXTENSION`;
 //!   [`FakeOptions::ack_unknown_sets`] does the same. Not modelled at all
-//!   (GETs stall): pin SETs (output pins,
-//!   BCK, MCK, S/PDIF/I2S/ADAT RX pins) and output-pin GETs, the I2S
-//!   clock-pin mode, the S/PDIF RX, ADAT and I2S-slave status reads, the
+//!   (GETs stall): the S/PDIF RX, ADAT and I2S-slave status reads, the
 //!   control-interface status, the Core 1 mode read, clock diagnostics, the
 //!   DAC mute test pulse and the bootloader. The `SCALARS`/`FEATURE_SCALARS` tables and the per-opcode
 //!   matches in `State::get_other`/`set_other`/`get_feature`/`set_feature`
@@ -152,6 +154,8 @@ mod subharm;
 // -- WP P1OF --
 mod document;
 pub use document::DocumentSeed;
+// -- WP CG-SWS-b -- the pin setters
+mod pins;
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
@@ -1552,6 +1556,10 @@ impl State {
         }
         // -- WP CG22 --
         if let Some(r) = self.get_analysis(opcode, value) {
+            return r.ok_or(TransportError::Stalled { opcode });
+        }
+        // -- WP CG-SWS-b --
+        if let Some(r) = self.get_pin(opcode, value) {
             return r.ok_or(TransportError::Stalled { opcode });
         }
         if let Some(r) = self.get_feature(opcode, value) {

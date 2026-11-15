@@ -2328,7 +2328,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
      * answers whether the parameter image carried the clock-pin mode. False
      * with no device, before the probe, and for a name the probe does not
-     * know.
+     * know. -- WP CG-SWS-a -- The names with no probe (`first_order_pass`,
+     * `subharmonic_extended`, `stereo_upmixer`, ...) are answered from the
+     * wire format, firmware version and platform the connect read;
+     * [`known_feature_names`] lists every name.
      */
     func featurePresent(name: String)  -> Bool
     
@@ -3038,6 +3041,12 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func identify(seconds: UInt8, toneOutput: UInt8?) throws 
     
     /**
+     * [`crate::bulk_image_extras`] of the mirror's parameter image: the
+     * bytes `DspState` has no field for. All false with no image.
+     */
+    func imageExtras()  -> BulkImageExtras
+    
+    /**
      * DSPis the last scan saw but could not open: no permission (Linux udev
      * rule), no WinUSB binding, or held by another program.
      */
@@ -3530,6 +3539,28 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * transfer errors.
      */
     func pasteChannel(clip: ChannelClip, ch: UInt8, options: ChannelPasteOptions) throws 
+    
+    /**
+     * Whether `function` may move to `pin`: `None` when it may, else why
+     * not (with the status the firmware would answer and, when another
+     * function holds it, which). From the mirror: no device I/O. The pin
+     * setters run this check before they send.
+     */
+    func pinCheck(function: PinFunction, pin: UInt8)  -> PinRefusal?
+    
+    /**
+     * The function holding `pin`, not counting `excluding` (a picker passes
+     * its own function), or `None` when it is free. From the mirror.
+     */
+    func pinHolder(pin: UInt8, excluding: PinFunction?)  -> PinHolder?
+    
+    /**
+     * The pin map (WP CG-SWS-b): the platform's valid GPIOs, each function
+     * with its pin, whether it holds it and the pins it may move to, and
+     * who holds every held GPIO. From the mirror and the last
+     * control-surface read: no device I/O. Empty without a device.
+     */
+    func pinMap()  -> PinMap
     
     /**
      * Compare the USB bus with the last poll and report arrivals and
@@ -6815,7 +6846,10 @@ open func factoryResetConfirmed(token: String?)throws   {try rustCallWithError(F
      * without comparing versions. `i2s_clock_pin_mode`, which has no probe,
      * answers whether the parameter image carried the clock-pin mode. False
      * with no device, before the probe, and for a name the probe does not
-     * know.
+     * know. -- WP CG-SWS-a -- The names with no probe (`first_order_pass`,
+     * `subharmonic_extended`, `stereo_upmixer`, ...) are answered from the
+     * wire format, firmware version and platform the connect read;
+     * [`known_feature_names`] lists every name.
      */
 open func featurePresent(name: String) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
@@ -7867,6 +7901,17 @@ open func identify(seconds: UInt8, toneOutput: UInt8?)throws   {try rustCallWith
 }
     
     /**
+     * [`crate::bulk_image_extras`] of the mirror's parameter image: the
+     * bytes `DspState` has no field for. All false with no image.
+     */
+open func imageExtras() -> BulkImageExtras  {
+    return try!  FfiConverterTypeBulkImageExtras_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_image_extras(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * DSPis the last scan saw but could not open: no permission (Linux udev
      * rule), no WinUSB binding, or held by another program.
      */
@@ -8608,6 +8653,47 @@ open func pasteChannel(clip: ChannelClip, ch: UInt8, options: ChannelPasteOption
         FfiConverterTypeChannelPasteOptions_lower(options),$0
     )
 }
+}
+    
+    /**
+     * Whether `function` may move to `pin`: `None` when it may, else why
+     * not (with the status the firmware would answer and, when another
+     * function holds it, which). From the mirror: no device I/O. The pin
+     * setters run this check before they send.
+     */
+open func pinCheck(function: PinFunction, pin: UInt8) -> PinRefusal?  {
+    return try!  FfiConverterOptionTypePinRefusal.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_pin_check(self.uniffiClonePointer(),
+        FfiConverterTypePinFunction_lower(function),
+        FfiConverterUInt8.lower(pin),$0
+    )
+})
+}
+    
+    /**
+     * The function holding `pin`, not counting `excluding` (a picker passes
+     * its own function), or `None` when it is free. From the mirror.
+     */
+open func pinHolder(pin: UInt8, excluding: PinFunction?) -> PinHolder?  {
+    return try!  FfiConverterOptionTypePinHolder.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_pin_holder(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(pin),
+        FfiConverterOptionTypePinFunction.lower(excluding),$0
+    )
+})
+}
+    
+    /**
+     * The pin map (WP CG-SWS-b): the platform's valid GPIOs, each function
+     * with its pin, whether it holds it and the pins it may move to, and
+     * who holds every held GPIO. From the mirror and the last
+     * control-surface read: no device I/O. Empty without a device.
+     */
+open func pinMap() -> PinMap  {
+    return try!  FfiConverterTypePinMap_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_pin_map(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -19165,6 +19251,135 @@ public func FfiConverterTypeAutoEqRebuildProgress_lower(_ value: AutoEqRebuildPr
 
 
 /**
+ * One biquad section of a response curve ([`crate::curve_sections`]):
+ * `H(z) = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2)`, normalised so
+ * that `a0` is 1, at the device's sample rate.
+ */
+public struct BiquadSection {
+    /**
+     * Feed-forward coefficient of `z^0`.
+     */
+    public var b0: Double
+    /**
+     * Feed-forward coefficient of `z^-1`.
+     */
+    public var b1: Double
+    /**
+     * Feed-forward coefficient of `z^-2`.
+     */
+    public var b2: Double
+    /**
+     * Feedback coefficient of `z^-1`.
+     */
+    public var a1: Double
+    /**
+     * Feedback coefficient of `z^-2`.
+     */
+    public var a2: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Feed-forward coefficient of `z^0`.
+         */b0: Double, 
+        /**
+         * Feed-forward coefficient of `z^-1`.
+         */b1: Double, 
+        /**
+         * Feed-forward coefficient of `z^-2`.
+         */b2: Double, 
+        /**
+         * Feedback coefficient of `z^-1`.
+         */a1: Double, 
+        /**
+         * Feedback coefficient of `z^-2`.
+         */a2: Double) {
+        self.b0 = b0
+        self.b1 = b1
+        self.b2 = b2
+        self.a1 = a1
+        self.a2 = a2
+    }
+}
+
+#if compiler(>=6)
+extension BiquadSection: Sendable {}
+#endif
+
+
+extension BiquadSection: Equatable, Hashable {
+    public static func ==(lhs: BiquadSection, rhs: BiquadSection) -> Bool {
+        if lhs.b0 != rhs.b0 {
+            return false
+        }
+        if lhs.b1 != rhs.b1 {
+            return false
+        }
+        if lhs.b2 != rhs.b2 {
+            return false
+        }
+        if lhs.a1 != rhs.a1 {
+            return false
+        }
+        if lhs.a2 != rhs.a2 {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(b0)
+        hasher.combine(b1)
+        hasher.combine(b2)
+        hasher.combine(a1)
+        hasher.combine(a2)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBiquadSection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BiquadSection {
+        return
+            try BiquadSection(
+                b0: FfiConverterDouble.read(from: &buf), 
+                b1: FfiConverterDouble.read(from: &buf), 
+                b2: FfiConverterDouble.read(from: &buf), 
+                a1: FfiConverterDouble.read(from: &buf), 
+                a2: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BiquadSection, into buf: inout [UInt8]) {
+        FfiConverterDouble.write(value.b0, into: &buf)
+        FfiConverterDouble.write(value.b1, into: &buf)
+        FfiConverterDouble.write(value.b2, into: &buf)
+        FfiConverterDouble.write(value.a1, into: &buf)
+        FfiConverterDouble.write(value.a2, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiquadSection_lift(_ buf: RustBuffer) throws -> BiquadSection {
+    return try FfiConverterTypeBiquadSection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiquadSection_lower(_ value: BiquadSection) -> RustBuffer {
+    return FfiConverterTypeBiquadSection.lower(value)
+}
+
+
+/**
  * How many boards in bootloader mode are attached, per chip.
  */
 public struct BootloaderCounts {
@@ -19486,6 +19701,153 @@ public func FfiConverterTypeBufferStats_lift(_ buf: RustBuffer) throws -> Buffer
 #endif
 public func FfiConverterTypeBufferStats_lower(_ value: BufferStats) -> RustBuffer {
     return FfiConverterTypeBufferStats.lower(value)
+}
+
+
+/**
+ * Bytes of the parameter image that `DspState` has no field for
+ * ([`crate::bulk_image_extras`]). A "present" flag is the firmware's
+ * "0 is absent, keep the last value" byte, read on the V32 layout.
+ */
+public struct BulkImageExtras {
+    /**
+     * The image is a whole one of this build's wire format (its first byte
+     * is the version): the mirror was decoded from it.
+     */
+    public var decoded: Bool
+    /**
+     * The image carried the I2S slave bit clock pin.
+     */
+    public var i2sBckPinSlavePresent: Bool
+    /**
+     * The image carried the I2S input channel count.
+     */
+    public var i2sInputChannelsPresent: Bool
+    /**
+     * Per I2S data input 2..4: the image carried its pin.
+     */
+    public var i2sRxPinExtPresent: [Bool]
+    /**
+     * Per S/PDIF input 2..4: the image carried its pin.
+     */
+    public var spdifRxPinExtPresent: [Bool]
+    /**
+     * The image carried the ADAT output pin; without it the firmware uses
+     * its default pin.
+     */
+    public var adatOutPinPresent: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The image is a whole one of this build's wire format (its first byte
+         * is the version): the mirror was decoded from it.
+         */decoded: Bool, 
+        /**
+         * The image carried the I2S slave bit clock pin.
+         */i2sBckPinSlavePresent: Bool, 
+        /**
+         * The image carried the I2S input channel count.
+         */i2sInputChannelsPresent: Bool, 
+        /**
+         * Per I2S data input 2..4: the image carried its pin.
+         */i2sRxPinExtPresent: [Bool], 
+        /**
+         * Per S/PDIF input 2..4: the image carried its pin.
+         */spdifRxPinExtPresent: [Bool], 
+        /**
+         * The image carried the ADAT output pin; without it the firmware uses
+         * its default pin.
+         */adatOutPinPresent: Bool) {
+        self.decoded = decoded
+        self.i2sBckPinSlavePresent = i2sBckPinSlavePresent
+        self.i2sInputChannelsPresent = i2sInputChannelsPresent
+        self.i2sRxPinExtPresent = i2sRxPinExtPresent
+        self.spdifRxPinExtPresent = spdifRxPinExtPresent
+        self.adatOutPinPresent = adatOutPinPresent
+    }
+}
+
+#if compiler(>=6)
+extension BulkImageExtras: Sendable {}
+#endif
+
+
+extension BulkImageExtras: Equatable, Hashable {
+    public static func ==(lhs: BulkImageExtras, rhs: BulkImageExtras) -> Bool {
+        if lhs.decoded != rhs.decoded {
+            return false
+        }
+        if lhs.i2sBckPinSlavePresent != rhs.i2sBckPinSlavePresent {
+            return false
+        }
+        if lhs.i2sInputChannelsPresent != rhs.i2sInputChannelsPresent {
+            return false
+        }
+        if lhs.i2sRxPinExtPresent != rhs.i2sRxPinExtPresent {
+            return false
+        }
+        if lhs.spdifRxPinExtPresent != rhs.spdifRxPinExtPresent {
+            return false
+        }
+        if lhs.adatOutPinPresent != rhs.adatOutPinPresent {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(decoded)
+        hasher.combine(i2sBckPinSlavePresent)
+        hasher.combine(i2sInputChannelsPresent)
+        hasher.combine(i2sRxPinExtPresent)
+        hasher.combine(spdifRxPinExtPresent)
+        hasher.combine(adatOutPinPresent)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBulkImageExtras: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BulkImageExtras {
+        return
+            try BulkImageExtras(
+                decoded: FfiConverterBool.read(from: &buf), 
+                i2sBckPinSlavePresent: FfiConverterBool.read(from: &buf), 
+                i2sInputChannelsPresent: FfiConverterBool.read(from: &buf), 
+                i2sRxPinExtPresent: FfiConverterSequenceBool.read(from: &buf), 
+                spdifRxPinExtPresent: FfiConverterSequenceBool.read(from: &buf), 
+                adatOutPinPresent: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BulkImageExtras, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.decoded, into: &buf)
+        FfiConverterBool.write(value.i2sBckPinSlavePresent, into: &buf)
+        FfiConverterBool.write(value.i2sInputChannelsPresent, into: &buf)
+        FfiConverterSequenceBool.write(value.i2sRxPinExtPresent, into: &buf)
+        FfiConverterSequenceBool.write(value.spdifRxPinExtPresent, into: &buf)
+        FfiConverterBool.write(value.adatOutPinPresent, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBulkImageExtras_lift(_ buf: RustBuffer) throws -> BulkImageExtras {
+    return try FfiConverterTypeBulkImageExtras.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBulkImageExtras_lower(_ value: BulkImageExtras) -> RustBuffer {
+    return FfiConverterTypeBulkImageExtras.lower(value)
 }
 
 
@@ -22497,6 +22859,108 @@ public func FfiConverterTypeDspState_lift(_ buf: RustBuffer) throws -> DspState 
 #endif
 public func FfiConverterTypeDspState_lower(_ value: DspState) -> RustBuffer {
     return FfiConverterTypeDspState.lower(value)
+}
+
+
+/**
+ * One value of a choice setting and the words a client shows for it
+ * ([`crate::enum_value_labels`]).
+ */
+public struct EnumValueLabel {
+    /**
+     * The value as written to the setting.
+     */
+    public var value: UInt8
+    /**
+     * The registry's name for the value (`passive`, `percussive`, ...), or
+     * the number for a numbered setting.
+     */
+    public var key: String
+    /**
+     * What the Console shows for it.
+     */
+    public var label: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The value as written to the setting.
+         */value: UInt8, 
+        /**
+         * The registry's name for the value (`passive`, `percussive`, ...), or
+         * the number for a numbered setting.
+         */key: String, 
+        /**
+         * What the Console shows for it.
+         */label: String) {
+        self.value = value
+        self.key = key
+        self.label = label
+    }
+}
+
+#if compiler(>=6)
+extension EnumValueLabel: Sendable {}
+#endif
+
+
+extension EnumValueLabel: Equatable, Hashable {
+    public static func ==(lhs: EnumValueLabel, rhs: EnumValueLabel) -> Bool {
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(value)
+        hasher.combine(key)
+        hasher.combine(label)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEnumValueLabel: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EnumValueLabel {
+        return
+            try EnumValueLabel(
+                value: FfiConverterUInt8.read(from: &buf), 
+                key: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EnumValueLabel, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.value, into: &buf)
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEnumValueLabel_lift(_ buf: RustBuffer) throws -> EnumValueLabel {
+    return try FfiConverterTypeEnumValueLabel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEnumValueLabel_lower(_ value: EnumValueLabel) -> RustBuffer {
+    return FfiConverterTypeEnumValueLabel.lower(value)
 }
 
 
@@ -26862,6 +27326,247 @@ public func FfiConverterTypeLinkStatus_lower(_ value: LinkStatus) -> RustBuffer 
 
 
 /**
+ * One key and value of a DNS-SD TXT record ([`crate::link_parse_txt`]).
+ */
+public struct LinkTxtEntry {
+    /**
+     * The key (`v`, `hid`, ...).
+     */
+    public var key: String
+    /**
+     * Its value; empty for a key without one.
+     */
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The key (`v`, `hid`, ...).
+         */key: String, 
+        /**
+         * Its value; empty for a key without one.
+         */value: String) {
+        self.key = key
+        self.value = value
+    }
+}
+
+#if compiler(>=6)
+extension LinkTxtEntry: Sendable {}
+#endif
+
+
+extension LinkTxtEntry: Equatable, Hashable {
+    public static func ==(lhs: LinkTxtEntry, rhs: LinkTxtEntry) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(value)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkTxtEntry: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkTxtEntry {
+        return
+            try LinkTxtEntry(
+                key: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkTxtEntry, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkTxtEntry_lift(_ buf: RustBuffer) throws -> LinkTxtEntry {
+    return try FfiConverterTypeLinkTxtEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkTxtEntry_lower(_ value: LinkTxtEntry) -> RustBuffer {
+    return FfiConverterTypeLinkTxtEntry.lower(value)
+}
+
+
+/**
+ * A hub as its DNS-SD TXT record describes it ([`crate::link_parse_txt`]),
+ * before an address is resolved.
+ */
+public struct LinkTxtRecord {
+    /**
+     * The `hid`, lowercase.
+     */
+    public var hubId: String
+    /**
+     * The instance name, safe to show (the `hid` when it has none).
+     */
+    public var name: String
+    /**
+     * `console`, `bridge` or `unknown`.
+     */
+    public var kind: String
+    /**
+     * `none` or `pin`.
+     */
+    public var auth: String
+    /**
+     * Devices the hub shares.
+     */
+    public var deviceCount: UInt32
+    /**
+     * Their serials, when the hub lists them.
+     */
+    public var serials: [String]
+    /**
+     * The WebSocket path.
+     */
+    public var path: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The `hid`, lowercase.
+         */hubId: String, 
+        /**
+         * The instance name, safe to show (the `hid` when it has none).
+         */name: String, 
+        /**
+         * `console`, `bridge` or `unknown`.
+         */kind: String, 
+        /**
+         * `none` or `pin`.
+         */auth: String, 
+        /**
+         * Devices the hub shares.
+         */deviceCount: UInt32, 
+        /**
+         * Their serials, when the hub lists them.
+         */serials: [String], 
+        /**
+         * The WebSocket path.
+         */path: String) {
+        self.hubId = hubId
+        self.name = name
+        self.kind = kind
+        self.auth = auth
+        self.deviceCount = deviceCount
+        self.serials = serials
+        self.path = path
+    }
+}
+
+#if compiler(>=6)
+extension LinkTxtRecord: Sendable {}
+#endif
+
+
+extension LinkTxtRecord: Equatable, Hashable {
+    public static func ==(lhs: LinkTxtRecord, rhs: LinkTxtRecord) -> Bool {
+        if lhs.hubId != rhs.hubId {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.auth != rhs.auth {
+            return false
+        }
+        if lhs.deviceCount != rhs.deviceCount {
+            return false
+        }
+        if lhs.serials != rhs.serials {
+            return false
+        }
+        if lhs.path != rhs.path {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(hubId)
+        hasher.combine(name)
+        hasher.combine(kind)
+        hasher.combine(auth)
+        hasher.combine(deviceCount)
+        hasher.combine(serials)
+        hasher.combine(path)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLinkTxtRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LinkTxtRecord {
+        return
+            try LinkTxtRecord(
+                hubId: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                auth: FfiConverterString.read(from: &buf), 
+                deviceCount: FfiConverterUInt32.read(from: &buf), 
+                serials: FfiConverterSequenceString.read(from: &buf), 
+                path: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LinkTxtRecord, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.hubId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.auth, into: &buf)
+        FfiConverterUInt32.write(value.deviceCount, into: &buf)
+        FfiConverterSequenceString.write(value.serials, into: &buf)
+        FfiConverterString.write(value.path, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkTxtRecord_lift(_ buf: RustBuffer) throws -> LinkTxtRecord {
+    return try FfiConverterTypeLinkTxtRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLinkTxtRecord_lower(_ value: LinkTxtRecord) -> RustBuffer {
+    return FfiConverterTypeLinkTxtRecord.lower(value)
+}
+
+
+/**
  * The open device's installer lock on this console
  * ([`DspiCore::installer_lock_state`]).
  */
@@ -29549,6 +30254,588 @@ public func FfiConverterTypePdmBufferStats_lower(_ value: PdmBufferStats) -> Rus
 
 
 /**
+ * One function: its kind and, for the indexed kinds, which one.
+ */
+public struct PinFunction {
+    /**
+     * What it is.
+     */
+    public var kind: PinFunctionKind
+    /**
+     * Which one (output, input, pair or slot); 0 for the single ones.
+     */
+    public var index: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * What it is.
+         */kind: PinFunctionKind, 
+        /**
+         * Which one (output, input, pair or slot); 0 for the single ones.
+         */index: UInt8) {
+        self.kind = kind
+        self.index = index
+    }
+}
+
+#if compiler(>=6)
+extension PinFunction: Sendable {}
+#endif
+
+
+extension PinFunction: Equatable, Hashable {
+    public static func ==(lhs: PinFunction, rhs: PinFunction) -> Bool {
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.index != rhs.index {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(kind)
+        hasher.combine(index)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinFunction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinFunction {
+        return
+            try PinFunction(
+                kind: FfiConverterTypePinFunctionKind.read(from: &buf), 
+                index: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PinFunction, into buf: inout [UInt8]) {
+        FfiConverterTypePinFunctionKind.write(value.kind, into: &buf)
+        FfiConverterUInt8.write(value.index, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunction_lift(_ buf: RustBuffer) throws -> PinFunction {
+    return try FfiConverterTypePinFunction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunction_lower(_ value: PinFunction) -> RustBuffer {
+    return FfiConverterTypePinFunction.lower(value)
+}
+
+
+/**
+ * One function of this device: its pin, whether it holds it, and the pins
+ * it may move to.
+ */
+public struct PinFunctionInfo {
+    /**
+     * Which function.
+     */
+    public var function: PinFunction
+    /**
+     * Its name, e.g. "Output 1", "S/PDIF 2 RX", "UART TX".
+     */
+    public var label: String
+    /**
+     * Its GPIO, [`PIN_NONE`] when it has none.
+     */
+    public var pin: UInt8
+    /**
+     * Whether it holds that pin now (a disabled feature holds nothing).
+     */
+    public var holds: Bool
+    /**
+     * The GPIOs [`pin_check`] accepts for it, its own included, in order.
+     * For a disabled optional S/PDIF input, without the pins another
+     * function holds: it could store one, but never be enabled on it.
+     * Empty where nothing is assignable.
+     */
+    public var choices: Data
+    /**
+     * Output slots: whether the slot may be switched to I2S (the STM32H723's
+     * SAI rule; always on an RP2040/RP2350). False for everything else.
+     */
+    public var i2sAllowed: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Which function.
+         */function: PinFunction, 
+        /**
+         * Its name, e.g. "Output 1", "S/PDIF 2 RX", "UART TX".
+         */label: String, 
+        /**
+         * Its GPIO, [`PIN_NONE`] when it has none.
+         */pin: UInt8, 
+        /**
+         * Whether it holds that pin now (a disabled feature holds nothing).
+         */holds: Bool, 
+        /**
+         * The GPIOs [`pin_check`] accepts for it, its own included, in order.
+         * For a disabled optional S/PDIF input, without the pins another
+         * function holds: it could store one, but never be enabled on it.
+         * Empty where nothing is assignable.
+         */choices: Data, 
+        /**
+         * Output slots: whether the slot may be switched to I2S (the STM32H723's
+         * SAI rule; always on an RP2040/RP2350). False for everything else.
+         */i2sAllowed: Bool) {
+        self.function = function
+        self.label = label
+        self.pin = pin
+        self.holds = holds
+        self.choices = choices
+        self.i2sAllowed = i2sAllowed
+    }
+}
+
+#if compiler(>=6)
+extension PinFunctionInfo: Sendable {}
+#endif
+
+
+extension PinFunctionInfo: Equatable, Hashable {
+    public static func ==(lhs: PinFunctionInfo, rhs: PinFunctionInfo) -> Bool {
+        if lhs.function != rhs.function {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        if lhs.pin != rhs.pin {
+            return false
+        }
+        if lhs.holds != rhs.holds {
+            return false
+        }
+        if lhs.choices != rhs.choices {
+            return false
+        }
+        if lhs.i2sAllowed != rhs.i2sAllowed {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(function)
+        hasher.combine(label)
+        hasher.combine(pin)
+        hasher.combine(holds)
+        hasher.combine(choices)
+        hasher.combine(i2sAllowed)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinFunctionInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinFunctionInfo {
+        return
+            try PinFunctionInfo(
+                function: FfiConverterTypePinFunction.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                pin: FfiConverterUInt8.read(from: &buf), 
+                holds: FfiConverterBool.read(from: &buf), 
+                choices: FfiConverterData.read(from: &buf), 
+                i2sAllowed: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PinFunctionInfo, into buf: inout [UInt8]) {
+        FfiConverterTypePinFunction.write(value.function, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterUInt8.write(value.pin, into: &buf)
+        FfiConverterBool.write(value.holds, into: &buf)
+        FfiConverterData.write(value.choices, into: &buf)
+        FfiConverterBool.write(value.i2sAllowed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunctionInfo_lift(_ buf: RustBuffer) throws -> PinFunctionInfo {
+    return try FfiConverterTypePinFunctionInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunctionInfo_lower(_ value: PinFunctionInfo) -> RustBuffer {
+    return FfiConverterTypePinFunctionInfo.lower(value)
+}
+
+
+/**
+ * One GPIO and the function holding it.
+ */
+public struct PinHolder {
+    /**
+     * The GPIO.
+     */
+    public var pin: UInt8
+    /**
+     * The function holding it (BCK's also holds LRCLK, BCK + 1).
+     */
+    public var function: PinFunction
+    /**
+     * For grouping.
+     */
+    public var role: PinHolderRole
+    /**
+     * The Console's owner name, e.g. "Output 1", "I2S LRCLK", "UART
+     * Control" (English; `function` is there to translate from).
+     */
+    public var label: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The GPIO.
+         */pin: UInt8, 
+        /**
+         * The function holding it (BCK's also holds LRCLK, BCK + 1).
+         */function: PinFunction, 
+        /**
+         * For grouping.
+         */role: PinHolderRole, 
+        /**
+         * The Console's owner name, e.g. "Output 1", "I2S LRCLK", "UART
+         * Control" (English; `function` is there to translate from).
+         */label: String) {
+        self.pin = pin
+        self.function = function
+        self.role = role
+        self.label = label
+    }
+}
+
+#if compiler(>=6)
+extension PinHolder: Sendable {}
+#endif
+
+
+extension PinHolder: Equatable, Hashable {
+    public static func ==(lhs: PinHolder, rhs: PinHolder) -> Bool {
+        if lhs.pin != rhs.pin {
+            return false
+        }
+        if lhs.function != rhs.function {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(pin)
+        hasher.combine(function)
+        hasher.combine(role)
+        hasher.combine(label)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinHolder: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinHolder {
+        return
+            try PinHolder(
+                pin: FfiConverterUInt8.read(from: &buf), 
+                function: FfiConverterTypePinFunction.read(from: &buf), 
+                role: FfiConverterTypePinHolderRole.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PinHolder, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.pin, into: &buf)
+        FfiConverterTypePinFunction.write(value.function, into: &buf)
+        FfiConverterTypePinHolderRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinHolder_lift(_ buf: RustBuffer) throws -> PinHolder {
+    return try FfiConverterTypePinHolder.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinHolder_lower(_ value: PinHolder) -> RustBuffer {
+    return FfiConverterTypePinHolder.lower(value)
+}
+
+
+/**
+ * The whole map.
+ */
+public struct PinMap {
+    /**
+     * The platform the rules are for (`DspState.platform_id`).
+     */
+    public var platformId: UInt8
+    /**
+     * Whether this platform has assignable pins (RP2040 and RP2350).
+     */
+    public var assignable: Bool
+    /**
+     * The platform's valid GPIOs, in order; empty where nothing is
+     * assignable.
+     */
+    public var validPins: Data
+    /**
+     * The functions this device has, in the Console's order.
+     */
+    public var functions: [PinFunctionInfo]
+    /**
+     * Who holds each held GPIO, in pin order; the first claim wins where
+     * two share one (the ADAT loopback shows as "ADAT Output").
+     */
+    public var holders: [PinHolder]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The platform the rules are for (`DspState.platform_id`).
+         */platformId: UInt8, 
+        /**
+         * Whether this platform has assignable pins (RP2040 and RP2350).
+         */assignable: Bool, 
+        /**
+         * The platform's valid GPIOs, in order; empty where nothing is
+         * assignable.
+         */validPins: Data, 
+        /**
+         * The functions this device has, in the Console's order.
+         */functions: [PinFunctionInfo], 
+        /**
+         * Who holds each held GPIO, in pin order; the first claim wins where
+         * two share one (the ADAT loopback shows as "ADAT Output").
+         */holders: [PinHolder]) {
+        self.platformId = platformId
+        self.assignable = assignable
+        self.validPins = validPins
+        self.functions = functions
+        self.holders = holders
+    }
+}
+
+#if compiler(>=6)
+extension PinMap: Sendable {}
+#endif
+
+
+extension PinMap: Equatable, Hashable {
+    public static func ==(lhs: PinMap, rhs: PinMap) -> Bool {
+        if lhs.platformId != rhs.platformId {
+            return false
+        }
+        if lhs.assignable != rhs.assignable {
+            return false
+        }
+        if lhs.validPins != rhs.validPins {
+            return false
+        }
+        if lhs.functions != rhs.functions {
+            return false
+        }
+        if lhs.holders != rhs.holders {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(platformId)
+        hasher.combine(assignable)
+        hasher.combine(validPins)
+        hasher.combine(functions)
+        hasher.combine(holders)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinMap: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinMap {
+        return
+            try PinMap(
+                platformId: FfiConverterUInt8.read(from: &buf), 
+                assignable: FfiConverterBool.read(from: &buf), 
+                validPins: FfiConverterData.read(from: &buf), 
+                functions: FfiConverterSequenceTypePinFunctionInfo.read(from: &buf), 
+                holders: FfiConverterSequenceTypePinHolder.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PinMap, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.platformId, into: &buf)
+        FfiConverterBool.write(value.assignable, into: &buf)
+        FfiConverterData.write(value.validPins, into: &buf)
+        FfiConverterSequenceTypePinFunctionInfo.write(value.functions, into: &buf)
+        FfiConverterSequenceTypePinHolder.write(value.holders, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinMap_lift(_ buf: RustBuffer) throws -> PinMap {
+    return try FfiConverterTypePinMap.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinMap_lower(_ value: PinMap) -> RustBuffer {
+    return FfiConverterTypePinMap.lower(value)
+}
+
+
+/**
+ * A refused pin.
+ */
+public struct PinRefusal {
+    /**
+     * Why.
+     */
+    public var reason: PinRefusalReason
+    /**
+     * The `PIN_CONFIG_*` status the firmware answers for it (1 invalid
+     * pin, 2 in use, 3 no such output, 4 output active).
+     */
+    public var status: UInt8
+    /**
+     * For [`PinRefusalReason::InUse`], the function holding the pin.
+     */
+    public var holder: PinHolder?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Why.
+         */reason: PinRefusalReason, 
+        /**
+         * The `PIN_CONFIG_*` status the firmware answers for it (1 invalid
+         * pin, 2 in use, 3 no such output, 4 output active).
+         */status: UInt8, 
+        /**
+         * For [`PinRefusalReason::InUse`], the function holding the pin.
+         */holder: PinHolder?) {
+        self.reason = reason
+        self.status = status
+        self.holder = holder
+    }
+}
+
+#if compiler(>=6)
+extension PinRefusal: Sendable {}
+#endif
+
+
+extension PinRefusal: Equatable, Hashable {
+    public static func ==(lhs: PinRefusal, rhs: PinRefusal) -> Bool {
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.status != rhs.status {
+            return false
+        }
+        if lhs.holder != rhs.holder {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(reason)
+        hasher.combine(status)
+        hasher.combine(holder)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinRefusal: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinRefusal {
+        return
+            try PinRefusal(
+                reason: FfiConverterTypePinRefusalReason.read(from: &buf), 
+                status: FfiConverterUInt8.read(from: &buf), 
+                holder: FfiConverterOptionTypePinHolder.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PinRefusal, into buf: inout [UInt8]) {
+        FfiConverterTypePinRefusalReason.write(value.reason, into: &buf)
+        FfiConverterUInt8.write(value.status, into: &buf)
+        FfiConverterOptionTypePinHolder.write(value.holder, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinRefusal_lift(_ buf: RustBuffer) throws -> PinRefusal {
+    return try FfiConverterTypePinRefusal.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinRefusal_lower(_ value: PinRefusal) -> RustBuffer {
+    return FfiConverterTypePinRefusal.lower(value)
+}
+
+
+/**
  * A GPIO used by a control-surface slot.
  */
 public struct PinUse {
@@ -29630,6 +30917,309 @@ public func FfiConverterTypePinUse_lift(_ buf: RustBuffer) throws -> PinUse {
 #endif
 public func FfiConverterTypePinUse_lower(_ value: PinUse) -> RustBuffer {
     return FfiConverterTypePinUse.lower(value)
+}
+
+
+/**
+ * What a platform is, as the clients lay out their pages
+ * ([`crate::platform_shape`]): channel counts, where the PDM sub and the
+ * second core's EQ outputs are, and which platform-bound sections exist.
+ */
+public struct PlatformShape {
+    /**
+     * The platform id the shape is for (0 RP2040, 1 RP2350, 2 STM32H723).
+     */
+    public var platformId: UInt8
+    /**
+     * `RP2040`, `RP2350`, `STM32H723`, or `unknown platform N`.
+     */
+    public var name: String
+    /**
+     * False for an id this build does not know; its shape is the RP2040's,
+     * the smallest.
+     */
+    public var known: Bool
+    /**
+     * Matrix inputs (USB channels): 2 on RP2040, 8 elsewhere.
+     */
+    public var numInputChannels: UInt8
+    /**
+     * Outputs, the PDM sub included: 5 on RP2040, 9 elsewhere.
+     */
+    public var numOutputChannels: UInt8
+    /**
+     * Stereo output slots (S/PDIF or I2S): 2 on RP2040, 4 elsewhere.
+     */
+    public var numOutputSlots: UInt8
+    /**
+     * The PDM sub's output index: always the last output.
+     */
+    public var pdmOutput: UInt8
+    /**
+     * The PDM sub's index in the output pin list: after the slots.
+     */
+    public var pdmPinIndex: UInt8
+    /**
+     * First output whose EQ runs on the second core (the other half of the
+     * PDM interlock).
+     */
+    public var eqWorkerFirst: UInt8
+    /**
+     * Last output whose EQ runs on the second core.
+     */
+    public var eqWorkerLast: UInt8
+    /**
+     * I2S input pairs: 1 on RP2040, 4 elsewhere.
+     */
+    public var i2sMaxPairs: UInt8
+    /**
+     * Multichannel (more than one pair) I2S input: RP2350 only.
+     */
+    public var multichannelI2s: Bool
+    /**
+     * ADAT output and input: RP2350 only.
+     */
+    public var adat: Bool
+    /**
+     * The stereo upmixer: RP2350 only (RP2040 stalls its writes).
+     */
+    public var upmixer: Bool
+    /**
+     * The I2S configuration page: every platform but STM32H723.
+     */
+    public var i2sConfig: Bool
+    /**
+     * Crossfeed stereo pairs: 2 on RP2040, 4 elsewhere.
+     */
+    public var crossfeedPairs: UInt8
+    /**
+     * The longest delay the delay line holds, in ms: 42 on RP2350, 21
+     * elsewhere (`dspi_proto::Platform::max_delay_ms`).
+     */
+    public var maxDelayMs: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The platform id the shape is for (0 RP2040, 1 RP2350, 2 STM32H723).
+         */platformId: UInt8, 
+        /**
+         * `RP2040`, `RP2350`, `STM32H723`, or `unknown platform N`.
+         */name: String, 
+        /**
+         * False for an id this build does not know; its shape is the RP2040's,
+         * the smallest.
+         */known: Bool, 
+        /**
+         * Matrix inputs (USB channels): 2 on RP2040, 8 elsewhere.
+         */numInputChannels: UInt8, 
+        /**
+         * Outputs, the PDM sub included: 5 on RP2040, 9 elsewhere.
+         */numOutputChannels: UInt8, 
+        /**
+         * Stereo output slots (S/PDIF or I2S): 2 on RP2040, 4 elsewhere.
+         */numOutputSlots: UInt8, 
+        /**
+         * The PDM sub's output index: always the last output.
+         */pdmOutput: UInt8, 
+        /**
+         * The PDM sub's index in the output pin list: after the slots.
+         */pdmPinIndex: UInt8, 
+        /**
+         * First output whose EQ runs on the second core (the other half of the
+         * PDM interlock).
+         */eqWorkerFirst: UInt8, 
+        /**
+         * Last output whose EQ runs on the second core.
+         */eqWorkerLast: UInt8, 
+        /**
+         * I2S input pairs: 1 on RP2040, 4 elsewhere.
+         */i2sMaxPairs: UInt8, 
+        /**
+         * Multichannel (more than one pair) I2S input: RP2350 only.
+         */multichannelI2s: Bool, 
+        /**
+         * ADAT output and input: RP2350 only.
+         */adat: Bool, 
+        /**
+         * The stereo upmixer: RP2350 only (RP2040 stalls its writes).
+         */upmixer: Bool, 
+        /**
+         * The I2S configuration page: every platform but STM32H723.
+         */i2sConfig: Bool, 
+        /**
+         * Crossfeed stereo pairs: 2 on RP2040, 4 elsewhere.
+         */crossfeedPairs: UInt8, 
+        /**
+         * The longest delay the delay line holds, in ms: 42 on RP2350, 21
+         * elsewhere (`dspi_proto::Platform::max_delay_ms`).
+         */maxDelayMs: Float) {
+        self.platformId = platformId
+        self.name = name
+        self.known = known
+        self.numInputChannels = numInputChannels
+        self.numOutputChannels = numOutputChannels
+        self.numOutputSlots = numOutputSlots
+        self.pdmOutput = pdmOutput
+        self.pdmPinIndex = pdmPinIndex
+        self.eqWorkerFirst = eqWorkerFirst
+        self.eqWorkerLast = eqWorkerLast
+        self.i2sMaxPairs = i2sMaxPairs
+        self.multichannelI2s = multichannelI2s
+        self.adat = adat
+        self.upmixer = upmixer
+        self.i2sConfig = i2sConfig
+        self.crossfeedPairs = crossfeedPairs
+        self.maxDelayMs = maxDelayMs
+    }
+}
+
+#if compiler(>=6)
+extension PlatformShape: Sendable {}
+#endif
+
+
+extension PlatformShape: Equatable, Hashable {
+    public static func ==(lhs: PlatformShape, rhs: PlatformShape) -> Bool {
+        if lhs.platformId != rhs.platformId {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.known != rhs.known {
+            return false
+        }
+        if lhs.numInputChannels != rhs.numInputChannels {
+            return false
+        }
+        if lhs.numOutputChannels != rhs.numOutputChannels {
+            return false
+        }
+        if lhs.numOutputSlots != rhs.numOutputSlots {
+            return false
+        }
+        if lhs.pdmOutput != rhs.pdmOutput {
+            return false
+        }
+        if lhs.pdmPinIndex != rhs.pdmPinIndex {
+            return false
+        }
+        if lhs.eqWorkerFirst != rhs.eqWorkerFirst {
+            return false
+        }
+        if lhs.eqWorkerLast != rhs.eqWorkerLast {
+            return false
+        }
+        if lhs.i2sMaxPairs != rhs.i2sMaxPairs {
+            return false
+        }
+        if lhs.multichannelI2s != rhs.multichannelI2s {
+            return false
+        }
+        if lhs.adat != rhs.adat {
+            return false
+        }
+        if lhs.upmixer != rhs.upmixer {
+            return false
+        }
+        if lhs.i2sConfig != rhs.i2sConfig {
+            return false
+        }
+        if lhs.crossfeedPairs != rhs.crossfeedPairs {
+            return false
+        }
+        if lhs.maxDelayMs != rhs.maxDelayMs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(platformId)
+        hasher.combine(name)
+        hasher.combine(known)
+        hasher.combine(numInputChannels)
+        hasher.combine(numOutputChannels)
+        hasher.combine(numOutputSlots)
+        hasher.combine(pdmOutput)
+        hasher.combine(pdmPinIndex)
+        hasher.combine(eqWorkerFirst)
+        hasher.combine(eqWorkerLast)
+        hasher.combine(i2sMaxPairs)
+        hasher.combine(multichannelI2s)
+        hasher.combine(adat)
+        hasher.combine(upmixer)
+        hasher.combine(i2sConfig)
+        hasher.combine(crossfeedPairs)
+        hasher.combine(maxDelayMs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePlatformShape: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PlatformShape {
+        return
+            try PlatformShape(
+                platformId: FfiConverterUInt8.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                known: FfiConverterBool.read(from: &buf), 
+                numInputChannels: FfiConverterUInt8.read(from: &buf), 
+                numOutputChannels: FfiConverterUInt8.read(from: &buf), 
+                numOutputSlots: FfiConverterUInt8.read(from: &buf), 
+                pdmOutput: FfiConverterUInt8.read(from: &buf), 
+                pdmPinIndex: FfiConverterUInt8.read(from: &buf), 
+                eqWorkerFirst: FfiConverterUInt8.read(from: &buf), 
+                eqWorkerLast: FfiConverterUInt8.read(from: &buf), 
+                i2sMaxPairs: FfiConverterUInt8.read(from: &buf), 
+                multichannelI2s: FfiConverterBool.read(from: &buf), 
+                adat: FfiConverterBool.read(from: &buf), 
+                upmixer: FfiConverterBool.read(from: &buf), 
+                i2sConfig: FfiConverterBool.read(from: &buf), 
+                crossfeedPairs: FfiConverterUInt8.read(from: &buf), 
+                maxDelayMs: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PlatformShape, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.platformId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.known, into: &buf)
+        FfiConverterUInt8.write(value.numInputChannels, into: &buf)
+        FfiConverterUInt8.write(value.numOutputChannels, into: &buf)
+        FfiConverterUInt8.write(value.numOutputSlots, into: &buf)
+        FfiConverterUInt8.write(value.pdmOutput, into: &buf)
+        FfiConverterUInt8.write(value.pdmPinIndex, into: &buf)
+        FfiConverterUInt8.write(value.eqWorkerFirst, into: &buf)
+        FfiConverterUInt8.write(value.eqWorkerLast, into: &buf)
+        FfiConverterUInt8.write(value.i2sMaxPairs, into: &buf)
+        FfiConverterBool.write(value.multichannelI2s, into: &buf)
+        FfiConverterBool.write(value.adat, into: &buf)
+        FfiConverterBool.write(value.upmixer, into: &buf)
+        FfiConverterBool.write(value.i2sConfig, into: &buf)
+        FfiConverterUInt8.write(value.crossfeedPairs, into: &buf)
+        FfiConverterFloat.write(value.maxDelayMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlatformShape_lift(_ buf: RustBuffer) throws -> PlatformShape {
+    return try FfiConverterTypePlatformShape.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlatformShape_lower(_ value: PlatformShape) -> RustBuffer {
+    return FfiConverterTypePlatformShape.lower(value)
 }
 
 
@@ -35661,6 +37251,451 @@ extension ParamValue: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * A function that can hold a GPIO. The C ABI passes it as its code (the
+ * number in brackets).
+ */
+
+public enum PinFunctionKind {
+    
+    /**
+     * (0) A physical output, `index` 0..`num_pin_outputs`: the S/PDIF or
+     * I2S slots, then the PDM subwoofer last.
+     */
+    case output
+    /**
+     * (1) The I2S bit clock of the master (or unified) pair; also holds
+     * LRCLK, BCK + 1.
+     */
+    case i2sBck
+    /**
+     * (2) The slave pair's bit clock (split clock-pin mode); also its LRCLK.
+     */
+    case i2sBckSlave
+    /**
+     * (3) The I2S master clock.
+     */
+    case mck
+    /**
+     * (4) An S/PDIF receiver, `index` 0..3.
+     */
+    case spdifRx
+    /**
+     * (5) An I2S input data pin, `index` = stereo pair 0..3.
+     */
+    case i2sRx
+    /**
+     * (6) The ADAT output (RP2350).
+     */
+    case adatOut
+    /**
+     * (7) The ADAT input (RP2350).
+     */
+    case adatIn
+    /**
+     * (8) The DAC hardware mute line.
+     */
+    case dacMute
+    /**
+     * (9) The UART control interface's TX.
+     */
+    case uartTx
+    /**
+     * (10) Its RX.
+     */
+    case uartRx
+    /**
+     * (11) The I2C control interface's SDA.
+     */
+    case i2cSda
+    /**
+     * (12) Its SCL.
+     */
+    case i2cScl
+    /**
+     * (13) A control-surface binding, `index` = its slot.
+     */
+    case controlSurface
+}
+
+
+#if compiler(>=6)
+extension PinFunctionKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinFunctionKind: FfiConverterRustBuffer {
+    typealias SwiftType = PinFunctionKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinFunctionKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .output
+        
+        case 2: return .i2sBck
+        
+        case 3: return .i2sBckSlave
+        
+        case 4: return .mck
+        
+        case 5: return .spdifRx
+        
+        case 6: return .i2sRx
+        
+        case 7: return .adatOut
+        
+        case 8: return .adatIn
+        
+        case 9: return .dacMute
+        
+        case 10: return .uartTx
+        
+        case 11: return .uartRx
+        
+        case 12: return .i2cSda
+        
+        case 13: return .i2cScl
+        
+        case 14: return .controlSurface
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PinFunctionKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .output:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .i2sBck:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .i2sBckSlave:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .mck:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .spdifRx:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .i2sRx:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .adatOut:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .adatIn:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .dacMute:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .uartTx:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .uartRx:
+            writeInt(&buf, Int32(11))
+        
+        
+        case .i2cSda:
+            writeInt(&buf, Int32(12))
+        
+        
+        case .i2cScl:
+            writeInt(&buf, Int32(13))
+        
+        
+        case .controlSurface:
+            writeInt(&buf, Int32(14))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunctionKind_lift(_ buf: RustBuffer) throws -> PinFunctionKind {
+    return try FfiConverterTypePinFunctionKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunctionKind_lower(_ value: PinFunctionKind) -> RustBuffer {
+    return FfiConverterTypePinFunctionKind.lower(value)
+}
+
+
+extension PinFunctionKind: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * What a held GPIO is doing, for grouping (the Console's five roles).
+ */
+
+public enum PinHolderRole {
+    
+    /**
+     * A physical or ADAT output.
+     */
+    case output
+    /**
+     * An I2S clock.
+     */
+    case clock
+    /**
+     * An audio input.
+     */
+    case input
+    /**
+     * A control interface or control surface.
+     */
+    case control
+    /**
+     * The DAC mute.
+     */
+    case utility
+}
+
+
+#if compiler(>=6)
+extension PinHolderRole: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinHolderRole: FfiConverterRustBuffer {
+    typealias SwiftType = PinHolderRole
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinHolderRole {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .output
+        
+        case 2: return .clock
+        
+        case 3: return .input
+        
+        case 4: return .control
+        
+        case 5: return .utility
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PinHolderRole, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .output:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .clock:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .input:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .control:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .utility:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinHolderRole_lift(_ buf: RustBuffer) throws -> PinHolderRole {
+    return try FfiConverterTypePinHolderRole.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinHolderRole_lower(_ value: PinHolderRole) -> RustBuffer {
+    return FfiConverterTypePinHolderRole.lower(value)
+}
+
+
+extension PinHolderRole: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Why a pin was refused.
+ */
+
+public enum PinRefusalReason {
+    
+    /**
+     * This platform's pins are fixed (STM32H723, or a platform this build
+     * does not know).
+     */
+    case notAssignable
+    /**
+     * The device has no such function (an output, input or pair past its
+     * count; ADAT on an RP2040; a feature its firmware lacks).
+     */
+    case noSuchFunction
+    /**
+     * Not a GPIO this platform allows (23-25 are power and LED; BCK also
+     * needs BCK + 1).
+     */
+    case invalidPin
+    /**
+     * A GPIO, but not one this function's peripheral can use: MCK off a
+     * clock-output pin, UART or I2C off its mux position or instance.
+     */
+    case wrongMux
+    /**
+     * Another function holds it: see `holder`.
+     */
+    case inUse
+    /**
+     * The function cannot move now: MCK while enabled, the I2S clock pair
+     * while I2S outputs run on it.
+     */
+    case outputActive
+    /**
+     * The ADAT input's pin cannot be cleared while the input is enabled.
+     */
+    case clearWhileEnabled
+}
+
+
+#if compiler(>=6)
+extension PinRefusalReason: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinRefusalReason: FfiConverterRustBuffer {
+    typealias SwiftType = PinRefusalReason
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinRefusalReason {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .notAssignable
+        
+        case 2: return .noSuchFunction
+        
+        case 3: return .invalidPin
+        
+        case 4: return .wrongMux
+        
+        case 5: return .inUse
+        
+        case 6: return .outputActive
+        
+        case 7: return .clearWhileEnabled
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PinRefusalReason, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .notAssignable:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .noSuchFunction:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .invalidPin:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .wrongMux:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .inUse:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .outputActive:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .clearWhileEnabled:
+            writeInt(&buf, Int32(7))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinRefusalReason_lift(_ buf: RustBuffer) throws -> PinRefusalReason {
+    return try FfiConverterTypePinRefusalReason.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinRefusalReason_lower(_ value: PinRefusalReason) -> RustBuffer {
+    return FfiConverterTypePinRefusalReason.lower(value)
+}
+
+
+extension PinRefusalReason: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a run is: [`VregCalView::phase`]. The details are in the view.
  */
 
@@ -36449,6 +38484,78 @@ fileprivate struct FfiConverterOptionTypeHistoryEntry: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypePinFunction: FfiConverterRustBuffer {
+    typealias SwiftType = PinFunction?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePinFunction.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePinFunction.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePinHolder: FfiConverterRustBuffer {
+    typealias SwiftType = PinHolder?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePinHolder.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePinHolder.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePinRefusal: FfiConverterRustBuffer {
+    typealias SwiftType = PinRefusal?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePinRefusal.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePinRefusal.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeRingHealth: FfiConverterRustBuffer {
     typealias SwiftType = RingHealth?
 
@@ -36993,6 +39100,31 @@ fileprivate struct FfiConverterSequenceTypeAutoEqFilter: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeBiquadSection: FfiConverterRustBuffer {
+    typealias SwiftType = [BiquadSection]
+
+    public static func write(_ value: [BiquadSection], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeBiquadSection.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [BiquadSection] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [BiquadSection]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeBiquadSection.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeBootloaderDrive: FfiConverterRustBuffer {
     typealias SwiftType = [BootloaderDrive]
 
@@ -37060,6 +39192,31 @@ fileprivate struct FfiConverterSequenceTypeDiagFile: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeDiagFile.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeEnumValueLabel: FfiConverterRustBuffer {
+    typealias SwiftType = [EnumValueLabel]
+
+    public static func write(_ value: [EnumValueLabel], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeEnumValueLabel.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [EnumValueLabel] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [EnumValueLabel]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeEnumValueLabel.read(from: &buf))
         }
         return seq
     }
@@ -37318,6 +39475,31 @@ fileprivate struct FfiConverterSequenceTypeLinkPhaseText: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeLinkTxtEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [LinkTxtEntry]
+
+    public static func write(_ value: [LinkTxtEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLinkTxtEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LinkTxtEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LinkTxtEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLinkTxtEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeModeEntry: FfiConverterRustBuffer {
     typealias SwiftType = [ModeEntry]
 
@@ -37560,6 +39742,56 @@ fileprivate struct FfiConverterSequenceTypeOutputLatencyOption: FfiConverterRust
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeOutputLatencyOption.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePinFunctionInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [PinFunctionInfo]
+
+    public static func write(_ value: [PinFunctionInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePinFunctionInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PinFunctionInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PinFunctionInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePinFunctionInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePinHolder: FfiConverterRustBuffer {
+    typealias SwiftType = [PinHolder]
+
+    public static func write(_ value: [PinHolder], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePinHolder.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PinHolder] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PinHolder]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePinHolder.read(from: &buf))
         }
         return seq
     }
@@ -37951,6 +40183,25 @@ public func bootloaderDrives() -> [BootloaderDrive]  {
 })
 }
 /**
+ * The parameter image's presence bytes that `DspState` has no field for:
+ * the firmware writes 0 for "absent, keep what you have" (`bulk_params.h`),
+ * and a client that keeps its own value for an absent one asks here instead
+ * of reading `bulk_raw` by offset (the Mac's `CoreMirror.raw`,
+ * `CoreMirror.swift:661-720`, `:798-807`). `bulk_raw` is
+ * `DspState::bulk_raw`; anything shorter than an image reads as absent.
+ *
+ * The custom crossfeed pair, which the Mac also reads by offset
+ * (`PresetDocumentTransfer.swift:20-28`), is
+ * [`crate::DspiCore::crossfeed_custom_pair`].
+ */
+public func bulkImageExtras(bulkRaw: Data) -> BulkImageExtras  {
+    return try!  FfiConverterTypeBulkImageExtras_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_bulk_image_extras(
+        FfiConverterData.lower(bulkRaw),$0
+    )
+})
+}
+/**
  * A clip read back from its document ([`channel_clip_to_json`]).
  *
  * Errors: [`DspiError::InvalidArgument`] for text that is not a channel
@@ -38092,6 +40343,62 @@ public func curveFreq(i: UInt32) -> Double  {
 })
 }
 /**
+ * The biquad sections the curves of `filters` are computed from, in
+ * cascade order: what a GPU renderer evaluates per pixel to draw the same
+ * curve as [`compute_magnitude_curve`].
+ *
+ * A bypassed or flat band adds none; a crossover type adds each of its
+ * sections as the firmware builds them; a type this build does not know,
+ * or a band whose values give a non-finite coefficient, adds a unity
+ * section. Call it with one band for that band's own sections.
+ */
+public func curveSections(filters: [FilterParams]) -> [BiquadSection]  {
+    return try!  FfiConverterSequenceTypeBiquadSection.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_curve_sections(
+        FfiConverterSequenceTypeFilterParams.lower(filters),$0
+    )
+})
+}
+/**
+ * The firmware's name for each channel when the user has named none: inputs
+ * first, then outputs, `num_inputs + num_outputs` names. `input_source` is
+ * `DspState::input_source` (it names the inputs); `output_types` is
+ * `DspState::output_types` (one byte per stereo slot, 1 for I2S), and a
+ * missing entry reads as S/PDIF. The rule is in the module docs.
+ *
+ * For a connected device pass `DspState`'s `num_input_channels`,
+ * `num_output_channels`, `input_source` and `output_types`; without one,
+ * [`platform_shape`]'s counts.
+ */
+public func defaultChannelNames(numInputs: UInt8, numOutputs: UInt8, inputSource: UInt8, outputTypes: Data) -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_default_channel_names(
+        FfiConverterUInt8.lower(numInputs),
+        FfiConverterUInt8.lower(numOutputs),
+        FfiConverterUInt8.lower(inputSource),
+        FfiConverterData.lower(outputTypes),$0
+    )
+})
+}
+/**
+ * Every value of the choice setting `path` with the words the Console shows
+ * for it, in value order: `in.source`, `lev.speed`, `cf.preset`,
+ * `up.center_mode`, `up.surround_mode`, `sub.select` and `tube.type`. The
+ * words are `dspi_session::cs_model::enum_value_label`'s, the one table the
+ * control surfaces, the TUI and now every client read (upmixer `Sinner`,
+ * `Logician`, `Off`; selectivity `All material`, `Percussive`, `Sustained`;
+ * the tube styles, 0 `Custom`).
+ *
+ * Errors: [`DspiError::InvalidArgument`] for any other path.
+ */
+public func enumValueLabels(path: String)throws  -> [EnumValueLabel]  {
+    return try  FfiConverterSequenceTypeEnumValueLabel.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_func_enum_value_labels(
+        FfiConverterString.lower(path),$0
+    )
+})
+}
+/**
  * The name of filter type `code`; "Type 14" for a code the firmware does
  * not define (yet).
  */
@@ -38138,6 +40445,17 @@ public func firmwareGuardCheck(image: Data, board: FirmwareGuardBoard, typedConf
 })
 }
 /**
+ * Every name [`DspiCore::feature_present`] knows: the connect probe's, then
+ * [`DERIVED_FEATURES`]. A client gates each section by one of these, never
+ * by a wire format or firmware version.
+ */
+public func knownFeatureNames() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_known_feature_names($0
+    )
+})
+}
+/**
  * Every limits field's range, in the order an editor shows them (each
  * output's fields, then the device's): the one table every client's limits
  * editor uses (review p1e-a F7). A profile is held to the same ranges when
@@ -38172,6 +40490,29 @@ public func linkParseAddress(text: String)throws  -> LinkAddress  {
     return try  FfiConverterTypeLinkAddress_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_func_link_parse_address(
         FfiConverterString.lower(text),$0
+    )
+})
+}
+/**
+ * Read a hub's TXT record. `service_name` is the DNS-SD instance name (with
+ * or without `._dspi._tcp.local.`); `txt` its keys and values in record
+ * order (of a key repeated, the first counts, RFC 6763 6.4). Where the
+ * hub is comes from resolving the service, not from here: dial it with
+ * [`crate::link_ws_url`] and `path`.
+ *
+ * Differs from the Mac's `HubBrowser.hub(fromTXT:)`
+ * (`Link/HubBrowser.swift:583-597`) by the spec and Android's `HubTxt`: a
+ * record without `v` or `hid`, or with `tls=1`, is no hub (the Mac made up a
+ * `service:<name>` id and listed it), and a missing `kind` reads `unknown`
+ * (the Mac's `console`).
+ *
+ * Errors: [`DspiError::InvalidArgument`] saying why the record is no hub.
+ */
+public func linkParseTxt(serviceName: String, txt: [LinkTxtEntry])throws  -> LinkTxtRecord  {
+    return try  FfiConverterTypeLinkTxtRecord_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_func_link_parse_txt(
+        FfiConverterString.lower(serviceName),
+        FfiConverterSequenceTypeLinkTxtEntry.lower(txt),$0
     )
 })
 }
@@ -38292,6 +40633,27 @@ public func outputLabelsFor(input: OutputLabelInput) -> [OutputLabel]  {
 })
 }
 /**
+ * The shape of platform `platform_id` (`DspState::platform_id`), for laying
+ * out pages before or without a device. A connected device's own counts are
+ * in `DspState` (`num_input_channels`, `num_output_channels`); this is the
+ * platform's table, the Mac's `platformName == "RP2040" ? ... : ...` rules
+ * (`DSPViewModel.swift:1540-1543`, `:1970`, `:2346-2353`, `:2232`;
+ * `DSPi_ConsoleApp.swift:427`) in one place.
+ *
+ * An id this build does not know gets the RP2040's shape (the smallest) with
+ * `known` false, as the Mac names an unknown id `RP2040`
+ * (`Commands.swift:160-162`). The longest delay is the core's rule
+ * (`dspi_proto::Platform::max_delay_ms`: 42 ms on RP2350, 21 ms elsewhere),
+ * not the Mac's slider ceiling of 85 ms, which no platform delivers.
+ */
+public func platformShape(platformId: UInt8) -> PlatformShape  {
+    return try!  FfiConverterTypePlatformShape_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_platform_shape(
+        FfiConverterUInt8.lower(platformId),$0
+    )
+})
+}
+/**
  * A delay in ms on a 0.0001 ms grid, as the delay setters send it.
  *
  * Halves round away from zero and -0 becomes +0. No clamping (callers bound
@@ -38313,6 +40675,22 @@ public func quantizeDelay(ms: Float) -> Float  {
 public func quantizeGain(db: Float) -> Float  {
     return try!  FfiConverterFloat.lift(try! rustCall() {
     uniffi_dspi_core_fn_func_quantize_gain(
+        FfiConverterFloat.lower(db),$0
+    )
+})
+}
+/**
+ * A master volume in dB as [`crate::DspiCore::set_master_volume`] keeps
+ * it: -128 (mute) at or below -128, else on a 0.5 dB grid (halves away
+ * from zero) within -127..=0. -0 becomes +0. NaN comes back as NaN (the
+ * setter refuses it).
+ *
+ * A slider shows this value while the user drags, so it shows what the
+ * device gets.
+ */
+public func quantizeMasterVolume(db: Float) -> Float  {
+    return try!  FfiConverterFloat.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_quantize_master_volume(
         FfiConverterFloat.lower(db),$0
     )
 })
@@ -38390,6 +40768,41 @@ public func usbPipeWaitChange(seen: UInt64, timeoutMs: UInt32) -> UInt64  {
     )
 })
 }
+/**
+ * A core-voltage code as the user reads it: `1.20 V`, or `code 0x1F` for a
+ * code [`vreg_code_mv`] does not decode on that platform (the Mac's
+ * `VregVoltage.label`, `ExtensionChannel.swift:294-298`).
+ */
+public func vregCodeLabel(code: UInt8, platformId: UInt8) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_vreg_code_label(
+        FfiConverterUInt8.lower(code),
+        FfiConverterUInt8.lower(platformId),$0
+    )
+})
+}
+/**
+ * A pico-sdk `enum vreg_voltage` code in mV on platform `platform_id`, or
+ * `None` for a code the chip does not have.
+ *
+ * - Both chips: 0x06 (0.85 V) to 0x0F (1.30 V) in 50 mV steps.
+ * - RP2350 adds 0x00-0x05 (0.55-0.80 V) and 0x10-0x1F (1.35-3.30 V).
+ * - On RP2040, 0x00-0x05 all program 0.80 V, and there is nothing above
+ * 0x0F.
+ * - Any other platform (STM32H723 has no `EXT_CORE_VREG`): only the codes
+ * both chips agree on, as `dspi_proto::ext::vreg_mv`.
+ *
+ * The Mac's `VregVoltage.volts` (`ExtensionChannel.swift:272-292`) is the
+ * same table for RP2040 and RP2350.
+ */
+public func vregCodeMv(code: UInt8, platformId: UInt8) -> UInt16?  {
+    return try!  FfiConverterOptionUInt16.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_vreg_code_mv(
+        FfiConverterUInt8.lower(code),
+        FfiConverterUInt8.lower(platformId),$0
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -38433,6 +40846,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_bootloader_drives() != 58490) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_bulk_image_extras() != 22405) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_channel_clip_from_json() != 38710) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -38463,6 +40879,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_curve_freq() != 51789) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_curve_sections() != 5627) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_default_channel_names() != 34600) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_enum_value_labels() != 4880) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_filter_type_name() != 9662) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -38475,6 +40900,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_known_feature_names() != 45045) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_limits_field_ranges() != 1854) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -38482,6 +40910,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_parse_address() != 30128) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_link_parse_txt() != 48727) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_phase_text() != 33877) {
@@ -38517,10 +40948,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_output_labels_for() != 60813) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_platform_shape() != 51628) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_quantize_delay() != 705) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_quantize_gain() != 25180) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_quantize_master_volume() != 60674) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_template_list() != 58721) {
@@ -38536,6 +40973,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_usb_pipe_wait_change() != 22156) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_vreg_code_label() != 63774) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_vreg_code_mv() != 41743) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_autoeqfetch_get() != 23782) {
@@ -38823,7 +41266,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_factory_reset_confirmed() != 19300) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_feature_present() != 18345) {
+    if (uniffi_dspi_core_checksum_method_dspicore_feature_present() != 29519) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_fetch_adat_out_status() != 51824) {
@@ -39015,6 +41458,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_identify() != 26030) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_image_extras() != 51385) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_inaccessible_devices() != 62282) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -39154,6 +41600,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_paste_channel() != 43676) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_pin_check() != 43599) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_pin_holder() != 60813) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_pin_map() != 51158) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 29460) {

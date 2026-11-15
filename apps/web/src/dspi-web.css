@@ -886,6 +886,112 @@
 .dspi-web .source-active { color: var(--accent); font-size: 0.8rem; }
 .dspi-web .m-trim { display: block; margin-top: 0.2rem; }
 
+/* -- WP WB6J -- the analyser (bar strip, overlay), the tools screen, cards per row */
+.dspi-web { --rta-bar: #3aa76d; --rta-peak: #d49a00; }
+.dspi-web .main-screen.per-row { grid-template-columns: repeat(var(--per-row), minmax(0, 1fr)); }
+@media (max-width: 40rem) {
+  .dspi-web .main-screen.per-row { grid-template-columns: minmax(0, 1fr); }
+}
+.dspi-web .main-tools, .dspi-web .main-spectrum { grid-column: 1 / -1; min-width: 0; }
+.dspi-web .main-tools { display: flex; justify-content: flex-end; }
+.dspi-web .main-tools label { display: inline-flex; gap: 0.4rem; align-items: center; color: var(--muted); font-size: 0.85rem; }
+.dspi-web .seg { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.dspi-web .seg [aria-pressed="true"], .dspi-web .seg [aria-selected="true"],
+.dspi-web .rta-channels [aria-pressed="true"], .dspi-web .siggen-outputs [aria-pressed="true"],
+.dspi-web .siggen-types [aria-checked="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .rta-chooser { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.4rem; }
+.dspi-web .rta-channels { display: flex; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
+.dspi-web .rta-grid { display: grid; gap: 0.5rem; }
+.dspi-web .rta-cell { margin: 0; min-width: 0; }
+.dspi-web .rta-cell figcaption { font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dspi-web .rta-cell canvas { display: block; width: 100%; height: 5rem; background: var(--eq-bg, #151518); border-radius: 4px; }
+.dspi-web .rta-following { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; font-size: 0.85rem; color: var(--warn); margin: 0.3rem 0; }
+.dspi-web .rta-host { position: relative; min-width: 0; }
+.dspi-web .rta-host canvas.rta-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.dspi-web .rta-overlay-note { position: absolute; left: 0.4rem; top: 0.2rem; right: 0.4rem; pointer-events: none; }
+.dspi-web .rta-overlay-note button { pointer-events: auto; }
+.dspi-web .eq-tools > button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .siggen { display: grid; gap: 0.6rem; }
+.dspi-web .siggen-transport { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.dspi-web .siggen-transport > div { flex: 1 1 12rem; min-width: 0; }
+.dspi-web .siggen-detail, .dspi-web .siggen-blurb, .dspi-web .muted { color: var(--muted); font-size: 0.85rem; }
+.dspi-web .siggen-blurb { margin: 0; }
+.dspi-web .siggen-types, .dspi-web .siggen-outputs, .dspi-web .siggen-options { display: flex; flex-wrap: wrap; gap: 0.3rem 0.6rem; }
+.dspi-web .siggen-level { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 0.5rem; align-items: center; }
+.dspi-web .siggen-params { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.dspi-web .siggen-params label { display: inline-flex; gap: 0.35rem; align-items: center; }
+.dspi-web .siggen-number { width: 6rem; }
+.dspi-web .stats-head, .dspi-web .monitor-tools { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+.dspi-web .monitor-tools { justify-content: flex-start; }
+.dspi-web .stats-grid { display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); align-items: start; }
+.dspi-web .stat-rows { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.15rem 0.75rem; margin: 0; font-size: 0.85rem; }
+.dspi-web .stat-rows dt { color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .stat-rows dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+.dspi-web .stat-dot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; margin-right: 0.3rem; background: var(--muted); }
+.dspi-web .stat-dot.good { background: var(--ok); }
+.dspi-web .stat-dot.warn { background: var(--warn); }
+.dspi-web .stat-dot.bad { background: var(--bad); }
+.dspi-web .monitor-lines { list-style: none; margin: 0; padding: 0.4rem; max-height: 24rem; overflow: auto; font-size: 0.8rem; border: 1px solid var(--line); border-radius: 6px; }
+.dspi-web .monitor-lines li { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dspi-web .monitor-lines time { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* -- WP WB6K -- the AutoEQ profile list and the database card */
+.dspi-web .autoeq-hits { list-style: none; margin: 0.25rem 0; padding: 0; max-height: 16rem; overflow-y: auto; min-width: 0; }
+.dspi-web .autoeq-hit { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; padding: 0.15rem 0; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .autoeq-hit .heart { min-width: 2rem; }
+.dspi-web .autoeq-browse input[type="search"] { min-width: 0; max-width: 100%; }
+.dspi-web .autoeq-db h4 { margin: 0.75rem 0 0.25rem; }
+
+/* -- WP WB6L -- the quick strip, the shortcut list, the control-surface editor */
+.dspi-web .quick-strip { display: flex; flex-wrap: wrap; gap: 0.25rem; min-width: 0; }
+.dspi-web .strip-button { min-width: 2.4rem; padding: 0.25rem 0.5rem; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+.dspi-web .strip-button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.dspi-web .strip-help { margin-left: auto; }
+.dspi-web .shortcut-list { display: grid; gap: 0.5rem; max-height: 60vh; overflow-y: auto; }
+.dspi-web .shortcut-list h3 { margin: 0.25rem 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.dspi-web .shortcut-list dl { margin: 0; display: grid; gap: 0.15rem; }
+.dspi-web .shortcut-row { display: flex; justify-content: space-between; gap: 1rem; min-width: 0; }
+.dspi-web .shortcut-row dt { min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .shortcut-row dd { margin: 0; flex: none; }
+.dspi-web kbd { font: 0.8rem ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 0.3rem; }
+.dspi-web .surfaces-screen { display: grid; gap: 0.75rem; min-width: 0; }
+.dspi-web .cs-card-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; min-width: 0; }
+.dspi-web .cs-title { display: grid; gap: 0.1rem; flex: 1 1 10rem; min-width: 0; }
+.dspi-web .cs-name { font: inherit; font-weight: 600; max-width: 18rem; min-width: 0; }
+.dspi-web .cs-summary { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
+.dspi-web .cs-summary.running { color: var(--ok); }
+.dspi-web .cs-pill.good { border-color: var(--ok); color: var(--ok); }
+.dspi-web .cs-warning { color: var(--warn); }
+.dspi-web .cs-body { display: grid; gap: 0.5rem; margin: 0.5rem 0 0 1.5rem; min-width: 0; }
+.dspi-web .cs-rows { display: grid; gap: 0.35rem; min-width: 0; }
+.dspi-web .cs-row { display: grid; grid-template-columns: minmax(6rem, 12rem) minmax(0, 1fr); gap: 0.5rem; align-items: center; min-width: 0; }
+.dspi-web .cs-row select, .dspi-web .cs-row input[type="number"], .dspi-web .cs-row input[type="range"] { min-width: 0; max-width: 100%; }
+.dspi-web .cs-row input[type="checkbox"] { justify-self: start; }
+.dspi-web .cs-number { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+.dspi-web .cs-number input { width: 7rem; }
+.dspi-web .cs-unit { color: var(--muted); font-size: 0.85rem; }
+.dspi-web .cs-note { margin: 0; color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; white-space: pre-line; }
+.dspi-web .cs-note.warn { color: var(--warn); }
+.dspi-web .cs-note.error, .dspi-web .cs-message.error { color: var(--bad); }
+.dspi-web .cs-apply { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; min-width: 0; }
+.dspi-web .cs-message { flex: 1 1 8rem; min-width: 0; font-size: 0.85rem; color: var(--muted); overflow-wrap: anywhere; }
+.dspi-web .cs-apply .primary { border-color: var(--accent); font-weight: 600; }
+.dspi-web .cs-remotes, .dspi-web .cs-display { display: grid; gap: 0.5rem; border-top: 1px solid var(--line); padding-top: 0.5rem; min-width: 0; }
+.dspi-web .cs-remotes h4, .dspi-web .cs-display h4 { margin: 0; font-size: 0.85rem; }
+.dspi-web .cs-remote, .dspi-web .cs-page, .dspi-web .cs-step { display: grid; gap: 0.35rem; border: 1px solid var(--line); border-radius: 6px; padding: 0.4rem 0.5rem; min-width: 0; }
+.dspi-web .cs-remote-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; min-width: 0; }
+.dspi-web .cs-remote-head > span { flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .cs-code { font-family: ui-monospace, monospace; }
+.dspi-web .cs-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.4rem; }
+.dspi-web .cs-add { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.dspi-web .cs-add select { min-width: 0; max-width: 100%; }
+.dspi-web .cs-tabs { display: flex; gap: 0.25rem; }
+.dspi-web .cs-display .ok { color: var(--ok); }
+@media (max-width: 480px) {
+  .dspi-web .cs-row { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; }
+  .dspi-web .cs-body { margin-left: 0; }
+}
+
 /* -- WP WB6E -- the scene bar's preset slots
    -- fixup b4fix F1 -- a head of one line (label, the active slot or the Store hint, cut short;
    the verbs) and the slots below, wrapping by width only; numbers only when the bar is narrow (a container query: a console may be narrow on a wide page). The

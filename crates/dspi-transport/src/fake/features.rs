@@ -12,7 +12,8 @@
 //!
 //! Firmware behaviour that is not modelled: the platform split (the upmixer
 //! and ADAT answer as on an RP2350 whatever the capture), pin validation
-//! (any GPIO is accepted, nothing is "in use"), the tube type's row presets
+//! of the enables (an ADAT or MCK enable does not check its pin; the pin
+//! SETs themselves are `fake/pins.rs`'s), the tube type's row presets
 //! (a type change does not rewrite bias/asym/hardness/sag), limiter group
 //! ganging on `LIMITER_ALL_OUTPUTS`, and the deferred applies (an input
 //! source, clock mode or DAC mute config takes effect, and notifies, at

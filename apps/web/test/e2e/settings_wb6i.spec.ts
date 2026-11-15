@@ -1,7 +1,7 @@
 // WP WB6i e2e: the Settings screen on the core's demo device, in every project (Chromium,
 // Firefox, Chromium at 375 px without sideways scroll): the device name and the output latency
 // through the core; Reset Channel Names as one undo step; Show Debug Information, kept; the help
-// links; the pins (Advanced, not Simple): a move sent through the core and the refusal shown (the demo device has no pin requests); Graphing
+// links; the pins (Advanced, not Simple): a move sent through the core, a held pin refused and a free one moved; Graphing
 // applied to the EQ graph at once (its cursor readout, a redraw); and Core Voltage only in the
 // Installer mode, driving the core's flow on the demo device: the word the core asks for, a
 // trial started and aborted, a manual trial found and ended. No voltage write goes anywhere but
@@ -130,14 +130,19 @@ test("WB6I Pins: every GPIO the device reports; a move goes through the core and
   await out1.getByRole("button", { name: "Move" }).click();
   await expect(alert).toContainText("Output GPIO");
   expect((await coreState(page)).outputPins[0]).toBe(st.outputPins[0]);
-  // A pin in range goes to the device through the core's setter (REQ_SET_OUTPUT_PIN, 0x7C).
-  // The demo device has no pin requests and stalls it: the refusal is said, nothing moved.
+  // -- WP CG-SWS-b -- the demo answers the pin requests now. A pin another output holds:
+  // the core's pin map refuses it before anything is sent (PIN_IN_USE, status 2), nothing moved.
+  await out1.getByRole("spinbutton").fill(String(st.outputPins[1]));
+  await out1.getByRole("button", { name: "Move" }).click();
+  await expect(alert).toContainText("status 2");
+  expect((await coreState(page)).outputPins[0]).toBe(st.outputPins[0]);
+  await expect(out1).toContainText(`GPIO ${st.outputPins[0]}`);
+  // A free pin goes to the device through the core's setter (REQ_SET_OUTPUT_PIN) and moves.
   const free = [26, 27, 28].find((p) => !st.outputPins.includes(p))!;
   await out1.getByRole("spinbutton").fill(String(free));
   await out1.getByRole("button", { name: "Move" }).click();
-  await expect(alert).toContainText("0x7C");
-  expect((await coreState(page)).outputPins[0]).toBe(st.outputPins[0]);
-  await expect(out1).toContainText(`GPIO ${st.outputPins[0]}`);
+  await expect.poll(async () => (await coreState(page)).outputPins[0]).toBe(free);
+  await expect(out1).toContainText(`GPIO ${free}`);
   await noSidewaysScroll(page);
 
   await setMode(session, page, "Simple");

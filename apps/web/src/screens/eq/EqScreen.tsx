@@ -28,6 +28,10 @@ import type { AutoEqPreviewRecord } from "../../core/protocol";
 // -- WP WB6G -- an input's page: its pair's link and its trim
 import { InputHeader } from "../inputs/InputsScreen";
 import { inputLinks } from "../inputs/model";
+// -- WP WB6J -- the analyser on a channel's page: its bars (M22) and over the graph (M23)
+import { OverlayToggle, RtaOverlay, SpectrumStrip, tapNames } from "../analysis/SpectrumStrip";
+import { TAP_INPUT, TAP_OUTPUT } from "../analysis/analyser";
+import { identifyOutput } from "../analysis/siggen";
 import {
   DEFAULT_LIMITS,
   OFF_BAND,
@@ -305,6 +309,13 @@ const EqView = memo(
           <button type="button" aria-expanded={autoeq} onClick={() => setAutoeq((v) => !v)}>
             AutoEQ…
           </button>
+          {/* -- WP WB6J -- the spectrum over the graph; on an output's page, Identify (M46) */}
+          <OverlayToggle session={session} />
+          {chosen.output ? (
+            <button type="button" class="output-identify" disabled={ro} title="Play counted blips on this output alone" onClick={() => void identifyOutput(session, chosen.index)}>
+              Identify
+            </button>
+          ) : null}
         </div>
         {autoeq ? <AutoEqPanel session={session} channels={channels} wire={cw} disabled={ro} onPreview={setAePreview} /> : null}
         {chosen.output ? (
@@ -323,6 +334,8 @@ const EqView = memo(
           <InputHeader session={session} ask={ask} s={s} input={chosen.index} name={`${chosen.descriptor} ${chosen.name}`} disabled={ro} />
         )}
         <section class="card eq-graph-card" aria-label="Graph">
+          {/* -- WP WB6J -- the spectrum over the graph, in one box with it */}
+          <div class="rta-host">
           <EqGraph
             idBase={idBase}
             channelName={`${chosen.descriptor} ${chosen.name}`}
@@ -341,6 +354,8 @@ const EqView = memo(
             disabled={ro}
             openFields={openFields}
           />
+          <RtaOverlay session={session} want={{ tap: chosen.output ? TAP_OUTPUT : TAP_INPUT, mask: 1 << chosen.index }} names={tapNames(s, props.labels)} />
+          </div>
           <BandChip
             band={chipBand}
             count={sel.set.size}
@@ -416,6 +431,8 @@ const EqView = memo(
           }
         />
         )}
+        {/* -- WP WB6J -- this channel's bars, below its bands */}
+        <SpectrumStrip session={session} names={tapNames(s, props.labels)} want={{ tap: chosen.output ? TAP_OUTPUT : TAP_INPUT, mask: 1 << chosen.index }} />
       </div>
     );
   },
