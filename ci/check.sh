@@ -268,6 +268,13 @@ for s in "${steps[@]}"; do
                    grep -rlE 'webSocketTask\(' --include='*.swift' apps/apple | grep -vE '/Link/LinkClient\.swift$|/DSPi ConsoleTests/|/DSPi Console iOSUITests/'; } || true)
         if [ -n "$stray" ]; then echo "swift: Swift's own Link client is built outside the opt-out:" >&2; echo "$stray" >&2; exit 1; fi
         echo "swift: the core's Link session is only in Core/CoreLink.swift; Swift's Link client only in the opt-out"
+        # -- WP SWS7 -- the effect views name their live settings
+        # (DSPViewModel.LiveFloat, the core's registry paths), never an
+        # opcode: the vendor codes are the opt-out's, in Commands.swift.
+        stray=$(cd "apps/apple/DSPi Console" && grep -nE '\bREQ_[A-Z0-9_]+|\bliveRequest\b' \
+          CrossfeedView.swift LoudnessView.swift VolumeLevellerView.swift PsychoacousticBassView.swift SubharmonicSynthView.swift || true)
+        if [ -n "$stray" ]; then echo "swift: an effect view names an opcode (use DSPViewModel.LiveFloat):" >&2; echo "$stray" >&2; exit 1; fi
+        echo "swift: the five effect views name no opcode"
       fi ;;
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)

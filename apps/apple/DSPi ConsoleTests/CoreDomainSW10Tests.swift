@@ -167,7 +167,7 @@ final class CoreDomainSW10Tests: XCTestCase, CoreDomainTesting {
         let before = vm.psybass.harmonicsDB
         t.setDragging(true)
         for step in 1...10 {
-            vm.sendFloatParamToDevice(REQ_SET_PSYBASS_HARMONICS, -12 + Float(step))
+            vm.sendFloatParamToDevice(.psybassHarmonics, -12 + Float(step))   // -- WP SWS7 --
             RunLoop.current.run(until: Date().addingTimeInterval(0.01))
         }
         vm.setPsybassHarmonics(-2)
@@ -204,12 +204,12 @@ final class CoreDomainSW10Tests: XCTestCase, CoreDomainTesting {
 
         vm.setLoudness(true)
         vm.setLoudnessRef(75)
-        vm.sendFloatParamToDevice(REQ_SET_LOUDNESS_INTENSITY, 120)
+        vm.sendFloatParamToDevice(.loudnessIntensity, 120)   // -- WP SWS7 --
         vm.setLoudnessIntensity(130)
         vm.setLoudnessMask(0b11)
         vm.setCrossfeed(true)
         vm.setCrossfeedPreset(3)
-        vm.sendFloatParamToDevice(REQ_SET_CROSSFEED_FREQ, 800)
+        vm.sendFloatParamToDevice(.crossfeedFreq, 800)   // -- WP SWS7 --
         vm.setCrossfeedFreq(900)
         vm.setCrossfeedFeed(7)
         let itd = !vm.crossfeed.itd   // a change, so it is journalled
@@ -222,7 +222,7 @@ final class CoreDomainSW10Tests: XCTestCase, CoreDomainTesting {
         vm.setPsybassMask(0b101)
         vm.setSubharm(true)
         vm.setSubharmHigh(-4)
-        vm.sendFloatParamToDevice(REQ_SET_SUBHARM_CEILING, -10)
+        vm.sendFloatParamToDevice(.subharmCeiling, -10)   // -- WP SWS7 --
         vm.setSubharmCeiling(-12)
         let linked = !vm.subharm.linkPairs
         vm.setSubharmLinkPairs(linked)
@@ -357,7 +357,10 @@ final class CoreDomainSW10Tests: XCTestCase, CoreDomainTesting {
         let (core, t, vm) = demoVM()
         typealias Case = (path: String, values: (Float, Float, Float), lane: (Float) -> Void, commit: (Float) -> Void)
         func float(_ path: String, _ request: UInt8, _ v: (Float, Float, Float), _ commit: @escaping (Float) -> Void) -> Case {
-            (path, v, { vm.sendFloatParamToDevice(request, $0) }, commit)
+            // -- WP SWS7 -- the live send names the setting; the code finds it.
+            let setting = DSPViewModel.LiveFloat(request: request)
+            XCTAssertEqual(setting?.path, path)
+            return (path, v, { if let setting { vm.sendFloatParamToDevice(setting, $0) } }, commit)
         }
         let cases: [Case] = [
             float("loud.ref", REQ_SET_LOUDNESS_REF, (60, 70, 80), vm.setLoudnessRef),
