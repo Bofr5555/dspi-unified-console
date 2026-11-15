@@ -1266,6 +1266,7 @@ export interface FilesMethods {
   autoeqFavourites: { params: { text: string }; result: { ids: string[]; hits: AutoEqHit[] } };
   /** The favourites file's text for `ids`. */
   autoeqFavouritesText: { params: { ids: string[] }; result: { text: string } };
+}
 
 // -- WP WB6L -- the control-surface editor and the quick strip (crates/dspi-wasm/src/surfaces.rs)
 /** A control-surface record as the core's JSON has it (`DspiCore::cs_snapshot`): a binding, a remote button, a group, a macro, a step, a display page or the display settings. */
