@@ -175,6 +175,8 @@ mod tests {
             "src/fns_misc/guarded.rs",
             // -- WP HUBADMIN --
             "src/fns_misc/hub_admin.rs",
+            // -- WP P2CC1 --
+            "src/fns_misc/hub_server.rs",
             // -- WP ROMODE --
             "src/fns_misc/read_only.rs",
             // -- WP CG-SWS-a --

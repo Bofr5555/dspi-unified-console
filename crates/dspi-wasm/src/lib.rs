@@ -79,6 +79,8 @@ pub mod limits;
 pub mod modes;
 // -- WP HUBADMIN -- the hub's admin API
 pub mod hub_admin;
+// -- WP P2CC1 -- the hub's own families (inventory, identify, health, history, snapshots)
+pub mod hub_server;
 // -- WP P1AQ --
 pub mod autoeq;
 // -- WP WB6K -- the AutoEQ database the page keeps, and filter files
