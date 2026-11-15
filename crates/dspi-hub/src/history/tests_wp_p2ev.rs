@@ -328,10 +328,8 @@ fn wp_p2ev_a_watchdog_reset_is_recorded_once_with_its_reason() {
     assert!(reset.text.contains("watchdog"), "{}", reset.text);
     assert!(reset.text.contains("3600"), "{}", reset.text);
     assert_eq!(reset.lines, ["hang count 1"]);
-    assert!(
-        w.iter().all(|r| r.kind != EventKind::Firmware),
-        "a firmware change is the inventory's to record"
-    );
+    let fw = w.iter().find(|r| r.kind == EventKind::Firmware).unwrap();
+    assert_eq!(fw.fw.as_deref(), Some("1.1.7"));
 
     // The same facts a minute on (the device kept running): nothing new.
     t.advance(60_000);
@@ -348,12 +346,104 @@ fn wp_p2ev_a_watchdog_reset_is_recorded_once_with_its_reason() {
         h.on_message(&facts(ResetReason::Watchdog, 132, "1.1.7"), t.now())
             .is_empty()
     );
-    // It restarted (a power cycle): recorded.
+    // It restarted (a power cycle) with new firmware: both recorded (F9).
     t.advance(60_000);
     let w = h.on_message(&facts(ResetReason::PowerOn, 3, "1.1.8"), t.now());
     let kinds: Vec<EventKind> = w.iter().map(|r| r.kind).collect();
-    assert_eq!(kinds, [EventKind::Reset]);
-    assert_eq!(w[0].source.as_deref(), Some("power_on"));
+    assert_eq!(kinds, [EventKind::Firmware, EventKind::Reset]);
+    assert_eq!(w[0].text, "Firmware 1.1.8 (was 1.1.7)");
+    assert_eq!(w[1].source.as_deref(), Some("power_on"));
+    // The inventory's record of the same change (P2IN's `Event`) is not a second one.
+    let mut fw = EventRecord::new(EventKind::Firmware, 0, "Firmware 1.1.8");
+    fw.fw = Some("1.1.8".into());
+    let dup = BusMessage::Event {
+        serial: S.into(),
+        record: fw,
+    };
+    assert!(h.on_message(&dup, t.now()).is_empty());
+}
+
+#[test]
+fn wp_p2evfix_one_restart_is_one_reset_record_whoever_sees_it_first() {
+    // F2, the review probe's sequence: the attach's facts and health, a minute of
+    // health, then a watchdog restart seen by the facts and then the next health.
+    let (mut h, _dir) = history("one-restart");
+    let mut t = Time::new();
+    online(&mut h, &t, S);
+    let resets = |w: Vec<EventRecord>| w.iter().filter(|r| r.kind == EventKind::Reset).count();
+    let hl = |u: u32, hang: u8| BusMessage::Health {
+        serial: S.into(),
+        cpu: Some(10),
+        clip_mask: 0,
+        temp_c: None,
+        uptime_s: Some(u),
+        hang_count: Some(hang),
+    };
+    let fa = |reason, u: u32, hang: u8| BusMessage::Facts {
+        serial: S.into(),
+        identify: None,
+        reset_info: Some(ResetInfo {
+            reason,
+            hang_count: hang,
+            chip: Chip::Rp2350,
+            uptime_s: u,
+            prev_uptime_s: Some(560),
+            chip_reset: 0,
+            watchdog_reason: 0x100,
+        }),
+        fw: "1.1.7".into(),
+    };
+    assert_eq!(
+        resets(h.on_message(&fa(ResetReason::PowerOn, 500, 0), t.now())),
+        1,
+        "the baseline"
+    );
+    assert_eq!(resets(h.on_message(&hl(500, 0), t.now())), 0);
+    t.advance(60_000);
+    assert_eq!(resets(h.on_message(&hl(560, 0), t.now())), 0);
+    t.advance(2_000);
+    assert_eq!(
+        resets(h.on_message(&fa(ResetReason::Watchdog, 5, 1), t.now())),
+        1
+    );
+    assert_eq!(
+        resets(h.on_message(&hl(5, 1), t.now())),
+        0,
+        "the same restart"
+    );
+    // The other order: the health sees it first, then the facts.
+    t.advance(60_000);
+    assert_eq!(resets(h.on_message(&hl(65, 1), t.now())), 0);
+    t.advance(2_000);
+    assert_eq!(resets(h.on_message(&hl(2, 2), t.now())), 1);
+    assert_eq!(
+        resets(h.on_message(&fa(ResetReason::Watchdog, 2, 2), t.now())),
+        0,
+        "the same restart"
+    );
+}
+
+#[test]
+fn wp_p2evfix_a_repeated_health_uptime_is_no_restart() {
+    // F3, the review probe's sequence: the uptime refreshes every 60 s, health every
+    // 2 s; after a 15 s gap the same uptime comes again.
+    let (mut h, _dir) = history("stale-uptime");
+    let mut t = Time::new();
+    online(&mut h, &t, S);
+    let hl = |u: u32| health(None, 0, Some(u));
+    assert!(h.on_message(&hl(100), t.now()).is_empty());
+    t.advance(2_000);
+    assert!(h.on_message(&hl(100), t.now()).is_empty());
+    t.advance(15_000);
+    assert!(h.on_message(&hl(100), t.now()).is_empty(), "a stale uptime");
+    // The next reset-info read moves it on as expected: still none.
+    t.advance(45_000);
+    assert!(h.on_message(&hl(162), t.now()).is_empty());
+    // A real restart is still seen.
+    t.advance(60_000);
+    let w = h.on_message(&hl(4), t.now());
+    assert_eq!(w.len(), 1);
+    assert_eq!(w[0].kind, EventKind::Reset);
 }
 
 #[test]
@@ -502,7 +592,9 @@ fn wp_p2ev_lost_messages_become_one_events_dropped_record_per_device() {
     let (mut h, _dir) = history("lost");
     let mut t = Time::new();
     // Nobody known yet: the count waits.
-    assert!(h.lost(5, t.now()).is_empty());
+    h.lost(5, t.now());
+    t.advance(EPISODE_QUIET_MS);
+    assert!(h.tick(t.now()).is_empty());
     online(&mut h, &t, S);
     online(&mut h, &t, "P2EV-B");
     h.on_message(
@@ -530,10 +622,81 @@ fn wp_p2ev_lost_messages_become_one_events_dropped_record_per_device() {
         t.now(),
     );
     assert!(w.is_empty());
-    t.advance(LOST_RETRY_MS);
-    let w = h.lost(3, t.now());
+    h.lost(3, t.now());
+    assert!(h.tick(t.now()).is_empty(), "the episode is not over yet");
+    t.advance(EPISODE_QUIET_MS);
+    let w = h.tick(t.now());
     assert_eq!(w.len(), 1);
     assert_eq!(w[0].count, 4, "three dropped and one refused");
+}
+
+#[test]
+fn wp_p2evfix_a_sustained_flood_is_one_events_dropped_record() {
+    // F1, the review probe's case: losses every few ms are one episode, written once with
+    // its whole count when nothing more was lost for a second.
+    let (mut h, _dir) = history("episode");
+    let mut t = Time::new();
+    online(&mut h, &t, S);
+    let mut total = 0u64;
+    for turn in 0..2_000u64 {
+        let n = 1 + turn % 7;
+        total += n;
+        h.lost(n, t.now());
+        let w = h.on_message(
+            &BusMessage::Unresponsive {
+                serial: S.into(),
+                since: 0,
+            },
+            t.now(),
+        );
+        assert!(w.iter().all(|r| r.kind != EventKind::EventsDropped));
+        assert!(
+            h.tick(t.now()).is_empty(),
+            "turn {turn}: the episode goes on"
+        );
+        t.advance(5);
+    }
+    t.advance(EPISODE_QUIET_MS);
+    let w = h.tick(t.now());
+    assert_eq!(w.len(), 1);
+    assert_eq!(w[0].kind, EventKind::EventsDropped);
+    assert_eq!(u64::from(w[0].count), total);
+    assert!(h.tick(t.now()).is_empty());
+    // An episode that never ends is written once a minute.
+    let mut written = 0;
+    for _ in 0..(3 * 60_000 / 100 + 10) {
+        h.lost(1, t.now());
+        written += h.tick(t.now()).len();
+        t.advance(100);
+    }
+    assert_eq!(written, 3);
+}
+
+#[test]
+fn wp_p2evfix_the_history_takes_no_written_records_from_the_bus() {
+    // F1: its own echoes (records with an id) never reach its queue, nor count as dropped.
+    let bus = Bus::new();
+    let sub = bus.subscribe_filtered("history", 2, wants);
+    let mut written = EventRecord::new(EventKind::Notification, 1, "x");
+    written.id = 7;
+    for _ in 0..10 {
+        bus.publish(BusMessage::Event {
+            serial: S.into(),
+            record: written.clone(),
+        });
+    }
+    assert!(sub.is_empty());
+    assert_eq!(sub.dropped(), 0);
+    let to_write = EventRecord::new(EventKind::Notification, 1, "y");
+    bus.publish(BusMessage::Event {
+        serial: S.into(),
+        record: to_write,
+    });
+    assert_eq!(
+        sub.len(),
+        1,
+        "another service's record to write still comes"
+    );
 }
 
 #[test]

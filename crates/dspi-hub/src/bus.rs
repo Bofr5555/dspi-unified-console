@@ -108,9 +108,11 @@ pub enum BusMessage {
         clip_mask: u32,
         /// Temperature, °C, where read.
         temp_c: Option<f32>,
-        /// Uptime, seconds, where read.
+        /// Uptime, seconds, where read. -- WP P2EVFIX -- From the last `EXT_RESET_INFO`
+        /// read, which P2HP makes every 60 s while `Health` goes out every 2 s: readings
+        /// in between repeat the same value, which is no restart.
         uptime_s: Option<u32>,
-        /// The firmware's hang count, where read.
+        /// The firmware's hang count, where read; refreshed with `uptime_s`, every 60 s.
         hang_count: Option<u8>,
     },
     /// A device stopped answering while attached.
@@ -193,6 +195,9 @@ struct Subscriber {
     capacity: usize,
     queue: Mutex<Queue>,
     ready: Condvar,
+    // -- WP P2EVFIX --
+    /// What it takes; `None` for everything.
+    wants: Option<fn(&BusMessage) -> bool>,
 }
 
 impl Subscriber {
@@ -229,6 +234,32 @@ impl Bus {
             capacity: capacity.clamp(1, MAX_CAPACITY),
             queue: Mutex::new(Queue::default()),
             ready: Condvar::new(),
+            // -- WP P2EVFIX --
+            wants: None,
+        });
+        let mut list = lock(&self.subscribers);
+        list.retain(|s| s.strong_count() > 0);
+        list.push(Arc::downgrade(&sub));
+        Subscription { sub }
+    }
+
+    // -- WP P2EVFIX --
+    /// [`Bus::subscribe`], taking only the messages `wants` accepts: the others never
+    /// reach its queue, so they cannot push out a message it wants or count as dropped
+    /// (the history skips its own `Event` echoes). `wants` runs on the publisher's thread
+    /// with no lock held: it must be quick and must not block.
+    pub fn subscribe_filtered(
+        &self,
+        name: &str,
+        capacity: usize,
+        wants: fn(&BusMessage) -> bool,
+    ) -> Subscription {
+        let sub = Arc::new(Subscriber {
+            name: name.to_owned(),
+            capacity: capacity.clamp(1, MAX_CAPACITY),
+            queue: Mutex::new(Queue::default()),
+            ready: Condvar::new(),
+            wants: Some(wants),
         });
         let mut list = lock(&self.subscribers);
         list.retain(|s| s.strong_count() > 0);
@@ -253,6 +284,10 @@ impl Bus {
         }
         let message = Arc::new(message);
         for s in live {
+            // -- WP P2EVFIX --
+            if s.wants.is_some_and(|wants| !wants(&message)) {
+                continue;
+            }
             s.push(&message);
         }
     }
