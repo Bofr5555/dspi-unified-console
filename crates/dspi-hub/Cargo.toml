@@ -76,6 +76,11 @@ zeroize = "1"
 time = { version = "0.3.47", default-features = false }
 
 [dev-dependencies]
+# -- review seca -- SECPIPE's tls module (feature `tls`) for the SECKEY/SECPIPE
+# cross tests (tests/review_seca_tls_cross.rs; PLAN-SEC M2: one hash for one
+# key). Dev only: the shipped hub gains rustls with SECSRV, which then also
+# replaces tls_identity's pub(crate) helper copies with dspi_link::tls::SpkiHash.
+dspi-link = { workspace = true, features = ["tls"] }
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
 # -- WP HB2 --
 proptest = "1"
