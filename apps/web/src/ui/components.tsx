@@ -95,16 +95,22 @@ function SourceRow(props: { src: Source; env: PageEnv; open: boolean; onOpen: ()
           : "DSPi on USB"
         : src.kind === "document"
           ? `File ${src.fileName}` // -- WP P1WB1 -- (never listed by a backend)
+          : src.kind === "hub" && src.deviceId && src.online !== undefined
+            ? `${src.name || src.deviceId} · ${src.online ? "online" : "offline"}` // -- WP P2WB1 -- the serving hub's inventory
           : src.deviceId
             ? `${src.name || src.deviceId} · hub ${hostOf(src.url)}`
             : `Hub ${hostOf(src.url)}`;
   const avail = src.kind === "demo" || src.kind === "document" ? { ok: true, reason: "" } : src.kind === "usb" ? env.usb : env.link;
+  // -- WP P2WB1 -- an offline DSPi of the hub's inventory: listed, not offered
+  const offline = src.kind === "hub" && src.online === false;
   return (
     <li class="source">
       <span class="source-name" title={src.kind === "usb" && src.serial ? src.serial : undefined}>
         {label}
       </span>
-      {avail.ok ? (
+      {offline ? (
+        <span class="unavailable">Not attached to the hub</span>
+      ) : avail.ok ? (
         <button type="button" disabled={props.open} onClick={props.onOpen}>
           {props.open ? "Open" : "Connect"}
         </button>

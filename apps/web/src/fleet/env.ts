@@ -3,6 +3,11 @@
 // No text names the device the user is holding (owner's rule).
 
 import { DSPI_FILTERS, isDspi, webUsb, type UsbLike } from "../core/usb-ids";
+// -- WP P2WB1 -- the backend for this page
+import type { CoreClient } from "../core/client";
+import { HubBackend } from "./hub";
+import { LocalBackend, type KeyValueStore } from "./local";
+import type { FleetBackend } from "./types";
 
 export interface Availability {
   ok: boolean;
@@ -89,4 +94,15 @@ export function usbAccess(usb: UsbLike): UsbAccess {
       };
     },
   };
+}
+
+// -- WP P2WB1 --
+/**
+ * The backend a page without a fleet server uses: served by a hub, the hub's own
+ * (`HubBackend`: the hub's inventory as an installation, the access its role gives);
+ * otherwise the standalone one. `spawnCore` gives the hub backend its own core.
+ */
+export function pageBackend(opts: { servingHub: string | null; spawnCore: () => CoreClient; storage?: KeyValueStore | null }): FleetBackend {
+  if (opts.servingHub) return new HubBackend({ servingHub: opts.servingHub, spawnCore: opts.spawnCore, storage: opts.storage });
+  return new LocalBackend({ servingHub: null, storage: opts.storage });
 }

@@ -106,6 +106,7 @@ import se.bofr.dspi.ui.WritesExempt
 import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.ConsoleAlertHost
 import se.bofr.dspi.ui.alert.LocalNoticeLine
+import se.bofr.dspi.ui.collectAsStateOnMain
 import se.bofr.dspi.ui.link.LinkBanner
 import se.bofr.dspi.ui.link.LinkBannerAction
 import se.bofr.dspi.ui.onMainThread
@@ -194,6 +195,16 @@ fun AppScaffold(
         onMainThread { value = line } // -- WP FLAKE2 -- the write on the main thread (onMainThread)
     }
     val locked = uiMode == UiModes.LOCKED_USER
+    // -- WP P2AN -- the hub's alarms as notices, and Identify in the strip's device menu
+    val alarmNotices = remember(bridge) { HubAlarmNotices(bridge, noticeScope, noticeLine) }
+    LaunchedEffect(alarmNotices) { alarmNotices.run() }
+    val identify = remember(bridge) { IdentifyAction(bridge, noticeScope, noticeLine) }
+    val hubCaps by bridge.hubServer.caps.collectAsStateOnMain()
+    val bridgeStatus by bridge.status.collectAsStateOnMain()
+    val canIdentify by bridge.writesAllowed.collectAsStateOnMain()
+    val identifyEntry: Pair<String, () -> Unit>? = (IDENTIFY_ENTRY to identify::run).takeIf {
+        !locked && canIdentify && bridgeStatus.connected && strip !is ConnectionStrip.Document && (!hubCaps.onHub || hubCaps.identify)
+    }
     // The entry: Unlock while locked; none when the hub pins the mode
     val modeEntry: Pair<String, () -> Unit>? = when {
         locked -> UNLOCK_ENTRY to modeModel::openDialog
@@ -239,7 +250,8 @@ fun AppScaffold(
                     // -- WP P1AN2 -- not in the locked-user state (Home only)
                     onSnapshots = openSnapshots.takeUnless { locked },
                     modeEntry = modeEntry, // -- WP P1AN2 --
-                    installerBadge = uiMode == UiModes.INSTALLER && lockState?.pinSet == true // -- WP P1AN2 --
+                    installerBadge = uiMode == UiModes.INSTALLER && lockState?.pinSet == true, // -- WP P1AN2 --
+                    identifyEntry = identifyEntry // -- WP P2AN --
                 ) { c ->
                     if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c)
                 }
@@ -268,6 +280,7 @@ fun AppScaffold(
     overlay()
     CompositionLocalProvider(LocalNoticeLine provides noticeLine) {
         switchAlerts?.let { ConsoleAlertHost(it) } // -- WP AN7 --
+        ConsoleAlertHost(alarmNotices.host) // -- WP P2AN --
     }
     ModeDialogHost(modeModel) // -- WP P1AN2 --
 }
@@ -420,6 +433,8 @@ private fun ConnectionStripBar(
     // -- WP P1AN2 -- the Mode entry ("Mode…", or "Unlock…" while locked) and the Installer badge
     modeEntry: Pair<String, () -> Unit>? = null,
     installerBadge: Boolean = false,
+    // -- WP P2AN -- Identify: in the overflow (phone) or the Devices menu (wide), no new button on the bar
+    identifyEntry: Pair<String, () -> Unit>? = null,
     onChooseDevice: (DeviceChoice) -> Unit
 ) {
     // -- WP AN5 -- the owner's lost-connection banner; this bar is above every route, so it is on every screen
@@ -468,7 +483,13 @@ private fun ConnectionStripBar(
                 history?.let { UndoRedoButtons(it, ink) }
                 // -- WP P1AN1 -- Snapshots first in the overflow: the bar keeps its one line
                 // -- WP P1AN2 -- the Mode entry after it
-                StripMenu(listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }, modeEntry) + actions, devices, onChooseDevice, ink)
+                StripMenu(
+                    listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }, modeEntry) + actions,
+                    devices,
+                    onChooseDevice,
+                    ink,
+                    identifyEntry // -- WP P2AN -- last, below the device list
+                )
             } else {
                 Text(strip.text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
                 actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } }
@@ -478,7 +499,7 @@ private fun ConnectionStripBar(
                 if (installerBadge) InstallerBadge(ink)
                 modeEntry?.let { (label, act) -> TextButton(onClick = act, Modifier.testTag(MODE_ENTRY_TAG)) { Text(label) } }
                 history?.let { UndoRedoButtons(it, ink) } // -- WP AN42 --
-                DeviceListButton(devices, onChooseDevice) // -- WP AN7 --
+                DeviceListButton(devices, onChooseDevice, identifyEntry) // -- WP AN7 --, P2AN: Identify
             }
         }
     }
@@ -501,13 +522,21 @@ private fun InstallerBadge(tint: Color) {
 // -- WP AN7 --
 /** "Devices": the one list of every way to a DSPi, the current one ticked. Nothing while [rows] is empty. */
 @Composable
-private fun DeviceListButton(rows: List<DeviceRow>, onChoose: (DeviceChoice) -> Unit) {
-    if (rows.isEmpty()) return
+private fun DeviceListButton(rows: List<DeviceRow>, onChoose: (DeviceChoice) -> Unit, identifyEntry: Pair<String, () -> Unit>? = null) {
+    if (rows.isEmpty() && identifyEntry == null) return
     var open by remember { mutableStateOf(false) }
     Box {
         TextButton(onClick = { open = true }, Modifier.testTag(DEVICE_LIST_TAG)) { Text("Devices") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DeviceRows(rows, onChoose) { open = false }
+            // -- WP P2AN --
+            identifyEntry?.let { (label, act) ->
+                if (rows.isNotEmpty()) HorizontalDivider()
+                DropdownMenuItem(text = { Text(label) }, onClick = {
+                    open = false
+                    act()
+                })
+            }
         }
     }
 }
@@ -529,8 +558,15 @@ private fun DeviceRows(rows: List<DeviceRow>, onChoose: (DeviceChoice) -> Unit, 
 // -- WP AN42 --
 /** The compact strip's overflow (⋮): its actions first, then the device list. Nothing when both are empty. */
 @Composable
-private fun StripMenu(actions: List<Pair<String, () -> Unit>>, rows: List<DeviceRow>, onChoose: (DeviceChoice) -> Unit, tint: Color) {
-    if (actions.isEmpty() && rows.isEmpty()) return
+private fun StripMenu(
+    actions: List<Pair<String, () -> Unit>>,
+    rows: List<DeviceRow>,
+    onChoose: (DeviceChoice) -> Unit,
+    tint: Color,
+    // -- WP P2AN --
+    identifyEntry: Pair<String, () -> Unit>? = null
+) {
+    if (actions.isEmpty() && rows.isEmpty() && identifyEntry == null) return
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }, Modifier.testTag(STRIP_MENU_TAG)) {
@@ -553,6 +589,14 @@ private fun StripMenu(actions: List<Pair<String, () -> Unit>>, rows: List<Device
                 )
             }
             DeviceRows(rows, onChoose) { open = false }
+            // -- WP P2AN -- the open device's Identify, under the device list
+            identifyEntry?.let { (label, act) ->
+                if (actions.isNotEmpty() || rows.isNotEmpty()) HorizontalDivider()
+                DropdownMenuItem(text = { Text(label) }, onClick = {
+                    open = false
+                    act()
+                })
+            }
         }
     }
 }

@@ -744,6 +744,25 @@ pub(crate) fn wire_document(text: &str) -> Result<Value> {
     Ok(doc)
 }
 
+// -- WP P2WB2 --
+/// `doc` with a store id in its snapshot block: a document captured with no
+/// store (the web's `snapshot_capture_document`) has none, and the hub files
+/// a snapshot only under one. It gets the id a store would give it first,
+/// from its capture time (`snapshot_store::id_for`); one that has an id
+/// keeps it.
+#[cfg_attr(not(feature = "link"), allow(dead_code))]
+pub(crate) fn with_store_id(mut doc: Value) -> Value {
+    use dspi_session::snapshot_store::{BLOCK, id_for, valid_id};
+    if let Some(b) = doc.get_mut(BLOCK).and_then(Value::as_object_mut) {
+        let has = b.get("id").and_then(Value::as_str).is_some_and(valid_id);
+        if !has {
+            let ms = b.get("savedMs").and_then(Value::as_i64).unwrap_or(0);
+            b.insert("id".into(), id_for(ms, 0).into());
+        }
+    }
+    doc
+}
+
 /// The hub's refusals as the core's kinds (module docs).
 #[cfg_attr(not(feature = "link"), allow(dead_code))]
 pub(crate) fn hub_error(e: DspiError) -> DspiError {
@@ -1186,6 +1205,7 @@ impl DspiCore {
             // Measured first: too large is refused here whatever the hub.
             let doc = wire_document(&document)?;
             self.hub_cap(CAP_HUB_SNAPSHOTS)?;
+            let doc = with_store_id(doc); // -- WP P2WB2 --
             let serial = if serial.is_empty() {
                 doc.get("snapshot")
                     .and_then(|b| b.get("serial"))
@@ -1437,3 +1457,7 @@ impl DspiCore {
 #[path = "hub_server/tests_wp_p2cc1.rs"]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p2cc1;
+// -- WP P2WB2 --
+#[cfg(test)]
+#[path = "hub_server/tests_wp_p2wb2.rs"]
+mod tests_wp_p2wb2;
