@@ -1364,6 +1364,22 @@ export interface HubServerMethods {
   hubAlarmAck: { params: { id: string }; result: HubAlarmRecord };
   /** The alarm's notice row filled in (`time`: this page's rendering of its time). */
   hubAlarmNotice: { params: { alarm: HubAlarmRecord; time?: string }; result: NoticeRecord };
+  // -- WP P2WB3 -- the hub's device and name writes (crates/dspi-wasm/src/hub_server_manage.rs, WP P2CC3)
+  /** Admin. A field left out keeps its value; "" or `[]` clears it. The record as the hub now has it. */
+  hubInventorySet: { params: { serial?: string; location?: string; note?: string; tags?: string[] }; result: HubDeviceRecord };
+  /** Admin; an offline device only (`conflict` while online). `withData`: its snapshots on the hub too. */
+  hubInventoryForget: { params: { serial: string; withData?: boolean }; result: HubInventoryForgotRecord };
+  /** Admin. The name the hub now uses. */
+  hubRename: { params: { name: string }; result: string };
+  /** Any device on the hub ("" the open one; Control, Admin): the state read after, or null. */
+  hubIdentifySerial: { params: { serial?: string; seconds: number; toneOutput?: number }; result: IdentifyInfoRecord | null };
+}
+
+// -- WP P2WB3 --
+/** What `hubInventoryForget` removed (`dspi_core::HubInventoryForgot`): `record`, then `events`, `snapshots`. */
+export interface HubInventoryForgotRecord {
+  serial: string;
+  forgot: string[];
 }
 
 // -- WP WB6K -- filter files and the AutoEQ database the page keeps

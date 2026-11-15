@@ -687,6 +687,12 @@ export class Session {
     return () => this.hubListeners.delete(fn);
   }
 
+  // -- WP P2WB3 --
+  /** The hub took a new name (`hubRename`, Admin): the name this session shows for it. */
+  hubRenamed(name: string): void {
+    if (name && name !== this.state.hubName) this.set({ hubName: name });
+  }
+
   // -- WP HUBADMIN --
   /** Show (or, with "", dismiss) the recovery code of a PIN just set on the hub. Kept only in this session's state. */
   showHubRecovery(code: string): void {

@@ -186,7 +186,7 @@ export function Mqtt(props: SectionProps & { keys: boolean }) {
               </>
             ) : (
               <label class="limit-field">
-                <span>Send the password unencrypted to a broker not on this machine</span>
+                <span>Send the password unencrypted to a broker not on the hub's machine</span>
                 <input
                   type="checkbox"
                   checked={s.tls.allowPlaintextPassword}

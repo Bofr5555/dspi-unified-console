@@ -20,6 +20,7 @@ import {
   type GuardedApplyRecord,
   type ImportReport,
 } from "../../core/protocol";
+import type { HubSnapshotRecallRecord } from "../../core/hub-settings-protocol"; // -- WP P2WB3 --
 import type { Session } from "../../ui/session";
 // -- WP WB6K -- the document's input pair-link mask, both ways
 import { inputLinks } from "../inputs/model";
@@ -324,6 +325,41 @@ export class SnapshotDesk {
       const r = await this.session.core.call("snapshotRecall", { text });
       await this.after();
       this.set({ outcome: { title: `Recalled “${r.name}”`, lines: r.changes, notes: r.notes, tone: r.notes.length ? "warn" : "info" } });
+      return true;
+    }).then((v) => v ?? false);
+  }
+
+  // -- WP P2WB3 --
+  /**
+   * Recall a snapshot the hub keeps, on the hub (`recall`, the hub's `snapshot.recall`). Where
+   * recalls are guarded here, the hub guards it itself and the core adopts that guard: the
+   * countdown bar's Keep and Revert end it as any other (Revert and the timeout have the hub put
+   * back what it captured). The way back where the hub cannot recall it guarded (`unsupported`):
+   * the hub's document (`text`) recalled here, guarded here, as before.
+   */
+  recallOnHub(recall: (guard: boolean, timeoutMs: number) => Promise<HubSnapshotRecallRecord>, text: () => Promise<string>): Promise<boolean> {
+    if (!this.writable("Recall")) return Promise.resolve(false);
+    return this.run("Recall", async () => {
+      const guarded = await this.guardDefaultNow();
+      const timeoutS = this.state.timeoutS;
+      let r: HubSnapshotRecallRecord;
+      try {
+        r = await recall(guarded, timeoutS * 1000);
+      } catch (e) {
+        if (!(guarded && e instanceof CoreCallError && e.code === "unsupported")) throw e;
+        const g = await this.session.core.call("applyGuardedSnapshot", { text: await text(), timeoutS });
+        await this.guardStarted(g);
+        return true;
+      }
+      if (guarded) {
+        const g = await this.session.core.call("applyStatus", undefined).catch(() => null);
+        if (g?.phase === "waiting") {
+          await this.guardStarted(g);
+          return true;
+        }
+      }
+      await this.after();
+      this.set({ outcome: { title: `Recalled “${r.name}” on the hub`, lines: r.lines, notes: r.notes, tone: r.notes.length ? "warn" : "info" } });
       return true;
     }).then((v) => v ?? false);
   }
