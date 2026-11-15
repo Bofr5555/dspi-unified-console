@@ -124,6 +124,21 @@ pub struct ServerLimits {
     pub close_grace: Duration,
     /// The reader's wake-up, to check the limits above.
     pub read_tick: Duration,
+    // -- WP P2RS -- the REST mirror's (`rest.rs`)
+    /// The largest REST request body taken, by its `Content-Length`. Past it: 413,
+    /// unread.
+    pub rest_max_body: usize,
+    /// From the end of a REST request's head to the last byte of its body, however
+    /// slowly it trickles. Past it: 408.
+    pub rest_body_timeout: Duration,
+    /// REST requests per second one key may make, on average.
+    pub rest_rate: u32,
+    /// REST requests one key may make at once after a quiet spell. Past it and the
+    /// rate: 429.
+    pub rest_burst: u32,
+    /// How long a key's session stays open with no request: its parameter cores go
+    /// with it.
+    pub rest_idle: Duration,
 }
 
 impl Default for ServerLimits {
@@ -146,6 +161,12 @@ impl Default for ServerLimits {
             write_stall: Duration::from_secs(10),
             close_grace: Duration::from_secs(1),
             read_tick: Duration::from_secs(1),
+            // -- WP P2RS --
+            rest_max_body: crate::rest::MAX_BODY,
+            rest_body_timeout: Duration::from_secs(3),
+            rest_rate: 10,
+            rest_burst: 20,
+            rest_idle: Duration::from_secs(60),
         }
     }
 }
@@ -182,6 +203,10 @@ pub struct NetworkConfig {
     /// The web console, served at [`crate::web::CONSOLE_PATH`] beside the page at `/`
     /// while `web` is on. `None`: not served (404).
     pub console: Option<Arc<crate::web::Console>>,
+    // -- WP P2RS --
+    /// The REST mirror under `/api/v1/` (`uconsole hub --rest`). Off by default, and
+    /// then `/api/v1/` answers 404.
+    pub rest: bool,
 }
 
 // -- WP HB5 --
@@ -229,6 +254,8 @@ impl NetworkConfig {
             hold_accepts: false,
             // -- WP WB7 --
             console: None,
+            // -- WP P2RS --
+            rest: false,
         }
     }
 }
@@ -474,6 +501,8 @@ struct Shared {
     accepting: AtomicBool,
     // -- WP WB7 --
     console: Option<Arc<crate::web::Console>>,
+    // -- WP P2RS -- the REST mirror's keys and their sessions
+    rest: crate::rest::Rest,
 }
 
 /// The way to a running server, for a binding: the pairing window, the client list,
@@ -570,14 +599,17 @@ impl Entry {
 
 impl Shared {
     fn sessions_of(&self, cid: u32) -> Vec<Arc<Session>> {
-        guard(&self.table)
+        let mut sessions: Vec<Arc<Session>> = guard(&self.table)
             .conns
             .values()
             .filter(|e| !e.done)
             .filter_map(|e| e.session.as_ref())
             .filter(|s| s.client_id() == Some(cid))
             .map(Arc::clone)
-            .collect()
+            .collect();
+        // -- WP P2RS -- an API key's REST session: revoked and re-roled with the rest
+        sessions.extend(self.rest.session_of(cid));
+        sessions
     }
 
     fn close_client(&self, cid: u32) {
@@ -818,6 +850,8 @@ fn accept_loop(shared: &Arc<Shared>, listener: &TcpListener) {
         match listener.accept() {
             Ok((tcp, peer)) => {
                 shared.reap();
+                // -- WP P2RS --
+                shared.rest.sweep(&shared.hub, &shared.limits);
                 shared.admit(tcp, peer);
             }
             Err(e) => {
@@ -826,9 +860,46 @@ fn accept_loop(shared: &Arc<Shared>, listener: &TcpListener) {
                     log::debug!("hub: accept: {e}");
                 }
                 shared.reap();
+                // -- WP P2RS -- idle keys' sessions close; their outboxes are emptied
+                shared.rest.sweep(&shared.hub, &shared.limits);
                 thread::sleep(ACCEPT_TICK);
             }
         }
+    }
+}
+
+// -- WP P2RS --
+/// The byte stream one plain HTTP request is read from and answered on (PLAN-SEC section
+/// 6, P2-C): a `TcpStream` today, a TLS stream over one when WP SECSRV lands, so the
+/// head and body reads, the REST mirror and the answers need no change then. Only the
+/// accept path and the WebSocket upgrade still take a `TcpStream`.
+pub(crate) trait HubStream: Read + Write {
+    /// As [`TcpStream::set_read_timeout`]: `None` waits for ever.
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
+    /// As [`TcpStream::set_write_timeout`].
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
+    /// End the sending half, behind what was written.
+    fn shutdown_write(&self) -> io::Result<()>;
+    /// The peer's address, as the limits and the failure ledger count it.
+    fn peer_ip(&self) -> io::Result<IpAddr>;
+}
+
+// -- WP P2RS --
+impl HubStream for TcpStream {
+    fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        TcpStream::set_read_timeout(self, timeout)
+    }
+
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        TcpStream::set_write_timeout(self, timeout)
+    }
+
+    fn shutdown_write(&self) -> io::Result<()> {
+        self.shutdown(Shutdown::Write)
+    }
+
+    fn peer_ip(&self) -> io::Result<IpAddr> {
+        self.peer_addr().map(|a| a.ip())
     }
 }
 
@@ -837,8 +908,8 @@ fn accept_loop(shared: &Arc<Shared>, listener: &TcpListener) {
 /// must start by `start_by`, and its head end within `request_timeout` of its first byte
 /// and by `cap`, however slowly it trickles (WP HB9). `started` hears of the first byte;
 /// false from it ends the read.
-fn read_head(
-    tcp: &mut TcpStream,
+fn read_head<S: HubStream + ?Sized>(
+    tcp: &mut S,
     mut buf: Vec<u8>,
     start_by: Instant,
     cap: Option<Instant>,
@@ -903,8 +974,8 @@ enum HeadError {
 
 /// Write all of it by `cap`, however slowly the peer takes it, each write making
 /// progress within `stall`.
-fn write_by(
-    tcp: &mut TcpStream,
+fn write_by<S: HubStream + ?Sized>(
+    tcp: &mut S,
     mut bytes: &[u8],
     stall: Duration,
     cap: Instant,
@@ -925,7 +996,7 @@ fn write_by(
 
 /// Read and discard until the peer closes or the deadline, so that what it has sent
 /// does not turn our close into a reset, which could cost it what it has not read yet.
-fn drain(tcp: &mut TcpStream, deadline: Instant) {
+fn drain<S: HubStream + ?Sized>(tcp: &mut S, deadline: Instant) {
     let mut sink = [0u8; 1024];
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
@@ -941,9 +1012,9 @@ fn drain(tcp: &mut TcpStream, deadline: Instant) {
 /// One whole HTTP answer, written by `until` with each write progressing within
 /// [`ServerLimits::write_stall`]. With `keep` the connection stays open for the next
 /// request, and the result says whether it may; without, it closes behind the answer.
-fn respond(
+fn respond<S: HubStream + ?Sized>(
     shared: &Shared,
-    tcp: &mut TcpStream,
+    tcp: &mut S,
     status: &str,
     headers: &[(&str, &str)],
     body: &[u8],
@@ -977,7 +1048,7 @@ fn respond(
     if keep {
         return true;
     }
-    let _ = tcp.shutdown(Shutdown::Write);
+    let _ = tcp.shutdown_write();
     drain(tcp, after(Instant::now(), shared.limits.close_grace));
     false
 }
@@ -1092,7 +1163,9 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
                 return;
             }
         };
-        match answer(shared, id, &mut tcp, &head, until) {
+        // -- WP P2RS -- `tail`: a REST body starts there, and what it leaves is carried
+        let mut tail = tail;
+        match answer(shared, id, &mut tcp, &head, &mut tail, until) {
             Next::Keep => carry = tail,
             Next::Close => return,
             Next::Upgrade(accept) => {
@@ -1104,7 +1177,17 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
 }
 
 /// The answer to one plain HTTP request.
-fn answer(shared: &Shared, id: u64, tcp: &mut TcpStream, head: &[u8], until: Instant) -> Next {
+///
+/// -- WP P2RS -- Over any [`HubStream`]; `tail` is what came behind the head, where a
+/// REST request's body starts. An upgrade is answered by the caller, on the `TcpStream`.
+fn answer<S: HubStream + ?Sized>(
+    shared: &Shared,
+    id: u64,
+    tcp: &mut S,
+    head: &[u8],
+    tail: &mut Vec<u8>,
+    until: Instant,
+) -> Next {
     let mut headers = [httparse::EMPTY_HEADER; MAX_HEADERS];
     let mut request = httparse::Request::new(&mut headers);
     if !matches!(request.parse(head), Ok(httparse::Status::Complete(_))) {
@@ -1132,6 +1215,35 @@ fn answer(shared: &Shared, id: u64, tcp: &mut TcpStream, head: &[u8], until: Ins
             }
         }
         return Next::Close;
+    }
+    // -- WP P2RS -- `/api/v1/`: the REST mirror (`rest.rs`), `404` while it is off.
+    if crate::rest::is_rest_path(path) {
+        let reply = shared.rest.answer(
+            &crate::rest::RestCtx {
+                hub: &shared.hub,
+                auth: &shared.auth,
+                hub_id: &shared.hub_id,
+                limits: &shared.limits,
+            },
+            tcp,
+            &request,
+            tail,
+        );
+        let headers: Vec<(&str, &str)> = reply
+            .headers
+            .iter()
+            .map(|(n, v)| (*n, v.as_str()))
+            .collect();
+        let keep = reply.keep && keep_alive(&request);
+        return kept(respond(
+            shared,
+            tcp,
+            reply.status,
+            &headers,
+            &reply.body,
+            keep,
+            until,
+        ));
     }
     if request.method != Some("GET") {
         let status = "405 Method Not Allowed";
@@ -1201,9 +1313,9 @@ fn answer(shared: &Shared, id: u64, tcp: &mut TcpStream, head: &[u8], until: Ins
 
 // -- WP WB7 --
 /// One request under the console's path. Whether the connection stays open.
-fn serve_console(
+fn serve_console<S: HubStream + ?Sized>(
     shared: &Shared,
-    tcp: &mut TcpStream,
+    tcp: &mut S,
     request: &httparse::Request<'_, '_>,
     path: &str,
     keep: bool,
@@ -1674,17 +1786,8 @@ impl Connection {
             "auth.pair" => self.on_auth_pair(id, message),
             _ => match self.live_session() {
                 Some(session) => {
-                    // -- WP P1HA -- `apply.*` after the lock's messages
-                    let answer = crate::lock::handle_message(&self.shared.hub, &session, &value)
-                        .or_else(|| {
-                            crate::apply_guard::handle_message(&self.shared.hub, &session, &value)
-                        })
-                        // -- WP P1HL -- `limits.*` and `mode.*`
-                        .or_else(|| {
-                            crate::limits::handle_message(&self.shared.hub, &session, &value)
-                        })
-                        // -- WP P2SV -- the services (`service.rs`), after the limits
-                        .or_else(|| self.shared.hub.service_message(&session, &value));
+                    // -- WP P2RS -- the chain in one place, which the REST mirror runs too
+                    let answer = control_plane(&self.shared.hub, &session, &value);
                     match answer {
                         Some(answer) => self.reply(answer),
                         None => self.on_request(t, id, message, &session),
@@ -1883,6 +1986,9 @@ impl Connection {
                 None => return,
             },
             "auth.set_role" => self.auth_set_role(id, message),
+            // -- WP P2RS -- an API key, shown in this answer only
+            "auth.mint" if !admin => denied(),
+            "auth.mint" => crate::rest::mint(&self.shared.auth, id, message, session.role()),
             // `fw.install` is later work (PLAN-CLIENTS), and the hub messages are not in
             // HB1's entry. -- WP P2SV -- `hub.stats` and `hub.rename` reach here only when
             // no service answered them (the services run first, in `on_text`).
@@ -2132,7 +2238,10 @@ impl Connection {
                     "name": c.name,
                     "role": role_name(c.role),
                     "created": iso8601(unix_seconds(c.created)),
-                    "online": online.contains(&c.cid),
+                    // -- WP P2RS -- a key with a REST session open counts as online
+                    "online": online.contains(&c.cid) || self.shared.rest.is_open(c.cid),
+                    "kind": c.kind.wire_name(),
+                    "plaintext_ok": c.plaintext_ok,
                 });
                 if let (Some(seen), Some(map)) = (c.last_seen, client.as_object_mut()) {
                     map.insert("last_seen".into(), iso8601(unix_seconds(seen)).into());
@@ -2181,6 +2290,25 @@ fn cid_of(message: &Map<String, Value>) -> Option<u32> {
         .get("cid")
         .and_then(Value::as_u64)
         .and_then(|c| u32::try_from(c).ok())
+}
+
+// -- WP P2RS --
+/// The handlers a session's control-plane message goes through before the hub's own
+/// `device.*`, `poll.*`, `auth.*`, `hub.*` and `system.*` answers: the lock's, the
+/// guarded apply's, the limits' and the services'. The WebSocket and the REST mirror
+/// both run it, so a REST answer is the WebSocket's. `None`: none of them claims it.
+pub(crate) fn control_plane(
+    hub: &HubHandle,
+    session: &Arc<Session>,
+    value: &Value,
+) -> Option<String> {
+    // -- WP P1HA -- `apply.*` after the lock's messages
+    crate::lock::handle_message(hub, session, value)
+        .or_else(|| crate::apply_guard::handle_message(hub, session, value))
+        // -- WP P1HL -- `limits.*` and `mode.*`
+        .or_else(|| crate::limits::handle_message(hub, session, value))
+        // -- WP P2SV -- the services (`service.rs`), after the limits
+        .or_else(|| hub.service_message(session, value))
 }
 
 /// `{"t":"ok","id":…, …body}`.
@@ -2277,6 +2405,11 @@ impl Shared {
         }
         if self.web {
             caps.push("web");
+        }
+        // -- WP P2RS -- `auth.mint` always; `/api/v1/` while it is on
+        caps.push(crate::rest::CAP_API_KEYS);
+        if self.rest.is_on() {
+            caps.push(crate::rest::CAP_REST);
         }
         let mode = self.auth.mode();
         let mut hello = json!({
@@ -2390,6 +2523,8 @@ impl Server {
             accepting: AtomicBool::new(!config.hold_accepts),
             // -- WP WB7 --
             console: config.console.clone(),
+            // -- WP P2RS --
+            rest: crate::rest::Rest::new(config.rest),
         });
         let acceptor = {
             let shared = Arc::clone(&shared);

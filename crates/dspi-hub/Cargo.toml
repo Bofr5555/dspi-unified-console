@@ -106,6 +106,11 @@ required-features = ["mdns"]
 name = "wp_p2pa_api"
 required-features = ["api"]
 
+# -- WP P2RS --
+[[test]]
+name = "wp_p2rs_rest"
+required-features = ["api"]
+
 # -- WP HB7 --
 # tests/conformance/: three Link clients against the hub (README.md there).
 [[test]]
