@@ -1015,6 +1015,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "linkParseAddress",
             "linkWsUrl",
             "linkFetchInfo",
+            // -- WP SECCORE -- TLS-first connect, its state, and two parsers
+            "linkConnectAdvertised",
+            "linkSecurity",
+            "linkParsePairLink",
+            "linkCredentialHubKey",
             "bootloaderCounts",
             "captureBaseline",
             "checkCore1Conflict",

@@ -528,6 +528,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = call { core.linkConnect(url, clientName, appVersion, token, expectedHubId).toDomain() }
 
+    override fun linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello = call { core.linkConnectAdvertised(url, clientName, appVersion, credential, expectedHubId, tlsAdvertised).toDomain() }
+
+    override fun linkSecurity(): LinkSecurity = core.linkSecurity().toDomain()
+
     override fun linkPair(pin: String): String = call { core.linkPair(pin) }
 
     override fun linkDevices(): List<LinkDevice> = core.linkDevices().map { it.toDomain() }
@@ -895,6 +899,10 @@ class FfiDspiCore : DspiCoreApi {
     override fun linkWsUrl(host: String, port: Int, path: String): String = se.bofr.dspi.ffi.uniffi.linkWsUrl(host, port.toUShort(), path)
 
     override fun linkFetchInfo(host: String, port: Int): LinkInfo = call { se.bofr.dspi.ffi.uniffi.linkFetchInfo(host, port.toUShort()).toDomain() }
+
+    override fun linkParsePairLink(text: String): LinkPairLink = call { se.bofr.dspi.ffi.uniffi.linkParsePairLink(text).toDomain() }
+
+    override fun linkCredentialHubKey(credential: String): String = se.bofr.dspi.ffi.uniffi.linkCredentialHubKey(credential)
 
     override fun linkPhaseText(phase: LinkPhase, pinSource: String): LinkPhaseText = se.bofr.dspi.ffi.uniffi.linkPhaseText(phase.toFfi(), pinSource).toDomain()
 
@@ -1965,6 +1973,44 @@ internal fun LinkAddress.toFfi() =
     se.bofr.dspi.ffi.uniffi.LinkAddress(
         host = host,
         port = port.toUShort(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LinkSecurity.toDomain() =
+    LinkSecurity(
+        encrypted = encrypted,
+        hubKey = hubKey,
+        hubKeyNew = hubKeyNew,
+        credential = credential,
+    )
+
+internal fun LinkSecurity.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LinkSecurity(
+        encrypted = encrypted,
+        hubKey = hubKey,
+        hubKeyNew = hubKeyNew,
+        credential = credential,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LinkPairLink.toDomain() =
+    LinkPairLink(
+        hubId = hubId,
+        host = host,
+        port = port.toInt(),
+        url = url,
+        hubKey = hubKey,
+        credential = credential,
+        pin = pin,
+    )
+
+internal fun LinkPairLink.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LinkPairLink(
+        hubId = hubId,
+        host = host,
+        port = port.toUShort(),
+        url = url,
+        hubKey = hubKey,
+        credential = credential,
+        pin = pin,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.ExtStatus.toDomain() =

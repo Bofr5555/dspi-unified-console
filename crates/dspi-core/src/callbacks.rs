@@ -64,6 +64,8 @@ pub trait LinkListener: Send + Sync {
     fn on_link_status_changed(&self);
     /// The hub issued a token: store it now against `hub_id`. Comes as soon as
     /// the hub's answer arrives, even if `link_pair` has already timed out.
+    /// -- WP SECCORE -- `token` is the credential to store (`v2` when pinned),
+    /// and it also comes when a reconnect upgrades or re-pins it.
     fn on_link_token_issued(&self, hub_id: String, token: String);
 }
 

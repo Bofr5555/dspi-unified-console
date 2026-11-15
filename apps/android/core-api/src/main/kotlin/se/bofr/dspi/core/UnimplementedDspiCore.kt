@@ -462,6 +462,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello = throw NotImplementedError("link_connect")
 
+    override fun linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello = throw NotImplementedError("link_connect_advertised")
+
+    override fun linkSecurity(): LinkSecurity = throw NotImplementedError("link_security")
+
     override fun linkPair(pin: String): String = throw NotImplementedError("link_pair")
 
     override fun linkDevices(): List<LinkDevice> = throw NotImplementedError("link_devices")
@@ -829,6 +833,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun linkWsUrl(host: String, port: Int, path: String): String = throw NotImplementedError("link_ws_url")
 
     override fun linkFetchInfo(host: String, port: Int): LinkInfo = throw NotImplementedError("link_fetch_info")
+
+    override fun linkParsePairLink(text: String): LinkPairLink = throw NotImplementedError("link_parse_pair_link")
+
+    override fun linkCredentialHubKey(credential: String): String = throw NotImplementedError("link_credential_hub_key")
 
     override fun linkPhaseText(phase: LinkPhase, pinSource: String): LinkPhaseText = throw NotImplementedError("link_phase_text")
 
