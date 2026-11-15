@@ -51,30 +51,27 @@ and the web build (section 9).
 
 ---
 
-## Status (2026-11-08)
+## Status (2026-11-15)
 
-*From `git log main` at `bc1f9ff4` (reviews up to c5f merged), the `wp/*` branches, `work/dispatch-rest/DISPATCH.md` and
-`work/clients-wave1.md`. A hash is the merge that brought the WP into `main`. **DONE**: merged. **PARTIAL**: merged or partly
-done; the rest is named. **IN PROGRESS**: on its branch, not finished. **TODO**: not started. **MOVED**: moved to later
-work, folded elsewhere or replaced. **[HW]**: a device step is still owed. **[OWNER]**: waits on the owner.*
+*From the status markers in this plan, synced with `git log main` at `f60845ef` (WP DOCSYNC). A hash is the merge that
+brought the WP into `main`. **DONE**: merged. **PARTIAL**: merged or partly done; the rest is named. **IN PROGRESS**: on its
+branch, not finished. **TODO**: not started. **MOVED**: moved to later work, folded elsewhere or replaced. **[HW]**: a device
+step is still owed. **[OWNER]**: waits on the owner.*
 
-**Where we are.** **M0's gate is green:** gate-3 ran `ci/check.sh --all` on `bc1f9ff4`, and all 26 steps passed (test
-3673 passed, 0 failed). The current crop is validated on the K340 (hw-1 on Linux, hw-win, hw-mac, hw-mac-2: every device
-left as found). The one check still owed is Android Link with the phone, which is the owner's. Android 0.12.0, the first
-release on the new core, is on Play (tag `android-v0.12.0` = `ca6d52f3`). M0 is ready for the owner's review.
-
-**The owner's order:** the plan's WPs first, then the web (section 5.5), then optimisation (5.7), then polish (5.8). The
-order holds per resource. The Swift chain keeps the macOS VM busy for many batches, so web WPs run beside the plan's
-last-wave WPs while workers would otherwise sit idle (WB2 and WB5 now).
+**Where we are.** PRO phase 1 (section 5.9) is complete: all 26 WPs are merged. The Swift app runs on the core for USB,
+CoreMIDI and DSPi Link (SW-M1, SW5, SW6), and its domains moved to the core (SW8-SW14). The web client has its transports,
+hosting and hardware pass (WB2-WB8) and the first three UI slices (WB6a-WB6c). Qt and Android finished their last-wave WPs
+(QD21a-QD23, AN15, AN20). **The owner's order** still holds: the plan's WPs, then the web, then optimisation (5.7), then
+polish (5.8), per resource.
 
 ### At a glance
 
 | State | WPs |
 |---|---|
-| **In progress** (6) | **AN15** R8, **QD21a** Qt packaging for Linux and Windows, **QD22** Qt accessibility, **AN20** Android accessibility, **WB2** core runtime without threads (wasm), **WB5** web client skeleton |
-| **Next** | Plan: QD23 after QD22; AN21 after AN20; QD21b (`.dmg`, VM) after QD21a; SW-M1, SW17, SW18, SW20, SW19, SW23, SW24 on the VM in that order; HO1's rest after R-Qt and SW8. Web: WB3 after WB2; WB4a and WB4b after WB3; WB6 slices after WB5 and WB4a, in the order of section 5.5's slice table (WB6d System view, WB6e scene bar, WB6f status rail before the remaining tool screens; UIM1); WB7; WB8 last. Then OPT0-OPT9, then PL-* |
-| **Blocked** | **On the owner:** AN13's Link half and the phone checks of AN15, AN16, AN20; AN16 waits for AN15's release to be uploaded; QD35 hand checks; XC4 and XC5 (an ESP32 bridge); XC6 (go for a VREG write); SW16 (iPhone or iPad); SW-M5 (Apple silicon Mac); WB4c's public use (OD9). **On deps:** SW5, SW6, SW7, SW-M2 behind the VM queue; SW-V1 behind SW8 and QD21b |
-| **Done since the last status (2026-11-07)** | CG3, CG7, AN18 (closed: their moved parts are done); CG23-CG31 with CG29b; HB7, HB8; QD9, QD10, QD13, QD13b, QD14, QD16, QD17, QD19, QD36, QD37, QD38; TM25, TM26; AN14, AN32-AN39; SW4, SW25, SW-U1, SWF1-SWF3; DOC1, HO1a |
+| **In progress** (4) | **SW7** Swift Link banner and errors; **SW-M2** Swift firmware through the core (in fixup); **SW-M3** Swift hub over `dspi-hub`; **PLANP2** the PRO phase 2 plan (new `docs/core-merge/PLAN-P2.md`) |
+| **Next** | PRO phase 2 waves, after the plan review. Swift: SW19, SW20, SW22, SW23, SW24, SW-M4, SW-V1 (VM). Web: WB6d-WB6l in the slice order of section 5.5, WB4c (later, OD9), then WB9. Qt, Android and handover: AN16, AN21, AN22, QD35, HO1. Then OPT0-OPT9, then PL-* |
+| **Blocked** | **Need hardware or the owner:** SW15 (simulator and relay run), SW16 (iPhone or iPad), SW-M5 (Apple silicon Mac); XC4, XC5 (an ESP32 bridge), XC6 (go for a VREG write); QD35 hand checks; AN16 and AN22 (AN15's release upload, phone checks) |
+| **Done since the last status (2026-11-08)** | **PRO phase 0 and 1:** P0W, P0W2, P0M, P0U, P0E; all of P1-A to P1-G (P1UG ... P1TZ). **Swift on the core:** SW-M1, SW5, SW6, SW8-SW14, SW17, SW18, SWMAC1. **Web:** WB2-WB5, WB7, WB8, WB6a-WB6c, UIM1. **Qt and Android:** QD21a, QD22, QD23, the Qt swap (POSTSWAP), AN15, AN20, AN42, ANLAST. **Core and hub:** ROMODE, ECHO1, CORENITS, ANDFU, CLEAN1, BULKFIX, HUBADMIN, TMCORE, PAIRBAND; the alink and USB-direct work (ALINK1, AUSB1-AUSB3) |
 
 **Open checks found by the dispatch (not WPs yet):**
 - **Firmware image labels:** Android's firmware page says "Official release 1.1.6 beta 5 / Included with this app" while every
