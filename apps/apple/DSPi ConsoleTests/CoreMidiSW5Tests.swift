@@ -144,6 +144,11 @@ final class CoreMidiSW5Tests: XCTestCase {
         #endif
 
         // The opt-out, and the read-only mode only the Swift engine has.
+        // -- WP SW5F -- (review sw5 F4) put back whatever happens
+        defer {
+            d.removeObject(forKey: "CoreTransport")
+            d.removeObject(forKey: "MIDIReadOnly")
+        }
         d.set(false, forKey: "CoreTransport")
         XCTAssertTrue(AppState.usesLegacyMIDI)
         d.removeObject(forKey: "CoreTransport")
@@ -265,15 +270,76 @@ final class CoreMidiSW5Tests: XCTestCase {
         XCTAssertFalse(t.isConnected)
     }
 
+    /// -- WP SW5F -- (review sw5 F1, probe P1) The device changed while the
+    /// app was in the background and its notification never arrived: the
+    /// resume re-reads it into the core's mirror, which the view model shows.
     func testSW5ResumeRereadsWhenTheDeviceStillAnswers() throws {
         let r = rig()
+        let source = try XCTUnwrap(r.transport.coreStateSource)
+        _ = try source.readAll().get()   // the view model's read at connect
+        let before = source.readState().masterVolumeDb
+        XCTAssertNotEqual(before, -33, "precondition: a value the demo does not start at")
+        var published: [CoreStateChange] = []
+        let stateToken = source.addStateObserver { published.append($0) }
+        defer { stateToken.cancel() }
+
+        r.port.device.forwarding = nil   // the echo never reaches us (a suspended app)
+        r.fake.sendControlRequest(request: REQ_SET_MASTER_VOLUME, value: 0, index: 2,
+                                  data: withUnsafeBytes(of: Float(-33)) { Data($0) })
+        XCTAssertTrue(spinUntil(3) { self.masterVolume(r.fake) == -33 }, "the device changed")
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(source.readState().masterVolumeDb, before, accuracy: 0.01, "precondition: the mirror has not seen it")
+
         var notes: [LinkNotification] = []
         let token = r.transport.addNotificationObserver { notes.append($0) }
         defer { token.cancel() }
         r.transport.resumeMidi()
+        XCTAssertTrue(spinUntil(5) { abs(source.readState().masterVolumeDb - (-33)) < 0.01 },
+                      "after the resume the core's mirror holds the device's value: \(source.readState().masterVolumeDb) dB")
+        XCTAssertTrue(spinUntil(5) { published.contains { abs($0.state.masterVolumeDb - (-33)) < 0.01 } },
+                      "the re-read state is published to the view model")
         XCTAssertTrue(spinUntil(5) { notes.contains { $0.packet == CoreBackedTransport.resyncPacket } },
-                      "a BULK_INVALIDATED makes the view model re-read")
+                      "the raw observers get a BULK_INVALIDATED")
         XCTAssertTrue(r.transport.isConnected)
+    }
+
+    /// -- WP SW5F -- (review sw5 F2, probe P4) The port refused the open; the
+    /// DSPi then leaves and comes back: its return is followed.
+    func testSW5AFailedOpenThenReplugOpensAgain() throws {
+        let e = FakeMIDIControlPort.endpoint
+        let port = FlakyOpenPort([e])
+        let t = CoreBackedTransport(link: .midi(CoreMidiPipe(port: port)))
+        XCTAssertTrue(spinUntil(5) { t.errorMessage != nil })
+        XCTAssertEqual(t.errorMessage, "Could not open the DSPi's MIDI port \(e.name).")
+        XCTAssertEqual(t.selectedDevice?.serial, e.serial)
+        XCTAssertEqual(port.openCount, 1)
+        port.failOpens = false
+        port.set([])
+        XCTAssertTrue(spinUntil(3) { t.selectedDevice == nil }, "the departed DSPi is let go")
+        XCTAssertEqual(t.availableDevices.count, 0)
+        port.set([e])
+        XCTAssertTrue(spinUntil(3) { port.openCount > 1 },
+                      "the replugged DSPi is opened again (selected=\(t.selectedDevice?.serial ?? "nil"), opens \(port.openCount))")
+        XCTAssertEqual(t.selectedDevice?.serial, e.serial)
+    }
+
+    /// A port that lists the DSPi but refuses to open it until told otherwise.
+    private final class FlakyOpenPort: MIDIControlPort {
+        var endpointsNow: [MIDIControlEndpoint]
+        var failOpens = true
+        private(set) var openCount = 0
+        var onEndpointsChanged: (() -> Void)?
+        var onReceive: (([UInt32]) -> Void)?
+        let unavailableReason: String? = nil
+        init(_ endpoints: [MIDIControlEndpoint]) { endpointsNow = endpoints }
+        var endpoints: [MIDIControlEndpoint] { endpointsNow }
+        func set(_ e: [MIDIControlEndpoint]) { endpointsNow = e; DispatchQueue.main.async { self.onEndpointsChanged?() } }
+        func open(_ endpoint: MIDIControlEndpoint) -> Bool {
+            openCount += 1
+            return !failOpens
+        }
+        func close() {}
+        func send(_ words: [UInt32]) -> Bool { false }
     }
 
     /// A port that lists the DSPi but cannot open it.

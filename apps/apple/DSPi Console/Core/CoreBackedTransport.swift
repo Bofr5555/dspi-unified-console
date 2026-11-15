@@ -230,7 +230,7 @@ final class CoreBackedTransport: DeviceTransport {
                 .store(in: &subscriptions)
         } else if let pipe = midi {
             // -- WP SW5 -- The pipe's list and hot-plug (main thread).
-            pipe.onDevicesChanged = { [weak self] devices in self?.devicesSubject.send(devices) }
+            pipe.onDevicesChanged = { [weak self] devices in self?.midiDevicesChanged(devices) }
             pipe.onChange = { [weak self] change in self?.midiChanged(change) }
             if let reason = pipe.unavailableReason { errorSubject.send(reason) }
             if pipe.autoSelect, let first = pipe.devices.first {
@@ -256,7 +256,7 @@ final class CoreBackedTransport: DeviceTransport {
     func selectDevice(_ device: DSPiDevice) {
         if let host = host { host.selectDevice(device); return }
         if isDocumentLink { return selectDocument(device) }   // -- WP P1SW1 --
-        if midi != nil { return openMidi(device, force: false) }   // -- WP SW5 --
+        if midi != nil { return openMidiPort(device, force: false) }   // -- WP SW5 --
         guard device == FakeTransport.demoDevice else { return }
         bumpGeneration()
         selectedSubject.send(device)
@@ -267,7 +267,7 @@ final class CoreBackedTransport: DeviceTransport {
         if let host = host { host.reconnect(); return }
         guard let device = selectedDevice else { return }
         publishConnected(false)
-        if midi != nil { return openMidi(device, force: true) }   // -- WP SW5 --
+        if midi != nil { return openMidiPort(device, force: true) }   // -- WP SW5 --
         selectDevice(device)
     }
 
@@ -309,7 +309,7 @@ final class CoreBackedTransport: DeviceTransport {
     /// Open `device`'s MIDI endpoint and run the core's connect sequence over
     /// it.  Main thread.  Re-selecting the open device keeps the port and a
     /// probe in progress (reopening would drop a reply in flight).
-    private func openMidi(_ device: DSPiDevice, force: Bool) {
+    private func openMidiPort(_ device: DSPiDevice, force: Bool) {
         guard let pipe = midi else { return }
         switch pipe.open(device, force: force) {
         case .unknown:
@@ -317,7 +317,7 @@ final class CoreBackedTransport: DeviceTransport {
         case .alreadyOpen:
             selectedSubject.send(device)
             // The probe on it gave up: selecting it again is a retry.
-            if !isConnected, errorMessage != nil { openMidi(device, force: true) }
+            if !isConnected, errorMessage != nil { openMidiPort(device, force: true) }
         case .failed(let message):
             bumpGeneration()
             _ = nextMidiOpen()
@@ -371,6 +371,17 @@ final class CoreBackedTransport: DeviceTransport {
         }
     }
 
+    /// -- WP SW5F -- (review sw5 F2) The pipe's list.  A selected device
+    /// that is no longer listed while nothing is open (its open was refused)
+    /// is let go, so its return is offered again; an open one's departure
+    /// comes as `.departed`.  Main thread.
+    private func midiDevicesChanged(_ devices: [DSPiDevice]) {
+        devicesSubject.send(devices)
+        if let selected = selectedDevice, !devices.contains(selected), midi?.openDevice == nil {
+            disconnect()
+        }
+    }
+
     /// The pipe's hot-plug.  Main thread.
     private func midiChanged(_ change: CoreMidiPipe.Change) {
         switch change {
@@ -379,7 +390,7 @@ final class CoreBackedTransport: DeviceTransport {
             disconnect()
         case .replugged(let device):
             publishConnected(false)
-            openMidi(device, force: true)
+            openMidiPort(device, force: true)
         case .appeared(let device):
             if selectedDevice == nil { selectDevice(device) }
         }
@@ -387,16 +398,35 @@ final class CoreBackedTransport: DeviceTransport {
 
     /// The app is back in the foreground (iOS).  iOS suspends a background
     /// app, so nothing was read meanwhile and the device may have dropped
-    /// notifications for us: check that it still answers, then have the view
-    /// model re-read everything (a BULK_INVALIDATED, as the firmware sends
-    /// for an external change), or reconnect if it does not.  Main thread.
+    /// notifications for us.  -- WP SW5F -- (review sw5 F1) The core re-reads
+    /// the device (`fetchAll`: it proves the device answers and refreshes the
+    /// mirror the view model shows), the new state is published as a drain
+    /// does, and the raw observers get a BULK_INVALIDATED; if the device does
+    /// not answer, reconnect.  `fetchAll` reads the device unless it runs
+    /// right after the connect's own read (`fresh_image`), which the view
+    /// model's connect-time `readAll` has used up by then.  Main thread.
     func resumeMidi() {
         guard midi != nil, let device = selectedDevice else { return }
         guard isConnected else { reconnect(); return }
         stateLock.lock(); let open = midiOpens; stateLock.unlock()
         coreQueue.async { [weak self] in
             guard let self = self else { return }
-            let answered = (try? self.onCore { try $0.rawGet(opcode: REQ_GET_PLATFORM, value: 0, len: 7) }) != nil
+            var answered = true
+            do {
+                try self.onCore { try $0.fetchAll() }
+            } catch {
+                answered = false
+                Self.log.info("resume: fetchAll failed: \(String(describing: error), privacy: .public)")
+            }
+            if answered, self.isLatestMidiOpen(open), !self.stateFanout.isEmpty {
+                // As `drain()` publishes a change of the core's mirror.
+                let journal = self.journalOnCore()
+                self.lastJournal = journal
+                self.stateFanout.publish(CoreStateChange(flags: CoreStateChange.stateFlags,
+                                                         state: self.onCore { $0.getState() },
+                                                         presetChanges: self.onCore { $0.presetChanges() },
+                                                         journal: journal))
+            }
             DispatchQueue.main.async {
                 guard self.isLatestMidiOpen(open), self.selectedDevice == device else { return }
                 if answered {

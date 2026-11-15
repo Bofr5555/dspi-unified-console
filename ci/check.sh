@@ -246,8 +246,9 @@ for s in "${steps[@]}"; do
         echo "swift: the raw USB pipe is only in Core/CoreUsb.swift"
         # -- WP SW5 -- the core's MIDI handle stays in MIDI/CoreMidiPipe.swift,
         # and the Swift MIDI engine (the opt-out) is built only by AppState's
-        # opt-out branches and by tests
-        stray=$(grep -rlE '\b(MidiInputHandle|MidiSender)\b|\.(openMidi|closePort)\(|withSender\(' --include='*.swift' apps/apple |
+        # opt-out branches and by tests. -- WP SW5F -- the core's call is
+        # openMidi(input:), not a Swift method of the same name (review sw5 F3)
+        stray=$(grep -rlE '\b(MidiInputHandle|MidiSender)\b|\bopenMidi\(input:|\.closePort\(|withSender\(' --include='*.swift' apps/apple |
           grep -vE '/Core/Generated/|/MIDI/CoreMidiPipe\.swift$' || true)
         if [ -n "$stray" ]; then echo "swift: the core's MIDI handle is used outside MIDI/CoreMidiPipe.swift:" >&2; echo "$stray" >&2; exit 1; fi
         stray=$(grep -rlE '\bLegacyMIDITransport\(' --include='*.swift' apps/apple |

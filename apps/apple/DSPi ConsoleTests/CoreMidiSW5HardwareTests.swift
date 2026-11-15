@@ -55,18 +55,37 @@ final class CoreMidiSW5HardwareTests: XCTestCase {
         print("SW5-HW \(label): \(volume(t).map { "\($0)" } ?? "?") dB")
     }
 
-    /// The transport under test: the app's own (`AppState.midiCore`) when
-    /// the test host is set to the relay (the relay serves one client at a
-    /// time), else one of the test's own over `port()`.
+    /// The transport under test, named in the log.  -- WP SW5F -- (review
+    /// sw5 F5) A relay can come from the run (`DSPI_SW5_RELAY`) or from the
+    /// test host's saved `MIDIRelay` default; the relay serves one client at
+    /// a time, so with a saved default the host app already holds it and the
+    /// test drives the app's own `midiCore`.  The two naming different relays
+    /// is an error, not a choice.
     private func transport() throws -> CoreBackedTransport {
         let env = ProcessInfo.processInfo.environment
         guard env["DSPI_MIDI_HW"] == "1", env["DSPI_SW5_HW"] == "1" else {
             throw XCTSkip("Set TEST_RUNNER_DSPI_MIDI_HW=1 and TEST_RUNNER_DSPI_SW5_HW=1 to run against a real DSPi")
         }
-        if UserDefaults.standard.string(forKey: "MIDIRelay")?.isEmpty == false, !AppState.usesLegacyMIDI {
-            print("SW5-HW the test host is on the relay: testing the app's own midiCore")
+        let requested = env["DSPI_SW5_RELAY"].flatMap { $0.isEmpty ? nil : $0 }
+        let saved = UserDefaults.standard.string(forKey: "MIDIRelay").flatMap { $0.isEmpty ? nil : $0 }
+        if let requested = requested, let saved = saved, requested != saved {
+            XCTFail("DSPI_SW5_RELAY=\(requested) but the test host has a saved MIDIRelay=\(saved): clear one "
+                    + "(xcrun simctl spawn <sim> defaults delete WeebLabs.DSPi-Console-iOS MIDIRelay)")
+            throw XCTSkip("conflicting relays")
+        }
+        if let saved = saved {
+            guard !AppState.usesLegacyMIDI else {
+                XCTFail("the test host is on the saved relay \(saved) through the legacy engine (CoreTransport=NO or MIDIReadOnly)")
+                throw XCTSkip("the host app is not on the core")
+            }
+            print("SW5-HW subject: the app's own midiCore over the saved relay \(saved)")
             _ = AppState.shared.transport
             return AppState.shared.midiCore
+        }
+        if let requested = requested {
+            print("SW5-HW subject: the test's own core over the relay \(requested)")
+        } else {
+            print("SW5-HW subject: the test's own core over CoreMIDI")
         }
         return CoreBackedTransport(link: .midi(CoreMidiPipe(port: try port())))
     }
