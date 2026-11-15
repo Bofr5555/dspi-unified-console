@@ -85,6 +85,8 @@ pub mod power_on;
 pub mod system;
 // -- WP ROMODE -- the client read-only mode
 pub mod read_only;
+// -- WP WB6L -- the control-surface editor and the quick strip
+pub mod surfaces;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;
