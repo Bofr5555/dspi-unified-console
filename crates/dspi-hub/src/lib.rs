@@ -26,6 +26,7 @@
 //! | [`identify`] | `device.identify`: blink, and the quiet tone when asked | P2ID |
 //! | `stats` (private) | `hub.stats` and `hub.rename` | P2HS |
 //! | [`history`] | the shared event history and the watchdog events | P2EV |
+//! | [`api`] | the parameter API, the action executor, hub-side recall (feature `api`) | P2PA |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -82,6 +83,8 @@ pub mod inventory;
 pub mod identify;
 // -- WP P2EV --
 pub mod history;
+// -- WP P2PA -- the snapshot family always; the parameter API with feature `api`
+pub mod api;
 
 pub use auth::AccessMode;
 pub use error::HubError;

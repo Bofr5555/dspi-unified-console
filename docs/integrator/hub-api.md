@@ -29,9 +29,9 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 6 | [Event history](#6-event-history) | `event.*` | `events` | P2EV (records: P2EVW) | built |
 | 7 | [Alarms](#7-alarms) | `alarm.*` | `alarms` | P2AL | draft |
 | 8 | [Notifications out](#8-notifications-out) | `outbound.*` | `outbound` | P2WH | draft |
-| 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | draft |
-| 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | draft |
-| 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | draft |
+| 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | built (P2PA) |
+| 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | built (P2PA) |
+| 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | built (P2SS store, registered by P2PA; P2PA recall) |
 | 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | draft |
 | 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | draft |
 | 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | draft |
@@ -423,46 +423,64 @@ the timestamp is recent. The hub reads only the status line of the reply (at mos
 
 ## 9. Parameters
 
-*State: draft (P2PA).*
+*State: built (P2PA). `crates/dspi-hub/src/api/` (feature `api` of `dspi-hub`; the binary that serves the
+API turns it on), tests `crates/dspi-hub/tests/wp_p2pa_api.rs`.*
 
 Read and write any registry parameter by path ([parameter-api.md](parameter-api.md)). A write runs through the same core
 code as a console's (`write_param`, every typed setter's guard), inside the hub, as a child session of the caller: same
-role, same lock rights, its own session id. The limits, the lock and the voltage rule then judge it as they judge any
-client.
+role, same client and name (`by`), its own session id from the hub's remote range. The limits, the installer lock, the
+device lock and the voltage rule then judge it as they judge any client, and other sessions see it as a foreign write.
+A read is the device's own answer (`dspi_session::Session::read`, as that child session).
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `param.list` | viewer | `serial` | `params`: one row per registry path the device offers |
-| `param.get` | viewer | `serial`, `path`, `idx?` | `path`, `idx`, `value` (and `choice`, or `value_b64`) |
-| `param.get_many` | viewer | `serial`, `items`: `[{path, idx?}]`, at most 64 | `values`: `[{path, idx, ok, value?, choice?, code?, msg?}]`, in order |
-| `param.set` | control | `serial`, `path`, `idx?`, `value`, `confirm?` | `path`, `idx`, `value`: the value read back from the device |
+| `param.list` | viewer | `serial` | `serial`, `params`: one row per registry path the device offers |
+| `param.get` | viewer | `serial`, `path`, `idx?` | `serial`, `path`, `idx`, `value` (and `choice`, or `value_b64`) |
+| `param.get_many` | viewer | `serial`, `items`: `[{path, idx?}]`, at most 64 | `serial`, `values`: `[{path, idx, ok, value?, choice?, code?, msg?}]`, in order |
+| `param.set` | control | `serial`, `path`, `idx?`, `value`, `confirm?` | `serial`, `path`, `idx`, `value`: the value read back from the device |
 
 A `param.list` row (the web binding's `describe` row): `path`, `label`, `plain`, `kind`, `unit`, `min`, `max`
 (`choices: [{value, label}]` for a choice, `max` for text), `readable`, `writable`, `routed` (`false`: not written by
-path; the row's `use` names the message or call that writes it), `indices` (how many), `layout` (the index ranges on
-this device, e.g. `[{"name": "output", "count": 9}]`), `hazard` (`none`, `audible`, `deferred`, `flash`, `reconfig`,
-`irreversible`).
+the API; the row's `use` names the message or call that writes it), `gated` (written only with `"confirm": true` by an
+admin), `indices` (how many), `layout` (the index ranges on this device, e.g. `[{"name": "output", "count": 9}]`;
+`count` is `null` where only the device knows), `hazard` (`none`, `audible`, `deferred`, `flash`, `reconfig`,
+`irreversible`). A path the device's firmware lacks (a feature it did not answer, an RP2350-only path on an RP2040)
+is not listed.
 
-- `bad_request`: a path not in the registry, a value of the wrong kind or outside the range (with `min` and `max`), a
-  path `write_param` does not write (`use` names what does), or raw bytes.
+- `bad_request`: a path not in the registry, the wrong number of indices or one the device does not have, a value of the
+  wrong kind or outside the range (with `min` and `max`), a path the API does not write (`use` names what does, where
+  the core has a call for it), or raw bytes. Not written by the API at all: `bytes` and `status` kinds, every
+  extension-opcode path, and `meters.clear` (the clip latch is shared by every console: the hub never clears it).
 - Gated paths (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) are written only by an admin with
-  `"confirm": true`: the API's explicit confirmation. Otherwise `confirmation_required` (admin) or `denied`.
+  `"confirm": true`: the API's explicit confirmation (the hub's core mints and spends the confirmation token itself).
+  Otherwise `confirmation_required` (admin) or `denied`.
 - On a locked device, control may set `vol.master`, `vol.user`, `vol.mute`, `out.mute` and load a preset only
-  (`installer_lock` otherwise). Past a limit: `limit_exceeded`, nothing sent.
-- Rate: the caller's in-flight limit (`hello.limits.max_inflight`), then `busy`.
+  (`installer_lock` otherwise). Past a limit: `limit_exceeded` with `limit`, nothing sent.
+- **The child session acts for its caller** in two things only: a device lock (spec 7.7) the caller holds lets its
+  API writes through (another session's lock answers `locked`), and a PIN unlock (`limits.unlock`) the caller made
+  is the child's too. Both end when the caller's session does; a child never keeps them. The role, the limits and
+  the voltage rule judge the child as any session.
+- A guarded apply pending on the device (another session's) refuses `param.set`, `preset.load`, `preset.save` and
+  `snapshot.recall` with `conflict`; reads go on.
+- Rate: one request at a time per connection (each is answered before the next is read), each on the caller's child
+  session, which the in-flight limit (`hello.limits.max_inflight`) bounds as any session's.
+- The hub keeps one core per (caller, device), opened on first use (a full attach: the probe and an image read) and
+  closed after 60 s unused, when the caller's session ends or when the device goes; at most 32 at once, then `busy`.
 
 ## 10. Presets
 
-*State: draft (P2PA).*
+*State: built (P2PA).*
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `preset.list` | viewer | `serial` | `slots`: `[{slot, name, used}]`, `active` (the loaded slot or `null`), `startup` |
-| `preset.load` | control | `serial`, `slot` or `name` | `slot`, `name` |
-| `preset.save` | admin | `serial`, `slot`, `name?`, `confirm: true` | `slot`, `name` |
+| `preset.list` | viewer | `serial` | `serial`, `slots`: `[{slot, name, used}]`, `active` (the loaded slot or `null`), `startup` (`{mode: "slot", slot}` or `{mode: "last_active"}`) |
+| `preset.load` | control | `serial`, `slot` or `name` | `serial`, `slot`, `name` |
+| `preset.save` | admin | `serial`, `slot`, `name?`, `confirm: true` | `serial`, `slot`, `name` |
 
-A name matches exactly (case kept); two slots with the name are `conflict`, none is `not_found`. A preset load is held
-after the fact on a device with a limits profile, as P1HL does (`limits.held` follows). The audio link's scenes stay
+Slots are 0 to 9. A name matches exactly (case kept) among the used slots; two slots with the name are `conflict`, none
+is `not_found`. Names are read from the device for each used slot. A preset load is held after the fact on a device
+with a limits profile, as P1HL does (`limits.held` follows). `preset.save` without `"confirm": true` is
+`confirmation_required`; `name` (at most 31 bytes) names the slot after the save. The audio link's scenes stay
 `system.scene.apply {scene}` ([audio-link.md](audio-link.md)).
 
 ## 11. Snapshots on the hub
@@ -505,14 +523,23 @@ outputChannels, wireFormat}`.
 
 ### 11.2 Recall on the hub (P2PA)
 
+*State: built (P2PA). The store's messages (11.1) are registered as the `snapshot` family on a hub with a data folder;
+each change is broadcast as `snapshot.changed` right after the answer is made.*
+
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `snapshot.recall` | control | `serial`, `snapshot` or `name`, `guard?` (bool), `timeout_ms?` | `serial`, `snapshot`, `lines` (what changed), `guard` (its id, with `guard: true`) |
+| `snapshot.recall` | control | `serial`, `snapshot` or `name`, `guard?` (bool), `timeout_ms?` | `serial`, `snapshot`, `name`, `image` (whether the image was written), `lines` (what changed), `notes` (what was not written, and why), `guard` (its id, with `guard: true`) |
 
 The hub writes the image and the settings outside it, in a recall's order, as the caller's child session. On a device
-with a limits profile or a lock, control's recall is `image_refused`; an admin's is written and then held. With
-`guard: true` a guarded apply ([hub.md](hub.md), Guarded apply) begins first; confirm it with `apply.confirm`. A
-device gone during the recall gets nothing more. Recorded in the history as a `recall` with its `lines`.
+with a limits profile or a lock, control's recall is `image_refused` (nothing written); an admin's is written and then
+held. With `guard: true` a guarded apply ([hub.md](hub.md), Guarded apply) begins first, as the caller (`timeout_ms`
+as `apply.begin`'s, 30 s by default); confirm it with `apply.confirm`, or it reverts. A recall that fails after its
+guard began is reverted at once. A device that is not attached gets nothing (`offline`). `name` matches exactly among
+the device's snapshots (two are `conflict`); a snapshot of another device is `not_found`. Recorded in the history as a
+`recall` with its `lines`, the caller's name in `by`.
+
+A document reaches the hub in one DSPi Link text frame (at most 64 KiB, `hello.limits.max_frame`): send it compact,
+or as the JSON object. The demo device's snapshot runs to about 80 KB pretty-printed, about 50 KB compact.
 
 ## 12. Schedules
 
