@@ -428,7 +428,7 @@ export type CoreEvent =
   | { event: "hubAdmin"; events: HubAdminEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */ {
+export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -1190,4 +1190,80 @@ export interface HubAdminMethods {
   hubModePin: { params: { role: string; mode: string }; result: HubAdminStateRecord };
   /** The hub's admin events since the last call (also handed out by `linkTick`). */
   hubAdminEvents: { params: undefined; result: HubAdminEventRecord[] };
+}
+
+// -- WP WB6K -- filter files and the AutoEQ database the page keeps
+// (crates/dspi-wasm/src/{filters,autoeq_db}.rs over dspi_core::AutoEqLibrary)
+
+/** A channel of a filter file's picker (`DspiCore::filters_inspect`). */
+export interface FilterFileChannel {
+  wire: number;
+  label: string;
+  bands: number;
+  checked: boolean;
+}
+
+/** What a filter file holds: a Console file (`native`), a REW or AutoEQ list (`rew`), or `error`. */
+export interface FilterFileInspect {
+  kind: "native" | "rew" | "error";
+  channels: FilterFileChannel[];
+  /** `native`: a newer format wrote it. */
+  newer?: boolean;
+  /** `rew`: the filters it lists, and its preamp (null without one). */
+  filters?: number;
+  preamp?: number | null;
+  error?: string;
+}
+
+/** A filter import's report. */
+export interface FilterImportReport {
+  ok: boolean;
+  error: string;
+  lines: string[];
+}
+
+/** The AutoEQ database the session holds (`dspi_core::AutoEqDatabaseInfo`). */
+export interface AutoEqDatabaseRecord {
+  /** It is the person's own (imported or downloaded), so Reset to Built-in is offered. */
+  hasUserDatabase: boolean;
+  problem: string | null;
+  version: number;
+  generatedAt: string;
+  entryCount: number;
+}
+
+/** One profile as a list shows it (`dspi_core::AutoEqHit`). */
+export interface AutoEqHit {
+  id: string;
+  name: string;
+  source: string;
+  formFactor: string;
+  filters: number;
+  preampDb: number;
+}
+
+export interface FilesMethods {
+  /** Every channel's bands as a filter file: the first `inputs` inputs, then every output. */
+  filtersExport: { params: { inputs: number }; result: { text: string } };
+  /** What a filter file holds, for the channel picker; nothing written. */
+  filtersInspect: { params: { text: string; inputs: number }; result: FilterFileInspect };
+  /** Apply a filter file to the chosen wire channels, one undo step. */
+  filtersImport: { params: { text: string; wires: number[] }; result: FilterImportReport };
+  /** Check a database's text and keep it for the session (`user`: the person's own). */
+  autoeqDatabaseLoad: { params: { text: string; user?: boolean }; result: AutoEqDatabaseRecord };
+  /** The page's GET of `url`, its answer read by the core as a download; kept on success. */
+  autoeqDatabaseDownload: {
+    params: { url: string; status: number; body: string; retryAfterS?: number; rateLimitRemaining?: number; rateLimitReset?: number };
+    result: AutoEqDatabaseRecord;
+  };
+  /** The session's database, null with none loaded. */
+  autoeqDatabaseInfo: { params: undefined; result: AutoEqDatabaseRecord | null };
+  /** Profiles matching `query`, at most `limit` (default 50). */
+  autoeqSearch: { params: { query: string; limit?: number }; result: { hits: AutoEqHit[]; total: number } };
+  /** One profile as the database has it: the `profile` autoeqPreview takes. */
+  autoeqEntry: { params: { id: string }; result: unknown };
+  /** The favourites file's ids, and the profiles of those the database holds. */
+  autoeqFavourites: { params: { text: string }; result: { ids: string[]; hits: AutoEqHit[] } };
+  /** The favourites file's text for `ids`. */
+  autoeqFavouritesText: { params: { ids: string[] }; result: { text: string } };
 }

@@ -79,6 +79,9 @@ pub mod modes;
 pub mod hub_admin;
 // -- WP P1AQ --
 pub mod autoeq;
+// -- WP WB6K -- the AutoEQ database the page keeps, and filter files
+pub mod autoeq_db;
+pub mod filters;
 // -- WP P1WB2 -- the DAC mute for the power-on page
 pub mod power_on;
 // -- WP SW3 --

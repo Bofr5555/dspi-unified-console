@@ -201,6 +201,7 @@ pub fn session_free(h: u32) -> Result<bool, Refusal> {
     Ok(match taken {
         Some(s) => {
             s.core.disconnect();
+            crate::autoeq_db::forget(h); // -- WP WB6K --
             true
         }
         None => false,
@@ -411,6 +412,17 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP P1AQ -- AutoEQ preview and apply to a channel pair (src/autoeq.rs)
         "autoeqPreview" => crate::autoeq::preview(&core, params(req.params)?),
         "autoeqApply" => crate::autoeq::apply(&core, params(req.params)?),
+        // -- WP WB6K -- the AutoEQ database the page keeps (src/autoeq_db.rs), filter files (src/filters.rs)
+        "autoeqDatabaseLoad" => crate::autoeq_db::load(h, params(req.params)?),
+        "autoeqDatabaseDownload" => crate::autoeq_db::download(h, params(req.params)?),
+        "autoeqDatabaseInfo" => Ok(crate::autoeq_db::info(h)),
+        "autoeqSearch" => crate::autoeq_db::search(h, params(req.params)?),
+        "autoeqEntry" => crate::autoeq_db::entry(h, params(req.params)?),
+        "autoeqFavourites" => Ok(crate::autoeq_db::favourites(h, params(req.params)?)),
+        "autoeqFavouritesText" => Ok(crate::autoeq_db::favourites_text(params(req.params)?)),
+        "filtersExport" => crate::filters::export(&core, params(req.params)?),
+        "filtersInspect" => crate::filters::inspect(&core, params(req.params)?),
+        "filtersImport" => crate::filters::import(&core, params(req.params)?),
         // -- WP P1SA -- safe apply with rollback (src/guarded.rs)
         "applyGuardedImport" => crate::guarded::import(&core, params(req.params)?),
         "applyGuardedSnapshot" => crate::guarded::snapshot(&core, params(req.params)?),
