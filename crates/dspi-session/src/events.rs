@@ -3,8 +3,9 @@
 //!
 //! Lives in the session so `dspi-core` (which feeds it for C, UniFFI and wasm),
 //! the Terminal and later the hub can share the record, the file format and
-//! the store. The hub half (a shared log written by the hub) implements
-//! [`EventSink`] and is not here.
+//! the store. The hub half (a shared log written by the hub, many devices in
+//! one folder) is [`store::EventStore`] (WP P2EVW), which takes the serial
+//! with each record.
 //!
 //! # The file format
 //!
@@ -102,6 +103,21 @@ pub enum EventKind {
     /// value, kept since ALINK1); `alink` also reads as this kind.
     #[serde(rename = "audio_link", alias = "alink")]
     Alink,
+    // -- WP P2EVW --
+    /// The device stopped answering while attached (`value` the seconds it
+    /// has been silent).
+    Unresponsive,
+    /// An alarm was raised, acknowledged or cleared (`source` its code, `by`
+    /// who acknowledged it).
+    Alarm,
+    /// A schedule rule ran (`source` its id, `by` the rule's name, `lines`
+    /// the results).
+    Schedule,
+    /// Access to the device changed hands: a lock taken or released, a role
+    /// change (`by` the client).
+    Access,
+    /// Records were lost before they reached the log (`count` how many).
+    EventsDropped,
     /// A kind from a newer build.
     #[default]
     #[serde(other)]
@@ -123,6 +139,12 @@ impl EventKind {
             Self::Import => "import",
             Self::Recall => "recall",
             Self::Alink => "audio_link",
+            // -- WP P2EVW --
+            Self::Unresponsive => "unresponsive",
+            Self::Alarm => "alarm",
+            Self::Schedule => "schedule",
+            Self::Access => "access",
+            Self::EventsDropped => "events_dropped",
             Self::Unknown => "unknown",
         }
     }
@@ -173,6 +195,11 @@ pub struct EventRecord {
     /// The DSPi Link session that caused it, when another one did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<u32>,
+    // -- WP P2EVW --
+    /// Who caused it, by name: the client of the session that wrote (its
+    /// client name), or the rule (an alarm rule, `Schedule: <name>`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
     /// This client caused it (its own write coming back).
     #[serde(default, skip_serializing_if = "is_false")]
     pub own: bool,
@@ -212,6 +239,8 @@ impl EventRecord {
             text: text.into(),
             source: None,
             session: None,
+            // -- WP P2EVW --
+            by: None,
             own: false,
             channel: None,
             value: None,
@@ -1338,3 +1367,11 @@ pub fn alink_record(e: &ExtEvent, t: i64) -> Option<EventRecord> {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p0m;
+
+// -- WP P2EVW --
+/// The multi-device writer (the hub's shared log); files only, so not on the
+/// web.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub mod store;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub use store::{EventStore, EventStoreError, HUB_LIMITS, HUB_TOTAL_BYTES};
