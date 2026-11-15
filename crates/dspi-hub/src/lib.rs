@@ -21,6 +21,7 @@
 //! | [`limits`] | limits profiles, the installer lock and pinned modes | P1HL |
 //! | [`service`], [`bus`], [`clock`] | the phase-2 service seam, its bus and time | P2SV |
 //! | [`snapshots`] | the hub's shared copy of each device's snapshots | P2SS |
+//! | [`outbound`] | notifications out: webhooks and push | P2WH |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -48,6 +49,8 @@ pub mod limits;
 pub mod lock;
 // -- WP P2MQC --
 pub mod mqtt;
+// -- WP P2WH -- notifications out: webhooks and push
+pub mod outbound;
 pub mod policy;
 pub mod polls;
 pub mod registry;
