@@ -272,7 +272,7 @@ pub use hub_server::{
     HubAlarm, HubAlarmRule, HubApiKey, HubApiKeyMinted, HubMqttSettings, HubMqttStatus, HubMqttTls,
     HubOutboundLast, HubOutboundSecret, HubOutboundSet, HubOutboundTarget, HubOutboundTest,
     HubScheduleAction, HubScheduleLast, HubScheduleResult, HubScheduleRule, HubScheduleRun,
-    HubSchedules, hub_alarm_notice,
+    HubSchedules, HubSecret, hub_alarm_notice,
 };
 // -- WP ROMODE --
 pub use read_only::{

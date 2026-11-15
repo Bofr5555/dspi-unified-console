@@ -931,12 +931,18 @@ class FfiDspiCore : DspiCoreApi {
     override fun bulkImageExtras(bulkRaw: ByteArray): BulkImageExtras = se.bofr.dspi.ffi.uniffi.bulkImageExtras(bulkRaw.copyOf()).toDomain()
 }
 
-internal class FfiAutoEqRebuild(private val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {
+internal class FfiAutoEqRebuild(internal val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {
     override fun close() = inner.close()
 
     override fun poll(): AutoEqRebuildProgress = inner.poll().toDomain()
 
     override fun cancel() = inner.cancel()
+}
+
+internal class FfiHubSecret(internal val inner: se.bofr.dspi.ffi.uniffi.HubSecret) : HubSecret {
+    override fun close() = inner.close()
+
+    override fun reveal(): String = inner.reveal()
 }
 
 // ── Error mapping ──
@@ -4060,13 +4066,13 @@ internal fun HubOutboundTarget.toFfi() =
 internal fun se.bofr.dspi.ffi.uniffi.HubOutboundSecret.toDomain() =
     HubOutboundSecret(
         target = target,
-        secret = secret,
+        secret = FfiHubSecret(secret),
     )
 
 internal fun HubOutboundSecret.toFfi() =
     se.bofr.dspi.ffi.uniffi.HubOutboundSecret(
         target = target,
-        secret = secret,
+        secret = (secret as FfiHubSecret).inner,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HubOutboundSet.toDomain() =
@@ -4199,7 +4205,7 @@ internal fun se.bofr.dspi.ffi.uniffi.HubApiKeyMinted.toDomain() =
         name = name,
         role = role,
         plaintextOk = plaintextOk,
-        key = key,
+        key = FfiHubSecret(key),
     )
 
 internal fun HubApiKeyMinted.toFfi() =
@@ -4208,7 +4214,7 @@ internal fun HubApiKeyMinted.toFfi() =
         name = name,
         role = role,
         plaintextOk = plaintextOk,
-        key = key,
+        key = (key as FfiHubSecret).inner,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =

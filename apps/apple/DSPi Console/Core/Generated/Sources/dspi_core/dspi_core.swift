@@ -12729,6 +12729,150 @@ public func FfiConverterTypeHubAdminListener_lower(_ value: HubAdminListener) ->
 
 
 /**
+ * A secret the hub made and shows once: an API key, a webhook's secret. An
+ * object, not a string field, so that no binding's generated record
+ * printing (Kotlin `toString`, Swift `description`) shows it: read it with
+ * [`HubSecret::reveal`] to show it once, and keep it nowhere else. Its
+ * `Debug` is `set`; serialized (the C and wasm answers) it is the plain
+ * string.
+ */
+public protocol HubSecretProtocol: AnyObject, Sendable {
+    
+    /**
+     * The secret's text, to show once. No I/O.
+     */
+    func reveal()  -> String
+    
+}
+/**
+ * A secret the hub made and shows once: an API key, a webhook's secret. An
+ * object, not a string field, so that no binding's generated record
+ * printing (Kotlin `toString`, Swift `description`) shows it: read it with
+ * [`HubSecret::reveal`] to show it once, and keep it nowhere else. Its
+ * `Debug` is `set`; serialized (the C and wasm answers) it is the plain
+ * string.
+ */
+open class HubSecret: HubSecretProtocol, @unchecked Sendable {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_dspi_core_fn_clone_hubsecret(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_dspi_core_fn_free_hubsecret(pointer, $0) }
+    }
+
+    
+
+    
+    /**
+     * The secret's text, to show once. No I/O.
+     */
+open func reveal() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_hubsecret_reveal(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubSecret: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = HubSecret
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> HubSecret {
+        return HubSecret(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: HubSecret) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubSecret {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: HubSecret, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSecret_lift(_ pointer: UnsafeMutableRawPointer) throws -> HubSecret {
+    return try FfiConverterTypeHubSecret.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSecret_lower(_ value: HubSecret) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeHubSecret.lower(value)
+}
+
+
+
+
+
+
+/**
  * The hub's events of these families reach the app here (WP P2CC1): set with
  * [`DspiCore::set_hub_server_listener`].
  */
@@ -26579,7 +26723,7 @@ public struct HubApiKeyMinted {
     /**
      * The key (43 characters): show it once; the hub keeps only its hash.
      */
-    public var key: String
+    public var key: HubSecret
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -26598,7 +26742,7 @@ public struct HubApiKeyMinted {
          */plaintextOk: Bool, 
         /**
          * The key (43 characters): show it once; the hub keeps only its hash.
-         */key: String) {
+         */key: HubSecret) {
         self.cid = cid
         self.name = name
         self.role = role
@@ -26610,36 +26754,6 @@ public struct HubApiKeyMinted {
 #if compiler(>=6)
 extension HubApiKeyMinted: Sendable {}
 #endif
-
-
-extension HubApiKeyMinted: Equatable, Hashable {
-    public static func ==(lhs: HubApiKeyMinted, rhs: HubApiKeyMinted) -> Bool {
-        if lhs.cid != rhs.cid {
-            return false
-        }
-        if lhs.name != rhs.name {
-            return false
-        }
-        if lhs.role != rhs.role {
-            return false
-        }
-        if lhs.plaintextOk != rhs.plaintextOk {
-            return false
-        }
-        if lhs.key != rhs.key {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(cid)
-        hasher.combine(name)
-        hasher.combine(role)
-        hasher.combine(plaintextOk)
-        hasher.combine(key)
-    }
-}
 
 
 
@@ -26654,7 +26768,7 @@ public struct FfiConverterTypeHubApiKeyMinted: FfiConverterRustBuffer {
                 name: FfiConverterString.read(from: &buf), 
                 role: FfiConverterString.read(from: &buf), 
                 plaintextOk: FfiConverterBool.read(from: &buf), 
-                key: FfiConverterString.read(from: &buf)
+                key: FfiConverterTypeHubSecret.read(from: &buf)
         )
     }
 
@@ -26663,7 +26777,7 @@ public struct FfiConverterTypeHubApiKeyMinted: FfiConverterRustBuffer {
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterString.write(value.role, into: &buf)
         FfiConverterBool.write(value.plaintextOk, into: &buf)
-        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterTypeHubSecret.write(value.key, into: &buf)
     }
 }
 
@@ -28681,7 +28795,7 @@ public struct HubOutboundSecret {
     /**
      * The secret (64 hex characters): show it once, keep it nowhere else.
      */
-    public var secret: String
+    public var secret: HubSecret
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -28691,7 +28805,7 @@ public struct HubOutboundSecret {
          */target: String, 
         /**
          * The secret (64 hex characters): show it once, keep it nowhere else.
-         */secret: String) {
+         */secret: HubSecret) {
         self.target = target
         self.secret = secret
     }
@@ -28700,24 +28814,6 @@ public struct HubOutboundSecret {
 #if compiler(>=6)
 extension HubOutboundSecret: Sendable {}
 #endif
-
-
-extension HubOutboundSecret: Equatable, Hashable {
-    public static func ==(lhs: HubOutboundSecret, rhs: HubOutboundSecret) -> Bool {
-        if lhs.target != rhs.target {
-            return false
-        }
-        if lhs.secret != rhs.secret {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(target)
-        hasher.combine(secret)
-    }
-}
 
 
 
@@ -28729,13 +28825,13 @@ public struct FfiConverterTypeHubOutboundSecret: FfiConverterRustBuffer {
         return
             try HubOutboundSecret(
                 target: FfiConverterString.read(from: &buf), 
-                secret: FfiConverterString.read(from: &buf)
+                secret: FfiConverterTypeHubSecret.read(from: &buf)
         )
     }
 
     public static func write(_ value: HubOutboundSecret, into buf: inout [UInt8]) {
         FfiConverterString.write(value.target, into: &buf)
-        FfiConverterString.write(value.secret, into: &buf)
+        FfiConverterTypeHubSecret.write(value.secret, into: &buf)
     }
 }
 
@@ -28785,24 +28881,6 @@ public struct HubOutboundSet {
 #if compiler(>=6)
 extension HubOutboundSet: Sendable {}
 #endif
-
-
-extension HubOutboundSet: Equatable, Hashable {
-    public static func ==(lhs: HubOutboundSet, rhs: HubOutboundSet) -> Bool {
-        if lhs.targets != rhs.targets {
-            return false
-        }
-        if lhs.secrets != rhs.secrets {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(targets)
-        hasher.combine(secrets)
-    }
-}
 
 
 
@@ -48929,6 +49007,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_hubadminlistener_on_hub_admin_event() != 29874) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_hubsecret_reveal() != 43175) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_hubserverlistener_on_hub_server_event() != 5783) {

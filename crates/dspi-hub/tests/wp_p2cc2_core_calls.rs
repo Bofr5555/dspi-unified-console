@@ -298,7 +298,7 @@ fn wp_p2cc2_outbound_mqtt_and_api_keys_on_the_real_hub() {
     let id = set.targets[0].id.clone();
     assert_eq!(set.secrets.len(), 1, "{set:?}");
     assert_eq!(set.secrets[0].target, id);
-    let secret = set.secrets[0].secret.clone();
+    let secret = set.secrets[0].secret.reveal();
     assert_eq!(secret.len(), 64);
     assert!(
         !format!("{set:?}").contains(&secret),
@@ -367,12 +367,12 @@ fn wp_p2cc2_outbound_mqtt_and_api_keys_on_the_real_hub() {
     let minted = admin
         .hub_api_key_mint("Script".into(), "viewer".into(), false)
         .unwrap();
-    assert_eq!(minted.key.len(), 43);
+    assert_eq!(minted.key.reveal().len(), 43);
     assert_eq!(
         (minted.name.as_str(), minted.role.as_str()),
         ("Script", "viewer")
     );
-    assert!(!format!("{minted:?}").contains(&minted.key));
+    assert!(!format!("{minted:?}").contains(&minted.key.reveal()));
     let keys = admin.hub_api_keys().unwrap();
     assert_eq!(keys.len(), 1, "only the key, not the consoles: {keys:?}");
     assert_eq!(keys[0].cid, minted.cid);

@@ -189,11 +189,11 @@ fn wp_p2cc2_secrets_never_show_in_debug() {
         name: "HA".into(),
         role: "control".into(),
         plaintext_ok: false,
-        key: "k3y-only-once-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into(),
+        key: HubSecret::new("k3y-only-once-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into()),
     };
     let secret = HubOutboundSecret {
         target: "t1".into(),
-        secret: "5ec2e7".repeat(10),
+        secret: HubSecret::new("5ec2e7".repeat(10)),
     };
     let mqtt = HubMqttSettings {
         password: "hunter2-broker".into(),
@@ -217,11 +217,69 @@ fn wp_p2cc2_secrets_never_show_in_debug() {
         assert!(!all.contains(leaked), "{leaked} in {all}");
     }
     assert!(all.contains("\"set\""), "{all}");
-    // The answer itself (C, wasm) has it, once.
+    // The answer itself (C, wasm) has it as the plain string, once.
+    let v = serde_json::to_value(&minted).unwrap();
+    assert_eq!(v["key"], minted.key.reveal().as_str(), "{v}");
+    assert_eq!(v.to_string().matches("k3y-only-once").count(), 1);
+    let v = serde_json::to_value(&set).unwrap();
     assert_eq!(
-        serde_json::to_value(&minted).unwrap()["key"],
-        minted.key.as_str()
+        v["secrets"][0],
+        json!({"target": "t1", "secret": "5ec2e7".repeat(10)})
     );
+    // -- WP P2DFIXB -- the secret is an object on its own: its Debug is `set`.
+    assert_eq!(format!("{:?}", minted.key), "set");
+    assert!(format!("{minted:?}").contains("key: set"), "{minted:?}");
+    assert_eq!(format!("{:?}", HubSecret::new(String::new())), "not set");
+}
+
+/// WP P2DFIXB (review p2d F3): in the generated bindings the two secret fields
+/// are the `HubSecret` object, never a string a record's printing shows.
+#[test]
+fn wp_p2dfixb_the_bindings_hold_the_secret_as_an_object() {
+    let top = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let read = |p: &str| std::fs::read_to_string(top.join(p)).unwrap();
+    // A record's body: from its head to the line that closes it.
+    let body = |text: &str, head: &str, end: &str| -> String {
+        let start = text.find(head).unwrap_or_else(|| panic!("no {head}"));
+        let rest = &text[start..];
+        rest[..rest.find(end).unwrap_or(rest.len())].to_owned()
+    };
+    let kotlin = read("ci/generated/kotlin/se/bofr/dspi/ffi/uniffi/dspi_core.kt");
+    let domain = read("apps/android/core-api/src/main/kotlin/se/bofr/dspi/core/CoreTypes.kt");
+    let swift = read("ci/generated/swift/dspi_core.swift");
+    for (record, field) in [("HubApiKeyMinted", "key"), ("HubOutboundSecret", "secret")] {
+        let k = body(&kotlin, &format!("data class {record} ("), "\n)");
+        assert!(
+            k.contains(&format!("var `{field}`: HubSecret")),
+            "UniFFI Kotlin: {k}"
+        );
+        let d = body(&domain, &format!("data class {record}("), "\n)");
+        assert!(
+            d.contains(&format!("val {field}: HubSecret,")),
+            "Android: {d}"
+        );
+        let w = body(&swift, &format!("public struct {record} {{"), "\n}");
+        assert!(
+            w.contains(&format!("public var {field}: HubSecret\n")),
+            "Swift: {w}"
+        );
+        for b in [&k, &d, &w] {
+            assert!(
+                !b.contains(&format!("{field}`: kotlin.String"))
+                    && !b.contains(&format!("{field}: String")),
+                "{b}"
+            );
+        }
+    }
+    // The object: a class whose printing is its handle, with `reveal`.
+    assert!(
+        kotlin.contains("open class HubSecret") && kotlin.contains("fun `reveal`(): kotlin.String")
+    );
+    assert!(
+        domain.contains("interface HubSecret : AutoCloseable")
+            && domain.contains("fun reveal(): String")
+    );
+    assert!(swift.contains("open class HubSecret") && swift.contains("func reveal() -> String"));
 }
 
 #[test]
@@ -620,7 +678,7 @@ mod through_the_fake_hub {
         assert_eq!(set.targets.len(), 2);
         assert_eq!(set.secrets.len(), 1);
         assert_eq!(set.secrets[0].target, "t2");
-        assert_eq!(set.secrets[0].secret.len(), 64);
+        assert_eq!(set.secrets[0].secret.reveal().len(), 64);
         assert_eq!(set.targets[1].secret, "set");
         let ask = last(&hub, "outbound.set");
         assert_eq!(
@@ -658,7 +716,7 @@ mod through_the_fake_hub {
         let minted = core
             .hub_api_key_mint("Script".into(), "viewer".into(), false)
             .unwrap();
-        assert_eq!((minted.cid, minted.key.len()), (6, 43));
+        assert_eq!((minted.cid, minted.key.reveal().len()), (6, 43));
         let ask = last(&hub, "auth.mint");
         assert_eq!(
             (ask["role"].clone(), ask["plaintext_ok"].clone()),

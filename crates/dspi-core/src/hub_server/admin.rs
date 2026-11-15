@@ -26,10 +26,14 @@
 //! without the family's cap, the hub's refusals typed, and the client
 //! read-only mode lets out only the reads ([`super::HUB_SERVER_READS`]).
 //! **Secrets** (a minted key, a webhook's new secret) come once, in the
-//! answer of the call that made them: they are never logged, and their
-//! records' `Debug` shows `set` instead.
+//! answer of the call that made them: they are never logged. Each is a
+//! [`HubSecret`] object (read with `reveal`), so neither `Debug` nor a
+//! binding's generated record printing shows it; a password typed in
+//! (`HubMqttSettings`) shows `set` in `Debug`.
 
-use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value, json};
 
 #[cfg_attr(not(feature = "link"), allow(unused_imports))]
@@ -669,30 +673,66 @@ pub struct HubOutboundTarget {
     pub notice: String,
 }
 
+// -- WP P2DFIXB -- (review p2d F3, PLAN-SEC S9) a secret is an object, so no
+// generated record's toString/description prints it
+/// A secret the hub made and shows once: an API key, a webhook's secret. An
+/// object, not a string field, so that no binding's generated record
+/// printing (Kotlin `toString`, Swift `description`) shows it: read it with
+/// [`HubSecret::reveal`] to show it once, and keep it nowhere else. Its
+/// `Debug` is `set`; serialized (the C and wasm answers) it is the plain
+/// string.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
+#[derive(Default, PartialEq, Eq)]
+pub struct HubSecret(String);
+
+impl HubSecret {
+    /// `text` as a secret.
+    pub fn new(text: String) -> Arc<Self> {
+        Arc::new(Self(text))
+    }
+}
+
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl HubSecret {
+    /// The secret's text, to show once. No I/O.
+    pub fn reveal(&self) -> String {
+        self.0.clone()
+    }
+}
+
+impl std::fmt::Debug for HubSecret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&shown(!self.0.is_empty()))
+    }
+}
+
+impl Serialize for HubSecret {
+    fn serialize<S: Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        s.serialize_str(&self.0)
+    }
+}
+
+/// A secret field as its plain string (serde has no `Arc` without `rc`).
+fn reveal_ser<S: Serializer>(v: &Arc<HubSecret>, s: S) -> std::result::Result<S::Ok, S::Error> {
+    v.as_ref().serialize(s)
+}
+
 /// A secret the hub made for a target, shown once ([`HubOutboundSet`]).
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HubOutboundSecret {
     /// The target's id.
     pub target: String,
     /// The secret (64 hex characters): show it once, keep it nowhere else.
-    pub secret: String,
-}
-
-impl std::fmt::Debug for HubOutboundSecret {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HubOutboundSecret")
-            .field("target", &self.target)
-            .field("secret", &shown(!self.secret.is_empty()))
-            .finish()
-    }
+    #[serde(serialize_with = "reveal_ser")]
+    pub secret: Arc<HubSecret>,
 }
 
 /// `outbound.set`'s answer.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HubOutboundSet {
     /// The targets now.
     pub targets: Vec<HubOutboundTarget>,
@@ -999,8 +1039,8 @@ pub struct HubApiKey {
 /// A key the hub just minted (`auth.mint`): [`HubApiKeyMinted::key`] is
 /// shown in this answer only.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
-#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HubApiKeyMinted {
     /// Its client id.
     pub cid: u32,
@@ -1011,19 +1051,8 @@ pub struct HubApiKeyMinted {
     /// As asked.
     pub plaintext_ok: bool,
     /// The key (43 characters): show it once; the hub keeps only its hash.
-    pub key: String,
-}
-
-impl std::fmt::Debug for HubApiKeyMinted {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HubApiKeyMinted")
-            .field("cid", &self.cid)
-            .field("name", &self.name)
-            .field("role", &self.role)
-            .field("plaintext_ok", &self.plaintext_ok)
-            .field("key", &shown(!self.key.is_empty()))
-            .finish()
-    }
+    #[serde(serialize_with = "reveal_ser")]
+    pub key: Arc<HubSecret>,
 }
 
 #[cfg_attr(not(feature = "link"), allow(dead_code))]
@@ -1297,7 +1326,7 @@ impl DspiCore {
                         .filter_map(|(id, s)| {
                             s.as_str().map(|s| HubOutboundSecret {
                                 target: cut(id, 64),
-                                secret: cut(s, 256),
+                                secret: HubSecret::new(cut(s, 256)),
                             })
                         })
                         .collect()
@@ -1471,7 +1500,7 @@ impl DspiCore {
                 name: text(reply.get("name")),
                 role: text(reply.get("role")),
                 plaintext_ok: flag(reply.get("plaintext_ok")),
-                key,
+                key: HubSecret::new(key),
             })
         }
         #[cfg(not(feature = "link"))]
