@@ -270,20 +270,35 @@ forgotten). A firmware change updates the record and records a `firmware` event 
 
 ## 5. Health
 
-*State: draft (P2HP).*
+*State: built (P2HP).*
 
-The hub reads each device's status every 2 s, its temperature every 30 s and its reset record every 60 s, on the same
-poll groups the consoles use (one read whoever asks) and inside the poll budget. It reads; it never clears the clip
-latch.
+On attach the hub reads the device's `EXT_LIST`, then `EXT_IDENTIFY` (board, hardware revision, chip) and
+`EXT_RESET_INFO` where listed; firmware without the extension channel is asked nothing more. Then it reads the status
+every 2 s, the temperature every 30 s and the reset record (uptime, hang count) every 60 s. The status read is a poll on
+the same poll group the consoles' meters use (`REQ_GET_STATUS` 9 at the length a console asks for, so one read whoever
+asks), inside the poll budget; a DSPi Link poll runs at 1 Hz at least, so the hub polls at 1 Hz and reports every 2 s.
+The temperature and the reset record are single reads on the device's queue, not polls: a 1 Hz poll for a 30 s reading
+would be 30 times the reads. If the poll budget refuses the hub's poll, it reads the status itself every 2 s and asks
+again later. The hub's reads pass a session's device lock (a read changes nothing the lock protects). It reads; it
+never writes, and never clears the clip latch.
 
 | `t` | Role | Request | Answer |
 |---|---|---|---|
-| `health.get` | viewer | `serial?` | `devices`: one record per online device (or the one asked) |
+| `health.get` | viewer | `serial?` or `handle?` (both: they must name the same device) | `devices`: one record per online device (or the one asked) |
 
-A record: `serial`, `handle`, `at` (the newest read), `cpu_pct`, `clip_mask` (the sticky latch: "clipped since someone
-cleared", one bit per channel), `temp_c`, `uptime_s`, `hang_count`, `unresponsive` (`true` once commands have timed out
-for 10 s while attached), `reset` (`{reason, prev_uptime_s?}` from the last attach). A field the firmware does not give
-is absent. Reset reasons: `power_on`, `brownout`, `run_pin`, `watchdog`, `software`, `debugger`, `glitch`, `unknown`.
+A record: `serial`, `handle`, `at` (the newest read), `cpu_pct` (the busier of the two cores), `clip_mask` (the sticky
+latch: "clipped since someone cleared", one bit per channel), `temp_c` (to 0.01 °C), `uptime_s`, `hang_count`,
+`unresponsive` (`true` once the device has given no answer for 10 s while attached, until its next answer),
+`unresponsive_since` (while `unresponsive`), `reset` (`{reason, prev_uptime_s?}` from the attach, or from the read that
+found the uptime gone backwards). A field the firmware does not give, or not yet read, is absent. Reset reasons:
+`power_on`, `brownout`, `run_pin`, `watchdog`, `software`, `debugger`, `glitch`, `unknown`.
+
+Errors: `not_found` for a serial the hub does not know, `offline` for one it knows that is not attached, `no_device` for
+an unknown handle, `bad_request` for a wrong type or a serial and handle of two devices.
+
+On the hub's internal bus (for its other services, not on the wire): `Facts` once per attach and again when the uptime
+went backwards between two reset reads (a reset not seen as a detach); `Health` every 2 s; `Unresponsive` once per
+silence. An embedder turns the service on with `ServiceConfig::health` (`HealthConfig::default()` has the periods above).
 
 ## 6. Event history
 
