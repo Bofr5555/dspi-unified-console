@@ -30,7 +30,8 @@
 //! - a local time that does not exist (spring forward) runs at the first valid minute
 //!   after the gap; one that happens twice (fall back) runs once, at the first;
 //! - while the wall clock reads before the build date ([`build_floor_s`]) nothing runs and
-//!   the `clock_unset` alarm is raised on the bus (cleared once the clock is set).
+//!   `schedule.list` says `clock_unset`; the `clock_unset` alarm itself is P2AL's
+//!   (`device_alarms.rs`, against its own copy of the floor).
 //!
 //! **Threads.** The decisions are made on the hub's timer (`run_due`, short: no file or
 //! device I/O); the runs, the file writes and the records are made on a thread of this
@@ -61,7 +62,6 @@ use crate::clock::HubClock;
 use crate::hub::HubHandle;
 use crate::service::{HubService, ServiceConfig, ServiceSetup, Waker};
 use crate::session::{Role, Session};
-use crate::system::alarms::AlarmState;
 
 /// The `hello` cap.
 pub const CAP: &str = "schedule";
@@ -88,6 +88,7 @@ pub const TICK: Duration = Duration::from_secs(30);
 pub const MAX_PENDING: usize = 64;
 /// The day this code was written (2026-11-15T00:00:00Z): the least build date. A build
 /// with `SOURCE_DATE_EPOCH` set takes that when it is later.
+// -- WP P2SC -- unify with device_alarms::BUILD_FLOOR_S at merge
 pub const SOURCE_FLOOR_S: i64 = 1_794_700_800;
 /// The messages of this family.
 pub const MESSAGES: [&str; 4] = [
@@ -115,8 +116,6 @@ const WINDOW_S: i64 = 8 * 86_400;
 /// A result row's `msg`, at most (256 rows must fit one frame).
 const MAX_MSG_CHARS: usize = 80;
 const DAYS: [&str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-/// The alarm's id on the bus (the alarm book's own ids are P2AL's).
-pub const CLOCK_ALARM_ID: &str = "schedule:clock_unset";
 
 /// The least wall-clock time this build believes: [`SOURCE_FLOOR_S`], or the build's
 /// `SOURCE_DATE_EPOCH` when that is later.
@@ -1501,34 +1500,14 @@ mod service_impl {
             self.save();
         }
 
-        fn clock_alarm(&self, unset: bool) {
-            let at = self.clock.unix_seconds();
+        /// The clock became unset or set: logged only. The `clock_unset` alarm is P2AL's,
+        /// which raises it in its own book.
+        fn clock_changed(unset: bool) {
             if unset {
                 log::warn!("hub: the clock reads before the build date; schedules wait");
             } else {
                 log::info!("hub: the clock is set; schedules run");
             }
-            self.bus.publish(BusMessage::Alarm {
-                id: CLOCK_ALARM_ID.into(),
-                source: "device".into(),
-                code: "clock_unset".into(),
-                subject: "clock".into(),
-                serial: None,
-                severity: "warning".into(),
-                state: if unset {
-                    AlarmState::Raised
-                } else {
-                    AlarmState::Cleared
-                },
-                message:
-                    "The hub's clock reads before its build date: schedules wait until it is set"
-                        .into(),
-                at,
-                raised_at: at,
-                cleared_at: (!unset).then_some(at),
-                acknowledged_by: None,
-                count: 1,
-            });
         }
 
         fn worker(self: &Arc<Self>, hub: &HubHandle) {
@@ -1626,7 +1605,7 @@ mod service_impl {
                 log::info!("hub: the wall clock jumped by {j} s; schedules follow it");
             }
             if let Some(unset) = tick.clock_unset {
-                self.clock_alarm(unset);
+                Self::clock_changed(unset);
             }
             let jobs: Vec<Job> = tick
                 .due

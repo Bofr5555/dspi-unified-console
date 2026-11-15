@@ -17,7 +17,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use dspi_hub::history::HistoryConfig;
 use dspi_hub::session::FIRST_REMOTE_SESSION_ID;
-use dspi_hub::system::alarms::AlarmState;
 use dspi_hub::{
     AccessMode, BusMessage, Hub, HubConfig, NetworkConfig, Role, ScheduleConfig, ServiceConfig,
     Subscription, TestClock,
@@ -549,35 +548,41 @@ fn wp_p2sc_a_rule_runs_on_its_time_and_a_jump_forward_skips_and_records() {
 }
 
 #[test]
-fn wp_p2sc_nothing_runs_while_the_clock_is_unset_and_the_alarm_says_so() {
+fn wp_p2sc_nothing_runs_while_the_clock_is_unset_and_the_list_says_so() {
     let r = rig("unset");
     let serial = "P2SC-UNSET";
     r.plug(serial);
     let mut admin = r.client("Installer", Role::Admin);
-    let id = admin.add(volume_rule("Doors", &[serial], -20.0));
-    // A hub without a battery clock: 2020 after a reboot.
+    let mut rule = volume_rule("Doors", &[serial], -20.0);
+    rule["when"] = json!({"days": ["wed"], "time": "00:01"});
+    let id = admin.add(rule);
+    // A hub without a battery clock: 2020-01-01 00:00 (a Wednesday) after a reboot.
     r.set_wall(1_577_836_800);
-    let state = r.next_on_bus("clock_unset", |m| match m {
-        BusMessage::Alarm { code, state, .. } if code == "clock_unset" => Some(*state),
-        _ => None,
-    });
-    assert_eq!(state, AlarmState::Raised);
     let list = admin.ask(json!({"t": "schedule.list"}));
     assert_eq!(list["clock_unset"], true);
     assert_eq!(list["rules"][0]["next_run"], Value::Null);
     let ran = admin.ask(json!({"t": "schedule.run_now", "rule": id}));
     assert_eq!(code(&ran), "conflict", "{ran}");
-    // Set by the network: cleared.
+    // Its 00:01 passes: nothing runs.
+    r.advance(Duration::from_secs(120));
+    // Set by the network: schedules run again.
     r.set_wall(MONDAY_NOON + 60);
-    let state = r.next_on_bus("clock_unset cleared", |m| match m {
-        BusMessage::Alarm { code, state, .. } if code == "clock_unset" => Some(*state),
-        _ => None,
-    });
-    assert_eq!(state, AlarmState::Cleared);
-    assert_eq!(
-        admin.ask(json!({"t": "schedule.list"}))["clock_unset"],
-        false
-    );
+    let start = Instant::now();
+    while admin.ask(json!({"t": "schedule.list"}))["clock_unset"] != false {
+        assert!(start.elapsed() < WAIT, "the clock stayed unset");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    std::thread::sleep(Duration::from_millis(300));
+    // The alarm is P2AL's: the schedule publishes none, and ran nothing meanwhile.
+    while let Some(m) = r.bus.try_recv() {
+        assert!(
+            !matches!(
+                &*m,
+                BusMessage::Alarm { .. } | BusMessage::ScheduleRan { .. }
+            ),
+            "{m:?}"
+        );
+    }
     r.hub.stop();
 }
 

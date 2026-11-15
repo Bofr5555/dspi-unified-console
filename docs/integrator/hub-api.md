@@ -625,8 +625,8 @@ of the clock (more wall time than the hub's own steady time passed) skips what i
 and a `schedule` line "skipped" in each target's history); a backward jump never runs a rule twice in a day (a rule runs at
 most once per local date). A local time that does not exist (spring forward) runs at the first minute after the gap (02:30
 on a 02:00-to-03:00 day runs at 03:00); one that happens twice (fall back) runs once, at the first. While the clock reads
-before the build date nothing runs (`run_now` included) and the `clock_unset` alarm is raised; it clears once the clock
-is set. The hub looks at the clock at least every 30 s, so a jump is seen within that.
+before the build date nothing runs (`run_now` answers `conflict`) and `schedule.list` says `clock_unset: true`; the
+`clock_unset` alarm itself is the alarms family's (section 7, P2AL), raised and cleared there against the same build date. The hub looks at the clock at least every 30 s, so a jump is seen within that.
 
 Each run answers per action and target: `results: [{serial, action, ok, code?, msg?}]`, where `action` is a string
 naming the action by its position in `actions` and its `t` (`"0:preset.load"`), in the rule's order (each action on
