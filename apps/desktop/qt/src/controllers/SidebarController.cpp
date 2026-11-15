@@ -349,27 +349,42 @@ bool SidebarController::renameChannel(int channel, const QString &name) {
 }
 
 // -- WP CLIPQT -- The core copies from its mirror (nothing sent), on the
-// worker after the writes queued before it; the clip is its JSON document
+// worker after the writes queued before it; the clip is its JSON document.
+// -- WP CLIPQTFIX -- The worker keeps it for the pastes behind it, and the
+// clipboard counts as filled at once (Paste needs no wait for the answer).
 void SidebarController::copyChannel(int channel) {
     if (!m_ctx.device->state() || channel < 0 || channel >= MAX_CHANNELS) return;
     const int row = m_ctx.device->channels()->rowOfChannel(channel);
     const QString name = row >= 0 ? m_ctx.device->channels()->get(row, QStringLiteral("label")).toString() : QString();
+    const quint64 copy = ++m_copies;
+    m_hasClip = true;
+    m_clipName = name;
+    emit clipboardChanged();
+    std::shared_ptr<QByteArray> held = m_workerClip;
     m_ctx.core->worker()->call(
         this,
-        [channel](FfiCore *c) {
-            return readSized([c, channel](char *b, uint32_t n) { return dspi_copy_channel(c, uint8_t(channel), b, n); }, 8192);
+        [channel, held](FfiCore *c) {
+            QByteArray doc = readSized([c, channel](char *b, uint32_t n) { return dspi_copy_channel(c, uint8_t(channel), b, n); }, 8192);
+            const bool clip = QJsonDocument::fromJson(doc).object().value(QLatin1String("kind")).toString() == QLatin1String("dspi.channelClip");
+            // A failed copy leaves nothing to paste, not the copy before it
+            *held = clip ? doc : QByteArray();
+            return doc;
         },
-        [this, name](QByteArray doc) {
+        [this, copy](QByteArray doc) {
             const QJsonObject o = QJsonDocument::fromJson(doc).object();
-            if (o.value(QLatin1String("kind")).toString() != QLatin1String("dspi.channelClip")) {
+            const bool clip = o.value(QLatin1String("kind")).toString() == QLatin1String("dspi.channelClip");
+            if (!clip) {
                 const QString key = o.value(QLatin1String("noticeKey")).toString();
                 if (auto *notices = Registrar::instance<NoticeCenter>(); notices && !key.isEmpty())
                     notices->postKey(key, o.value(QLatin1String("error")).toString());
-                return;
             }
-            m_clip = doc;
-            m_clipName = name;
-            emit clipboardChanged();
+            if (copy != m_copies) return;   // a newer copy was asked for since
+            m_clip = clip ? doc : QByteArray();
+            if (!clip) {
+                m_hasClip = false;
+                m_clipName.clear();
+                emit clipboardChanged();
+            }
         });
 }
 
@@ -377,21 +392,25 @@ void SidebarController::copyChannel(int channel) {
 // the bands, mirrored onto a linked partner (the pair must not drift apart);
 // crossover, gain, delay and mute only from one output to another. One undo
 // step, "Paste Parameters"; a refusal (the lock, read-only, a limit) writes
-// nothing and shows the core's notice.
+// nothing and shows the core's notice. -- WP CLIPQTFIX -- The clip is the
+// worker's, read when the paste runs: the last copy asked for before it.
 void SidebarController::pasteChannel(int channel) {
-    if (m_clip.isEmpty() || !m_ctx.device->state() || channel < 0 || channel >= MAX_CHANNELS) return;
-    const QByteArray clip = m_clip;
+    if (!m_hasClip || !m_ctx.device->state() || channel < 0 || channel >= MAX_CHANNELS) return;
+    std::shared_ptr<QByteArray> held = m_workerClip;
     const int partner = linkedPartner(channel);
     auto reply = std::make_shared<QJsonObject>();
     apply(
         QStringLiteral("paste channel %1").arg(channel),
-        [clip, channel, partner, reply](FfiCore *c) {
+        [held, channel, partner, reply](FfiCore *c) {
+            if (held->isEmpty()) return false;   // the copy failed: nothing to paste
+            const QByteArray clip = *held;
             // One call, one buffer: a paste is never repeated to size it
             QByteArray buf(16 * 1024, '\0');
             const uint32_t need = dspi_paste_channel(c, clip.constData(), uint8_t(channel), int32_t(partner), buf.data(), uint32_t(buf.size()));
             if (need > 0 && need <= uint32_t(buf.size())) buf.truncate(int(need) - 1);
             else buf.clear();
             *reply = QJsonDocument::fromJson(buf).object();
+            if (reply->isEmpty()) reply->insert(QStringLiteral("ok"), false);
             return reply->value(QLatin1String("ok")).toBool();
         },
         [this, reply](bool ok) {

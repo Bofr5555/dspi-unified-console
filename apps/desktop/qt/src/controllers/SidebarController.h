@@ -10,6 +10,7 @@
 #include <QtQml/qqmlregistration.h>
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 #include "CoreApi.h"
 #include "Registrar.h"
@@ -109,7 +110,7 @@ public:
     int inactiveOutputs() const;
     QStringList slotNames() const;
     bool derivedLabels() const;
-    bool hasClipboard() const { return !m_clip.isEmpty(); }   // -- WP CLIPQT --
+    bool hasClipboard() const { return m_hasClip; }   // -- WP CLIPQT --
     QString clipboardName() const { return m_clipName; }
     bool identifySupported() const { return m_siggenMask != 0; }
     QString volumeMode() const { return m_masterMode ? QStringLiteral("master") : QStringLiteral("user"); }
@@ -237,6 +238,15 @@ private:
     // label the copied row showed
     QByteArray m_clip;
     QString m_clipName;
+    // -- WP CLIPQTFIX -- A copy counts from the moment it is asked for: the
+    // worker's own clip (`m_workerClip`, read and written only on the worker)
+    // is what a paste takes, so a paste asked for right after a copy pastes
+    // that copy, whatever the GUI has heard back yet (the worker runs its
+    // jobs in the order posted). `m_copies` numbers the copies, so a late
+    // answer to an older one changes nothing.
+    bool m_hasClip = false;
+    quint64 m_copies = 0;
+    std::shared_ptr<QByteArray> m_workerClip = std::make_shared<QByteArray>();
     bool m_masterMode = false;
     int m_sidebarWidth = 0;
     QVariantList m_sources;
