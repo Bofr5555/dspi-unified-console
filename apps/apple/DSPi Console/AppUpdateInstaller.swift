@@ -15,8 +15,23 @@ import Security
 /// live app reading resources (bundled firmware included) from a bundle that
 /// had already been replaced would mix two versions.
 enum AppUpdateInstaller {
-    /// Public half of the release signing key.
-    static let publicKey = Data(base64Encoded: "1PVzcgAEI2T4cMy+DWeLEQaxdXRywAg+s+MbYNlffWU=")!
+    // -- WP SECREL -- the fork's own key, not Weeb Labs' (PLAN-SEC N12, OD-SECj).
+    /// Public half of the release signing key (`update-signing.swift public-key`).
+    ///
+    /// TEST KEY until the owner makes the fork's update key offline (OD-SECj).
+    /// Its private half is public knowledge (derived in AppUpdateInstallerTests
+    /// from a fixed text), so a build that still carries it never installs an
+    /// update (`usesTestKey`). At the first signed release, replace the base64
+    /// on this one line with the owner's public key; nothing else changes.
+    static let publicKey = Data(base64Encoded: "fMKYBvElwt3d9L6smedPBRdE4J4YOQp/o4RUi8I67sE=")! // TEST KEY: replace at release
+
+    /// -- WP SECREL -- the TEST key's public half. Never the release key: anyone
+    /// can sign with its private half. Leave this line alone when swapping keys.
+    static let testPublicKey = Data(base64Encoded: "fMKYBvElwt3d9L6smedPBRdE4J4YOQp/o4RUi8I67sE=")!
+
+    /// -- WP SECREL -- Whether this build still embeds the TEST key, in which
+    /// case the updater offers the release page only and installs nothing.
+    static var usesTestKey: Bool { publicKey == testPublicKey }
 
     /// Present in the work directory while the helper should reopen the app
     /// once installed.  Removed when the user cancels the quit, so a later
@@ -32,6 +47,7 @@ enum AppUpdateInstaller {
         case wrongApp(String)
         case invalidCodeSignature
         case helper
+        case testKeyBuild  // -- WP SECREL --
 
         var errorDescription: String? {
             switch self {
@@ -51,6 +67,8 @@ enum AppUpdateInstaller {
                 return "The downloaded app's code signature is invalid."
             case .helper:
                 return "The installer couldn't be started."
+            case .testKeyBuild:  // -- WP SECREL --
+                return "This build of uConsole for DSPi has no release signing key, so it can't install updates itself.  Download the new version from the release page."
             }
         }
     }
