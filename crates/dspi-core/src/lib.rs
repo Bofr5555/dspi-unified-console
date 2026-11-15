@@ -143,6 +143,10 @@ pub mod modes;
 pub mod hub_admin;
 // -- WP ROMODE --
 pub mod read_only;
+// -- WP CG-SWS-a --
+#[cfg(feature = "link")]
+mod link_txt;
+mod platform;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -254,6 +258,14 @@ pub use hub_admin::{
 // -- WP ROMODE --
 pub use read_only::{
     GUARD_PENDING, HUB_READS, NOTICE_READ_ONLY_CLIENT, NOTICE_READ_ONLY_GUARD_PENDING,
+};
+// -- WP CG-SWS-a --
+pub use device::known_feature_names;
+#[cfg(feature = "link")]
+pub use link_txt::link_parse_txt;
+pub use platform::{
+    bulk_image_extras, default_channel_names, enum_value_labels, platform_shape, vreg_code_label,
+    vreg_code_mv,
 };
 
 /// The embedder API. Create one per app with [`DspiCore::new`].

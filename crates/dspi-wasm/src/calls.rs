@@ -278,6 +278,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::read_only::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP CG-SWS-a -- small stateless facts from the core (src/sws_a.rs)
+    if let Some(r) = crate::sws_a::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {

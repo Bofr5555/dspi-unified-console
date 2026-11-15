@@ -2073,6 +2073,216 @@ data class CrossfeedPair(
 )
 
 /**
+ * One biquad section of a response curve ([`crate::curve_sections`]):
+ * `H(z) = (b0 + b1 z^-1 + b2 z^-2) / (1 + a1 z^-1 + a2 z^-2)`, normalised so
+ * that `a0` is 1, at the device's sample rate.
+ */
+data class BiquadSection(
+    /**
+     * Feed-forward coefficient of `z^0`.
+     */
+    val b0: Double,
+    /**
+     * Feed-forward coefficient of `z^-1`.
+     */
+    val b1: Double,
+    /**
+     * Feed-forward coefficient of `z^-2`.
+     */
+    val b2: Double,
+    /**
+     * Feedback coefficient of `z^-1`.
+     */
+    val a1: Double,
+    /**
+     * Feedback coefficient of `z^-2`.
+     */
+    val a2: Double,
+)
+
+/**
+ * What a platform is, as the clients lay out their pages
+ * ([`crate::platform_shape`]): channel counts, where the PDM sub and the
+ * second core's EQ outputs are, and which platform-bound sections exist.
+ */
+data class PlatformShape(
+    /**
+     * The platform id the shape is for (0 RP2040, 1 RP2350, 2 STM32H723).
+     */
+    val platformId: Int,
+    /**
+     * `RP2040`, `RP2350`, `STM32H723`, or `unknown platform N`.
+     */
+    val name: String,
+    /**
+     * False for an id this build does not know; its shape is the RP2040's,
+     * the smallest.
+     */
+    val known: Boolean,
+    /**
+     * Matrix inputs (USB channels): 2 on RP2040, 8 elsewhere.
+     */
+    val numInputChannels: Int,
+    /**
+     * Outputs, the PDM sub included: 5 on RP2040, 9 elsewhere.
+     */
+    val numOutputChannels: Int,
+    /**
+     * Stereo output slots (S/PDIF or I2S): 2 on RP2040, 4 elsewhere.
+     */
+    val numOutputSlots: Int,
+    /**
+     * The PDM sub's output index: always the last output.
+     */
+    val pdmOutput: Int,
+    /**
+     * The PDM sub's index in the output pin list: after the slots.
+     */
+    val pdmPinIndex: Int,
+    /**
+     * First output whose EQ runs on the second core (the other half of the
+     * PDM interlock).
+     */
+    val eqWorkerFirst: Int,
+    /**
+     * Last output whose EQ runs on the second core.
+     */
+    val eqWorkerLast: Int,
+    /**
+     * I2S input pairs: 1 on RP2040, 4 elsewhere.
+     */
+    val i2sMaxPairs: Int,
+    /**
+     * Multichannel (more than one pair) I2S input: RP2350 only.
+     */
+    val multichannelI2s: Boolean,
+    /**
+     * ADAT output and input: RP2350 only.
+     */
+    val adat: Boolean,
+    /**
+     * The stereo upmixer: RP2350 only (RP2040 stalls its writes).
+     */
+    val upmixer: Boolean,
+    /**
+     * The I2S configuration page: every platform but STM32H723.
+     */
+    val i2sConfig: Boolean,
+    /**
+     * Crossfeed stereo pairs: 2 on RP2040, 4 elsewhere.
+     */
+    val crossfeedPairs: Int,
+    /**
+     * The longest delay the delay line holds, in ms: 42 on RP2350, 21
+     * elsewhere (`dspi_proto::Platform::max_delay_ms`).
+     */
+    val maxDelayMs: Float,
+)
+
+/**
+ * Bytes of the parameter image that `DspState` has no field for
+ * ([`crate::bulk_image_extras`]). A "present" flag is the firmware's
+ * "0 is absent, keep the last value" byte, read on the V32 layout.
+ */
+data class BulkImageExtras(
+    /**
+     * The image is a whole one of this build's wire format (its first byte
+     * is the version): the mirror was decoded from it.
+     */
+    val decoded: Boolean,
+    /**
+     * The image carried the I2S slave bit clock pin.
+     */
+    val i2sBckPinSlavePresent: Boolean,
+    /**
+     * The image carried the I2S input channel count.
+     */
+    val i2sInputChannelsPresent: Boolean,
+    /**
+     * Per I2S data input 2..4: the image carried its pin.
+     */
+    val i2sRxPinExtPresent: List<Boolean>,
+    /**
+     * Per S/PDIF input 2..4: the image carried its pin.
+     */
+    val spdifRxPinExtPresent: List<Boolean>,
+    /**
+     * The image carried the ADAT output pin; without it the firmware uses
+     * its default pin.
+     */
+    val adatOutPinPresent: Boolean,
+)
+
+/**
+ * One value of a choice setting and the words a client shows for it
+ * ([`crate::enum_value_labels`]).
+ */
+data class EnumValueLabel(
+    /**
+     * The value as written to the setting.
+     */
+    val value: Int,
+    /**
+     * The registry's name for the value (`passive`, `percussive`, ...), or
+     * the number for a numbered setting.
+     */
+    val key: String,
+    /**
+     * What the Console shows for it.
+     */
+    val label: String,
+)
+
+/**
+ * One key and value of a DNS-SD TXT record ([`crate::link_parse_txt`]).
+ */
+data class LinkTxtEntry(
+    /**
+     * The key (`v`, `hid`, ...).
+     */
+    val key: String,
+    /**
+     * Its value; empty for a key without one.
+     */
+    val value: String,
+)
+
+/**
+ * A hub as its DNS-SD TXT record describes it ([`crate::link_parse_txt`]),
+ * before an address is resolved.
+ */
+data class LinkTxtRecord(
+    /**
+     * The `hid`, lowercase.
+     */
+    val hubId: String,
+    /**
+     * The instance name, safe to show (the `hid` when it has none).
+     */
+    val name: String,
+    /**
+     * `console`, `bridge` or `unknown`.
+     */
+    val kind: String,
+    /**
+     * `none` or `pin`.
+     */
+    val auth: String,
+    /**
+     * Devices the hub shares.
+     */
+    val deviceCount: Long,
+    /**
+     * Their serials, when the hub lists them.
+     */
+    val serials: List<String>,
+    /**
+     * The WebSocket path.
+     */
+    val path: String,
+)
+
+/**
  * Where a compare stands ([`DspiCore::ab_state`] and every A/B call).
  */
 data class AbCompare(

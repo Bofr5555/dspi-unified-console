@@ -76,6 +76,8 @@ mod offline;
 mod guarded;
 // -- WP HUBADMIN --
 mod hub_admin;
+// -- WP CG-SWS-a --
+mod sws_a;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

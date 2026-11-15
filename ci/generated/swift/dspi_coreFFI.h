@@ -1281,6 +1281,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_pin_set(void*_Nonnull ptr, Ru
 void uniffi_dspi_core_fn_method_dspicore_identify(void*_Nonnull ptr, uint8_t seconds, RustBuffer tone_output, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_IMAGE_EXTRAS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_IMAGE_EXTRAS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_image_extras(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INACCESSIBLE_DEVICES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_INACCESSIBLE_DEVICES
 uint32_t uniffi_dspi_core_fn_method_dspicore_inaccessible_devices(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2469,6 +2474,11 @@ RustBuffer uniffi_dspi_core_fn_func_bootloader_drives(RustCallStatus *_Nonnull o
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_BULK_IMAGE_EXTRAS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_BULK_IMAGE_EXTRAS
+RustBuffer uniffi_dspi_core_fn_func_bulk_image_extras(RustBuffer bulk_raw, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_COMPUTE_MAGNITUDE_CURVE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_COMPUTE_MAGNITUDE_CURVE
 RustBuffer uniffi_dspi_core_fn_func_compute_magnitude_curve(RustBuffer filters, RustCallStatus *_Nonnull out_status
@@ -2510,6 +2520,21 @@ int8_t uniffi_dspi_core_fn_func_crossfeed_pair_map_valid(RustBuffer map, uint8_t
 double uniffi_dspi_core_fn_func_curve_freq(uint32_t i, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_CURVE_SECTIONS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_CURVE_SECTIONS
+RustBuffer uniffi_dspi_core_fn_func_curve_sections(RustBuffer filters, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_DEFAULT_CHANNEL_NAMES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_DEFAULT_CHANNEL_NAMES
+RustBuffer uniffi_dspi_core_fn_func_default_channel_names(uint8_t num_inputs, uint8_t num_outputs, RustBuffer output_types, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ENUM_VALUE_LABELS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_ENUM_VALUE_LABELS
+RustBuffer uniffi_dspi_core_fn_func_enum_value_labels(RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FILTER_TYPE_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_FILTER_TYPE_NAME
 RustBuffer uniffi_dspi_core_fn_func_filter_type_name(uint8_t code, RustCallStatus *_Nonnull out_status
@@ -2532,6 +2557,12 @@ RustBuffer uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(RustCallS
 RustBuffer uniffi_dspi_core_fn_func_firmware_guard_check(RustBuffer image, RustBuffer board, RustBuffer typed_confirmation, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_KNOWN_FEATURE_NAMES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_KNOWN_FEATURE_NAMES
+RustBuffer uniffi_dspi_core_fn_func_known_feature_names(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LIMITS_FIELD_RANGES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LIMITS_FIELD_RANGES
 RustBuffer uniffi_dspi_core_fn_func_limits_field_ranges(RustCallStatus *_Nonnull out_status
@@ -2546,6 +2577,11 @@ RustBuffer uniffi_dspi_core_fn_func_link_fetch_info(RustBuffer host, uint16_t po
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_PARSE_ADDRESS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_PARSE_ADDRESS
 RustBuffer uniffi_dspi_core_fn_func_link_parse_address(RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_PARSE_TXT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_PARSE_TXT
+RustBuffer uniffi_dspi_core_fn_func_link_parse_txt(RustBuffer service_name, RustBuffer txt, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_PHASE_TEXT
@@ -2608,6 +2644,11 @@ RustBuffer uniffi_dspi_core_fn_func_output_cards_for(RustBuffer input, RustCallS
 RustBuffer uniffi_dspi_core_fn_func_output_labels_for(RustBuffer input, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_PLATFORM_SHAPE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_PLATFORM_SHAPE
+RustBuffer uniffi_dspi_core_fn_func_platform_shape(uint8_t platform_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_DELAY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_DELAY
 float uniffi_dspi_core_fn_func_quantize_delay(float ms, RustCallStatus *_Nonnull out_status
@@ -2616,6 +2657,11 @@ float uniffi_dspi_core_fn_func_quantize_delay(float ms, RustCallStatus *_Nonnull
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_GAIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_GAIN
 float uniffi_dspi_core_fn_func_quantize_gain(float db, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_MASTER_VOLUME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_MASTER_VOLUME
+float uniffi_dspi_core_fn_func_quantize_master_volume(float db, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_TEMPLATE_LIST
@@ -2642,6 +2688,16 @@ RustBuffer uniffi_dspi_core_fn_func_usb_pipe_scan(RustCallStatus *_Nonnull out_s
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_USB_PIPE_WAIT_CHANGE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_USB_PIPE_WAIT_CHANGE
 uint64_t uniffi_dspi_core_fn_func_usb_pipe_wait_change(uint64_t seen, uint32_t timeout_ms, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_VREG_CODE_LABEL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_VREG_CODE_LABEL
+RustBuffer uniffi_dspi_core_fn_func_vreg_code_label(uint8_t code, uint8_t platform_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_VREG_CODE_MV
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_VREG_CODE_MV
+RustBuffer uniffi_dspi_core_fn_func_vreg_code_mv(uint8_t code, uint8_t platform_id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_DSPI_CORE_RUSTBUFFER_ALLOC
@@ -2978,6 +3034,12 @@ uint16_t uniffi_dspi_core_checksum_func_bootloader_drives(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_BULK_IMAGE_EXTRAS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_BULK_IMAGE_EXTRAS
+uint16_t uniffi_dspi_core_checksum_func_bulk_image_extras(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_COMPUTE_MAGNITUDE_CURVE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_COMPUTE_MAGNITUDE_CURVE
 uint16_t uniffi_dspi_core_checksum_func_compute_magnitude_curve(void
@@ -3026,6 +3088,24 @@ uint16_t uniffi_dspi_core_checksum_func_curve_freq(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CURVE_SECTIONS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_CURVE_SECTIONS
+uint16_t uniffi_dspi_core_checksum_func_curve_sections(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_DEFAULT_CHANNEL_NAMES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_DEFAULT_CHANNEL_NAMES
+uint16_t uniffi_dspi_core_checksum_func_default_channel_names(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_ENUM_VALUE_LABELS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_ENUM_VALUE_LABELS
+uint16_t uniffi_dspi_core_checksum_func_enum_value_labels(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FILTER_TYPE_NAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_FILTER_TYPE_NAME
 uint16_t uniffi_dspi_core_checksum_func_filter_type_name(void
@@ -3050,6 +3130,12 @@ uint16_t uniffi_dspi_core_checksum_func_firmware_guard_check(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_KNOWN_FEATURE_NAMES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_KNOWN_FEATURE_NAMES
+uint16_t uniffi_dspi_core_checksum_func_known_feature_names(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LIMITS_FIELD_RANGES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LIMITS_FIELD_RANGES
 uint16_t uniffi_dspi_core_checksum_func_limits_field_ranges(void
@@ -3065,6 +3151,12 @@ uint16_t uniffi_dspi_core_checksum_func_link_fetch_info(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_PARSE_ADDRESS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_PARSE_ADDRESS
 uint16_t uniffi_dspi_core_checksum_func_link_parse_address(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_PARSE_TXT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_PARSE_TXT
+uint16_t uniffi_dspi_core_checksum_func_link_parse_txt(void
     
 );
 #endif
@@ -3134,6 +3226,12 @@ uint16_t uniffi_dspi_core_checksum_func_output_labels_for(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_PLATFORM_SHAPE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_PLATFORM_SHAPE
+uint16_t uniffi_dspi_core_checksum_func_platform_shape(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_QUANTIZE_DELAY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_QUANTIZE_DELAY
 uint16_t uniffi_dspi_core_checksum_func_quantize_delay(void
@@ -3143,6 +3241,12 @@ uint16_t uniffi_dspi_core_checksum_func_quantize_delay(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_QUANTIZE_GAIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_QUANTIZE_GAIN
 uint16_t uniffi_dspi_core_checksum_func_quantize_gain(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_QUANTIZE_MASTER_VOLUME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_QUANTIZE_MASTER_VOLUME
+uint16_t uniffi_dspi_core_checksum_func_quantize_master_volume(void
     
 );
 #endif
@@ -3173,6 +3277,18 @@ uint16_t uniffi_dspi_core_checksum_func_usb_pipe_scan(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_USB_PIPE_WAIT_CHANGE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_USB_PIPE_WAIT_CHANGE
 uint16_t uniffi_dspi_core_checksum_func_usb_pipe_wait_change(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_VREG_CODE_LABEL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_VREG_CODE_LABEL
+uint16_t uniffi_dspi_core_checksum_func_vreg_code_label(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_VREG_CODE_MV
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_VREG_CODE_MV
+uint16_t uniffi_dspi_core_checksum_func_vreg_code_mv(void
     
 );
 #endif
@@ -4121,6 +4237,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_pin_set(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_IDENTIFY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_IDENTIFY
 uint16_t uniffi_dspi_core_checksum_method_dspicore_identify(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_IMAGE_EXTRAS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_IMAGE_EXTRAS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_image_extras(void
     
 );
 #endif

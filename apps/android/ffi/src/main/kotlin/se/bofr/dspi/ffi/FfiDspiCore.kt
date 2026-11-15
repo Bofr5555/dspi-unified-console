@@ -203,6 +203,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun featurePresent(name: String): Boolean = core.featurePresent(name)
 
+    override fun imageExtras(): BulkImageExtras = core.imageExtras().toDomain()
+
     override fun diagnosticsSave(path: String, options: DiagOptions): List<String> = call { core.diagnosticsSave(path, options.toFfi()) }
 
     override fun diagnosticsFileName(): String = core.diagnosticsFileName()
@@ -763,6 +765,12 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun quantizeDelay(ms: Float): Float = se.bofr.dspi.ffi.uniffi.quantizeDelay(ms)
 
+    override fun quantizeMasterVolume(db: Float): Float = se.bofr.dspi.ffi.uniffi.quantizeMasterVolume(db)
+
+    override fun curveSections(filters: List<FilterParams>): List<BiquadSection> = se.bofr.dspi.ffi.uniffi.curveSections(filters.map { it.toFfi() }).map { it.toDomain() }
+
+    override fun knownFeatureNames(): List<String> = se.bofr.dspi.ffi.uniffi.knownFeatureNames()
+
     override fun configInspect(text: String): String = se.bofr.dspi.ffi.uniffi.configInspect(text)
 
     override fun configDiff(before: String, after: String): String = se.bofr.dspi.ffi.uniffi.configDiff(before, after)
@@ -795,6 +803,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun aboutJson(): String = se.bofr.dspi.ffi.uniffi.aboutJson()
 
+    override fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord = call { se.bofr.dspi.ffi.uniffi.linkParseTxt(serviceName, txt.map { it.toFfi() }).toDomain() }
+
     override fun modeManifest(): ModeManifest = se.bofr.dspi.ffi.uniffi.modeManifest().toDomain()
 
     override fun filterTypeNames(): List<FilterTypeName> = se.bofr.dspi.ffi.uniffi.filterTypeNames().map { it.toDomain() }
@@ -814,6 +824,18 @@ class FfiDspiCore : DspiCoreApi {
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = se.bofr.dspi.ffi.uniffi.outputLabelsFor(input.toFfi()).map { it.toDomain() }
 
     override fun outputCardsFor(input: OutputLabelInput): List<OutputCard> = se.bofr.dspi.ffi.uniffi.outputCardsFor(input.toFfi()).map { it.toDomain() }
+
+    override fun platformShape(platformId: Int): PlatformShape = se.bofr.dspi.ffi.uniffi.platformShape(platformId.toUByte()).toDomain()
+
+    override fun vregCodeMv(code: Int, platformId: Int): Int? = se.bofr.dspi.ffi.uniffi.vregCodeMv(code.toUByte(), platformId.toUByte())?.let { it.toInt() }
+
+    override fun vregCodeLabel(code: Int, platformId: Int): String = se.bofr.dspi.ffi.uniffi.vregCodeLabel(code.toUByte(), platformId.toUByte())
+
+    override fun defaultChannelNames(numInputs: Int, numOutputs: Int, outputTypes: List<Int>): List<String> = se.bofr.dspi.ffi.uniffi.defaultChannelNames(numInputs.toUByte(), numOutputs.toUByte(), ByteArray(outputTypes.size) { outputTypes[it].toByte() })
+
+    override fun enumValueLabels(path: String): List<EnumValueLabel> = call { se.bofr.dspi.ffi.uniffi.enumValueLabels(path).map { it.toDomain() } }
+
+    override fun bulkImageExtras(bulkRaw: ByteArray): BulkImageExtras = se.bofr.dspi.ffi.uniffi.bulkImageExtras(bulkRaw.copyOf()).toDomain()
 }
 
 internal class FfiAutoEqRebuild(private val inner: se.bofr.dspi.ffi.uniffi.AutoEqRebuild) : AutoEqRebuild {
@@ -2168,6 +2190,134 @@ internal fun CrossfeedPair.toFfi() =
     se.bofr.dspi.ffi.uniffi.CrossfeedPair(
         freqHz = freqHz,
         feedDb = feedDb,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.BiquadSection.toDomain() =
+    BiquadSection(
+        b0 = b0,
+        b1 = b1,
+        b2 = b2,
+        a1 = a1,
+        a2 = a2,
+    )
+
+internal fun BiquadSection.toFfi() =
+    se.bofr.dspi.ffi.uniffi.BiquadSection(
+        b0 = b0,
+        b1 = b1,
+        b2 = b2,
+        a1 = a1,
+        a2 = a2,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.PlatformShape.toDomain() =
+    PlatformShape(
+        platformId = platformId.toInt(),
+        name = name,
+        known = known,
+        numInputChannels = numInputChannels.toInt(),
+        numOutputChannels = numOutputChannels.toInt(),
+        numOutputSlots = numOutputSlots.toInt(),
+        pdmOutput = pdmOutput.toInt(),
+        pdmPinIndex = pdmPinIndex.toInt(),
+        eqWorkerFirst = eqWorkerFirst.toInt(),
+        eqWorkerLast = eqWorkerLast.toInt(),
+        i2sMaxPairs = i2sMaxPairs.toInt(),
+        multichannelI2s = multichannelI2s,
+        adat = adat,
+        upmixer = upmixer,
+        i2sConfig = i2sConfig,
+        crossfeedPairs = crossfeedPairs.toInt(),
+        maxDelayMs = maxDelayMs,
+    )
+
+internal fun PlatformShape.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PlatformShape(
+        platformId = platformId.toUByte(),
+        name = name,
+        known = known,
+        numInputChannels = numInputChannels.toUByte(),
+        numOutputChannels = numOutputChannels.toUByte(),
+        numOutputSlots = numOutputSlots.toUByte(),
+        pdmOutput = pdmOutput.toUByte(),
+        pdmPinIndex = pdmPinIndex.toUByte(),
+        eqWorkerFirst = eqWorkerFirst.toUByte(),
+        eqWorkerLast = eqWorkerLast.toUByte(),
+        i2sMaxPairs = i2sMaxPairs.toUByte(),
+        multichannelI2s = multichannelI2s,
+        adat = adat,
+        upmixer = upmixer,
+        i2sConfig = i2sConfig,
+        crossfeedPairs = crossfeedPairs.toUByte(),
+        maxDelayMs = maxDelayMs,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.BulkImageExtras.toDomain() =
+    BulkImageExtras(
+        decoded = decoded,
+        i2sBckPinSlavePresent = i2sBckPinSlavePresent,
+        i2sInputChannelsPresent = i2sInputChannelsPresent,
+        i2sRxPinExtPresent = i2sRxPinExtPresent,
+        spdifRxPinExtPresent = spdifRxPinExtPresent,
+        adatOutPinPresent = adatOutPinPresent,
+    )
+
+internal fun BulkImageExtras.toFfi() =
+    se.bofr.dspi.ffi.uniffi.BulkImageExtras(
+        decoded = decoded,
+        i2sBckPinSlavePresent = i2sBckPinSlavePresent,
+        i2sInputChannelsPresent = i2sInputChannelsPresent,
+        i2sRxPinExtPresent = i2sRxPinExtPresent,
+        spdifRxPinExtPresent = spdifRxPinExtPresent,
+        adatOutPinPresent = adatOutPinPresent,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.EnumValueLabel.toDomain() =
+    EnumValueLabel(
+        value = value.toInt(),
+        key = key,
+        label = label,
+    )
+
+internal fun EnumValueLabel.toFfi() =
+    se.bofr.dspi.ffi.uniffi.EnumValueLabel(
+        value = value.toUByte(),
+        key = key,
+        label = label,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LinkTxtEntry.toDomain() =
+    LinkTxtEntry(
+        key = key,
+        value = value,
+    )
+
+internal fun LinkTxtEntry.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LinkTxtEntry(
+        key = key,
+        value = value,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.LinkTxtRecord.toDomain() =
+    LinkTxtRecord(
+        hubId = hubId,
+        name = name,
+        kind = kind,
+        auth = auth,
+        deviceCount = deviceCount.toLong(),
+        serials = serials,
+        path = path,
+    )
+
+internal fun LinkTxtRecord.toFfi() =
+    se.bofr.dspi.ffi.uniffi.LinkTxtRecord(
+        hubId = hubId,
+        name = name,
+        kind = kind,
+        auth = auth,
+        deviceCount = deviceCount.toUInt(),
+        serials = serials,
+        path = path,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.AbCompare.toDomain() =

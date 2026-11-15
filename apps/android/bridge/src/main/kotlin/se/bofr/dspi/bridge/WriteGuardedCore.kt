@@ -1226,7 +1226,20 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "hubPinClear",
             "hubModePin",
             "hubAdminEvents",
-            "setHubAdminListener"
+            "setHubAdminListener",
+            // -- WP CG-SWS-a -- stateless tables and quantizers, and a read of
+            // the mirror's image bytes: nothing is sent to the device
+            "imageExtras",
+            "quantizeMasterVolume",
+            "curveSections",
+            "knownFeatureNames",
+            "linkParseTxt",
+            "platformShape",
+            "vregCodeMv",
+            "vregCodeLabel",
+            "defaultChannelNames",
+            "enumValueLabels",
+            "bulkImageExtras"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

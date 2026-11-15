@@ -88,6 +88,8 @@ pub mod read_only;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;
+// -- WP CG-SWS-a -- small stateless facts from the core
+pub mod sws_a;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[allow(unsafe_code)]
