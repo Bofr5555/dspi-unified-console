@@ -130,6 +130,25 @@ are `alink_*`, `fetch_alink_frame_counter` and `apply_at_frame`.*
 | **Apply at frame** | A change (mute, unmute, preset, master volume, output delay, rate, test click) that every device makes at the same audio link frame | | |
 | **Scene** | A hub's audio link system change: mute, preset load, master volume or delay, made at one audio link frame across units. Not a snapshot, which is one device's whole state (OD-P1a) | | |
 
+### 3.2 The hub's services
+
+*WP P2DOC, 2026-11-15. PRO phase 2, the hub as a server ([`docs/integrator/hub-api.md`](integrator/hub-api.md)). The words a
+client shows for what the hub keeps and does.*
+
+| Term | Meaning | Unit and range | Registry |
+|---|---|---|---|
+| **Inventory** | Every device a hub has ever seen, online or not, kept by serial: its name, firmware, board, location, note, tags, first and last seen, last restart. Not the device list, which shows only what is attached now | at most 1024 devices | |
+| **Health** | A device's state as the hub last read it: processor load, clip indicator, temperature, uptime, restarts. Read, never changed | | |
+| **Identify** | Makes one device show itself: its LED blinks, and on request a quiet tone plays on one output. Not "Locate" or "Find" | 0 to 120 s | |
+| **On the hub** | What the hub keeps for everyone, shown beside what this client keeps: its history, its snapshots | | |
+| **Alarm** | A condition the hub raises and clears by itself (offline, restarted, clipping, too hot, ...); a person acknowledges it. Raised, acknowledged, cleared | | |
+| **Alarm rule** | Whether an alarm is on and the threshold it is raised at, set by an Admin for the hub; also the optional "Mute on clip storm" | | |
+| **Schedule** | A rule the hub runs by itself at a local time on given days, or once: load a preset, recall a snapshot, apply a scene, set the volume or mute. Not "Timer" or "Automation" | | |
+| **API key** | A key an Admin makes on the hub for another program (a script, a venue controller, Home Assistant), with a role; shown once, revoked like a paired client. Not "Token" in text a user reads | | |
+| **Notification target** | Where the hub sends alarms and schedule results: a webhook, a push address or MQTT. Off until an Admin adds one | | |
+| **Snapshot** | Restated: a whole-device state kept by a client or by the hub, never on the device. A snapshot on the hub is shared; the hub's copy wins over a different one with the same id, which a client keeps as a local copy | | |
+| **Scene** | Restated: a hub's audio link system change at one audio link frame across units (section 3.1). Not a snapshot and not a preset | | |
+
 ## 4. Units
 
 | Unit | Meaning | Used for |
