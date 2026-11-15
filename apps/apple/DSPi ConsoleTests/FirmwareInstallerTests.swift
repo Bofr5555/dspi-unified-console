@@ -182,8 +182,7 @@ final class FirmwareInstallerTests: XCTestCase {
         installer.beginWatching()
         XCTAssertEqual(installer.state, .ready(board))
 
-        installer.installWhenReady(confirmed: .firmwareFlash())
-        waitForSettledState(installer)
+        SWM2Fixture.installAnswering(installer)   // -- WP SW-M2 -- a board in BOOTSEL: the guard asks
         XCTAssertEqual(installer.state, .verified(FirmwareVersion(1, 1, 7)))
     }
 
@@ -197,6 +196,10 @@ final class FirmwareInstallerTests: XCTestCase {
 
         installer.installWhenReady(confirmed: .firmwareFlash())
         XCTAssertEqual(installer.state, .waitingForBoard)
+        // -- WP SW-M2 -- (review batch 2 F1) the board arrives after the
+        // connected device's record was read; one already there when the
+        // read ends is judged as in the bootloader (the guard asks)
+        XCTAssertTrue(SWM2Fixture.spin { installer.subject != nil })
 
         locator.boards = [f.board]
         locator.emit()
@@ -220,8 +223,7 @@ final class FirmwareInstallerTests: XCTestCase {
         let f = try SWM2Fixture(self)
         let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
-        installer.installWhenReady(confirmed: .firmwareFlash())
-        waitForSettledState(installer)
+        SWM2Fixture.installAnswering(installer)   // -- WP SW-M2 -- a board in BOOTSEL: the guard asks
 
         XCTAssertEqual(installer.state, .verified(FirmwareVersion(1, 1, 7)))
         XCTAssertTrue(FileManager.default.fileExists(atPath: f.written.path))
@@ -233,8 +235,7 @@ final class FirmwareInstallerTests: XCTestCase {
         let f = try SWM2Fixture(self)
         let installer = f.installer(board: SWM2Fixture.stockBoard, verified: nil)
         installer.beginWatching()
-        installer.installWhenReady(confirmed: .firmwareFlash())
-        waitForSettledState(installer)
+        SWM2Fixture.installAnswering(installer)   // -- WP SW-M2 -- a board in BOOTSEL: the guard asks
 
         XCTAssertEqual(installer.state, .failed(.deviceDidNotReturn))
     }
@@ -243,8 +244,7 @@ final class FirmwareInstallerTests: XCTestCase {
         let f = try SWM2Fixture(self)
         let installer = f.installer(board: SWM2Fixture.stockBoard, verified: FirmwareVersion(1, 1, 6))
         installer.beginWatching()
-        installer.installWhenReady(confirmed: .firmwareFlash())
-        waitForSettledState(installer)
+        SWM2Fixture.installAnswering(installer)   // -- WP SW-M2 -- a board in BOOTSEL: the guard asks
 
         XCTAssertEqual(installer.state, .failed(.versionMismatch(expected: "1.1.7", got: "1.1.6")))
     }
@@ -288,8 +288,7 @@ final class FirmwareInstallerTests: XCTestCase {
         let locator = f.locator
         let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
-        installer.installWhenReady(confirmed: .firmwareFlash())
-        waitForSettledState(installer)
+        SWM2Fixture.installAnswering(installer)   // -- WP SW-M2 -- a board in BOOTSEL: the guard asks
         XCTAssertEqual(installer.state, .verified(FirmwareVersion(1, 1, 7)))
 
         locator.boards = []
@@ -305,8 +304,7 @@ final class FirmwareInstallerTests: XCTestCase {
         let locator = f.locator
         let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
-        installer.installWhenReady(confirmed: .firmwareFlash())
-        waitForSettledState(installer)
+        SWM2Fixture.installAnswering(installer)   // -- WP SW-M2 -- a board in BOOTSEL: the guard asks
 
         locator.boards = []
         installer.reset()
@@ -321,8 +319,7 @@ final class FirmwareInstallerTests: XCTestCase {
         let locator = f.locator
         let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
-        installer.installWhenReady(confirmed: .firmwareFlash())
-        waitForSettledState(installer)
+        SWM2Fixture.installAnswering(installer)   // -- WP SW-M2 -- a board in BOOTSEL: the guard asks
         installer.reset()
 
         let second = BootloaderBoard(chip: .rp2040, volumeURL: URL(fileURLWithPath: "/Volumes/RPI-RP2"))
@@ -367,8 +364,7 @@ final class FirmwareInstallerTests: XCTestCase {
         locator.boards = [BootloaderBoard(chip: .rp2350, volumeURL: ghostVolume)]
         let installer = f.installer(board: SWM2Fixture.stockBoard)
         installer.beginWatching()
-        installer.installWhenReady(confirmed: .firmwareFlash())
-        waitForSettledState(installer)
+        SWM2Fixture.installAnswering(installer)   // -- WP SW-M2 -- a board in BOOTSEL: the guard asks
         guard case .failed(.writeFailed) = installer.state else {
             return XCTFail("expected a write failure, got \(installer.state)")
         }
