@@ -33,6 +33,7 @@ One JSON object per line, oldest first. Absent fields are omitted.
 | `text` | string | one readable line |
 | `source` | string | who or what caused it: a notification's source (`HOST`, `PRESET`, `UART`, ...), a transport, a counter, a reset reason |
 | `session` | number | the DSPi Link session that caused it, when another one did |
+| `by` | string | the name of the client, API key, schedule or alarm rule that caused it, beside `session`; written by the hub (WP P2EVW) |
 | `own` | bool | this client's own write coming back |
 | `channel` | number | a wire channel (clips), or the preset slot (recalls) |
 | `value` | number | °C for a temperature, the total for a counter |
@@ -42,7 +43,10 @@ One JSON object per line, oldest first. Absent fields are omitted.
 | `count` | number | occurrences this record stands for (default 1) |
 
 Kinds: `notification`, `connected`, `disconnected`, `clip`, `temperature`,
-`counter`, `reset`, `firmware`, `import`, `recall`, `unknown`.
+`counter`, `reset`, `firmware`, `import`, `recall`, `unknown`; and, written by
+the hub (WP P2EVW), `unresponsive`, `alarm`, `schedule`, `access` and
+`events_dropped` (`count` the records it could not write). An older build reads
+these five as `unknown`.
 
 ## Reading it
 
@@ -61,7 +65,16 @@ Append only under an exclusive advisory lock on `<stem>.lock` beside the files
 the files. Two writers of one serial in one folder (a hub and a Terminal on one
 machine) then never write the same id. Readers take no lock.
 
+## On the hub
+
+The hub keeps one shared log per device in `<store>/events/`, in this format and
+under this lock rule (`EventStore`, `crates/dspi-session/src/events/store.rs`, WP P2EVW): one writer
+for many serials, the same file names, rotation and id rule. Caps (OD-P2k):
+512 KiB per file and 3 rotated files, so 2 MiB per device, and 128 MiB in all,
+past which the oldest rotated file goes first. Forgetting a device in the
+inventory removes its files. Clients read it with `event.list`, `event.watch`
+and `event.export` ([hub-api.md](hub-api.md) section 6).
+
 ## To write
 
-- The hub's shared log (M1's hub half, `EventSink`), once it exists.
 - Examples of each kind.
