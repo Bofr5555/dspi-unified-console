@@ -213,6 +213,19 @@ fn open_dlink(
     l: &LinkTarget,
     pin: connect::PinPrompt<'_>,
 ) -> Result<(String, LinkTarget), OpenFailure> {
+    let hello = dlink_session(core, l, pin)?;
+    pick_dlink_device(core, l, &hello)
+}
+
+// -- WP P2TM -- split from `open_dlink`, so `uconsole api` has the hub's
+// session with no device bound (an inventory, a schedule: no device needed).
+/// The core's DSPi Link session to `l`'s hub, authenticated as
+/// [`open_dlink`] says, with no device bound yet: the hub's `hello`.
+pub(crate) fn dlink_session(
+    core: &DspiCore,
+    l: &LinkTarget,
+    pin: connect::PinPrompt<'_>,
+) -> Result<dspi_core::LinkHello, OpenFailure> {
     let url = l.link_url();
     let version = env!("CARGO_PKG_VERSION").to_owned();
     let connect = |token: String, hub_id: String| {
@@ -285,6 +298,15 @@ fn open_dlink(
         }
         hello.needs_pairing = false;
     }
+    Ok(hello)
+}
+
+/// [`open_dlink`]'s second half: bind `l`'s device (or the only one).
+fn pick_dlink_device(
+    core: &DspiCore,
+    l: &LinkTarget,
+    hello: &dspi_core::LinkHello,
+) -> Result<(String, LinkTarget), OpenFailure> {
     let devices = wait_for_devices(core);
     let online: Vec<_> = devices.iter().filter(|d| d.state != "offline").collect();
     let names: Vec<(String, String)> = online

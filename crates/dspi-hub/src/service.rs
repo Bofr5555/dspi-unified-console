@@ -533,6 +533,16 @@ impl HubHandle {
         self.inner.services.message(self, session, msg)
     }
 
+    // -- WP P2TM --
+    /// A phase-2 family's answer to `msg` for `session`, as a client on DSPi Link
+    /// would get it (the whole reply text), or `None` when no service runs that
+    /// family. For the embedder's own console (`uconsole hub`'s prompt): open the
+    /// session as a principal ([`HubHandle::open_principal`]) and close it after.
+    /// Only the services answer here: no `device.*`, `auth.*` or `limits.*`.
+    pub fn service_request(&self, session: &Arc<Session>, msg: &Value) -> Option<String> {
+        self.service_message(session, msg)
+    }
+
     /// Every service's caps, for `hello`.
     pub(crate) fn service_caps(&self) -> Vec<&'static str> {
         self.inner.services.caps()

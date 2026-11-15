@@ -40,7 +40,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | built (P2MQ: 13.1); draft (P2HA: 13.2) |
 | 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | built (P2RS) |
 | 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | built |
-| 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM | draft |
+| 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM | built (P2TM) |
 | 17 | [Deviations from the DSPi Link spec](#17-deviations-from-the-dspi-link-spec) | | | P2DOC | built (this page) |
 | 18 | [Every message](#18-every-message) | | | P2DOC | built (this page) |
 
@@ -901,14 +901,87 @@ later). An embedder that passes a name at every start (`uconsole hub --name`) pu
 
 ## 16. Scripting
 
-*State: draft (P2TM).*
+*State: built (P2TM). `apps/terminal/src/api.rs` (`uconsole api`), `apps/terminal/src/hub.rs` (the hub's switches,
+`api-key`, the prompt), `crates/dspi-cmd/src/api.rs` (the line's grammar); examples in
+[`examples/`](examples/), run against a demo hub by `apps/terminal/tests/wp_p2tm_examples.rs`.*
 
-No script engine in the hub (OD-P2g): a script calls the API from outside.
+No script engine in the hub (OD-P2g): a script calls the API from outside, and every rule the hub enforces (role,
+limits, the lock, the voltage rule, attribution) applies to it as to a console.
 
-- `uconsole --hub HOST api <t> ['<json>']` sends any message of this page and prints the answer (`--json` for the
-  whole object). Exit codes follow `code`.
-- `uconsole hub --rest`, and at the running hub's prompt `inventory`, `alarms`, `schedule`, `api-key new|list|revoke`.
-- Examples: shell, Python over REST, Home Assistant. To write (P2TM).
+### 16.1 `uconsole hub`
+
+A hub started by `uconsole hub` runs every family of this page. Each can be turned off; REST is off until asked:
+
+| Flag | Family | Default |
+|---|---|---|
+| `--no-health` | health (section 5) | on |
+| `--no-inventory` | inventory (section 3) | on |
+| `--no-identify` | Identify (section 4) | on |
+| `--no-history` | event history (section 6) | on |
+| `--no-alarms` | alarms (section 7) | on |
+| `--no-schedule` | schedules (section 12) | on |
+| `--rest` | the REST mirror (section 14.2) | off |
+| `--data <dir>` | where the families keep their files | the `--store` folder |
+
+The parameter API, presets and snapshots (sections 9 to 11), statistics (15), MQTT (13) and notifications out (8) are
+always there; MQTT and notifications send nothing until an admin sets them up. A family turned off answers
+`unknown_type` (REST: `501`) and leaves its cap out of `hello`.
+
+At a running hub's prompt (a terminal) the person at the hub's machine types `inventory`, `alarms` (those on),
+`schedule` (the rules and their next runs) and `api-key new <name> [viewer|control|admin]`, `api-key list`,
+`api-key revoke <cid>`. The reads go as a viewer principal named `Hub console`. With the hub stopped, the same keys from
+a shell: `uconsole hub api-key new|list|revoke` (with `--store` when it is not the default; while the hub runs these
+are refused, as `uconsole hub role` is, since the running hub holds its store). A key is minted with the control role
+unless another is named, and is shown **once**, in that answer only. `api-key revoke` revokes keys only; a console is
+`revoke <cid>`'s.
+
+### 16.2 `uconsole api`
+
+```sh
+uconsole --hub [NAME] api <t> ['<json>' | -] [--json]
+uconsole --link HOST[:PORT] api <t> ['<json>' | -] [--json]
+```
+
+Sends one message of this page (`t` and the JSON object of its fields, or `-` to read the object from standard input)
+on this console's own DSPi Link session, paired as any console (`--pin`, or the PIN asked for; the token is kept), and
+prints the answer: its fields as indented JSON, or with `--json` the hub's whole `ok` object on one line. A refusal is
+one line on standard error (with `--json`, `{"t": "err", "code", "msg"}` on standard output). `--device <serial>` puts
+`serial` into a message that has neither `serial` nor `handle`. `--read-only` lets only the hub's reads out.
+
+The exit status follows `code` (section 1.6), so a script branches on it:
+
+| Status | `code` |
+|---|---|
+| 0 | `ok` |
+| 1 | the command line itself (no type, fields that are not a JSON object) |
+| 2 | `not_found`, `no_device` |
+| 3 | any other refusal: `conflict`, `confirmation_required`, `device`, the client read-only mode |
+| 4 | no hub reached, `timeout`, the connection closed, `internal` |
+| 5 | `unauthenticated`, `denied` |
+| 6 | `offline` |
+| 7 | `limit_exceeded`, `installer_lock`, `image_refused` |
+| 8 | `bad_request`, `unknown_type`, `unsupported` |
+| 9 | `busy`, `rate_limited`, `locked` |
+
+```sh
+uconsole --hub api inventory.list
+uconsole --hub api param.get '{"serial": "E46058388B1A2E2C", "path": "vol.master"}'
+uconsole --hub --device E46058388B1A2E2C api preset.load '{"name": "Live"}'
+uconsole --hub api schedule.set - < doors-open.json
+```
+
+A refusal's fields beyond `code` and `msg` (`limit`, `retry_in_ms`) are not printed yet: the DSPi Link client keeps
+only those two.
+
+### 16.3 Examples
+
+- [`examples/hub-api.sh`](examples/hub-api.sh): a shell script with `uconsole api`, branching on the exit status.
+- [`examples/hub_rest.py`](examples/hub_rest.py): Python over REST with an API key, standard library only.
+- [`examples/home-assistant.yaml`](examples/home-assistant.yaml): Home Assistant's `rest_command` and REST sensors for a
+  hub without a broker (MQTT discovery, section 13, is the better fit where there is one).
+
+Everything on DSPi Link, the REST port and MQTT without TLS can be read by someone on the same network, API keys
+included (section 2): keep the hub on a network you trust.
 
 ## 17. Deviations from the DSPi Link spec
 

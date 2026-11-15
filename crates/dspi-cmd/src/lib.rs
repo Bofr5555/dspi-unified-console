@@ -9,6 +9,8 @@
 //! what a shell would accept, so a user can copy a line out of the interface
 //! into a script.
 
+// -- WP P2TM -- `api <t> [json]`: any hub message
+pub mod api;
 pub mod complete;
 pub mod shell;
 
@@ -164,6 +166,8 @@ pub const VERBS: &[(&str, &str)] = &[
         "autoeq",
         "Find or apply a headphone profile, or update the database",
     ),
+    // -- WP P2TM -- Runs in the binary, on a hub (`api.rs`); here so completions offer it.
+    ("api", "Send any hub API message and print the answer"),
 ];
 
 /// Parse a token list into a command.
