@@ -179,6 +179,8 @@ mod tests {
             "src/fns_misc/read_only.rs",
             // -- WP CG-SWS-a --
             "src/fns_misc/sws_a.rs",
+            // -- WP CG-SWS-b --
+            "src/fns_misc/pins.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

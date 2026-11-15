@@ -593,6 +593,12 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setTubeParam(idx: Int, value: Float) = call { core.setTubeParam(idx.toUByte(), value) }
 
+    override fun pinMap(): PinMap = core.pinMap().toDomain()
+
+    override fun pinCheck(function: PinFunction, pin: Int): PinRefusal? = core.pinCheck(function.toFfi(), pin.toUByte())?.let { it.toDomain() }
+
+    override fun pinHolder(pin: Int, excluding: PinFunction?): PinHolder? = core.pinHolder(pin.toUByte(), excluding?.let { it.toFfi() })?.let { it.toDomain() }
+
     override fun savePresetConfirmed(slot: Int, token: String?) = call { core.savePresetConfirmed(slot.toUByte(), token) }
 
     override fun loadPreset(slot: Int) = call { core.loadPreset(slot.toUByte()) }
@@ -3750,6 +3756,86 @@ internal fun OutputLabelInput.toFfi() =
         crossfeedPairMap = ByteArray(crossfeedPairMap.size) { crossfeedPairMap[it].toByte() },
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.PinFunction.toDomain() =
+    PinFunction(
+        kind = kind.toDomain(),
+        index = index.toInt(),
+    )
+
+internal fun PinFunction.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PinFunction(
+        kind = kind.toFfi(),
+        index = index.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.PinHolder.toDomain() =
+    PinHolder(
+        pin = pin.toInt(),
+        function = function.toDomain(),
+        role = role.toDomain(),
+        label = label,
+    )
+
+internal fun PinHolder.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PinHolder(
+        pin = pin.toUByte(),
+        function = function.toFfi(),
+        role = role.toFfi(),
+        label = label,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.PinFunctionInfo.toDomain() =
+    PinFunctionInfo(
+        function = function.toDomain(),
+        label = label,
+        pin = pin.toInt(),
+        holds = holds,
+        choices = choices.map { it.toInt() and 0xFF },
+        i2sAllowed = i2sAllowed,
+    )
+
+internal fun PinFunctionInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PinFunctionInfo(
+        function = function.toFfi(),
+        label = label,
+        pin = pin.toUByte(),
+        holds = holds,
+        choices = ByteArray(choices.size) { choices[it].toByte() },
+        i2sAllowed = i2sAllowed,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.PinMap.toDomain() =
+    PinMap(
+        platformId = platformId.toInt(),
+        assignable = assignable,
+        validPins = validPins.map { it.toInt() and 0xFF },
+        functions = functions.map { it.toDomain() },
+        holders = holders.map { it.toDomain() },
+    )
+
+internal fun PinMap.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PinMap(
+        platformId = platformId.toUByte(),
+        assignable = assignable,
+        validPins = ByteArray(validPins.size) { validPins[it].toByte() },
+        functions = functions.map { it.toFfi() },
+        holders = holders.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.PinRefusal.toDomain() =
+    PinRefusal(
+        reason = reason.toDomain(),
+        status = status.toInt(),
+        holder = holder?.let { it.toDomain() },
+    )
+
+internal fun PinRefusal.toFfi() =
+    se.bofr.dspi.ffi.uniffi.PinRefusal(
+        reason = reason.toFfi(),
+        status = status.toUByte(),
+        holder = holder?.let { it.toFfi() },
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.RawNotification.toDomain() =
     RawNotification(
         packet = packet.map { it.toInt() and 0xFF },
@@ -4070,6 +4156,82 @@ internal fun NoticeKind.toFfi(): se.bofr.dspi.ffi.uniffi.NoticeKind =
         NoticeKind.INFO -> se.bofr.dspi.ffi.uniffi.NoticeKind.INFO
         NoticeKind.WARNING -> se.bofr.dspi.ffi.uniffi.NoticeKind.WARNING
         NoticeKind.ERROR -> se.bofr.dspi.ffi.uniffi.NoticeKind.ERROR
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.PinFunctionKind.toDomain(): PinFunctionKind =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.OUTPUT -> PinFunctionKind.OUTPUT
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_BCK -> PinFunctionKind.I2S_BCK
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_BCK_SLAVE -> PinFunctionKind.I2S_BCK_SLAVE
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.MCK -> PinFunctionKind.MCK
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.SPDIF_RX -> PinFunctionKind.SPDIF_RX
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_RX -> PinFunctionKind.I2S_RX
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.ADAT_OUT -> PinFunctionKind.ADAT_OUT
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.ADAT_IN -> PinFunctionKind.ADAT_IN
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.DAC_MUTE -> PinFunctionKind.DAC_MUTE
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.UART_TX -> PinFunctionKind.UART_TX
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.UART_RX -> PinFunctionKind.UART_RX
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2C_SDA -> PinFunctionKind.I2C_SDA
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2C_SCL -> PinFunctionKind.I2C_SCL
+        se.bofr.dspi.ffi.uniffi.PinFunctionKind.CONTROL_SURFACE -> PinFunctionKind.CONTROL_SURFACE
+    }
+
+internal fun PinFunctionKind.toFfi(): se.bofr.dspi.ffi.uniffi.PinFunctionKind =
+    when (this) {
+        PinFunctionKind.OUTPUT -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.OUTPUT
+        PinFunctionKind.I2S_BCK -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_BCK
+        PinFunctionKind.I2S_BCK_SLAVE -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_BCK_SLAVE
+        PinFunctionKind.MCK -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.MCK
+        PinFunctionKind.SPDIF_RX -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.SPDIF_RX
+        PinFunctionKind.I2S_RX -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2S_RX
+        PinFunctionKind.ADAT_OUT -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.ADAT_OUT
+        PinFunctionKind.ADAT_IN -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.ADAT_IN
+        PinFunctionKind.DAC_MUTE -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.DAC_MUTE
+        PinFunctionKind.UART_TX -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.UART_TX
+        PinFunctionKind.UART_RX -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.UART_RX
+        PinFunctionKind.I2C_SDA -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2C_SDA
+        PinFunctionKind.I2C_SCL -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.I2C_SCL
+        PinFunctionKind.CONTROL_SURFACE -> se.bofr.dspi.ffi.uniffi.PinFunctionKind.CONTROL_SURFACE
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.PinHolderRole.toDomain(): PinHolderRole =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.PinHolderRole.OUTPUT -> PinHolderRole.OUTPUT
+        se.bofr.dspi.ffi.uniffi.PinHolderRole.CLOCK -> PinHolderRole.CLOCK
+        se.bofr.dspi.ffi.uniffi.PinHolderRole.INPUT -> PinHolderRole.INPUT
+        se.bofr.dspi.ffi.uniffi.PinHolderRole.CONTROL -> PinHolderRole.CONTROL
+        se.bofr.dspi.ffi.uniffi.PinHolderRole.UTILITY -> PinHolderRole.UTILITY
+    }
+
+internal fun PinHolderRole.toFfi(): se.bofr.dspi.ffi.uniffi.PinHolderRole =
+    when (this) {
+        PinHolderRole.OUTPUT -> se.bofr.dspi.ffi.uniffi.PinHolderRole.OUTPUT
+        PinHolderRole.CLOCK -> se.bofr.dspi.ffi.uniffi.PinHolderRole.CLOCK
+        PinHolderRole.INPUT -> se.bofr.dspi.ffi.uniffi.PinHolderRole.INPUT
+        PinHolderRole.CONTROL -> se.bofr.dspi.ffi.uniffi.PinHolderRole.CONTROL
+        PinHolderRole.UTILITY -> se.bofr.dspi.ffi.uniffi.PinHolderRole.UTILITY
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.PinRefusalReason.toDomain(): PinRefusalReason =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.NOT_ASSIGNABLE -> PinRefusalReason.NOT_ASSIGNABLE
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.NO_SUCH_FUNCTION -> PinRefusalReason.NO_SUCH_FUNCTION
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.INVALID_PIN -> PinRefusalReason.INVALID_PIN
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.WRONG_MUX -> PinRefusalReason.WRONG_MUX
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.IN_USE -> PinRefusalReason.IN_USE
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.OUTPUT_ACTIVE -> PinRefusalReason.OUTPUT_ACTIVE
+        se.bofr.dspi.ffi.uniffi.PinRefusalReason.CLEAR_WHILE_ENABLED -> PinRefusalReason.CLEAR_WHILE_ENABLED
+    }
+
+internal fun PinRefusalReason.toFfi(): se.bofr.dspi.ffi.uniffi.PinRefusalReason =
+    when (this) {
+        PinRefusalReason.NOT_ASSIGNABLE -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.NOT_ASSIGNABLE
+        PinRefusalReason.NO_SUCH_FUNCTION -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.NO_SUCH_FUNCTION
+        PinRefusalReason.INVALID_PIN -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.INVALID_PIN
+        PinRefusalReason.WRONG_MUX -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.WRONG_MUX
+        PinRefusalReason.IN_USE -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.IN_USE
+        PinRefusalReason.OUTPUT_ACTIVE -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.OUTPUT_ACTIVE
+        PinRefusalReason.CLEAR_WHILE_ENABLED -> se.bofr.dspi.ffi.uniffi.PinRefusalReason.CLEAR_WHILE_ENABLED
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.VregCalPhase.toDomain(): VregCalPhase =

@@ -532,6 +532,12 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setTubeParam(idx: Int, value: Float): Unit = throw NotImplementedError("set_tube_param")
 
+    override fun pinMap(): PinMap = throw NotImplementedError("pin_map")
+
+    override fun pinCheck(function: PinFunction, pin: Int): PinRefusal? = throw NotImplementedError("pin_check")
+
+    override fun pinHolder(pin: Int, excluding: PinFunction?): PinHolder? = throw NotImplementedError("pin_holder")
+
     override fun savePresetConfirmed(slot: Int, token: String?): Unit = throw NotImplementedError("save_preset_confirmed")
 
     override fun loadPreset(slot: Int): Unit = throw NotImplementedError("load_preset")

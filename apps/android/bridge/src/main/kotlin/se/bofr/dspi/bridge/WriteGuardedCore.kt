@@ -1006,6 +1006,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "csStatusText",
             "csFetch",
             "csPinUses",
+            // -- WP CG-SWS-b -- the pin map: from the mirror, no device I/O
+            "pinMap",
+            "pinCheck",
+            "pinHolder",
             "csSnapshot",
             "curveFreq",
             "disconnect",

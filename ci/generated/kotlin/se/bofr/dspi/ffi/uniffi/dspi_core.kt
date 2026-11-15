@@ -1780,6 +1780,12 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2308,6 +2314,12 @@ fun uniffi_dspi_core_checksum_method_dspicore_output_cards(
 fun uniffi_dspi_core_checksum_method_dspicore_output_labels(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_pin_check(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_pin_holder(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_pin_map(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_poll_hotplug(
 ): Short
@@ -3119,6 +3131,12 @@ fun uniffi_dspi_core_fn_method_dspicore_output_cards(`ptr`: Pointer,uniffi_out_e
 fun uniffi_dspi_core_fn_method_dspicore_output_labels(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(`ptr`: Pointer,`thresholdDb`: Float,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_pin_check(`ptr`: Pointer,`function`: RustBuffer.ByValue,`pin`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_pin_holder(`ptr`: Pointer,`pin`: Byte,`excluding`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_pin_map(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_poll_hotplug(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -4483,6 +4501,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter() != 24245.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_pin_check() != 43599.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_pin_holder() != 60813.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_pin_map() != 51158.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 29460.toShort()) {
@@ -8736,6 +8763,28 @@ public interface DspiCoreInterface {
      * firmware without the output limiter, and for a NaN threshold.
      */
     fun `outputsWithoutLimiter`(`thresholdDb`: kotlin.Float): kotlin.ByteArray
+    
+    /**
+     * Whether `function` may move to `pin`: `None` when it may, else why
+     * not (with the status the firmware would answer and, when another
+     * function holds it, which). From the mirror: no device I/O. The pin
+     * setters run this check before they send.
+     */
+    fun `pinCheck`(`function`: PinFunction, `pin`: kotlin.UByte): PinRefusal?
+    
+    /**
+     * The function holding `pin`, not counting `excluding` (a picker passes
+     * its own function), or `None` when it is free. From the mirror.
+     */
+    fun `pinHolder`(`pin`: kotlin.UByte, `excluding`: PinFunction?): PinHolder?
+    
+    /**
+     * The pin map (WP CG-SWS-b): the platform's valid GPIOs, each function
+     * with its pin, whether it holds it and the pins it may move to, and
+     * who holds every held GPIO. From the mirror and the last
+     * control-surface read: no device I/O. Empty without a device.
+     */
+    fun `pinMap`(): PinMap
     
     /**
      * Compare the USB bus with the last poll and report arrivals and
@@ -14779,6 +14828,58 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(
         it, FfiConverterFloat.lower(`thresholdDb`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Whether `function` may move to `pin`: `None` when it may, else why
+     * not (with the status the firmware would answer and, when another
+     * function holds it, which). From the mirror: no device I/O. The pin
+     * setters run this check before they send.
+     */override fun `pinCheck`(`function`: PinFunction, `pin`: kotlin.UByte): PinRefusal? {
+            return FfiConverterOptionalTypePinRefusal.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_pin_check(
+        it, FfiConverterTypePinFunction.lower(`function`),FfiConverterUByte.lower(`pin`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The function holding `pin`, not counting `excluding` (a picker passes
+     * its own function), or `None` when it is free. From the mirror.
+     */override fun `pinHolder`(`pin`: kotlin.UByte, `excluding`: PinFunction?): PinHolder? {
+            return FfiConverterOptionalTypePinHolder.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_pin_holder(
+        it, FfiConverterUByte.lower(`pin`),FfiConverterOptionalTypePinFunction.lower(`excluding`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The pin map (WP CG-SWS-b): the platform's valid GPIOs, each function
+     * with its pin, whether it holds it and the pins it may move to, and
+     * who holds every held GPIO. From the mirror and the last
+     * control-surface read: no device I/O. Empty without a device.
+     */override fun `pinMap`(): PinMap {
+            return FfiConverterTypePinMap.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_pin_map(
+        it, _status)
 }
     }
     )
@@ -28865,6 +28966,290 @@ public object FfiConverterTypePdmBufferStats: FfiConverterRustBuffer<PdmBufferSt
 
 
 /**
+ * One function: its kind and, for the indexed kinds, which one.
+ */
+data class PinFunction (
+    /**
+     * What it is.
+     */
+    var `kind`: PinFunctionKind, 
+    /**
+     * Which one (output, input, pair or slot); 0 for the single ones.
+     */
+    var `index`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePinFunction: FfiConverterRustBuffer<PinFunction> {
+    override fun read(buf: ByteBuffer): PinFunction {
+        return PinFunction(
+            FfiConverterTypePinFunctionKind.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PinFunction) = (
+            FfiConverterTypePinFunctionKind.allocationSize(value.`kind`) +
+            FfiConverterUByte.allocationSize(value.`index`)
+    )
+
+    override fun write(value: PinFunction, buf: ByteBuffer) {
+            FfiConverterTypePinFunctionKind.write(value.`kind`, buf)
+            FfiConverterUByte.write(value.`index`, buf)
+    }
+}
+
+
+
+/**
+ * One function of this device: its pin, whether it holds it, and the pins
+ * it may move to.
+ */
+data class PinFunctionInfo (
+    /**
+     * Which function.
+     */
+    var `function`: PinFunction, 
+    /**
+     * Its name, e.g. "Output 1", "S/PDIF 2 RX", "UART TX".
+     */
+    var `label`: kotlin.String, 
+    /**
+     * Its GPIO, [`PIN_NONE`] when it has none.
+     */
+    var `pin`: kotlin.UByte, 
+    /**
+     * Whether it holds that pin now (a disabled feature holds nothing).
+     */
+    var `holds`: kotlin.Boolean, 
+    /**
+     * The GPIOs [`pin_check`] accepts for it, its own included, in order.
+     * For a disabled optional S/PDIF input, without the pins another
+     * function holds: it could store one, but never be enabled on it.
+     * Empty where nothing is assignable.
+     */
+    var `choices`: kotlin.ByteArray, 
+    /**
+     * Output slots: whether the slot may be switched to I2S (the STM32H723's
+     * SAI rule; always on an RP2040/RP2350). False for everything else.
+     */
+    var `i2sAllowed`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePinFunctionInfo: FfiConverterRustBuffer<PinFunctionInfo> {
+    override fun read(buf: ByteBuffer): PinFunctionInfo {
+        return PinFunctionInfo(
+            FfiConverterTypePinFunction.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PinFunctionInfo) = (
+            FfiConverterTypePinFunction.allocationSize(value.`function`) +
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterUByte.allocationSize(value.`pin`) +
+            FfiConverterBoolean.allocationSize(value.`holds`) +
+            FfiConverterByteArray.allocationSize(value.`choices`) +
+            FfiConverterBoolean.allocationSize(value.`i2sAllowed`)
+    )
+
+    override fun write(value: PinFunctionInfo, buf: ByteBuffer) {
+            FfiConverterTypePinFunction.write(value.`function`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterUByte.write(value.`pin`, buf)
+            FfiConverterBoolean.write(value.`holds`, buf)
+            FfiConverterByteArray.write(value.`choices`, buf)
+            FfiConverterBoolean.write(value.`i2sAllowed`, buf)
+    }
+}
+
+
+
+/**
+ * One GPIO and the function holding it.
+ */
+data class PinHolder (
+    /**
+     * The GPIO.
+     */
+    var `pin`: kotlin.UByte, 
+    /**
+     * The function holding it (BCK's also holds LRCLK, BCK + 1).
+     */
+    var `function`: PinFunction, 
+    /**
+     * For grouping.
+     */
+    var `role`: PinHolderRole, 
+    /**
+     * The Console's owner name, e.g. "Output 1", "I2S LRCLK", "UART
+     * Control" (English; `function` is there to translate from).
+     */
+    var `label`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePinHolder: FfiConverterRustBuffer<PinHolder> {
+    override fun read(buf: ByteBuffer): PinHolder {
+        return PinHolder(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypePinFunction.read(buf),
+            FfiConverterTypePinHolderRole.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PinHolder) = (
+            FfiConverterUByte.allocationSize(value.`pin`) +
+            FfiConverterTypePinFunction.allocationSize(value.`function`) +
+            FfiConverterTypePinHolderRole.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`label`)
+    )
+
+    override fun write(value: PinHolder, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`pin`, buf)
+            FfiConverterTypePinFunction.write(value.`function`, buf)
+            FfiConverterTypePinHolderRole.write(value.`role`, buf)
+            FfiConverterString.write(value.`label`, buf)
+    }
+}
+
+
+
+/**
+ * The whole map.
+ */
+data class PinMap (
+    /**
+     * The platform the rules are for (`DspState.platform_id`).
+     */
+    var `platformId`: kotlin.UByte, 
+    /**
+     * Whether this platform has assignable pins (RP2040 and RP2350).
+     */
+    var `assignable`: kotlin.Boolean, 
+    /**
+     * The platform's valid GPIOs, in order; empty where nothing is
+     * assignable.
+     */
+    var `validPins`: kotlin.ByteArray, 
+    /**
+     * The functions this device has, in the Console's order.
+     */
+    var `functions`: List<PinFunctionInfo>, 
+    /**
+     * Who holds each held GPIO, in pin order; the first claim wins where
+     * two share one (the ADAT loopback shows as "ADAT Output").
+     */
+    var `holders`: List<PinHolder>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePinMap: FfiConverterRustBuffer<PinMap> {
+    override fun read(buf: ByteBuffer): PinMap {
+        return PinMap(
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterSequenceTypePinFunctionInfo.read(buf),
+            FfiConverterSequenceTypePinHolder.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PinMap) = (
+            FfiConverterUByte.allocationSize(value.`platformId`) +
+            FfiConverterBoolean.allocationSize(value.`assignable`) +
+            FfiConverterByteArray.allocationSize(value.`validPins`) +
+            FfiConverterSequenceTypePinFunctionInfo.allocationSize(value.`functions`) +
+            FfiConverterSequenceTypePinHolder.allocationSize(value.`holders`)
+    )
+
+    override fun write(value: PinMap, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`platformId`, buf)
+            FfiConverterBoolean.write(value.`assignable`, buf)
+            FfiConverterByteArray.write(value.`validPins`, buf)
+            FfiConverterSequenceTypePinFunctionInfo.write(value.`functions`, buf)
+            FfiConverterSequenceTypePinHolder.write(value.`holders`, buf)
+    }
+}
+
+
+
+/**
+ * A refused pin.
+ */
+data class PinRefusal (
+    /**
+     * Why.
+     */
+    var `reason`: PinRefusalReason, 
+    /**
+     * The `PIN_CONFIG_*` status the firmware answers for it (1 invalid
+     * pin, 2 in use, 3 no such output, 4 output active).
+     */
+    var `status`: kotlin.UByte, 
+    /**
+     * For [`PinRefusalReason::InUse`], the function holding the pin.
+     */
+    var `holder`: PinHolder?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePinRefusal: FfiConverterRustBuffer<PinRefusal> {
+    override fun read(buf: ByteBuffer): PinRefusal {
+        return PinRefusal(
+            FfiConverterTypePinRefusalReason.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterOptionalTypePinHolder.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PinRefusal) = (
+            FfiConverterTypePinRefusalReason.allocationSize(value.`reason`) +
+            FfiConverterUByte.allocationSize(value.`status`) +
+            FfiConverterOptionalTypePinHolder.allocationSize(value.`holder`)
+    )
+
+    override fun write(value: PinRefusal, buf: ByteBuffer) {
+            FfiConverterTypePinRefusalReason.write(value.`reason`, buf)
+            FfiConverterUByte.write(value.`status`, buf)
+            FfiConverterOptionalTypePinHolder.write(value.`holder`, buf)
+    }
+}
+
+
+
+/**
  * A GPIO used by a control-surface slot.
  */
 data class PinUse (
@@ -32560,6 +32945,211 @@ public object FfiConverterTypeParamValue : FfiConverterRustBuffer<ParamValue>{
 
 
 /**
+ * A function that can hold a GPIO. The C ABI passes it as its code (the
+ * number in brackets).
+ */
+
+enum class PinFunctionKind {
+    
+    /**
+     * (0) A physical output, `index` 0..`num_pin_outputs`: the S/PDIF or
+     * I2S slots, then the PDM subwoofer last.
+     */
+    OUTPUT,
+    /**
+     * (1) The I2S bit clock of the master (or unified) pair; also holds
+     * LRCLK, BCK + 1.
+     */
+    I2S_BCK,
+    /**
+     * (2) The slave pair's bit clock (split clock-pin mode); also its LRCLK.
+     */
+    I2S_BCK_SLAVE,
+    /**
+     * (3) The I2S master clock.
+     */
+    MCK,
+    /**
+     * (4) An S/PDIF receiver, `index` 0..3.
+     */
+    SPDIF_RX,
+    /**
+     * (5) An I2S input data pin, `index` = stereo pair 0..3.
+     */
+    I2S_RX,
+    /**
+     * (6) The ADAT output (RP2350).
+     */
+    ADAT_OUT,
+    /**
+     * (7) The ADAT input (RP2350).
+     */
+    ADAT_IN,
+    /**
+     * (8) The DAC hardware mute line.
+     */
+    DAC_MUTE,
+    /**
+     * (9) The UART control interface's TX.
+     */
+    UART_TX,
+    /**
+     * (10) Its RX.
+     */
+    UART_RX,
+    /**
+     * (11) The I2C control interface's SDA.
+     */
+    I2C_SDA,
+    /**
+     * (12) Its SCL.
+     */
+    I2C_SCL,
+    /**
+     * (13) A control-surface binding, `index` = its slot.
+     */
+    CONTROL_SURFACE;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePinFunctionKind: FfiConverterRustBuffer<PinFunctionKind> {
+    override fun read(buf: ByteBuffer) = try {
+        PinFunctionKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: PinFunctionKind) = 4UL
+
+    override fun write(value: PinFunctionKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * What a held GPIO is doing, for grouping (the Console's five roles).
+ */
+
+enum class PinHolderRole {
+    
+    /**
+     * A physical or ADAT output.
+     */
+    OUTPUT,
+    /**
+     * An I2S clock.
+     */
+    CLOCK,
+    /**
+     * An audio input.
+     */
+    INPUT,
+    /**
+     * A control interface or control surface.
+     */
+    CONTROL,
+    /**
+     * The DAC mute.
+     */
+    UTILITY;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePinHolderRole: FfiConverterRustBuffer<PinHolderRole> {
+    override fun read(buf: ByteBuffer) = try {
+        PinHolderRole.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: PinHolderRole) = 4UL
+
+    override fun write(value: PinHolderRole, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Why a pin was refused.
+ */
+
+enum class PinRefusalReason {
+    
+    /**
+     * This platform's pins are fixed (STM32H723, or a platform this build
+     * does not know).
+     */
+    NOT_ASSIGNABLE,
+    /**
+     * The device has no such function (an output, input or pair past its
+     * count; ADAT on an RP2040; a feature its firmware lacks).
+     */
+    NO_SUCH_FUNCTION,
+    /**
+     * Not a GPIO this platform allows (23-25 are power and LED; BCK also
+     * needs BCK + 1).
+     */
+    INVALID_PIN,
+    /**
+     * A GPIO, but not one this function's peripheral can use: MCK off a
+     * clock-output pin, UART or I2C off its mux position or instance.
+     */
+    WRONG_MUX,
+    /**
+     * Another function holds it: see `holder`.
+     */
+    IN_USE,
+    /**
+     * The function cannot move now: MCK while enabled, the I2S clock pair
+     * while I2S outputs run on it.
+     */
+    OUTPUT_ACTIVE,
+    /**
+     * The ADAT input's pin cannot be cleared while the input is enabled.
+     */
+    CLEAR_WHILE_ENABLED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePinRefusalReason: FfiConverterRustBuffer<PinRefusalReason> {
+    override fun read(buf: ByteBuffer) = try {
+        PinRefusalReason.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: PinRefusalReason) = 4UL
+
+    override fun write(value: PinRefusalReason, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Where a run is: [`VregCalView::phase`]. The details are in the view.
  */
 
@@ -33299,6 +33889,102 @@ public object FfiConverterOptionalTypeHistoryEntry: FfiConverterRustBuffer<Histo
         } else {
             buf.put(1)
             FfiConverterTypeHistoryEntry.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypePinFunction: FfiConverterRustBuffer<PinFunction?> {
+    override fun read(buf: ByteBuffer): PinFunction? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypePinFunction.read(buf)
+    }
+
+    override fun allocationSize(value: PinFunction?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypePinFunction.allocationSize(value)
+        }
+    }
+
+    override fun write(value: PinFunction?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypePinFunction.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypePinHolder: FfiConverterRustBuffer<PinHolder?> {
+    override fun read(buf: ByteBuffer): PinHolder? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypePinHolder.read(buf)
+    }
+
+    override fun allocationSize(value: PinHolder?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypePinHolder.allocationSize(value)
+        }
+    }
+
+    override fun write(value: PinHolder?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypePinHolder.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypePinRefusal: FfiConverterRustBuffer<PinRefusal?> {
+    override fun read(buf: ByteBuffer): PinRefusal? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypePinRefusal.read(buf)
+    }
+
+    override fun allocationSize(value: PinRefusal?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypePinRefusal.allocationSize(value)
+        }
+    }
+
+    override fun write(value: PinRefusal?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypePinRefusal.write(value, buf)
         }
     }
 }
@@ -34635,6 +35321,62 @@ public object FfiConverterSequenceTypeOutputLatencyOption: FfiConverterRustBuffe
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeOutputLatencyOption.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypePinFunctionInfo: FfiConverterRustBuffer<List<PinFunctionInfo>> {
+    override fun read(buf: ByteBuffer): List<PinFunctionInfo> {
+        val len = buf.getInt()
+        return List<PinFunctionInfo>(len) {
+            FfiConverterTypePinFunctionInfo.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<PinFunctionInfo>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypePinFunctionInfo.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<PinFunctionInfo>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypePinFunctionInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypePinHolder: FfiConverterRustBuffer<List<PinHolder>> {
+    override fun read(buf: ByteBuffer): List<PinHolder> {
+        val len = buf.getInt()
+        return List<PinHolder>(len) {
+            FfiConverterTypePinHolder.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<PinHolder>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypePinHolder.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<PinHolder>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypePinHolder.write(it, buf)
         }
     }
 }

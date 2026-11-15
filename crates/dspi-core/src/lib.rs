@@ -147,6 +147,8 @@ pub mod read_only;
 #[cfg(feature = "link")]
 mod link_txt;
 mod platform;
+// -- WP CG-SWS-b -- the pin map
+pub mod pins;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -266,6 +268,11 @@ pub use link_txt::link_parse_txt;
 pub use platform::{
     bulk_image_extras, default_channel_names, enum_value_labels, platform_shape, vreg_code_label,
     vreg_code_mv,
+};
+// -- WP CG-SWS-b --
+pub use pins::{
+    PIN_NONE, PinFunction, PinFunctionInfo, PinFunctionKind, PinHolder, PinHolderRole, PinMap,
+    PinRefusal, PinRefusalReason,
 };
 
 /// The embedder API. Create one per app with [`DspiCore::new`].

@@ -1497,6 +1497,14 @@ uint32_t dspi_link_parse_txt(const char *service_name,
 const char *txt_json,
 char *buf,
 uint32_t len);
+uint32_t dspi_pin_map(struct FfiCore *core, char *buf, uint32_t len);
+uint8_t dspi_pin_check(struct FfiCore *core, uint8_t kind, uint8_t index, uint8_t pin);
+uint32_t dspi_pin_holder(struct FfiCore *core,
+uint8_t pin,
+uint8_t exclude_kind,
+uint8_t exclude_index,
+char *buf,
+uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

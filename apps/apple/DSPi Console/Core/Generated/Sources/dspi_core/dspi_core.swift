@@ -3506,6 +3506,28 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func outputsWithoutLimiter(thresholdDb: Float)  -> Data
     
     /**
+     * Whether `function` may move to `pin`: `None` when it may, else why
+     * not (with the status the firmware would answer and, when another
+     * function holds it, which). From the mirror: no device I/O. The pin
+     * setters run this check before they send.
+     */
+    func pinCheck(function: PinFunction, pin: UInt8)  -> PinRefusal?
+    
+    /**
+     * The function holding `pin`, not counting `excluding` (a picker passes
+     * its own function), or `None` when it is free. From the mirror.
+     */
+    func pinHolder(pin: UInt8, excluding: PinFunction?)  -> PinHolder?
+    
+    /**
+     * The pin map (WP CG-SWS-b): the platform's valid GPIOs, each function
+     * with its pin, whether it holds it and the pins it may move to, and
+     * who holds every held GPIO. From the mirror and the last
+     * control-surface read: no device I/O. Empty without a device.
+     */
+    func pinMap()  -> PinMap
+    
+    /**
      * Compare the USB bus with the last poll and report arrivals and
      * departures (by serial) to the hotplug listener; reconnect the
      * selected device when it reappears, and close the open device when it
@@ -8546,6 +8568,47 @@ open func outputsWithoutLimiter(thresholdDb: Float) -> Data  {
     return try!  FfiConverterData.lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(self.uniffiClonePointer(),
         FfiConverterFloat.lower(thresholdDb),$0
+    )
+})
+}
+    
+    /**
+     * Whether `function` may move to `pin`: `None` when it may, else why
+     * not (with the status the firmware would answer and, when another
+     * function holds it, which). From the mirror: no device I/O. The pin
+     * setters run this check before they send.
+     */
+open func pinCheck(function: PinFunction, pin: UInt8) -> PinRefusal?  {
+    return try!  FfiConverterOptionTypePinRefusal.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_pin_check(self.uniffiClonePointer(),
+        FfiConverterTypePinFunction_lower(function),
+        FfiConverterUInt8.lower(pin),$0
+    )
+})
+}
+    
+    /**
+     * The function holding `pin`, not counting `excluding` (a picker passes
+     * its own function), or `None` when it is free. From the mirror.
+     */
+open func pinHolder(pin: UInt8, excluding: PinFunction?) -> PinHolder?  {
+    return try!  FfiConverterOptionTypePinHolder.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_pin_holder(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(pin),
+        FfiConverterOptionTypePinFunction.lower(excluding),$0
+    )
+})
+}
+    
+    /**
+     * The pin map (WP CG-SWS-b): the platform's valid GPIOs, each function
+     * with its pin, whether it holds it and the pins it may move to, and
+     * who holds every held GPIO. From the mirror and the last
+     * control-surface read: no device I/O. Empty without a device.
+     */
+open func pinMap() -> PinMap  {
+    return try!  FfiConverterTypePinMap_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_pin_map(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -29789,6 +29852,588 @@ public func FfiConverterTypePdmBufferStats_lower(_ value: PdmBufferStats) -> Rus
 
 
 /**
+ * One function: its kind and, for the indexed kinds, which one.
+ */
+public struct PinFunction {
+    /**
+     * What it is.
+     */
+    public var kind: PinFunctionKind
+    /**
+     * Which one (output, input, pair or slot); 0 for the single ones.
+     */
+    public var index: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * What it is.
+         */kind: PinFunctionKind, 
+        /**
+         * Which one (output, input, pair or slot); 0 for the single ones.
+         */index: UInt8) {
+        self.kind = kind
+        self.index = index
+    }
+}
+
+#if compiler(>=6)
+extension PinFunction: Sendable {}
+#endif
+
+
+extension PinFunction: Equatable, Hashable {
+    public static func ==(lhs: PinFunction, rhs: PinFunction) -> Bool {
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.index != rhs.index {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(kind)
+        hasher.combine(index)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinFunction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinFunction {
+        return
+            try PinFunction(
+                kind: FfiConverterTypePinFunctionKind.read(from: &buf), 
+                index: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PinFunction, into buf: inout [UInt8]) {
+        FfiConverterTypePinFunctionKind.write(value.kind, into: &buf)
+        FfiConverterUInt8.write(value.index, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunction_lift(_ buf: RustBuffer) throws -> PinFunction {
+    return try FfiConverterTypePinFunction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunction_lower(_ value: PinFunction) -> RustBuffer {
+    return FfiConverterTypePinFunction.lower(value)
+}
+
+
+/**
+ * One function of this device: its pin, whether it holds it, and the pins
+ * it may move to.
+ */
+public struct PinFunctionInfo {
+    /**
+     * Which function.
+     */
+    public var function: PinFunction
+    /**
+     * Its name, e.g. "Output 1", "S/PDIF 2 RX", "UART TX".
+     */
+    public var label: String
+    /**
+     * Its GPIO, [`PIN_NONE`] when it has none.
+     */
+    public var pin: UInt8
+    /**
+     * Whether it holds that pin now (a disabled feature holds nothing).
+     */
+    public var holds: Bool
+    /**
+     * The GPIOs [`pin_check`] accepts for it, its own included, in order.
+     * For a disabled optional S/PDIF input, without the pins another
+     * function holds: it could store one, but never be enabled on it.
+     * Empty where nothing is assignable.
+     */
+    public var choices: Data
+    /**
+     * Output slots: whether the slot may be switched to I2S (the STM32H723's
+     * SAI rule; always on an RP2040/RP2350). False for everything else.
+     */
+    public var i2sAllowed: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Which function.
+         */function: PinFunction, 
+        /**
+         * Its name, e.g. "Output 1", "S/PDIF 2 RX", "UART TX".
+         */label: String, 
+        /**
+         * Its GPIO, [`PIN_NONE`] when it has none.
+         */pin: UInt8, 
+        /**
+         * Whether it holds that pin now (a disabled feature holds nothing).
+         */holds: Bool, 
+        /**
+         * The GPIOs [`pin_check`] accepts for it, its own included, in order.
+         * For a disabled optional S/PDIF input, without the pins another
+         * function holds: it could store one, but never be enabled on it.
+         * Empty where nothing is assignable.
+         */choices: Data, 
+        /**
+         * Output slots: whether the slot may be switched to I2S (the STM32H723's
+         * SAI rule; always on an RP2040/RP2350). False for everything else.
+         */i2sAllowed: Bool) {
+        self.function = function
+        self.label = label
+        self.pin = pin
+        self.holds = holds
+        self.choices = choices
+        self.i2sAllowed = i2sAllowed
+    }
+}
+
+#if compiler(>=6)
+extension PinFunctionInfo: Sendable {}
+#endif
+
+
+extension PinFunctionInfo: Equatable, Hashable {
+    public static func ==(lhs: PinFunctionInfo, rhs: PinFunctionInfo) -> Bool {
+        if lhs.function != rhs.function {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        if lhs.pin != rhs.pin {
+            return false
+        }
+        if lhs.holds != rhs.holds {
+            return false
+        }
+        if lhs.choices != rhs.choices {
+            return false
+        }
+        if lhs.i2sAllowed != rhs.i2sAllowed {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(function)
+        hasher.combine(label)
+        hasher.combine(pin)
+        hasher.combine(holds)
+        hasher.combine(choices)
+        hasher.combine(i2sAllowed)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinFunctionInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinFunctionInfo {
+        return
+            try PinFunctionInfo(
+                function: FfiConverterTypePinFunction.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                pin: FfiConverterUInt8.read(from: &buf), 
+                holds: FfiConverterBool.read(from: &buf), 
+                choices: FfiConverterData.read(from: &buf), 
+                i2sAllowed: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PinFunctionInfo, into buf: inout [UInt8]) {
+        FfiConverterTypePinFunction.write(value.function, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterUInt8.write(value.pin, into: &buf)
+        FfiConverterBool.write(value.holds, into: &buf)
+        FfiConverterData.write(value.choices, into: &buf)
+        FfiConverterBool.write(value.i2sAllowed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunctionInfo_lift(_ buf: RustBuffer) throws -> PinFunctionInfo {
+    return try FfiConverterTypePinFunctionInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunctionInfo_lower(_ value: PinFunctionInfo) -> RustBuffer {
+    return FfiConverterTypePinFunctionInfo.lower(value)
+}
+
+
+/**
+ * One GPIO and the function holding it.
+ */
+public struct PinHolder {
+    /**
+     * The GPIO.
+     */
+    public var pin: UInt8
+    /**
+     * The function holding it (BCK's also holds LRCLK, BCK + 1).
+     */
+    public var function: PinFunction
+    /**
+     * For grouping.
+     */
+    public var role: PinHolderRole
+    /**
+     * The Console's owner name, e.g. "Output 1", "I2S LRCLK", "UART
+     * Control" (English; `function` is there to translate from).
+     */
+    public var label: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The GPIO.
+         */pin: UInt8, 
+        /**
+         * The function holding it (BCK's also holds LRCLK, BCK + 1).
+         */function: PinFunction, 
+        /**
+         * For grouping.
+         */role: PinHolderRole, 
+        /**
+         * The Console's owner name, e.g. "Output 1", "I2S LRCLK", "UART
+         * Control" (English; `function` is there to translate from).
+         */label: String) {
+        self.pin = pin
+        self.function = function
+        self.role = role
+        self.label = label
+    }
+}
+
+#if compiler(>=6)
+extension PinHolder: Sendable {}
+#endif
+
+
+extension PinHolder: Equatable, Hashable {
+    public static func ==(lhs: PinHolder, rhs: PinHolder) -> Bool {
+        if lhs.pin != rhs.pin {
+            return false
+        }
+        if lhs.function != rhs.function {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(pin)
+        hasher.combine(function)
+        hasher.combine(role)
+        hasher.combine(label)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinHolder: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinHolder {
+        return
+            try PinHolder(
+                pin: FfiConverterUInt8.read(from: &buf), 
+                function: FfiConverterTypePinFunction.read(from: &buf), 
+                role: FfiConverterTypePinHolderRole.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PinHolder, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.pin, into: &buf)
+        FfiConverterTypePinFunction.write(value.function, into: &buf)
+        FfiConverterTypePinHolderRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinHolder_lift(_ buf: RustBuffer) throws -> PinHolder {
+    return try FfiConverterTypePinHolder.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinHolder_lower(_ value: PinHolder) -> RustBuffer {
+    return FfiConverterTypePinHolder.lower(value)
+}
+
+
+/**
+ * The whole map.
+ */
+public struct PinMap {
+    /**
+     * The platform the rules are for (`DspState.platform_id`).
+     */
+    public var platformId: UInt8
+    /**
+     * Whether this platform has assignable pins (RP2040 and RP2350).
+     */
+    public var assignable: Bool
+    /**
+     * The platform's valid GPIOs, in order; empty where nothing is
+     * assignable.
+     */
+    public var validPins: Data
+    /**
+     * The functions this device has, in the Console's order.
+     */
+    public var functions: [PinFunctionInfo]
+    /**
+     * Who holds each held GPIO, in pin order; the first claim wins where
+     * two share one (the ADAT loopback shows as "ADAT Output").
+     */
+    public var holders: [PinHolder]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The platform the rules are for (`DspState.platform_id`).
+         */platformId: UInt8, 
+        /**
+         * Whether this platform has assignable pins (RP2040 and RP2350).
+         */assignable: Bool, 
+        /**
+         * The platform's valid GPIOs, in order; empty where nothing is
+         * assignable.
+         */validPins: Data, 
+        /**
+         * The functions this device has, in the Console's order.
+         */functions: [PinFunctionInfo], 
+        /**
+         * Who holds each held GPIO, in pin order; the first claim wins where
+         * two share one (the ADAT loopback shows as "ADAT Output").
+         */holders: [PinHolder]) {
+        self.platformId = platformId
+        self.assignable = assignable
+        self.validPins = validPins
+        self.functions = functions
+        self.holders = holders
+    }
+}
+
+#if compiler(>=6)
+extension PinMap: Sendable {}
+#endif
+
+
+extension PinMap: Equatable, Hashable {
+    public static func ==(lhs: PinMap, rhs: PinMap) -> Bool {
+        if lhs.platformId != rhs.platformId {
+            return false
+        }
+        if lhs.assignable != rhs.assignable {
+            return false
+        }
+        if lhs.validPins != rhs.validPins {
+            return false
+        }
+        if lhs.functions != rhs.functions {
+            return false
+        }
+        if lhs.holders != rhs.holders {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(platformId)
+        hasher.combine(assignable)
+        hasher.combine(validPins)
+        hasher.combine(functions)
+        hasher.combine(holders)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinMap: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinMap {
+        return
+            try PinMap(
+                platformId: FfiConverterUInt8.read(from: &buf), 
+                assignable: FfiConverterBool.read(from: &buf), 
+                validPins: FfiConverterData.read(from: &buf), 
+                functions: FfiConverterSequenceTypePinFunctionInfo.read(from: &buf), 
+                holders: FfiConverterSequenceTypePinHolder.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PinMap, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.platformId, into: &buf)
+        FfiConverterBool.write(value.assignable, into: &buf)
+        FfiConverterData.write(value.validPins, into: &buf)
+        FfiConverterSequenceTypePinFunctionInfo.write(value.functions, into: &buf)
+        FfiConverterSequenceTypePinHolder.write(value.holders, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinMap_lift(_ buf: RustBuffer) throws -> PinMap {
+    return try FfiConverterTypePinMap.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinMap_lower(_ value: PinMap) -> RustBuffer {
+    return FfiConverterTypePinMap.lower(value)
+}
+
+
+/**
+ * A refused pin.
+ */
+public struct PinRefusal {
+    /**
+     * Why.
+     */
+    public var reason: PinRefusalReason
+    /**
+     * The `PIN_CONFIG_*` status the firmware answers for it (1 invalid
+     * pin, 2 in use, 3 no such output, 4 output active).
+     */
+    public var status: UInt8
+    /**
+     * For [`PinRefusalReason::InUse`], the function holding the pin.
+     */
+    public var holder: PinHolder?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Why.
+         */reason: PinRefusalReason, 
+        /**
+         * The `PIN_CONFIG_*` status the firmware answers for it (1 invalid
+         * pin, 2 in use, 3 no such output, 4 output active).
+         */status: UInt8, 
+        /**
+         * For [`PinRefusalReason::InUse`], the function holding the pin.
+         */holder: PinHolder?) {
+        self.reason = reason
+        self.status = status
+        self.holder = holder
+    }
+}
+
+#if compiler(>=6)
+extension PinRefusal: Sendable {}
+#endif
+
+
+extension PinRefusal: Equatable, Hashable {
+    public static func ==(lhs: PinRefusal, rhs: PinRefusal) -> Bool {
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        if lhs.status != rhs.status {
+            return false
+        }
+        if lhs.holder != rhs.holder {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(reason)
+        hasher.combine(status)
+        hasher.combine(holder)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinRefusal: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinRefusal {
+        return
+            try PinRefusal(
+                reason: FfiConverterTypePinRefusalReason.read(from: &buf), 
+                status: FfiConverterUInt8.read(from: &buf), 
+                holder: FfiConverterOptionTypePinHolder.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PinRefusal, into buf: inout [UInt8]) {
+        FfiConverterTypePinRefusalReason.write(value.reason, into: &buf)
+        FfiConverterUInt8.write(value.status, into: &buf)
+        FfiConverterOptionTypePinHolder.write(value.holder, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinRefusal_lift(_ buf: RustBuffer) throws -> PinRefusal {
+    return try FfiConverterTypePinRefusal.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinRefusal_lower(_ value: PinRefusal) -> RustBuffer {
+    return FfiConverterTypePinRefusal.lower(value)
+}
+
+
+/**
  * A GPIO used by a control-surface slot.
  */
 public struct PinUse {
@@ -36204,6 +36849,451 @@ extension ParamValue: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * A function that can hold a GPIO. The C ABI passes it as its code (the
+ * number in brackets).
+ */
+
+public enum PinFunctionKind {
+    
+    /**
+     * (0) A physical output, `index` 0..`num_pin_outputs`: the S/PDIF or
+     * I2S slots, then the PDM subwoofer last.
+     */
+    case output
+    /**
+     * (1) The I2S bit clock of the master (or unified) pair; also holds
+     * LRCLK, BCK + 1.
+     */
+    case i2sBck
+    /**
+     * (2) The slave pair's bit clock (split clock-pin mode); also its LRCLK.
+     */
+    case i2sBckSlave
+    /**
+     * (3) The I2S master clock.
+     */
+    case mck
+    /**
+     * (4) An S/PDIF receiver, `index` 0..3.
+     */
+    case spdifRx
+    /**
+     * (5) An I2S input data pin, `index` = stereo pair 0..3.
+     */
+    case i2sRx
+    /**
+     * (6) The ADAT output (RP2350).
+     */
+    case adatOut
+    /**
+     * (7) The ADAT input (RP2350).
+     */
+    case adatIn
+    /**
+     * (8) The DAC hardware mute line.
+     */
+    case dacMute
+    /**
+     * (9) The UART control interface's TX.
+     */
+    case uartTx
+    /**
+     * (10) Its RX.
+     */
+    case uartRx
+    /**
+     * (11) The I2C control interface's SDA.
+     */
+    case i2cSda
+    /**
+     * (12) Its SCL.
+     */
+    case i2cScl
+    /**
+     * (13) A control-surface binding, `index` = its slot.
+     */
+    case controlSurface
+}
+
+
+#if compiler(>=6)
+extension PinFunctionKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinFunctionKind: FfiConverterRustBuffer {
+    typealias SwiftType = PinFunctionKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinFunctionKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .output
+        
+        case 2: return .i2sBck
+        
+        case 3: return .i2sBckSlave
+        
+        case 4: return .mck
+        
+        case 5: return .spdifRx
+        
+        case 6: return .i2sRx
+        
+        case 7: return .adatOut
+        
+        case 8: return .adatIn
+        
+        case 9: return .dacMute
+        
+        case 10: return .uartTx
+        
+        case 11: return .uartRx
+        
+        case 12: return .i2cSda
+        
+        case 13: return .i2cScl
+        
+        case 14: return .controlSurface
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PinFunctionKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .output:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .i2sBck:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .i2sBckSlave:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .mck:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .spdifRx:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .i2sRx:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .adatOut:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .adatIn:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .dacMute:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .uartTx:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .uartRx:
+            writeInt(&buf, Int32(11))
+        
+        
+        case .i2cSda:
+            writeInt(&buf, Int32(12))
+        
+        
+        case .i2cScl:
+            writeInt(&buf, Int32(13))
+        
+        
+        case .controlSurface:
+            writeInt(&buf, Int32(14))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunctionKind_lift(_ buf: RustBuffer) throws -> PinFunctionKind {
+    return try FfiConverterTypePinFunctionKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinFunctionKind_lower(_ value: PinFunctionKind) -> RustBuffer {
+    return FfiConverterTypePinFunctionKind.lower(value)
+}
+
+
+extension PinFunctionKind: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * What a held GPIO is doing, for grouping (the Console's five roles).
+ */
+
+public enum PinHolderRole {
+    
+    /**
+     * A physical or ADAT output.
+     */
+    case output
+    /**
+     * An I2S clock.
+     */
+    case clock
+    /**
+     * An audio input.
+     */
+    case input
+    /**
+     * A control interface or control surface.
+     */
+    case control
+    /**
+     * The DAC mute.
+     */
+    case utility
+}
+
+
+#if compiler(>=6)
+extension PinHolderRole: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinHolderRole: FfiConverterRustBuffer {
+    typealias SwiftType = PinHolderRole
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinHolderRole {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .output
+        
+        case 2: return .clock
+        
+        case 3: return .input
+        
+        case 4: return .control
+        
+        case 5: return .utility
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PinHolderRole, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .output:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .clock:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .input:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .control:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .utility:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinHolderRole_lift(_ buf: RustBuffer) throws -> PinHolderRole {
+    return try FfiConverterTypePinHolderRole.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinHolderRole_lower(_ value: PinHolderRole) -> RustBuffer {
+    return FfiConverterTypePinHolderRole.lower(value)
+}
+
+
+extension PinHolderRole: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Why a pin was refused.
+ */
+
+public enum PinRefusalReason {
+    
+    /**
+     * This platform's pins are fixed (STM32H723, or a platform this build
+     * does not know).
+     */
+    case notAssignable
+    /**
+     * The device has no such function (an output, input or pair past its
+     * count; ADAT on an RP2040; a feature its firmware lacks).
+     */
+    case noSuchFunction
+    /**
+     * Not a GPIO this platform allows (23-25 are power and LED; BCK also
+     * needs BCK + 1).
+     */
+    case invalidPin
+    /**
+     * A GPIO, but not one this function's peripheral can use: MCK off a
+     * clock-output pin, UART or I2C off its mux position or instance.
+     */
+    case wrongMux
+    /**
+     * Another function holds it: see `holder`.
+     */
+    case inUse
+    /**
+     * The function cannot move now: MCK while enabled, the I2S clock pair
+     * while I2S outputs run on it.
+     */
+    case outputActive
+    /**
+     * The ADAT input's pin cannot be cleared while the input is enabled.
+     */
+    case clearWhileEnabled
+}
+
+
+#if compiler(>=6)
+extension PinRefusalReason: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePinRefusalReason: FfiConverterRustBuffer {
+    typealias SwiftType = PinRefusalReason
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PinRefusalReason {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .notAssignable
+        
+        case 2: return .noSuchFunction
+        
+        case 3: return .invalidPin
+        
+        case 4: return .wrongMux
+        
+        case 5: return .inUse
+        
+        case 6: return .outputActive
+        
+        case 7: return .clearWhileEnabled
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PinRefusalReason, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .notAssignable:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .noSuchFunction:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .invalidPin:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .wrongMux:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .inUse:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .outputActive:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .clearWhileEnabled:
+            writeInt(&buf, Int32(7))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinRefusalReason_lift(_ buf: RustBuffer) throws -> PinRefusalReason {
+    return try FfiConverterTypePinRefusalReason.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePinRefusalReason_lower(_ value: PinRefusalReason) -> RustBuffer {
+    return FfiConverterTypePinRefusalReason.lower(value)
+}
+
+
+extension PinRefusalReason: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a run is: [`VregCalView::phase`]. The details are in the view.
  */
 
@@ -36960,6 +38050,78 @@ fileprivate struct FfiConverterOptionTypeHistoryEntry: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeHistoryEntry.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePinFunction: FfiConverterRustBuffer {
+    typealias SwiftType = PinFunction?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePinFunction.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePinFunction.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePinHolder: FfiConverterRustBuffer {
+    typealias SwiftType = PinHolder?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePinHolder.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePinHolder.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypePinRefusal: FfiConverterRustBuffer {
+    typealias SwiftType = PinRefusal?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePinRefusal.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePinRefusal.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -38130,6 +39292,56 @@ fileprivate struct FfiConverterSequenceTypeOutputLatencyOption: FfiConverterRust
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeOutputLatencyOption.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePinFunctionInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [PinFunctionInfo]
+
+    public static func write(_ value: [PinFunctionInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePinFunctionInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PinFunctionInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PinFunctionInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePinFunctionInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePinHolder: FfiConverterRustBuffer {
+    typealias SwiftType = [PinHolder]
+
+    public static func write(_ value: [PinHolder], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePinHolder.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PinHolder] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PinHolder]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePinHolder.read(from: &buf))
         }
         return seq
     }
@@ -39895,6 +41107,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter() != 24245) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_pin_check() != 43599) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_pin_holder() != 60813) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_pin_map() != 51158) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_poll_hotplug() != 29460) {

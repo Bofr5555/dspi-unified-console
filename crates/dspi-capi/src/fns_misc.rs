@@ -78,6 +78,8 @@ mod guarded;
 mod hub_admin;
 // -- WP CG-SWS-a --
 mod sws_a;
+// -- WP CG-SWS-b -- the pin map
+mod pins;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
