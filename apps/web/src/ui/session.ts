@@ -16,6 +16,7 @@ import {
   // -- WP WB8 --
   type HistoryMove,
   type HubAdminEventRecord, // -- WP HUBADMIN --
+  type HubServerEventRecord, // -- WP P2WB1 --
   type LinkDeviceRecord,
   type LinkPhase,
   type ParamValue,
@@ -124,6 +125,9 @@ export class Session {
   // -- WP P1WB2 --
   /** The mode a fleet backend pins for this device (`FleetBackend.pinnedMode`), "" for none. */
   fleetMode = "";
+  // -- WP P2WB1 --
+  /** Open another DSPi of this session's hub in the console (set by the page for a hub session); null where it cannot. */
+  openDevice: ((serial: string) => void) | null = null;
 
   constructor(
     readonly id: string,
@@ -670,6 +674,17 @@ export class Session {
     else if (e.event === "lost") this.set({ status: "failed", error: e.reason });
     // -- WP HUBADMIN -- the hub changed its copy: the lock as the core read it again, and a new read of the page
     else if (e.event === "hubAdmin") this.onHubAdmin(e.events);
+    // -- WP P2WB1 -- the hub's own families' events, to whoever follows them
+    else if (e.event === "hubServer") for (const l of [...this.hubListeners]) l(e.events);
+  }
+
+  // -- WP P2WB1 --
+  private readonly hubListeners = new Set<(events: HubServerEventRecord[]) => void>();
+
+  /** Follow the hub's `event.added`, `inventory.changed`, `alarm.changed`, ... of each DSPi Link turn; returns the way to stop. */
+  watchHub(fn: (events: HubServerEventRecord[]) => void): () => void {
+    this.hubListeners.add(fn);
+    return () => this.hubListeners.delete(fn);
   }
 
   // -- WP HUBADMIN --

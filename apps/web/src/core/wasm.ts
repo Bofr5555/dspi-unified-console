@@ -30,6 +30,7 @@ import {
   type DeviceSnapshot,
   type DeviceTarget,
   type HubAdminEventRecord, // -- WP HUBADMIN --
+  type HubServerEventRecord, // -- WP P2WB1 --
   type LinkPhase,
   type LinkStatusRecord,
   type Method,
@@ -400,10 +401,12 @@ export class WasmCore implements CoreImpl {
   private async linkOnce(): Promise<void> {
     if (!this.linkOn) return;
     try {
-      const r = (await this.queued("linkTick", null)) as { waitMs: number | null; status: LinkStatusRecord; hubEvents?: HubAdminEventRecord[] };
+      const r = (await this.queued("linkTick", null)) as { waitMs: number | null; status: LinkStatusRecord; hubEvents?: HubAdminEventRecord[]; hubServerEvents?: HubServerEventRecord[] /* -- WP P2WB1 -- */ };
       const st = r.status;
       // -- WP HUBADMIN -- the hub's admin events of this turn, for the Installer page
       if (Array.isArray(r.hubEvents) && r.hubEvents.length) this.push({ event: "hubAdmin", events: r.hubEvents });
+      // -- WP P2WB1 -- the hub's own families' events of this turn (inventory, history, alarms, ...)
+      if (Array.isArray(r.hubServerEvents) && r.hubServerEvents.length) this.push({ event: "hubServer", events: r.hubServerEvents });
       this.linkReason = st.closeReason;
       if (st.phase !== this.phase) {
         this.phase = st.phase;

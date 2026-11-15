@@ -237,6 +237,7 @@ private fun SettingsDetail(
         // -- WP P1AN2 --
         SettingsCategory.INSTALLER -> InstallerSettingsTab(bridge, lockedUser = LocalUiMode.current == UiModes.LOCKED_USER)
         SettingsCategory.POWER_ON -> PowerOnSettingsTab(bridge, onOpen)
+        SettingsCategory.EVENTS -> WritesExempt { EventsSettingsTab(bridge) } // -- WP P2AN -- read-only
     }
 }
 

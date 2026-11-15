@@ -1027,6 +1027,10 @@ interface DspiBridge {
     /** The installer's lock and limits, the mode manifest, notices, protect all, AutoEQ preview. Test doubles: [Installer.Unavailable]. */
     val installer: Installer get() = Installer.Unavailable
 
+    // -- WP P2AN --
+    /** The hub's shared snapshots, history, alarms and Identify (PLAN-P2). Test doubles: [HubServer.Unavailable]. */
+    val hubServer: HubServer get() = HubServer.Unavailable
+
     /** Token issuer for the GATED members (D5). Same instance for the bridge's lifetime. */
     val dangerousOps: DangerousOps
 

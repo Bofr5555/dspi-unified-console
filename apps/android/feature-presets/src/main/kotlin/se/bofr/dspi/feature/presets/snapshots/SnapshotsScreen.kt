@@ -58,8 +58,10 @@ import java.util.Date
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.bridge.HubServer
 import se.bofr.dspi.core.AbSide
 import se.bofr.dspi.core.GuardPhase
+import se.bofr.dspi.core.MergedSnapshot
 import se.bofr.dspi.core.SnapshotInfo
 import se.bofr.dspi.feature.presets.DiffRowLine
 import se.bofr.dspi.feature.presets.DocDiff
@@ -79,6 +81,13 @@ const val CAPTURE_TAG = "snapshot-capture"
 fun snapshotRowTag(id: String) = "snapshot-row:$id"
 
 fun snapshotRecallTag(id: String) = "snapshot-recall:$id"
+
+// -- WP P2AN --
+const val HUB_SECTION_TAG = "snapshots-hub"
+
+fun hubSnapshotRowTag(id: String) = "hub-snapshot-row:$id"
+
+fun hubSnapshotRecallTag(id: String) = "hub-snapshot-recall:$id"
 
 /** The snapshot store's folder: the app's own files, one subfolder per serial (the core's). */
 fun snapshotsFolder(context: Context): String = File(context.filesDir, "snapshots").path
@@ -159,6 +168,11 @@ fun SnapshotsView(
     val safeRecall by model.safeRecall.collectAsState()
     val guardDefault by model.guardDefault.collectAsState()
     val diff by model.diff.collectAsState()
+    // -- WP P2AN -- the hub's section (bridge flows: set on main)
+    val hubCaps by model.hubCaps.collectAsStateOnMain()
+    val hubItems by model.hubItems.collectAsState()
+    val localMarks by model.localMarks.collectAsState()
+    val hubLine by model.hubLine.collectAsState()
     // -- WP P1DCFIX -- the safe apply's timeout: the app's setting (default 30 s), adjustable in Advanced
     val settingsStore = LocalAppSettings.current
     val appSettings by settingsStore.settings.collectAsState()
@@ -170,6 +184,7 @@ fun SnapshotsView(
     val canWrite = connected && writesAllowed() && !busy
     val guardWaiting = guard.phase == GuardPhase.WAITING
     LaunchedEffect(model, connected) { if (connected) model.load() }
+    LaunchedEffect(model, hubCaps.hubSnapshots) { if (connected && hubCaps.hubSnapshots) model.refreshHub() } // -- WP P2AN --
     Surface(modifier.fillMaxSize().testTag(SNAPSHOTS_SCREEN_TAG)) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -231,6 +246,8 @@ fun SnapshotsView(
                 items(items, key = { it.id }) { s ->
                     SnapshotRow(
                         s,
+                        mark = localMarks[s.id], // -- WP P2AN --
+                        onSaveToHub = { model.saveToHub(s) }.takeIf { canWrite && localMarks[s.id] == LocalMark.HERE_ONLY },
                         advanced = advanced,
                         canRecall = canWrite && !guardWaiting,
                         canEdit = !busy,
@@ -243,6 +260,35 @@ fun SnapshotsView(
                         onDelete = { model.askDelete(s) }
                     )
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                }
+                // -- WP P2AN -- "On the hub": only a hub that keeps snapshots shows it
+                if (connected && hubCaps.hubSnapshots) {
+                    item(key = HUB_SECTION_TAG) {
+                        Text(
+                            "On the hub",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.testTag(HUB_SECTION_TAG).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp)
+                        )
+                        when {
+                            hubLine.isNotEmpty() -> Caption(hubLine)
+                            hubItems.isEmpty() -> Caption("The hub keeps no snapshots of this device yet.")
+                        }
+                    }
+                    items(hubItems, key = { "hub:" + it.snapshot.id }) { m ->
+                        HubSnapshotRow(
+                            m,
+                            advanced = advanced,
+                            canRecall = canWrite && !guardWaiting,
+                            canWrite = canWrite,
+                            canEdit = !busy,
+                            onRecall = { model.recallFromHub(m) },
+                            onCopyHere = { model.copyHere(m.snapshot) },
+                            onRename = { model.askRenameOnHub(m.snapshot) },
+                            onNote = { model.askNoteOnHub(m.snapshot) },
+                            onDelete = { model.askDeleteFromHub(m.snapshot) }
+                        )
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                    }
                 }
                 if (advanced) {
                     item {
@@ -391,9 +437,80 @@ private fun Chooser(label: String, id: String, items: List<SnapshotInfo>, allowN
     }
 }
 
+// -- WP P2AN --
+/** One of this console's snapshots as it stands to the hub's ("" when it needs no word). */
+internal fun markLine(mark: LocalMark?): String = when (mark) {
+    LocalMark.ON_HUB_TOO -> "Also on the hub"
+    LocalMark.LOCAL_COPY -> "Local copy: the hub holds a different one"
+    LocalMark.HERE_ONLY, null -> ""
+}
+
+/** A row of "On the hub": Recall (this console's copy, or the hub's copied here first), and its menu. */
+@Composable
+private fun HubSnapshotRow(
+    m: MergedSnapshot,
+    advanced: Boolean,
+    canRecall: Boolean,
+    canWrite: Boolean,
+    canEdit: Boolean,
+    onRecall: () -> Unit,
+    onCopyHere: () -> Unit,
+    onRename: () -> Unit,
+    onNote: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val s = m.snapshot
+    var menu by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().testTag(hubSnapshotRowTag(s.id)).padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(s.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(s.savedMs)) +
+                    if (m.location == HubServer.WHERE_BOTH) " · also here" else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (s.note.isNotEmpty()) {
+                Text(s.note, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        TextButton(onClick = onRecall, enabled = canRecall, modifier = Modifier.testTag(hubSnapshotRecallTag(s.id))) { Text("Recall") }
+        Box {
+            IconButton(onClick = {
+                menu = true
+            }, enabled = canEdit) { Icon(DspiIcons.more, contentDescription = "More for ${s.name} on the hub") }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                val copy = if (m.location == HubServer.WHERE_BOTH) emptyList() else listOf("Copy here" to onCopyHere)
+                val entries =
+                    copy +
+                        if (advanced && canWrite) {
+                            listOf("Rename…" to onRename, "Note…" to onNote, "Delete from the hub…" to onDelete)
+                        } else {
+                            emptyList()
+                        }
+                if (entries.isEmpty()) {
+                    DropdownMenuItem(text = { Text("Nothing to do here") }, enabled = false, onClick = {})
+                }
+                entries.forEach { (title, act) ->
+                    DropdownMenuItem(text = { Text(title) }, onClick = {
+                        menu = false
+                        act()
+                    })
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun SnapshotRow(
     s: SnapshotInfo,
+    // -- WP P2AN --
+    mark: LocalMark? = null,
+    onSaveToHub: (() -> Unit)? = null,
     advanced: Boolean,
     canRecall: Boolean,
     canEdit: Boolean,
@@ -420,6 +537,10 @@ private fun SnapshotRow(
             if (s.note.isNotEmpty()) {
                 Text(s.note, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
+            // -- WP P2AN --
+            markLine(mark).takeIf { it.isNotEmpty() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         TextButton(onClick = onRecall, enabled = canRecall, modifier = Modifier.testTag(snapshotRecallTag(s.id))) { Text("Recall") }
         Box {
@@ -427,6 +548,7 @@ private fun SnapshotRow(
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 val entries =
                     listOf("Use as A" to onUseAsA, "Use as B" to onUseAsB) +
+                        listOfNotNull(onSaveToHub?.let { "Save to the hub" to it }) + // -- WP P2AN --
                         if (advanced) {
                             listOf(
                                 "Rename…" to onRename,

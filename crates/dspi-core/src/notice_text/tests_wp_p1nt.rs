@@ -173,6 +173,7 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                         crate::hub_admin::NOTICE_HUB_COPY,
                         crate::hub_admin::NOTICE_CONSOLE_COPY,
                         crate::hub_admin::NOTICE_HUB_ROLE,
+                        crate::hub_admin::NOTICE_HUB_SETTINGS_ROLE, // -- WP P2WB2 --
                     ]
                     .contains(&n.key.as_str()),
                     "{}: not a key hub_admin.rs names",

@@ -23,7 +23,10 @@ enum class SettingsCategory(val title: String, val tint: Long, val id: String) {
 
     // -- WP P1AN2 -- the Installer mode's pages (UI-MODES section 2: limits and power-on)
     INSTALLER("Installer", 0xFFB0602A, "installer"),
-    POWER_ON("At Power-On", 0xFF9A6A1E, "powerOn");
+    POWER_ON("At Power-On", 0xFF9A6A1E, "powerOn"),
+
+    // -- WP P2AN -- the device's events: this console's log and the hub's history
+    EVENTS("History", 0xFF5C6B78, "events");
 
     /** Hidden when the connected hardware/firmware has no such page (macOS `isAvailable`). */
     fun isAvailable(f: SettingsAvailability): Boolean = when {
@@ -42,6 +45,7 @@ enum class SettingsCategory(val title: String, val tint: Long, val id: String) {
         MACROS -> f.csMacrosSupported
         AUX_OUTPUTS -> f.csAuxSupported
         NETWORKING -> f.networkingAvailable
+        EVENTS -> f.connected // -- WP P2AN --
         else -> true
     }
 
@@ -54,7 +58,7 @@ enum class SettingsCategory(val title: String, val tint: Long, val id: String) {
         val groups: List<Pair<String, List<SettingsCategory>>> = listOf(
             "Application" to listOf(GENERAL, ADVANCED, NETWORKING),
             "Display" to listOf(GRAPHING, SPECTRUM),
-            "System" to listOf(OVERVIEW, SPDIF_INPUT, OUTPUT_ASSIGNMENT, I2S_CONFIG, GLOBAL_PARAMS),
+            "System" to listOf(OVERVIEW, SPDIF_INPUT, OUTPUT_ASSIGNMENT, I2S_CONFIG, GLOBAL_PARAMS, EVENTS), // -- WP P2AN -- History
             "Control" to listOf(CONTROL_SURFACES, CONTROL_INTERFACES, CHANNEL_GROUPS, MACROS, AUX_OUTPUTS),
             // -- WP P1AN2 --
             "Installer" to listOf(INSTALLER, POWER_ON)
