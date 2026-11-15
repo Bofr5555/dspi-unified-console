@@ -15,6 +15,8 @@ const NOT_EXPORTED: &[&str] = &[
     "open_transport",
     // -- WP HB0 -- Rust-only: takes a trait returning `Box<dyn Transport>`.
     "set_device_broker",
+    // -- WP ANDFU -- (ROMODE) the C ABI and the web binding only, not UniFFI.
+    "client_notice_key",
     // -- WP CG2 --
     // Behind feature `mdns`, which dspi-ffi leaves off: Android and iOS browse with
     // their system APIs. core_methods() reads the source, so it sees them anyway.
