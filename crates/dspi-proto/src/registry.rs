@@ -3962,9 +3962,65 @@ pub fn referenced_opcodes() -> Vec<u8> {
     v
 }
 
+// -- WP ROMODE --
+/// Whether an IN transfer of `opcode` only reads: the requests the firmware's
+/// command table (`config.h`) names `GET`, and `REQ_EXTENSION`, whose IN
+/// direction only ever reads (the extension list, the pair map, the vreg
+/// status; every extension write is OUT). Write-as-read requests (preset
+/// save, load and delete, save, factory reset, pin moves, the bootloader, the
+/// signal generator's and the analyser's controls, the stats resets, ...) and
+/// opcodes this build does not know are not. The one list every client's
+/// read-only mode uses (the core's client read-only mode, which took it from
+/// the Swift console's `MIDIReadOnly` filter).
+pub fn is_pure_read(opcode: u8) -> bool {
+    opcode == op::REQ_EXTENSION
+        || crate::generated::ALL_OPCODES
+            .iter()
+            .any(|(name, code)| *code == opcode && name.contains("_GET_"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -- WP ROMODE --
+    #[test]
+    fn wp_romode_pure_reads_are_the_get_table_and_the_extension_channel() {
+        assert!(is_pure_read(op::REQ_EXTENSION));
+        assert!(is_pure_read(op::REQ_GET_PLATFORM));
+        assert!(is_pure_read(op::REQ_GET_ALL_PARAMS));
+        for code in [
+            op::REQ_SET_MASTER_VOLUME,
+            op::REQ_PRESET_LOAD,
+            op::REQ_SAVE_PARAMS,
+            op::REQ_FACTORY_RESET,
+            op::REQ_ENTER_BOOTLOADER,
+            op::REQ_RTA_CONTROL,
+            op::REQ_SIGGEN_CONTROL,
+            op::REQ_CLEAR_CLIPS,
+            op::REQ_RESET_BUFFER_STATS,
+            op::REQ_LIMITER,
+            op::REQ_OUTPUT_LATENCY,
+            0x01,
+        ] {
+            assert!(!is_pure_read(code), "0x{code:02X}");
+        }
+        // The Swift console's `MIDIReadOnly` list, as it was (MIDITransport.swift).
+        const SWIFT: [u8; 130] = [
+            0x00, 0x05, 0x07, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0F, 0x11, 0x13, 0x15, 0x17, 0x19,
+            0x1A, 0x1C, 0x1E, 0x1F, 0x21, 0x23, 0x26, 0x28, 0x2A, 0x2B, 0x2D, 0x2F, 0x31, 0x33,
+            0x35, 0x37, 0x39, 0x3B, 0x3D, 0x3F, 0x43, 0x45, 0x47, 0x49, 0x4B, 0x4D, 0x4E, 0x50,
+            0x55, 0x57, 0x59, 0x5B, 0x5D, 0x5F, 0x61, 0x63, 0x65, 0x67, 0x69, 0x6B, 0x6D, 0x6E,
+            0x71, 0x73, 0x75, 0x77, 0x79, 0x7A, 0x7B, 0x7D, 0x7E, 0x7F, 0x80, 0x82, 0x85, 0x86,
+            0x87, 0x89, 0x8A, 0x8C, 0x8E, 0x93, 0x95, 0x97, 0x99, 0x9A, 0x9C, 0xA0, 0xA2, 0xA5,
+            0xA7, 0xA8, 0xAA, 0xAC, 0xAE, 0xB0, 0xB2, 0xB5, 0xB7, 0xB9, 0xBB, 0xBD, 0xBF, 0xC1,
+            0xC3, 0xC5, 0xC7, 0xC9, 0xCB, 0xCD, 0xCE, 0xD1, 0xD3, 0xD5, 0xD7, 0xD9, 0xDB, 0xDD,
+            0xDF, 0xE1, 0xE2, 0xE3, 0xE5, 0xE7, 0xE8, 0xEB, 0xEE, 0xEF, 0xF2, 0xF4, 0xF6, 0xF8,
+            0xF9, 0xFB, 0xFD, 0xFF,
+        ];
+        let ours: Vec<u8> = (0..=255u8).filter(|c| is_pure_read(*c)).collect();
+        assert_eq!(ours, SWIFT);
+    }
 
     #[test]
     fn paths_are_unique() {

@@ -103,6 +103,21 @@ impl From<DspiError> for CallError {
 
 type CallResult = Result<Value, CallError>;
 
+// -- WP ROMODE --
+/// A failure of session `h`'s with its `noticeKey` as the core answers it
+/// now: `read_only.client` for a `read_only` while the client read-only mode
+/// is on.
+fn refine_for_session(h: u32, mut e: CallError) -> CallError {
+    if e.notice_key.as_deref() != Some("read_only") {
+        return e;
+    }
+    let core = SESSIONS.with_borrow(|s| s.get(h as usize)?.as_ref().map(|s| Arc::clone(&s.core)));
+    if let Some(key) = core.and_then(|c| c.client_notice_key("read_only")) {
+        e.notice_key = Some(key.to_owned());
+    }
+    e
+}
+
 /// `v` as JSON with every `f32` at its own precision: through serde_json's
 /// text, which prints an `f32` as the shortest decimal that reads back the
 /// same (`-12.3`), where `to_value` widens it to `f64` first
@@ -206,7 +221,9 @@ pub fn call(h: u32, request: &[u8]) -> Vec<u8> {
         Ok(e) => e,
         Err(r) => return refusal_reply(r),
     };
-    let r = catch_unwind(AssertUnwindSafe(|| dispatch(h, request)));
+    let r = catch_unwind(AssertUnwindSafe(|| {
+        dispatch(h, request).map_err(|e| refine_for_session(h, e)) // -- WP ROMODE --
+    }));
     drop(entered);
     match r {
         Ok(r) => reply(r),
@@ -255,6 +272,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     }
     // -- WP P1WB2 -- the DAC mute of the power-on page (src/power_on.rs)
     if let Some(r) = crate::power_on::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP ROMODE -- the client read-only mode (src/read_only.rs)
+    if let Some(r) = crate::read_only::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
     match req.method.as_str() {

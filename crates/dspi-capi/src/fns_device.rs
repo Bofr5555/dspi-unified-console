@@ -103,6 +103,46 @@ std::thread_local! {
 /// Keep `e` as this thread's last failure.
 fn note_failure(e: &DspiError) {
     LAST_FAILURE.with(|last| *last.borrow_mut() = Some(e.clone()));
+    // -- WP ROMODEF -- (review romode F4) the key as the call's core answers
+    // it: `read_only.client` for a refusal of its client read-only mode
+    let key = IN_CALL.with(|c| {
+        c.borrow()
+            .as_ref()
+            .and_then(|core| core.client_notice_key(&e.notice_key()))
+    });
+    LAST_KEY.with(|k| k.set(key));
+}
+
+// -- WP ROMODEF --
+std::thread_local! {
+    /// The core of the C call running on this thread (`with_core`).
+    static IN_CALL: std::cell::RefCell<Option<std::sync::Arc<DspiCore>>> =
+        const { std::cell::RefCell::new(None) };
+    /// The last failure's notice key, when its core refines it.
+    static LAST_KEY: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+}
+
+/// While alive, the C call on this thread is on this core (nested calls
+/// restore the outer one).
+pub(crate) struct InCall(Option<std::sync::Arc<DspiCore>>);
+
+impl InCall {
+    pub(crate) fn enter(core: &std::sync::Arc<DspiCore>) -> Self {
+        Self(IN_CALL.with(|c| c.replace(Some(std::sync::Arc::clone(core)))))
+    }
+}
+
+impl Drop for InCall {
+    fn drop(&mut self) {
+        let outer = self.0.take();
+        IN_CALL.with(|c| *c.borrow_mut() = outer);
+    }
+}
+
+/// The refined notice key of this thread's last failure, if its core gave
+/// one ([`note_failure`]).
+pub(crate) fn last_failure_key() -> Option<&'static str> {
+    LAST_KEY.with(std::cell::Cell::get)
 }
 
 /// This thread's last failure, left in place unless `take`.
@@ -287,7 +327,11 @@ pub(crate) fn text(
     len: u32,
     f: impl FnOnce(&DspiCore) -> String,
 ) -> u32 {
-    with_core(core, 0, |h| copy_text(&f(&h.core), buf, len))
+    with_core(core, 0, |h| {
+        // -- WP ROMODE -- a refusal of the client read-only mode has its own row
+        let reply = crate::fns_misc::read_only::refine_reply(&h.core, f(&h.core));
+        copy_text(&reply, buf, len)
+    })
 }
 
 /// A name read into `out` of `len` bytes, cut to fit ([`copy_out`]). False

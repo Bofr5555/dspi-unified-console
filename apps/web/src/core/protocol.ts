@@ -1064,6 +1064,14 @@ export interface InstallerMethods {
   /** Pin the open device's mode (a fleet's or a hub's); "" clears it. */
   modeSetPinned: { params: { mode: string }; result: Record<string, never> };
   modePinned: { params: undefined; result: { mode: string } };
+  // -- WP ROMODE -- the client read-only mode (crates/dspi-wasm/src/read_only.rs)
+  /**
+   * Turn the core's client read-only mode on or off for this session: while on, every write
+   * fails with `read_only` (notice key `read_only.client`) before anything is sent; reads,
+   * notifications and the meters go on. A diagnostic (the page's `?readonly`), not a security boundary.
+   */
+  setClientReadOnly: { params: { on: boolean }; result: { on: boolean } };
+  clientReadOnly: { params: undefined; result: { on: boolean; refusals: number } };
   installerLockState: { params: undefined; result: LockStateRecord };
   /** With the hub's PIN when the hub holds the lock. A wrong one: `installer_lock` (`installer_lock.wrong_pin`, `.wait`). */
   installerUnlock: { params: { pin: string }; result: LockStateRecord };

@@ -394,6 +394,7 @@ impl DspiCore {
     /// folder named; [`DspiError::Unsupported`] on the web (use
     /// [`DspiCore::ab_start_documents`]).
     pub fn ab_start(&self, a_id: String, b_id: String) -> Result<AbCompare> {
+        self.client_write_check()?; // -- WP ROMODE --
         self.ab_guard_free()?; // -- WP P1CFIX -- F4
         let b = self.snapshot_export(b_id)?;
         let a = if a_id.is_empty() {
@@ -407,6 +408,7 @@ impl DspiCore {
     /// [`DspiCore::ab_start`] with snapshot documents' text (the web, and a
     /// client's own store): `a_text` "" captures the device as A.
     pub fn ab_start_documents(&self, a_text: String, b_text: String) -> Result<AbCompare> {
+        self.client_write_check()?; // -- WP ROMODE --
         let a = (!a_text.is_empty()).then_some(a_text);
         self.ab_begin(a, b_text)
     }
@@ -423,6 +425,7 @@ impl DspiCore {
     /// recall's errors. A lost connection ends the compare
     /// ([`DspiError::Disconnected`]); another refusal leaves it on its side.
     pub fn ab_toggle(&self) -> Result<AbCompare> {
+        self.client_write_check()?; // -- WP ROMODE --
         self.ab_guard_free()?; // -- WP P1CFIX -- F4
         let mut c = self.ab_current().ok_or_else(|| invalid(NO_COMPARE))?;
         let to = c.side.other();

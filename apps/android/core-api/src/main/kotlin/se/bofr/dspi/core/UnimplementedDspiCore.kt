@@ -572,6 +572,14 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun connectionGeneration(): Long = throw NotImplementedError("connection_generation")
 
+    override fun setClientReadOnly(on: Boolean): Unit = throw NotImplementedError("set_client_read_only")
+
+    override fun clientReadOnly(): Boolean = throw NotImplementedError("client_read_only")
+
+    override fun clientReadOnlyRefusals(): Long = throw NotImplementedError("client_read_only_refusals")
+
+    override fun noticeForError(error: DspiException): Notice = throw NotImplementedError("notice_for_error")
+
     override fun rtaSetListener(listener: RtaListener?): Unit = throw NotImplementedError("rta_set_listener")
 
     override fun rtaStart(): Unit = throw NotImplementedError("rta_start")

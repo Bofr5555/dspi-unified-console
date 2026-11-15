@@ -387,7 +387,7 @@ final class CoreSnapshots: ObservableObject {
         run({ try $0.snapshotSetDir(dir: path) }) { [weak self] result in
             if case .failure(let e) = result {
                 self?.folderSet.remove(key)
-                self?.post(Self.words(e), .error)
+                self?.postError(e)
             }
         }
     }
@@ -430,8 +430,21 @@ final class CoreSnapshots: ObservableObject {
         }
     }
 
-    /// The user's words for a failure.
-    static func words(_ error: DspiError) -> String {
+    // -- WP ROMODE --
+    /// The core's client read-only mode is on for this view model's device.
+    private var clientReadOnly: Bool { (source as? CoreBackedTransport)?.clientReadOnly ?? false }
+
+    /// -- WP ROMODE -- A failure posted in the user's words, the client
+    /// read-only mode's own row when it refused it.
+    private func postError(_ error: DspiError) {
+        post(Self.words(error, clientReadOnly: clientReadOnly), .error)
+    }
+
+    /// The user's words for a failure.  -- WP ROMODE -- `clientReadOnly`: the
+    /// core's client read-only mode is on, so a `ReadOnly` is its refusal.
+    static func words(_ error: DspiError, clientReadOnly: Bool = false) -> String {
+        // -- WP ROMODE -- the mode's own row ("Read-only mode: ...")
+        if clientReadOnly, case .ReadOnly = error { return DeviceLock.clientReadOnlyMessage }
         // -- WP P1SW2 -- the lock, the limits, a missing token: the core's row
         if CoreInstaller.isNamedRefusal(error) { return CoreInstaller.line(for: error) }
         let raw: String
@@ -496,7 +509,7 @@ final class CoreSnapshots: ObservableObject {
         run({ try $0.snapshotCapture(name: n, note: note) }) { [weak self] result in
             switch result {
             case .success(let s): self?.post("Captured \u{201C}\(s.name)\u{201D}.")
-            case .failure(let e): self?.post(Self.words(e), .error)
+            case .failure(let e): self?.postError(e)
             }
             self?.reload()
         }
@@ -506,7 +519,7 @@ final class CoreSnapshots: ObservableObject {
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !n.isEmpty, n != s.name else { return }
         run({ try $0.snapshotRename(id: s.id, name: n) }) { [weak self] result in
-            if case .failure(let e) = result { self?.post(Self.words(e), .error) }
+            if case .failure(let e) = result { self?.postError(e) }
             self?.reload()
         }
     }
@@ -515,14 +528,14 @@ final class CoreSnapshots: ObservableObject {
         let n = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard n != s.note else { return }
         run({ try $0.snapshotSetNote(id: s.id, note: n) }) { [weak self] result in
-            if case .failure(let e) = result { self?.post(Self.words(e), .error) }
+            if case .failure(let e) = result { self?.postError(e) }
             self?.reload()
         }
     }
 
     func delete(_ s: SnapshotInfo) {
         run({ try $0.snapshotDelete(id: s.id) }) { [weak self] result in
-            if case .failure(let e) = result { self?.post(Self.words(e), .error) }
+            if case .failure(let e) = result { self?.postError(e) }
             self?.reload()
         }
     }
@@ -533,7 +546,7 @@ final class CoreSnapshots: ObservableObject {
             switch result {
             case .success(let text): done(text)
             case .failure(let e):
-                self?.post(Self.words(e), .error)
+                self?.postError(e)
                 done(nil)
             }
         }
@@ -544,7 +557,7 @@ final class CoreSnapshots: ObservableObject {
         run({ try $0.snapshotImport(text: text, name: "", note: "") }) { [weak self] result in
             switch result {
             case .success(let s): self?.post("Added \u{201C}\(s.name)\u{201D}.")
-            case .failure(let e): self?.post(Self.words(e), .error)
+            case .failure(let e): self?.postError(e)
             }
             self?.reload()
         }
@@ -563,7 +576,7 @@ final class CoreSnapshots: ObservableObject {
                 guard let self = self else { return }
                 switch result {
                 case .success(let g): self.setGuard(g, begun: true)
-                case .failure(let e): self.post(Self.words(e), .error)
+                case .failure(let e): self.postError(e)
                 }
                 self.refreshFromCore()
                 self.reloadCompare()
@@ -575,7 +588,7 @@ final class CoreSnapshots: ObservableObject {
             guard let self = self else { return }
             switch result {
             case .success(let r): self.post(Self.recalledLine(r), r.notes.isEmpty ? .info : .warning)
-            case .failure(let e): self.post(Self.words(e), .error)
+            case .failure(let e): self.postError(e)
             }
             self.refreshFromCore()
             self.reloadCompare()
@@ -614,7 +627,7 @@ final class CoreSnapshots: ObservableObject {
             case .success(let c):
                 self.setCompare(c)
                 self.post("Comparing: on A. Press B to switch.")
-            case .failure(let e): self.post(Self.words(e), .error)
+            case .failure(let e): self.postError(e)
             }
             self.refreshFromCore()
         }
@@ -635,7 +648,7 @@ final class CoreSnapshots: ObservableObject {
                 let side = c.side == .b ? "B" : "A"
                 self.post("On \(side)" + (c.recall.map { ": \(Self.changesLine($0.changes.count))." } ?? "."))
             case .failure(let e):
-                self.post(Self.words(e), .error)
+                self.postError(e)
                 self.reloadCompare()
             }
             self.refreshFromCore()
@@ -651,7 +664,7 @@ final class CoreSnapshots: ObservableObject {
             case .success(let c):
                 self.setCompare(c)
                 self.post("Kept \(side == .b ? "B" : "A"). The compare has ended.")
-            case .failure(let e): self.post(Self.words(e), .error)
+            case .failure(let e): self.postError(e)
             }
             self.refreshFromCore()
         }
@@ -676,7 +689,7 @@ final class CoreSnapshots: ObservableObject {
                 self.setGuard(g, begun: true)
                 done(true)
             case .failure(let e):
-                self.post(Self.words(e), .error)
+                self.postError(e)
                 done(false)
             }
             self.refreshFromCore()
@@ -690,7 +703,7 @@ final class CoreSnapshots: ObservableObject {
         run({ try $0.applyConfirm() }) { [weak self] result in
             switch result {
             case .success(let g): self?.setGuard(g)
-            case .failure(let e): self?.post(Self.words(e), .error)
+            case .failure(let e): self?.postError(e)
             }
         }
     }
@@ -700,7 +713,7 @@ final class CoreSnapshots: ObservableObject {
         run({ try $0.applyRevert() }) { [weak self] result in
             switch result {
             case .success(let g): self?.setGuard(g)
-            case .failure(let e): self?.post(Self.words(e), .error)
+            case .failure(let e): self?.postError(e)
             }
         }
     }

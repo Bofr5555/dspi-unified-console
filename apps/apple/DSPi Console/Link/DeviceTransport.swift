@@ -191,6 +191,9 @@ enum DeviceLock {
     // -- WP SWF4 -- The core's wording for `DspiError::ReadOnly`: firmware in
     // another wire format is shown, and nothing is written to it.
     static let readOnlyMessage = ConsoleNotice.row("read_only").sentence
+    // -- WP ROMODE -- The core's wording for a write its client read-only
+    // mode refused (`-ReadOnly YES`): nothing was sent.
+    static let clientReadOnlyMessage = ConsoleNotice.row("read_only.client").sentence
     /// Hubs cap a lock at 60 s (spec 7.7).
     static let maxTimeout: TimeInterval = 60
 
@@ -246,8 +249,10 @@ enum RefusedWrite {
     /// A write the core refused because the connection is read-only (older
     /// or newer firmware): nothing reached the device, so the edit is put
     /// back at once, as for a hub's refusal, and the status row says why.
-    static func handleReadOnly(fanout: NotificationFanout) {
-        DeviceLock.notice.post(DeviceLock.readOnlyMessage)
+    /// -- WP ROMODE -- `client`: the core's client read-only mode refused it
+    /// (its own row), not the firmware's wire format.
+    static func handleReadOnly(fanout: NotificationFanout, client: Bool = false) {
+        DeviceLock.notice.post(client ? DeviceLock.clientReadOnlyMessage : DeviceLock.readOnlyMessage)
         fanout.publish(LinkNotification(packet: resyncPacket, origin: 0, receivedAt: Date()))
     }
 

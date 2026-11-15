@@ -398,6 +398,7 @@ fn open_device(target: &Target, world: &mut dyn World) -> Result<Device, OpenOut
     let transport = world.open(target).map_err(OpenOutcome::Open)?;
     let serial = transport.descriptor().serial.clone();
     let core = DspiCore::new();
+    crate::core_route::apply_read_only(&core); // -- WP ROMODE --
     core.open_transport(transport, serial.clone(), 0)
         .map_err(OpenOutcome::Probe)?;
     let state = core.get_state();
@@ -798,6 +799,7 @@ fn write(req: &Request, image: &Image, drive: &BootloaderDrive, passed: &Passed)
     // (or --force), so its token is minted here, with the drive there and no
     // device open on this core.
     let core = DspiCore::new();
+    crate::core_route::apply_read_only(&core); // -- WP ROMODE --
     let token = core.confirm_token(dspi_core::ConfirmOp::FirmwareFlash);
     let written = core.flash_confirmed(
         image.bytes.clone(),

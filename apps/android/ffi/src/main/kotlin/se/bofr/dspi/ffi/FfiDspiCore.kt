@@ -633,6 +633,14 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun connectionGeneration(): Long = core.connectionGeneration().toLong()
 
+    override fun setClientReadOnly(on: Boolean) = call { core.setClientReadOnly(on) }
+
+    override fun clientReadOnly(): Boolean = core.clientReadOnly()
+
+    override fun clientReadOnlyRefusals(): Long = core.clientReadOnlyRefusals().toLong()
+
+    override fun noticeForError(error: DspiException): Notice = core.noticeForError(error.toFfi()).toDomain()
+
     override fun rtaSetListener(listener: RtaListener?) = core.rtaSetListener(listener?.let { wrapRtaListener(it) })
 
     override fun rtaStart() = core.rtaStart()

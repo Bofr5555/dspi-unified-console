@@ -53,13 +53,14 @@ class AppState: ObservableObject {
     /// CoreMIDI (MIDIRelayPort.swift; how the iOS Simulator gets to one).
     // -- WP SW2 -- The relay or CoreMIDI, or no device under XCTest (TestHostGuard).
     // -- WP SW5 -- The Swift protocol engine: only with `-CoreTransport NO`
-    // or `-MIDIReadOnly YES` (`usesLegacyMIDI`); otherwise `midiCore`.
+    // (`usesLegacyMIDI`); otherwise `midiCore`.
     lazy var midiTransport: LegacyMIDITransport = LegacyMIDITransport(port: TestHostGuard.midiPort())
 
     // -- WP SW5 -- `-LocalTransport midi` through the Rust core: the core's
     // MIDI transport over CoreMIDI (or the relay), MIDI/CoreMidiPipe.swift.
     lazy var midiCore: CoreBackedTransport =
-        CoreBackedTransport(link: .midi(CoreMidiPipe(port: TestHostGuard.midiPort())))
+        CoreBackedTransport(link: .midi(CoreMidiPipe(port: TestHostGuard.midiPort())),
+                            clientReadOnly: CoreBackedTransport.midiReadOnly)   // -- WP ROMODE --
 
     /// True when `-LocalTransport midi` (UserDefaults `LocalTransport`).
     static var usesMIDITransport: Bool {
@@ -93,13 +94,14 @@ class AppState: ObservableObject {
     // -- WP SW-M1 -- With the core: the DSPi's USB MIDI port stays the
     // fallback when the vendor interface cannot be opened, as SWF2 set up.
     // -- WP SW5 -- The fallback is the core's MIDI transport too (a second
-    // core: the vendor path's core is bound to the hub's session 1), unless
-    // `-MIDIReadOnly YES` asks for the Swift engine's read-only filter.
+    // core: the vendor path's core is bound to the hub's session 1).
+    // -- WP ROMODE -- `-MIDIReadOnly YES` is that core's client read-only mode.
     lazy var coreWithMIDIFallback: LocalTransportSet = LocalTransportSet([
         coreTransport,
         AppState.usesLegacyMIDI
             ? LegacyMIDITransport(port: TestHostGuard.midiPort(), autoSelect: false)
-            : CoreBackedTransport(link: .midi(CoreMidiPipe(port: TestHostGuard.midiPort(), autoSelect: false))),
+            : CoreBackedTransport(link: .midi(CoreMidiPipe(port: TestHostGuard.midiPort(), autoSelect: false)),
+                                  clientReadOnly: CoreBackedTransport.midiReadOnly),   // -- WP ROMODE --
     ])
 
     /// The transport the whole UI drives: local USB devices and devices shared
@@ -142,14 +144,15 @@ class AppState: ObservableObject {
     /// CoreMIDI (MIDIRelayPort.swift; how the iOS Simulator gets to one).
     // -- WP SW2 -- The relay or CoreMIDI, or no device under XCTest (TestHostGuard).
     // -- WP SW5 -- The Swift protocol engine: only with `-CoreTransport NO`
-    // or `-MIDIReadOnly YES` (`usesLegacyMIDI`).
+    // (`usesLegacyMIDI`).
     lazy var midiTransport: LegacyMIDITransport = LegacyMIDITransport(port: TestHostGuard.midiPort())
 
     // -- WP SW5 -- The default: the Rust core's MIDI transport over CoreMIDI
     // (or the relay), MIDI/CoreMidiPipe.swift, so every "with the core
     // attached" feature works on iPhone and iPad.
     lazy var midiCore: CoreBackedTransport =
-        CoreBackedTransport(link: .midi(CoreMidiPipe(port: TestHostGuard.midiPort())))
+        CoreBackedTransport(link: .midi(CoreMidiPipe(port: TestHostGuard.midiPort())),
+                            clientReadOnly: CoreBackedTransport.midiReadOnly)   // -- WP ROMODE --
 
     /// -- WP SW5 -- The DSPi-on-USB member: the core's, or the Swift engine's.
     var midiMember: any DeviceTransport { AppState.usesLegacyMIDI ? midiTransport : midiCore }
@@ -211,10 +214,12 @@ class AppState: ObservableObject {
 
     /// -- WP SW5 -- The DSPi's USB MIDI port through the Swift protocol
     /// engine (LegacyMIDITransport) instead of the core: the opt-out
-    /// (`-CoreTransport NO`), or `-MIDIReadOnly YES`, whose filter (only
-    /// the firmware's pure GETs go out) only the Swift engine has.
+    /// (`-CoreTransport NO`) only.  -- WP ROMODE -- `-MIDIReadOnly YES` is
+    /// the core's client read-only mode on `midiCore` now
+    /// (`CoreBackedTransport.midiReadOnly`); the Swift engine still honours
+    /// it under the opt-out.
     static var usesLegacyMIDI: Bool {
-        !usesCoreTransport || UserDefaults.standard.bool(forKey: "MIDIReadOnly")
+        !usesCoreTransport
     }
 
     /// -- WP SW5 -- Back in the foreground: the DSPi on USB MIDI re-checks

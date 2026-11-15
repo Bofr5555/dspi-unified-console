@@ -30,7 +30,13 @@
 //                           pair map (one DAC per ear) and both pairs on
 //    -SelectChannel <c>     select a channel page: in1..in8, out1..out9
 //    -LocalTransport demo   leave the USB MIDI transport out (demo only)
-//    -MIDIReadOnly YES      send only pure reads to a DSPi on USB MIDI
+//    -MIDIReadOnly YES      a DSPi on USB MIDI read-only: the core's client
+//                           read-only mode (WP ROMODE); only pure reads go out
+//    -ReadOnly YES          the core's client read-only mode for every device
+//                           through the core (WP ROMODE): every write refused
+//                           before it is sent; reads and meters go on
+//                           Not a DSPi over DSPi Link: the app's own Link
+//                           client is not the core's until SW6 (WP ROMODEF)
 //    -ForceOrientation landscape|portrait
 //                           rotate the window after launch (screenshots)
 //    -EmulateWidth <points> lay the app out in a window that narrow, as in

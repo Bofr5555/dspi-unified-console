@@ -6101,6 +6101,25 @@ uint32_t dspi_installer_lock_cover(struct FfiCore *core,
                                    uint32_t len);
 
 /**
+ * Turn the client read-only mode on or off for this handle; it stays for
+ * every device the handle opens until turned off. Waits for a call in flight.
+ * False for a null handle, and when turning it on is refused because a
+ * guarded apply waits for Keep or Revert (notice `read_only.guard_pending`;
+ * `dspi_take_failure` has the failure): keep or revert it first.
+ */
+bool dspi_set_client_read_only(struct FfiCore *core, bool on);
+
+/**
+ * Whether the client read-only mode is on; false for a null handle.
+ */
+bool dspi_client_read_only(struct FfiCore *core);
+
+/**
+ * How many writes the client read-only mode has refused on this handle.
+ */
+uint32_t dspi_client_read_only_refusals(struct FfiCore *core);
+
+/**
  * Open the `.dspipreset` document `doc` with no device, as the demo device
  * seeded from it; `file_name` is what the client shows ("File: <name>"; null
  * reads as empty). Replaces any open device; nothing touches USB. JSON

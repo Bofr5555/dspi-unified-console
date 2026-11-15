@@ -81,6 +81,8 @@ pub mod autoeq;
 pub mod power_on;
 // -- WP SW3 --
 pub mod system;
+// -- WP ROMODE -- the client read-only mode
+pub mod read_only;
 // -- WP WB4a --
 pub mod usb;
 pub mod write;

@@ -70,6 +70,10 @@ impl DspiCore {
         check_not_bulk_session(opcode)?;
         check_not_gated(opcode)?; // -- WP P1TZF --
         let mut guard = self.lock();
+        // -- WP ROMODE -- the client read-only mode: the registry's pure reads only
+        if guard.conn.is_some() {
+            crate::read_only::check_raw_get(&mut guard, opcode)?;
+        }
         if is_plain_read(opcode) {
             guard
                 .conn()?
@@ -128,6 +132,10 @@ impl DspiCore {
         // as the core's own analyser calls do (P1-D: viewing is not a write)
         let _analyser = is_analyser(opcode).then(crate::limits::LockScope::allow);
         let mut guard = self.lock();
+        // -- WP ROMODE -- the client read-only mode: no raw write at all
+        if guard.conn.is_some() {
+            crate::read_only::check_raw_set(&mut guard)?;
+        }
         let mut w = guard.writable_conn()?;
         // Raw on the Writable, so a stall stays a refusal.
         let conn = w.conn();

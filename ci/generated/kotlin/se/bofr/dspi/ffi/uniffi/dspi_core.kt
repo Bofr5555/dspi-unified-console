@@ -1750,6 +1750,14 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1928,6 +1936,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_check_core1_conflict(
 fun uniffi_dspi_core_checksum_method_dspicore_clear_alink_usb_diag(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_clear_clips(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_client_read_only(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_client_read_only_refusals(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_close_fd(
 ): Short
@@ -2225,6 +2237,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_monitor_clear(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_monitor_read(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_notice_for_error(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_notify_tap_set(
@@ -2332,6 +2346,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_set_band_bypass(
 fun uniffi_dspi_core_checksum_method_dspicore_set_bypass(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_channel_name(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_set_client_read_only(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_set_crossfeed(
 ): Short
@@ -2730,6 +2746,10 @@ fun uniffi_dspi_core_fn_method_dspicore_clear_alink_usb_diag(`ptr`: Pointer,unif
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_clear_clips(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_client_read_only(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_dspi_core_fn_method_dspicore_client_read_only_refusals(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Int
 fun uniffi_dspi_core_fn_method_dspicore_close_fd(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_config_export(`ptr`: Pointer,`name`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,`links`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -3026,6 +3046,8 @@ fun uniffi_dspi_core_fn_method_dspicore_monitor_clear(`ptr`: Pointer,uniffi_out_
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_monitor_read(`ptr`: Pointer,`afterId`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_notice_for_error(`ptr`: Pointer,`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_notify_tap_drain(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_notify_tap_set(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -3133,6 +3155,8 @@ fun uniffi_dspi_core_fn_method_dspicore_set_band_bypass(`ptr`: Pointer,`ch`: Byt
 fun uniffi_dspi_core_fn_method_dspicore_set_bypass(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_channel_name(`ptr`: Pointer,`ch`: Byte,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_set_client_read_only(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_set_crossfeed(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3867,7 +3891,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_clear_alink_usb_diag() != 55031.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_clear_clips() != 25742.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_clear_clips() != 34858.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_client_read_only() != 3116.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_client_read_only_refusals() != 27004.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_close_fd() != 20694.toShort()) {
@@ -4314,6 +4344,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_monitor_read() != 27200.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_notice_for_error() != 47414.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_notify_tap_drain() != 2545.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4386,7 +4419,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats() != 30180.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 36944.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 19713.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect() != 57433.toShort()) {
@@ -4474,6 +4507,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_channel_name() != 8154.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_set_client_read_only() != 61659.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_set_crossfeed() != 58844.toShort()) {
@@ -6755,10 +6791,24 @@ public interface DspiCoreInterface {
      * "state-changing opcodes only on a `Writable`": it goes out on a plain
      * `Connection`.
      *
+     * -- WP ROMODEF -- Not in the client read-only mode, which writes
+     * nothing, the device's counters included: [`DspiError::ReadOnly`],
+     * nothing sent, the clip hold left as it is.
+     *
      * Errors: [`DspiError::Disconnected`] with no device open; the
      * transport's typed error when the transfer fails.
      */
     fun `clearClips`()
+    
+    /**
+     * Whether the client read-only mode is on.
+     */
+    fun `clientReadOnly`(): kotlin.Boolean
+    
+    /**
+     * How many writes the client read-only mode has refused on this core.
+     */
+    fun `clientReadOnlyRefusals`(): kotlin.UInt
     
     /**
      * Close the device opened by [`DspiCore::open_fd`] (the same as
@@ -8449,6 +8499,13 @@ public interface DspiCoreInterface {
     fun `monitorRead`(`afterId`: kotlin.ULong): MonitorBatch
     
     /**
+     * What to tell the user about `error`, as [`notice_for`] does, but in
+     * this core's context: [`DspiError::ReadOnly`] while the client
+     * read-only mode is on is the `read_only.client` row.
+     */
+    fun `noticeForError`(`error`: DspiException): Notice
+    
+    /**
      * The notifications kept since the last drain, oldest first. The tap
      * keeps the last 512; when older ones were dropped, the oldest returned
      * has `lost` set. Empty while the tap is off. Never fails.
@@ -8777,7 +8834,8 @@ public interface DspiCoreInterface {
      * Start the buffer watermarks again from now
      * (`REQ_RESET_BUFFER_STATS`). Diagnostics housekeeping that changes no
      * setting and nothing in the bulk image, so like `clear_clips` it is
-     * allowed on a read-only connection (PLAN §1.2).
+     * allowed on a read-only connection (PLAN §1.2). -- WP ROMODEF -- Not
+     * in the client read-only mode: [`DspiError::ReadOnly`], nothing sent.
      *
      * Errors: [`DspiError::Refused`] for a status byte other than ACK (1);
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
@@ -9129,6 +9187,21 @@ public interface DspiCoreInterface {
      * connection and transfer errors of every setter.
      */
     fun `setChannelName`(`ch`: kotlin.UByte, `name`: kotlin.String)
+    
+    /**
+     * Turn the client read-only mode on or off (module docs): while on,
+     * every write is refused with [`DspiError::ReadOnly`] before anything is
+     * sent, and reads, notifications, the meters and the analyser go on. It
+     * applies to every device this core opens until turned off. A client-side
+     * diagnostic, not a security boundary. Waits for a call in flight.
+     *
+     * Turning it on is refused while a guarded apply waits for Keep or
+     * Revert (its revert would be refused too, leaving the device on the
+     * trial): [`DspiError::InvalidArgument`] with [`GUARD_PENDING`]'s words,
+     * the `read_only.guard_pending` row ([`DspiCore::notice_for_error`]),
+     * nothing changed. Keep or revert first. Turning it off always works.
+     */
+    fun `setClientReadOnly`(`on`: kotlin.Boolean)
     
     /**
      * Crossfeed on (`true`) or off.
@@ -11039,6 +11112,10 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * "state-changing opcodes only on a `Writable`": it goes out on a plain
      * `Connection`.
      *
+     * -- WP ROMODEF -- Not in the client read-only mode, which writes
+     * nothing, the device's counters included: [`DspiError::ReadOnly`],
+     * nothing sent, the clip hold left as it is.
+     *
      * Errors: [`DspiError::Disconnected`] with no device open; the
      * transport's typed error when the transfer fails.
      */
@@ -11051,6 +11128,36 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Whether the client read-only mode is on.
+     */override fun `clientReadOnly`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_client_read_only(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * How many writes the client read-only mode has refused on this core.
+     */override fun `clientReadOnlyRefusals`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_client_read_only_refusals(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -14282,6 +14389,23 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * What to tell the user about `error`, as [`notice_for`] does, but in
+     * this core's context: [`DspiError::ReadOnly`] while the client
+     * read-only mode is on is the `read_only.client` row.
+     */override fun `noticeForError`(`error`: DspiException): Notice {
+            return FfiConverterTypeNotice.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_notice_for_error(
+        it, FfiConverterTypeDspiError.lower(`error`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The notifications kept since the last drain, oldest first. The tap
      * keeps the last 512; when older ones were dropped, the oldest returned
      * has `lost` set. Empty while the tap is off. Never fails.
@@ -14851,7 +14975,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * Start the buffer watermarks again from now
      * (`REQ_RESET_BUFFER_STATS`). Diagnostics housekeeping that changes no
      * setting and nothing in the bulk image, so like `clear_clips` it is
-     * allowed on a read-only connection (PLAN §1.2).
+     * allowed on a read-only connection (PLAN §1.2). -- WP ROMODEF -- Not
+     * in the client read-only mode: [`DspiError::ReadOnly`], nothing sent.
      *
      * Errors: [`DspiError::Refused`] for a status byte other than ACK (1);
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
@@ -15496,6 +15621,31 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_channel_name(
         it, FfiConverterUByte.lower(`ch`),FfiConverterString.lower(`name`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Turn the client read-only mode on or off (module docs): while on,
+     * every write is refused with [`DspiError::ReadOnly`] before anything is
+     * sent, and reads, notifications, the meters and the analyser go on. It
+     * applies to every device this core opens until turned off. A client-side
+     * diagnostic, not a security boundary. Waits for a call in flight.
+     *
+     * Turning it on is refused while a guarded apply waits for Keep or
+     * Revert (its revert would be refused too, leaving the device on the
+     * trial): [`DspiError::InvalidArgument`] with [`GUARD_PENDING`]'s words,
+     * the `read_only.guard_pending` row ([`DspiCore::notice_for_error`]),
+     * nothing changed. Keep or revert first. Turning it off always works.
+     */
+    @Throws(DspiException::class)override fun `setClientReadOnly`(`on`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_set_client_read_only(
+        it, FfiConverterBoolean.lower(`on`),_status)
 }
     }
     

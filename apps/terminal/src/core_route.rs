@@ -58,6 +58,33 @@ const NOTE_POLL: Duration = Duration::from_millis(20);
 /// How long a hub's device list may take to arrive after pairing.
 const DEVICES_WAIT: Duration = Duration::from_secs(5);
 
+// -- WP ROMODE --
+/// `--read-only`: every core this run makes is in the client read-only mode
+/// (`DspiCore::set_client_read_only`), so no write reaches a device, by any
+/// route (`set`, scripts, `raw`, `ext`, imports, the interface, a flash).
+/// A diagnostic for watching a unit that must not change, not a security
+/// boundary.
+pub(crate) static CLIENT_READ_ONLY: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// The `read_only.client` row for `e`, when it is a refusal of this run's
+/// `--read-only`.
+pub(crate) fn client_read_only_notice(e: &DspiError) -> Option<dspi_core::Notice> {
+    (matches!(e, DspiError::ReadOnly)
+        && CLIENT_READ_ONLY.load(std::sync::atomic::Ordering::Relaxed))
+    .then(|| dspi_core::notice_for_key(dspi_core::NOTICE_READ_ONLY_CLIENT.into(), String::new()))
+}
+
+/// Put `core` in the client read-only mode when this run asked for it.
+pub(crate) fn apply_read_only(core: &DspiCore) {
+    if CLIENT_READ_ONLY.load(std::sync::atomic::Ordering::Relaxed) {
+        // A fresh core: no guarded apply can be waiting, so this cannot be refused.
+        if let Err(e) = core.set_client_read_only(true) {
+            log::warn!("--read-only: {e}");
+        }
+    }
+}
+
 // ─── The core ───────────────────────────────────────────────────────────
 
 /// A core with a device open, shared by the session's transport and route.
@@ -1129,6 +1156,10 @@ fn outcome(path: &str, sent: &Value, back: Value) -> Outcome {
 /// banner row, the same line in every client; any other is the core's own
 /// words.
 fn refusal_words(e: &DspiError) -> String {
+    // -- WP ROMODE --
+    if let Some(n) = client_read_only_notice(e) {
+        return n.reason;
+    }
     match e {
         // `hub`: the hub holds the lock and refused it (same banner)
         DspiError::InstallerLock { code, .. } if code == "locked" || code == "hub" => {

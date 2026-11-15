@@ -529,13 +529,18 @@ impl DspiCore {
     /// Start the buffer watermarks again from now
     /// (`REQ_RESET_BUFFER_STATS`). Diagnostics housekeeping that changes no
     /// setting and nothing in the bulk image, so like `clear_clips` it is
-    /// allowed on a read-only connection (PLAN §1.2).
+    /// allowed on a read-only connection (PLAN §1.2). -- WP ROMODEF -- Not
+    /// in the client read-only mode: [`DspiError::ReadOnly`], nothing sent.
     ///
     /// Errors: [`DspiError::Refused`] for a status byte other than ACK (1);
     /// [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
     pub fn reset_buffer_stats(&self) -> Result<()> {
-        let reply = self
-            .lock()
+        let mut guard = self.lock();
+        // -- WP ROMODEF -- (review romode F3) not in the client read-only mode
+        if guard.conn.is_some() {
+            crate::read_only::check(&mut guard)?;
+        }
+        let reply = guard
             .conn()?
             .get(op::REQ_RESET_BUFFER_STATS, RESET_WATERMARKS, 1)?;
         acked(&reply)

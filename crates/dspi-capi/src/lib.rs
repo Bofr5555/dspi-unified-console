@@ -89,9 +89,14 @@ pub(crate) fn with_core<T>(p: *const FfiCore, fail: T, f: impl FnOnce(&FfiCore) 
     if p.is_null() {
         return fail;
     }
-    // SAFETY: a non-null handle comes from `dspi_core_new` and stays valid
-    // until `dspi_core_free`; that is the C caller's contract.
-    guard(fail, || f(unsafe { &*p }))
+    guard(fail, || {
+        // SAFETY: a non-null handle comes from `dspi_core_new` and stays valid
+        // until `dspi_core_free`; that is the C caller's contract.
+        let h = unsafe { &*p };
+        // -- WP ROMODEF -- the core of this call, for its failure's notice key
+        let _in_call = fns_device::InCall::enter(&h.core);
+        f(h)
+    })
 }
 
 #[cfg(test)]
@@ -170,6 +175,8 @@ mod tests {
             "src/fns_misc/guarded.rs",
             // -- WP HUBADMIN --
             "src/fns_misc/hub_admin.rs",
+            // -- WP ROMODE --
+            "src/fns_misc/read_only.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

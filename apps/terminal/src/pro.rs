@@ -91,6 +91,7 @@ pub(crate) struct Opened {
 /// opened, as `docs/integrator/installer-lock.md` asks.
 pub(crate) fn prepare(stores: &Stores) -> Result<Arc<DspiCore>, u8> {
     let core = DspiCore::new();
+    crate::core_route::apply_read_only(&core); // -- WP ROMODE --
     // -- P1TK -- every gated call this console makes carries a token; the core
     // requires them from the start (P1TZ), so there is nothing to turn on.
     let name = |dir: &Option<PathBuf>| dir.as_ref().map(|d| d.to_string_lossy().into_owned());
@@ -146,6 +147,12 @@ pub(crate) fn fail(e: &DspiError) -> u8 {
         );
         return error_exit(e);
     }
+    // -- WP ROMODE -- a refusal of `--read-only`: the mode's row
+    if let Some(n) = crate::core_route::client_read_only_notice(e) {
+        eprintln!("{COMMAND}: {}", n.reason);
+        eprintln!("      {}", n.action);
+        return error_exit(e);
+    }
     eprintln!("{COMMAND}: {e}");
     let notice = dspi_core::notice_for(e.clone());
     if explained(&notice.key) && !notice.action.is_empty() {
@@ -159,7 +166,8 @@ pub(crate) fn fail(e: &DspiError) -> u8 {
 /// on standard output.
 pub(crate) fn fail_json(e: &DspiError, json: bool) -> u8 {
     if json {
-        let n = dspi_core::notice_for(e.clone());
+        let n = crate::core_route::client_read_only_notice(e) // -- WP ROMODE --
+            .unwrap_or_else(|| dspi_core::notice_for(e.clone()));
         println!(
             "{}",
             json!({ "ok": false, "error": e.to_string(), "noticeKey": n.key })
