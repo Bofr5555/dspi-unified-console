@@ -434,6 +434,16 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "abDiff" => crate::ab::diff(&core),
         "abKeep" => crate::ab::keep(&core, params(req.params)?),
         "abState" => Ok(crate::ab::state(&core)),
+        // -- WP P5SES -- the measurement session (src/measure.rs)
+        "measurePreflight" => crate::measure::preflight(&core, params(req.params)?),
+        "measureStart" => crate::measure::start(&core, params(req.params)?),
+        "measureCapturePush" => crate::measure::push(&core, params(req.params)?),
+        "measureTick" => Ok(crate::measure::tick(&core)),
+        "measureNextPosition" => crate::measure::next_position(&core),
+        "measureStop" => Ok(crate::measure::stop(&core)),
+        "measureState" => Ok(crate::measure::state(&core)),
+        "measureResult" => crate::measure::result(&core),
+        "measureClear" => crate::measure::clear(&core),
         // -- WP P1LM -- limits profiles as documents (no files on the web)
         "limitsApply" => limits::apply(&core, params(req.params)?),
         "limitsProfile" => Ok(limits::profile(&core)),

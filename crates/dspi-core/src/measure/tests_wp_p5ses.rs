@@ -1039,6 +1039,12 @@ fn wp_p5ses_every_issue_key_has_a_notice_row() {
     keys.sort();
     keys.dedup();
     assert!(keys.len() > 40, "{keys:?}");
+    for k in &keys {
+        assert!(
+            NOTICE_KEYS.contains(&k.as_str()),
+            "{k} is not in NOTICE_KEYS"
+        );
+    }
     for k in keys
         .iter()
         .chain(&["read_only".to_owned(), "read_only.client".to_owned()])

@@ -443,7 +443,7 @@ pub(crate) fn judge(
         // Nothing more: pink noise ramps itself the same way (S3).
     }
     MeasurePreflight {
-        ok: blockers.is_empty(),
+        clear: blockers.is_empty(),
         blockers,
         warnings,
     }
@@ -453,7 +453,7 @@ pub(crate) fn judge(
 /// existing codes where one fits (read-only, a Viewer), else the blockers'
 /// words.
 pub(crate) fn refusal(pre: &MeasurePreflight) -> Option<DspiError> {
-    if pre.ok {
+    if pre.clear {
         return None;
     }
     let has = |k: &str| pre.blockers.iter().any(|b| b.key == k);

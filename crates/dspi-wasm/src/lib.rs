@@ -104,6 +104,8 @@ pub mod pins;
 pub mod surfaces;
 // -- WP CLIP1 -- the channel clipboard
 pub mod clipboard;
+// -- WP P5SES -- the measurement session
+pub mod measure;
 // -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
 pub mod settings;
 // -- WP WB4a --

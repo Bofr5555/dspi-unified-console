@@ -63,6 +63,59 @@ pub(crate) use plan::Plan;
 pub(crate) use preflight::PreflightOptions;
 use session::Session;
 
+/// Every notice key the session answers with (its rows in
+/// `assets/notices/notices.json`, family `measure`).
+#[cfg(test)]
+pub(crate) const NOTICE_KEYS: &[&str] = &[
+    "measure.no_generator",
+    "measure.viewer",
+    "measure.page_locked",
+    "measure.guard_pending",
+    "measure.ab_pending",
+    "measure.volume_high",
+    "measure.master_volume",
+    "measure.input_audio",
+    "measure.device_rate",
+    "measure.too_long",
+    "measure.no_output",
+    "measure.output_off",
+    "measure.output_muted",
+    "measure.tweeter_highpass",
+    "measure.crossfeed",
+    "measure.bass",
+    "measure.tube",
+    "measure.subharmonic",
+    "measure.loudness",
+    "measure.limiter",
+    "measure.chain_changed",
+    "measure.input_eq",
+    "measure.coupler",
+    "measure.uncalibrated",
+    "measure.muted",
+    "measure.mic_not_following",
+    "measure.mic_not_hearing",
+    "measure.stopped",
+    "measure.no_signal",
+    "measure.abort.volume",
+    "measure.abort.foreign",
+    "measure.abort.preset",
+    "measure.abort.input_format",
+    "measure.abort.input_stream",
+    "measure.abort.clip",
+    "measure.abort.generator",
+    "measure.abort.capture_rate",
+    "measure.abort.frame_gap",
+    "measure.abort.capture_clip",
+    "measure.abort.spl",
+    "measure.abort.lock",
+    "measure.abort.overrun",
+    "measure.abort.disconnected",
+    "measure.abort.cycle_identity",
+    "measure.abort.programme",
+    "measure.abort.output_peak",
+    "measure.abort.limiter",
+];
+
 // ── Records ─────────────────────────────────────────────────────────────
 
 /// What a run plays (PLAN-P5 section 1.1, review RC11).
@@ -240,7 +293,7 @@ impl MeasureIssue {
 #[serde(rename_all = "camelCase")]
 pub struct MeasurePreflight {
     /// Nothing blocks: `measure_start` may play.
-    pub ok: bool,
+    pub clear: bool,
     /// Every blocker, in words; nothing is played until they are clear.
     pub blockers: Vec<MeasureIssue>,
     /// What does not block but the user should know.
@@ -744,6 +797,10 @@ impl DspiCore {
             return Err(e);
         }
         let ctx = self.measure_context(&plan)?;
+        // What the device already said (the echo of the user's own last
+        // write, a volume lowered for this measurement) is applied before the
+        // tap judges anything: only what happens from here on is foreign.
+        self.settle_notifications();
         // The lock before anything plays (a dead-man lease).
         let lock = self.take_device_lock(session::LOCK_REASON, session::LEASE, true)?;
         self.hold_device_lock(lock, session::LEASE, crate::presets::Holder::Measure);

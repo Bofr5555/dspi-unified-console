@@ -196,7 +196,7 @@ fn wp_p5ses_device_the_ready_demo_passes_preflight() {
         .core
         .measure_preflight(walked(&[(0, MeasureRole::Full), (1, MeasureRole::Full)]))
         .unwrap();
-    assert!(p.ok, "{p:#?} {:#?}", keys(&p));
+    assert!(p.clear, "{p:#?} {:#?}", keys(&p));
     assert!(
         r.log.lock().unwrap().is_empty(),
         "the preflight writes nothing"
