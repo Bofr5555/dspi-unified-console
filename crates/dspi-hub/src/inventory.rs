@@ -1036,6 +1036,15 @@ impl InventoryService {
         for m in firmware {
             self.bus.publish(m);
         }
+        // -- WP P3GP -- a record dropped past the cap (`make_room`) is forgotten as
+        // `inventory.forget` forgets one: the groups (P3GR) and Home Assistant hear it.
+        for c in &changes {
+            if let Change::Removed(serial) = c {
+                self.bus.publish(BusMessage::DeviceForgotten {
+                    serial: serial.clone(),
+                });
+            }
+        }
     }
 
     /// The `inventory.changed` texts and the firmware records for `changes`.

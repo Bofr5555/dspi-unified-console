@@ -397,6 +397,74 @@ fn wp_p3gr_a_forgotten_device_leaves_its_groups_and_group_changed_says_so() {
     r.hub.stop();
 }
 
+// -- WP P3GP -- the P3-A review: a record the inventory drops past its cap is forgotten.
+#[test]
+fn wp_p3gp_a_device_dropped_past_the_inventory_cap_leaves_its_groups() {
+    let dir = scratch("cap");
+    let store = dir.join("store");
+    std::fs::create_dir_all(&store).unwrap();
+    // A full inventory (1024 records, all offline); OLD-0000 was seen longest ago.
+    let cap = 1024;
+    let mut lines: Vec<String> = Vec::new();
+    for i in 0..cap {
+        lines.push(
+            json!({"serial": format!("P3GP-OLD-{i:04}"), "first_seen_s": 1000 + i,
+                "last_seen_s": 1000 + i})
+            .to_string(),
+        );
+    }
+    std::fs::write(
+        store.join("inventory.json"),
+        format!("{{\"v\":1,\"devices\":[\n{}\n]}}\n", lines.join(",\n")),
+    )
+    .unwrap();
+    std::fs::write(
+        store.join("groups.json"),
+        "{\"v\":1,\"next_id\":3,\"groups\":[\n\
+         {\"id\":\"g1\",\"name\":\"Hall\",\"members\":[\"P3GP-OLD-0000\",\"P3GP-OLD-0005\"]},\n\
+         {\"id\":\"g2\",\"name\":\"Bar\",\"members\":[\"P3GP-OLD-0005\"]}\n]}\n",
+    )
+    .unwrap();
+    let r = rig_in(&dir);
+    let mut viewer = r.client("Watcher", Role::Viewer);
+    let before = viewer.ask(json!({"t": "group.list", "group": "g1"}));
+    assert_eq!(
+        before["groups"][0]["members"],
+        json!(["P3GP-OLD-0000", "P3GP-OLD-0005"]),
+        "{before}"
+    );
+
+    // A new device: the inventory makes room by dropping OLD-0000.
+    r.plug("P3GP-NEW");
+    let start = Instant::now();
+    let changed = loop {
+        assert!(
+            start.elapsed() < WAIT,
+            "no group.changed for the dropped device"
+        );
+        r.advance(Duration::from_secs(2));
+        let list = viewer.ask(json!({"t": "group.list", "group": "g1"}));
+        if list["groups"][0]["members"] == json!(["P3GP-OLD-0005"]) {
+            break viewer.next("group.changed", |v| v["group"]["id"] == "g1");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(changed["change"], "forgot", "{changed}");
+    assert_eq!(changed["group"]["members"], json!(["P3GP-OLD-0005"]));
+    let gone = viewer.ask(json!({"t": "inventory.list", "serial": "P3GP-OLD-0000"}));
+    assert_eq!(code(&gone), "not_found", "{gone}");
+    // The group it was not in is untouched.
+    let bar = viewer.ask(json!({"t": "group.list", "group": "g2"}));
+    assert_eq!(bar["groups"][0]["members"], json!(["P3GP-OLD-0005"]));
+    assert!(
+        !viewer
+            .seen
+            .iter()
+            .any(|v| v["t"] == "group.changed" && v["group"]["id"] == "g2")
+    );
+    r.hub.stop();
+}
+
 #[test]
 fn wp_p3gr_groups_survive_a_restart_and_a_torn_file_reads_what_it_can() {
     let dir = scratch("file");

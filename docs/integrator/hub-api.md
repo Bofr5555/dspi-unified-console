@@ -1320,9 +1320,9 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `group.set` | request | admin | `groups` | 19.2 (built: P3GR) |
 | `group.delete` | request | admin | `groups` | 19.2 (built: P3GR) |
 | `group.changed` | event | | `groups` | 19.2 (built: P3GR) |
-| `group.param.get` | request | viewer | `group_params` | 20.2 (draft: P3GP) |
-| `group.param.set` | request | control | `group_params` | 20.2 (draft: P3GP) |
-| `group.preset.load` | request | control | `group_params` | 20.2 (draft: P3GP) |
+| `group.param.get` | request | viewer | `group_params` | 20.2 (built: P3GP) |
+| `group.param.set` | request | control | `group_params` | 20.2 (built: P3GP) |
+| `group.preset.load` | request | control | `group_params` | 20.2 (built: P3GP) |
 | `group.apply` | request | control | `group_apply` | 20.3 (draft: P3BA) |
 | `group.apply.confirm` | request | control | `group_apply` | 20.3 (draft: P3BA) |
 | `group.apply.cancel` | request | control | `group_apply` | 20.3 (draft: P3BA) |
@@ -1480,6 +1480,9 @@ group), `busy` (this session's other group request still running). What a row an
 
 ### 20.2 Linked parameters (P3GP)
 
+*State: built (P3GP, `crates/dspi-hub/src/api/group.rs`, cap `group_params`; feature `api`, on wherever the
+parameter API is; `group` needs the groups of section 19, `targets` do not).*
+
 One-shot fan-outs: the hub writes each member once, now, and keeps no link between them (OD-P3c); a later change on one
 member is not copied to the others.
 
@@ -1487,7 +1490,7 @@ member is not copied to the others.
 |---|---|---|---|
 | `group.param.get` | viewer | `group` or `targets`, `path`, `idx?` | `path`, `idx`, `results`: rows with `value` (and `choice` or `value_b64`, as `param.get`) |
 | `group.param.set` | control | `group` or `targets`, `path`, `idx?`, `value`, `offsets?`: `{"<serial>": <dB>}` | `path`, `idx`, `results`: rows with `value` (what this device was sent and read back, as `param.set`) and `clamped: true` where the offset was clamped |
-| `group.preset.load` | control | `group` or `targets`, `slot` or `name`, `map?`: `{"<serial>": <slot or name>}` | `results`: rows with `slot` (the slot loaded) |
+| `group.preset.load` | control | `group` or `targets`, `slot` or `name`, `map?`: `{"<serial>": <slot or name>}` | `results`: rows with `slot` (the slot loaded) and `name` (its name, as `preset.load`) |
 
 - Each member is `param.set` or `preset.load` of sections 9 and 10, as the caller's child session: the same paths (only
   those written by the API), the same values (section 1.4) and the same guards. A gated path (`"confirm": true` in
@@ -1499,6 +1502,12 @@ member is not copied to the others.
   `bad_request`.
 - `map` gives a member its own slot (0 to 9) or preset name; the others get `slot` or `name`. A name is matched among
   that device's presets, as `preset.load` matches it.
+- "In dB" is the registry's unit dB (gains, trims, volumes); a level in dBFS (a limiter threshold) takes no offset.
+  A device's own range is the registry's narrowed by its platform (an RP2040's input trim stops at +18 dB). A row's
+  `value` for a dB path is the sum after the clamp, as the device read it back.
+- A member the hub knows but has not attached is `offline` at once: a group's members are inventory serials; a
+  `targets` serial is `offline` when the inventory holds it and `not_found` otherwise. Rows come in member order
+  (`targets` order), one after another; an empty group answers `results: []`.
 
 ```json
 {"t": "group.param.set", "id": 22, "group": "g1", "path": "vol.master", "value": -20.0,
