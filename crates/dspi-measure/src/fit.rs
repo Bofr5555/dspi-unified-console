@@ -39,9 +39,9 @@
 //! Identical input gives identical quantised bands on one target (RC10): no
 //! hash-map order, no time, no randomness, a fixed evaluation cap.
 
+use crate::response::{SmoothingDomain, smooth_magnitudes};
 use crate::types::{
-    BandSpec, ChannelChain, Coeffs, GRID_MAX_HZ, GRID_MIN_HZ, LogGrid, MeasureError, Response,
-    SectionModel,
+    BandSpec, ChannelChain, Coeffs, GRID_MAX_HZ, GRID_MIN_HZ, MeasureError, Response, SectionModel,
 };
 use serde::{Deserialize, Serialize};
 
@@ -199,7 +199,9 @@ pub struct FittedBand {
 #[serde(rename_all = "camelCase")]
 pub struct FitResult {
     /// The bands to write, ascending by index; empty when the fit changes
-    /// nothing.
+    /// nothing. A released band that was in use and is not needed is in the
+    /// list as a flat band (type 0): it must be written too, the prediction
+    /// has it taken out.
     pub bands: Vec<FittedBand>,
     /// The measured response with the proposal applied: the replaced bands
     /// taken out, the fitted ones and the headroom cut put in (phase too when
@@ -315,7 +317,7 @@ enum Kind {
 
 /// A point's sines and cosines at the model's rate (the biquad response).
 #[derive(Debug, Clone, Copy)]
-struct Trig {
+pub(crate) struct Trig {
     c1: f64,
     s1: f64,
     c2: f64,
@@ -323,7 +325,7 @@ struct Trig {
 }
 
 impl Trig {
-    fn at(freq: f64, fs: f64) -> Self {
+    pub(crate) fn at(freq: f64, fs: f64) -> Self {
         let w = std::f64::consts::TAU * freq / fs;
         Trig {
             c1: w.cos(),
@@ -362,7 +364,7 @@ impl Trig {
 
 /// The dB response of a cascade at the given points into `out`; false if any
 /// value is not finite.
-fn cascade_db(sections: &[Coeffs], pts: &[Trig], out: &mut Vec<f64>) -> bool {
+pub(crate) fn cascade_db(sections: &[Coeffs], pts: &[Trig], out: &mut Vec<f64>) -> bool {
     out.clear();
     for t in pts {
         let p: f64 = sections.iter().map(|s| t.power(s)).product();
@@ -396,6 +398,9 @@ struct Setup<'a> {
     offset: f64,
     bounds: Bounds,
     allowed: Vec<u8>,
+    /// The allowed bands that are in use now: their response is taken out
+    /// of the prediction, so the proposal must overwrite or clear each.
+    replaced_idx: Vec<u8>,
     budget: usize,
     notes: Vec<String>,
 }
@@ -495,6 +500,7 @@ impl<'a> Setup<'a> {
         allowed.dedup();
         let mut notes = Vec::new();
         let mut replaced: Vec<BandSpec> = Vec::new();
+        let mut replaced_idx: Vec<u8> = Vec::new();
         for &i in &allowed {
             let Some(b) = chain.peq.get(usize::from(i)) else {
                 return Err(invalid(format!(
@@ -517,6 +523,7 @@ impl<'a> Setup<'a> {
                 band_no(i)
             ));
             replaced.push(*b);
+            replaced_idx.push(i);
         }
         if allowed.is_empty() {
             notes.push("no free PEQ band".to_string());
@@ -539,7 +546,20 @@ impl<'a> Setup<'a> {
                 .as_ref()
                 .is_none_or(|v| v.get(i).copied().unwrap_or(false))
         };
-        let meas = smooth(&measured.mag_db, measured.grid, opts.smoothing, &valid_at);
+        // The measurement smoothed as energy (review P5-A: the crate's one
+        // smoothing, `response::smooth_magnitudes`, in the power domain). A
+        // fit must not see a deep narrow null as a dip to fill, and a dB mean
+        // would deepen it; the graph's dB smoothing is `response::smooth`.
+        let meas = match opts.smoothing {
+            Some(n) => smooth_magnitudes(
+                &measured.mag_db,
+                measured.valid.as_deref(),
+                measured.grid.points_per_octave,
+                f64::from(n),
+                SmoothingDomain::Power,
+            ),
+            None => measured.mag_db.clone(),
+        };
         let in_range = |f: f64| f >= opts.min_hz && f <= opts.max_hz && f < fs * 0.5;
         let mut diffs: Vec<f64> = Vec::new();
         let mut d_raw: Vec<Option<f64>> = Vec::with_capacity(n);
@@ -631,6 +651,7 @@ impl<'a> Setup<'a> {
             offset,
             bounds,
             allowed,
+            replaced_idx,
             budget,
             notes,
         })
@@ -792,12 +813,38 @@ impl<'a> Setup<'a> {
             0.0
         };
 
-        let out_bands: Vec<FittedBand> = self
-            .allowed
+        // -- review P5-A (F1) -- The prediction has every replaced band
+        // taken out, so the proposal must do the same on the device: the
+        // fitted bands go to the bands in use first, and a band in use that
+        // gets none is written flat. (Before, a fitted band could land on a
+        // free index while the band in use stayed, and the device then held
+        // both: not what was predicted.)
+        let mut order: Vec<u8> = self.replaced_idx.clone();
+        order.extend(
+            self.allowed
+                .iter()
+                .copied()
+                .filter(|i| !self.replaced_idx.contains(i)),
+        );
+        let mut out_bands: Vec<FittedBand> = order
             .iter()
             .zip(specs.iter())
             .map(|(&index, &band)| FittedBand { index, band })
             .collect();
+        for &index in self.replaced_idx.iter().skip(specs.len()) {
+            out_bands.push(FittedBand {
+                index,
+                band: BandSpec {
+                    filter_type: TYPE_FLAT,
+                    bypass: false,
+                    freq: 1000.0,
+                    q: 1.0,
+                    gain: 0.0,
+                    qp: 0.0,
+                },
+            });
+        }
+        out_bands.sort_by_key(|b| b.index);
         for b in &out_bands {
             notes.push(describe(b));
         }
@@ -1372,34 +1419,6 @@ impl<'w> State<'w> {
     }
 }
 
-/// Fractional-octave smoothing on a log grid: the power mean of the trusted
-/// points within ±1/(2N) octave. Untrusted points are kept as given.
-fn smooth(mag: &[f64], grid: LogGrid, n: Option<u16>, valid: &dyn Fn(usize) -> bool) -> Vec<f64> {
-    let Some(n) = n else {
-        return mag.to_vec();
-    };
-    let half = (f64::from(grid.points_per_octave) / (2.0 * f64::from(n.max(1)))).floor() as usize;
-    if half == 0 {
-        return mag.to_vec();
-    }
-    let pow: Vec<f64> = mag.iter().map(|m| 10f64.powf(m / 10.0)).collect();
-    let last = mag.len().saturating_sub(1);
-    mag.iter()
-        .enumerate()
-        .map(|(i, &m)| {
-            if !valid(i) {
-                return m;
-            }
-            let (s, c) = (i.saturating_sub(half)..=i.saturating_add(half).min(last))
-                .filter(|&j| valid(j))
-                .filter_map(|j| pow.get(j).copied())
-                .fold((0.0, 0usize), |(s, c), p| (s + p, c.saturating_add(1)));
-            let v = 10.0 * (s / c.max(1) as f64).log10();
-            if v.is_finite() { v } else { m }
-        })
-        .collect()
-}
-
 /// The target at `f`, linear in log frequency; `None` outside it or next to
 /// an untrusted target point.
 fn interp(target: &Response, tf: &[f64], f: f64) -> Option<f64> {
@@ -1495,14 +1514,22 @@ fn round_to(v: f64, scale: f64) -> f64 {
     (v * scale).round() / scale
 }
 
-/// `v` held inside `[lo, hi]` on the `1 / scale` grid.
+/// `v` held inside `[lo, hi]` on the `1 / scale` grid. The bounds win over
+/// the grid (review P5-A, F4): a range narrower than one grid step holds no
+/// grid value, and the nearest one lies outside it, so the value is then held
+/// to the range off the grid.
 fn inside(v: f64, lo: f64, hi: f64, scale: f64) -> f64 {
-    if v < lo {
+    let on_grid = if v < lo {
         (lo * scale).ceil() / scale
     } else if v > hi {
         (hi * scale).floor() / scale
     } else {
-        v
+        return v;
+    };
+    if on_grid >= lo && on_grid <= hi {
+        on_grid
+    } else {
+        v.clamp(lo, hi)
     }
 }
 
@@ -1523,6 +1550,9 @@ fn hz(f: f64) -> String {
 
 /// A band in words, as the proposal lists it.
 fn describe(b: &FittedBand) -> String {
+    if b.band.filter_type == TYPE_FLAT {
+        return format!("PEQ band {}: cleared (it was in use)", band_no(b.index));
+    }
     let what = match b.band.filter_type {
         TYPE_LOW_SHELF => "low shelf",
         TYPE_HIGH_SHELF => "high shelf",

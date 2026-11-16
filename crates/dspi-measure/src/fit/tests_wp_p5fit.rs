@@ -242,10 +242,15 @@ fn wp_p5fit_three_mode_proposal_golden() {
 }
 
 /// (index, type, Hz, Q, dB): the three modes cut, nothing else.
+///
+/// Re-blessed at the wave P5-A review: the fit now smooths with the crate's
+/// one kernel (`response::smooth_magnitudes`, power domain: the window's end
+/// points count half, where the fit's own helper counted them whole), which
+/// moved each Q by 0.02; frequencies and gains are unchanged.
 const GOLDEN_THREE_MODES: &[(u8, u8, f32, f32, f32)] = &[
-    (0, 1, 45.0, 3.57, -9.0),
-    (1, 1, 90.0, 3.53, -6.0),
-    (2, 1, 170.1, 4.61, -7.0),
+    (0, 1, 45.0, 3.55, -9.0),
+    (1, 1, 90.0, 3.51, -6.0),
+    (2, 1, 170.1, 4.63, -7.0),
 ];
 
 #[test]

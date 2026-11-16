@@ -228,6 +228,91 @@ pub fn from_power_spectrum(
     })
 }
 
+/// The longest reference delay [`from_grid_values`] accepts, seconds.
+pub const MAX_REFERENCE_DELAY_S: f64 = 10.0;
+
+// -- review P5-A -- the seam between P5TIME's windowed responses (complex
+// values at the grid's own frequencies) and a `Response`.
+/// Complex values given **at the grid's own points** (`values[i]` is
+/// `[re, im]` at `grid.freqs()[i]`: P5TIME's fixed-gate and
+/// frequency-dependent-window responses) as a [`Response`] with unwrapped
+/// phase.
+///
+/// A log grid is coarse at high frequencies (145 Hz between points at
+/// 20 kHz on the standard grid), so a delay of a few milliseconds turns the
+/// phase by more than half a turn from one point to the next and cannot be
+/// unwrapped from the points alone. `reference_delay_s` is the delay the
+/// values are known to carry (the output's arrival after the run's timing
+/// origin): it is taken out before unwrapping and put back as a straight
+/// line, so the phase is right for any arrival. What is left to unwrap is the
+/// response's own phase about its arrival.
+///
+/// A zero value reads [`FLOOR_DB`] and is marked untrusted; every other
+/// point is trusted (the SNR and the spread are [`trust_mask`]'s).
+///
+/// Errors: [`MeasureError::Invalid`] for a bad grid, a number of values other
+/// than the grid's points, a non-finite value, or a reference delay that is
+/// not finite or beyond [`MAX_REFERENCE_DELAY_S`].
+pub fn from_grid_values(
+    values: &[[f64; 2]],
+    grid: &LogGrid,
+    reference_delay_s: f64,
+) -> Result<Response, MeasureError> {
+    use std::f64::consts::{PI, TAU};
+    let freqs = grid.freqs()?;
+    if values.len() != freqs.len() {
+        return Err(invalid(format!(
+            "{} values for a grid of {} points",
+            values.len(),
+            freqs.len()
+        )));
+    }
+    if !values.iter().flatten().all(|v| v.is_finite()) {
+        return Err(invalid("non-finite response value"));
+    }
+    if !reference_delay_s.is_finite() || reference_delay_s.abs() > MAX_REFERENCE_DELAY_S {
+        return Err(invalid(format!("reference delay {reference_delay_s} s")));
+    }
+    let mut mag = Vec::with_capacity(freqs.len());
+    let mut phase = Vec::with_capacity(freqs.len());
+    let mut valid = Vec::with_capacity(freqs.len());
+    let mut prev: Option<f64> = None;
+    let mut offset = 0.0f64;
+    for ([re, im], f) in values.iter().zip(&freqs) {
+        let p = re * re + im * im;
+        mag.push(power_db(p));
+        let present = p > 0.0;
+        valid.push(present);
+        // The phase about the arrival, wrapped, then unwrapped along the grid;
+        // a zero value keeps the previous point's phase.
+        let line = TAU * f * reference_delay_s;
+        let residual = if present {
+            let w = (im.atan2(*re) + line + PI).rem_euclid(TAU) - PI;
+            if let Some(q) = prev {
+                let d = w - q;
+                if d > PI {
+                    offset -= TAU;
+                } else if d < -PI {
+                    offset += TAU;
+                }
+            }
+            prev = Some(w);
+            w + offset
+        } else {
+            prev.map_or(0.0, |q| q + offset)
+        };
+        let deg = (residual - line).to_degrees();
+        phase.push(if deg.is_finite() { deg } else { 0.0 });
+    }
+    Ok(Response {
+        grid: *grid,
+        mag_db: mag,
+        phase_deg: Some(phase),
+        valid: Some(valid),
+        spl: false,
+    })
+}
+
 fn check_bins(len: usize, bin_hz: f64) -> Result<(), MeasureError> {
     if !(2..=MAX_SPECTRUM_BINS).contains(&len) {
         return Err(invalid(format!(
@@ -404,36 +489,66 @@ fn window_weights(h: f64) -> Vec<f64> {
     w
 }
 
-/// Fractional-octave smoothing: each point becomes the mean, **in dB**, of
-/// the curve within `1/(2·fraction)` octave either side (a rectangular
-/// window on the log-frequency axis, applied exactly to the curve's linear
-/// interpolation; the end values are held beyond the grid's ends). The
-/// phase, when present, is smoothed alike (it is unwrapped).
-///
-/// Untrusted points (`valid` false) do not contribute to their neighbours; a
-/// point keeps its own trust flag, and one with no trusted point in its
-/// window keeps its value. Averaging dB is the shape a fit and a graph use;
-/// the microphone RTA's bands are power sums ([`crate::rta`]).
+/// What a smoothing window averages (review P5-A: one smoothing for the whole
+/// crate, two domains).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SmoothingDomain {
+    /// The mean of the dB values: **what a graph draws**. A peak one window
+    /// wide is halved in dB, a dip is drawn as deep as it is on average.
+    Db,
+    /// The mean of the powers (`10^(dB/10)`), given back in dB: **what a fit
+    /// and a level estimate use**, and how the ear and an analyser's bands
+    /// sum. A deep narrow null hardly lowers the smoothed curve (there is
+    /// almost no energy in it to average), so a fit sees no dip to fill; a
+    /// peak keeps its energy and is still cut.
+    Power,
+}
+
+/// Fractional-octave smoothing for a graph: each point becomes the mean, **in
+/// dB**, of the curve within `1/(2·fraction)` octave either side
+/// ([`smooth_as`] with [`SmoothingDomain::Db`]).
 ///
 /// `fraction` is the octave fraction: 1 (1/1 octave) to 48 (1/48 octave).
 ///
 /// Errors: [`MeasureError::Invalid`] for a fraction outside
 /// [`MIN_SMOOTHING`]..=[`MAX_SMOOTHING`] or a malformed `resp`.
 pub fn smooth(resp: &Response, fraction: u8) -> Result<Response, MeasureError> {
+    smooth_as(resp, fraction, SmoothingDomain::Db)
+}
+
+/// Fractional-octave smoothing in a chosen domain: each point becomes the
+/// mean (of the dB values or of the powers, [`SmoothingDomain`]) of the curve
+/// within `1/(2·fraction)` octave either side: a rectangular window on the
+/// log-frequency axis, applied exactly to the curve's linear interpolation;
+/// the end values are held beyond the grid's ends. The phase, when present,
+/// is smoothed as plain degrees in either domain (it is unwrapped).
+///
+/// Untrusted points (`valid` false) do not contribute to their neighbours; a
+/// point keeps its own trust flag, and one with no trusted point in its
+/// window keeps its value.
+///
+/// `fraction` is the octave fraction: 1 (1/1 octave) to 48 (1/48 octave).
+///
+/// Errors: [`MeasureError::Invalid`] for a fraction outside
+/// [`MIN_SMOOTHING`]..=[`MAX_SMOOTHING`] or a malformed `resp`.
+pub fn smooth_as(
+    resp: &Response,
+    fraction: u8,
+    domain: SmoothingDomain,
+) -> Result<Response, MeasureError> {
     if !(MIN_SMOOTHING..=MAX_SMOOTHING).contains(&fraction) {
         return Err(invalid(format!(
             "smoothing 1/{fraction} octave (1/{MIN_SMOOTHING} to 1/{MAX_SMOOTHING})"
         )));
     }
     check(resp)?;
-    let h = f64::from(resp.grid.points_per_octave) / (2.0 * f64::from(fraction));
-    let w = window_weights(h);
-    let k = w.len() / 2;
-    let mag = smooth_values(&resp.mag_db, resp.valid.as_deref(), &w, k);
+    let valid = resp.valid.as_deref();
+    let ppo = resp.grid.points_per_octave;
+    let mag = smooth_magnitudes(&resp.mag_db, valid, ppo, f64::from(fraction), domain);
     let phase = resp
         .phase_deg
         .as_ref()
-        .map(|p| smooth_values(p, resp.valid.as_deref(), &w, k));
+        .map(|p| smooth_magnitudes(p, valid, ppo, f64::from(fraction), SmoothingDomain::Db));
     Ok(Response {
         grid: resp.grid,
         mag_db: mag,
@@ -441,6 +556,41 @@ pub fn smooth(resp: &Response, fraction: u8) -> Result<Response, MeasureError> {
         valid: resp.valid.clone(),
         spl: resp.spl,
     })
+}
+
+/// The one smoothing kernel of the crate ([`smooth_as`], and the fit's own
+/// smoothing of the measurement): `values` in dB on a grid of
+/// `points_per_octave`, smoothed over `1/fraction` octave in `domain`. A
+/// `fraction` that is not finite or not positive, or a grid density of zero,
+/// gives the values back unchanged; a result that is not finite keeps the
+/// point's own value.
+pub(crate) fn smooth_magnitudes(
+    values: &[f64],
+    valid: Option<&[bool]>,
+    points_per_octave: u16,
+    fraction: f64,
+    domain: SmoothingDomain,
+) -> Vec<f64> {
+    let h = f64::from(points_per_octave) / (2.0 * fraction);
+    if !(h.is_finite() && h > 0.0 && h <= 1024.0) {
+        return values.to_vec();
+    }
+    let w = window_weights(h);
+    let k = w.len() / 2;
+    match domain {
+        SmoothingDomain::Db => smooth_values(values, valid, &w, k),
+        SmoothingDomain::Power => {
+            let power: Vec<f64> = values.iter().map(|m| 10f64.powf(m / 10.0)).collect();
+            smooth_values(&power, valid, &w, k)
+                .iter()
+                .zip(values)
+                .map(|(p, own)| {
+                    let db = 10.0 * p.log10();
+                    if db.is_finite() { db } else { *own }
+                })
+                .collect()
+        }
+    }
 }
 
 fn smooth_values(y: &[f64], valid: Option<&[bool]>, w: &[f64], k: usize) -> Vec<f64> {
