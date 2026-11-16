@@ -7178,6 +7178,21 @@ uint32_t dspi_measure_result(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_clear(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Turn the simulated microphone on (`on`, its world drawn from `seed`) or
+ * off: the info, or a failure.
+ */
+uint32_t dspi_measure_sim_set(struct FfiCore *core,
+                              bool on,
+                              uint64_t seed,
+                              char *buf,
+                              uint32_t len);
+
+/**
+ * The simulated microphone's state, without I/O: the info.
+ */
+uint32_t dspi_measure_sim_info(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

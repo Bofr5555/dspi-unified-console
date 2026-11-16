@@ -6537,6 +6537,37 @@ data class TargetInfo(
 )
 
 /**
+ * The simulated microphone's state (`measure_sim_info`, `measure_sim_set`).
+ */
+data class MeasureSimInfo(
+    /**
+     * This build has it and the open connection is a demo device.
+     */
+    val available: Boolean,
+    /**
+     * It is on: it answers the generator, the client pushes nothing.
+     */
+    val on: Boolean,
+    /**
+     * What the screens call it ([`SIM_MIC_LABEL`]).
+     */
+    val label: String,
+    /**
+     * The world it stands in ([`SIM_WORLD`]).
+     */
+    val world: String,
+    /**
+     * The seed its world and noise are drawn from.
+     */
+    val seed: Long,
+    /**
+     * Why the last generator configuration could not be rendered (it then
+     * hears only the room's noise), if one.
+     */
+    val issue: String?,
+)
+
+/**
  * A mode: Simple, Advanced or Installer.
  */
 data class ModeEntry(

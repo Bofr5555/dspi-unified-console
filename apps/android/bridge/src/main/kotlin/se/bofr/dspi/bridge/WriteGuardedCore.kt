@@ -1475,7 +1475,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureStop",
             "measureState",
             "measureResult",
-            "measureClear"
+            "measureClear",
+            // -- WP P5DEMO -- the demo's simulated microphone: a client-side
+            // microphone on the demo device only; nothing is sent beyond reads
+            "measureSimSet",
+            "measureSimInfo"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

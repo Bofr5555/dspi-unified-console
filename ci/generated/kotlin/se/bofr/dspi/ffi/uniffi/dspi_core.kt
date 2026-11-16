@@ -2018,6 +2018,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2668,6 +2672,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_measure_result(
 fun uniffi_dspi_core_checksum_method_dspicore_measure_set_dir(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_set_listener(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_sim_info(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_sim_set(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_start(
 ): Short
@@ -3650,6 +3658,10 @@ fun uniffi_dspi_core_fn_method_dspicore_measure_set_dir(`ptr`: Pointer,`dir`: Ru
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_measure_set_listener(`ptr`: Pointer,`listener`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_measure_sim_info(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_sim_set(`ptr`: Pointer,`on`: Byte,`seed`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_start(`ptr`: Pointer,`setup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -5306,6 +5318,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_set_listener() != 176.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_sim_info() != 56939.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_sim_set() != 37329.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_start() != 36814.toShort()) {
@@ -10280,6 +10298,26 @@ public interface DspiCoreInterface {
      * released; it may read `measure_state` but must not block.
      */
     fun `measureSetListener`(`listener`: MeasureListener?)
+    
+    /**
+     * The simulated microphone's state, without I/O.
+     */
+    fun `measureSimInfo`(): MeasureSimInfo
+    
+    /**
+     * Turn the demo's simulated microphone on (`true`, its world drawn from
+     * `seed`) or off. On, it answers the demo DSPi's generator through
+     * P5SIM's three-way speaker in a room and feeds the measurement session
+     * from `measure_tick`: the client pushes no capture (its pushes are
+     * ignored) and labels the microphone "Simulated microphone". Off, the
+     * client's own capture is the microphone again.
+     *
+     * Errors: [`DspiError::Unsupported`] to turn it on over anything but a
+     * demo connection (a DSPi on USB, MIDI or through a hub) or in a build
+     * without it; [`DspiError::Disconnected`] with nothing open;
+     * [`DspiError::InvalidArgument`] while a measurement is running.
+     */
+    fun `measureSimSet`(`on`: kotlin.Boolean, `seed`: kotlin.ULong): MeasureSimInfo
     
     /**
      * Start a measurement of `setup`: the preflight, the device lock
@@ -17808,6 +17846,47 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * The simulated microphone's state, without I/O.
+     */override fun `measureSimInfo`(): MeasureSimInfo {
+            return FfiConverterTypeMeasureSimInfo.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_sim_info(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Turn the demo's simulated microphone on (`true`, its world drawn from
+     * `seed`) or off. On, it answers the demo DSPi's generator through
+     * P5SIM's three-way speaker in a room and feeds the measurement session
+     * from `measure_tick`: the client pushes no capture (its pushes are
+     * ignored) and labels the microphone "Simulated microphone". Off, the
+     * client's own capture is the microphone again.
+     *
+     * Errors: [`DspiError::Unsupported`] to turn it on over anything but a
+     * demo connection (a DSPi on USB, MIDI or through a hub) or in a build
+     * without it; [`DspiError::Disconnected`] with nothing open;
+     * [`DspiError::InvalidArgument`] while a measurement is running.
+     */
+    @Throws(DspiException::class)override fun `measureSimSet`(`on`: kotlin.Boolean, `seed`: kotlin.ULong): MeasureSimInfo {
+            return FfiConverterTypeMeasureSimInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_sim_set(
+        it, FfiConverterBoolean.lower(`on`),FfiConverterULong.lower(`seed`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -36764,6 +36843,76 @@ public object FfiConverterTypeMeasureSetup: FfiConverterRustBuffer<MeasureSetup>
             FfiConverterUInt.write(value.`captureRateHz`, buf)
             FfiConverterString.write(value.`name`, buf)
             FfiConverterBoolean.write(value.`startLevelOnly`, buf)
+    }
+}
+
+
+
+/**
+ * The simulated microphone's state (`measure_sim_info`, `measure_sim_set`).
+ */
+data class MeasureSimInfo (
+    /**
+     * This build has it and the open connection is a demo device.
+     */
+    var `available`: kotlin.Boolean, 
+    /**
+     * It is on: it answers the generator, the client pushes nothing.
+     */
+    var `on`: kotlin.Boolean, 
+    /**
+     * What the screens call it ([`SIM_MIC_LABEL`]).
+     */
+    var `label`: kotlin.String, 
+    /**
+     * The world it stands in ([`SIM_WORLD`]).
+     */
+    var `world`: kotlin.String, 
+    /**
+     * The seed its world and noise are drawn from.
+     */
+    var `seed`: kotlin.ULong, 
+    /**
+     * Why the last generator configuration could not be rendered (it then
+     * hears only the room's noise), if one.
+     */
+    var `issue`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSimInfo: FfiConverterRustBuffer<MeasureSimInfo> {
+    override fun read(buf: ByteBuffer): MeasureSimInfo {
+        return MeasureSimInfo(
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSimInfo) = (
+            FfiConverterBoolean.allocationSize(value.`available`) +
+            FfiConverterBoolean.allocationSize(value.`on`) +
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterString.allocationSize(value.`world`) +
+            FfiConverterULong.allocationSize(value.`seed`) +
+            FfiConverterOptionalString.allocationSize(value.`issue`)
+    )
+
+    override fun write(value: MeasureSimInfo, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`available`, buf)
+            FfiConverterBoolean.write(value.`on`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterString.write(value.`world`, buf)
+            FfiConverterULong.write(value.`seed`, buf)
+            FfiConverterOptionalString.write(value.`issue`, buf)
     }
 }
 

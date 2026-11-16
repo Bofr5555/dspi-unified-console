@@ -4122,6 +4122,26 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func measureSetListener(listener: MeasureListener?) 
     
     /**
+     * The simulated microphone's state, without I/O.
+     */
+    func measureSimInfo()  -> MeasureSimInfo
+    
+    /**
+     * Turn the demo's simulated microphone on (`true`, its world drawn from
+     * `seed`) or off. On, it answers the demo DSPi's generator through
+     * P5SIM's three-way speaker in a room and feeds the measurement session
+     * from `measure_tick`: the client pushes no capture (its pushes are
+     * ignored) and labels the microphone "Simulated microphone". Off, the
+     * client's own capture is the microphone again.
+     *
+     * Errors: [`DspiError::Unsupported`] to turn it on over anything but a
+     * demo connection (a DSPi on USB, MIDI or through a hub) or in a build
+     * without it; [`DspiError::Disconnected`] with nothing open;
+     * [`DspiError::InvalidArgument`] while a measurement is running.
+     */
+    func measureSimSet(on: Bool, seed: UInt64) throws  -> MeasureSimInfo
+    
+    /**
      * Start a measurement of `setup`: the preflight, the device lock
      * "Measuring" (a 30 s lease, renewed by `measure_tick`), then the
      * pre-roll. Nothing plays before the client has pushed the pre-roll and
@@ -10428,6 +10448,38 @@ open func measureSetListener(listener: MeasureListener?)  {try! rustCall() {
         FfiConverterOptionTypeMeasureListener.lower(listener),$0
     )
 }
+}
+    
+    /**
+     * The simulated microphone's state, without I/O.
+     */
+open func measureSimInfo() -> MeasureSimInfo  {
+    return try!  FfiConverterTypeMeasureSimInfo_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_sim_info(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Turn the demo's simulated microphone on (`true`, its world drawn from
+     * `seed`) or off. On, it answers the demo DSPi's generator through
+     * P5SIM's three-way speaker in a room and feeds the measurement session
+     * from `measure_tick`: the client pushes no capture (its pushes are
+     * ignored) and labels the microphone "Simulated microphone". Off, the
+     * client's own capture is the microphone again.
+     *
+     * Errors: [`DspiError::Unsupported`] to turn it on over anything but a
+     * demo connection (a DSPi on USB, MIDI or through a hub) or in a build
+     * without it; [`DspiError::Disconnected`] with nothing open;
+     * [`DspiError::InvalidArgument`] while a measurement is running.
+     */
+open func measureSimSet(on: Bool, seed: UInt64)throws  -> MeasureSimInfo  {
+    return try  FfiConverterTypeMeasureSimInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_sim_set(self.uniffiClonePointer(),
+        FfiConverterBool.lower(on),
+        FfiConverterUInt64.lower(seed),$0
+    )
+})
 }
     
     /**
@@ -39488,6 +39540,149 @@ public func FfiConverterTypeMeasureSetup_lower(_ value: MeasureSetup) -> RustBuf
 
 
 /**
+ * The simulated microphone's state (`measure_sim_info`, `measure_sim_set`).
+ */
+public struct MeasureSimInfo {
+    /**
+     * This build has it and the open connection is a demo device.
+     */
+    public var available: Bool
+    /**
+     * It is on: it answers the generator, the client pushes nothing.
+     */
+    public var on: Bool
+    /**
+     * What the screens call it ([`SIM_MIC_LABEL`]).
+     */
+    public var label: String
+    /**
+     * The world it stands in ([`SIM_WORLD`]).
+     */
+    public var world: String
+    /**
+     * The seed its world and noise are drawn from.
+     */
+    public var seed: UInt64
+    /**
+     * Why the last generator configuration could not be rendered (it then
+     * hears only the room's noise), if one.
+     */
+    public var issue: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * This build has it and the open connection is a demo device.
+         */available: Bool, 
+        /**
+         * It is on: it answers the generator, the client pushes nothing.
+         */on: Bool, 
+        /**
+         * What the screens call it ([`SIM_MIC_LABEL`]).
+         */label: String, 
+        /**
+         * The world it stands in ([`SIM_WORLD`]).
+         */world: String, 
+        /**
+         * The seed its world and noise are drawn from.
+         */seed: UInt64, 
+        /**
+         * Why the last generator configuration could not be rendered (it then
+         * hears only the room's noise), if one.
+         */issue: String?) {
+        self.available = available
+        self.on = on
+        self.label = label
+        self.world = world
+        self.seed = seed
+        self.issue = issue
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSimInfo: Sendable {}
+#endif
+
+
+extension MeasureSimInfo: Equatable, Hashable {
+    public static func ==(lhs: MeasureSimInfo, rhs: MeasureSimInfo) -> Bool {
+        if lhs.available != rhs.available {
+            return false
+        }
+        if lhs.on != rhs.on {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        if lhs.world != rhs.world {
+            return false
+        }
+        if lhs.seed != rhs.seed {
+            return false
+        }
+        if lhs.issue != rhs.issue {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(available)
+        hasher.combine(on)
+        hasher.combine(label)
+        hasher.combine(world)
+        hasher.combine(seed)
+        hasher.combine(issue)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSimInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSimInfo {
+        return
+            try MeasureSimInfo(
+                available: FfiConverterBool.read(from: &buf), 
+                on: FfiConverterBool.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                world: FfiConverterString.read(from: &buf), 
+                seed: FfiConverterUInt64.read(from: &buf), 
+                issue: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSimInfo, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.available, into: &buf)
+        FfiConverterBool.write(value.on, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.world, into: &buf)
+        FfiConverterUInt64.write(value.seed, into: &buf)
+        FfiConverterOptionString.write(value.issue, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSimInfo_lift(_ buf: RustBuffer) throws -> MeasureSimInfo {
+    return try FfiConverterTypeMeasureSimInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSimInfo_lower(_ value: MeasureSimInfo) -> RustBuffer {
+    return FfiConverterTypeMeasureSimInfo.lower(value)
+}
+
+
+/**
  * A session's state: what the screens show and what the client must do.
  */
 public struct MeasureState {
@@ -56449,6 +56644,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_set_listener() != 176) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_sim_info() != 56939) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_sim_set() != 37329) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_start() != 36814) {

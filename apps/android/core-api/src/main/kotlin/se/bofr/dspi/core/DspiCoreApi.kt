@@ -3340,6 +3340,27 @@ interface DspiCoreApi : AutoCloseable {
     fun measurementExportRew(doc: String, output: Int): String
 
     /**
+     * Turn the demo's simulated microphone on (`true`, its world drawn from
+     * `seed`) or off. On, it answers the demo DSPi's generator through
+     * P5SIM's three-way speaker in a room and feeds the measurement session
+     * from `measure_tick`: the client pushes no capture (its pushes are
+     * ignored) and labels the microphone "Simulated microphone". Off, the
+     * client's own capture is the microphone again.
+     *
+     * Errors: [`DspiError::Unsupported`] to turn it on over anything but a
+     * demo connection (a DSPi on USB, MIDI or through a hub) or in a build
+     * without it; [`DspiError::Disconnected`] with nothing open;
+     * [`DspiError::InvalidArgument`] while a measurement is running.
+     */
+    @Throws(DspiException::class)
+    fun measureSimSet(on: Boolean, seed: Long): MeasureSimInfo
+
+    /**
+     * The simulated microphone's state, without I/O.
+     */
+    fun measureSimInfo(): MeasureSimInfo
+
+    /**
      * The mode to show on a client of `platform` (`phone`, `desktop` or
      * `web`) when the user has chosen `chosen` (a mode id, or "" for none):
      * the locked-user state first, then a mode the hub pins, then the

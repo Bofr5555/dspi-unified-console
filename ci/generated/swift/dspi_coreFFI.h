@@ -1791,6 +1791,16 @@ void uniffi_dspi_core_fn_method_dspicore_measure_set_dir(void*_Nonnull ptr, Rust
 void uniffi_dspi_core_fn_method_dspicore_measure_set_listener(void*_Nonnull ptr, RustBuffer listener, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_SIM_INFO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_SIM_INFO
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_sim_info(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_SIM_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_SIM_SET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_sim_set(void*_Nonnull ptr, int8_t on, uint64_t seed, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_START
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_START
 RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_start(void*_Nonnull ptr, RustBuffer setup, RustCallStatus *_Nonnull out_status
@@ -5437,6 +5447,18 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_set_dir(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_SET_LISTENER
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_SET_LISTENER
 uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_set_listener(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_SIM_INFO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_SIM_INFO
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_sim_info(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_SIM_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_SIM_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_sim_set(void
     
 );
 #endif
