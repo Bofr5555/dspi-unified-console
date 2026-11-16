@@ -1,0 +1,9 @@
+* Hand-written REW calibration fixture (WP P5CAL), not a vendor file
+# freq dB phase
+"quoted comment
+
+1000 0.10 -1.0
+20 -0.50 10.0
+200 0.00 2.0
+20 -9.99 99.0
+20000 1.25 -40.0
