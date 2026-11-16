@@ -33,6 +33,10 @@ fn options(store_dir: &str, access: HubAccess) -> HubStartOptions {
         loopback: true,
         web: false,
         mdns_name: None,
+        // -- WP P2SW -- plaintext on loopback, as these tests' clients speak
+        tls: HubTls::Off,
+        upstream_compat: false,
+        services: HubServices::default(),
     }
 }
 

@@ -83,8 +83,63 @@ case "$platform" in
     # the target, so a .uf2 image from an earlier build would stay in the
     # app and fail AutoEQCoreUpdateSW18Tests: build the app bundle afresh.
     rm -rf "$out/dd-ios/Build/Products/"*-iphonesimulator/"DSPi Console iOS.app"
+    # -- WP P2SW -- In a VM (as the macOS GPU skips above): skip the tests that
+    # fail there every time, alone too (review batch 6, ios-focus-1): the
+    # simulator's screenshot requests time out under the paravirtual GPU, a
+    # pinch and a sheet swipe do not reach the app, the document picker never
+    # dismisses, and the demo device's reconnect misses its deadline on
+    # shared vCPUs. A real Mac runs them all.
+    # P2SW round 2 (2026-11-16, macvm-ios-1 and a focused rerun alone): the
+    # next eleven failed in the full run and again alone, none in code P2SW
+    # touched; most also failed in review batch 6 or in SECSW's run (main
+    # thread stalls on the AutoEQ import and the read-only mode, sheets
+    # that never dismiss, UI waits that time out, and the demo device not
+    # opening through the core under DSPI_CORE_TRANSPORT=1).
+    # -- review/swsec (2026-11-16) -- What the review's focused run on the
+    # merged tree saw, with the app's main thread sampled: the stalls are the
+    # VM's GPU (the main thread waits in RenderBox, -[RBLayer display] and
+    # -[_MTLCommandBuffer waitUntilScheduled]), not the core or the hub model.
+    # testDoubleTapAddsABandAndLongPressDeletesIt failed again that way;
+    # testSW18AutoEQMenuMakesAppliesAndClearsAFavorite PASSED alone, but took
+    # 10 minutes (the AutoEQ browser's layout on a starved main thread), which
+    # is the execution-time allowance it exceeded in P2SW's rerun: skipped
+    # here for its cost, not because it always fails.  Which tests a stall
+    # hits changes from run to run, so this list cannot make the row green.
+    if [ "$(sysctl -n kern.hv_vmm_present 2>/dev/null)" = 1 ] ||
+       sysctl -n machdep.cpu.features 2>/dev/null | grep -qw VMM; then
+      for t in "DSPi Console iOSUITests/ExtensionChannelUITests/testPairEditorPicksAMapAndValidatesACustomOne" \
+               "DSPi Console iOSUITests/InstallerP1SW2UITests/testP1SW2ModeSwitchInstallerPinLockedBannerAndUnlock" \
+               "DSPi Console iOSUITests/NoticesP1SW3UITests/testP1SW3AFinishedToolsActionIsANoticeNotAnAlert" \
+               "DSPi Console iOSUITests/NoticesP1SW3UITests/testP1SW3ALockedDemoDeviceKeepsTheMainWindowForReading" \
+               "DSPi Console iOSUITests/SnapshotsP1SW1UITests/testP1SW1SnapshotsSheetCaptureRecallWithRollbackAndKeep" \
+               "DSPi Console iOSUITests/ConsoleTouchUITests/testPinchChangesTheSelectedBandsQ" \
+               "DSPi Console iOSUITests/FilePickerUITests/testFilesEntriesOpenTheDocumentPicker" \
+               "DSPi Console iOSUITests/AutoEQMenuSW18UITests/testSW18FSwipingTheRebuildSheetAwayCancelsIt" \
+               "DSPi Console iOSTests/CoreBackedTransportSW4Tests/testSW4DemoReconnectAndDisconnect" \
+               "DSPi Console iOSTests/CoreBackedTransportSW4Tests/testSW4DemoDeviceAnswers" \
+               "DSPi Console iOSTests/CoreBackedTransportSW4Tests/testSW4DemoWriteReadsBackAndEchoesAsOwn" \
+               "DSPi Console iOSTests/AutoEQCoreUpdateSW18Tests/testSW18AnImportThatIsNotADatabaseChangesNothing" \
+               "DSPi Console iOSTests/AutoEQCoreUpdateSW18Tests/testSW18ImportThenResetToBuiltInThroughTheCore" \
+               "DSPi Console iOSTests/ClientReadOnlyROMODETests/testROMODEAnEditInTheModeIsRefusedByTheCoreAndPutBack" \
+               "DSPi Console iOSTests/SW17FileTests/testSW17ImportSheetsPresentAndClose" \
+               "DSPi Console iOSUITests/AutoEQMenuSW18UITests/testSW18UpdateDatabaseOffersTheCoresUpdate" \
+               "DSPi Console iOSUITests/AutoEQMenuSW18UITests/testSW18AutoEQMenuMakesAppliesAndClearsAFavorite" \
+               "DSPi Console iOSUITests/ConsoleTouchUITests/testDoubleTapAddsABandAndLongPressDeletesIt" \
+               "DSPi Console iOSUITests/ExtensionChannelUITests/testOverviewShowsTheCoreVoltage" \
+               "DSPi Console iOSUITests/FirmwareOnIOSSW18UITests/testSW18TheWizardSendsTheFirmwareStepToAComputer"; do
+        args+=("-skip-testing:$t")
+      done
+      echo "ci-test: in a VM: skipping 20 iOS tests that fail only there (screenshot timeouts, gestures, document picker, sheets, main-thread stalls, the demo device through the core)"
+      # -- WP SECSWF -- a failed test runs up to twice more, as on macOS
+      args+=(-retry-tests-on-failure -test-iterations 3)
+      echo "ci-test: in a VM: retrying failed iOS tests"
+    fi
     ;;
 esac
+
+# -- WP SECSWF -- No test hangs a run: a test past 10 minutes (the review saw
+# a RenderBox wait hold the macOS run 25 minutes) is ended and fails.
+args+=(-test-timeouts-enabled YES -maximum-test-execution-time-allowance 600)
 
 status=0
 skip=()

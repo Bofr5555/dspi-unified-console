@@ -167,6 +167,7 @@ struct IOSRootView: View {
     @State private var showSettings = false
     @State private var showDevices = false
     @State private var didLaunch = false
+    @ObservedObject private var linkSecurity = LinkSecurityCenter.shared   // -- WP SECSWF --
 
     var body: some View {
         NavigationStack {
@@ -189,6 +190,12 @@ struct IOSRootView: View {
         // -- WP P1SW2 -- the unlock prompt and the mode switch
         .installerPrompts(installer)
         .onAppear(perform: launch)
+        // -- WP SECSW -- a `dspi://pair` link: the core's parser, then the person's tap
+        .onOpenURL { url in
+            guard LinkPairLinks.handles(url) else { return }
+            let state = AppState.shared
+            LinkPairLinks.open(url, ui: state.transport.pairingUI, coordinator: state.linkClientCoordinator)
+        }
     }
 
     @ToolbarContentBuilder
@@ -206,9 +213,17 @@ struct IOSRootView: View {
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
             IOSUndoButtons(undo: vm.undo)   // -- WP SWMAC1 --
+            // -- WP SECSWF -- the owner's rule on the main screen: red, "Devices (unsecured)"
+            let devices = LinkSecurityWording.devicesButton(linkSecurity.security(of: vm.selectedDevice),
+                                                            connected: vm.isDeviceConnected)
             Button { showDevices = true } label: {
-                Label("Devices", systemImage: vm.isDeviceConnected ? "cable.connector" : "cable.connector.slash")
+                Label(devices.title, systemImage: devices.unsecured ? "exclamationmark.shield"
+                      : vm.isDeviceConnected ? "cable.connector" : "cable.connector.slash")
             }
+            .tint(devices.unsecured ? .red : nil)
+            .foregroundStyle(devices.unsecured ? Color.red : Color.accentColor)
+            .accessibilityLabel(devices.title)
+            .accessibilityIdentifier(devices.unsecured ? "devicesUnsecured" : "devices")
             Menu {
                 toolsMenu
             } label: {
@@ -293,6 +308,9 @@ struct IOSRootView: View {
         // -- WP P1SW1 -- offline files and templates; the snapshots (a
         // half-height sheet) here too, so the iPhone's Tools menu keeps its length
         Button("Snapshots...") { SnapshotsSheet.show() }
+        // -- WP P2SW -- the events (this console's, and the hub's history), Identify
+        Button("Events...") { EventsSheet.show() }
+        Button("Identify Device") { HubServerModel.shared.identify() }
         Button("Open File...") { OfflineFiles.openFile() }
         Button("Open Template...") { OfflineFiles.showTemplates() }
         Button("Save File...") { OfflineFiles.saveFile() }
@@ -307,6 +325,7 @@ struct IOSRootView: View {
         // -- WP P1SW2F -- Snapshots > Change...: Settings over the console,
         // once the Snapshots sheet has gone.
         ModeSettingsLink.openSettings = { HalfSheet.dismiss { showSettings = true } }
+        _ = HubServerModel.shared   // -- WP P2SW -- the hub's alarm notices from the start
         // The setup wizard walks through real hardware (firmware, wiring);
         // the demo device has none, so demo launches go straight to the
         // console.
@@ -364,6 +383,7 @@ struct IOSRootView: View {
         case "autoeq":     autoEQ.show()
         case "graph":      graph.show(vm: vm)
         case "snapshots":  SnapshotsSheet.show()   // -- WP P1SW1 --
+        case "events":     EventsSheet.show()   // -- WP P2SW --
         case "mode":       installer.modeShown = true   // -- WP P1SW2 --
         case "whatsnew":   whatsNew.show()
         case "settings":   showSettings = true
@@ -415,6 +435,7 @@ struct IOSDevicesSheet: View {
     @ObservedObject var vm: DSPViewModel
     @ObservedObject private var client = AppState.shared.linkClientCoordinator
     @ObservedObject private var browser = AppState.shared.linkClientCoordinator.browser
+    @ObservedObject private var security = LinkSecurityCenter.shared   // -- WP SECSW --
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var manualAddress = ""
@@ -424,6 +445,12 @@ struct IOSDevicesSheet: View {
             List {
                 Section {
                     ForEach(vm.availableDevices) { device in
+                      // -- WP SECSW -- the owner's rule: " (unsecured)", red
+                      let unsecured = device == vm.selectedDevice && vm.isDeviceConnected
+                          && security.security(of: device)?.isUnsecured == true
+                      // -- WP SECSWF -- with the info button beside it (two
+                      // buttons in one row: both borderless, each its own tap)
+                      HStack {
                         Button {
                             vm.switchToDevice(device)
                         } label: {
@@ -432,7 +459,8 @@ struct IOSDevicesSheet: View {
                                 Image(systemName: device.isRemote ? "network" : isDemo ? "play.rectangle" : "cable.connector")
                                     .frame(width: 24)
                                 VStack(alignment: .leading) {
-                                    Text(device.displayName)
+                                    Text(unsecured ? device.displayName + LinkSecurityWording.suffix : device.displayName)
+                                        .foregroundStyle(unsecured ? Color.red : Color.primary)
                                     Text(device.isRemote ? "DSPi Link" : isDemo ? "Simulated DSPi, RP2350, firmware 1.1.6" : "USB, MIDI control port")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -443,8 +471,12 @@ struct IOSDevicesSheet: View {
                                         .foregroundStyle(vm.isDeviceConnected ? .green : .secondary)
                                 }
                             }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.borderless)
                         .foregroundStyle(.primary)
+                        if unsecured { UnsecuredInfoButton() }   // -- WP SECSWF --
+                      }
                     }
                     if let error = vm.connectionError {
                         Text(error).font(.caption).foregroundStyle(.orange)
@@ -477,6 +509,8 @@ struct IOSDevicesSheet: View {
                             VStack(alignment: .leading) {
                                 Text(hub.name)
                                 Text(hub.displayAddress).font(.caption).foregroundStyle(.secondary)
+                                // -- WP SECSW --
+                                HubSecurityBadgeView(badge: HubSecurityBadge.of(hub, tokens: LinkTokenStore()))
                             }
                             Spacer()
                             if hub.isManual {

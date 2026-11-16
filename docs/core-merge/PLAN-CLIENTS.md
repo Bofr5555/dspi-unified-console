@@ -1232,6 +1232,14 @@ Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use
 **SW-M2: Firmware through the core.** [IN REVIEW wp/SWM2] Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8, CG24.
 
 **SW-M3: Hub over `dspi-hub`.** [IN PROGRESS wp/SWM3] Size 1–2. **Owns:** a UniFFI wrapper for the hub, `NetworkingSettingsView.swift` re-pointed; Swift hub files removed at the end. **Owner decided: "once it comes into the other versions it should come in here as well".** It does not block R-Mac. The Swift hub stays as the reference harness until HB7 passes, then retires. **Done when:** HB7's Swift client passes against the wrapper from the Mac app. **Deps:** HB7, SW-M1.
+- <!-- WP SECSW --> **Retiring the Swift hub (SWS13) is blocked by seven items** (review batch 6, 2026-11-16):
+  1. `HardwareTestSupport` still runs on `CoreUsb`: port it to the Rust hub's path.
+  2. `Link.usb` (the Rust hub's core USB) has never run on a real DSPi: a K340 pass on the Mac VM (owner's standing go to move it; no flash).
+  3. Pairings do not carry over: the Rust hub has a new hub id and store. A release note, or import the id from `link-auth.json`.
+  4. TLS: the Mac's Rust hub serves plaintext until P2SW's `HubStartOptions.tls` (default `require`) lands.
+  5. `CoreHub.swift` still depends on Swift hub types: `LinkAuthStore`, `LinkDiscovery`, `LinkAuthMode`, `LinkRole`, `LinkService`.
+  6. HB7's conformance client is the opt-out `LinkClient` (`-CoreTransport NO`), which stays plaintext only: it needs the hub's `tls off` loopback mode.
+  7. `ownHubID` is unknown before the hub's first start (the browser cannot leave this Mac's own hub out until then).
 
 **SW-M4: What stays Swift.** [TODO] Size 0.5. **Owns:** `docs/SWIFT-STAYS.md`. **Implements:** an audit that each item is UI or OS integration only, with no protocol: menu-bar mode, login item, keep-awake, `AppUpdateChecker` and installer, `HostAudioFormatMonitor`, Metal renderers. **Done when:** Fable has reviewed it, and a grep for opcodes outside `Core/` is empty. **Deps:** SW14.
 

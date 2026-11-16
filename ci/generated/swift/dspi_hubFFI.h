@@ -317,6 +317,11 @@ int8_t uniffi_dspi_hub_fn_method_hubhost_demo_turn_knob(void*_Nonnull ptr, RustC
 RustBuffer uniffi_dspi_hub_fn_method_hubhost_devices(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_FN_METHOD_HUBHOST_PAIRING_LINK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_FN_METHOD_HUBHOST_PAIRING_LINK
+RustBuffer uniffi_dspi_hub_fn_method_hubhost_pairing_link(void*_Nonnull ptr, RustBuffer host, RustBuffer pin, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_FN_METHOD_HUBHOST_REVOKE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_FN_METHOD_HUBHOST_REVOKE
 int8_t uniffi_dspi_hub_fn_method_hubhost_revoke(void*_Nonnull ptr, uint32_t cid, RustCallStatus *_Nonnull out_status
@@ -367,9 +372,20 @@ void uniffi_dspi_hub_fn_init_callback_vtable_hubhostlistener(const UniffiVTableC
 void uniffi_dspi_hub_fn_method_hubhostlistener_on_hub_event(void*_Nonnull ptr, RustBuffer event, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_FN_FUNC_HUB_DEFAULT_START_OPTIONS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_FN_FUNC_HUB_DEFAULT_START_OPTIONS
+RustBuffer uniffi_dspi_hub_fn_func_hub_default_start_options(RustBuffer store_dir, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_FN_FUNC_HUB_SAVED_SETTINGS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_FN_FUNC_HUB_SAVED_SETTINGS
 RustBuffer uniffi_dspi_hub_fn_func_hub_saved_settings(RustBuffer store_dir, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_FN_FUNC_HUB_SECURITY_EFFECTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_FN_FUNC_HUB_SECURITY_EFFECTS
+RustBuffer uniffi_dspi_hub_fn_func_hub_security_effects(RustCallStatus *_Nonnull out_status
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_DSPI_HUB_RUSTBUFFER_ALLOC
@@ -652,9 +668,21 @@ void ffi_dspi_hub_rust_future_free_void(uint64_t handle
 void ffi_dspi_hub_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_CHECKSUM_FUNC_HUB_DEFAULT_START_OPTIONS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_CHECKSUM_FUNC_HUB_DEFAULT_START_OPTIONS
+uint16_t uniffi_dspi_hub_checksum_func_hub_default_start_options(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_CHECKSUM_FUNC_HUB_SAVED_SETTINGS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_CHECKSUM_FUNC_HUB_SAVED_SETTINGS
 uint16_t uniffi_dspi_hub_checksum_func_hub_saved_settings(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_CHECKSUM_FUNC_HUB_SECURITY_EFFECTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_CHECKSUM_FUNC_HUB_SECURITY_EFFECTS
+uint16_t uniffi_dspi_hub_checksum_func_hub_security_effects(void
     
 );
 #endif
@@ -697,6 +725,12 @@ uint16_t uniffi_dspi_hub_checksum_method_hubhost_demo_turn_knob(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_CHECKSUM_METHOD_HUBHOST_DEVICES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_CHECKSUM_METHOD_HUBHOST_DEVICES
 uint16_t uniffi_dspi_hub_checksum_method_hubhost_devices(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_CHECKSUM_METHOD_HUBHOST_PAIRING_LINK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_HUB_CHECKSUM_METHOD_HUBHOST_PAIRING_LINK
+uint16_t uniffi_dspi_hub_checksum_method_hubhost_pairing_link(void
     
 );
 #endif

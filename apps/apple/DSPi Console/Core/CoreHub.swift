@@ -150,6 +150,11 @@ final class CoreHubService: ObservableObject, HubSharingModel {
         /// own USB is.
         var usb = TestHostGuard.mayOpenDevices
         var defaults: UserDefaults = .standard
+        // -- WP P2SW --
+        /// The TLS mode instead of the app's (`require`, or `on` in the
+        /// compatibility mode).  Only `.off` with `loopback`: the plaintext
+        /// clients of the tests and of HB7's conformance run.
+        var tls: HubTls? = nil
     }
 
     private let devices: Devices
@@ -207,6 +212,33 @@ final class CoreHubService: ObservableObject, HubSharingModel {
     /// The port it listens on while running.
     @Published private(set) var boundPort: Int?
 
+    // -- WP P2SW -- the hub's security and its optional services
+    /// The upstream compatibility mode (off by default): TLS and plaintext
+    /// both, plaintext pairing allowed.  Turning it on asks first
+    /// (`compatPending`, `confirmUpstreamCompat`).
+    @Published private(set) var upstreamCompat: Bool {
+        didSet { setup.defaults.set(upstreamCompat, forKey: Keys.upstreamCompat) }
+    }
+    /// Turning the compatibility mode on waits for the user's yes, after the
+    /// warning that lists every effect (`securityEffects`).
+    @Published private(set) var compatPending = false
+    /// The optional services (every one off by default).  A change restarts a
+    /// running hub.
+    @Published var services: HubServices {
+        didSet {
+            guard services != oldValue else { return }
+            Self.save(services, to: setup.defaults)
+            if isRunning { restart() }
+        }
+    }
+    /// What the running hub serves, TLS-wise; nil while stopped.
+    @Published private(set) var security: HubSecurity?
+    /// The pairing link (the QR code's) while a PIN is shown and TLS is served.
+    @Published private(set) var pairingLink: String?
+
+    /// What the compatibility mode and TLS off turn off: the hub's own lists.
+    static let securityEffects = hubSecurityEffects()
+
     private var applyingAccess = false
     private var pendingAccess: LinkAuthMode?
     private var sessions: Set<UInt16> = []
@@ -220,6 +252,52 @@ final class CoreHubService: ObservableObject, HubSharingModel {
         static let enabled = "LinkSharingEnabled"
         static let port = "LinkSharingPort"
         static let preventSleep = "LinkPreventSleep"
+        // -- WP P2SW --
+        static let upstreamCompat = "LinkHubUpstreamCompat"
+        static let services = "LinkHubServices"
+    }
+
+    // -- WP P2SW --
+    /// The services as stored: the names of those on.
+    nonisolated static func load(_ defaults: UserDefaults) -> HubServices {
+        let on = Set(defaults.stringArray(forKey: Keys.services) ?? [])
+        return HubServices(health: on.contains("health"), inventory: on.contains("inventory"),
+                           identify: on.contains("identify"), history: on.contains("history"),
+                           alarms: on.contains("alarms"), groups: on.contains("groups"))
+    }
+
+    nonisolated static func save(_ s: HubServices, to defaults: UserDefaults) {
+        let on: [(Bool, String)] = [(s.health, "health"), (s.inventory, "inventory"), (s.identify, "identify"),
+                                    (s.history, "history"), (s.alarms, "alarms"), (s.groups, "groups")]
+        defaults.set(on.filter(\.0).map(\.1), forKey: Keys.services)
+    }
+
+    /// The TLS mode a start asks for: `require`, `on` in the compatibility
+    /// mode, or a test's `.off` on loopback.
+    nonisolated static func tlsMode(compat: Bool, setup: Setup) -> HubTls {
+        if compat { return .on }
+        if setup.tls == .off { return setup.loopback ? .off : .require }
+        return setup.tls ?? .require
+    }
+
+    /// The start options: the hub's defaults (TLS required, no optional
+    /// service), then this app's choices.
+    nonisolated static func startOptions(name: String, port: Int, access: LinkAuthMode, usb: Bool, app: Bool,
+                                         compat: Bool, services: HubServices, setup: Setup,
+                                         mdnsName: String?) -> HubStartOptions {
+        var o = hubDefaultStartOptions(storeDir: setup.storeDir.path)
+        o.name = name
+        o.port = UInt16(clamping: port)
+        o.access = access == .none ? .open : .pin
+        o.usb = usb
+        o.app = app
+        o.loopback = setup.loopback
+        o.web = setup.web
+        o.mdnsName = mdnsName
+        o.tls = tlsMode(compat: compat, setup: setup)
+        o.upstreamCompat = compat
+        o.services = services
+        return o
     }
 
     /// The hub's store: a folder beside the Swift hub's `link-auth.json`.
@@ -240,6 +318,8 @@ final class CoreHubService: ObservableObject, HubSharingModel {
         sharingEnabled = d.object(forKey: Keys.enabled) as? Bool ?? false
         port = d.object(forKey: Keys.port) as? Int ?? Int(LinkDiscovery.defaultPort)
         preventSleepWhileConnected = d.object(forKey: Keys.preventSleep) as? Bool ?? false
+        upstreamCompat = d.bool(forKey: Keys.upstreamCompat)   // -- WP P2SW --
+        services = Self.load(d)
         let saved = try? hubSavedSettings(storeDir: setup.storeDir.path)
         hubName = saved?.name ?? LinkAuthStore.defaultHubName()
         authMode = saved?.access == .open ? .none : .pin
@@ -262,12 +342,10 @@ final class CoreHubService: ObservableObject, HubSharingModel {
         run &+= 1
         let thisRun = run
         let isApp: Bool = { if case .app = devices { return true }; return false }()
-        let options = HubStartOptions(
-            name: hubName, storeDir: setup.storeDir.path, port: UInt16(clamping: port),
-            access: authMode == .none ? .open : .pin,
-            usb: isApp && setup.usb,
-            app: isApp,
-            loopback: setup.loopback, web: setup.web, mdnsName: Self.localHostName())
+        // -- WP P2SW -- from the hub's defaults: TLS required, no optional service
+        let options = Self.startOptions(name: hubName, port: port, access: authMode, usb: isApp && setup.usb,
+                                        app: isApp, compat: upstreamCompat, services: services, setup: setup,
+                                        mdnsName: Self.localHostName())
         let host = self.host
         let finish: @Sendable (Result<HubStarted, Error>) -> Void = { [weak self] result in
             Self.onMain { self?.started(result, run: thisRun) }
@@ -315,6 +393,7 @@ final class CoreHubService: ObservableObject, HubSharingModel {
             isRunning = true
             hubID = started.hubId
             boundPort = Int(started.port)
+            security = started.security   // -- WP P2SW --
             if started.tokensRevoked > 0 {
                 Self.log.notice("Link hub: the change of access mode forgot \(started.tokensRevoked) paired clients")
             }
@@ -346,6 +425,7 @@ final class CoreHubService: ObservableObject, HubSharingModel {
         clearPairing()
         isRunning = false
         boundPort = nil
+        security = nil   // -- WP P2SW --
         sessions = []
         sessionCount = 0
         let host = self.host
@@ -444,6 +524,7 @@ final class CoreHubService: ObservableObject, HubSharingModel {
 
     private func clearPairing() {
         activePIN = nil
+        pairingLink = nil   // -- WP P2SW --
         pairingExpires = nil
         pinTimer?.invalidate()
         pinTimer = nil
@@ -474,13 +555,20 @@ final class CoreHubService: ObservableObject, HubSharingModel {
         let host = self.host
         let storeDir = setup.storeDir.path
         let thisRun = run
+        let pin = activePIN   // -- WP P2SW -- for the pairing link
         hubQueue.async { [weak self] in
             let status = host.status()
             let clients = status.running ? ((try? host.clients()) ?? [])
                                          : ((try? hubSavedSettings(storeDir: storeDir))?.clients ?? [])
             let shared = host.devices()
+            let link = pin.flatMap { pin in
+                Self.primaryLANAddress().flatMap { host.pairingLink(host: $0, pin: pin) }
+            }
             Self.onMain {
                 guard let self = self, thisRun == self.run else { return }
+                // -- WP P2SW --
+                if status.running, self.security != status.security { self.security = status.security }
+                if self.activePIN != nil, self.activePIN == pin, self.pairingLink != link { self.pairingLink = link }
                 let rows = clients.map(Self.row)
                 if rows != self.clientRows { self.clientRows = rows }
                 if self.activePIN != nil, !status.pairingOpen { self.clearPairing() }
@@ -525,17 +613,103 @@ final class CoreHubService: ObservableObject, HubSharingModel {
         case .stopped:
             break
         case .tlsKey(let change, _):
-            // -- review batch6 (SECSRV glue) -- the hub's TLS key is not served yet
-            // (HubStartOptions has no TLS mode: SECSW); logged, nothing to show.
+            // -- WP P2SW -- the key's fingerprint is shown: read it again
             Self.log.notice("Link hub (core): TLS key \(String(describing: change), privacy: .public)")
+            refresh()
         }
     }
 
     // MARK: Advertisement and status
 
     private func advertisement() -> LinkAdvertisement {
+        // -- WP P2SW -- `tls=1` by the hub's own rule (TLS served, not in compat)
         LinkAdvertisement(hubID: hubID ?? "", auth: authMode.rawValue,
-                          deviceCount: sharedSerials.count, serials: sharedSerials, web: setup.web)
+                          deviceCount: sharedSerials.count, serials: sharedSerials,
+                          tls: security?.advertisesTls ?? false, web: setup.web)
+    }
+
+    // MARK: Security  -- WP P2SW --
+
+    /// Turn the upstream compatibility mode on (after the warning: it waits
+    /// for `confirmUpstreamCompat`) or off (at once).  A running hub restarts.
+    func setUpstreamCompat(_ on: Bool) {
+        if on {
+            if !upstreamCompat { compatPending = true }
+        } else {
+            compatPending = false
+            guard upstreamCompat else { return }
+            upstreamCompat = false
+            if isRunning { restart() }
+        }
+    }
+
+    /// The user's yes to the warning.
+    func confirmUpstreamCompat() {
+        guard compatPending else { return }
+        compatPending = false
+        upstreamCompat = true
+        if isRunning { restart() }
+    }
+
+    func cancelUpstreamCompat() { compatPending = false }
+
+    /// One optional service, for the settings page (which does not import
+    /// dspi_hub: only this file drives the hub).
+    enum OptionalService: String, CaseIterable, Identifiable {
+        case health, inventory, identify, history, alarms, groups
+        var id: String { rawValue }
+
+        var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+
+        var detail: String {
+            switch self {
+            case .health: return "CPU and temperature of each device"
+            case .inventory: return "Every DSPi this hub has seen"
+            case .identify: return "Lets clients make a device blink"
+            case .history: return "A shared event log of each device"
+            case .alarms: return "Offline, restarts, clipping, temperature"
+            case .groups: return "Named groups of devices"
+            }
+        }
+
+        var key: WritableKeyPath<HubServices, Bool> {
+            switch self {
+            case .health: return \.health
+            case .inventory: return \.inventory
+            case .identify: return \.identify
+            case .history: return \.history
+            case .alarms: return \.alarms
+            case .groups: return \.groups
+            }
+        }
+    }
+
+    func isOn(_ s: OptionalService) -> Bool { services[keyPath: s.key] }
+    func set(_ s: OptionalService, _ on: Bool) { services[keyPath: s.key] = on }
+
+    /// The TLS mode as served, in words ("Not running" while stopped).
+    var tlsWords: String {
+        guard isRunning, let s = security else { return "Not running" }
+        switch s.tls {
+        case .require: return "Encrypted (TLS required)"
+        case .on: return s.upstreamCompat ? "Encrypted and unencrypted (compatibility mode)" : "Encrypted and unencrypted"
+        case .off: return "Not encrypted"
+        }
+    }
+
+    /// The key's fingerprint as clients show it, while TLS is served.
+    var fingerprint: String? { security?.fingerprint }
+    /// The running hub is in the compatibility mode.
+    var servesCompat: Bool { security?.upstreamCompat == true }
+    /// What the compatibility mode turns off, one sentence each.
+    static var compatEffects: [String] { securityEffects.upstreamCompat }
+
+    /// The hub's own page, `https://` while TLS is served (the hub's own
+    /// certificate: the browser asks once).
+    var hubPageURL: String? {
+        guard isRunning, setup.web, let ip = Self.primaryLANAddress() else { return nil }
+        let scheme = (security?.tls ?? .off) == .off ? "http" : "https"
+        return "\(scheme)://\(ip):\(boundPort ?? port)/"
     }
 
     /// The address a client on the LAN would type, best-effort.

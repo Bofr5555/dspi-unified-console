@@ -44,6 +44,8 @@ struct NetworkingSettingsPage<Service: HubSharingModel>: View {
         Form {
             headerSection
             hubSection
+            // -- WP P2SW -- the Rust hub's TLS, compatibility mode and services
+            if let hub = service as? CoreHubService { HubSecuritySections(hub: hub) }
             if service.authMode == .pin { clientsSection }
             otherHubsSection
             backgroundSection
@@ -218,6 +220,8 @@ struct NetworkingSettingsPage<Service: HubSharingModel>: View {
                 Text("Expires in \(expiry, style: .relative)")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            // -- WP P2SW -- the pairing link and its QR code (the Rust hub, with TLS)
+            if let hub = service as? CoreHubService { PairingLinkRow(hub: hub) }
             Button("Cancel", role: .cancel) { service.cancelPairing() }
                 .padding(.top, 2)
         }
@@ -308,6 +312,8 @@ struct NetworkingSettingsPage<Service: HubSharingModel>: View {
                 // verbatim: a localized Text would print the port as "11,915".
                 Text(verbatim: "\(hub.displayAddress), \(hub.deviceCount) device\(hub.deviceCount == 1 ? "" : "s")")
                     .font(.caption).foregroundStyle(.secondary)
+                // -- WP SECSW -- verified (key pinned), encrypted (advertised), unencrypted
+                HubSecurityBadgeView(badge: HubSecurityBadge.of(hub, tokens: LinkTokenStore()))
             }
             Spacer()
             hubBadge(hub)

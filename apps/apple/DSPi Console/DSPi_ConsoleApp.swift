@@ -152,6 +152,8 @@ class AppState: ObservableObject {
             : CompositeTransport(local: members, tokens: tokens, clientName: clientName,
                                  makeClient: { LinkClient() })
         composite.pairingPrompt = { hubName in PairingPrompt.ask(hubName: hubName) }
+        // -- WP SECSW -- the PIN with the hub key, pairing again, pairing links
+        composite.pairingUI = MacLinkPairingUI()
         return composite
     }()
 
@@ -218,6 +220,8 @@ class AppState: ObservableObject {
         composite.asyncPairingPrompt = { hubName, completion in
             IOSLinkPairing.ask(hubName: hubName, completion: completion)
         }
+        // -- WP SECSW -- the PIN with the hub key, pairing again, pairing links
+        composite.pairingUI = IOSLinkPairingUI()
         return composite
     }()
 
@@ -11701,6 +11705,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowObserver: Any?
     private weak var originalWindowDelegate: NSWindowDelegate?
 
+    // -- WP SECSW --
+    /// A `dspi://pair` link (a QR code scanned on the Mac, a click in another
+    /// app): through the core's parser and the person's confirmation.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where LinkPairLinks.handles(url) {
+            let state = AppState.shared
+            Task { @MainActor in
+                LinkPairLinks.open(url, ui: state.transport.pairingUI, coordinator: state.linkClientCoordinator)
+            }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Network sharing is a persisted choice; bring the gateway up at launch
         // if it was on, rather than only when the Networking page is opened.
@@ -12026,6 +12042,7 @@ struct DSPi_ConsoleApp: App {
                     MenuBarController.shared.reopenMainWindow = { openWindow(id: "main") }
                     ModeSettingsLink.openSettings = { openWindow(id: "settings") }   // -- WP P1SW2F --
                     CoreSnapshots.shared.installKeyMonitor()   // -- WP P1SW1 -- the A/B key
+                    _ = HubServerModel.shared   // -- WP P2SW -- the hub's alarm notices from the start
                     // -- WP P1SW1 -- `-ShowSnapshots YES`: the window at launch (screenshots)
                     if UserDefaults.standard.bool(forKey: "ShowSnapshots") {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { SnapshotsWindowController.shared.show() }
@@ -12236,6 +12253,15 @@ struct DSPi_ConsoleApp: App {
                 // -- WP P1SW1 -- snapshots, A/B (key: B) and the safe apply
                 Button("Snapshots...") {
                     SnapshotsWindowController.shared.show()
+                }
+
+                // -- WP P2SW -- the events (this console's, and the hub's history), Identify
+                Button("Events...") {
+                    EventsWindowController.shared.show()
+                }
+
+                Button("Identify Device") {
+                    HubServerModel.shared.identify()
                 }
 
                 // STM32H723 firmware cannot self-reboot into a USB bootloader
