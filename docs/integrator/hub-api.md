@@ -1061,17 +1061,17 @@ are percent-decoded (`device%3A3`).
 | `POST /api/v1/alarms/{id}/ack` | `alarm.ack` (P2AL's) |
 | `GET /api/v1/health?serial=` | `health.get` |
 
-<!-- WP P3DOC --> **The fleet's endpoints** (*draft: P3RS*, PLAN-P3 OD-P3l), within v1 and additive, each onto a message of
-sections 19 to 21 with its role, checks, answer and codes. `{id}` is a group's id (`g1`), `{run}` a bulk apply's run,
+<!-- WP P3DOC --> **The fleet's endpoints** (*built: P3RS*, `rest.rs`, tests `crates/dspi-hub/tests/wp_p3rs_rest.rs`;
+PLAN-P3 OD-P3l), within v1 and additive, each onto a message of sections 19 to 21 with its role, checks, answer and codes. `{id}` is a group's id (`g1`), `{run}` a bulk apply's run,
 `{rollout}` a rollout's id:
 
 | Method and path | Message |
 |---|---|
 | `GET /api/v1/groups` | `group.list` |
 | `GET /api/v1/groups/{id}` | `group.list {group: id}` (`404` `not_found` for an unknown group) |
-| `PUT /api/v1/groups/{id}/params/{path}?idx=0,1` body `{"value": ..., "offsets"?: {"<serial>": <dB>}}` | `group.param.set {group: id, ...}` (only `value` and `offsets` are taken from the body) |
+| `PUT /api/v1/groups/{id}/params/{path}?idx=0,1` body `{"value": ..., "offsets"?: {"<serial>": <dB>}}` | `group.param.set {group: id, ...}` (only `value` and `offsets` are taken from the body; the path takes `PUT` only: `group.param.get` has no REST path) |
 | `POST /api/v1/groups/{id}/presets/{n}/load` body `{"map"?: {"<serial>": <slot or name>}}` | `group.preset.load {group: id, slot: n, map?}` |
-| `POST /api/v1/groups/{id}/apply` body `{"snapshot"?: "<id>", "name"?: "...", "document"?: "...", "guard"?: true, "timeout_ms"?: n}` | `group.apply {group: id, ...}`; a document must fit the 64 KiB body cap (`413` otherwise): send a large one to the hub's store first and apply it by `snapshot` |
+| `POST /api/v1/groups/{id}/apply` body `{"snapshot"?: "<id>", "name"?: "...", "document"?: "...", "guard"?: true, "timeout_ms"?: n}` | `group.apply {group: id, ...}` (only these five are taken from the body); a document must fit the 64 KiB body cap (`413` otherwise): send a large one to the hub's store first and apply it by `snapshot` |
 | `POST /api/v1/runs/{run}/confirm` | `group.apply.confirm {run}` |
 | `POST /api/v1/runs/{run}/cancel` | `group.apply.cancel {run}` |
 | `GET /api/v1/rollouts` | `fw.rollout.status` (TLS only) |
@@ -1081,11 +1081,15 @@ sections 19 to 21 with its role, checks, answer and codes. `{id}` is a group's i
 - **A guarded group apply belongs to the key's session**, as a guarded recall does above: only the same key confirms or
   cancels its run, within the guards' deadlines and `rest_idle` of its last request; another key's
   `/runs/{run}/confirm` is `404` `not_found`, and the run reverts when the key's idle session closes.
-- **No rollout start and no image upload over REST** (OD-P3l): a `POST` or `PUT` on `/api/v1/rollouts...` or
-  `/api/v1/firmware...` is `405` with `Allow: GET`; there is no path for `fw.rollout.start`, `fw.rollout.cancel`,
-  `fw.image.put` or `fw.image.delete`. A flash is an Admin's act in a console, and the body cap stays 64 KiB.
-- **The firmware reads are TLS only** (section 21.1): over plaintext they are `426` with `code` `tls_required` in every
-  mode, a key minted `plaintext_ok` and upstream compatibility included.
+- **No rollout start and no image upload over REST** (OD-P3l): any method but `GET` on `/api/v1/rollouts`,
+  `/api/v1/firmware` or any path below them is `405` with `Allow: GET`; there is no path for `fw.rollout.start`,
+  `fw.rollout.cancel`, `fw.image.put` or `fw.image.delete`, and a `GET` on a path below them that is not
+  `/rollouts/{rollout}` is `404`. A flash is an Admin's act in a console, and the body cap stays 64 KiB.
+- **The firmware reads are TLS only** (section 21.1): over plaintext they are `426` with `code` `tls_required` and
+  `Upgrade: TLS/1.3` in every mode, a key minted `plaintext_ok` and upstream compatibility included. A key's one
+  session serves its plain and its TLS requests alike; each request is judged by its own connection.
+- **One group request at a time per session**, across `group.param.*`, `group.preset.load` and `group.apply*`
+  (`busy`, `503`); a key's requests already run one at a time.
 
 | Code | HTTP status |
 |---|---|
@@ -1097,6 +1101,7 @@ sections 19 to 21 with its role, checks, answer and codes. `{id}` is a group's i
 | a method a path does not take (with `Allow`) | 405 |
 | `conflict`, `offline` | 409 |
 | `locked` | 423 |
+| `tls_required` (an API key not minted `plaintext_ok` over plaintext, or a firmware read over plaintext; with `Upgrade: TLS/1.3`) | 426 |
 | `rate_limited` | 429 |
 | `internal`, any other code | 500 |
 | `unsupported`, `unknown_type` | 501 |

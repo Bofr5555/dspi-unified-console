@@ -5,6 +5,8 @@
 //! close reverting what is pending, and a `recall` record per device naming the caller.
 //! (The 256-row bound is `api::bulk`'s unit test `wp_p3ba_a_run_past_256_rows_is_bad_request`:
 //! a group holds 64 members at most, so only a fake resolver gets past it.)
+// -- WP P3RS -- the family exists only with feature `api`.
+#![cfg(feature = "api")]
 #![allow(
     clippy::arithmetic_side_effects,
     clippy::unwrap_used,

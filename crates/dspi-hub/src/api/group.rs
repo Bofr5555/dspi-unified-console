@@ -24,8 +24,7 @@
 //! offset, clamped into that device's own range (`Session::write_range`: the registry's,
 //! narrowed by its platform), and the row says `clamped: true` when the clamp moved it.
 
-use std::collections::BTreeSet;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
 use std::time::Instant;
 
 use dspi_proto::registry::{Kind, ParamDesc, by_path};
@@ -33,13 +32,13 @@ use dspi_proto::value::Unit;
 use serde_json::{Map, Value, json};
 
 use super::exec::Executor;
-use super::{ApiError, err, ok, require};
+use super::{ApiError, GroupBusy, err, ok, require};
 use crate::groups::{GroupResolver, MAX_RESULT_ROWS, valid_group_target};
 use crate::hub::HubHandle;
 use crate::inventory::valid_serial;
 use crate::registry::DeviceState;
 use crate::service::{HubService, ServiceSetup};
-use crate::session::{Role, Session, SessionId};
+use crate::session::{Role, Session};
 
 /// The `hello` cap of this family (`hub-api.md` section 20).
 pub const CAP: &str = "group_params";
@@ -54,17 +53,12 @@ const NAME_BYTES: usize = 31;
 /// The longest group id taken, in bytes (as `groups.rs`).
 const MAX_GROUP_ID_BYTES: usize = 24;
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    // The set below is left whole before anything could panic.
-    m.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// The service for `api::services`.
-pub(super) fn service(setup: &ServiceSetup<'_>) -> Arc<dyn HubService> {
+/// The service for `api::services`. -- WP P3RS -- `busy` is shared with bulk apply.
+pub(super) fn service(setup: &ServiceSetup<'_>, busy: GroupBusy) -> Arc<dyn HubService> {
     Arc::new(GroupParams {
         exec: Executor::new(Arc::clone(setup.clock), setup.wake.clone()),
         groups: setup.group_resolver(),
-        running: Mutex::new(BTreeSet::new()),
+        running: busy,
     })
 }
 
@@ -72,36 +66,9 @@ pub(super) fn service(setup: &ServiceSetup<'_>) -> Arc<dyn HubService> {
 struct GroupParams {
     exec: Executor,
     groups: Option<Arc<dyn GroupResolver>>,
-    /// The sessions with a group request running.
-    running: Mutex<BTreeSet<SessionId>>,
-}
-
-/// A session's running group request; dropped, the session may run another.
-struct Running<'a> {
-    set: &'a Mutex<BTreeSet<SessionId>>,
-    id: SessionId,
-}
-
-impl Drop for Running<'_> {
-    fn drop(&mut self) {
-        lock(self.set).remove(&self.id);
-    }
-}
-
-impl GroupParams {
-    fn begin(&self, session: &Session) -> Result<Running<'_>, ApiError> {
-        let id = session.id();
-        if !lock(&self.running).insert(id) {
-            return Err(ApiError::new(
-                "busy",
-                "this session's other group request is still running",
-            ));
-        }
-        Ok(Running {
-            set: &self.running,
-            id,
-        })
-    }
+    // -- WP P3RS --
+    /// The sessions with a group request running, shared with `group.apply*`.
+    running: GroupBusy,
 }
 
 impl HubService for GroupParams {
@@ -510,7 +477,7 @@ impl GroupParams {
                 "a run answers at most {MAX_RESULT_ROWS} rows"
             )));
         }
-        let _running = self.begin(session)?;
+        let _running = self.running.enter(session)?;
         Ok(members
             .iter()
             .map(
