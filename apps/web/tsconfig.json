@@ -15,5 +15,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "test/unit", "test/pages"]
+  "include": ["src", "test/unit", "test/pages", "tools/spike"]
 }

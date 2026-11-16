@@ -64,6 +64,8 @@ if (args.has("--unit")) {
       app: "src/standalone.ts",
       "dspi-web": "src/index.tsx",
       worker: "src/core/worker.ts",
+      // -- WP P5WCAP -- the microphone's AudioWorklet, loaded by capture.ts (its own file: CSP 'self')
+      "capture-worklet": "src/core/capture-worklet.ts",
     },
     outdir: out,
     minify: true,
@@ -102,6 +104,8 @@ if (args.has("--unit")) {
         "test/usb-worker": "test/pages/usb-worker.ts",
         // -- WP WB4b -- a fleet server's page with hubs
         "test/fleet-hub": "test/pages/fleet-hub.ts",
+        // -- WP P5WCAP -- the microphone capture page (test/e2e/capture_p5wcap.spec.ts)
+        "test/capture": "test/pages/capture.ts",
       },
       outdir: out,
       minify: false,
