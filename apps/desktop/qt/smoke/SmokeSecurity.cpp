@@ -47,6 +47,9 @@ QJsonObject parsed(const QByteArray &reply) { return QJsonDocument::fromJson(rep
 struct OwnHub {
     FfiHub *hub = dspi_hub_new();
     QString id, url, fingerprint, tls;
+    QString offUrl;   // -- WP SECFIX --
+    int port = 0;
+    bool loopbackOnly = false;
     bool compat = false;
 
     ~OwnHub() {
@@ -54,6 +57,7 @@ struct OwnHub {
         if (hub) dspi_hub_free(hub);
     }
     bool start(const QString &dir, uint8_t access, uint32_t options) {
+        loopbackOnly = options & HUB_OPT_LOOPBACK;
         if (!hub) return false;
         QByteArray buf(int(HUB_REPLY_MIN), '\0');
         const QByteArray d = QDir::toNativeSeparators(dir).toUtf8();
@@ -62,7 +66,11 @@ struct OwnHub {
         const QJsonObject o = parsed(QByteArray(buf.constData(), int(n) - 1));
         if (!o.value(QLatin1String("ok")).toBool()) return false;
         id = o.value(QLatin1String("hubId")).toString();
-        url = QStringLiteral("ws://127.0.0.1:%1/dspi/v1").arg(o.value(QLatin1String("port")).toInt());
+        port = o.value(QLatin1String("port")).toInt();
+        url = QStringLiteral("ws://127.0.0.1:%1/dspi/v1").arg(port);
+        // -- WP SECFIX -- the same hub at an address the "local" rule does not
+        // cover (it binds every address without HUB_OPT_LOOPBACK)
+        offUrl = loopbackOnly ? QString() : QStringLiteral("ws://127.0.0.2:%1/dspi/v1").arg(port);
         fingerprint = o.value(QLatin1String("tlsFingerprint")).toString();
         tls = o.value(QLatin1String("tls")).toString();
         compat = o.value(QLatin1String("upstreamCompat")).toBool();
@@ -171,6 +179,43 @@ void controllerChecks(SmokeDriver &d, const QString &scratch) {
                 d.waitFor(1000, [&] { return !l.busy(); }) && storedIn(file, tlsHub->id) == v2 && l.keyNotice().isEmpty());
     }
 
+    // ---- -- WP SECFIX -- dspi://pair links, through the core's parser ------------------
+    {
+        const QString linkFile = scratch + QStringLiteral("/link-tokens.json");
+        Run run(linkFile);
+        LinkController &l = *run.link;
+        d.check("secfix: not a pairing link: refused, the link not repeated",
+                !l.openPairLink(QStringLiteral("dspi://pair?h=x&p=135790")) && l.errorCode() == QLatin1String("invalid")
+                    && !l.errorText().contains(QLatin1String("135790")) && !l.errorText().contains(QLatin1String("dspi://")));
+        // The key is the v2 credential's third part (base64url, as k= takes it)
+        const QString key = v2.section(QLatin1Char('.'), 2, 2);
+        const QString authority = QStringLiteral("127.0.0.1:%1").arg(tlsHub->port);
+        const QString wrongKey(43, QLatin1Char('A'));
+        const QString wrong = QStringLiteral("dspi://pair?h=%1&a=%2&k=%3&p=246801").arg(tlsHub->id, authority, wrongKey);
+        d.check("secfix: a link with a wrong k= (pasted as an address) is followed",
+                key.length() == 43 && l.connectToAddress(wrong));
+        const bool failed = settled(l);
+        d.check("secfix: wrong k=: refused before any PIN, with no re-pairing offered",
+                failed && l.errorCode().startsWith(QLatin1String("hub_key")) && !l.rePairOffered()
+                    && phaseIs(l, "idle") && storedIn(linkFile, tlsHub->id).isEmpty()
+                    && !l.errorText().contains(QLatin1String("246801")));
+        if (!l.errorCode().startsWith(QLatin1String("hub_key")))
+            std::fprintf(stderr, "secfix: wrong k= gave code %s, phase %s\n", qPrintable(l.errorCode()), qPrintable(l.phase()));
+        d.check("secfix: wrong k=: the link's PIN is dropped", l.pairLinkPin().isEmpty());
+        const QString pin = tlsHub->pin();
+        const QString right = QStringLiteral("dspi://pair?h=%1&a=%2&k=%3&p=%4").arg(tlsHub->id, authority, key, pin);
+        d.check("secfix: the hub's own link is followed", l.openPairLink(right));
+        d.check("secfix: the PIN prompt, with the hub's key and the link's PIN filled in (no pairing yet)",
+                settled(l) && phaseIs(l, "needs_pairing") && l.errorCode().isEmpty() && l.encrypted()
+                    && l.hubKey() == firstKey && l.pairLinkPin() == pin && storedIn(linkFile, tlsHub->id).isEmpty());
+        l.pair(l.pairLinkPin());
+        d.check("secfix: paired on the tap: a v2 credential pinned to the link's key, the PIN spent",
+                settled(l) && l.errorCode().isEmpty() && phaseIs(l, "choose_device") && l.pairLinkPin().isEmpty()
+                    && d.waitFor(3000, [&] { return pinnedKey(storedIn(linkFile, tlsHub->id)) == firstKey; }));
+        l.closeSession();
+        settled(l);
+    }
+
     // ---- The hub's key changes: re-pair only ------------------------------------------
     tlsHub->stop();
     QFile::remove(store + QStringLiteral("/tls/key.pem"));
@@ -205,12 +250,13 @@ void controllerChecks(SmokeDriver &d, const QString &scratch) {
     const QString v1Store = scratch + QStringLiteral("/hub-v1");
     {
         OwnHub plain;
-        const bool plainUp = plain.start(v1Store, HUB_ACCESS_PIN, HUB_OPT_LOOPBACK);
+        // -- WP SECFIX -- on every address, dialled at 127.0.0.2: not local
+        const bool plainUp = plain.start(v1Store, HUB_ACCESS_PIN, 0);
         d.check("secqt: a hub without TLS runs", plainUp && plain.tls == QLatin1String("off") && plain.fingerprint.isEmpty());
         if (!plainUp) return;
         Run run(file);
         LinkController &l = *run.link;
-        l.connectToHub(plain.url, plain.id);
+        l.connectToHub(plain.offUrl, plain.id);
         d.check("secqt: no TLS: asks for the PIN, unencrypted", settled(l) && phaseIs(l, "needs_pairing")
                                                                      && d.waitFor(3000, [&] { return l.unsecured(); })
                                                                      && !l.encrypted() && l.hubKey().isEmpty());
@@ -222,6 +268,13 @@ void controllerChecks(SmokeDriver &d, const QString &scratch) {
         d.check("secqt: no TLS: unsecured while in session", l.unsecured());
         l.closeSession();
         d.check("secqt: no TLS: nothing unsecured once left", settled(l) && phaseIs(l, "idle") && !l.unsecured());
+        // -- WP SECFIX -- the same hub on 127.0.0.1: local, so not unsecured
+        l.connectToHub(plain.url, plain.id);
+        d.check("secfix: no TLS on loopback: local, not unsecured",
+                settled(l) && l.errorCode().isEmpty() && phaseIs(l, "choose_device")
+                    && d.waitFor(3000, [&] { return l.local(); }) && !l.unsecured() && !l.encrypted());
+        l.closeSession();
+        d.check("secfix: left: not local any more", settled(l) && phaseIs(l, "idle") && !l.local());
     }
     {
         OwnHub upgraded;
@@ -259,7 +312,7 @@ void controllerChecks(SmokeDriver &d, const QString &scratch) {
 
     // ---- Advertised TLS never falls back: tls_refused ----------------------------------------
     FakeHubProcess plain;
-    const bool fakeUp = plain.start({ "--auth", "none" });
+    const bool fakeUp = plain.start({ "--auth", "none" }, QStringLiteral("127.0.0.2:0"));   // -- WP SECFIX -- not local
     d.check("secqt: the fake hub runs (DSPI_SMOKE_FAKEHUB)", fakeUp);
     if (!fakeUp) return;
     {
@@ -331,7 +384,7 @@ void windowChecks(SmokeDriver &d, const QString &scratch) {
     // ---- A plaintext hub: red, "(unsecured)", the info -------------------------------------
     {
         FakeHubProcess hub;
-        const bool up = hub.start({ "--auth", "none" });
+        const bool up = hub.start({ "--auth", "none" }, QStringLiteral("127.0.0.2:0"));   // -- WP SECFIX -- not local
         d.check("secqt: the fake hub runs (DSPI_SMOKE_FAKEHUB)", up);
         if (!up) return;
         link->connectToHub(hub.url, hub.id);

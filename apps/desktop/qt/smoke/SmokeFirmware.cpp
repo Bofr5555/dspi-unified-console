@@ -265,6 +265,24 @@ void window(Qp16Fw &f) {
 void customImages(Qp16Fw &f) {
     SmokeDriver &d = f.d;
     FirmwareController *fw = f.fw;
+    // -- WP SECFIX -- a file of the user's: labelled "Not a verified DSPi Console
+    // image" (the core's row firmware.not_verified), and not refused
+    fw->useCustomImage(f.writeFile(QStringLiteral("mine.uf2"), makeUf2(kRp2350Family, "1.1.6", "1200")));
+    d.check(QStringLiteral("secfix: a user's image is labelled not verified, in the core's words"),
+            d.waitFor(3000, [&]() { return fw->custom() && !fw->unverifiedLabel().isEmpty(); }) &&
+                fw->unverifiedLabel() == QLatin1String("Not a verified DSPi Console image") &&
+                !fw->unverifiedText().isEmpty() && f.shows(QStringLiteral("FirmwareWindow.unverified")));
+    d.check(QStringLiteral("secfix: and is not refused for it"), fw->imageProblem().isEmpty() && fw->imageChecked());
+    d.check(QStringLiteral("secfix: screenshot of the not-verified label"), d.grab(f.w, QStringLiteral("window-firmware-unverified.png")));
+    {
+        QFile bundled(QStringLiteral(":/firmware/DSPi-RP2350-v1.1.6.uf2"));
+        const QByteArray bytes = bundled.open(QIODevice::ReadOnly) ? bundled.readAll() : QByteArray();
+        fw->useCustomImage(f.writeFile(QStringLiteral("DSPi-RP2350-v1.1.6.uf2"), bytes));
+        d.check(QStringLiteral("secfix: a copy of the bundled image is verified: no label"),
+                !bytes.isEmpty() && d.waitFor(3000, [&]() { return fw->custom() && fw->imageName() == QLatin1String("DSPi-RP2350-v1.1.6.uf2"); })
+                    && d.waitFor(3000, [&]() { return fw->unverifiedLabel().isEmpty(); })
+                    && !f.shows(QStringLiteral("FirmwareWindow.unverified")));
+    }
     fw->useCustomImage(f.writeFile(QStringLiteral("rp2040.uf2"), makeUf2(kRp2040Family, "1.1.6", "1200")));
     d.check(QStringLiteral("qp16: an image for the other chip says so when chosen"),
             d.waitFor(3000, [&]() { return fw->custom() && !fw->imageProblem().isEmpty(); }) &&

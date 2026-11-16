@@ -82,6 +82,15 @@ class LinkController : public QObject {
     // and says `unsecuredLabel` (the core's notice row dlink.unsecured).
     Q_PROPERTY(bool encrypted READ encrypted NOTIFY securityChanged)
     Q_PROPERTY(bool unsecured READ unsecured NOTIFY securityChanged)
+    // -- WP SECFIX -- not encrypted, but the hub is this machine (127.0.0.1,
+    // ::1, localhost: the core's `local`, the web's rule): nothing crosses a
+    // network, so it is not unsecured (no red, no "(unsecured)")
+    Q_PROPERTY(bool local READ local NOTIFY securityChanged)
+    // -- WP SECFIX -- A `dspi://pair` link is being followed (pasted where an
+    // address goes; openPairLink): the PIN it carries, for the PIN prompt to
+    // show filled in, so pairing still takes the user's tap on Pair after
+    // the hub's name and key are on screen. "" otherwise.
+    Q_PROPERTY(QString pairLinkPin READ pairLinkPin NOTIFY pairLinkChanged)
     // The hub key's fingerprint, "SHA256:K7Q2-M9XD-…", "" when none (shown on the
     // PIN prompt, before the PIN goes out)
     Q_PROPERTY(QString hubKey READ hubKey NOTIFY securityChanged)
@@ -130,12 +139,16 @@ public:
     // -- WP SECQT --
     bool encrypted() const { return m_encrypted; }
     bool unsecured() const { return m_unsecured; }
+    bool local() const { return m_local; }   // -- WP SECFIX --
+    QString pairLinkPin() const { return m_linkPin; }   // -- WP SECFIX --
     QString hubKey() const { return m_hubKey; }
     QString unsecuredLabel() const { return m_unsecuredLabel; }
     QString unsecuredInfoTitle() const { return m_unsecuredInfoTitle; }
     QString unsecuredInfoText() const { return m_unsecuredInfoText; }
     QString keyNotice() const { return m_keyNotice; }
-    bool rePairOffered() const { return offersRePair(m_errorCode); }
+    // -- WP SECFIX -- not after a pairing link whose key the hub did not
+    // present: the link was wrong, not the pairing
+    bool rePairOffered() const { return offersRePair(m_errorCode) && !m_linkRefused; }
     // The codes whose only answer is pairing again (PLAN-SEC 4.3): no
     // "connect anyway" exists for any of them
     static bool offersRePair(const QString &code);
@@ -151,7 +164,16 @@ public:
     Q_INVOKABLE void connectToHub(const QString &url, const QString &expectedHubId = QString(), bool tlsAdvertised = false);
     // The same from what a person typed: host, host:port, [v6]:port. False when
     // it is not an address; errorText says why.
+    // -- WP SECFIX -- A `dspi://pair` link given here goes to openPairLink.
     Q_INVOKABLE bool connectToAddress(const QString &address, const QString &expectedHubId = QString());
+    // -- WP SECFIX -- Follow a `dspi://pair?h=&a=&k=&p=` link (a hub's QR code,
+    // pasted) through the core's parser (dspi_link_parse_pair_link), as the
+    // Terminal and Android do: the dial is pinned to its k=, so a hub with
+    // another key fails it before any PIN goes out; then the PIN prompt shows
+    // the hub's name and key with the link's PIN filled in, and pairs only on
+    // the user's tap. False (errorText says why, never echoing the link) when
+    // it is not a valid pairing link.
+    Q_INVOKABLE bool openPairLink(const QString &text);
     Q_INVOKABLE void pair(const QString &pin);
     Q_INVOKABLE void bindDevice(int handle, const QString &serial);
     // Leave the hub, also during a dial. Returns at once. The device that was
@@ -187,6 +209,7 @@ signals:
     void errorChanged();
     void tokenWarningChanged();
     void securityChanged();      // -- WP SECQT --
+    void pairLinkChanged();      // -- WP SECFIX --
     void keyNoticeChanged();     // -- WP SECQT --
     // A hub's device was bound and the app shows it
     void deviceBound(const QString &serial);
@@ -217,7 +240,11 @@ private:
     void applySecurity(const Security &s);
     void clearSecurity();
     void updateUnsecured();
-    void dial(const QString &url, const QString &expectedHubId, bool tlsAdvertised, bool useStored);
+    // -- WP SECFIX -- `credential`: dial with it instead of the stored one
+    // (a pairing link's, pinned to its key, no token)
+    void dial(const QString &url, const QString &expectedHubId, bool tlsAdvertised, bool useStored,
+              const QString &credential = QString());
+    void setPairLinkPin(const QString &pin);   // -- WP SECFIX --
     void endSession(bool reopenLocal);
     void postBind(int handle, const QString &serial);
     void afterBind(const QString &serial);
@@ -261,6 +288,10 @@ private:
     QString m_lastUrl, m_lastExpected;   // the last dial, for rePair()
     bool m_lastTls = false;
     QString m_failedHubId;         // the hub the last failed dial was for
+    // -- WP SECFIX --
+    bool m_local = false;          // what local() says
+    QString m_linkPin;             // a pairing link's PIN until paired or left; never logged
+    bool m_linkRefused = false;    // the last failure was a pairing link's key not met
     QThreadPool m_worker;   // one thread: dial, pair, bind, tokens
     QThreadPool m_reader;   // one thread: status and device list
 };
