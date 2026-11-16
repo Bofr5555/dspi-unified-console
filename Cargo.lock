@@ -886,6 +886,7 @@ name = "dspi-term"
 version = "0.13.0"
 dependencies = [
  "crossterm",
+ "data-encoding",
  "dirs",
  "dspi-cmd",
  "dspi-core",
