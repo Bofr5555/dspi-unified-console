@@ -136,6 +136,8 @@ pub use clock::{HubClock, SystemClock, TestClock};
 pub use service::{DeviceEvent, HubService, ServiceConfig, SessionLabel};
 // -- WP P2HP --
 pub use health::HealthConfig;
+// -- WP P3HB --
+pub use bus::{LastChange, StreamCounters};
 // -- WP P2EV --
 pub use history::HistoryConfig;
 // -- WP P2SC --

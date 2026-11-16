@@ -337,6 +337,10 @@ fn wp_p2ha_state_follows_notifications_and_health() {
             temp_c: Some(47.26),
             uptime_s: None,
             hang_count: None,
+            // -- WP P3HB --
+            counters: None,
+            clip_per_min: None,
+            last_change: None,
         },
     );
     let got = topics(&mut out);
@@ -353,6 +357,10 @@ fn wp_p2ha_state_follows_notifications_and_health() {
             temp_c: None,
             uptime_s: None,
             hang_count: None,
+            // -- WP P3HB --
+            counters: None,
+            clip_per_min: None,
+            last_change: None,
         },
     );
     assert!(out.is_empty());

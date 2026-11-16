@@ -272,6 +272,8 @@ pub use hub_server::{
     HubServerListener, HubSnapshotDocument, HubSnapshotPut, HubSnapshotRecall, HubStats,
     HubStatsDevice, MergedSnapshot, SnapshotMergedList,
 };
+// -- WP P3HB --
+pub use hub_server::{HubLastChange, HubStreamCounters};
 // -- WP P2CC2 --
 pub use hub_server::{
     HubAlarm, HubAlarmRule, HubApiKey, HubApiKeyMinted, HubMqttSettings, HubMqttStatus, HubMqttTls,

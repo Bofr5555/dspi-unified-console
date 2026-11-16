@@ -4739,7 +4739,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_events_watch() != 53028.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_health() != 16703.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_health() != 60109.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_identify() != 8517.toShort()) {
@@ -8834,7 +8834,9 @@ public interface DspiCoreInterface {
     
     /**
      * One health record per online device of the hub (`health.get`):
-     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+     * -- WP P3HB -- the stream counters, clip events a minute and the last
+     * change where the hub has them.
      * Every role. Slow: off the UI thread.
      *
      * Errors: [`DspiError::Unsupported`] without the `health` cap;
@@ -14998,7 +15000,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
     /**
      * One health record per online device of the hub (`health.get`):
-     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+     * -- WP P3HB -- the stream counters, clip events a minute and the last
+     * change where the hub has them.
      * Every role. Slow: off the UI thread.
      *
      * Errors: [`DspiError::Unsupported`] without the `health` cap;
@@ -29907,7 +29911,21 @@ data class HubHealth (
     /**
      * The reset seen at attach or since.
      */
-    var `reset`: HubReset?
+    var `reset`: HubReset?, 
+    /**
+     * The stream's underrun and starvation totals, once the hub read either
+     * (one read every 30 s, the four counters in turn).
+     */
+    var `counters`: HubStreamCounters?, 
+    /**
+     * Clip events in the last minute; `None` on firmware with only the clip
+     * latch (no extension clip events).
+     */
+    var `clipPerMin`: kotlin.UInt?, 
+    /**
+     * The device's newest change and who made it, from the hub's history.
+     */
+    var `lastChange`: HubLastChange?
 ) {
     
     companion object
@@ -29930,6 +29948,9 @@ public object FfiConverterTypeHubHealth: FfiConverterRustBuffer<HubHealth> {
             FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterOptionalTypeHubReset.read(buf),
+            FfiConverterOptionalTypeHubStreamCounters.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalTypeHubLastChange.read(buf),
         )
     }
 
@@ -29944,7 +29965,10 @@ public object FfiConverterTypeHubHealth: FfiConverterRustBuffer<HubHealth> {
             FfiConverterOptionalUByte.allocationSize(value.`hangCount`) +
             FfiConverterBoolean.allocationSize(value.`unresponsive`) +
             FfiConverterString.allocationSize(value.`unresponsiveSince`) +
-            FfiConverterOptionalTypeHubReset.allocationSize(value.`reset`)
+            FfiConverterOptionalTypeHubReset.allocationSize(value.`reset`) +
+            FfiConverterOptionalTypeHubStreamCounters.allocationSize(value.`counters`) +
+            FfiConverterOptionalUInt.allocationSize(value.`clipPerMin`) +
+            FfiConverterOptionalTypeHubLastChange.allocationSize(value.`lastChange`)
     )
 
     override fun write(value: HubHealth, buf: ByteBuffer) {
@@ -29959,6 +29983,9 @@ public object FfiConverterTypeHubHealth: FfiConverterRustBuffer<HubHealth> {
             FfiConverterBoolean.write(value.`unresponsive`, buf)
             FfiConverterString.write(value.`unresponsiveSince`, buf)
             FfiConverterOptionalTypeHubReset.write(value.`reset`, buf)
+            FfiConverterOptionalTypeHubStreamCounters.write(value.`counters`, buf)
+            FfiConverterOptionalUInt.write(value.`clipPerMin`, buf)
+            FfiConverterOptionalTypeHubLastChange.write(value.`lastChange`, buf)
     }
 }
 
@@ -30001,6 +30028,56 @@ public object FfiConverterTypeHubInventoryForgot: FfiConverterRustBuffer<HubInve
     override fun write(value: HubInventoryForgot, buf: ByteBuffer) {
             FfiConverterString.write(value.`serial`, buf)
             FfiConverterSequenceString.write(value.`forgot`, buf)
+    }
+}
+
+
+
+/**
+ * A device's newest change in [`HubHealth`]: the newest history record of a
+ * write, recall, import, schedule run or new firmware.
+ */
+data class HubLastChange (
+    /**
+     * When (ISO-8601 UTC).
+     */
+    var `at`: kotlin.String, 
+    /**
+     * Who made it (a client's name, a schedule); "" when the record names no
+     * one (a change at the device itself).
+     */
+    var `by`: kotlin.String, 
+    /**
+     * The record's line.
+     */
+    var `text`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubLastChange: FfiConverterRustBuffer<HubLastChange> {
+    override fun read(buf: ByteBuffer): HubLastChange {
+        return HubLastChange(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubLastChange) = (
+            FfiConverterString.allocationSize(value.`at`) +
+            FfiConverterString.allocationSize(value.`by`) +
+            FfiConverterString.allocationSize(value.`text`)
+    )
+
+    override fun write(value: HubLastChange, buf: ByteBuffer) {
+            FfiConverterString.write(value.`at`, buf)
+            FfiConverterString.write(value.`by`, buf)
+            FfiConverterString.write(value.`text`, buf)
     }
 }
 
@@ -31569,6 +31646,49 @@ public object FfiConverterTypeHubStatsDevice: FfiConverterRustBuffer<HubStatsDev
             FfiConverterULong.write(value.`errors`, buf)
             FfiConverterDouble.write(value.`avgRttMs`, buf)
             FfiConverterULong.write(value.`notifyDropped`, buf)
+    }
+}
+
+
+
+/**
+ * A device's stream counters in [`HubHealth`]. Each is `None` until the hub
+ * read it.
+ */
+data class HubStreamCounters (
+    /**
+     * Output underruns (PDM ring, PDM DMA and S/PDIF added up), total since
+     * the device started.
+     */
+    var `underruns`: kotlin.UInt?, 
+    /**
+     * Output starvations, total since the device started.
+     */
+    var `starvation`: kotlin.UInt?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubStreamCounters: FfiConverterRustBuffer<HubStreamCounters> {
+    override fun read(buf: ByteBuffer): HubStreamCounters {
+        return HubStreamCounters(
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubStreamCounters) = (
+            FfiConverterOptionalUInt.allocationSize(value.`underruns`) +
+            FfiConverterOptionalUInt.allocationSize(value.`starvation`)
+    )
+
+    override fun write(value: HubStreamCounters, buf: ByteBuffer) {
+            FfiConverterOptionalUInt.write(value.`underruns`, buf)
+            FfiConverterOptionalUInt.write(value.`starvation`, buf)
     }
 }
 
@@ -39517,6 +39637,38 @@ public object FfiConverterOptionalTypeHubEventRecord: FfiConverterRustBuffer<Hub
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeHubLastChange: FfiConverterRustBuffer<HubLastChange?> {
+    override fun read(buf: ByteBuffer): HubLastChange? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubLastChange.read(buf)
+    }
+
+    override fun allocationSize(value: HubLastChange?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubLastChange.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubLastChange?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubLastChange.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeHubOutboundLast: FfiConverterRustBuffer<HubOutboundLast?> {
     override fun read(buf: ByteBuffer): HubOutboundLast? {
         if (buf.get().toInt() == 0) {
@@ -39635,6 +39787,38 @@ public object FfiConverterOptionalTypeHubScheduleRun: FfiConverterRustBuffer<Hub
         } else {
             buf.put(1)
             FfiConverterTypeHubScheduleRun.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubStreamCounters: FfiConverterRustBuffer<HubStreamCounters?> {
+    override fun read(buf: ByteBuffer): HubStreamCounters? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubStreamCounters.read(buf)
+    }
+
+    override fun allocationSize(value: HubStreamCounters?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubStreamCounters.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubStreamCounters?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubStreamCounters.write(value, buf)
         }
     }
 }

@@ -3686,6 +3686,9 @@ internal fun se.bofr.dspi.ffi.uniffi.HubHealth.toDomain() =
         unresponsive = unresponsive,
         unresponsiveSince = unresponsiveSince,
         reset = reset?.let { it.toDomain() },
+        counters = counters?.let { it.toDomain() },
+        clipPerMin = clipPerMin?.let { it.toLong() },
+        lastChange = lastChange?.let { it.toDomain() },
     )
 
 internal fun HubHealth.toFfi() =
@@ -3701,6 +3704,35 @@ internal fun HubHealth.toFfi() =
         unresponsive = unresponsive,
         unresponsiveSince = unresponsiveSince,
         reset = reset?.let { it.toFfi() },
+        counters = counters?.let { it.toFfi() },
+        clipPerMin = clipPerMin?.let { it.toUInt() },
+        lastChange = lastChange?.let { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubStreamCounters.toDomain() =
+    HubStreamCounters(
+        underruns = underruns?.let { it.toLong() },
+        starvation = starvation?.let { it.toLong() },
+    )
+
+internal fun HubStreamCounters.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubStreamCounters(
+        underruns = underruns?.let { it.toUInt() },
+        starvation = starvation?.let { it.toUInt() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubLastChange.toDomain() =
+    HubLastChange(
+        at = at,
+        by = by,
+        text = text,
+    )
+
+internal fun HubLastChange.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubLastChange(
+        at = at,
+        by = by,
+        text = text,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HubStatsDevice.toDomain() =

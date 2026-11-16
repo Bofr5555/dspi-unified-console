@@ -4400,6 +4400,56 @@ data class HubHealth(
      * The reset seen at attach or since.
      */
     val reset: HubReset?,
+    /**
+     * The stream's underrun and starvation totals, once the hub read either
+     * (one read every 30 s, the four counters in turn).
+     */
+    val counters: HubStreamCounters?,
+    /**
+     * Clip events in the last minute; `None` on firmware with only the clip
+     * latch (no extension clip events).
+     */
+    val clipPerMin: Long?,
+    /**
+     * The device's newest change and who made it, from the hub's history.
+     */
+    val lastChange: HubLastChange?,
+)
+
+/**
+ * A device's stream counters in [`HubHealth`]. Each is `None` until the hub
+ * read it.
+ */
+data class HubStreamCounters(
+    /**
+     * Output underruns (PDM ring, PDM DMA and S/PDIF added up), total since
+     * the device started.
+     */
+    val underruns: Long?,
+    /**
+     * Output starvations, total since the device started.
+     */
+    val starvation: Long?,
+)
+
+/**
+ * A device's newest change in [`HubHealth`]: the newest history record of a
+ * write, recall, import, schedule run or new firmware.
+ */
+data class HubLastChange(
+    /**
+     * When (ISO-8601 UTC).
+     */
+    val at: String,
+    /**
+     * Who made it (a client's name, a schedule); "" when the record names no
+     * one (a change at the device itself).
+     */
+    val by: String,
+    /**
+     * The record's line.
+     */
+    val text: String,
 )
 
 /**

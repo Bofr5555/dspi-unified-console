@@ -27,26 +27,42 @@
 //! `health.get` says so. While it is unresponsive the single reads wait, so a hung device
 //! costs the other sessions only the poll's own retry.
 //!
+//! **For the board (WP P3HB, PLAN-P3 F7).** Three more facts per device, in `health.get`
+//! and in every `Health`: `counters`, the output underruns (PDM ring, PDM DMA and S/PDIF,
+//! `REQ_GET_STATUS` 4, 6 and 8, added up) and the starvation total (17), the counters the
+//! diagnostics bundle reads, one single read every 30 s on the device's queue, the four
+//! in turn, so each is at most two minutes old; `clip_per_min`, the extension clip events (0xE0) of the last minute, counted from
+//! the bus's notifications, on firmware whose `EXT_NOTIFY_FEATURES` announces them (read
+//! once on attach where listed; firmware with only the latch has no such field); and
+//! `last_change`, the device's newest history record of a change (a write, a recall, an
+//! import, a schedule run, new firmware) with who made it, from the history's written
+//! records on the bus, so a coalesced sweep counts once. Still reads only.
+//!
 //! **Message:** `health.get {serial?}` (every role, `docs/integrator/hub-api.md` section 5).
 //!
 //! Pure state, thin glue: [`Tracker`] is one device's state machine, given the time and
 //! the answers; [`HealthService`] runs it on the hub's timer, submits its reads and
 //! publishes what it says. Completions only queue the answer and wake the timer.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use dspi_link::frames::CmdRequest;
 use dspi_link::messages::PollSpec;
 use dspi_link::{Dir, status};
-use dspi_proto::ext::{IdentifyStatus, LIST_READ_LEN, ResetInfo, decode_list};
+use dspi_proto::ext::{
+    IdentifyStatus, LIST_READ_LEN, NOTIFY_EVT_EXT_CLIP, NOTIFY_FEAT_CLIP_EVENT, ResetInfo,
+    decode_list,
+};
 use dspi_proto::generated::ext as gext;
 use dspi_proto::generated::opcodes as op;
 use dspi_proto::packets::SystemStatus;
+use dspi_session::events::{EventKind, EventRecord, ExtEvent, decode_ext_event};
+use dspi_session::notify::{self, Event};
 use serde_json::{Map, Value, json};
 
-use crate::bus::{Bus, BusMessage};
+use crate::bus::{Bus, BusMessage, LastChange, StreamCounters, Subscription};
 use crate::clock::HubClock;
 use crate::hub::HubHandle;
 use crate::polls::POLL_MAX_HZ;
@@ -68,6 +84,27 @@ const PROBE_LEN: u16 = 32 * 2 + 7;
 const POLL_SLOT: u8 = 0;
 /// The least wait between two steps of one device.
 const MIN_WAIT: Duration = Duration::from_millis(10);
+// -- WP P3HB --
+/// `REQ_GET_STATUS` sub-query: PDM ring underruns (`dspi_core::consts::STAT_PDM_RING_UNDERRUNS`).
+const STAT_PDM_RING_UNDERRUNS: u16 = 4;
+/// `REQ_GET_STATUS` sub-query: PDM DMA underruns (`dspi_core::consts::STAT_PDM_DMA_UNDERRUNS`).
+const STAT_PDM_DMA_UNDERRUNS: u16 = 6;
+/// `REQ_GET_STATUS` sub-query: S/PDIF underruns (`dspi_core::consts::STAT_SPDIF_UNDERRUNS`).
+const STAT_UNDERRUNS: u16 = 8;
+/// `REQ_GET_STATUS` sub-query: output DMA starvations, every instance
+/// (`dspi_core::consts::STAT_STARVATION_TOTAL`).
+const STAT_STARVATION: u16 = 17;
+/// Clip events kept per device: the firmware sends at most 4 a second (240 a minute),
+/// so this bound is never the count's.
+const CLIP_EVENTS_MAX: usize = 1024;
+/// Devices whose last change is kept across attachments: the inventory's bound.
+const LAST_CHANGES_MAX: usize = crate::inventory::MAX_DEVICES;
+/// The longest `last_change.text` kept, in characters.
+const CHANGE_TEXT_MAX: usize = 256;
+/// The longest `last_change.by` kept, in characters.
+const CHANGE_BY_MAX: usize = 128;
+/// The health service's bus queue: clip events and written history records.
+const BUS_CAPACITY: usize = 1024;
 
 /// When the hub reads what. [`HealthConfig::default`] is PLAN-P2's; tests shorten it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +119,12 @@ pub struct HealthConfig {
     pub unresponsive_after: Duration,
     /// A failed attach read, or a refused poll, is tried again after this (5 s).
     pub retry_after: Duration,
+    // -- WP P3HB --
+    /// One stream-counter read this often, underruns and starvation in turn (30 s).
+    /// The first comes half a period after attach, between two temperature reads.
+    pub counters_every: Duration,
+    /// What `clip_per_min` counts over (a minute).
+    pub clip_window: Duration,
 }
 
 impl Default for HealthConfig {
@@ -92,6 +135,9 @@ impl Default for HealthConfig {
             reset_info_every: Duration::from_secs(60),
             unresponsive_after: Duration::from_secs(10),
             retry_after: Duration::from_secs(5),
+            // -- WP P3HB --
+            counters_every: Duration::from_secs(30),
+            clip_window: Duration::from_secs(60),
         }
     }
 }
@@ -118,6 +164,8 @@ pub(crate) fn service(
         config: health,
         clock: Arc::clone(setup.clock),
         bus: Arc::clone(setup.bus),
+        // -- WP P3HB --
+        sub: setup.bus.subscribe_filtered("health", BUS_CAPACITY, wanted),
         wake: setup.wake.clone(),
         inner: Arc::new(Mutex::new(Inner::default())),
     }))
@@ -140,20 +188,52 @@ pub(crate) enum Read {
     Temperature,
     /// The meter block, when the poll was refused.
     Status,
+    // -- WP P3HB --
+    /// `EXT_NOTIFY_FEATURES`, once on attach where listed: whether 0xE0 is sent.
+    NotifyFeatures,
+    /// `REQ_GET_STATUS` 8, S/PDIF underruns.
+    Underruns,
+    /// `REQ_GET_STATUS` 17.
+    Starvation,
+    /// `REQ_GET_STATUS` 4, PDM ring underruns.
+    PdmRingUnderruns,
+    /// `REQ_GET_STATUS` 6, PDM DMA underruns.
+    PdmDmaUnderruns,
+}
+
+// -- WP P3HB --
+/// The counter reads, in the order the one read a period takes them. `underruns` is
+/// the sum of the three underrun counters (hub-api.md section 5), `starvation` the last.
+const COUNTER_READS: [Read; 4] = [
+    Read::Underruns,
+    Read::Starvation,
+    Read::PdmRingUnderruns,
+    Read::PdmDmaUnderruns,
+];
+
+impl Read {
+    fn is_counter(self) -> bool {
+        COUNTER_READS.contains(&self)
+    }
 }
 
 impl Read {
-    const ALL: [Read; 6] = [
+    const ALL: [Read; 11] = [
         Read::ExtList,
         Read::Identify,
         Read::ResetInfo,
         Read::Probe,
         Read::Temperature,
         Read::Status,
+        Read::NotifyFeatures,
+        Read::Underruns,
+        Read::Starvation,
+        Read::PdmRingUnderruns,
+        Read::PdmDmaUnderruns,
     ];
 
-    fn bit(self) -> u8 {
-        1u8.checked_shl(u32::from(self as u8)).unwrap_or(0)
+    fn bit(self) -> u16 {
+        1u16.checked_shl(u32::from(self as u8)).unwrap_or(0)
     }
 
     /// `(bRequest, wValue, wLength)`.
@@ -181,6 +261,12 @@ impl Read {
                 STATUS_METERS,
                 meter_len.unwrap_or(PROBE_LEN),
             ),
+            // -- WP P3HB --
+            Read::NotifyFeatures => (op::REQ_EXTENSION, gext::EXT_NOTIFY_FEATURES, 4),
+            Read::Underruns => (op::REQ_GET_STATUS, STAT_UNDERRUNS, 4),
+            Read::Starvation => (op::REQ_GET_STATUS, STAT_STARVATION, 4),
+            Read::PdmRingUnderruns => (op::REQ_GET_STATUS, STAT_PDM_RING_UNDERRUNS, 4),
+            Read::PdmDmaUnderruns => (op::REQ_GET_STATUS, STAT_PDM_DMA_UNDERRUNS, 4),
         }
     }
 }
@@ -232,10 +318,10 @@ pub(crate) struct Tracker {
     identify: Option<IdentifyStatus>,
     reset: Option<ResetInfo>,
     /// Reads of the facts still to come back (bits of [`Read::bit`]).
-    facts_pending: u8,
+    facts_pending: u16,
     facts_sent: bool,
     /// Reads queued and not answered.
-    in_flight: u8,
+    in_flight: u16,
     /// When each attach read may be tried (again).
     retry: BTreeMap<Read, Instant>,
     meter_len: Option<u16>,
@@ -256,6 +342,24 @@ pub(crate) struct Tracker {
     next_temperature: Instant,
     next_reset: Instant,
     due: Instant,
+    // -- WP P3HB --
+    /// `EXT_NOTIFY_FEATURES` is listed and not read yet.
+    features_pending: bool,
+    /// Its flags, once read (0 when it stalled).
+    notify_features: Option<u32>,
+    /// Each counter of [`COUNTER_READS`] as last read.
+    counter_values: [Option<u32>; 4],
+    /// Counters the firmware refused (stalled): not asked again on this attachment,
+    /// and 0 in the underrun sum.
+    counters_refused: u16,
+    /// The index in [`COUNTER_READS`] the next counter read starts from.
+    next_counter: usize,
+    /// When the next counter read is due; set on the first step.
+    next_counters: Option<Instant>,
+    /// When each clip event of the last minute came.
+    clip_events: VecDeque<Instant>,
+    /// The newest change, and who made it.
+    last_change: Option<LastChange>,
 }
 
 /// What a reading's payload said, for the tests and the glue alike.
@@ -265,6 +369,13 @@ fn parse_temperature(payload: &[u8]) -> Option<f32> {
     #[allow(clippy::cast_precision_loss)]
     let c = i32::from_le_bytes(raw) as f32 / 100.0;
     Some(c)
+}
+
+// -- WP P3HB --
+/// A little-endian `u32` reply (a status counter, `EXT_NOTIFY_FEATURES`).
+fn parse_u32(payload: &[u8]) -> Option<u32> {
+    let raw: [u8; 4] = payload.get(..4)?.try_into().ok()?;
+    Some(u32::from_le_bytes(raw))
 }
 
 /// Whether `len` bytes can be a meter block: `n * 2 + 7`.
@@ -301,6 +412,15 @@ impl Tracker {
             next_temperature: now,
             next_reset: now,
             due: now,
+            // -- WP P3HB --
+            features_pending: false,
+            notify_features: None,
+            counter_values: [None; 4],
+            counters_refused: 0,
+            next_counter: 0,
+            next_counters: None,
+            clip_events: VecDeque::new(),
+            last_change: None,
         }
     }
 
@@ -343,7 +463,120 @@ impl Tracker {
             temp_c: self.temp_c,
             uptime_s: self.uptime_s,
             hang_count: self.hang_count,
+            // -- WP P3HB --
+            counters: self.counters(),
+            clip_per_min: self.clip_per_min(),
+            last_change: self.last_change.clone(),
         }
+    }
+
+    // -- WP P3HB --
+
+    /// The counters, once either is known: `underruns` once each of its three parts
+    /// was read or refused (a refused one counts 0) and one was read.
+    fn counters(&self) -> Option<StreamCounters> {
+        let part = |r: Read| {
+            let i = COUNTER_READS.iter().position(|x| *x == r)?;
+            let v = self.counter_values.get(i).copied().flatten();
+            match v {
+                Some(v) => Some(Some(v)),
+                None if self.counters_refused & r.bit() != 0 => Some(None),
+                None => None,
+            }
+        };
+        let parts = [
+            part(Read::Underruns),
+            part(Read::PdmRingUnderruns),
+            part(Read::PdmDmaUnderruns),
+        ];
+        let underruns = if parts.iter().all(Option::is_some)
+            && parts.iter().any(|p| matches!(p, Some(Some(_))))
+        {
+            Some(
+                parts
+                    .iter()
+                    .map(|p| p.flatten().unwrap_or(0))
+                    .fold(0u32, u32::saturating_add),
+            )
+        } else {
+            None
+        };
+        let starvation = part(Read::Starvation).flatten();
+        let c = StreamCounters {
+            underruns,
+            starvation,
+        };
+        (c.underruns.is_some() || c.starvation.is_some()).then_some(c)
+    }
+
+    /// Whether the firmware sends extension clip events (0xE0).
+    fn clip_events_announced(&self) -> bool {
+        self.notify_features
+            .is_some_and(|f| f & NOTIFY_FEAT_CLIP_EVENT != 0)
+    }
+
+    /// Clip events in the last minute (as of the last [`Tracker::forget_clips`]), on
+    /// firmware that sends them; `None` on firmware with only the latch.
+    fn clip_per_min(&self) -> Option<u32> {
+        self.clip_events_announced()
+            .then(|| u32::try_from(self.clip_events.len()).unwrap_or(u32::MAX))
+    }
+
+    /// Drop the clip events older than the window (a minute).
+    pub(crate) fn forget_clips(&mut self, now: Instant, cfg: &HealthConfig) {
+        while let Some(at) = self.clip_events.front() {
+            if now.saturating_duration_since(*at) < cfg.clip_window {
+                break;
+            }
+            self.clip_events.pop_front();
+        }
+    }
+
+    /// An extension clip event (0xE0) of this device came at `now`.
+    pub(crate) fn clip_event(&mut self, now: Instant, cfg: &HealthConfig) {
+        self.forget_clips(now, cfg);
+        if self.clip_events.len() >= CLIP_EVENTS_MAX {
+            self.clip_events.pop_front();
+        }
+        self.clip_events.push_back(now);
+    }
+
+    /// The device's newest change.
+    pub(crate) fn set_last_change(&mut self, change: LastChange) {
+        if self
+            .last_change
+            .as_ref()
+            .is_none_or(|old| change.at_ms >= old.at_ms)
+        {
+            self.last_change = Some(change);
+        }
+    }
+
+    /// The counter the next counter read asks for, in turn; `None` when the firmware
+    /// refused both.
+    fn counter_turn(&mut self) -> Option<Read> {
+        let n = COUNTER_READS.len();
+        let (i, read) = (0..n)
+            .map(|k| {
+                self.next_counter
+                    .saturating_add(k)
+                    .checked_rem(n)
+                    .unwrap_or(0)
+            })
+            .filter_map(|i| COUNTER_READS.get(i).map(|r| (i, *r)))
+            .find(|(_, r)| self.counters_refused & r.bit() == 0)?;
+        self.next_counter = i.saturating_add(1).checked_rem(n).unwrap_or(0);
+        Some(read)
+    }
+
+    fn counters_wanted(&self) -> bool {
+        COUNTER_READS
+            .iter()
+            .any(|r| self.counters_refused & r.bit() == 0)
+    }
+
+    fn counter_busy(&self) -> bool {
+        COUNTER_READS.iter().any(|r| self.busy(*r))
     }
 
     /// The device answered: it is not unresponsive.
@@ -390,9 +623,14 @@ impl Tracker {
         // A stall is the firmware's answer ("not this"); a timeout or a lost device is none.
         let answered = st == status::OK || st == status::ERROR;
         let attach_read = match read {
-            Read::ExtList | Read::Identify | Read::Probe => true,
+            Read::ExtList | Read::Identify | Read::Probe | Read::NotifyFeatures => true,
             Read::ResetInfo => !self.facts_sent,
-            Read::Temperature | Read::Status => false,
+            Read::Temperature
+            | Read::Status
+            | Read::Underruns
+            | Read::Starvation
+            | Read::PdmRingUnderruns
+            | Read::PdmDmaUnderruns => false,
         };
         if answered {
             self.answered(now);
@@ -414,6 +652,8 @@ impl Tracker {
                         self.facts_pending |= read.bit();
                     }
                 }
+                // -- WP P3HB --
+                self.features_pending = list.contains(&gext::EXT_NOTIFY_FEATURES);
                 self.ext = Some(list);
             }
             Read::Identify if answered => {
@@ -465,6 +705,28 @@ impl Tracker {
                 }
             }
             Read::Status if ok => self.status_reading(payload, now, wall_s),
+            // -- WP P3HB --
+            Read::NotifyFeatures if answered => {
+                self.features_pending = false;
+                self.notify_features = Some(if ok {
+                    parse_u32(payload).unwrap_or(0)
+                } else {
+                    0
+                });
+            }
+            r if r.is_counter() && ok => {
+                if let Some(v) = parse_u32(payload)
+                    && let Some(i) = COUNTER_READS.iter().position(|x| *x == r)
+                    && let Some(slot) = self.counter_values.get_mut(i)
+                {
+                    *slot = Some(v);
+                    self.read_at = Some(wall_s);
+                }
+            }
+            r if r.is_counter() && answered => {
+                // Stalled: this firmware has no such counter.
+                self.counters_refused |= read.bit();
+            }
             _ => {}
         }
     }
@@ -494,6 +756,10 @@ impl Tracker {
                 self.next_reset = now.checked_add(cfg.reset_info_every).unwrap_or(now);
                 out.push(Effect::publish(self.facts()));
             }
+        }
+        // -- WP P3HB -- whether the firmware sends clip events, once.
+        if self.features_pending && self.may_try(Read::NotifyFeatures, now) {
+            self.submit(Read::NotifyFeatures, out);
         }
         // The meter block's length, then the poll.
         match self.poll {
@@ -535,6 +801,18 @@ impl Tracker {
             self.next_reset = later(self.next_reset, now, cfg.reset_info_every);
             self.submit(Read::ResetInfo, out);
         }
+        // -- WP P3HB -- one counter read a period, the two counters in turn.
+        let counters_at = *self.next_counters.get_or_insert_with(|| {
+            let half = cfg.counters_every.checked_div(2).unwrap_or_default();
+            now.checked_add(half).unwrap_or(now)
+        });
+        if now >= counters_at && !unresponsive && !self.counter_busy() && self.counters_wanted() {
+            self.next_counters = Some(later(counters_at, now, cfg.counters_every));
+            if let Some(read) = self.counter_turn() {
+                self.submit(read, out);
+            }
+        }
+        self.forget_clips(now, cfg);
         // No answer for long enough: reported once, until it answers again.
         let deadline = self.last_answer.checked_add(cfg.unresponsive_after);
         if !unresponsive && deadline.is_some_and(|d| now >= d) {
@@ -565,6 +843,13 @@ impl Tracker {
             }
             if self.facts_sent && self.lists(gext::EXT_RESET_INFO) && !self.busy(Read::ResetInfo) {
                 consider(self.next_reset);
+            }
+            // -- WP P3HB --
+            if let Some(at) = self.next_counters
+                && !self.counter_busy()
+                && self.counters_wanted()
+            {
+                consider(at);
             }
         }
         for read in Read::ALL {
@@ -621,6 +906,30 @@ impl Tracker {
                 map.insert("prev_uptime_s".into(), p.into());
             }
             r.insert("reset".into(), o);
+        }
+        // -- WP P3HB --
+        if let Some(c) = self.counters() {
+            let mut o = Map::new();
+            if let Some(u) = c.underruns {
+                o.insert("underruns".into(), u.into());
+            }
+            if let Some(s) = c.starvation {
+                o.insert("starvation".into(), s.into());
+            }
+            r.insert("counters".into(), Value::Object(o));
+        }
+        if let Some(n) = self.clip_per_min() {
+            r.insert("clip_per_min".into(), n.into());
+        }
+        if let Some(c) = &self.last_change {
+            let secs = u64::try_from(c.at_ms.max(0) / 1000).unwrap_or(0);
+            let mut o = Map::new();
+            o.insert("at".into(), iso8601(secs).into());
+            if let Some(by) = &c.by {
+                o.insert("by".into(), by.clone().into());
+            }
+            o.insert("text".into(), c.text.clone().into());
+            r.insert("last_change".into(), Value::Object(o));
         }
         Value::Object(r)
     }
@@ -687,6 +996,9 @@ struct Inner {
     /// Something arrived at this time: run as soon as the timer can.
     wake_at: Option<Instant>,
     next_token: u64,
+    // -- WP P3HB --
+    /// Each device's newest change, kept across attachments (bounded).
+    last_changes: BTreeMap<String, LastChange>,
 }
 
 /// The health service.
@@ -694,6 +1006,8 @@ pub(crate) struct HealthService {
     config: HealthConfig,
     clock: Arc<dyn HubClock>,
     bus: Arc<Bus>,
+    // -- WP P3HB -- clip events and written history records.
+    sub: Subscription,
     wake: Waker,
     inner: Arc<Mutex<Inner>>,
 }
@@ -728,10 +1042,15 @@ impl HealthService {
         let token = inner.next_token;
         inner.next_token = token.wrapping_add(1);
         let session = Session::new(INTERNAL_SESSION_ID, Role::Admin, None, true);
+        let mut tracker = Tracker::new(serial.clone(), handle, fw, now);
+        // -- WP P3HB -- the last change outlives the attachment.
+        if let Some(c) = inner.last_changes.get(&serial) {
+            tracker.set_last_change(c.clone());
+        }
         if let Some(old) = inner.devices.insert(
-            serial.clone(),
+            serial,
             Slot {
-                tracker: Tracker::new(serial, handle, fw, now),
+                tracker,
                 token,
                 session,
             },
@@ -790,6 +1109,39 @@ impl HealthService {
         device.submit(internal(), req, done, None);
     }
 
+    // -- WP P3HB --
+    /// What the bus said since the last run: clip events, changes, forgotten devices.
+    fn take_bus(&self, inner: &mut Inner, now: Instant) {
+        let dropped = self.sub.take_dropped();
+        if dropped > 0 {
+            log::info!("hub health: {dropped} bus message(s) lost: clip counts may be low");
+        }
+        for m in self.sub.drain() {
+            match &*m {
+                BusMessage::Notification { serial, packet, .. } => {
+                    if is_clip_event(packet)
+                        && let Some(slot) = inner.devices.get_mut(serial)
+                    {
+                        slot.tracker.clip_event(now, &self.config);
+                    }
+                }
+                BusMessage::Event { serial, record } => {
+                    let Some(change) = change_of(record) else {
+                        continue;
+                    };
+                    if let Some(slot) = inner.devices.get_mut(serial) {
+                        slot.tracker.set_last_change(change.clone());
+                    }
+                    remember_change(&mut inner.last_changes, serial, change);
+                }
+                BusMessage::DeviceForgotten { serial } => {
+                    inner.last_changes.remove(serial);
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn run(&self, hub: &HubHandle) {
         let now = self.clock.now();
         let wall_s = self.clock.unix_seconds();
@@ -835,6 +1187,8 @@ impl HealthService {
                     }
                 }
             }
+            // -- WP P3HB -- after the new devices, so an event of one counts.
+            self.take_bus(&mut inner, now);
             let replies = std::mem::take(&mut inner.replies);
             let mut effects: BTreeMap<String, Vec<Effect>> = BTreeMap::new();
             for r in replies {
@@ -957,7 +1311,12 @@ impl HealthService {
                 Some(d.identity.serial.clone())
             }
         };
-        let inner = lock(&self.inner);
+        let now = self.clock.now();
+        let mut inner = lock(&self.inner);
+        // -- WP P3HB -- a minute's clip events as of now, not of the last step.
+        for slot in inner.devices.values_mut() {
+            slot.tracker.forget_clips(now, &self.config);
+        }
         let devices: Vec<Value> = match &wanted {
             None => inner.devices.values().map(|s| s.tracker.record()).collect(),
             Some(s) => match inner.devices.get(s) {
@@ -972,6 +1331,86 @@ impl HealthService {
         }
         out.to_string()
     }
+}
+
+// -- WP P3HB --
+
+/// What the health service takes from the bus: the extension clip events (0xE0), the
+/// history's written records (an id: written, so a coalesced one once) and forgotten
+/// devices. Runs on the publisher's thread: quick, no lock.
+fn wanted(m: &BusMessage) -> bool {
+    match m {
+        BusMessage::Notification { packet, .. } => packet.get(1) == Some(&NOTIFY_EVT_EXT_CLIP),
+        BusMessage::Event { record, .. } => record.id != 0 && is_change(record.kind),
+        BusMessage::DeviceForgotten { .. } => true,
+        _ => false,
+    }
+}
+
+/// Whether `packet` is an extension clip event. The bus carries the notifications of
+/// every device; whether this one announces 0xE0 is its tracker's
+/// ([`Tracker::clip_per_min`]).
+fn is_clip_event(packet: &[u8]) -> bool {
+    match notify::decode(packet) {
+        Ok((_, Event::Unknown { id, bytes })) => matches!(
+            decode_ext_event(Some(NOTIFY_FEAT_CLIP_EVENT), id, &bytes),
+            Some(ExtEvent::Clip { .. })
+        ),
+        _ => false,
+    }
+}
+
+/// The history kinds that are a change to the device: a setting written (a
+/// notification, with its writer), a preset recalled, a document imported, a schedule
+/// run, new firmware. Not what the device or the hub observed (clips, temperature,
+/// counters, resets, connections, alarms, the audio link, access).
+fn is_change(kind: EventKind) -> bool {
+    matches!(
+        kind,
+        EventKind::Notification
+            | EventKind::Recall
+            | EventKind::Import
+            | EventKind::Schedule
+            | EventKind::Firmware
+    )
+}
+
+/// A written record as a last change, bounded; `None` for a record that is no change.
+fn change_of(record: &EventRecord) -> Option<LastChange> {
+    if record.id == 0 || !is_change(record.kind) {
+        return None;
+    }
+    let cut = |s: &str, n: usize| s.chars().take(n).collect::<String>();
+    Some(LastChange {
+        at_ms: record.t,
+        by: record
+            .by
+            .as_deref()
+            .filter(|b| !b.is_empty())
+            .map(|b| cut(b, CHANGE_BY_MAX)),
+        text: cut(&record.text, CHANGE_TEXT_MAX),
+    })
+}
+
+/// Keep `change` as `serial`'s newest, within [`LAST_CHANGES_MAX`] devices: past it the
+/// oldest change goes.
+fn remember_change(book: &mut BTreeMap<String, LastChange>, serial: &str, change: LastChange) {
+    if let Some(old) = book.get_mut(serial) {
+        if change.at_ms >= old.at_ms {
+            *old = change;
+        }
+        return;
+    }
+    if book.len() >= LAST_CHANGES_MAX {
+        let oldest = book
+            .iter()
+            .min_by_key(|(_, c)| c.at_ms)
+            .map(|(s, _)| s.clone());
+        if let Some(s) = oldest {
+            book.remove(&s);
+        }
+    }
+    book.insert(serial.to_owned(), change);
 }
 
 fn err(id: &Value, code: &str, msg: &str) -> String {
@@ -1044,3 +1483,11 @@ impl HubService for HealthService {
     clippy::indexing_slicing
 )]
 mod tests_wp_p2hp;
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing
+)]
+mod tests_wp_p3hb;

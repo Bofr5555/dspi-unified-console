@@ -275,6 +275,44 @@ pub struct HubHealth {
     pub unresponsive_since: String,
     /// The reset seen at attach or since.
     pub reset: Option<HubReset>,
+    // -- WP P3HB --
+    /// The stream's underrun and starvation totals, once the hub read either
+    /// (one read every 30 s, the four counters in turn).
+    pub counters: Option<HubStreamCounters>,
+    /// Clip events in the last minute; `None` on firmware with only the clip
+    /// latch (no extension clip events).
+    pub clip_per_min: Option<u32>,
+    /// The device's newest change and who made it, from the hub's history.
+    pub last_change: Option<HubLastChange>,
+}
+
+// -- WP P3HB --
+/// A device's stream counters in [`HubHealth`]. Each is `None` until the hub
+/// read it.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HubStreamCounters {
+    /// Output underruns (PDM ring, PDM DMA and S/PDIF added up), total since
+    /// the device started.
+    pub underruns: Option<u32>,
+    /// Output starvations, total since the device started.
+    pub starvation: Option<u32>,
+}
+
+/// A device's newest change in [`HubHealth`]: the newest history record of a
+/// write, recall, import, schedule run or new firmware.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HubLastChange {
+    /// When (ISO-8601 UTC).
+    pub at: String,
+    /// Who made it (a client's name, a schedule); "" when the record names no
+    /// one (a change at the device itself).
+    pub by: String,
+    /// The record's line.
+    pub text: String,
 }
 
 /// One attached device's counts in [`HubStats`].
@@ -626,6 +664,23 @@ fn health_from(v: &Value) -> HubHealth {
             .unwrap_or(false),
         unresponsive_since: text(v.get("unresponsive_since")),
         reset: v.get("reset").filter(|r| r.is_object()).map(reset_from),
+        // -- WP P3HB --
+        counters: v
+            .get("counters")
+            .filter(|c| c.is_object())
+            .map(|c| HubStreamCounters {
+                underruns: small(c.get("underruns")),
+                starvation: small(c.get("starvation")),
+            }),
+        clip_per_min: small(v.get("clip_per_min")),
+        last_change: v
+            .get("last_change")
+            .filter(|c| c.is_object())
+            .map(|c| HubLastChange {
+                at: text(c.get("at")),
+                by: text(c.get("by")),
+                text: text(c.get("text")),
+            }),
     }
 }
 
@@ -974,7 +1029,9 @@ impl DspiCore {
     }
 
     /// One health record per online device of the hub (`health.get`):
-    /// CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+    /// CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+    /// -- WP P3HB -- the stream counters, clip events a minute and the last
+    /// change where the hub has them.
     /// Every role. Slow: off the UI thread.
     ///
     /// Errors: [`DspiError::Unsupported`] without the `health` cap;

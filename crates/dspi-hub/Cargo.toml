@@ -167,6 +167,11 @@ required-features = ["api"]
 name = "wp_p2cc1_core_calls"
 required-features = ["api"]
 
+# -- WP P3HB --
+[[test]]
+name = "wp_p3hb_core_calls"
+required-features = ["api"]
+
 [[test]]
 name = "wp_p2cc2_core_calls"
 required-features = ["api"]
