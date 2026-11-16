@@ -7,6 +7,24 @@
 //! **No fixed PIN.** The spec's `fixed` source is for hubs with no screen; every hub
 //! here has a UI or a CLI to show a window PIN (HUB.md section 9), so a PIN exists only
 //! for a window, and five failures from anywhere end it.
+//!
+//! -- WP SECPAIR -- **Pairing bound to the key, ratchets and lifetimes (PLAN-SEC 4.3, 4.5,
+//! 4.9; OD-SECg, OD-SECm):**
+//! - A wrong PIN and an unknown token are counted in **two ledgers**, each per address
+//!   ([`FAILURE_LIMIT`] in [`RATE_WINDOW`], then the address waits): a stale client
+//!   retrying a revoked token neither shuts its address out of pairing nor touches the
+//!   window, which only wrong PINs end. An address shut out for wrong PINs is refused
+//!   tokens too, as before (spec 6.2).
+//! - **`tls_only`** (ratchet (b)): a console's token that has authenticated over TLS,
+//!   or was issued over TLS, is refused over plaintext from then on
+//!   ([`AuthError::TlsRequired`]). API keys are not ratcheted: REST has its own rule
+//!   (`plaintext_ok`).
+//! - **Idle expiry**: a console's token unused for [`DEFAULT_TOKEN_IDLE`] (adjustable,
+//!   [`AuthStore::set_token_idle`]) is forgotten, on the hub's wall clock
+//!   ([`AuthStore::set_clock`]); never while that clock is not plausible (before
+//!   [`crate::tls_identity::CLOCK_FLOOR`]). API keys do not expire.
+//! - **`auth.rotate`** ([`AuthStore::rotate_token`]): a fresh token for the same client in
+//!   one locked step; the old one is dead the moment the new one is stored.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
@@ -18,6 +36,7 @@ use std::time::{Duration, Instant, SystemTime};
 use data_encoding::BASE64URL_NOPAD;
 use sha2::{Digest, Sha256};
 
+use crate::clock::{HubClock, SystemClock};
 use crate::error::HubError;
 use crate::registry::NameStore;
 use crate::session::Role;
@@ -49,6 +68,9 @@ const UNNAMED_CLIENT: &str = "Unnamed client";
 /// How stale a stored `last_seen` may get, so a client reconnecting in a loop does not
 /// rewrite the file each time.
 const LAST_SEEN_RESOLUTION: u64 = 60;
+// -- WP SECPAIR --
+/// How long a console's token may go unused before it is forgotten (OD-SECg).
+pub const DEFAULT_TOKEN_IDLE: Duration = Duration::from_secs(180 * 86_400);
 
 /// How a hub admits a client (spec 6.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -165,6 +187,11 @@ pub enum AuthError {
     /// open. A token that would not survive a restart is not handed out.
     #[error("internal")]
     Internal,
+    // -- WP SECPAIR --
+    /// A right token that has been used over TLS, presented over plaintext
+    /// (`tls_required`, ratchet (b)): the client must come back encrypted.
+    #[error("tls_required")]
+    TlsRequired,
 }
 
 /// A generated PIN and its window (spec 6.2: 6 digits, 2 minutes).
@@ -186,11 +213,21 @@ impl fmt::Debug for PairingWindow {
     }
 }
 
-#[derive(Debug)]
 struct OpenWindow {
     pin_hash: TokenHash,
     expires: Instant,
     failures: usize,
+}
+
+// -- WP SECPAIR -- by hand: not even the PIN's hash goes to a log
+impl fmt::Debug for OpenWindow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OpenWindow")
+            .field("pin_hash", &"<redacted>")
+            .field("expires", &self.expires)
+            .field("failures", &self.failures)
+            .finish()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -205,11 +242,28 @@ impl PeerRecord {
     }
 }
 
+// -- WP SECPAIR --
+/// Failures per address, of one kind (PINs, or tokens), and the addresses waiting.
+#[derive(Debug, Default)]
+struct Ledger {
+    peers: BTreeMap<IpAddr, PeerRecord>,
+}
+
 #[derive(Debug)]
 struct Inner {
     store: HubStore,
     window: Option<OpenWindow>,
-    peers: BTreeMap<IpAddr, PeerRecord>,
+    /// Wrong PINs, per address. -- WP SECPAIR -- tokens have [`Self::tokens`].
+    peers: Ledger,
+    // -- WP SECPAIR --
+    /// Unknown tokens and API keys, per address: apart from the PINs'.
+    tokens: Ledger,
+    /// The hub's time: `created`, `last_seen` and idle expiry.
+    clock: Arc<dyn HubClock>,
+    /// Idle expiry of console tokens; `None`: never.
+    token_idle: Option<Duration>,
+    /// The last window ended by [`FAILURE_LIMIT`] wrong PINs, not yet told.
+    window_killed: bool,
 }
 
 /// The hub's clients and pairing state. Lock level L1b: never held across I/O other
@@ -283,7 +337,8 @@ fn after(now: Instant, wait: Duration) -> Instant {
     now.checked_add(wait).unwrap_or(now)
 }
 
-impl Inner {
+// -- WP SECPAIR -- the ledger as it was, now one of two
+impl Ledger {
     fn is_blocked(&mut self, peer: IpAddr, now: Instant) -> bool {
         let key = peer_key(peer);
         let Some(record) = self.peers.get(&key) else {
@@ -332,12 +387,115 @@ impl Inner {
         }
     }
 
+    fn clear(&mut self, peer: IpAddr) {
+        self.peers.remove(&peer_key(peer));
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.peers.len()
+    }
+}
+
+impl Inner {
     fn save(&self) -> Result<(), HubError> {
         self.store.save()
     }
 
     fn client_mut(&mut self, cid: u32) -> Option<&mut StoredClient> {
         self.store.clients_mut().iter_mut().find(|c| c.cid == cid)
+    }
+
+    // -- WP SECPAIR --
+    /// The wall clock now, in seconds.
+    fn wall_seconds(&self) -> u64 {
+        unix_seconds(self.clock.wall())
+    }
+
+    // -- WP SECPAIR --
+    /// Forget every console whose token has not been used for [`Self::token_idle`]
+    /// (OD-SECg), and store that. API keys stay. Nothing while the wall clock is not
+    /// plausible, and a `last_seen` from such a clock does not count against a client.
+    fn prune_idle(&mut self) -> usize {
+        let Some(idle) = self.token_idle else {
+            return 0;
+        };
+        let now = self.wall_seconds();
+        let floor = crate::tls_identity::CLOCK_FLOOR;
+        if now < floor {
+            return 0;
+        }
+        let idle = idle.as_secs();
+        let stale = |c: &StoredClient| {
+            let seen = c.last_seen.unwrap_or(c.created).max(c.created);
+            c.kind == ClientKind::Console && seen >= floor && now.saturating_sub(seen) >= idle
+        };
+        let gone: Vec<u32> = self
+            .store
+            .clients()
+            .iter()
+            .filter(|c| stale(c))
+            .map(|c| c.cid)
+            .collect();
+        if gone.is_empty() {
+            return 0;
+        }
+        self.store.clients_mut().retain(|c| !gone.contains(&c.cid));
+        log::info!(
+            "hub: {} client(s) unused for {} days forgotten: {gone:?}",
+            gone.len(),
+            idle / 86_400
+        );
+        if let Err(e) = self.save() {
+            log::error!("hub: forgetting idle clients not stored: {e}");
+        }
+        gone.len()
+    }
+
+    // -- WP SECPAIR --
+    /// The client whose token hashes to `presented`: every stored hash is compared in
+    /// constant time, whichever matches.
+    fn find_token(&self, presented: &TokenHash) -> Option<u32> {
+        self.store.clients().iter().fold(None, |found, c| {
+            let same = hashes_equal(&c.token_hash, presented);
+            if same { Some(c.cid) } else { found }
+        })
+    }
+}
+
+// -- WP SECPAIR --
+/// Where pairing stands, for a hub's UI (PLAN-SEC 4.5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PairingState {
+    /// A PIN is accepted until then.
+    Open {
+        /// When the window ends.
+        expires: Instant,
+    },
+    /// No window.
+    Closed,
+    /// The last window was ended by [`FAILURE_LIMIT`] wrong PINs: the UI says
+    /// "pairing was closed after 5 wrong PINs", so the person reopens it knowingly.
+    ClosedAfterWrongPins,
+}
+
+// -- WP SECPAIR --
+/// A token just made by [`AuthStore::rotate_token`]. Shown to its client once; never
+/// logged.
+#[derive(Clone, PartialEq, Eq)]
+pub struct RotatedToken {
+    /// The client.
+    pub cid: u32,
+    /// The new token. The old one is dead.
+    pub token: String,
+}
+
+impl fmt::Debug for RotatedToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RotatedToken")
+            .field("cid", &self.cid)
+            .field("token", &"<redacted>")
+            .finish()
     }
 }
 
@@ -362,7 +520,12 @@ impl AuthStore {
             inner: Mutex::new(Inner {
                 store,
                 window: None,
-                peers: BTreeMap::new(),
+                peers: Ledger::default(),
+                // -- WP SECPAIR --
+                tokens: Ledger::default(),
+                clock: Arc::new(SystemClock),
+                token_idle: Some(DEFAULT_TOKEN_IDLE),
+                window_killed: false,
             }),
         })
     }
@@ -391,11 +554,14 @@ impl AuthStore {
     pub fn begin_pairing(&self, now: Instant) -> Result<PairingWindow, HubError> {
         let pin = new_pin()?;
         let expires = after(now, PAIRING_WINDOW);
-        self.lock().window = Some(OpenWindow {
+        let mut s = self.lock();
+        s.window = Some(OpenWindow {
             pin_hash: sha256(pin.as_bytes()),
             expires,
             failures: 0,
         });
+        // -- WP SECPAIR -- a new window: the old one's end is old news
+        s.window_killed = false;
         Ok(PairingWindow { pin, expires })
     }
 
@@ -425,8 +591,24 @@ impl AuthStore {
         peer: IpAddr,
         now: Instant,
     ) -> Result<Authed, AuthError> {
+        self.pair_over(pin, name, requested, peer, now, false)
+    }
+
+    // -- WP SECPAIR --
+    /// [`Self::pair`] on a connection that is `encrypted` (TLS) or not: a token issued
+    /// over TLS is `tls_only` from the start (ratchet (b)). Whether plaintext pairing
+    /// is allowed at all is the server's to decide, before this (OD-SECk).
+    pub fn pair_over(
+        &self,
+        pin: &str,
+        name: &str,
+        requested: Option<Role>,
+        peer: IpAddr,
+        now: Instant,
+        encrypted: bool,
+    ) -> Result<Authed, AuthError> {
         let mut s = self.lock();
-        if s.is_blocked(peer, now) {
+        if s.peers.is_blocked(peer, now) {
             return Err(AuthError::RateLimited);
         }
         let presented = sha256(pin.as_bytes());
@@ -438,15 +620,20 @@ impl AuthStore {
             }
         };
         if !right {
-            s.note_failure(peer, now);
+            s.peers.note_failure(peer, now);
             if let Some(w) = s.window.as_mut() {
                 w.failures = w.failures.saturating_add(1);
                 if w.failures >= FAILURE_LIMIT {
                     s.window = None;
+                    // -- WP SECPAIR -- for the hub's UI (PLAN-SEC 4.5)
+                    s.window_killed = true;
+                    log::warn!("hub: pairing closed after {FAILURE_LIMIT} wrong PINs");
                 }
             }
             return Err(AuthError::Unauthenticated);
         }
+        // -- WP SECPAIR -- idle clients make room first
+        s.prune_idle();
         if s.store.clients().len() >= MAX_PAIRED_CLIENTS {
             return Err(AuthError::TableFull);
         }
@@ -456,7 +643,7 @@ impl AuthStore {
         })?;
         let token = BASE64URL_NOPAD.encode(&raw);
         let role = requested.unwrap_or(Role::Control).min(PAIR_MAX_ROLE);
-        let seconds = unix_seconds(SystemTime::now());
+        let seconds = s.wall_seconds(); // -- WP SECPAIR -- the hub's clock
         let cid = s.store.take_cid();
         s.store.clients_mut().push(StoredClient {
             cid,
@@ -468,6 +655,8 @@ impl AuthStore {
             // -- WP P2RS --
             kind: ClientKind::Console,
             plaintext_ok: false,
+            // -- WP SECPAIR --
+            tls_only: encrypted,
         });
         if let Err(e) = s.save() {
             log::error!("hub: pairing not stored: {e}");
@@ -475,7 +664,7 @@ impl AuthStore {
             return Err(AuthError::Internal);
         }
         s.window = None;
-        s.peers.remove(&peer_key(peer));
+        s.peers.clear(peer);
         Ok(Authed {
             cid,
             role,
@@ -487,42 +676,89 @@ impl AuthStore {
 
     /// `auth.token`. Rate limited per address. Every stored hash is compared, in
     /// constant time, whichever matches.
+    ///
+    /// -- WP SECPAIR -- Counted in the tokens' ledger, not the PINs'. No `tls_only`
+    /// ratchet here: this is the REST mirror's check (API keys, `plaintext_ok`); a
+    /// DSPi Link session uses [`Self::verify_link_token`].
     pub fn verify_token(
         &self,
         token: &str,
         peer: IpAddr,
         now: Instant,
     ) -> Result<Authed, AuthError> {
+        self.verify(token, peer, now, None)
+    }
+
+    // -- WP SECPAIR --
+    /// `auth.token` on a DSPi Link connection, `encrypted` (TLS) or not. Ratchet (b):
+    /// a console's token used over TLS is marked `tls_only`, and a `tls_only` token
+    /// over plaintext is [`AuthError::TlsRequired`] (not a failure: it is a right
+    /// token, in the wrong place). An idle console's token is forgotten first.
+    pub fn verify_link_token(
+        &self,
+        token: &str,
+        peer: IpAddr,
+        now: Instant,
+        encrypted: bool,
+    ) -> Result<Authed, AuthError> {
+        self.verify(token, peer, now, Some(encrypted))
+    }
+
+    /// [`Self::verify_token`] and [`Self::verify_link_token`]: `link` is the
+    /// connection's TLS on a DSPi Link session, `None` for REST.
+    fn verify(
+        &self,
+        token: &str,
+        peer: IpAddr,
+        now: Instant,
+        link: Option<bool>,
+    ) -> Result<Authed, AuthError> {
         let mut s = self.lock();
-        if s.is_blocked(peer, now) {
+        // -- WP SECPAIR -- an address shut out for wrong PINs is shut out for tokens too
+        // (spec 6.2), but token failures never shut it out of pairing
+        if s.tokens.is_blocked(peer, now) || s.peers.is_blocked(peer, now) {
             return Err(AuthError::RateLimited);
         }
+        // -- WP SECPAIR -- an idle token reads as unknown, as a revoked one does
+        s.prune_idle();
         let presented = sha256(token.as_bytes());
-        let found = s.store.clients().iter().fold(None, |found, c| {
-            let same = hashes_equal(&c.token_hash, &presented);
-            if same { Some(c.cid) } else { found }
-        });
-        let Some(cid) = found else {
-            s.note_failure(peer, now);
+        let Some(cid) = s.find_token(&presented) else {
+            s.tokens.note_failure(peer, now);
             return Err(AuthError::Unauthenticated);
         };
-        s.peers.remove(&peer_key(peer));
-        let seconds = unix_seconds(SystemTime::now());
+        let seconds = s.wall_seconds();
         let Some(client) = s.client_mut(cid) else {
             return Err(AuthError::Unauthenticated);
         };
         let role = client.role;
         // -- WP P2CFIXA --
         let kind = client.kind;
+        // -- WP SECPAIR -- ratchet (b), for a console's token on a DSPi Link session
+        let mut marked = false;
+        if let (Some(encrypted), ClientKind::Console) = (link, kind) {
+            if !encrypted && client.tls_only {
+                log::info!(
+                    "hub: client {cid}'s token, used over TLS before, refused over plaintext"
+                );
+                return Err(AuthError::TlsRequired);
+            }
+            if encrypted && !client.tls_only {
+                client.tls_only = true;
+                marked = true;
+            }
+        }
         let stale = client
             .last_seen
             .is_none_or(|seen| seconds.saturating_sub(seen) >= LAST_SEEN_RESOLUTION);
         if stale {
             client.last_seen = Some(seconds);
-            if let Err(e) = s.save() {
-                log::warn!("hub: last-seen time not stored: {e}");
-            }
         }
+        if (stale || marked)
+            && let Err(e) = s.save()
+        {
+            log::warn!("hub: last-seen time or TLS mark not stored: {e}");
+        }
+        s.tokens.clear(peer);
         Ok(Authed {
             cid,
             role,
@@ -532,10 +768,11 @@ impl AuthStore {
         })
     }
 
-    /// `auth.list`.
+    /// `auth.list`. -- WP SECPAIR -- Idle clients are forgotten first.
     pub fn clients(&self) -> Vec<PairedClient> {
-        self.lock()
-            .store
+        let mut s = self.lock();
+        s.prune_idle();
+        s.store
             .clients()
             .iter()
             .map(|c| PairedClient {
@@ -602,15 +839,18 @@ impl AuthStore {
         let key = BASE64URL_NOPAD.encode(&raw);
         let cid = s.store.take_cid();
         let name = clean_name(name);
+        let created = s.wall_seconds(); // -- WP SECPAIR -- the hub's clock
         s.store.clients_mut().push(StoredClient {
             cid,
             name: name.clone(),
             role,
-            created: unix_seconds(SystemTime::now()),
+            created,
             last_seen: None,
             token_hash: sha256(key.as_bytes()),
             kind: ClientKind::Api,
             plaintext_ok,
+            // -- WP SECPAIR -- API keys are not ratcheted
+            tls_only: false,
         });
         if let Err(e) = s.save() {
             log::error!("hub: API key not stored: {e}");
@@ -637,6 +877,91 @@ impl AuthStore {
             log::error!("hub: role of client {cid} not stored: {e}");
         }
         true
+    }
+}
+
+// -- WP SECPAIR --
+impl AuthStore {
+    /// The hub's clock for `created`, `last_seen` and idle expiry ([`SystemClock`]
+    /// until set; the hub sets its services' clock, so a test moves time).
+    pub fn set_clock(&self, clock: Arc<dyn HubClock>) {
+        self.lock().clock = clock;
+    }
+
+    /// How long a console's token may go unused before it is forgotten; `None`: never.
+    /// [`DEFAULT_TOKEN_IDLE`] until set. Applied at once.
+    pub fn set_token_idle(&self, idle: Option<Duration>) {
+        let mut s = self.lock();
+        s.token_idle = idle.filter(|d| !d.is_zero());
+        s.prune_idle();
+    }
+
+    /// The idle limit in force.
+    pub fn token_idle(&self) -> Option<Duration> {
+        self.lock().token_idle
+    }
+
+    /// Forget the idle clients now (the hub also does at every authentication, pairing
+    /// and listing). How many went.
+    pub fn prune_idle(&self) -> usize {
+        self.lock().prune_idle()
+    }
+
+    /// Where pairing stands now.
+    pub fn pairing_state(&self, now: Instant) -> PairingState {
+        let s = self.lock();
+        match &s.window {
+            Some(w) if now < w.expires => PairingState::Open { expires: w.expires },
+            _ if s.window_killed => PairingState::ClosedAfterWrongPins,
+            _ => PairingState::Closed,
+        }
+    }
+
+    /// Whether a window was ended by wrong PINs since this was last asked: once per
+    /// such end, for a UI that says so.
+    pub fn take_window_killed(&self) -> bool {
+        std::mem::take(&mut self.lock().window_killed)
+    }
+
+    /// `auth.rotate`: a fresh token for console `cid`, in place (OD-SECg). The new
+    /// hash replaces the old under one lock and is stored before the token is given
+    /// out; if it cannot be stored, nothing changed ([`AuthError::Internal`]). The old
+    /// token is dead from then on. `encrypted`: asked over TLS, so the new token is
+    /// `tls_only` (a client already ratcheted stays so). API keys are rotated by
+    /// minting a new one and revoking the old ([`AuthError::Unauthenticated`] here).
+    pub fn rotate_token(&self, cid: u32, encrypted: bool) -> Result<RotatedToken, AuthError> {
+        let raw: [u8; 32] = random_bytes().map_err(|e| {
+            log::error!("hub: no token made: {e}");
+            AuthError::Internal
+        })?;
+        let token = BASE64URL_NOPAD.encode(&raw);
+        let mut s = self.lock();
+        let seconds = s.wall_seconds();
+        let Some(client) = s.client_mut(cid).filter(|c| c.kind == ClientKind::Console) else {
+            return Err(AuthError::Unauthenticated);
+        };
+        let old = (client.token_hash, client.tls_only, client.last_seen);
+        client.token_hash = sha256(token.as_bytes());
+        client.tls_only = client.tls_only || encrypted;
+        client.last_seen = Some(seconds);
+        if let Err(e) = s.save() {
+            log::error!("hub: token rotation of client {cid} not stored: {e}");
+            if let Some(client) = s.client_mut(cid) {
+                (client.token_hash, client.tls_only, client.last_seen) = old;
+            }
+            return Err(AuthError::Internal);
+        }
+        log::info!("hub: client {cid} rotated its token");
+        Ok(RotatedToken { cid, token })
+    }
+
+    /// Whether console `cid`'s token is `tls_only` (ratchet (b)).
+    pub fn is_tls_only(&self, cid: u32) -> bool {
+        self.lock()
+            .store
+            .clients()
+            .iter()
+            .any(|c| c.cid == cid && c.tls_only)
     }
 }
 
@@ -1050,7 +1375,7 @@ mod tests_wp_hb1 {
             let peer = IpAddr::V4(Ipv4Addr::from(0x0A00_0000 + n));
             let _ = s.verify_token("wrong", peer, now);
         }
-        assert!(s.lock().peers.len() <= MAX_TRACKED_PEERS);
+        assert!(s.lock().tokens.len() <= MAX_TRACKED_PEERS); // -- WP SECPAIR --
     }
 
     #[test]
@@ -1201,3 +1526,8 @@ mod tests_wp_hb1 {
         assert_eq!(AccessMode::Open.wire_name(), "none");
     }
 }
+
+// -- WP SECPAIR --
+#[cfg(test)]
+#[path = "auth/tests_wp_secpair.rs"]
+mod tests_wp_secpair;

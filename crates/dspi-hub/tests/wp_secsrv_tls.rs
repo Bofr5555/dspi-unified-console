@@ -372,12 +372,14 @@ fn wp_secsrv_on_serves_both_and_refuses_plaintext_pairing() {
     hello(&mut ws);
     let ok = ws.ask(json!({"t": "auth.pair", "id": 1, "pin": w.pin, "name": "x"}));
     assert_eq!(ok["t"], "ok", "{ok}");
-    // A token works over plaintext in `on` (clients not yet updated)
+    // -- WP SECPAIR -- a token issued over TLS is `tls_only` (ratchet (b), PLAN-SEC
+    // 4.3): never accepted over plaintext. Tokens of clients not yet updated (paired in
+    // the clear, before TLS) still work over plaintext in `on`: wp_secpair.rs.
     let token = ok["token"].as_str().unwrap().to_owned();
     let mut plain = Ws::open(raw_from(None, t.port), &host(&t), None).unwrap();
     hello(&mut plain);
-    let ok = plain.ask(json!({"t": "auth.token", "id": 2, "token": token}));
-    assert_eq!(ok["t"], "ok", "{ok}");
+    let refused = plain.ask(json!({"t": "auth.token", "id": 2, "token": token}));
+    assert_eq!(refused["code"], "tls_required", "{refused}");
 }
 
 #[test]

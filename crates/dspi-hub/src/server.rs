@@ -254,6 +254,24 @@ pub fn downgrade_warning(policy: TlsPolicy, loopback: bool) -> Option<String> {
     Some(text)
 }
 
+// -- WP SECPAIR --
+/// `dspi://pair?h=<hid>&a=<host:port>&k=<pin, base64url>&p=<PIN>`, the pairing link a
+/// hub's QR code carries (PLAN-SEC 4.3; dspi-link's `parse_pair_link` reads it). An
+/// IPv6 host is bracketed. `pin_code` empty: no `p`.
+pub fn pair_link(hid: &str, host: &str, port: u16, key: &SpkiHash, pin_code: &str) -> String {
+    let host = if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host.to_owned()
+    };
+    let mut link = format!("dspi://pair?h={hid}&a={host}:{port}&k={}", key.to_b64url());
+    if !pin_code.is_empty() {
+        link.push_str("&p=");
+        link.push_str(pin_code);
+    }
+    link
+}
+
 /// What one socket may cost. The defaults are the spec's where it names one. Tests
 /// shorten the times.
 ///
@@ -396,6 +414,11 @@ pub struct NetworkConfig {
     /// More names the hub answers to over plaintext (the `Host` rule), lower case:
     /// a DNS name it is reached by that is not its mDNS name (`--host-name`).
     pub host_names: Vec<String>,
+    // -- WP SECPAIR --
+    /// How long a console's token may go unused before it is forgotten (OD-SECg,
+    /// `--token-idle-days`); `None`: never. [`crate::auth::DEFAULT_TOKEN_IDLE`] by
+    /// default. API keys do not expire.
+    pub token_idle: Option<Duration>,
 }
 
 // -- WP SECSRV --
@@ -479,6 +502,8 @@ impl NetworkConfig {
             tls: default_tls().0,
             upstream_compat: default_tls().1,
             host_names: Vec::new(),
+            // -- WP SECPAIR --
+            token_idle: Some(crate::auth::DEFAULT_TOKEN_IDLE),
         }
     }
 }
@@ -778,6 +803,9 @@ struct Shared {
     host_names: Vec<String>,
     /// [`Shared::own_names`]'s last answer and when. A leaf lock.
     own_names: Mutex<Option<(Instant, OwnNames)>>,
+    // -- WP SECPAIR --
+    /// [`NetworkConfig::bind`]: where a pairing link points when nothing better is known.
+    bind: IpAddr,
 }
 
 // -- WP SECSRV --
@@ -885,6 +913,54 @@ impl NetworkControl {
         Ok(event)
     }
 
+    // -- WP SECPAIR --
+    /// The QR code's `dspi://pair?h=<hid>&a=<host:port>&k=<pin>&p=<PIN>` for an open
+    /// window (PLAN-SEC 4.3): the key travels with the PIN, out of band, so pairing by
+    /// it is MITM-proof. `None` with TLS off (there is no key to pin). It carries the
+    /// PIN: show it where the PIN is shown, never log it.
+    pub fn pair_link(&self, window: &crate::auth::PairingWindow) -> Option<String> {
+        let pin = self.shared.tls_pin()?;
+        Some(pair_link(
+            &self.shared.hub_id,
+            &self.pair_host(),
+            self.shared.port,
+            &pin,
+            &window.pin,
+        ))
+    }
+
+    // -- WP SECPAIR --
+    /// Where a pairing link sends a client: the hub's advertised `.local` name, else
+    /// the address it is bound to, else its first LAN address (IPv4 first), else
+    /// `localhost`.
+    pub fn pair_host(&self) -> String {
+        let shared = &self.shared;
+        if shared.bind.is_loopback() {
+            return shared.bind.to_string();
+        }
+        let advertised = shared.hub.advertised().map(|names| names.host);
+        if let Some(name) = advertised.as_deref().or(shared.mdns_name.as_deref()) {
+            let name = name.trim().trim_end_matches('.');
+            if !name.is_empty() {
+                return name.to_ascii_lowercase();
+            }
+        }
+        if !shared.bind.is_unspecified() {
+            return shared.bind.to_string();
+        }
+        let usable = |ip: &IpAddr| {
+            !ip.is_loopback()
+                && !ip.is_unspecified()
+                && !matches!(ip, IpAddr::V6(v6) if v6.is_unicast_link_local())
+        };
+        let mut ips: Vec<IpAddr> = if_addrs::get_if_addrs()
+            .map(|list| list.iter().map(|i| i.ip()).filter(usable).collect())
+            .unwrap_or_default();
+        ips.sort_by_key(|ip| ip.is_ipv6());
+        ips.first()
+            .map_or_else(|| "localhost".to_owned(), IpAddr::to_string)
+    }
+
     // -- WP TM26 --
     /// Start accepting clients, on a server started with
     /// [`NetworkConfig::hold_accepts`]. Without it, and when called again, nothing
@@ -989,6 +1065,27 @@ impl Shared {
     /// The config a new TLS connection is handshaken with.
     fn tls_config(&self) -> Option<Arc<ServerConfig>> {
         self.tls.as_ref().map(|tls| Arc::clone(&guard(&tls.config)))
+    }
+
+    // -- WP SECPAIR --
+    /// The pin of the key served now; `None` with TLS off.
+    fn tls_pin(&self) -> Option<SpkiHash> {
+        self.tls.as_ref().map(|tls| guard(&tls.identity).pin())
+    }
+
+    // -- WP SECPAIR --
+    /// `hello.hub.key_next` while a rotation is announced: `{"spki": <new pin>,
+    /// "prev_spki": <old SPKI DER>, "sig": <old key's signature>}`, base64url without
+    /// padding (what SECCORE's client verifies). All public.
+    fn key_next(&self) -> Option<Value> {
+        let tls = self.tls.as_ref()?;
+        let next = guard(&tls.identity).key_next(SystemTime::now())?;
+        let b64 = |bytes: &[u8]| data_encoding::BASE64URL_NOPAD.encode(bytes);
+        Some(json!({
+            "spki": next.spki.to_b64url(),
+            "prev_spki": b64(&next.prev_spki_der),
+            "sig": b64(&next.sig),
+        }))
     }
 
     /// Make the rustls config again from the identity (a new certificate or key). A
@@ -2255,6 +2352,8 @@ fn upgrade<S: IntoWire>(
         last_system_status: None,
         // -- WP SECSRV --
         encrypted,
+        // -- WP SECPAIR --
+        hub_key: encrypted.then(|| shared.tls_pin()).flatten(),
     };
     if !encrypted && !shared.policy.serves_plaintext() {
         log::debug!("hub: closed a plaintext WebSocket: TLS is required");
@@ -2413,6 +2512,10 @@ struct Connection {
     // -- WP SECSRV --
     /// It came over TLS. SECPAIR's `tls_only` mark and `ok.hub_key` go by it.
     encrypted: bool,
+    // -- WP SECPAIR --
+    /// The pin of the key this connection's TLS was handshaken with, as the hub held
+    /// it at the upgrade: `ok.hub_key`. `None` over plaintext.
+    hub_key: Option<SpkiHash>,
 }
 
 // -- fixup sw2x --
@@ -2607,10 +2710,12 @@ impl Connection {
         let Some(token) = message.get("token").and_then(Value::as_str) else {
             return self.reply(err(id, "bad_request", Some("no token")));
         };
+        // -- WP SECPAIR -- ratchet (b): over TLS the token is marked `tls_only`; a
+        // marked one is refused over plaintext
         match self
             .shared
             .auth
-            .verify_token(token, self.peer, Instant::now())
+            .verify_link_token(token, self.peer, Instant::now(), self.encrypted)
         {
             // -- WP P2CFIXA -- an API key is for REST and MQTT, never a DSPi Link session
             Ok(authed) if authed.kind == crate::auth::ClientKind::Api => self.reply(err(
@@ -2620,8 +2725,9 @@ impl Connection {
             )),
             Ok(authed) => {
                 let shared = Arc::clone(&self.shared);
+                let hub_key = self.hub_key; // -- WP SECPAIR --
                 self.open_session(authed.role, Some(authed.cid), move |session| {
-                    Some(auth_ok(&shared, id, session, None))
+                    Some(auth_ok(&shared, id, session, None, hub_key.as_ref()))
                 });
             }
             Err(e) => self.reply(auth_err(id, e)),
@@ -2656,15 +2762,26 @@ impl Connection {
             },
         };
         let name = message.get("name").and_then(Value::as_str).unwrap_or("");
-        match self
-            .shared
-            .auth
-            .pair(pin, name, requested, self.peer, Instant::now())
-        {
+        // -- WP SECPAIR -- issued over TLS: `tls_only`, and `ok.hub_key` names the key
+        match self.shared.auth.pair_over(
+            pin,
+            name,
+            requested,
+            self.peer,
+            Instant::now(),
+            self.encrypted,
+        ) {
             Ok(authed) => {
                 let shared = Arc::clone(&self.shared);
+                let hub_key = self.hub_key;
                 self.open_session(authed.role, Some(authed.cid), move |session| {
-                    Some(auth_ok(&shared, id, session, authed.token.as_deref()))
+                    Some(auth_ok(
+                        &shared,
+                        id,
+                        session,
+                        authed.token.as_deref(),
+                        hub_key.as_ref(),
+                    ))
                 });
             }
             Err(e) => self.reply(auth_err(id, e)),
@@ -2678,7 +2795,13 @@ impl Connection {
             self.open_session(Role::Admin, None, |_| None);
         }
         if let Some(session) = self.live_session() {
-            self.reply(auth_ok(&self.shared, id, &session, None));
+            self.reply(auth_ok(
+                &self.shared,
+                id,
+                &session,
+                None,
+                self.hub_key.as_ref(),
+            ));
         }
     }
 
@@ -2774,6 +2897,8 @@ impl Connection {
                 None => return,
             },
             "auth.set_role" => self.auth_set_role(id, message),
+            // -- WP SECPAIR -- a fresh token for this session's client, in place
+            "auth.rotate" => self.auth_rotate(id, session),
             // -- WP P2RS -- an API key, shown in this answer only
             "auth.mint" if !admin => denied(),
             "auth.mint" => crate::rest::mint(&self.shared.auth, id, message, session.role()),
@@ -2787,6 +2912,38 @@ impl Connection {
             _ => err(id, "unknown_type", None),
         };
         self.reply(answer);
+    }
+
+    // -- WP SECPAIR --
+    /// `auth.rotate` (OD-SECg): this session's client swaps its token for a fresh one,
+    /// `{"token", "hub_key"?}`; the old one is dead once this is answered. Any role. A
+    /// new token crosses here, so over plaintext only where pairing may
+    /// ([`TlsPolicy::plaintext_pairing`]). Open access has no token to rotate.
+    fn auth_rotate(&self, id: Option<u64>, session: &Session) -> String {
+        let Some(cid) = session.client_id() else {
+            return err(
+                id,
+                "bad_request",
+                Some("this session has no token to rotate"),
+            );
+        };
+        if !self.encrypted && !self.shared.policy.plaintext_pairing() {
+            return err(
+                id,
+                TLS_REQUIRED,
+                Some("a new token is given over an encrypted connection only"),
+            );
+        }
+        match self.shared.auth.rotate_token(cid, self.encrypted) {
+            Ok(rotated) => {
+                let mut body = json!({"token": rotated.token});
+                if let (Some(key), Some(map)) = (&self.hub_key, body.as_object_mut()) {
+                    map.insert("hub_key".into(), key.to_b64url().into());
+                }
+                ok(id, body)
+            }
+            Err(e) => auth_err(id, e),
+        }
     }
 
     // -- WP SW2 --
@@ -3149,12 +3306,28 @@ fn auth_err(id: Option<u64>, e: AuthError) -> String {
         AuthError::RateLimited => "rate_limited",
         AuthError::TableFull => "busy",
         AuthError::Internal => "internal",
+        // -- WP SECPAIR --
+        AuthError::TlsRequired => {
+            return err(
+                id,
+                TLS_REQUIRED,
+                Some("this token has been used encrypted: connect with TLS"),
+            );
+        }
     };
     err(id, code, None)
 }
 
-/// The `ok` to `auth.token` and `auth.pair` (spec 7.3).
-fn auth_ok(shared: &Shared, id: Option<u64>, session: &Session, token: Option<&str>) -> String {
+/// The `ok` to `auth.token` and `auth.pair` (spec 7.3). -- WP SECPAIR -- Over TLS with
+/// `hub_key`, the pin of the key the connection met (PLAN-SEC 4.3): a client checks it
+/// against the key its TLS verified.
+fn auth_ok(
+    shared: &Shared,
+    id: Option<u64>,
+    session: &Session,
+    token: Option<&str>,
+    hub_key: Option<&SpkiHash>,
+) -> String {
     let role = session.role();
     let denied = shared.hub.denied(role);
     let mut body = json!({
@@ -3164,6 +3337,10 @@ fn auth_ok(shared: &Shared, id: Option<u64>, session: &Session, token: Option<&s
     });
     if let (Some(token), Some(map)) = (token, body.as_object_mut()) {
         map.insert("token".into(), token.into());
+    }
+    // -- WP SECPAIR --
+    if let (Some(key), Some(map)) = (hub_key, body.as_object_mut()) {
+        map.insert("hub_key".into(), key.to_b64url().into());
     }
     ok(id, body)
 }
@@ -3200,10 +3377,15 @@ impl Shared {
             caps.push(crate::rest::CAP_REST);
         }
         let mode = self.auth.mode();
+        // -- WP SECPAIR -- a key rotation's announcement, while it lasts (PLAN-SEC 4.2)
+        let mut hub = self.hub_info();
+        if let (Some(next), Some(map)) = (self.key_next(), hub.as_object_mut()) {
+            map.insert("key_next".into(), next);
+        }
         let mut hello = json!({
             "t": "hello",
             "proto": {"major": PROTO_MAJOR, "minor": PROTO_MINOR},
-            "hub": self.hub_info(),
+            "hub": hub,
             "auth": mode.wire_name(),
             "caps": caps,
             "limits": {
@@ -3364,6 +3546,8 @@ impl Server {
                 .filter(|h| !h.is_empty())
                 .collect(),
             own_names: Mutex::new(None),
+            // -- WP SECPAIR --
+            bind: config.bind,
         });
         let acceptor = {
             let shared = Arc::clone(&shared);
