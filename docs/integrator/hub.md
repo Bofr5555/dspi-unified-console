@@ -314,6 +314,56 @@ automatically; offering it upstream is the owner's call.
 | 9 | 4 | plaintext requests must name the hub (its addresses, `.local` name, `--host-name`), else `421` | browsers only |
 | 10 | 6.2 | a token once used over TLS is refused over plaintext (`tls_only`) | a client not updated keeps working until its token meets TLS |
 
+## Firmware rollout
+
+<!-- WP P3FRZ (PLAN-P3 F6, OD-P2b, OD-P3e, OD-P3n) -->
+The hub can update the firmware of the DSPis on its own USB with nobody at the rack:
+an Admin starts it from a console (the web console's rollout screen, `uconsole api`,
+or this hub's prompt), one device at a time, the settings exported to the hub's
+snapshots first, the firmware guard asked with nobody to type, the device checked
+after it restarts, and an alarm when it does not come back. What it does step by
+step: [hub-api.md](hub-api.md) section 21; why it is safe enough:
+[security.md](security.md) (The hub's firmware rollout).
+
+| Switch | Does | Default |
+|---|---|---|
+| `--rollout` | serves the rollout (`fw.*`, cap `rollout`) to Admins, **over TLS only**; refused at the start when the hub would serve no TLS (`--tls off`, or `--loopback` without `--tls on`/`require`) | off |
+| `--allow-unverified-firmware` | with `--rollout` only: images the release's manifest does not list may be flashed too | off |
+
+- `--rollout` is **off by default**. Without it no `fw.*` message is served and no
+  console shows the rollout. With it the hub prints `Firmware rollout: on, for admins
+  over TLS only (verified images only)` at the start.
+- `--allow-unverified-firmware` is **off by default**, the owner's bench switch.
+  Without it only an image whose name and bytes the release's manifest lists
+  (`verified`) goes on a device. With it the hub starts with a **WARNING** block
+  (also on standard error with `--json`, so it is never only in a log):
+
+  ```text
+  WARNING: --allow-unverified-firmware. This hub flashes firmware images the release does
+  not list: an admin's console can put any image it uploads on the DSPis on this machine's
+  USB (the firmware guard still refuses an image the board's core voltage does not allow).
+  Use it on a bench, never at a venue.
+  ```
+
+  The image list shows each image `verified` or `NOT VERIFIED` either way.
+- Images go into the hub's store (`firmware/`, The store below) by an Admin's upload
+  from a console, or on the hub's machine: `firmware add <file.uf2>` at the running
+  hub's prompt, or `uconsole hub firmware add <file.uf2>` with the hub stopped
+  (`uconsole hub firmware list` lists them). The same checks apply either way.
+- **Stopping the hub during a flash.** Ctrl-C or SIGTERM never cuts a flash short: the
+  hub waits for the flash in progress to end, which can take up to about 60 s, and
+  then stops. A rollout stopped while it waited for a board or a restart ends there;
+  at the next start its record reads `failed` at the step it was at, with the
+  device's `rollout_failed` alarm raised and the members after it `not_tried`. A
+  service manager's stop timeout must allow those 60 s: the systemd unit and the
+  launchd agent in the release's `service/` folder give the hub 90 s
+  (`TimeoutStopSec=90`, `ExitTimeOut` 90); keep that if you write your own. A
+  Windows task ended from Task Scheduler is killed at once: do not end it while a
+  rollout is flashing.
+- The hub never raises a board's core voltage, never flashes two boards at once,
+  never mounts a bootloader drive and never retries a flash: see section 21.4 of
+  hub-api.md.
+
 ## Network and firewall
 
 | What | Port | Notes |
@@ -360,12 +410,12 @@ made, with a loud log line: every paired client then reports that the hub's key
 changed and must pair again. Back up `tls/` with the store if the hub is moved to
 another machine.
 
-<!-- WP P3DOC --> The fleet's files (PRO phase 3, [hub-api.md](hub-api.md) sections 19 to 21; draft until the WP
-named builds them), in the data folder (`--data`; by default the store folder), 0600 and written atomically; a file the
+<!-- WP P3DOC --> The fleet's files (PRO phase 3, [hub-api.md](hub-api.md) sections 19 to 21; built by the WP
+named), in the data folder (`--data`; by default the store folder), 0600 and written atomically; a file the
 hub cannot read is kept aside as `<name>.bad-<time>` and the hub goes on with what it could read:
 
 | Path | What | Bound | Diagnostics bundle |
 |---|---|---|---|
 | `groups.json` | the groups: id, name, note, members (P3GR, built) | 64 groups of 64 members | `hub/groups.json` |
-| `rollout.json` | the firmware rollouts' records: target, image name and hash, steps and their texts, who started it (P3RO) | the newest 64 records | `hub/rollout.json` |
-| `firmware/` | the firmware images an Admin uploaded or `uconsole hub firmware add` put in, for a rollout (P3RO) | 4 images of at most 8 MiB | never |
+| `rollout.json` | the firmware rollouts' records: target, image name and hash, steps and their texts, who started it (P3RO, built) | the newest 64 records | `hub/rollout.json` |
+| `firmware/` | the firmware images an Admin uploaded or `uconsole hub firmware add` put in, for a rollout (P3RO, built) | 4 images of at most 8 MiB | never |

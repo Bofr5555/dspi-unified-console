@@ -32,9 +32,11 @@
          another hub holds the store, or a change of access mode; exit 4: the port in
          use), which would be retried every few seconds for ever. Read the log, then
          bootstrap it again. -->
-    <!-- launchd sends SIGTERM; the hub stops cleanly within this. -->
+    <!-- launchd sends SIGTERM; the hub stops cleanly within this. 90 s: a hub with
+         rollout waits up to ~60 s for a flash to finish; a SIGKILL mid-flash leaves the
+         board in BOOTSEL with a partial image. -->
     <key>ExitTimeOut</key>
-    <integer>20</integer>
+    <integer>90</integer>
     <key>EnvironmentVariables</key>
     <dict>
         <key>RUST_LOG</key>

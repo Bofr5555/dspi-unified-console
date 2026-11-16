@@ -10,6 +10,10 @@ the hub's machine once, `uconsole hub tls cert > hub.pem`, and trust only it:
 
     DSPI_HUB=https://hub.local:11915 DSPI_CA=hub.pem DSPI_KEY=... ./hub_rest.py [SERIAL]
 
+It also lists the hub's groups and sets the first group's master volume, one row
+per member (hub-api.md sections 19 and 20), and reads the firmware images and
+rollouts of a hub started with --rollout (section 21: read only, over TLS only).
+
 With DSPI_CA the hub's own certificate is the only one trusted, so only the
 key it was issued for passes; the name in DSPI_HUB need not be in it (an
 address works too). Export it again after `uconsole hub tls rotate`.
@@ -42,8 +46,9 @@ def tls_context():
     return ctx
 
 
-def call(method, path, body=None):
-    """One request; the answer's JSON, or exit with the hub's code."""
+def call(method, path, body=None, optional=()):
+    """One request; the answer's JSON, or exit with the hub's code. A status in
+    `optional` answers None instead (a family the hub does not run is 501)."""
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(
         HUB + "/api/v1" + path,
@@ -55,6 +60,8 @@ def call(method, path, body=None):
         with urllib.request.urlopen(req, timeout=10, context=tls_context()) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
+        if e.code in optional:
+            return None
         try:
             err = json.load(e)
         except ValueError:
@@ -86,6 +93,33 @@ def main():
         print("alarm", alarm["code"], alarm.get("subject", ""), alarm["message"])
     for h in call("GET", "/health")["devices"]:
         print("health", h.get("serial"), "temperature", h.get("temp_c"), "cpu", h.get("cpu_pct"))
+
+    # The fleet (v1): groups, and one volume on every member of the first group.
+    # 501: the hub runs without groups (--no-groups).
+    groups = (call("GET", "/groups", optional=(501,)) or {}).get("groups", [])
+    for g in groups:
+        print("group", g["id"], g["name"], "members", ",".join(g.get("members", [])))
+    if groups:
+        g = groups[0]["id"]
+        done = call("PUT", f"/groups/{g}/params/vol.master", {"value": -20.0})
+        for row in done["results"]:
+            # A refused member is its row's code (offline, limit_exceeded, ...),
+            # reported and never retried.
+            state = "ok" if row["ok"] else row.get("code", "refused")
+            print("group", g, row["serial"], state, row.get("value", ""))
+
+    # Firmware images and rollouts: read only, TLS only (426 over plaintext), and
+    # 501 on a hub started without --rollout.
+    images = call("GET", "/firmware", optional=(426, 501))
+    if images is None:
+        print("firmware: not served here (no --rollout, or not over TLS)")
+    else:
+        for i in images["images"]:
+            label = "verified" if i.get("verified") else "NOT VERIFIED"
+            print("firmware", i["name"], i.get("platform"), i.get("firmware_version"), label)
+        for r in call("GET", "/rollouts")["rollouts"]:
+            print("rollout", r["id"], r["target"], r["state"])
+        print("firmware images", len(images["images"]))
 
 
 if __name__ == "__main__":

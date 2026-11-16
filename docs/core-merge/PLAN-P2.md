@@ -6,6 +6,11 @@ M1, M3, M4, S6, I1, I2, I5, I6, I7; section 4 phases 2 and 3; section 5; section
 owner's decisions below. Phase 1 (`PLAN-CLIENTS.md` section 5.9) is the structure this file copies. This file is the plan
 only: no code, no edits to `PLAN-CLIENTS.md`.*
 
+*Status (WP P3FRZ, 2026-11-16, checked against `git log --first-parent main` at `462fcde1`): 24 of the 25 planned WPs
+are merged and marked DONE with the merge into their review branch and that branch's merge into `main`; **P2SW is
+open**. Three WPs that were not planned are added where they belong: MQWIRE, P2CC3, P2WB3. Section 3 is built by
+PLAN-P3 and marked so.*
+
 **Goal.** A hub that keeps running with no console open and is useful on its own: it knows every DSPi it has ever seen, can
 make one blink, keeps a shared history of what happened and who did it, raises alarms and tells other systems about them,
 holds the shared copy of each device's snapshots, runs schedules, and lets other programs (a script, a venue controller,
@@ -150,7 +155,7 @@ Sizes are this project's units (one unit is about one hour of agent time with re
 
 ### Core and hub WPs
 
-**P2SV: The hub's service seam.** [TODO] Size 2. Wave P2-A. **Owns:** new `crates/dspi-hub/src/service.rs` (the trait and
+**P2SV: The hub's service seam.** [DONE 2026-11-15: `7589bf8c` into review/p2a, main `40040beb`] Size 2. Wave P2-A. **Owns:** new `crates/dspi-hub/src/service.rs` (the trait and
 the list), new `crates/dspi-hub/src/bus.rs` (the internal event bus and its typed messages), new
 `crates/dspi-hub/src/clock.rs` (wall and monotonic time, a test clock); the one-time edits in `server.rs` (the `on_text`
 chain runs the services after `limits`; `hello.caps` gains each service's caps; the `hub.stats`/`hub.rename` arm leaves
@@ -172,7 +177,7 @@ with the right serial and session; a slow bus subscriber does not delay a comman
 opened by the helper has a remote-range id; the alink tap still feeds the system; the existing conformance suite passes
 unchanged. **Deps:** none. **Clients:** none.
 
-**P2DOC: The hub API contract.** [TODO] Size 1. Wave P2-A. **Owns:** new `docs/integrator/hub-api.md` (one section per
+**P2DOC: The hub API contract.** [DONE 2026-11-15: `505d9878` into review/p2a, main `40040beb`] Size 1. Wave P2-A. **Owns:** new `docs/integrator/hub-api.md` (one section per
 family: inventory, identify, health, events, alarms, outbound, params, presets, snapshots, schedules, MQTT and Home
 Assistant, REST, stats), `docs/integrator/parameter-api.md` (points to it), `docs/integrator/README.md` row,
 `docs/GLOSSARY.md` rows (inventory, health, alarm rule, schedule, API key; Snapshot and Scene restated). **Implements:**
@@ -188,7 +193,7 @@ under `/console/`, and `hub.stats`'s added `serial` in each device row. Marked "
 built. **Done when:** every message type `t` in section 1 has a row (the list of types is in the report); the deviations
 section exists; the no-host-noun check passes on its user-facing strings. **Deps:** none. **Clients:** none.
 
-**P2EVW: A multi-device event writer.** [TODO] Size 1. Wave P2-A. **Owns:** new `crates/dspi-session/src/events/store.rs`
+**P2EVW: A multi-device event writer.** [DONE 2026-11-15: `c3eb884a` into review/p2a, main `40040beb`] Size 1. Wave P2-A. **Owns:** new `crates/dspi-session/src/events/store.rs`
 (and its tests), the `EventKind` enum and the record's optional fields in `crates/dspi-session/src/events.rs` (under a
 marker). **Implements:** `EventStore`: one writer for many serials in one folder (the hub has many devices at once;
 `EventLog` opens one device at a time), the same file names, rotation, lock rule and id rule; per-device and total size
@@ -199,7 +204,7 @@ interleaved, each file's ids rising; a second writer (an `EventLog` of a client 
 the total cap removes the oldest rotated file first; an old build's reader reads the new kinds as `unknown`; files under
 `~/.cache/dspi-build/work/wp-P2EVW/`. **Deps:** none. **Clients:** none.
 
-**P2MQC: An MQTT 3.1.1 client.** [TODO] Size 1.5. Wave P2-A. **Owns:** new `crates/dspi-hub/src/mqtt/codec.rs` and
+**P2MQC: An MQTT 3.1.1 client.** [DONE 2026-11-15: `c24abba3` into review/p2a, main `40040beb`] Size 1.5. Wave P2-A. **Owns:** new `crates/dspi-hub/src/mqtt/codec.rs` and
 `crates/dspi-hub/src/mqtt/client.rs` (and `mqtt/mod.rs`), not yet registered as a service. **Implements:** the packets the hub
 needs (CONNECT with will, CONNACK, PUBLISH QoS 0 and 1 with PUBACK, SUBSCRIBE/SUBACK, PINGREQ/PINGRESP, DISCONNECT), pure
 encode and decode with length limits; a blocking client over `std::net::TcpStream` on one thread with keep-alive, reconnect
@@ -209,7 +214,7 @@ when:** codec tests against fixed byte vectors and fuzzed lengths (proptest is a
 input; a client test against an in-test fake broker: connect, publish retained, subscribe, a dropped broker reconnects and
 re-subscribes, the queue drops the oldest when full. **Deps:** none. **Clients:** none.
 
-**P2SS: The hub's snapshot store.** [TODO] Size 1.5. Wave P2-A (moved from B, review M1). **Owns:** new
+**P2SS: The hub's snapshot store.** [DONE 2026-11-15: `173ed720` into review/p2a, main `40040beb`] Size 1.5. Wave P2-A (moved from B, review M1). **Owns:** new
 `crates/dspi-hub/src/snapshots.rs`, the folder `<data>/snapshots/`. **Implements:** a pure store over
 `snapshot_store::SnapshotStore` plus message handlers `(role, &Value) -> Option<String>` for the messages of section 1 except
 recall, **not yet registered as a service** (P2MQC's pattern; P2PA registers it in P2-B): `snapshot.put` checks that the
@@ -220,7 +225,7 @@ rename, only Admin deletes, OD-P2j); a put with another device's serial refused;
 documents; names with any Unicode; caps enforced with `conflict`; store under `~/.cache/dspi-build/work/wp-P2SS/`.
 **Deps:** none. **Clients:** P2CC1, every client's Snapshots window.
 
-**P2HP: The health poll and device facts.** [TODO] Size 1.5. Wave P2-B. **Owns:** new `crates/dspi-hub/src/health.rs`.
+**P2HP: The health poll and device facts.** [DONE 2026-11-15: `376f5c3e` into review/p2b, main `387fd1f2`] Size 1.5. Wave P2-B. **Owns:** new `crates/dspi-hub/src/health.rs`.
 **Implements:** on attach, the hub reads `EXT_LIST`, then `EXT_IDENTIFY` IN (board, hardware revision, chip) and
 `EXT_RESET_INFO` where listed (reads, as `INTERNAL_SESSION_ID`; no writes) and puts `Facts` on the bus; then a hub-internal
 subscriber on the existing poll groups (status every 2 s, temperature every 30 s, reset info every 60 s; budgets as any
@@ -232,7 +237,7 @@ sent (a transfer-log test over a whole run, plus a grep-level test that the hub'
 router's classification); the poll stops with the device; an unresponsive device (the mock transport's timeouts) is
 reported once and recovers. **Deps:** P2SV. **Clients:** web device table (P2WB1).
 
-**P2IN: The inventory.** [TODO] Size 1.5. Wave P2-B. **Owns:** new `crates/dspi-hub/src/inventory.rs`, the file
+**P2IN: The inventory.** [DONE 2026-11-15: `090a6d34` into review/p2b, main `387fd1f2`] Size 1.5. Wave P2-B. **Owns:** new `crates/dspi-hub/src/inventory.rs`, the file
 `<data>/inventory.json`, its entry in the diagnostics bundle in `crates/dspi-core/src/diag.rs` (under a marker; the one
 `diag.rs` owner of P2-B). **Implements:** F1 as in section 1, from registry events and `Facts`; `inventory.list`,
 `inventory.set {serial, location?, note?, tags?}` (Admin), `inventory.forget {serial}` (Admin; refused while online; also
@@ -244,7 +249,7 @@ detached and restarted with the hub keeps first-seen and gains last-seen; a firm
 can; the diagnostics bundle carries `inventory.json`. **Deps:** P2SV, P2EVW (forget). **Clients:** web (P2WB1), core call
 (P2CC1).
 
-**P2ID: Identify.** [TODO] Size 0.5. Wave P2-B. **Owns:** new `crates/dspi-hub/src/identify.rs`. **Implements:** F2 as in
+**P2ID: Identify.** [DONE 2026-11-15: `d37f5a9c` into review/p2b, main `387fd1f2`] Size 0.5. Wave P2-B. **Owns:** new `crates/dspi-hub/src/identify.rs`. **Implements:** F2 as in
 section 1, as one of the hub's own writes (`INTERNAL_SESSION_ID`, the shared rule): Control and Admin may ask, since the
 extension opcode is Admin-only in the policy and the hub, not the caller, sends it; blink whatever the lock, the tone
 `locked` while another session holds the device lock; one history record with the caller in `by`; the answer is the
@@ -254,14 +259,14 @@ the blink passes, the rate limit, Viewer refused, `unsupported` on a device with
 record. **Deps:** P2SV (P2EV's history through the bus; the test reads the bus). **Clients:** Identify buttons (P2WB1,
 P2QT, P2AN, P2SW).
 
-**P2HS: `hub.stats` and `hub.rename`.** [TODO] Size 0.75. Wave P2-B. **Owns:** new `crates/dspi-hub/src/stats.rs`; the
+**P2HS: `hub.stats` and `hub.rename`.** [DONE 2026-11-15: `bb5dceae` into review/p2b, main `387fd1f2`] Size 0.75. Wave P2-B. **Owns:** new `crates/dspi-hub/src/stats.rs`; the
 per-device counters (commands, errors, round-trip time, dropped notifications) in `crates/dspi-hub/src/device.rs` under a
 marker. **Implements:** spec 7.9 as in section 1 (`serial` added to each device row: additive, listed in the deviations
 section). **Done when:** tests: counts rise with commands, errors with a mock failure, an average round trip is reported;
 `hub.rename` saves, a new `hello` and `/dspi/v1/info` carry it, the mDNS announcement is renewed (the HB5 test's loopback
 browser); Control and Viewer `denied`. **Deps:** P2SV. **Clients:** web (P2WB1, Admin).
 
-**P2EV: The hub's event history and watchdog events.** [TODO] Size 2. Wave P2-B. **Owns:** new
+**P2EV: The hub's event history and watchdog events.** [DONE 2026-11-15: `d164addc` into review/p2b, main `387fd1f2`] Size 2. Wave P2-B. **Owns:** new
 `crates/dspi-hub/src/history.rs`, the folder `<data>/events/`. **Implements:** M1's hub half and S6 as in section 1, from the
 bus: registry events, attributed notifications decoded with `decode_ext_event` and the notification decoder (`by` from the
 session label), `Facts` (a reset with its reason; a firmware change), `Health` steps (temperature crossing 5 degree bands,
@@ -274,7 +279,7 @@ flooded subscriber writes `events_dropped`; `event.list` pages by id; a Viewer m
 `EventLog::export_in`. **Deps:** P2SV, P2EVW; P2HP soft (its messages are P2SV's typed `Facts` and `Health`, injected in
 tests). **Clients:** P2CC1, every client's events view.
 
-**P2PA: The parameter API, the action executor and hub-side recall.** [TODO] Size 4. Wave P2-B. **Owns:** new
+**P2PA: The parameter API, the action executor and hub-side recall.** [DONE 2026-11-15: `4cf55d76` into review/p2b, main `387fd1f2`] Size 4. Wave P2-B. **Owns:** new
 `crates/dspi-hub/src/api/` (`mod.rs`, `params.rs`, `presets.rs`, `exec.rs`, `transport.rs`, `recall.rs`; P2SR of the first
 draft folded in, review M1), the registration of P2SS's handlers as the `snapshot` family beside `api` (two lines in
 `service.rs`), `crates/dspi-hub/Cargo.toml` (a feature `api` = `dep:dspi-core`, as `app`; the only `Cargo.toml` edit this
@@ -302,7 +307,7 @@ refused for Control on a limited device and accepted then held for Admin, a guar
 recorded in the history as a `recall` with its lines; the core opened for the API is closed when its client goes. **Deps:**
 P2SV, P2SS. **Clients:** P2TM, integrators, every client's "Recall on the hub" (P2CC1).
 
-**P2WH: Webhooks and push.** [TODO] Size 1.5. Wave P2-B. **Owns:** new `crates/dspi-hub/src/outbound/` (`mod.rs`,
+**P2WH: Webhooks and push.** [DONE 2026-11-15: `ab0312db` into review/p2b, main `387fd1f2`] Size 1.5. Wave P2-B. **Owns:** new `crates/dspi-hub/src/outbound/` (`mod.rs`,
 `http.rs`, `hmac.rs`), the file `<data>/outbound.json`. Its diagnostics entry is added by P2AL in P2-C (one `diag.rs` owner
 per wave); until then the bundle simply lacks the file, which holds no secret it could leak. **Implements:** M4's HTTP half
 as in section 1: a minimal HTTP/1.1 POST over `TcpStream` (`http://` only, OD-P2f; **[Superseded by PLAN-SEC (OD-SECa, 2026-11-15; marked by WP SECDOC): `https://` by SECOUT, `http://` only
@@ -317,7 +322,7 @@ verifiable, RFC 4231 vectors, a refused or dead target backs off and never block
 response is cut at 8 KiB, the queue drops oldest with a count, an `https://` URL refused with a reason. **Deps:** P2SV.
 **Clients:** web hub settings (P2WB2).
 
-**P2AL: Device alarms.** [TODO] Size 2. Wave P2-C. **Owns:** new `crates/dspi-hub/src/device_alarms.rs`, the file
+**P2AL: Device alarms.** [DONE 2026-11-15: `65c26545` into review/p2c, main `3b74cec3`] Size 2. Wave P2-C. **Owns:** new `crates/dspi-hub/src/device_alarms.rs`, the file
 `<data>/alarms.json` (64 KiB cap), the diagnostics entries for `alarms.json` and `outbound.json` (redacted) in
 `crates/dspi-core/src/diag.rs` (the one `diag.rs` owner of P2-C besides P2MQ's and P2SC's lines; see the Waves note).
 **Implements:** M3 as in section 1 on `system::alarms::AlarmBook` (used, not edited), from the bus (`Health`, `Facts`,
@@ -331,7 +336,7 @@ the mute action mutes once per storm, passes another session's lock, never unmut
 rules set by Admin only; a webhook receives a raised alarm (with P2WH); the bundle carries both files with no secret.
 **Deps:** P2HP, P2EV, P2WH (all P2-B). **Clients:** P2CC2, every client's banner.
 
-**P2RS: REST mirror and API keys.** [TODO] Size 2. Wave P2-C. **Owns:** new `crates/dspi-hub/src/rest.rs`; in `server.rs`,
+**P2RS: REST mirror and API keys.** [DONE 2026-11-15: `00e99bc8` into review/p2c, main `3b74cec3`] Size 2. Wave P2-C. **Owns:** new `crates/dspi-hub/src/rest.rs`; in `server.rs`,
 `answer`'s routing of `/api/v1/` and the request-body read (PUT and POST, under a marker); in `auth.rs` and `store.rs`, a
 client kind `api` (an API key is a paired client minted without a PIN: same table, same `MAX_PAIRED_CLIENTS` cap of 64 shared
 with the consoles, same `revoke`; `auth.list` shows the kind, OD-P2q); `ServerLimits` for REST requests. **Implements:** the
@@ -346,7 +351,7 @@ rate-limited key `429`; `hostile_lan.rs`-style tests: a trickled PUT body cut at
 `Content-Length`, a body longer than its length; the 65th paired client or key refused; the WebSocket and the existing
 pages unaffected, `/dspi/` unchanged. **Deps:** P2PA (recall included), P2EV (events endpoint). **Clients:** integrators.
 
-**P2SC: Schedules.** [TODO] Size 2. Wave P2-C. **Owns:** new `crates/dspi-hub/src/schedule.rs`, the file
+**P2SC: Schedules.** [DONE 2026-11-15: `e4c52f05` into review/p2c, main `3b74cec3`] Size 2. Wave P2-C. **Owns:** new `crates/dspi-hub/src/schedule.rs`, the file
 `<data>/schedule.json`, its diagnostics entry (under a marker in `diag.rs`), and `Cargo.toml`'s time-zone dependency (OD-P2h;
 under a marker, the only `Cargo.toml` edit this wave). **Implements:** I5 as in section 1 (at most 256 rules of at most 16
 actions; a malformed file read by the shared corrupt-file rule), with the clock rules of OD-P2h: local time from the hub
@@ -361,7 +366,7 @@ the grace, an offline target, a target with a pending guard, a limit refusing an
 `by`, the history record and `schedule.ran`, the caps, the bundle entry. **Deps:** P2PA, P2SV. **Clients:** web hub settings
 (P2WB2), P2TM.
 
-**P2MQ: MQTT on the hub.** [TODO] Size 1. Wave P2-C. **Owns:** new `crates/dspi-hub/src/mqtt/service.rs`, the file
+**P2MQ: MQTT on the hub.** [DONE 2026-11-15: commit `ad9b9a37` on review/p2c (no merge of its own), main `3b74cec3`] Size 1. Wave P2-C. **Owns:** new `crates/dspi-hub/src/mqtt/service.rs`, the file
 `<data>/mqtt.json`, its redacted diagnostics entry (under a marker in `diag.rs`). **Implements:** the broker setting (host,
 port, client id, username, password, base topic `dspi/<hub id>`), off by default; publishes the bus's `Alarm` and `Event`
 messages to `<base>/<serial>/event` and the hub's availability as a will; `mqtt.get` (Admin; the password as set or not),
@@ -370,7 +375,15 @@ end-to-end test with a real alarm runs in P2HA), the will on a lost hub, setting
 `mqtt.status`, no password in the diagnostics bundle. **Deps:** P2MQC, P2SV; P2AL soft (its messages are P2SV's typed
 `Alarm`). **Clients:** web hub settings (P2WB2).
 
-**P2CC1: Typed core calls for the hub's new families.** [TODO] Size 2.5. Wave P2-C. **Owns:** new
+**MQWIRE: MQTT over TLS in the hub's MQTT service.** [DONE 2026-11-15: `59a21a53` into review/p2c, main `3b74cec3`]
+*Added to this plan by WP P3FRZ: not planned here; the wiring of PLAN-SEC SECOUT's MQTT TLS (SECOUT merged
+into `wp/MQWIRE` at `a8d6c0f1`) into P2MQ's service, which neither WP owned.* **Owns:** `crates/dspi-hub/src/mqtt/service.rs`'s TLS wiring. **Implements:**
+SECOUT's `MqttTls` in the hub's MQTT service: `mqtt.json`'s `tls` read and migrated (an old remote broker with a
+password moves to `allow_plaintext_password`, with a one-time notice), `mqtt.set`/`mqtt.get` carry it, `mqtt.status`
+shows `encrypted`, a refused plaintext password is `failed`; the diagnostics bundle keeps `tls` with its secrets as
+set / not set. **Deps:** P2MQ, SECOUT.
+
+**P2CC1: Typed core calls for the hub's new families.** [DONE 2026-11-15: `06e98782` into review/p2c, main `3b74cec3`] Size 2.5. Wave P2-C. **Owns:** new
 `crates/dspi-core/src/hub_server.rs` (and `hub_server/` tests); in `crates/dspi-core/src/snapshot.rs`, the merged list
 (under a marker); binding wiring (shared). **Implements:** as `hub_admin.rs` does for limits: `hub_caps()`, `hub_inventory()`,
 `hub_identify(seconds, tone)` (and on USB the existing ext call, so a client has one Identify), `hub_health()`,
@@ -383,7 +396,7 @@ when:** tests through `dspi-link-fakehub` or the real hub in-process: each call 
 including a differing id; the same text through C, UniFFI and wasm. **Deps:** P2IN, P2ID, P2HP, P2HS, P2EV, P2SS, P2PA (all
 P2-A or P2-B). **Clients:** every client WP.
 
-**P2HA: Home Assistant.** [TODO] Size 2. Wave P2-D. **Owns:** new `crates/dspi-hub/src/mqtt/ha.rs`. **Implements:** I6 as in
+**P2HA: Home Assistant.** [DONE 2026-11-15: `d9c793c4` into review/p2d, main `fcea2b39`] Size 2. Wave P2-D. **Owns:** new `crates/dspi-hub/src/mqtt/ha.rs`. **Implements:** I6 as in
 section 1: retained discovery under `homeassistant/<component>/<hub>_<serial>_<entity>/config` with a device block (name,
 serial, firmware, model from the facts), state topics updated from the bus (volume and mute from attributed notifications,
 the preset from `PRESET_LOADED`, sensors from health), `set` topics through the executor as the MQTT API key's principal
@@ -393,14 +406,23 @@ state stays, a locked device takes volume, mute and preset only, a Viewer-role k
 entities removed, and the end-to-end alarm: a real P2AL alarm published by P2MQ. **Deps:** P2MQ, P2PA, P2IN, P2AL.
 **Clients:** web hub settings (P2WB2: the switch and the key).
 
-**P2CC2: Core calls for alarms and schedules.** [TODO] Size 1. Wave P2-D. **Owns:** a second section of
+**P2CC2: Core calls for alarms and schedules.** [DONE 2026-11-15: `b8ca9e22` into review/p2d, main `fcea2b39`] Size 1. Wave P2-D. **Owns:** a second section of
 `crates/dspi-core/src/hub_server.rs` (P2CC1's file, done in P2-C); binding wiring (shared). **Implements:** `hub_alarms()`,
 `hub_alarm_ack(id)`, the `alarm.changed` stream, `hub_schedules()` (read), and a core notice row per alarm code
 (`alarm.device_restarted` "Restarted at {time} ({reason})", and so on) in `assets/notices/notices.json` (P1NT's table), in
 shared wording with no host-device nouns. **Done when:** tests as P2CC1's; every alarm code has a notice row (a test fails on
 a code without one). **Deps:** P2CC1, P2AL, P2SC. **Clients:** every client's banner.
 
-**P2TM: Terminal.** [TODO] Size 1.5. Wave P2-D. **Owns:** a new `crates/dspi-cmd` command `api`, `apps/terminal/src/main.rs`'s
+**P2CC3: Core calls for the hub's device and name writes.** [DONE 2026-11-15: commit `19f0a0ae` on `wp/P2WB3`, merged
+by `d7f7b207` into review/p2f, main `a4e33085`] *Added to this plan by WP P3FRZ: not planned here; built with P2WB3
+for its Admin edits.* **Owns:** a third section of `crates/dspi-core/src/hub_server` (`manage.rs`) and its C, wasm and
+UniFFI wiring. **Implements:** `hub_inventory_set`, `hub_inventory_forget`, `hub_rename`, `hub_identify_serial`
+(unsupported without the cap, nothing sent; read-only mode refuses all four; `WriteGuardedCore` classes them as
+writes), and a guarded `hub_snapshots_recall` adopted as the core's guarded apply (`apply_status`, confirm, revert and
+timeout as the same session). Tests through the real hub (`crates/dspi-hub/tests/wp_p2cc3_core_calls.rs`); review
+p2f's F1 fix (`wp/P2FFIX`, `5432d531`: adopting a guard without a bound device). **Deps:** P2CC1, P2CC2.
+
+**P2TM: Terminal.** [DONE 2026-11-15: `dcac7beb` into review/p2d, main `fcea2b39`] Size 1.5. Wave P2-D. **Owns:** a new `crates/dspi-cmd` command `api`, `apps/terminal/src/main.rs`'s
 table (additive, below TM15's macro block), `apps/terminal/src/hub.rs` (flags `--rest`, the `ServiceConfig` from flags; prompt
 commands `inventory`, `alarms`, `schedule`, `api-key new|list|revoke`; `uconsole hub api-key` with the hub stopped),
 `docs/integrator/` script examples (the I7 section of `hub-api.md`). **Implements:** I7 as in section 1. **Done when:**
@@ -430,7 +452,7 @@ Each client WP builds on P2CC1 and P2CC2 only; no client talks JSON to the hub i
 wasm binding, as for `hub_admin`). User text from the core's notice table and CG10's placeholders; no host-device nouns;
 "Snapshot" and "Scene" as defined; a hub feature is shown only when `hub_caps()` has it.
 
-**P2WB1: Web: the hub's devices, health, alarms and history.** [TODO] Size 3. Wave P2-E. **Owns:** new
+**P2WB1: Web: the hub's devices, health, alarms and history.** [DONE 2026-11-15: `66350279` into review/p2e, main `5d663cd4`] Size 3. Wave P2-E. **Owns:** new
 `apps/web/src/fleet/hub.ts` (a `HubBackend` for a console served by a hub: the serving hub as one installation whose
 devices come from the inventory, offline ones included; `hubDevices` from it; `access` from the session's role;
 `pinnedMode` from `mode.pinned`), the backend choice in `apps/web/src/fleet/env.ts`, new `apps/web/src/screens/hub/`
@@ -440,7 +462,7 @@ location, note and tags and sees `hub.stats`; an alarm board with acknowledge; t
 in-process hub with the demo device: the table lists an offline device, Identify answers, an alarm raised by the test is
 shown and acknowledged, the events view reads the hub's records with `by`. **Deps:** P2CC1, P2CC2. **Clients:** web.
 
-**P2WB2: Web: hub settings and shared snapshots.** [TODO] Size 2.5. Wave P2-E. **Owns:** new
+**P2WB2: Web: hub settings and shared snapshots.** [DONE 2026-11-15: `9f35849a` into review/p2e, main `5d663cd4`] Size 2.5. Wave P2-E. **Owns:** new
 `apps/web/src/screens/hub-settings/` as **its own route** (review S7: the link from P2WB1's hub screen is one additive line
 added at merge), the "On the hub" section of `apps/web/src/screens/snapshots/`. **Implements:** Admin: notification targets
 with Test, MQTT broker and the Home Assistant switch, schedules editor, API keys mint and revoke with the key shown once,
@@ -449,18 +471,24 @@ row saying Admin is given on the hub's machine. **Done when:** e2e as P2WB1's: a
 test listener, a schedule saved and `run_now`, a key minted and revoked, a snapshot saved to the hub, listed as `hub`,
 recalled; Control sees read-only settings. **Deps:** P2CC1, P2CC2. **Clients:** web.
 
-**P2QT: Qt: shared snapshots, the hub's history, alarm banner, Identify.** [TODO] Size 2. Wave P2-E. **Owns:** the hub section
+**P2QT: Qt: shared snapshots, the hub's history, alarm banner, Identify.** [DONE 2026-11-15: `07e0d821` into review/p2e, main `5d663cd4`] Size 2. Wave P2-E. **Owns:** the hub section
 of `SnapshotsController` and `qml/snapshots/*`; a new `EventsController` and `qml/events/EventsWindow.qml` (local and "On the
 hub", through the registrar); alarm notices in `NoticeCenter`; Identify in the device menu (this wave's one menu WP: the
 `MenuTable.qml`/`Menus.qml` entries). **Done when:** smoke sections on the demo device and through the in-process hub, both
 schemes. **Deps:** P2CC1, P2CC2. **Clients:** Qt.
 
-**P2AN: Android: the same.** [TODO] Size 2. Wave P2-E. **Owns:** the hub section of the Snapshots feature, a new events
+**P2AN: Android: the same.** [DONE 2026-11-15: `7f9234ca` into review/p2e, main `5d663cd4`] Size 2. Wave P2-E. **Owns:** the hub section of the Snapshots feature, a new events
 screen in `feature-settings` (or the module that holds diagnostics), alarm notices in `AlertHost`, Identify in the device
 sheet; `WriteGuardedCore` classification of the new methods. **Done when:** view-model and Robolectric tests; Gradle through
 the slot; no visible layout growth. **Deps:** P2CC1, P2CC2. **Clients:** Android.
 
-**P2SW: Swift: the same, and the Mac hub's services.** [TODO] Size 2.75. Wave P2-F (VM). **Owns:** the hub section of the
+**P2WB3: Web: the hub screen's follow-ups.** [DONE 2026-11-15: `d7f7b207` into review/p2f, main `a4e33085`] *Added to
+this plan by WP P3FRZ: not planned here; the follow-ups of review p2e, wave P2-F beside P2SW.* **Owns:** the web hub
+screen's additions in `apps/web/src/screens/hub/` and `test/e2e/hub_p2wb3.spec.ts`. **Implements:** Admin edits
+(location, note, tags), Forget, Rename and Identify on every row, live snapshots and history, recall on the hub with
+the guard, open a device in the console; on P2CC3's calls. **Deps:** P2WB1, P2WB2, P2CC3.
+
+**P2SW: Swift: the same, and the Mac hub's services.** [OPEN 2026-11-16: `wp/P2SW` merged into `review/swsec` (`8ab3698f`, with SECSW) and under review, not into main; owns the Mac `HubStartOptions` TLS default too (PLAN-SEC SECDEF)] Size 2.75. Wave P2-F (VM). **Owns:** the hub section of the
 `Snapshots*.swift` views and `CoreSnapshots`, a new `Events*.swift` view, alarm notices in the notice host (P1SW3's),
 Identify; `ServiceConfig` into `crates/dspi-hub/src/ffi.rs`'s `HubStartOptions` (SW-M3's file; every service off by
 default, review S8). **Done when:** macOS and iOS test bundles on the VM; a hub started from the Mac app with default options
@@ -477,11 +505,11 @@ three blocks in one wave is the one place this plan relies on additive edits to 
 |---|---|---|---|
 | P2-A | P2SV, P2DOC, P2EVW, P2MQC, P2SS | 7 | `main` (`ab475933` or later). **SW-M3** (`wp/SWM3`) touches `crates/dspi-hub/{Cargo.toml, src/lib.rs, src/ffi.rs}` and not `server.rs`, `hub.rs`, `relay.rs`, `session.rs`, `auth.rs`, `store.rs` or `device.rs`: merge it before P2-A if it is ready; otherwise P2SV may start now (disjoint files) and rebases onto `main` before its merge. Any other branch touching `crates/dspi-hub/src/{server,hub,relay}.rs` merges first; the coordinator checks |
 | P2-B | P2HP, P2IN, P2ID, P2HS, P2EV, P2PA, P2WH | 11.75 | P2-A |
-| P2-C | P2AL, P2RS, P2SC, P2MQ, P2CC1 | 9.5 | P2-B |
+| P2-C | P2AL, P2RS, P2SC, P2MQ, P2CC1 (+ MQWIRE, not planned) | 9.5 | P2-B |
 | P2-D | P2HA, P2CC2, P2TM | 4.5 | P2-C |
 | P2-E | P2WB1, P2WB2, P2QT, P2AN | 9.5 | P2-D |
-| P2-F | P2SW (VM) | 2.75 | P2-E; P1SW3; SW-M3 |
-| | **Total: 25 WPs** | **45** | hub 25.75, core 4.5 (P2EVW, P2CC1, P2CC2), docs 1, Terminal 1.5, web 5.5, Qt 2, Android 2, Swift 2.75 |
+| P2-F | P2SW (VM); + P2WB3 with P2CC3 (not planned, merged as review p2f) | 2.75 | P2-E; P1SW3; SW-M3 |
+| | **Total: 25 WPs** (and 3 added: MQWIRE, P2CC3, P2WB3) | **45** | hub 25.75, core 4.5 (P2EVW, P2CC1, P2CC2), docs 1, Terminal 1.5, web 5.5, Qt 2, Android 2, Swift 2.75 |
 
 Soft dependencies inside a wave are on P2SV's typed bus messages, not on another WP: P2EV on P2HP's `Facts`/`Health`, P2MQ
 on P2AL's `Alarm` (each tested with injected messages; the end-to-end alarm path is tested in P2HA).
@@ -497,16 +525,21 @@ Wave P2-B is the widest: if the coordinator runs fewer agents, P2PA and P2HP go 
 
 So that phase 2's shapes fit, here is what phase 3 adds (about 25 units, PRO1 F3 to F8 and U1), and what it reuses.
 
+**[Built by PLAN-P3 (marked by WP P3FRZ, 2026-11-16; marked, not deleted): phase 3 is planned in
+[`PLAN-P3.md`](PLAN-P3.md) and built on `main` by waves P3-A to P3-C (merges `e26ea6e1` to `462fcde1`; the web's group
+and rollout screens, P3WGR and P3WRO, in P3-D). The contract is `docs/integrator/hub-api.md` sections 19 to 21, frozen
+as v1 (OD-P2a (ii)). Where PLAN-P3 decided otherwise than this outline, the row says so.]**
+
 | Phase 3 | Reuses from phase 2 | Shape decided now |
 |---|---|---|
-| **F3 groups** (`group.list/set/delete`, Admin): named sets of serials with a note | inventory records (`tags` today; `groups` added), addressing by serial | schedule targets already accept `group:<id>` (refused `unsupported` until phase 3) |
-| **F4 linked parameters** (`group.param.set {group, path, idx, value, offsets?}`) | the executor (`param.set` per member), limits per member | the multi-target `results: [{serial, ok, code?, msg?}]`; partial failure is reported, never retried |
-| **F5 bulk apply** (a snapshot or document to a group, a P1HA guard per device, one report) | P2PA's recall with `guard`, the hub snapshot store | same `results`; guards per device as today, one at a time or in parallel by a setting |
-| **F6 firmware rollout** (USB devices of the hub, one at a time, export first, verify after reboot) | the inventory (firmware column), the history, alarms | `fw.install` stays the reserved name; OD-P2b decides whether it ships and how it writes |
-| **F7 health board** | `health.get`, `alarm.list`, `hub.stats`, the history | the health record of P2HP is the board's row; thresholds are P2AL's rules |
-| **F8 fleet screens** (inventory, health, groups, bulk apply, history, rollout, open a device in the console) | `HubBackend` (P2WB1), the hub screens | `FleetBackend` gains optional `inventory`, `health`, `alarms`, `groups` methods, so a fleet server implements the same; every id is (hub id, serial) |
-| **U1 System view** (all outputs in one table) | the existing session view | web first |
-| Several hubs (phase 4, only if asked) | the API's serial addressing and `results` shape | `hub_id` in every event and REST answer from phase 2 on, so a fleet server can merge hubs without reshaping |
+| **F3 groups** (`group.list/set/delete`, Admin): named sets of serials with a note | inventory records (`tags` today; `groups` added), addressing by serial | schedule targets already accept `group:<id>` (refused `unsupported` until phase 3) **[Built: P3GR, `74642b3f`. Inventory records do not gain `groups`: `group.list` is the one source (OD-P3b); a group has no role (OD-P3a).]** |
+| **F4 linked parameters** (`group.param.set {group, path, idx, value, offsets?}`) | the executor (`param.set` per member), limits per member | the multi-target `results: [{serial, ok, code?, msg?}]`; partial failure is reported, never retried **[Built: P3GP, `cfdc2b20`; one-shot, never a standing link (OD-P3c).]** |
+| **F5 bulk apply** (a snapshot or document to a group, a P1HA guard per device, one report) | P2PA's recall with `guard`, the hub snapshot store | same `results`; guards per device as today, one at a time or in parallel by a setting **[Built: P3BA, `10c9ef3b`; sequential only, no parallel setting (OD-P3d).]** |
+| **F6 firmware rollout** (USB devices of the hub, one at a time, export first, verify after reboot) | the inventory (firmware column), the history, alarms | `fw.install` stays the reserved name; OD-P2b decides whether it ships and how it writes **[Built: P3RO, `65261aec`, with P3PB's PICOBOOT writer, `6ae14eed`. OD-P2b answered yes; `fw.install` stays `unsupported` and the rollout is a family of its own, `fw.image.*`/`fw.rollout.*` under cap `rollout`, TLS only (OD-P3f, OD-P3n).]** |
+| **F7 health board** | `health.get`, `alarm.list`, `hub.stats`, the history | the health record of P2HP is the board's row; thresholds are P2AL's rules **[Built: P3HB, `5daaf2e9` (counters, clip per minute, last change); the web board P3WHB, `808a1105`.]** |
+| **F8 fleet screens** (inventory, health, groups, bulk apply, history, rollout, open a device in the console) | `HubBackend` (P2WB1), the hub screens | `FleetBackend` gains optional `inventory`, `health`, `alarms`, `groups` methods, so a fleet server implements the same; every id is (hub id, serial) **[Not so: `FleetBackend` is not widened; the hub's families reach the page through the session's core (OD-P3k). Built: P3CC's core calls, `d74646ed`; the web's group and rollout screens are P3WGR and P3WRO (P3-D).]** |
+| **U1 System view** (all outputs in one table) | the existing session view | web first **[Built as the Overview screen, not "System" (the alink system view keeps that name, OD-P3j): P3OV, `1219e3e9`.]** |
+| Several hubs (phase 4, only if asked) | the API's serial addressing and `results` shape | `hub_id` in every event and REST answer from phase 2 on, so a fleet server can merge hubs without reshaping **[Still not in phase 3 (OD-P3p); `hub` is in every event and REST answer.]** |
 
 The web console opens a device by its existing session view; the fleet screens never become a second console (PRO1 F8's
 risk). The hub serves the page (`--web`), so a desktop user gets the multi-device view in a browser tab on the same machine.
@@ -527,7 +560,7 @@ questions, one line each:
 
 | # | Decision | Options | Recommendation | Why |
 |---|---|---|---|---|
-| **OD-P2a** | **The parameter API's shape and the public REST contract** (PRO1 question 5). **DECIDED** | (1) JSON over the existing `/dspi/v1` WebSocket only; (2) WebSocket plus a REST mirror over the same handlers; (3) REST only. Contract: (i) public and versioned now; (ii) experimental until phase 3, then frozen as v1; (iii) internal only | **(2) with (ii)**: the WebSocket family is the primary API (`hello.caps` `param_api`); REST is a thin, opt-in (`--rest`) translator under **`/api/v1/`**, outside the protocol's `/dspi/`; documented in `hub-api.md` as "v1, experimental" until phase 3's fleet needs are in, then frozen (additive changes only within v1) | REST is what Home Assistant, curl and a venue controller speak, and the WebSocket is what the consoles already hold. One handler set keeps the Link spec's reason for "no REST" (serialisation, locking and attribution in one path) true. `/api/` stays out of the protocol's `/dspi/` namespace, but spec 4.2 defines the whole HTTP surface of the port ("Nothing else is defined"), so it is still a deviation: recorded in `hub-api.md`'s deviations section (P2DOC). Freezing after phase 3 avoids a v2 for groups |
+| **OD-P2a** | **The parameter API's shape and the public REST contract** (PRO1 question 5). **DECIDED** | (1) JSON over the existing `/dspi/v1` WebSocket only; (2) WebSocket plus a REST mirror over the same handlers; (3) REST only. Contract: (i) public and versioned now; (ii) experimental until phase 3, then frozen as v1; (iii) internal only | **(2) with (ii)** **[(ii) done: v1 frozen 2026-11-16 after phase 3's fleet endpoints, WP P3FRZ, `hub-api.md` section 1.2.]**: the WebSocket family is the primary API (`hello.caps` `param_api`); REST is a thin, opt-in (`--rest`) translator under **`/api/v1/`**, outside the protocol's `/dspi/`; documented in `hub-api.md` as "v1, experimental" until phase 3's fleet needs are in, then frozen (additive changes only within v1) | REST is what Home Assistant, curl and a venue controller speak, and the WebSocket is what the consoles already hold. One handler set keeps the Link spec's reason for "no REST" (serialisation, locking and attribution in one path) true. `/api/` stays out of the protocol's `/dspi/` namespace, but spec 4.2 defines the whole HTTP surface of the port ("Nothing else is defined"), so it is still a deviation: recorded in `hub-api.md`'s deviations section (P2DOC). Freezing after phase 3 avoids a v2 for groups |
 | **OD-P2b** | **Unattended firmware rollout** (PRO1 question 7; phase 3's F6). **DECIDED by the owner 2026-11-15: yes**, unattended flashing is allowed, in phase 3, under the recommendation's conditions; phase 2 is the same either way | (1) never remote: a flash is always a local act; (2) remote by the mass-storage drive copy (needs the hub machine to mount the RP2 drive: on a headless Linux hub that means udisks or root); (3) remote by a PICOBOOT writer in the core (the bootrom's vendor interface, no mount; 3 units; a udev rule for the boot-mode IDs) | If the owner says yes: **(3) in phase 3, Admin only**, one device at a time, behind the CG8 firmware guard and the K340 voltage guard, with the configuration exported first, verify-after-reboot (firmware version, `EXT_LIST`, and on a K340 the stored 1.20 V core setting read back) and an alarm if the device does not come back; refuse when more than one boot-mode device is present. Until then `fw.install` stays `unsupported` | A drive copy on a headless hub is the least portable step there is, and the owner's rule "anything not clear is dangerous" favours a writer we control and can verify. Nobody at the rack is acceptable only with the verify and alarm steps: there is no rollback slot (FW10), so the export is the way back |
 | **OD-P2c** | **MQTT and Home Assistant in the hub** (PRO1 question 6). **DECIDED** | (1) in the hub, opt-in, with discovery; (2) leave it to third parties on top of REST; (3) a separate bridge program over REST | **(1), off by default, with a hand-written MQTT 3.1.1 client on std threads** (no async runtime, no new crate); `set` topics act as an API key's principal (Control by default) | Discovery gives zero-configuration entities, and MQTT pushes state, which REST polling does badly for a volume knob. The hub already has the threads, the roles and the limits; a bridge would duplicate them. A small client avoids pulling an async stack into a hub that has none |
 | **OD-P2d** | **FW1, FW4, FW5 on bofr-main, and FW2 upstream** (PRO1 question 8). Part (1) **DECIDED**; part (2) **DECIDED by the owner 2026-11-15: no upstream pull requests for now** (FW2 stays on `bofr-main`) | They are **already built** on `bofr-main` (0x0003 bit 1 clip event, 0x0004 identify, 0x0005 reset info; FW2 clamps in b964f01) and decoded by the core (FWX). Options: (1) keep them on `bofr-main`, gate every hub use on `EXT_LIST`; (2) also offer FW2 upstream as a standalone safety fix; (3) also propose FW1/FW4/FW5 upstream now | **(1) and (2)**: phase 2 uses them with graceful fallbacks; FW2 is worth an upstream pull request on its own (a bug fix with no protocol change), **opened by the owner** from the fork (we never push to Weeb Labs); FW1/FW4/FW5 wait for Weeb Labs' answer on reserving `0x00` | FW2 makes every host's checks a second line rather than the only one, for every user of the firmware. The extension items need the opcode reservation first; nothing in phase 2 waits for it |
