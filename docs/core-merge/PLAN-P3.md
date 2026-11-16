@@ -246,7 +246,7 @@ when the fake steps them, a latch-only device has no `clip_per_min`, a device wi
 forgets them after, `last_change` names the writing client, the transfer count per minute rises by exactly the one read;
 `hub_health()` carries the fields; `ci/drift.sh` clean. **Deps:** none (P2HP, P2EV merged). **Clients:** P3WHB.
 
-**P3GP: Linked parameters.** [TODO] Size 2. Wave P3-B. **Owns:** new `crates/dspi-hub/src/api/group.rs`; one marked
+**P3GP: Linked parameters.** [DONE 2026-11-16] Size 2. Wave P3-B. **Owns:** new `crates/dspi-hub/src/api/group.rs`; one marked
 registration line in `api/mod.rs::services` (`:65`). **Implements:** F4 as in section 1 through the executor
 (`exec.rs`) as the caller's child session per member: `group.param.set` with `offsets` (dB-kind paths only; the clamp
 reported), `group.preset.load` with `map`, `group.param.get`; `group` resolved through P3GR's `GroupResolver`, or an
@@ -259,7 +259,7 @@ nothing while the other does; an offline member is `offline` and nothing waits f
 same session while one runs is `busy`; the history shows two attributed writes with the client's name. **Deps:** P3GR
 (P3-A), P2PA (merged). **Clients:** P3WGR, P3RS, P3CC.
 
-**P3BA: Bulk apply.** [TODO] Size 2. Wave P3-B. **Owns:** new `crates/dspi-hub/src/api/bulk.rs`; one marked
+**P3BA: Bulk apply.** [DONE 2026-11-16] Size 2. Wave P3-B. **Owns:** new `crates/dspi-hub/src/api/bulk.rs`; one marked
 registration line in `api/mod.rs::services`. **Implements:** F5 as in section 1: `group.apply` (snapshot by id or name
 from the hub store, or a document), sequential, `recall.rs`'s path per member as the caller's child session; with
 `guard` one P1HA guard per device begun immediately before its write, all the caller's; `group.apply.confirm` and
@@ -272,7 +272,7 @@ applies; the session closing reverts what is pending; a run past 256 rows is `ba
 `recall` per device with the caller's name. **Deps:** P3GR (P3-A), P2PA, P2SS, P1HA (merged). **Clients:** P3WGR, P3RS,
 P3CC.
 
-**P3RO: The rollout service.** [TODO] Size 4. Wave P3-B. **Owns:** new `crates/dspi-hub/src/rollout.rs` (and `rollout/`:
+**P3RO: The rollout service.** [DONE 2026-11-16] Size 4. Wave P3-B. **Owns:** new `crates/dspi-hub/src/rollout.rs` (and `rollout/`:
 `images.rs`, `steps.rs`, tests), the folder `<data>/firmware/` and the file `<data>/rollout.json`; a `rollout` feature in
 `crates/dspi-hub/Cargo.toml` (`= ["api", "usb", "dspi-core/usb"]`, under a marker; the only `Cargo.toml` edit of P3-B);
 marked blocks in `bus.rs` (`RolloutEnded {serial, ok, step, text}`), `device_alarms.rs` (the code `rollout_failed`,
@@ -347,7 +347,7 @@ and Firefox: 8 outputs in one table without sideways scroll at 1280 px, cards at
 shows in the Outputs screen, a foreign change (another session) updates the row, meters move. **Deps:** none. **Clients:**
 web.
 
-**P3WHB: Web: the health board.** [TODO] Size 2. Wave P3-B. **Owns:** new `apps/web/src/screens/hub/HealthBoard.tsx`
+**P3WHB: Web: the health board.** [DONE 2026-11-16] Size 2. Wave P3-B. **Owns:** new `apps/web/src/screens/hub/HealthBoard.tsx`
 and `health-model.ts`, the feed's new fields under a marker in `screens/hub/feed.ts`, `test/unit/hub_p3whb.test.ts`,
 `test/e2e/hub_p3whb.spec.ts`. **Implements:** F7's board: one row per online device (CPU, temperature, clip per minute or
 "clipped" on latch-only firmware, counters, uptime, hang count, restart, last change and by whom, raised alarms), offline
