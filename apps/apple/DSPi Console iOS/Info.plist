@@ -19,5 +19,20 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- WP SECSW: dspi://pair links (the hub's QR code), parsed by the core
+	     and confirmed by the person before anything is dialled. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>DSPi Link pairing link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dspi</string>
+			</array>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+		</dict>
+	</array>
 </dict>
 </plist>

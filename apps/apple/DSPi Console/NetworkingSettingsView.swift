@@ -308,6 +308,8 @@ struct NetworkingSettingsPage<Service: HubSharingModel>: View {
                 // verbatim: a localized Text would print the port as "11,915".
                 Text(verbatim: "\(hub.displayAddress), \(hub.deviceCount) device\(hub.deviceCount == 1 ? "" : "s")")
                     .font(.caption).foregroundStyle(.secondary)
+                // -- WP SECSW -- verified (key pinned), encrypted (advertised), unencrypted
+                HubSecurityBadgeView(badge: HubSecurityBadge.of(hub, tokens: LinkTokenStore()))
             }
             Spacer()
             hubBadge(hub)

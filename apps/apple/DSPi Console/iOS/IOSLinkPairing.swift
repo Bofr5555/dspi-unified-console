@@ -10,9 +10,14 @@
 //  hub's NetworkTransport.  A wrong PIN makes the transport ask again, which
 //  shows the sheet again.
 //
+//  -- WP SECSW -- The iOS `LinkPairingUI`: the sheet shows the key the hub
+//  presented (and a pairing link's PIN filled in), and two alerts ask about
+//  pairing again (LinkRepair) and a `dspi://pair` link (LinkPairLinks).
+//
 
 #if os(iOS)
 import SwiftUI
+import dspi_core
 
 @MainActor
 final class IOSLinkPairing: ObservableObject {
@@ -21,20 +26,47 @@ final class IOSLinkPairing: ObservableObject {
     struct Request: Identifiable {
         let id = UUID()
         let hubName: String
+        /// -- WP SECSW -- The key the hub presented ("" unencrypted).
+        var hubKey: String = ""
+        /// -- WP SECSW -- A pairing link's PIN, filled in.
+        var pin: String = ""
         fileprivate let completion: (String?) -> Void
     }
 
     @Published var request: Request?
 
-    /// `CompositeTransport.asyncPairingPrompt`.
-    nonisolated static func ask(hubName: String, completion: @escaping (String?) -> Void) {
-        Task { @MainActor in shared.present(hubName: hubName, completion: completion) }
+    /// -- WP SECSW -- A yes-or-no question: pairing again, a pairing link.
+    struct Question: Identifiable {
+        let id = UUID()
+        let title: String
+        let text: String
+        let action: String
+        fileprivate let completion: (Bool) -> Void
     }
 
-    private func present(hubName: String, completion: @escaping (String?) -> Void) {
+    @Published var question: Question?
+
+    /// `CompositeTransport.asyncPairingPrompt`.
+    nonisolated static func ask(hubName: String, completion: @escaping (String?) -> Void) {
+        Task { @MainActor in shared.present(Request(hubName: hubName, completion: completion)) }
+    }
+
+    fileprivate func present(_ new: Request) {
         // One question at a time: an older one is given up.
         request?.completion(nil)
-        request = Request(hubName: hubName, completion: completion)
+        request = new
+    }
+
+    fileprivate func present(_ new: Question) {
+        question?.completion(false)
+        question = new
+    }
+
+    /// -- WP SECSW -- The person's answer to `question`.
+    func answerQuestion(_ yes: Bool) {
+        guard let pending = question else { return }
+        question = nil
+        pending.completion(yes)
     }
 
     /// The user's answer: a PIN, or nil for Cancel.
@@ -47,6 +79,33 @@ final class IOSLinkPairing: ObservableObject {
     /// Valid PINs are six digits (DSPi Link spec 7.2).
     nonisolated static func isValid(_ pin: String) -> Bool {
         pin.count == 6 && pin.allSatisfy(\.isNumber)
+    }
+}
+
+// -- WP SECSW --
+/// The iOS `LinkPairingUI`: each question goes to `IOSLinkPairing.shared`'s
+/// sheet or alert on the main actor.
+final class IOSLinkPairingUI: LinkPairingUI {
+    func askPIN(_ ask: LinkPairingAsk, completion: @escaping (String?) -> Void) {
+        Task { @MainActor in
+            IOSLinkPairing.shared.present(IOSLinkPairing.Request(hubName: ask.hubName, hubKey: ask.hubKey,
+                                                                 pin: ask.pin, completion: completion))
+        }
+    }
+
+    func askRepair(_ ask: LinkRepairAsk, completion: @escaping (Bool) -> Void) {
+        Task { @MainActor in
+            IOSLinkPairing.shared.present(IOSLinkPairing.Question(title: "Could not connect securely", text: ask.text,
+                                                                  action: ask.actionTitle, completion: completion))
+        }
+    }
+
+    func confirmPairLink(_ link: LinkPairLink, completion: @escaping (Bool) -> Void) {
+        Task { @MainActor in
+            IOSLinkPairing.shared.present(IOSLinkPairing.Question(title: "Pair with a DSPi Link hub?",
+                                                                  text: LinkPairLinks.confirmText(link),
+                                                                  action: "Connect", completion: completion))
+        }
     }
 }
 
@@ -79,6 +138,25 @@ struct IOSPairingSheet: View {
                         On a DSPi Link bridge: enter the PIN set on its web page.
                         """)
                 }
+                // -- WP SECSW -- the key to compare with the one the hub shows
+                Section {
+                    if request.hubKey.isEmpty {
+                        Text("This connection is not encrypted.")
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("pairingHubKey")
+                    } else {
+                        Text(request.hubKey)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("pairingHubKey")
+                    }
+                } header: {
+                    Text("Hub key")
+                } footer: {
+                    if !request.hubKey.isEmpty {
+                        Text("Check that it matches the key the hub shows before you pair.")
+                    }
+                }
             }
             .navigationTitle("Pair with \(request.hubName)")
             .navigationBarTitleDisplayMode(.inline)
@@ -91,7 +169,10 @@ struct IOSPairingSheet: View {
                         .disabled(!IOSLinkPairing.isValid(pin))
                 }
             }
-            .onAppear { focused = true }
+            .onAppear {
+                if pin.isEmpty, !request.pin.isEmpty { pin = String(request.pin.prefix(6)) }   // -- WP SECSW --
+                focused = true
+            }
         }
         .presentationDetents([.medium, .large])
         .interactiveDismissDisabled()
@@ -115,6 +196,16 @@ private struct LinkPairingSheetModifier: ViewModifier {
         content.sheet(item: Binding(get: { active ? pairing.request : nil },
                                     set: { if $0 == nil, active { pairing.answer(nil) } })) { request in
             IOSPairingSheet(request: request)
+        }
+        // -- WP SECSW -- pairing again, a pairing link
+        .alert(pairing.question?.title ?? "",
+               isPresented: Binding(get: { active && pairing.question != nil },
+                                    set: { _ in }),   // each button answers
+               presenting: pairing.question) { q in
+            Button(q.action) { pairing.answerQuestion(true) }
+            Button("Cancel", role: .cancel) { pairing.answerQuestion(false) }
+        } message: { q in
+            Text(q.text)
         }
     }
 }

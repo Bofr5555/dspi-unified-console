@@ -189,6 +189,12 @@ struct IOSRootView: View {
         // -- WP P1SW2 -- the unlock prompt and the mode switch
         .installerPrompts(installer)
         .onAppear(perform: launch)
+        // -- WP SECSW -- a `dspi://pair` link: the core's parser, then the person's tap
+        .onOpenURL { url in
+            guard LinkPairLinks.handles(url) else { return }
+            let state = AppState.shared
+            LinkPairLinks.open(url, ui: state.transport.pairingUI, coordinator: state.linkClientCoordinator)
+        }
     }
 
     @ToolbarContentBuilder
@@ -415,6 +421,7 @@ struct IOSDevicesSheet: View {
     @ObservedObject var vm: DSPViewModel
     @ObservedObject private var client = AppState.shared.linkClientCoordinator
     @ObservedObject private var browser = AppState.shared.linkClientCoordinator.browser
+    @ObservedObject private var security = LinkSecurityCenter.shared   // -- WP SECSW --
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var manualAddress = ""
@@ -432,7 +439,11 @@ struct IOSDevicesSheet: View {
                                 Image(systemName: device.isRemote ? "network" : isDemo ? "play.rectangle" : "cable.connector")
                                     .frame(width: 24)
                                 VStack(alignment: .leading) {
-                                    Text(device.displayName)
+                                    // -- WP SECSW -- the owner's rule: " (unsecured)", red
+                                    let unsecured = device == vm.selectedDevice && vm.isDeviceConnected
+                                        && security.security(of: device)?.isUnsecured == true
+                                    Text(unsecured ? device.displayName + LinkSecurityWording.suffix : device.displayName)
+                                        .foregroundStyle(unsecured ? Color.red : Color.primary)
                                     Text(device.isRemote ? "DSPi Link" : isDemo ? "Simulated DSPi, RP2350, firmware 1.1.6" : "USB, MIDI control port")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -477,6 +488,8 @@ struct IOSDevicesSheet: View {
                             VStack(alignment: .leading) {
                                 Text(hub.name)
                                 Text(hub.displayAddress).font(.caption).foregroundStyle(.secondary)
+                                // -- WP SECSW --
+                                HubSecurityBadgeView(badge: HubSecurityBadge.of(hub, tokens: LinkTokenStore()))
                             }
                             Spacer()
                             if hub.isManual {

@@ -152,6 +152,8 @@ class AppState: ObservableObject {
             : CompositeTransport(local: members, tokens: tokens, clientName: clientName,
                                  makeClient: { LinkClient() })
         composite.pairingPrompt = { hubName in PairingPrompt.ask(hubName: hubName) }
+        // -- WP SECSW -- the PIN with the hub key, pairing again, pairing links
+        composite.pairingUI = MacLinkPairingUI()
         return composite
     }()
 
@@ -218,6 +220,8 @@ class AppState: ObservableObject {
         composite.asyncPairingPrompt = { hubName, completion in
             IOSLinkPairing.ask(hubName: hubName, completion: completion)
         }
+        // -- WP SECSW -- the PIN with the hub key, pairing again, pairing links
+        composite.pairingUI = IOSLinkPairingUI()
         return composite
     }()
 
@@ -11700,6 +11704,18 @@ class AutoEQRebuildWindowController: NSObject {
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowObserver: Any?
     private weak var originalWindowDelegate: NSWindowDelegate?
+
+    // -- WP SECSW --
+    /// A `dspi://pair` link (a QR code scanned on the Mac, a click in another
+    /// app): through the core's parser and the person's confirmation.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where LinkPairLinks.handles(url) {
+            let state = AppState.shared
+            Task { @MainActor in
+                LinkPairLinks.open(url, ui: state.transport.pairingUI, coordinator: state.linkClientCoordinator)
+            }
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Network sharing is a persisted choice; bring the gateway up at launch
