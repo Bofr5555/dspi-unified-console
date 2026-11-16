@@ -31,6 +31,19 @@ zero; the Terminal and Qt leave that setting as it is (see the table at the end)
 know, reads as `preset`, so such a document still imports; a preset export
 leaves the key out. One format serves all four (PRO1 section 6).
 
+<!-- WP P5MDOC -->
+Phase 5 adds three kinds that configure no device. Each carries its own block
+named as its kind instead of the device blocks; `config_import` refuses them
+(P5DOCK) and their own readers (`dspi_measure::doc`) refuse every other kind.
+The contract is [`docs/integrator/measurement.md`](../integrator/measurement.md)
+section 7.
+
+| `meta.kind` | Block | Holds | Largest |
+|---|---|---|---|
+| `measurement` | `measurement` | one run's responses per output (compact curves), the chain each output was measured through and its programme feed, the stimulus, the capture's timing quality, the microphone used, the tunes applied from it | 1 MiB |
+| `mic` | `mic` | a measurement microphone's calibration on a grid, its sensitivity, the file it came from | 256 KiB |
+| `target` | `target` | a target curve (built-in parameters or imported points), an optional coupler compensation, the reference band | 256 KiB |
+
 ## Channel numbering
 
 This is the part that decides where every EQ band, gain and delay lands.
