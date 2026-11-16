@@ -89,6 +89,7 @@
 				AdatWireTests.swift,
 				AppUpdateCheckerTests.swift,
 				AppUpdateInstallerTests.swift,
+				AppUpdateSECRELTests.swift,
 				CoachMarkPanelTests.swift,
 				CompositeTransportTests.swift,
 				ControlSurfacesWireTests.swift,
