@@ -52,6 +52,7 @@ class DemoCoreAn28Test {
             { core.enterBootloaderConfirmed(null) },
             { core.firmwareGuardBoardInBootloader() },
             { core.linkConnect("ws://hub", "demo", "1", "", "") },
+            { core.linkConnectAdvertised("ws://hub", "demo", "1", "", "", true) }, // SEC-B
             { core.linkPair("1234") },
             { core.linkSelectDevice(0, "E6614103") },
             { core.linkFetchInfo("hub", 80) }
@@ -81,7 +82,9 @@ class DemoCoreAn28Test {
             "linkSelectDevice", "linkRetryNow", "linkSetUrl", "linkFetchInfo",
             // -- WP P1AN1 -- P1OF's `open_document` and the alink USB-direct demo open only the core's fake device;
             // P1TK's confirmed bootloader and flash calls are refused too (WP P1TZ: the bootloader's only form)
-            "openDocument", "openDemoUsbDirect", "flashConfirmed", "enterBootloaderConfirmed"
+            "openDocument", "openDemoUsbDirect", "flashConfirmed", "enterBootloaderConfirmed",
+            // SEC-B: SECCORE's dial with the advert, refused as linkConnect is
+            "linkConnectAdvertised"
         )
         assertEquals(guarded, names.filter { wayOut.containsMatchIn(it) }.toSet())
     }

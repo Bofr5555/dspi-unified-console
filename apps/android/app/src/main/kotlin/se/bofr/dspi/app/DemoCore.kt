@@ -61,6 +61,16 @@ internal class DemoCore(private val core: DspiCoreApi) : DspiCoreApi by core {
     override fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello =
         throw DspiException.Unsupported()
 
+    // SEC-B: as linkConnect, or the delegate would dial from the demo
+    override fun linkConnectAdvertised(
+        url: String,
+        clientName: String,
+        appVersion: String,
+        credential: String,
+        expectedHubId: String,
+        tlsAdvertised: Boolean
+    ): LinkHello = throw DspiException.Unsupported()
+
     override fun linkPair(pin: String): String = throw DspiException.Unsupported()
 
     override fun linkDevices(): List<LinkDevice> = emptyList()

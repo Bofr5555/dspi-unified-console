@@ -152,7 +152,7 @@ class DspiApplication : Application() {
         )
         // The notification acts on the unit on screen (device, demo or REMOTE)
         ConnectionServiceLink.controls = SwitchingNotificationControls(modes.bridge, appScope)
-        val hubBrowser = NsdHubBrowser(this, appScope)
+        val hubBrowser = NsdHubBrowser(this, appScope, deviceCore::linkParseTxt)
         networking = AppNetworkingController(
             linkSettings,
             hubBrowser,

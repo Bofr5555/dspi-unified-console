@@ -18,8 +18,18 @@ import se.bofr.dspi.core.LinkStatus
  * fake it). Every suspend call may block on the network for seconds.
  */
 interface LinkCoreOps {
-    /** [expectedHubId]: the stored hub's id, so its token goes to that hub alone; "" when not known yet. */
-    suspend fun connect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello
+    /**
+     * [expectedHubId]: the stored hub's id, so its token goes to that hub alone; "" when not known yet.
+     * [tlsAdvertised]: the browsed record said `tls=1` ([LinkHub.tlsAdvertised]), so TLS must not fall back.
+     */
+    suspend fun connect(
+        url: String,
+        clientName: String,
+        appVersion: String,
+        token: String,
+        expectedHubId: String,
+        tlsAdvertised: Boolean
+    ): LinkHello
 
     suspend fun pair(pin: String): String
 
@@ -86,8 +96,16 @@ class BridgeLinkCoreOps(
     private val ffi: CoroutineDispatcher,
     private val network: CoroutineDispatcher = Dispatchers.IO
 ) : LinkCoreOps {
-    override suspend fun connect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello =
-        withContext(network) { core.linkConnect(url, clientName, appVersion, token, expectedHubId) }
+    override suspend fun connect(
+        url: String,
+        clientName: String,
+        appVersion: String,
+        token: String,
+        expectedHubId: String,
+        tlsAdvertised: Boolean
+    ): LinkHello = withContext(network) {
+        core.linkConnectAdvertised(url, clientName, appVersion, token, expectedHubId, tlsAdvertised)
+    }
 
     override suspend fun pair(pin: String): String = withContext(network) { core.linkPair(pin) }
 
