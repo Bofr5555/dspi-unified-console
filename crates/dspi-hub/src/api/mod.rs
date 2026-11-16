@@ -54,6 +54,9 @@ mod recall;
 // -- WP P3GP --
 #[cfg(feature = "api")]
 mod group;
+// -- WP P3BA -- bulk apply (`group.apply*`, section 20.3)
+#[cfg(feature = "api")]
+mod bulk;
 
 #[cfg(feature = "api")]
 pub use exec::{IDLE_CLOSE, MAX_CORES, SWEEP};
@@ -73,6 +76,9 @@ pub fn services(setup: &ServiceSetup<'_>) -> Vec<Arc<dyn HubService>> {
             store: Arc::clone(store),
         }));
     }
+    // -- WP P3BA -- bulk apply, on a hub with groups and the snapshot store
+    #[cfg(feature = "api")]
+    list.extend(bulk::service(setup, store.clone()));
     #[cfg(feature = "api")]
     list.push(Arc::new(ApiService::new(setup, store)));
     // -- WP P3GP --

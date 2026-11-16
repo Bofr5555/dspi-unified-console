@@ -1323,9 +1323,9 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `group.param.get` | request | viewer | `group_params` | 20.2 (built: P3GP) |
 | `group.param.set` | request | control | `group_params` | 20.2 (built: P3GP) |
 | `group.preset.load` | request | control | `group_params` | 20.2 (built: P3GP) |
-| `group.apply` | request | control | `group_apply` | 20.3 (draft: P3BA) |
-| `group.apply.confirm` | request | control | `group_apply` | 20.3 (draft: P3BA) |
-| `group.apply.cancel` | request | control | `group_apply` | 20.3 (draft: P3BA) |
+| `group.apply` | request | control | `group_apply` | 20.3 (built: P3BA) |
+| `group.apply.confirm` | request | control | `group_apply` | 20.3 (built: P3BA) |
+| `group.apply.cancel` | request | control | `group_apply` | 20.3 (built: P3BA) |
 | `fw.image.put` | request, TLS only | admin | `rollout` | 21.2 (draft: P3RO) |
 | `fw.image.list` | request, TLS only | viewer | `rollout` | 21.2 (draft: P3RO) |
 | `fw.image.delete` | request, TLS only | admin | `rollout` | 21.2 (draft: P3RO) |
@@ -1446,9 +1446,9 @@ A schedule rule's `targets` (section 12) may hold `group:<id>` beside serials, 1
 
 ## 20. Group writes and bulk apply
 
-*State: draft (20.2: P3GP, `crates/dspi-hub/src/api/group.rs`, cap `group_params`; 20.3: P3BA,
-`crates/dspi-hub/src/api/bulk.rs`, cap `group_apply`; text WP P3DOC). PLAN-P3 F4, F5, OD-P3c, OD-P3d. Section 19.1
-applies.*
+*State: built (20.2: P3GP, `crates/dspi-hub/src/api/group.rs`, cap `group_params`, tests
+`crates/dspi-hub/tests/wp_p3gp_group_params.rs`; 20.3: P3BA, `crates/dspi-hub/src/api/bulk.rs`, cap `group_apply`, tests
+`crates/dspi-hub/tests/wp_p3ba_bulk_apply.rs`; text WP P3DOC). PLAN-P3 F4, F5, OD-P3c, OD-P3d. Section 19.1 applies.*
 
 ### 20.1 Addressing and rows
 
@@ -1545,14 +1545,18 @@ One snapshot or document applied to every member, each with its own way back.
 - `run` is the hub's (`a1`, `a2`, ...), unique for the hub's run, and is answered with or without a guard. An unknown
   run, or another session's, is `not_found`; a run whose guards are all settled answers its rows again. Over REST, a
   run belongs to the key's session (section 14.2).
+- **The rows of `confirm` and `cancel`** carry `guard` (its id, a number as in `snapshot.recall` and `apply.status`);
+  a cancelled one `reverted: true`. A guard that ended before the request (its deadline, a lock taken, the session) is
+  `conflict` whatever its end, and its `msg` says how it ended; a cancel whose write back failed is `device` (with
+  `status`), or `offline` when the device was gone. A run without a guard answers `results: []`.
 
 ```json
 {"t": "group.apply", "id": 23, "group": "g1", "name": "Doors open", "guard": true, "timeout_ms": 120000}
 {"t": "ok", "id": 23, "v": 1, "run": "a4", "confirm_by": "2026-11-16T20:02:01Z", "results": [
-  {"serial": "E46058388B1A2E2C", "ok": true, "image": true, "lines": ["..."], "notes": [], "guard": "17"},
+  {"serial": "E46058388B1A2E2C", "ok": true, "image": true, "lines": ["..."], "notes": [], "guard": 17},
   {"serial": "E6614103E7A1B2C3", "ok": false, "code": "offline", "msg": "not attached"}]}
 {"t": "group.apply.confirm", "id": 24, "run": "a4"}
-{"t": "ok", "id": 24, "v": 1, "run": "a4", "results": [{"serial": "E46058388B1A2E2C", "ok": true}]}
+{"t": "ok", "id": 24, "v": 1, "run": "a4", "results": [{"serial": "E46058388B1A2E2C", "ok": true, "guard": 17}]}
 ```
 
 ## 21. Firmware rollout
