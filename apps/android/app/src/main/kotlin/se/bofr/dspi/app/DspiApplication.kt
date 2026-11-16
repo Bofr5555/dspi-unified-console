@@ -9,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.bridge.DspiBridgeImpl
+import se.bofr.dspi.core.LinkPairLink
 import se.bofr.dspi.feature.onboarding.OnboardingSource
 import se.bofr.dspi.ffi.FfiDspiCore
 import se.bofr.dspi.link.LinkNetworkFollower
@@ -82,6 +83,9 @@ class DspiApplication : Application() {
         private set
     lateinit var networking: AppNetworkingController
 
+    /** -- WP SECAN -- the core's `link_parse_pair_link` (a `dspi://pair` link). */
+    lateinit var parsePairLink: (String) -> LinkPairLink
+
     /** WP AN26: the About table, from the device stack's core in every mode. */
     lateinit var aboutJson: () -> String
         private set
@@ -113,6 +117,7 @@ class DspiApplication : Application() {
         val linkStore = DataStoreLinkStore(dspiBridgeStore, appScope)
         val deviceCore = FfiDspiCore()
         aboutJson = deviceCore::aboutJson
+        parsePairLink = deviceCore::linkParsePairLink // -- WP SECAN --
         onboarding = OnboardingSource(deviceCore::onboardingWhatsNewJson, deviceCore::onboardingGettingStartedJson) // -- WP AN19 --
         bridge = DspiBridgeImpl(deviceCore, appScope, linkStore = linkStore, appVersion = version)
         // -- WP P1AN2 -- named before a device opens (the FFI thread runs it before the USB attach)
@@ -160,7 +165,8 @@ class DspiApplication : Application() {
             modes,
             appScope,
             Build.MODEL.orEmpty(),
-            parseAddress = { t -> runCatching { deviceCore.linkParseAddress(t) }.getOrNull()?.let { it.host to it.port } }
+            parseAddress = { t -> runCatching { deviceCore.linkParseAddress(t) }.getOrNull()?.let { it.host to it.port } },
+            credentialKey = deviceCore::linkCredentialHubKey // -- WP SECAN --
         )
         linkFollower = LinkNetworkFollower(hubBrowser, modes.remoteState) { modes.remoteSession?.networkTarget }
         appScope.launch { linkFollower.follow() }

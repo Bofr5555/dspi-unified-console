@@ -8,6 +8,7 @@ import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -16,7 +17,9 @@ import se.bofr.dspi.bridge.DspiBridgeImpl
 import se.bofr.dspi.bridge.LinkStore
 import se.bofr.dspi.core.DspiCoreApi
 import se.bofr.dspi.core.LinkDevice
+import se.bofr.dspi.core.LinkPairLink
 import se.bofr.dspi.link.BridgeLinkCoreOps
+import se.bofr.dspi.link.HubSecurity
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkNetworkTarget
 import se.bofr.dspi.link.LinkServiceControl
@@ -52,7 +55,24 @@ interface RemoteSession {
 
     /** Tear the stack down (detach, close the session, stop the thread, free the core). */
     fun close()
+
+    // -- WP SECAN --
+
+    /** The session's encryption ([LinkSessionEngine.security]). */
+    val security: StateFlow<HubSecurity?> get() = NO_SECURITY
+
+    /** Dial a confirmed `dspi://pair` link ([LinkSessionEngine.connectByLink]). */
+    fun connectByLink(link: LinkPairLink) {}
+
+    /** Pair again after a key or TLS failure ([LinkSessionEngine.rePair]). */
+    fun rePair() {}
+
+    /** The new-key notice was seen. */
+    fun ackKeyNotice() {}
 }
+
+/** -- WP SECAN -- a session with nothing to say about encryption. */
+private val NO_SECURITY: StateFlow<HubSecurity?> = MutableStateFlow(null)
 
 /**
  * The REMOTE stack, built like the demo stack ([startDemoSession]): [core]
@@ -98,6 +118,15 @@ fun startRemoteSession(
         override val networkTarget: LinkNetworkTarget = engine
 
         override fun setUiVisible(visible: Boolean) = engine.setUiVisible(visible)
+
+        // -- WP SECAN --
+        override val security: StateFlow<HubSecurity?> = engine.security
+
+        override fun connectByLink(link: LinkPairLink) = engine.connectByLink(link)
+
+        override fun rePair() = engine.rePair()
+
+        override fun ackKeyNotice() = engine.ackKeyNotice()
 
         override fun close() {
             onClose()

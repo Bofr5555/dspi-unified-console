@@ -35,6 +35,7 @@ import androidx.compose.ui.window.DialogProperties
 import se.bofr.dspi.core.LinkDevice
 import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.feature.settings.NetworkingSettingsTab
+import se.bofr.dspi.link.HubSecurity
 import se.bofr.dspi.link.LinkSessionState
 import se.bofr.dspi.link.PairingText
 import se.bofr.dspi.ui.link.NetworkingController
@@ -49,12 +50,25 @@ fun RemoteDialogs(
     onChoose: (LinkDevice) -> Unit,
     onCancelChoice: () -> Unit,
     onUsbAnswer: (useUsb: Boolean) -> Unit,
-    wording: LinkWording = LinkWording.CORE
+    wording: LinkWording = LinkWording.CORE,
+    // -- WP SECAN --
+    security: HubSecurity? = null,
+    onRePair: () -> Unit = {},
+    onKeyNoticeSeen: () -> Unit = {}
 ) {
     when (state) {
         is LinkSessionState.NeedsPin -> PinDialog(state, wording, onPin, onCancelPin)
         is LinkSessionState.ChooseDevice -> ChooseDeviceDialog(state, onChoose, onCancelChoice)
+        // -- WP SECAN -- pairing again, offered for a key or TLS failure only; Cancel leaves the strip's Connect
+        is LinkSessionState.Failed -> if (offersRePair(state)) {
+            var dismissed by remember(state) { mutableStateOf(false) }
+            if (!dismissed) RePairDialog(state, onRePair) { dismissed = true }
+        }
         else -> Unit
+    }
+    // -- WP SECAN -- the new key, once
+    if (security != null && security.keyNotice && state.hub?.id.equals(security.hubId, ignoreCase = true)) {
+        HubKeyNoticeDialog(security, state.hub?.name.orEmpty(), onKeyNoticeSeen)
     }
     if (usbPrompt) {
         AlertDialog(
@@ -89,7 +103,7 @@ private const val WRONG_PIN = "wrong_pin"
 
 @Composable
 private fun PinDialog(s: LinkSessionState.NeedsPin, wording: LinkWording, onPin: (String) -> Unit, onCancel: () -> Unit) {
-    var pin by remember(s.hub.id) { mutableStateOf("") }
+    var pin by remember(s.hub.id) { mutableStateOf(s.pin) } // -- WP SECAN -- a pairing link's PIN, filled in
     // An error after the user's own try is the hub's answer to that PIN; one without (revoked) is not
     var tried by remember(s.hub.id) { mutableStateOf(false) }
     AlertDialog(
@@ -142,13 +156,35 @@ internal fun PinPromptBody(s: LinkSessionState.NeedsPin, wording: LinkWording, p
             }
         }
         Spacer(Modifier.height(8.dp))
-        Text(
-            "The PIN and the access token cross your network unencrypted. Pair only on a network you trust.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        // -- WP SECAN -- the key the hub presented over TLS, to compare; or that nothing is encrypted
+        if (s.hubKey.isNotEmpty()) {
+            Text(
+                "Hub key: ${s.hubKey}",
+                Modifier.testTag(PIN_HUB_KEY_TAG),
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                PIN_HUB_KEY_HINT,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Text(
+                "The PIN and the access token cross your network unencrypted. Pair only on a network you trust.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
+
+// -- WP SECAN --
+/** Test tag of the PIN prompt's hub key line. */
+internal const val PIN_HUB_KEY_TAG = "pin-hub-key"
+
+/** What to do with the key on the PIN prompt. */
+internal const val PIN_HUB_KEY_HINT = "Check that it matches the key the hub shows with its PIN. The connection is encrypted."
 
 @Composable
 private fun ChooseDeviceDialog(s: LinkSessionState.ChooseDevice, onChoose: (LinkDevice) -> Unit, onCancel: () -> Unit) {
