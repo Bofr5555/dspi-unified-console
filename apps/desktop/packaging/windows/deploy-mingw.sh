@@ -68,5 +68,15 @@ done
 # Distribution DLLs keep their symbols; the bundle doesn't need them
 find "$out" \( -iname '*.dll' -o -iname '*.exe' \) -exec "$STRIP" --strip-unneeded {} + 2>/dev/null || true
 
+# -- WP P5QCAP -- The microphone: Qt6Multimedia.dll (its WASAPI audio backend is
+# built in; QAudioSource and QMediaDevices need no media plugin). No multimedia/
+# plugin is bundled, so neither FFmpeg nor Media Foundation playback is in the
+# package, and nothing of FFmpeg's may come in through a dependency.
+[ -f "$out/Qt6Multimedia.dll" ] || { echo "deploy-mingw: Qt6Multimedia.dll is missing (the app's microphone)" >&2; exit 1; }
+[ ! -e "$out/multimedia" ] || { echo "deploy-mingw: a multimedia/ plugin folder was bundled" >&2; exit 1; }
+if find "$out" -iname 'av*.dll' -o -iname 'sw*.dll' -o -iname '*ffmpeg*' | grep -q .; then
+    echo "deploy-mingw: FFmpeg files in the bundle:" >&2; find "$out" -iname 'av*.dll' -o -iname 'sw*.dll' -o -iname '*ffmpeg*' >&2; exit 1
+fi
+
 printf '[Paths]\nPrefix = .\nPlugins = .\nQml2Imports = qml\nQmlImports = qml\n' > "$out/qt.conf"
 echo "deployed to $out: $(find "$out" -type f | wc -l) files, $(du -sh "$out" | cut -f1)"

@@ -90,6 +90,13 @@ Every package carries the app's licence and, where it bundles libraries, theirs:
 | `.deb` | `/usr/share/doc/uconsole-for-dspi/` | `copyright` and `NOTICE.txt` (the notice with the additional terms; the GPL is Debian's `/usr/share/common-licenses/GPL-3`), `LICENSES/`: `TERMS.txt`, `rust-crates.txt`, `Lucide/`, the firmware's notices, AutoEq's MIT |
 | `.rpm`, AUR, a plain `cmake --install` | `/usr/share/licenses/uconsole-for-dspi/` | `NOTICE.txt`, `LICENSES/`: as the `.deb`'s, with `GPL-3.0.txt` |
 
+<!-- WP P5QCAP --> The app links Qt Multimedia for the measurement microphone (`QAudioSource`, capture only). The
+Windows package bundles `Qt6Multimedia.dll`, whose WASAPI audio backend is built in, and **no multimedia plugin**:
+no FFmpeg and no Media Foundation playback (`windows/deploy-mingw.sh` fails if either appears). Its source and
+third-party notices are in the Windows notice (`qt-modules.sh windows` lists `qtmultimedia`; `licences/qt-6.11.2/`).
+The `.deb` and `.rpm` take the distribution's Qt Multimedia through their library dependencies. The AppImage's Qt
+(6.8.3, `linux/qt-6.8.3.sha256`) has no Qt Multimedia yet: adding the module there is open.
+
 The app's About lists the files of whichever folder it finds (`AboutController`). The layout and its
 notice (`licences/NOTICE-distro.txt.in`) for the `.deb` and `.rpm` are `qt/cmake/wp/qp20.cmake`'s
 (`DSPI_NOTICES=deb|rpm|none`).

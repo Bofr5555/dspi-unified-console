@@ -97,6 +97,22 @@ fi
 [ -n "$lic_ok" ] && echo "test-installer: ok: NOTICE.txt and LICENSES/ installed${zip:+ and in the zip}, every DLL listed, every bundled package with its licence file" \
     || fails=$((fails + 1))
 
+# -- WP P5QCAP -- Qt Multimedia's audio inputs (QMediaDevices, the WASAPI backend
+# inside Qt6Multimedia.dll, no media plugin) answer under Wine: the hidden
+# --audio-inputs switch writes the list as JSON and exits 0. Wine may have no
+# input at all; the list's existence is the check, not its length.
+rm -f "$WINEPREFIX/drive_c/audio-inputs.json"
+timeout 120 wine "$unix/uconsole-for-dspi.exe" --audio-inputs 'C:\audio-inputs.json' >/dev/null 2>&1
+code=$?
+if [ "$code" = 0 ] && grep -q '"kind": "dspi-audio-inputs"' "$WINEPREFIX/drive_c/audio-inputs.json" 2>/dev/null \
+    && grep -q '"inputs": \[' "$WINEPREFIX/drive_c/audio-inputs.json"; then
+    echo "test-installer: ok: QMediaDevices::audioInputs() answers with the bundled Qt Multimedia ($(grep -c '"id":' "$WINEPREFIX/drive_c/audio-inputs.json") input(s) under Wine)"
+else
+    echo "test-installer: FAIL: --audio-inputs under Wine: exit $code, $(head -c 300 "$WINEPREFIX/drive_c/audio-inputs.json" 2>&1)"
+    fails=$((fails + 1))
+fi
+wineserver -w
+
 # The installed app, running (on the demo device). Only whether it stays up:
 # under Wine the GUI exe's Qt messages reach no log this script can read
 wine "$unix/uconsole-for-dspi.exe" --demo >/dev/null 2>&1 &
