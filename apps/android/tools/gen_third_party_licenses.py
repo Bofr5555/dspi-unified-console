@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parent.parent
 TOP = ROOT.parent.parent
 OUT = ROOT / "feature-settings/src/main/assets/licenses/rust-crates.txt"
 TARGET = "aarch64-linux-android"  # the other ABIs resolve to the same crate set
-OWN_CRATES = ("dspi-ffi", "dspi-core", "dspi-link", "dspi-proto", "dspi-session", "dspi-transport")
+OWN_CRATES = ("dspi-ffi", "dspi-core", "dspi-link", "dspi-proto", "dspi-session", "dspi-transport",
+              "dspi-measure")  # -- WP P5DOCK --
 NOTICE_GLOBS = ("LICENSE*", "LICENCE*", "COPYING*", "NOTICE*", "UNLICENSE*", "COPYRIGHT*")
 
 

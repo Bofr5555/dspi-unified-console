@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- WP P5WCAP: the microphone capture's e2e page (test/e2e/capture_p5wcap.spec.ts). -->
+    <title>Capture test</title>
+    <link rel="stylesheet" href="../dspi-web.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Microphone capture test</h1>
+      <button id="start" type="button">Start</button>
+      <button id="stop" type="button">Stop</button>
+      <p id="state" role="status">idle</p>
+      <section id="notice" role="alert" hidden><h2 id="notice-title"></h2><p id="notice-reason"></p><p id="notice-action"></p></section>
+    </main>
+    <script type="module" src="capture.js"></script>
+  </body>
+</html>

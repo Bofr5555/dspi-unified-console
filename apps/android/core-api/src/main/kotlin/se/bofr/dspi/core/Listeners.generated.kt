@@ -114,6 +114,18 @@ interface LinkListener {
 }
 
 /**
+ * A measurement session's phase changed, it stopped, or it asks something:
+ * read `measure_state()`. Called on the thread that pushed capture, ticked or
+ * stopped, with the core lock released; must not block.
+ */
+fun interface MeasureListener {
+    /**
+     * The session's state changed.
+     */
+    fun onMeasure()
+}
+
+/**
  * The hub's admin events reach the app here (WP HUBADMIN): set with
  * [`DspiCore::set_hub_admin_listener`].
  *

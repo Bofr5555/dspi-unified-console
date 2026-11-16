@@ -98,12 +98,16 @@ pub mod power_on;
 pub mod system;
 // -- WP ROMODE -- the client read-only mode
 pub mod read_only;
+// -- WP P5DOCK -- the measurement documents as text
+pub mod measure_docs;
 // -- WP CG-SWS-b -- the pin map
 pub mod pins;
 // -- WP WB6L -- the control-surface editor and the quick strip
 pub mod surfaces;
 // -- WP CLIP1 -- the channel clipboard
 pub mod clipboard;
+// -- WP P5SES -- the measurement session
+pub mod measure;
 // -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
 pub mod settings;
 // -- WP WB4a --

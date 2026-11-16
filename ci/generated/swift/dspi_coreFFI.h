@@ -349,6 +349,13 @@ typedef void (*UniffiCallbackInterfaceLinkListenerMethod3)(uint64_t, RustBuffer,
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MEASURE_LISTENER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MEASURE_LISTENER_METHOD0
+typedef void (*UniffiCallbackInterfaceMeasureListenerMethod0)(uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_MIDI_SENDER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_MIDI_SENDER_METHOD0
 typedef void (*UniffiCallbackInterfaceMidiSenderMethod0)(uint64_t, RustBuffer, void* _Nonnull, 
@@ -424,6 +431,14 @@ typedef struct UniffiVTableCallbackInterfaceLinkListener {
     UniffiCallbackInterfaceLinkListenerMethod3 _Nonnull onLinkTokenIssued;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceLinkListener;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_MEASURE_LISTENER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_MEASURE_LISTENER
+typedef struct UniffiVTableCallbackInterfaceMeasureListener {
+    UniffiCallbackInterfaceMeasureListenerMethod0 _Nonnull onMeasure;
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+} UniffiVTableCallbackInterfaceMeasureListener;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_MIDI_SENDER
@@ -1711,6 +1726,96 @@ void uniffi_dspi_core_fn_method_dspicore_load_preset(void*_Nonnull ptr, uint8_t 
 float uniffi_dspi_core_fn_method_dspicore_max_delay_ms(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_CAPTURE_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_CAPTURE_PUSH
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_capture_push(void*_Nonnull ptr, uint64_t first_frame, RustBuffer samples, uint32_t rate_hz, int8_t clipped, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_CLEAR
+void uniffi_dspi_core_fn_method_dspicore_measure_clear(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOC_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOC_DELETE
+void uniffi_dspi_core_fn_method_dspicore_measure_doc_delete(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOC_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOC_GET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_doc_get(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOC_NOTE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOC_NOTE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_doc_note(void*_Nonnull ptr, RustBuffer id, RustBuffer note, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOC_PUT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOC_PUT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_doc_put(void*_Nonnull ptr, RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOC_RENAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOC_RENAME
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_doc_rename(void*_Nonnull ptr, RustBuffer id, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOCS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOCS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_docs(void*_Nonnull ptr, RustBuffer kind, RustBuffer serial, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_NEXT_POSITION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_NEXT_POSITION
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_next_position(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_PREFLIGHT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_PREFLIGHT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_preflight(void*_Nonnull ptr, RustBuffer setup, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_RESULT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_RESULT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_result(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_SET_DIR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_SET_DIR
+void uniffi_dspi_core_fn_method_dspicore_measure_set_dir(void*_Nonnull ptr, RustBuffer dir, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_SET_LISTENER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_SET_LISTENER
+void uniffi_dspi_core_fn_method_dspicore_measure_set_listener(void*_Nonnull ptr, RustBuffer listener, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_START
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_START
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_start(void*_Nonnull ptr, RustBuffer setup, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_STATE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_STATE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_state(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_STOP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_STOP
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_stop(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_TICK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_TICK
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_tick(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASUREMENT_EXPORT_REW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASUREMENT_EXPORT_REW
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measurement_export_rew(void*_Nonnull ptr, RustBuffer doc, uint8_t output, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_METER_BALLISTICS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_METER_BALLISTICS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_meter_ballistics(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2661,6 +2766,26 @@ void uniffi_dspi_core_fn_method_linklistener_on_link_status_changed(void*_Nonnul
 void uniffi_dspi_core_fn_method_linklistener_on_link_token_issued(void*_Nonnull ptr, RustBuffer hub_id, RustBuffer token, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_MEASURELISTENER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_MEASURELISTENER
+void*_Nonnull uniffi_dspi_core_fn_clone_measurelistener(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FREE_MEASURELISTENER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FREE_MEASURELISTENER
+void uniffi_dspi_core_fn_free_measurelistener(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_INIT_CALLBACK_VTABLE_MEASURELISTENER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_INIT_CALLBACK_VTABLE_MEASURELISTENER
+void uniffi_dspi_core_fn_init_callback_vtable_measurelistener(const UniffiVTableCallbackInterfaceMeasureListener* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_MEASURELISTENER_ON_MEASURE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_MEASURELISTENER_ON_MEASURE
+void uniffi_dspi_core_fn_method_measurelistener_on_measure(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_MIDIINPUTHANDLE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_CLONE_MIDIINPUTHANDLE
 void*_Nonnull uniffi_dspi_core_fn_clone_midiinputhandle(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -2995,6 +3120,16 @@ RustBuffer uniffi_dspi_core_fn_func_link_phase_texts(RustCallStatus *_Nonnull ou
 RustBuffer uniffi_dspi_core_fn_func_link_ws_url(RustBuffer host, uint16_t port, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_MEASURE_DOC_INFO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_MEASURE_DOC_INFO
+RustBuffer uniffi_dspi_core_fn_func_measure_doc_info(RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_MIC_IMPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_MIC_IMPORT
+RustBuffer uniffi_dspi_core_fn_func_mic_import(RustBuffer name, RustBuffer file_name, RustBuffer file_text, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_MODE_MANIFEST
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_MODE_MANIFEST
 RustBuffer uniffi_dspi_core_fn_func_mode_manifest(RustCallStatus *_Nonnull out_status
@@ -3063,6 +3198,17 @@ float uniffi_dspi_core_fn_func_quantize_gain(float db, RustCallStatus *_Nonnull 
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_MASTER_VOLUME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_QUANTIZE_MASTER_VOLUME
 float uniffi_dspi_core_fn_func_quantize_master_volume(float db, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_TARGET_BUILTINS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_TARGET_BUILTINS
+RustBuffer uniffi_dspi_core_fn_func_target_builtins(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_TARGET_IMPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_TARGET_IMPORT
+RustBuffer uniffi_dspi_core_fn_func_target_import(RustBuffer name, RustBuffer file_text, RustBuffer target_use, RustBuffer coupler, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_TEMPLATE_LIST
@@ -3620,6 +3766,18 @@ uint16_t uniffi_dspi_core_checksum_func_link_ws_url(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_MEASURE_DOC_INFO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_MEASURE_DOC_INFO
+uint16_t uniffi_dspi_core_checksum_func_measure_doc_info(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_MIC_IMPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_MIC_IMPORT
+uint16_t uniffi_dspi_core_checksum_func_mic_import(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_MODE_MANIFEST
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_MODE_MANIFEST
 uint16_t uniffi_dspi_core_checksum_func_mode_manifest(void
@@ -3695,6 +3853,18 @@ uint16_t uniffi_dspi_core_checksum_func_quantize_gain(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_QUANTIZE_MASTER_VOLUME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_QUANTIZE_MASTER_VOLUME
 uint16_t uniffi_dspi_core_checksum_func_quantize_master_volume(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_TARGET_BUILTINS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_TARGET_BUILTINS
+uint16_t uniffi_dspi_core_checksum_func_target_builtins(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_TARGET_IMPORT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_TARGET_IMPORT
+uint16_t uniffi_dspi_core_checksum_func_target_import(void
     
 );
 #endif
@@ -5192,6 +5362,114 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_max_delay_ms(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_CAPTURE_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_CAPTURE_PUSH
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_capture_push(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_CLEAR
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_clear(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOC_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOC_DELETE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_doc_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOC_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOC_GET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_doc_get(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOC_NOTE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOC_NOTE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_doc_note(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOC_PUT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOC_PUT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_doc_put(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOC_RENAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOC_RENAME
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_doc_rename(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOCS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOCS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_docs(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_NEXT_POSITION
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_NEXT_POSITION
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_next_position(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_PREFLIGHT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_PREFLIGHT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_preflight(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_RESULT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_RESULT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_result(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_SET_DIR
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_SET_DIR
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_set_dir(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_SET_LISTENER
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_SET_LISTENER
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_set_listener(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_START
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_START
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_STATE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_STATE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_state(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_STOP
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_STOP
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_stop(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_TICK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_TICK
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_tick(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASUREMENT_EXPORT_REW
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASUREMENT_EXPORT_REW
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measurement_export_rew(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_METER_BALLISTICS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_METER_BALLISTICS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_meter_ballistics(void
@@ -6245,6 +6523,12 @@ uint16_t uniffi_dspi_core_checksum_method_linklistener_on_link_status_changed(vo
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_LINKLISTENER_ON_LINK_TOKEN_ISSUED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_LINKLISTENER_ON_LINK_TOKEN_ISSUED
 uint16_t uniffi_dspi_core_checksum_method_linklistener_on_link_token_issued(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_MEASURELISTENER_ON_MEASURE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_MEASURELISTENER_ON_MEASURE
+uint16_t uniffi_dspi_core_checksum_method_measurelistener_on_measure(void
     
 );
 #endif

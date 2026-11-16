@@ -20,7 +20,8 @@
     {"id": "dynamics", "title": "Dynamics and effects", "modes": ["simple", "advanced", "installer"]},
     {"id": "hardware", "title": "Hardware", "modes": ["advanced", "installer"]},
     {"id": "history", "title": "History", "modes": ["advanced", "installer"], "layer": "pro"},
-    {"id": "limits", "title": "Limits and power-on", "modes": ["installer"], "layer": "pro"}
+    {"id": "limits", "title": "Limits and power-on", "modes": ["installer"], "layer": "pro"},
+    {"id": "measure", "title": "Measure", "modes": ["advanced", "installer"], "layer": "pro"}
   ],
   "operations": [
     {"id": "diagnostics", "title": "Save Diagnostics", "modes": ["advanced", "installer"]},

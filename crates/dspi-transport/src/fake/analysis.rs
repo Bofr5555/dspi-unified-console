@@ -1091,16 +1091,22 @@ impl SgRun {
     }
 
     /// Cycles done and whether `now` is in a gap, with the time into the cycle.
+    ///
+    /// As the firmware counts (`siggen.c` `segment_finished`): a cycle is
+    /// done, and the walk moves to the next output, when the cycle ends, so
+    /// through the gap after it the count already includes it and the walked
+    /// output is the next one (review P5-B, decision b).
     fn position(&self, now: Instant) -> (u32, bool, Duration) {
         let Some(cycle) = self.cycle() else {
             return (0, false, self.elapsed(now));
         };
         let period = cycle.saturating_add(self.gap()).as_micros().max(1);
         let e = self.elapsed(now).as_micros();
-        let done = u32::try_from(e.checked_div(period).unwrap_or(0)).unwrap_or(u32::MAX);
+        let whole = u32::try_from(e.checked_div(period).unwrap_or(0)).unwrap_or(u32::MAX);
         let into =
             Duration::from_micros(u64::try_from(e.checked_rem(period).unwrap_or(0)).unwrap_or(0));
-        (done, into >= cycle, into)
+        let in_gap = into >= cycle;
+        (whole.saturating_add(u32::from(in_gap)), in_gap, into)
     }
 
     fn active_channel(&self, now: Instant, outputs: u8) -> u8 {
@@ -1791,6 +1797,43 @@ mod tests_wp_cg22 {
         assert_eq!(g.status(at(100), 9).active_channel, 1);
         assert_eq!(g.status(at(1100), 9).active_channel, 3);
         assert_eq!(g.status(at(2100), 9).active_channel, 1);
+    }
+
+    /// Review P5-B, decision (b): the fake counts cycles as `siggen.c` does
+    /// (`segment_finished`: `cycles_done++` and the walk's step at the END of
+    /// a cycle, before its gap; no step after the last cycle).
+    #[test]
+    fn wp_p5b_cycles_are_counted_at_their_end_as_the_firmware_does() {
+        let t0 = Instant::now();
+        let mut g = Siggen::default();
+        let walk = SiggenConfig {
+            signal_type: SWEEP_LOG,
+            channel_mask: 0b1010,
+            flags: SiggenConfig::FLAG_WALK,
+            duration_ms: 1000,
+            repeat_count: 2,
+            gap_ms: 500,
+            p1: 20.0,
+            p2: 20_000.0,
+            ..SiggenConfig::default()
+        };
+        assert!(g.stage(&walk.encode(), t0, 9));
+        assert!(g.control(1, t0, 9));
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let seen = |g: &mut Siggen, ms: u64| {
+            let s = g.status(at(ms), 9);
+            (s.state, s.active_channel, s.cycles_done)
+        };
+        // Cycle 0 plays output 1.
+        assert_eq!(seen(&mut g, 500), (SG_RUN, 1, 0));
+        // In its gap the cycle is done and the walk is already on output 3.
+        assert_eq!(seen(&mut g, 1200), (SG_GAP, 3, 1));
+        assert_eq!(seen(&mut g, 1600), (SG_RUN, 3, 1));
+        assert_eq!(seen(&mut g, 2700), (SG_GAP, 1, 2));
+        assert_eq!(seen(&mut g, 3100), (SG_RUN, 1, 2));
+        assert_eq!(seen(&mut g, 4700), (SG_RUN, 3, 3));
+        // Four cycles and three gaps: over at 5500 ms, every cycle counted.
+        assert_eq!(seen(&mut g, 5600), (SG_IDLE, 0xFF, 4));
     }
 
     #[test]

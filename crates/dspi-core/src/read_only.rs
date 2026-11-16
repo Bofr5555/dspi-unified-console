@@ -184,6 +184,11 @@ impl DspiCore {
             self.store_client_read_only(false);
             return Ok(());
         }
+        // -- WP P5SES -- (review P5-B) A measurement that plays is stopped
+        // first, while its one STOP_NOW may still go out: in read-only mode
+        // the session's own stop would be refused and the generator would
+        // play on to the end of its run.
+        self.measure_stop();
         self.with_guard_settled(|waiting| {
             if waiting {
                 return Err(DspiError::InvalidArgument {

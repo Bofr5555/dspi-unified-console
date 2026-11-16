@@ -196,6 +196,16 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 assert!(has_row(family), "{family}");
                 continue;
             }
+            // -- WP P5SES -- the measurement session's issues: no error makes
+            // these keys, a session's state and preflight name them
+            if family == "measure" {
+                assert!(
+                    crate::measure::NOTICE_KEYS.contains(&n.key.as_str()),
+                    "{}: not a key measure.rs names",
+                    n.key
+                );
+                continue;
+            }
             // -- WP SECFIX -- the label of a firmware file that is not a
             // bundled one: no error makes this key, the clients ask for it
             if family == "firmware" {

@@ -42,6 +42,8 @@ pub mod rta_sharing;
 pub mod runtime;
 // -- WP P1SN --
 pub mod snapshot_store;
+// -- WP P5DOCK -- the measurement documents' store (PLAN-P5 T11)
+pub mod measure_store;
 pub mod state;
 pub mod surfaces;
 pub mod tube;

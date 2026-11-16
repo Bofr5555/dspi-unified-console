@@ -3,3 +3,5 @@ dist/
 dist-test/
 test-results/
 playwright-report/
+# -- WP P5WCAP -- the P5SPIKE page's build (tools/spike/build.mjs)
+dist-spike/

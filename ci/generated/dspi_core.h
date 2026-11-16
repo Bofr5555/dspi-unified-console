@@ -7008,6 +7008,176 @@ uint32_t dspi_paste_channel(struct FfiCore *core,
                             uint32_t len);
 
 /**
+ * Keep measurement, microphone and target documents under folder `dir`
+ * ("": forget it). JSON `{ok}` or a failure.
+ */
+uint32_t dspi_measure_set_dir(struct FfiCore *core, const char *dir, char *buf, uint32_t len);
+
+/**
+ * The filed documents of `kind` (`measurement`, `mic`, `target`; null or
+ * "": every kind), measurements of device `serial` only (null or "": every
+ * device's): JSON `{ok, value: [{id, kind, name, note, serial, savedMs,
+ * bytes}, ...]}`, or a failure for an unknown kind.
+ */
+uint32_t dspi_measure_docs(struct FfiCore *core,
+                           const char *kind,
+                           const char *serial,
+                           char *buf,
+                           uint32_t len);
+
+/**
+ * Filed document `id`'s text, or a JSON failure in its place.
+ */
+uint32_t dspi_measure_doc_get(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * File a measurement, microphone or target document. JSON: its row `{ok,
+ * id, kind, name, note, serial, savedMs, bytes}`, or a failure.
+ */
+uint32_t dspi_measure_doc_put(struct FfiCore *core, const char *doc, char *buf, uint32_t len);
+
+/**
+ * Rename filed document `id`. JSON: its row, or a failure.
+ */
+uint32_t dspi_measure_doc_rename(struct FfiCore *core,
+                                 const char *id,
+                                 const char *name,
+                                 char *buf,
+                                 uint32_t len);
+
+/**
+ * Set filed document `id`'s note. JSON: its row, or a failure.
+ */
+uint32_t dspi_measure_doc_note(struct FfiCore *core,
+                               const char *id,
+                               const char *note,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * Delete filed document `id`. JSON `{ok}` or a failure.
+ */
+uint32_t dspi_measure_doc_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * Output `output`'s response of measurement `doc` (a filed id, or a
+ * measurement document's text) as REW text, or a JSON failure in its place.
+ */
+uint32_t dspi_measurement_export_rew(struct FfiCore *core,
+                                     const char *doc,
+                                     uint8_t output,
+                                     char *buf,
+                                     uint32_t len);
+
+/**
+ * A measurement, microphone or target document's row, validated: JSON
+ * `{ok, id, kind, name, note, serial, savedMs, bytes}` or a failure. No
+ * handle needed. Returns the bytes needed including the NUL, 0 for a panic.
+ */
+uint32_t dspi_measure_doc_info(const char *doc, char *buf, uint32_t len);
+
+/**
+ * A `mic` document from a calibration file's text (`file_name` may say
+ * `_90deg`; null: ""; `name` null or "": the vendor and serial), or a JSON
+ * failure in its place. No handle needed.
+ */
+uint32_t dspi_mic_import(const char *name,
+                         const char *file_name,
+                         const char *file_text,
+                         char *buf,
+                         uint32_t len);
+
+/**
+ * A `target` document from a target file's text, for `target_use`
+ * (`speakers`, `headphones`) and `coupler` (`iec60318_4`, `flatPlate`,
+ * `hats`; null or ""), or a JSON failure in its place. No handle needed.
+ */
+uint32_t dspi_target_import(const char *name,
+                            const char *file_text,
+                            const char *target_use,
+                            const char *coupler,
+                            char *buf,
+                            uint32_t len);
+
+/**
+ * The built-in targets: JSON `{ok, value: [{id, name, targetUse, coupler,
+ * params: [{name, value}]}, ...]}`. No handle needed.
+ */
+uint32_t dspi_target_builtins(char *buf, uint32_t len);
+
+/**
+ * Set the callback that says the session's state changed (call
+ * `dspi_measure_state`); null unsets it. Called on the thread that pushed,
+ * ticked or stopped, with no core lock held.
+ */
+void dspi_measure_set_callback(struct FfiCore *core,
+                               void (*callback)(void *user_data),
+                               void *user_data);
+
+/**
+ * The preflight of the setup `setup` (JSON): `{ok, clear, blockers,
+ * warnings}`, each issue `{key, output, message}`; writes nothing.
+ */
+uint32_t dspi_measure_preflight(struct FfiCore *core,
+                                const char *setup_json,
+                                char *buf,
+                                uint32_t len);
+
+/**
+ * Start a measurement of `setup` (JSON): the state, or a failure
+ * (`invalid` naming the blockers, `read_only`, `denied`, `locked`).
+ */
+uint32_t dspi_measure_start(struct FfiCore *core, const char *setup_json, char *buf, uint32_t len);
+
+/**
+ * Push `count` mono samples (full scale ±1) of the microphone's capture
+ * from frame `first_frame` at `rate_hz`; `clipped` when the converter
+ * clipped. `samples` points at `count` floats (null with `count` 0). The
+ * state, or a failure for a block over 1 Mi samples or a null or misaligned
+ * pointer with a count.
+ */
+uint32_t dspi_measure_capture_push(struct FfiCore *core,
+                                   uint64_t first_frame,
+                                   const float *samples,
+                                   uint32_t count,
+                                   uint32_t rate_hz,
+                                   bool clipped,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * Drive the session (about every 50 ms, off the UI thread): the state.
+ */
+uint32_t dspi_measure_tick(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The microphone is at the next position: the state, or `invalid` when the
+ * session is not waiting for one.
+ */
+uint32_t dspi_measure_next_position(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The user's Stop: the state (never a failure).
+ */
+uint32_t dspi_measure_stop(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The session's state, without I/O.
+ */
+uint32_t dspi_measure_state(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The finished measurement as a `measurement` document's text, or a
+ * failure (`invalid` while none is ready).
+ */
+uint32_t dspi_measure_result(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Forget a finished session: `{ok}`, or `invalid` while one is active.
+ */
+uint32_t dspi_measure_clear(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

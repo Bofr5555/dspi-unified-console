@@ -114,6 +114,13 @@ CRATE_ORIGINS = {
         "from the vendored firmware headers below.",
     ),
     "dspi-session": ([], "From DSPi-Terminal, with history."),
+    # -- WP P5DOCK -- in the iOS graph since dspi-core depends on it (PRO phase 5)
+    "dspi-measure": (
+        [],
+        "New for PRO phase 5 (docs/core-merge/PLAN-P5.md), the owner's: the measurement "
+        "maths and documents. Built-in targets are our own parameters; no third-party "
+        "curve data is bundled (OD-P5p).",
+    ),
     "dspi-transport": ([], "From DSPi-Terminal, with history."),
 }
 

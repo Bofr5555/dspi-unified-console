@@ -1,0 +1,8 @@
+/* WP P5WCAP: the P5SPIKE page's own style (development only). */
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0 auto; max-width: 60rem; padding: 0 1rem 2rem; }
+header { position: sticky; top: 0; padding: 0.5rem 0; background: Canvas; border-bottom: 1px solid GrayText; }
+pre { white-space: pre-wrap; word-break: break-word; max-height: 20rem; overflow: auto; background: color-mix(in srgb, Canvas 90%, CanvasText); padding: 0.5rem; }
+textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; }
+button.stop { font-weight: bold; color: #b00; }
+label { margin-right: 0.75rem; }

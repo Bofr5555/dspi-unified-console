@@ -512,6 +512,42 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun linkSetUrl(url: String): Unit = throw NotImplementedError("link_set_url")
 
+    override fun measureSetListener(listener: MeasureListener?): Unit = throw NotImplementedError("measure_set_listener")
+
+    override fun measurePreflight(setup: MeasureSetup): MeasurePreflight = throw NotImplementedError("measure_preflight")
+
+    override fun measureStart(setup: MeasureSetup): MeasureState = throw NotImplementedError("measure_start")
+
+    override fun measureCapturePush(firstFrame: Long, samples: List<Float>, rateHz: Long, clipped: Boolean): MeasureState = throw NotImplementedError("measure_capture_push")
+
+    override fun measureTick(): MeasureState = throw NotImplementedError("measure_tick")
+
+    override fun measureNextPosition(): MeasureState = throw NotImplementedError("measure_next_position")
+
+    override fun measureStop(): MeasureState = throw NotImplementedError("measure_stop")
+
+    override fun measureState(): MeasureState = throw NotImplementedError("measure_state")
+
+    override fun measureResult(): String = throw NotImplementedError("measure_result")
+
+    override fun measureClear(): Unit = throw NotImplementedError("measure_clear")
+
+    override fun measureSetDir(dir: String): Unit = throw NotImplementedError("measure_set_dir")
+
+    override fun measureDocs(kind: String, serial: String): List<MeasureDocInfo> = throw NotImplementedError("measure_docs")
+
+    override fun measureDocGet(id: String): String = throw NotImplementedError("measure_doc_get")
+
+    override fun measureDocPut(text: String): MeasureDocInfo = throw NotImplementedError("measure_doc_put")
+
+    override fun measureDocRename(id: String, name: String): MeasureDocInfo = throw NotImplementedError("measure_doc_rename")
+
+    override fun measureDocNote(id: String, note: String): MeasureDocInfo = throw NotImplementedError("measure_doc_note")
+
+    override fun measureDocDelete(id: String): Unit = throw NotImplementedError("measure_doc_delete")
+
+    override fun measurementExportRew(doc: String, output: Int): String = throw NotImplementedError("measurement_export_rew")
+
     override fun modeResolve(platform: String, chosen: String): ModeChoice = throw NotImplementedError("mode_resolve")
 
     override fun modeSetPinned(mode: String): Unit = throw NotImplementedError("mode_set_pinned")
@@ -883,6 +919,14 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun aboutJson(): String = throw NotImplementedError("about_json")
 
     override fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord = throw NotImplementedError("link_parse_txt")
+
+    override fun measureDocInfo(text: String): MeasureDocInfo = throw NotImplementedError("measure_doc_info")
+
+    override fun micImport(name: String, fileName: String, fileText: String): String = throw NotImplementedError("mic_import")
+
+    override fun targetImport(name: String, fileText: String, targetUse: String, coupler: String): String = throw NotImplementedError("target_import")
+
+    override fun targetBuiltins(): List<TargetInfo> = throw NotImplementedError("target_builtins")
 
     override fun modeManifest(): ModeManifest = throw NotImplementedError("mode_manifest")
 

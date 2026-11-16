@@ -191,6 +191,10 @@ mod tests {
             "src/fns_misc/pins.rs",
             // -- WP CLIP1 --
             "src/fns_misc/clipboard.rs",
+            // -- WP P5DOCK --
+            "src/fns_misc/measure_doc.rs",
+            // -- WP P5SES --
+            "src/fns_misc/measure.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

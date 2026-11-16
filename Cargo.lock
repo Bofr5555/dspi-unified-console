@@ -768,6 +768,7 @@ name = "dspi-core"
 version = "0.13.0"
 dependencies = [
  "dspi-link",
+ "dspi-measure",
  "dspi-proto",
  "dspi-session",
  "dspi-transport",
@@ -884,6 +885,7 @@ version = "0.13.0"
 dependencies = [
  "dirs",
  "dspi-cmd",
+ "dspi-measure",
  "dspi-proto",
  "dspi-transport",
  "getrandom 0.4.3",

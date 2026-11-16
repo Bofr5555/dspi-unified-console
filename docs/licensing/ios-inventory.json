@@ -1,5 +1,5 @@
 {
- "repo_commit": "dc06920a",
+ "repo_commit": "0770d310",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -10,6 +10,11 @@
     "first_party": false,
     "license": "MIT OR Apache-2.0",
     "version": "1.0.104"
+   },
+   "base64": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.23.1"
    },
    "bitflags": {
     "first_party": false,
@@ -116,6 +121,11 @@
     "license": "GPL-3.0-or-later",
     "version": "0.1.0"
    },
+   "dspi-measure": {
+    "first_party": true,
+    "license": "GPL-3.0-or-later",
+    "version": "0.13.0"
+   },
    "dspi-proto": {
     "first_party": true,
     "license": "GPL-3.0-or-later",
@@ -211,6 +221,21 @@
     "license": "Unlicense OR MIT",
     "version": "2.8.3"
    },
+   "num-complex": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.4.6"
+   },
+   "num-integer": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.1.47"
+   },
+   "num-traits": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.2.19"
+   },
    "once_cell": {
     "first_party": false,
     "license": "MIT OR Apache-2.0",
@@ -220,6 +245,11 @@
     "first_party": false,
     "license": "MPL-2.0",
     "version": "0.2.0"
+   },
+   "primal-check": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.3.4"
    },
    "rand": {
     "first_party": false,
@@ -235,6 +265,11 @@
     "first_party": false,
     "license": "Apache-2.0 AND ISC",
     "version": "0.17.14"
+   },
+   "rustfft": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "6.4.1"
    },
    "rustix": {
     "first_party": false,
@@ -301,6 +336,11 @@
     "license": "MIT OR Apache-2.0",
     "version": "1.1.0"
    },
+   "strength_reduce": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.2.4"
+   },
    "subtle": {
     "first_party": false,
     "license": "BSD-3-Clause",
@@ -315,6 +355,11 @@
     "first_party": false,
     "license": "MIT OR Apache-2.0",
     "version": "2.0.19"
+   },
+   "transpose": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.2.3"
    },
    "tungstenite": {
     "first_party": false,
@@ -414,6 +459,7 @@
    "crates/dspi-core/src/hub_admin.rs",
    "crates/dspi-core/src/hub_server.rs",
    "crates/dspi-core/src/hub_server/admin.rs",
+   "crates/dspi-core/src/hub_server/fleet.rs",
    "crates/dspi-core/src/hub_server/manage.rs",
    "crates/dspi-core/src/info.rs",
    "crates/dspi-core/src/journal.rs",
@@ -423,6 +469,7 @@
    "crates/dspi-core/src/link.rs",
    "crates/dspi-core/src/link_text.rs",
    "crates/dspi-core/src/link_txt.rs",
+   "crates/dspi-core/src/measure_doc.rs",
    "crates/dspi-core/src/modes.rs",
    "crates/dspi-core/src/monitor.rs",
    "crates/dspi-core/src/names.rs",
@@ -432,6 +479,7 @@
    "crates/dspi-core/src/output_labels.rs",
    "crates/dspi-core/src/params.rs",
    "crates/dspi-core/src/params_fx.rs",
+   "crates/dspi-core/src/picoboot.rs",
    "crates/dspi-core/src/pins.rs",
    "crates/dspi-core/src/platform.rs",
    "crates/dspi-core/src/presets.rs",
@@ -457,6 +505,22 @@
    "crates/dspi-link/src/pake.rs",
    "crates/dspi-link/src/socket.rs",
    "crates/dspi-link/src/tls.rs",
+   "crates/dspi-measure/src/align.rs",
+   "crates/dspi-measure/src/cal.rs",
+   "crates/dspi-measure/src/doc.rs",
+   "crates/dspi-measure/src/doc/curve.rs",
+   "crates/dspi-measure/src/export.rs",
+   "crates/dspi-measure/src/fit.rs",
+   "crates/dspi-measure/src/ir.rs",
+   "crates/dspi-measure/src/lib.rs",
+   "crates/dspi-measure/src/position.rs",
+   "crates/dspi-measure/src/response.rs",
+   "crates/dspi-measure/src/rta.rs",
+   "crates/dspi-measure/src/stimulus.rs",
+   "crates/dspi-measure/src/target.rs",
+   "crates/dspi-measure/src/types.rs",
+   "crates/dspi-measure/src/wav.rs",
+   "crates/dspi-measure/src/xover.rs",
    "crates/dspi-proto/src/bulk_gain.rs",
    "crates/dspi-proto/src/channel.rs",
    "crates/dspi-proto/src/dsp.rs",
@@ -490,6 +554,7 @@
    "crates/dspi-session/src/lib.rs",
    "crates/dspi-session/src/limits.rs",
    "crates/dspi-session/src/link_words.rs",
+   "crates/dspi-session/src/measure_store.rs",
    "crates/dspi-session/src/meters.rs",
    "crates/dspi-session/src/notify.rs",
    "crates/dspi-session/src/output_label.rs",
@@ -552,7 +617,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "dc06920accaf33a276f21700fc0ce2b7b1cc315e",
+  "commit": "0770d310e77be2fda608861296d2211a816d1d86",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",
@@ -582,6 +647,8 @@
    "DSPi Console/Core/CoreBackedTransport.swift",
    "DSPi Console/Core/CoreControlSurfaces.swift",
    "DSPi Console/Core/CoreDiagnostics.swift",
+   "DSPi Console/Core/CoreHub.swift",
+   "DSPi Console/Core/CoreHubServer.swift",
    "DSPi Console/Core/CoreInstaller.swift",
    "DSPi Console/Core/CoreLink.swift",
    "DSPi Console/Core/CoreMirror.swift",
@@ -604,6 +671,7 @@
    "DSPi Console/Demo/FakeTransport.swift",
    "DSPi Console/Demo/Fixtures/bulk_v32.bin",
    "DSPi Console/Demo/Fixtures/platform.bin",
+   "DSPi Console/EventsView.swift",
    "DSPi Console/ExtensionChannel.swift",
    "DSPi Console/ExtensionCommands.swift",
    "DSPi Console/FilterFile.swift",
@@ -614,6 +682,7 @@
    "DSPi Console/GraphSpectrumOverlay.swift",
    "DSPi Console/GraphView.swift",
    "DSPi Console/HostAudioFormatMonitor.swift",
+   "DSPi Console/HubSecuritySettingsView.swift",
    "DSPi Console/Installer/InstallerViews.swift",
    "DSPi Console/InterruptMonitor.swift",
    "DSPi Console/Link/AuthStore.swift",
@@ -629,6 +698,7 @@
    "DSPi Console/Link/LinkMessages.swift",
    "DSPi Console/Link/LinkPolicy.swift",
    "DSPi Console/Link/LinkRole.swift",
+   "DSPi Console/Link/LinkSecurity.swift",
    "DSPi Console/Link/LinkTokenStore.swift",
    "DSPi Console/Link/NetworkTransport.swift",
    "DSPi Console/Link/NotifyRelay.swift",
@@ -670,6 +740,7 @@
    "DSPi Console/RtaMetalSurface.swift",
    "DSPi Console/RtaRenderCache.swift",
    "DSPi Console/Snapshots/SnapshotsFiles.swift",
+   "DSPi Console/Snapshots/SnapshotsHubSection.swift",
    "DSPi Console/Snapshots/SnapshotsView.swift",
    "DSPi Console/SpectrumAnalyser.swift",
    "DSPi Console/SpectrumAnalyserView.swift",

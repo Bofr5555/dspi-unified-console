@@ -1698,6 +1698,65 @@ uint8_t ch,
 int32_t mirror,
 char *buf,
 uint32_t len);
+uint32_t dspi_measure_set_dir(struct FfiCore *core, const char *dir, char *buf, uint32_t len);
+uint32_t dspi_measure_docs(struct FfiCore *core,
+const char *kind,
+const char *serial,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_doc_get(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_measure_doc_put(struct FfiCore *core, const char *doc, char *buf, uint32_t len);
+uint32_t dspi_measure_doc_rename(struct FfiCore *core,
+const char *id,
+const char *name,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_doc_note(struct FfiCore *core,
+const char *id,
+const char *note,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_doc_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_measurement_export_rew(struct FfiCore *core,
+const char *doc,
+uint8_t output,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_doc_info(const char *doc, char *buf, uint32_t len);
+uint32_t dspi_mic_import(const char *name,
+const char *file_name,
+const char *file_text,
+char *buf,
+uint32_t len);
+uint32_t dspi_target_import(const char *name,
+const char *file_text,
+const char *target_use,
+const char *coupler,
+char *buf,
+uint32_t len);
+uint32_t dspi_target_builtins(char *buf, uint32_t len);
+void dspi_measure_set_callback(struct FfiCore *core,
+void (*callback)(void *user_data),
+void *user_data);
+uint32_t dspi_measure_preflight(struct FfiCore *core,
+const char *setup_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_start(struct FfiCore *core, const char *setup_json, char *buf, uint32_t len);
+uint32_t dspi_measure_capture_push(struct FfiCore *core,
+uint64_t first_frame,
+const float *samples,
+uint32_t count,
+uint32_t rate_hz,
+bool clipped,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_tick(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_next_position(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_stop(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_state(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_result(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_clear(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

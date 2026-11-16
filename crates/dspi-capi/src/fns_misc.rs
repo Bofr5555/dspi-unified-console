@@ -90,6 +90,10 @@ mod sws_a;
 mod pins;
 // -- WP CLIP1 -- the channel clipboard
 mod clipboard;
+// -- WP P5DOCK -- the measurement documents
+mod measure_doc;
+// -- WP P5SES -- the measurement session
+mod measure;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

@@ -56,7 +56,9 @@ By hand, in the container:
     qt/src/controllers/      Registrar, Shell; one controller per feature
     qt/src/platform/         the icon provider, the token store, tray and system integration,
                              the update checker (AppUpdater), the bootloader locator,
-                             device access (DeviceAccess: the udev rule)
+                             device access (DeviceAccess: the udev rule), the measurement
+                             microphone (AudioCapture, capture only) and the P5SPIKE switches
+                             (MeasureSpike: --audio-inputs, --measure-spike; WP P5QCAP)
     qt/src/render/           the drawn items: BodePlot (the graph), PeqOverlay, Meter, PinGrid,
                              RtaSurface and RtaBars (the spectrum), TubeIllustration
     qt/qml/Theme/            Theme (every colour, size and font) and ChannelPalette

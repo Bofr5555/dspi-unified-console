@@ -64,6 +64,8 @@ if (args.has("--unit")) {
       app: "src/standalone.ts",
       "dspi-web": "src/index.tsx",
       worker: "src/core/worker.ts",
+      // -- WP P5WCAP -- the microphone's AudioWorklet, loaded by capture.ts (its own file: CSP 'self')
+      "capture-worklet": "src/core/capture-worklet.ts",
     },
     outdir: out,
     minify: true,
@@ -102,6 +104,8 @@ if (args.has("--unit")) {
         "test/usb-worker": "test/pages/usb-worker.ts",
         // -- WP WB4b -- a fleet server's page with hubs
         "test/fleet-hub": "test/pages/fleet-hub.ts",
+        // -- WP P5WCAP -- the microphone capture page (test/e2e/capture_p5wcap.spec.ts)
+        "test/capture": "test/pages/capture.ts",
       },
       outdir: out,
       minify: false,
@@ -113,6 +117,16 @@ if (args.has("--unit")) {
     if (wasm && existsSync(wasm)) cpSync(wasm, join(out, "test/dspi_wasm.wasm"));
     // -- WP WB6K -- the test pages' bundles look for the built-in AutoEQ database beside them
     cpSync(join(out, "autoeq_database.json"), join(out, "test/autoeq_database.json"));
+    // -- Review P5-B -- the P5SPIKE page (tools/spike), for test/e2e/spike_p5b.spec.ts. Only with
+    // --pages: the built console never has it (tools/spike/build.mjs makes the owner's copy).
+    await build({
+      ...common,
+      entryPoints: { "spike/measure-spike": "tools/spike/measure-spike.ts" },
+      outdir: out,
+      minify: false,
+    });
+    cpSync(join(root, "tools/spike/measure-spike.html"), join(out, "spike/measure-spike.html"));
+    cpSync(join(root, "tools/spike/measure-spike.css"), join(out, "spike/measure-spike.css"));
   }
   console.log("built dist/");
 }

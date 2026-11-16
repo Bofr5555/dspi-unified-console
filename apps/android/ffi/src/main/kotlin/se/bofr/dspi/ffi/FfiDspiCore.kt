@@ -61,6 +61,11 @@ class FfiDspiCore : DspiCoreApi {
             override fun onLinkTokenIssued(hubId: String, token: String) = l.onLinkTokenIssued(hubId, token)
         }
 
+    private fun wrapMeasureListener(l: MeasureListener) =
+        object : se.bofr.dspi.ffi.uniffi.MeasureListener {
+            override fun onMeasure() = l.onMeasure()
+        }
+
     private fun wrapHubAdminListener(l: HubAdminListener) =
         object : se.bofr.dspi.ffi.uniffi.HubAdminListener {
             override fun onHubAdminEvent(event: se.bofr.dspi.ffi.uniffi.HubAdminEvent) = l.onHubAdminEvent(event.toDomain())
@@ -578,6 +583,42 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun linkSetUrl(url: String) = core.linkSetUrl(url)
 
+    override fun measureSetListener(listener: MeasureListener?) = core.measureSetListener(listener?.let { wrapMeasureListener(it) })
+
+    override fun measurePreflight(setup: MeasureSetup): MeasurePreflight = call { core.measurePreflight(setup.toFfi()).toDomain() }
+
+    override fun measureStart(setup: MeasureSetup): MeasureState = call { core.measureStart(setup.toFfi()).toDomain() }
+
+    override fun measureCapturePush(firstFrame: Long, samples: List<Float>, rateHz: Long, clipped: Boolean): MeasureState = call { core.measureCapturePush(firstFrame.toULong(), samples, rateHz.toUInt(), clipped).toDomain() }
+
+    override fun measureTick(): MeasureState = core.measureTick().toDomain()
+
+    override fun measureNextPosition(): MeasureState = call { core.measureNextPosition().toDomain() }
+
+    override fun measureStop(): MeasureState = core.measureStop().toDomain()
+
+    override fun measureState(): MeasureState = core.measureState().toDomain()
+
+    override fun measureResult(): String = call { core.measureResult() }
+
+    override fun measureClear() = call { core.measureClear() }
+
+    override fun measureSetDir(dir: String) = call { core.measureSetDir(dir) }
+
+    override fun measureDocs(kind: String, serial: String): List<MeasureDocInfo> = call { core.measureDocs(kind, serial).map { it.toDomain() } }
+
+    override fun measureDocGet(id: String): String = call { core.measureDocGet(id) }
+
+    override fun measureDocPut(text: String): MeasureDocInfo = call { core.measureDocPut(text).toDomain() }
+
+    override fun measureDocRename(id: String, name: String): MeasureDocInfo = call { core.measureDocRename(id, name).toDomain() }
+
+    override fun measureDocNote(id: String, note: String): MeasureDocInfo = call { core.measureDocNote(id, note).toDomain() }
+
+    override fun measureDocDelete(id: String) = call { core.measureDocDelete(id) }
+
+    override fun measurementExportRew(doc: String, output: Int): String = call { core.measurementExportRew(doc, output.toUByte()) }
+
     override fun modeResolve(platform: String, chosen: String): ModeChoice = call { core.modeResolve(platform, chosen).toDomain() }
 
     override fun modeSetPinned(mode: String) = call { core.modeSetPinned(mode) }
@@ -949,6 +990,14 @@ class FfiDspiCore : DspiCoreApi {
     override fun aboutJson(): String = se.bofr.dspi.ffi.uniffi.aboutJson()
 
     override fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord = call { se.bofr.dspi.ffi.uniffi.linkParseTxt(serviceName, txt.map { it.toFfi() }).toDomain() }
+
+    override fun measureDocInfo(text: String): MeasureDocInfo = call { se.bofr.dspi.ffi.uniffi.measureDocInfo(text).toDomain() }
+
+    override fun micImport(name: String, fileName: String, fileText: String): String = call { se.bofr.dspi.ffi.uniffi.micImport(name, fileName, fileText) }
+
+    override fun targetImport(name: String, fileText: String, targetUse: String, coupler: String): String = call { se.bofr.dspi.ffi.uniffi.targetImport(name, fileText, targetUse, coupler) }
+
+    override fun targetBuiltins(): List<TargetInfo> = se.bofr.dspi.ffi.uniffi.targetBuiltins().map { it.toDomain() }
 
     override fun modeManifest(): ModeManifest = se.bofr.dspi.ffi.uniffi.modeManifest().toDomain()
 
@@ -4859,6 +4908,234 @@ internal fun LinkPhaseText.toFfi() =
         action = action,
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.MeasureOutput.toDomain() =
+    MeasureOutput(
+        output = output.toInt(),
+        role = role.toDomain(),
+        speaker = speaker,
+        group = group.toInt(),
+        inverted = inverted,
+    )
+
+internal fun MeasureOutput.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureOutput(
+        output = output.toUByte(),
+        role = role.toFfi(),
+        speaker = speaker,
+        group = group.toUByte(),
+        inverted = inverted,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSetup.toDomain() =
+    MeasureSetup(
+        kind = kind.toDomain(),
+        outputs = outputs.map { it.toDomain() },
+        placement = placement.toDomain(),
+        count = count.toInt(),
+        coupler = coupler?.let { it.toDomain() },
+        micDocument = micDocument,
+        sweepMs = sweepMs.toLong(),
+        gapMs = gapMs.toLong(),
+        passes = passes.toInt(),
+        pinkMs = pinkMs.toLong(),
+        ceilingDb = ceilingDb,
+        splCapDb = splCapDb,
+        captureRateHz = captureRateHz.toLong(),
+        name = name,
+        startLevelOnly = startLevelOnly,
+    )
+
+internal fun MeasureSetup.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSetup(
+        kind = kind.toFfi(),
+        outputs = outputs.map { it.toFfi() },
+        placement = placement.toFfi(),
+        count = count.toUByte(),
+        coupler = coupler?.let { it.toFfi() },
+        micDocument = micDocument,
+        sweepMs = sweepMs.toUInt(),
+        gapMs = gapMs.toUInt(),
+        passes = passes.toUByte(),
+        pinkMs = pinkMs.toUInt(),
+        ceilingDb = ceilingDb,
+        splCapDb = splCapDb,
+        captureRateHz = captureRateHz.toUInt(),
+        name = name,
+        startLevelOnly = startLevelOnly,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTiming.toDomain() =
+    MeasureTiming(
+        reliable = reliable,
+        ratioPpm = ratioPpm,
+        ratioFitted = ratioFitted,
+        maxResidualUs = maxResidualUs,
+        residualBoundUs = residualBoundUs,
+        maxPhaseSpreadDeg = maxPhaseSpreadDeg,
+        passes = passes.toInt(),
+        reasons = reasons,
+        cycleOutputs = cycleOutputs.map { it.toInt() and 0xFF },
+        cycleResidualsUs = cycleResidualsUs,
+    )
+
+internal fun MeasureTiming.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTiming(
+        reliable = reliable,
+        ratioPpm = ratioPpm,
+        ratioFitted = ratioFitted,
+        maxResidualUs = maxResidualUs,
+        residualBoundUs = residualBoundUs,
+        maxPhaseSpreadDeg = maxPhaseSpreadDeg,
+        passes = passes.toUShort(),
+        reasons = reasons,
+        cycleOutputs = ByteArray(cycleOutputs.size) { cycleOutputs[it].toByte() },
+        cycleResidualsUs = cycleResidualsUs,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureIssue.toDomain() =
+    MeasureIssue(
+        key = key,
+        output = output?.let { it.toInt() },
+        message = message,
+    )
+
+internal fun MeasureIssue.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureIssue(
+        key = key,
+        output = output?.let { it.toUByte() },
+        message = message,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasurePreflight.toDomain() =
+    MeasurePreflight(
+        clear = clear,
+        blockers = blockers.map { it.toDomain() },
+        warnings = warnings.map { it.toDomain() },
+    )
+
+internal fun MeasurePreflight.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasurePreflight(
+        clear = clear,
+        blockers = blockers.map { it.toFfi() },
+        warnings = warnings.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLevel.toDomain() =
+    MeasureLevel(
+        output = output.toInt(),
+        levelDb = levelDb,
+    )
+
+internal fun MeasureLevel.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLevel(
+        output = output.toUByte(),
+        levelDb = levelDb,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureState.toDomain() =
+    MeasureState(
+        phase = phase.toDomain(),
+        kind = kind.toDomain(),
+        active = active,
+        wantsCapture = wantsCapture,
+        captureRateHz = captureRateHz.toLong(),
+        position = position.toInt(),
+        positions = positions.toInt(),
+        run = run.toInt(),
+        runs = runs.toInt(),
+        output = output?.let { it.toInt() },
+        levelDb = levelDb,
+        rampLevels = rampLevels.map { it.toDomain() },
+        runLevelDb = runLevelDb,
+        frames = frames.toLong(),
+        generatorStartFrame = generatorStartFrame?.let { it.toLong() },
+        generatorStarts = generatorStarts.toLong(),
+        progress = progress,
+        issue = issue?.let { it.toDomain() },
+        timingReliable = timingReliable,
+        resultReady = resultReady,
+        timing = timing?.let { it.toDomain() },
+        frameFaults = frameFaults.toLong(),
+    )
+
+internal fun MeasureState.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureState(
+        phase = phase.toFfi(),
+        kind = kind.toFfi(),
+        active = active,
+        wantsCapture = wantsCapture,
+        captureRateHz = captureRateHz.toUInt(),
+        position = position.toUByte(),
+        positions = positions.toUByte(),
+        run = run.toUShort(),
+        runs = runs.toUShort(),
+        output = output?.let { it.toUByte() },
+        levelDb = levelDb,
+        rampLevels = rampLevels.map { it.toFfi() },
+        runLevelDb = runLevelDb,
+        frames = frames.toULong(),
+        generatorStartFrame = generatorStartFrame?.let { it.toULong() },
+        generatorStarts = generatorStarts.toUInt(),
+        progress = progress,
+        issue = issue?.let { it.toFfi() },
+        timingReliable = timingReliable,
+        resultReady = resultReady,
+        timing = timing?.let { it.toFfi() },
+        frameFaults = frameFaults.toUInt(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureDocInfo.toDomain() =
+    MeasureDocInfo(
+        id = id,
+        kind = kind,
+        name = name,
+        note = note,
+        serial = serial,
+        savedMs = savedMs,
+        bytes = bytes.toLong(),
+    )
+
+internal fun MeasureDocInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureDocInfo(
+        id = id,
+        kind = kind,
+        name = name,
+        note = note,
+        serial = serial,
+        savedMs = savedMs,
+        bytes = bytes.toULong(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.TargetParam.toDomain() =
+    TargetParam(
+        name = name,
+        value = value,
+    )
+
+internal fun TargetParam.toFfi() =
+    se.bofr.dspi.ffi.uniffi.TargetParam(
+        name = name,
+        value = value,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.TargetInfo.toDomain() =
+    TargetInfo(
+        id = id,
+        name = name,
+        targetUse = targetUse,
+        coupler = coupler,
+        params = params.map { it.toDomain() },
+    )
+
+internal fun TargetInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.TargetInfo(
+        id = id,
+        name = name,
+        targetUse = targetUse,
+        coupler = coupler,
+        params = params.map { it.toFfi() },
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.ModeEntry.toDomain() =
     ModeEntry(
         id = id,
@@ -5507,6 +5784,96 @@ internal fun HistorySource.toFfi(): se.bofr.dspi.ffi.uniffi.HistorySource =
         HistorySource.LOCAL -> se.bofr.dspi.ffi.uniffi.HistorySource.LOCAL
         HistorySource.UNDO -> se.bofr.dspi.ffi.uniffi.HistorySource.UNDO
         HistorySource.REDO -> se.bofr.dspi.ffi.uniffi.HistorySource.REDO
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRunKind.toDomain(): MeasureRunKind =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureRunKind.WALKED -> MeasureRunKind.WALKED
+        se.bofr.dspi.ffi.uniffi.MeasureRunKind.SUMMED -> MeasureRunKind.SUMMED
+        se.bofr.dspi.ffi.uniffi.MeasureRunKind.LIVE_SWEEP -> MeasureRunKind.LIVE_SWEEP
+        se.bofr.dspi.ffi.uniffi.MeasureRunKind.PINK -> MeasureRunKind.PINK
+    }
+
+internal fun MeasureRunKind.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureRunKind =
+    when (this) {
+        MeasureRunKind.WALKED -> se.bofr.dspi.ffi.uniffi.MeasureRunKind.WALKED
+        MeasureRunKind.SUMMED -> se.bofr.dspi.ffi.uniffi.MeasureRunKind.SUMMED
+        MeasureRunKind.LIVE_SWEEP -> se.bofr.dspi.ffi.uniffi.MeasureRunKind.LIVE_SWEEP
+        MeasureRunKind.PINK -> se.bofr.dspi.ffi.uniffi.MeasureRunKind.PINK
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRole.toDomain(): MeasureRole =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureRole.FULL -> MeasureRole.FULL
+        se.bofr.dspi.ffi.uniffi.MeasureRole.SUB -> MeasureRole.SUB
+        se.bofr.dspi.ffi.uniffi.MeasureRole.LOW -> MeasureRole.LOW
+        se.bofr.dspi.ffi.uniffi.MeasureRole.MID -> MeasureRole.MID
+        se.bofr.dspi.ffi.uniffi.MeasureRole.HIGH -> MeasureRole.HIGH
+    }
+
+internal fun MeasureRole.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureRole =
+    when (this) {
+        MeasureRole.FULL -> se.bofr.dspi.ffi.uniffi.MeasureRole.FULL
+        MeasureRole.SUB -> se.bofr.dspi.ffi.uniffi.MeasureRole.SUB
+        MeasureRole.LOW -> se.bofr.dspi.ffi.uniffi.MeasureRole.LOW
+        MeasureRole.MID -> se.bofr.dspi.ffi.uniffi.MeasureRole.MID
+        MeasureRole.HIGH -> se.bofr.dspi.ffi.uniffi.MeasureRole.HIGH
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasurePlacement.toDomain(): MeasurePlacement =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasurePlacement.LISTENING_POSITION -> MeasurePlacement.LISTENING_POSITION
+        se.bofr.dspi.ffi.uniffi.MeasurePlacement.MULTI_POSITION -> MeasurePlacement.MULTI_POSITION
+        se.bofr.dspi.ffi.uniffi.MeasurePlacement.NEAR_FIELD -> MeasurePlacement.NEAR_FIELD
+        se.bofr.dspi.ffi.uniffi.MeasurePlacement.HEADPHONES -> MeasurePlacement.HEADPHONES
+    }
+
+internal fun MeasurePlacement.toFfi(): se.bofr.dspi.ffi.uniffi.MeasurePlacement =
+    when (this) {
+        MeasurePlacement.LISTENING_POSITION -> se.bofr.dspi.ffi.uniffi.MeasurePlacement.LISTENING_POSITION
+        MeasurePlacement.MULTI_POSITION -> se.bofr.dspi.ffi.uniffi.MeasurePlacement.MULTI_POSITION
+        MeasurePlacement.NEAR_FIELD -> se.bofr.dspi.ffi.uniffi.MeasurePlacement.NEAR_FIELD
+        MeasurePlacement.HEADPHONES -> se.bofr.dspi.ffi.uniffi.MeasurePlacement.HEADPHONES
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureCoupler.toDomain(): MeasureCoupler =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureCoupler.IEC60318_4 -> MeasureCoupler.IEC60318_4
+        se.bofr.dspi.ffi.uniffi.MeasureCoupler.FLAT_PLATE -> MeasureCoupler.FLAT_PLATE
+        se.bofr.dspi.ffi.uniffi.MeasureCoupler.HATS -> MeasureCoupler.HATS
+    }
+
+internal fun MeasureCoupler.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureCoupler =
+    when (this) {
+        MeasureCoupler.IEC60318_4 -> se.bofr.dspi.ffi.uniffi.MeasureCoupler.IEC60318_4
+        MeasureCoupler.FLAT_PLATE -> se.bofr.dspi.ffi.uniffi.MeasureCoupler.FLAT_PLATE
+        MeasureCoupler.HATS -> se.bofr.dspi.ffi.uniffi.MeasureCoupler.HATS
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasurePhase.toDomain(): MeasurePhase =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasurePhase.IDLE -> MeasurePhase.IDLE
+        se.bofr.dspi.ffi.uniffi.MeasurePhase.PRE_ROLL -> MeasurePhase.PRE_ROLL
+        se.bofr.dspi.ffi.uniffi.MeasurePhase.RAMP -> MeasurePhase.RAMP
+        se.bofr.dspi.ffi.uniffi.MeasurePhase.RUN -> MeasurePhase.RUN
+        se.bofr.dspi.ffi.uniffi.MeasurePhase.ANALYSING -> MeasurePhase.ANALYSING
+        se.bofr.dspi.ffi.uniffi.MeasurePhase.WAIT_POSITION -> MeasurePhase.WAIT_POSITION
+        se.bofr.dspi.ffi.uniffi.MeasurePhase.DONE -> MeasurePhase.DONE
+        se.bofr.dspi.ffi.uniffi.MeasurePhase.ABORTED -> MeasurePhase.ABORTED
+        se.bofr.dspi.ffi.uniffi.MeasurePhase.FAILED -> MeasurePhase.FAILED
+    }
+
+internal fun MeasurePhase.toFfi(): se.bofr.dspi.ffi.uniffi.MeasurePhase =
+    when (this) {
+        MeasurePhase.IDLE -> se.bofr.dspi.ffi.uniffi.MeasurePhase.IDLE
+        MeasurePhase.PRE_ROLL -> se.bofr.dspi.ffi.uniffi.MeasurePhase.PRE_ROLL
+        MeasurePhase.RAMP -> se.bofr.dspi.ffi.uniffi.MeasurePhase.RAMP
+        MeasurePhase.RUN -> se.bofr.dspi.ffi.uniffi.MeasurePhase.RUN
+        MeasurePhase.ANALYSING -> se.bofr.dspi.ffi.uniffi.MeasurePhase.ANALYSING
+        MeasurePhase.WAIT_POSITION -> se.bofr.dspi.ffi.uniffi.MeasurePhase.WAIT_POSITION
+        MeasurePhase.DONE -> se.bofr.dspi.ffi.uniffi.MeasurePhase.DONE
+        MeasurePhase.ABORTED -> se.bofr.dspi.ffi.uniffi.MeasurePhase.ABORTED
+        MeasurePhase.FAILED -> se.bofr.dspi.ffi.uniffi.MeasurePhase.FAILED
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.NoticeKind.toDomain(): NoticeKind =

@@ -116,6 +116,10 @@ pub(crate) enum Holder {
     Learn,
     /// The bootloader restart: it lasts until the device leaves.
     Bootloader,
+    // -- WP P5SES --
+    /// A measurement session (`measure.rs`): renewed by its tick, given back
+    /// when it ends.
+    Measure,
 }
 
 /// A device lock kept on its connection past the call that took it.
@@ -816,6 +820,59 @@ impl DspiCore {
             ended
         };
         drop(ended);
+    }
+
+    // -- WP P5SES --
+    /// Whether the measurement session still holds the device lock; with
+    /// `due`, its lease is asked again for `lease` (of the hub over DSPi Link,
+    /// of the transport elsewhere) and extended. False when it ran out, went
+    /// to another holder, or the renewal was refused. Call with the core
+    /// lock released.
+    pub(crate) fn measure_lock_renew(&self, reason: &str, lease: Duration, due: bool) -> bool {
+        let now = Instant::now();
+        let side = {
+            let mut guard = self.lock();
+            let Some(conn) = guard.conn.as_mut() else {
+                return false;
+            };
+            let ours = conn
+                .held_lock
+                .as_ref()
+                .is_some_and(|h| h.holder == Holder::Measure && h.in_force(now));
+            if !ours {
+                return false;
+            }
+            if !due {
+                return true;
+            }
+            let side = conn
+                .held_lock
+                .as_ref()
+                .and_then(|h| h.lock.as_ref())
+                .and_then(|l| l.side.clone());
+            if side.is_none() && conn.transport().lock(reason, lease).is_err() {
+                return false;
+            }
+            side
+        };
+        if let Some(side) = side
+            && side.lock(reason, lease).is_err()
+        {
+            return false;
+        }
+        let mut guard = self.lock();
+        match guard
+            .conn
+            .as_mut()
+            .and_then(|c| c.held_lock.as_mut())
+            .filter(|h| h.holder == Holder::Measure)
+        {
+            Some(h) => {
+                h.until = now.checked_add(lease).unwrap_or(now);
+                true
+            }
+            None => false,
+        }
     }
 
     /// Let the held lock run out now, as its lease would (its holder stays

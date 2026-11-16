@@ -3151,6 +3151,195 @@ interface DspiCoreApi : AutoCloseable {
     fun linkSetUrl(url: String)
 
     /**
+     * Register (`Some`) or clear (`None`) the measurement listener: called
+     * when a session's phase changes, it stops, or it asks something. Called
+     * on the thread that pushed, ticked or stopped, with every core lock
+     * released; it may read `measure_state` but must not block.
+     */
+    fun measureSetListener(listener: MeasureListener?)
+
+    /**
+     * What stands between `setup` and a measurement, in words (PLAN-P5
+     * section 1.2): the volume (S2), the tweeter rule (S6), silence on the
+     * inputs (S8), locks and roles (S11), processing the maths does not model
+     * (S13), the plan's bounds (S7). Reads the device (the meters and the
+     * generator's caps); writes nothing.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * a setup that is not one (no outputs, an output twice, a count out of
+     * range); a transfer failure of the reads.
+     */
+    @Throws(DspiException::class)
+    fun measurePreflight(setup: MeasureSetup): MeasurePreflight
+
+    /**
+     * Start a measurement of `setup`: the preflight, the device lock
+     * "Measuring" (a 30 s lease, renewed by `measure_tick`), then the
+     * pre-roll. Nothing plays before the client has pushed the pre-roll and
+     * ticked. The client then pushes capture whenever `wants_capture` and
+     * calls `measure_tick` about every 50 ms until the phase is `done`,
+     * `aborted` or `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a session
+     * already running on this core, or a blocker (named in the message);
+     * [`DspiError::ReadOnly`] (read-only mode or connection) and
+     * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
+     * [`DspiError::Locked`] when another session holds the device lock, or
+     * this console holds it through `device_lock_acquire`;
+     * [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun measureStart(setup: MeasureSetup): MeasureState
+
+    /**
+     * Push one block of the microphone's capture: mono samples, full scale
+     * ±1, starting at frame `first_frame` of the client's own count, at
+     * `rate_hz`, `clipped` when the converter clipped. The safety checks run
+     * first, O(block) (S4, S5): a gap or repeat in the frame indices, a
+     * clip, the SPL cap. No analysis runs here. A push with no session, or
+     * while the session wants none, is ignored.
+     *
+     * Errors: none for the capture's content (a fault ends the session and
+     * shows in the state); [`DspiError::InvalidArgument`] for more than
+     * 1 Mi samples in one block.
+     */
+    @Throws(DspiException::class)
+    fun measureCapturePush(firstFrame: Long, samples: List<Float>, rateHz: Long, clipped: Boolean): MeasureState
+
+    /**
+     * Drive the session: apply queued notifications, judge them (S5), renew
+     * the lease, poll the generator and the meters (about 4 Hz), start the
+     * next step, run one analysis slice. Call it about every 50 ms while a
+     * session is active, off the UI thread (it blocks for a few transfers).
+     * Returns the state; never fails.
+     */
+    fun measureTick(): MeasureState
+
+    /**
+     * The microphone is at the next position (or the headphones reseated):
+     * go on with the next run.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the session is not waiting
+     * for a position.
+     */
+    @Throws(DspiException::class)
+    fun measureNextPosition(): MeasureState
+
+    /**
+     * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
+     * the run discarded, the lock given back. Idempotent; never fails.
+     */
+    fun measureStop(): MeasureState
+
+    /**
+     * The session's state, without I/O.
+     */
+    fun measureState(): MeasureState
+
+    /**
+     * The finished measurement as a `measurement` document's text (schema 1,
+     * derived curves only). File it with `measure_doc_put` (or the hub's).
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    @Throws(DspiException::class)
+    fun measureResult(): String
+
+    /**
+     * Forget a finished session (its result included), so the screens show
+     * none. Refused while one is active.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a session is active.
+     */
+    @Throws(DspiException::class)
+    fun measureClear()
+
+    /**
+     * Keep measurement, microphone and target documents in files under
+     * `dir`, the client's own data folder (created if missing): a folder per
+     * device serial for measurements, `mic/` and `target/`, each with an
+     * index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+    @Throws(DspiException::class)
+    fun measureSetDir(dir: String)
+
+    /**
+     * The filed documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind): by kind, then oldest first. Measurements of device
+     * `serial` only ("" every device's). No folder named (and the web) is
+     * an empty list; a damaged index is rebuilt from the documents and a
+     * damaged document set aside (the corrupt-file rule).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+    @Throws(DspiException::class)
+    fun measureDocs(kind: String, serial: String): List<MeasureDocInfo>
+
+    /**
+     * Filed document `id`'s text.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, one two
+     * folders hold, or a damaged document (set aside); [`DspiError::Io`]
+     * with no folder named; [`DspiError::Unsupported`] on the web.
+     */
+    @Throws(DspiException::class)
+    fun measureDocGet(id: String): String
+
+    /**
+     * File a measurement, microphone or target document (validated by its
+     * kind's reader) as a new document; a filed document is never
+     * overwritten. Its own id is kept when free, else one is made from its
+     * time. A measurement that names no device takes the open device's
+     * serial.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+     * document of the family (a preset or a snapshot among them), or a
+     * measurement with no serial and no device open; [`DspiError::Io`] with
+     * no folder named, a failed write, or a full store (100 measurements a
+     * device, 32 microphones, 64 targets, 64 MiB);
+     * [`DspiError::Unsupported`] on the web.
+     */
+    @Throws(DspiException::class)
+    fun measureDocPut(text: String): MeasureDocInfo
+
+    /**
+     * Rename filed document `id`; any Unicode, cut to 256 characters.
+     * Errors as [`DspiCore::measure_doc_get`], and [`DspiError::Io`].
+     */
+    @Throws(DspiException::class)
+    fun measureDocRename(id: String, name: String): MeasureDocInfo
+
+    /**
+     * Set filed document `id`'s note; any Unicode, cut to 4096 characters.
+     * Errors as [`DspiCore::measure_doc_rename`].
+     */
+    @Throws(DspiException::class)
+    fun measureDocNote(id: String, note: String): MeasureDocInfo
+
+    /**
+     * Delete filed document `id`. Errors as [`DspiCore::measure_doc_get`].
+     */
+    @Throws(DspiException::class)
+    fun measureDocDelete(id: String)
+
+    /**
+     * Output `output`'s measured response as REW text ("Import frequency
+     * response"): `doc` is a filed measurement's id or a measurement
+     * document's text (the web's way). Frequency, dB and the wrapped phase
+     * where measured; a header with the name, the output and the
+     * microphone. Derived curves only (S12).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a measurement, or an output it does not hold; as
+     * [`DspiCore::measure_doc_get`] for an id.
+     */
+    @Throws(DspiException::class)
+    fun measurementExportRew(doc: String, output: Int): String
+
+    /**
      * The mode to show on a client of `platform` (`phone`, `desktop` or
      * `web`) when the user has chosen `chosen` (a mode id, or "" for none):
      * the locked-user state first, then a mode the hub pins, then the
@@ -5274,6 +5463,62 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord
+
+    /**
+     * What a measurement, microphone or target document's text is: validated by
+     * its kind's reader (bounded, every number in range), and described as a
+     * list row. `bytes` is the text's size; `id` the document's own ("" when
+     * not filed). No I/O: the web's way to list the documents it keeps.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+     * document of the family (a preset, a snapshot, past its bound, damaged).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    @Throws(DspiException::class)
+    fun measureDocInfo(text: String): MeasureDocInfo
+
+    /**
+     * A `mic` document from a microphone's calibration file (miniDSP UMIK-1 or
+     * UMIK-2 text with its `Sens Factor` line, REW calibration text, or CSV),
+     * on the standard grid: the file's format, serial, sensitivity and gain,
+     * its angle (90° when the file name or a comment says so), the dB SPL scale
+     * its sensitivity implies (labelled approximate until a calibrator step),
+     * the file's name and SHA-256. Not filed: [`DspiCore::measure_doc_put`]
+     * files it. `name` "" names it after the vendor and serial, else the file.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a file that is not a
+     * calibration this build reads (past 1 MiB, binary, no point in range), the
+     * reason in words, never the file's contents.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    @Throws(DspiException::class)
+    fun micImport(name: String, fileName: String, fileText: String): String
+
+    /**
+     * A `target` document from a target file (REW or CSV text, a phase column
+     * and a sensitivity line ignored), on the standard grid, normalised at the
+     * default reference band (500 Hz to 2 kHz). `target_use` is `speakers` or
+     * `headphones`; `coupler` (`iec60318_4`, `flatPlate`, `hats`, or "") is kept
+     * for a headphone target only. Not filed: [`DspiCore::measure_doc_put`]
+     * files it.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown use or coupler, or
+     * a file that is not a target this build reads.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    @Throws(DspiException::class)
+    fun targetImport(name: String, fileText: String, targetUse: String, coupler: String): String
+
+    /**
+     * Every built-in target with its default parameters, in a stable order:
+     * flat, tilt and house for speakers, then each coupler's default.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun targetBuiltins(): List<TargetInfo>
 
     /**
      * The mode manifest: modes, the locked-user state, screens and operations,
