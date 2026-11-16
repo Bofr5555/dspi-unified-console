@@ -10,9 +10,35 @@
 //! top: the generator bypasses the matrix, programme audio does not.
 //!
 //! [`align`] finds, per transition (two ways that cross over), the relative
-//! delay and polarity that make the predicted **programme** sum flattest
-//! through the transition (one octave each side of the corner), starting from
-//! the coarse onsets and refining to a fraction of a microsecond. The pairs are
+//! delay and polarity at which the two ways' **programme** contributions
+//! agree in phase through their overlap (one octave each side of the corner,
+//! weighted where both contribute), starting from the coarse arrivals and
+//! refining to a fraction of a microsecond; the flatness of the predicted sum
+//! at that optimum is reported with it.
+//!
+//! Why phase agreement and not "the flattest summed magnitude" (PLAN-P5 T2's
+//! wording; settled at the wave P5-A review on P5SIM's three-way room): for a
+//! Linkwitz-Riley pair the right alignment and "the wrong polarity, half a
+//! period of the corner later" both sum almost flat through the transition,
+//! so the flatness of the magnitude is a weak judge; a driver resonance
+//! inside the window then decides, and it decides for whichever
+//! half-cancelled sum happens to hide it: a correctly wired tweeter was
+//! flipped. Phase agreement tells the two apart by a wide margin and no
+//! magnitude feature can buy a wrong timing. The measured responses hold the
+//! crossover filters, so an LR2 or even-order Butterworth pair is judged with
+//! the inversion it needs. It is the rule [`crate::xover::crossover_corner`]
+//! uses per candidate, so "align only" gives the same answer either way.
+//!
+//! **Odd-order Butterworth pairs** (BW1, BW3, BW5, BW7 against each other)
+//! are in quadrature by design: they sum flat with the ways 90° apart, in
+//! either polarity. Pulling them into phase would put a +3 dB bump at the
+//! corner and move the delay by a quarter period. For such a pair the delay
+//! is the one that puts the ways in quadrature through the overlap, and
+//! **its polarity is never changed** (neither polarity is flatter; which lobe
+//! tilt the user chose is theirs), with a confidence of 0.
+//!
+//! A polarity flip is proposed only when it agrees clearly better
+//! ([`FLIP_MARGIN`]): a near tie keeps the polarity there is. The pairs are
 //! then composed over the group and **normalised so the group's smallest delay
 //! keeps its current value** (review RC6, OD-P5j): a speaker's existing common
 //! delay, left/right distance, sub or lip-sync alignment is never erased.
@@ -42,6 +68,9 @@ const MAX_HALF_WINDOW_MS: f64 = 20.0;
 /// The largest delay any option or chain may carry, ms (far above every
 /// platform's maximum, 42 ms; a bound against absurd input).
 pub const MAX_DELAY_BOUND_MS: f64 = 1000.0;
+/// A polarity flip must lower the cost by at least this fraction of the
+/// unflipped cost to be proposed; a near tie keeps the polarity there is.
+pub const FLIP_MARGIN: f64 = 0.1;
 /// The device's delay grid, ms (`dspi-core` `curves::quantize_delay`).
 const DELAY_STEP_MS: f64 = 0.0001;
 /// Slack when comparing a quantised delay with its bounds, ms.
@@ -153,11 +182,12 @@ pub struct PairAlignment {
     pub relative_delay_ms: f64,
     /// The upper way's polarity is flipped relative to the lower way's.
     pub flipped: bool,
-    /// The flatness cost at the optimum: RMS deviation of the summed
-    /// magnitude from a straight line through the window, dB.
+    /// The flatness of the predicted sum at the optimum: RMS deviation of
+    /// the summed magnitude from a straight line through the window, dB.
     pub cost_db: f64,
-    /// 0 to 1: how clearly the optimum beats the best of the other polarity,
-    /// times the share of the window's points that were trusted.
+    /// 0 to 1: how clearly the optimum's phase agreement beats the best of
+    /// the other polarity, times the share of the window's points that were
+    /// trusted. 0 for an odd-order Butterworth pair, whose polarity is kept.
     pub confidence: f64,
 }
 
@@ -177,8 +207,10 @@ pub struct AlignResult {
 ///
 /// Refused ([`MeasureError::Invalid`], the text starting "timing unreliable")
 /// unless every way's run passed the timing quality gate. Every transition is
-/// judged on the predicted programme sum through one octave each side of its
-/// corner, on the points both ways trust; the delays are normalised so the
+/// judged on the two ways' programme contributions through one octave each
+/// side of its corner, on the points both ways trust (phase agreement, or
+/// quadrature for an odd-order Butterworth pair: see the module's notes); the
+/// delays are normalised so the
 /// group's smallest delay keeps its current value and must stay within
 /// `options`' range, else the alignment is refused with the delay it needs.
 ///
@@ -228,7 +260,8 @@ pub fn align(
     let mut notes = Vec::new();
     for t in &group.transitions {
         let (wa, wb) = transition_ways(ways, t)?;
-        let corner = transition_corner(&wa.chain, &wb.chain, t.corner_hz)?.corner_hz;
+        let info = transition_corner(&wa.chain, &wb.chain, t.corner_hz)?;
+        let corner = info.corner_hz;
         let (Some(pa), Some(pb), Some(ta), Some(tb)) = (
             prog.get(t.low),
             prog.get(t.high),
@@ -262,9 +295,17 @@ pub fn align(
         }
         let da = f64::from(wa.chain.delay_ms);
         let db = f64::from(wb.chain.delay_ms);
+        let quadrature = info.quadrature(&wa.chain, &wb.chain);
+        if quadrature {
+            notes.push(quadrature_note(wa.output, wb.output));
+        }
         let ctx = PairCtx {
             points: pts,
-            kind: CostKind::Flatness,
+            kind: if quadrature {
+                CostKind::Quadrature
+            } else {
+                CostKind::Phase
+            },
         };
         let fit = if options.keep_delays {
             ctx.search(db - da, 0.0, 0, 0)
@@ -287,14 +328,24 @@ pub fn align(
         } else {
             ctx.points.len() as f64 / total as f64
         };
+        // The sum's flatness at the phase optimum, for the report.
+        let flatness = PairCtx {
+            points: ctx.points.clone(),
+            kind: CostKind::Flatness,
+        }
+        .cost(fit.delta_ms, fit.flip);
         pairs.push(PairAlignment {
             low_output: wa.output,
             high_output: wb.output,
             corner_hz: corner,
             relative_delay_ms: fit.delta_ms,
             flipped: fit.flip,
-            cost_db: fit.cost,
-            confidence: fit.confidence(share),
+            cost_db: flatness,
+            confidence: if quadrature {
+                0.0
+            } else {
+                fit.confidence(share)
+            },
         });
         edges.push(Edge {
             low: t.low,
@@ -558,6 +609,32 @@ pub(crate) struct CornerInfo {
     pub(crate) slots: Option<(usize, usize)>,
 }
 
+impl CornerInfo {
+    /// Whether the transition's crossover pair is in quadrature by design: an
+    /// odd-order Butterworth low-pass against an odd-order Butterworth
+    /// high-pass. Such a pair sums flat with the ways 90° apart in either
+    /// polarity, so it is aligned to quadrature and its polarity is kept.
+    pub(crate) fn quadrature(&self, low: &ChannelChain, high: &ChannelChain) -> bool {
+        let Some((ls, hs)) = self.slots else {
+            return false;
+        };
+        let odd_butterworth = |b: Option<&crate::types::BandSpec>| {
+            b.and_then(|b| dspi_proto::xover::meta(b.filter_type))
+                .is_some_and(|m| {
+                    m.family == dspi_proto::xover::Family::Butterworth && m.order & 1 == 1
+                })
+        };
+        odd_butterworth(low.crossover.get(ls)) && odd_butterworth(high.crossover.get(hs))
+    }
+}
+
+/// The note a quadrature pair gets.
+pub(crate) fn quadrature_note(low_output: u8, high_output: u8) -> String {
+    format!(
+        "outputs {low_output} and {high_output}: an odd-order Butterworth pair sums flat in either polarity; its polarity is kept and its delay puts the ways in quadrature"
+    )
+}
+
 /// The transition's corner: the low way's active crossover low-pass and the
 /// high way's active crossover high-pass nearest to each other, or the
 /// override.
@@ -651,8 +728,12 @@ pub(crate) enum CostKind {
     /// Phase disagreement of the two contributions through their overlap:
     /// `sqrt(Σ w·(1 - cos Δφ) / Σ w)` with `w = |a||b| / (|a|² + |b|²)`, so
     /// points where one way dominates do not count. Used by the crossover
-    /// search's per-candidate timing (see `xover`).
+    /// search's per-candidate timing (see `xover`) and by [`align`].
     Phase,
+    /// As `Phase`, for a pair that is in quadrature by design (odd-order
+    /// Butterworth): `sqrt(Σ w·cos² Δφ / Σ w)`, zero when the ways are 90°
+    /// apart whichever leads. The polarity does not enter it.
+    Quadrature,
 }
 
 /// A transition's window, ready to judge relative delays and flips.
@@ -701,7 +782,7 @@ impl PairCtx {
             return WORST;
         }
         let sign = if flip { -1.0 } else { 1.0 };
-        if self.kind == CostKind::Phase {
+        if matches!(self.kind, CostKind::Phase | CostKind::Quadrature) {
             let (mut num, mut den) = (0.0, 0.0);
             for p in &self.points {
                 let b = p.b.scale(sign).mul(Cx::polar(1.0, -p.w_ms * delta_ms));
@@ -714,7 +795,12 @@ impl PairCtx {
                 // cos Δφ = Re(a·conj(b)) / (|a||b|).
                 let re = p.a.re * b.re + p.a.im * b.im;
                 let cos = if ma * mb > 1e-30 { re / (ma * mb) } else { 1.0 };
-                num += w * (1.0 - cos.clamp(-1.0, 1.0));
+                let cos = cos.clamp(-1.0, 1.0);
+                num += w * if self.kind == CostKind::Quadrature {
+                    cos * cos
+                } else {
+                    1.0 - cos
+                };
                 den += w;
             }
             let c = if den > 1e-30 { (num / den).sqrt() } else { 0.0 };
@@ -729,7 +815,7 @@ impl PairCtx {
         let mean = r.iter().sum::<f64>() / n;
         let c = match self.kind {
             CostKind::Target => (r.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / n).sqrt(),
-            CostKind::Phase | CostKind::Flatness => {
+            CostKind::Phase | CostKind::Quadrature | CostKind::Flatness => {
                 let mx = self.points.iter().map(|p| p.x).sum::<f64>() / n;
                 let mut sxx = 0.0;
                 let mut sxy = 0.0;
@@ -759,8 +845,8 @@ impl PairCtx {
     /// polarities. Uses `2·(2·steps + 1) + refine` evaluations at most.
     pub(crate) fn search(&self, start: f64, half: f64, steps: usize, refine: usize) -> PairFit {
         let mut evals = 0u32;
-        let mut best = (start, false, f64::INFINITY);
-        let mut best_other = [f64::INFINITY, f64::INFINITY];
+        // The best delay and cost of each polarity: [unflipped, flipped].
+        let mut per = [(start, f64::INFINITY), (start, f64::INFINITY)];
         let step = if steps == 0 || half.is_nan() || half <= 0.0 {
             0.0
         } else {
@@ -771,7 +857,14 @@ impl PairCtx {
         } else {
             1
         };
-        for flip in [false, true] {
+        // A quadrature pair's cost does not depend on the polarity: it is
+        // never flipped.
+        let polarities: &[bool] = if self.kind == CostKind::Quadrature {
+            &[false]
+        } else {
+            &[false, true]
+        };
+        for &flip in polarities {
             for k in 0..count {
                 let d = if step > 0.0 {
                     start - half + step * k as f64
@@ -780,16 +873,20 @@ impl PairCtx {
                 };
                 let c = self.cost(d, flip);
                 evals = evals.saturating_add(1);
-                if let Some(b) = best_other.get_mut(usize::from(flip))
-                    && c < *b
+                if let Some(b) = per.get_mut(usize::from(flip))
+                    && c < b.1
                 {
-                    *b = c;
-                }
-                if c < best.2 {
-                    best = (d, flip, c);
+                    *b = (d, c);
                 }
             }
         }
+        // A flip must be clearly better (FLIP_MARGIN); a near tie keeps the
+        // polarity there is.
+        let [plain, flipped] = per;
+        let flip = polarities.len() > 1 && flipped.1 < plain.1 * (1.0 - FLIP_MARGIN);
+        let chosen = if flip { flipped } else { plain };
+        let mut best = (chosen.0, flip, chosen.1);
+        let best_other = [plain.1, flipped.1];
         // Golden-section refinement in the best coarse step's neighbourhood.
         if step > 0.0 && refine >= 2 {
             let inv_phi = (5f64.sqrt() - 1.0) / 2.0;
@@ -820,10 +917,15 @@ impl PairCtx {
                 best = (x, best.1, c);
             }
         }
-        let other = best_other
-            .get(usize::from(!best.1))
-            .copied()
-            .unwrap_or(WORST);
+        let other = if polarities.len() > 1 {
+            best_other
+                .get(usize::from(!best.1))
+                .copied()
+                .unwrap_or(WORST)
+        } else {
+            // No other polarity was judged: no margin to report.
+            best.2
+        };
         PairFit {
             delta_ms: best.0,
             flip: best.1,

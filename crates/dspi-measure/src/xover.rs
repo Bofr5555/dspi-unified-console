@@ -25,8 +25,15 @@
 //!   cancel a driver's resonance with a half-cancelled crossover (seen on the
 //!   synthetic three-way), which no summed check would then confirm. The
 //!   crossover filters' own phases are included, so an LR2 or BW2 pair is
-//!   judged with the inversion it needs. [`crate::align::align`] (no crossover
-//!   change) keeps the flattest-sum rule of T2.
+//!   judged with the inversion it needs. [`crate::align::align`] uses the
+//!   same rule (settled at the wave P5-A review, see its notes), so "keep
+//!   the crossover, align only" and `align` agree. An **odd-order
+//!   Butterworth pair** is in quadrature by design: it is aligned to
+//!   quadrature and its polarity is never changed.
+//!
+//!   The levels are the **median** of each way's passband against the
+//!   target, and a level change is offered only when the search with it ends
+//!   closer to the target than the same search with every gain kept.
 //! - [`predict_sum`] and [`summed_check`]: the mandatory summed check (RC5f).
 //!   A summed generator run bypasses the matrix, so its prediction uses the
 //!   generator's `invert_mask` ([`SumMode::Generator`]); programme audio uses
@@ -41,7 +48,7 @@
 use crate::align::{
     AlignOptions, CostKind, Cx, Edge, MIN_WINDOW_POINTS, PairCtx, Point, REFINE_ITERS, Transition,
     Way, check_chain, check_count, check_options, common_grid, compose, db_to_lin, feed_factor,
-    half_window_ms, response_to_complex, transition_corner, transition_ways,
+    half_window_ms, quadrature_note, response_to_complex, transition_corner, transition_ways,
 };
 use crate::types::{BandSpec, ChannelChain, Coeffs, MeasureError, Response, SectionModel, WayRole};
 use serde::{Deserialize, Serialize};
@@ -388,6 +395,61 @@ pub fn crossover_corner(
     constraints: &XoConstraints,
     model: &dyn SectionModel,
 ) -> Result<XoProposal, MeasureError> {
+    // -- review P5-A (F2) -- A level change must earn its place. The levels
+    // are estimated from each way's passband before the corners are searched;
+    // where that estimate is off (a room mode in a woofer's passband), the
+    // proposal with the level change can be further from the target than the
+    // same search with every gain kept. Both are then searched, each with
+    // half the evaluation budget, and the better one is offered.
+    let levels_free = !constraints.keep_levels && !constraints.keep_corners;
+    if !levels_free {
+        return search(
+            drivers,
+            transitions,
+            target,
+            constraints,
+            model,
+            MAX_EVALUATIONS_PER_TRANSITION,
+        );
+    }
+    let half = MAX_EVALUATIONS_PER_TRANSITION / 2;
+    let with = search(drivers, transitions, target, constraints, model, half)?;
+    if with.outputs.iter().all(|o| o.level_change_db == 0.0) {
+        return Ok(with);
+    }
+    let kept = XoConstraints {
+        keep_levels: true,
+        ..constraints.clone()
+    };
+    let mut without = search(drivers, transitions, target, &kept, model, half)?;
+    let total = |p: &XoProposal| -> f64 { p.transitions.iter().filter_map(|t| t.cost_db).sum() };
+    let spent =
+        |p: &XoProposal| -> Vec<u32> { p.transitions.iter().map(|t| t.evaluations).collect() };
+    let (a, b) = (spent(&with), spent(&without));
+    let mut chosen = if total(&with) < total(&without) {
+        with
+    } else {
+        without.notes.push(
+            "the level change did not bring the sum closer to the target: every output gain is kept"
+                .into(),
+        );
+        without
+    };
+    for ((t, x), y) in chosen.transitions.iter_mut().zip(a).zip(b) {
+        t.evaluations = x.saturating_add(y);
+    }
+    Ok(chosen)
+}
+
+/// One corner search within `budget` cost evaluations a transition.
+fn search(
+    drivers: &[Driver],
+    transitions: &[Transition],
+    target: &Response,
+    constraints: &XoConstraints,
+    model: &dyn SectionModel,
+    budget: u32,
+) -> Result<XoProposal, MeasureError> {
     check_count(drivers.len())?;
     constraints.check()?;
     if transitions.len() > drivers.len().saturating_mul(2) {
@@ -425,8 +487,7 @@ pub fn crossover_corner(
         for ((d, p), c) in drivers.iter().zip(&prep).zip(&work) {
             let xo = sections(&c.crossover, model)?;
             let k = feed_factor(c).scale(db_to_lin(f64::from(c.gain_db)));
-            let mut sum = 0.0;
-            let mut cnt = 0usize;
+            let mut levels: Vec<f64> = Vec::new();
             for (i, f) in freqs.iter().enumerate() {
                 let (Some(true), Some(h), Some(pq), Some(Some(t))) = (
                     p.trusted.get(i).copied(),
@@ -446,18 +507,21 @@ pub fn crossover_corner(
                 // its PEQ, its gain and its feed.
                 let v = h.mul(*pq).mul(k).db() - t;
                 if v.is_finite() {
-                    sum += v;
-                    cnt = cnt.saturating_add(1);
+                    levels.push(v);
                 }
             }
-            if cnt == 0 {
+            if levels.is_empty() {
                 notes.push(format!(
                     "output {}: no trusted passband to judge its level; its gain is kept",
                     d.output
                 ));
                 level.push(None);
             } else {
-                level.push(Some(sum / cnt as f64));
+                // The median, not the mean (review P5-A): a driver's own
+                // roll-off at the edge of its passband and a room mode in it
+                // are part of the passband's points but not of its level.
+                levels.sort_by(f64::total_cmp);
+                level.push(levels.get(levels.len() / 2).copied());
             }
         }
         let comp = components(drivers.len(), transitions);
@@ -524,6 +588,13 @@ pub fn crossover_corner(
             return Err(MeasureError::Invalid("transition out of range".into()));
         };
         let info = transition_corner(&ca, &cb, t.corner_hz)?;
+        // An odd-order Butterworth pair is aligned to quadrature and its
+        // polarity is kept (see `align`'s notes); the family and order are
+        // the same for every candidate.
+        let quadrature = info.quadrature(&ca, &cb);
+        if quadrature {
+            notes.push(quadrature_note(da.output, db.output));
+        }
         let delta_now = f64::from(cb.delay_ms) - f64::from(ca.delay_ms);
         let rule_a = constraints.rule_for(da.output, da.role);
         let rule_b = constraints.rule_for(db.output, db.role);
@@ -626,7 +697,7 @@ pub fn crossover_corner(
                 delta_now
             }
         };
-        let budget = MAX_EVALUATIONS_PER_TRANSITION.saturating_sub(1) as usize;
+        let budget = budget.saturating_sub(1) as usize;
         let per = budget.checked_div(allowed.len()).unwrap_or(0);
         let refine = REFINE_ITERS.min(per / 4);
         let refine = if refine < 2 { 0 } else { refine };
@@ -638,7 +709,10 @@ pub fn crossover_corner(
         let mut best: Option<(usize, crate::align::PairFit)> = None;
         let mut cands = Vec::with_capacity(allowed.len());
         for (ci, (corner, a2, b2, _, _, k)) in allowed.iter().enumerate() {
-            let ctx = pair_ctx(&idx, &freqs, &tgt, pa, pb, a2, b2, model, fs)?;
+            let mut ctx = pair_ctx(&idx, &freqs, &tgt, pa, pb, a2, b2, model, fs)?;
+            if quadrature {
+                ctx.kind = CostKind::Quadrature;
+            }
             if *k == 0 {
                 let c0 = PairCtx {
                     points: pair_points(
