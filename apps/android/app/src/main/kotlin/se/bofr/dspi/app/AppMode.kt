@@ -12,10 +12,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DangerousOp
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.core.LinkPairLink
 import se.bofr.dspi.core.PresetStatus
 import se.bofr.dspi.feature.presets.PresetMenuActions
 import se.bofr.dspi.feature.presets.UnsavedChangesAction
 import se.bofr.dspi.feature.presets.defaultPresetName
+import se.bofr.dspi.link.HubSecurity
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkSessionState
 import se.bofr.dspi.link.linkBrowseWanted
@@ -99,6 +101,13 @@ class AppModeController(
     /** The REMOTE session's state (Idle outside REMOTE). */
     val remoteState: StateFlow<LinkSessionState> = _remoteState.asStateFlow()
 
+    // -- WP SECAN --
+    private var securityWatch: Job? = null
+    private val _remoteSecurity = MutableStateFlow<HubSecurity?>(null)
+
+    /** The REMOTE session's encryption (null outside REMOTE): the red "(unsecured)" bar, the new-key notice. */
+    val remoteSecurity: StateFlow<HubSecurity?> = _remoteSecurity.asStateFlow()
+
     // -- WP AN4 --
     private val uiShown = MutableStateFlow(true)
 
@@ -131,8 +140,18 @@ class AppModeController(
         }
     }
 
+    // -- WP SECAN --
+    /**
+     * A `dspi://pair` link the user confirmed: switch to its hub (after the Unsaved Changes
+     * flow, as any switch) and dial it pinned to the link's key.
+     */
+    fun pairByLink(link: LinkPairLink) {
+        val hub = LinkHub(link.hubId, link.host, "unknown", "pin", 0, emptyList(), link.host, link.port)
+        switchGate.run { enterRemote(hub, link) }
+    }
+
     /** Switch to the DSPi on [hub] (DSPi Link). Leaves demo; reuses the REMOTE stack when it exists. */
-    fun enterRemote(hub: LinkHub) {
+    fun enterRemote(hub: LinkHub, link: LinkPairLink? = null) {
         exitDemo()
         val r = remote ?: remoteFactory().also { r ->
             remote = r
@@ -149,8 +168,9 @@ class AppModeController(
                     }
                 }
             }
+            securityWatch = scope.launch { r.security.collect { _remoteSecurity.value = it } } // -- WP SECAN --
         }
-        r.connect(hub)
+        if (link != null) r.connectByLink(link) else r.connect(hub) // -- WP SECAN --
         _bridge.value = r.bridge
         _mode.value = AppMode.REMOTE
         _usbPrompt.value = false
@@ -162,6 +182,9 @@ class AppModeController(
         remote = null
         remoteWatch?.cancel()
         remoteWatch = null
+        securityWatch?.cancel() // -- WP SECAN --
+        securityWatch = null
+        _remoteSecurity.value = null
         _remoteState.value = LinkSessionState.Idle
         _usbPrompt.value = false
         if (_mode.value == AppMode.REMOTE) {

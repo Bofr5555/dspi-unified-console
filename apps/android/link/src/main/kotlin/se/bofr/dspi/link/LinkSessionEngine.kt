@@ -33,6 +33,7 @@ import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.LinkDevice
 import se.bofr.dspi.core.LinkHello
 import se.bofr.dspi.core.LinkListener
+import se.bofr.dspi.core.LinkPairLink
 import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.core.LinkStatus
 
@@ -50,13 +51,18 @@ sealed interface LinkSessionState {
      * The hub wants a PIN: show the pairing prompt. [pinSource] `window` or `fixed` (spec 6.2).
      * [errorCode]: the `DspiException.Link` code of the last failed pair (`wrong_pin`,
      * `rate_limited`, ...), empty when [error] is not a pair's answer (WP AN36).
+     * -- WP SECAN -- [hubKey]: the fingerprint of the key the hub presented over TLS, to
+     * compare with the one the hub shows ("" = unencrypted: the PIN crosses in clear).
+     * [pin]: the PIN a pairing link carried, filled in; the user still taps Pair.
      */
     data class NeedsPin(
         override val hub: LinkHub,
         val pinSource: String,
         val error: String = "",
         val busy: Boolean = false,
-        val errorCode: String = ""
+        val errorCode: String = "",
+        val hubKey: String = "",
+        val pin: String = ""
     ) : LinkSessionState
 
     /** The hub shares several boards and none was chosen yet. */
@@ -83,8 +89,14 @@ sealed interface LinkSessionState {
         val parked: Boolean = false
     ) : LinkSessionState
 
-    /** Ended and not retried on a timer (no first connection, a protocol error, refused): see [LinkSessionEngine.networkAvailable]. */
-    data class Failed(override val hub: LinkHub, val reason: String) : LinkSessionState
+    /**
+     * Ended and not retried on a timer (no first connection, a protocol error, refused): see [LinkSessionEngine.networkAvailable].
+     * -- WP SECAN -- [code]: the failed dial's `DspiException.Link` code ("" otherwise); one of
+     * [REPAIR_CODES] offers pairing again ([LinkSessionEngine.rePair]). [fromPairLink]: the dial
+     * was a pairing link's, whose key the hub did not have.
+     */
+    data class Failed(override val hub: LinkHub, val reason: String, val code: String = "", val fromPairLink: Boolean = false) :
+        LinkSessionState
 }
 
 /** The foreground service while a remote device is open (`connectedDevice`). */
@@ -160,6 +172,18 @@ class LinkSessionEngine(
 
     val attachedSerial: String? get() = attached?.serial
 
+    // -- WP SECAN --
+    private val _security = MutableStateFlow<HubSecurity?>(null)
+
+    /** The session's encryption, null with no session (or before its first look). */
+    val security: StateFlow<HubSecurity?> = _security.asStateFlow()
+
+    /** "hubId|key" whose new-key notice was shown (this process; the core says it once per pin anyway). */
+    private val keysNoticed = mutableSetOf<String>()
+
+    /** The pairing link this dial is for: its pinned credential goes out instead of the stored one. */
+    private var pairLink: LinkPairLink? = null
+
     init {
         ops.setListener(
             object : LinkListener {
@@ -185,7 +209,43 @@ class LinkSessionEngine(
     }
 
     /** Connect to [target] (a user tap), optionally to board [serial]. */
-    fun connect(target: LinkHub, serial: String? = null) {
+    fun connect(target: LinkHub, serial: String? = null) = connect(target, serial, null)
+
+    // -- WP SECAN --
+    /**
+     * A `dspi://pair` link the user confirmed ([LinkPairLink], the core's parse). The dial
+     * uses its credential, pinned to its `k`: a hub with another key fails it with
+     * `hub_key_unverified` before any PIN goes out. The prompt then shows the hub's name and
+     * key with the link's PIN filled in, and pairs only on the user's tap.
+     */
+    fun connectByLink(link: LinkPairLink) {
+        val target = LinkHub(link.hubId, link.host, "unknown", "pin", 0, emptyList(), link.host, link.port)
+        connect(target, null, link)
+    }
+
+    /**
+     * Pair again after one of [REPAIR_CODES]: the stored credential (its pin) is dropped and
+     * the hub dialled, so it asks for a PIN and shows its key. After a pairing link the hub
+     * did not match, the stored credential stays: the link was wrong, not the pairing.
+     */
+    fun rePair() {
+        val s = _state.value as? LinkSessionState.Failed ?: return
+        if (s.code !in REPAIR_CODES) return
+        if (!s.fromPairLink) tokens.remove(s.hub.id)
+        log("link: pairing again (${s.code})")
+        connect(s.hub, wantedSerial, null)
+    }
+
+    /** The new-key notice was seen. */
+    fun ackKeyNotice() {
+        val s = _security.value ?: return
+        keysNoticed += s.hubId.lowercase() + "|" + s.hubKey
+        _security.value = s.copy(keyNotice = false)
+    }
+
+    private fun connect(target: LinkHub, serial: String?, link: LinkPairLink?) {
+        pairLink = link
+        _security.value = null
         val sameHub = hub?.id == target.id
         hub = target
         wantedSerial = serial ?: wantedSerial.takeIf { sameHub }
@@ -213,6 +273,7 @@ class LinkSessionEngine(
             }
             if (gen != generation) return@launch
             if (token.isNotEmpty()) tokens.setToken(s.hub.id, s.hub.name, token)
+            pairLink = null // -- WP SECAN -- paired: the stored credential from here on
             wake.trySend(Unit)
         }
     }
@@ -353,6 +414,8 @@ class LinkSessionEngine(
         unpark()
         hub = null
         wantedSerial = null
+        pairLink = null // -- WP SECAN --
+        _security.value = null
         _state.value = LinkSessionState.Idle
     }
 
@@ -400,17 +463,25 @@ class LinkSessionEngine(
         log("link: connected to ${final.name} (${final.kind}, auth ${second.auth}, 1.${second.protoMinor})")
         if (second.tokenRefused) refuseToken(final)
         sessionLive = true
+        readSecurity(final, gen) // -- WP SECAN --
         wake.trySend(Unit)
     }
 
     /** `linkConnect`, or null when it failed or was overtaken. Never leaves a session behind it for nobody. */
     private suspend fun open(h: LinkHub, gen: Int, expectedHubId: String): LinkHello? {
-        val token = if (expectedHubId.isEmpty()) "" else tokens.token(expectedHubId).orEmpty()
+        // -- WP SECAN -- a pairing link's dial: its pinned credential, never the stored one
+        val link = pairLink?.takeIf { expectedHubId.isNotEmpty() && it.hubId.equals(expectedHubId, ignoreCase = true) }
+        val token = when {
+            link != null -> link.credential
+            expectedHubId.isEmpty() -> ""
+            else -> tokens.token(expectedHubId).orEmpty()
+        }
         val hello = try {
             ops.connect(ops.wsUrl(h.host, h.port, h.path), clientName(), appVersion, token, expectedHubId, h.tlsAdvertised)
         } catch (e: DspiException) {
             if (gen == generation) {
-                _state.value = LinkSessionState.Failed(h, describe(e))
+                val code = (e as? DspiException.Link)?.code.orEmpty()
+                _state.value = LinkSessionState.Failed(h, describe(e), code, fromPairLink = link != null)
                 log("link: could not connect (${(e as? DspiException.Link)?.code ?: "error"})")
                 if (redialAfterDial) redial()
             }
@@ -439,6 +510,8 @@ class LinkSessionEngine(
         val devices = ops.devices()
         if (gen != generation) return
         val h = hub ?: return
+        readSecurity(h, gen) // -- WP SECAN --
+        if (gen != generation) return
         st.role.takeIf { it.isNotEmpty() }?.let { role = it }
         if (st.phase != LinkPhase.RECONNECTING) unpark()
         when (st.phase) {
@@ -531,14 +604,18 @@ class LinkSessionEngine(
         markInterrupted()
         val shown = _state.value as? LinkSessionState.NeedsPin
         val source = st.pinSource.ifEmpty { "window" }
+        // -- WP SECAN -- the key the hub presented, and a pairing link's PIN
+        val key = _security.value?.takeIf { it.encrypted && it.hubId.equals(h.id, ignoreCase = true) }?.hubKey.orEmpty()
+        val linkPin = pairLink?.takeIf { it.hubId.equals(h.id, ignoreCase = true) }?.pin.orEmpty()
         _state.value = when {
-            shown != null && shown.hub.id == h.id -> shown.copy(hub = h, pinSource = source)
+            shown != null && shown.hub.id == h.id -> shown.copy(hub = h, pinSource = source, hubKey = key)
             st.closeCode == CLOSE_REVOKED -> LinkSessionState.NeedsPin(
                 h,
                 source,
-                error = "Access to ${h.name} was revoked. Pair again to reconnect."
+                error = "Access to ${h.name} was revoked. Pair again to reconnect.",
+                hubKey = key
             )
-            else -> LinkSessionState.NeedsPin(h, source)
+            else -> LinkSessionState.NeedsPin(h, source, hubKey = key, pin = linkPin)
         }
     }
 
@@ -568,6 +645,27 @@ class LinkSessionEngine(
             ?: tokens.paired().firstOrNull { it.hubId.equals(hubId, ignoreCase = true) }?.name
             ?: hubId
         tokens.setToken(hubId, name, token)
+    }
+
+    // -- WP SECAN --
+    /**
+     * Read the session's encryption ([LinkCoreOps.security]) into [security], and keep the
+     * credential the core gives when it differs from the stored one (a v1 token upgraded
+     * to a pinned v2 credential on the first TLS connection, or re-pinned after a signed
+     * key rotation). The core delivers the same through `onLinkTokenIssued`; this is the
+     * "save if changed" for a connect that upgraded without a callback.
+     */
+    private suspend fun readSecurity(h: LinkHub, gen: Int) {
+        val sec = ops.security() ?: return
+        if (gen != generation) return
+        if (sec.credential.isNotEmpty() && !h.id.startsWith(MANUAL_ID_PREFIX) && tokens.token(h.id) != sec.credential) {
+            tokens.setToken(h.id, h.name, sec.credential)
+            log("link: the hub's credential was updated")
+        }
+        val noticed = (h.id.lowercase() + "|" + sec.hubKey) in keysNoticed
+        val notice = sec.encrypted && sec.hubKeyNew && sec.hubKey.isNotEmpty() && !noticed
+        val next = HubSecurity(h.id, sec.encrypted, sec.hubKey, notice)
+        if (_security.value != next) _security.value = next
     }
 
     private fun markInterrupted() {

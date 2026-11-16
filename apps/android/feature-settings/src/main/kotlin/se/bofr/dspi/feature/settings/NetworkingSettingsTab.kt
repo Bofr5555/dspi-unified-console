@@ -107,7 +107,8 @@ fun NetworkingSettingsTab(controller: NetworkingController) = WritesExempt {
             item {
                 SettingsSection("Paired Hubs", footer = "Forgetting a hub deletes its pairing; it asks for a PIN again next time.") {
                     s.paired.forEach { p ->
-                        SettingRow(p.name.ifEmpty { p.id }) {
+                        // -- WP SECAN -- the key it is pinned to, or that it is not
+                        SettingRow(p.name.ifEmpty { p.id }, detail = if (p.hubKey.isEmpty()) "Unencrypted" else "Key ${p.hubKey}") {
                             TextButton(onClick = { controller.forget(p.id) }) { Text("Forget") }
                         }
                     }
@@ -127,6 +128,8 @@ private fun HubRow(hub: NetworkHubRow, controller: NetworkingController) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (hub.open) Pill("Open", MacColors.green) else Pill("Private", MacColors.blue)
+            // -- WP SECAN -- encrypted or not, in words
+            if (hub.badge.isNotEmpty()) Pill(hub.badge, if (hub.badge == UNENCRYPTED_BADGE) MacColors.red else MacColors.green)
             if (hub.manual) {
                 TextButton(onClick = { controller.removeManual(hub.id) }) { Text("Remove") }
             }
@@ -166,3 +169,6 @@ private fun AddHubDialog(controller: NetworkingController, onDismiss: () -> Unit
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
+
+/** -- WP SECAN -- the hub list's badge for a hub without encryption (red). */
+private const val UNENCRYPTED_BADGE = "Unencrypted"

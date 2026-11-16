@@ -11,6 +11,7 @@ import se.bofr.dspi.core.LinkInfo
 import se.bofr.dspi.core.LinkListener
 import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.core.LinkPhaseText
+import se.bofr.dspi.core.LinkSecurity
 import se.bofr.dspi.core.LinkStatus
 
 /**
@@ -63,6 +64,13 @@ interface LinkCoreOps {
      * Never fails. The one lock prompt (LockState.heldBy) comes with P1-E.
      */
     suspend fun refreshLock() {}
+
+    // -- WP SECAN --
+    /**
+     * The session's encryption and the credential to keep (`link_security`), null when
+     * it cannot be read (a fake without TLS). Never fails.
+     */
+    suspend fun security(): LinkSecurity? = null
 
     fun wsUrl(host: String, port: Int, path: String): String
 
@@ -132,6 +140,9 @@ class BridgeLinkCoreOps(
     override suspend fun refreshLock() {
         withContext(network) { runCatching { core.installerLockRefresh() } }
     }
+
+    // -- WP SECAN -- the core lock, as status(): not on the main thread
+    override suspend fun security(): LinkSecurity? = withContext(network) { runCatching { core.linkSecurity() }.getOrNull() }
 
     override fun wsUrl(host: String, port: Int, path: String): String = core.linkWsUrl(host, port, path)
 

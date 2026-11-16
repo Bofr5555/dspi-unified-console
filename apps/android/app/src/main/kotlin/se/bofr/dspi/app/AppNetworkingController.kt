@@ -14,6 +14,7 @@ import se.bofr.dspi.link.LinkSessionState
 import se.bofr.dspi.link.LinkSettingsStore
 import se.bofr.dspi.link.LinkTokenStore
 import se.bofr.dspi.link.ManualHub
+import se.bofr.dspi.link.hubBadge
 import se.bofr.dspi.ui.link.NetworkHubRow
 import se.bofr.dspi.ui.link.NetworkingController
 import se.bofr.dspi.ui.link.NetworkingUiState
@@ -36,7 +37,9 @@ class AppNetworkingController(
     private val scope: CoroutineScope,
     private val defaultClientName: String,
     private val parseAddress: (String) -> Pair<String, Int>?,
-    private val wording: LinkWording = LinkWording.CORE
+    private val wording: LinkWording = LinkWording.CORE,
+    // -- WP SECAN -- the core's `link_credential_hub_key`: the pin a stored credential carries ("" = none)
+    private val credentialKey: (String) -> String = { "" }
 ) : NetworkingController {
     private val visible = MutableStateFlow(false)
     private val pairedRevision = MutableStateFlow(0)
@@ -61,7 +64,7 @@ class AppNetworkingController(
                 hubs = hubs.map { row(it, remote) },
                 browsing = browsing,
                 browseError = error,
-                paired = tokens.paired().map { PairedHubRow(it.hubId, it.name) },
+                paired = tokens.paired().map { PairedHubRow(it.hubId, it.name, pinOf(it.hubId)) }, // -- WP SECAN --
                 status = status(remote),
                 connected = remote != LinkSessionState.Idle
             )
@@ -87,8 +90,13 @@ class AppNetworkingController(
         val n = h.deviceCount
         val detail = if (h.isManual) h.displayAddress else "${h.displayAddress}, $n device${if (n == 1) "" else "s"}"
         val active = remote.hub?.let { it.id == h.id || (h.isManual && it.host == h.host && it.port == h.port) } == true
-        return NetworkHubRow(h.id, h.name, detail, h.kind, h.isOpen, h.isManual, active && remote != LinkSessionState.Idle)
+        val badge = hubBadge(h, pinOf(h.id).isNotEmpty()).label // -- WP SECAN --
+        return NetworkHubRow(h.id, h.name, detail, h.kind, h.isOpen, h.isManual, active && remote != LinkSessionState.Idle, badge)
     }
+
+    // -- WP SECAN --
+    /** The key fingerprint the stored credential of [hubId] is pinned to, "" when none. */
+    private fun pinOf(hubId: String): String = tokens.token(hubId)?.let { runCatching { credentialKey(it) }.getOrNull() }.orEmpty()
 
     private fun status(s: LinkSessionState): String = when (s) {
         LinkSessionState.Idle -> ""
