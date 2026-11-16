@@ -209,7 +209,7 @@ pub(crate) fn judge(
         );
     }
     // S2: the volume.
-    if !(s.user_volume_db <= VOL_USER_MAX_DB) {
+    if s.user_volume_db.is_nan() || s.user_volume_db > VOL_USER_MAX_DB {
         block(
             "measure.volume_high",
             None,
@@ -230,7 +230,7 @@ pub(crate) fn judge(
         .input_peaks
         .iter()
         .enumerate()
-        .find(|(_, p)| !(**p <= silence))
+        .find(|(_, p)| p.is_nan() || **p > silence)
     {
         block(
             "measure.input_audio",
@@ -382,7 +382,7 @@ pub(crate) fn judge(
         }
         let limiter_on = s.limiter_enabled.get(idx).copied().unwrap_or(false);
         let threshold = s.limiter_threshold_db.get(idx).copied().unwrap_or(0.0);
-        if limiter_on && !(threshold > plan.ceiling_db) {
+        if limiter_on && (threshold.is_nan() || threshold <= plan.ceiling_db) {
             block(
                 "measure.limiter",
                 Some(o),

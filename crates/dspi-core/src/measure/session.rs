@@ -396,7 +396,7 @@ impl Session {
         }
         // S4: a clip.
         let clip = safety::clip_linear();
-        let clipping = clipped || samples.iter().any(|s| !(s.abs() < clip));
+        let clipping = clipped || samples.iter().any(|s| s.is_nan() || s.abs() >= clip);
         // S3, S4: the SPL cap.
         let spl = match (
             self.spl.as_mut(),
@@ -632,7 +632,7 @@ impl Session {
             .iter()
             .take(n_inputs)
             .enumerate()
-            .find(|(_, p)| !(**p <= silence))
+            .find(|(_, p)| p.is_nan() || **p > silence)
         {
             return Err(issue(
                 "measure.abort.programme",
@@ -653,7 +653,7 @@ impl Session {
         let peak = safety::linear(OUTPUT_PEAK_DBFS);
         for spec in &self.plan.outputs {
             let at = n_inputs.saturating_add(usize::from(spec.output));
-            if m.peaks.get(at).is_some_and(|p| !(*p < peak)) {
+            if m.peaks.get(at).is_some_and(|p| p.is_nan() || *p >= peak) {
                 return Err(MeasureIssue::new(
                     "measure.abort.output_peak",
                     Some(spec.output),
@@ -1011,7 +1011,7 @@ impl Session {
                         .and_then(|r| r.outputs.first().copied())
                         .unwrap_or(0);
                     Some(match rta.spectrum() {
-                        Some(s) => runs::pink_result(&s, output, level, &self.plan)
+                        Some(s) => runs::pink_result(&s, output, level)
                             .map_err(|e| issue("measure.no_signal", e.to_string())),
                         None => Err(issue("measure.no_signal", "no pink noise was captured")),
                     })

@@ -262,12 +262,7 @@ pub(crate) fn walked_result(
 
 /// A pink run's spectrum as a response on the standard grid, referred to a
 /// 0 dBFS stimulus.
-pub(crate) fn pink_result(
-    spectrum: &Response,
-    output: u8,
-    level_db: f32,
-    plan: &Plan,
-) -> Result<RunResult> {
+pub(crate) fn pink_result(spectrum: &Response, output: u8, level_db: f32) -> Result<RunResult> {
     let e =
         |m: dspi_measure::types::MeasureError| DspiError::InvalidArgument { msg: m.to_string() };
     let mut r = resample(spectrum, &LogGrid::STANDARD).map_err(e)?;
@@ -436,6 +431,9 @@ pub(crate) fn document(plan: &Plan, runs: &[RunResult], ctx: &DocContext<'_>) ->
 }
 
 /// `secs` since the Unix epoch as ISO-8601 UTC (`2026-11-16T22:41:35Z`).
+// Every value is bounded: `days` < 2^47 from a u64 of seconds, so each
+// product and sum below stays far inside i64.
+#[allow(clippy::arithmetic_side_effects)]
 pub(crate) fn utc_text(secs: u64) -> String {
     let days = i64::try_from(secs / 86_400).unwrap_or(0);
     let of_day = secs % 86_400;

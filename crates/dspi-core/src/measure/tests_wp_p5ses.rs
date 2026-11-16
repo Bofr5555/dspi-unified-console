@@ -507,10 +507,6 @@ fn mic_doc(spl_offset_db: f64) -> String {
     .unwrap()
 }
 
-pub(super) fn mic_document(spl_offset_db: f64) -> String {
-    mic_doc(spl_offset_db)
-}
-
 #[test]
 fn wp_p5ses_a_ramp_stops_at_the_spl_cap_with_a_calibrated_mic() {
     let mut st = setup(MeasureRunKind::Walked, &[0]);
@@ -1016,4 +1012,38 @@ fn wp_p5ses_check_config_refuses_what_the_rules_forbid() {
 fn wp_p5ses_utc_text_is_iso() {
     assert_eq!(super::runs::utc_text(0), "1970-01-01T00:00:00Z");
     assert_eq!(super::runs::utc_text(1_794_869_295), "2026-11-16T22:48:15Z");
+}
+
+#[test]
+fn wp_p5ses_every_issue_key_has_a_notice_row() {
+    let sources = [
+        include_str!("../measure.rs"),
+        include_str!("plan.rs"),
+        include_str!("preflight.rs"),
+        include_str!("runs.rs"),
+        include_str!("safety.rs"),
+        include_str!("session.rs"),
+    ];
+    let mut keys = Vec::new();
+    for src in sources {
+        for part in src.split('"').skip(1).step_by(2) {
+            if part.starts_with("measure.")
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c == '.' || c == '_')
+            {
+                keys.push(part.to_owned());
+            }
+        }
+    }
+    keys.sort();
+    keys.dedup();
+    assert!(keys.len() > 40, "{keys:?}");
+    for k in keys
+        .iter()
+        .chain(&["read_only".to_owned(), "read_only.client".to_owned()])
+    {
+        assert!(crate::notice_text::has_row(k), "no notice row for {k}");
+        assert_eq!(crate::notice_for_key(k.clone(), String::new()).key, *k);
+    }
 }

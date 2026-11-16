@@ -36,7 +36,6 @@
 //! [`MeasureListener`] is called with every lock released.
 
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
 
 use dspi_measure::types::{ChannelChain, Coupler, Placement, WayRole};
 use dspi_session::notify::{Event, Notification, Source};
@@ -808,11 +807,6 @@ impl DspiCore {
 
 /// The measured chain of each output, as the session saw it at its start.
 pub(crate) type Chains = Vec<(u8, ChannelChain)>;
-
-/// `Duration` in whole milliseconds, saturating.
-pub(crate) fn ms(d: Duration) -> u64 {
-    u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
-}
 
 /// A placement as the measurement maths takes it.
 pub(crate) fn placement_of(setup: &MeasureSetup) -> Placement {

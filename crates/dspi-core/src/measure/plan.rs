@@ -288,11 +288,6 @@ impl Plan {
         })
     }
 
-    /// The output's spec.
-    pub(crate) fn out(&self, output: u8) -> Option<&OutSpec> {
-        self.outputs.iter().find(|o| o.output == output)
-    }
-
     /// A walked or single-sweep run's schedule at the device's rate: what the
     /// analysis models (a summed run is one output's single pass to it).
     pub(crate) fn schedule(&self, run: &RunSpec, device_rate: u32) -> Result<WalkSchedule> {
@@ -324,7 +319,10 @@ impl Plan {
     /// A run's length, ms (its capture at the capture rate).
     pub(crate) fn run_ms(&self, run: &RunSpec, device_rate: u32) -> Result<u64> {
         let frames = self.run_frames(run, device_rate)?;
-        Ok(frames.saturating_mul(1000) / u64::from(self.capture_rate_hz.max(1)))
+        Ok(frames
+            .saturating_mul(1000)
+            .checked_div(u64::from(self.capture_rate_hz))
+            .unwrap_or(u64::MAX))
     }
 
     /// The plan's bounds at the device's rate (S7, RC8): the generator's
