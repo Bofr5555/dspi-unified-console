@@ -1219,8 +1219,18 @@ fn wp_p2cfixa_devices_pass_serial_offset_and_limit_to_the_inventory() {
         "{}",
         page.body
     );
+    // -- WP FLAKE5 -- an online device's `last_seen` is the time of the GET,
+    // so two GETs a second apart differ there; compare everything else.
+    let steady = |d: &Value| {
+        let mut d = d.clone();
+        if let Some(o) = d.as_object_mut() {
+            o.remove("last_seen");
+        }
+        d
+    };
     assert_eq!(
-        page.body["devices"][0], all.body["devices"][1],
+        steady(&page.body["devices"][0]),
+        steady(&all.body["devices"][1]),
         "{}",
         page.body
     );
