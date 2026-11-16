@@ -29,6 +29,9 @@ final class CompositeTransport: DeviceTransport {
     var pairingPrompt: ((String) -> String?)?
     /// The non-blocking variant (see `NetworkTransport.asyncPairingPrompt`).
     var asyncPairingPrompt: ((String, @escaping (String?) -> Void) -> Void)?
+    /// -- WP SECSW -- The questions with the hub key shown (the PIN, pairing
+    /// again, a pairing link); a hub's session prefers it to the prompts above.
+    var pairingUI: LinkPairingUI?
     /// Called on the main thread with a hub id when its connection fails, so
     /// the browser can look the hub's address up again.
     var hubUnreachable: ((String) -> Void)?
@@ -144,16 +147,32 @@ final class CompositeTransport: DeviceTransport {
     private func remoteConnecting(to hub: DiscoveredHub) -> (any RemoteHubTransport)? {
         if let existing = remote(for: hub.id) { return existing }
         guard let url = hub.webSocketURL else { return nil }
+        let transport = makeRemoteTransport(hub)
+        transport.connect(to: url)
+        return transport
+    }
+
+    /// -- WP SECSW -- (split from `remoteConnecting`) A hub's new transport,
+    /// registered and watched, not dialled yet.
+    private func makeRemoteTransport(_ hub: DiscoveredHub) -> any RemoteHubTransport {
         let transport = makeRemote(hub)   // -- WP SW6 --
         transport.pairingPrompt = pairingPrompt
         transport.asyncPairingPrompt = asyncPairingPrompt
+        transport.setPairingUI(pairingUI)   // -- WP SECSW --
         let hubID = hub.id
         transport.onConnectionFailed = { [weak self] in self?.remoteFailed(hubID) }
         stateLock.lock(); remotes[hub.id] = transport; stateLock.unlock()
         remoteDeviceCancellables[hub.id] = transport.availableDevicesPublisher
             .sink { [weak self] _ in self?.recomputeDevices() }
-        transport.connect(to: url)
         return transport
+    }
+
+    /// -- WP SECSW -- A confirmed `dspi://pair` link: its hub (`hub`, the
+    /// typed-address entry the coordinator added for the link's address) is
+    /// dialled with the link's credential and id.  Nil, or why not.
+    func connect(pairLink: LinkPairLink, hub: DiscoveredHub) -> String? {
+        let transport = remote(for: hub.id) ?? makeRemoteTransport(hub)
+        return transport.connect(pairLink: pairLink)
     }
 
     /// A remote's socket failed.  It reconnects with backoff on its own; here

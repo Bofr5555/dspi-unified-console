@@ -103,8 +103,36 @@ final class NetworkTransport: DeviceTransport {
             self.reconnectAttempt = 0
             self.reconnectWork?.cancel()
             self.reconnectWork = nil
-            self.client.connect(to: url, clientName: self.clientName, token: self.tokens.token(forHub: self.hubID))
+            self.dialClient(url)   // -- WP SECSW --
         }
+    }
+
+    // -- WP SECSW --
+    /// Why this client refuses to dial a hub, nil when it may.  The opt-out
+    /// (`-CoreTransport NO`) is a debug fallback that speaks plaintext only
+    /// (PLAN-SEC N11): a hub whose record says TLS is required, by its advert
+    /// (`tls=1`, so a `wss://` URL) or by the stored credential's key pin
+    /// (`v2`), is refused before any connection, so no token or PIN goes out
+    /// unencrypted.
+    static func plaintextRefusal(url: URL, credential: String?, hubName: String) -> String? {
+        let advertised = url.scheme?.lowercased() == "wss"
+        let pinned = credential?.hasPrefix("v2.") == true
+        guard advertised || pinned else { return nil }
+        return "\(hubName) requires an encrypted connection, which the fallback client "
+            + "(-CoreTransport NO) cannot make. Nothing was sent. Run without -CoreTransport NO."
+    }
+
+    /// Dial `url` unless `plaintextRefusal` says no; then the session stays down.
+    private func dialClient(_ url: URL) {
+        let credential = tokens.token(forHub: hubID)
+        if let why = Self.plaintextRefusal(url: url, credential: credential, hubName: hubName) {
+            wantConnection = false
+            reconnectWork?.cancel()
+            reconnectWork = nil
+            errorSubject.send(why)
+            return
+        }
+        client.connect(to: url, clientName: clientName, token: credential)
     }
 
     /// Run now when already on the main thread (so tests and view actions see
@@ -129,7 +157,7 @@ final class NetworkTransport: DeviceTransport {
             guard moved || (reappeared && self.reconnectWork != nil) else { return }
             self.reconnectWork?.cancel()
             self.reconnectWork = nil
-            self.client.connect(to: url, clientName: self.clientName, token: self.tokens.token(forHub: self.hubID))
+            self.dialClient(url)   // -- WP SECSW --
         }
     }
 
@@ -272,8 +300,7 @@ final class NetworkTransport: DeviceTransport {
         let work = DispatchWorkItem { [weak self] in
             guard let self = self, self.wantConnection else { return }
             self.reconnectWork = nil
-            self.client.connect(to: url, clientName: self.clientName,
-                                token: self.tokens.token(forHub: self.hubID))
+            self.dialClient(url)   // -- WP SECSW --
         }
         reconnectWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
