@@ -12026,6 +12026,7 @@ struct DSPi_ConsoleApp: App {
                     MenuBarController.shared.reopenMainWindow = { openWindow(id: "main") }
                     ModeSettingsLink.openSettings = { openWindow(id: "settings") }   // -- WP P1SW2F --
                     CoreSnapshots.shared.installKeyMonitor()   // -- WP P1SW1 -- the A/B key
+                    _ = HubServerModel.shared   // -- WP P2SW -- the hub's alarm notices from the start
                     // -- WP P1SW1 -- `-ShowSnapshots YES`: the window at launch (screenshots)
                     if UserDefaults.standard.bool(forKey: "ShowSnapshots") {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { SnapshotsWindowController.shared.show() }
@@ -12236,6 +12237,15 @@ struct DSPi_ConsoleApp: App {
                 // -- WP P1SW1 -- snapshots, A/B (key: B) and the safe apply
                 Button("Snapshots...") {
                     SnapshotsWindowController.shared.show()
+                }
+
+                // -- WP P2SW -- the events (this console's, and the hub's history), Identify
+                Button("Events...") {
+                    EventsWindowController.shared.show()
+                }
+
+                Button("Identify Device") {
+                    HubServerModel.shared.identify()
                 }
 
                 // STM32H723 firmware cannot self-reboot into a USB bootloader
