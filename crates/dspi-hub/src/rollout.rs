@@ -27,10 +27,10 @@
 //! the boot ROM only ([`Writer`], over P3PB's `picoboot_flash_confirmed`), and the hub
 //! never writes the core voltage: it reads it back.
 //!
-//! **Stricter than a console, on purpose:** a device under an installer lock (P1HL) is
-//! refused (`installer_lock`) even for an Admin, who could otherwise pass the lock; a
-//! device under any session's device lock is `locked`; any pending guarded apply is
-//! `conflict`. A rollout is never retried and nothing is recalled after it.
+//! **The locks:** the installer lock (P1HL) judges the bootloader entry as any write, so
+//! the Admin principal passes it, as an Admin's write does; a device under any session's
+//! device lock is `locked`; any pending guarded apply is `conflict`. A rollout is never
+//! retried and nothing is recalled after it.
 //!
 //! Records live in `<data>/rollout.json` (the newest [`MAX_RECORDS`]), atomic, 0600, the
 //! corrupt-file rule (`rollout.json.bad-<time>`). The images: [`images`].
