@@ -1950,6 +1950,30 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2043,6 +2067,10 @@ fun uniffi_dspi_core_checksum_func_link_phase_texts(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_ws_url(
 ): Short
+fun uniffi_dspi_core_checksum_func_measure_doc_info(
+): Short
+fun uniffi_dspi_core_checksum_func_mic_import(
+): Short
 fun uniffi_dspi_core_checksum_func_mode_manifest(
 ): Short
 fun uniffi_dspi_core_checksum_func_notice_for(
@@ -2068,6 +2096,10 @@ fun uniffi_dspi_core_checksum_func_quantize_delay(
 fun uniffi_dspi_core_checksum_func_quantize_gain(
 ): Short
 fun uniffi_dspi_core_checksum_func_quantize_master_volume(
+): Short
+fun uniffi_dspi_core_checksum_func_target_builtins(
+): Short
+fun uniffi_dspi_core_checksum_func_target_import(
 ): Short
 fun uniffi_dspi_core_checksum_func_template_list(
 ): Short
@@ -2566,6 +2598,22 @@ fun uniffi_dspi_core_checksum_method_dspicore_load_params(
 fun uniffi_dspi_core_checksum_method_dspicore_load_preset(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_max_delay_ms(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_delete(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_get(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_note(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_put(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_rename(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_docs(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_set_dir(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measurement_export_rew(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_meter_ballistics(
 ): Short
@@ -3509,6 +3557,22 @@ fun uniffi_dspi_core_fn_method_dspicore_load_preset(`ptr`: Pointer,`slot`: Byte,
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_max_delay_ms(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
+fun uniffi_dspi_core_fn_method_dspicore_measure_doc_delete(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_measure_doc_get(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_doc_note(`ptr`: Pointer,`id`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_doc_put(`ptr`: Pointer,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_doc_rename(`ptr`: Pointer,`id`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_docs(`ptr`: Pointer,`kind`: RustBuffer.ByValue,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_measurement_export_rew(`ptr`: Pointer,`doc`: RustBuffer.ByValue,`output`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_meter_ballistics(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_mode_pinned(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -4019,6 +4083,10 @@ fun uniffi_dspi_core_fn_func_link_phase_texts(uniffi_out_err: UniffiRustCallStat
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_ws_url(`host`: RustBuffer.ByValue,`port`: Short,`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_measure_doc_info(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_mic_import(`name`: RustBuffer.ByValue,`fileName`: RustBuffer.ByValue,`fileText`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_mode_manifest(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_notice_for(`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4045,6 +4113,10 @@ fun uniffi_dspi_core_fn_func_quantize_gain(`db`: Float,uniffi_out_err: UniffiRus
 ): Float
 fun uniffi_dspi_core_fn_func_quantize_master_volume(`db`: Float,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
+fun uniffi_dspi_core_fn_func_target_builtins(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_target_import(`name`: RustBuffer.ByValue,`fileText`: RustBuffer.ByValue,`targetUse`: RustBuffer.ByValue,`coupler`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_template_list(`userDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_template_text(`id`: RustBuffer.ByValue,`userDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4304,6 +4376,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_link_ws_url() != 18495.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_func_measure_doc_info() != 31814.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_mic_import() != 41178.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_mode_manifest() != 33369.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4341,6 +4419,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_quantize_master_volume() != 60674.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_target_builtins() != 60162.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_target_import() != 29831.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_template_list() != 58721.toShort()) {
@@ -5088,6 +5172,30 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_doc_delete() != 44561.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_doc_get() != 30110.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_doc_note() != 38929.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_doc_put() != 44620.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_doc_rename() != 10961.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_docs() != 14119.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_set_dir() != 18664.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measurement_export_rew() != 45126.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_meter_ballistics() != 35146.toShort()) {
@@ -9920,6 +10028,83 @@ public interface DspiCoreInterface {
      * 1024 samples). Read from the mirror; never fails.
      */
     fun `maxDelayMs`(): kotlin.Float
+    
+    /**
+     * Delete filed document `id`. Errors as [`DspiCore::measure_doc_get`].
+     */
+    fun `measureDocDelete`(`id`: kotlin.String)
+    
+    /**
+     * Filed document `id`'s text.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, one two
+     * folders hold, or a damaged document (set aside); [`DspiError::Io`]
+     * with no folder named; [`DspiError::Unsupported`] on the web.
+     */
+    fun `measureDocGet`(`id`: kotlin.String): kotlin.String
+    
+    /**
+     * Set filed document `id`'s note; any Unicode, cut to 4096 characters.
+     * Errors as [`DspiCore::measure_doc_rename`].
+     */
+    fun `measureDocNote`(`id`: kotlin.String, `note`: kotlin.String): MeasureDocInfo
+    
+    /**
+     * File a measurement, microphone or target document (validated by its
+     * kind's reader) as a new document; a filed document is never
+     * overwritten. Its own id is kept when free, else one is made from its
+     * time. A measurement that names no device takes the open device's
+     * serial.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+     * document of the family (a preset or a snapshot among them), or a
+     * measurement with no serial and no device open; [`DspiError::Io`] with
+     * no folder named, a failed write, or a full store (100 measurements a
+     * device, 32 microphones, 64 targets, 64 MiB);
+     * [`DspiError::Unsupported`] on the web.
+     */
+    fun `measureDocPut`(`text`: kotlin.String): MeasureDocInfo
+    
+    /**
+     * Rename filed document `id`; any Unicode, cut to 256 characters.
+     * Errors as [`DspiCore::measure_doc_get`], and [`DspiError::Io`].
+     */
+    fun `measureDocRename`(`id`: kotlin.String, `name`: kotlin.String): MeasureDocInfo
+    
+    /**
+     * The filed documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind): by kind, then oldest first. Measurements of device
+     * `serial` only ("" every device's). No folder named (and the web) is
+     * an empty list; a damaged index is rebuilt from the documents and a
+     * damaged document set aside (the corrupt-file rule).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+    fun `measureDocs`(`kind`: kotlin.String, `serial`: kotlin.String): List<MeasureDocInfo>
+    
+    /**
+     * Keep measurement, microphone and target documents in files under
+     * `dir`, the client's own data folder (created if missing): a folder per
+     * device serial for measurements, `mic/` and `target/`, each with an
+     * index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+    fun `measureSetDir`(`dir`: kotlin.String)
+    
+    /**
+     * Output `output`'s measured response as REW text ("Import frequency
+     * response"): `doc` is a filed measurement's id or a measurement
+     * document's text (the web's way). Frequency, dB and the wrapped phase
+     * where measured; a header with the name, the output and the
+     * microphone. Derived curves only (S12).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a measurement, or an output it does not hold; as
+     * [`DspiCore::measure_doc_get`] for an id.
+     */
+    fun `measurementExportRew`(`doc`: kotlin.String, `output`: kotlin.UByte): kotlin.String
     
     /**
      * The meter ballistics' timing (`SystemStatus.peak_hold`, `clip_hold`).
@@ -17131,6 +17316,169 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_max_delay_ms(
         it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Delete filed document `id`. Errors as [`DspiCore::measure_doc_get`].
+     */
+    @Throws(DspiException::class)override fun `measureDocDelete`(`id`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_doc_delete(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Filed document `id`'s text.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, one two
+     * folders hold, or a damaged document (set aside); [`DspiError::Io`]
+     * with no folder named; [`DspiError::Unsupported`] on the web.
+     */
+    @Throws(DspiException::class)override fun `measureDocGet`(`id`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_doc_get(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Set filed document `id`'s note; any Unicode, cut to 4096 characters.
+     * Errors as [`DspiCore::measure_doc_rename`].
+     */
+    @Throws(DspiException::class)override fun `measureDocNote`(`id`: kotlin.String, `note`: kotlin.String): MeasureDocInfo {
+            return FfiConverterTypeMeasureDocInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_doc_note(
+        it, FfiConverterString.lower(`id`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * File a measurement, microphone or target document (validated by its
+     * kind's reader) as a new document; a filed document is never
+     * overwritten. Its own id is kept when free, else one is made from its
+     * time. A measurement that names no device takes the open device's
+     * serial.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+     * document of the family (a preset or a snapshot among them), or a
+     * measurement with no serial and no device open; [`DspiError::Io`] with
+     * no folder named, a failed write, or a full store (100 measurements a
+     * device, 32 microphones, 64 targets, 64 MiB);
+     * [`DspiError::Unsupported`] on the web.
+     */
+    @Throws(DspiException::class)override fun `measureDocPut`(`text`: kotlin.String): MeasureDocInfo {
+            return FfiConverterTypeMeasureDocInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_doc_put(
+        it, FfiConverterString.lower(`text`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Rename filed document `id`; any Unicode, cut to 256 characters.
+     * Errors as [`DspiCore::measure_doc_get`], and [`DspiError::Io`].
+     */
+    @Throws(DspiException::class)override fun `measureDocRename`(`id`: kotlin.String, `name`: kotlin.String): MeasureDocInfo {
+            return FfiConverterTypeMeasureDocInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_doc_rename(
+        it, FfiConverterString.lower(`id`),FfiConverterString.lower(`name`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The filed documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind): by kind, then oldest first. Measurements of device
+     * `serial` only ("" every device's). No folder named (and the web) is
+     * an empty list; a damaged index is rebuilt from the documents and a
+     * damaged document set aside (the corrupt-file rule).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+    @Throws(DspiException::class)override fun `measureDocs`(`kind`: kotlin.String, `serial`: kotlin.String): List<MeasureDocInfo> {
+            return FfiConverterSequenceTypeMeasureDocInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_docs(
+        it, FfiConverterString.lower(`kind`),FfiConverterString.lower(`serial`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Keep measurement, microphone and target documents in files under
+     * `dir`, the client's own data folder (created if missing): a folder per
+     * device serial for measurements, `mic/` and `target/`, each with an
+     * index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+    @Throws(DspiException::class)override fun `measureSetDir`(`dir`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_set_dir(
+        it, FfiConverterString.lower(`dir`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Output `output`'s measured response as REW text ("Import frequency
+     * response"): `doc` is a filed measurement's id or a measurement
+     * document's text (the web's way). Frequency, dB and the wrapped phase
+     * where measured; a header with the name, the output and the
+     * microphone. Derived curves only (S12).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a measurement, or an output it does not hold; as
+     * [`DspiCore::measure_doc_get`] for an id.
+     */
+    @Throws(DspiException::class)override fun `measurementExportRew`(`doc`: kotlin.String, `output`: kotlin.UByte): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measurement_export_rew(
+        it, FfiConverterString.lower(`doc`),FfiConverterUByte.lower(`output`),_status)
 }
     }
     )
@@ -35292,6 +35640,84 @@ public object FfiConverterTypeLockState: FfiConverterRustBuffer<LockState> {
 
 
 /**
+ * One measurement, microphone or target document in a list
+ * ([`DspiCore::measure_docs`]).
+ */
+data class MeasureDocInfo (
+    /**
+     * The store's id, for the other calls ("" for a document not filed).
+     */
+    var `id`: kotlin.String, 
+    /**
+     * The kind: `measurement`, `mic` or `target`.
+     */
+    var `kind`: kotlin.String, 
+    /**
+     * The document's name; any Unicode.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * The user's note; any Unicode.
+     */
+    var `note`: kotlin.String, 
+    /**
+     * The measured device's serial (measurements only, else "").
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * When it was measured (a measurement) or filed (the others), ms since
+     * the Unix epoch; 0 when not known.
+     */
+    var `savedMs`: kotlin.Long, 
+    /**
+     * The document's size, bytes.
+     */
+    var `bytes`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureDocInfo: FfiConverterRustBuffer<MeasureDocInfo> {
+    override fun read(buf: ByteBuffer): MeasureDocInfo {
+        return MeasureDocInfo(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureDocInfo) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`note`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterLong.allocationSize(value.`savedMs`) +
+            FfiConverterULong.allocationSize(value.`bytes`)
+    )
+
+    override fun write(value: MeasureDocInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`note`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterLong.write(value.`savedMs`, buf)
+            FfiConverterULong.write(value.`bytes`, buf)
+    }
+}
+
+
+
+/**
  * One row of the merged snapshot list ([`DspiCore::snapshot_list_merged`]).
  */
 data class MergedSnapshot (
@@ -38551,6 +38977,112 @@ public object FfiConverterTypeSystemStatus: FfiConverterRustBuffer<SystemStatus>
             FfiConverterSequenceFloat.write(value.`peakHold`, buf)
             FfiConverterSequenceFloat.write(value.`peakMax`, buf)
             FfiConverterUInt.write(value.`clipHold`, buf)
+    }
+}
+
+
+
+/**
+ * A built-in target ([`target_builtins`]): defined by parameters in our own
+ * code, no third-party data (OD-P5p).
+ */
+data class TargetInfo (
+    /**
+     * The stable id a `target` document names it by (`flat`, `tilt`,
+     * `house`, `coupler-iec60318-4`, `coupler-flat-plate`, `coupler-hats`).
+     */
+    var `id`: kotlin.String, 
+    /**
+     * The display name (it says the curve is ours).
+     */
+    var `name`: kotlin.String, 
+    /**
+     * `speakers` or `headphones`.
+     */
+    var `targetUse`: kotlin.String, 
+    /**
+     * The coupler it is the default for (`iec60318_4`, `flatPlate`,
+     * `hats`), "" for a speaker target.
+     */
+    var `coupler`: kotlin.String, 
+    /**
+     * Its parameters with their defaults (none for a fixed curve).
+     */
+    var `params`: List<TargetParam>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTargetInfo: FfiConverterRustBuffer<TargetInfo> {
+    override fun read(buf: ByteBuffer): TargetInfo {
+        return TargetInfo(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeTargetParam.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TargetInfo) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`targetUse`) +
+            FfiConverterString.allocationSize(value.`coupler`) +
+            FfiConverterSequenceTypeTargetParam.allocationSize(value.`params`)
+    )
+
+    override fun write(value: TargetInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`targetUse`, buf)
+            FfiConverterString.write(value.`coupler`, buf)
+            FfiConverterSequenceTypeTargetParam.write(value.`params`, buf)
+    }
+}
+
+
+
+/**
+ * One parameter of a built-in target, with its default.
+ */
+data class TargetParam (
+    /**
+     * The parameter's name, as a `target` document's `params` holds it.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Its default value.
+     */
+    var `value`: kotlin.Double
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTargetParam: FfiConverterRustBuffer<TargetParam> {
+    override fun read(buf: ByteBuffer): TargetParam {
+        return TargetParam(
+            FfiConverterString.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TargetParam) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterDouble.allocationSize(value.`value`)
+    )
+
+    override fun write(value: TargetParam, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterDouble.write(value.`value`, buf)
     }
 }
 
@@ -43969,6 +44501,34 @@ public object FfiConverterSequenceTypeLinkTxtEntry: FfiConverterRustBuffer<List<
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeMeasureDocInfo: FfiConverterRustBuffer<List<MeasureDocInfo>> {
+    override fun read(buf: ByteBuffer): List<MeasureDocInfo> {
+        val len = buf.getInt()
+        return List<MeasureDocInfo>(len) {
+            FfiConverterTypeMeasureDocInfo.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureDocInfo>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureDocInfo.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureDocInfo>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureDocInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeMergedSnapshot: FfiConverterRustBuffer<List<MergedSnapshot>> {
     override fun read(buf: ByteBuffer): List<MergedSnapshot> {
         val len = buf.getInt()
@@ -44519,6 +45079,62 @@ public object FfiConverterSequenceTypeSpdifBufferStats: FfiConverterRustBuffer<L
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeSpdifBufferStats.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTargetInfo: FfiConverterRustBuffer<List<TargetInfo>> {
+    override fun read(buf: ByteBuffer): List<TargetInfo> {
+        val len = buf.getInt()
+        return List<TargetInfo>(len) {
+            FfiConverterTypeTargetInfo.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TargetInfo>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTargetInfo.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TargetInfo>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTargetInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTargetParam: FfiConverterRustBuffer<List<TargetParam>> {
+    override fun read(buf: ByteBuffer): List<TargetParam> {
+        val len = buf.getInt()
+        return List<TargetParam>(len) {
+            FfiConverterTypeTargetParam.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TargetParam>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTargetParam.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TargetParam>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTargetParam.write(it, buf)
         }
     }
 }
@@ -45248,6 +45864,48 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
+         * What a measurement, microphone or target document's text is: validated by
+         * its kind's reader (bounded, every number in range), and described as a
+         * list row. `bytes` is the text's size; `id` the document's own ("" when
+         * not filed). No I/O: the web's way to list the documents it keeps.
+         *
+         * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+         * document of the family (a preset, a snapshot, past its bound, damaged).
+         */
+    @Throws(DspiException::class) fun `measureDocInfo`(`text`: kotlin.String): MeasureDocInfo {
+            return FfiConverterTypeMeasureDocInfo.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_measure_doc_info(
+        FfiConverterString.lower(`text`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A `mic` document from a microphone's calibration file (miniDSP UMIK-1 or
+         * UMIK-2 text with its `Sens Factor` line, REW calibration text, or CSV),
+         * on the standard grid: the file's format, serial, sensitivity and gain,
+         * its angle (90° when the file name or a comment says so), the dB SPL scale
+         * its sensitivity implies (labelled approximate until a calibrator step),
+         * the file's name and SHA-256. Not filed: [`DspiCore::measure_doc_put`]
+         * files it. `name` "" names it after the vendor and serial, else the file.
+         *
+         * Errors: [`DspiError::InvalidArgument`] for a file that is not a
+         * calibration this build reads (past 1 MiB, binary, no point in range), the
+         * reason in words, never the file's contents.
+         */
+    @Throws(DspiException::class) fun `micImport`(`name`: kotlin.String, `fileName`: kotlin.String, `fileText`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_mic_import(
+        FfiConverterString.lower(`name`),FfiConverterString.lower(`fileName`),FfiConverterString.lower(`fileText`),_status)
+}
+    )
+    }
+    
+
+        /**
          * The mode manifest: modes, the locked-user state, screens and operations,
          * with their titles and defaults. No I/O.
          */ fun `modeManifest`(): ModeManifest {
@@ -45428,6 +46086,40 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_quantize_master_volume(
         FfiConverterFloat.lower(`db`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Every built-in target with its default parameters, in a stable order:
+         * flat, tilt and house for speakers, then each coupler's default.
+         */ fun `targetBuiltins`(): List<TargetInfo> {
+            return FfiConverterSequenceTypeTargetInfo.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_target_builtins(
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * A `target` document from a target file (REW or CSV text, a phase column
+         * and a sensitivity line ignored), on the standard grid, normalised at the
+         * default reference band (500 Hz to 2 kHz). `target_use` is `speakers` or
+         * `headphones`; `coupler` (`iec60318_4`, `flatPlate`, `hats`, or "") is kept
+         * for a headphone target only. Not filed: [`DspiCore::measure_doc_put`]
+         * files it.
+         *
+         * Errors: [`DspiError::InvalidArgument`] for an unknown use or coupler, or
+         * a file that is not a target this build reads.
+         */
+    @Throws(DspiException::class) fun `targetImport`(`name`: kotlin.String, `fileText`: kotlin.String, `targetUse`: kotlin.String, `coupler`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_target_import(
+        FfiConverterString.lower(`name`),FfiConverterString.lower(`fileText`),FfiConverterString.lower(`targetUse`),FfiConverterString.lower(`coupler`),_status)
 }
     )
     }

@@ -28,6 +28,9 @@ sha2 = "0.11"
 # -- WP S3 --
 # -- WP S4 --
 # -- WP S5 --
+# -- WP P5DOCK -- the measurement documents' model and bounds (measure_store.rs):
+# pure, wasm-clean, no I/O
+dspi-measure.workspace = true
 
 # -- WP P1LM --
 # The limits PIN's random salt, from the OS (files only: not on the web). The

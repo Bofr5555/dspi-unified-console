@@ -3998,6 +3998,83 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func maxDelayMs()  -> Float
     
     /**
+     * Delete filed document `id`. Errors as [`DspiCore::measure_doc_get`].
+     */
+    func measureDocDelete(id: String) throws 
+    
+    /**
+     * Filed document `id`'s text.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, one two
+     * folders hold, or a damaged document (set aside); [`DspiError::Io`]
+     * with no folder named; [`DspiError::Unsupported`] on the web.
+     */
+    func measureDocGet(id: String) throws  -> String
+    
+    /**
+     * Set filed document `id`'s note; any Unicode, cut to 4096 characters.
+     * Errors as [`DspiCore::measure_doc_rename`].
+     */
+    func measureDocNote(id: String, note: String) throws  -> MeasureDocInfo
+    
+    /**
+     * File a measurement, microphone or target document (validated by its
+     * kind's reader) as a new document; a filed document is never
+     * overwritten. Its own id is kept when free, else one is made from its
+     * time. A measurement that names no device takes the open device's
+     * serial.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+     * document of the family (a preset or a snapshot among them), or a
+     * measurement with no serial and no device open; [`DspiError::Io`] with
+     * no folder named, a failed write, or a full store (100 measurements a
+     * device, 32 microphones, 64 targets, 64 MiB);
+     * [`DspiError::Unsupported`] on the web.
+     */
+    func measureDocPut(text: String) throws  -> MeasureDocInfo
+    
+    /**
+     * Rename filed document `id`; any Unicode, cut to 256 characters.
+     * Errors as [`DspiCore::measure_doc_get`], and [`DspiError::Io`].
+     */
+    func measureDocRename(id: String, name: String) throws  -> MeasureDocInfo
+    
+    /**
+     * The filed documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind): by kind, then oldest first. Measurements of device
+     * `serial` only ("" every device's). No folder named (and the web) is
+     * an empty list; a damaged index is rebuilt from the documents and a
+     * damaged document set aside (the corrupt-file rule).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+    func measureDocs(kind: String, serial: String) throws  -> [MeasureDocInfo]
+    
+    /**
+     * Keep measurement, microphone and target documents in files under
+     * `dir`, the client's own data folder (created if missing): a folder per
+     * device serial for measurements, `mic/` and `target/`, each with an
+     * index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+    func measureSetDir(dir: String) throws 
+    
+    /**
+     * Output `output`'s measured response as REW text ("Import frequency
+     * response"): `doc` is a filed measurement's id or a measurement
+     * document's text (the web's way). Frequency, dB and the wrapped phase
+     * where measured; a header with the name, the output and the
+     * microphone. Derived curves only (S12).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a measurement, or an output it does not hold; as
+     * [`DspiCore::measure_doc_get`] for an id.
+     */
+    func measurementExportRew(doc: String, output: UInt8) throws  -> String
+    
+    /**
      * The meter ballistics' timing (`SystemStatus.peak_hold`, `clip_hold`).
      * Defaults: hold 1000 ms, then a fall of 0.5 full scale per second; clip
      * hold 10 000 ms after the last new clip. Never fails.
@@ -10050,6 +10127,133 @@ open func loadPreset(slot: UInt8)throws   {try rustCallWithError(FfiConverterTyp
 open func maxDelayMs() -> Float  {
     return try!  FfiConverterFloat.lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_max_delay_ms(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Delete filed document `id`. Errors as [`DspiCore::measure_doc_get`].
+     */
+open func measureDocDelete(id: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_doc_delete(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+}
+}
+    
+    /**
+     * Filed document `id`'s text.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, one two
+     * folders hold, or a damaged document (set aside); [`DspiError::Io`]
+     * with no folder named; [`DspiError::Unsupported`] on the web.
+     */
+open func measureDocGet(id: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_doc_get(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * Set filed document `id`'s note; any Unicode, cut to 4096 characters.
+     * Errors as [`DspiCore::measure_doc_rename`].
+     */
+open func measureDocNote(id: String, note: String)throws  -> MeasureDocInfo  {
+    return try  FfiConverterTypeMeasureDocInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_doc_note(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(note),$0
+    )
+})
+}
+    
+    /**
+     * File a measurement, microphone or target document (validated by its
+     * kind's reader) as a new document; a filed document is never
+     * overwritten. Its own id is kept when free, else one is made from its
+     * time. A measurement that names no device takes the open device's
+     * serial.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+     * document of the family (a preset or a snapshot among them), or a
+     * measurement with no serial and no device open; [`DspiError::Io`] with
+     * no folder named, a failed write, or a full store (100 measurements a
+     * device, 32 microphones, 64 targets, 64 MiB);
+     * [`DspiError::Unsupported`] on the web.
+     */
+open func measureDocPut(text: String)throws  -> MeasureDocInfo  {
+    return try  FfiConverterTypeMeasureDocInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_doc_put(self.uniffiClonePointer(),
+        FfiConverterString.lower(text),$0
+    )
+})
+}
+    
+    /**
+     * Rename filed document `id`; any Unicode, cut to 256 characters.
+     * Errors as [`DspiCore::measure_doc_get`], and [`DspiError::Io`].
+     */
+open func measureDocRename(id: String, name: String)throws  -> MeasureDocInfo  {
+    return try  FfiConverterTypeMeasureDocInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_doc_rename(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(name),$0
+    )
+})
+}
+    
+    /**
+     * The filed documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind): by kind, then oldest first. Measurements of device
+     * `serial` only ("" every device's). No folder named (and the web) is
+     * an empty list; a damaged index is rebuilt from the documents and a
+     * damaged document set aside (the corrupt-file rule).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+open func measureDocs(kind: String, serial: String)throws  -> [MeasureDocInfo]  {
+    return try  FfiConverterSequenceTypeMeasureDocInfo.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_docs(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),
+        FfiConverterString.lower(serial),$0
+    )
+})
+}
+    
+    /**
+     * Keep measurement, microphone and target documents in files under
+     * `dir`, the client's own data folder (created if missing): a folder per
+     * device serial for measurements, `mic/` and `target/`, each with an
+     * index. "" forgets the folder.
+     *
+     * Errors: [`DspiError::Io`] when the folder cannot be created;
+     * [`DspiError::Unsupported`] on the web (no files there).
+     */
+open func measureSetDir(dir: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_set_dir(self.uniffiClonePointer(),
+        FfiConverterString.lower(dir),$0
+    )
+}
+}
+    
+    /**
+     * Output `output`'s measured response as REW text ("Import frequency
+     * response"): `doc` is a filed measurement's id or a measurement
+     * document's text (the web's way). Frequency, dB and the wrapped phase
+     * where measured; a header with the name, the output and the
+     * microphone. Derived curves only (S12).
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown id, a document
+     * that is not a measurement, or an output it does not hold; as
+     * [`DspiCore::measure_doc_get`] for an id.
+     */
+open func measurementExportRew(doc: String, output: UInt8)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measurement_export_rew(self.uniffiClonePointer(),
+        FfiConverterString.lower(doc),
+        FfiConverterUInt8.lower(output),$0
     )
 })
 }
@@ -37997,6 +38201,164 @@ public func FfiConverterTypeLockState_lower(_ value: LockState) -> RustBuffer {
 
 
 /**
+ * One measurement, microphone or target document in a list
+ * ([`DspiCore::measure_docs`]).
+ */
+public struct MeasureDocInfo {
+    /**
+     * The store's id, for the other calls ("" for a document not filed).
+     */
+    public var id: String
+    /**
+     * The kind: `measurement`, `mic` or `target`.
+     */
+    public var kind: String
+    /**
+     * The document's name; any Unicode.
+     */
+    public var name: String
+    /**
+     * The user's note; any Unicode.
+     */
+    public var note: String
+    /**
+     * The measured device's serial (measurements only, else "").
+     */
+    public var serial: String
+    /**
+     * When it was measured (a measurement) or filed (the others), ms since
+     * the Unix epoch; 0 when not known.
+     */
+    public var savedMs: Int64
+    /**
+     * The document's size, bytes.
+     */
+    public var bytes: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The store's id, for the other calls ("" for a document not filed).
+         */id: String, 
+        /**
+         * The kind: `measurement`, `mic` or `target`.
+         */kind: String, 
+        /**
+         * The document's name; any Unicode.
+         */name: String, 
+        /**
+         * The user's note; any Unicode.
+         */note: String, 
+        /**
+         * The measured device's serial (measurements only, else "").
+         */serial: String, 
+        /**
+         * When it was measured (a measurement) or filed (the others), ms since
+         * the Unix epoch; 0 when not known.
+         */savedMs: Int64, 
+        /**
+         * The document's size, bytes.
+         */bytes: UInt64) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.note = note
+        self.serial = serial
+        self.savedMs = savedMs
+        self.bytes = bytes
+    }
+}
+
+#if compiler(>=6)
+extension MeasureDocInfo: Sendable {}
+#endif
+
+
+extension MeasureDocInfo: Equatable, Hashable {
+    public static func ==(lhs: MeasureDocInfo, rhs: MeasureDocInfo) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.note != rhs.note {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.savedMs != rhs.savedMs {
+            return false
+        }
+        if lhs.bytes != rhs.bytes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(kind)
+        hasher.combine(name)
+        hasher.combine(note)
+        hasher.combine(serial)
+        hasher.combine(savedMs)
+        hasher.combine(bytes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureDocInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureDocInfo {
+        return
+            try MeasureDocInfo(
+                id: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                savedMs: FfiConverterInt64.read(from: &buf), 
+                bytes: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureDocInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterInt64.write(value.savedMs, into: &buf)
+        FfiConverterUInt64.write(value.bytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocInfo_lift(_ buf: RustBuffer) throws -> MeasureDocInfo {
+    return try FfiConverterTypeMeasureDocInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocInfo_lower(_ value: MeasureDocInfo) -> RustBuffer {
+    return FfiConverterTypeMeasureDocInfo.lower(value)
+}
+
+
+/**
  * One row of the merged snapshot list ([`DspiCore::snapshot_list_merged`]).
  */
 public struct MergedSnapshot {
@@ -44665,6 +45027,223 @@ public func FfiConverterTypeSystemStatus_lower(_ value: SystemStatus) -> RustBuf
 
 
 /**
+ * A built-in target ([`target_builtins`]): defined by parameters in our own
+ * code, no third-party data (OD-P5p).
+ */
+public struct TargetInfo {
+    /**
+     * The stable id a `target` document names it by (`flat`, `tilt`,
+     * `house`, `coupler-iec60318-4`, `coupler-flat-plate`, `coupler-hats`).
+     */
+    public var id: String
+    /**
+     * The display name (it says the curve is ours).
+     */
+    public var name: String
+    /**
+     * `speakers` or `headphones`.
+     */
+    public var targetUse: String
+    /**
+     * The coupler it is the default for (`iec60318_4`, `flatPlate`,
+     * `hats`), "" for a speaker target.
+     */
+    public var coupler: String
+    /**
+     * Its parameters with their defaults (none for a fixed curve).
+     */
+    public var params: [TargetParam]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The stable id a `target` document names it by (`flat`, `tilt`,
+         * `house`, `coupler-iec60318-4`, `coupler-flat-plate`, `coupler-hats`).
+         */id: String, 
+        /**
+         * The display name (it says the curve is ours).
+         */name: String, 
+        /**
+         * `speakers` or `headphones`.
+         */targetUse: String, 
+        /**
+         * The coupler it is the default for (`iec60318_4`, `flatPlate`,
+         * `hats`), "" for a speaker target.
+         */coupler: String, 
+        /**
+         * Its parameters with their defaults (none for a fixed curve).
+         */params: [TargetParam]) {
+        self.id = id
+        self.name = name
+        self.targetUse = targetUse
+        self.coupler = coupler
+        self.params = params
+    }
+}
+
+#if compiler(>=6)
+extension TargetInfo: Sendable {}
+#endif
+
+
+extension TargetInfo: Equatable, Hashable {
+    public static func ==(lhs: TargetInfo, rhs: TargetInfo) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.targetUse != rhs.targetUse {
+            return false
+        }
+        if lhs.coupler != rhs.coupler {
+            return false
+        }
+        if lhs.params != rhs.params {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(targetUse)
+        hasher.combine(coupler)
+        hasher.combine(params)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTargetInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TargetInfo {
+        return
+            try TargetInfo(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                targetUse: FfiConverterString.read(from: &buf), 
+                coupler: FfiConverterString.read(from: &buf), 
+                params: FfiConverterSequenceTypeTargetParam.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TargetInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.targetUse, into: &buf)
+        FfiConverterString.write(value.coupler, into: &buf)
+        FfiConverterSequenceTypeTargetParam.write(value.params, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTargetInfo_lift(_ buf: RustBuffer) throws -> TargetInfo {
+    return try FfiConverterTypeTargetInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTargetInfo_lower(_ value: TargetInfo) -> RustBuffer {
+    return FfiConverterTypeTargetInfo.lower(value)
+}
+
+
+/**
+ * One parameter of a built-in target, with its default.
+ */
+public struct TargetParam {
+    /**
+     * The parameter's name, as a `target` document's `params` holds it.
+     */
+    public var name: String
+    /**
+     * Its default value.
+     */
+    public var value: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The parameter's name, as a `target` document's `params` holds it.
+         */name: String, 
+        /**
+         * Its default value.
+         */value: Double) {
+        self.name = name
+        self.value = value
+    }
+}
+
+#if compiler(>=6)
+extension TargetParam: Sendable {}
+#endif
+
+
+extension TargetParam: Equatable, Hashable {
+    public static func ==(lhs: TargetParam, rhs: TargetParam) -> Bool {
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(value)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTargetParam: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TargetParam {
+        return
+            try TargetParam(
+                name: FfiConverterString.read(from: &buf), 
+                value: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TargetParam, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterDouble.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTargetParam_lift(_ buf: RustBuffer) throws -> TargetParam {
+    return try FfiConverterTypeTargetParam.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTargetParam_lower(_ value: TargetParam) -> RustBuffer {
+    return FfiConverterTypeTargetParam.lower(value)
+}
+
+
+/**
  * Settings of the UART control interface.
  */
 public struct UartConfig {
@@ -50930,6 +51509,31 @@ fileprivate struct FfiConverterSequenceTypeLinkTxtEntry: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeMeasureDocInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureDocInfo]
+
+    public static func write(_ value: [MeasureDocInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureDocInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureDocInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureDocInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureDocInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMergedSnapshot: FfiConverterRustBuffer {
     typealias SwiftType = [MergedSnapshot]
 
@@ -51422,6 +52026,56 @@ fileprivate struct FfiConverterSequenceTypeSpdifBufferStats: FfiConverterRustBuf
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeSpdifBufferStats.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTargetInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [TargetInfo]
+
+    public static func write(_ value: [TargetInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTargetInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TargetInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TargetInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTargetInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTargetParam: FfiConverterRustBuffer {
+    typealias SwiftType = [TargetParam]
+
+    public static func write(_ value: [TargetParam], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTargetParam.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TargetParam] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TargetParam]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTargetParam.read(from: &buf))
         }
         return seq
     }
@@ -52063,6 +52717,44 @@ public func linkWsUrl(host: String, port: UInt16, path: String) -> String  {
 })
 }
 /**
+ * What a measurement, microphone or target document's text is: validated by
+ * its kind's reader (bounded, every number in range), and described as a
+ * list row. `bytes` is the text's size; `id` the document's own ("" when
+ * not filed). No I/O: the web's way to list the documents it keeps.
+ *
+ * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+ * document of the family (a preset, a snapshot, past its bound, damaged).
+ */
+public func measureDocInfo(text: String)throws  -> MeasureDocInfo  {
+    return try  FfiConverterTypeMeasureDocInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_func_measure_doc_info(
+        FfiConverterString.lower(text),$0
+    )
+})
+}
+/**
+ * A `mic` document from a microphone's calibration file (miniDSP UMIK-1 or
+ * UMIK-2 text with its `Sens Factor` line, REW calibration text, or CSV),
+ * on the standard grid: the file's format, serial, sensitivity and gain,
+ * its angle (90° when the file name or a comment says so), the dB SPL scale
+ * its sensitivity implies (labelled approximate until a calibrator step),
+ * the file's name and SHA-256. Not filed: [`DspiCore::measure_doc_put`]
+ * files it. `name` "" names it after the vendor and serial, else the file.
+ *
+ * Errors: [`DspiError::InvalidArgument`] for a file that is not a
+ * calibration this build reads (past 1 MiB, binary, no point in range), the
+ * reason in words, never the file's contents.
+ */
+public func micImport(name: String, fileName: String, fileText: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_func_mic_import(
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(fileName),
+        FfiConverterString.lower(fileText),$0
+    )
+})
+}
+/**
  * The mode manifest: modes, the locked-user state, screens and operations,
  * with their titles and defaults. No I/O.
  */
@@ -52215,6 +52907,37 @@ public func quantizeMasterVolume(db: Float) -> Float  {
     return try!  FfiConverterFloat.lift(try! rustCall() {
     uniffi_dspi_core_fn_func_quantize_master_volume(
         FfiConverterFloat.lower(db),$0
+    )
+})
+}
+/**
+ * Every built-in target with its default parameters, in a stable order:
+ * flat, tilt and house for speakers, then each coupler's default.
+ */
+public func targetBuiltins() -> [TargetInfo]  {
+    return try!  FfiConverterSequenceTypeTargetInfo.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_target_builtins($0
+    )
+})
+}
+/**
+ * A `target` document from a target file (REW or CSV text, a phase column
+ * and a sensitivity line ignored), on the standard grid, normalised at the
+ * default reference band (500 Hz to 2 kHz). `target_use` is `speakers` or
+ * `headphones`; `coupler` (`iec60318_4`, `flatPlate`, `hats`, or "") is kept
+ * for a headphone target only. Not filed: [`DspiCore::measure_doc_put`]
+ * files it.
+ *
+ * Errors: [`DspiError::InvalidArgument`] for an unknown use or coupler, or
+ * a file that is not a target this build reads.
+ */
+public func targetImport(name: String, fileText: String, targetUse: String, coupler: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_func_target_import(
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(fileText),
+        FfiConverterString.lower(targetUse),
+        FfiConverterString.lower(coupler),$0
     )
 })
 }
@@ -52474,6 +53197,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_link_ws_url() != 18495) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_func_measure_doc_info() != 31814) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_mic_import() != 41178) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_func_mode_manifest() != 33369) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -52511,6 +53240,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_quantize_master_volume() != 60674) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_target_builtins() != 60162) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_target_import() != 29831) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_template_list() != 58721) {
@@ -53258,6 +53993,30 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_doc_delete() != 44561) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_doc_get() != 30110) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_doc_note() != 38929) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_doc_put() != 44620) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_doc_rename() != 10961) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_docs() != 14119) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_set_dir() != 18664) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measurement_export_rew() != 45126) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_meter_ballistics() != 35146) {

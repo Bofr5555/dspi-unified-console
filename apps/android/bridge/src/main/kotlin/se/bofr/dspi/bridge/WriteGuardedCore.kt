@@ -1438,7 +1438,21 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "hubFirmwareDelete",
             "hubRollouts",
             "hubRolloutCancel",
-            "hubRolloutStepNotice"
+            "hubRolloutStepNotice",
+            // -- WP P5DOCK -- the measurement documents: the app's files and
+            // stateless parsers; nothing is sent to the device
+            "measureSetDir",
+            "measureDocs",
+            "measureDocGet",
+            "measureDocPut",
+            "measureDocRename",
+            "measureDocNote",
+            "measureDocDelete",
+            "measurementExportRew",
+            "measureDocInfo",
+            "micImport",
+            "targetImport",
+            "targetBuiltins"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */
