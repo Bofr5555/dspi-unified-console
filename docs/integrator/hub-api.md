@@ -43,6 +43,8 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | built (P3RO; the writer P3PB) |
 
 <!-- WP P3FRZ: slot for P3WGR's and P3WRO's own marks on rows 19 to 21 (their web screens), added by them or at merge -->
+The web console's screens for rows 19 and 20 (groups, the action bar, bulk apply, fleet history) are P3WGR's, and row 21's
+(the image store and the rollout) P3WRO's: built, merged 2026-11-16 (review p3d).
 
 ---
 

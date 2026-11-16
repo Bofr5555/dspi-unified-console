@@ -362,7 +362,7 @@ e2e against the in-process hub with the demo device: a threshold from the rules 
 acknowledges, counters shown when the hub gives them and the column hidden when not, no sideways scroll at 375 px.
 **Deps:** P3HB (P3-A), P2CC1/P2CC2 (merged). **Clients:** web.
 
-**P3WGR: Web: groups, linked parameters, bulk apply, fleet history.** [TODO] Size 3. Wave P3-D. **Owns:** new
+**P3WGR: Web: groups, linked parameters, bulk apply, fleet history.** [DONE 2026-11-16] Size 3. Wave P3-D. **Owns:** new
 `apps/web/src/screens/hub/Groups.tsx`, `GroupActions.tsx`, `BulkApply.tsx`, `FleetHistory.tsx`, `groups-model.ts`,
 `test/unit/hub_p3wgr.test.ts`, `test/e2e/hub_p3wgr.spec.ts`. **Implements:** F8's group half: a groups editor (Admin:
 name, note, members picked from the inventory; others read), a group action bar (volume with per-member offsets shown
@@ -374,7 +374,7 @@ a group made, a volume with an offset set on two demo devices and both rows show
 guarded bulk apply confirmed and another cancelled with both reverting, the fleet history shows the writes with the
 client's name, Control sees the editor read-only, 375 px. **Deps:** P3CC (P3-C). **Clients:** web.
 
-**P3WRO: Web: the firmware rollout.** [TODO] Size 2.5. Wave P3-D. **Owns:** new `apps/web/src/screens/hub/Rollout.tsx`,
+**P3WRO: Web: the firmware rollout.** [DONE 2026-11-16] Size 2.5. Wave P3-D. **Owns:** new `apps/web/src/screens/hub/Rollout.tsx`,
 `rollout-model.ts`, `test/unit/hub_p3wro.test.ts`, `test/e2e/hub_p3wro.spec.ts`. **Implements:** F8's rollout half,
 Admin only: the image list with version, platform, 1.20 V stamp and `verified` / "not verified" (the core's SECFWV
 label), a file picker that uploads through `hub_firmware_put` (progress; 8 MiB refused before upload); start on a device
@@ -407,7 +407,7 @@ commands over the services, `uconsole api` already generic. **Done when:** comma
 the demo device and the fake writer: a group set and listed, an image added and listed with its label, a rollout started
 from the prompt and its result printed, exit codes for `denied` and `tls_required`. **Deps:** P3GR, P3RO (P3-A, P3-B).
 
-**P3FRZ: The freeze.** [TODO] Size 0.75. Wave P3-D. **Owns:** `hub-api.md`'s header and section 1.2 ("v1 frozen
+**P3FRZ: The freeze.** [DONE 2026-11-16] Size 0.75. Wave P3-D. **Owns:** `hub-api.md`'s header and section 1.2 ("v1 frozen
 <date>: additive only; a breaking change is `/api/v2/` and new message types"), the built marks of sections 19 to 21
 once P3RS has merged, `docs/integrator/security.md` (one subsection: the rollout, what it does, TLS only, verified
 images, the guard with no typist, what the hub never does), `docs/integrator/hub.md` (the `--rollout` and
