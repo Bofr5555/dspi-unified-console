@@ -78,6 +78,7 @@ private func swm3Setup(_ name: String, usb: Bool = false) -> CoreHubService.Setu
     setup.web = false
     setup.usb = usb
     setup.defaults = defaults
+    setup.tls = .off   // -- WP P2SW -- these clients speak plaintext (ws://), on loopback
     return setup
 }
 
@@ -258,6 +259,12 @@ final class CoreHubSWM3Tests: XCTestCase {
         // The Local Network check: every interface, as the app's hub listens.
         if env["DSPI_SWM3_LAN"] == "1" { setup.loopback = false }
         let service = CoreHubService(devices: .demo, setup: setup, discovery: SWM3Advertiser())
+        // -- WP P2SW -- off the loopback the hub requires TLS; HB7's Swift
+        // LinkClient speaks plaintext, as an upstream client: the compatibility mode
+        if !setup.loopback {
+            service.setUpstreamCompat(true)
+            service.confirmUpstreamCompat()
+        }
         service.hubName = "HB7 on the Mac app"
         service.setSharing(true)
         swm3Wait(10, "the hub running") { service.isRunning }
