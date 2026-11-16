@@ -36,6 +36,9 @@ struct ConsoleNotice: Equatable {
     let action: String
     /// What happened, in this app's words (may be empty).
     let detail: String
+    // -- WP P2SW --
+    /// A hub alarm's id: the host offers Acknowledge (`NoticeCenter.acknowledge`).
+    var alarmID: String = ""
 
     /// The row in one line, "Title: reason" (no detail).
     var sentence: String { reason.isEmpty ? title : "\(title): \(reason)" }
@@ -88,13 +91,15 @@ struct ConsoleNotice: Equatable {
         ConsoleNotice(key: "", kind: kind, title: title, reason: text, action: "", detail: "")
     }
 
-    init(key: String, kind: Kind, title: String, reason: String, action: String, detail: String) {
+    init(key: String, kind: Kind, title: String, reason: String, action: String, detail: String,
+         alarmID: String = "") {   // -- WP P2SW -- alarmID
         self.key = key
         self.kind = kind
         self.title = title
         self.reason = reason
         self.action = action
         self.detail = detail
+        self.alarmID = alarmID
     }
 
     init(_ n: Notice) {
@@ -244,6 +249,10 @@ final class NoticeCenter: ObservableObject {
     /// -- WP P1SW3F -- F4: hosts on screen.  An info notice's time runs only
     /// while one shows it; with none it waits.
     private(set) var visibleHosts = 0
+    // -- WP P2SW --
+    /// What Acknowledge on a hub alarm's notice does (`HubServerModel`); nil
+    /// offers none.
+    var acknowledge: ((String) -> Void)?
 
     init(infoSeconds: TimeInterval = NoticeCenter.infoSeconds) {
         self.infoSeconds = infoSeconds
@@ -364,6 +373,15 @@ struct NoticeHost: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 Spacer(minLength: 0)
+                // -- WP P2SW -- a hub alarm: acknowledge it on the hub
+                if !n.alarmID.isEmpty, let ack = center.acknowledge {
+                    Button("Acknowledge") {
+                        ack(n.alarmID)
+                        center.dismiss()
+                    }
+                    .controlSize(.small)
+                    .accessibilityIdentifier("noticeAcknowledge")
+                }
                 if !center.waiting.isEmpty {
                     Text("+\(center.waiting.count)")
                         .font(.caption.monospacedDigit())

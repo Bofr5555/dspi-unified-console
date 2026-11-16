@@ -50,6 +50,8 @@ use crate::{
     AccessMode, DeviceState, Hub, HubConfig, HubError, HubEvent, HubHandle, HubListener,
     NetworkConfig, NetworkControl, PairedClient, RegisteredDevice, Role, SavedHub,
 };
+// -- WP P2SW --
+use crate::server::{TlsInfo, TlsMode};
 
 /// What a hub is called when nobody has named it.
 const DEFAULT_HUB_NAME: &str = "DSPi Hub";
@@ -198,7 +200,108 @@ impl From<HubClientRole> for Role {
     }
 }
 
-/// What a start is given.
+// -- WP P2SW --
+/// The hub's TLS mode, as `uconsole hub --tls` takes it. [`hub_default_start_options`]
+/// says [`HubTls::Require`], as `uconsole hub` and the Qt app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum HubTls {
+    /// Plaintext only, and no key is made: for a loopback hub (tests, HB7's
+    /// conformance client). On a network address every protection TLS gives is off
+    /// ([`HubSecurityEffects::tls_off`]).
+    Off,
+    /// TLS and plaintext on one port. Plaintext pairing and API keys are refused,
+    /// unless [`HubStartOptions::upstream_compat`].
+    On,
+    /// TLS only: a plaintext client is told `tls_required`.
+    Require,
+}
+
+impl From<HubTls> for TlsMode {
+    fn from(t: HubTls) -> Self {
+        match t {
+            HubTls::Off => TlsMode::Off,
+            HubTls::On => TlsMode::On,
+            HubTls::Require => TlsMode::Require,
+        }
+    }
+}
+
+impl From<TlsMode> for HubTls {
+    fn from(t: TlsMode) -> Self {
+        match t {
+            TlsMode::Off => HubTls::Off,
+            TlsMode::On => HubTls::On,
+            TlsMode::Require => HubTls::Require,
+        }
+    }
+}
+
+// -- WP P2SW --
+/// The hub's optional services (`service.rs`'s switches), each off unless asked for
+/// (PLAN-P2 review S8): a Mac that shares its devices runs none of them by default.
+/// The snapshot store, `hub.stats`, notifications out and MQTT are not switches: the
+/// first two are DSPi Link's own families, the last two do nothing until an Admin sets
+/// up a target. Schedules need the parameter API (feature `api`), which this build
+/// does not carry.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Record)]
+pub struct HubServices {
+    /// The health poll and device facts (`health.get`).
+    pub health: bool,
+    /// Every DSPi ever attached (`inventory.*`, `inventory.json`).
+    pub inventory: bool,
+    /// `device.identify`.
+    pub identify: bool,
+    /// The shared event history (`event.*`, `events/`).
+    pub history: bool,
+    /// Device alarms (`alarm.*`, `alarms.json`).
+    pub alarms: bool,
+    /// Groups (`group.*`, `groups.json`).
+    pub groups: bool,
+}
+
+// -- WP P2SW --
+/// What a downgraded hub turns off, one sentence each, for the large warning an app
+/// shows before the user turns it on and while it is on (the hub's own lists).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HubSecurityEffects {
+    /// The upstream compatibility mode's effects (`UPSTREAM_COMPAT_EFFECTS`).
+    pub upstream_compat: Vec<String>,
+    /// TLS off on a network address (`TLS_OFF_EFFECTS`).
+    pub tls_off: Vec<String>,
+}
+
+/// The hub's own lists of what a downgrade turns off. Needs no hub.
+#[uniffi::export]
+pub fn hub_security_effects() -> HubSecurityEffects {
+    let owned = |list: &[&str]| list.iter().map(|s| (*s).to_owned()).collect();
+    HubSecurityEffects {
+        upstream_compat: owned(crate::server::UPSTREAM_COMPAT_EFFECTS),
+        tls_off: owned(crate::server::TLS_OFF_EFFECTS),
+    }
+}
+
+/// The options a Mac app starts its hub with unless the user chose otherwise: the
+/// stored name, the standard port, PIN pairing, every interface, **TLS required**,
+/// no upstream compatibility, **no optional service**, no USB, no app, no web pages.
+#[uniffi::export]
+pub fn hub_default_start_options(store_dir: String) -> HubStartOptions {
+    HubStartOptions {
+        name: String::new(),
+        store_dir,
+        port: crate::DEFAULT_PORT,
+        access: HubAccess::Pin,
+        usb: false,
+        app: false,
+        loopback: false,
+        web: false,
+        mdns_name: None,
+        tls: HubTls::Require,
+        upstream_compat: false,
+        services: HubServices::default(),
+    }
+}
+
+/// What a start is given. [`hub_default_start_options`] gives the defaults.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct HubStartOptions {
     /// "" takes the stored name, or a default; another is cleaned and stored.
@@ -222,6 +325,16 @@ pub struct HubStartOptions {
     /// This machine's mDNS `.local` name, which then counts as the hub itself for
     /// the web pages' `Origin` check. `None`: addresses only.
     pub mdns_name: Option<String>,
+    // -- WP P2SW --
+    /// TLS on the port, the web pages (`https://`) included. The key and certificate
+    /// are kept in `store_dir`, made at the first start that needs them.
+    pub tls: HubTls,
+    /// Upstream compatibility (owner-approved, off by default): with [`HubTls::On`]
+    /// only, PIN pairing and every API key over plaintext too, for upstream DSPi Link
+    /// clients. [`hub_security_effects`] lists what it turns off: ask the user first.
+    pub upstream_compat: bool,
+    /// The optional services, each off unless asked for.
+    pub services: HubServices,
 }
 
 /// What a start did.
@@ -237,6 +350,53 @@ pub struct HubStarted {
     pub access: HubAccess,
     /// Paired clients this start forgot (a change of access mode).
     pub tokens_revoked: u32,
+    // -- WP P2SW --
+    /// What the hub serves, TLS-wise.
+    pub security: HubSecurity,
+}
+
+// -- WP P2SW --
+/// What a running hub serves, TLS-wise, and which optional families answer.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HubSecurity {
+    /// The TLS mode.
+    pub tls: HubTls,
+    /// The upstream compatibility mode is on: show its warning while it is.
+    pub upstream_compat: bool,
+    /// The DNS-SD record carries `tls=1` (the hub's own rule: TLS served, and not in
+    /// the compatibility mode).
+    pub advertises_tls: bool,
+    /// The key's fingerprint as clients show it at pairing (`SHA256:XXXX-...`), while
+    /// TLS is served.
+    pub fingerprint: Option<String>,
+    /// The caps of every service the hub runs (`hello.caps`' service part).
+    pub services: Vec<String>,
+}
+
+impl HubSecurity {
+    fn none() -> Self {
+        Self {
+            tls: HubTls::Off,
+            upstream_compat: false,
+            advertises_tls: false,
+            fingerprint: None,
+            services: Vec::new(),
+        }
+    }
+
+    fn of(tls: &TlsInfo, handle: &HubHandle) -> Self {
+        Self {
+            tls: tls.policy.mode.into(),
+            upstream_compat: tls.policy.upstream_compat,
+            advertises_tls: tls.policy.serves_tls() && !tls.policy.upstream_compat,
+            fingerprint: tls.pin.as_ref().map(dspi_link::tls::SpkiHash::display),
+            services: handle
+                .service_caps()
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        }
+    }
 }
 
 /// Where the hub stands.
@@ -263,6 +423,9 @@ pub struct HubHostStatus {
     pub pairing_open: bool,
     /// How long it has left.
     pub pairing_expires_in_ms: u64,
+    // -- WP P2SW --
+    /// What it serves, TLS-wise.
+    pub security: HubSecurity,
 }
 
 impl HubHostStatus {
@@ -278,6 +441,8 @@ impl HubHostStatus {
             tokens_revoked: 0,
             pairing_open: false,
             pairing_expires_in_ms: 0,
+            // -- WP P2SW --
+            security: HubSecurity::none(),
         }
     }
 }
@@ -603,6 +768,12 @@ fn checked(options: &HubStartOptions) -> Result<(PathBuf, String), HubHostError>
             msg: "this build of the hub has no USB".to_owned(),
         });
     }
+    // -- WP P2SW -- the compatibility mode serves both: TLS on, never off or require
+    if options.upstream_compat && options.tls != HubTls::On {
+        return Err(HubHostError::Invalid {
+            msg: "upstream compatibility goes with TLS on (both), not off or require".to_owned(),
+        });
+    }
     Ok((
         PathBuf::from(&options.store_dir),
         clean_hub_name(&options.name),
@@ -620,9 +791,21 @@ fn config_for(options: &HubStartOptions, store_dir: PathBuf, name: &str) -> HubC
     if options.loopback {
         network.bind = IpAddr::V4(Ipv4Addr::LOCALHOST);
     }
+    // -- WP P2SW --
+    network.tls = options.tls.into();
+    network.upstream_compat = options.upstream_compat;
     let mut config = HubConfig::in_process(name);
     config.network = Some(network);
     config.initial_scan = false;
+    // -- WP P2SW -- the optional services, each off unless asked for
+    let asked = options.services;
+    let services = &mut config.services;
+    services.health = asked.health.then(crate::health::HealthConfig::default);
+    services.inventory = asked.inventory;
+    services.identify = asked.identify;
+    services.history = asked.history.then(crate::history::HistoryConfig::default);
+    services.alarms = asked.alarms;
+    services.groups = asked.groups;
     #[cfg(all(feature = "usb", not(target_os = "android")))]
     if options.usb {
         config.bus = Some(Box::new(crate::UsbBus::default()));
@@ -747,6 +930,8 @@ impl HubHost {
             port: control.port(),
             access: options.access,
             tokens_revoked,
+            // -- WP P2SW --
+            security: HubSecurity::of(&control.tls(), &handle),
         };
         *lock(&self.running) = Some(Running {
             hub,
@@ -856,7 +1041,37 @@ impl HubHost {
                 .pairing_expires
                 .filter(|_| open)
                 .map_or(0, |e| millis_until(e, now)),
+            // -- WP P2SW --
+            security: HubSecurity::of(&view.control.tls(), &view.handle),
         }
+    }
+
+    // -- WP P2SW --
+    /// The pairing link a QR code carries (`dspi://pair?h=..&a=<host>:<port>&k=..`,
+    /// with `&p=<pin>` when `pin` is not empty), for a client to pair with this hub
+    /// and pin its key in one step. `host` is the address the client will use. `None`
+    /// with no hub running, or with no TLS served (nothing to pin). Shows the PIN to
+    /// whoever sees it: only on the screen that shows the PIN.
+    pub fn pairing_link(&self, host: String, pin: String) -> Option<String> {
+        let view = self.view()?;
+        let tls = view.control.tls();
+        let key = tls.pin.as_ref()?;
+        let (host, pin) = (host.trim(), pin.trim());
+        let host_char =
+            |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']');
+        if host.is_empty()
+            || !host.chars().all(host_char)
+            || !pin.chars().all(|c| c.is_ascii_alphanumeric())
+        {
+            return None;
+        }
+        Some(crate::server::pair_link(
+            view.handle.hub_id(),
+            host,
+            view.control.port(),
+            key,
+            pin,
+        ))
     }
 
     /// The hub's devices, online and in their grace; empty with no hub running. Quick,
@@ -948,6 +1163,17 @@ impl Drop for HubHost {
         }
     }
 }
+
+// -- WP P2SW --
+#[cfg(test)]
+#[path = "ffi/tests_wp_p2sw.rs"]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+mod tests_wp_p2sw;
 
 #[cfg(test)]
 #[path = "ffi/tests_wp_swm3.rs"]

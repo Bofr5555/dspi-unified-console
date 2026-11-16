@@ -55,6 +55,10 @@ struct SnapshotsView: View {
                 if advanced { captureRow }
                 compareSection
                 listSection
+                // -- WP P2SW -- the hub's snapshots, over DSPi Link to a hub with the family
+                if snaps === CoreSnapshots.shared {
+                    SnapshotsHubSection(model: .shared, advanced: advanced)
+                }
                 if advanced { optionsSection }
             }
             if let notice = snaps.notice {

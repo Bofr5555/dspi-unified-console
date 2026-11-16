@@ -293,6 +293,9 @@ struct IOSRootView: View {
         // -- WP P1SW1 -- offline files and templates; the snapshots (a
         // half-height sheet) here too, so the iPhone's Tools menu keeps its length
         Button("Snapshots...") { SnapshotsSheet.show() }
+        // -- WP P2SW -- the events (this console's, and the hub's history), Identify
+        Button("Events...") { EventsSheet.show() }
+        Button("Identify Device") { HubServerModel.shared.identify() }
         Button("Open File...") { OfflineFiles.openFile() }
         Button("Open Template...") { OfflineFiles.showTemplates() }
         Button("Save File...") { OfflineFiles.saveFile() }
@@ -307,6 +310,7 @@ struct IOSRootView: View {
         // -- WP P1SW2F -- Snapshots > Change...: Settings over the console,
         // once the Snapshots sheet has gone.
         ModeSettingsLink.openSettings = { HalfSheet.dismiss { showSettings = true } }
+        _ = HubServerModel.shared   // -- WP P2SW -- the hub's alarm notices from the start
         // The setup wizard walks through real hardware (firmware, wiring);
         // the demo device has none, so demo launches go straight to the
         // console.
@@ -364,6 +368,7 @@ struct IOSRootView: View {
         case "autoeq":     autoEQ.show()
         case "graph":      graph.show(vm: vm)
         case "snapshots":  SnapshotsSheet.show()   // -- WP P1SW1 --
+        case "events":     EventsSheet.show()   // -- WP P2SW --
         case "mode":       installer.modeShown = true   // -- WP P1SW2 --
         case "whatsnew":   whatsNew.show()
         case "settings":   showSettings = true
