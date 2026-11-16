@@ -151,7 +151,7 @@ final class LinkBannerSW7Tests: XCTestCase {
 // MARK: - macOS: a fake-hub run
 
 /// The Swift hub's device: Swift's demo FakeTransport.
-private final class SW7FakeHubDevice: HubDevice {
+private final class SW7FakeHubDevice: DSPi_Console.HubDevice {   // -- review batch6 -- dspi_core has a HubDevice record too (P2CC1)
     let fake: FakeTransport
     let info: HubDeviceInfo
     var generation: UInt64 { fake.generation }
