@@ -73,7 +73,10 @@ open class FakeHubDspiCore(
     override fun hubCaps(): HubCaps = HubCaps(
         onHub = onHub, inventory = has("inventory"), identify = has("identify"), health = has("health"), events = has("events"),
         hubSnapshots = has("hub_snapshots"), paramApi = false, hubStats = false, alarms = has("alarms"), outbound = false,
-        schedule = false, mqtt = false, apiKeys = false, rest = false, caps = if (onHub) hubCaps.sorted() else emptyList()
+        schedule = false, mqtt = false, apiKeys = false, rest = false,
+        // -- WP P3CC -- the fleet families: none on this fake
+        groups = has("groups"), groupParams = has("group_params"), groupApply = has("group_apply"), rollout = has("rollout"),
+        caps = if (onHub) hubCaps.sorted() else emptyList()
     )
 
     override fun setHubServerListener(listener: HubServerListener?) {
@@ -142,7 +145,7 @@ open class FakeHubDspiCore(
     }
 
     private fun event(kind: String, record: HubEventRecord? = null, snapshot: String = "", change: String = "", alarm: HubAlarm? = null) =
-        HubServerEvent(kind, alarm?.serial ?: serial, record, null, snapshot, change, alarm, null)
+        HubServerEvent(kind, alarm?.serial ?: serial, record, null, snapshot, change, alarm, null, null, null)
 
     // ── Alarms ──
 

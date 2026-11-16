@@ -342,6 +342,21 @@ impl Record {
     fn to_json(&self) -> Value {
         serde_json::to_value(self).unwrap_or_else(|_| json!({"id": self.id}))
     }
+
+    // -- WP P3CC --
+    /// The device a change is about: the one running, else the last one that ran
+    /// (the members after a failure or a cancel are `not_tried`).
+    fn current(&self) -> Option<&DeviceEntry> {
+        self.devices
+            .iter()
+            .find(|d| d.state == "running")
+            .or_else(|| {
+                self.devices
+                    .iter()
+                    .rev()
+                    .find(|d| !matches!(d.state.as_str(), "pending" | "not_tried"))
+            })
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -612,9 +627,14 @@ impl Shared {
 
     /// `fw.rollout.changed` to every encrypted session.
     fn announce(&self, hub: &HubHandle, record: &Record) {
-        let text = json!({"t": CHANGED_EVENT, "v": VERSION, "hub": hub.hub_id(),
-            "rollout": record.to_json()})
-        .to_string();
+        let mut event = json!({"t": CHANGED_EVENT, "v": VERSION, "hub": hub.hub_id(),
+            "rollout": record.to_json()});
+        // -- WP P3CC -- the delta: the device whose entry changed, and its step
+        if let (Some(d), Some(m)) = (record.current(), event.as_object_mut()) {
+            m.insert("serial".into(), json!(d.serial));
+            m.insert("step".into(), json!(d.step));
+        }
+        let text = event.to_string();
         for s in hub.encrypted_sessions() {
             s.outbox().push_reliable(Outbound::Event(text.clone()));
         }

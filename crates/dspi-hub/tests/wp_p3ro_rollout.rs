@@ -55,7 +55,7 @@ struct Keep;
 
 impl log::Log for Keep {
     fn enabled(&self, m: &log::Metadata<'_>) -> bool {
-        !m.target().starts_with("tungstenite")
+        !m.target().starts_with("tungstenite") && !m.target().starts_with("rustls")
     }
     fn log(&self, r: &log::Record<'_>) {
         if self.enabled(r.metadata()) {

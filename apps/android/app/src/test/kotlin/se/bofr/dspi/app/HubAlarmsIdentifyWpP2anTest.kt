@@ -135,7 +135,7 @@ class HubAlarmsIdentifyWpP2anTest {
         assertTrue(core.calls.contains("hubAlarmAck:write"))
         // Raised again: not shown again
         core.serverListener?.onHubServerEvent(
-            se.bofr.dspi.core.HubServerEvent("alarm.changed", core.serial, null, null, "", "", a.copy(count = 2), null)
+            se.bofr.dspi.core.HubServerEvent("alarm.changed", core.serial, null, null, "", "", a.copy(count = 2), null, null, null)
         )
         rule.mainClock.advanceTimeBy(300)
         shadowOf(Looper.getMainLooper()).idle()

@@ -38,6 +38,10 @@
 //!
 //! The third section (WP P2CC3, [`manage`]): an Admin's inventory edits and
 //! forget, renaming the hub, and Identify for any device on the hub.
+//!
+//! The fourth section (WP P3CC, [`fleet`]): groups, group writes, bulk
+//! apply, the firmware image store and the rollout, with `group.changed` and
+//! `fw.rollout.changed` through the same listener.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -61,6 +65,17 @@ pub use admin::{
 // -- WP P2CC3 -- the hub's device and name writes
 pub mod manage;
 pub use manage::HubInventoryForgot;
+
+// -- WP P3CC -- the hub's fleet families (groups, group writes, bulk apply, rollout)
+pub mod fleet;
+pub use fleet::{
+    CAP_GROUP_APPLY, CAP_GROUP_PARAMS, CAP_GROUPS, CAP_ROLLOUT, FIRMWARE_MAX_BYTES,
+    GROUP_REQUEST_TIMEOUT_S, HUB_ERR_TLS_REQUIRED, HubFirmwareImage, HubFirmwareImages,
+    HubFirmwarePut, HubFleetTarget, HubGroup, HubGroupParams, HubGroupRow, HubGroupRun,
+    HubGroupSet, HubOffset, HubPresetPick, HubRollout, HubRolloutAfter, HubRolloutBefore,
+    HubRolloutDevice, HubRolloutFailed, HubRolloutStep, HubRolloutVreg, NOTICE_ROLLOUT_FAMILY,
+    NOTICE_ROLLOUT_UNKNOWN, ROLLOUT_STEPS, hub_rollout_step_notice,
+};
 
 /// Cap: `inventory.*` (hub-api.md section 3).
 pub const CAP_INVENTORY: &str = "inventory";
@@ -103,8 +118,10 @@ pub const HUB_ERR_DEVICE: &str = "device";
 /// them (`device.identify`, `snapshot.put`/`rename`/`note`/`delete`/`recall`,
 /// `inventory.set`/`forget`, `hub.rename`; P2CC2: `alarm.ack`,
 /// `alarm.rules.set`, `schedule.set`/`delete`/`run_now`, `outbound.set`/`test`,
-/// `mqtt.set`, `auth.mint`/`revoke`). `event.watch` only asks for events.
-pub const HUB_SERVER_READS: [&str; 15] = [
+/// `mqtt.set`, `auth.mint`/`revoke`; P3CC: `group.set`/`delete`,
+/// `group.param.set`, `group.preset.load`, `group.apply*`, `fw.image.put`/
+/// `delete`, `fw.rollout.start`/`cancel`). `event.watch` only asks for events.
+pub const HUB_SERVER_READS: [&str; 19] = [
     "inventory.list",
     "health.get",
     "hub.stats",
@@ -121,6 +138,11 @@ pub const HUB_SERVER_READS: [&str; 15] = [
     "mqtt.get",
     "mqtt.status",
     "auth.list",
+    // -- WP P3CC -- reads only
+    "group.list",
+    "group.param.get",
+    "fw.image.list",
+    "fw.rollout.status",
 ];
 
 /// [`MergedSnapshot::location`]: only in this console's store.
@@ -185,6 +207,15 @@ pub struct HubCaps {
     pub api_keys: bool,
     /// The REST mirror is on (the hub runs with `--rest`).
     pub rest: bool,
+    // -- WP P3CC --
+    /// `group.*` ([`DspiCore::hub_groups`]).
+    pub groups: bool,
+    /// `group.param.*`, `group.preset.load` ([`DspiCore::hub_group_param_set`]).
+    pub group_params: bool,
+    /// `group.apply*` ([`DspiCore::hub_group_apply`]).
+    pub group_apply: bool,
+    /// `fw.*` ([`DspiCore::hub_rollout_start`]; over TLS only).
+    pub rollout: bool,
     /// Every cap of the hub's `hello`, as it sent them.
     pub caps: Vec<String>,
 }
@@ -425,6 +456,13 @@ pub struct HubServerEvent {
     pub alarm: Option<HubAlarm>,
     /// `schedule.ran`'s run.
     pub run: Option<HubScheduleRun>,
+    // -- WP P3CC --
+    /// `group.changed`'s group (as it is now; as it was, for a delete);
+    /// [`HubServerEvent::change`] is `set`, `delete` or `forgot`.
+    pub group: Option<HubGroup>,
+    /// `fw.rollout.changed`'s whole record; [`HubServerEvent::serial`] is
+    /// the device whose entry changed, where the hub says.
+    pub rollout: Option<HubRollout>,
 }
 
 /// A snapshot on the hub with its document ([`DspiCore::hub_snapshots_get`]).
@@ -522,13 +560,16 @@ pub(crate) struct Events {
 
 /// The kinds of [`HubServerEvent`].
 #[cfg_attr(not(feature = "link"), allow(dead_code))]
-const KINDS: [&str; 5] = [
+const KINDS: [&str; 7] = [
     "event.added",
     "inventory.changed",
     "snapshot.changed",
     // -- WP P2CC2 --
     "alarm.changed",
     "schedule.ran",
+    // -- WP P3CC --
+    "group.changed",
+    "fw.rollout.changed",
 ];
 
 impl HubServerEvent {
@@ -566,6 +607,21 @@ impl HubServerEvent {
                 .map(device_from),
             snapshot: text(body.get("snapshot")),
             change: text(body.get("change")),
+            // -- WP P3CC --
+            group: (t == "group.changed")
+                .then(|| {
+                    body.get("group")
+                        .filter(|g| g.is_object())
+                        .map(fleet::group_from)
+                })
+                .flatten(),
+            rollout: (t == "fw.rollout.changed")
+                .then(|| {
+                    body.get("rollout")
+                        .filter(|r| r.is_object())
+                        .map(fleet::rollout_from)
+                })
+                .flatten(),
         })
     }
 }
@@ -886,6 +942,11 @@ fn caps_of(on_hub: bool, caps: Vec<String>) -> HubCaps {
         mqtt: has(CAP_MQTT),
         api_keys: has(CAP_API_KEYS),
         rest: has(CAP_REST),
+        // -- WP P3CC --
+        groups: has(CAP_GROUPS),
+        group_params: has(CAP_GROUP_PARAMS),
+        group_apply: has(CAP_GROUP_APPLY),
+        rollout: has(CAP_ROLLOUT),
         caps,
     }
 }

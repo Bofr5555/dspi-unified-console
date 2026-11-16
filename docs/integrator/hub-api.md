@@ -595,7 +595,7 @@ An alarm in this family:
 | `cpu` | warning | at or above `above_pct` for `for_s` | a reading under it, or detached | on, `above_pct` 90, `for_s` 10 |
 | `schedule_failed` | warning | a schedule's run with a failed action (`subject` the rule's id) | acknowledged | on |
 | `clock_unset` | warning | the hub's clock reads before its build date (2026-11-15 in this build); schedules wait | the clock is set | on |
-| `rollout_failed` | critical | a device's firmware rollout failed (section 21.3; `message` names the step) | a later rollout of the device ends `ok`, or the device attaches with the image's firmware (not after a failed verify: then only a rollout that ends `ok`); acknowledging keeps it on | always on: it has no rule, and `alarm.rules.*` do not list it (P3RO) |
+| `rollout_failed` | critical | a device's firmware rollout failed (section 21.3; `message` names the step) | a later rollout of the device ends `ok`, or the device attaches with the image's firmware (not after a failed verify: then only a rollout that ends `ok`); acknowledging keeps it on | always on: `alarm.rules.get` lists it (P3CC), and `alarm.rules.set` cannot turn its `on` off |
 
 Rules: `{"<code>": {"on": bool, ...thresholds}, "clip": {"on": true, "per_minute": 10, "mute_on_storm": false}, ...}`
 with the fields the table names: `after_s` (1 to 86400), `per_minute` (1 to 1000), `above_c` (0 to 150),
@@ -1061,17 +1061,17 @@ are percent-decoded (`device%3A3`).
 | `POST /api/v1/alarms/{id}/ack` | `alarm.ack` (P2AL's) |
 | `GET /api/v1/health?serial=` | `health.get` |
 
-<!-- WP P3DOC --> **The fleet's endpoints** (*draft: P3RS*, PLAN-P3 OD-P3l), within v1 and additive, each onto a message of
-sections 19 to 21 with its role, checks, answer and codes. `{id}` is a group's id (`g1`), `{run}` a bulk apply's run,
+<!-- WP P3DOC --> **The fleet's endpoints** (*built: P3RS*, `rest.rs`, tests `crates/dspi-hub/tests/wp_p3rs_rest.rs`;
+PLAN-P3 OD-P3l), within v1 and additive, each onto a message of sections 19 to 21 with its role, checks, answer and codes. `{id}` is a group's id (`g1`), `{run}` a bulk apply's run,
 `{rollout}` a rollout's id:
 
 | Method and path | Message |
 |---|---|
 | `GET /api/v1/groups` | `group.list` |
 | `GET /api/v1/groups/{id}` | `group.list {group: id}` (`404` `not_found` for an unknown group) |
-| `PUT /api/v1/groups/{id}/params/{path}?idx=0,1` body `{"value": ..., "offsets"?: {"<serial>": <dB>}}` | `group.param.set {group: id, ...}` (only `value` and `offsets` are taken from the body) |
+| `PUT /api/v1/groups/{id}/params/{path}?idx=0,1` body `{"value": ..., "offsets"?: {"<serial>": <dB>}}` | `group.param.set {group: id, ...}` (only `value` and `offsets` are taken from the body; the path takes `PUT` only: `group.param.get` has no REST path) |
 | `POST /api/v1/groups/{id}/presets/{n}/load` body `{"map"?: {"<serial>": <slot or name>}}` | `group.preset.load {group: id, slot: n, map?}` |
-| `POST /api/v1/groups/{id}/apply` body `{"snapshot"?: "<id>", "name"?: "...", "document"?: "...", "guard"?: true, "timeout_ms"?: n}` | `group.apply {group: id, ...}`; a document must fit the 64 KiB body cap (`413` otherwise): send a large one to the hub's store first and apply it by `snapshot` |
+| `POST /api/v1/groups/{id}/apply` body `{"snapshot"?: "<id>", "name"?: "...", "document"?: "...", "guard"?: true, "timeout_ms"?: n}` | `group.apply {group: id, ...}` (only these five are taken from the body); a document must fit the 64 KiB body cap (`413` otherwise): send a large one to the hub's store first and apply it by `snapshot` |
 | `POST /api/v1/runs/{run}/confirm` | `group.apply.confirm {run}` |
 | `POST /api/v1/runs/{run}/cancel` | `group.apply.cancel {run}` |
 | `GET /api/v1/rollouts` | `fw.rollout.status` (TLS only) |
@@ -1081,11 +1081,15 @@ sections 19 to 21 with its role, checks, answer and codes. `{id}` is a group's i
 - **A guarded group apply belongs to the key's session**, as a guarded recall does above: only the same key confirms or
   cancels its run, within the guards' deadlines and `rest_idle` of its last request; another key's
   `/runs/{run}/confirm` is `404` `not_found`, and the run reverts when the key's idle session closes.
-- **No rollout start and no image upload over REST** (OD-P3l): a `POST` or `PUT` on `/api/v1/rollouts...` or
-  `/api/v1/firmware...` is `405` with `Allow: GET`; there is no path for `fw.rollout.start`, `fw.rollout.cancel`,
-  `fw.image.put` or `fw.image.delete`. A flash is an Admin's act in a console, and the body cap stays 64 KiB.
-- **The firmware reads are TLS only** (section 21.1): over plaintext they are `426` with `code` `tls_required` in every
-  mode, a key minted `plaintext_ok` and upstream compatibility included.
+- **No rollout start and no image upload over REST** (OD-P3l): any method but `GET` on `/api/v1/rollouts`,
+  `/api/v1/firmware` or any path below them is `405` with `Allow: GET`; there is no path for `fw.rollout.start`,
+  `fw.rollout.cancel`, `fw.image.put` or `fw.image.delete`, and a `GET` on a path below them that is not
+  `/rollouts/{rollout}` is `404`. A flash is an Admin's act in a console, and the body cap stays 64 KiB.
+- **The firmware reads are TLS only** (section 21.1): over plaintext they are `426` with `code` `tls_required` and
+  `Upgrade: TLS/1.3` in every mode, a key minted `plaintext_ok` and upstream compatibility included. A key's one
+  session serves its plain and its TLS requests alike; each request is judged by its own connection.
+- **One group request at a time per session**, across `group.param.*`, `group.preset.load` and `group.apply*`
+  (`busy`, `503`); a key's requests already run one at a time.
 
 | Code | HTTP status |
 |---|---|
@@ -1097,6 +1101,7 @@ sections 19 to 21 with its role, checks, answer and codes. `{id}` is a group's i
 | a method a path does not take (with `Allow`) | 405 |
 | `conflict`, `offline` | 409 |
 | `locked` | 423 |
+| `tls_required` (an API key not minted `plaintext_ok` over plaintext, or a firmware read over plaintext; with `Upgrade: TLS/1.3`) | 426 |
 | `rate_limited` | 429 |
 | `internal`, any other code | 500 |
 | `unsupported`, `unknown_type` | 501 |
@@ -1151,9 +1156,11 @@ later). An embedder that passes a name at every start (`uconsole hub --name`) pu
 
 ## 16. Scripting
 
-*State: built (P2TM). `apps/terminal/src/api.rs` (`uconsole api`), `apps/terminal/src/hub.rs` (the hub's switches,
-`api-key`, the prompt), `crates/dspi-cmd/src/api.rs` (the line's grammar); examples in
-[`examples/`](examples/), run against a demo hub by `apps/terminal/tests/wp_p2tm_examples.rs`.*
+*State: built (P2TM; groups, firmware and the rollout: P3TM). `apps/terminal/src/api.rs` (`uconsole api`),
+`apps/terminal/src/hub.rs` (the hub's switches, `api-key`, the prompt), `apps/terminal/src/hub/fleet.rs` (groups,
+firmware and the rollout at the prompt, `firmware add|list` with the hub stopped), `crates/dspi-cmd/src/api.rs` (the
+line's grammar); examples in [`examples/`](examples/), run against a demo hub by
+`apps/terminal/tests/wp_p2tm_examples.rs`.*
 
 No script engine in the hub (OD-P2g): a script calls the API from outside, and every rule the hub enforces (role,
 limits, the lock, the voltage rule, attribution) applies to it as to a console.
@@ -1170,6 +1177,9 @@ A hub started by `uconsole hub` runs every family of this page. Each can be turn
 | `--no-history` | event history (section 6) | on |
 | `--no-alarms` | alarms (section 7) | on |
 | `--no-schedule` | schedules (section 12) | on |
+| `--no-groups` | groups (section 19; group writes and bulk apply, section 20, address them) | on |
+| `--rollout` | the firmware rollout (section 21); refused at the start when the hub would serve no TLS (`--tls off`, or `--loopback` without `--tls on`) | off |
+| `--allow-unverified-firmware` | with `--rollout`: images the release's manifest does not list may be flashed too (OD-P3e, the bench switch); the hub prints a large warning when it starts | off |
 | `--rest` | the REST mirror (section 14.2) | off |
 | `--data <dir>` | where the families keep their files | the `--store` folder |
 
@@ -1179,7 +1189,30 @@ always there; MQTT and notifications send nothing until an admin sets them up. A
 
 At a running hub's prompt (a terminal) the person at the hub's machine types `inventory`, `alarms` (those on),
 `schedule` (the rules and their next runs) and `api-key new <name> [viewer|control|admin]`, `api-key list`,
-`api-key revoke <cid>`. The reads go as a viewer principal named `Hub console`. With the hub stopped, the same keys from
+`api-key revoke <cid>`. The reads go as a viewer principal named `Hub console`.
+
+<!-- WP P3TM --> Groups, firmware and the rollout at the prompt, as the person at the hub's machine (`Hub console`; the
+reads as a viewer, the rest as an admin, each command a principal session of its own). Nothing the prompt sends
+crosses a network, so its session counts as encrypted and the rollout's TLS-only family serves it; every other rule
+of the family applies (roles, the checks of step 1, the firmware guard with nobody to type, the image store's checks):
+
+| At the prompt | Message |
+|---|---|
+| `groups` | `group.list` |
+| `group set [<id>] <name> <serial>...` (the name one word here; with `<id>` that group replaced whole) | `group.set` |
+| `group delete <id>` | `group.delete` |
+| `firmware list` (each image with `verified` or `NOT VERIFIED`, platform, version, stamp, size, SHA-256, who added it) | `fw.image.list` |
+| `firmware add <file.uf2>` (the image's name is the file's) | `fw.image.put`, in chunks |
+| `rollout <serial\|group:<id>> <image> [--while-live]` | `fw.rollout.start` |
+| `rollout status [<id>]` | `fw.rollout.status` |
+| `rollout cancel <id>` | `fw.rollout.cancel` |
+
+A started rollout runs on; the prompt prints each device's end as it happens (`rollout: <serial> updated to firmware
+<version>` or `rollout: <serial> FAILED at <step>: ...`; with `--json` an `rolloutEnded` object). A family that is off
+says so (`--no-groups`, no `--rollout`). With the hub stopped, `uconsole hub firmware add <file.uf2>` and `uconsole
+hub firmware list` (`--store`, and `--data` as the hub's) put an image into the store and list it, with the same
+checks as an upload and `added_by` `Hub console`; while the hub runs they are refused, as `api-key` is: type them at
+its prompt. With the hub stopped, the same keys from
 a shell: `uconsole hub api-key new|list|revoke` (with `--store` when it is not the default; while the hub runs these
 are refused, as `uconsole hub role` is, since the running hub holds its store). A key is minted with the control role
 unless another is named, and is shown **once**, in that answer only. `api-key revoke` revokes keys only; a console is
@@ -1205,7 +1238,7 @@ The exit status follows `code` (section 1.6), so a script branches on it:
 | 0 | `ok` |
 | 1 | the command line itself (no type, fields that are not a JSON object) |
 | 2 | `not_found`, `no_device` |
-| 3 | any other refusal: `conflict`, `confirmation_required`, `device`, the client read-only mode |
+| 3 | any other refusal: `conflict`, `confirmation_required`, `device`, `tls_required` (a `fw.*` message over plaintext, section 21.1), the client read-only mode |
 | 4 | no hub reached, `timeout`, the connection closed, `internal` |
 | 5 | `unauthenticated`, `denied` |
 | 6 | `offline` |
@@ -1218,6 +1251,8 @@ uconsole --hub api inventory.list
 uconsole --hub api param.get '{"serial": "E46058388B1A2E2C", "path": "vol.master"}'
 uconsole --hub --device E46058388B1A2E2C api preset.load '{"name": "Live"}'
 uconsole --hub api schedule.set - < doors-open.json
+uconsole --hub api group.list
+uconsole --hub api fw.rollout.status '{"rollout": "ro1"}'
 ```
 
 A refusal's fields beyond `code` and `msg` (`limit`, `retry_in_ms`) are not printed yet: the DSPi Link client keeps
@@ -1229,6 +1264,26 @@ only those two.
 - [`examples/hub_rest.py`](examples/hub_rest.py): Python over REST with an API key, standard library only.
 - [`examples/home-assistant.yaml`](examples/home-assistant.yaml): Home Assistant's `rest_command` and REST sensors for a
   hub without a broker (MQTT discovery, section 13, is the better fit where there is one).
+
+<!-- WP P3TM --> A firmware update with nobody at the rack, on the hub's machine (run by
+`apps/terminal/src/hub/tests_wp_p3tm.rs` against an in-process hub with a fake BOOTSEL scan and writer):
+
+```text
+$ uconsole hub --rollout
+> firmware add dspi-rp2350-1.2.0.uf2
+added dspi-rp2350-1.2.0.uf2  verified  RP2350  fw 1.2.0  1.20 V  630272 bytes  sha256 ...  added by Hub console
+> group set Racks E46058388B1A2E2C E6614103E7A1B2C3
+group created: g1  Racks  (2 members): E46058388B1A2E2C, E6614103E7A1B2C3
+> rollout group:g1 dspi-rp2350-1.2.0.uf2
+rollout ro1 started; it runs on, and each device's end is shown here (`rollout status ro1` for the record)
+rollout: E46058388B1A2E2C updated to firmware 1.2.0: ...
+rollout: E6614103E7A1B2C3 updated to firmware 1.2.0: ...
+```
+
+A device that is not muted is refused (`confirmation_required`) unless the line ends `--while-live`: its audio stops
+for about 30 s. From a console elsewhere, an admin uses `uconsole api` over TLS (`fw.*` is refused over plaintext,
+exit status 3); a control or viewer console gets `denied` (5) for `fw.rollout.start`, and may read
+`fw.rollout.status` and `fw.image.list`.
 
 <!-- WP SECDOC --> All three examples work against a hub that requires TLS, and are run so by
 `apps/terminal/tests/wp_secdoc_examples.rs` (and over plaintext by `wp_p2tm_examples.rs`):
@@ -1337,7 +1392,7 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `fw.rollout.start` | request, TLS only | admin | `rollout` | 21.3 (built: P3RO) |
 | `fw.rollout.status` | request, TLS only | viewer | `rollout` | 21.3 (built: P3RO) |
 | `fw.rollout.cancel` | request, TLS only | admin | `rollout` | 21.3 (built: P3RO) |
-| `fw.rollout.changed` | event, encrypted sessions only | | `rollout` | 21.3 (built: P3RO) |
+| `fw.rollout.changed` | event, encrypted sessions only | | `rollout`, `serial`, `step` | 21.3 (built: P3RO; `serial`, `step`: P3CC) |
 
 ## 19. Groups
 
@@ -1631,7 +1686,9 @@ An image:
 | `fw.rollout.status` | viewer | `rollout?` (an id) | `rollouts`: the records, newest first (64 kept), or the one asked (`not_found` otherwise) |
 | `fw.rollout.cancel` | admin | `rollout` | `rollout`: the record as it is now |
 
-Event to every encrypted session: `fw.rollout.changed {v, hub, rollout}`, the whole record, at every step.
+Event to every encrypted session: `fw.rollout.changed {v, hub, rollout, serial?, step?}`, the whole record, at every
+step; `serial` and `step` (P3CC) name the device whose entry changed (the one running, else the last one that ran) and
+its step, so a client need not compare records.
 
 `fw.rollout.start` answers after steps 1 and 2 of its first device (a few hundred milliseconds). A refused start
 answers its code, touches nothing, leaves no record and raises no alarm. After `ok` the rollout runs on its own:
@@ -1743,5 +1800,8 @@ What the code does where the text above leaves room, or is stricter than it:
   `picoboot_flash_confirmed` (tests inject fakes there). `serves_tls` is set by the hub from its TLS mode.
   `dspi_hub::rollout::images::add_file` is the image store's way in from the hub's machine (P3TM's
   `uconsole hub firmware add`), with the upload's checks.
-- **Not yet in the core's lists:** `rollout_failed` has no row in the core's `ALARM_CODES` and notices
-  (`alarm.rollout_failed`) until P3CC adds them; it is therefore kept out of `device_alarms::CODES` and the rules.
+- **In the core's lists (P3CC):** `rollout_failed` is in the core's `ALARM_CODES` with its notice row
+  `alarm.rollout_failed`, and in `device_alarms::CODES`, so `alarm.rules.get` lists it; its `on` stays true whatever
+  `alarm.rules.set` says. Each step has a notice row `rollout.<step>` (`hub_rollout_step_notice`).
+- **The core's calls (P3CC):** `dspi_core::hub_server::fleet` has a typed call for every message of sections 19 to 21
+  (`hub_groups`, `hub_group_set`, ..., `hub_rollout_cancel`), through C, UniFFI and the web binding.

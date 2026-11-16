@@ -1316,6 +1316,66 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_events_read(void*_Nonnull ptr
 void uniffi_dspi_core_fn_method_dspicore_hub_events_watch(void*_Nonnull ptr, int8_t on, RustBuffer serial, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_FIRMWARE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_FIRMWARE_DELETE
+void uniffi_dspi_core_fn_method_dspicore_hub_firmware_delete(void*_Nonnull ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_FIRMWARE_IMAGES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_FIRMWARE_IMAGES
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_firmware_images(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_FIRMWARE_PUT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_FIRMWARE_PUT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_firmware_put(void*_Nonnull ptr, RustBuffer name, RustBuffer bytes, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_APPLY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_APPLY
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_group_apply(void*_Nonnull ptr, RustBuffer target, RustBuffer snapshot, RustBuffer name, RustBuffer document, int8_t guard, uint32_t timeout_ms, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_APPLY_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_APPLY_CANCEL
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_group_apply_cancel(void*_Nonnull ptr, RustBuffer run, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_APPLY_CONFIRM
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_APPLY_CONFIRM
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_group_apply_confirm(void*_Nonnull ptr, RustBuffer run, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_DELETE
+void uniffi_dspi_core_fn_method_dspicore_hub_group_delete(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_PARAM_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_PARAM_GET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_group_param_get(void*_Nonnull ptr, RustBuffer target, RustBuffer path, RustBuffer idx, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_PARAM_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_PARAM_SET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_group_param_set(void*_Nonnull ptr, RustBuffer target, RustBuffer path, RustBuffer idx, RustBuffer value, RustBuffer offsets, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_PRESET_LOAD
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_PRESET_LOAD
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_group_preset_load(void*_Nonnull ptr, RustBuffer target, RustBuffer slot, RustBuffer name, RustBuffer map, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUP_SET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_group_set(void*_Nonnull ptr, RustBuffer group, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUPS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_GROUPS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_groups(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_HEALTH
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_HEALTH
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_health(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -1409,6 +1469,21 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_pin_set(void*_Nonnull ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_RENAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_RENAME
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_rename(void*_Nonnull ptr, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ROLLOUT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ROLLOUT_CANCEL
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_rollout_cancel(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ROLLOUT_START
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ROLLOUT_START
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_rollout_start(void*_Nonnull ptr, RustBuffer target, RustBuffer image, int8_t while_live, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ROLLOUTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_ROLLOUTS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_rollouts(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_SCHEDULE_DELETE
@@ -2862,6 +2937,11 @@ RustBuffer uniffi_dspi_core_fn_func_firmware_guard_check(RustBuffer image, RustB
 RustBuffer uniffi_dspi_core_fn_func_hub_alarm_notice(RustBuffer alarm, RustBuffer time, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_HUB_ROLLOUT_STEP_NOTICE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_HUB_ROLLOUT_STEP_NOTICE
+RustBuffer uniffi_dspi_core_fn_func_hub_rollout_step_notice(RustBuffer step, RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_KNOWN_FEATURE_NAMES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_KNOWN_FEATURE_NAMES
 RustBuffer uniffi_dspi_core_fn_func_known_feature_names(RustCallStatus *_Nonnull out_status
@@ -3471,6 +3551,12 @@ uint16_t uniffi_dspi_core_checksum_func_firmware_guard_check(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_HUB_ALARM_NOTICE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_HUB_ALARM_NOTICE
 uint16_t uniffi_dspi_core_checksum_func_hub_alarm_notice(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_HUB_ROLLOUT_STEP_NOTICE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_HUB_ROLLOUT_STEP_NOTICE
+uint16_t uniffi_dspi_core_checksum_func_hub_rollout_step_notice(void
     
 );
 #endif
@@ -4632,6 +4718,78 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_events_watch(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_FIRMWARE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_FIRMWARE_DELETE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_firmware_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_FIRMWARE_IMAGES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_FIRMWARE_IMAGES
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_firmware_images(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_FIRMWARE_PUT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_FIRMWARE_PUT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_firmware_put(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_APPLY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_APPLY
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_group_apply(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_APPLY_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_APPLY_CANCEL
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_group_apply_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_APPLY_CONFIRM
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_APPLY_CONFIRM
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_group_apply_confirm(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_DELETE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_group_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_PARAM_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_PARAM_GET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_group_param_get(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_PARAM_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_PARAM_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_group_param_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_PRESET_LOAD
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_PRESET_LOAD
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_group_preset_load(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_SET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUP_SET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_group_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUPS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_GROUPS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_groups(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_HEALTH
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_HEALTH
 uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_health(void
@@ -4743,6 +4901,24 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_pin_set(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_RENAME
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_RENAME
 uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_rename(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ROLLOUT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ROLLOUT_CANCEL
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_rollout_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ROLLOUT_START
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ROLLOUT_START
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_rollout_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ROLLOUTS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_ROLLOUTS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_rollouts(void
     
 );
 #endif

@@ -14,6 +14,12 @@
 // screen changes nothing on the device, so a shortcut is never a write: the
 // writes the keys of ui/keys.ts make go through the core, which refuses them
 // while read only or locked.
+//
+// -- WP WBCLIP -- Ctrl+C and Ctrl+V are the channel clipboard's (M45, the
+// Console's Edit menu with no text field focused): Copy and Paste Parameters on
+// the channel the EQ screen has chosen (screens/clipboard/model.ts). Paste is
+// the one write here, the core's, refused while read only or locked; a page
+// text selection or a text field keeps the browser's copy and paste.
 
 /** What a row does: open a screen, at an effect or a tool where the screen has several. */
 export interface OpenAction {
@@ -35,6 +41,9 @@ export interface ShortcutRow {
   handled?: "elsewhere";
   /** Listed only where this screen is shown (the graph keys: the EQ screen). */
   on?: string;
+  // -- WP WBCLIP --
+  /** The channel clipboard (M45): Copy or Paste Parameters on the channel the EQ screen has chosen. */
+  clip?: "copy" | "paste";
 }
 
 const effect = (id: string): OpenAction => ({ screen: "effects", at: { effect: id } });
@@ -43,6 +52,9 @@ export const SHORTCUTS: ShortcutRow[] = [
   { id: "file.openFile", text: "Open File…", menu: "File", key: "Ctrl+O", open: { screen: "files" } },
   { id: "edit.undo", text: "Undo", menu: "Edit", key: "Ctrl+Z", handled: "elsewhere" },
   { id: "edit.redo", text: "Redo", menu: "Edit", key: "Ctrl+Shift+Z", handled: "elsewhere" },
+  // -- WP WBCLIP -- the channel clipboard (M45), on the EQ screen's chosen channel as Qt's on the sidebar's
+  { id: "edit.copy", text: "Copy Parameters", menu: "Edit", key: "Ctrl+C", clip: "copy", on: "eq" },
+  { id: "edit.paste", text: "Paste Parameters", menu: "Edit", key: "Ctrl+V", clip: "paste", on: "eq" },
   { id: "edit.settings", text: "Settings…", menu: "Edit", key: "Ctrl+,", open: { screen: "settings" } },
   { id: "device.commit", text: "Commit Parameters…", menu: "Device", key: "Ctrl+S", handled: "elsewhere" },
   { id: "device.revert", text: "Revert to Saved…", menu: "Device", key: "Ctrl+Shift+R", handled: "elsewhere" },
@@ -98,7 +110,7 @@ export function shortcutFor(e: KeyEv, apple: boolean, rows: ShortcutRow[] = SHOR
   const pressed = e.key.toLowerCase();
   const byCode = /^Key[A-Z]$/.test(e.code ?? "") ? e.code.slice(3).toLowerCase() : "";
   for (const r of rows) {
-    if (r.handled || (!r.open && !r.help)) continue;
+    if (r.handled || (!r.open && !r.help && !r.clip)) continue; // -- WP WBCLIP -- clip
     const p = parse(r.key);
     if (!p || p.cmd !== cmd) continue;
     if (r.help) {

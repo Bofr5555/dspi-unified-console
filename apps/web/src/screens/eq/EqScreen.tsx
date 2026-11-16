@@ -7,9 +7,13 @@
 // change; the graph draws only then. Edits go through the session (`write`
 // by registry path with the read-back), a drag's as fast as the device
 // answers, the newest winning. A read-only session shows it all, editing off.
+//
+// -- WP WBCLIP -- The Channel menu copies the chosen channel's parameters and
+// pastes them onto it (M45, screens/clipboard/model.ts); Ctrl/Cmd+C and +V do
+// the same while this screen is shown.
 
 import { memo } from "preact/compat";
-import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { DspState, FilterParams, OutputLabel } from "../../core/protocol";
 import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
@@ -32,6 +36,9 @@ import { inputLinks } from "../inputs/model";
 import { OverlayToggle, RtaOverlay, SpectrumStrip, tapNames } from "../analysis/SpectrumStrip";
 import { TAP_INPUT, TAP_OUTPUT } from "../analysis/analyser";
 import { identifyOutput } from "../analysis/siggen";
+// -- WP WBCLIP -- the channel clipboard (M45): the chosen channel's menu, and the keys act on it
+import { clipEntries, useClipboard } from "../clipboard/model";
+import { Menu } from "../main/Menu";
 import {
   DEFAULT_LIMITS,
   OFF_BAND,
@@ -180,6 +187,15 @@ const EqView = memo(
     useEffect(() => {
       if (chosen && chosen.wire !== wire) setWire(chosen.wire);
     }, [chosen, wire]);
+    // -- WP WBCLIP -- the channel Ctrl/Cmd+C and +V act on, while this screen is shown
+    // (a layout effect: set as the chosen channel shows, before a key can arrive)
+    const board = useClipboard(session);
+    useLayoutEffect(() => {
+      board.selected = cw;
+      return () => {
+        if (board.selected === cw) board.selected = null;
+      };
+    }, [board, cw]);
 
     // Which other channels' curves are shown (M58): this viewer's, in this view.
     const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
@@ -310,6 +326,8 @@ const EqView = memo(
             AutoEQ…
           </button>
           {/* -- WP WB6J -- the spectrum over the graph; on an output's page, Identify (M46) */}
+          {/* -- WP WBCLIP -- Copy and Paste Parameters, as the Console's channel menu */}
+          <Menu label="Channel" entries={clipEntries(board, cw, ro)} />
           <OverlayToggle session={session} />
           {chosen.output ? (
             <button type="button" class="output-identify" disabled={ro} title="Play counted blips on this output alone" onClick={() => void identifyOutput(session, chosen.index)}>

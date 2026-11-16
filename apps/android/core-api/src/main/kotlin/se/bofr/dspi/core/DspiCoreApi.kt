@@ -2379,6 +2379,206 @@ interface DspiCoreApi : AutoCloseable {
     fun hubApiKeyRevoke(cid: Long)
 
     /**
+     * The hub's groups, by id (`group.list`). Every role. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `groups` cap (nothing
+     * sent); [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    @Throws(DspiException::class)
+    fun hubGroups(): List<HubGroup>
+
+    /**
+     * Store `group` on the hub (`group.set`): without an id a new group,
+     * with one that group replaced whole (an empty note clears it). The
+     * hub's bounds: a name of 1 to 48 characters, a note of at most 256,
+     * at most 64 members, each an inventory serial and each once; 64 groups.
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] past a bound (`bad_request`);
+     * [`DspiError::Link`] `not_found` (a member not in the inventory, an
+     * unknown id), `conflict` (a 65th group); [`DspiError::Denied`] below
+     * Admin; [`DspiError::ReadOnly`] (nothing sent); as
+     * [`DspiCore::hub_groups`].
+     */
+    @Throws(DspiException::class)
+    fun hubGroupSet(group: HubGroup): HubGroupSet
+
+    /**
+     * Delete group `id` (`group.delete`; its id is never given again).
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an empty id (nothing sent);
+     * [`DspiError::Link`] `not_found`; as [`DspiCore::hub_group_set`].
+     */
+    @Throws(DspiException::class)
+    fun hubGroupDelete(id: String)
+
+    /**
+     * Read `path` (`idx` its indices) on every device of `target`
+     * (`group.param.get`): one row per member, in member order, each with
+     * its value or its code. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `group_params` cap
+     * (nothing sent); [`DspiError::InvalidArgument`] for a target that is
+     * both or neither (nothing sent) and the hub's `bad_request`;
+     * [`DspiError::Link`] `not_found` (the group), `busy` (this session's
+     * other group request runs); [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun hubGroupParamGet(target: HubFleetTarget, path: String, idx: List<Long>): HubGroupParams
+
+    /**
+     * Write `value` to `path` on every device of `target`, one after
+     * another as this console's child session (`group.param.set`): each
+     * judged on its own by role, limits and lock; a refused row stops no
+     * other. `offsets` (dB paths only) add to the value per member, clamped
+     * into that device's range (`clamped` in its row). Control or Admin.
+     * Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_group_param_get`];
+     * [`DspiError::InvalidArgument`] for a structured value (nothing sent),
+     * a value outside the registry's range, offsets on a path not in dB;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`] (nothing
+     * sent).
+     */
+    @Throws(DspiException::class)
+    fun hubGroupParamSet(target: HubFleetTarget, path: String, idx: List<Long>, value: ParamValue, offsets: List<HubOffset>): HubGroupParams
+
+    /**
+     * Load a preset on every device of `target` (`group.preset.load`): by
+     * `slot` (0 to 9) or by `name`, one of the two; `map` gives a member
+     * its own. One row per member, with the slot and name loaded. Control
+     * or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for both or neither of slot
+     * and name (nothing sent); as [`DspiCore::hub_group_param_set`].
+     */
+    @Throws(DspiException::class)
+    fun hubGroupPresetLoad(target: HubFleetTarget, slot: Int?, name: String, map: List<HubPresetPick>): List<HubGroupRow>
+
+    /**
+     * Apply one snapshot to every device of `target` (`group.apply`):
+     * exactly one of `snapshot` (an id in the hub's store), `name` (one
+     * snapshot's name in the store) or `document` (a snapshot document's
+     * text, at most 61 440 bytes compact). Each member is the hub's recall
+     * as this console's child session. With `guard`, one guarded apply per
+     * device (`timeout_ms` 1000 to 600 000; 0 for the hub's 30 s): confirm
+     * the run ([`DspiCore::hub_group_apply_confirm`]) or each reverts at its
+     * deadline. Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a source that is not
+     * exactly one, or a document that is no JSON object (nothing sent);
+     * [`DspiError::Link`] `conflict` for a document over the wire cap
+     * (nothing sent) and two snapshots of that name; `not_found`; as
+     * [`DspiCore::hub_group_param_set`] (cap `group_apply`).
+     */
+    @Throws(DspiException::class)
+    fun hubGroupApply(target: HubFleetTarget, snapshot: String, name: String, document: String, guard: Boolean, timeoutMs: Long): HubGroupRun
+
+    /**
+     * Keep every pending guard of bulk-apply run `run`
+     * (`group.apply.confirm`): one row per guard, `conflict` for one that
+     * had already reverted. Only the session that ran it. Control or Admin.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` (an unknown run, or another
+     * session's); as [`DspiCore::hub_group_apply`].
+     */
+    @Throws(DspiException::class)
+    fun hubGroupApplyConfirm(run: String): HubGroupRun
+
+    /**
+     * Revert every pending guard of run `run` now (`group.apply.cancel`):
+     * one row per guard, `reverted` set. Errors: as
+     * [`DspiCore::hub_group_apply_confirm`].
+     */
+    @Throws(DspiException::class)
+    fun hubGroupApplyCancel(run: String): HubGroupRun
+
+    /**
+     * The hub's firmware images (`fw.image.list`). Every role, over an
+     * encrypted session only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `rollout` cap (nothing
+     * sent); [`DspiError::Link`] `tls_required` over a plaintext session;
+     * [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun hubFirmwareImages(): HubFirmwareImages
+
+    /**
+     * Put firmware image `bytes` in the hub's store as `name` (`fw.image.put`,
+     * 36 KiB a chunk, one upload per session). The hub checks the whole
+     * image on the last chunk (`uf2_inspect`, the manifest by name and
+     * bytes). Nothing goes over a plaintext session: the store is read first
+     * (its `tls_required`). The bytes are never logged. Admin of the hub.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no bytes or more than
+     * [`FIRMWARE_MAX_BYTES`] (nothing sent), and the hub's `bad_request` (a
+     * name or image it refuses); [`DspiError::Link`] `conflict` (the name
+     * with other bytes; a fifth image), `busy` (an upload is open);
+     * [`DspiError::Denied`] below Admin; [`DspiError::ReadOnly`] (nothing
+     * sent); as [`DspiCore::hub_firmware_images`].
+     */
+    @Throws(DspiException::class)
+    fun hubFirmwarePut(name: String, bytes: List<Int>): HubFirmwarePut
+
+    /**
+     * Delete image `name` from the hub's store (`fw.image.delete`). Admin
+     * of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`, `conflict` (a running
+     * rollout uses it); as [`DspiCore::hub_firmware_put`].
+     */
+    @Throws(DspiException::class)
+    fun hubFirmwareDelete(name: String)
+
+    /**
+     * Start a firmware rollout of stored image `image` on `target`: one
+     * serial, or a group (one member after another, stopped at the first
+     * failure) (`fw.rollout.start`). The device must be muted unless
+     * `while_live`. The answer comes after the first device's check and
+     * guard steps; follow the rest with `fw.rollout.changed`
+     * ([`super::HubServerEvent::rollout`]) or [`DspiCore::hub_rollouts`].
+     * Admin of the hub, over an encrypted session. Slow: off the UI thread.
+     *
+     * Errors (nothing touched): [`DspiError::InvalidArgument`] for a target
+     * that is not one serial or one group (nothing sent);
+     * [`DspiError::Unsupported`] (not on the hub's own USB);
+     * [`DspiError::Locked`]; [`DspiError::ConfirmationRequired`] (not
+     * muted); [`DspiError::ImageRefused`] (another platform, not verified,
+     * the firmware guard's refusal); [`DspiError::Link`] `offline`,
+     * `conflict`, `busy`, `not_found`, `tls_required`; as
+     * [`DspiCore::hub_firmware_put`].
+     */
+    @Throws(DspiException::class)
+    fun hubRolloutStart(target: HubFleetTarget, image: String, whileLive: Boolean): HubRollout
+
+    /**
+     * The hub's rollouts, newest first (`fw.rollout.status`; the hub keeps
+     * 64), or only rollout `id` ("" for all). Every role, over an encrypted
+     * session. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` for an unknown id; as
+     * [`DspiCore::hub_firmware_images`].
+     */
+    @Throws(DspiException::class)
+    fun hubRollouts(id: String): List<HubRollout>
+
+    /**
+     * Cancel rollout `id` (`fw.rollout.cancel`): before the bootloader entry
+     * of the device it is working on, never during a flash. The record as
+     * it is now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `conflict` (past the entry, or ended),
+     * `not_found`; as [`DspiCore::hub_rollout_start`].
+     */
+    @Throws(DspiException::class)
+    fun hubRolloutCancel(id: String): HubRollout
+
+    /**
      * Set device `serial`'s location, note and tags in the hub's inventory
      * ("" the open device; `inventory.set`). Each `Some` replaces its field
      * and an empty one clears it (`Some("")`, `Some(vec![])`); `None` keeps
@@ -4941,6 +5141,16 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun hubAlarmNotice(alarm: HubAlarm, time: String): Notice
+
+    /**
+     * What to tell the user about a rollout's step: its row `rollout.<step>`
+     * (what the step does, and what to do when it fails there). A step this
+     * build does not know gets [`NOTICE_ROLLOUT_UNKNOWN`]'s row. The detail is
+     * `text` (the hub's line). No I/O.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun hubRolloutStepNotice(step: String, text: String): Notice
 
     /**
      * Every limits field's range, in the order an editor shows them (each

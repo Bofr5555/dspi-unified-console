@@ -287,6 +287,13 @@ pub use hub_server::{
 };
 // -- WP P2CC3 --
 pub use hub_server::HubInventoryForgot;
+// -- WP P3CC --
+pub use hub_server::{
+    HubFirmwareImage, HubFirmwareImages, HubFirmwarePut, HubFleetTarget, HubGroup, HubGroupParams,
+    HubGroupRow, HubGroupRun, HubGroupSet, HubOffset, HubPresetPick, HubRollout, HubRolloutAfter,
+    HubRolloutBefore, HubRolloutDevice, HubRolloutFailed, HubRolloutStep, HubRolloutVreg,
+    hub_rollout_step_notice,
+};
 // -- WP ROMODE --
 pub use read_only::{
     GUARD_PENDING, HUB_READS, NOTICE_READ_ONLY_CLIENT, NOTICE_READ_ONLY_GUARD_PENDING,

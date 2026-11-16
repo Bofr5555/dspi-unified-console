@@ -12,7 +12,7 @@
 //! | `cpu` | at or above `above_pct` for `for_s` | a reading under it | on, 90 % for 10 s |
 //! | `schedule_failed` | a schedule run with a failed action (`ScheduleRan`) | acknowledged | on |
 //! | `clock_unset` | the hub's wall clock reads before [`BUILD_FLOOR_S`] | the clock is set | on |
-//! | `rollout_failed` (WP P3RO) | a device's firmware rollout failed (`RolloutEnded`), critical | a later rollout of the device ends ok, or (unless it failed its verify) the device attaches with the image's firmware | always on: no rule |
+//! | `rollout_failed` (WP P3RO) | a device's firmware rollout failed (`RolloutEnded`), critical | a later rollout of the device ends ok, or (unless it failed its verify) the device attaches with the image's firmware | always on: listed in the rules (P3CC), its `on` cannot be turned off |
 //!
 //! **Mute on clip storm** (OD-P2n, off by default): while a `clip` storm (events) is on
 //! and the rule's `mute_on_storm` is set, the hub mutes the device once per storm, as one
@@ -82,7 +82,7 @@ pub const MESSAGES: [&str; 4] = [
     "alarm.rules.set",
 ];
 /// The codes of device alarms, in the order the rules list them.
-pub const CODES: [&str; 8] = [
+pub const CODES: [&str; 9] = [
     "device_offline",
     "unresponsive",
     "device_restarted",
@@ -91,10 +91,13 @@ pub const CODES: [&str; 8] = [
     "cpu",
     "schedule_failed",
     "clock_unset",
+    // -- WP P3CC -- now that the core lists it (its notice row `alarm.rollout_failed`)
+    ROLLOUT_FAILED,
 ];
 // -- WP P3RO --
-/// The firmware rollout's alarm (`hub-api.md` section 21.3). Not in [`CODES`]: it has
-/// no rule (it cannot be turned off) until the core lists it (P3CC's notice row).
+/// The firmware rollout's alarm (`hub-api.md` section 21.3). In [`CODES`] since P3CC, so
+/// `alarm.rules.get` lists it, but always on: its rule's `on` stays true whatever
+/// `alarm.rules.set` says.
 pub const ROLLOUT_FAILED: &str = "rollout_failed";
 /// `by` of the hub's mute on a clip storm (its history record).
 pub const MUTE_BY: &str = "Alarm rule: mute on clip storm";
@@ -242,6 +245,8 @@ impl Rules {
             let on = on
                 .as_bool()
                 .ok_or_else(|| format!("rules.{code}.on is not true or false"))?;
+            // -- WP P3CC -- `rollout_failed` cannot be turned off
+            let on = on || code == ROLLOUT_FAILED;
             rule.insert("on".into(), Value::Bool(on));
         }
         for (name, kind, _) in spec(code) {
