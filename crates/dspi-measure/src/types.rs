@@ -132,10 +132,16 @@ pub struct BandSpec {
     pub qp: f32,
 }
 
-/// One output channel's processing as the measurement maths models it: what
-/// the generator's signal passes through after it is injected (the PEQ bank,
-/// the crossover bank, output gain and delay; the polarity of the crosspoints
-/// that feed it). Master and user volume are a common gain and left out.
+/// One output channel's processing **after the generator's injection point**:
+/// the PEQ bank, the crossover bank, output gain and delay. This is the
+/// *measured chain* a measurement is de-embedded with (PLAN-P5 section 1.1).
+///
+/// The generator **replaces** the matrix mix on the outputs it plays
+/// (`audio_pipeline.c:503-536`), so crosspoint gain and crosspoint polarity are
+/// not in its path; they are in [`ChannelChain::feed`], used only to predict
+/// programme audio (review RC1). Master and user volume are a common gain and
+/// left out; processing the maths does not model (crossfeed, bass, tube,
+/// subharmonic, loudness, limiter) is refused by the preflight (RC2).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelChain {
@@ -147,7 +153,21 @@ pub struct ChannelChain {
     pub gain_db: f32,
     /// Output delay, ms.
     pub delay_ms: f32,
-    /// The output's polarity is inverted (its feeding crosspoints).
+    /// How programme audio reaches this output through the matrix: **not**
+    /// in the generator's path.
+    pub feed: ProgrammeFeed,
+}
+
+/// How programme audio reaches an output through the matrix (the crosspoints
+/// that feed it). The generator bypasses this; a prediction of what programme
+/// audio will do adds it, and a summed generator run reproduces its polarity
+/// with the generator's `invert_mask` (review RC1).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgrammeFeed {
+    /// The net crosspoint gain of the output's main source, dB.
+    pub gain_db: f32,
+    /// The net polarity of the feeding crosspoints is inverted.
     pub inverted: bool,
 }
 

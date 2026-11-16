@@ -13,7 +13,12 @@ repository.workspace = true
 dspi-proto.workspace = true
 thiserror.workspace = true
 serde = { workspace = true }
-# -- WP P5DSP -- (the FFT crates, OD-P5d)
+# -- WP PLANP5 (review RC9, RC10) -- added with the seam so no P5-A WP edits this
+# file or Cargo.lock: documents (P5MDOC), the FFT (P5TIME, P5RESP). rustfft is
+# scalar only (no run-time SIMD choice), so native and wasm compute alike.
+serde_json.workspace = true
+base64 = "0.23"
+rustfft = { version = "6", default-features = false }
 
 [features]
 # -- WP P5SIM -- the simulated acoustic world (speakers, rooms, couplers, a
@@ -22,4 +27,3 @@ sim = []
 
 [dev-dependencies]
 proptest = "1"
-serde_json.workspace = true
