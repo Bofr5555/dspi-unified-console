@@ -92,6 +92,8 @@ mod pins;
 mod clipboard;
 // -- WP P5DOCK -- the measurement documents
 mod measure_doc;
+// -- WP P5SES -- the measurement session
+mod measure;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

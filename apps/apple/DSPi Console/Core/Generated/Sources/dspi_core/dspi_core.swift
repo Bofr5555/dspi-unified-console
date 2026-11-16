@@ -3998,6 +3998,28 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func maxDelayMs()  -> Float
     
     /**
+     * Push one block of the microphone's capture: mono samples, full scale
+     * ±1, starting at frame `first_frame` of the client's own count, at
+     * `rate_hz`, `clipped` when the converter clipped. The safety checks run
+     * first, O(block) (S4, S5): a gap or repeat in the frame indices, a
+     * clip, the SPL cap. No analysis runs here. A push with no session, or
+     * while the session wants none, is ignored.
+     *
+     * Errors: none for the capture's content (a fault ends the session and
+     * shows in the state); [`DspiError::InvalidArgument`] for more than
+     * 1 Mi samples in one block.
+     */
+    func measureCapturePush(firstFrame: UInt64, samples: [Float], rateHz: UInt32, clipped: Bool) throws  -> MeasureState
+    
+    /**
+     * Forget a finished session (its result included), so the screens show
+     * none. Refused while one is active.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a session is active.
+     */
+    func measureClear() throws 
+    
+    /**
      * Delete filed document `id`. Errors as [`DspiCore::measure_doc_get`].
      */
     func measureDocDelete(id: String) throws 
@@ -4051,6 +4073,36 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func measureDocs(kind: String, serial: String) throws  -> [MeasureDocInfo]
     
     /**
+     * The microphone is at the next position (or the headphones reseated):
+     * go on with the next run.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the session is not waiting
+     * for a position.
+     */
+    func measureNextPosition() throws  -> MeasureState
+    
+    /**
+     * What stands between `setup` and a measurement, in words (PLAN-P5
+     * section 1.2): the volume (S2), the tweeter rule (S6), silence on the
+     * inputs (S8), locks and roles (S11), processing the maths does not model
+     * (S13), the plan's bounds (S7). Reads the device (the meters and the
+     * generator's caps); writes nothing.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * a setup that is not one (no outputs, an output twice, a count out of
+     * range); a transfer failure of the reads.
+     */
+    func measurePreflight(setup: MeasureSetup) throws  -> MeasurePreflight
+    
+    /**
+     * The finished measurement as a `measurement` document's text (schema 1,
+     * derived curves only). File it with `measure_doc_put` (or the hub's).
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    func measureResult() throws  -> String
+    
+    /**
      * Keep measurement, microphone and target documents in files under
      * `dir`, the client's own data folder (created if missing): a folder per
      * device serial for measurements, `mic/` and `target/`, each with an
@@ -4060,6 +4112,52 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiError::Unsupported`] on the web (no files there).
      */
     func measureSetDir(dir: String) throws 
+    
+    /**
+     * Register (`Some`) or clear (`None`) the measurement listener: called
+     * when a session's phase changes, it stops, or it asks something. Called
+     * on the thread that pushed, ticked or stopped, with every core lock
+     * released; it may read `measure_state` but must not block.
+     */
+    func measureSetListener(listener: MeasureListener?) 
+    
+    /**
+     * Start a measurement of `setup`: the preflight, the device lock
+     * "Measuring" (a 30 s lease, renewed by `measure_tick`), then the
+     * pre-roll. Nothing plays before the client has pushed the pre-roll and
+     * ticked. The client then pushes capture whenever `wants_capture` and
+     * calls `measure_tick` about every 50 ms until the phase is `done`,
+     * `aborted` or `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a session
+     * already running on this core, or a blocker (named in the message);
+     * [`DspiError::ReadOnly`] (read-only mode or connection) and
+     * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
+     * [`DspiError::Locked`] when another session holds the device lock, or
+     * this console holds it through `device_lock_acquire`;
+     * [`DspiError::Disconnected`].
+     */
+    func measureStart(setup: MeasureSetup) throws  -> MeasureState
+    
+    /**
+     * The session's state, without I/O.
+     */
+    func measureState()  -> MeasureState
+    
+    /**
+     * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
+     * the run discarded, the lock given back. Idempotent; never fails.
+     */
+    func measureStop()  -> MeasureState
+    
+    /**
+     * Drive the session: apply queued notifications, judge them (S5), renew
+     * the lease, poll the generator and the meters (about 4 Hz), start the
+     * next step, run one analysis slice. Call it about every 50 ms while a
+     * session is active, off the UI thread (it blocks for a few transfers).
+     * Returns the state; never fails.
+     */
+    func measureTick()  -> MeasureState
     
     /**
      * Output `output`'s measured response as REW text ("Import frequency
@@ -10132,6 +10230,41 @@ open func maxDelayMs() -> Float  {
 }
     
     /**
+     * Push one block of the microphone's capture: mono samples, full scale
+     * ±1, starting at frame `first_frame` of the client's own count, at
+     * `rate_hz`, `clipped` when the converter clipped. The safety checks run
+     * first, O(block) (S4, S5): a gap or repeat in the frame indices, a
+     * clip, the SPL cap. No analysis runs here. A push with no session, or
+     * while the session wants none, is ignored.
+     *
+     * Errors: none for the capture's content (a fault ends the session and
+     * shows in the state); [`DspiError::InvalidArgument`] for more than
+     * 1 Mi samples in one block.
+     */
+open func measureCapturePush(firstFrame: UInt64, samples: [Float], rateHz: UInt32, clipped: Bool)throws  -> MeasureState  {
+    return try  FfiConverterTypeMeasureState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_capture_push(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(firstFrame),
+        FfiConverterSequenceFloat.lower(samples),
+        FfiConverterUInt32.lower(rateHz),
+        FfiConverterBool.lower(clipped),$0
+    )
+})
+}
+    
+    /**
+     * Forget a finished session (its result included), so the screens show
+     * none. Refused while one is active.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a session is active.
+     */
+open func measureClear()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_clear(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
      * Delete filed document `id`. Errors as [`DspiCore::measure_doc_get`].
      */
 open func measureDocDelete(id: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -10223,6 +10356,52 @@ open func measureDocs(kind: String, serial: String)throws  -> [MeasureDocInfo]  
 }
     
     /**
+     * The microphone is at the next position (or the headphones reseated):
+     * go on with the next run.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the session is not waiting
+     * for a position.
+     */
+open func measureNextPosition()throws  -> MeasureState  {
+    return try  FfiConverterTypeMeasureState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_next_position(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * What stands between `setup` and a measurement, in words (PLAN-P5
+     * section 1.2): the volume (S2), the tweeter rule (S6), silence on the
+     * inputs (S8), locks and roles (S11), processing the maths does not model
+     * (S13), the plan's bounds (S7). Reads the device (the meters and the
+     * generator's caps); writes nothing.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * a setup that is not one (no outputs, an output twice, a count out of
+     * range); a transfer failure of the reads.
+     */
+open func measurePreflight(setup: MeasureSetup)throws  -> MeasurePreflight  {
+    return try  FfiConverterTypeMeasurePreflight_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_preflight(self.uniffiClonePointer(),
+        FfiConverterTypeMeasureSetup_lower(setup),$0
+    )
+})
+}
+    
+    /**
+     * The finished measurement as a `measurement` document's text (schema 1,
+     * derived curves only). File it with `measure_doc_put` (or the hub's).
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+open func measureResult()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_result(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Keep measurement, microphone and target documents in files under
      * `dir`, the client's own data folder (created if missing): a folder per
      * device serial for measurements, `mic/` and `target/`, each with an
@@ -10236,6 +10415,78 @@ open func measureSetDir(dir: String)throws   {try rustCallWithError(FfiConverter
         FfiConverterString.lower(dir),$0
     )
 }
+}
+    
+    /**
+     * Register (`Some`) or clear (`None`) the measurement listener: called
+     * when a session's phase changes, it stops, or it asks something. Called
+     * on the thread that pushed, ticked or stopped, with every core lock
+     * released; it may read `measure_state` but must not block.
+     */
+open func measureSetListener(listener: MeasureListener?)  {try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_set_listener(self.uniffiClonePointer(),
+        FfiConverterOptionTypeMeasureListener.lower(listener),$0
+    )
+}
+}
+    
+    /**
+     * Start a measurement of `setup`: the preflight, the device lock
+     * "Measuring" (a 30 s lease, renewed by `measure_tick`), then the
+     * pre-roll. Nothing plays before the client has pushed the pre-roll and
+     * ticked. The client then pushes capture whenever `wants_capture` and
+     * calls `measure_tick` about every 50 ms until the phase is `done`,
+     * `aborted` or `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a session
+     * already running on this core, or a blocker (named in the message);
+     * [`DspiError::ReadOnly`] (read-only mode or connection) and
+     * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
+     * [`DspiError::Locked`] when another session holds the device lock, or
+     * this console holds it through `device_lock_acquire`;
+     * [`DspiError::Disconnected`].
+     */
+open func measureStart(setup: MeasureSetup)throws  -> MeasureState  {
+    return try  FfiConverterTypeMeasureState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_start(self.uniffiClonePointer(),
+        FfiConverterTypeMeasureSetup_lower(setup),$0
+    )
+})
+}
+    
+    /**
+     * The session's state, without I/O.
+     */
+open func measureState() -> MeasureState  {
+    return try!  FfiConverterTypeMeasureState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_state(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
+     * the run discarded, the lock given back. Idempotent; never fails.
+     */
+open func measureStop() -> MeasureState  {
+    return try!  FfiConverterTypeMeasureState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_stop(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Drive the session: apply queued notifications, judge them (S5), renew
+     * the lease, poll the generator and the meters (about 4 Hz), start the
+     * next step, run one analysis slice. Call it about every 50 ms while a
+     * session is active, off the UI thread (it blocks for a few transfers).
+     * Returns the state; never fails.
+     */
+open func measureTick() -> MeasureState  {
+    return try!  FfiConverterTypeMeasureState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_tick(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -14362,6 +14613,192 @@ public func FfiConverterTypeLinkListener_lift(_ pointer: UnsafeMutableRawPointer
 #endif
 public func FfiConverterTypeLinkListener_lower(_ value: LinkListener) -> UnsafeMutableRawPointer {
     return FfiConverterTypeLinkListener.lower(value)
+}
+
+
+
+
+
+
+/**
+ * A measurement session's phase changed, it stopped, or it asks something:
+ * read `measure_state()`. Called on the thread that pushed capture, ticked or
+ * stopped, with the core lock released; must not block.
+ */
+public protocol MeasureListener: AnyObject, Sendable {
+    
+    /**
+     * The session's state changed.
+     */
+    func onMeasure() 
+    
+}
+/**
+ * A measurement session's phase changed, it stopped, or it asks something:
+ * read `measure_state()`. Called on the thread that pushed capture, ticked or
+ * stopped, with the core lock released; must not block.
+ */
+open class MeasureListenerImpl: MeasureListener, @unchecked Sendable {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_dspi_core_fn_clone_measurelistener(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_dspi_core_fn_free_measurelistener(pointer, $0) }
+    }
+
+    
+
+    
+    /**
+     * The session's state changed.
+     */
+open func onMeasure()  {try! rustCall() {
+    uniffi_dspi_core_fn_method_measurelistener_on_measure(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+
+}
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceMeasureListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // This creates 1-element array, since this seems to be the only way to construct a const
+    // pointer that we can pass to the Rust code.
+    static let vtable: [UniffiVTableCallbackInterfaceMeasureListener] = [UniffiVTableCallbackInterfaceMeasureListener(
+        onMeasure: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeMeasureListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onMeasure(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            let result = try? FfiConverterTypeMeasureListener.handleMap.remove(handle: uniffiHandle)
+            if result == nil {
+                print("Uniffi callback interface MeasureListener: handle missing in uniffiFree")
+            }
+        }
+    )]
+}
+
+private func uniffiCallbackInitMeasureListener() {
+    uniffi_dspi_core_fn_init_callback_vtable_measurelistener(UniffiCallbackInterfaceMeasureListener.vtable)
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<MeasureListener>()
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = MeasureListener
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> MeasureListener {
+        return MeasureListenerImpl(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: MeasureListener) -> UnsafeMutableRawPointer {
+        guard let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: handleMap.insert(obj: value))) else {
+            fatalError("Cast to UnsafeMutableRawPointer failed")
+        }
+        return ptr
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureListener {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: MeasureListener, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureListener_lift(_ pointer: UnsafeMutableRawPointer) throws -> MeasureListener {
+    return try FfiConverterTypeMeasureListener.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureListener_lower(_ value: MeasureListener) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeMeasureListener.lower(value)
 }
 
 
@@ -38359,6 +38796,1266 @@ public func FfiConverterTypeMeasureDocInfo_lower(_ value: MeasureDocInfo) -> Rus
 
 
 /**
+ * One preflight finding: a notice key and its words.
+ */
+public struct MeasureIssue {
+    /**
+     * The notice key (`notice_for_key`), e.g. `measure.volume_high`.
+     */
+    public var key: String
+    /**
+     * The output it is about, if one.
+     */
+    public var output: UInt8?
+    /**
+     * What it is, in words (English; the key localises).
+     */
+    public var message: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The notice key (`notice_for_key`), e.g. `measure.volume_high`.
+         */key: String, 
+        /**
+         * The output it is about, if one.
+         */output: UInt8?, 
+        /**
+         * What it is, in words (English; the key localises).
+         */message: String) {
+        self.key = key
+        self.output = output
+        self.message = message
+    }
+}
+
+#if compiler(>=6)
+extension MeasureIssue: Sendable {}
+#endif
+
+
+extension MeasureIssue: Equatable, Hashable {
+    public static func ==(lhs: MeasureIssue, rhs: MeasureIssue) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.message != rhs.message {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(output)
+        hasher.combine(message)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureIssue: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureIssue {
+        return
+            try MeasureIssue(
+                key: FfiConverterString.read(from: &buf), 
+                output: FfiConverterOptionUInt8.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureIssue, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterOptionUInt8.write(value.output, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureIssue_lift(_ buf: RustBuffer) throws -> MeasureIssue {
+    return try FfiConverterTypeMeasureIssue.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureIssue_lower(_ value: MeasureIssue) -> RustBuffer {
+    return FfiConverterTypeMeasureIssue.lower(value)
+}
+
+
+/**
+ * One output's ramp result.
+ */
+public struct MeasureLevel {
+    /**
+     * The output.
+     */
+    public var output: UInt8
+    /**
+     * The generator's peak level the ramp settled on, dBFS.
+     */
+    public var levelDb: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output.
+         */output: UInt8, 
+        /**
+         * The generator's peak level the ramp settled on, dBFS.
+         */levelDb: Float) {
+        self.output = output
+        self.levelDb = levelDb
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLevel: Sendable {}
+#endif
+
+
+extension MeasureLevel: Equatable, Hashable {
+    public static func ==(lhs: MeasureLevel, rhs: MeasureLevel) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.levelDb != rhs.levelDb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(levelDb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLevel: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLevel {
+        return
+            try MeasureLevel(
+                output: FfiConverterUInt8.read(from: &buf), 
+                levelDb: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLevel, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterFloat.write(value.levelDb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLevel_lift(_ buf: RustBuffer) throws -> MeasureLevel {
+    return try FfiConverterTypeMeasureLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLevel_lower(_ value: MeasureLevel) -> RustBuffer {
+    return FfiConverterTypeMeasureLevel.lower(value)
+}
+
+
+/**
+ * One output to measure.
+ */
+public struct MeasureOutput {
+    /**
+     * The output, 0-based.
+     */
+    public var output: UInt8
+    /**
+     * Its way.
+     */
+    public var role: MeasureRole
+    /**
+     * The speaker it belongs to (`L`, `R`, `Sub`), for the document.
+     */
+    public var speaker: String
+    /**
+     * Its alignment group: the outputs of one group are measured in one
+     * walked run (PLAN-P5 section 1.4 step 4). Ignored by the other kinds.
+     */
+    public var group: UInt8
+    /**
+     * A summed run plays this output inverted (its net programme polarity).
+     */
+    public var inverted: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output, 0-based.
+         */output: UInt8, 
+        /**
+         * Its way.
+         */role: MeasureRole, 
+        /**
+         * The speaker it belongs to (`L`, `R`, `Sub`), for the document.
+         */speaker: String, 
+        /**
+         * Its alignment group: the outputs of one group are measured in one
+         * walked run (PLAN-P5 section 1.4 step 4). Ignored by the other kinds.
+         */group: UInt8, 
+        /**
+         * A summed run plays this output inverted (its net programme polarity).
+         */inverted: Bool) {
+        self.output = output
+        self.role = role
+        self.speaker = speaker
+        self.group = group
+        self.inverted = inverted
+    }
+}
+
+#if compiler(>=6)
+extension MeasureOutput: Sendable {}
+#endif
+
+
+extension MeasureOutput: Equatable, Hashable {
+    public static func ==(lhs: MeasureOutput, rhs: MeasureOutput) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.speaker != rhs.speaker {
+            return false
+        }
+        if lhs.group != rhs.group {
+            return false
+        }
+        if lhs.inverted != rhs.inverted {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(role)
+        hasher.combine(speaker)
+        hasher.combine(group)
+        hasher.combine(inverted)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureOutput: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureOutput {
+        return
+            try MeasureOutput(
+                output: FfiConverterUInt8.read(from: &buf), 
+                role: FfiConverterTypeMeasureRole.read(from: &buf), 
+                speaker: FfiConverterString.read(from: &buf), 
+                group: FfiConverterUInt8.read(from: &buf), 
+                inverted: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureOutput, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterTypeMeasureRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.speaker, into: &buf)
+        FfiConverterUInt8.write(value.group, into: &buf)
+        FfiConverterBool.write(value.inverted, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureOutput_lift(_ buf: RustBuffer) throws -> MeasureOutput {
+    return try FfiConverterTypeMeasureOutput.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureOutput_lower(_ value: MeasureOutput) -> RustBuffer {
+    return FfiConverterTypeMeasureOutput.lower(value)
+}
+
+
+/**
+ * What stands between the setup and a measurement (PLAN-P5 section 1.2).
+ */
+public struct MeasurePreflight {
+    /**
+     * Nothing blocks: `measure_start` may play.
+     */
+    public var clear: Bool
+    /**
+     * Every blocker, in words; nothing is played until they are clear.
+     */
+    public var blockers: [MeasureIssue]
+    /**
+     * What does not block but the user should know.
+     */
+    public var warnings: [MeasureIssue]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Nothing blocks: `measure_start` may play.
+         */clear: Bool, 
+        /**
+         * Every blocker, in words; nothing is played until they are clear.
+         */blockers: [MeasureIssue], 
+        /**
+         * What does not block but the user should know.
+         */warnings: [MeasureIssue]) {
+        self.clear = clear
+        self.blockers = blockers
+        self.warnings = warnings
+    }
+}
+
+#if compiler(>=6)
+extension MeasurePreflight: Sendable {}
+#endif
+
+
+extension MeasurePreflight: Equatable, Hashable {
+    public static func ==(lhs: MeasurePreflight, rhs: MeasurePreflight) -> Bool {
+        if lhs.clear != rhs.clear {
+            return false
+        }
+        if lhs.blockers != rhs.blockers {
+            return false
+        }
+        if lhs.warnings != rhs.warnings {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(clear)
+        hasher.combine(blockers)
+        hasher.combine(warnings)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasurePreflight: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasurePreflight {
+        return
+            try MeasurePreflight(
+                clear: FfiConverterBool.read(from: &buf), 
+                blockers: FfiConverterSequenceTypeMeasureIssue.read(from: &buf), 
+                warnings: FfiConverterSequenceTypeMeasureIssue.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasurePreflight, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.clear, into: &buf)
+        FfiConverterSequenceTypeMeasureIssue.write(value.blockers, into: &buf)
+        FfiConverterSequenceTypeMeasureIssue.write(value.warnings, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasurePreflight_lift(_ buf: RustBuffer) throws -> MeasurePreflight {
+    return try FfiConverterTypeMeasurePreflight.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasurePreflight_lower(_ value: MeasurePreflight) -> RustBuffer {
+    return FfiConverterTypeMeasurePreflight.lower(value)
+}
+
+
+/**
+ * What to measure and how (`measure_preflight`, `measure_start`). Every
+ * number 0 (or absent) is the plan's default.
+ */
+public struct MeasureSetup {
+    /**
+     * The run kind.
+     */
+    public var kind: MeasureRunKind
+    /**
+     * The outputs, 1 to 16, each once.
+     */
+    public var outputs: [MeasureOutput]
+    /**
+     * Where the microphone is.
+     */
+    public var placement: MeasurePlacement
+    /**
+     * Positions (3 to 9, multi-position) or reseats (1 to 9, headphones).
+     */
+    public var count: UInt8
+    /**
+     * The coupler, for headphones.
+     */
+    public var coupler: MeasureCoupler?
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated
+     * microphone (relative dB, no SPL cap).
+     */
+    public var micDocument: String
+    /**
+     * One sweep, ms (1000 to 15000; 0: 5500, 2700 for a live sweep).
+     */
+    public var sweepMs: UInt32
+    /**
+     * The gap after each cycle, ms (300 to 2000; 0: 1000 for speakers, 300
+     * on a coupler).
+     */
+    public var gapMs: UInt32
+    /**
+     * Passes of a walked run (2 to 8; 0: 3).
+     */
+    public var passes: UInt8
+    /**
+     * Pink noise, ms (1000 to 60000; 0: 10000).
+     */
+    public var pinkMs: UInt32
+    /**
+     * The generator's ceiling, peak dBFS: lower than the mode's default, or
+     * higher up to the hard cap (-6 speakers, -20 headphones).
+     */
+    public var ceilingDb: Float?
+    /**
+     * The SPL cap with a calibrated microphone, dB SPL (default 95 speakers,
+     * 90 on a coupler; at most 105 and 100).
+     */
+    public var splCapDb: Float?
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    public var captureRateHz: UInt32
+    /**
+     * The document's name ("" names it by the date).
+     */
+    public var name: String
+    /**
+     * Play at the start level only (-50 dBFS speakers, -60 dBFS headphones):
+     * the ceiling is the start level, so the ramp never goes above it; every
+     * other rule unchanged (P5SPIKE's timing test).
+     */
+    public var startLevelOnly: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The run kind.
+         */kind: MeasureRunKind, 
+        /**
+         * The outputs, 1 to 16, each once.
+         */outputs: [MeasureOutput], 
+        /**
+         * Where the microphone is.
+         */placement: MeasurePlacement, 
+        /**
+         * Positions (3 to 9, multi-position) or reseats (1 to 9, headphones).
+         */count: UInt8, 
+        /**
+         * The coupler, for headphones.
+         */coupler: MeasureCoupler?, 
+        /**
+         * The microphone's `mic` document's text; "" for an uncalibrated
+         * microphone (relative dB, no SPL cap).
+         */micDocument: String, 
+        /**
+         * One sweep, ms (1000 to 15000; 0: 5500, 2700 for a live sweep).
+         */sweepMs: UInt32, 
+        /**
+         * The gap after each cycle, ms (300 to 2000; 0: 1000 for speakers, 300
+         * on a coupler).
+         */gapMs: UInt32, 
+        /**
+         * Passes of a walked run (2 to 8; 0: 3).
+         */passes: UInt8, 
+        /**
+         * Pink noise, ms (1000 to 60000; 0: 10000).
+         */pinkMs: UInt32, 
+        /**
+         * The generator's ceiling, peak dBFS: lower than the mode's default, or
+         * higher up to the hard cap (-6 speakers, -20 headphones).
+         */ceilingDb: Float?, 
+        /**
+         * The SPL cap with a calibrated microphone, dB SPL (default 95 speakers,
+         * 90 on a coupler; at most 105 and 100).
+         */splCapDb: Float?, 
+        /**
+         * The capture's rate, Hz (0: 48000).
+         */captureRateHz: UInt32, 
+        /**
+         * The document's name ("" names it by the date).
+         */name: String, 
+        /**
+         * Play at the start level only (-50 dBFS speakers, -60 dBFS headphones):
+         * the ceiling is the start level, so the ramp never goes above it; every
+         * other rule unchanged (P5SPIKE's timing test).
+         */startLevelOnly: Bool) {
+        self.kind = kind
+        self.outputs = outputs
+        self.placement = placement
+        self.count = count
+        self.coupler = coupler
+        self.micDocument = micDocument
+        self.sweepMs = sweepMs
+        self.gapMs = gapMs
+        self.passes = passes
+        self.pinkMs = pinkMs
+        self.ceilingDb = ceilingDb
+        self.splCapDb = splCapDb
+        self.captureRateHz = captureRateHz
+        self.name = name
+        self.startLevelOnly = startLevelOnly
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSetup: Sendable {}
+#endif
+
+
+extension MeasureSetup: Equatable, Hashable {
+    public static func ==(lhs: MeasureSetup, rhs: MeasureSetup) -> Bool {
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.outputs != rhs.outputs {
+            return false
+        }
+        if lhs.placement != rhs.placement {
+            return false
+        }
+        if lhs.count != rhs.count {
+            return false
+        }
+        if lhs.coupler != rhs.coupler {
+            return false
+        }
+        if lhs.micDocument != rhs.micDocument {
+            return false
+        }
+        if lhs.sweepMs != rhs.sweepMs {
+            return false
+        }
+        if lhs.gapMs != rhs.gapMs {
+            return false
+        }
+        if lhs.passes != rhs.passes {
+            return false
+        }
+        if lhs.pinkMs != rhs.pinkMs {
+            return false
+        }
+        if lhs.ceilingDb != rhs.ceilingDb {
+            return false
+        }
+        if lhs.splCapDb != rhs.splCapDb {
+            return false
+        }
+        if lhs.captureRateHz != rhs.captureRateHz {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.startLevelOnly != rhs.startLevelOnly {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(kind)
+        hasher.combine(outputs)
+        hasher.combine(placement)
+        hasher.combine(count)
+        hasher.combine(coupler)
+        hasher.combine(micDocument)
+        hasher.combine(sweepMs)
+        hasher.combine(gapMs)
+        hasher.combine(passes)
+        hasher.combine(pinkMs)
+        hasher.combine(ceilingDb)
+        hasher.combine(splCapDb)
+        hasher.combine(captureRateHz)
+        hasher.combine(name)
+        hasher.combine(startLevelOnly)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSetup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSetup {
+        return
+            try MeasureSetup(
+                kind: FfiConverterTypeMeasureRunKind.read(from: &buf), 
+                outputs: FfiConverterSequenceTypeMeasureOutput.read(from: &buf), 
+                placement: FfiConverterTypeMeasurePlacement.read(from: &buf), 
+                count: FfiConverterUInt8.read(from: &buf), 
+                coupler: FfiConverterOptionTypeMeasureCoupler.read(from: &buf), 
+                micDocument: FfiConverterString.read(from: &buf), 
+                sweepMs: FfiConverterUInt32.read(from: &buf), 
+                gapMs: FfiConverterUInt32.read(from: &buf), 
+                passes: FfiConverterUInt8.read(from: &buf), 
+                pinkMs: FfiConverterUInt32.read(from: &buf), 
+                ceilingDb: FfiConverterOptionFloat.read(from: &buf), 
+                splCapDb: FfiConverterOptionFloat.read(from: &buf), 
+                captureRateHz: FfiConverterUInt32.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                startLevelOnly: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSetup, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureRunKind.write(value.kind, into: &buf)
+        FfiConverterSequenceTypeMeasureOutput.write(value.outputs, into: &buf)
+        FfiConverterTypeMeasurePlacement.write(value.placement, into: &buf)
+        FfiConverterUInt8.write(value.count, into: &buf)
+        FfiConverterOptionTypeMeasureCoupler.write(value.coupler, into: &buf)
+        FfiConverterString.write(value.micDocument, into: &buf)
+        FfiConverterUInt32.write(value.sweepMs, into: &buf)
+        FfiConverterUInt32.write(value.gapMs, into: &buf)
+        FfiConverterUInt8.write(value.passes, into: &buf)
+        FfiConverterUInt32.write(value.pinkMs, into: &buf)
+        FfiConverterOptionFloat.write(value.ceilingDb, into: &buf)
+        FfiConverterOptionFloat.write(value.splCapDb, into: &buf)
+        FfiConverterUInt32.write(value.captureRateHz, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.startLevelOnly, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSetup_lift(_ buf: RustBuffer) throws -> MeasureSetup {
+    return try FfiConverterTypeMeasureSetup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSetup_lower(_ value: MeasureSetup) -> RustBuffer {
+    return FfiConverterTypeMeasureSetup.lower(value)
+}
+
+
+/**
+ * A session's state: what the screens show and what the client must do.
+ */
+public struct MeasureState {
+    /**
+     * Where it stands.
+     */
+    public var phase: MeasurePhase
+    /**
+     * The run kind.
+     */
+    public var kind: MeasureRunKind
+    /**
+     * The session holds the generator or the lock: Stop is shown.
+     */
+    public var active: Bool
+    /**
+     * The client must push capture now (from the pre-roll to the end).
+     */
+    public var wantsCapture: Bool
+    /**
+     * The capture rate the session expects, Hz.
+     */
+    public var captureRateHz: UInt32
+    /**
+     * The position (or reseat) being measured, 1-based.
+     */
+    public var position: UInt8
+    /**
+     * Positions (or reseats) in all.
+     */
+    public var positions: UInt8
+    /**
+     * The run being measured, 1-based.
+     */
+    public var run: UInt16
+    /**
+     * Runs in all.
+     */
+    public var runs: UInt16
+    /**
+     * The output now ramping or playing alone, if one.
+     */
+    public var output: UInt8?
+    /**
+     * The generator's level now, peak dBFS, while it plays.
+     */
+    public var levelDb: Float?
+    /**
+     * The ramps' results so far (this run).
+     */
+    public var rampLevels: [MeasureLevel]
+    /**
+     * The run's level (the minimum of its ways' ramp levels).
+     */
+    public var runLevelDb: Float?
+    /**
+     * Frames pushed since the session began.
+     */
+    public var frames: UInt64
+    /**
+     * The capture frame at which the latest START was acknowledged.
+     */
+    public var generatorStartFrame: UInt64?
+    /**
+     * STARTs sent in this session (a client's simulated microphone renders
+     * each one).
+     */
+    public var generatorStarts: UInt32
+    /**
+     * The current phase's progress, 0 to 1.
+     */
+    public var progress: Float
+    /**
+     * Why it stopped, or what it asks.
+     */
+    public var issue: MeasureIssue?
+    /**
+     * The last run passed the timing quality gate (walked runs).
+     */
+    public var timingReliable: Bool?
+    /**
+     * `measure_result` has a document.
+     */
+    public var resultReady: Bool
+    /**
+     * The last analysed walked run's timing.
+     */
+    public var timing: MeasureTiming?
+    /**
+     * Gaps and repeats seen in the capture's frame indices (any one aborts
+     * the session, S5).
+     */
+    public var frameFaults: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Where it stands.
+         */phase: MeasurePhase, 
+        /**
+         * The run kind.
+         */kind: MeasureRunKind, 
+        /**
+         * The session holds the generator or the lock: Stop is shown.
+         */active: Bool, 
+        /**
+         * The client must push capture now (from the pre-roll to the end).
+         */wantsCapture: Bool, 
+        /**
+         * The capture rate the session expects, Hz.
+         */captureRateHz: UInt32, 
+        /**
+         * The position (or reseat) being measured, 1-based.
+         */position: UInt8, 
+        /**
+         * Positions (or reseats) in all.
+         */positions: UInt8, 
+        /**
+         * The run being measured, 1-based.
+         */run: UInt16, 
+        /**
+         * Runs in all.
+         */runs: UInt16, 
+        /**
+         * The output now ramping or playing alone, if one.
+         */output: UInt8?, 
+        /**
+         * The generator's level now, peak dBFS, while it plays.
+         */levelDb: Float?, 
+        /**
+         * The ramps' results so far (this run).
+         */rampLevels: [MeasureLevel], 
+        /**
+         * The run's level (the minimum of its ways' ramp levels).
+         */runLevelDb: Float?, 
+        /**
+         * Frames pushed since the session began.
+         */frames: UInt64, 
+        /**
+         * The capture frame at which the latest START was acknowledged.
+         */generatorStartFrame: UInt64?, 
+        /**
+         * STARTs sent in this session (a client's simulated microphone renders
+         * each one).
+         */generatorStarts: UInt32, 
+        /**
+         * The current phase's progress, 0 to 1.
+         */progress: Float, 
+        /**
+         * Why it stopped, or what it asks.
+         */issue: MeasureIssue?, 
+        /**
+         * The last run passed the timing quality gate (walked runs).
+         */timingReliable: Bool?, 
+        /**
+         * `measure_result` has a document.
+         */resultReady: Bool, 
+        /**
+         * The last analysed walked run's timing.
+         */timing: MeasureTiming?, 
+        /**
+         * Gaps and repeats seen in the capture's frame indices (any one aborts
+         * the session, S5).
+         */frameFaults: UInt32) {
+        self.phase = phase
+        self.kind = kind
+        self.active = active
+        self.wantsCapture = wantsCapture
+        self.captureRateHz = captureRateHz
+        self.position = position
+        self.positions = positions
+        self.run = run
+        self.runs = runs
+        self.output = output
+        self.levelDb = levelDb
+        self.rampLevels = rampLevels
+        self.runLevelDb = runLevelDb
+        self.frames = frames
+        self.generatorStartFrame = generatorStartFrame
+        self.generatorStarts = generatorStarts
+        self.progress = progress
+        self.issue = issue
+        self.timingReliable = timingReliable
+        self.resultReady = resultReady
+        self.timing = timing
+        self.frameFaults = frameFaults
+    }
+}
+
+#if compiler(>=6)
+extension MeasureState: Sendable {}
+#endif
+
+
+extension MeasureState: Equatable, Hashable {
+    public static func ==(lhs: MeasureState, rhs: MeasureState) -> Bool {
+        if lhs.phase != rhs.phase {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.active != rhs.active {
+            return false
+        }
+        if lhs.wantsCapture != rhs.wantsCapture {
+            return false
+        }
+        if lhs.captureRateHz != rhs.captureRateHz {
+            return false
+        }
+        if lhs.position != rhs.position {
+            return false
+        }
+        if lhs.positions != rhs.positions {
+            return false
+        }
+        if lhs.run != rhs.run {
+            return false
+        }
+        if lhs.runs != rhs.runs {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.levelDb != rhs.levelDb {
+            return false
+        }
+        if lhs.rampLevels != rhs.rampLevels {
+            return false
+        }
+        if lhs.runLevelDb != rhs.runLevelDb {
+            return false
+        }
+        if lhs.frames != rhs.frames {
+            return false
+        }
+        if lhs.generatorStartFrame != rhs.generatorStartFrame {
+            return false
+        }
+        if lhs.generatorStarts != rhs.generatorStarts {
+            return false
+        }
+        if lhs.progress != rhs.progress {
+            return false
+        }
+        if lhs.issue != rhs.issue {
+            return false
+        }
+        if lhs.timingReliable != rhs.timingReliable {
+            return false
+        }
+        if lhs.resultReady != rhs.resultReady {
+            return false
+        }
+        if lhs.timing != rhs.timing {
+            return false
+        }
+        if lhs.frameFaults != rhs.frameFaults {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(phase)
+        hasher.combine(kind)
+        hasher.combine(active)
+        hasher.combine(wantsCapture)
+        hasher.combine(captureRateHz)
+        hasher.combine(position)
+        hasher.combine(positions)
+        hasher.combine(run)
+        hasher.combine(runs)
+        hasher.combine(output)
+        hasher.combine(levelDb)
+        hasher.combine(rampLevels)
+        hasher.combine(runLevelDb)
+        hasher.combine(frames)
+        hasher.combine(generatorStartFrame)
+        hasher.combine(generatorStarts)
+        hasher.combine(progress)
+        hasher.combine(issue)
+        hasher.combine(timingReliable)
+        hasher.combine(resultReady)
+        hasher.combine(timing)
+        hasher.combine(frameFaults)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureState {
+        return
+            try MeasureState(
+                phase: FfiConverterTypeMeasurePhase.read(from: &buf), 
+                kind: FfiConverterTypeMeasureRunKind.read(from: &buf), 
+                active: FfiConverterBool.read(from: &buf), 
+                wantsCapture: FfiConverterBool.read(from: &buf), 
+                captureRateHz: FfiConverterUInt32.read(from: &buf), 
+                position: FfiConverterUInt8.read(from: &buf), 
+                positions: FfiConverterUInt8.read(from: &buf), 
+                run: FfiConverterUInt16.read(from: &buf), 
+                runs: FfiConverterUInt16.read(from: &buf), 
+                output: FfiConverterOptionUInt8.read(from: &buf), 
+                levelDb: FfiConverterOptionFloat.read(from: &buf), 
+                rampLevels: FfiConverterSequenceTypeMeasureLevel.read(from: &buf), 
+                runLevelDb: FfiConverterOptionFloat.read(from: &buf), 
+                frames: FfiConverterUInt64.read(from: &buf), 
+                generatorStartFrame: FfiConverterOptionUInt64.read(from: &buf), 
+                generatorStarts: FfiConverterUInt32.read(from: &buf), 
+                progress: FfiConverterFloat.read(from: &buf), 
+                issue: FfiConverterOptionTypeMeasureIssue.read(from: &buf), 
+                timingReliable: FfiConverterOptionBool.read(from: &buf), 
+                resultReady: FfiConverterBool.read(from: &buf), 
+                timing: FfiConverterOptionTypeMeasureTiming.read(from: &buf), 
+                frameFaults: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureState, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasurePhase.write(value.phase, into: &buf)
+        FfiConverterTypeMeasureRunKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.active, into: &buf)
+        FfiConverterBool.write(value.wantsCapture, into: &buf)
+        FfiConverterUInt32.write(value.captureRateHz, into: &buf)
+        FfiConverterUInt8.write(value.position, into: &buf)
+        FfiConverterUInt8.write(value.positions, into: &buf)
+        FfiConverterUInt16.write(value.run, into: &buf)
+        FfiConverterUInt16.write(value.runs, into: &buf)
+        FfiConverterOptionUInt8.write(value.output, into: &buf)
+        FfiConverterOptionFloat.write(value.levelDb, into: &buf)
+        FfiConverterSequenceTypeMeasureLevel.write(value.rampLevels, into: &buf)
+        FfiConverterOptionFloat.write(value.runLevelDb, into: &buf)
+        FfiConverterUInt64.write(value.frames, into: &buf)
+        FfiConverterOptionUInt64.write(value.generatorStartFrame, into: &buf)
+        FfiConverterUInt32.write(value.generatorStarts, into: &buf)
+        FfiConverterFloat.write(value.progress, into: &buf)
+        FfiConverterOptionTypeMeasureIssue.write(value.issue, into: &buf)
+        FfiConverterOptionBool.write(value.timingReliable, into: &buf)
+        FfiConverterBool.write(value.resultReady, into: &buf)
+        FfiConverterOptionTypeMeasureTiming.write(value.timing, into: &buf)
+        FfiConverterUInt32.write(value.frameFaults, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureState_lift(_ buf: RustBuffer) throws -> MeasureState {
+    return try FfiConverterTypeMeasureState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureState_lower(_ value: MeasureState) -> RustBuffer {
+    return FfiConverterTypeMeasureState.lower(value)
+}
+
+
+/**
+ * A walked run's timing (PLAN-P5 section 1.1 steps 6 and 7): the clock fit,
+ * every cycle's residual and the quality gate's verdict. Non-finite numbers
+ * read 0.
+ */
+public struct MeasureTiming {
+    /**
+     * The run passed the timing quality gate.
+     */
+    public var reliable: Bool
+    /**
+     * The microphone's clock against the DSPi's, ppm.
+     */
+    public var ratioPpm: Double
+    /**
+     * The clock ratio was fitted (two passes or more).
+     */
+    public var ratioFitted: Bool
+    /**
+     * The largest cycle residual, µs.
+     */
+    public var maxResidualUs: Double
+    /**
+     * The residual bound the run was held to, µs.
+     */
+    public var residualBoundUs: Double
+    /**
+     * The largest phase disagreement between repeats, degrees.
+     */
+    public var maxPhaseSpreadDeg: Double
+    /**
+     * Passes in the run.
+     */
+    public var passes: UInt16
+    /**
+     * Why not reliable, in words (empty when reliable).
+     */
+    public var reasons: [String]
+    /**
+     * Each cycle's output, in run order.
+     */
+    public var cycleOutputs: Data
+    /**
+     * Each cycle's residual from the fit, µs, in run order.
+     */
+    public var cycleResidualsUs: [Double]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The run passed the timing quality gate.
+         */reliable: Bool, 
+        /**
+         * The microphone's clock against the DSPi's, ppm.
+         */ratioPpm: Double, 
+        /**
+         * The clock ratio was fitted (two passes or more).
+         */ratioFitted: Bool, 
+        /**
+         * The largest cycle residual, µs.
+         */maxResidualUs: Double, 
+        /**
+         * The residual bound the run was held to, µs.
+         */residualBoundUs: Double, 
+        /**
+         * The largest phase disagreement between repeats, degrees.
+         */maxPhaseSpreadDeg: Double, 
+        /**
+         * Passes in the run.
+         */passes: UInt16, 
+        /**
+         * Why not reliable, in words (empty when reliable).
+         */reasons: [String], 
+        /**
+         * Each cycle's output, in run order.
+         */cycleOutputs: Data, 
+        /**
+         * Each cycle's residual from the fit, µs, in run order.
+         */cycleResidualsUs: [Double]) {
+        self.reliable = reliable
+        self.ratioPpm = ratioPpm
+        self.ratioFitted = ratioFitted
+        self.maxResidualUs = maxResidualUs
+        self.residualBoundUs = residualBoundUs
+        self.maxPhaseSpreadDeg = maxPhaseSpreadDeg
+        self.passes = passes
+        self.reasons = reasons
+        self.cycleOutputs = cycleOutputs
+        self.cycleResidualsUs = cycleResidualsUs
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTiming: Sendable {}
+#endif
+
+
+extension MeasureTiming: Equatable, Hashable {
+    public static func ==(lhs: MeasureTiming, rhs: MeasureTiming) -> Bool {
+        if lhs.reliable != rhs.reliable {
+            return false
+        }
+        if lhs.ratioPpm != rhs.ratioPpm {
+            return false
+        }
+        if lhs.ratioFitted != rhs.ratioFitted {
+            return false
+        }
+        if lhs.maxResidualUs != rhs.maxResidualUs {
+            return false
+        }
+        if lhs.residualBoundUs != rhs.residualBoundUs {
+            return false
+        }
+        if lhs.maxPhaseSpreadDeg != rhs.maxPhaseSpreadDeg {
+            return false
+        }
+        if lhs.passes != rhs.passes {
+            return false
+        }
+        if lhs.reasons != rhs.reasons {
+            return false
+        }
+        if lhs.cycleOutputs != rhs.cycleOutputs {
+            return false
+        }
+        if lhs.cycleResidualsUs != rhs.cycleResidualsUs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(reliable)
+        hasher.combine(ratioPpm)
+        hasher.combine(ratioFitted)
+        hasher.combine(maxResidualUs)
+        hasher.combine(residualBoundUs)
+        hasher.combine(maxPhaseSpreadDeg)
+        hasher.combine(passes)
+        hasher.combine(reasons)
+        hasher.combine(cycleOutputs)
+        hasher.combine(cycleResidualsUs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTiming: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTiming {
+        return
+            try MeasureTiming(
+                reliable: FfiConverterBool.read(from: &buf), 
+                ratioPpm: FfiConverterDouble.read(from: &buf), 
+                ratioFitted: FfiConverterBool.read(from: &buf), 
+                maxResidualUs: FfiConverterDouble.read(from: &buf), 
+                residualBoundUs: FfiConverterDouble.read(from: &buf), 
+                maxPhaseSpreadDeg: FfiConverterDouble.read(from: &buf), 
+                passes: FfiConverterUInt16.read(from: &buf), 
+                reasons: FfiConverterSequenceString.read(from: &buf), 
+                cycleOutputs: FfiConverterData.read(from: &buf), 
+                cycleResidualsUs: FfiConverterSequenceDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTiming, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.reliable, into: &buf)
+        FfiConverterDouble.write(value.ratioPpm, into: &buf)
+        FfiConverterBool.write(value.ratioFitted, into: &buf)
+        FfiConverterDouble.write(value.maxResidualUs, into: &buf)
+        FfiConverterDouble.write(value.residualBoundUs, into: &buf)
+        FfiConverterDouble.write(value.maxPhaseSpreadDeg, into: &buf)
+        FfiConverterUInt16.write(value.passes, into: &buf)
+        FfiConverterSequenceString.write(value.reasons, into: &buf)
+        FfiConverterData.write(value.cycleOutputs, into: &buf)
+        FfiConverterSequenceDouble.write(value.cycleResidualsUs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTiming_lift(_ buf: RustBuffer) throws -> MeasureTiming {
+    return try FfiConverterTypeMeasureTiming.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTiming_lower(_ value: MeasureTiming) -> RustBuffer {
+    return FfiConverterTypeMeasureTiming.lower(value)
+}
+
+
+/**
  * One row of the merged snapshot list ([`DspiCore::snapshot_list_merged`]).
  */
 public struct MergedSnapshot {
@@ -48002,6 +49699,555 @@ extension LinkPhase: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * A headphone coupler type.
+ */
+
+public enum MeasureCoupler {
+    
+    /**
+     * An IEC 60318-4 (711-type) ear simulator.
+     */
+    case iec603184
+    /**
+     * A flat-plate coupler.
+     */
+    case flatPlate
+    /**
+     * A head and torso simulator or another coupler with pinna.
+     */
+    case hats
+}
+
+
+#if compiler(>=6)
+extension MeasureCoupler: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureCoupler: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureCoupler
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureCoupler {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .iec603184
+        
+        case 2: return .flatPlate
+        
+        case 3: return .hats
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureCoupler, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .iec603184:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .flatPlate:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .hats:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureCoupler_lift(_ buf: RustBuffer) throws -> MeasureCoupler {
+    return try FfiConverterTypeMeasureCoupler.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureCoupler_lower(_ value: MeasureCoupler) -> RustBuffer {
+    return FfiConverterTypeMeasureCoupler.lower(value)
+}
+
+
+extension MeasureCoupler: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Where a session stands.
+ */
+
+public enum MeasurePhase {
+    
+    /**
+     * No session on this core.
+     */
+    case idle
+    /**
+     * The generator is idle; the microphone's noise floor is taken.
+     */
+    case preRoll
+    /**
+     * The level ramp of one output (S3).
+     */
+    case ramp
+    /**
+     * The run is playing.
+     */
+    case run
+    /**
+     * The run is analysed, a slice per tick.
+     */
+    case analysing
+    /**
+     * Move the microphone (or reseat the headphones), then
+     * `measure_next_position`.
+     */
+    case waitPosition
+    /**
+     * The measurement is complete: `measure_result`.
+     */
+    case done
+    /**
+     * Stopped on a safety rule or by the user: nothing is kept.
+     */
+    case aborted
+    /**
+     * Stopped and asking the user (the microphone does not hear the output,
+     * no signal): nothing is kept.
+     */
+    case failed
+}
+
+
+#if compiler(>=6)
+extension MeasurePhase: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasurePhase: FfiConverterRustBuffer {
+    typealias SwiftType = MeasurePhase
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasurePhase {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .idle
+        
+        case 2: return .preRoll
+        
+        case 3: return .ramp
+        
+        case 4: return .run
+        
+        case 5: return .analysing
+        
+        case 6: return .waitPosition
+        
+        case 7: return .done
+        
+        case 8: return .aborted
+        
+        case 9: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasurePhase, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .idle:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .preRoll:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .ramp:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .run:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .analysing:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .waitPosition:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .done:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .aborted:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(9))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasurePhase_lift(_ buf: RustBuffer) throws -> MeasurePhase {
+    return try FfiConverterTypeMeasurePhase.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasurePhase_lower(_ value: MeasurePhase) -> RustBuffer {
+    return FfiConverterTypeMeasurePhase.lower(value)
+}
+
+
+extension MeasurePhase: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Where the microphone is (owner requirement R3).
+ */
+
+public enum MeasurePlacement {
+    
+    /**
+     * Speakers, the listening position.
+     */
+    case listeningPosition
+    /**
+     * Speakers, 3 to 9 positions averaged (`count`).
+     */
+    case multiPosition
+    /**
+     * Speakers, the microphone close to each driver: one run per output.
+     */
+    case nearField
+    /**
+     * Headphones on a coupler, 1 to 9 reseats (`count`).
+     */
+    case headphones
+}
+
+
+#if compiler(>=6)
+extension MeasurePlacement: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasurePlacement: FfiConverterRustBuffer {
+    typealias SwiftType = MeasurePlacement
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasurePlacement {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .listeningPosition
+        
+        case 2: return .multiPosition
+        
+        case 3: return .nearField
+        
+        case 4: return .headphones
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasurePlacement, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .listeningPosition:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .multiPosition:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .nearField:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .headphones:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasurePlacement_lift(_ buf: RustBuffer) throws -> MeasurePlacement {
+    return try FfiConverterTypeMeasurePlacement.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasurePlacement_lower(_ value: MeasurePlacement) -> RustBuffer {
+    return FfiConverterTypeMeasurePlacement.lower(value)
+}
+
+
+extension MeasurePlacement: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * A way of a loudspeaker, as the user confirmed the layout.
+ */
+
+public enum MeasureRole {
+    
+    /**
+     * A full-range output.
+     */
+    case full
+    /**
+     * A subwoofer.
+     */
+    case sub
+    /**
+     * The lowest way of a multi-way speaker.
+     */
+    case low
+    /**
+     * A middle way: needs an active high-pass to be measured (S6).
+     */
+    case mid
+    /**
+     * The highest way: needs an active high-pass to be measured (S6).
+     */
+    case high
+}
+
+
+#if compiler(>=6)
+extension MeasureRole: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRole: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureRole
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRole {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .full
+        
+        case 2: return .sub
+        
+        case 3: return .low
+        
+        case 4: return .mid
+        
+        case 5: return .high
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureRole, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .full:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .sub:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .low:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .mid:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .high:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRole_lift(_ buf: RustBuffer) throws -> MeasureRole {
+    return try FfiConverterTypeMeasureRole.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRole_lower(_ value: MeasureRole) -> RustBuffer {
+    return FfiConverterTypeMeasureRole.lower(value)
+}
+
+
+extension MeasureRole: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * What a run plays (PLAN-P5 section 1.1, review RC11).
+ */
+
+public enum MeasureRunKind {
+    
+    /**
+     * Log sweeps, one output per cycle round-robin, 2 to 8 passes: responses
+     * with phase, arrivals and the timing quality gate.
+     */
+    case walked
+    /**
+     * One sweep on several outputs at once, each with its polarity (the
+     * generator's `invert_mask`): the measured sum of a transition.
+     */
+    case summed
+    /**
+     * One sweep on one output (the live view): magnitude only.
+     */
+    case liveSweep
+    /**
+     * Finite pink noise on one output (at most 60 s): the microphone RTA.
+     */
+    case pink
+}
+
+
+#if compiler(>=6)
+extension MeasureRunKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRunKind: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureRunKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRunKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .walked
+        
+        case 2: return .summed
+        
+        case 3: return .liveSweep
+        
+        case 4: return .pink
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureRunKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .walked:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .summed:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .liveSweep:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .pink:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRunKind_lift(_ buf: RustBuffer) throws -> MeasureRunKind {
+    return try FfiConverterTypeMeasureRunKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRunKind_lower(_ value: MeasureRunKind) -> RustBuffer {
+    return FfiConverterTypeMeasureRunKind.lower(value)
+}
+
+
+extension MeasureRunKind: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * How a notice is shown.
  */
 
@@ -49342,6 +51588,30 @@ fileprivate struct FfiConverterOptionTypeLinkListener: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeMeasureListener: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureListener?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureListener.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureListener.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeNotifyListener: FfiConverterRustBuffer {
     typealias SwiftType = NotifyListener?
 
@@ -49894,6 +52164,54 @@ fileprivate struct FfiConverterOptionTypeIdentifyInfo: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeMeasureIssue: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureIssue?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureIssue.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureIssue.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMeasureTiming: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureTiming?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureTiming.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureTiming.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypePinFunction: FfiConverterRustBuffer {
     typealias SwiftType = PinFunction?
 
@@ -50030,6 +52348,30 @@ fileprivate struct FfiConverterOptionTypeAbSide: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeAbSide.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMeasureCoupler: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureCoupler?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureCoupler.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureCoupler.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -51526,6 +53868,81 @@ fileprivate struct FfiConverterSequenceTypeMeasureDocInfo: FfiConverterRustBuffe
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeMeasureDocInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureIssue: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureIssue]
+
+    public static func write(_ value: [MeasureIssue], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureIssue.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureIssue] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureIssue]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureIssue.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureLevel: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureLevel]
+
+    public static func write(_ value: [MeasureLevel], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureLevel.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureLevel] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureLevel]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureLevel.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureOutput: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureOutput]
+
+    public static func write(_ value: [MeasureOutput], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureOutput.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureOutput] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureOutput]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureOutput.read(from: &buf))
         }
         return seq
     }
@@ -53995,6 +56412,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_capture_push() != 56346) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_clear() != 18469) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_doc_delete() != 44561) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -54013,7 +56436,31 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_docs() != 14119) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_next_position() != 42088) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_preflight() != 35881) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_result() != 7126) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_set_dir() != 18664) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_set_listener() != 176) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_start() != 36814) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_state() != 64969) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_stop() != 53664) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tick() != 49262) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measurement_export_rew() != 45126) {
@@ -54547,6 +56994,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_linklistener_on_link_token_issued() != 47398) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_measurelistener_on_measure() != 13492) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_midiinputhandle_close_port() != 24616) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -54596,6 +57046,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitHubAdminListener()
     uniffiCallbackInitHubServerListener()
     uniffiCallbackInitLinkListener()
+    uniffiCallbackInitMeasureListener()
     uniffiCallbackInitMidiSender()
     uniffiCallbackInitNotifyListener()
     uniffiCallbackInitRtaListener()

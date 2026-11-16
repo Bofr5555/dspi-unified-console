@@ -159,8 +159,12 @@ mod channel_clip;
 mod picoboot;
 // -- WP P5DOCK -- the measurement documents (PLAN-P5 T11) and the core's SectionModel
 mod measure_doc;
+// -- WP P5SES -- the measurement session (PLAN-P5)
+pub mod measure;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
+// -- WP P5SES --
+pub use callbacks::MeasureListener;
 pub use curves::*;
 pub use device::MidiInputHandle;
 pub use error::{DspiError, Result};
@@ -323,6 +327,11 @@ pub use channel_clip::{
     CHANNEL_CLIP_KIND, CHANNEL_CLIP_VERSION, ChannelClip, ChannelClipOutput, ChannelPasteOptions,
     PASTE_LABEL, channel_clip_from_json, channel_clip_to_json,
 };
+// -- WP P5SES --
+pub use measure::{
+    MeasureCoupler, MeasureIssue, MeasureLevel, MeasureOutput, MeasurePhase, MeasurePlacement,
+    MeasurePreflight, MeasureRole, MeasureRunKind, MeasureSetup, MeasureState, MeasureTiming,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -381,6 +390,10 @@ pub struct DspiCore {
     /// web). Taken with or without `inner`, never `inner` after it.
     #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
     pub(crate) measure_dir: measure_doc::DirSlot,
+    // -- WP P5SES --
+    /// The measurement session (`measure.rs`). Taken before `inner`, never
+    /// after it.
+    pub(crate) measure: measure::MeasureSlot,
 }
 
 // -- WP LK4 --
@@ -479,6 +492,9 @@ pub(crate) struct Inner {
     // -- WP ROMODE --
     /// The client read-only mode (`read_only.rs`).
     pub(crate) client_read_only: read_only::ClientReadOnly,
+    // -- WP P5SES --
+    /// What the notification path saw that a running measurement judges.
+    pub(crate) measure_tap: measure::Tap,
 }
 
 /// An open device.
@@ -873,6 +889,7 @@ impl Inner {
             confirm: confirm::Confirm::default(),                   // -- WP P1TK --
             limits: limits::Limits::default(),                      // -- WP P1LM --
             client_read_only: read_only::ClientReadOnly::default(), // -- WP ROMODE --
+            measure_tap: measure::Tap::default(),                   // -- WP P5SES --
         }
     }
 
@@ -988,6 +1005,8 @@ impl DspiCore {
             guarded: guarded::GuardSlot::default(),
             // -- WP P5DOCK --
             measure_dir: measure_doc::DirSlot::default(),
+            // -- WP P5SES --
+            measure: measure::MeasureSlot::default(),
         })
     }
 }

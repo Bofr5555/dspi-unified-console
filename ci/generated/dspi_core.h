@@ -7106,6 +7106,78 @@ uint32_t dspi_target_import(const char *name,
 uint32_t dspi_target_builtins(char *buf, uint32_t len);
 
 /**
+ * Set the callback that says the session's state changed (call
+ * `dspi_measure_state`); null unsets it. Called on the thread that pushed,
+ * ticked or stopped, with no core lock held.
+ */
+void dspi_measure_set_callback(struct FfiCore *core,
+                               void (*callback)(void *user_data),
+                               void *user_data);
+
+/**
+ * The preflight of the setup `setup` (JSON): `{ok, clear, blockers,
+ * warnings}`, each issue `{key, output, message}`; writes nothing.
+ */
+uint32_t dspi_measure_preflight(struct FfiCore *core,
+                                const char *setup_json,
+                                char *buf,
+                                uint32_t len);
+
+/**
+ * Start a measurement of `setup` (JSON): the state, or a failure
+ * (`invalid` naming the blockers, `read_only`, `denied`, `locked`).
+ */
+uint32_t dspi_measure_start(struct FfiCore *core, const char *setup_json, char *buf, uint32_t len);
+
+/**
+ * Push `count` mono samples (full scale ±1) of the microphone's capture
+ * from frame `first_frame` at `rate_hz`; `clipped` when the converter
+ * clipped. `samples` points at `count` floats (null with `count` 0). The
+ * state, or a failure for a block over 1 Mi samples or a null or misaligned
+ * pointer with a count.
+ */
+uint32_t dspi_measure_capture_push(struct FfiCore *core,
+                                   uint64_t first_frame,
+                                   const float *samples,
+                                   uint32_t count,
+                                   uint32_t rate_hz,
+                                   bool clipped,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * Drive the session (about every 50 ms, off the UI thread): the state.
+ */
+uint32_t dspi_measure_tick(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The microphone is at the next position: the state, or `invalid` when the
+ * session is not waiting for one.
+ */
+uint32_t dspi_measure_next_position(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The user's Stop: the state (never a failure).
+ */
+uint32_t dspi_measure_stop(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The session's state, without I/O.
+ */
+uint32_t dspi_measure_state(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The finished measurement as a `measurement` document's text, or a
+ * failure (`invalid` while none is ready).
+ */
+uint32_t dspi_measure_result(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Forget a finished session: `{ok}`, or `invalid` while one is active.
+ */
+uint32_t dspi_measure_clear(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

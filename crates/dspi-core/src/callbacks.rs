@@ -80,3 +80,13 @@ pub trait MidiSender: Send + Sync {
     /// device has gone; any other error fails the request in flight.
     fn send_sysex(&self, sysex: Vec<u8>) -> Result<(), DspiError>;
 }
+
+// -- WP P5SES --
+/// A measurement session's phase changed, it stopped, or it asks something:
+/// read `measure_state()`. Called on the thread that pushed capture, ticked or
+/// stopped, with the core lock released; must not block.
+#[cfg_attr(feature = "uniffi", uniffi::export(with_foreign))]
+pub trait MeasureListener: Send + Sync {
+    /// The session's state changed.
+    fn on_measure(&self);
+}

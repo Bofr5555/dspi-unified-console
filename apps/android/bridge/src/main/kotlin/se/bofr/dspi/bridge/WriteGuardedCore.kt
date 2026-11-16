@@ -33,6 +33,8 @@ import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.IdentifyInfo
 import se.bofr.dspi.core.LimitsApply
 import se.bofr.dspi.core.LockState
+import se.bofr.dspi.core.MeasureSetup
+import se.bofr.dspi.core.MeasureState
 import se.bofr.dspi.core.ParamValue
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.SnapshotRecall
@@ -684,6 +686,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.snapshotRecallDocument(text)
     }
 
+    // -- WP P5SES -- a measurement plays the generator: its start is a write
+    // (the session's own steps, its stop and its aborts follow from it)
+    override fun measureStart(setup: MeasureSetup): MeasureState {
+        guard("measureStart")
+        return inner.measureStart(setup)
+    }
+
     // -- WP P1AB -- a start with A given, a toggle and a keep recall a snapshot
     override fun abStart(aId: String, bId: String): AbCompare {
         guard("abStart")
@@ -1043,7 +1052,9 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "hubGroupParamSet",
             "hubGroupPresetLoad",
             "hubGroupApply",
-            "hubRolloutStart"
+            "hubRolloutStart",
+            // -- WP P5SES --
+            "measureStart"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1452,7 +1463,19 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureDocInfo",
             "micImport",
             "targetImport",
-            "targetBuiltins"
+            "targetBuiltins",
+            // -- WP P5SES -- the measurement's reads, its capture, its tick (the
+            // started session's own steps), its stop and its aborts (as
+            // applyRevert: stopping never needs write access), its result
+            "measureSetListener",
+            "measurePreflight",
+            "measureCapturePush",
+            "measureTick",
+            "measureNextPosition",
+            "measureStop",
+            "measureState",
+            "measureResult",
+            "measureClear"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

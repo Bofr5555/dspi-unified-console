@@ -465,6 +465,8 @@ fn apply_queued(
         let own = conn.echo.classify_notification(kind, session, note);
         // -- WP CG23 --
         inner.notify_tap.record(note, own);
+        // -- WP P5SES -- what a running measurement must judge (S5)
+        crate::measure::note_notification(&mut inner.measure_tap, note, own);
         // -- WP P0M --
         inner
             .events

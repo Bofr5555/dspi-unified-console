@@ -696,6 +696,9 @@ internal interface UniffiCallbackInterfaceLinkListenerMethod2 : com.sun.jna.Call
 internal interface UniffiCallbackInterfaceLinkListenerMethod3 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`hubId`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfaceMeasureListenerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceMidiSenderMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`sysex`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -825,6 +828,22 @@ internal open class UniffiVTableCallbackInterfaceLinkListener(
     }
 
 }
+@Structure.FieldOrder("onMeasure", "uniffiFree")
+internal open class UniffiVTableCallbackInterfaceMeasureListener(
+    @JvmField internal var `onMeasure`: UniffiCallbackInterfaceMeasureListenerMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `onMeasure`: UniffiCallbackInterfaceMeasureListenerMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfaceMeasureListener(`onMeasure`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceMeasureListener) {
+        `onMeasure` = other.`onMeasure`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
+}
 @Structure.FieldOrder("sendSysex", "uniffiFree")
 internal open class UniffiVTableCallbackInterfaceMidiSender(
     @JvmField internal var `sendSysex`: UniffiCallbackInterfaceMidiSenderMethod0? = null,
@@ -873,6 +892,31 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
     }
 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2599,6 +2643,10 @@ fun uniffi_dspi_core_checksum_method_dspicore_load_preset(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_max_delay_ms(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_capture_push(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_clear(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_delete(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_get(
@@ -2611,7 +2659,23 @@ fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_rename(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_docs(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_next_position(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_preflight(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_result(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_set_dir(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_set_listener(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_start(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_state(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_stop(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tick(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measurement_export_rew(
 ): Short
@@ -2967,6 +3031,8 @@ fun uniffi_dspi_core_checksum_method_linklistener_on_link_status_changed(
 ): Short
 fun uniffi_dspi_core_checksum_method_linklistener_on_link_token_issued(
 ): Short
+fun uniffi_dspi_core_checksum_method_measurelistener_on_measure(
+): Short
 fun uniffi_dspi_core_checksum_method_midiinputhandle_close_port(
 ): Short
 fun uniffi_dspi_core_checksum_method_midiinputhandle_receive(
@@ -3039,6 +3105,7 @@ internal interface UniffiLib : Library {
             uniffiCallbackInterfaceHubAdminListener.register(lib)
             uniffiCallbackInterfaceHubServerListener.register(lib)
             uniffiCallbackInterfaceLinkListener.register(lib)
+            uniffiCallbackInterfaceMeasureListener.register(lib)
             uniffiCallbackInterfaceMidiSender.register(lib)
             uniffiCallbackInterfaceNotifyListener.register(lib)
             uniffiCallbackInterfaceRtaListener.register(lib)
@@ -3557,6 +3624,10 @@ fun uniffi_dspi_core_fn_method_dspicore_load_preset(`ptr`: Pointer,`slot`: Byte,
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_max_delay_ms(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Float
+fun uniffi_dspi_core_fn_method_dspicore_measure_capture_push(`ptr`: Pointer,`firstFrame`: Long,`samples`: RustBuffer.ByValue,`rateHz`: Int,`clipped`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_clear(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_dspi_core_fn_method_dspicore_measure_doc_delete(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_measure_doc_get(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3569,8 +3640,24 @@ fun uniffi_dspi_core_fn_method_dspicore_measure_doc_rename(`ptr`: Pointer,`id`: 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_docs(`ptr`: Pointer,`kind`: RustBuffer.ByValue,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_next_position(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_preflight(`ptr`: Pointer,`setup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_result(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_measure_set_listener(`ptr`: Pointer,`listener`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_measure_start(`ptr`: Pointer,`setup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tick(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measurement_export_rew(`ptr`: Pointer,`doc`: RustBuffer.ByValue,`output`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_meter_ballistics(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3952,6 +4039,14 @@ fun uniffi_dspi_core_fn_method_linklistener_on_link_closed(`ptr`: Pointer,`code`
 fun uniffi_dspi_core_fn_method_linklistener_on_link_status_changed(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_linklistener_on_link_token_issued(`ptr`: Pointer,`hubId`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_clone_measurelistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
+fun uniffi_dspi_core_fn_free_measurelistener(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_init_callback_vtable_measurelistener(`vtable`: UniffiVTableCallbackInterfaceMeasureListener,
+): Unit
+fun uniffi_dspi_core_fn_method_measurelistener_on_measure(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_clone_midiinputhandle(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
@@ -5174,6 +5269,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_max_delay_ms() != 14810.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_capture_push() != 56346.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_clear() != 18469.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_doc_delete() != 44561.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -5192,7 +5293,31 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_docs() != 14119.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_next_position() != 42088.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_preflight() != 35881.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_result() != 7126.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_set_dir() != 18664.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_set_listener() != 176.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_start() != 36814.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_state() != 64969.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_stop() != 53664.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tick() != 49262.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measurement_export_rew() != 45126.toShort()) {
@@ -5724,6 +5849,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_linklistener_on_link_token_issued() != 47398.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_measurelistener_on_measure() != 13492.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_midiinputhandle_close_port() != 24616.toShort()) {
@@ -10030,6 +10158,28 @@ public interface DspiCoreInterface {
     fun `maxDelayMs`(): kotlin.Float
     
     /**
+     * Push one block of the microphone's capture: mono samples, full scale
+     * ±1, starting at frame `first_frame` of the client's own count, at
+     * `rate_hz`, `clipped` when the converter clipped. The safety checks run
+     * first, O(block) (S4, S5): a gap or repeat in the frame indices, a
+     * clip, the SPL cap. No analysis runs here. A push with no session, or
+     * while the session wants none, is ignored.
+     *
+     * Errors: none for the capture's content (a fault ends the session and
+     * shows in the state); [`DspiError::InvalidArgument`] for more than
+     * 1 Mi samples in one block.
+     */
+    fun `measureCapturePush`(`firstFrame`: kotlin.ULong, `samples`: List<kotlin.Float>, `rateHz`: kotlin.UInt, `clipped`: kotlin.Boolean): MeasureState
+    
+    /**
+     * Forget a finished session (its result included), so the screens show
+     * none. Refused while one is active.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a session is active.
+     */
+    fun `measureClear`()
+    
+    /**
      * Delete filed document `id`. Errors as [`DspiCore::measure_doc_get`].
      */
     fun `measureDocDelete`(`id`: kotlin.String)
@@ -10083,6 +10233,36 @@ public interface DspiCoreInterface {
     fun `measureDocs`(`kind`: kotlin.String, `serial`: kotlin.String): List<MeasureDocInfo>
     
     /**
+     * The microphone is at the next position (or the headphones reseated):
+     * go on with the next run.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the session is not waiting
+     * for a position.
+     */
+    fun `measureNextPosition`(): MeasureState
+    
+    /**
+     * What stands between `setup` and a measurement, in words (PLAN-P5
+     * section 1.2): the volume (S2), the tweeter rule (S6), silence on the
+     * inputs (S8), locks and roles (S11), processing the maths does not model
+     * (S13), the plan's bounds (S7). Reads the device (the meters and the
+     * generator's caps); writes nothing.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * a setup that is not one (no outputs, an output twice, a count out of
+     * range); a transfer failure of the reads.
+     */
+    fun `measurePreflight`(`setup`: MeasureSetup): MeasurePreflight
+    
+    /**
+     * The finished measurement as a `measurement` document's text (schema 1,
+     * derived curves only). File it with `measure_doc_put` (or the hub's).
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    fun `measureResult`(): kotlin.String
+    
+    /**
      * Keep measurement, microphone and target documents in files under
      * `dir`, the client's own data folder (created if missing): a folder per
      * device serial for measurements, `mic/` and `target/`, each with an
@@ -10092,6 +10272,52 @@ public interface DspiCoreInterface {
      * [`DspiError::Unsupported`] on the web (no files there).
      */
     fun `measureSetDir`(`dir`: kotlin.String)
+    
+    /**
+     * Register (`Some`) or clear (`None`) the measurement listener: called
+     * when a session's phase changes, it stops, or it asks something. Called
+     * on the thread that pushed, ticked or stopped, with every core lock
+     * released; it may read `measure_state` but must not block.
+     */
+    fun `measureSetListener`(`listener`: MeasureListener?)
+    
+    /**
+     * Start a measurement of `setup`: the preflight, the device lock
+     * "Measuring" (a 30 s lease, renewed by `measure_tick`), then the
+     * pre-roll. Nothing plays before the client has pushed the pre-roll and
+     * ticked. The client then pushes capture whenever `wants_capture` and
+     * calls `measure_tick` about every 50 ms until the phase is `done`,
+     * `aborted` or `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a session
+     * already running on this core, or a blocker (named in the message);
+     * [`DspiError::ReadOnly`] (read-only mode or connection) and
+     * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
+     * [`DspiError::Locked`] when another session holds the device lock, or
+     * this console holds it through `device_lock_acquire`;
+     * [`DspiError::Disconnected`].
+     */
+    fun `measureStart`(`setup`: MeasureSetup): MeasureState
+    
+    /**
+     * The session's state, without I/O.
+     */
+    fun `measureState`(): MeasureState
+    
+    /**
+     * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
+     * the run discarded, the lock given back. Idempotent; never fails.
+     */
+    fun `measureStop`(): MeasureState
+    
+    /**
+     * Drive the session: apply queued notifications, judge them (S5), renew
+     * the lease, poll the generator and the meters (about 4 Hz), start the
+     * next step, run one analysis slice. Call it about every 50 ms while a
+     * session is active, off the UI thread (it blocks for a few transfers).
+     * Returns the state; never fails.
+     */
+    fun `measureTick`(): MeasureState
     
     /**
      * Output `output`'s measured response as REW text ("Import frequency
@@ -17324,6 +17550,49 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Push one block of the microphone's capture: mono samples, full scale
+     * ±1, starting at frame `first_frame` of the client's own count, at
+     * `rate_hz`, `clipped` when the converter clipped. The safety checks run
+     * first, O(block) (S4, S5): a gap or repeat in the frame indices, a
+     * clip, the SPL cap. No analysis runs here. A push with no session, or
+     * while the session wants none, is ignored.
+     *
+     * Errors: none for the capture's content (a fault ends the session and
+     * shows in the state); [`DspiError::InvalidArgument`] for more than
+     * 1 Mi samples in one block.
+     */
+    @Throws(DspiException::class)override fun `measureCapturePush`(`firstFrame`: kotlin.ULong, `samples`: List<kotlin.Float>, `rateHz`: kotlin.UInt, `clipped`: kotlin.Boolean): MeasureState {
+            return FfiConverterTypeMeasureState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_capture_push(
+        it, FfiConverterULong.lower(`firstFrame`),FfiConverterSequenceFloat.lower(`samples`),FfiConverterUInt.lower(`rateHz`),FfiConverterBoolean.lower(`clipped`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Forget a finished session (its result included), so the screens show
+     * none. Refused while one is active.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a session is active.
+     */
+    @Throws(DspiException::class)override fun `measureClear`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_clear(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
      * Delete filed document `id`. Errors as [`DspiCore::measure_doc_get`].
      */
     @Throws(DspiException::class)override fun `measureDocDelete`(`id`: kotlin.String)
@@ -17442,6 +17711,69 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The microphone is at the next position (or the headphones reseated):
+     * go on with the next run.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the session is not waiting
+     * for a position.
+     */
+    @Throws(DspiException::class)override fun `measureNextPosition`(): MeasureState {
+            return FfiConverterTypeMeasureState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_next_position(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * What stands between `setup` and a measurement, in words (PLAN-P5
+     * section 1.2): the volume (S2), the tweeter rule (S6), silence on the
+     * inputs (S8), locks and roles (S11), processing the maths does not model
+     * (S13), the plan's bounds (S7). Reads the device (the meters and the
+     * generator's caps); writes nothing.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * a setup that is not one (no outputs, an output twice, a count out of
+     * range); a transfer failure of the reads.
+     */
+    @Throws(DspiException::class)override fun `measurePreflight`(`setup`: MeasureSetup): MeasurePreflight {
+            return FfiConverterTypeMeasurePreflight.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_preflight(
+        it, FfiConverterTypeMeasureSetup.lower(`setup`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The finished measurement as a `measurement` document's text (schema 1,
+     * derived curves only). File it with `measure_doc_put` (or the hub's).
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    @Throws(DspiException::class)override fun `measureResult`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_result(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Keep measurement, microphone and target documents in files under
      * `dir`, the client's own data folder (created if missing): a folder per
      * device serial for measurements, `mic/` and `target/`, each with an
@@ -17459,6 +17791,102 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Register (`Some`) or clear (`None`) the measurement listener: called
+     * when a session's phase changes, it stops, or it asks something. Called
+     * on the thread that pushed, ticked or stopped, with every core lock
+     * released; it may read `measure_state` but must not block.
+     */override fun `measureSetListener`(`listener`: MeasureListener?)
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_set_listener(
+        it, FfiConverterOptionalTypeMeasureListener.lower(`listener`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Start a measurement of `setup`: the preflight, the device lock
+     * "Measuring" (a 30 s lease, renewed by `measure_tick`), then the
+     * pre-roll. Nothing plays before the client has pushed the pre-roll and
+     * ticked. The client then pushes capture whenever `wants_capture` and
+     * calls `measure_tick` about every 50 ms until the phase is `done`,
+     * `aborted` or `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a session
+     * already running on this core, or a blocker (named in the message);
+     * [`DspiError::ReadOnly`] (read-only mode or connection) and
+     * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
+     * [`DspiError::Locked`] when another session holds the device lock, or
+     * this console holds it through `device_lock_acquire`;
+     * [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `measureStart`(`setup`: MeasureSetup): MeasureState {
+            return FfiConverterTypeMeasureState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_start(
+        it, FfiConverterTypeMeasureSetup.lower(`setup`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The session's state, without I/O.
+     */override fun `measureState`(): MeasureState {
+            return FfiConverterTypeMeasureState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
+     * the run discarded, the lock given back. Idempotent; never fails.
+     */override fun `measureStop`(): MeasureState {
+            return FfiConverterTypeMeasureState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_stop(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Drive the session: apply queued notifications, judge them (S5), renew
+     * the lease, poll the generator and the meters (about 4 Hz), start the
+     * next step, run one analysis slice. Call it about every 50 ms while a
+     * session is active, off the UI thread (it blocks for a few transfers).
+     * Returns the state; never fails.
+     */override fun `measureTick`(): MeasureState {
+            return FfiConverterTypeMeasureState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tick(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     
@@ -22771,6 +23199,291 @@ public object FfiConverterTypeLinkListener: FfiConverter<LinkListener, Pointer> 
     override fun allocationSize(value: LinkListener) = 8UL
 
     override fun write(value: LinkListener, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// to the live Rust struct on the other side of the FFI.
+//
+// Each instance implements core operations for working with the Rust `Arc<T>` and the
+// Kotlin Pointer to work with the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque pointer to the underlying Rust struct.
+//     Method calls need to read this pointer from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its pointer should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the pointer, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the pointer, but is interrupted
+//      before it can pass the pointer over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read pointer value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * A measurement session's phase changed, it stopped, or it asks something:
+ * read `measure_state()`. Called on the thread that pushed capture, ticked or
+ * stopped, with the core lock released; must not block.
+ */
+public interface MeasureListener {
+    
+    /**
+     * The session's state changed.
+     */
+    fun `onMeasure`()
+    
+    companion object
+}
+
+/**
+ * A measurement session's phase changed, it stopped, or it asks something:
+ * read `measure_state()`. Called on the thread that pushed capture, ticked or
+ * stopped, with the core lock released; must not block.
+ */
+open class MeasureListenerImpl: Disposable, AutoCloseable, MeasureListener
+{
+
+    constructor(pointer: Pointer) {
+        this.pointer = pointer
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    /**
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noPointer: NoPointer) {
+        this.pointer = null
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    protected val pointer: Pointer?
+    protected val cleanable: UniffiCleaner.Cleanable
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithPointer(block: (ptr: Pointer) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the pointer being freed concurrently.
+        try {
+            return block(this.uniffiClonePointer())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val pointer: Pointer?) : Runnable {
+        override fun run() {
+            pointer?.let { ptr ->
+                uniffiRustCall { status ->
+                    UniffiLib.INSTANCE.uniffi_dspi_core_fn_free_measurelistener(ptr, status)
+                }
+            }
+        }
+    }
+
+    fun uniffiClonePointer(): Pointer {
+        return uniffiRustCall() { status ->
+            UniffiLib.INSTANCE.uniffi_dspi_core_fn_clone_measurelistener(pointer!!, status)
+        }
+    }
+
+    
+    /**
+     * The session's state changed.
+     */override fun `onMeasure`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_measurelistener_on_measure(
+        it, _status)
+}
+    }
+    
+    
+
+    
+
+    
+    
+    companion object
+    
+}
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceMeasureListener {
+    internal object `onMeasure`: UniffiCallbackInterfaceMeasureListenerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeMeasureListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onMeasure`(
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeMeasureListener.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceMeasureListener.UniffiByValue(
+        `onMeasure`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_dspi_core_fn_init_callback_vtable_measurelistener(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureListener: FfiConverter<MeasureListener, Pointer> {
+    internal val handleMap = UniffiHandleMap<MeasureListener>()
+
+    override fun lower(value: MeasureListener): Pointer {
+        return Pointer(handleMap.insert(value))
+    }
+
+    override fun lift(value: Pointer): MeasureListener {
+        return MeasureListenerImpl(value)
+    }
+
+    override fun read(buf: ByteBuffer): MeasureListener {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: MeasureListener) = 8UL
+
+    override fun write(value: MeasureListener, buf: ByteBuffer) {
         // The Rust code always expects pointers written as 8 bytes,
         // and will fail to compile if they don't fit.
         buf.putLong(Pointer.nativeValue(lower(value)))
@@ -35718,6 +36431,627 @@ public object FfiConverterTypeMeasureDocInfo: FfiConverterRustBuffer<MeasureDocI
 
 
 /**
+ * One preflight finding: a notice key and its words.
+ */
+data class MeasureIssue (
+    /**
+     * The notice key (`notice_for_key`), e.g. `measure.volume_high`.
+     */
+    var `key`: kotlin.String, 
+    /**
+     * The output it is about, if one.
+     */
+    var `output`: kotlin.UByte?, 
+    /**
+     * What it is, in words (English; the key localises).
+     */
+    var `message`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureIssue: FfiConverterRustBuffer<MeasureIssue> {
+    override fun read(buf: ByteBuffer): MeasureIssue {
+        return MeasureIssue(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureIssue) = (
+            FfiConverterString.allocationSize(value.`key`) +
+            FfiConverterOptionalUByte.allocationSize(value.`output`) +
+            FfiConverterString.allocationSize(value.`message`)
+    )
+
+    override fun write(value: MeasureIssue, buf: ByteBuffer) {
+            FfiConverterString.write(value.`key`, buf)
+            FfiConverterOptionalUByte.write(value.`output`, buf)
+            FfiConverterString.write(value.`message`, buf)
+    }
+}
+
+
+
+/**
+ * One output's ramp result.
+ */
+data class MeasureLevel (
+    /**
+     * The output.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * The generator's peak level the ramp settled on, dBFS.
+     */
+    var `levelDb`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLevel: FfiConverterRustBuffer<MeasureLevel> {
+    override fun read(buf: ByteBuffer): MeasureLevel {
+        return MeasureLevel(
+            FfiConverterUByte.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLevel) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterFloat.allocationSize(value.`levelDb`)
+    )
+
+    override fun write(value: MeasureLevel, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterFloat.write(value.`levelDb`, buf)
+    }
+}
+
+
+
+/**
+ * One output to measure.
+ */
+data class MeasureOutput (
+    /**
+     * The output, 0-based.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Its way.
+     */
+    var `role`: MeasureRole, 
+    /**
+     * The speaker it belongs to (`L`, `R`, `Sub`), for the document.
+     */
+    var `speaker`: kotlin.String, 
+    /**
+     * Its alignment group: the outputs of one group are measured in one
+     * walked run (PLAN-P5 section 1.4 step 4). Ignored by the other kinds.
+     */
+    var `group`: kotlin.UByte, 
+    /**
+     * A summed run plays this output inverted (its net programme polarity).
+     */
+    var `inverted`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureOutput: FfiConverterRustBuffer<MeasureOutput> {
+    override fun read(buf: ByteBuffer): MeasureOutput {
+        return MeasureOutput(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureRole.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureOutput) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`speaker`) +
+            FfiConverterUByte.allocationSize(value.`group`) +
+            FfiConverterBoolean.allocationSize(value.`inverted`)
+    )
+
+    override fun write(value: MeasureOutput, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterTypeMeasureRole.write(value.`role`, buf)
+            FfiConverterString.write(value.`speaker`, buf)
+            FfiConverterUByte.write(value.`group`, buf)
+            FfiConverterBoolean.write(value.`inverted`, buf)
+    }
+}
+
+
+
+/**
+ * What stands between the setup and a measurement (PLAN-P5 section 1.2).
+ */
+data class MeasurePreflight (
+    /**
+     * Nothing blocks: `measure_start` may play.
+     */
+    var `clear`: kotlin.Boolean, 
+    /**
+     * Every blocker, in words; nothing is played until they are clear.
+     */
+    var `blockers`: List<MeasureIssue>, 
+    /**
+     * What does not block but the user should know.
+     */
+    var `warnings`: List<MeasureIssue>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasurePreflight: FfiConverterRustBuffer<MeasurePreflight> {
+    override fun read(buf: ByteBuffer): MeasurePreflight {
+        return MeasurePreflight(
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceTypeMeasureIssue.read(buf),
+            FfiConverterSequenceTypeMeasureIssue.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasurePreflight) = (
+            FfiConverterBoolean.allocationSize(value.`clear`) +
+            FfiConverterSequenceTypeMeasureIssue.allocationSize(value.`blockers`) +
+            FfiConverterSequenceTypeMeasureIssue.allocationSize(value.`warnings`)
+    )
+
+    override fun write(value: MeasurePreflight, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`clear`, buf)
+            FfiConverterSequenceTypeMeasureIssue.write(value.`blockers`, buf)
+            FfiConverterSequenceTypeMeasureIssue.write(value.`warnings`, buf)
+    }
+}
+
+
+
+/**
+ * What to measure and how (`measure_preflight`, `measure_start`). Every
+ * number 0 (or absent) is the plan's default.
+ */
+data class MeasureSetup (
+    /**
+     * The run kind.
+     */
+    var `kind`: MeasureRunKind, 
+    /**
+     * The outputs, 1 to 16, each once.
+     */
+    var `outputs`: List<MeasureOutput>, 
+    /**
+     * Where the microphone is.
+     */
+    var `placement`: MeasurePlacement, 
+    /**
+     * Positions (3 to 9, multi-position) or reseats (1 to 9, headphones).
+     */
+    var `count`: kotlin.UByte, 
+    /**
+     * The coupler, for headphones.
+     */
+    var `coupler`: MeasureCoupler?, 
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated
+     * microphone (relative dB, no SPL cap).
+     */
+    var `micDocument`: kotlin.String, 
+    /**
+     * One sweep, ms (1000 to 15000; 0: 5500, 2700 for a live sweep).
+     */
+    var `sweepMs`: kotlin.UInt, 
+    /**
+     * The gap after each cycle, ms (300 to 2000; 0: 1000 for speakers, 300
+     * on a coupler).
+     */
+    var `gapMs`: kotlin.UInt, 
+    /**
+     * Passes of a walked run (2 to 8; 0: 3).
+     */
+    var `passes`: kotlin.UByte, 
+    /**
+     * Pink noise, ms (1000 to 60000; 0: 10000).
+     */
+    var `pinkMs`: kotlin.UInt, 
+    /**
+     * The generator's ceiling, peak dBFS: lower than the mode's default, or
+     * higher up to the hard cap (-6 speakers, -20 headphones).
+     */
+    var `ceilingDb`: kotlin.Float?, 
+    /**
+     * The SPL cap with a calibrated microphone, dB SPL (default 95 speakers,
+     * 90 on a coupler; at most 105 and 100).
+     */
+    var `splCapDb`: kotlin.Float?, 
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    var `captureRateHz`: kotlin.UInt, 
+    /**
+     * The document's name ("" names it by the date).
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Play at the start level only (-50 dBFS speakers, -60 dBFS headphones):
+     * the ceiling is the start level, so the ramp never goes above it; every
+     * other rule unchanged (P5SPIKE's timing test).
+     */
+    var `startLevelOnly`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSetup: FfiConverterRustBuffer<MeasureSetup> {
+    override fun read(buf: ByteBuffer): MeasureSetup {
+        return MeasureSetup(
+            FfiConverterTypeMeasureRunKind.read(buf),
+            FfiConverterSequenceTypeMeasureOutput.read(buf),
+            FfiConverterTypeMeasurePlacement.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterOptionalTypeMeasureCoupler.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSetup) = (
+            FfiConverterTypeMeasureRunKind.allocationSize(value.`kind`) +
+            FfiConverterSequenceTypeMeasureOutput.allocationSize(value.`outputs`) +
+            FfiConverterTypeMeasurePlacement.allocationSize(value.`placement`) +
+            FfiConverterUByte.allocationSize(value.`count`) +
+            FfiConverterOptionalTypeMeasureCoupler.allocationSize(value.`coupler`) +
+            FfiConverterString.allocationSize(value.`micDocument`) +
+            FfiConverterUInt.allocationSize(value.`sweepMs`) +
+            FfiConverterUInt.allocationSize(value.`gapMs`) +
+            FfiConverterUByte.allocationSize(value.`passes`) +
+            FfiConverterUInt.allocationSize(value.`pinkMs`) +
+            FfiConverterOptionalFloat.allocationSize(value.`ceilingDb`) +
+            FfiConverterOptionalFloat.allocationSize(value.`splCapDb`) +
+            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`startLevelOnly`)
+    )
+
+    override fun write(value: MeasureSetup, buf: ByteBuffer) {
+            FfiConverterTypeMeasureRunKind.write(value.`kind`, buf)
+            FfiConverterSequenceTypeMeasureOutput.write(value.`outputs`, buf)
+            FfiConverterTypeMeasurePlacement.write(value.`placement`, buf)
+            FfiConverterUByte.write(value.`count`, buf)
+            FfiConverterOptionalTypeMeasureCoupler.write(value.`coupler`, buf)
+            FfiConverterString.write(value.`micDocument`, buf)
+            FfiConverterUInt.write(value.`sweepMs`, buf)
+            FfiConverterUInt.write(value.`gapMs`, buf)
+            FfiConverterUByte.write(value.`passes`, buf)
+            FfiConverterUInt.write(value.`pinkMs`, buf)
+            FfiConverterOptionalFloat.write(value.`ceilingDb`, buf)
+            FfiConverterOptionalFloat.write(value.`splCapDb`, buf)
+            FfiConverterUInt.write(value.`captureRateHz`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`startLevelOnly`, buf)
+    }
+}
+
+
+
+/**
+ * A session's state: what the screens show and what the client must do.
+ */
+data class MeasureState (
+    /**
+     * Where it stands.
+     */
+    var `phase`: MeasurePhase, 
+    /**
+     * The run kind.
+     */
+    var `kind`: MeasureRunKind, 
+    /**
+     * The session holds the generator or the lock: Stop is shown.
+     */
+    var `active`: kotlin.Boolean, 
+    /**
+     * The client must push capture now (from the pre-roll to the end).
+     */
+    var `wantsCapture`: kotlin.Boolean, 
+    /**
+     * The capture rate the session expects, Hz.
+     */
+    var `captureRateHz`: kotlin.UInt, 
+    /**
+     * The position (or reseat) being measured, 1-based.
+     */
+    var `position`: kotlin.UByte, 
+    /**
+     * Positions (or reseats) in all.
+     */
+    var `positions`: kotlin.UByte, 
+    /**
+     * The run being measured, 1-based.
+     */
+    var `run`: kotlin.UShort, 
+    /**
+     * Runs in all.
+     */
+    var `runs`: kotlin.UShort, 
+    /**
+     * The output now ramping or playing alone, if one.
+     */
+    var `output`: kotlin.UByte?, 
+    /**
+     * The generator's level now, peak dBFS, while it plays.
+     */
+    var `levelDb`: kotlin.Float?, 
+    /**
+     * The ramps' results so far (this run).
+     */
+    var `rampLevels`: List<MeasureLevel>, 
+    /**
+     * The run's level (the minimum of its ways' ramp levels).
+     */
+    var `runLevelDb`: kotlin.Float?, 
+    /**
+     * Frames pushed since the session began.
+     */
+    var `frames`: kotlin.ULong, 
+    /**
+     * The capture frame at which the latest START was acknowledged.
+     */
+    var `generatorStartFrame`: kotlin.ULong?, 
+    /**
+     * STARTs sent in this session (a client's simulated microphone renders
+     * each one).
+     */
+    var `generatorStarts`: kotlin.UInt, 
+    /**
+     * The current phase's progress, 0 to 1.
+     */
+    var `progress`: kotlin.Float, 
+    /**
+     * Why it stopped, or what it asks.
+     */
+    var `issue`: MeasureIssue?, 
+    /**
+     * The last run passed the timing quality gate (walked runs).
+     */
+    var `timingReliable`: kotlin.Boolean?, 
+    /**
+     * `measure_result` has a document.
+     */
+    var `resultReady`: kotlin.Boolean, 
+    /**
+     * The last analysed walked run's timing.
+     */
+    var `timing`: MeasureTiming?, 
+    /**
+     * Gaps and repeats seen in the capture's frame indices (any one aborts
+     * the session, S5).
+     */
+    var `frameFaults`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureState: FfiConverterRustBuffer<MeasureState> {
+    override fun read(buf: ByteBuffer): MeasureState {
+        return MeasureState(
+            FfiConverterTypeMeasurePhase.read(buf),
+            FfiConverterTypeMeasureRunKind.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterSequenceTypeMeasureLevel.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterOptionalULong.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterOptionalTypeMeasureIssue.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalTypeMeasureTiming.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureState) = (
+            FfiConverterTypeMeasurePhase.allocationSize(value.`phase`) +
+            FfiConverterTypeMeasureRunKind.allocationSize(value.`kind`) +
+            FfiConverterBoolean.allocationSize(value.`active`) +
+            FfiConverterBoolean.allocationSize(value.`wantsCapture`) +
+            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
+            FfiConverterUByte.allocationSize(value.`position`) +
+            FfiConverterUByte.allocationSize(value.`positions`) +
+            FfiConverterUShort.allocationSize(value.`run`) +
+            FfiConverterUShort.allocationSize(value.`runs`) +
+            FfiConverterOptionalUByte.allocationSize(value.`output`) +
+            FfiConverterOptionalFloat.allocationSize(value.`levelDb`) +
+            FfiConverterSequenceTypeMeasureLevel.allocationSize(value.`rampLevels`) +
+            FfiConverterOptionalFloat.allocationSize(value.`runLevelDb`) +
+            FfiConverterULong.allocationSize(value.`frames`) +
+            FfiConverterOptionalULong.allocationSize(value.`generatorStartFrame`) +
+            FfiConverterUInt.allocationSize(value.`generatorStarts`) +
+            FfiConverterFloat.allocationSize(value.`progress`) +
+            FfiConverterOptionalTypeMeasureIssue.allocationSize(value.`issue`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`timingReliable`) +
+            FfiConverterBoolean.allocationSize(value.`resultReady`) +
+            FfiConverterOptionalTypeMeasureTiming.allocationSize(value.`timing`) +
+            FfiConverterUInt.allocationSize(value.`frameFaults`)
+    )
+
+    override fun write(value: MeasureState, buf: ByteBuffer) {
+            FfiConverterTypeMeasurePhase.write(value.`phase`, buf)
+            FfiConverterTypeMeasureRunKind.write(value.`kind`, buf)
+            FfiConverterBoolean.write(value.`active`, buf)
+            FfiConverterBoolean.write(value.`wantsCapture`, buf)
+            FfiConverterUInt.write(value.`captureRateHz`, buf)
+            FfiConverterUByte.write(value.`position`, buf)
+            FfiConverterUByte.write(value.`positions`, buf)
+            FfiConverterUShort.write(value.`run`, buf)
+            FfiConverterUShort.write(value.`runs`, buf)
+            FfiConverterOptionalUByte.write(value.`output`, buf)
+            FfiConverterOptionalFloat.write(value.`levelDb`, buf)
+            FfiConverterSequenceTypeMeasureLevel.write(value.`rampLevels`, buf)
+            FfiConverterOptionalFloat.write(value.`runLevelDb`, buf)
+            FfiConverterULong.write(value.`frames`, buf)
+            FfiConverterOptionalULong.write(value.`generatorStartFrame`, buf)
+            FfiConverterUInt.write(value.`generatorStarts`, buf)
+            FfiConverterFloat.write(value.`progress`, buf)
+            FfiConverterOptionalTypeMeasureIssue.write(value.`issue`, buf)
+            FfiConverterOptionalBoolean.write(value.`timingReliable`, buf)
+            FfiConverterBoolean.write(value.`resultReady`, buf)
+            FfiConverterOptionalTypeMeasureTiming.write(value.`timing`, buf)
+            FfiConverterUInt.write(value.`frameFaults`, buf)
+    }
+}
+
+
+
+/**
+ * A walked run's timing (PLAN-P5 section 1.1 steps 6 and 7): the clock fit,
+ * every cycle's residual and the quality gate's verdict. Non-finite numbers
+ * read 0.
+ */
+data class MeasureTiming (
+    /**
+     * The run passed the timing quality gate.
+     */
+    var `reliable`: kotlin.Boolean, 
+    /**
+     * The microphone's clock against the DSPi's, ppm.
+     */
+    var `ratioPpm`: kotlin.Double, 
+    /**
+     * The clock ratio was fitted (two passes or more).
+     */
+    var `ratioFitted`: kotlin.Boolean, 
+    /**
+     * The largest cycle residual, µs.
+     */
+    var `maxResidualUs`: kotlin.Double, 
+    /**
+     * The residual bound the run was held to, µs.
+     */
+    var `residualBoundUs`: kotlin.Double, 
+    /**
+     * The largest phase disagreement between repeats, degrees.
+     */
+    var `maxPhaseSpreadDeg`: kotlin.Double, 
+    /**
+     * Passes in the run.
+     */
+    var `passes`: kotlin.UShort, 
+    /**
+     * Why not reliable, in words (empty when reliable).
+     */
+    var `reasons`: List<kotlin.String>, 
+    /**
+     * Each cycle's output, in run order.
+     */
+    var `cycleOutputs`: kotlin.ByteArray, 
+    /**
+     * Each cycle's residual from the fit, µs, in run order.
+     */
+    var `cycleResidualsUs`: List<kotlin.Double>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTiming: FfiConverterRustBuffer<MeasureTiming> {
+    override fun read(buf: ByteBuffer): MeasureTiming {
+        return MeasureTiming(
+            FfiConverterBoolean.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTiming) = (
+            FfiConverterBoolean.allocationSize(value.`reliable`) +
+            FfiConverterDouble.allocationSize(value.`ratioPpm`) +
+            FfiConverterBoolean.allocationSize(value.`ratioFitted`) +
+            FfiConverterDouble.allocationSize(value.`maxResidualUs`) +
+            FfiConverterDouble.allocationSize(value.`residualBoundUs`) +
+            FfiConverterDouble.allocationSize(value.`maxPhaseSpreadDeg`) +
+            FfiConverterUShort.allocationSize(value.`passes`) +
+            FfiConverterSequenceString.allocationSize(value.`reasons`) +
+            FfiConverterByteArray.allocationSize(value.`cycleOutputs`) +
+            FfiConverterSequenceDouble.allocationSize(value.`cycleResidualsUs`)
+    )
+
+    override fun write(value: MeasureTiming, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`reliable`, buf)
+            FfiConverterDouble.write(value.`ratioPpm`, buf)
+            FfiConverterBoolean.write(value.`ratioFitted`, buf)
+            FfiConverterDouble.write(value.`maxResidualUs`, buf)
+            FfiConverterDouble.write(value.`residualBoundUs`, buf)
+            FfiConverterDouble.write(value.`maxPhaseSpreadDeg`, buf)
+            FfiConverterUShort.write(value.`passes`, buf)
+            FfiConverterSequenceString.write(value.`reasons`, buf)
+            FfiConverterByteArray.write(value.`cycleOutputs`, buf)
+            FfiConverterSequenceDouble.write(value.`cycleResidualsUs`, buf)
+    }
+}
+
+
+
+/**
  * One row of the merged snapshot list ([`DspiCore::snapshot_list_merged`]).
  */
 data class MergedSnapshot (
@@ -40855,6 +42189,265 @@ public object FfiConverterTypeLinkPhase: FfiConverterRustBuffer<LinkPhase> {
 
 
 /**
+ * A headphone coupler type.
+ */
+
+enum class MeasureCoupler {
+    
+    /**
+     * An IEC 60318-4 (711-type) ear simulator.
+     */
+    IEC60318_4,
+    /**
+     * A flat-plate coupler.
+     */
+    FLAT_PLATE,
+    /**
+     * A head and torso simulator or another coupler with pinna.
+     */
+    HATS;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureCoupler: FfiConverterRustBuffer<MeasureCoupler> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureCoupler.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureCoupler) = 4UL
+
+    override fun write(value: MeasureCoupler, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where a session stands.
+ */
+
+enum class MeasurePhase {
+    
+    /**
+     * No session on this core.
+     */
+    IDLE,
+    /**
+     * The generator is idle; the microphone's noise floor is taken.
+     */
+    PRE_ROLL,
+    /**
+     * The level ramp of one output (S3).
+     */
+    RAMP,
+    /**
+     * The run is playing.
+     */
+    RUN,
+    /**
+     * The run is analysed, a slice per tick.
+     */
+    ANALYSING,
+    /**
+     * Move the microphone (or reseat the headphones), then
+     * `measure_next_position`.
+     */
+    WAIT_POSITION,
+    /**
+     * The measurement is complete: `measure_result`.
+     */
+    DONE,
+    /**
+     * Stopped on a safety rule or by the user: nothing is kept.
+     */
+    ABORTED,
+    /**
+     * Stopped and asking the user (the microphone does not hear the output,
+     * no signal): nothing is kept.
+     */
+    FAILED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasurePhase: FfiConverterRustBuffer<MeasurePhase> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasurePhase.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasurePhase) = 4UL
+
+    override fun write(value: MeasurePhase, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where the microphone is (owner requirement R3).
+ */
+
+enum class MeasurePlacement {
+    
+    /**
+     * Speakers, the listening position.
+     */
+    LISTENING_POSITION,
+    /**
+     * Speakers, 3 to 9 positions averaged (`count`).
+     */
+    MULTI_POSITION,
+    /**
+     * Speakers, the microphone close to each driver: one run per output.
+     */
+    NEAR_FIELD,
+    /**
+     * Headphones on a coupler, 1 to 9 reseats (`count`).
+     */
+    HEADPHONES;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasurePlacement: FfiConverterRustBuffer<MeasurePlacement> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasurePlacement.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasurePlacement) = 4UL
+
+    override fun write(value: MeasurePlacement, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * A way of a loudspeaker, as the user confirmed the layout.
+ */
+
+enum class MeasureRole {
+    
+    /**
+     * A full-range output.
+     */
+    FULL,
+    /**
+     * A subwoofer.
+     */
+    SUB,
+    /**
+     * The lowest way of a multi-way speaker.
+     */
+    LOW,
+    /**
+     * A middle way: needs an active high-pass to be measured (S6).
+     */
+    MID,
+    /**
+     * The highest way: needs an active high-pass to be measured (S6).
+     */
+    HIGH;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRole: FfiConverterRustBuffer<MeasureRole> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureRole.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureRole) = 4UL
+
+    override fun write(value: MeasureRole, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * What a run plays (PLAN-P5 section 1.1, review RC11).
+ */
+
+enum class MeasureRunKind {
+    
+    /**
+     * Log sweeps, one output per cycle round-robin, 2 to 8 passes: responses
+     * with phase, arrivals and the timing quality gate.
+     */
+    WALKED,
+    /**
+     * One sweep on several outputs at once, each with its polarity (the
+     * generator's `invert_mask`): the measured sum of a transition.
+     */
+    SUMMED,
+    /**
+     * One sweep on one output (the live view): magnitude only.
+     */
+    LIVE_SWEEP,
+    /**
+     * Finite pink noise on one output (at most 60 s): the microphone RTA.
+     */
+    PINK;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRunKind: FfiConverterRustBuffer<MeasureRunKind> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureRunKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureRunKind) = 4UL
+
+    override fun write(value: MeasureRunKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * How a notice is shown.
  */
 
@@ -41905,6 +43498,38 @@ public object FfiConverterOptionalTypeLinkListener: FfiConverterRustBuffer<LinkL
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeMeasureListener: FfiConverterRustBuffer<MeasureListener?> {
+    override fun read(buf: ByteBuffer): MeasureListener? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureListener.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureListener?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureListener.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureListener?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureListener.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeNotifyListener: FfiConverterRustBuffer<NotifyListener?> {
     override fun read(buf: ByteBuffer): NotifyListener? {
         if (buf.get().toInt() == 0) {
@@ -42641,6 +44266,70 @@ public object FfiConverterOptionalTypeIdentifyInfo: FfiConverterRustBuffer<Ident
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeMeasureIssue: FfiConverterRustBuffer<MeasureIssue?> {
+    override fun read(buf: ByteBuffer): MeasureIssue? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureIssue.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureIssue?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureIssue.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureIssue?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureIssue.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeMeasureTiming: FfiConverterRustBuffer<MeasureTiming?> {
+    override fun read(buf: ByteBuffer): MeasureTiming? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureTiming.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureTiming?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureTiming.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureTiming?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureTiming.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypePinFunction: FfiConverterRustBuffer<PinFunction?> {
     override fun read(buf: ByteBuffer): PinFunction? {
         if (buf.get().toInt() == 0) {
@@ -42823,6 +44512,38 @@ public object FfiConverterOptionalTypeAbSide: FfiConverterRustBuffer<AbSide?> {
         } else {
             buf.put(1)
             FfiConverterTypeAbSide.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeMeasureCoupler: FfiConverterRustBuffer<MeasureCoupler?> {
+    override fun read(buf: ByteBuffer): MeasureCoupler? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureCoupler.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureCoupler?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureCoupler.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureCoupler?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureCoupler.write(value, buf)
         }
     }
 }
@@ -44519,6 +46240,90 @@ public object FfiConverterSequenceTypeMeasureDocInfo: FfiConverterRustBuffer<Lis
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeMeasureDocInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureIssue: FfiConverterRustBuffer<List<MeasureIssue>> {
+    override fun read(buf: ByteBuffer): List<MeasureIssue> {
+        val len = buf.getInt()
+        return List<MeasureIssue>(len) {
+            FfiConverterTypeMeasureIssue.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureIssue>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureIssue.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureIssue>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureIssue.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureLevel: FfiConverterRustBuffer<List<MeasureLevel>> {
+    override fun read(buf: ByteBuffer): List<MeasureLevel> {
+        val len = buf.getInt()
+        return List<MeasureLevel>(len) {
+            FfiConverterTypeMeasureLevel.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureLevel>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureLevel.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureLevel>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureLevel.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureOutput: FfiConverterRustBuffer<List<MeasureOutput>> {
+    override fun read(buf: ByteBuffer): List<MeasureOutput> {
+        val len = buf.getInt()
+        return List<MeasureOutput>(len) {
+            FfiConverterTypeMeasureOutput.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureOutput>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureOutput.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureOutput>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureOutput.write(it, buf)
         }
     }
 }
