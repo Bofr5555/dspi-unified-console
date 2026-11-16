@@ -4248,6 +4248,22 @@ data class HubCaps(
      */
     val rest: Boolean,
     /**
+     * `group.*` ([`DspiCore::hub_groups`]).
+     */
+    val groups: Boolean,
+    /**
+     * `group.param.*`, `group.preset.load` ([`DspiCore::hub_group_param_set`]).
+     */
+    val groupParams: Boolean,
+    /**
+     * `group.apply*` ([`DspiCore::hub_group_apply`]).
+     */
+    val groupApply: Boolean,
+    /**
+     * `fw.*` ([`DspiCore::hub_rollout_start`]; over TLS only).
+     */
+    val rollout: Boolean,
+    /**
      * Every cap of the hub's `hello`, as it sent them.
      */
     val caps: List<String>,
@@ -4626,6 +4642,16 @@ data class HubServerEvent(
      * `schedule.ran`'s run.
      */
     val run: HubScheduleRun?,
+    /**
+     * `group.changed`'s group (as it is now; as it was, for a delete);
+     * [`HubServerEvent::change`] is `set`, `delete` or `forgot`.
+     */
+    val group: HubGroup?,
+    /**
+     * `fw.rollout.changed`'s whole record; [`HubServerEvent::serial`] is
+     * the device whose entry changed, where the hub says.
+     */
+    val rollout: HubRollout?,
 )
 
 /**
@@ -5347,6 +5373,488 @@ data class HubApiKeyMinted(
      * The key (43 characters): show it once; the hub keeps only its hash.
      */
     val key: HubSecret,
+)
+
+/**
+ * A group of the hub's ([`DspiCore::hub_groups`]; [`DspiCore::hub_group_set`]
+ * takes one).
+ */
+data class HubGroup(
+    /**
+     * The hub's id (`g1`, `g2`, ...; never reused); "" for a new group.
+     */
+    val id: String,
+    /**
+     * 1 to 48 characters.
+     */
+    val name: String,
+    /**
+     * At most 256 characters; "" when unset.
+     */
+    val note: String,
+    /**
+     * 0 to 64 inventory serials, each once, in the order fan-outs use.
+     */
+    val members: List<String>,
+)
+
+/**
+ * What [`DspiCore::hub_group_set`] stored.
+ */
+data class HubGroupSet(
+    /**
+     * The group as the hub now has it.
+     */
+    val group: HubGroup,
+    /**
+     * A new group (no id was given).
+     */
+    val created: Boolean,
+)
+
+/**
+ * Which devices a group request addresses: exactly one of a group's id or
+ * 1 to 16 serials (section 20.1).
+ */
+data class HubFleetTarget(
+    /**
+     * A group's id; "" when [`HubFleetTarget::serials`] is used.
+     */
+    val group: String,
+    /**
+     * Serials, each once; empty when [`HubFleetTarget::group`] is used.
+     */
+    val serials: List<String>,
+)
+
+/**
+ * One member's offset of [`DspiCore::hub_group_param_set`] (dB paths only).
+ */
+data class HubOffset(
+    /**
+     * The member.
+     */
+    val serial: String,
+    /**
+     * Added to the value, dB.
+     */
+    val db: Double,
+)
+
+/**
+ * One member's own preset of [`DspiCore::hub_group_preset_load`].
+ */
+data class HubPresetPick(
+    /**
+     * The member.
+     */
+    val serial: String,
+    /**
+     * Its slot (0 to 9); `None` when [`HubPresetPick::name`] is used.
+     */
+    val slot: Int?,
+    /**
+     * A preset's name; "" when [`HubPresetPick::slot`] is used.
+     */
+    val name: String,
+)
+
+/**
+ * One device's row of a group request (sections 20.1 to 20.3). The fields a
+ * request does not use are empty, `None` or false.
+ */
+data class HubGroupRow(
+    /**
+     * The device.
+     */
+    val serial: String,
+    /**
+     * Written, read or applied.
+     */
+    val ok: Boolean,
+    /**
+     * The hub's code when not (`offline`, `limit_exceeded`, ...); "" when ok.
+     */
+    val code: String,
+    /**
+     * The hub's words; "" when none.
+     */
+    val msg: String,
+    /**
+     * The notice row for [`HubGroupRow::code`] ("" when ok).
+     */
+    val noticeKey: String,
+    /**
+     * The limit crossed (`limit_exceeded`).
+     */
+    val limit: String,
+    /**
+     * A parameter's value: what was read, or what was sent and read back.
+     */
+    val value: ParamValue?,
+    /**
+     * A choice's label, where the path has labels.
+     */
+    val choice: String,
+    /**
+     * A structured value, base64 (as `param.get` answers it).
+     */
+    val valueB64: String,
+    /**
+     * The member's offset was clamped into its range.
+     */
+    val clamped: Boolean,
+    /**
+     * The preset slot loaded.
+     */
+    val slot: Int?,
+    /**
+     * The preset's name.
+     */
+    val name: String,
+    /**
+     * An apply: the whole image was written.
+     */
+    val image: Boolean,
+    /**
+     * An apply: what changed.
+     */
+    val lines: List<String>,
+    /**
+     * An apply: what was not written, and why.
+     */
+    val notes: List<String>,
+    /**
+     * An apply with a guard: the device's guard id.
+     */
+    val guard: Long?,
+    /**
+     * The guard reverted (ran out before the run ended, or cancelled).
+     */
+    val reverted: Boolean,
+)
+
+/**
+ * A parameter fan-out's answer ([`DspiCore::hub_group_param_get`],
+ * [`DspiCore::hub_group_param_set`]).
+ */
+data class HubGroupParams(
+    /**
+     * The path.
+     */
+    val path: String,
+    /**
+     * Its indices.
+     */
+    val idx: List<Long>,
+    /**
+     * One row per member, in order.
+     */
+    val results: List<HubGroupRow>,
+)
+
+/**
+ * A bulk apply's run ([`DspiCore::hub_group_apply`], its confirm and
+ * cancel).
+ */
+data class HubGroupRun(
+    /**
+     * The hub's id of the run (`a1`, ...).
+     */
+    val run: String,
+    /**
+     * The earliest guard deadline (ISO-8601 UTC); "" without a guard.
+     */
+    val confirmBy: String,
+    /**
+     * The hub's note (guards that ran out: raise the timeout); "" when none.
+     */
+    val msg: String,
+    /**
+     * One row per member (apply) or per guard (confirm, cancel).
+     */
+    val results: List<HubGroupRow>,
+)
+
+/**
+ * A firmware image in the hub's store ([`DspiCore::hub_firmware_images`]).
+ */
+data class HubFirmwareImage(
+    /**
+     * As uploaded (`...uf2`).
+     */
+    val name: String,
+    /**
+     * Bytes.
+     */
+    val size: Long,
+    /**
+     * Of the whole file, lowercase hex.
+     */
+    val sha256: String,
+    /**
+     * The DSPi version in the image; "" when none.
+     */
+    val firmwareVersion: String,
+    /**
+     * `RP2040` or `RP2350`.
+     */
+    val platform: String,
+    /**
+     * The core-voltage stamp, mV; `None` when unstamped.
+     */
+    val stampMv: Int?,
+    /**
+     * The release's manifest lists this name with these bytes.
+     */
+    val verified: Boolean,
+    /**
+     * When (ISO-8601 UTC).
+     */
+    val addedAt: String,
+    /**
+     * Who: a client's name.
+     */
+    val addedBy: String,
+)
+
+/**
+ * The hub's image store ([`DspiCore::hub_firmware_images`]).
+ */
+data class HubFirmwareImages(
+    /**
+     * Oldest first.
+     */
+    val images: List<HubFirmwareImage>,
+    /**
+     * Images the store keeps at most.
+     */
+    val maxImages: Long,
+    /**
+     * Bytes an image may have at most.
+     */
+    val maxBytes: Long,
+)
+
+/**
+ * What [`DspiCore::hub_firmware_put`] stored.
+ */
+data class HubFirmwarePut(
+    /**
+     * The image as the hub has it.
+     */
+    val image: HubFirmwareImage,
+    /**
+     * False: the hub already held this name with these bytes.
+     */
+    val created: Boolean,
+)
+
+/**
+ * One step a rollout's device went through.
+ */
+data class HubRolloutStep(
+    /**
+     * One of [`ROLLOUT_STEPS`].
+     */
+    val step: String,
+    /**
+     * When (ISO-8601 UTC).
+     */
+    val at: String,
+    /**
+     * It went through.
+     */
+    val ok: Boolean,
+    /**
+     * The hub's line (for a log); a client shows [`HubRolloutStep::notice_key`].
+     */
+    val text: String,
+    /**
+     * The session the step's device request went out as, where it has one.
+     */
+    val session: Long?,
+    /**
+     * `rollout.<step>` ([`hub_rollout_step_notice`]).
+     */
+    val noticeKey: String,
+)
+
+/**
+ * `EXT_CORE_VREG` as the rollout read it, mV.
+ */
+data class HubRolloutVreg(
+    /**
+     * The live setting.
+     */
+    val liveMv: Int?,
+    /**
+     * The stored selection.
+     */
+    val storedMv: Int?,
+    /**
+     * The build default.
+     */
+    val defaultMv: Int?,
+)
+
+/**
+ * A device before its flash (step 3).
+ */
+data class HubRolloutBefore(
+    /**
+     * Its firmware version.
+     */
+    val fw: String,
+    /**
+     * `EXT_LIST`.
+     */
+    val extList: List<Int>,
+    /**
+     * The lowest core voltage the board may be left on, mV (0 unknown).
+     */
+    val requiredMv: Int,
+    /**
+     * Where that came from.
+     */
+    val boardSource: String,
+    /**
+     * `EXT_CORE_VREG`, where it has one.
+     */
+    val vreg: HubRolloutVreg?,
+    /**
+     * The export's snapshot id in the hub's store; "" when none.
+     */
+    val export: String,
+)
+
+/**
+ * A device after it came back (step 8).
+ */
+data class HubRolloutAfter(
+    /**
+     * Its firmware version.
+     */
+    val fw: String,
+    /**
+     * `EXT_LIST`.
+     */
+    val extList: List<Int>,
+    /**
+     * `EXT_CORE_VREG`, where it has one.
+     */
+    val vreg: HubRolloutVreg?,
+    /**
+     * Against the export: `unchanged`, `changed` or `unknown`.
+     */
+    val settings: String,
+)
+
+/**
+ * Why a device's part ended badly.
+ */
+data class HubRolloutFailed(
+    /**
+     * The step.
+     */
+    val step: String,
+    /**
+     * The hub's code, where a refusal had one; "" otherwise.
+     */
+    val code: String,
+    /**
+     * The hub's line.
+     */
+    val text: String,
+    /**
+     * The notice row of the code (`dlink.<code>`, `image_refused`, ...);
+     * "" without a code (then the step's row says it).
+     */
+    val noticeKey: String,
+)
+
+/**
+ * One device of a rollout.
+ */
+data class HubRolloutDevice(
+    /**
+     * The device.
+     */
+    val serial: String,
+    /**
+     * `pending`, `running`, `ok`, `failed`, `cancelled`, `not_tried`.
+     */
+    val state: String,
+    /**
+     * The step it is at or ended at ("" before its first).
+     */
+    val step: String,
+    /**
+     * The steps done, in order.
+     */
+    val steps: List<HubRolloutStep>,
+    /**
+     * Before its flash.
+     */
+    val before: HubRolloutBefore?,
+    /**
+     * After it came back.
+     */
+    val after: HubRolloutAfter?,
+    /**
+     * Why it failed.
+     */
+    val failed: HubRolloutFailed?,
+)
+
+/**
+ * A rollout ([`DspiCore::hub_rollouts`], `fw.rollout.changed`).
+ */
+data class HubRollout(
+    /**
+     * The hub's id (`ro1`, ...; never reused).
+     */
+    val id: String,
+    /**
+     * The serial, or `group:<id>`.
+     */
+    val target: String,
+    /**
+     * The image's name.
+     */
+    val image: String,
+    /**
+     * Its SHA-256.
+     */
+    val imageSha256: String,
+    /**
+     * Its DSPi version.
+     */
+    val imageVersion: String,
+    /**
+     * The Admin's client name.
+     */
+    val by: String,
+    /**
+     * Started without the mute check.
+     */
+    val whileLive: Boolean,
+    /**
+     * `running`, `ok`, `failed`, `cancelled`.
+     */
+    val state: String,
+    /**
+     * ISO-8601 UTC.
+     */
+    val startedAt: String,
+    /**
+     * ISO-8601 UTC; "" while running.
+     */
+    val endedAt: String,
+    /**
+     * One entry per device, in order.
+     */
+    val devices: List<HubRolloutDevice>,
 )
 
 /**

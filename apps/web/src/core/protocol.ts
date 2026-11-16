@@ -431,7 +431,7 @@ export type CoreEvent =
   | { event: "hubServer"; events: HubServerEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */ {
+export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -1220,6 +1220,12 @@ export interface HubCapsRecord {
   mqtt: boolean;
   apiKeys: boolean;
   rest: boolean;
+  // -- WP P3CC -- (optional only so records built before P3CC still type; the core always sends them)
+  groups?: boolean;
+  groupParams?: boolean;
+  groupApply?: boolean;
+  /** `fw.*`: over an encrypted session only (`tls_required` otherwise). */
+  rollout?: boolean;
   caps: string[];
 }
 
@@ -1353,6 +1359,11 @@ export interface HubServerEventRecord {
   change: string;
   alarm: HubAlarmRecord | null;
   run: unknown;
+  // -- WP P3CC -- (optional only so records built before P3CC still type; the core always sends them)
+  /** `group.changed`'s group (`change`: `set`, `delete`, `forgot`). */
+  group?: HubGroupRecord | null;
+  /** `fw.rollout.changed`'s whole record (`serial`: the device whose entry changed). */
+  rollout?: HubRolloutRecord | null;
 }
 
 /** What `EXT_IDENTIFY` reads back (`dspi_core::IdentifyInfo`). */
@@ -1401,6 +1412,146 @@ export interface HubServerMethods {
 export interface HubInventoryForgotRecord {
   serial: string;
   forgot: string[];
+}
+
+// -- WP P3CC -- the hub's fleet families (crates/dspi-wasm/src/hub_server_fleet.rs over
+// dspi_core::hub_server::fleet; hub-api.md sections 19 to 21). A group request answers after
+// its last member (up to 300 s); a `fw.*` call over a plaintext session is `link` with
+// `dlink.tls_required`.
+
+/** A group of the hub's (`dspi_core::HubGroup`); `id` "" for a new one. */
+export interface HubGroupRecord {
+  id: string;
+  name: string;
+  note: string;
+  members: string[];
+}
+
+/** Which devices a group request addresses: a group's id or serials, one of the two. */
+export type HubFleetTarget = { group: string; serials?: never } | { serials: string[]; group?: never };
+
+/** One device's row of a group request (`dspi_core::HubGroupRow`); unused fields empty. */
+export interface HubGroupRowRecord {
+  serial: string;
+  ok: boolean;
+  code: string;
+  msg: string;
+  noticeKey: string;
+  limit: string;
+  value: ParamValue | null;
+  choice: string;
+  valueB64: string;
+  clamped: boolean;
+  slot: number | null;
+  name: string;
+  image: boolean;
+  lines: string[];
+  notes: string[];
+  guard: number | null;
+  reverted: boolean;
+}
+
+/** A parameter fan-out's answer (`dspi_core::HubGroupParams`). */
+export interface HubGroupParamsRecord {
+  path: string;
+  idx: number[];
+  results: HubGroupRowRecord[];
+}
+
+/** A bulk apply's run (`dspi_core::HubGroupRun`); `confirmBy` "" without a guard. */
+export interface HubGroupRunRecord {
+  run: string;
+  confirmBy: string;
+  msg: string;
+  results: HubGroupRowRecord[];
+}
+
+/** A firmware image in the hub's store (`dspi_core::HubFirmwareImage`). */
+export interface HubFirmwareImageRecord {
+  name: string;
+  size: number;
+  sha256: string;
+  firmwareVersion: string;
+  platform: string;
+  stampMv: number | null;
+  verified: boolean;
+  addedAt: string;
+  addedBy: string;
+}
+
+/** `EXT_CORE_VREG` as a rollout read it, mV. */
+export interface HubRolloutVregRecord {
+  liveMv: number | null;
+  storedMv: number | null;
+  defaultMv: number | null;
+}
+
+/** One step of a rollout's device; show `noticeKey`'s row, `text` is the hub's line. */
+export interface HubRolloutStepRecord {
+  step: string;
+  at: string;
+  ok: boolean;
+  text: string;
+  session: number | null;
+  noticeKey: string;
+}
+
+/** One device of a rollout (`dspi_core::HubRolloutDevice`). */
+export interface HubRolloutDeviceRecord {
+  serial: string;
+  /** `pending`, `running`, `ok`, `failed`, `cancelled`, `not_tried`. */
+  state: string;
+  step: string;
+  steps: HubRolloutStepRecord[];
+  before: { fw: string; extList: number[]; requiredMv: number; boardSource: string; vreg: HubRolloutVregRecord | null; export: string } | null;
+  after: { fw: string; extList: number[]; vreg: HubRolloutVregRecord | null; settings: string } | null;
+  failed: { step: string; code: string; text: string; noticeKey: string } | null;
+}
+
+/** A rollout (`dspi_core::HubRollout`); `endedAt` "" while running. */
+export interface HubRolloutRecord {
+  id: string;
+  target: string;
+  image: string;
+  imageSha256: string;
+  imageVersion: string;
+  by: string;
+  whileLive: boolean;
+  /** `running`, `ok`, `failed`, `cancelled`. */
+  state: string;
+  startedAt: string;
+  endedAt: string;
+  devices: HubRolloutDeviceRecord[];
+}
+
+export interface HubFleetMethods {
+  hubGroups: { params: undefined; result: HubGroupRecord[] };
+  /** Admin. Without `id` a new group, with one that group replaced whole. */
+  hubGroupSet: { params: { group: { id?: string; name: string; note?: string; members: string[] } }; result: { group: HubGroupRecord; created: boolean } };
+  /** Admin. */
+  hubGroupDelete: { params: { group: string }; result: null };
+  hubGroupParamGet: { params: { target: HubFleetTarget; path: string; idx?: number[] }; result: HubGroupParamsRecord };
+  /** Control. `offsets` on dB paths only, clamped per member (`clamped` in its row). */
+  hubGroupParamSet: { params: { target: HubFleetTarget; path: string; idx?: number[]; value: ParamValue; offsets?: { serial: string; db: number }[] }; result: HubGroupParamsRecord };
+  /** Control. `slot` or `name`, one of the two; `map` a member's own. */
+  hubGroupPresetLoad: { params: { target: HubFleetTarget; slot?: number; name?: string; map?: { serial: string; slot?: number; name?: string }[] }; result: HubGroupRowRecord[] };
+  /** Control. One of `snapshot`, `name`, `document`; `guard`: one guarded apply per device. */
+  hubGroupApply: { params: { target: HubFleetTarget; snapshot?: string; name?: string; document?: string; guard?: boolean; timeoutMs?: number }; result: HubGroupRunRecord };
+  hubGroupApplyConfirm: { params: { run: string }; result: HubGroupRunRecord };
+  hubGroupApplyCancel: { params: { run: string }; result: HubGroupRunRecord };
+  hubFirmwareImages: { params: undefined; result: { images: HubFirmwareImageRecord[]; maxImages: number; maxBytes: number } };
+  /** Admin. `data`: the image in base64 (RFC 4648, padded); sent in chunks, never logged. */
+  hubFirmwarePut: { params: { name: string; data: string }; result: { image: HubFirmwareImageRecord; created: boolean } };
+  /** Admin. */
+  hubFirmwareDelete: { params: { image: string }; result: null };
+  /** Admin. One serial or one group; `whileLive` skips the mute check. */
+  hubRolloutStart: { params: { target: HubFleetTarget; image: string; whileLive?: boolean }; result: HubRolloutRecord };
+  /** Newest first; `rollout` one id ("" or left out: all). */
+  hubRollouts: { params: { rollout?: string }; result: HubRolloutRecord[] };
+  /** Admin; before the current device's bootloader entry only (`conflict` after). */
+  hubRolloutCancel: { params: { rollout: string }; result: HubRolloutRecord };
+  /** A step's notice row `rollout.<step>` (no I/O). */
+  hubRolloutStepNotice: { params: { step: string; text?: string }; result: NoticeRecord };
 }
 
 // -- WP WB6K -- filter files and the AutoEQ database the page keeps

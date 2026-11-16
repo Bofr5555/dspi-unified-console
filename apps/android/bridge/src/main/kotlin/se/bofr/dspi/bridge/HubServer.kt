@@ -125,7 +125,10 @@ interface HubServer {
         val NO_CAPS = HubCaps(
             onHub = false, inventory = false, identify = false, health = false, events = false, hubSnapshots = false,
             paramApi = false, hubStats = false, alarms = false, outbound = false, schedule = false, mqtt = false,
-            apiKeys = false, rest = false, caps = emptyList()
+            apiKeys = false, rest = false,
+            // -- WP P3CC --
+            groups = false, groupParams = false, groupApply = false, rollout = false,
+            caps = emptyList()
         )
 
         val NO_MERGE = SnapshotMergedList(emptyList(), false, "")

@@ -67,6 +67,9 @@ const NOT_EXPORTED: &[&str] = &[
     // (raw.rs, doc(hidden)); Rust-only. Missing here since TMCORE: this test
     // runs only with --all-features, which no step ran on dspi-ffi.
     "read_image_bytes",
+    // -- WP P3CC -- the web's image upload as base64 text (dspi-wasm
+    // `hubFirmwarePut`); UniFFI has `hub_firmware_put` with the bytes.
+    "hub_firmware_put_base64",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.

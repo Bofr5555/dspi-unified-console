@@ -85,6 +85,8 @@ pub mod hub_server;
 pub mod hub_server_admin;
 // -- WP P2CC3 -- the hub's device and name writes (inventory set/forget, rename, identify by serial)
 pub mod hub_server_manage;
+// -- WP P3CC -- the hub's fleet families (groups, group writes, bulk apply, rollout)
+pub mod hub_server_fleet;
 // -- WP P1AQ --
 pub mod autoeq;
 // -- WP WB6K -- the AutoEQ database the page keeps, and filter files

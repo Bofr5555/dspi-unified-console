@@ -6730,6 +6730,152 @@ uint32_t dspi_hub_identify_serial(struct FfiCore *core,
                                   uint32_t len);
 
 /**
+ * The hub's groups: JSON `{ok, value: [{id, name, note, members}]}`.
+ */
+uint32_t dspi_hub_groups(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Store a group (Admin): `group_json` `{id?, name, note?, members}`, no id
+ * for a new one. JSON `{ok, group: {id, name, note, members}, created}`.
+ */
+uint32_t dspi_hub_group_set(struct FfiCore *core, const char *group_json, char *buf, uint32_t len);
+
+/**
+ * Delete group `id` (Admin): JSON `{ok}`.
+ */
+uint32_t dspi_hub_group_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * Read `path` (`idx_json` its indices, a JSON list; null for none) on every
+ * device of `target_json`: JSON `{ok, path, idx, results: [{serial, ok,
+ * code, msg, noticeKey, value, choice, ...}]}`.
+ */
+uint32_t dspi_hub_group_param_get(struct FfiCore *core,
+                                  const char *target_json,
+                                  const char *path,
+                                  const char *idx_json,
+                                  char *buf,
+                                  uint32_t len);
+
+/**
+ * Write `value_json` (a parameter value: `{"float": -20}`, `{"bool": true}`,
+ * ...) to `path` on every device of `target_json` (Control), with
+ * `offsets_json` (null, or `[{serial, db}]`, dB paths only). JSON as
+ * [`dspi_hub_group_param_get`]'s, rows with `clamped`.
+ */
+uint32_t dspi_hub_group_param_set(struct FfiCore *core,
+                                  const char *target_json,
+                                  const char *path,
+                                  const char *idx_json,
+                                  const char *value_json,
+                                  const char *offsets_json,
+                                  char *buf,
+                                  uint32_t len);
+
+/**
+ * Load a preset on every device of `target_json` (Control): by `slot` (0 to
+ * 9; 0xFF when named) or `name` (null or "" when by slot); `map_json` null
+ * or `[{serial, slot?, name}]`. JSON `{ok, value: [rows with slot, name]}`.
+ */
+uint32_t dspi_hub_group_preset_load(struct FfiCore *core,
+                                    const char *target_json,
+                                    uint8_t slot,
+                                    const char *name,
+                                    const char *map_json,
+                                    char *buf,
+                                    uint32_t len);
+
+/**
+ * Apply one snapshot to every device of `target_json` (Control): exactly
+ * one of `snapshot` (an id), `name` or `document` (its text) non-empty;
+ * with `guard` one guarded apply per device (`timeout_ms`, 0 for 30 s).
+ * JSON `{ok, run, confirmBy, msg, results: [rows with image, lines, notes,
+ * guard, reverted]}`.
+ */
+uint32_t dspi_hub_group_apply(struct FfiCore *core,
+                              const char *target_json,
+                              const char *snapshot,
+                              const char *name,
+                              const char *document,
+                              bool guard,
+                              uint32_t timeout_ms,
+                              char *buf,
+                              uint32_t len);
+
+/**
+ * Keep every pending guard of bulk-apply run `run`: JSON as
+ * [`dspi_hub_group_apply`]'s, one row per guard.
+ */
+uint32_t dspi_hub_group_apply_confirm(struct FfiCore *core,
+                                      const char *run,
+                                      char *buf,
+                                      uint32_t len);
+
+/**
+ * Revert every pending guard of run `run` now: JSON as
+ * [`dspi_hub_group_apply_confirm`]'s, rows with `reverted`.
+ */
+uint32_t dspi_hub_group_apply_cancel(struct FfiCore *core,
+                                     const char *run,
+                                     char *buf,
+                                     uint32_t len);
+
+/**
+ * The hub's firmware images (over TLS): JSON `{ok, images: [{name, size,
+ * sha256, firmwareVersion, platform, stampMv, verified, addedAt, addedBy}],
+ * maxImages, maxBytes}`.
+ */
+uint32_t dspi_hub_firmware_images(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Put the `data_len` bytes at `data` in the hub's store as `name` (Admin,
+ * over TLS; in chunks, never logged): JSON `{ok, image, created}`.
+ */
+uint32_t dspi_hub_firmware_put(struct FfiCore *core,
+                               const char *name,
+                               const uint8_t *data,
+                               uint32_t data_len,
+                               char *buf,
+                               uint32_t len);
+
+/**
+ * Delete image `name` from the hub's store (Admin): JSON `{ok}`.
+ */
+uint32_t dspi_hub_firmware_delete(struct FfiCore *core, const char *name, char *buf, uint32_t len);
+
+/**
+ * Start a rollout of stored image `image` on `target_json` (one serial or
+ * a group; Admin, over TLS), the mute check skipped with `while_live`:
+ * JSON `{ok, id, target, image, imageSha256, imageVersion, by, whileLive,
+ * state, startedAt, endedAt, devices: [...]}`.
+ */
+uint32_t dspi_hub_rollout_start(struct FfiCore *core,
+                                const char *target_json,
+                                const char *image,
+                                bool while_live,
+                                char *buf,
+                                uint32_t len);
+
+/**
+ * The hub's rollouts, newest first, or only `id` (null or "": all): JSON
+ * `{ok, value: [records as dspi_hub_rollout_start's]}`.
+ */
+uint32_t dspi_hub_rollouts(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * Cancel rollout `id` before its current device's bootloader entry
+ * (Admin): the record as it is now.
+ */
+uint32_t dspi_hub_rollout_cancel(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+
+/**
+ * What to tell the user about a rollout's `step` (`text` the hub's line,
+ * null for none): JSON `{ok, key, kind, title, reason, action, detail}`.
+ * No I/O; no core.
+ */
+uint32_t dspi_hub_rollout_step_notice(const char *step, const char *line, char *buf, uint32_t len);
+
+/**
  * The master volume `db` as `dspi_set_master_volume` keeps it: -128 (mute)
  * at or below -128, else 0.5 dB steps within -127..=0. NaN comes back NaN.
  */

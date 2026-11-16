@@ -3071,6 +3071,151 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func hubEventsWatch(on: Bool, serial: String) throws 
     
     /**
+     * Delete image `name` from the hub's store (`fw.image.delete`). Admin
+     * of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`, `conflict` (a running
+     * rollout uses it); as [`DspiCore::hub_firmware_put`].
+     */
+    func hubFirmwareDelete(name: String) throws 
+    
+    /**
+     * The hub's firmware images (`fw.image.list`). Every role, over an
+     * encrypted session only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `rollout` cap (nothing
+     * sent); [`DspiError::Link`] `tls_required` over a plaintext session;
+     * [`DspiError::Disconnected`].
+     */
+    func hubFirmwareImages() throws  -> HubFirmwareImages
+    
+    /**
+     * Put firmware image `bytes` in the hub's store as `name` (`fw.image.put`,
+     * 36 KiB a chunk, one upload per session). The hub checks the whole
+     * image on the last chunk (`uf2_inspect`, the manifest by name and
+     * bytes). Nothing goes over a plaintext session: the store is read first
+     * (its `tls_required`). The bytes are never logged. Admin of the hub.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no bytes or more than
+     * [`FIRMWARE_MAX_BYTES`] (nothing sent), and the hub's `bad_request` (a
+     * name or image it refuses); [`DspiError::Link`] `conflict` (the name
+     * with other bytes; a fifth image), `busy` (an upload is open);
+     * [`DspiError::Denied`] below Admin; [`DspiError::ReadOnly`] (nothing
+     * sent); as [`DspiCore::hub_firmware_images`].
+     */
+    func hubFirmwarePut(name: String, bytes: Data) throws  -> HubFirmwarePut
+    
+    /**
+     * Apply one snapshot to every device of `target` (`group.apply`):
+     * exactly one of `snapshot` (an id in the hub's store), `name` (one
+     * snapshot's name in the store) or `document` (a snapshot document's
+     * text, at most 61 440 bytes compact). Each member is the hub's recall
+     * as this console's child session. With `guard`, one guarded apply per
+     * device (`timeout_ms` 1000 to 600 000; 0 for the hub's 30 s): confirm
+     * the run ([`DspiCore::hub_group_apply_confirm`]) or each reverts at its
+     * deadline. Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a source that is not
+     * exactly one, or a document that is no JSON object (nothing sent);
+     * [`DspiError::Link`] `conflict` for a document over the wire cap
+     * (nothing sent) and two snapshots of that name; `not_found`; as
+     * [`DspiCore::hub_group_param_set`] (cap `group_apply`).
+     */
+    func hubGroupApply(target: HubFleetTarget, snapshot: String, name: String, document: String, `guard`: Bool, timeoutMs: UInt32) throws  -> HubGroupRun
+    
+    /**
+     * Revert every pending guard of run `run` now (`group.apply.cancel`):
+     * one row per guard, `reverted` set. Errors: as
+     * [`DspiCore::hub_group_apply_confirm`].
+     */
+    func hubGroupApplyCancel(run: String) throws  -> HubGroupRun
+    
+    /**
+     * Keep every pending guard of bulk-apply run `run`
+     * (`group.apply.confirm`): one row per guard, `conflict` for one that
+     * had already reverted. Only the session that ran it. Control or Admin.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` (an unknown run, or another
+     * session's); as [`DspiCore::hub_group_apply`].
+     */
+    func hubGroupApplyConfirm(run: String) throws  -> HubGroupRun
+    
+    /**
+     * Delete group `id` (`group.delete`; its id is never given again).
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an empty id (nothing sent);
+     * [`DspiError::Link`] `not_found`; as [`DspiCore::hub_group_set`].
+     */
+    func hubGroupDelete(id: String) throws 
+    
+    /**
+     * Read `path` (`idx` its indices) on every device of `target`
+     * (`group.param.get`): one row per member, in member order, each with
+     * its value or its code. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `group_params` cap
+     * (nothing sent); [`DspiError::InvalidArgument`] for a target that is
+     * both or neither (nothing sent) and the hub's `bad_request`;
+     * [`DspiError::Link`] `not_found` (the group), `busy` (this session's
+     * other group request runs); [`DspiError::Disconnected`].
+     */
+    func hubGroupParamGet(target: HubFleetTarget, path: String, idx: [UInt32]) throws  -> HubGroupParams
+    
+    /**
+     * Write `value` to `path` on every device of `target`, one after
+     * another as this console's child session (`group.param.set`): each
+     * judged on its own by role, limits and lock; a refused row stops no
+     * other. `offsets` (dB paths only) add to the value per member, clamped
+     * into that device's range (`clamped` in its row). Control or Admin.
+     * Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_group_param_get`];
+     * [`DspiError::InvalidArgument`] for a structured value (nothing sent),
+     * a value outside the registry's range, offsets on a path not in dB;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`] (nothing
+     * sent).
+     */
+    func hubGroupParamSet(target: HubFleetTarget, path: String, idx: [UInt32], value: ParamValue, offsets: [HubOffset]) throws  -> HubGroupParams
+    
+    /**
+     * Load a preset on every device of `target` (`group.preset.load`): by
+     * `slot` (0 to 9) or by `name`, one of the two; `map` gives a member
+     * its own. One row per member, with the slot and name loaded. Control
+     * or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for both or neither of slot
+     * and name (nothing sent); as [`DspiCore::hub_group_param_set`].
+     */
+    func hubGroupPresetLoad(target: HubFleetTarget, slot: UInt8?, name: String, map: [HubPresetPick]) throws  -> [HubGroupRow]
+    
+    /**
+     * Store `group` on the hub (`group.set`): without an id a new group,
+     * with one that group replaced whole (an empty note clears it). The
+     * hub's bounds: a name of 1 to 48 characters, a note of at most 256,
+     * at most 64 members, each an inventory serial and each once; 64 groups.
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] past a bound (`bad_request`);
+     * [`DspiError::Link`] `not_found` (a member not in the inventory, an
+     * unknown id), `conflict` (a 65th group); [`DspiError::Denied`] below
+     * Admin; [`DspiError::ReadOnly`] (nothing sent); as
+     * [`DspiCore::hub_groups`].
+     */
+    func hubGroupSet(group: HubGroup) throws  -> HubGroupSet
+    
+    /**
+     * The hub's groups, by id (`group.list`). Every role. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `groups` cap (nothing
+     * sent); [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    func hubGroups() throws  -> [HubGroup]
+    
+    /**
      * One health record per online device of the hub (`health.get`):
      * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
      * -- WP P3HB -- the stream counters, clip events a minute and the last
@@ -3305,6 +3450,46 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
      */
     func hubRename(name: String) throws  -> String
+    
+    /**
+     * Cancel rollout `id` (`fw.rollout.cancel`): before the bootloader entry
+     * of the device it is working on, never during a flash. The record as
+     * it is now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `conflict` (past the entry, or ended),
+     * `not_found`; as [`DspiCore::hub_rollout_start`].
+     */
+    func hubRolloutCancel(id: String) throws  -> HubRollout
+    
+    /**
+     * Start a firmware rollout of stored image `image` on `target`: one
+     * serial, or a group (one member after another, stopped at the first
+     * failure) (`fw.rollout.start`). The device must be muted unless
+     * `while_live`. The answer comes after the first device's check and
+     * guard steps; follow the rest with `fw.rollout.changed`
+     * ([`super::HubServerEvent::rollout`]) or [`DspiCore::hub_rollouts`].
+     * Admin of the hub, over an encrypted session. Slow: off the UI thread.
+     *
+     * Errors (nothing touched): [`DspiError::InvalidArgument`] for a target
+     * that is not one serial or one group (nothing sent);
+     * [`DspiError::Unsupported`] (not on the hub's own USB);
+     * [`DspiError::Locked`]; [`DspiError::ConfirmationRequired`] (not
+     * muted); [`DspiError::ImageRefused`] (another platform, not verified,
+     * the firmware guard's refusal); [`DspiError::Link`] `offline`,
+     * `conflict`, `busy`, `not_found`, `tls_required`; as
+     * [`DspiCore::hub_firmware_put`].
+     */
+    func hubRolloutStart(target: HubFleetTarget, image: String, whileLive: Bool) throws  -> HubRollout
+    
+    /**
+     * The hub's rollouts, newest first (`fw.rollout.status`; the hub keeps
+     * 64), or only rollout `id` ("" for all). Every role, over an encrypted
+     * session. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` for an unknown id; as
+     * [`DspiCore::hub_firmware_images`].
+     */
+    func hubRollouts(id: String) throws  -> [HubRollout]
     
     /**
      * Delete rule `id` (`schedule.delete`). Admin of the hub. Slow: off the
@@ -8471,6 +8656,234 @@ open func hubEventsWatch(on: Bool, serial: String)throws   {try rustCallWithErro
 }
     
     /**
+     * Delete image `name` from the hub's store (`fw.image.delete`). Admin
+     * of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`, `conflict` (a running
+     * rollout uses it); as [`DspiCore::hub_firmware_put`].
+     */
+open func hubFirmwareDelete(name: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_firmware_delete(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),$0
+    )
+}
+}
+    
+    /**
+     * The hub's firmware images (`fw.image.list`). Every role, over an
+     * encrypted session only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `rollout` cap (nothing
+     * sent); [`DspiError::Link`] `tls_required` over a plaintext session;
+     * [`DspiError::Disconnected`].
+     */
+open func hubFirmwareImages()throws  -> HubFirmwareImages  {
+    return try  FfiConverterTypeHubFirmwareImages_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_firmware_images(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Put firmware image `bytes` in the hub's store as `name` (`fw.image.put`,
+     * 36 KiB a chunk, one upload per session). The hub checks the whole
+     * image on the last chunk (`uf2_inspect`, the manifest by name and
+     * bytes). Nothing goes over a plaintext session: the store is read first
+     * (its `tls_required`). The bytes are never logged. Admin of the hub.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no bytes or more than
+     * [`FIRMWARE_MAX_BYTES`] (nothing sent), and the hub's `bad_request` (a
+     * name or image it refuses); [`DspiError::Link`] `conflict` (the name
+     * with other bytes; a fifth image), `busy` (an upload is open);
+     * [`DspiError::Denied`] below Admin; [`DspiError::ReadOnly`] (nothing
+     * sent); as [`DspiCore::hub_firmware_images`].
+     */
+open func hubFirmwarePut(name: String, bytes: Data)throws  -> HubFirmwarePut  {
+    return try  FfiConverterTypeHubFirmwarePut_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_firmware_put(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterData.lower(bytes),$0
+    )
+})
+}
+    
+    /**
+     * Apply one snapshot to every device of `target` (`group.apply`):
+     * exactly one of `snapshot` (an id in the hub's store), `name` (one
+     * snapshot's name in the store) or `document` (a snapshot document's
+     * text, at most 61 440 bytes compact). Each member is the hub's recall
+     * as this console's child session. With `guard`, one guarded apply per
+     * device (`timeout_ms` 1000 to 600 000; 0 for the hub's 30 s): confirm
+     * the run ([`DspiCore::hub_group_apply_confirm`]) or each reverts at its
+     * deadline. Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a source that is not
+     * exactly one, or a document that is no JSON object (nothing sent);
+     * [`DspiError::Link`] `conflict` for a document over the wire cap
+     * (nothing sent) and two snapshots of that name; `not_found`; as
+     * [`DspiCore::hub_group_param_set`] (cap `group_apply`).
+     */
+open func hubGroupApply(target: HubFleetTarget, snapshot: String, name: String, document: String, `guard`: Bool, timeoutMs: UInt32)throws  -> HubGroupRun  {
+    return try  FfiConverterTypeHubGroupRun_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_group_apply(self.uniffiClonePointer(),
+        FfiConverterTypeHubFleetTarget_lower(target),
+        FfiConverterString.lower(snapshot),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(document),
+        FfiConverterBool.lower(`guard`),
+        FfiConverterUInt32.lower(timeoutMs),$0
+    )
+})
+}
+    
+    /**
+     * Revert every pending guard of run `run` now (`group.apply.cancel`):
+     * one row per guard, `reverted` set. Errors: as
+     * [`DspiCore::hub_group_apply_confirm`].
+     */
+open func hubGroupApplyCancel(run: String)throws  -> HubGroupRun  {
+    return try  FfiConverterTypeHubGroupRun_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_group_apply_cancel(self.uniffiClonePointer(),
+        FfiConverterString.lower(run),$0
+    )
+})
+}
+    
+    /**
+     * Keep every pending guard of bulk-apply run `run`
+     * (`group.apply.confirm`): one row per guard, `conflict` for one that
+     * had already reverted. Only the session that ran it. Control or Admin.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` (an unknown run, or another
+     * session's); as [`DspiCore::hub_group_apply`].
+     */
+open func hubGroupApplyConfirm(run: String)throws  -> HubGroupRun  {
+    return try  FfiConverterTypeHubGroupRun_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_group_apply_confirm(self.uniffiClonePointer(),
+        FfiConverterString.lower(run),$0
+    )
+})
+}
+    
+    /**
+     * Delete group `id` (`group.delete`; its id is never given again).
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an empty id (nothing sent);
+     * [`DspiError::Link`] `not_found`; as [`DspiCore::hub_group_set`].
+     */
+open func hubGroupDelete(id: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_group_delete(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+}
+}
+    
+    /**
+     * Read `path` (`idx` its indices) on every device of `target`
+     * (`group.param.get`): one row per member, in member order, each with
+     * its value or its code. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `group_params` cap
+     * (nothing sent); [`DspiError::InvalidArgument`] for a target that is
+     * both or neither (nothing sent) and the hub's `bad_request`;
+     * [`DspiError::Link`] `not_found` (the group), `busy` (this session's
+     * other group request runs); [`DspiError::Disconnected`].
+     */
+open func hubGroupParamGet(target: HubFleetTarget, path: String, idx: [UInt32])throws  -> HubGroupParams  {
+    return try  FfiConverterTypeHubGroupParams_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_group_param_get(self.uniffiClonePointer(),
+        FfiConverterTypeHubFleetTarget_lower(target),
+        FfiConverterString.lower(path),
+        FfiConverterSequenceUInt32.lower(idx),$0
+    )
+})
+}
+    
+    /**
+     * Write `value` to `path` on every device of `target`, one after
+     * another as this console's child session (`group.param.set`): each
+     * judged on its own by role, limits and lock; a refused row stops no
+     * other. `offsets` (dB paths only) add to the value per member, clamped
+     * into that device's range (`clamped` in its row). Control or Admin.
+     * Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_group_param_get`];
+     * [`DspiError::InvalidArgument`] for a structured value (nothing sent),
+     * a value outside the registry's range, offsets on a path not in dB;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`] (nothing
+     * sent).
+     */
+open func hubGroupParamSet(target: HubFleetTarget, path: String, idx: [UInt32], value: ParamValue, offsets: [HubOffset])throws  -> HubGroupParams  {
+    return try  FfiConverterTypeHubGroupParams_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_group_param_set(self.uniffiClonePointer(),
+        FfiConverterTypeHubFleetTarget_lower(target),
+        FfiConverterString.lower(path),
+        FfiConverterSequenceUInt32.lower(idx),
+        FfiConverterTypeParamValue_lower(value),
+        FfiConverterSequenceTypeHubOffset.lower(offsets),$0
+    )
+})
+}
+    
+    /**
+     * Load a preset on every device of `target` (`group.preset.load`): by
+     * `slot` (0 to 9) or by `name`, one of the two; `map` gives a member
+     * its own. One row per member, with the slot and name loaded. Control
+     * or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for both or neither of slot
+     * and name (nothing sent); as [`DspiCore::hub_group_param_set`].
+     */
+open func hubGroupPresetLoad(target: HubFleetTarget, slot: UInt8?, name: String, map: [HubPresetPick])throws  -> [HubGroupRow]  {
+    return try  FfiConverterSequenceTypeHubGroupRow.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_group_preset_load(self.uniffiClonePointer(),
+        FfiConverterTypeHubFleetTarget_lower(target),
+        FfiConverterOptionUInt8.lower(slot),
+        FfiConverterString.lower(name),
+        FfiConverterSequenceTypeHubPresetPick.lower(map),$0
+    )
+})
+}
+    
+    /**
+     * Store `group` on the hub (`group.set`): without an id a new group,
+     * with one that group replaced whole (an empty note clears it). The
+     * hub's bounds: a name of 1 to 48 characters, a note of at most 256,
+     * at most 64 members, each an inventory serial and each once; 64 groups.
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] past a bound (`bad_request`);
+     * [`DspiError::Link`] `not_found` (a member not in the inventory, an
+     * unknown id), `conflict` (a 65th group); [`DspiError::Denied`] below
+     * Admin; [`DspiError::ReadOnly`] (nothing sent); as
+     * [`DspiCore::hub_groups`].
+     */
+open func hubGroupSet(group: HubGroup)throws  -> HubGroupSet  {
+    return try  FfiConverterTypeHubGroupSet_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_group_set(self.uniffiClonePointer(),
+        FfiConverterTypeHubGroup_lower(group),$0
+    )
+})
+}
+    
+    /**
+     * The hub's groups, by id (`group.list`). Every role. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `groups` cap (nothing
+     * sent); [`DspiError::Disconnected`]; the hub's refusal.
+     */
+open func hubGroups()throws  -> [HubGroup]  {
+    return try  FfiConverterSequenceTypeHubGroup.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_groups(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * One health record per online device of the hub (`health.get`):
      * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
      * -- WP P3HB -- the stream counters, clip events a minute and the last
@@ -8816,6 +9229,66 @@ open func hubRename(name: String)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_hub_rename(self.uniffiClonePointer(),
         FfiConverterString.lower(name),$0
+    )
+})
+}
+    
+    /**
+     * Cancel rollout `id` (`fw.rollout.cancel`): before the bootloader entry
+     * of the device it is working on, never during a flash. The record as
+     * it is now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `conflict` (past the entry, or ended),
+     * `not_found`; as [`DspiCore::hub_rollout_start`].
+     */
+open func hubRolloutCancel(id: String)throws  -> HubRollout  {
+    return try  FfiConverterTypeHubRollout_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_rollout_cancel(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * Start a firmware rollout of stored image `image` on `target`: one
+     * serial, or a group (one member after another, stopped at the first
+     * failure) (`fw.rollout.start`). The device must be muted unless
+     * `while_live`. The answer comes after the first device's check and
+     * guard steps; follow the rest with `fw.rollout.changed`
+     * ([`super::HubServerEvent::rollout`]) or [`DspiCore::hub_rollouts`].
+     * Admin of the hub, over an encrypted session. Slow: off the UI thread.
+     *
+     * Errors (nothing touched): [`DspiError::InvalidArgument`] for a target
+     * that is not one serial or one group (nothing sent);
+     * [`DspiError::Unsupported`] (not on the hub's own USB);
+     * [`DspiError::Locked`]; [`DspiError::ConfirmationRequired`] (not
+     * muted); [`DspiError::ImageRefused`] (another platform, not verified,
+     * the firmware guard's refusal); [`DspiError::Link`] `offline`,
+     * `conflict`, `busy`, `not_found`, `tls_required`; as
+     * [`DspiCore::hub_firmware_put`].
+     */
+open func hubRolloutStart(target: HubFleetTarget, image: String, whileLive: Bool)throws  -> HubRollout  {
+    return try  FfiConverterTypeHubRollout_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_rollout_start(self.uniffiClonePointer(),
+        FfiConverterTypeHubFleetTarget_lower(target),
+        FfiConverterString.lower(image),
+        FfiConverterBool.lower(whileLive),$0
+    )
+})
+}
+    
+    /**
+     * The hub's rollouts, newest first (`fw.rollout.status`; the hub keeps
+     * 64), or only rollout `id` ("" for all). Every role, over an encrypted
+     * session. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` for an unknown id; as
+     * [`DspiCore::hub_firmware_images`].
+     */
+open func hubRollouts(id: String)throws  -> [HubRollout]  {
+    return try  FfiConverterSequenceTypeHubRollout.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_rollouts(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
     )
 })
 }
@@ -27417,6 +27890,22 @@ public struct HubCaps {
      */
     public var rest: Bool
     /**
+     * `group.*` ([`DspiCore::hub_groups`]).
+     */
+    public var groups: Bool
+    /**
+     * `group.param.*`, `group.preset.load` ([`DspiCore::hub_group_param_set`]).
+     */
+    public var groupParams: Bool
+    /**
+     * `group.apply*` ([`DspiCore::hub_group_apply`]).
+     */
+    public var groupApply: Bool
+    /**
+     * `fw.*` ([`DspiCore::hub_rollout_start`]; over TLS only).
+     */
+    public var rollout: Bool
+    /**
      * Every cap of the hub's `hello`, as it sent them.
      */
     public var caps: [String]
@@ -27467,6 +27956,18 @@ public struct HubCaps {
          * The REST mirror is on (the hub runs with `--rest`).
          */rest: Bool, 
         /**
+         * `group.*` ([`DspiCore::hub_groups`]).
+         */groups: Bool, 
+        /**
+         * `group.param.*`, `group.preset.load` ([`DspiCore::hub_group_param_set`]).
+         */groupParams: Bool, 
+        /**
+         * `group.apply*` ([`DspiCore::hub_group_apply`]).
+         */groupApply: Bool, 
+        /**
+         * `fw.*` ([`DspiCore::hub_rollout_start`]; over TLS only).
+         */rollout: Bool, 
+        /**
          * Every cap of the hub's `hello`, as it sent them.
          */caps: [String]) {
         self.onHub = onHub
@@ -27483,6 +27984,10 @@ public struct HubCaps {
         self.mqtt = mqtt
         self.apiKeys = apiKeys
         self.rest = rest
+        self.groups = groups
+        self.groupParams = groupParams
+        self.groupApply = groupApply
+        self.rollout = rollout
         self.caps = caps
     }
 }
@@ -27536,6 +28041,18 @@ extension HubCaps: Equatable, Hashable {
         if lhs.rest != rhs.rest {
             return false
         }
+        if lhs.groups != rhs.groups {
+            return false
+        }
+        if lhs.groupParams != rhs.groupParams {
+            return false
+        }
+        if lhs.groupApply != rhs.groupApply {
+            return false
+        }
+        if lhs.rollout != rhs.rollout {
+            return false
+        }
         if lhs.caps != rhs.caps {
             return false
         }
@@ -27557,6 +28074,10 @@ extension HubCaps: Equatable, Hashable {
         hasher.combine(mqtt)
         hasher.combine(apiKeys)
         hasher.combine(rest)
+        hasher.combine(groups)
+        hasher.combine(groupParams)
+        hasher.combine(groupApply)
+        hasher.combine(rollout)
         hasher.combine(caps)
     }
 }
@@ -27584,6 +28105,10 @@ public struct FfiConverterTypeHubCaps: FfiConverterRustBuffer {
                 mqtt: FfiConverterBool.read(from: &buf), 
                 apiKeys: FfiConverterBool.read(from: &buf), 
                 rest: FfiConverterBool.read(from: &buf), 
+                groups: FfiConverterBool.read(from: &buf), 
+                groupParams: FfiConverterBool.read(from: &buf), 
+                groupApply: FfiConverterBool.read(from: &buf), 
+                rollout: FfiConverterBool.read(from: &buf), 
                 caps: FfiConverterSequenceString.read(from: &buf)
         )
     }
@@ -27603,6 +28128,10 @@ public struct FfiConverterTypeHubCaps: FfiConverterRustBuffer {
         FfiConverterBool.write(value.mqtt, into: &buf)
         FfiConverterBool.write(value.apiKeys, into: &buf)
         FfiConverterBool.write(value.rest, into: &buf)
+        FfiConverterBool.write(value.groups, into: &buf)
+        FfiConverterBool.write(value.groupParams, into: &buf)
+        FfiConverterBool.write(value.groupApply, into: &buf)
+        FfiConverterBool.write(value.rollout, into: &buf)
         FfiConverterSequenceString.write(value.caps, into: &buf)
     }
 }
@@ -28304,6 +28833,1168 @@ public func FfiConverterTypeHubEventRecord_lift(_ buf: RustBuffer) throws -> Hub
 #endif
 public func FfiConverterTypeHubEventRecord_lower(_ value: HubEventRecord) -> RustBuffer {
     return FfiConverterTypeHubEventRecord.lower(value)
+}
+
+
+/**
+ * A firmware image in the hub's store ([`DspiCore::hub_firmware_images`]).
+ */
+public struct HubFirmwareImage {
+    /**
+     * As uploaded (`...uf2`).
+     */
+    public var name: String
+    /**
+     * Bytes.
+     */
+    public var size: UInt64
+    /**
+     * Of the whole file, lowercase hex.
+     */
+    public var sha256: String
+    /**
+     * The DSPi version in the image; "" when none.
+     */
+    public var firmwareVersion: String
+    /**
+     * `RP2040` or `RP2350`.
+     */
+    public var platform: String
+    /**
+     * The core-voltage stamp, mV; `None` when unstamped.
+     */
+    public var stampMv: UInt16?
+    /**
+     * The release's manifest lists this name with these bytes.
+     */
+    public var verified: Bool
+    /**
+     * When (ISO-8601 UTC).
+     */
+    public var addedAt: String
+    /**
+     * Who: a client's name.
+     */
+    public var addedBy: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * As uploaded (`...uf2`).
+         */name: String, 
+        /**
+         * Bytes.
+         */size: UInt64, 
+        /**
+         * Of the whole file, lowercase hex.
+         */sha256: String, 
+        /**
+         * The DSPi version in the image; "" when none.
+         */firmwareVersion: String, 
+        /**
+         * `RP2040` or `RP2350`.
+         */platform: String, 
+        /**
+         * The core-voltage stamp, mV; `None` when unstamped.
+         */stampMv: UInt16?, 
+        /**
+         * The release's manifest lists this name with these bytes.
+         */verified: Bool, 
+        /**
+         * When (ISO-8601 UTC).
+         */addedAt: String, 
+        /**
+         * Who: a client's name.
+         */addedBy: String) {
+        self.name = name
+        self.size = size
+        self.sha256 = sha256
+        self.firmwareVersion = firmwareVersion
+        self.platform = platform
+        self.stampMv = stampMv
+        self.verified = verified
+        self.addedAt = addedAt
+        self.addedBy = addedBy
+    }
+}
+
+#if compiler(>=6)
+extension HubFirmwareImage: Sendable {}
+#endif
+
+
+extension HubFirmwareImage: Equatable, Hashable {
+    public static func ==(lhs: HubFirmwareImage, rhs: HubFirmwareImage) -> Bool {
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.size != rhs.size {
+            return false
+        }
+        if lhs.sha256 != rhs.sha256 {
+            return false
+        }
+        if lhs.firmwareVersion != rhs.firmwareVersion {
+            return false
+        }
+        if lhs.platform != rhs.platform {
+            return false
+        }
+        if lhs.stampMv != rhs.stampMv {
+            return false
+        }
+        if lhs.verified != rhs.verified {
+            return false
+        }
+        if lhs.addedAt != rhs.addedAt {
+            return false
+        }
+        if lhs.addedBy != rhs.addedBy {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(size)
+        hasher.combine(sha256)
+        hasher.combine(firmwareVersion)
+        hasher.combine(platform)
+        hasher.combine(stampMv)
+        hasher.combine(verified)
+        hasher.combine(addedAt)
+        hasher.combine(addedBy)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubFirmwareImage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubFirmwareImage {
+        return
+            try HubFirmwareImage(
+                name: FfiConverterString.read(from: &buf), 
+                size: FfiConverterUInt64.read(from: &buf), 
+                sha256: FfiConverterString.read(from: &buf), 
+                firmwareVersion: FfiConverterString.read(from: &buf), 
+                platform: FfiConverterString.read(from: &buf), 
+                stampMv: FfiConverterOptionUInt16.read(from: &buf), 
+                verified: FfiConverterBool.read(from: &buf), 
+                addedAt: FfiConverterString.read(from: &buf), 
+                addedBy: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubFirmwareImage, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterUInt64.write(value.size, into: &buf)
+        FfiConverterString.write(value.sha256, into: &buf)
+        FfiConverterString.write(value.firmwareVersion, into: &buf)
+        FfiConverterString.write(value.platform, into: &buf)
+        FfiConverterOptionUInt16.write(value.stampMv, into: &buf)
+        FfiConverterBool.write(value.verified, into: &buf)
+        FfiConverterString.write(value.addedAt, into: &buf)
+        FfiConverterString.write(value.addedBy, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubFirmwareImage_lift(_ buf: RustBuffer) throws -> HubFirmwareImage {
+    return try FfiConverterTypeHubFirmwareImage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubFirmwareImage_lower(_ value: HubFirmwareImage) -> RustBuffer {
+    return FfiConverterTypeHubFirmwareImage.lower(value)
+}
+
+
+/**
+ * The hub's image store ([`DspiCore::hub_firmware_images`]).
+ */
+public struct HubFirmwareImages {
+    /**
+     * Oldest first.
+     */
+    public var images: [HubFirmwareImage]
+    /**
+     * Images the store keeps at most.
+     */
+    public var maxImages: UInt32
+    /**
+     * Bytes an image may have at most.
+     */
+    public var maxBytes: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Oldest first.
+         */images: [HubFirmwareImage], 
+        /**
+         * Images the store keeps at most.
+         */maxImages: UInt32, 
+        /**
+         * Bytes an image may have at most.
+         */maxBytes: UInt64) {
+        self.images = images
+        self.maxImages = maxImages
+        self.maxBytes = maxBytes
+    }
+}
+
+#if compiler(>=6)
+extension HubFirmwareImages: Sendable {}
+#endif
+
+
+extension HubFirmwareImages: Equatable, Hashable {
+    public static func ==(lhs: HubFirmwareImages, rhs: HubFirmwareImages) -> Bool {
+        if lhs.images != rhs.images {
+            return false
+        }
+        if lhs.maxImages != rhs.maxImages {
+            return false
+        }
+        if lhs.maxBytes != rhs.maxBytes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(images)
+        hasher.combine(maxImages)
+        hasher.combine(maxBytes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubFirmwareImages: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubFirmwareImages {
+        return
+            try HubFirmwareImages(
+                images: FfiConverterSequenceTypeHubFirmwareImage.read(from: &buf), 
+                maxImages: FfiConverterUInt32.read(from: &buf), 
+                maxBytes: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubFirmwareImages, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeHubFirmwareImage.write(value.images, into: &buf)
+        FfiConverterUInt32.write(value.maxImages, into: &buf)
+        FfiConverterUInt64.write(value.maxBytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubFirmwareImages_lift(_ buf: RustBuffer) throws -> HubFirmwareImages {
+    return try FfiConverterTypeHubFirmwareImages.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubFirmwareImages_lower(_ value: HubFirmwareImages) -> RustBuffer {
+    return FfiConverterTypeHubFirmwareImages.lower(value)
+}
+
+
+/**
+ * What [`DspiCore::hub_firmware_put`] stored.
+ */
+public struct HubFirmwarePut {
+    /**
+     * The image as the hub has it.
+     */
+    public var image: HubFirmwareImage
+    /**
+     * False: the hub already held this name with these bytes.
+     */
+    public var created: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The image as the hub has it.
+         */image: HubFirmwareImage, 
+        /**
+         * False: the hub already held this name with these bytes.
+         */created: Bool) {
+        self.image = image
+        self.created = created
+    }
+}
+
+#if compiler(>=6)
+extension HubFirmwarePut: Sendable {}
+#endif
+
+
+extension HubFirmwarePut: Equatable, Hashable {
+    public static func ==(lhs: HubFirmwarePut, rhs: HubFirmwarePut) -> Bool {
+        if lhs.image != rhs.image {
+            return false
+        }
+        if lhs.created != rhs.created {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(image)
+        hasher.combine(created)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubFirmwarePut: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubFirmwarePut {
+        return
+            try HubFirmwarePut(
+                image: FfiConverterTypeHubFirmwareImage.read(from: &buf), 
+                created: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubFirmwarePut, into buf: inout [UInt8]) {
+        FfiConverterTypeHubFirmwareImage.write(value.image, into: &buf)
+        FfiConverterBool.write(value.created, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubFirmwarePut_lift(_ buf: RustBuffer) throws -> HubFirmwarePut {
+    return try FfiConverterTypeHubFirmwarePut.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubFirmwarePut_lower(_ value: HubFirmwarePut) -> RustBuffer {
+    return FfiConverterTypeHubFirmwarePut.lower(value)
+}
+
+
+/**
+ * Which devices a group request addresses: exactly one of a group's id or
+ * 1 to 16 serials (section 20.1).
+ */
+public struct HubFleetTarget {
+    /**
+     * A group's id; "" when [`HubFleetTarget::serials`] is used.
+     */
+    public var group: String
+    /**
+     * Serials, each once; empty when [`HubFleetTarget::group`] is used.
+     */
+    public var serials: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * A group's id; "" when [`HubFleetTarget::serials`] is used.
+         */group: String, 
+        /**
+         * Serials, each once; empty when [`HubFleetTarget::group`] is used.
+         */serials: [String]) {
+        self.group = group
+        self.serials = serials
+    }
+}
+
+#if compiler(>=6)
+extension HubFleetTarget: Sendable {}
+#endif
+
+
+extension HubFleetTarget: Equatable, Hashable {
+    public static func ==(lhs: HubFleetTarget, rhs: HubFleetTarget) -> Bool {
+        if lhs.group != rhs.group {
+            return false
+        }
+        if lhs.serials != rhs.serials {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(group)
+        hasher.combine(serials)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubFleetTarget: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubFleetTarget {
+        return
+            try HubFleetTarget(
+                group: FfiConverterString.read(from: &buf), 
+                serials: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubFleetTarget, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.group, into: &buf)
+        FfiConverterSequenceString.write(value.serials, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubFleetTarget_lift(_ buf: RustBuffer) throws -> HubFleetTarget {
+    return try FfiConverterTypeHubFleetTarget.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubFleetTarget_lower(_ value: HubFleetTarget) -> RustBuffer {
+    return FfiConverterTypeHubFleetTarget.lower(value)
+}
+
+
+/**
+ * A group of the hub's ([`DspiCore::hub_groups`]; [`DspiCore::hub_group_set`]
+ * takes one).
+ */
+public struct HubGroup {
+    /**
+     * The hub's id (`g1`, `g2`, ...; never reused); "" for a new group.
+     */
+    public var id: String
+    /**
+     * 1 to 48 characters.
+     */
+    public var name: String
+    /**
+     * At most 256 characters; "" when unset.
+     */
+    public var note: String
+    /**
+     * 0 to 64 inventory serials, each once, in the order fan-outs use.
+     */
+    public var members: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The hub's id (`g1`, `g2`, ...; never reused); "" for a new group.
+         */id: String, 
+        /**
+         * 1 to 48 characters.
+         */name: String, 
+        /**
+         * At most 256 characters; "" when unset.
+         */note: String, 
+        /**
+         * 0 to 64 inventory serials, each once, in the order fan-outs use.
+         */members: [String]) {
+        self.id = id
+        self.name = name
+        self.note = note
+        self.members = members
+    }
+}
+
+#if compiler(>=6)
+extension HubGroup: Sendable {}
+#endif
+
+
+extension HubGroup: Equatable, Hashable {
+    public static func ==(lhs: HubGroup, rhs: HubGroup) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.note != rhs.note {
+            return false
+        }
+        if lhs.members != rhs.members {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(name)
+        hasher.combine(note)
+        hasher.combine(members)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubGroup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubGroup {
+        return
+            try HubGroup(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf), 
+                members: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubGroup, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+        FfiConverterSequenceString.write(value.members, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubGroup_lift(_ buf: RustBuffer) throws -> HubGroup {
+    return try FfiConverterTypeHubGroup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubGroup_lower(_ value: HubGroup) -> RustBuffer {
+    return FfiConverterTypeHubGroup.lower(value)
+}
+
+
+/**
+ * A parameter fan-out's answer ([`DspiCore::hub_group_param_get`],
+ * [`DspiCore::hub_group_param_set`]).
+ */
+public struct HubGroupParams {
+    /**
+     * The path.
+     */
+    public var path: String
+    /**
+     * Its indices.
+     */
+    public var idx: [UInt32]
+    /**
+     * One row per member, in order.
+     */
+    public var results: [HubGroupRow]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The path.
+         */path: String, 
+        /**
+         * Its indices.
+         */idx: [UInt32], 
+        /**
+         * One row per member, in order.
+         */results: [HubGroupRow]) {
+        self.path = path
+        self.idx = idx
+        self.results = results
+    }
+}
+
+#if compiler(>=6)
+extension HubGroupParams: Sendable {}
+#endif
+
+
+extension HubGroupParams: Equatable, Hashable {
+    public static func ==(lhs: HubGroupParams, rhs: HubGroupParams) -> Bool {
+        if lhs.path != rhs.path {
+            return false
+        }
+        if lhs.idx != rhs.idx {
+            return false
+        }
+        if lhs.results != rhs.results {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(path)
+        hasher.combine(idx)
+        hasher.combine(results)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubGroupParams: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubGroupParams {
+        return
+            try HubGroupParams(
+                path: FfiConverterString.read(from: &buf), 
+                idx: FfiConverterSequenceUInt32.read(from: &buf), 
+                results: FfiConverterSequenceTypeHubGroupRow.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubGroupParams, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterSequenceUInt32.write(value.idx, into: &buf)
+        FfiConverterSequenceTypeHubGroupRow.write(value.results, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubGroupParams_lift(_ buf: RustBuffer) throws -> HubGroupParams {
+    return try FfiConverterTypeHubGroupParams.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubGroupParams_lower(_ value: HubGroupParams) -> RustBuffer {
+    return FfiConverterTypeHubGroupParams.lower(value)
+}
+
+
+/**
+ * One device's row of a group request (sections 20.1 to 20.3). The fields a
+ * request does not use are empty, `None` or false.
+ */
+public struct HubGroupRow {
+    /**
+     * The device.
+     */
+    public var serial: String
+    /**
+     * Written, read or applied.
+     */
+    public var ok: Bool
+    /**
+     * The hub's code when not (`offline`, `limit_exceeded`, ...); "" when ok.
+     */
+    public var code: String
+    /**
+     * The hub's words; "" when none.
+     */
+    public var msg: String
+    /**
+     * The notice row for [`HubGroupRow::code`] ("" when ok).
+     */
+    public var noticeKey: String
+    /**
+     * The limit crossed (`limit_exceeded`).
+     */
+    public var limit: String
+    /**
+     * A parameter's value: what was read, or what was sent and read back.
+     */
+    public var value: ParamValue?
+    /**
+     * A choice's label, where the path has labels.
+     */
+    public var choice: String
+    /**
+     * A structured value, base64 (as `param.get` answers it).
+     */
+    public var valueB64: String
+    /**
+     * The member's offset was clamped into its range.
+     */
+    public var clamped: Bool
+    /**
+     * The preset slot loaded.
+     */
+    public var slot: UInt8?
+    /**
+     * The preset's name.
+     */
+    public var name: String
+    /**
+     * An apply: the whole image was written.
+     */
+    public var image: Bool
+    /**
+     * An apply: what changed.
+     */
+    public var lines: [String]
+    /**
+     * An apply: what was not written, and why.
+     */
+    public var notes: [String]
+    /**
+     * An apply with a guard: the device's guard id.
+     */
+    public var `guard`: UInt64?
+    /**
+     * The guard reverted (ran out before the run ended, or cancelled).
+     */
+    public var reverted: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The device.
+         */serial: String, 
+        /**
+         * Written, read or applied.
+         */ok: Bool, 
+        /**
+         * The hub's code when not (`offline`, `limit_exceeded`, ...); "" when ok.
+         */code: String, 
+        /**
+         * The hub's words; "" when none.
+         */msg: String, 
+        /**
+         * The notice row for [`HubGroupRow::code`] ("" when ok).
+         */noticeKey: String, 
+        /**
+         * The limit crossed (`limit_exceeded`).
+         */limit: String, 
+        /**
+         * A parameter's value: what was read, or what was sent and read back.
+         */value: ParamValue?, 
+        /**
+         * A choice's label, where the path has labels.
+         */choice: String, 
+        /**
+         * A structured value, base64 (as `param.get` answers it).
+         */valueB64: String, 
+        /**
+         * The member's offset was clamped into its range.
+         */clamped: Bool, 
+        /**
+         * The preset slot loaded.
+         */slot: UInt8?, 
+        /**
+         * The preset's name.
+         */name: String, 
+        /**
+         * An apply: the whole image was written.
+         */image: Bool, 
+        /**
+         * An apply: what changed.
+         */lines: [String], 
+        /**
+         * An apply: what was not written, and why.
+         */notes: [String], 
+        /**
+         * An apply with a guard: the device's guard id.
+         */`guard`: UInt64?, 
+        /**
+         * The guard reverted (ran out before the run ended, or cancelled).
+         */reverted: Bool) {
+        self.serial = serial
+        self.ok = ok
+        self.code = code
+        self.msg = msg
+        self.noticeKey = noticeKey
+        self.limit = limit
+        self.value = value
+        self.choice = choice
+        self.valueB64 = valueB64
+        self.clamped = clamped
+        self.slot = slot
+        self.name = name
+        self.image = image
+        self.lines = lines
+        self.notes = notes
+        self.`guard` = `guard`
+        self.reverted = reverted
+    }
+}
+
+#if compiler(>=6)
+extension HubGroupRow: Sendable {}
+#endif
+
+
+extension HubGroupRow: Equatable, Hashable {
+    public static func ==(lhs: HubGroupRow, rhs: HubGroupRow) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.ok != rhs.ok {
+            return false
+        }
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.msg != rhs.msg {
+            return false
+        }
+        if lhs.noticeKey != rhs.noticeKey {
+            return false
+        }
+        if lhs.limit != rhs.limit {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.choice != rhs.choice {
+            return false
+        }
+        if lhs.valueB64 != rhs.valueB64 {
+            return false
+        }
+        if lhs.clamped != rhs.clamped {
+            return false
+        }
+        if lhs.slot != rhs.slot {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.image != rhs.image {
+            return false
+        }
+        if lhs.lines != rhs.lines {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        if lhs.`guard` != rhs.`guard` {
+            return false
+        }
+        if lhs.reverted != rhs.reverted {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(ok)
+        hasher.combine(code)
+        hasher.combine(msg)
+        hasher.combine(noticeKey)
+        hasher.combine(limit)
+        hasher.combine(value)
+        hasher.combine(choice)
+        hasher.combine(valueB64)
+        hasher.combine(clamped)
+        hasher.combine(slot)
+        hasher.combine(name)
+        hasher.combine(image)
+        hasher.combine(lines)
+        hasher.combine(notes)
+        hasher.combine(`guard`)
+        hasher.combine(reverted)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubGroupRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubGroupRow {
+        return
+            try HubGroupRow(
+                serial: FfiConverterString.read(from: &buf), 
+                ok: FfiConverterBool.read(from: &buf), 
+                code: FfiConverterString.read(from: &buf), 
+                msg: FfiConverterString.read(from: &buf), 
+                noticeKey: FfiConverterString.read(from: &buf), 
+                limit: FfiConverterString.read(from: &buf), 
+                value: FfiConverterOptionTypeParamValue.read(from: &buf), 
+                choice: FfiConverterString.read(from: &buf), 
+                valueB64: FfiConverterString.read(from: &buf), 
+                clamped: FfiConverterBool.read(from: &buf), 
+                slot: FfiConverterOptionUInt8.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                image: FfiConverterBool.read(from: &buf), 
+                lines: FfiConverterSequenceString.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf), 
+                guard: FfiConverterOptionUInt64.read(from: &buf), 
+                reverted: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubGroupRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterBool.write(value.ok, into: &buf)
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterString.write(value.msg, into: &buf)
+        FfiConverterString.write(value.noticeKey, into: &buf)
+        FfiConverterString.write(value.limit, into: &buf)
+        FfiConverterOptionTypeParamValue.write(value.value, into: &buf)
+        FfiConverterString.write(value.choice, into: &buf)
+        FfiConverterString.write(value.valueB64, into: &buf)
+        FfiConverterBool.write(value.clamped, into: &buf)
+        FfiConverterOptionUInt8.write(value.slot, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.image, into: &buf)
+        FfiConverterSequenceString.write(value.lines, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+        FfiConverterOptionUInt64.write(value.`guard`, into: &buf)
+        FfiConverterBool.write(value.reverted, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubGroupRow_lift(_ buf: RustBuffer) throws -> HubGroupRow {
+    return try FfiConverterTypeHubGroupRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubGroupRow_lower(_ value: HubGroupRow) -> RustBuffer {
+    return FfiConverterTypeHubGroupRow.lower(value)
+}
+
+
+/**
+ * A bulk apply's run ([`DspiCore::hub_group_apply`], its confirm and
+ * cancel).
+ */
+public struct HubGroupRun {
+    /**
+     * The hub's id of the run (`a1`, ...).
+     */
+    public var run: String
+    /**
+     * The earliest guard deadline (ISO-8601 UTC); "" without a guard.
+     */
+    public var confirmBy: String
+    /**
+     * The hub's note (guards that ran out: raise the timeout); "" when none.
+     */
+    public var msg: String
+    /**
+     * One row per member (apply) or per guard (confirm, cancel).
+     */
+    public var results: [HubGroupRow]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The hub's id of the run (`a1`, ...).
+         */run: String, 
+        /**
+         * The earliest guard deadline (ISO-8601 UTC); "" without a guard.
+         */confirmBy: String, 
+        /**
+         * The hub's note (guards that ran out: raise the timeout); "" when none.
+         */msg: String, 
+        /**
+         * One row per member (apply) or per guard (confirm, cancel).
+         */results: [HubGroupRow]) {
+        self.run = run
+        self.confirmBy = confirmBy
+        self.msg = msg
+        self.results = results
+    }
+}
+
+#if compiler(>=6)
+extension HubGroupRun: Sendable {}
+#endif
+
+
+extension HubGroupRun: Equatable, Hashable {
+    public static func ==(lhs: HubGroupRun, rhs: HubGroupRun) -> Bool {
+        if lhs.run != rhs.run {
+            return false
+        }
+        if lhs.confirmBy != rhs.confirmBy {
+            return false
+        }
+        if lhs.msg != rhs.msg {
+            return false
+        }
+        if lhs.results != rhs.results {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(run)
+        hasher.combine(confirmBy)
+        hasher.combine(msg)
+        hasher.combine(results)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubGroupRun: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubGroupRun {
+        return
+            try HubGroupRun(
+                run: FfiConverterString.read(from: &buf), 
+                confirmBy: FfiConverterString.read(from: &buf), 
+                msg: FfiConverterString.read(from: &buf), 
+                results: FfiConverterSequenceTypeHubGroupRow.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubGroupRun, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.run, into: &buf)
+        FfiConverterString.write(value.confirmBy, into: &buf)
+        FfiConverterString.write(value.msg, into: &buf)
+        FfiConverterSequenceTypeHubGroupRow.write(value.results, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubGroupRun_lift(_ buf: RustBuffer) throws -> HubGroupRun {
+    return try FfiConverterTypeHubGroupRun.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubGroupRun_lower(_ value: HubGroupRun) -> RustBuffer {
+    return FfiConverterTypeHubGroupRun.lower(value)
+}
+
+
+/**
+ * What [`DspiCore::hub_group_set`] stored.
+ */
+public struct HubGroupSet {
+    /**
+     * The group as the hub now has it.
+     */
+    public var group: HubGroup
+    /**
+     * A new group (no id was given).
+     */
+    public var created: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The group as the hub now has it.
+         */group: HubGroup, 
+        /**
+         * A new group (no id was given).
+         */created: Bool) {
+        self.group = group
+        self.created = created
+    }
+}
+
+#if compiler(>=6)
+extension HubGroupSet: Sendable {}
+#endif
+
+
+extension HubGroupSet: Equatable, Hashable {
+    public static func ==(lhs: HubGroupSet, rhs: HubGroupSet) -> Bool {
+        if lhs.group != rhs.group {
+            return false
+        }
+        if lhs.created != rhs.created {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(group)
+        hasher.combine(created)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubGroupSet: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubGroupSet {
+        return
+            try HubGroupSet(
+                group: FfiConverterTypeHubGroup.read(from: &buf), 
+                created: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubGroupSet, into buf: inout [UInt8]) {
+        FfiConverterTypeHubGroup.write(value.group, into: &buf)
+        FfiConverterBool.write(value.created, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubGroupSet_lift(_ buf: RustBuffer) throws -> HubGroupSet {
+    return try FfiConverterTypeHubGroupSet.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubGroupSet_lower(_ value: HubGroupSet) -> RustBuffer {
+    return FfiConverterTypeHubGroupSet.lower(value)
 }
 
 
@@ -29466,6 +31157,91 @@ public func FfiConverterTypeHubMqttTls_lower(_ value: HubMqttTls) -> RustBuffer 
 
 
 /**
+ * One member's offset of [`DspiCore::hub_group_param_set`] (dB paths only).
+ */
+public struct HubOffset {
+    /**
+     * The member.
+     */
+    public var serial: String
+    /**
+     * Added to the value, dB.
+     */
+    public var db: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The member.
+         */serial: String, 
+        /**
+         * Added to the value, dB.
+         */db: Double) {
+        self.serial = serial
+        self.db = db
+    }
+}
+
+#if compiler(>=6)
+extension HubOffset: Sendable {}
+#endif
+
+
+extension HubOffset: Equatable, Hashable {
+    public static func ==(lhs: HubOffset, rhs: HubOffset) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.db != rhs.db {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(db)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubOffset: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubOffset {
+        return
+            try HubOffset(
+                serial: FfiConverterString.read(from: &buf), 
+                db: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubOffset, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterDouble.write(value.db, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOffset_lift(_ buf: RustBuffer) throws -> HubOffset {
+    return try FfiConverterTypeHubOffset.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubOffset_lower(_ value: HubOffset) -> RustBuffer {
+    return FfiConverterTypeHubOffset.lower(value)
+}
+
+
+/**
  * A target's last delivery try.
  */
 public struct HubOutboundLast {
@@ -30190,6 +31966,105 @@ public func FfiConverterTypeHubPinSet_lower(_ value: HubPinSet) -> RustBuffer {
 
 
 /**
+ * One member's own preset of [`DspiCore::hub_group_preset_load`].
+ */
+public struct HubPresetPick {
+    /**
+     * The member.
+     */
+    public var serial: String
+    /**
+     * Its slot (0 to 9); `None` when [`HubPresetPick::name`] is used.
+     */
+    public var slot: UInt8?
+    /**
+     * A preset's name; "" when [`HubPresetPick::slot`] is used.
+     */
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The member.
+         */serial: String, 
+        /**
+         * Its slot (0 to 9); `None` when [`HubPresetPick::name`] is used.
+         */slot: UInt8?, 
+        /**
+         * A preset's name; "" when [`HubPresetPick::slot`] is used.
+         */name: String) {
+        self.serial = serial
+        self.slot = slot
+        self.name = name
+    }
+}
+
+#if compiler(>=6)
+extension HubPresetPick: Sendable {}
+#endif
+
+
+extension HubPresetPick: Equatable, Hashable {
+    public static func ==(lhs: HubPresetPick, rhs: HubPresetPick) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.slot != rhs.slot {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(slot)
+        hasher.combine(name)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubPresetPick: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubPresetPick {
+        return
+            try HubPresetPick(
+                serial: FfiConverterString.read(from: &buf), 
+                slot: FfiConverterOptionUInt8.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubPresetPick, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterOptionUInt8.write(value.slot, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubPresetPick_lift(_ buf: RustBuffer) throws -> HubPresetPick {
+    return try FfiConverterTypeHubPresetPick.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubPresetPick_lower(_ value: HubPresetPick) -> RustBuffer {
+    return FfiConverterTypeHubPresetPick.lower(value)
+}
+
+
+/**
  * A reset as the hub saw it (`EXT_RESET_INFO`).
  */
 public struct HubReset {
@@ -30287,6 +32162,981 @@ public func FfiConverterTypeHubReset_lift(_ buf: RustBuffer) throws -> HubReset 
 #endif
 public func FfiConverterTypeHubReset_lower(_ value: HubReset) -> RustBuffer {
     return FfiConverterTypeHubReset.lower(value)
+}
+
+
+/**
+ * A rollout ([`DspiCore::hub_rollouts`], `fw.rollout.changed`).
+ */
+public struct HubRollout {
+    /**
+     * The hub's id (`ro1`, ...; never reused).
+     */
+    public var id: String
+    /**
+     * The serial, or `group:<id>`.
+     */
+    public var target: String
+    /**
+     * The image's name.
+     */
+    public var image: String
+    /**
+     * Its SHA-256.
+     */
+    public var imageSha256: String
+    /**
+     * Its DSPi version.
+     */
+    public var imageVersion: String
+    /**
+     * The Admin's client name.
+     */
+    public var by: String
+    /**
+     * Started without the mute check.
+     */
+    public var whileLive: Bool
+    /**
+     * `running`, `ok`, `failed`, `cancelled`.
+     */
+    public var state: String
+    /**
+     * ISO-8601 UTC.
+     */
+    public var startedAt: String
+    /**
+     * ISO-8601 UTC; "" while running.
+     */
+    public var endedAt: String
+    /**
+     * One entry per device, in order.
+     */
+    public var devices: [HubRolloutDevice]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The hub's id (`ro1`, ...; never reused).
+         */id: String, 
+        /**
+         * The serial, or `group:<id>`.
+         */target: String, 
+        /**
+         * The image's name.
+         */image: String, 
+        /**
+         * Its SHA-256.
+         */imageSha256: String, 
+        /**
+         * Its DSPi version.
+         */imageVersion: String, 
+        /**
+         * The Admin's client name.
+         */by: String, 
+        /**
+         * Started without the mute check.
+         */whileLive: Bool, 
+        /**
+         * `running`, `ok`, `failed`, `cancelled`.
+         */state: String, 
+        /**
+         * ISO-8601 UTC.
+         */startedAt: String, 
+        /**
+         * ISO-8601 UTC; "" while running.
+         */endedAt: String, 
+        /**
+         * One entry per device, in order.
+         */devices: [HubRolloutDevice]) {
+        self.id = id
+        self.target = target
+        self.image = image
+        self.imageSha256 = imageSha256
+        self.imageVersion = imageVersion
+        self.by = by
+        self.whileLive = whileLive
+        self.state = state
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.devices = devices
+    }
+}
+
+#if compiler(>=6)
+extension HubRollout: Sendable {}
+#endif
+
+
+extension HubRollout: Equatable, Hashable {
+    public static func ==(lhs: HubRollout, rhs: HubRollout) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.target != rhs.target {
+            return false
+        }
+        if lhs.image != rhs.image {
+            return false
+        }
+        if lhs.imageSha256 != rhs.imageSha256 {
+            return false
+        }
+        if lhs.imageVersion != rhs.imageVersion {
+            return false
+        }
+        if lhs.by != rhs.by {
+            return false
+        }
+        if lhs.whileLive != rhs.whileLive {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.startedAt != rhs.startedAt {
+            return false
+        }
+        if lhs.endedAt != rhs.endedAt {
+            return false
+        }
+        if lhs.devices != rhs.devices {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(target)
+        hasher.combine(image)
+        hasher.combine(imageSha256)
+        hasher.combine(imageVersion)
+        hasher.combine(by)
+        hasher.combine(whileLive)
+        hasher.combine(state)
+        hasher.combine(startedAt)
+        hasher.combine(endedAt)
+        hasher.combine(devices)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubRollout: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubRollout {
+        return
+            try HubRollout(
+                id: FfiConverterString.read(from: &buf), 
+                target: FfiConverterString.read(from: &buf), 
+                image: FfiConverterString.read(from: &buf), 
+                imageSha256: FfiConverterString.read(from: &buf), 
+                imageVersion: FfiConverterString.read(from: &buf), 
+                by: FfiConverterString.read(from: &buf), 
+                whileLive: FfiConverterBool.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf), 
+                startedAt: FfiConverterString.read(from: &buf), 
+                endedAt: FfiConverterString.read(from: &buf), 
+                devices: FfiConverterSequenceTypeHubRolloutDevice.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubRollout, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.target, into: &buf)
+        FfiConverterString.write(value.image, into: &buf)
+        FfiConverterString.write(value.imageSha256, into: &buf)
+        FfiConverterString.write(value.imageVersion, into: &buf)
+        FfiConverterString.write(value.by, into: &buf)
+        FfiConverterBool.write(value.whileLive, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterString.write(value.startedAt, into: &buf)
+        FfiConverterString.write(value.endedAt, into: &buf)
+        FfiConverterSequenceTypeHubRolloutDevice.write(value.devices, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRollout_lift(_ buf: RustBuffer) throws -> HubRollout {
+    return try FfiConverterTypeHubRollout.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRollout_lower(_ value: HubRollout) -> RustBuffer {
+    return FfiConverterTypeHubRollout.lower(value)
+}
+
+
+/**
+ * A device after it came back (step 8).
+ */
+public struct HubRolloutAfter {
+    /**
+     * Its firmware version.
+     */
+    public var fw: String
+    /**
+     * `EXT_LIST`.
+     */
+    public var extList: [UInt16]
+    /**
+     * `EXT_CORE_VREG`, where it has one.
+     */
+    public var vreg: HubRolloutVreg?
+    /**
+     * Against the export: `unchanged`, `changed` or `unknown`.
+     */
+    public var settings: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its firmware version.
+         */fw: String, 
+        /**
+         * `EXT_LIST`.
+         */extList: [UInt16], 
+        /**
+         * `EXT_CORE_VREG`, where it has one.
+         */vreg: HubRolloutVreg?, 
+        /**
+         * Against the export: `unchanged`, `changed` or `unknown`.
+         */settings: String) {
+        self.fw = fw
+        self.extList = extList
+        self.vreg = vreg
+        self.settings = settings
+    }
+}
+
+#if compiler(>=6)
+extension HubRolloutAfter: Sendable {}
+#endif
+
+
+extension HubRolloutAfter: Equatable, Hashable {
+    public static func ==(lhs: HubRolloutAfter, rhs: HubRolloutAfter) -> Bool {
+        if lhs.fw != rhs.fw {
+            return false
+        }
+        if lhs.extList != rhs.extList {
+            return false
+        }
+        if lhs.vreg != rhs.vreg {
+            return false
+        }
+        if lhs.settings != rhs.settings {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(fw)
+        hasher.combine(extList)
+        hasher.combine(vreg)
+        hasher.combine(settings)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubRolloutAfter: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubRolloutAfter {
+        return
+            try HubRolloutAfter(
+                fw: FfiConverterString.read(from: &buf), 
+                extList: FfiConverterSequenceUInt16.read(from: &buf), 
+                vreg: FfiConverterOptionTypeHubRolloutVreg.read(from: &buf), 
+                settings: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubRolloutAfter, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.fw, into: &buf)
+        FfiConverterSequenceUInt16.write(value.extList, into: &buf)
+        FfiConverterOptionTypeHubRolloutVreg.write(value.vreg, into: &buf)
+        FfiConverterString.write(value.settings, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutAfter_lift(_ buf: RustBuffer) throws -> HubRolloutAfter {
+    return try FfiConverterTypeHubRolloutAfter.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutAfter_lower(_ value: HubRolloutAfter) -> RustBuffer {
+    return FfiConverterTypeHubRolloutAfter.lower(value)
+}
+
+
+/**
+ * A device before its flash (step 3).
+ */
+public struct HubRolloutBefore {
+    /**
+     * Its firmware version.
+     */
+    public var fw: String
+    /**
+     * `EXT_LIST`.
+     */
+    public var extList: [UInt16]
+    /**
+     * The lowest core voltage the board may be left on, mV (0 unknown).
+     */
+    public var requiredMv: UInt16
+    /**
+     * Where that came from.
+     */
+    public var boardSource: String
+    /**
+     * `EXT_CORE_VREG`, where it has one.
+     */
+    public var vreg: HubRolloutVreg?
+    /**
+     * The export's snapshot id in the hub's store; "" when none.
+     */
+    public var export: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its firmware version.
+         */fw: String, 
+        /**
+         * `EXT_LIST`.
+         */extList: [UInt16], 
+        /**
+         * The lowest core voltage the board may be left on, mV (0 unknown).
+         */requiredMv: UInt16, 
+        /**
+         * Where that came from.
+         */boardSource: String, 
+        /**
+         * `EXT_CORE_VREG`, where it has one.
+         */vreg: HubRolloutVreg?, 
+        /**
+         * The export's snapshot id in the hub's store; "" when none.
+         */export: String) {
+        self.fw = fw
+        self.extList = extList
+        self.requiredMv = requiredMv
+        self.boardSource = boardSource
+        self.vreg = vreg
+        self.export = export
+    }
+}
+
+#if compiler(>=6)
+extension HubRolloutBefore: Sendable {}
+#endif
+
+
+extension HubRolloutBefore: Equatable, Hashable {
+    public static func ==(lhs: HubRolloutBefore, rhs: HubRolloutBefore) -> Bool {
+        if lhs.fw != rhs.fw {
+            return false
+        }
+        if lhs.extList != rhs.extList {
+            return false
+        }
+        if lhs.requiredMv != rhs.requiredMv {
+            return false
+        }
+        if lhs.boardSource != rhs.boardSource {
+            return false
+        }
+        if lhs.vreg != rhs.vreg {
+            return false
+        }
+        if lhs.export != rhs.export {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(fw)
+        hasher.combine(extList)
+        hasher.combine(requiredMv)
+        hasher.combine(boardSource)
+        hasher.combine(vreg)
+        hasher.combine(export)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubRolloutBefore: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubRolloutBefore {
+        return
+            try HubRolloutBefore(
+                fw: FfiConverterString.read(from: &buf), 
+                extList: FfiConverterSequenceUInt16.read(from: &buf), 
+                requiredMv: FfiConverterUInt16.read(from: &buf), 
+                boardSource: FfiConverterString.read(from: &buf), 
+                vreg: FfiConverterOptionTypeHubRolloutVreg.read(from: &buf), 
+                export: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubRolloutBefore, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.fw, into: &buf)
+        FfiConverterSequenceUInt16.write(value.extList, into: &buf)
+        FfiConverterUInt16.write(value.requiredMv, into: &buf)
+        FfiConverterString.write(value.boardSource, into: &buf)
+        FfiConverterOptionTypeHubRolloutVreg.write(value.vreg, into: &buf)
+        FfiConverterString.write(value.export, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutBefore_lift(_ buf: RustBuffer) throws -> HubRolloutBefore {
+    return try FfiConverterTypeHubRolloutBefore.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutBefore_lower(_ value: HubRolloutBefore) -> RustBuffer {
+    return FfiConverterTypeHubRolloutBefore.lower(value)
+}
+
+
+/**
+ * One device of a rollout.
+ */
+public struct HubRolloutDevice {
+    /**
+     * The device.
+     */
+    public var serial: String
+    /**
+     * `pending`, `running`, `ok`, `failed`, `cancelled`, `not_tried`.
+     */
+    public var state: String
+    /**
+     * The step it is at or ended at ("" before its first).
+     */
+    public var step: String
+    /**
+     * The steps done, in order.
+     */
+    public var steps: [HubRolloutStep]
+    /**
+     * Before its flash.
+     */
+    public var before: HubRolloutBefore?
+    /**
+     * After it came back.
+     */
+    public var after: HubRolloutAfter?
+    /**
+     * Why it failed.
+     */
+    public var failed: HubRolloutFailed?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The device.
+         */serial: String, 
+        /**
+         * `pending`, `running`, `ok`, `failed`, `cancelled`, `not_tried`.
+         */state: String, 
+        /**
+         * The step it is at or ended at ("" before its first).
+         */step: String, 
+        /**
+         * The steps done, in order.
+         */steps: [HubRolloutStep], 
+        /**
+         * Before its flash.
+         */before: HubRolloutBefore?, 
+        /**
+         * After it came back.
+         */after: HubRolloutAfter?, 
+        /**
+         * Why it failed.
+         */failed: HubRolloutFailed?) {
+        self.serial = serial
+        self.state = state
+        self.step = step
+        self.steps = steps
+        self.before = before
+        self.after = after
+        self.failed = failed
+    }
+}
+
+#if compiler(>=6)
+extension HubRolloutDevice: Sendable {}
+#endif
+
+
+extension HubRolloutDevice: Equatable, Hashable {
+    public static func ==(lhs: HubRolloutDevice, rhs: HubRolloutDevice) -> Bool {
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.state != rhs.state {
+            return false
+        }
+        if lhs.step != rhs.step {
+            return false
+        }
+        if lhs.steps != rhs.steps {
+            return false
+        }
+        if lhs.before != rhs.before {
+            return false
+        }
+        if lhs.after != rhs.after {
+            return false
+        }
+        if lhs.failed != rhs.failed {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(serial)
+        hasher.combine(state)
+        hasher.combine(step)
+        hasher.combine(steps)
+        hasher.combine(before)
+        hasher.combine(after)
+        hasher.combine(failed)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubRolloutDevice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubRolloutDevice {
+        return
+            try HubRolloutDevice(
+                serial: FfiConverterString.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf), 
+                step: FfiConverterString.read(from: &buf), 
+                steps: FfiConverterSequenceTypeHubRolloutStep.read(from: &buf), 
+                before: FfiConverterOptionTypeHubRolloutBefore.read(from: &buf), 
+                after: FfiConverterOptionTypeHubRolloutAfter.read(from: &buf), 
+                failed: FfiConverterOptionTypeHubRolloutFailed.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubRolloutDevice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterString.write(value.step, into: &buf)
+        FfiConverterSequenceTypeHubRolloutStep.write(value.steps, into: &buf)
+        FfiConverterOptionTypeHubRolloutBefore.write(value.before, into: &buf)
+        FfiConverterOptionTypeHubRolloutAfter.write(value.after, into: &buf)
+        FfiConverterOptionTypeHubRolloutFailed.write(value.failed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutDevice_lift(_ buf: RustBuffer) throws -> HubRolloutDevice {
+    return try FfiConverterTypeHubRolloutDevice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutDevice_lower(_ value: HubRolloutDevice) -> RustBuffer {
+    return FfiConverterTypeHubRolloutDevice.lower(value)
+}
+
+
+/**
+ * Why a device's part ended badly.
+ */
+public struct HubRolloutFailed {
+    /**
+     * The step.
+     */
+    public var step: String
+    /**
+     * The hub's code, where a refusal had one; "" otherwise.
+     */
+    public var code: String
+    /**
+     * The hub's line.
+     */
+    public var text: String
+    /**
+     * The notice row of the code (`dlink.<code>`, `image_refused`, ...);
+     * "" without a code (then the step's row says it).
+     */
+    public var noticeKey: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The step.
+         */step: String, 
+        /**
+         * The hub's code, where a refusal had one; "" otherwise.
+         */code: String, 
+        /**
+         * The hub's line.
+         */text: String, 
+        /**
+         * The notice row of the code (`dlink.<code>`, `image_refused`, ...);
+         * "" without a code (then the step's row says it).
+         */noticeKey: String) {
+        self.step = step
+        self.code = code
+        self.text = text
+        self.noticeKey = noticeKey
+    }
+}
+
+#if compiler(>=6)
+extension HubRolloutFailed: Sendable {}
+#endif
+
+
+extension HubRolloutFailed: Equatable, Hashable {
+    public static func ==(lhs: HubRolloutFailed, rhs: HubRolloutFailed) -> Bool {
+        if lhs.step != rhs.step {
+            return false
+        }
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        if lhs.noticeKey != rhs.noticeKey {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(step)
+        hasher.combine(code)
+        hasher.combine(text)
+        hasher.combine(noticeKey)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubRolloutFailed: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubRolloutFailed {
+        return
+            try HubRolloutFailed(
+                step: FfiConverterString.read(from: &buf), 
+                code: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf), 
+                noticeKey: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubRolloutFailed, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.step, into: &buf)
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterString.write(value.noticeKey, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutFailed_lift(_ buf: RustBuffer) throws -> HubRolloutFailed {
+    return try FfiConverterTypeHubRolloutFailed.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutFailed_lower(_ value: HubRolloutFailed) -> RustBuffer {
+    return FfiConverterTypeHubRolloutFailed.lower(value)
+}
+
+
+/**
+ * One step a rollout's device went through.
+ */
+public struct HubRolloutStep {
+    /**
+     * One of [`ROLLOUT_STEPS`].
+     */
+    public var step: String
+    /**
+     * When (ISO-8601 UTC).
+     */
+    public var at: String
+    /**
+     * It went through.
+     */
+    public var ok: Bool
+    /**
+     * The hub's line (for a log); a client shows [`HubRolloutStep::notice_key`].
+     */
+    public var text: String
+    /**
+     * The session the step's device request went out as, where it has one.
+     */
+    public var session: UInt32?
+    /**
+     * `rollout.<step>` ([`hub_rollout_step_notice`]).
+     */
+    public var noticeKey: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * One of [`ROLLOUT_STEPS`].
+         */step: String, 
+        /**
+         * When (ISO-8601 UTC).
+         */at: String, 
+        /**
+         * It went through.
+         */ok: Bool, 
+        /**
+         * The hub's line (for a log); a client shows [`HubRolloutStep::notice_key`].
+         */text: String, 
+        /**
+         * The session the step's device request went out as, where it has one.
+         */session: UInt32?, 
+        /**
+         * `rollout.<step>` ([`hub_rollout_step_notice`]).
+         */noticeKey: String) {
+        self.step = step
+        self.at = at
+        self.ok = ok
+        self.text = text
+        self.session = session
+        self.noticeKey = noticeKey
+    }
+}
+
+#if compiler(>=6)
+extension HubRolloutStep: Sendable {}
+#endif
+
+
+extension HubRolloutStep: Equatable, Hashable {
+    public static func ==(lhs: HubRolloutStep, rhs: HubRolloutStep) -> Bool {
+        if lhs.step != rhs.step {
+            return false
+        }
+        if lhs.at != rhs.at {
+            return false
+        }
+        if lhs.ok != rhs.ok {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        if lhs.session != rhs.session {
+            return false
+        }
+        if lhs.noticeKey != rhs.noticeKey {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(step)
+        hasher.combine(at)
+        hasher.combine(ok)
+        hasher.combine(text)
+        hasher.combine(session)
+        hasher.combine(noticeKey)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubRolloutStep: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubRolloutStep {
+        return
+            try HubRolloutStep(
+                step: FfiConverterString.read(from: &buf), 
+                at: FfiConverterString.read(from: &buf), 
+                ok: FfiConverterBool.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf), 
+                session: FfiConverterOptionUInt32.read(from: &buf), 
+                noticeKey: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubRolloutStep, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.step, into: &buf)
+        FfiConverterString.write(value.at, into: &buf)
+        FfiConverterBool.write(value.ok, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterOptionUInt32.write(value.session, into: &buf)
+        FfiConverterString.write(value.noticeKey, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutStep_lift(_ buf: RustBuffer) throws -> HubRolloutStep {
+    return try FfiConverterTypeHubRolloutStep.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutStep_lower(_ value: HubRolloutStep) -> RustBuffer {
+    return FfiConverterTypeHubRolloutStep.lower(value)
+}
+
+
+/**
+ * `EXT_CORE_VREG` as the rollout read it, mV.
+ */
+public struct HubRolloutVreg {
+    /**
+     * The live setting.
+     */
+    public var liveMv: UInt16?
+    /**
+     * The stored selection.
+     */
+    public var storedMv: UInt16?
+    /**
+     * The build default.
+     */
+    public var defaultMv: UInt16?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The live setting.
+         */liveMv: UInt16?, 
+        /**
+         * The stored selection.
+         */storedMv: UInt16?, 
+        /**
+         * The build default.
+         */defaultMv: UInt16?) {
+        self.liveMv = liveMv
+        self.storedMv = storedMv
+        self.defaultMv = defaultMv
+    }
+}
+
+#if compiler(>=6)
+extension HubRolloutVreg: Sendable {}
+#endif
+
+
+extension HubRolloutVreg: Equatable, Hashable {
+    public static func ==(lhs: HubRolloutVreg, rhs: HubRolloutVreg) -> Bool {
+        if lhs.liveMv != rhs.liveMv {
+            return false
+        }
+        if lhs.storedMv != rhs.storedMv {
+            return false
+        }
+        if lhs.defaultMv != rhs.defaultMv {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(liveMv)
+        hasher.combine(storedMv)
+        hasher.combine(defaultMv)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubRolloutVreg: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubRolloutVreg {
+        return
+            try HubRolloutVreg(
+                liveMv: FfiConverterOptionUInt16.read(from: &buf), 
+                storedMv: FfiConverterOptionUInt16.read(from: &buf), 
+                defaultMv: FfiConverterOptionUInt16.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubRolloutVreg, into buf: inout [UInt8]) {
+        FfiConverterOptionUInt16.write(value.liveMv, into: &buf)
+        FfiConverterOptionUInt16.write(value.storedMv, into: &buf)
+        FfiConverterOptionUInt16.write(value.defaultMv, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutVreg_lift(_ buf: RustBuffer) throws -> HubRolloutVreg {
+    return try FfiConverterTypeHubRolloutVreg.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubRolloutVreg_lower(_ value: HubRolloutVreg) -> RustBuffer {
+    return FfiConverterTypeHubRolloutVreg.lower(value)
 }
 
 
@@ -31183,6 +34033,16 @@ public struct HubServerEvent {
      * `schedule.ran`'s run.
      */
     public var run: HubScheduleRun?
+    /**
+     * `group.changed`'s group (as it is now; as it was, for a delete);
+     * [`HubServerEvent::change`] is `set`, `delete` or `forgot`.
+     */
+    public var group: HubGroup?
+    /**
+     * `fw.rollout.changed`'s whole record; [`HubServerEvent::serial`] is
+     * the device whose entry changed, where the hub says.
+     */
+    public var rollout: HubRollout?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -31212,7 +34072,15 @@ public struct HubServerEvent {
          */alarm: HubAlarm?, 
         /**
          * `schedule.ran`'s run.
-         */run: HubScheduleRun?) {
+         */run: HubScheduleRun?, 
+        /**
+         * `group.changed`'s group (as it is now; as it was, for a delete);
+         * [`HubServerEvent::change`] is `set`, `delete` or `forgot`.
+         */group: HubGroup?, 
+        /**
+         * `fw.rollout.changed`'s whole record; [`HubServerEvent::serial`] is
+         * the device whose entry changed, where the hub says.
+         */rollout: HubRollout?) {
         self.kind = kind
         self.serial = serial
         self.record = record
@@ -31221,6 +34089,8 @@ public struct HubServerEvent {
         self.change = change
         self.alarm = alarm
         self.run = run
+        self.group = group
+        self.rollout = rollout
     }
 }
 
@@ -31255,6 +34125,12 @@ extension HubServerEvent: Equatable, Hashable {
         if lhs.run != rhs.run {
             return false
         }
+        if lhs.group != rhs.group {
+            return false
+        }
+        if lhs.rollout != rhs.rollout {
+            return false
+        }
         return true
     }
 
@@ -31267,6 +34143,8 @@ extension HubServerEvent: Equatable, Hashable {
         hasher.combine(change)
         hasher.combine(alarm)
         hasher.combine(run)
+        hasher.combine(group)
+        hasher.combine(rollout)
     }
 }
 
@@ -31286,7 +34164,9 @@ public struct FfiConverterTypeHubServerEvent: FfiConverterRustBuffer {
                 snapshot: FfiConverterString.read(from: &buf), 
                 change: FfiConverterString.read(from: &buf), 
                 alarm: FfiConverterOptionTypeHubAlarm.read(from: &buf), 
-                run: FfiConverterOptionTypeHubScheduleRun.read(from: &buf)
+                run: FfiConverterOptionTypeHubScheduleRun.read(from: &buf), 
+                group: FfiConverterOptionTypeHubGroup.read(from: &buf), 
+                rollout: FfiConverterOptionTypeHubRollout.read(from: &buf)
         )
     }
 
@@ -31299,6 +34179,8 @@ public struct FfiConverterTypeHubServerEvent: FfiConverterRustBuffer {
         FfiConverterString.write(value.change, into: &buf)
         FfiConverterOptionTypeHubAlarm.write(value.alarm, into: &buf)
         FfiConverterOptionTypeHubScheduleRun.write(value.run, into: &buf)
+        FfiConverterOptionTypeHubGroup.write(value.group, into: &buf)
+        FfiConverterOptionTypeHubRollout.write(value.rollout, into: &buf)
     }
 }
 
@@ -46121,6 +49003,30 @@ fileprivate struct FfiConverterOptionTypeHubEventRecord: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeHubGroup: FfiConverterRustBuffer {
+    typealias SwiftType = HubGroup?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubGroup.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubGroup.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeHubLastChange: FfiConverterRustBuffer {
     typealias SwiftType = HubLastChange?
 
@@ -46185,6 +49091,126 @@ fileprivate struct FfiConverterOptionTypeHubReset: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeHubReset.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubRollout: FfiConverterRustBuffer {
+    typealias SwiftType = HubRollout?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubRollout.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubRollout.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubRolloutAfter: FfiConverterRustBuffer {
+    typealias SwiftType = HubRolloutAfter?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubRolloutAfter.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubRolloutAfter.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubRolloutBefore: FfiConverterRustBuffer {
+    typealias SwiftType = HubRolloutBefore?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubRolloutBefore.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubRolloutBefore.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubRolloutFailed: FfiConverterRustBuffer {
+    typealias SwiftType = HubRolloutFailed?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubRolloutFailed.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubRolloutFailed.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubRolloutVreg: FfiConverterRustBuffer {
+    typealias SwiftType = HubRolloutVreg?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubRolloutVreg.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubRolloutVreg.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -47354,6 +50380,81 @@ fileprivate struct FfiConverterSequenceTypeHubEventRecord: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeHubFirmwareImage: FfiConverterRustBuffer {
+    typealias SwiftType = [HubFirmwareImage]
+
+    public static func write(_ value: [HubFirmwareImage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubFirmwareImage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubFirmwareImage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubFirmwareImage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubFirmwareImage.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubGroup: FfiConverterRustBuffer {
+    typealias SwiftType = [HubGroup]
+
+    public static func write(_ value: [HubGroup], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubGroup.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubGroup] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubGroup]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubGroup.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubGroupRow: FfiConverterRustBuffer {
+    typealias SwiftType = [HubGroupRow]
+
+    public static func write(_ value: [HubGroupRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubGroupRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubGroupRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubGroupRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubGroupRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeHubHealth: FfiConverterRustBuffer {
     typealias SwiftType = [HubHealth]
 
@@ -47404,6 +50505,31 @@ fileprivate struct FfiConverterSequenceTypeHubModePin: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeHubOffset: FfiConverterRustBuffer {
+    typealias SwiftType = [HubOffset]
+
+    public static func write(_ value: [HubOffset], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubOffset.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubOffset] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubOffset]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubOffset.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeHubOutboundSecret: FfiConverterRustBuffer {
     typealias SwiftType = [HubOutboundSecret]
 
@@ -47446,6 +50572,106 @@ fileprivate struct FfiConverterSequenceTypeHubOutboundTarget: FfiConverterRustBu
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeHubOutboundTarget.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubPresetPick: FfiConverterRustBuffer {
+    typealias SwiftType = [HubPresetPick]
+
+    public static func write(_ value: [HubPresetPick], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubPresetPick.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubPresetPick] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubPresetPick]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubPresetPick.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubRollout: FfiConverterRustBuffer {
+    typealias SwiftType = [HubRollout]
+
+    public static func write(_ value: [HubRollout], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubRollout.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubRollout] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubRollout]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubRollout.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubRolloutDevice: FfiConverterRustBuffer {
+    typealias SwiftType = [HubRolloutDevice]
+
+    public static func write(_ value: [HubRolloutDevice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubRolloutDevice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubRolloutDevice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubRolloutDevice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubRolloutDevice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHubRolloutStep: FfiConverterRustBuffer {
+    typealias SwiftType = [HubRolloutStep]
+
+    public static func write(_ value: [HubRolloutStep], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHubRolloutStep.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HubRolloutStep] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HubRolloutStep]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHubRolloutStep.read(from: &buf))
         }
         return seq
     }
@@ -48689,6 +51915,20 @@ public func hubAlarmNotice(alarm: HubAlarm, time: String) -> Notice  {
 })
 }
 /**
+ * What to tell the user about a rollout's step: its row `rollout.<step>`
+ * (what the step does, and what to do when it fails there). A step this
+ * build does not know gets [`NOTICE_ROLLOUT_UNKNOWN`]'s row. The detail is
+ * `text` (the hub's line). No I/O.
+ */
+public func hubRolloutStepNotice(step: String, text: String) -> Notice  {
+    return try!  FfiConverterTypeNotice_lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_hub_rollout_step_notice(
+        FfiConverterString.lower(step),
+        FfiConverterString.lower(text),$0
+    )
+})
+}
+/**
  * Every name [`DspiCore::feature_present`] knows: the connect probe's, then
  * [`DERIVED_FEATURES`]. A client gates each section by one of these, never
  * by a wire format or firmware version.
@@ -49199,6 +52439,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_hub_rollout_step_notice() != 44519) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_known_feature_names() != 45045) {
@@ -49780,6 +53023,42 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_hub_events_watch() != 53028) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_firmware_delete() != 16891) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_firmware_images() != 38142) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_firmware_put() != 50491) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_group_apply() != 43611) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_group_apply_cancel() != 34062) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_group_apply_confirm() != 25993) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_group_delete() != 49977) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_group_param_get() != 55752) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_group_param_set() != 6466) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_group_preset_load() != 27399) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_group_set() != 42368) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_groups() != 1939) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_health() != 60109) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -49835,6 +53114,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_rename() != 39300) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_rollout_cancel() != 20667) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_rollout_start() != 27847) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_rollouts() != 32398) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_schedule_delete() != 22406) {
