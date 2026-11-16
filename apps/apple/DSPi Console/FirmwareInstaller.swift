@@ -43,6 +43,16 @@ struct FirmwareImage: Equatable {
         return FirmwareImage(chip: chip, url: url, version: version)
     }
 
+    /// -- WP SECFWV / SECSW -- The core's manifest (`verify_bundled`): the
+    /// "not a verified DSPi Console image" label (the core's notice row
+    /// `firmware.not_verified`) for an image that is not the bundled file,
+    /// nil for one that is.  A label, not a refusal: the guard refuses a
+    /// damaged copy of a bundled image by itself, and the usual
+    /// confirmations still apply.
+    static func notVerifiedNotice(_ bytes: Data, name: String) -> ConsoleNotice? {
+        verifyBundled(image: bytes, name: name) == .verified ? nil : .row("firmware.not_verified")
+    }
+
     /// Pulls "1.1.7" out of "DSPi-RP2350-v1.1.7.uf2".
     static func versionFromAssetName(_ name: String) -> FirmwareVersion? {
         guard let marker = name.range(of: "-v", options: .backwards) else { return nil }
@@ -272,6 +282,9 @@ final class FirmwareInstaller: ObservableObject {
     /// -- WP SW-M2 -- The guard's question, while it waits for the person's
     /// typed answer (`answer(_:)`) or for them to decline it.
     @Published private(set) var question: FirmwareGuardQuestion?
+    /// -- WP SECSW -- The firmware to be written is not a verified DSPi
+    /// Console image (SECFWV's label, the core's manifest); nil when it is.
+    @Published private(set) var imageNotice: ConsoleNotice?
 
     /// How long to wait for the board to come back after a write.  Covers the
     /// reboot, USB re-enumeration, and the app's own reconnect and platform
@@ -357,6 +370,20 @@ final class FirmwareInstaller: ObservableObject {
         }
         locator.start()
         applyBoards(locator.currentBoards())
+        checkImages()   // -- WP SECSW --
+    }
+
+    /// -- WP SECSW -- The label before anything is confirmed: every image this
+    /// installer would write, against the core's manifest (off main).
+    private func checkImages() {
+        let imageProvider = self.imageProvider
+        queue.async { [weak self] in
+            let notice = BootloaderBoard.Chip.allCases.lazy.compactMap { chip -> ConsoleNotice? in
+                guard let image = try? imageProvider(chip), let bytes = try? Data(contentsOf: image.url) else { return nil }
+                return FirmwareImage.notVerifiedNotice(bytes, name: image.url.lastPathComponent)
+            }.first
+            DispatchQueue.main.async { if let notice { self?.imageNotice = notice } }
+        }
     }
 
     func stopWatching() {
@@ -632,6 +659,7 @@ final class FirmwareInstaller: ObservableObject {
     /// allows it, the question when it needs the person's words.
     private func check(_ bytes: Data, image: FirmwareImage, drive: BootloaderDrive,
                        board: FirmwareGuardBoard, confirmation: UserConfirmation) {
+        imageNotice = FirmwareImage.notVerifiedNotice(bytes, name: image.url.lastPathComponent)   // -- WP SECSW --
         let verdict = firmwareGuardCheck(image: bytes, board: board, typedConfirmation: typed)
         if verdict.allowed {
             write(bytes, image: image, drive: drive, board: board, confirmation: confirmation)
