@@ -16,7 +16,13 @@ list(APPEND DSPI_APP_LIBS Qt6::Multimedia)
 file(GLOB_RECURSE p5qcap_files CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/*.qml" "${CMAKE_CURRENT_SOURCE_DIR}/smoke/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/smoke/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/smoke/*.qml")
+    "${CMAKE_CURRENT_SOURCE_DIR}/smoke/*.h" "${CMAKE_CURRENT_SOURCE_DIR}/smoke/*.qml"
+    # -- Review P5-B -- every other kind of source the app could grow: a QML
+    # script's `.import QtMultimedia`, Objective-C++, other C++ spellings
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/*.js" "${CMAKE_CURRENT_SOURCE_DIR}/qml/*.mjs"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.mm" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cc" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cxx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.qml" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.js")
 foreach(f IN LISTS p5qcap_files)
     file(STRINGS "${f}" p5qcap_hits REGEX "QAudioSink|QAudioOutput|QMediaPlayer|QSoundEffect|QAudioEngine|QSpatialSound|QAmbientSound|import[ \t]+QtMultimedia")
     if(p5qcap_hits)

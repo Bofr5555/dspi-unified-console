@@ -10,6 +10,7 @@
 #include "SmokeDriver.h"
 
 #include "AudioCapture.h"
+#include "MeasureSpike.h"
 
 #include <QCoreApplication>
 #include <QDataStream>
@@ -441,29 +442,120 @@ void captureSection(SmokeDriver &d) {
             listed && inputsDoc.value(QStringLiteral("kind")).toString() == QLatin1String("dspi-audio-inputs") &&
                 inputsDoc.value(QStringLiteral("inputs")).isArray());
 
+    // -- Review P5-B (decision a) -- The spike runs the core's session. As a
+    // launch it measures the demo DSPi only (never a DSPi on USB from a test);
+    // this machine's own input, if it has one, is all it captures.
     const QString spikePath = dir + QStringLiteral("/p5qcap-spike.json");
     QProcess s;
     s.setProcessChannelMode(QProcess::ForwardedChannels);
-    s.start(exe, { QStringLiteral("--measure-spike"), spikePath, QStringLiteral("--measure-spike-seconds"),
-                   QStringLiteral("1") });
+    s.start(exe, { QStringLiteral("--measure-spike"), spikePath, QStringLiteral("--measure-spike-demo"),
+                   QStringLiteral("--measure-spike-seconds"), QStringLiteral("1") });
     const bool ran = s.waitForFinished(30000) && s.exitStatus() == QProcess::NormalExit &&
                      (s.exitCode() == 0 || s.exitCode() == 1);
     QFile fs(spikePath);
     const QJsonObject spike = fs.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(fs.readAll()).object() : QJsonObject();
-    // Exit 1 with a failure when this machine has no input (CI); 0 with blocks when it has one
-    const bool consistent = s.exitCode() == 0 ? !spike.contains(QStringLiteral("failure"))
-                                              : spike.contains(QStringLiteral("failure"));
-    d.check(QStringLiteral("p5qcap: --measure-spike writes its report: start level -60 dBFS, no session, nothing played"),
-            ran && consistent && spike.value(QStringLiteral("kind")).toString() == QLatin1String("dspi-measure-spike") &&
+    d.check(QStringLiteral("p5qcap: --measure-spike writes its report: the demo DSPi, start level -60 dBFS"),
+            ran && spike.value(QStringLiteral("kind")).toString() == QLatin1String("dspi-measure-spike") &&
                 spike.value(QStringLiteral("startLevelDb")).toDouble() == -60.0 &&
-                spike.value(QStringLiteral("session")).toString() == QLatin1String("absent") &&
-                spike.value(QStringLiteral("gaps")).isArray());
+                spike.value(QStringLiteral("device")).toString() == QLatin1String("demo") &&
+                spike.contains(QStringLiteral("session")) && spike.value(QStringLiteral("gaps")).isArray());
     QProcess bad;
     bad.setProcessChannelMode(QProcess::ForwardedChannels);
-    bad.start(exe, { QStringLiteral("--measure-spike"), spikePath, QStringLiteral("--measure-spike-seconds"),
-                     QStringLiteral("600") });
-    d.check(QStringLiteral("p5qcap: --measure-spike refuses more than 120 s (exit 2)"),
+    bad.start(exe, { QStringLiteral("--measure-spike"), spikePath, QStringLiteral("--measure-spike-demo"),
+                     QStringLiteral("--measure-spike-seconds"), QStringLiteral("600") });
+    d.check(QStringLiteral("p5qcap: --measure-spike refuses more than 300 s (exit 2)"),
             bad.waitForFinished(30000) && bad.exitCode() == 2);
+
+    // The spike end to end, in this process: the demo DSPi, the microphone a
+    // WAV of room noise through the capture's seam at the pace of a real one
+    // (10 ms pushes every 10 ms). The noise holds no sweep, so the run ends
+    // without timing; what is shown is the whole path: preflight, a start at
+    // the start level only, every block pushed with its frame index, the
+    // ramp steps and the run played by the generator at -60 dBFS, the
+    // analysis, a verdict, the generator idle at the end.
+    const int rateN = 48000;
+    std::vector<float> noise(static_cast<size_t>(rateN) * 40);
+    quint32 seed = 0x2545F491u;
+    for (float &v : noise) {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        v = (float(seed >> 8) / float(1u << 24) * 2.0f - 1.0f) * 1.0e-4f;   // about -85 dBFS
+    }
+    const QString pathN = dir + QStringLiteral("/p5b-noise.wav");
+    QByteArray bytesN(reinterpret_cast<const char *>(noise.data()), qsizetype(noise.size() * sizeof(float)));
+    Wav wavN;
+    const bool wavOk = writeWav(pathN, rateN, 1, true, bytesN) && readWav(pathN, &wavN);
+    const QString setupN = QStringLiteral(
+        "{\"kind\":\"walked\",\"outputs\":[{\"output\":0,\"role\":\"full\"},{\"output\":1,\"role\":\"full\"}],"
+        "\"placement\":\"headphones\",\"coupler\":\"flatPlate\",\"passes\":2,\"sweepMs\":1000,\"gapMs\":300,"
+        "\"ceilingDb\":-20}");
+    const auto spikeRun = [&](const QString &path, int seconds) {
+        const auto probe = std::make_shared<Probe>();   // kept by the factory, so it outlives the reader
+        Faults pace;
+        pace.intervalMs = 10;
+        MeasureSpike::Options o;
+        o.path = path;
+        o.seconds = seconds;
+        o.demo = true;
+        o.setupJson = setupN;
+        o.source = [wavN, pace, probe]() -> std::unique_ptr<dspi_capture::Source> {
+            return std::make_unique<WavSource>(wavN, wavN.rate / 100, pace, probe.get());
+        };
+        const int code = MeasureSpike::run(o);
+        QFile f(path);
+        QJsonObject doc = f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object() : QJsonObject();
+        doc.insert(QStringLiteral("exitCode"), code);
+        return doc;
+    };
+    const auto phaseSeen = [](const QJsonObject &doc, const char *phase) {
+        const QJsonArray phases = doc.value(QStringLiteral("phases")).toArray();
+        return std::any_of(phases.begin(), phases.end(), [phase](const QJsonValue &p) {
+            return p.toObject().value(QStringLiteral("phase")).toString() == QLatin1String(phase);
+        });
+    };
+    const QJsonObject full = wavOk ? spikeRun(dir + QStringLiteral("/p5b-spike-run.json"), 60) : QJsonObject();
+    const QJsonObject stFull = full.value(QStringLiteral("state")).toObject();
+    const QString phaseFull = stFull.value(QStringLiteral("phase")).toString();
+    const QString keyFull = stFull.value(QStringLiteral("issue")).toObject().value(QStringLiteral("key")).toString();
+    d.check(QStringLiteral("p5b: the spike's preflight on the demo DSPi is clear, and it forces the start level only"),
+            full.value(QStringLiteral("preflight")).toObject().value(QStringLiteral("clear")).toBool() &&
+                full.value(QStringLiteral("setup")).toObject().value(QStringLiteral("startLevelOnly")).toBool() &&
+                full.value(QStringLiteral("setup")).toObject().value(QStringLiteral("captureRateHz")).toInt() == rateN);
+    d.check(QStringLiteral("p5b: the session ran its stages on the pushed capture: pre-roll, ramp, run, analysis"),
+            phaseSeen(full, "preRoll") && phaseSeen(full, "ramp") && phaseSeen(full, "run") &&
+                phaseSeen(full, "analysing"));
+    d.check(QStringLiteral("p5b: the generator played a step per output and the run, never above -60 dBFS"),
+            stFull.value(QStringLiteral("generatorStarts")).toInt() == 3 &&
+                full.value(QStringLiteral("maxLevelDb")).toDouble() == -60.0);
+    d.check(QStringLiteral("p5b: every block reached the session in order (no frame fault, no refusal)"),
+            stFull.value(QStringLiteral("frameFaults")).toInt() == 0 &&
+                full.value(QStringLiteral("pushRefusals")).toInt() == 0 && full.value(QStringLiteral("gaps")).toArray().isEmpty() &&
+                stFull.value(QStringLiteral("frames")).toDouble() > 5.0 * rateN);
+    // Noise holds no sweep: the session says so (a simulated microphone that
+    // answers the generator is P5DEMO's; the timing fields with one are shown
+    // by the core's own test wp_p5b_device_a_start_level_only_run_...)
+    d.check(QStringLiteral("p5b: the run ends with a verdict in the report, the generator idle"),
+            (phaseFull == QLatin1String("failed") || phaseFull == QLatin1String("aborted")) &&
+                (keyFull == QLatin1String("measure.no_signal") || keyFull == QLatin1String("measure.abort.cycle_identity")) &&
+                full.value(QStringLiteral("verdict")).toString().startsWith(QLatin1String("no timing")) &&
+                full.value(QStringLiteral("generatorAfter")).toObject().value(QStringLiteral("state")).toInt(-1) == 0 &&
+                full.value(QStringLiteral("exitCode")).toInt() == 1);
+    if (phaseFull.isEmpty() || keyFull.isEmpty())
+        qWarning("p5b: spike report: %s", QJsonDocument(full).toJson(QJsonDocument::Compact).constData());
+
+    // Stop while the run plays (the time limit, as Ctrl+C): one
+    // dspi_measure_stop; the generator was stopped by the host and is idle.
+    const QJsonObject cut = wavOk ? spikeRun(dir + QStringLiteral("/p5b-spike-stop.json"), 7) : QJsonObject();
+    const QJsonObject stCut = cut.value(QStringLiteral("state")).toObject();
+    const QJsonObject genCut = cut.value(QStringLiteral("generatorAfter")).toObject();
+    d.check(QStringLiteral("p5b: a stop while the run plays: stopped, the generator idle by the host's stop"),
+            cut.value(QStringLiteral("stoppedBy")).toString() == QLatin1String("time-limit") && phaseSeen(cut, "run") &&
+                stCut.value(QStringLiteral("phase")).toString() == QLatin1String("aborted") &&
+                stCut.value(QStringLiteral("issue")).toObject().value(QStringLiteral("key")).toString() ==
+                    QLatin1String("measure.stopped") &&
+                genCut.value(QStringLiteral("state")).toInt(-1) == 0 && genCut.value(QStringLiteral("stopReason")).toInt() == 1);
+    if (stCut.isEmpty()) qWarning("p5b: stop report: %s", QJsonDocument(cut).toJson(QJsonDocument::Compact).constData());
 }
 
 const SmokeDriver::Section capture("p5qcap-capture", 205, &captureSection);

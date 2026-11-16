@@ -5,10 +5,13 @@
 #include "AppIdentity.h"
 #include "AudioCapture.h"
 
+#include "CoreApi.h"
+
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -16,7 +19,9 @@
 #include <QSaveFile>
 #include <QSysInfo>
 #include <QTimer>
+#include <atomic>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
 
 namespace {
@@ -25,6 +30,56 @@ const QString kInputs = QStringLiteral("audio-inputs");
 const QString kSpike = QStringLiteral("measure-spike");
 const QString kSpikeInput = QStringLiteral("measure-spike-input");
 const QString kSpikeSeconds = QStringLiteral("measure-spike-seconds");
+const QString kSpikeSetup = QStringLiteral("measure-spike-setup");
+const QString kSpikeDemo = QStringLiteral("measure-spike-demo");
+
+// Ctrl+C: the tick sees it and stops the session (one STOP_NOW)
+std::atomic<bool> g_interrupted{ false };
+extern "C" void onInterrupt(int) { g_interrupted.store(true); }
+
+// One JSON reply of the C ABI (the calls write a NUL-terminated text and
+// return its length)
+template <typename Call> QJsonObject reply(Call call, int capacity = 1 << 18) {
+    QByteArray buf(capacity, '\0');
+    const uint32_t n = call(buf.data(), uint32_t(buf.size()));
+    if (n == 0 || n >= uint32_t(buf.size())) return QJsonObject{ { QStringLiteral("ok"), false } };
+    return QJsonDocument::fromJson(QByteArray(buf.constData())).object();
+}
+
+// The first DSPi a USB scan finds, "" for none
+QString firstSerial(FfiCore *c) {
+    QVector<DeviceInfo> found(16);
+    const uint32_t n = dspi_scan_devices(c, found.data(), uint32_t(found.size()));
+    if (n == 0) return QString();
+    const DeviceInfo &d = found[0];
+    const uint32_t len = qMin<uint32_t>(d.serial_len, uint32_t(sizeof d.serial));
+    return QString::fromUtf8(reinterpret_cast<const char *>(d.serial), int(len));
+}
+
+// The session's setup: the default (two outputs walked, three passes, on a
+// coupler: the start level is -60 dBFS) or the caller's, at the capture's
+// rate. The start level only, whatever the caller's says.
+QJsonObject sessionSetup(const QString &json, int rateHz) {
+    QJsonObject setup;
+    if (json.trimmed().isEmpty()) {
+        const auto out = [](int o) {
+            return QJsonObject{ { QStringLiteral("output"), o },
+                                { QStringLiteral("role"), QStringLiteral("full") },
+                                { QStringLiteral("speaker"), QStringLiteral("L") } };
+        };
+        setup = QJsonObject{ { QStringLiteral("kind"), QStringLiteral("walked") },
+                             { QStringLiteral("outputs"), QJsonArray{ out(0), out(1) } },
+                             { QStringLiteral("placement"), QStringLiteral("headphones") },
+                             { QStringLiteral("coupler"), QStringLiteral("flatPlate") },
+                             { QStringLiteral("passes"), 3 },
+                             { QStringLiteral("name"), QStringLiteral("P5SPIKE (Qt)") } };
+    } else {
+        setup = QJsonDocument::fromJson(json.toUtf8()).object();
+    }
+    setup.insert(QStringLiteral("startLevelOnly"), true);
+    setup.insert(QStringLiteral("captureRateHz"), rateHz);
+    return setup;
+}
 
 QJsonObject header() {
     return QJsonObject{
@@ -129,46 +184,195 @@ int runInputs(const QString &path) {
     return 0;
 }
 
-int runSpike(const QString &path, const QByteArray &inputId, int seconds, QApplication &app) {
+} // namespace
+
+namespace MeasureSpike {
+
+int run(const Options &o) {
     AudioCapture capture;
     Stats stats;
     QElapsedTimer host;
+    QElapsedTimer wall;
+    QEventLoop loop;
+    QTimer ticker;
+    QTimer limit;
+    limit.setSingleShot(true);
     QJsonObject doc = header();
     doc.insert(QStringLiteral("kind"), QStringLiteral("dspi-measure-spike"));
-    doc.insert(QStringLiteral("startLevelDb"), MeasureSpike::kStartLevelDb);
+    doc.insert(QStringLiteral("startLevelDb"), kStartLevelDb);
     doc.insert(QStringLiteral("inputs"), inputList());
-    // The core's measurement session is not in this build's C ABI (P5SES): no
-    // generator is started, no residuals are computed
-    doc.insert(QStringLiteral("session"), QStringLiteral("absent"));
-    doc.insert(QStringLiteral("sessionNote"),
-               QStringLiteral("this build has no measurement session (P5SES): the generator was not started; "
-                              "capture statistics only"));
     doc.insert(QStringLiteral("residuals"), QJsonArray());
-    int code = 0;
     QString failure;
+    bool captureFailed = false;
 
-    QObject::connect(&capture, &AudioCapture::started, &app, [&](int rateHz, int channels, const QString &name) {
+    // The DSPi: the demo, or the first on USB. Without one the spike is the
+    // capture statistics alone.
+    FfiCore *core = dspi_core_new();
+    bool device = false;
+    if (core && o.demo) {
+        // The demo's volume is above what a measurement starts at (S2); it is
+        // a simulated device, so the spike lowers it. A real DSPi is never
+        // written to: its preflight says what the owner must change.
+        device = dspi_open_demo(core) && dspi_fetch_all(core) && dspi_set_user_volume(core, -20.0f);
+        doc.insert(QStringLiteral("device"), QStringLiteral("demo"));
+    } else if (core) {
+        const QString serial = firstSerial(core);
+        device = !serial.isEmpty() && dspi_select_device(core, serial.toUtf8().constData()) && dspi_fetch_all(core);
+        if (device) doc.insert(QStringLiteral("device"), serial);
+    }
+    doc.insert(QStringLiteral("session"), device ? QStringLiteral("not-started") : QStringLiteral("no-device"));
+    if (!device)
+        doc.insert(QStringLiteral("sessionNote"),
+                   QStringLiteral("no DSPi was opened: the generator was not started; capture statistics only"));
+
+    bool running = false;    // dspi_measure_start succeeded and the session has not ended
+    bool done = false;       // the session reached `done`
+    QString stoppedBy;
+    QString lastPhase;
+    QJsonArray phases;
+    double maxLevelDb = -1000.0;
+    int pushRefusals = 0;
+
+    const auto note = [&](const QJsonObject &st) {
+        const QString phase = st.value(QStringLiteral("phase")).toString();
+        if (st.contains(QStringLiteral("levelDb")) && st.value(QStringLiteral("levelDb")).isDouble())
+            maxLevelDb = qMax(maxLevelDb, st.value(QStringLiteral("levelDb")).toDouble());
+        if (phase.isEmpty() || phase == lastPhase) return;
+        lastPhase = phase;
+        phases.append(QJsonObject{ { QStringLiteral("phase"), phase },
+                                   { QStringLiteral("atMs"), double(wall.elapsed()) },
+                                   { QStringLiteral("frames"), st.value(QStringLiteral("frames")) } });
+        std::printf("measure-spike: %s\n", qPrintable(phase));
+        std::fflush(stdout);
+    };
+    // The session's end: its state, timing and document into the report
+    const auto finish = [&] {
+        if (!running) return;
+        running = false;
+        ticker.stop();
+        const QJsonObject st = reply([&](char *b, uint32_t l) { return dspi_measure_state(core, b, l); });
+        note(st);
+        done = st.value(QStringLiteral("phase")).toString() == QLatin1String("done");
+        doc.insert(QStringLiteral("session"), st.value(QStringLiteral("phase")).toString());
+        doc.insert(QStringLiteral("state"), st);
+        const QJsonObject timing = st.value(QStringLiteral("timing")).toObject();
+        if (!timing.isEmpty()) {
+            doc.insert(QStringLiteral("timing"), timing);
+            doc.insert(QStringLiteral("residuals"), timing.value(QStringLiteral("cycleResidualsUs")));
+            doc.insert(QStringLiteral("verdict"), timing.value(QStringLiteral("reliable")).toBool()
+                                                       ? QStringLiteral("timing reliable")
+                                                       : QStringLiteral("timing unreliable"));
+        } else {
+            const QJsonObject issue = st.value(QStringLiteral("issue")).toObject();
+            doc.insert(QStringLiteral("verdict"),
+                       QStringLiteral("no timing: ") + st.value(QStringLiteral("phase")).toString() +
+                           QStringLiteral(" ") + issue.value(QStringLiteral("key")).toString() + QStringLiteral(" ") +
+                           issue.value(QStringLiteral("message")).toString());
+        }
+        if (st.value(QStringLiteral("resultReady")).toBool()) {
+            const QJsonObject result =
+                reply([&](char *b, uint32_t l) { return dspi_measure_result(core, b, l); }, 1 << 22);
+            doc.insert(QStringLiteral("result"), result);   // derived curves only (S12)
+        }
+        SiggenStatus sg{};
+        if (dspi_siggen_get_status(core, &sg))
+            doc.insert(QStringLiteral("generatorAfter"), QJsonObject{ { QStringLiteral("state"), int(sg.state) },
+                                                                      { QStringLiteral("stopReason"), int(sg.stop_reason) },
+                                                                      { QStringLiteral("cyclesDone"), int(sg.cycles_done) } });
+        if (capture.isRunning()) capture.stop();
+        else loop.quit();
+    };
+    // Stop: one dspi_measure_stop (STOP_NOW where the generator plays)
+    const auto stop = [&](const QString &why) {
+        if (!running) return;
+        stoppedBy = why;
+        note(reply([&](char *b, uint32_t l) { return dspi_measure_stop(core, b, l); }));
+        finish();
+    };
+
+    QObject::connect(&capture, &AudioCapture::started, &loop, [&](int rateHz, int channels, const QString &name) {
         doc.insert(QStringLiteral("input"), QJsonObject{ { QStringLiteral("id"), QString::fromLatin1(capture.deviceId().toHex()) },
                                                          { QStringLiteral("name"), name } });
         doc.insert(QStringLiteral("format"), QJsonObject{ { QStringLiteral("rateHz"), rateHz },
                                                           { QStringLiteral("channels"), channels } });
-        std::printf("measure-spike: capturing %d Hz, %d channel(s) from \"%s\" for %d s; nothing is played\n", rateHz,
-                    channels, qPrintable(name), seconds);
+        std::printf("measure-spike: capturing %d Hz, %d channel(s) from \"%s\", at most %d s; the host plays nothing\n",
+                    rateHz, channels, qPrintable(name), o.seconds);
         std::fflush(stdout);
-        QTimer::singleShot(seconds * 1000, &capture, &AudioCapture::stop);
+        limit.start(o.seconds * 1000);
+        if (!device) return;
+        const QJsonObject setup = sessionSetup(o.setupJson, rateHz);
+        const QByteArray setupText = QJsonDocument(setup).toJson(QJsonDocument::Compact);
+        doc.insert(QStringLiteral("setup"), setup);
+        const QJsonObject pre =
+            reply([&](char *b, uint32_t l) { return dspi_measure_preflight(core, setupText.constData(), b, l); });
+        doc.insert(QStringLiteral("preflight"), pre);
+        if (!pre.value(QStringLiteral("ok")).toBool() || !pre.value(QStringLiteral("clear")).toBool()) {
+            doc.insert(QStringLiteral("session"), QStringLiteral("refused"));
+            failure = QStringLiteral("the preflight is not clear: see \"preflight\"");
+            std::fprintf(stderr, "measure-spike: %s\n",
+                         QJsonDocument(pre).toJson(QJsonDocument::Compact).constData());
+            capture.stop();
+            return;
+        }
+        const QJsonObject st =
+            reply([&](char *b, uint32_t l) { return dspi_measure_start(core, setupText.constData(), b, l); });
+        if (!st.value(QStringLiteral("ok")).toBool()) {
+            doc.insert(QStringLiteral("session"), QStringLiteral("refused"));
+            doc.insert(QStringLiteral("start"), st);
+            failure = QStringLiteral("the session did not start: ") + st.value(QStringLiteral("error")).toString();
+            capture.stop();
+            return;
+        }
+        running = true;
+        wall.start();
+        note(st);
+        ticker.start(50);
     });
-    QObject::connect(&capture, &AudioCapture::block, &app, [&](const dspi_capture::Block &b) {
+    QObject::connect(&capture, &AudioCapture::block, &loop, [&](const dspi_capture::Block &b) {
         if (!host.isValid()) host.start();
         stats.add(b, double(host.nsecsElapsed()) / 1e9);
+        if (!running) return;
+        const QJsonObject st = reply([&](char *buf, uint32_t l) {
+            return dspi_measure_capture_push(core, uint64_t(b.firstFrame), b.samples.constData(),
+                                             uint32_t(b.samples.size()), uint32_t(b.rateHz), b.clipped, buf, l);
+        });
+        if (!st.value(QStringLiteral("ok")).toBool()) ++pushRefusals;
     });
-    QObject::connect(&capture, &AudioCapture::failed, &app, [&](dspi_capture::Failure f, const QString &detail) {
+    QObject::connect(&ticker, &QTimer::timeout, &loop, [&] {
+        if (!running) return;
+        if (g_interrupted.load()) {
+            stop(QStringLiteral("interrupted"));
+            return;
+        }
+        const QJsonObject st = reply([&](char *b, uint32_t l) { return dspi_measure_tick(core, b, l); });
+        note(st);
+        if (!st.value(QStringLiteral("active")).toBool()) finish();
+    });
+    QObject::connect(&limit, &QTimer::timeout, &loop, [&] {
+        if (running) stop(QStringLiteral("time-limit"));
+        else capture.stop();
+    });
+    QObject::connect(&capture, &AudioCapture::failed, &loop, [&](dspi_capture::Failure f, const QString &detail) {
         failure = QString::fromLatin1(failureName(f)) + QStringLiteral(": ") + detail;
-        code = 1;
+        captureFailed = true;
+        stop(QStringLiteral("capture-failed"));
     });
-    QObject::connect(&capture, &AudioCapture::stopped, &app, [&] { app.quit(); });
+    QObject::connect(&capture, &AudioCapture::stopped, &loop, [&] {
+        stop(QStringLiteral("capture-stopped"));
+        loop.quit();
+    });
 
-    if (!capture.start(inputId)) return 1;
-    app.exec();
+    const auto previous = std::signal(SIGINT, onInterrupt);
+    const bool opened = o.source ? capture.startWith(o.source, o.inputId) : capture.start(o.inputId);
+    if (opened) loop.exec();
+    else if (failure.isEmpty()) failure = QStringLiteral("the capture did not start");
+    std::signal(SIGINT, previous);
+    // Whatever ended the loop, the session does not outlive it
+    if (core) {
+        if (running) stop(QStringLiteral("ended"));
+        dspi_disconnect(core);
+        dspi_core_free(core);
+    }
 
     const int rate = doc.value(QStringLiteral("format")).toObject().value(QStringLiteral("rateHz")).toInt();
     doc.insert(QStringLiteral("blocks"), double(stats.blocks));
@@ -178,34 +382,39 @@ int runSpike(const QString &path, const QByteArray &inputId, int seconds, QAppli
     doc.insert(QStringLiteral("clippedBlocks"), double(stats.clippedBlocks));
     doc.insert(QStringLiteral("maxSourceLeadFrames"), double(stats.maxLead));
     doc.insert(QStringLiteral("clock"), stats.clock(rate));
+    doc.insert(QStringLiteral("phases"), phases);
+    doc.insert(QStringLiteral("pushRefusals"), pushRefusals);
+    if (maxLevelDb > -999.0) doc.insert(QStringLiteral("maxLevelDb"), maxLevelDb);
+    if (!stoppedBy.isEmpty()) doc.insert(QStringLiteral("stoppedBy"), stoppedBy);
     if (!failure.isEmpty()) doc.insert(QStringLiteral("failure"), failure);
-    if (!writeJson(path, doc)) {
-        std::fprintf(stderr, "measure-spike: cannot write %s\n", qPrintable(path));
+    if (!writeJson(o.path, doc)) {
+        std::fprintf(stderr, "measure-spike: cannot write %s\n", qPrintable(o.path));
         return 1;
     }
-    std::printf("measure-spike: %lld blocks, %lld gap(s), %lld repeat(s), %lld clipped block(s) -> %s\n",
+    std::printf("measure-spike: %lld blocks, %lld gap(s), %lld repeat(s), %lld clipped block(s); session: %s; %s -> %s\n",
                 static_cast<long long>(stats.blocks), static_cast<long long>(stats.gaps.size()),
                 static_cast<long long>(stats.repeats.size()), static_cast<long long>(stats.clippedBlocks),
-                qPrintable(path));
+                qPrintable(doc.value(QStringLiteral("session")).toString()),
+                qPrintable(doc.value(QStringLiteral("verdict")).toString()), qPrintable(o.path));
     if (!failure.isEmpty()) std::fprintf(stderr, "measure-spike: %s\n", qPrintable(failure));
-    return code;
+    if (captureFailed || !failure.isEmpty()) return 1;
+    return (!device || done) ? 0 : 1;
 }
-
-} // namespace
-
-namespace MeasureSpike {
 
 void addOptions(QCommandLineParser &args) {
     // Development switches: not translated, not in --help
     const QList<QCommandLineOption> options{
         QCommandLineOption(kInputs, QStringLiteral("Write the audio input list to <file> and exit."),
                            QStringLiteral("file")),
-        QCommandLineOption(kSpike, QStringLiteral("Measurement spike: capture and write a report to <file>."),
+        QCommandLineOption(kSpike, QStringLiteral("Measurement spike: a start-level-only run, its report to <file>."),
                            QStringLiteral("file")),
         QCommandLineOption(kSpikeInput, QStringLiteral("The spike's audio input id (hex, from --audio-inputs)."),
                            QStringLiteral("id")),
-        QCommandLineOption(kSpikeSeconds, QStringLiteral("The spike's capture length, 1 to 120 s."),
-                           QStringLiteral("seconds"), QStringLiteral("30")),
+        QCommandLineOption(kSpikeSeconds, QStringLiteral("The spike's time limit, 1 to 300 s."),
+                           QStringLiteral("seconds"), QStringLiteral("120")),
+        QCommandLineOption(kSpikeSetup, QStringLiteral("The spike's session setup (JSON file)."),
+                           QStringLiteral("file")),
+        QCommandLineOption(kSpikeDemo, QStringLiteral("The spike measures the demo DSPi.")),
     };
     for (QCommandLineOption o : options) {
         o.setFlags(QCommandLineOption::HiddenFromHelp);
@@ -213,17 +422,29 @@ void addOptions(QCommandLineParser &args) {
     }
 }
 
-int runIfAsked(const QCommandLineParser &args, QApplication &app) {
+int runIfAsked(const QCommandLineParser &args, QApplication &) {
     if (args.isSet(kInputs)) return runInputs(args.value(kInputs));
     if (!args.isSet(kSpike)) return -1;
     bool ok = false;
-    const int seconds = args.value(kSpikeSeconds).toInt(&ok);
-    if (!ok || seconds < 1 || seconds > 120) {
-        std::fprintf(stderr, "measure-spike: --measure-spike-seconds is 1 to 120\n");
+    Options o;
+    o.path = args.value(kSpike);
+    o.seconds = args.value(kSpikeSeconds).toInt(&ok);
+    if (!ok || o.seconds < 1 || o.seconds > 300) {
+        std::fprintf(stderr, "measure-spike: --measure-spike-seconds is 1 to 300\n");
         return 2;
     }
-    const QByteArray id = QByteArray::fromHex(args.value(kSpikeInput).toLatin1());
-    return runSpike(args.value(kSpike), id, seconds, app);
+    o.inputId = QByteArray::fromHex(args.value(kSpikeInput).toLatin1());
+    o.demo = args.isSet(kSpikeDemo);
+    if (args.isSet(kSpikeSetup)) {
+        QFile f(args.value(kSpikeSetup));
+        if (!f.open(QIODevice::ReadOnly) || !QJsonDocument::fromJson(f.readAll()).isObject()) {
+            std::fprintf(stderr, "measure-spike: --measure-spike-setup is not a JSON object\n");
+            return 2;
+        }
+        f.seek(0);
+        o.setupJson = QString::fromUtf8(f.readAll());
+    }
+    return run(o);
 }
 
 } // namespace MeasureSpike
