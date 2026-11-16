@@ -331,7 +331,7 @@ struct PsychoacousticBassView: View {
                 range: 30...300,
                 maxDecimals: 0,
                 scrollStep: 1,
-                liveRequest: REQ_SET_PSYBASS_CUTOFF,
+                live: .psybassCutoff,
                 liveKey: .cutoff,
                 help: "The speaker's low-frequency limit. Content below this feeds the harmonic generator; generated harmonics span roughly this to 4x.",
                 set: { vm.setPsybassCutoff($0) }
@@ -346,7 +346,7 @@ struct PsychoacousticBassView: View {
                 range: -24...12,
                 maxDecimals: 1,
                 scrollStep: 0.5,
-                liveRequest: REQ_SET_PSYBASS_HARMONICS,
+                live: .psybassHarmonics,
                 liveKey: .harmonicsDB,
                 help: "Level of the synthesized harmonics. The primary amount-of-effect control. Higher = more perceived bass.",
                 set: { vm.setPsybassHarmonics($0) }
@@ -369,7 +369,7 @@ struct PsychoacousticBassView: View {
                 range: 0...18,
                 maxDecimals: 1,
                 scrollStep: 0.5,
-                liveRequest: REQ_SET_PSYBASS_DRIVE,
+                live: .psybassDrive,
                 help: "Pre-gain into the odd-harmonic soft clipper. Higher makes the effect audible on quieter passages. Mostly affects aggressive character.",
                 set: { vm.setPsybassDrive($0) }
             )
@@ -385,7 +385,7 @@ struct PsychoacousticBassView: View {
                 maxDecimals: 0,
                 ends: ("Warm", "Aggressive"),
                 isEnabled: vm.isDeviceConnected,
-                live: { vm.sendFloatParamToDevice(REQ_SET_PSYBASS_CHARACTER,
+                live: { vm.sendFloatParamToDevice(.psybassCharacter,
                                                   min(max($0, 0), 100)) },
                 set: { vm.setPsybassCharacter(min(max($0, 0), 100)) }
             )
@@ -399,7 +399,7 @@ struct PsychoacousticBassView: View {
                 range: -60...0,
                 maxDecimals: 1,
                 scrollStep: 1,
-                liveRequest: REQ_SET_PSYBASS_ORIGINAL,
+                live: .psybassOriginal,
                 liveKey: .originalDB,
                 help: "Level of the un-reproducible fundamental below the cutoff. Lower attenuates it, freeing driver excursion and headroom. -60 dB is full removal. Speaker protection.",
                 set: { vm.setPsybassOriginal($0) }
@@ -408,8 +408,9 @@ struct PsychoacousticBassView: View {
     }
 
     /// One labelled ValueField + slider + caption row, on the shared
-    /// `ParameterRow` so a drag stays out of the view model: `liveRequest` is
-    /// the vendor code the live value goes to, and `set` commits on release.
+    /// `ParameterRow` so a drag stays out of the view model: `live` is the
+    /// setting the live value goes to (-- WP SWS7 -- by its registry path),
+    /// and `set` commits on release.
     private func paramRow(
         title: String,
         unit: String,
@@ -417,7 +418,7 @@ struct PsychoacousticBassView: View {
         range: ClosedRange<Float>,
         maxDecimals: Int,
         scrollStep: Float,
-        liveRequest: UInt8,
+        live setting: DSPViewModel.LiveFloat,
         liveKey: PsybassGraphKey? = nil,
         help: String,
         set: @escaping (Float) -> Void
@@ -433,7 +434,7 @@ struct PsychoacousticBassView: View {
             caption: help,
             live: { v in
                 let c = min(max(v, range.lowerBound), range.upperBound)
-                vm.sendFloatParamToDevice(liveRequest, c)
+                vm.sendFloatParamToDevice(setting, c)
                 if let liveKey { graphLive.set(liveKey, c) }
             },
             set: { set(min(max($0, range.lowerBound), range.upperBound)) }

@@ -305,6 +305,13 @@ for s in "${steps[@]}"; do
           grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
         if [ -n "$stray" ]; then echo "swift: a firmware file writes or finds a drive itself (the core's job):" >&2; echo "$stray" >&2; exit 1; fi
         echo "swift: firmware goes to a drive only through the core's flashConfirmed, in FirmwareInstaller.swift"
+        # -- WP SWS7 -- the effect views name their live settings
+        # (DSPViewModel.LiveFloat, the core's registry paths), never an
+        # opcode: the vendor codes are the opt-out's, in Commands.swift.
+        stray=$(cd "apps/apple/DSPi Console" && grep -nE '\bREQ_[A-Z0-9_]+|\bliveRequest\b' \
+          CrossfeedView.swift LoudnessView.swift VolumeLevellerView.swift PsychoacousticBassView.swift SubharmonicSynthView.swift || true)
+        if [ -n "$stray" ]; then echo "swift: an effect view names an opcode (use DSPViewModel.LiveFloat):" >&2; echo "$stray" >&2; exit 1; fi
+        echo "swift: the five effect views name no opcode"
       fi ;;
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)

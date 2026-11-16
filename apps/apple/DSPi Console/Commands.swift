@@ -1171,51 +1171,117 @@ extension DSPViewModel {
 
     // MARK: - Psychoacoustic Bass
 
+    /// -- WP SWS7 -- A float setting an effect slider sends live while it
+    /// drags, named by the core's registry path (its raw value, also the
+    /// write lane's key).  The views name these, never an opcode: through a
+    /// core the live value goes to the setting's typed setter in its lane;
+    /// the vendor code is only the opt-out's raw SET (`rawRequest`).
+    enum LiveFloat: String, CaseIterable {
+        case loudnessRef = "loud.ref"
+        case loudnessIntensity = "loud.intensity"
+        case crossfeedFreq = "cf.freq"
+        case crossfeedFeed = "cf.feed"
+        case psybassCutoff = "bass.cutoff"
+        case psybassHarmonics = "bass.harmonics"
+        case psybassDrive = "bass.drive"
+        case psybassCharacter = "bass.character"
+        case psybassOriginal = "bass.original"
+        case subharmLow = "sub.low"
+        case subharmHigh = "sub.high"
+        case subharmTop = "sub.top"
+        case subharmBoost = "sub.boost"
+        case subharmDepth = "sub.depth"
+        case subharmHold = "sub.hold"
+        case subharmCeiling = "sub.ceiling"
+        case levellerAmount = "lev.amount"
+        case levellerMaxGain = "lev.maxgain"
+        case levellerGate = "lev.gate"
+
+        /// The registry path: the write lane's key and the journal's path.
+        var path: String { rawValue }
+
+        /// The core's typed setter for this setting.
+        var set: (DspiCore, Float) throws -> Void {
+            func bass(_ id: UInt8) -> (DspiCore, Float) throws -> Void { { try $0.setPsybassParam(param: id, value: $1) } }
+            func sub(_ id: UInt8) -> (DspiCore, Float) throws -> Void { { try $0.setSubharmParam(id: id, value: $1) } }
+            switch self {
+            case .loudnessRef: return { try $0.setLoudnessRef(spl: $1) }
+            case .loudnessIntensity: return { try $0.setLoudnessIntensity(pct: $1) }
+            case .crossfeedFreq: return { try $0.setCrossfeedFreq(freq: $1) }
+            case .crossfeedFeed: return { try $0.setCrossfeedFeed(feed: $1) }
+            case .psybassCutoff: return bass(DspiConstants.PSYBASS_PARAM_CUTOFF)
+            case .psybassHarmonics: return bass(DspiConstants.PSYBASS_PARAM_HARMONICS)
+            case .psybassDrive: return bass(DspiConstants.PSYBASS_PARAM_DRIVE)
+            case .psybassCharacter: return bass(DspiConstants.PSYBASS_PARAM_CHARACTER)
+            case .psybassOriginal: return bass(DspiConstants.PSYBASS_PARAM_ORIGINAL)
+            case .subharmLow: return sub(DspiConstants.SUBHARM_PARAM_LOW)
+            case .subharmHigh: return sub(DspiConstants.SUBHARM_PARAM_HIGH)
+            case .subharmTop: return sub(DspiConstants.SUBHARM_PARAM_TOP)
+            case .subharmBoost: return sub(DspiConstants.SUBHARM_PARAM_BOOST)
+            case .subharmDepth: return sub(DspiConstants.SUBHARM_PARAM_DEPTH)
+            case .subharmHold: return sub(DspiConstants.SUBHARM_PARAM_HOLD)
+            case .subharmCeiling: return sub(DspiConstants.SUBHARM_PARAM_CEILING)
+            case .levellerAmount: return { try $0.setLevellerAmount(pct: $1) }
+            case .levellerMaxGain: return { try $0.setLevellerMaxGain(db: $1) }
+            case .levellerGate: return { try $0.setLevellerGate(db: $1) }
+            }
+        }
+
+        /// The opt-out's raw SET (`-CoreTransport NO`, MIDI, the Link
+        /// client): the only place these settings meet a vendor code.
+        var rawRequest: UInt8 {
+            switch self {
+            case .loudnessRef: return REQ_SET_LOUDNESS_REF
+            case .loudnessIntensity: return REQ_SET_LOUDNESS_INTENSITY
+            case .crossfeedFreq: return REQ_SET_CROSSFEED_FREQ
+            case .crossfeedFeed: return REQ_SET_CROSSFEED_FEED
+            case .psybassCutoff: return REQ_SET_PSYBASS_CUTOFF
+            case .psybassHarmonics: return REQ_SET_PSYBASS_HARMONICS
+            case .psybassDrive: return REQ_SET_PSYBASS_DRIVE
+            case .psybassCharacter: return REQ_SET_PSYBASS_CHARACTER
+            case .psybassOriginal: return REQ_SET_PSYBASS_ORIGINAL
+            case .subharmLow: return REQ_SET_SUBHARM_LOW
+            case .subharmHigh: return REQ_SET_SUBHARM_HIGH
+            case .subharmTop: return REQ_SET_SUBHARM_TOP
+            case .subharmBoost: return REQ_SET_SUBHARM_BOOST
+            case .subharmDepth: return REQ_SET_SUBHARM_DEPTH
+            case .subharmHold: return REQ_SET_SUBHARM_HOLD
+            case .subharmCeiling: return REQ_SET_SUBHARM_CEILING
+            case .levellerAmount: return REQ_SET_LEVELLER_AMOUNT
+            case .levellerMaxGain: return REQ_SET_LEVELLER_MAXGAIN
+            case .levellerGate: return REQ_SET_LEVELLER_GATE
+            }
+        }
+
+        /// The setting a raw float SET writes, if a slider sends it live.
+        init?(request: UInt8) {
+            guard let s = Self.allCases.first(where: { $0.rawRequest == request }) else { return nil }
+            self = s
+        }
+    }
+
     /// Device-only live send for a drag on any plain float parameter, the
     /// counterpart to `sendOutputGainToDevice` for the tool modules.  It
     /// transmits without publishing, so the gesture re-renders nothing; the
-    /// matching `set*` commits once on release.  Clamping is the caller's, and
-    /// the firmware clamps again regardless.
-    /// -- WP SW10 -- Through a core, the request's typed setter in the lane.
-    func sendFloatParamToDevice(_ request: UInt8, _ value: Float,
-                                wValue: UInt16 = 0, wIndex: UInt16 = 0) {
-        if typedCore != nil, let typed = Self.typedFloatSet(request) {
-            _ = typedWrite(lane: typed.lane) { try typed.set($0, value) }
-            return
-        }
+    /// matching `set*` commits once on release (through `commit(lane:)` under
+    /// the same path), and `ParameterRow` marks the drag with the core's
+    /// `setDragging`, so one drag is one undo step.  Clamping is the caller's,
+    /// and the firmware clamps again regardless.
+    /// -- WP SW10 -- Through a core, the setting's typed setter in the lane.
+    /// -- WP SWS7 -- Keyed by the setting (its registry path), not an opcode.
+    func sendFloatParamToDevice(_ setting: LiveFloat, _ value: Float) {
+        if typedWrite(lane: setting.path, { try setting.set($0, value) }) { return }
         var v = value
-        transport.sendControlRequest(request: request, value: wValue, index: wIndex,
+        transport.sendControlRequest(request: setting.rawRequest, value: 0, index: 0,
                                      data: Data(bytes: &v, count: 4))
     }
 
     /// -- WP SW10 -- The typed setter of a float SET a drag sends live, and
     /// its lane key (the registry path).  nil for a request no view sends
-    /// live, which then goes raw.
+    /// live.  -- WP SWS7 -- `LiveFloat`'s table; kept for the setters'
+    /// commits (`typedCommit`), which still name their raw SET's code.
     static func typedFloatSet(_ request: UInt8) -> (lane: String, set: (DspiCore, Float) throws -> Void)? {
-        func bass(_ id: UInt8) -> (DspiCore, Float) throws -> Void { { try $0.setPsybassParam(param: id, value: $1) } }
-        func sub(_ id: UInt8) -> (DspiCore, Float) throws -> Void { { try $0.setSubharmParam(id: id, value: $1) } }
-        switch request {
-        case REQ_SET_LOUDNESS_REF: return ("loud.ref", { try $0.setLoudnessRef(spl: $1) })
-        case REQ_SET_LOUDNESS_INTENSITY: return ("loud.intensity", { try $0.setLoudnessIntensity(pct: $1) })
-        case REQ_SET_CROSSFEED_FREQ: return ("cf.freq", { try $0.setCrossfeedFreq(freq: $1) })
-        case REQ_SET_CROSSFEED_FEED: return ("cf.feed", { try $0.setCrossfeedFeed(feed: $1) })
-        case REQ_SET_PSYBASS_CUTOFF: return ("bass.cutoff", bass(DspiConstants.PSYBASS_PARAM_CUTOFF))
-        case REQ_SET_PSYBASS_HARMONICS: return ("bass.harmonics", bass(DspiConstants.PSYBASS_PARAM_HARMONICS))
-        case REQ_SET_PSYBASS_DRIVE: return ("bass.drive", bass(DspiConstants.PSYBASS_PARAM_DRIVE))
-        case REQ_SET_PSYBASS_CHARACTER: return ("bass.character", bass(DspiConstants.PSYBASS_PARAM_CHARACTER))
-        case REQ_SET_PSYBASS_ORIGINAL: return ("bass.original", bass(DspiConstants.PSYBASS_PARAM_ORIGINAL))
-        case REQ_SET_SUBHARM_LOW: return ("sub.low", sub(DspiConstants.SUBHARM_PARAM_LOW))
-        case REQ_SET_SUBHARM_HIGH: return ("sub.high", sub(DspiConstants.SUBHARM_PARAM_HIGH))
-        case REQ_SET_SUBHARM_TOP: return ("sub.top", sub(DspiConstants.SUBHARM_PARAM_TOP))
-        case REQ_SET_SUBHARM_BOOST: return ("sub.boost", sub(DspiConstants.SUBHARM_PARAM_BOOST))
-        case REQ_SET_SUBHARM_DEPTH: return ("sub.depth", sub(DspiConstants.SUBHARM_PARAM_DEPTH))
-        case REQ_SET_SUBHARM_HOLD: return ("sub.hold", sub(DspiConstants.SUBHARM_PARAM_HOLD))
-        case REQ_SET_SUBHARM_CEILING: return ("sub.ceiling", sub(DspiConstants.SUBHARM_PARAM_CEILING))
-        case REQ_SET_LEVELLER_AMOUNT: return ("lev.amount", { try $0.setLevellerAmount(pct: $1) })
-        case REQ_SET_LEVELLER_MAXGAIN: return ("lev.maxgain", { try $0.setLevellerMaxGain(db: $1) })
-        case REQ_SET_LEVELLER_GATE: return ("lev.gate", { try $0.setLevellerGate(db: $1) })
-        default: return nil
-        }
+        LiveFloat(request: request).map { ($0.path, $0.set) }
     }
 
     func setPsybass(_ enabled: Bool) {

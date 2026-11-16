@@ -370,7 +370,7 @@ struct SubharmonicSynthView: View {
                 title: "24 - 36 Hz",
                 source: "48 - 72 Hz",
                 value: subharm.lowDB,
-                liveRequest: REQ_SET_SUBHARM_LOW,
+                live: .subharmLow,
                 liveKey: .lowDB,
                 help: "Level of the sub synthesized from program content between 48 and 72 Hz. At 0 dB it comes out 1.4 dB below the bass that produced it, which is the divider's own gain.",
                 set: { vm.setSubharmLow($0) }
@@ -382,7 +382,7 @@ struct SubharmonicSynthView: View {
                 title: "36 - 56 Hz",
                 source: "72 - 112 Hz",
                 value: subharm.highDB,
-                liveRequest: REQ_SET_SUBHARM_HIGH,
+                live: .subharmHigh,
                 liveKey: .highDB,
                 help: "Level of the sub synthesized from program content between 72 and 112 Hz. This band has its own divider, so a bass note here and a kick in the band below are tracked independently.",
                 set: { vm.setSubharmHigh($0) }
@@ -395,7 +395,7 @@ struct SubharmonicSynthView: View {
                     title: "56 - 80 Hz",
                     source: "112 - 160 Hz",
                     value: subharm.topDB,
-                    liveRequest: REQ_SET_SUBHARM_TOP,
+                    live: .subharmTop,
                     liveKey: .topDB,
                     help: "Level of the sub synthesized from program content between 112 and 160 Hz. It ships off: this band reaches up into the range where a divided sub starts to compete with the program's own fundamentals. Turn it up for a subwoofer that cannot reach the lowest octave.",
                     set: { vm.setSubharmTop($0) }
@@ -412,7 +412,7 @@ struct SubharmonicSynthView: View {
         title: String,
         source: String,
         value: Float,
-        liveRequest: UInt8,
+        live setting: DSPViewModel.LiveFloat,
         liveKey: SubharmGraphKey,
         help: String,
         set: @escaping (Float) -> Void
@@ -434,7 +434,7 @@ struct SubharmonicSynthView: View {
             help: help,
             live: { v in
                 let c = min(max(v, SUBHARM_LEVEL_MIN), SUBHARM_LEVEL_MAX)
-                vm.sendFloatParamToDevice(liveRequest, c)
+                vm.sendFloatParamToDevice(setting, c)
                 graphLive.set(liveKey, c)
             },
             set: { set(min(max($0, SUBHARM_LEVEL_MIN), SUBHARM_LEVEL_MAX)) }
@@ -479,7 +479,7 @@ struct SubharmonicSynthView: View {
                     range: SUBHARM_DEPTH_MIN...SUBHARM_DEPTH_MAX,
                     scrollStep: 5,
                     maxDecimals: 0,
-                    liveRequest: REQ_SET_SUBHARM_DEPTH,
+                    live: .subharmDepth,
                     help: "How far the material this mode does not favour is gated down. At 0% the selectivity is inaudible whatever the mode is set to; 100% is full gating.",
                     set: { vm.setSubharmSelectDepth($0) }
                 )
@@ -491,7 +491,7 @@ struct SubharmonicSynthView: View {
                     range: SUBHARM_HOLD_MIN_MS...SUBHARM_HOLD_MAX_MS,
                     scrollStep: 10,
                     maxDecimals: 0,
-                    liveRequest: REQ_SET_SUBHARM_HOLD,
+                    live: .subharmHold,
                     help: subharm.selectMode == SUBHARM_SELECT_PERCUSSIVE
                         ? "The length of the sub burst after each attack."
                         : "How long a band must ring before its sub opens. Every note's first hold period has no sub, so staccato bass lines get little.",
@@ -542,7 +542,7 @@ struct SubharmonicSynthView: View {
                 isEnabled: vm.isDeviceConnected,
                 live: { v in
                     let c = min(max(v, SUBHARM_CEILING_MIN), SUBHARM_CEILING_MAX)
-                    vm.sendFloatParamToDevice(REQ_SET_SUBHARM_CEILING, c)
+                    vm.sendFloatParamToDevice(.subharmCeiling, c)
                     graphLive.set(.ceilingDB, c)
                 },
                 set: { vm.setSubharmCeiling(min(max($0, SUBHARM_CEILING_MIN), SUBHARM_CEILING_MAX)) }
@@ -568,7 +568,7 @@ struct SubharmonicSynthView: View {
                 isEnabled: vm.isDeviceConnected,
                 live: { v in
                     let c = min(max(v, SUBHARM_BOOST_MIN), SUBHARM_BOOST_MAX)
-                    vm.sendFloatParamToDevice(REQ_SET_SUBHARM_BOOST, c)
+                    vm.sendFloatParamToDevice(.subharmBoost, c)
                     graphLive.set(.boostDB, c)
                 },
                 set: { vm.setSubharmBoost(min(max($0, SUBHARM_BOOST_MIN), SUBHARM_BOOST_MAX)) }
@@ -662,7 +662,7 @@ struct SubharmonicSynthView: View {
         range: ClosedRange<Float>,
         scrollStep: Float,
         maxDecimals: Int,
-        liveRequest: UInt8,
+        live setting: DSPViewModel.LiveFloat,
         help: String,
         set: @escaping (Float) -> Void
     ) -> some View {
@@ -675,7 +675,7 @@ struct SubharmonicSynthView: View {
             maxDecimals: maxDecimals,
             isEnabled: vm.isDeviceConnected,
             help: help,
-            live: { vm.sendFloatParamToDevice(liveRequest, min(max($0, range.lowerBound), range.upperBound)) },
+            live: { vm.sendFloatParamToDevice(setting, min(max($0, range.lowerBound), range.upperBound)) },
             set: { set(min(max($0, range.lowerBound), range.upperBound)) }
         )
     }
