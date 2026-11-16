@@ -21,8 +21,31 @@
 //! | A peer that stops answering | [`ServerLimits::dead_peer`], close 1001. A frame trickled and never finished does not count as an answer |
 //! | Guessing | [`crate::auth`]'s limits, and a token is not guessable |
 //!
+//! -- WP SECSRV -- **TLS on the same port (PLAN-SEC 4.1, 4.6, 4.7).** With [`TlsMode::On`]
+//! or [`TlsMode::Require`] a connection's first byte decides: `0x16`, a TLS handshake
+//! record, is TLS 1.3 (dspi-link's [`TlsPipe`], the hub's key from
+//! [`crate::tls_identity`]); anything else is plain HTTP. Everything on the port (the
+//! WebSocket, `/dspi/v1/info`, the pages, REST) is served over both. The handshake is
+//! part of the first request's [`ServerLimits::head_timeout`], on a socket counted in
+//! the plain HTTP budget from accept, and reclaimable like any other there: a slow or
+//! half-open handshake is a slowloris like any other. [`TlsMode::Off`] serves the
+//! protocol as before, and answers a ClientHello with a plain `400` at once.
+//!
+//! | Over plaintext | `off` | `on` | `on` + upstream compatibility | `require` |
+//! |---|---|---|---|---|
+//! | pages, `/info`, a token on the WebSocket | yes | yes | yes | `426`; the WebSocket upgraded, then closed 4003 `tls_required` |
+//! | `auth.pair` with a PIN | yes | refused, `tls_required` | yes | no |
+//! | REST with an API key | yes | only a key minted `plaintext_ok` | every key | no |
+//!
+//! **`Host`.** Over plaintext every request's `Host` must be an IP address, a name
+//! with no dot, or one of the hub's own names ([`OwnNames`], plus
+//! [`NetworkConfig::host_names`]): a page that a DNS name was rebound under cannot read
+//! `/info` or the assets (421). Over TLS a rebound name fails the browser's certificate
+//! check, and a native client pins the key, so any name the client used is fine.
+//!
 //! Lock level: the connection table is a leaf. Nothing else is taken under it, and
-//! nothing blocks under it.
+//! nothing blocks under it. -- WP SECSRV -- The TLS state's locks are leaves too, the
+//! identity's taken before the config's.
 
 use std::collections::BTreeMap;
 use std::io::{self, Read, Write};
@@ -36,12 +59,16 @@ use std::time::{Duration, Instant};
 use dspi_link::discovery::AdvertiseScope;
 use dspi_link::frames::{CmdResponse, Frame, NotifyFrame, PollFrame, kind};
 use dspi_link::messages::{PROTO_MAJOR, PROTO_MINOR, PollSpec};
-use dspi_link::socket::{Pipe, split_server};
+use dspi_link::socket::{Pipe, server_pipes, server_ws_config};
+// -- WP SECSRV --
 use dspi_link::status;
+use dspi_link::tls::{self as link_tls, SpkiHash, TlsPipe};
+use rustls::ServerConfig;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use serde_json::{Map, Value, json};
 use socket2::{Domain, Protocol, Socket, Type};
-use tungstenite::protocol::CloseFrame;
 use tungstenite::protocol::frame::coding::CloseCode;
+use tungstenite::protocol::{CloseFrame, Role as WsRole};
 use tungstenite::{Message, WebSocket};
 
 use crate::auth::{AccessMode, AuthError, AuthStore, peer_key};
@@ -51,6 +78,9 @@ use crate::polls::{POLL_BUDGET_BPS, POLL_MAX_HZ};
 use crate::router::MAX_PAYLOAD;
 use crate::session::{CLOSE_REVOKED, CLOSE_SHUTTING_DOWN, Outbound, Outbox, Pop, Role, Session};
 use crate::store::{parse_role, role_name, unix_seconds};
+// -- WP SECSRV --
+use crate::tls_identity::{TlsIdentity, TlsIdentityEvent, TlsNames};
+use std::time::SystemTime;
 
 /// `limits.max_frame`: the largest WebSocket frame and message taken (spec 4).
 pub const MAX_FRAME: u32 = 65536;
@@ -76,6 +106,153 @@ const CLOSE_KEEPALIVE: u16 = 1001;
 const CLOSE_NORMAL: u16 = 1000;
 /// Close reasons travel in a control frame, 125 bytes with its code.
 const MAX_CLOSE_REASON: usize = 123;
+
+// -- WP SECSRV --
+/// The close reason of a plaintext WebSocket on a [`TlsMode::Require`] hub, with code
+/// 4003: a client that knows it reads the word before the colon.
+pub const TLS_REQUIRED_REASON: &str = "tls_required: this hub accepts encrypted connections only";
+/// The error code of a request refused for want of TLS (`auth.pair`, REST).
+pub const TLS_REQUIRED: &str = "tls_required";
+/// How often the certificate is looked at for its end (and a rotation's announcement
+/// for its end), besides a change of the names it carries.
+const TLS_REFRESH_EVERY: Duration = Duration::from_secs(3600);
+/// How often the advertised name is compared with the certificate's.
+const TLS_NAMES_EVERY: Duration = Duration::from_secs(1);
+/// How long the hub's own names are kept before the interfaces are listed again.
+const OWN_NAMES_FOR: Duration = Duration::from_secs(1);
+
+// -- WP SECSRV --
+/// TLS on the Link port (PLAN-SEC 4.1; `uconsole hub --tls`). The library's default is
+/// [`TlsMode::Off`], so an embedder chooses; `uconsole hub` defaults to
+/// [`TlsMode::Require`] (OD-SECb, reconsidered 2026-11-15) and to `Off` on loopback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TlsMode {
+    /// Plaintext only, the protocol as before, and no key is made. The first byte is
+    /// still peeked (not taken), so a ClientHello is answered `400` at once instead of
+    /// waiting out the head timeout.
+    #[default]
+    Off,
+    /// TLS and plaintext both, by a connection's first byte. Over plaintext a PIN
+    /// pairing and an API key not minted `plaintext_ok` are refused, unless
+    /// [`NetworkConfig::upstream_compat`].
+    On,
+    /// TLS only. Plaintext HTTP is answered `426`; a plaintext WebSocket upgrade is
+    /// completed and closed at once with 4003 [`TLS_REQUIRED_REASON`].
+    Require,
+}
+
+impl TlsMode {
+    /// `off`, `on` or `require`, as `--tls` takes it.
+    pub fn parse(word: &str) -> Option<Self> {
+        match word {
+            "off" => Some(Self::Off),
+            "on" => Some(Self::On),
+            "require" => Some(Self::Require),
+            _ => None,
+        }
+    }
+
+    /// As [`Self::parse`] reads it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::On => "on",
+            Self::Require => "require",
+        }
+    }
+}
+
+// -- WP SECSRV --
+/// What the hub serves over which transport: a [`TlsMode`] and the upstream
+/// compatibility switch, checked together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TlsPolicy {
+    /// [`NetworkConfig::tls`].
+    pub mode: TlsMode,
+    /// [`NetworkConfig::upstream_compat`].
+    pub upstream_compat: bool,
+}
+
+impl TlsPolicy {
+    /// Whether TLS connections are taken.
+    pub fn serves_tls(self) -> bool {
+        self.mode != TlsMode::Off
+    }
+
+    /// Whether plaintext connections get past the `426`.
+    pub fn serves_plaintext(self) -> bool {
+        self.mode != TlsMode::Require
+    }
+
+    /// Whether `auth.pair` is taken over plaintext.
+    pub fn plaintext_pairing(self) -> bool {
+        match self.mode {
+            TlsMode::Off => true,
+            TlsMode::On => self.upstream_compat,
+            TlsMode::Require => false,
+        }
+    }
+
+    /// Whether every API key is taken over plaintext, not only one minted `plaintext_ok`.
+    pub fn plaintext_api_keys(self) -> bool {
+        self.plaintext_pairing()
+    }
+
+    /// Whether this is a downgrade the user must be shown [`downgrade_warning`] for.
+    /// `loopback`: the hub is bound to loopback, where nothing crosses a network.
+    pub fn is_downgraded(self, loopback: bool) -> bool {
+        !loopback && (self.mode == TlsMode::Off || self.upstream_compat)
+    }
+}
+
+// -- WP SECSRV --
+/// What upstream compatibility mode turns off, exactly, one line each: for every
+/// client's hub settings (SECPAIR, SECWEB, SECQT, SECAN, SECSW) and `uconsole hub`.
+pub const UPSTREAM_COMPAT_EFFECTS: &[&str] = &[
+    "TLS is no longer required: the hub also serves unencrypted DSPi Link (ws:// and \
+     http://) on its port, so upstream DSPi Link clients can connect",
+    "on those connections nothing is encrypted: anyone on this network can read the \
+     traffic, including PINs, tokens and API keys, and change it in transit",
+    "the hub's key is not pinned on them: an unencrypted client cannot tell this hub \
+     from another machine posing as it",
+    "pairing with a PIN is allowed without encryption (otherwise refused), so a \
+     listener can take the token a new client is given",
+    "every REST API key works without encryption, not only keys minted plaintext_ok",
+    "the hub does not advertise that it requires TLS (no tls=1 in its DNS-SD record)",
+];
+
+// -- WP SECSRV --
+/// What `--tls off` on a network address turns off, one line each.
+pub const TLS_OFF_EFFECTS: &[&str] = &[
+    "nothing on this port is encrypted: anyone on this network can read the traffic, \
+     including PINs, tokens and API keys, and change it in transit",
+    "no client can verify this hub's key (no key pinning): another machine can pose as it",
+    "pairing and every REST API key work without encryption",
+];
+
+// -- WP SECSRV --
+/// The large warning a downgraded hub is started with ([`TlsPolicy::is_downgraded`]),
+/// listing exactly which protections are off. `None` when nothing is downgraded.
+pub fn downgrade_warning(policy: TlsPolicy, loopback: bool) -> Option<String> {
+    if !policy.is_downgraded(loopback) {
+        return None;
+    }
+    let (title, effects) = if policy.mode == TlsMode::Off {
+        ("TLS IS OFF", TLS_OFF_EFFECTS)
+    } else {
+        ("UPSTREAM COMPATIBILITY MODE IS ON", UPSTREAM_COMPAT_EFFECTS)
+    };
+    let rule = "!".repeat(72);
+    let mut text = format!("{rule}\n!! SECURITY DOWNGRADED: {title}\n!!\n");
+    for effect in effects {
+        text.push_str("!!  - ");
+        text.push_str(effect);
+        text.push('\n');
+    }
+    text.push_str("!!\n!! Use it only on a network you trust, and only while you need it.\n");
+    text.push_str(&rule);
+    Some(text)
+}
 
 /// What one socket may cost. The defaults are the spec's where it names one. Tests
 /// shorten the times.
@@ -207,6 +384,40 @@ pub struct NetworkConfig {
     /// The REST mirror under `/api/v1/` (`uconsole hub --rest`). Off by default, and
     /// then `/api/v1/` answers 404.
     pub rest: bool,
+    // -- WP SECSRV --
+    /// TLS on the port (`--tls`). [`TlsMode::Off`] by default: see [`TlsMode`]. The
+    /// key and certificate are kept under `store_dir` ([`crate::tls_identity`]).
+    pub tls: TlsMode,
+    /// Upstream compatibility (`--upstream-compat`, owner-approved, off by default):
+    /// with [`TlsMode::On`], PIN pairing and every API key over plaintext too, for
+    /// upstream DSPi Link clients. [`UPSTREAM_COMPAT_EFFECTS`] lists what it turns off;
+    /// the embedder shows [`downgrade_warning`]. Refused with [`TlsMode::Require`].
+    pub upstream_compat: bool,
+    /// More names the hub answers to over plaintext (the `Host` rule), lower case:
+    /// a DNS name it is reached by that is not its mDNS name (`--host-name`).
+    pub host_names: Vec<String>,
+}
+
+// -- WP SECSRV --
+/// The TLS mode [`NetworkConfig::new`] starts with: [`TlsMode::Off`], or under the
+/// test-only feature `test-tls-mode`, `DSPI_HUB_TEST_TLS` (`off`, `on`, `compat`: on
+/// with upstream compatibility, `require`), so the existing suites run against a hub
+/// that sniffs every connection. The existing suites are meant for `off` and `compat`,
+/// where their plaintext clients pair and use REST as before (their assertions on
+/// `/info`'s `tls`, an `https` own Origin and a ClientHello follow the mode). In `on`
+/// and `require`, plaintext pairing and REST are refused by design, so every test that
+/// pairs over plaintext fails there.
+fn default_tls() -> (TlsMode, bool) {
+    #[cfg(feature = "test-tls-mode")]
+    {
+        match std::env::var("DSPI_HUB_TEST_TLS").as_deref() {
+            Ok("on") => return (TlsMode::On, false),
+            Ok("compat") => return (TlsMode::On, true),
+            Ok("require") => return (TlsMode::Require, false),
+            _ => {}
+        }
+    }
+    (TlsMode::Off, false)
 }
 
 // -- WP HB5 --
@@ -238,6 +449,14 @@ impl NetworkConfig {
         }
     }
 
+    // -- WP SECSRV --
+    /// Whether the DNS-SD record says TLS (spec 3.1's `tls=1`; SECDISC's
+    /// `HubAdvert.tls`): whenever TLS is served (`on`, `require`), but not in upstream
+    /// compatibility mode, where an upstream client would read it as "use `wss://`".
+    pub(crate) fn advertises_tls(&self) -> bool {
+        self.tls != TlsMode::Off && !self.upstream_compat
+    }
+
     /// The defaults: the standard port, PIN pairing, no web UI.
     pub fn new(store_dir: PathBuf) -> Self {
         Self {
@@ -256,6 +475,10 @@ impl NetworkConfig {
             console: None,
             // -- WP P2RS --
             rest: false,
+            // -- WP SECSRV --
+            tls: default_tls().0,
+            upstream_compat: default_tls().1,
+            host_names: Vec::new(),
         }
     }
 }
@@ -288,10 +511,16 @@ impl OwnNames {
 /// `None` for anything else: another scheme (`https://` a hub does not serve is not
 /// its own page), a path, credentials, a port spelt oddly. Host lower case, no brackets.
 fn parse_http_origin(origin: &str) -> Option<(String, u16)> {
+    parse_origin(origin, "http://", 80)
+}
+
+// -- WP SECSRV --
+/// [`parse_http_origin`] for `scheme` (`http://` or `https://`) and its default port.
+fn parse_origin(origin: &str, scheme: &str, default_port: u16) -> Option<(String, u16)> {
     let rest = origin
-        .get(..7)
-        .filter(|s| s.eq_ignore_ascii_case("http://"))
-        .and_then(|_| origin.get(7..))?;
+        .get(..scheme.len())
+        .filter(|s| s.eq_ignore_ascii_case(scheme))
+        .and_then(|_| origin.get(scheme.len()..))?;
     let (host, port) = if let Some(v6) = rest.strip_prefix('[') {
         let (host, after) = v6.split_once(']')?;
         let ip: Ipv6Addr = host.parse().ok()?;
@@ -313,7 +542,7 @@ fn parse_http_origin(origin: &str) -> Option<(String, u16)> {
         return None;
     }
     let port = match port {
-        None => 80,
+        None => default_port,
         // Digits only (u16's parser takes `+11915`), and as a browser would write it.
         Some(p) if p.bytes().all(|b| b.is_ascii_digit()) && !p.starts_with('0') => {
             p.parse().ok()?
@@ -327,11 +556,49 @@ fn parse_http_origin(origin: &str) -> Option<(String, u16)> {
 /// native client) passes; `null`, a foreign site, another port or a malformed value
 /// does not. The scheme must be `http`, the only one a hub serves.
 pub fn origin_allowed(origin: Option<&str>, own: &OwnNames) -> bool {
+    origin_allowed_with(origin, own, false)
+}
+
+// -- WP SECSRV --
+/// [`origin_allowed`] on a hub that also serves TLS (`https`): its own page is then
+/// `https://<own name>:<port>` too (PLAN-SEC 4.6). A foreign `https` origin is refused
+/// as a foreign `http` one is.
+pub fn origin_allowed_with(origin: Option<&str>, own: &OwnNames, https: bool) -> bool {
     let Some(origin) = origin else {
         return true;
     };
-    parse_http_origin(origin).is_some_and(|(host, port)| {
+    let ours = |(host, port): (String, u16)| {
         port == own.port && own.hosts.iter().any(|h| h.eq_ignore_ascii_case(&host))
+    };
+    parse_http_origin(origin).is_some_and(ours)
+        || (https && parse_origin(origin, "https://", 443).is_some_and(ours))
+}
+
+// -- WP SECSRV --
+/// The host of a `Host` header (`name[:port]`, `[v6][:port]`), lower case, no brackets;
+/// `None` when it is not that shape.
+fn host_of(authority: &str) -> Option<String> {
+    parse_http_origin(&format!("http://{}", authority.trim())).map(|(host, _)| host)
+}
+
+// -- WP SECSRV --
+/// Whether a plaintext request's `Host` may be answered (DNS rebinding, PLAN-SEC 4.6):
+/// none at all (not a browser: every browser sends one), an IP address (a page cannot
+/// be rebound under one), a name with no dot (no public DNS name is one), or one of
+/// the hub's own names. A repeated or malformed one is refused.
+///
+/// `own` is called only for a dotted name (review secb N2).
+fn host_allowed(request: &httparse::Request<'_, '_>, own: impl FnOnce() -> OwnNames) -> bool {
+    let Ok(host) = single_header(request, "Host") else {
+        return false;
+    };
+    let Some(host) = host else {
+        return true;
+    };
+    host_of(host).is_some_and(|name| {
+        name.parse::<IpAddr>().is_ok()
+            || !name.contains('.')
+            || own().hosts.iter().any(|h| h.eq_ignore_ascii_case(&name))
     })
 }
 
@@ -503,6 +770,58 @@ struct Shared {
     console: Option<Arc<crate::web::Console>>,
     // -- WP P2RS -- the REST mirror's keys and their sessions
     rest: crate::rest::Rest,
+    // -- WP SECSRV --
+    policy: TlsPolicy,
+    /// The key, its certificate and the rustls config made of them, when TLS is served.
+    tls: Option<TlsState>,
+    /// [`NetworkConfig::host_names`].
+    host_names: Vec<String>,
+    /// [`Shared::own_names`]'s last answer and when. A leaf lock.
+    own_names: Mutex<Option<(Instant, OwnNames)>>,
+}
+
+// -- WP SECSRV --
+/// The hub's TLS identity while the server runs. Locks: leaves, `identity` before
+/// `config` when both are taken.
+struct TlsState {
+    identity: Mutex<TlsIdentity>,
+    /// What a new connection is handshaken with: made again when the certificate or the
+    /// key changes. Existing connections keep theirs.
+    config: Mutex<Arc<ServerConfig>>,
+    /// The names the certificate was last checked against.
+    names: Mutex<TlsNames>,
+    /// When the names and the certificate's end are looked at next.
+    next_names: Mutex<Instant>,
+    next_refresh: Mutex<Instant>,
+    /// What loading the identity did, at the start (a new key, a replaced one).
+    at_start: Vec<TlsIdentityEvent>,
+}
+
+// -- WP SECSRV --
+/// The rustls config for an identity: its certificate and key.
+fn tls_config(identity: &TlsIdentity) -> Result<Arc<ServerConfig>, HubError> {
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
+        identity.private_key_der().to_vec(),
+    ));
+    let chain = vec![CertificateDer::from(identity.certificate_der().to_vec())];
+    link_tls::server_config(chain, key)
+        .map_err(|e| HubError::Io(format!("the hub's TLS key cannot be used: {e}")))
+}
+
+// -- WP SECSRV --
+/// What the hub's TLS is now, for an embedder: `uconsole hub`'s start line, its pairing
+/// line (SECPAIR), the advertisement (SECDISC). Public data only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TlsInfo {
+    /// What is served over which transport.
+    pub policy: TlsPolicy,
+    /// The key's pin while TLS is served.
+    pub pin: Option<SpkiHash>,
+    /// The certificate, PEM (`uconsole hub tls cert`).
+    pub certificate_pem: Option<String>,
+    /// What loading the identity did at the start: a first key, a replaced one (every
+    /// client will report that this hub's key changed), a certificate issued again.
+    pub at_start: Vec<TlsIdentityEvent>,
 }
 
 /// The way to a running server, for a binding: the pairing window, the client list,
@@ -524,6 +843,46 @@ impl NetworkControl {
     /// The port actually bound.
     pub fn port(&self) -> u16 {
         self.shared.port
+    }
+
+    // -- WP SECSRV --
+    /// The hub's TLS: its policy, its key's pin and certificate, and what the start did.
+    pub fn tls(&self) -> TlsInfo {
+        let shared = &self.shared;
+        let (pin, certificate_pem, at_start) = match &shared.tls {
+            Some(tls) => {
+                let identity = guard(&tls.identity);
+                (
+                    Some(identity.pin()),
+                    Some(identity.certificate_pem().to_owned()),
+                    tls.at_start.clone(),
+                )
+            }
+            None => (None, None, Vec::new()),
+        };
+        TlsInfo {
+            policy: shared.policy,
+            pin,
+            certificate_pem,
+            at_start,
+        }
+    }
+
+    // -- WP SECSRV --
+    /// A new TLS key (`uconsole hub tls rotate`, Admin on the hub's machine): the old
+    /// one signs it unless `forget_old` (PLAN-SEC 4.2), new connections get it at once,
+    /// and the event goes to the embedder too. `HubError::Io` when TLS is off or a file
+    /// cannot be written.
+    pub fn rotate_tls_key(&self, forget_old: bool) -> Result<TlsIdentityEvent, HubError> {
+        let shared = &self.shared;
+        let Some(tls) = &shared.tls else {
+            return Err(HubError::Io("TLS is off on this hub".into()));
+        };
+        let names = guard(&tls.names).clone();
+        let event = guard(&tls.identity).rotate(&names, SystemTime::now(), forget_old)?;
+        shared.reload_tls();
+        shared.hub.emit(crate::hub::HubEvent::Tls(event.clone()));
+        Ok(event)
     }
 
     // -- WP TM26 --
@@ -594,6 +953,95 @@ impl Entry {
     // -- WP HB9 --
     fn counts(&self) -> bool {
         !self.done && !self.reclaimed
+    }
+}
+
+// -- WP SECSRV --
+impl Shared {
+    /// The names that count as the hub itself now: [`OwnNames::current`] with the name
+    /// the responder holds (after a conflict the old one is somebody else's, so only the
+    /// configured one until it runs, and after) and [`NetworkConfig::host_names`].
+    ///
+    /// Kept for [`OWN_NAMES_FOR`]: listing the interfaces costs a system call, and a
+    /// page load asks many times a second (review secb N2).
+    fn own_names(&self) -> OwnNames {
+        let now = Instant::now();
+        if let Some((at, own)) = guard(&self.own_names).as_ref()
+            && now.saturating_duration_since(*at) < OWN_NAMES_FOR
+        {
+            return own.clone();
+        }
+        let advertised = self.hub.advertised().map(|names| names.host);
+        let name = advertised.as_deref().or(self.mdns_name.as_deref());
+        let mut own = OwnNames::current(self.port, name);
+        own.hosts.extend(self.host_names.iter().cloned());
+        *guard(&self.own_names) = Some((now, own.clone()));
+        own
+    }
+
+    /// The names the certificate is for: the advertised (or configured) mDNS name. No
+    /// address: none is configured as static here (PLAN-SEC 4.2).
+    fn tls_names(&self) -> TlsNames {
+        let advertised = self.hub.advertised().map(|names| names.host);
+        TlsNames::new(advertised.as_deref().or(self.mdns_name.as_deref()), &[])
+    }
+
+    /// The config a new TLS connection is handshaken with.
+    fn tls_config(&self) -> Option<Arc<ServerConfig>> {
+        self.tls.as_ref().map(|tls| Arc::clone(&guard(&tls.config)))
+    }
+
+    /// Make the rustls config again from the identity (a new certificate or key). A
+    /// config that cannot be made leaves the last one, with a log line.
+    fn reload_tls(&self) {
+        let Some(tls) = &self.tls else {
+            return;
+        };
+        let made = tls_config(&guard(&tls.identity));
+        match made {
+            Ok(config) => *guard(&tls.config) = config,
+            Err(e) => log::error!("hub: {e}; the previous certificate is still served"),
+        }
+    }
+
+    /// On the acceptor's tick: issue the certificate again when the advertised name
+    /// changed or it nears its end (and end a rotation's announcement), then serve it.
+    /// Cheap when nothing is due.
+    fn tls_tick(&self) {
+        let Some(tls) = &self.tls else {
+            return;
+        };
+        let now = Instant::now();
+        {
+            let mut next = guard(&tls.next_names);
+            if now < *next {
+                return;
+            }
+            *next = after(now, TLS_NAMES_EVERY);
+        }
+        let names = self.tls_names();
+        let renamed = *guard(&tls.names) != names;
+        let due = {
+            let mut next = guard(&tls.next_refresh);
+            let due = now >= *next;
+            if due {
+                *next = after(now, TLS_REFRESH_EVERY);
+            }
+            due
+        };
+        if !renamed && !due {
+            return;
+        }
+        guard(&tls.names).clone_from(&names);
+        let refreshed = guard(&tls.identity).refresh(&names, SystemTime::now());
+        match refreshed {
+            Ok(Some(event)) => {
+                self.reload_tls();
+                self.hub.emit(crate::hub::HubEvent::Tls(event));
+            }
+            Ok(None) => {}
+            Err(e) => log::warn!("hub: the TLS certificate could not be checked: {e}"),
+        }
     }
 }
 
@@ -852,6 +1300,8 @@ fn accept_loop(shared: &Arc<Shared>, listener: &TcpListener) {
                 shared.reap();
                 // -- WP P2RS --
                 shared.rest.sweep(&shared.hub, &shared.limits);
+                // -- WP SECSRV --
+                shared.tls_tick();
                 shared.admit(tcp, peer);
             }
             Err(e) => {
@@ -862,6 +1312,8 @@ fn accept_loop(shared: &Arc<Shared>, listener: &TcpListener) {
                 shared.reap();
                 // -- WP P2RS -- idle keys' sessions close; their outboxes are emptied
                 shared.rest.sweep(&shared.hub, &shared.limits);
+                // -- WP SECSRV --
+                shared.tls_tick();
                 thread::sleep(ACCEPT_TICK);
             }
         }
@@ -870,23 +1322,23 @@ fn accept_loop(shared: &Arc<Shared>, listener: &TcpListener) {
 
 // -- WP P2RS --
 /// The byte stream one plain HTTP request is read from and answered on (PLAN-SEC section
-/// 6, P2-C): a `TcpStream` today, a TLS stream over one when WP SECSRV lands, so the
-/// head and body reads, the REST mirror and the answers need no change then. Only the
-/// accept path and the WebSocket upgrade still take a `TcpStream`.
+/// 6, P2-C): a `TcpStream`, or -- WP SECSRV -- a [`TlsPipe`] over one, so the head and
+/// body reads, the REST mirror and the answers are the same over both.
 pub(crate) trait HubStream: Read + Write {
-    /// As [`TcpStream::set_read_timeout`]: `None` waits for ever.
-    fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
+    /// As [`TcpStream::set_read_timeout`]: `None` waits for ever. -- WP SECSRV -- A read
+    /// ends within it however slowly a TLS record trickles in.
+    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> io::Result<()>;
     /// As [`TcpStream::set_write_timeout`].
     fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()>;
-    /// End the sending half, behind what was written.
-    fn shutdown_write(&self) -> io::Result<()>;
+    /// End the sending half, behind what was written (TLS: its `close_notify` first).
+    fn shutdown_write(&mut self) -> io::Result<()>;
     /// The peer's address, as the limits and the failure ledger count it.
     fn peer_ip(&self) -> io::Result<IpAddr>;
 }
 
 // -- WP P2RS --
 impl HubStream for TcpStream {
-    fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> io::Result<()> {
         TcpStream::set_read_timeout(self, timeout)
     }
 
@@ -894,12 +1346,127 @@ impl HubStream for TcpStream {
         TcpStream::set_write_timeout(self, timeout)
     }
 
-    fn shutdown_write(&self) -> io::Result<()> {
+    fn shutdown_write(&mut self) -> io::Result<()> {
         self.shutdown(Shutdown::Write)
     }
 
     fn peer_ip(&self) -> io::Result<IpAddr> {
         self.peer_addr().map(|a| a.ip())
+    }
+}
+
+// -- WP SECSRV --
+impl HubStream for TlsPipe {
+    fn set_read_timeout(&mut self, timeout: Option<Duration>) -> io::Result<()> {
+        // The deadline bounds a whole read, which may take several socket reads for
+        // one record; the socket's own timeout alone would restart with each.
+        self.set_deadline(timeout.map(|t| after(Instant::now(), t)));
+        TlsPipe::set_read_timeout(self, timeout)
+    }
+
+    fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        self.tcp().set_write_timeout(timeout)
+    }
+
+    fn shutdown_write(&mut self) -> io::Result<()> {
+        let notified = self.send_close_notify();
+        self.tcp().shutdown(Shutdown::Write).and(notified)
+    }
+
+    fn peer_ip(&self) -> io::Result<IpAddr> {
+        self.peer_addr().map(|a| a.ip())
+    }
+}
+
+// -- WP SECSRV --
+/// A stream an upgrade turns into a WebSocket's two halves.
+trait IntoWire: HubStream + Sized {
+    /// The socket under it, for its timeouts and to cut it off.
+    fn raw_tcp(&self) -> &TcpStream;
+    /// The reader's and the writer's halves, buffered (a frame goes out whole).
+    fn into_wires(self) -> io::Result<(Wire, Wire)>;
+}
+
+impl IntoWire for TcpStream {
+    fn raw_tcp(&self) -> &TcpStream {
+        self
+    }
+
+    fn into_wires(self) -> io::Result<(Wire, Wire)> {
+        let (reader, writer) = server_pipes(self)?;
+        Ok((Wire::Plain(reader), Wire::Plain(writer)))
+    }
+}
+
+impl IntoWire for TlsPipe {
+    fn raw_tcp(&self) -> &TcpStream {
+        self.tcp()
+    }
+
+    fn into_wires(mut self) -> io::Result<(Wire, Wire)> {
+        let mut writer = self.try_clone()?;
+        // The socket's read timeout (the reader's tick) is what bounds a read now.
+        self.set_deadline(None);
+        self.set_buffered(true);
+        writer.set_buffered(true);
+        Ok((Wire::Tls(self), Wire::Tls(writer)))
+    }
+}
+
+// -- WP SECSRV --
+/// One half of a WebSocket's byte stream: plain, or TLS on the same port.
+enum Wire {
+    Plain(Pipe),
+    Tls(TlsPipe),
+}
+
+impl Wire {
+    /// A write failed part way: see [`Pipe::is_broken`].
+    fn is_broken(&self) -> bool {
+        match self {
+            Self::Plain(p) => p.is_broken(),
+            Self::Tls(t) => t.is_broken(),
+        }
+    }
+
+    /// The socket under it.
+    fn raw_tcp(&mut self) -> &TcpStream {
+        match self {
+            Self::Plain(p) => p.tcp_mut(),
+            Self::Tls(t) => t.tcp(),
+        }
+    }
+
+    /// TLS: `close_notify` behind what was sent. Plain: nothing.
+    fn close_notify(&mut self) {
+        if let Self::Tls(t) = self {
+            let _ = t.send_close_notify();
+        }
+    }
+}
+
+impl Read for Wire {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Self::Plain(p) => p.read(buf),
+            Self::Tls(t) => t.read(buf),
+        }
+    }
+}
+
+impl Write for Wire {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Self::Plain(p) => p.write(buf),
+            Self::Tls(t) => t.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Self::Plain(p) => p.flush(),
+            Self::Tls(t) => t.flush(),
+        }
     }
 }
 
@@ -1059,8 +1626,23 @@ const BUSY: &[u8] = b"The hub has no room for another session.";
 /// The answer for a socket past the limits. On its own short-lived thread, so that a
 /// legitimate client hears 503 (`LinkError::HubBusy`, spec 4) and not a reset: closing
 /// with its request unread would be one.
-fn refuse(shared: &Shared, mut tcp: TcpStream, opened: Instant) {
+fn refuse(shared: &Shared, tcp: TcpStream, opened: Instant) {
     let deadline = after(opened, shared.limits.close_grace);
+    // -- WP SECSRV -- a TLS client hears its 503 over TLS, within the same grace
+    match sniff(shared, &tcp, deadline) {
+        Sniffed::Plain => refuse_on(shared, tcp, deadline),
+        Sniffed::Tls(config) => {
+            if let Ok(mut pipe) = link_tls::accept(tcp, config, deadline) {
+                pipe.set_deadline(None);
+                refuse_on(shared, pipe, deadline);
+            }
+        }
+        Sniffed::TlsOff => refuse_tls_off(shared, tcp),
+        Sniffed::Gone => {}
+    }
+}
+
+fn refuse_on<S: HubStream>(shared: &Shared, mut tcp: S, deadline: Instant) {
     let grace = shared.limits.close_grace;
     let _ = read_head(
         &mut tcp,
@@ -1073,6 +1655,59 @@ fn refuse(shared: &Shared, mut tcp: TcpStream, opened: Instant) {
     let headers = [TEXT, ("Retry-After", "5")];
     let status = "503 Service Unavailable";
     respond(shared, &mut tcp, status, &headers, BUSY, false, deadline);
+}
+
+// -- WP SECSRV --
+/// What a connection's first byte says.
+enum Sniffed {
+    /// Plain HTTP, or TLS is not served: nothing was read.
+    Plain,
+    /// A TLS handshake record, to be handshaken with this config.
+    Tls(Arc<ServerConfig>),
+    /// Closed, cut off or silent until `by`.
+    Gone,
+    /// A TLS handshake on a hub that serves none ([`TlsMode::Off`]).
+    TlsOff,
+}
+
+// -- WP SECSRV --
+/// Wait for the first byte, by `by`, without taking it (with TLS off too: a
+/// ClientHello there is answered at once).
+fn sniff(shared: &Shared, tcp: &TcpStream, by: Instant) -> Sniffed {
+    let config = shared
+        .policy
+        .serves_tls()
+        .then(|| shared.tls_config())
+        .flatten();
+    let left = by.saturating_duration_since(Instant::now());
+    if left.is_zero() || tcp.set_read_timeout(Some(left)).is_err() {
+        return Sniffed::Gone;
+    }
+    match (link_tls::sniff_tls(tcp), config) {
+        (Ok(true), Some(config)) => Sniffed::Tls(config),
+        (Ok(true), None) => Sniffed::TlsOff,
+        (Ok(false), _) => Sniffed::Plain,
+        (Err(_), _) => Sniffed::Gone,
+    }
+}
+
+// -- WP SECSRV --
+/// [`Sniffed::TlsOff`]: a plain `400` at once, not after waiting for a head that never
+/// comes, so a client trying TLS first fails now rather than at its own timeout
+/// (SECCORE). Its handshake then fails on the answer.
+fn refuse_tls_off(shared: &Shared, mut tcp: TcpStream) {
+    log::debug!("hub: a TLS handshake on a hub with TLS off");
+    let until = after(Instant::now(), shared.limits.write_stall);
+    let why = b"Not HTTP: this hub does not speak TLS.";
+    respond(
+        shared,
+        &mut tcp,
+        "400 Bad Request",
+        &[TEXT],
+        why,
+        false,
+        until,
+    );
 }
 
 // -- WP HB9 --
@@ -1116,9 +1751,42 @@ fn keep_alive(request: &httparse::Request<'_, '_>) -> bool {
 
 /// The whole life of a socket, on its reader thread: plain HTTP requests, kept alive
 /// while the peer and the answer allow, until one upgrades or the socket closes.
-fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened: Instant) {
+///
+/// -- WP SECSRV -- First, when TLS is served, its first byte: a TLS handshake, which
+/// must end within the first request's [`ServerLimits::head_timeout`], then the same
+/// requests over it. The socket counts as a request being read from that byte on.
+fn serve(shared: &Arc<Shared>, id: u64, tcp: TcpStream, peer: IpAddr, opened: Instant) {
+    let first_by = after(opened, shared.limits.head_timeout);
+    match sniff(shared, &tcp, first_by) {
+        Sniffed::Plain => serve_on(shared, id, tcp, false, peer, first_by),
+        Sniffed::Tls(config) => {
+            if !shared.set_http(id, Http::Head(Instant::now())) {
+                return;
+            }
+            match link_tls::accept(tcp, config, first_by) {
+                Ok(mut pipe) => {
+                    // read_head sets its own deadlines from here
+                    pipe.set_deadline(None);
+                    serve_on(shared, id, pipe, true, peer, first_by);
+                }
+                Err(e) => log::debug!("hub: a TLS handshake failed: {e}"),
+            }
+        }
+        Sniffed::TlsOff => refuse_tls_off(shared, tcp),
+        Sniffed::Gone => {}
+    }
+}
+
+/// [`serve`] on a plain or TLS stream (`encrypted`), from its first request on.
+fn serve_on<S: IntoWire>(
+    shared: &Arc<Shared>,
+    id: u64,
+    mut tcp: S,
+    encrypted: bool,
+    peer: IpAddr,
+    first_by: Instant,
+) {
     let limits = &shared.limits;
-    let first_by = after(opened, limits.head_timeout);
     let mut carry = Vec::new();
     let mut first = true;
     loop {
@@ -1165,11 +1833,11 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
         };
         // -- WP P2RS -- `tail`: a REST body starts there, and what it leaves is carried
         let mut tail = tail;
-        match answer(shared, id, &mut tcp, &head, &mut tail, until) {
+        match answer(shared, id, &mut tcp, encrypted, &head, &mut tail, until) {
             Next::Keep => carry = tail,
             Next::Close => return,
             Next::Upgrade(accept) => {
-                upgrade(shared, id, tcp, tail, &accept, peer);
+                upgrade(shared, id, tcp, encrypted, tail, &accept, peer);
                 return;
             }
         }
@@ -1180,10 +1848,15 @@ fn serve(shared: &Arc<Shared>, id: u64, mut tcp: TcpStream, peer: IpAddr, opened
 ///
 /// -- WP P2RS -- Over any [`HubStream`]; `tail` is what came behind the head, where a
 /// REST request's body starts. An upgrade is answered by the caller, on the `TcpStream`.
+///
+/// -- WP SECSRV -- `encrypted`: it came over TLS. Over plaintext the `Host` is checked
+/// first (DNS rebinding), and a [`TlsMode::Require`] hub answers `426` to all but a
+/// WebSocket upgrade, which [`upgrade`] closes with 4003.
 fn answer<S: HubStream + ?Sized>(
     shared: &Shared,
     id: u64,
     tcp: &mut S,
+    encrypted: bool,
     head: &[u8],
     tail: &mut Vec<u8>,
     until: Instant,
@@ -1201,8 +1874,16 @@ fn answer<S: HubStream + ?Sized>(
         .split('?')
         .next()
         .unwrap_or_default();
+    // -- WP SECSRV -- every route, before anything is said about the hub (an upgrade's
+    // `Origin` is judged first, in `check_upgrade`, so a page learns as little as it can)
+    let misdirected = !encrypted && !host_allowed(&request, || shared.own_names());
+    if misdirected && path != WS_PATH {
+        return misdirected_page(shared, tcp, until);
+    }
     if path == WS_PATH {
-        match check_upgrade(shared, &request) {
+        match check_upgrade(shared, &request, encrypted) {
+            // -- WP SECSRV --
+            Ok(_) if misdirected => return misdirected_page(shared, tcp, until),
             // -- WP HB9 -- Into the WebSocket budget here, and only here.
             Ok(accept) if shared.promote(id) => return Next::Upgrade(accept),
             Ok(_) => {
@@ -1216,6 +1897,10 @@ fn answer<S: HubStream + ?Sized>(
         }
         return Next::Close;
     }
+    // -- WP SECSRV -- TLS only: the rest of what a plaintext request could reach
+    if !encrypted && !shared.policy.serves_plaintext() {
+        return tls_required_page(shared, tcp, &request, until);
+    }
     // -- WP P2RS -- `/api/v1/`: the REST mirror (`rest.rs`), `404` while it is off.
     if crate::rest::is_rest_path(path) {
         let reply = shared.rest.answer(
@@ -1224,6 +1909,9 @@ fn answer<S: HubStream + ?Sized>(
                 auth: &shared.auth,
                 hub_id: &shared.hub_id,
                 limits: &shared.limits,
+                // -- WP SECSRV --
+                encrypted,
+                any_key_in_plaintext: shared.policy.plaintext_api_keys(),
             },
             tcp,
             &request,
@@ -1270,7 +1958,9 @@ fn answer<S: HubStream + ?Sized>(
     }
     // -- WP WB7 -- The console, beside the page at `/`, with web on only.
     if shared.web && crate::web::is_console_path(path) {
-        return kept(serve_console(shared, tcp, &request, path, keep, until));
+        return kept(serve_console(
+            shared, tcp, encrypted, &request, path, keep, until,
+        ));
     }
     // `/dspi/` is the protocol's (spec 4.2), and the web UI is only served when on.
     let asset = (shared.web && !path.starts_with("/dspi/"))
@@ -1288,7 +1978,9 @@ fn answer<S: HubStream + ?Sized>(
         Some(asset) => {
             // -- WP HB5 -- A hub's update changes these under the same paths.
             // -- WP WB7 -- ...but for upstream's hashed asset names; and a policy per page.
-            let csp = crate::web::page_csp(path, own_authority(shared, &request));
+            // -- WP SECSRV -- `wss://` from an https page
+            let hub = own_authority(shared, &request, encrypted);
+            let csp = crate::web::page_csp_for(path, hub, encrypted);
             let headers = [
                 ("Content-Type", asset.content_type),
                 ("X-Content-Type-Options", "nosniff"),
@@ -1316,6 +2008,7 @@ fn answer<S: HubStream + ?Sized>(
 fn serve_console<S: HubStream + ?Sized>(
     shared: &Shared,
     tcp: &mut S,
+    encrypted: bool,
     request: &httparse::Request<'_, '_>,
     path: &str,
     keep: bool,
@@ -1326,8 +2019,9 @@ fn serve_console<S: HubStream + ?Sized>(
         let why = b"No web console on this hub.";
         return respond(shared, tcp, "404 Not Found", &[TEXT], why, keep, until);
     };
-    let hub = own_authority(shared, request);
-    let csp = crate::web::console_csp(hub);
+    // -- WP SECSRV -- `wss://` from an https page
+    let hub = own_authority(shared, request, encrypted);
+    let csp = crate::web::console_csp_for(hub, encrypted);
     let if_none_match = single_header(request, "If-None-Match").ok().flatten();
     // The same as the page at `/`, plus the policy and a validator: the file names
     // carry no hash, so a browser asks again each time and gets 304 when unchanged.
@@ -1337,7 +2031,7 @@ fn serve_console<S: HubStream + ?Sized>(
         ("Content-Security-Policy", csp.as_str()),
         ("Referrer-Policy", "no-referrer"),
     ];
-    match console.answer(path, hub, if_none_match) {
+    match console.answer_for(path, hub, encrypted, if_none_match) {
         ConsoleAnswer::Redirect => {
             let headers = [TEXT, ("Location", crate::web::CONSOLE_PATH)];
             let status = "301 Moved Permanently";
@@ -1380,12 +2074,59 @@ fn serve_console<S: HubStream + ?Sized>(
 
 /// The request's `Host`, when it names this hub as the `Origin` rule does: the only
 /// address a page from here may open a socket to. `None` for anything else.
-fn own_authority<'a>(shared: &Shared, request: &httparse::Request<'_, 'a>) -> Option<&'a str> {
+///
+/// -- WP SECSRV -- Over TLS, any well-formed `Host` on the hub's port: a name the hub's
+/// certificate was accepted for in the browser (a rebound one fails that check).
+fn own_authority<'a>(
+    shared: &Shared,
+    request: &httparse::Request<'_, 'a>,
+    encrypted: bool,
+) -> Option<&'a str> {
     let host = single_header(request, "Host").ok().flatten()?.trim();
-    let advertised = shared.hub.advertised().map(|names| names.host);
-    let name = advertised.as_deref().or(shared.mdns_name.as_deref());
-    let own = OwnNames::current(shared.port, name);
-    origin_allowed(Some(&format!("http://{host}")), &own).then_some(host)
+    if encrypted {
+        let on_port = parse_origin(&format!("https://{host}"), "https://", 443)
+            .is_some_and(|(_, port)| port == shared.port);
+        return on_port.then_some(host);
+    }
+    origin_allowed(Some(&format!("http://{host}")), &shared.own_names()).then_some(host)
+}
+
+// -- WP SECSRV --
+/// The answer to a plaintext request for a name that is not the hub's (DNS rebinding).
+fn misdirected_page<S: HubStream + ?Sized>(shared: &Shared, tcp: &mut S, until: Instant) -> Next {
+    log::debug!("hub: refused a request for a name that is not the hub's");
+    let status = "421 Misdirected Request";
+    let why = b"This hub does not answer to that name: use its address or its .local name.";
+    respond(shared, tcp, status, &[TEXT], why, false, until);
+    Next::Close
+}
+
+// -- WP SECSRV --
+/// The `426` page of a [`TlsMode::Require`] hub: what to open instead, and the key's
+/// fingerprint to compare with the hub's own display.
+fn tls_required_page<S: HubStream + ?Sized>(
+    shared: &Shared,
+    tcp: &mut S,
+    request: &httparse::Request<'_, '_>,
+    until: Instant,
+) -> Next {
+    let fingerprint = shared
+        .tls
+        .as_ref()
+        .map(|tls| guard(&tls.identity).fingerprint())
+        .unwrap_or_default();
+    let at = own_authority(shared, request, false)
+        .map(|host| format!("https://{host}/"))
+        .unwrap_or_else(|| "https:// and this hub's address".to_owned());
+    let body = format!(
+        "This DSPi hub accepts encrypted connections only (TLS).\n\
+         Open {at} instead, or update the client.\n\
+         Check that the hub's key fingerprint is {fingerprint}\n"
+    );
+    let headers = [TEXT, ("Upgrade", "TLS/1.3")];
+    let status = "426 Upgrade Required";
+    respond(shared, tcp, status, &headers, body.as_bytes(), false, until);
+    Next::Close
 }
 
 /// One header's value, all of it: `Err` when it is there more than once or is not text,
@@ -1416,6 +2157,7 @@ fn has_token(value: Option<&str>, token: &str) -> bool {
 fn check_upgrade(
     shared: &Shared,
     request: &httparse::Request<'_, '_>,
+    encrypted: bool,
 ) -> Result<String, (&'static str, &'static str)> {
     const FORBIDDEN: &str = "403 Forbidden";
     const BAD: &str = "400 Bad Request";
@@ -1427,10 +2169,14 @@ fn check_upgrade(
         Some(_) if !shared.web => false,
         // -- WP HB5 -- The name the responder holds now: after a conflict the old one is
         // somebody else's. The configured one until it runs, and after.
-        Some(_) => {
-            let advertised = shared.hub.advertised().map(|names| names.host);
-            let name = advertised.as_deref().or(shared.mdns_name.as_deref());
-            origin_allowed(origin, &OwnNames::current(shared.port, name))
+        // -- WP SECSRV -- `https://` too where TLS is served; over TLS also the page
+        // of the very name it was asked at (`own_authority`'s rule)
+        Some(o) => {
+            let https = shared.policy.serves_tls();
+            origin_allowed_with(origin, &shared.own_names(), https)
+                || (encrypted
+                    && own_authority(shared, request, true)
+                        .is_some_and(|host| o.eq_ignore_ascii_case(&format!("https://{host}"))))
         }
     };
     if !allowed {
@@ -1454,10 +2200,14 @@ fn check_upgrade(
     Ok(tungstenite::handshake::derive_accept_key(key.as_bytes()))
 }
 
-fn upgrade(
+/// -- WP SECSRV -- Over a plain or TLS stream (`encrypted`). A plaintext one on a
+/// [`TlsMode::Require`] hub is closed at once with 4003 [`TLS_REQUIRED_REASON`], so an
+/// older client shows a reason rather than a failed handshake.
+fn upgrade<S: IntoWire>(
     shared: &Arc<Shared>,
     id: u64,
-    mut tcp: TcpStream,
+    mut tcp: S,
+    encrypted: bool,
     tail: Vec<u8>,
     accept: &str,
     peer: IpAddr,
@@ -1473,15 +2223,20 @@ fn upgrade(
         return;
     }
     let limits = &shared.limits;
-    let set = tcp
+    // -- WP SECSRV -- on the socket: a TLS half's reads go by its timeout from here
+    let raw = tcp.raw_tcp();
+    let set = raw
         .set_write_timeout(Some(limits.write_stall))
-        .and(tcp.set_read_timeout(Some(limits.read_tick)));
-    let halves = tcp
+        .and(raw.set_read_timeout(Some(limits.read_tick)));
+    let halves = raw
         .try_clone()
-        .and_then(|cut_off| Ok((cut_off, split_server(tcp, tail, MAX_FRAME as usize)?)));
+        .and_then(|cut_off| Ok((cut_off, tcp.into_wires()?)));
     let (Ok(()), Ok((cut_off, (reader, writer)))) = (set, halves) else {
         return;
     };
+    let config = server_ws_config(MAX_FRAME as usize);
+    let reader = WebSocket::from_partially_read(reader, tail, WsRole::Server, Some(config));
+    let writer = WebSocket::from_raw_socket(writer, WsRole::Server, Some(config));
     let tx = Arc::new(WsTx {
         ws: Mutex::new(writer),
         tcp: cut_off,
@@ -1498,7 +2253,15 @@ fn upgrade(
         writer: None,
         // -- fixup sw2x --
         last_system_status: None,
+        // -- WP SECSRV --
+        encrypted,
     };
+    if !encrypted && !shared.policy.serves_plaintext() {
+        log::debug!("hub: closed a plaintext WebSocket: TLS is required");
+        connection
+            .tx
+            .close(CLOSE_SHUTTING_DOWN, TLS_REQUIRED_REASON);
+    }
     connection.run(reader, upgraded);
 }
 
@@ -1506,7 +2269,8 @@ fn upgrade(
 /// one; before that the reader does, since a socket with no session has no thread to
 /// spare for a writer.
 struct WsTx {
-    ws: Mutex<WebSocket<Pipe>>,
+    // -- WP SECSRV -- plain or TLS
+    ws: Mutex<WebSocket<Wire>>,
     tcp: TcpStream,
     close_grace: Duration,
     closing: OnceLock<Instant>,
@@ -1544,6 +2308,8 @@ impl WsTx {
         };
         let _ = ws.close(Some(frame));
         let _ = ws.flush();
+        // -- WP SECSRV --
+        ws.get_mut().close_notify();
         let _ = self.tcp.shutdown(Shutdown::Write);
     }
 
@@ -1644,6 +2410,9 @@ struct Connection {
     // -- fixup sw2x --
     /// The last `system.status` this connection's session was answered.
     last_system_status: Option<Instant>,
+    // -- WP SECSRV --
+    /// It came over TLS. SECPAIR's `tls_only` mark and `ok.hub_key` go by it.
+    encrypted: bool,
 }
 
 // -- fixup sw2x --
@@ -1671,7 +2440,7 @@ fn is_timeout(e: &io::Error) -> bool {
 }
 
 impl Connection {
-    fn run(&mut self, mut reader: WebSocket<Pipe>, upgraded: Instant) {
+    fn run(&mut self, mut reader: WebSocket<Wire>, upgraded: Instant) {
         let limits = self.shared.limits.clone();
         let auth_deadline = after(upgraded, limits.auth_timeout);
         let mut last_heard = Instant::now();
@@ -1705,7 +2474,10 @@ impl Connection {
             }
         }
         if let Some(deadline) = self.tx.close_deadline() {
-            drain(reader.get_mut().tcp_mut(), deadline);
+            // -- WP SECSRV -- the bytes on the socket, decrypted or not
+            if let Ok(mut tcp) = reader.get_mut().raw_tcp().try_clone() {
+                drain(&mut tcp, deadline);
+            }
         }
     }
 
@@ -1862,6 +2634,16 @@ impl Connection {
         }
         if self.session.is_some() {
             return self.already_authenticated(id);
+        }
+        // -- WP SECSRV -- a PIN and the token it earns never cross in the clear on a hub
+        // that speaks TLS (OD-SECk), unless upstream compatibility is on. Before the PIN
+        // is looked at: no guess counts, and the window stays open.
+        if !self.encrypted && !self.shared.policy.plaintext_pairing() {
+            return self.reply(err(
+                id,
+                TLS_REQUIRED,
+                Some("pairing needs an encrypted connection: update the client"),
+            ));
         }
         let Some(pin) = message.get("pin").and_then(Value::as_str) else {
             return self.reply(err(id, "bad_request", Some("no pin")));
@@ -2449,15 +3231,21 @@ impl Shared {
             .iter()
             .map(|d| json!({"serial": d.identity.serial, "name": d.name}))
             .collect();
-        json!({
+        let mut info = json!({
             "proto": {"major": PROTO_MAJOR, "minor": PROTO_MINOR},
             "hub": self.hub_info(),
             "auth": self.auth.mode().wire_name(),
-            "tls": false,
+            // -- WP SECSRV -- served, and the key a client can pin (base64url, as a QR
+            // code's `k=`); readable over plaintext in `on`
+            "tls": self.policy.serves_tls(),
             "ws": WS_PATH,
             "devices": devices,
-        })
-        .to_string()
+        });
+        if let (Some(tls), Some(map)) = (&self.tls, info.as_object_mut()) {
+            let spki = guard(&tls.identity).pin().to_b64url();
+            map.insert("tls_spki".into(), spki.into());
+        }
+        info.to_string()
     }
 }
 
@@ -2509,6 +3297,41 @@ impl Server {
         auth: Arc<AuthStore>,
     ) -> Result<Self, HubError> {
         let hub_id = hub.hub_id().to_owned();
+        // -- WP SECSRV -- the key before the port: a hub that cannot serve TLS as asked
+        // does not start plaintext instead
+        let policy = TlsPolicy {
+            mode: config.tls,
+            upstream_compat: config.upstream_compat,
+        };
+        if policy.upstream_compat && policy.mode == TlsMode::Require {
+            return Err(HubError::Io(
+                "upstream compatibility needs plaintext, which TLS mode require refuses: \
+                 use TLS mode on"
+                    .into(),
+            ));
+        }
+        let tls = if policy.serves_tls() {
+            let names = TlsNames::new(config.mdns_name.as_deref(), &[]);
+            let (identity, at_start) =
+                TlsIdentity::load(&config.store_dir, &hub_id, &names, SystemTime::now())?;
+            log::info!(
+                "hub: TLS {}, key {}",
+                policy.mode.name(),
+                identity.fingerprint()
+            );
+            let tls_config = tls_config(&identity)?;
+            let now = Instant::now();
+            Some(TlsState {
+                identity: Mutex::new(identity),
+                config: Mutex::new(tls_config),
+                names: Mutex::new(names),
+                next_names: Mutex::new(now),
+                next_refresh: Mutex::new(after(now, TLS_REFRESH_EVERY)),
+                at_start,
+            })
+        } else {
+            None
+        };
         let listener = bind(config.bind, config.port)
             .map_err(|e| HubError::Io(format!("cannot listen on port {}: {e}", config.port)))?;
         let io = |e: io::Error| HubError::Io(format!("cannot set up the listener: {e}"));
@@ -2531,6 +3354,16 @@ impl Server {
             console: config.console.clone(),
             // -- WP P2RS --
             rest: crate::rest::Rest::new(config.rest),
+            // -- WP SECSRV --
+            policy,
+            tls,
+            host_names: config
+                .host_names
+                .iter()
+                .map(|h| h.trim().to_ascii_lowercase())
+                .filter(|h| !h.is_empty())
+                .collect(),
+            own_names: Mutex::new(None),
         });
         let acceptor = {
             let shared = Arc::clone(&shared);

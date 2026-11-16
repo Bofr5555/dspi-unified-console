@@ -146,6 +146,7 @@ mod with_feature {
             serials: vec!["S1".into()],
             web: false,
             path: None,
+            tls: false, // -- WP SECDISC --
         };
         let ip: IpAddr = "10.0.0.1".parse().unwrap();
         net.announce(&advert, &[ip]);

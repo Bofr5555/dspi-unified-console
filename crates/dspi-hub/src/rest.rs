@@ -30,9 +30,10 @@
 //! | One key, many requests | [`ServerLimits::rest_rate`] a second on average, [`ServerLimits::rest_burst`] at once (429 with `Retry-After`) |
 //! | Memory | One entry per key that asked, at most [`crate::auth::MAX_PAIRED_CLIENTS`] that verified, dropped when idle |
 //!
-//! **TLS: SECSRV.** The request is read and answered over [`HubStream`], so WP SECSRV
-//! serves this over TLS by changing only the accept path; it also adds the `Host`
-//! check for every route and the effect of a key's `plaintext_ok`. Neither is here.
+//! **TLS: SECSRV.** The request is read and answered over [`HubStream`], plain or TLS;
+//! the server checks `Host` for every route. -- WP SECSRV -- Over plaintext on a hub
+//! that speaks TLS, a key not minted `plaintext_ok` is refused with `426`
+//! `tls_required` once it is known, before its request is read on (PLAN-SEC 4.7).
 //!
 //! Lock level: [`Rest`]'s table is a leaf. No hub call is made under it.
 
@@ -106,6 +107,12 @@ pub(crate) struct RestCtx<'a> {
     pub(crate) auth: &'a AuthStore,
     pub(crate) hub_id: &'a str,
     pub(crate) limits: &'a ServerLimits,
+    // -- WP SECSRV --
+    /// The request came over TLS.
+    pub(crate) encrypted: bool,
+    /// Every API key is taken over plaintext (TLS off, or upstream compatibility),
+    /// not only one minted `plaintext_ok` (PLAN-SEC 4.7, OD-SECk).
+    pub(crate) any_key_in_plaintext: bool,
 }
 
 /// A key that has asked lately.
@@ -372,6 +379,22 @@ impl Rest {
             Ok(authed) if authed.kind != ClientKind::Api => Err(unauthenticated(
                 "a console's token is not an API key: mint one with auth.mint",
             )),
+            // -- WP SECSRV -- the key is good; may it be used in the clear?
+            Ok(authed)
+                if !ctx.encrypted
+                    && !ctx.any_key_in_plaintext
+                    && !plaintext_ok(ctx, authed.cid) =>
+            {
+                log::debug!("hub: refused an API key over plaintext");
+                let mut reply = error_reply(
+                    ctx.hub_id,
+                    "426 Upgrade Required",
+                    crate::server::TLS_REQUIRED,
+                    "this API key works over https only (it was not minted plaintext_ok)",
+                );
+                reply.headers.push(("Upgrade", "TLS/1.3".to_owned()));
+                Err(reply)
+            }
             Ok(authed) => Ok((authed.cid, authed.role)),
             Err(AuthError::RateLimited) => {
                 let mut reply = error_reply(
@@ -578,6 +601,15 @@ fn json_reply(status: &'static str, body: &Value) -> Reply {
 }
 
 /// `{"v": 1, "hub": …, "code": …, "msg": …}`.
+// -- WP SECSRV --
+/// Whether API key `cid` was minted `plaintext_ok`.
+fn plaintext_ok(ctx: &RestCtx<'_>, cid: u32) -> bool {
+    ctx.auth
+        .clients()
+        .iter()
+        .any(|c| c.cid == cid && c.plaintext_ok)
+}
+
 fn error_reply(hub_id: &str, status: &'static str, code: &str, msg: &str) -> Reply {
     json_reply(
         status,

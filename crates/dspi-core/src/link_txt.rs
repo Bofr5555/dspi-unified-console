@@ -4,7 +4,8 @@
 //!
 //! The rules are `dspi_link::discovery::parse_service`'s, the one reader of
 //! spec 3.1's keys that the desktop browser uses too: `v` and `hid` required,
-//! `tls=1` refused, unknown keys ignored, and a `kind`, `auth`, `n` or `path`
+//! `tls=1` read into `tls_advertised` (WP SECDISC; it used to be refused),
+//! unknown keys ignored, and a `kind`, `auth`, `n` or `path`
 //! that makes no sense falls back rather than losing the hub. Keys ignore case.
 #![warn(
     clippy::unwrap_used,
@@ -32,7 +33,7 @@ const NO_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1));
 ///
 /// Differs from the Mac's `HubBrowser.hub(fromTXT:)`
 /// (`Link/HubBrowser.swift:583-597`) by the spec and Android's `HubTxt`: a
-/// record without `v` or `hid`, or with `tls=1`, is no hub (the Mac made up a
+/// record without `v` or `hid` is no hub (the Mac made up a
 /// `service:<name>` id and listed it), and a missing `kind` reads `unknown`
 /// (the Mac's `console`).
 ///
@@ -58,6 +59,7 @@ pub fn link_parse_txt(service_name: String, txt: Vec<LinkTxtEntry>) -> Result<Li
         device_count: hub.device_count,
         serials: hub.serials,
         path: hub.path,
+        tls_advertised: hub.tls_advertised, // -- WP SECDISC --
     })
 }
 
@@ -65,3 +67,8 @@ pub fn link_parse_txt(service_name: String, txt: Vec<LinkTxtEntry>) -> Result<Li
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "link_txt/tests_wp_cgswsa.rs"]
 mod tests_wp_cgswsa;
+
+// -- WP SECDISC --
+#[cfg(test)]
+#[path = "link_txt/tests_wp_secdisc.rs"]
+mod tests_wp_secdisc;

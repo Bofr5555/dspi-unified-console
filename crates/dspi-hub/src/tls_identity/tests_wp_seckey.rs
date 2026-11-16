@@ -15,6 +15,9 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, Serve
 use rustls::{ClientConfig, ClientConnection, RootCertStore, ServerConfig, ServerConnection};
 
 use super::*;
+// -- WP SECSRV -- were the module's own copies
+use data_encoding::BASE64URL_NOPAD;
+const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 use crate::store::tests_wp_hb1::scratch;
 
 const HID: &str = "0f8e1c2a-3b4d-4e5f-8a9b-0c1d2e3f4a5b";
@@ -103,8 +106,8 @@ fn handshake(id: &TlsIdentity, server_name: &str) -> Result<Vec<u8>, String> {
 
 /// Verify a rotation the way a client does: the old key from the announcement, its
 /// hash against the pin held, then the signature. ring itself, not this module.
-fn client_accepts(held: &SpkiPin, hid: &str, presented: &SpkiPin, next: &KeyNext) -> bool {
-    if SpkiPin::of_spki(&next.prev_spki_der) != *held || next.spki != *presented {
+fn client_accepts(held: &SpkiHash, hid: &str, presented: &SpkiHash, next: &KeyNext) -> bool {
+    if SpkiHash::of_spki(&next.prev_spki_der) != *held || next.spki != *presented {
         return false;
     }
     // A P-256 SPKI is a fixed 26-byte prefix and the 65-byte uncompressed point.
@@ -144,9 +147,9 @@ fn wp_seckey_the_first_start_makes_a_private_key_and_a_certificate() {
     );
     // The pin is SHA-256 of the SPKI the certificate carries.
     assert_eq!(cert_spki(id.certificate_der()), id.spki_der());
-    assert_eq!(id.pin(), SpkiPin::of_spki(id.spki_der()));
+    assert_eq!(id.pin(), SpkiHash::of_spki(id.spki_der()));
     assert_eq!(
-        id.pin().hex(),
+        id.pin().to_hex(),
         HEXLOWER.encode(&Sha256::digest(id.spki_der()))
     );
     // Display forms.
@@ -160,35 +163,41 @@ fn wp_seckey_the_first_start_makes_a_private_key_and_a_certificate() {
             .iter()
             .all(|g| g.len() == 4 && g.bytes().all(|b| CROCKFORD.contains(&b)))
     );
-    assert!(id.pin().curl().starts_with("sha256//"));
+    assert!(id.pin().curl_pin().starts_with("sha256//"));
     assert_eq!(
-        BASE64.decode(&id.pin().curl().as_bytes()[8..]).unwrap(),
+        BASE64.decode(&id.pin().curl_pin().as_bytes()[8..]).unwrap(),
         id.pin().0
     );
     assert_eq!(
         BASE64URL_NOPAD
-            .decode(id.pin().base64url().as_bytes())
+            .decode(id.pin().to_b64url().as_bytes())
             .unwrap(),
         id.pin().0
     );
     // SANs: localhost, the stable name, the mDNS name; no address.
     let stable = format!("{HID}.dspi.local");
     assert_eq!(id.names(), [stable.as_str(), HOST, "localhost"]);
-    assert_eq!(id.not_after() - (now() - 3600), VALIDITY_DAYS * DAY);
+    // -- review secb -- issued a moment before `now()` is read again: a second may
+    // have turned over in between (seen once in the gate)
+    let validity = id.not_after() - (now() - 3600);
+    assert!(
+        (VALIDITY_DAYS * DAY - 2..=VALIDITY_DAYS * DAY).contains(&validity),
+        "{validity}"
+    );
 }
 
 #[test]
 fn wp_seckey_the_display_form_is_80_bits_of_crockford_base32() {
     let mut pin = [0u8; 32];
-    assert_eq!(display_pin(&pin), "SHA256:0000-0000-0000-0000");
+    assert_eq!(SpkiHash(pin).display(), "SHA256:0000-0000-0000-0000");
     pin[..10].copy_from_slice(&[0xFF; 10]);
     pin[10] = 0xAB; // past 80 bits: not shown
-    assert_eq!(display_pin(&pin), "SHA256:ZZZZ-ZZZZ-ZZZZ-ZZZZ");
+    assert_eq!(SpkiHash(pin).display(), "SHA256:ZZZZ-ZZZZ-ZZZZ-ZZZZ");
     pin = [0; 32];
     pin[0] = 0b0000_0100; // the second 5-bit group: 100 then byte 1's top two, 00
-    assert_eq!(display_pin(&pin), "SHA256:0G00-0000-0000-0000");
+    assert_eq!(SpkiHash(pin).display(), "SHA256:0G00-0000-0000-0000");
     pin[0] = 0b0000_1000; // the first group: 00001
-    assert_eq!(display_pin(&pin), "SHA256:1000-0000-0000-0000");
+    assert_eq!(SpkiHash(pin).display(), "SHA256:1000-0000-0000-0000");
 }
 
 #[cfg(unix)]
@@ -223,7 +232,7 @@ fn wp_seckey_rustls_accepts_the_certificate_for_every_name_it_carries() {
         let seen = handshake(&id, name).unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(seen, id.certificate_der());
         // What a pinning client hashes is the pin.
-        assert_eq!(SpkiPin::of_spki(&cert_spki(&seen)), id.pin());
+        assert_eq!(SpkiHash::of_spki(&cert_spki(&seen)), id.pin());
     }
     // A name it does not carry: webpki refuses, so the SANs are what it says.
     let e = handshake(&id, "other.local").unwrap_err();
@@ -283,7 +292,7 @@ fn wp_seckey_a_reissue_keeps_the_spki() {
     );
     assert_ne!(id.certificate_der(), first);
     assert_eq!(id.pin(), pin);
-    assert_eq!(SpkiPin::of_spki(&cert_spki(id.certificate_der())), pin);
+    assert_eq!(SpkiHash::of_spki(&cert_spki(id.certificate_der())), pin);
     handshake(&id, "dspi-0123456789ab-2.local").unwrap();
     assert!(handshake(&id, HOST).is_err());
 
@@ -312,7 +321,7 @@ fn wp_seckey_a_reissue_keeps_the_spki() {
         })
     );
     assert_ne!(id.certificate_der(), before);
-    assert_eq!(SpkiPin::of_spki(&cert_spki(id.certificate_der())), pin);
+    assert_eq!(SpkiHash::of_spki(&cert_spki(id.certificate_der())), pin);
     assert!(id.not_after() > end);
 
     // And at the next start the same key and the new certificate are found.
@@ -358,7 +367,7 @@ fn wp_seckey_the_rotation_signature_verifies_and_a_forged_one_does_not() {
             signed: true
         }
     );
-    assert_eq!(SpkiPin::of_spki(&cert_spki(id.certificate_der())), new);
+    assert_eq!(SpkiHash::of_spki(&cert_spki(id.certificate_der())), new);
     handshake(&id, HOST).unwrap();
 
     let next = id.key_next(at(t + 20)).unwrap();
@@ -378,7 +387,7 @@ fn wp_seckey_the_rotation_signature_verifies_and_a_forged_one_does_not() {
         !client_accepts(&old, "another-hub", &new, &next),
         "another hub's id"
     );
-    let other = SpkiPin([9; 32]);
+    let other = SpkiHash([9; 32]);
     assert!(!client_accepts(&old, HID, &other, &next), "another new key");
     let attacker = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).unwrap();
     let forged = KeyNext {
@@ -475,7 +484,10 @@ fn wp_seckey_a_corrupt_key_is_set_aside_and_replaced() {
         assert_eq!(fs::read(&aside).unwrap(), *bytes, "{what}");
         assert!(!pins.contains(&id.pin()), "{what}: a new key");
         pins.push(id.pin());
-        assert_eq!(SpkiPin::of_spki(&cert_spki(id.certificate_der())), id.pin());
+        assert_eq!(
+            SpkiHash::of_spki(&cert_spki(id.certificate_der())),
+            id.pin()
+        );
         handshake(&id, HOST).unwrap();
         #[cfg(unix)]
         assert_eq!(mode(&tls.join(KEY_FILE)), 0o600);
@@ -515,7 +527,7 @@ fn wp_seckey_a_corrupt_key_is_set_aside_and_replaced() {
     fs::write(tls.join(CERT_FILE), first.certificate_pem()).unwrap();
     let (id3, events) = load(&data, &names(), t + 400);
     assert_eq!(events.len(), 1, "{events:?}");
-    assert_eq!(SpkiPin::of_spki(&cert_spki(id3.certificate_der())), pin);
+    assert_eq!(SpkiHash::of_spki(&cert_spki(id3.certificate_der())), pin);
 }
 
 #[test]

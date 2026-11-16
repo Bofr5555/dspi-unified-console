@@ -66,6 +66,12 @@ use tungstenite::{Message, WebSocket};
 use crate::clock::{Clock, SystemClock};
 use crate::frames::{kind, status, CmdResponse, Dir, Frame, NotifyFrame, PollFrame};
 
+// -- WP SECCORE -- TLS on the fake hub's port (PLAN-SEC 4.1), with feature `tls`
+#[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+mod fake_tls;
+#[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+pub use fake_tls::FakeTlsKey;
+
 pub const BULK_V32: &[u8] = include_bytes!("../../../tests/fixtures/link/device/bulk_v32.bin");
 pub const PLATFORM: &[u8] = include_bytes!("../../../tests/fixtures/link/device/platform.bin");
 pub const STATUS_WVALUE9: &[u8] = include_bytes!("../../../tests/fixtures/link/device/status_wvalue9.bin");
@@ -238,6 +244,9 @@ enum Out {
     Text(String),
     Binary(Vec<u8>),
     Close(u16),
+    // -- WP SECBFIXA --
+    /// A close frame with a reason.
+    CloseWith(u16, String),
     /// Cut the TCP connection without a close frame.
     Abort,
 }
@@ -271,6 +280,34 @@ struct SessionRec {
     polls: HashMap<u8, PollRec>,
     peer: Option<IpAddr>,
     held: Vec<Out>,
+    // -- WP SECCORE --
+    /// The session runs over TLS.
+    tls: bool,
+}
+
+// -- WP SECCORE --
+/// The fake hub's TLS: what it serves and what it saw.
+#[derive(Default)]
+struct SecState {
+    /// Serve TLS with this key (and plaintext beside it, as `--tls on`).
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    key: Option<FakeTlsKey>,
+    /// `hello.hub.key_next`, as given.
+    key_next: Option<Value>,
+    /// `ok.hub_key` instead of the served key's pin.
+    pair_hub_key: Option<String>,
+    /// Without a key, wait for an HTTP head after a ClientHello instead of closing
+    /// at once (a server whose parser does not refuse early).
+    slow_plain: bool,
+    // -- WP SECBFIXA --
+    /// `require` mode: a plaintext upgrade is completed, then closed at once with
+    /// 4003 `tls_required`.
+    require_tls: bool,
+    /// WebSocket upgrades: plaintext, and over TLS.
+    plain_upgrades: u32,
+    tls_upgrades: u32,
+    /// ClientHellos closed because no TLS is served.
+    tls_refused: u32,
 }
 
 /// One granted poll of a session.
@@ -377,6 +414,8 @@ struct State {
     /// Every request type a session sent past authentication, in order
     /// ([`FakeHub::json_requests`]); the oldest go past 4096.
     json_log: Vec<Value>,
+    // -- WP SECCORE --
+    sec: SecState,
 }
 
 // -- WP P2CC1 --
@@ -422,6 +461,22 @@ fn allowed(role: &str, class: &str) -> bool {
 }
 
 impl State {
+    // -- WP SECCORE --
+    /// `ok.hub_key` for session `sid`: the override, else the served key's pin
+    /// when the session is over TLS.
+    fn hub_key_for(&self, sid: u16) -> Option<String> {
+        if let Some(k) = &self.sec.pair_hub_key {
+            return Some(k.clone());
+        }
+        let tls = self.sessions.get(&sid).is_some_and(|r| r.tls);
+        #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+        if tls {
+            return self.sec.key.as_ref().map(FakeTlsKey::pin_b64url);
+        }
+        let _ = tls;
+        None
+    }
+
     fn class(&self, b_request: u8, dir: u8) -> &str {
         self.classes.get(&(b_request, dir)).map(String::as_str).unwrap_or("config")
     }
@@ -879,9 +934,10 @@ impl FakeHub {
             pings_sent: 0,
             pongs_received: 0,
             tokens_seen: Vec::new(),
-            status: None,         // -- WP P0M --
-            responder: None,      // -- WP P2CC1 --
-            json_log: Vec::new(), // -- WP P2CC1 --
+            status: None,             // -- WP P0M --
+            responder: None,          // -- WP P2CC1 --
+            json_log: Vec::new(),     // -- WP P2CC1 --
+            sec: SecState::default(), // -- WP SECCORE --
             fw_seq: 0,
             next_session: 12,
             sessions: HashMap::new(),
@@ -1012,6 +1068,21 @@ impl FakeHub {
     }
 
     /// Close every session with `code` (4003 = hub shutting down).
+    // -- WP SECBFIXA --
+    /// `require` mode from now on: plaintext upgrades are closed with 4003
+    /// `tls_required`.
+    pub fn set_require_tls(&self, on: bool) {
+        lock(&self.state).sec.require_tls = on;
+    }
+
+    /// Close every session with `code` and the close frame's `reason`.
+    pub fn close_all_with(&self, code: u16, reason: &str) {
+        let s = lock(&self.state);
+        for r in s.sessions.values() {
+            let _ = r.tx.send(Out::CloseWith(code, reason.to_owned()));
+        }
+    }
+
     pub fn close_all(&self, code: u16) {
         let s = lock(&self.state);
         for r in s.sessions.values() {
@@ -1163,6 +1234,41 @@ impl FakeHub {
         lock(&self.state).broadcast(event.to_string());
     }
 
+    // -- WP SECCORE --
+    /// Serve TLS with `key` from now on, beside plaintext (`None`: plaintext
+    /// only; a ClientHello is then closed at once, as an HTTP parser refuses it).
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    pub fn set_tls(&self, key: Option<&FakeTlsKey>) {
+        lock(&self.state).sec.key = key.cloned();
+    }
+
+    /// `hello.hub.key_next` from now on (`None`: no announcement).
+    pub fn set_key_next(&self, key_next: Option<Value>) {
+        lock(&self.state).sec.key_next = key_next;
+    }
+
+    /// `auth.pair`'s `ok.hub_key` instead of the served key's pin.
+    pub fn set_pair_hub_key(&self, hub_key: Option<&str>) {
+        lock(&self.state).sec.pair_hub_key = hub_key.map(str::to_owned);
+    }
+
+    /// Without TLS, a ClientHello waits for an HTTP head that never comes, as a
+    /// server that does not refuse a bad request line early.
+    pub fn set_slow_plaintext(&self, on: bool) {
+        lock(&self.state).sec.slow_plain = on;
+    }
+
+    /// WebSocket upgrades so far: `(plaintext, over TLS)`.
+    pub fn upgrades(&self) -> (u32, u32) {
+        let s = lock(&self.state);
+        (s.sec.plain_upgrades, s.sec.tls_upgrades)
+    }
+
+    /// ClientHellos closed because no TLS was served.
+    pub fn tls_refused(&self) -> u32 {
+        lock(&self.state).sec.tls_refused
+    }
+
     pub fn stop(&self) {
         self.close_all(4003);
         self.stop.store(true, Ordering::SeqCst);
@@ -1178,7 +1284,92 @@ impl Drop for FakeHub {
 /// Bytes already read from the socket, then the socket.
 struct Replay {
     pre: io::Cursor<Vec<u8>>,
-    tcp: TcpStream,
+    tcp: Conn,
+}
+
+// -- WP SECCORE --
+/// A connection, plaintext or TLS.
+enum Conn {
+    Plain(TcpStream),
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    Tls(crate::tls::TlsPipe),
+}
+
+impl Conn {
+    fn socket(&self) -> &TcpStream {
+        match self {
+            Conn::Plain(t) => t,
+            #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+            Conn::Tls(t) => t.tcp(),
+        }
+    }
+
+    fn shutdown(&self, how: Shutdown) -> io::Result<()> {
+        self.socket().shutdown(how)
+    }
+
+    fn is_tls(&self) -> bool {
+        !matches!(self, Conn::Plain(_))
+    }
+}
+
+impl Read for Conn {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Conn::Plain(t) => t.read(buf),
+            #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+            Conn::Tls(t) => t.read(buf),
+        }
+    }
+}
+
+impl Write for Conn {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Conn::Plain(t) => t.write(buf),
+            #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+            Conn::Tls(t) => t.write(buf),
+        }
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Conn::Plain(t) => t.flush(),
+            #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+            Conn::Tls(t) => t.flush(),
+        }
+    }
+}
+
+// -- WP SECCORE --
+/// The connection's first byte decides: a TLS ClientHello is accepted with the
+/// served key, or closed at once without one (unless [`SecState::slow_plain`]).
+/// `None`: the connection is over.
+fn open_conn(tcp: TcpStream, state: &Arc<Mutex<State>>) -> Option<Conn> {
+    let mut first = [0u8; 1];
+    // 0x16: a TLS handshake record
+    let hello = matches!(tcp.peek(&mut first), Ok(1) if first[0] == 0x16);
+    if !hello {
+        return Some(Conn::Plain(tcp));
+    }
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    {
+        let key = lock(state).sec.key.clone();
+        if let Some(key) = key {
+            let by = crate::clock::Instant::now() + Duration::from_secs(5);
+            let mut pipe = crate::tls::accept(tcp, key.server_config(), by).ok()?;
+            pipe.set_deadline(None);
+            let _ = pipe.tcp().set_read_timeout(Some(Duration::from_secs(5)));
+            return Some(Conn::Tls(pipe));
+        }
+    }
+    let mut s = lock(state);
+    if s.sec.slow_plain {
+        return Some(Conn::Plain(tcp));
+    }
+    s.sec.tls_refused += 1;
+    drop(s);
+    let _ = tcp.shutdown(Shutdown::Both);
+    None
 }
 
 impl Read for Replay {
@@ -1200,12 +1391,14 @@ impl Write for Replay {
 }
 
 #[allow(clippy::result_large_err)] // tungstenite's callback signature
-fn serve(mut tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
+fn serve(tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
     let _ = tcp.set_nonblocking(false);
     // -- WP LK2 -- as the ESP32 bridge (http_server.c:745): no Nagle delay on
     // replies, which matters once several commands are on the wire
     let _ = tcp.set_nodelay(true);
     let _ = tcp.set_read_timeout(Some(Duration::from_secs(5)));
+    // -- WP SECCORE --
+    let Some(mut tcp) = open_conn(tcp, &state) else { return };
     // Read the request head to tell the info endpoint from the upgrade
     let mut head = Vec::new();
     let mut b = [0u8; 1024];
@@ -1235,7 +1428,8 @@ fn serve(mut tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
         return;
     }
     // Refusals come before the upgrade (http_server.c `refuse_handshake`)
-    let peer = tcp.peer_addr().ok().map(|a| a.ip());
+    let peer = tcp.socket().peer_addr().ok().map(|a| a.ip());
+    let tls = tcp.is_tls(); // -- WP SECCORE --
     let (slot, tx_rx) = {
         let mut s = lock(&state);
         let refuse = if let Some(code) = s.faults.refuse_handshake {
@@ -1267,11 +1461,18 @@ fn serve(mut tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
                 polls: HashMap::new(),
                 peer,
                 held: Vec::new(),
+                tls, // -- WP SECCORE --
             },
         );
+        // -- WP SECCORE --
+        if tls {
+            s.sec.tls_upgrades += 1;
+        } else {
+            s.sec.plain_upgrades += 1;
+        }
         (sid, rx)
     };
-    let raw = tcp.try_clone();
+    let raw = tcp.socket().try_clone();
     let stream = Replay { pre: io::Cursor::new(head), tcp };
     let ws = tungstenite::accept_hdr(stream, |req: &Request, mut resp: Response| {
         let asked = req.headers().get("Sec-WebSocket-Protocol").and_then(|v| v.to_str().ok()).unwrap_or("");
@@ -1281,6 +1482,15 @@ fn serve(mut tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
         Ok(resp)
     });
     if let (Ok(mut ws), Ok(raw)) = (ws, raw) {
+        // -- WP SECBFIXA -- `require`: plaintext gets in only to hear why not
+        if !tls && lock(&state).sec.require_tls {
+            write_out(&mut ws, Out::CloseWith(4003, "tls_required: this hub accepts TLS only".into()));
+            let _ = raw.set_read_timeout(Some(Duration::from_millis(200)));
+            let _ = ws.read();
+            let mut s = lock(&state);
+            s.sessions.remove(&slot);
+            return;
+        }
         let _ = raw.set_read_timeout(Some(Duration::from_millis(5)));
         session(&mut ws, &state, &stop, slot, tx_rx);
     }
@@ -1291,7 +1501,7 @@ fn serve(mut tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
     }
 }
 
-fn refuse_handshake(tcp: &mut TcpStream, code: u16) {
+fn refuse_handshake(tcp: &mut impl Write, code: u16) {
     let (line, body) = match code {
         400 => ("400 Bad Request", "Link needs the dspi-link-1 sub-protocol."),
         403 => ("403 Forbidden", "This bridge accepts Link sessions only from its own pages."),
@@ -1317,6 +1527,12 @@ fn write_out(ws: &mut WebSocket<Replay>, o: Out) -> bool {
         Out::Binary(b) => ws.send(Message::binary(b)).is_ok(),
         Out::Close(code) => {
             send_close(ws, code);
+            false
+        }
+        // -- WP SECBFIXA --
+        Out::CloseWith(code, reason) => {
+            let _ = ws.close(Some(CloseFrame { code: CloseCode::from(code), reason: reason.into() }));
+            let _ = ws.flush();
             false
         }
         Out::Abort => {
@@ -1543,6 +1759,10 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
             if let Auth::Fixed(_) = s.cfg.auth {
                 h["pin_source"] = json!("fixed");
             }
+            // -- WP SECCORE --
+            if let Some(next) = &s.sec.key_next {
+                h["hub"]["key_next"] = next.clone();
+            }
             if s.cfg.auth == Auth::None {
                 if let Some(r) = s.sessions.get_mut(&sid) {
                     r.authed = true;
@@ -1591,6 +1811,10 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
             let mut extra = json!({"session": sid, "role": role, "policy": {"denied": denied}});
             if let Some(tok) = token {
                 extra["token"] = json!(tok);
+            }
+            // -- WP SECCORE -- the key this session's TLS presents
+            if let Some(k) = s.hub_key_for(sid) {
+                extra["hub_key"] = json!(k);
             }
             vec![ok(&id, extra)]
         }

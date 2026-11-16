@@ -30,17 +30,21 @@ pub mod tls;
 
 #[cfg(feature = "fake-hub")]
 pub mod fakehub;
+// -- WP SECCORE -- the stored credential (v1/v2) and the `dspi://pair` link; no TLS needed
+pub mod credential;
 
 use std::time::Duration;
 
 pub use client::{
-    close_reason, should_reconnect, AuthState, ConnectOptions, LinkClient, LinkEvents, NotifyItem, SessionConfig,
-    SessionState, Timing, TokenLookup,
+    close_reason, hub_close_reason, should_reconnect, should_reconnect_after, AuthState, ConnectOptions, LinkClient,
+    LinkEvents, NotifyItem, SessionConfig, SessionState, Timing, TokenLookup,
 };
 // -- WP LK2 --
 pub use client::CmdSpec;
 pub use frames::{status, Dir};
 pub use messages::{DeviceInfo, HelloHub, PinSource};
+// -- WP SECCORE --
+pub use client::{TlsOptions, TlsSeen};
 
 /// Default hub port: decimal of the USB VID 0x2E8B (spec 3.1).
 pub const DEFAULT_PORT: u16 = 11915;
@@ -88,6 +92,28 @@ pub enum LinkError {
     /// Any other HTTP status at the WebSocket upgrade (400, 403, ...).
     #[error("the hub refused the connection (HTTP {status}): {}", sanitize_hub_text(msg))]
     HandshakeRefused { status: u16, msg: String },
+    // -- WP SECCORE -- (PLAN-SEC 4.3). None carries key material.
+    /// The hub presented another key than the pinned one, and no valid rotation
+    /// from the pinned key: nothing was sent to it. Pairing again is the way on.
+    #[error("this hub's key changed; pair again to trust the new key")]
+    HubKeyChanged,
+    /// The hub's key is not the one it was expected to have (a pairing link's
+    /// `k`, or `auth.pair`'s `ok.hub_key`): nothing was stored.
+    #[error("this hub's key does not match the one it should have")]
+    HubKeyUnverified,
+    /// TLS was required (the hub is pinned, or `advertised` encryption) and the
+    /// TLS handshake failed: no plaintext was tried.
+    #[error("{}", if *advertised {
+        "this hub advertises encryption but refused it"
+    } else {
+        "this hub was set up with encryption but refused it"
+    })]
+    TlsRefused { advertised: bool },
+    // -- WP SECBFIXA --
+    /// The hub closed a plaintext session with 4003 `tls_required` (its `require`
+    /// mode): only TLS gets in, so retrying in plaintext cannot help.
+    #[error("{}", client::TLS_REQUIRED_REASON)]
+    TlsRequired,
 }
 
 /// Shortest wait after `rate_limited` (the hub locks an address for 60 s).
@@ -139,8 +165,8 @@ impl LinkError {
         const BUSY: RetryAdvice = RetryAdvice::Retry { min_delay: HUB_BUSY_BACKOFF };
         match self {
             LinkError::Io(_) | LinkError::Timeout | LinkError::Handshake(_) => NOW,
-            LinkError::Closed { code, .. } => {
-                if should_reconnect(*code) {
+            LinkError::Closed { code, reason } => {
+                if should_reconnect_after(*code, reason) {
                     NOW
                 } else {
                     RetryAdvice::Stop
@@ -157,6 +183,10 @@ impl LinkError {
             LinkError::HandshakeRefused { .. } | LinkError::Protocol(_) | LinkError::WrongPin { .. } => {
                 RetryAdvice::Stop
             }
+            // -- WP SECCORE -- a person must decide; a refused TLS may pass (a restart)
+            LinkError::HubKeyChanged | LinkError::HubKeyUnverified => RetryAdvice::Stop,
+            LinkError::TlsRequired => RetryAdvice::Stop, // -- WP SECBFIXA --
+            LinkError::TlsRefused { .. } => BUSY,
         }
     }
 }

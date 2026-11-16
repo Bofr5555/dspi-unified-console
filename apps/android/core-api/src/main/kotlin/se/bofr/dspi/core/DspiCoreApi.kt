@@ -2826,9 +2826,36 @@ interface DspiCoreApi : AutoCloseable {
      * seconds), `handshake_refused` (trying again will not help),
      * `rate_limited` (the token stays good; wait a minute), `protocol`,
      * `timeout`, `closed`, or the hub's own.
+     *
+     * -- WP SECCORE -- `token` is the stored **credential** (PLAN-SEC 4.3): a
+     * bare token (`v1`) or a `v2` string with the hub's key pin, as
+     * `link_pair`, [`LinkListener::on_link_token_issued`] and
+     * `link_security().credential` give it; store those whenever they change.
+     * TLS is tried first. A pinned hub is reached over TLS only, with its key
+     * checked before the token goes out: `hub_key_changed` when it is another
+     * key (pair again), `hub_key_unverified` for a pairing link's pin,
+     * `tls_refused` when TLS fails; never plaintext. An unpinned hub without
+     * TLS (an upstream hub) connects unencrypted, as before
+     * (`link_security().encrypted` false). Same as
+     * [`DspiCore::link_connect_advertised`] with no advert.
      */
     @Throws(DspiException::class)
     fun linkConnect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello
+
+    /**
+     * [`DspiCore::link_connect`] with what the hub's DNS-SD advert said:
+     * `tls_advertised` (the browsed record's `tls_advertised`, spec 3.1
+     * `tls=1`): TLS is then required even without a pin, and its failure is
+     * `tls_refused`, never a plaintext retry (ratchet (a)). A pinned hub needs
+     * TLS whatever the advert says.
+     */
+    @Throws(DspiException::class)
+    fun linkConnectAdvertised(url: String, clientName: String, appVersion: String, credential: String, expectedHubId: String, tlsAdvertised: Boolean): LinkHello
+
+    /**
+     * The current session's encryption, for the hub's status and settings.
+     */
+    fun linkSecurity(): LinkSecurity
 
     /**
      * Pair with the PIN the user typed (role `control`, as the macOS
@@ -4926,6 +4953,29 @@ interface DspiCoreApi : AutoCloseable {
     fun linkFetchInfo(host: String, port: Int): LinkInfo
 
     /**
+     * Parse a pairing link, `dspi://pair?h=<hid>&a=<host:port>&k=<key>&p=<pin>`
+     * (the hub's QR code; PLAN-SEC 4.3). A hint, never a bypass: connect with
+     * [`LinkPairLink::credential`] (pinned to `k`) and `hub_id`, then `link_pair`
+     * with `pin` after the user has confirmed the hub name and fingerprint. A hub
+     * presenting another key fails the connect with `hub_key_unverified`,
+     * before any PIN goes out.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it is not a valid pairing link.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    @Throws(DspiException::class)
+    fun linkParsePairLink(text: String): LinkPairLink
+
+    /**
+     * The hub key fingerprint a stored credential is pinned to
+     * (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" for a `v1` credential (no TLS yet).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun linkCredentialHubKey(credential: String): String
+
+    /**
      * The wording of `phase`. `pin_source` is [`crate::LinkStatus::pin_source`]:
      * it matters only to [`LinkPhase::NeedsPairing`], and anything but `fixed`
      * means `window`, as a hub that does not say does (spec 7.2).
@@ -4976,7 +5026,7 @@ interface DspiCoreApi : AutoCloseable {
      *
      * Differs from the Mac's `HubBrowser.hub(fromTXT:)`
      * (`Link/HubBrowser.swift:583-597`) by the spec and Android's `HubTxt`: a
-     * record without `v` or `hid`, or with `tls=1`, is no hub (the Mac made up a
+     * record without `v` or `hid` is no hub (the Mac made up a
      * `service:<name>` id and listed it), and a missing `kind` reads `unknown`
      * (the Mac's `console`).
      *

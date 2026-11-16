@@ -2,6 +2,10 @@
 // (the fields the client uses) and the DNS-SD TXT keys of DSPi-Link spec 3.1.
 package se.bofr.dspi.link
 
+import se.bofr.dspi.core.DspiException
+import se.bofr.dspi.core.LinkTxtEntry
+import se.bofr.dspi.core.LinkTxtRecord
+
 /** DNS-SD service type of a DSPi Link hub (spec 3.1). */
 const val LINK_SERVICE_TYPE = "_dspi._tcp"
 
@@ -25,7 +29,13 @@ data class LinkHub(
     val host: String,
     val port: Int,
     val path: String = LINK_DEFAULT_PATH,
-    val isManual: Boolean = false
+    val isManual: Boolean = false,
+    /**
+     * SEC-B: the TXT record said `tls=1`. A hint, not trust (anyone on the LAN can
+     * forge or strip it), passed to the connect so advertised TLS never falls back
+     * to plaintext. False for an upstream hub and for a typed address.
+     */
+    val tlsAdvertised: Boolean = false
 ) {
     /** "192.168.1.20" or "studio.local:8080" (the port only when it is not the default). */
     val displayAddress: String
@@ -46,35 +56,44 @@ data class LinkHub(
     }
 }
 
-/** TXT record of a browsed hub (spec 3.1). Unknown keys are ignored. */
+/**
+ * TXT record of a browsed hub (spec 3.1), read by the core's one parser
+ * (`link_parse_txt`, the desktop browser's rules): `v` and `hid` required, unknown
+ * keys ignored, `tls=1` read into [LinkHub.tlsAdvertised], and DNS-SD's `\DDD`
+ * escapes in the instance name undone.
+ */
 object HubTxt {
+    /** [attrs] as `NsdServiceInfo.attributes` gives them; a key without a value reads as "". */
+    fun entries(attrs: Map<String, ByteArray?>): List<LinkTxtEntry> =
+        attrs.map { (k, v) -> LinkTxtEntry(k, v?.toString(Charsets.US_ASCII).orEmpty()) }
+
     /**
-     * [attrs] as Android's `NsdServiceInfo.attributes` gives them. Returns
-     * null when a required key is missing or the major version is not 1.
+     * The hub at [host]:[port] that [serviceName]'s TXT [attrs] describe, or null
+     * when [parseTxt] (the core's `linkParseTxt`) says it is no hub.
      */
-    fun parse(serviceName: String, attrs: Map<String, ByteArray?>, host: String, port: Int): LinkHub? {
-        fun s(k: String) = attrs[k]?.toString(Charsets.US_ASCII)?.trim()
-        val v = s("v") ?: return null
-        if (v.toIntOrNull()?.let { it >= 1 } != true) return null
-        val hid = s("hid")?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
-        // TLS (tls=1) is not implemented by any hub and not by this client
-        if (s("tls") == "1") return null
-        val serials = s("d")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+    fun parse(
+        serviceName: String,
+        attrs: Map<String, ByteArray?>,
+        host: String,
+        port: Int,
+        parseTxt: (String, List<LinkTxtEntry>) -> LinkTxtRecord
+    ): LinkHub? {
+        val r = try {
+            parseTxt(serviceName, entries(attrs))
+        } catch (e: DspiException) {
+            return null
+        }
         return LinkHub(
-            id = hid,
-            name = serviceName,
-            kind = s("kind")?.takeIf { it.isNotEmpty() } ?: "unknown",
-            auth = s("auth")?.takeIf { it == "none" || it == "pin" } ?: "pin",
-            deviceCount = s("n")?.toIntOrNull() ?: serials.size,
-            serials = serials,
+            id = r.hubId,
+            name = r.name,
+            kind = r.kind,
+            auth = r.auth,
+            deviceCount = r.deviceCount.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(),
+            serials = r.serials,
             host = host,
             port = port,
-            path = s("path")?.takeIf { it.startsWith("/") } ?: LINK_DEFAULT_PATH
+            path = r.path,
+            tlsAdvertised = r.tlsAdvertised
         )
-    }
-
-    /** DNS-SD escapes characters in instance names as `\DDD`; NsdManager passes some through. */
-    fun unescapeName(name: String): String = Regex("""\\(\d{3})""").replace(name) { m ->
-        m.groupValues[1].toInt().toChar().toString()
     }
 }

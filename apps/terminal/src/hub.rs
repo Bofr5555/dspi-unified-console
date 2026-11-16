@@ -58,6 +58,9 @@ use dspi_hub::{
 };
 // -- WP P2TM --
 use dspi_hub::{ClientKind, HealthConfig, HistoryConfig, MintedKey, ScheduleConfig};
+// -- WP SECSRV --
+use dspi_hub::tls_identity::TlsIdentityEvent;
+use dspi_hub::{TlsMode, TlsPolicy, downgrade_warning};
 use dspi_transport::FakeDevice;
 // -- WP SW3 --
 use dspi_proto::ext::alink::AlinkRole;
@@ -181,6 +184,82 @@ struct RunOptions {
     data: Option<PathBuf>,
     /// Which phase-2 services run (`--no-<name>` turns one off).
     services: Services,
+    // -- WP SECSRV --
+    /// `--tls`, `--upstream-compat`, `--host-name`.
+    tls: TlsOptions,
+}
+
+// -- WP SECSRV --
+/// TLS on the hub's port (PLAN-SEC 4.1).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct TlsOptions {
+    /// `--tls off|on|require`; `None`: [`TlsOptions::policy`]'s default.
+    mode: Option<TlsMode>,
+    /// `--upstream-compat`: plaintext pairing and REST too, for upstream clients.
+    upstream_compat: bool,
+    /// `--host-name <name>`: a DNS name the hub is reached by over plaintext.
+    host_names: Vec<String>,
+}
+
+impl TlsOptions {
+    /// What runs: `require` unless asked otherwise (OD-SECb, reconsidered 2026-11-15:
+    /// no released client needs plaintext), `on` with upstream compatibility, and `off`
+    /// on loopback, where nothing crosses a network (PLAN-SEC 4.11).
+    fn policy(&self, loopback: bool) -> TlsPolicy {
+        let mode = self.mode.unwrap_or(if self.upstream_compat {
+            TlsMode::On
+        } else if loopback {
+            TlsMode::Off
+        } else {
+            TlsMode::Require
+        });
+        TlsPolicy {
+            mode,
+            upstream_compat: self.upstream_compat,
+        }
+    }
+}
+
+// -- WP SECSRV --
+/// A TLS identity event for people and for `--json`: (kind, line).
+fn tls_event_line(event: &TlsIdentityEvent) -> (&'static str, String) {
+    match event {
+        TlsIdentityEvent::Created { pin } => {
+            ("tlsKeyCreated", format!("TLS: a new hub key, {pin}"))
+        }
+        TlsIdentityEvent::KeyReplaced { pin, set_aside } => (
+            "tlsKeyReplaced",
+            format!(
+                "warning: the hub's TLS key could not be read{}; a new one, {pin}, was made. \
+                 Every client will report that this hub's key changed: pair them again",
+                set_aside
+                    .as_ref()
+                    .map(|p| format!(" (kept as {})", p.display()))
+                    .unwrap_or_default()
+            ),
+        ),
+        TlsIdentityEvent::CertificateIssued { pin, reason } => (
+            "tlsCertificateIssued",
+            format!("TLS: the certificate was issued again ({reason:?}), same key {pin}"),
+        ),
+        TlsIdentityEvent::Rotated {
+            pin,
+            previous,
+            signed,
+        } => (
+            "tlsKeyRotated",
+            if *signed {
+                format!(
+                    "TLS: the hub's key rotated from {previous} to {pin}, signed by the old key"
+                )
+            } else {
+                format!(
+                    "warning: the hub's key rotated from {previous} to {pin} without a \
+                     signature: every client must pair again"
+                )
+            },
+        ),
+    }
 }
 
 // -- WP P2TM --
@@ -383,6 +462,16 @@ OPTIONS:
     --json                    one JSON object per line
     --rest                    the REST mirror at /api/v1/ on the same port, for
                               API keys (`api-key new`); off by default
+    --tls <off|on|require>    TLS on the port (default require; off with --loopback
+                              or --local). on: TLS and unencrypted both, where an
+                              unencrypted client cannot pair, and REST takes only
+                              API keys minted plaintext_ok. off: nothing encrypted
+    --upstream-compat         SECURITY DOWNGRADE, for upstream DSPi Link clients:
+                              TLS on, and unencrypted pairing and REST too. The
+                              hub prints what it turns off when it starts
+    --host-name <name>        a DNS name this hub is reached by besides its .local
+                              name and its addresses, for unencrypted clients
+                              (the DNS-rebinding check); may be repeated
     --data <dir>              where the services keep their files (inventory,
                               history, alarms, schedules, snapshots, MQTT,
                               notifications); default: the store
@@ -409,7 +498,8 @@ WHILE IT RUNS, on a terminal, type:
     status                    the hub's address and access
     quit                      stop sharing
 
-A PIN crosses the network in plain text: pair on a network you trust.
+Clients pair over TLS. With --tls off or --upstream-compat a PIN crosses the
+network in plain text: pair on a network you trust.
 Clients on the network cannot raise a unit's core voltage above 1.20 V;
 do that on this machine. Logs go to standard error (RUST_LOG).
 ",
@@ -445,6 +535,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     let mut with_usb_lock_error = false; // -- WP AUSB2 --
     // -- WP P2TM --
     let (mut rest_api, mut data, mut services) = (false, None, Services::default());
+    // -- WP SECSRV --
+    let mut tls = TlsOptions::default();
     let mut port_given = false;
     let mut words = Vec::new();
 
@@ -512,6 +604,31 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             "--no-history" => services.history = false,
             "--no-alarms" => services.alarms = false,
             "--no-schedule" => services.schedule = false,
+            // -- WP SECSRV --
+            "--tls" => {
+                let word = value("off, on or require")?;
+                tls.mode = Some(TlsMode::parse(&word).ok_or_else(|| {
+                    usage(format!(
+                        "--tls is off, on or require, not `{}`",
+                        printable(&word)
+                    ))
+                })?);
+                run_only.push("--tls");
+            }
+            "--upstream-compat" => tls.upstream_compat = true,
+            "--host-name" => {
+                let name = value("a host name")?.trim().to_ascii_lowercase();
+                let fine = !name.is_empty()
+                    && name.len() <= 253
+                    && name
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-'));
+                if !fine {
+                    return Err(usage(format!("`{}` is not a host name", printable(&name))));
+                }
+                tls.host_names.push(name);
+                run_only.push("--host-name");
+            }
             f if f.starts_with('-') => return Err(usage(format!("`{f}` is not a hub option"))),
             word => words.push(word),
         }
@@ -538,6 +655,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 | "--no-history"
                 | "--no-alarms"
                 | "--no-schedule"
+                // -- WP SECSRV --
+                | "--upstream-compat"
         ) {
             run_only.push(flag);
         }
@@ -592,6 +711,14 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             if local && !port_given {
                 port = LOCAL_PORT;
             }
+            // -- WP SECSRV --
+            if tls.upstream_compat && tls.mode == Some(TlsMode::Require) {
+                return Err(usage(
+                    "--upstream-compat serves plaintext, which --tls require refuses: \
+                     give --tls on, or leave --tls out"
+                        .into(),
+                ));
+            }
             return Ok(HubCommand::Run(RunOptions {
                 name,
                 port,
@@ -617,6 +744,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 rest: rest_api,
                 data,
                 services,
+                // -- WP SECSRV --
+                tls,
             }));
         }
         ["help"] => return Ok(HubCommand::Help),
@@ -832,6 +961,11 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     network.hold_accepts = true;
     // -- WP P2TM -- the REST mirror, off unless asked
     network.rest = opts.rest;
+    // -- WP SECSRV --
+    let policy = opts.tls.policy(opts.loopback);
+    network.tls = policy.mode;
+    network.upstream_compat = policy.upstream_compat;
+    network.host_names = opts.tls.host_names.clone();
     let mut config = HubConfig::in_process(&name);
     config.network = Some(network);
     // -- WP P2TM -- the phase-2 services, each on unless turned off
@@ -865,8 +999,10 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
         } else {
             "<this machine>"
         };
+        // -- WP SECSRV -- https wherever TLS is served (a one-time certificate click-through)
+        let scheme = if policy.serves_tls() { "https" } else { "http" };
         format!(
-            "http://{host}:{}{}",
+            "{scheme}://{host}:{}{}",
             control.port(),
             dspi_hub::web::CONSOLE_PATH
         )
@@ -1165,6 +1301,8 @@ impl HubListener for Printer {
                 format!("client disconnected (session {id})"),
             ),
             HubEvent::Stopped => ("stopped", "hub stopped".to_owned()),
+            // -- WP SECSRV --
+            HubEvent::Tls(event) => tls_event_line(event),
         };
         if self.json {
             let v = match event {
@@ -1177,6 +1315,10 @@ impl HubListener for Printer {
                     json!({ "event": kind, "session": id })
                 }
                 HubEvent::Stopped => json!({ "event": kind }),
+                // -- WP SECSRV -- public data only: the pins
+                HubEvent::Tls(event) => {
+                    json!({ "event": kind, "text": text, "fingerprint": tls_event_pin(&event).display() })
+                }
             };
             println!("{v}");
         } else {
@@ -1195,6 +1337,8 @@ fn serve(opts: &RunOptions, json: bool) -> Result<(), Failure> {
     }
     let running = start(opts, json)?;
     status(&running, json);
+    // -- WP SECSRV -- what loading the key did, and the downgrade warning in full
+    tls_at_start(&running, opts.loopback, json);
     let tokens_revoked = running.control.auth().tokens_revoked_at_start();
     if tokens_revoked > 0 && !json {
         println!("{tokens_revoked} paired client(s) forgotten: the access mode changed");
@@ -1385,6 +1529,10 @@ fn status(running: &Running, json: bool) {
                 "console": running.console_url,
                 // -- WP P2TM --
                 "rest": running.rest,
+                // -- WP SECSRV --
+                "tls": running.control.tls().policy.mode.name(),
+                "upstreamCompat": running.control.tls().policy.upstream_compat,
+                "tlsFingerprint": running.control.tls().pin.map(|p| p.display()),
             })
         );
     } else {
@@ -1400,6 +1548,73 @@ fn status(running: &Running, json: bool) {
         // -- WP P2TM --
         if running.rest {
             println!("REST: /api/v1/ on port {port}, with an API key (`api-key new <name>`)");
+        }
+        // -- WP SECSRV --
+        println!("{}", tls_words(&running.control.tls()));
+    }
+}
+
+// -- WP SECSRV --
+/// The status line of the hub's TLS.
+fn tls_words(tls: &dspi_hub::TlsInfo) -> String {
+    let key = tls
+        .pin
+        .map(|p| format!(", hub key {p}"))
+        .unwrap_or_default();
+    match (tls.policy.mode, tls.policy.upstream_compat) {
+        (TlsMode::Off, _) => "TLS: off, nothing on this port is encrypted".to_owned(),
+        (TlsMode::Require, _) => format!("TLS: required{key}"),
+        (TlsMode::On, false) => format!(
+            "TLS: on{key}; unencrypted clients may connect with an existing token, \
+             but not pair"
+        ),
+        (TlsMode::On, true) => format!("TLS: on, with upstream compatibility{key}"),
+    }
+}
+
+// -- WP SECSRV --
+/// The pin an event is about.
+fn tls_event_pin(event: &TlsIdentityEvent) -> dspi_hub::tls_identity::SpkiHash {
+    match event {
+        TlsIdentityEvent::Created { pin }
+        | TlsIdentityEvent::KeyReplaced { pin, .. }
+        | TlsIdentityEvent::CertificateIssued { pin, .. }
+        | TlsIdentityEvent::Rotated { pin, .. } => *pin,
+    }
+}
+
+// -- WP SECSRV --
+/// At the start: what loading the key did, and the large warning of a downgraded hub
+/// (`--tls off` on a network address, `--upstream-compat`), on standard error too
+/// when the output is JSON, so it is never only in a log.
+fn tls_at_start(running: &Running, loopback: bool, json: bool) {
+    let tls = running.control.tls();
+    for event in &tls.at_start {
+        let (kind, text) = tls_event_line(event);
+        if json {
+            let pin = tls_event_pin(event).display();
+            println!(
+                "{}",
+                json!({ "event": kind, "text": text, "fingerprint": pin })
+            );
+        } else {
+            println!("{text}");
+        }
+    }
+    if let Some(warning) = downgrade_warning(tls.policy, loopback) {
+        if json {
+            let effects = if tls.policy.mode == TlsMode::Off {
+                dspi_hub::server::TLS_OFF_EFFECTS
+            } else {
+                dspi_hub::server::UPSTREAM_COMPAT_EFFECTS
+            };
+            println!(
+                "{}",
+                json!({ "event": "securityDowngraded", "effects": effects })
+            );
+            eprintln!("{warning}");
+        } else {
+            println!("{warning}");
         }
     }
 }
@@ -2066,6 +2281,8 @@ mod tests_wp_tm11 {
             rest: false,
             data: None,
             services: Services::default(),
+            // -- WP SECSRV --
+            tls: TlsOptions::default(),
         }
     }
 
@@ -3034,6 +3251,8 @@ mod tests_wp_sw3 {
             rest: false,
             data: None,
             services: Services::default(),
+            // -- WP SECSRV --
+            tls: TlsOptions::default(),
         }
     }
 }
@@ -3132,6 +3351,8 @@ mod tests_wp_hwlk1f {
             rest: false,
             data: None,
             services: Services::default(),
+            // -- WP SECSRV --
+            tls: TlsOptions::default(),
         }
     }
 
@@ -3730,5 +3951,112 @@ mod tests_wp_p2cc3 {
             exit::OK
         );
         assert!(!command(&running, "quit", false));
+    }
+}
+
+// -- review secb -- `--tls`, `--upstream-compat`, `--host-name` and their defaults
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_review_secb {
+    use super::*;
+
+    fn run(args: &[&str]) -> Result<RunOptions, Failure> {
+        match parse(args, false, Some(PathBuf::from("/store")))? {
+            HubCommand::Run(o) => Ok(o),
+            other => panic!("{args:?}: {other:?}"),
+        }
+    }
+
+    fn policy(args: &[&str]) -> TlsPolicy {
+        let o = run(args).unwrap();
+        o.tls.policy(o.loopback)
+    }
+
+    #[test]
+    fn review_secb_tls_flags_parse() {
+        for (word, mode) in [
+            ("off", TlsMode::Off),
+            ("on", TlsMode::On),
+            ("require", TlsMode::Require),
+        ] {
+            assert_eq!(run(&["--tls", word]).unwrap().tls.mode, Some(mode));
+            assert_eq!(
+                run(&[&format!("--tls={word}")]).unwrap().tls.mode,
+                Some(mode)
+            );
+        }
+        assert!(matches!(run(&["--tls", "maybe"]), Err(Failure::Usage(_))));
+        assert!(matches!(run(&["--tls"]), Err(Failure::Usage(_))));
+        assert!(run(&["--upstream-compat"]).unwrap().tls.upstream_compat);
+        let o = run(&["--host-name", "Studio.LAN", "--host-name=hub.example"]).unwrap();
+        assert_eq!(o.tls.host_names, ["studio.lan", "hub.example"]);
+        for bad in ["", "a b", "x\"y", "evil/"] {
+            assert!(
+                matches!(run(&["--host-name", bad]), Err(Failure::Usage(_))),
+                "{bad:?}"
+            );
+        }
+        // Run options only
+        for flag in [
+            &["--tls", "on"][..],
+            &["--upstream-compat"],
+            &["--host-name", "x"],
+        ] {
+            let mut args = vec!["clients"];
+            args.extend_from_slice(flag);
+            assert!(
+                matches!(
+                    parse(&args, false, Some(PathBuf::from("/s"))),
+                    Err(Failure::Usage(_))
+                ),
+                "{flag:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn review_secb_require_with_upstream_compat_is_refused() {
+        assert!(matches!(
+            run(&["--tls", "require", "--upstream-compat"]),
+            Err(Failure::Usage(_))
+        ));
+        assert!(matches!(
+            run(&["--upstream-compat", "--tls=require"]),
+            Err(Failure::Usage(_))
+        ));
+        assert!(run(&["--tls", "on", "--upstream-compat"]).is_ok());
+    }
+
+    #[test]
+    fn review_secb_the_tls_defaults() {
+        let p = |mode, upstream_compat| TlsPolicy {
+            mode,
+            upstream_compat,
+        };
+        assert_eq!(
+            policy(&[]),
+            p(TlsMode::Require, false),
+            "require on the network"
+        );
+        assert_eq!(
+            policy(&["--loopback"]),
+            p(TlsMode::Off, false),
+            "off on loopback"
+        );
+        assert_eq!(policy(&["--local"]), p(TlsMode::Off, false), "uconsole web");
+        assert_eq!(policy(&["--upstream-compat"]), p(TlsMode::On, true));
+        assert_eq!(
+            policy(&["--loopback", "--upstream-compat"]),
+            p(TlsMode::On, true)
+        );
+        assert_eq!(
+            policy(&["--loopback", "--tls", "require"]),
+            p(TlsMode::Require, false)
+        );
+        assert_eq!(policy(&["--tls", "off"]), p(TlsMode::Off, false));
+        assert_eq!(
+            policy(&["--tls", "off", "--upstream-compat"]),
+            p(TlsMode::Off, true)
+        );
     }
 }

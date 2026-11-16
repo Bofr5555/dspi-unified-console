@@ -87,9 +87,8 @@ fn review_seca_the_two_spki_helpers_agree_on_one_key() {
     let hub = id.pin();
     assert_eq!(link.0, hub.0, "the hash");
     assert_eq!(link.display(), hub.display(), "the display form");
-    assert_eq!(link.to_hex(), hub.hex());
-    assert_eq!(link.curl_pin(), hub.curl());
-    assert_eq!(link.to_b64url(), hub.base64url());
+    // -- WP SECSRV -- one type now: the hub's pin is dspi-link's SpkiHash
+    assert_eq!(link, hub);
     assert_eq!(
         SpkiHash::of_cert(id.certificate_der()).unwrap(),
         link,

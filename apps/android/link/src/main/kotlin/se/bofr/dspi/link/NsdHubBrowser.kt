@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import se.bofr.dspi.core.LinkTxtEntry
+import se.bofr.dspi.core.LinkTxtRecord
 
 /** Discovered hubs (DNS-SD). Main thread for start/stop; state from any thread. */
 interface HubBrowser {
@@ -36,7 +38,12 @@ interface HubBrowser {
     fun refresh() {}
 }
 
-class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBrowser {
+/** [parseTxt]: the core's `linkParseTxt`, the one TXT reader (SEC-B). */
+class NsdHubBrowser(
+    context: Context,
+    private val scope: CoroutineScope,
+    private val parseTxt: (String, List<LinkTxtEntry>) -> LinkTxtRecord
+) : HubBrowser {
     private val appContext = context.applicationContext
     private val nsd = appContext.getSystemService(NsdManager::class.java)
     private val wifi = appContext.getSystemService(WifiManager::class.java)
@@ -157,7 +164,7 @@ class NsdHubBrowser(context: Context, private val scope: CoroutineScope) : HubBr
                 resolving = false
                 if (listener != null) {
                     val host = addressOf(info)
-                    val hub = host?.let { HubTxt.parse(HubTxt.unescapeName(info.serviceName), info.attributes.orEmpty(), it, info.port) }
+                    val hub = host?.let { HubTxt.parse(info.serviceName, info.attributes.orEmpty(), it, info.port, parseTxt) }
                     if (hub != null) {
                         found[info.serviceName] = hub
                         publish()

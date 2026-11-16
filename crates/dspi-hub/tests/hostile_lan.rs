@@ -20,6 +20,14 @@ use socket2::{Domain, Socket, Type};
 use tungstenite::protocol::Role as WsRole;
 use tungstenite::{Message, WebSocket};
 
+// -- review secb -- the TLS mode these tests run against: `off`, or under the
+// test-only feature `test-tls-mode` what DSPI_HUB_TEST_TLS asks for. Where TLS is
+// served, an `https` own Origin is the hub's page too, `/info` says `tls`, and a
+// ClientHello is a TLS handshake, not a bad request.
+fn tls_served() -> bool {
+    NetworkConfig::new(std::path::PathBuf::new()).tls != dspi_hub::TlsMode::Off
+}
+
 const LOOPBACK: Ipv4Addr = Ipv4Addr::LOCALHOST;
 
 fn store_dir() -> std::path::PathBuf {
@@ -729,13 +737,20 @@ fn atk_origin_and_rebinding() {
     for o in [
         "http://evil.example".to_string(),
         format!("http://127.0.0.1:{}", t.port.wrapping_add(1)),
-        format!("https://127.0.0.1:{}", t.port),
         format!("http://attacker.127.0.0.1:{}", t.port),
     ] {
         let code = upgrade_status(t.port, Some(&o));
         eprintln!("web-on Origin {o:?} -> {code}");
         assert_eq!(code, 403, "foreign/rebind origin: {o}");
     }
+    // -- review secb -- our own https page: ours only where the hub serves TLS
+    let own_https = format!("https://127.0.0.1:{}", t.port);
+    let want = if tls_served() { 101 } else { 403 };
+    assert_eq!(
+        upgrade_status(t.port, Some(&own_https)),
+        want,
+        "{own_https}"
+    );
     t.hub.stop();
 }
 

@@ -123,12 +123,19 @@ pub fn redirect(path: &str) -> Option<&'static str> {
 /// [`Console::answer`]); it sets inline styles only through the DOM, which a policy does
 /// not stop. The landing page needs its stylesheet alone.
 pub fn page_csp(path: &str, hub: Option<&str>) -> String {
+    page_csp_for(path, hub, false)
+}
+
+// -- WP SECSRV --
+/// [`page_csp`] for a page served over TLS (`https`, PLAN-SEC 4.6): its socket is
+/// `wss://<hub>`, since an https page may not open `ws://`.
+pub fn page_csp_for(path: &str, hub: Option<&str>, https: bool) -> String {
     const REST: &str = "img-src 'self' data:; base-uri 'none'; form-action 'none'; \
                         frame-ancestors 'none'";
     if path.starts_with(HUB_PAGE_PATH) {
         format!(
             "default-src 'none'; script-src 'self'; connect-src 'self'{}; style-src 'self'; {REST}",
-            socket(hub)
+            socket(hub, https)
         )
     } else {
         format!("default-src 'none'; style-src 'self'; {REST}")
@@ -147,10 +154,17 @@ pub fn cache_control(path: &str) -> &'static str {
 }
 
 /// ` ws://<hub>` for a `connect-src`, when the address is fit to go there.
-fn socket(hub: Option<&str>) -> String {
+/// -- WP SECSRV -- ` wss://<hub>` from an https page.
+fn socket(hub: Option<&str>, https: bool) -> String {
+    let scheme = ws_scheme(https);
     hub.filter(|h| attribute_safe(h))
-        .map(|h| format!(" ws://{h}"))
+        .map(|h| format!(" {scheme}://{h}"))
         .unwrap_or_default()
+}
+
+// -- WP SECSRV --
+fn ws_scheme(https: bool) -> &'static str {
+    if https { "wss" } else { "ws" }
 }
 
 // -- WP WB7 -- the web console
@@ -390,6 +404,19 @@ impl Console {
         hub: Option<&str>,
         if_none_match: Option<&str>,
     ) -> ConsoleAnswer<'a> {
+        self.answer_for(path, hub, false, if_none_match)
+    }
+
+    // -- WP SECSRV --
+    /// [`Self::answer`] for a page served over TLS: its `<meta name="dspi-hub">`
+    /// names `wss://`.
+    pub fn answer_for<'a>(
+        &'a self,
+        path: &str,
+        hub: Option<&str>,
+        https: bool,
+        if_none_match: Option<&str>,
+    ) -> ConsoleAnswer<'a> {
         if path == "/console" {
             return ConsoleAnswer::Redirect;
         }
@@ -407,7 +434,7 @@ impl Console {
             return ConsoleAnswer::NotModified { etag };
         }
         let body = if file.filled {
-            Cow::Owned(fill(&file.body, hub))
+            Cow::Owned(fill_for(&file.body, hub, https))
         } else {
             Cow::Borrowed(file.body.as_slice())
         };
@@ -427,7 +454,13 @@ fn attribute_safe(hub: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b':' | b'[' | b']'))
 }
 
+#[cfg(test)]
 fn fill(body: &[u8], hub: Option<&str>) -> Vec<u8> {
+    fill_for(body, hub, false)
+}
+
+// -- WP SECSRV -- `wss://` in the meta for a page served over TLS
+fn fill_for(body: &[u8], hub: Option<&str>, https: bool) -> Vec<u8> {
     let Ok(text) = std::str::from_utf8(body) else {
         return body.to_vec();
     };
@@ -435,7 +468,10 @@ fn fill(body: &[u8], hub: Option<&str>) -> Vec<u8> {
     let text = match address {
         Some(hub) => text.replacen(
             HUB_META,
-            &format!(r#"<meta name="dspi-hub" content="ws://{hub}" />"#),
+            &format!(
+                r#"<meta name="dspi-hub" content="{}://{hub}" />"#,
+                ws_scheme(https)
+            ),
             1,
         ),
         None => text.to_owned(),
@@ -452,7 +488,13 @@ fn fill(body: &[u8], hub: Option<&str>) -> Vec<u8> {
 /// compiled (`wasm-unsafe-eval`, which JSPI's module needs and which allows no `eval`),
 /// and sockets to this hub alone. `hub` as for [`Console::answer`].
 pub fn console_csp(hub: Option<&str>) -> String {
-    let socket = socket(hub);
+    console_csp_for(hub, false)
+}
+
+// -- WP SECSRV --
+/// [`console_csp`] for a console served over TLS: sockets to `wss://<hub>`.
+pub fn console_csp_for(hub: Option<&str>, https: bool) -> String {
+    let socket = socket(hub, https);
     format!(
         "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; \
          connect-src 'self'{socket}; style-src 'self'; img-src 'self' data:; font-src 'self'; \

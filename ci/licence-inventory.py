@@ -68,6 +68,11 @@ IOS_TARGET = "DSPi Console iOS"
 # The library the iOS app links, and the slice in an App Store binary. Change
 # these when CG3 and SW1 give the iOS build its own features.
 CARGO_SELECT = "-p dspi-ffi --no-default-features --target aarch64-apple-ios --locked"
+# -- WP SECCORE -- The first-party file list (dep-info) comes from a `cargo check` of the
+# same crates for the build container's own target: ring's C (rustls, the Link TLS)
+# needs the Apple SDK for aarch64-apple-ios, so the iOS compile is ci/macvm.sh ios's.
+# The crate graph and its licences above stay the iOS target's (`cargo tree`).
+CARGO_CHECK_SELECT = "-p dspi-ffi --no-default-features --locked"
 
 # The older desktop core, deleted from the tree by WP Q3 and still in history here;
 # the "old core" column measures how much of a file still matches it.
@@ -238,7 +243,7 @@ def collect_cargo() -> dict:
     tree = f"cargo tree {CARGO_SELECT} --prefix none --format {fmt}"
     out = in_container(
         f"{tree} -e normal,no-proc-macro; echo @@@; {tree} -e normal; echo @@@; "
-        f"cargo check {CARGO_SELECT} --lib --message-format=json"
+        f"cargo check {CARGO_CHECK_SELECT} --lib --message-format=json"
     )
     linked_text, all_text, check_text = out.split("@@@\n")
     linked = parse_tree(linked_text)

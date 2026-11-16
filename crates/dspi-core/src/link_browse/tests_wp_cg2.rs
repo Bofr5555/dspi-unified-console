@@ -26,6 +26,7 @@ fn advert(name: &str, id: &str, port: u16) -> HubAdvert {
         serials: vec!["S1".into()],
         web: false,
         path: None,
+        tls: false, // -- WP SECDISC --
     }
 }
 

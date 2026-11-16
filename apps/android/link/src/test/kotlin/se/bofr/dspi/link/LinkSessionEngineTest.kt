@@ -69,9 +69,19 @@ class LinkSessionEngineTest {
         var connectError: DspiException? = null
         var open = true
 
-        override suspend fun connect(url: String, clientName: String, appVersion: String, token: String, expectedHubId: String): LinkHello {
+        val tlsAdvertised = ArrayList<Boolean>() // SEC-B
+
+        override suspend fun connect(
+            url: String,
+            clientName: String,
+            appVersion: String,
+            token: String,
+            expectedHubId: String,
+            tlsAdvertised: Boolean
+        ): LinkHello {
             log += "connect($token, $expectedHubId)"
             urls += url
+            this.tlsAdvertised += tlsAdvertised
             connectGate?.await()
             connectError?.let { throw it }
             return hello
@@ -179,6 +189,27 @@ class LinkSessionEngineTest {
         runCurrent()
         assertEquals("connect(tok, hub-1)", s.ops.log.first { it.startsWith("connect") })
         assertTrue(s.engine.state.value is LinkSessionState.Connected)
+    }
+
+    /** SEC-B: the browsed record's `tls=1` reaches the dial, so the core never falls back to plaintext. */
+    @Test
+    fun secbAnAdvertisedTlsHubIsDialledAsSuch() = runTest {
+        val s = Stack(this)
+        s.engine.connect(hub.copy(tlsAdvertised = true))
+        runCurrent()
+        assertEquals(listOf(true), s.ops.tlsAdvertised)
+        assertTrue(s.engine.state.value is LinkSessionState.Connected)
+    }
+
+    @Test
+    fun secbAnUpstreamHubOrATypedAddressIsNot() = runTest {
+        val s = Stack(this)
+        s.engine.connect(hub)
+        runCurrent()
+        s.engine.connect(LinkHub.manual("10.0.2.2", 11915))
+        runCurrent()
+        assertTrue(s.ops.tlsAdvertised.isNotEmpty())
+        assertTrue(s.ops.tlsAdvertised.none { it })
     }
 
     @Test
@@ -409,7 +440,7 @@ class LinkSessionEngineTest {
             val ops = BridgeLinkCoreOps(core, unusedBridge(core, ffi), ffi, network)
             val results = listOf(
                 async(network) {
-                    ops.connect("ws://h", "n", "v", "", "")
+                    ops.connect("ws://h", "n", "v", "", "", false)
                     "dial"
                 },
                 async(network) {

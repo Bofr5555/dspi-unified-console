@@ -117,6 +117,8 @@ pub use auth::{PairedClient, SavedHub};
 pub use auth::{ClientKind, MintedKey};
 pub use dspi_link::DEFAULT_PORT;
 pub use server::NetworkControl;
+// -- WP SECSRV --
+pub use server::{TlsInfo, TlsMode, TlsPolicy, downgrade_warning};
 #[cfg(all(feature = "usb", not(target_os = "android")))]
 pub use usb::UsbBus;
 // -- WP SW2 --

@@ -397,7 +397,8 @@ fn wp_hb6_bad_arguments_are_refused_before_anything_starts() {
         start(name.as_ptr(), null(), 0, LOOPBACK),
         start(name.as_ptr(), empty.as_ptr(), 0, LOOPBACK),
         start(name.as_ptr(), store.as_ptr(), 2, LOOPBACK),
-        start(name.as_ptr(), store.as_ptr(), 0, 8),
+        // -- review secb -- 8 is HUB_OPT_TLS_ON now: an unknown bit
+        start(name.as_ptr(), store.as_ptr(), 0, 64),
     ] {
         assert_eq!(r["code"], "invalid", "{r}");
     }
@@ -1255,4 +1256,41 @@ fn wp_hb6_the_header_compiles_as_c() {
         String::from_utf8_lossy(&got.stderr)
     );
     std::fs::remove_file(&out).unwrap();
+}
+
+// -- review secb -- TLS through the C API's start options
+#[test]
+fn review_secb_the_tls_options_start_the_mode_asked_for() {
+    assert_eq!(tls_for(0), (TlsMode::Off, false), "off unless asked");
+    assert_eq!(tls_for(HUB_OPT_TLS_ON), (TlsMode::On, false));
+    assert_eq!(tls_for(HUB_OPT_TLS_REQUIRE), (TlsMode::Require, false));
+    assert_eq!(tls_for(HUB_OPT_UPSTREAM_COMPAT), (TlsMode::On, true));
+    for bad in [
+        HUB_OPT_TLS_REQUIRE | HUB_OPT_TLS_ON,
+        HUB_OPT_TLS_REQUIRE | HUB_OPT_UPSTREAM_COMPAT,
+        64,
+    ] {
+        let (name, store) = (c("x"), c("/nowhere"));
+        assert!(
+            parse_start(name.as_ptr(), store.as_ptr(), 0, HUB_ACCESS_PIN, bad).is_err(),
+            "{bad}"
+        );
+    }
+    let dir = scratch("secb-tls");
+    let hub = TestHub::new();
+    let r = hub.start_in(&dir, HUB_ACCESS_PIN, LOOPBACK | HUB_OPT_TLS_REQUIRE);
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(r["tls"], "require", "{r}");
+    assert_eq!(r["upstreamCompat"], false, "{r}");
+    assert!(
+        r["tlsFingerprint"].as_str().unwrap().starts_with("SHA256:"),
+        "{r}"
+    );
+    assert!(dspi_hub_stop(hub.0));
+    let r = hub.start_in(&dir, HUB_ACCESS_PIN, LOOPBACK);
+    assert_eq!(
+        (r["tls"].as_str(), r["tlsFingerprint"].is_null()),
+        (Some("off"), true),
+        "{r}"
+    );
 }

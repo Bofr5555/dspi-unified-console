@@ -152,8 +152,9 @@ pub extern "C" fn dspi_link_browse_stop(core: *mut FfiCore) {
 
 /// The browse as JSON: `{"ok":true,"browsing":bool,"error":text or null,"hubs":[{"id",
 /// "name","kind","auth","deviceCount","serials","host","port","path","url",
-/// "addresses"}]}`, sorted by name. Not browsing and no hubs when none runs. `url`
-/// goes to the connect function. Returns the length needed.
+/// "addresses","tlsAdvertised"}]}`, sorted by name. Not browsing and no hubs when none
+/// runs. `url` goes to the connect function. `tlsAdvertised` (WP SECDISC): the record
+/// carried `tls=1`, a hint for the connect's no-fallback rule. Returns the length needed.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_link_browse_hubs(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     with_core(core, 0, |_h| {

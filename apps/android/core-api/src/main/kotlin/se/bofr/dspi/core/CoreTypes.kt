@@ -1580,6 +1580,65 @@ data class LinkAddress(
 )
 
 /**
+ * The current Link session's encryption (`link_security`; PLAN-SEC 4.3).
+ */
+data class LinkSecurity(
+    /**
+     * The session runs over TLS with a verified hub key. False: unencrypted
+     * (a hub without TLS, such as an upstream one): show the badge.
+     */
+    val encrypted: Boolean,
+    /**
+     * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
+     */
+    val hubKey: String,
+    /**
+     * The last connection set a new pin (first use, or a rotation the old key
+     * signed): show "Encrypted connection set up; hub key ..." once.
+     */
+    val hubKeyNew: Boolean,
+    /**
+     * The credential to store for the hub ("" without a token): save it when it
+     * differs from the stored one.
+     */
+    val credential: String,
+)
+
+/**
+ * A parsed pairing link (`link_parse_pair_link`).
+ */
+data class LinkPairLink(
+    /**
+     * The hub's id: `expected_hub_id`.
+     */
+    val hubId: String,
+    /**
+     * Where it answers.
+     */
+    val host: String,
+    /**
+     * TCP port.
+     */
+    val port: Int,
+    /**
+     * The `link_connect` URL.
+     */
+    val url: String,
+    /**
+     * The fingerprint of the key it must present: show it on the pairing screen.
+     */
+    val hubKey: String,
+    /**
+     * The `link_connect` credential: pinned to that key, no token yet.
+     */
+    val credential: String,
+    /**
+     * The PIN to pair with after the user's tap ("" when the link has none).
+     */
+    val pin: String,
+)
+
+/**
  * What the extension channel supports.
  */
 data class ExtStatus(
@@ -2280,6 +2339,13 @@ data class LinkTxtRecord(
      * The WebSocket path.
      */
     val path: String,
+    /**
+     * The record carried `tls=1`: the hub says its port speaks TLS. A hint
+     * (anyone on the LAN can forge or strip it) for the connect's
+     * `tls_advertised`, the "advertised TLS never falls back" rule; false
+     * for an upstream hub.
+     */
+    val tlsAdvertised: Boolean,
 )
 
 /**

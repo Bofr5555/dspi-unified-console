@@ -475,12 +475,16 @@
 #define HUB_OPT_USB 1
 #define HUB_OPT_APP 2
 #define HUB_OPT_LOOPBACK 4
+#define HUB_OPT_TLS_ON 8
+#define HUB_OPT_TLS_REQUIRE 16
+#define HUB_OPT_UPSTREAM_COMPAT 32
 #define HUB_EVENT_DEVICE_ONLINE 0
 #define HUB_EVENT_DEVICE_OFFLINE 1
 #define HUB_EVENT_DEVICE_REMOVED 2
 #define HUB_EVENT_SESSION_OPENED 3
 #define HUB_EVENT_SESSION_CLOSED 4
 #define HUB_EVENT_STOPPED 5
+#define HUB_EVENT_TLS_KEY 6
 typedef struct AutoEqFetchSink AutoEqFetchSink;
 typedef struct AutoEqRebuildHandle AutoEqRebuildHandle;
 typedef struct FfiCore FfiCore;
@@ -1651,6 +1655,16 @@ const char *token,
 const char *expected_hub_id,
 char *buf,
 uint32_t len);
+uint32_t dspi_link_connect_advertised(struct FfiCore *core,
+const char *url,
+const char *client_name,
+const char *app_version,
+const char *token,
+const char *expected_hub_id,
+bool tls_advertised,
+char *buf,
+uint32_t len);
+uint32_t dspi_link_security(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_link_pair(struct FfiCore *core, const char *pin, char *buf, uint32_t len);
 uint32_t dspi_link_devices(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_link_status(struct FfiCore *core, char *buf, uint32_t len);
@@ -1670,6 +1684,8 @@ const char *token,
 void *user_data),
 void *user_data);
 uint32_t dspi_link_parse_address(const char *text, char *buf, uint32_t len);
+uint32_t dspi_link_parse_pair_link(const char *text, char *buf, uint32_t len);
+uint32_t dspi_link_credential_hub_key(const char *credential, char *buf, uint32_t len);
 uint32_t dspi_link_ws_url(const char *host,
 uint16_t port,
 const char *path,

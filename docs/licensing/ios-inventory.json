@@ -1,5 +1,5 @@
 {
- "repo_commit": "db6cb17a",
+ "repo_commit": "6a14c543",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -206,10 +206,30 @@
     "license": "MIT OR Apache-2.0",
     "version": "0.10.1"
    },
+   "ring": {
+    "first_party": false,
+    "license": "Apache-2.0 AND ISC",
+    "version": "0.17.14"
+   },
    "rustix": {
     "first_party": false,
     "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
     "version": "1.1.4"
+   },
+   "rustls": {
+    "first_party": false,
+    "license": "Apache-2.0 OR ISC OR MIT",
+    "version": "0.23.46"
+   },
+   "rustls-pki-types": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "1.15.1"
+   },
+   "rustls-webpki": {
+    "first_party": false,
+    "license": "ISC",
+    "version": "0.103.16"
    },
    "semver": {
     "first_party": false,
@@ -251,6 +271,11 @@
     "license": "MIT OR Apache-2.0",
     "version": "1.1.0"
    },
+   "subtle": {
+    "first_party": false,
+    "license": "BSD-3-Clause",
+    "version": "2.6.1"
+   },
    "tempfile": {
     "first_party": false,
     "license": "MIT OR Apache-2.0",
@@ -286,6 +311,16 @@
     "license": "MPL-2.0",
     "version": "0.29.5"
    },
+   "untrusted": {
+    "first_party": false,
+    "license": "ISC",
+    "version": "0.9.0"
+   },
+   "zeroize": {
+    "first_party": false,
+    "license": "Apache-2.0 OR MIT",
+    "version": "1.9.1"
+   },
    "zmij": {
     "first_party": false,
     "license": "MIT",
@@ -320,8 +355,10 @@
    "crates/dspi-core/src/alink/system.rs",
    "crates/dspi-core/src/alink_usb.rs",
    "crates/dspi-core/src/autoeq.rs",
+   "crates/dspi-core/src/autoeq/library.rs",
    "crates/dspi-core/src/autoeq/pair.rs",
    "crates/dspi-core/src/callbacks.rs",
+   "crates/dspi-core/src/channel_clip.rs",
    "crates/dspi-core/src/confirm.rs",
    "crates/dspi-core/src/connect.rs",
    "crates/dspi-core/src/consts.rs",
@@ -339,11 +376,15 @@
    "crates/dspi-core/src/files.rs",
    "crates/dspi-core/src/firmware.rs",
    "crates/dspi-core/src/firmware_guard.rs",
+   "crates/dspi-core/src/firmware_manifest.rs",
    "crates/dspi-core/src/guarded.rs",
    "crates/dspi-core/src/hardware.rs",
    "crates/dspi-core/src/host_transport.rs",
    "crates/dspi-core/src/hotplug.rs",
    "crates/dspi-core/src/hub_admin.rs",
+   "crates/dspi-core/src/hub_server.rs",
+   "crates/dspi-core/src/hub_server/admin.rs",
+   "crates/dspi-core/src/hub_server/manage.rs",
    "crates/dspi-core/src/info.rs",
    "crates/dspi-core/src/journal.rs",
    "crates/dspi-core/src/lib.rs",
@@ -351,6 +392,7 @@
    "crates/dspi-core/src/limits/lock.rs",
    "crates/dspi-core/src/link.rs",
    "crates/dspi-core/src/link_text.rs",
+   "crates/dspi-core/src/link_txt.rs",
    "crates/dspi-core/src/modes.rs",
    "crates/dspi-core/src/monitor.rs",
    "crates/dspi-core/src/names.rs",
@@ -360,24 +402,30 @@
    "crates/dspi-core/src/output_labels.rs",
    "crates/dspi-core/src/params.rs",
    "crates/dspi-core/src/params_fx.rs",
+   "crates/dspi-core/src/pins.rs",
+   "crates/dspi-core/src/platform.rs",
    "crates/dspi-core/src/presets.rs",
    "crates/dspi-core/src/raw.rs",
+   "crates/dspi-core/src/read_only.rs",
    "crates/dspi-core/src/records.rs",
    "crates/dspi-core/src/rta.rs",
    "crates/dspi-core/src/snapshot.rs",
    "crates/dspi-core/src/state.rs",
    "crates/dspi-core/src/stats.rs",
+   "crates/dspi-core/src/usb_pipe.rs",
    "crates/dspi-core/src/vreg.rs",
    "crates/dspi-core/src/write_param.rs",
    "crates/dspi-ffi/src/lib.rs",
    "crates/dspi-link/src/address.rs",
    "crates/dspi-link/src/client.rs",
    "crates/dspi-link/src/clock.rs",
+   "crates/dspi-link/src/credential.rs",
    "crates/dspi-link/src/discovery.rs",
    "crates/dspi-link/src/frames.rs",
    "crates/dspi-link/src/lib.rs",
    "crates/dspi-link/src/messages.rs",
    "crates/dspi-link/src/socket.rs",
+   "crates/dspi-link/src/tls.rs",
    "crates/dspi-proto/src/bulk_gain.rs",
    "crates/dspi-proto/src/channel.rs",
    "crates/dspi-proto/src/dsp.rs",
@@ -402,6 +450,7 @@
    "crates/dspi-session/src/cs_model.rs",
    "crates/dspi-session/src/cs_rows.rs",
    "crates/dspi-session/src/events.rs",
+   "crates/dspi-session/src/events/store.rs",
    "crates/dspi-session/src/ext.rs",
    "crates/dspi-session/src/ext_state.rs",
    "crates/dspi-session/src/fast.rs",
@@ -438,6 +487,7 @@
    "crates/dspi-transport/src/fake/diag.rs",
    "crates/dspi-transport/src/fake/document.rs",
    "crates/dspi-transport/src/fake/features.rs",
+   "crates/dspi-transport/src/fake/pins.rs",
    "crates/dspi-transport/src/fake/subharm.rs",
    "crates/dspi-transport/src/fake/surfaces.rs",
    "crates/dspi-transport/src/fake/wire_images.rs",
@@ -471,7 +521,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "db6cb17a89c3013ba75a12be2cd79933a23dce91",
+  "commit": "6a14c54370779a2b81f8e9a5e14facbd638bb84e",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",
@@ -502,10 +552,14 @@
    "DSPi Console/Core/CoreControlSurfaces.swift",
    "DSPi Console/Core/CoreDiagnostics.swift",
    "DSPi Console/Core/CoreInstaller.swift",
+   "DSPi Console/Core/CoreLink.swift",
    "DSPi Console/Core/CoreMirror.swift",
    "DSPi Console/Core/CoreSnapshots.swift",
    "DSPi Console/Core/CoreUndo.swift",
+   "DSPi Console/Core/CoreUsb.swift",
+   "DSPi Console/Core/NoticeCenter.swift",
    "DSPi Console/Core/OutputLabels.swift",
+   "DSPi Console/Core/ReadOnlyFloor.swift",
    "DSPi Console/Core/UserConfirmation.swift",
    "DSPi Console/CoreVoltageStatusView.swift",
    "DSPi Console/CrossfeedPairMapView.swift",
@@ -550,6 +604,8 @@
    "DSPi Console/Link/policy/commands.json",
    "DSPi Console/LiveGraphHost.swift",
    "DSPi Console/LoudnessView.swift",
+   "DSPi Console/MIDI/CoreMidiPipe.swift",
+   "DSPi Console/MIDI/LegacyMIDITransport.swift",
    "DSPi Console/MIDI/LocalTransportSet.swift",
    "DSPi Console/MIDI/MIDIControlCodec.swift",
    "DSPi Console/MIDI/MIDIControlPort.swift",
