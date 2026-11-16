@@ -103,6 +103,9 @@ pub mod device_alarms;
 pub mod schedule;
 // -- WP P3GR -- groups
 pub mod groups;
+// -- WP P3RO -- the firmware rollout (feature `rollout`)
+#[cfg(feature = "rollout")]
+pub mod rollout;
 
 pub use auth::AccessMode;
 pub use error::HubError;
@@ -142,3 +145,6 @@ pub use bus::{LastChange, StreamCounters};
 pub use history::HistoryConfig;
 // -- WP P2SC --
 pub use schedule::ScheduleConfig;
+// -- WP P3RO --
+#[cfg(feature = "rollout")]
+pub use rollout::RolloutConfig;

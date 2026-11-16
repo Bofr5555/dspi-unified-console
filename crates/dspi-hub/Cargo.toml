@@ -34,6 +34,10 @@ api = ["dep:dspi-core"]
 # against a hub that sniffs and serves TLS (`ci/run.sh 'DSPI_HUB_TEST_TLS=compat
 # cargo test -p dspi-hub --features api,test-tls-mode'`).
 test-tls-mode = []
+# -- WP P3RO --
+# The firmware rollout (rollout.rs, PLAN-P3 F6): the parameter API's executor, the
+# core's PICOBOOT writer over its USB. Off by default: `uconsole hub` asks for it.
+rollout = ["api", "usb", "dspi-core/usb"]
 
 [dependencies]
 dspi-proto.workspace = true
@@ -180,6 +184,11 @@ required-features = ["api"]
 [[test]]
 name = "wp_p2ffix_adopted_guard"
 required-features = ["api"]
+
+# -- WP P3RO --
+[[test]]
+name = "wp_p3ro_rollout"
+required-features = ["rollout"]
 
 # -- WP HB7 --
 # tests/conformance/: three Link clients against the hub (README.md there).

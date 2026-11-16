@@ -209,6 +209,22 @@ pub enum BusMessage {
         /// Per action and target.
         results: Vec<TargetResult>,
     },
+    // -- WP P3RO --
+    /// A device's part of a firmware rollout ended (`hub-api.md` section 21): the
+    /// device alarms raise `rollout_failed` on a failure and clear it on a success.
+    RolloutEnded {
+        /// The device.
+        serial: String,
+        /// Whether it ended `ok`.
+        ok: bool,
+        /// The step it ended at (`check` ... `verify`).
+        step: String,
+        /// One line for people (the failure's, or the result's).
+        text: String,
+        /// The image's firmware version: the device coming back with it clears the
+        /// alarm too.
+        firmware_version: String,
+    },
     /// A history record was written (WP P2EV).
     Event {
         /// The device.

@@ -3286,6 +3286,8 @@ impl Connection {
             }
         };
         self.session = Some(Arc::clone(&session));
+        // -- WP P3RO -- what a `tls_only` family checks (hub-api.md 21.1)
+        session.set_encrypted(self.encrypted);
         shared.set_session(self.id, &session);
         // -- WP SECPAKE -- in use while it lasts (idle expiry)
         if let Some(cid) = cid {

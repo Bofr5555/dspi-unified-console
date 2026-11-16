@@ -12,6 +12,7 @@
 //! | `cpu` | at or above `above_pct` for `for_s` | a reading under it | on, 90 % for 10 s |
 //! | `schedule_failed` | a schedule run with a failed action (`ScheduleRan`) | acknowledged | on |
 //! | `clock_unset` | the hub's wall clock reads before [`BUILD_FLOOR_S`] | the clock is set | on |
+//! | `rollout_failed` (WP P3RO) | a device's firmware rollout failed (`RolloutEnded`), critical | a later rollout of the device ends ok, or (unless it failed its verify) the device attaches with the image's firmware | always on: no rule |
 //!
 //! **Mute on clip storm** (OD-P2n, off by default): while a `clip` storm (events) is on
 //! and the rule's `mute_on_storm` is set, the hub mutes the device once per storm, as one
@@ -91,6 +92,10 @@ pub const CODES: [&str; 8] = [
     "schedule_failed",
     "clock_unset",
 ];
+// -- WP P3RO --
+/// The firmware rollout's alarm (`hub-api.md` section 21.3). Not in [`CODES`]: it has
+/// no rule (it cannot be turned off) until the core lists it (P3CC's notice row).
+pub const ROLLOUT_FAILED: &str = "rollout_failed";
 /// `by` of the hub's mute on a clip storm (its history record).
 pub const MUTE_BY: &str = "Alarm rule: mute on clip storm";
 /// `source` of that record.
@@ -321,6 +326,8 @@ impl Rules {
 pub fn severity(code: &str) -> &'static str {
     match code {
         "device_offline" | "unresponsive" | "temperature" => "critical",
+        // -- WP P3RO --
+        ROLLOUT_FAILED => "critical",
         _ => "warning",
     }
 }
@@ -555,6 +562,10 @@ pub struct DeviceAlarms {
     started_s: u64,
     /// The clock floor ([`BUILD_FLOOR_S`]; tests move it).
     floor_s: u64,
+    // -- WP P3RO --
+    /// The firmware a device with `rollout_failed` on is expected back with: its
+    /// attach with it clears the alarm. Bounded by the alarms on.
+    rollout_expect: BTreeMap<String, String>,
 }
 
 impl DeviceAlarms {
@@ -577,6 +588,8 @@ impl DeviceAlarms {
             acked_by: BTreeMap::new(),
             started_s: now.wall_s,
             floor_s,
+            // -- WP P3RO --
+            rollout_expect: BTreeMap::new(),
         }
     }
 
@@ -609,7 +622,8 @@ impl DeviceAlarms {
         now: Now,
         out: &mut Vec<Effect>,
     ) {
-        if !self.rules.on(code) {
+        // -- WP P3RO -- `rollout_failed` has no rule: always on.
+        if !self.rules.on(code) && code != ROLLOUT_FAILED {
             return;
         }
         let key = (code.to_owned(), subject.to_owned());
@@ -684,8 +698,10 @@ impl DeviceAlarms {
                 serial,
                 identify,
                 reset_info,
-                ..
+                fw,
             } => {
+                // -- WP P3RO --
+                self.rollout_back(serial, fw, now, &mut out);
                 let restart = reset_info.map(|r| (r.reason, r.uptime_s));
                 self.facts(
                     serial,
@@ -739,6 +755,14 @@ impl DeviceAlarms {
                     self.raise("schedule_failed", &cut(rule), message, true, now, &mut out);
                 }
             }
+            // -- WP P3RO --
+            BusMessage::RolloutEnded {
+                serial,
+                ok,
+                step,
+                text,
+                firmware_version,
+            } => self.rollout_ended(serial, *ok, step, text, firmware_version, now, &mut out),
             BusMessage::DeviceRemoved { .. }
             // -- WP P2DFIXA --
             | BusMessage::DeviceForgotten { .. }
@@ -746,6 +770,50 @@ impl DeviceAlarms {
             | BusMessage::Event { .. } => {}
         }
         out
+    }
+
+    // -- WP P3RO --
+    /// A device's rollout ended: a failure raises `rollout_failed` (critical) with the
+    /// step, a success clears it.
+    #[allow(clippy::too_many_arguments)]
+    fn rollout_ended(
+        &mut self,
+        serial: &str,
+        ok: bool,
+        step: &str,
+        text: &str,
+        firmware_version: &str,
+        now: Now,
+        out: &mut Vec<Effect>,
+    ) {
+        if serial.is_empty() || serial.len() > MAX_SERIAL_BYTES {
+            return;
+        }
+        if ok {
+            self.rollout_expect.remove(serial);
+            self.clear(ROLLOUT_FAILED, serial, now, out);
+            return;
+        }
+        let message = cut(&format!("Firmware rollout failed at {step}: {text}"));
+        self.raise(ROLLOUT_FAILED, serial, message, true, now, out);
+        // A device that failed its verify came back with the image and still failed:
+        // a replug clears nothing then.
+        if step != "verify" && !firmware_version.is_empty() && self.is_on(ROLLOUT_FAILED, serial) {
+            self.rollout_expect
+                .insert(serial.to_owned(), cut(firmware_version));
+        } else {
+            self.rollout_expect.remove(serial);
+        }
+    }
+
+    // -- WP P3RO --
+    /// A device attached with `fw`: back with the firmware its failed rollout put on it.
+    fn rollout_back(&mut self, serial: &str, fw: &str, now: Now, out: &mut Vec<Effect>) {
+        if fw.is_empty() || self.rollout_expect.get(serial).map(String::as_str) != Some(fw) {
+            return;
+        }
+        self.rollout_expect.remove(serial);
+        self.clear(ROLLOUT_FAILED, serial, now, out);
     }
 
     fn came_online(&mut self, serial: &str, now: Now, out: &mut Vec<Effect>) {
@@ -1040,7 +1108,8 @@ impl DeviceAlarms {
         let off: Vec<(String, String)> = self
             .on
             .keys()
-            .filter(|(code, _)| !self.rules.on(code))
+            // -- WP P3RO -- `rollout_failed` has no rule to turn off
+            .filter(|(code, _)| !self.rules.on(code) && code != ROLLOUT_FAILED)
             .cloned()
             .collect();
         for (code, subject) in off {
@@ -1626,3 +1695,8 @@ impl HubService for AlarmService {
 #[cfg(test)]
 #[path = "device_alarms/tests_wp_p2al.rs"]
 mod tests_wp_p2al;
+
+// -- WP P3RO --
+#[cfg(test)]
+#[path = "device_alarms/tests_wp_p3ro.rs"]
+mod tests_wp_p3ro;
