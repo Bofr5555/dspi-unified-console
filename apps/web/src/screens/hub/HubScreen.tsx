@@ -13,6 +13,7 @@ import { HubFeed, type HubView, type Said } from "./feed";
 import { alarmSummary, alarmTitle, deviceRows, durationText, rowActions, shortTime, tagsFrom, type HubRow } from "./model";
 import { useSessionState } from "../../ui/components";
 import { HealthBoard } from "./HealthBoard"; // -- WP P3WHB --
+import { HubGroups, useHubGroups } from "./Groups"; // -- WP P3WGR --
 
 /** The screen's entry (screens.tsx shows it when `hubScreenShown`). */
 export const HUB_SCREEN_ID = "hub";
@@ -34,12 +35,14 @@ export const HubScreen: FunctionComponent<ScreenProps> = (props) => {
   const feed = props.hub;
   const view = useHubView(feed);
   const hubName = useSessionState(props.session).hubName; // -- WP P2WB3 --
+  const groups = useHubGroups(props.session, !!view?.caps?.onHub && !!view.caps.groups); // -- WP P3WGR --
   if (!feed || !view) return null;
   return (
     <div class="hub-screen">
       {/* -- SEC hook (SECWEB, PLAN-SEC section 6) -- the "unencrypted" banner and the hub's fingerprint go here */}
       <HubDevices feed={feed} view={view} props={props} />
-      {/* -- WP P3WHB -- */ view.caps?.health ? <HealthBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} /> : null}
+      {/* -- WP P3WHB -- (-- WP P3WGR -- with the groups for its filter) */ view.caps?.health ? <HealthBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} groups={groups.view.groups} /> : null}
+      {/* -- WP P3WGR -- */ view.caps?.groups ? <HubGroups session={props.session} ask={props.ask} view={view} groups={groups} name={(s) => feed.deviceName(s)} /> : null}
       {view.caps?.alarms ? <AlarmBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} /> : null}
       {/* -- WP P2WB3 -- */}
       {view.caps?.hubStats && view.role === "admin" && !props.session.readOnlyReason ? <HubName feed={feed} name={hubName} /> : null}

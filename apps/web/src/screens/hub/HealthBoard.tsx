@@ -8,7 +8,7 @@
 // comes through `HubFeed` (the core's typed calls).
 
 import { useId, useState } from "preact/hooks";
-import type { HubAlarmRecord } from "../../core/protocol";
+import type { HubAlarmRecord, HubGroupRecord } from "../../core/protocol";
 import type { HubFeed, HubView, Said } from "./feed";
 import {
   allTags,
@@ -34,15 +34,19 @@ interface Column {
   label: string;
 }
 
-export function HealthBoard(props: { feed: HubFeed; view: HubView; readOnly: string }) {
+export function HealthBoard(props: { feed: HubFeed; view: HubView; readOnly: string; groups?: HubGroupRecord[] /* -- WP P3WGR -- */ }) {
   const { feed, view } = props;
   const [sort, setSort] = useState<Sort>({ key: "name", desc: false });
   const [filter, setFilter] = useState("");
+  // -- WP P3WGR -- the group filter (the hub's groups; "" every DSPi)
+  const [groupId, setGroupId] = useState("");
+  const groupList = props.groups ?? [];
+  const inGroup = groupList.find((g) => g.id === groupId) ?? null;
   const [said, setSaid] = useState<Said | null>(null);
   const tagList = `hub-health-tags-${useId()}`;
   const all = boardRows(view.devices, view.health, view.alarms, feed.openSerial());
   const shown = cols(boardColumns(all).counters);
-  const rows = sortRows(filterRows(all, filter), sort);
+  const rows = sortRows(filterRows(all, filter), sort).filter((r) => !inGroup || inGroup.members.includes(r.serial)); // -- WP P3WGR --
   const t = thresholdsFrom(view.rules);
   const tags = allTags(all);
   const mayAck = !props.readOnly && view.role !== "viewer";
@@ -64,6 +68,19 @@ export function HealthBoard(props: { feed: HubFeed; view: HubView; readOnly: str
             ))}
           </datalist>
         </label>
+        {/* -- WP P3WGR -- */ groupList.length ? (
+          <label class="hub-health-filter">
+            Group
+            <select value={inGroup ? inGroup.id : ""} onChange={(e) => setGroupId((e.target as HTMLSelectElement).value)}>
+              <option value="">Every DSPi</option>
+              {groupList.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
       {said ? (
         <p class="error" role="alert" data-key={said.notice?.key}>
@@ -97,7 +114,7 @@ export function HealthBoard(props: { feed: HubFeed; view: HubView; readOnly: str
           </table>
         </div>
       ) : (
-        <p class="note">{all.length ? "No DSPi has that tag." : "The hub has no DSPi to show."}</p>
+        <p class="note">{!all.length ? "The hub has no DSPi to show." : inGroup && filterRows(all, filter).length ? "No DSPi of that group to show." : "No DSPi has that tag." /* -- WP P3WGR -- */}</p>
       )}
     </section>
   );
