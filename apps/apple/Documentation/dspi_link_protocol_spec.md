@@ -14,6 +14,17 @@ vendor command catalogue (`Documentation/commands.md` in the firmware repo)
 and the notification spec (`notification_protocol_v2_spec.md`). No DSPi Console
 source is required.
 
+> **Security deviations (this repository's hub and clients).** <!-- WP SECSW -->
+> The hub and clients built from this repository go beyond this spec for
+> security: TLS 1.3 by default with the hub key pinned at pairing (no override
+> on a change), `tls=1` in the TXT record whenever TLS is served, `ok.hub_key`,
+> `hello.hub.key_next`, `auth.rotate`, `auth.pair2`, close code 4003 and error
+> `tls_required`, and plaintext pairing refused unless the hub runs in upstream
+> compatibility mode. The full list, with what each means for older clients,
+> is in `docs/integrator/hub.md`, "Security deviations"; the threat model is
+> `docs/integrator/security.md`. This copy of the spec is otherwise kept as
+> upstream wrote it.
+
 ---
 
 ## 1. Design principles
@@ -270,6 +281,10 @@ threat model is "devices on my own network". Hubs may offer TLS (`tls=1`);
 native clients pin the certificate on first use (trust on first use, keyed by
 `hid`) and warn if it changes. Tokens are only ever sent inside the WebSocket
 after `hello`, never in URLs.
+
+<!-- WP SECSW --> This repository's hub and clients do more (TLS by default,
+the key's SPKI hash pinned at pairing and refused on change): see the
+security deviations note at the top and `docs/integrator/hub.md`.
 
 Hubs must bind to LAN interfaces only and must never be exposed through
 router port forwarding. Remote access is out of scope; a VPN such as
