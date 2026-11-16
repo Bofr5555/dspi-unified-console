@@ -44,8 +44,8 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 17 | [Deviations from the DSPi Link spec](#17-deviations-from-the-dspi-link-spec) | | | P2DOC | built (this page) |
 | 18 | [Every message](#18-every-message) | | | P2DOC | built (this page) |
 | 19 | [Groups](#19-groups) | `group.list`, `group.set`, `group.delete`, `group.changed`; `group:<id>` schedule targets | `groups` | P3GR; text P3DOC | built (P3GR; text P3DOC) |
-| 20 | [Group writes and bulk apply](#20-group-writes-and-bulk-apply) | `group.param.*`, `group.preset.load`, `group.apply*` | `group_params`, `group_apply` | P3GP (20.2), P3BA (20.3); text P3DOC | draft |
-| 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | draft (the writer, P3PB, is built) |
+| 20 | [Group writes and bulk apply](#20-group-writes-and-bulk-apply) | `group.param.*`, `group.preset.load`, `group.apply*` | `group_params`, `group_apply` | P3GP (20.2), P3BA (20.3); text P3DOC | built (P3GP, P3BA; text P3DOC) |
+| 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | built (P3RO; the writer P3PB) |
 
 ---
 
@@ -163,13 +163,13 @@ with (section 14).
 | `busy` | the session's in-flight limit, or one guard per device | spec 7.1 |
 | `rate_limited` | too many requests (`retry_in_ms` when known) | spec 7.1 |
 | `conflict` | the hub's state disagrees: a differing snapshot with the same id, a cap of a store reached, a pending guarded apply, a newer revision | new |
-| `unsupported` | the device or the hub lacks it (no `EXT_IDENTIFY`, `fw.install`) | spec 7.1 |
+| `unsupported` | the device or the hub lacks it (no `EXT_IDENTIFY`, `fw.install`; a rollout of a device not on the hub's own USB, section 21) | spec 7.1 |
 | `confirmation_required` | a gated write (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) without `"confirm": true` from an admin | the core's token rule |
 | `limit_exceeded` | the write crosses the device's limits profile; `limit` names it. Nothing was sent | P1HL |
 | `installer_lock` | the device is locked and the write is not volume, mute or preset | P1HL |
-| `image_refused` | a whole image (`0xA1`, `0xA3`: a recall, an import) from control on a device with a profile or a lock | P1HL |
+| `image_refused` | a whole image (`0xA1`, `0xA3`: a recall, an import) from control on a device with a profile or a lock; also a firmware image the rollout will not put on a device, with `reason` (section 21.3) | P1HL, P3RO |
 | `internal` | the hub failed; the log says why | spec 7.1 |
-| `tls_required` | a PIN pairing, `auth.rotate`, a `tls_only` token or an API key over plaintext where the hub refuses it (section 2.1); also the reason of close 4003 | SECSRV, SECPAIR |
+| `tls_required` | a PIN pairing, `auth.rotate`, a `tls_only` token or an API key over plaintext where the hub refuses it (section 2.1); every `fw.*` message over plaintext, in every TLS mode (section 21.1); also the reason of close 4003 | SECSRV, SECPAIR, P3RO |
 
 A device's own refusal of a command (a DSPi Link status such as `STALL`) answers `err` with `code` `device` and `status` the
 DSPi Link status name (spec 8.1).
@@ -187,8 +187,9 @@ DSPi Link status name (spec 8.1).
   as "changed elsewhere", and the hub's history records `session` and `by` (the client's name, the key's name, the
   schedule's or rule's name).
 - The hub never queues or replays a write: a target that is offline fails now (`offline`), and the answer says so.
-- The hub never sends `REQ_CLEAR_CLIPS`, never writes the core voltage and never flashes firmware (`fw.install` stays
-  `unsupported`).
+- The hub never sends `REQ_CLEAR_CLIPS` and never writes the core voltage. It flashes firmware only as an Admin's
+  rollout (section 21: its device requests are the Admin's principal's, never one of the hub's own writes);
+  `fw.install` stays `unsupported`.
 
 ### 1.8 Bounds
 
@@ -206,6 +207,9 @@ cannot read is kept aside as `<name>.bad-<time>`, and the hub runs with defaults
 | `schedule.json` | 256 rules of at most 16 actions | 12 |
 | `mqtt.json` | one broker | 13 |
 | `hub-store.json` | 64 paired clients and API keys together | 14 |
+| `groups.json` | 64 groups of 64 members | 19 |
+| `rollout.json` | the newest 64 rollout records (and at most 4 MiB: the oldest go first) | 21 |
+| `firmware/` | 4 images of at most 8 MiB, and their `index.json` | 21.2 |
 
 Each file is written atomically and is 0600 on Unix. A diagnostics bundle ([diagnostics.md](diagnostics.md)) carries
 each of them with every secret replaced by `set` or `not set`.
@@ -591,6 +595,7 @@ An alarm in this family:
 | `cpu` | warning | at or above `above_pct` for `for_s` | a reading under it, or detached | on, `above_pct` 90, `for_s` 10 |
 | `schedule_failed` | warning | a schedule's run with a failed action (`subject` the rule's id) | acknowledged | on |
 | `clock_unset` | warning | the hub's clock reads before its build date (2026-11-15 in this build); schedules wait | the clock is set | on |
+| `rollout_failed` | critical | a device's firmware rollout failed (section 21.3; `message` names the step) | a later rollout of the device ends `ok`, or the device attaches with the image's firmware (not after a failed verify: then only a rollout that ends `ok`); acknowledging keeps it on | always on: it has no rule, and `alarm.rules.*` do not list it (P3RO) |
 
 Rules: `{"<code>": {"on": bool, ...thresholds}, "clip": {"on": true, "per_minute": 10, "mute_on_storm": false}, ...}`
 with the fields the table names: `after_s` (1 to 86400), `per_minute` (1 to 1000), `above_c` (0 to 150),
@@ -1326,13 +1331,13 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `group.apply` | request | control | `group_apply` | 20.3 (built: P3BA) |
 | `group.apply.confirm` | request | control | `group_apply` | 20.3 (built: P3BA) |
 | `group.apply.cancel` | request | control | `group_apply` | 20.3 (built: P3BA) |
-| `fw.image.put` | request, TLS only | admin | `rollout` | 21.2 (draft: P3RO) |
-| `fw.image.list` | request, TLS only | viewer | `rollout` | 21.2 (draft: P3RO) |
-| `fw.image.delete` | request, TLS only | admin | `rollout` | 21.2 (draft: P3RO) |
-| `fw.rollout.start` | request, TLS only | admin | `rollout` | 21.3 (draft: P3RO) |
-| `fw.rollout.status` | request, TLS only | viewer | `rollout` | 21.3 (draft: P3RO) |
-| `fw.rollout.cancel` | request, TLS only | admin | `rollout` | 21.3 (draft: P3RO) |
-| `fw.rollout.changed` | event, encrypted sessions only | | `rollout` | 21.3 (draft: P3RO) |
+| `fw.image.put` | request, TLS only | admin | `rollout` | 21.2 (built: P3RO) |
+| `fw.image.list` | request, TLS only | viewer | `rollout` | 21.2 (built: P3RO) |
+| `fw.image.delete` | request, TLS only | admin | `rollout` | 21.2 (built: P3RO) |
+| `fw.rollout.start` | request, TLS only | admin | `rollout` | 21.3 (built: P3RO) |
+| `fw.rollout.status` | request, TLS only | viewer | `rollout` | 21.3 (built: P3RO) |
+| `fw.rollout.cancel` | request, TLS only | admin | `rollout` | 21.3 (built: P3RO) |
+| `fw.rollout.changed` | event, encrypted sessions only | | `rollout` | 21.3 (built: P3RO) |
 
 ## 19. Groups
 
@@ -1561,8 +1566,8 @@ One snapshot or document applied to every member, each with its own way back.
 
 ## 21. Firmware rollout
 
-*State: draft (P3RO, `crates/dspi-hub/src/rollout.rs`; the PICOBOOT writer: P3PB, `crates/dspi-core/src/picoboot.rs`;
-text WP P3DOC). PLAN-P3 F6 and section 1.1, OD-P2b, OD-P3e to OD-P3i, OD-P3n, OD-P3o, OD-P3r. Section 19.1 applies.*
+*State: built (P3RO, `crates/dspi-hub/src/rollout.rs`, `rollout/steps.rs`, `rollout/images.rs`, feature `rollout`; the
+PICOBOOT writer: P3PB, `crates/dspi-core/src/picoboot.rs`; text WP P3DOC, the built details P3RO). PLAN-P3 F6 and section 1.1, OD-P2b, OD-P3e to OD-P3i, OD-P3n, OD-P3o, OD-P3r. Section 19.1 applies.*
 
 The hub updates the firmware of a DSPi on its own USB with nobody at the rack: one device at a time, its settings
 exported first, the firmware guard asked with nobody to type, the device verified after it restarts, and an alarm when it
@@ -1702,3 +1707,40 @@ to every client for that time, as in any restart.
 - Take a `fw.*` message over plaintext, or start a rollout or take an image over REST.
 - Send `REQ_CLEAR_CLIPS`, keep a standing link between devices, or add a write of its own: the rollout's device writes
   are the Admin's child session's (section 19.1).
+
+### 21.5 As built (P3RO)
+
+What the code does where the text above leaves room, or is stricter than it:
+
+- **Whose requests.** A rollout opens one principal session for its whole run (section 1.7): the Admin role, the
+  starting Admin's client and name, an id from the remote range. Every device request of every step (the reads of
+  steps 1, 2, 3 and 8, the bootloader entry of step 4) is that principal's child session through the parameter API's
+  executor, so the run goes on when the Admin's console closes, the history names the Admin, and the hub's own
+  writes stay the closed list of three. The bootloader step's entry in `steps` carries `session`, the child's id.
+- **Stricter than a console in step 1, again just before step 4:** a device under an installer lock (a PIN and the
+  pages it covers, P1HL) is `installer_lock` even for an Admin, who could otherwise pass the lock: lift the lock
+  first. A device lock held by any session, the asking console's included, is `locked` (the rollout's principal is
+  another session). Any pending guarded apply is `conflict`, the asking console's included.
+- **`image_refused`** carries `reason` in every case: `platform` and `not_verified` (step 1); `image_invalid` also for a
+  stored image whose bytes changed on disk since it was added (it is read again and hashed at every start) and for an
+  image with no DSPi version (the verify could not be done); the guard's reasons (step 2).
+- **Mute** (step 1) is read from the device: `vol.mute` on, or `vol.master` at -127.5 dB or below.
+- **Find** (step 5) fails at once when more than one board is in BOOTSEL, and when the one board is another chip than
+  the image's or, on RP2350, reports another serial; it fails after 15 s when none appears.
+- **Verify** (step 8) checks the version as the core does after any update (`firmware_version_matches`); the core
+  voltage is read back when the board record needed more than 1.15 V, and both the live and the stored setting must
+  be the board record's. `settings` compares a capture of the device made then with the export, leaving out each
+  document's `meta` and `snapshot` blocks (the capture's time and id).
+- **A later member of a group** refused in its steps 1 or 2 ends that device `failed` at that step (with the code),
+  raises `rollout_failed` for it although nothing was sent to it, and stops the rollout.
+- **Uploads:** besides one per session, at most 2 are open on the hub at once (each holds its image in memory until
+  the last chunk); a third `seq` 0 is `busy`.
+- **A hub stopped during a rollout** reads the record back on its next start as `failed` at the step it was at, its
+  device's alarm raised, the members after it `not_tried`.
+- **Embedding:** `ServiceConfig::rollout: Some(RolloutConfig { allow_unverified_firmware, boot_scan, writer, .. })`
+  under the hub crate's feature `rollout`; `boot_scan` and `writer` default to the core's `picoboot_devices` and
+  `picoboot_flash_confirmed` (tests inject fakes there). `serves_tls` is set by the hub from its TLS mode.
+  `dspi_hub::rollout::images::add_file` is the image store's way in from the hub's machine (P3TM's
+  `uconsole hub firmware add`), with the upload's checks.
+- **Not yet in the core's lists:** `rollout_failed` has no row in the core's `ALARM_CODES` and notices
+  (`alarm.rollout_failed`) until P3CC adds them; it is therefore kept out of `device_alarms::CODES` and the rules.

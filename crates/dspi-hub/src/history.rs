@@ -363,6 +363,13 @@ impl History {
                     *failed.entry(t.serial.as_str()).or_default() |= !t.ok;
                 }
                 for (serial, lines) in per {
+                    // -- WP P3RO -- (P3-A review) a row that names no device (a
+                    // `group:<id>` row, the "" of a truncated run) has no log to go in.
+                    if !crate::inventory::valid_serial(serial)
+                        || serial.starts_with(crate::groups::TARGET_PREFIX)
+                    {
+                        continue;
+                    }
                     let bad = failed.get(serial).copied().unwrap_or(false);
                     let how = if bad { "failed" } else { "ran" };
                     let mut r = EventRecord::new(
@@ -376,6 +383,8 @@ impl History {
                     out.extend(self.push(serial, r, now));
                 }
             }
+            // -- WP P3RO -- the rollout writes its `firmware` record as an `Event`.
+            BusMessage::RolloutEnded { .. } => {}
             BusMessage::Event { serial, record } => {
                 // Ours, already written, when it has an id; another service's to write
                 // when it has none.
@@ -1263,3 +1272,8 @@ impl HubService for HistoryService {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p2ev;
+
+// -- WP P3RO --
+#[cfg(test)]
+#[path = "history/tests_wp_p3ro.rs"]
+mod tests_wp_p3ro;

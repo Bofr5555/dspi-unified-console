@@ -319,6 +319,13 @@ impl Hub {
             .data_dir
             .take()
             .or_else(|| network.as_ref().map(|n| n.store_dir.clone()));
+        // -- WP P3RO -- the rollout runs only where TLS is served (hub-api.md 21.1)
+        #[cfg(feature = "rollout")]
+        if let Some(r) = config.services.rollout.as_mut() {
+            r.serves_tls = network
+                .as_ref()
+                .is_some_and(|n| n.tls != crate::server::TlsMode::Off);
+        }
         let services =
             crate::service::Services::new(&config.services, data_dir, auth.clone(), &relay);
         let (sup_tx, sup_rx) = mpsc::channel();
@@ -647,6 +654,18 @@ impl HubHandle {
         self.inner
             .emit(HubEvent::SessionOpened { id: session.id() });
         Ok(session)
+    }
+
+    // -- WP P3RO --
+    /// The open sessions whose connection is TLS (`fw.rollout.changed` goes to them only).
+    #[cfg(feature = "rollout")]
+    pub(crate) fn encrypted_sessions(&self) -> Vec<Arc<Session>> {
+        guard(&self.inner.state)
+            .sessions
+            .values()
+            .filter(|s| s.encrypted())
+            .cloned()
+            .collect()
     }
 
     /// A session ended: its locks and its polls go, and it hears nothing more.

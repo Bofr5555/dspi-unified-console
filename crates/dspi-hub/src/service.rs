@@ -173,6 +173,11 @@ pub struct ServiceConfig {
     /// Groups (`group.*`, `<data>/groups.json`); the schedule's `group:<id>` targets
     /// resolve through them.
     pub groups: bool,
+    // -- WP P3RO --
+    /// The firmware rollout (`fw.*`, `<data>/firmware/`, `<data>/rollout.json`); off
+    /// when `None`. It needs a data folder, and runs only on a hub that serves TLS.
+    #[cfg(feature = "rollout")]
+    pub rollout: Option<crate::rollout::RolloutConfig>,
 }
 
 impl Default for ServiceConfig {
@@ -196,6 +201,9 @@ impl Default for ServiceConfig {
             schedule: None,
             // -- WP P3GR --
             groups: false,
+            // -- WP P3RO --
+            #[cfg(feature = "rollout")]
+            rollout: None,
         }
     }
 }
@@ -256,6 +264,9 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::schedule::service(config, setup));
     // -- WP P2MQ --
     list.extend(crate::mqtt::service::service(config, setup));
+    // -- WP P3RO -- after the alarms, which hear its `RolloutEnded`
+    #[cfg(feature = "rollout")]
+    list.extend(crate::rollout::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }

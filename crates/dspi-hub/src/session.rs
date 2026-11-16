@@ -86,6 +86,9 @@ pub struct Session {
     role: AtomicU8,
     outbox: Arc<Outbox>,
     exempt_inflight: bool,
+    // -- WP P3RO --
+    /// Its connection is TLS (set once, where the server opens it).
+    encrypted: std::sync::atomic::AtomicBool,
 }
 
 impl Session {
@@ -101,7 +104,24 @@ impl Session {
             role: AtomicU8::new(role as u8),
             outbox: Arc::new(Outbox::new()),
             exempt_inflight,
+            // -- WP P3RO --
+            encrypted: std::sync::atomic::AtomicBool::new(false),
         })
+    }
+
+    // -- WP P3RO --
+    /// Whether the session's connection is TLS. False for every session the hub opens
+    /// itself (the app's, a principal's, a child's) and for a plaintext connection: what
+    /// a `tls_only` family (the rollout, `hub-api.md` 21.1) checks.
+    pub fn encrypted(&self) -> bool {
+        self.encrypted.load(Ordering::SeqCst)
+    }
+
+    // -- WP P3RO --
+    /// Mark the session's connection TLS: the server's one call, where it opens the
+    /// session of an encrypted connection.
+    pub(crate) fn set_encrypted(&self, on: bool) {
+        self.encrypted.store(on, Ordering::SeqCst);
     }
 
     /// The session id.
