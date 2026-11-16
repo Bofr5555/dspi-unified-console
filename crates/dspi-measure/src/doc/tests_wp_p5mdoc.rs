@@ -185,8 +185,8 @@ fn target(imported: bool) -> TargetDoc {
         TargetDefinition::Builtin(BuiltinTarget {
             builtin: "house".into(),
             params: [
-                ("bassShelfDb".to_string(), 4.0),
-                ("tiltDbPerOct".into(), -0.8),
+                ("shelfGainDb".to_string(), 4.0),
+                ("tiltDbPerOctave".into(), -0.8),
             ]
             .into_iter()
             .collect(),

@@ -117,6 +117,107 @@ pub enum Builtin {
     },
 }
 
+// -- review P5-A -- a built-in's stable id and named parameters: what a
+// `target` document's `definition` holds (`{"type": "builtin", "builtin":
+// id, "params": {name: number}}`, docs/integrator/measurement.md 7.5).
+/// The `tilt` built-in's parameter: dB per octave.
+pub const PARAM_TILT: &str = "dbPerOctave";
+/// The `house` built-in's parameters: the shelf's gain, dB.
+pub const PARAM_SHELF_GAIN: &str = "shelfGainDb";
+/// The shelf's corner, Hz.
+pub const PARAM_SHELF_CORNER: &str = "shelfCornerHz";
+/// The shelf's Q.
+pub const PARAM_SHELF_Q: &str = "shelfQ";
+/// The house curve's tilt, dB per octave.
+pub const PARAM_HOUSE_TILT: &str = "tiltDbPerOctave";
+
+impl Builtin {
+    /// The built-in's stable id, as [`builtins`] lists it: `flat`, `tilt`,
+    /// `house`, `coupler-iec60318-4`, `coupler-flat-plate`, `coupler-hats`.
+    pub fn id(&self) -> String {
+        match self {
+            Builtin::Flat => "flat".into(),
+            Builtin::Tilt { .. } => "tilt".into(),
+            Builtin::House { .. } => "house".into(),
+            Builtin::CouplerDefault { coupler } => format!("coupler-{}", coupler_id(*coupler)),
+        }
+    }
+
+    /// The built-in's parameters by name (none for `flat` and the coupler
+    /// defaults, which are fixed curves).
+    pub fn params(&self) -> std::collections::BTreeMap<String, f64> {
+        let mut p = std::collections::BTreeMap::new();
+        match *self {
+            Builtin::Flat | Builtin::CouplerDefault { .. } => {}
+            Builtin::Tilt { db_per_octave } => {
+                p.insert(PARAM_TILT.to_string(), db_per_octave);
+            }
+            Builtin::House {
+                shelf_gain_db,
+                shelf_corner_hz,
+                shelf_q,
+                tilt_db_per_octave,
+            } => {
+                p.insert(PARAM_SHELF_GAIN.to_string(), shelf_gain_db);
+                p.insert(PARAM_SHELF_CORNER.to_string(), shelf_corner_hz);
+                p.insert(PARAM_SHELF_Q.to_string(), shelf_q);
+                p.insert(PARAM_HOUSE_TILT.to_string(), tilt_db_per_octave);
+            }
+        }
+        p
+    }
+
+    /// The built-in an id and named parameters describe. A parameter left
+    /// out takes the built-in's default ([`builtins`]); the result is checked
+    /// ([`Builtin::curve`]).
+    ///
+    /// Errors: [`MeasureError::Invalid`] for an id that is not a built-in's,
+    /// a parameter name the built-in does not have (a misspelt name must not
+    /// silently give the default curve), or a value out of range.
+    pub fn from_id(
+        id: &str,
+        params: &std::collections::BTreeMap<String, f64>,
+    ) -> Result<Builtin, MeasureError> {
+        let base = builtins()
+            .into_iter()
+            .find(|b| b.id == id)
+            .map(|b| b.builtin)
+            .ok_or_else(|| {
+                MeasureError::Invalid(format!(
+                    "no built-in target \"{}\"",
+                    id.chars().take(32).collect::<String>()
+                ))
+            })?;
+        let mut known = base.params();
+        for (name, value) in params {
+            match known.get_mut(name) {
+                Some(slot) => *slot = *value,
+                None => {
+                    return Err(MeasureError::Invalid(format!(
+                        "the built-in target \"{id}\" has no parameter \"{}\"",
+                        name.chars().take(32).collect::<String>()
+                    )));
+                }
+            }
+        }
+        let get = |name: &str| known.get(name).copied().unwrap_or(0.0);
+        let built = match base {
+            Builtin::Flat | Builtin::CouplerDefault { .. } => base,
+            Builtin::Tilt { .. } => Builtin::Tilt {
+                db_per_octave: get(PARAM_TILT),
+            },
+            Builtin::House { .. } => Builtin::House {
+                shelf_gain_db: get(PARAM_SHELF_GAIN),
+                shelf_corner_hz: get(PARAM_SHELF_CORNER),
+                shelf_q: get(PARAM_SHELF_Q),
+                tilt_db_per_octave: get(PARAM_HOUSE_TILT),
+            },
+        };
+        built.curve()?;
+        Ok(built)
+    }
+}
+
 /// The house curve's defaults: +6 dB shelf at 120 Hz, Q 0.707, -0.3 dB/octave.
 pub const HOUSE_DEFAULT: Builtin = Builtin::House {
     shelf_gain_db: 6.0,

@@ -395,7 +395,7 @@ impl MeasurementDoc {
     /// first and at most [`MAX_MEASUREMENT_BYTES`].
     pub fn to_text(&self) -> Result<String, MeasureError> {
         self.validate()?;
-        write(self, DocKind::Measurement)
+        write(&self.canonical(), DocKind::Measurement)
     }
 
     /// Checks every bound (see the module's notes).
@@ -494,17 +494,9 @@ pub struct MicDoc {
     pub extra: Map<String, Value>,
 }
 
-/// The calibration file's format it was imported from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum MicFormat {
-    /// miniDSP UMIK-1/UMIK-2 text with a sensitivity line.
-    Umik,
-    /// REW calibration text (frequency, dB, optional phase).
-    Rew,
-    /// Comma, semicolon or tab separated values.
-    Csv,
-}
+/// The calibration file's format it was imported from: `umik`, `rew` or
+/// `csv`. P5CAL's own type (review P5-A: one enum, not a copy).
+pub type MicFormat = crate::cal::CalFormat;
 
 /// The `mic` block.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -566,7 +558,7 @@ impl MicDoc {
     /// The document's text, validated first and at most [`MAX_MIC_BYTES`].
     pub fn to_text(&self) -> Result<String, MeasureError> {
         self.validate()?;
-        write(self, DocKind::Mic)
+        write(&self.canonical(), DocKind::Mic)
     }
 
     /// Checks every bound.
@@ -611,15 +603,7 @@ pub struct TargetDoc {
     pub extra: Map<String, Value>,
 }
 
-/// What a target is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TargetUse {
-    /// Loudspeakers in a room.
-    Speakers,
-    /// Headphones on a coupler.
-    Headphones,
-}
+pub use crate::target::TargetUse;
 
 /// The `target` block.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -715,7 +699,7 @@ impl TargetDoc {
     /// The document's text, validated first and at most [`MAX_TARGET_BYTES`].
     pub fn to_text(&self) -> Result<String, MeasureError> {
         self.validate()?;
-        write(self, DocKind::Target)
+        write(&self.canonical(), DocKind::Target)
     }
 
     /// Checks every bound.
@@ -771,6 +755,264 @@ impl TargetDoc {
             ));
         }
         Ok(())
+    }
+}
+
+// ── review P5-A: P5CAL's types to and from the documents ──────────────────
+//
+// The document model and P5CAL were written in parallel. These are the only
+// conversions between them, so a `mic` or `target` document always means what
+// `cal` and `target` compute.
+
+impl MicCal {
+    /// The `mic` block of a parsed calibration on `grid` (normally
+    /// [`LogGrid::STANDARD`](crate::types::LogGrid::STANDARD)): the file's
+    /// format, angle, serial, vendor, sensitivity and gain, its response, and
+    /// the dB SPL scale `cal::spl_scale` gives (a calibrator step's offset
+    /// when there is one, else the sensitivity's, labelled approximate).
+    ///
+    /// Errors: [`MeasureError::Invalid`] for a bad grid.
+    pub fn from_calibration(
+        name: &str,
+        cal: &crate::cal::MicCalibration,
+        calibrator: Option<crate::cal::CalibratorStep>,
+        grid: &crate::types::LogGrid,
+    ) -> Result<MicCal, MeasureError> {
+        let scale = crate::cal::spl_scale(cal.curve.sensitivity_db, calibrator);
+        Ok(MicCal {
+            id: String::new(),
+            name: name.to_string(),
+            serial: cal.curve.serial.clone().unwrap_or_default(),
+            vendor: cal.vendor.clone().unwrap_or_default(),
+            format: cal.curve.format,
+            angle: cal.curve.angle.degrees(),
+            sensitivity_db: cal.curve.sensitivity_db,
+            gain_db: cal.curve.gain_db,
+            spl_offset_db: scale.offset_db,
+            approximate: scale.approximate,
+            response: Curve::from_response(&cal.to_response(grid)?),
+            source_name: String::new(),
+            source_hash: String::new(),
+            note: String::new(),
+            extra: Map::new(),
+        })
+    }
+
+    /// The calibration's angle of incidence; `None` for a number that is not
+    /// 0 or 90 (which [`MicDoc::validate`] refuses).
+    pub fn mic_angle(&self) -> Option<crate::cal::MicAngle> {
+        crate::cal::MicAngle::from_degrees(self.angle)
+    }
+
+    /// The correction to subtract from a measurement
+    /// (`cal::apply_correction`), on the document's grid.
+    pub fn correction(&self) -> crate::types::Response {
+        self.response.to_response()
+    }
+
+    /// The dB SPL scale the document states: `dB SPL = dBFS +
+    /// splOffsetDb` in the crate's level convention
+    /// ([`FULL_SCALE_SINE_DB`](crate::types::FULL_SCALE_SINE_DB)); relative
+    /// dB without an offset.
+    pub fn spl_scale(&self) -> crate::cal::SplScale {
+        use crate::cal::{SplBasis, SplScale};
+        match self.spl_offset_db.filter(|o| o.is_finite()) {
+            None => SplScale {
+                offset_db: None,
+                approximate: true,
+                basis: SplBasis::Relative,
+            },
+            Some(offset) => SplScale {
+                offset_db: Some(offset),
+                approximate: self.approximate,
+                // A document keeps the offset, not which calibrator gave it.
+                basis: if self.approximate {
+                    SplBasis::Sensitivity
+                } else {
+                    SplBasis::Calibrator {
+                        reference_db: crate::cal::CALIBRATOR_94_DB,
+                    }
+                },
+            },
+        }
+    }
+}
+
+impl From<crate::target::ReferenceBand> for ReferenceBand {
+    fn from(b: crate::target::ReferenceBand) -> Self {
+        ReferenceBand {
+            low_hz: b.low_hz,
+            high_hz: b.high_hz,
+            extra: Map::new(),
+        }
+    }
+}
+
+impl Target {
+    /// The `target` block of one of P5CAL's targets. A built-in is stored by
+    /// its id and named parameters (`target::Builtin::id`, `params`); an
+    /// imported one as its curve on `grid`.
+    ///
+    /// Errors: [`MeasureError::Invalid`] for a bad grid or definition.
+    pub fn from_target(
+        name: &str,
+        target: &crate::target::Target,
+        grid: &crate::types::LogGrid,
+    ) -> Result<Target, MeasureError> {
+        let definition = match &target.definition {
+            crate::target::TargetDefinition::Builtin { builtin } => {
+                builtin.curve()?;
+                TargetDefinition::Builtin(BuiltinTarget {
+                    builtin: builtin.id(),
+                    params: builtin.params(),
+                    extra: Map::new(),
+                })
+            }
+            crate::target::TargetDefinition::Imported { points } => {
+                let mut r = crate::cal::curve_to_grid(points, grid)?;
+                r.phase_deg = None;
+                TargetDefinition::Imported(ImportedTarget {
+                    curve: Curve::from_response(&r),
+                    source_name: String::new(),
+                    extra: Map::new(),
+                })
+            }
+        };
+        Ok(Target {
+            id: String::new(),
+            name: name.to_string(),
+            use_for: target.target_use,
+            coupler: target.coupler,
+            definition,
+            compensation: None,
+            reference_band: target.reference.into(),
+            note: String::new(),
+            extra: Map::new(),
+        })
+    }
+
+    /// The target as P5CAL evaluates it (`target::Target::evaluate`).
+    ///
+    /// Errors: [`MeasureError::Invalid`] for a built-in id or parameter name
+    /// `target` does not define, a parameter out of range, or an imported
+    /// curve with no trusted point.
+    pub fn to_target(&self) -> Result<crate::target::Target, MeasureError> {
+        let definition = match &self.definition {
+            TargetDefinition::Builtin(b) => crate::target::TargetDefinition::Builtin {
+                builtin: crate::target::Builtin::from_id(&b.builtin, &b.params)?,
+            },
+            TargetDefinition::Imported(i) => {
+                let points = i.curve.points()?;
+                if points.is_empty() {
+                    return Err(MeasureError::Invalid(
+                        "target.definition.curve: no trusted point".into(),
+                    ));
+                }
+                crate::target::TargetDefinition::Imported { points }
+            }
+        };
+        Ok(crate::target::Target {
+            target_use: self.use_for,
+            coupler: self.coupler,
+            definition,
+            reference: crate::target::ReferenceBand {
+                low_hz: self.reference_band.low_hz,
+                high_hz: self.reference_band.high_hz,
+            },
+        })
+    }
+
+    /// The coupler compensation as P5CAL takes it, when the target has one
+    /// and names its coupler.
+    pub fn to_compensation(&self) -> Result<Option<crate::target::Compensation>, MeasureError> {
+        match (&self.compensation, self.coupler) {
+            (Some(c), Some(coupler)) => Ok(Some(crate::target::Compensation {
+                coupler,
+                points: c.points()?,
+            })),
+            _ => Ok(None),
+        }
+    }
+}
+
+// ── review P5-A (F3): a written document reads back to the same text ──────
+//
+// `serde_json` reads a number of 16 or 17 digits to within one unit in the
+// last place (its exact parser is a build-wide feature this crate does not
+// switch on), so a document read and written again could differ in the last
+// digit of a number: a store would see a changed document where nothing
+// changed. Every free number is therefore written with 15 significant
+// digits, which read back exactly; curves are integers already.
+
+/// `x` at 15 significant digits (itself when it is not finite).
+fn sig15(x: f64) -> f64 {
+    if !x.is_finite() {
+        return x;
+    }
+    format!("{x:.14e}").parse().unwrap_or(x)
+}
+
+fn sig15_opt(x: &mut Option<f64>) {
+    if let Some(v) = x {
+        *v = sig15(*v);
+    }
+}
+
+fn sig15_curve(c: &mut Curve) {
+    c.grid.min_hz = sig15(c.grid.min_hz);
+    c.grid.max_hz = sig15(c.grid.max_hz);
+}
+
+impl MeasurementDoc {
+    /// The document as it is written: every free number at 15 significant
+    /// digits, so that reading the text and writing it again gives the same
+    /// text.
+    pub fn canonical(&self) -> MeasurementDoc {
+        let mut d = self.clone();
+        let m = &mut d.measurement;
+        m.stimulus.f1_hz = sig15(m.stimulus.f1_hz);
+        m.stimulus.f2_hz = sig15(m.stimulus.f2_hz);
+        m.stimulus.level_db = sig15(m.stimulus.level_db);
+        m.capture.clock_ratio = sig15(m.capture.clock_ratio);
+        sig15_opt(&mut m.capture.max_residual_us);
+        if let Some(mic) = m.mic.as_mut() {
+            sig15_opt(&mut mic.sensitivity_db);
+        }
+        for o in &mut m.outputs {
+            sig15_opt(&mut o.arrival_ms);
+            sig15_curve(&mut o.response);
+        }
+        d
+    }
+}
+
+impl MicDoc {
+    /// The document as it is written (see [`MeasurementDoc::canonical`]).
+    pub fn canonical(&self) -> MicDoc {
+        let mut d = self.clone();
+        sig15_opt(&mut d.mic.sensitivity_db);
+        sig15_opt(&mut d.mic.gain_db);
+        sig15_opt(&mut d.mic.spl_offset_db);
+        sig15_curve(&mut d.mic.response);
+        d
+    }
+}
+
+impl TargetDoc {
+    /// The document as it is written (see [`MeasurementDoc::canonical`]).
+    pub fn canonical(&self) -> TargetDoc {
+        let mut d = self.clone();
+        let t = &mut d.target;
+        match &mut t.definition {
+            TargetDefinition::Builtin(b) => b.params.values_mut().for_each(|v| *v = sig15(*v)),
+            TargetDefinition::Imported(i) => sig15_curve(&mut i.curve),
+        }
+        if let Some(c) = t.compensation.as_mut() {
+            sig15_curve(c);
+        }
+        t.reference_band.low_hz = sig15(t.reference_band.low_hz);
+        t.reference_band.high_hz = sig15(t.reference_band.high_hz);
+        d
     }
 }
 

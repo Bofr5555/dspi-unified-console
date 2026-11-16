@@ -14,12 +14,16 @@
 //!   its overlap), so pink noise, which has equal power in equal fractions
 //!   of an octave, reads flat; white noise rises 3 dB an octave. A band
 //!   narrower than two bins is marked untrusted (the FFT cannot resolve it).
-//! - **Levels:** `10·log10` of the band's mean square relative to a full
-//!   scale of 1.0, so a full-scale sine reads -3.01 dB in its band. With a
-//!   microphone calibration ([`MicRta::new`]'s `mic`, a `mic` document's
-//!   response on any grid) its deviation is subtracted at each band centre;
-//!   with an SPL offset (P5CAL's sensitivity or calibrator step: dB SPL =
-//!   this level + offset) the result is dB SPL and [`Response::spl`] is set.
+//! - **Levels:** dBFS in the crate's one convention
+//!   ([`FULL_SCALE_SINE_DB`]): `10·log10` of the band's mean square relative
+//!   to a full scale of 1.0, plus 3.01 dB, so **a full-scale sine reads
+//!   0 dBFS in its band**, exactly as [`crate::cal::level_dbfs`] reads it.
+//!   With a microphone calibration ([`MicRta::new`]'s `mic`, a `mic`
+//!   document's response on any grid) its deviation is subtracted at each
+//!   band centre; with an SPL offset (P5CAL's sensitivity or calibrator
+//!   step, [`crate::cal::spl_offset_from_tone`]: dB SPL = this level +
+//!   offset) the result is dB SPL and [`Response::spl`] is set. A calibrator
+//!   tone therefore reads its own level (94 or 114 dB SPL) in its band.
 //! - **Averaging** ([`Averaging`]): exponential with a time constant, fixed
 //!   over the last N frames, or infinite; presets [`Averaging::FAST`],
 //!   [`Averaging::SLOW`], [`Averaging::INFINITE`]. All averaging is of band
@@ -38,7 +42,7 @@ use rustfft::num_complex::Complex;
 use rustfft::{Fft, FftPlannerScalar};
 
 use crate::response::{power_db, resample};
-use crate::types::{GRID_MAX_HZ, GRID_MIN_HZ, LogGrid, MeasureError, Response};
+use crate::types::{FULL_SCALE_SINE_DB, GRID_MAX_HZ, GRID_MIN_HZ, LogGrid, MeasureError, Response};
 
 /// The shortest FFT frame, samples.
 pub const MIN_FFT_LEN: usize = 1024;
@@ -437,8 +441,9 @@ impl MicRta {
         self.frames = self.frames.saturating_add(1);
     }
 
-    /// The current averaged spectrum on [`MicRta::grid`]: dB (re full scale,
-    /// or dB SPL with an offset), magnitude only; `valid` false where a band
+    /// The current averaged spectrum on [`MicRta::grid`]: dBFS (a full-scale
+    /// sine reads 0, [`FULL_SCALE_SINE_DB`]), or dB SPL with an offset,
+    /// magnitude only; `valid` false where a band
     /// is narrower than two bins or outside the microphone's calibration.
     /// `None` before the first frame.
     pub fn spectrum(&self) -> Option<Response> {
@@ -447,7 +452,7 @@ impl MicRta {
         let mag = avg
             .iter()
             .zip(&self.mic_db)
-            .map(|(p, m)| power_db(*p) - m + offset)
+            .map(|(p, m)| power_db(*p) + FULL_SCALE_SINE_DB - m + offset)
             .collect();
         let valid = self
             .bands
@@ -648,7 +653,8 @@ mod tests_wp_p5resp {
             .iter()
             .position(|f| (f - 1000.0).abs() < 1e-6)
             .unwrap();
-        let want = 10.0 * (amp * amp / 2.0).log10();
+        // A sine of peak 0.5 is -6.02 dBFS (a full-scale sine reads 0).
+        let want = 20.0 * amp.log10();
         let mut plain = MicRta::new(cfg, None, None).unwrap();
         plain.push(&x).unwrap();
         let s = plain.spectrum().unwrap();

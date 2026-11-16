@@ -280,7 +280,7 @@ A short example (one output, the 10-point grid of 7.2):
 | `format` | string | the file it was imported from: `umik` (miniDSP UMIK-1/UMIK-2 text with a sensitivity line), `rew` (frequency, dB, optional phase), `csv` |
 | `angle` | integer | the calibration's angle of incidence: 0 or 90 (default 0) |
 | `sensitivityDb`, `gainDb` | number, optional | the file's values, in the vendor's convention (P5CAL cites it) |
-| `splOffsetDb` | number, optional | the offset from full scale to dB SPL, when known |
+| `splOffsetDb` | number, optional | the offset from dBFS to dB SPL, when known: dB SPL = dBFS + `splOffsetDb`, with the level convention below |
 | `approximate` | boolean | the dB SPL scale is approximate (no calibrator step was done) |
 | `response` | curve | the correction (magnitude, and phase when the file had it) |
 | `sourceName`, `sourceHash` | string, optional | the imported file's name and hash (a measurement's `mic.calHash`) |
@@ -299,6 +299,12 @@ A short example (one output, the 10-point grid of 7.2):
 }
 ```
 
+**The level convention (one for every level the maths states).** A level in dBFS is an RMS level against digital full
+scale ±1.0 in which **a full-scale sine reads 0 dBFS** (AES17, and what REW shows): `10·log10(mean square) + 3.01`. The
+calibrator step, `splOffsetDb` and the microphone RTA's bands all use it, so a 94 dB calibrator reads 94 dB SPL in the
+RTA's 1 kHz band after the step. The generator's `levelDb` and the clip limits of S4 are *peak* levels, a different
+quantity.
+
 ### 7.5 `target`
 
 | Key | Type | Meaning |
@@ -307,10 +313,21 @@ A short example (one output, the 10-point grid of 7.2):
 | `name` | string | at most 256 characters |
 | `use` | string | `speakers` or `headphones` |
 | `coupler` | string, optional | headphone targets only: `iec60318_4`, `flatPlate`, `hats` |
-| `definition` | object | `{"type": "builtin", "builtin": "<id>", "params": {"<name>": number}}` (at most 32 parameters, the ids and names P5CAL's `target` module defines), or `{"type": "imported", "curve": curve, "sourceName"?}` |
+| `definition` | object | `{"type": "builtin", "builtin": "<id>", "params": {"<name>": number}}` (the ids and parameter names below; a parameter left out takes its default, an unknown id or name is refused when the target is evaluated), or `{"type": "imported", "curve": curve, "sourceName"?}` |
 | `compensation` | curve, optional | a coupler compensation, subtracted from measurements before the fit |
 | `referenceBand` | object | `{lowHz, highHz}`: where the target is normalised, 0 < `lowHz` < `highHz` ≤ 100 kHz |
 | `note` | string, optional | at most 4096 characters |
+
+The built-in targets (`dspi_measure::target::builtins`; all are our own parametric curves):
+
+| `builtin` | `params` (default) | Curve |
+|---|---|---|
+| `flat` | none | 0 dB everywhere |
+| `tilt` | `dbPerOctave` (-0.5) | a straight line through 0 dB at 1 kHz |
+| `house` | `shelfGainDb` (6), `shelfCornerHz` (120), `shelfQ` (0.707), `tiltDbPerOctave` (-0.3) | a bass shelf plus a tilt |
+| `coupler-iec60318-4`, `coupler-flat-plate`, `coupler-hats` | none | our default for that coupler type |
+
+Ranges: a tilt within ±3 dB/octave, a shelf gain within ±20 dB, a corner from 10 Hz to 22 kHz, a shelf Q from 0.3 to 2.
 
 ```json
 {
@@ -318,7 +335,7 @@ A short example (one output, the 10-point grid of 7.2):
   "meta": {"kind": "target", "name": "Ear simulator, our default", "savedUtc": "2026-11-16T10:00:00Z", "appVersion": "0.5.0"},
   "target": {
     "name": "Ear simulator, our default", "use": "headphones", "coupler": "iec60318_4",
-    "definition": {"type": "builtin", "builtin": "house", "params": {"bassShelfDb": 4.0, "tiltDbPerOct": -0.8}},
+    "definition": {"type": "builtin", "builtin": "house", "params": {"shelfGainDb": 4.0, "tiltDbPerOctave": -0.8}},
     "compensation": {"grid": {"minHz": 100.0, "maxHz": 1000.0, "pointsPerOctave": 3}, "mag": "AAAAAAAAMgBkAMgALAGQASwByAA="},
     "referenceBand": {"lowHz": 500.0, "highHz": 2000.0}
   }

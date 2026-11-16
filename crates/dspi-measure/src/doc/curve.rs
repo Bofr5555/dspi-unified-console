@@ -142,6 +142,36 @@ impl Curve {
         }
     }
 
+    // -- review P5-A --
+    /// The curve's trusted magnitudes as points (frequency, dB), ascending:
+    /// what P5CAL's imported targets and compensations hold.
+    ///
+    /// Errors: [`MeasureError::Invalid`] for a bad grid or a magnitude array
+    /// that does not match it.
+    pub fn points(&self) -> Result<Vec<crate::cal::CurvePoint>, MeasureError> {
+        let freqs = self.grid.freqs()?;
+        if freqs.len() != self.mag_db.len() {
+            return Err(MeasureError::Invalid(
+                "a curve that does not match its grid".into(),
+            ));
+        }
+        Ok(freqs
+            .iter()
+            .zip(&self.mag_db)
+            .enumerate()
+            .filter(|(i, _)| {
+                self.valid
+                    .as_ref()
+                    .is_none_or(|v| v.get(*i).copied().unwrap_or(false))
+            })
+            .map(|(_, (f, m))| crate::cal::CurvePoint {
+                freq_hz: *f,
+                db: *m,
+                phase_deg: None,
+            })
+            .collect())
+    }
+
     /// The curve with every value rounded to its stored step: what a write
     /// and a read give back.
     pub fn rounded(&self) -> Curve {

@@ -48,7 +48,8 @@ pub const MAX_TONE_SAMPLES: usize = 65_536;
 /// The fewest samples a calibrator capture must have.
 pub const MIN_TONE_SAMPLES: usize = 4096;
 
-/// The calibration file's format, as detected.
+/// The calibration file's format, as detected. Serialised `umik`, `rew`,
+/// `csv`: a `mic` document's `format` is this type (`doc::MicFormat`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CalFormat {
@@ -60,14 +61,16 @@ pub enum CalFormat {
     Csv,
 }
 
-/// The incidence the calibration is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// The incidence the calibration is for. Serialised as the number of
+/// degrees, `0` or `90`, as a `mic` document's `angle` holds it (review
+/// P5-A: one spelling in `cal` and in `doc`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(into = "u16", try_from = "u16")]
 pub enum MicAngle {
     /// On axis (0°): the microphone pointing at the source.
-    #[serde(rename = "0")]
+    #[default]
     Deg0,
     /// 90° incidence: the microphone pointing at the ceiling (room measurements).
-    #[serde(rename = "90")]
     Deg90,
 }
 
@@ -78,6 +81,29 @@ impl MicAngle {
             MicAngle::Deg0 => 0,
             MicAngle::Deg90 => 90,
         }
+    }
+
+    /// The angle of a number of degrees: 0 or 90, nothing else.
+    pub fn from_degrees(degrees: u16) -> Option<MicAngle> {
+        match degrees {
+            0 => Some(MicAngle::Deg0),
+            90 => Some(MicAngle::Deg90),
+            _ => None,
+        }
+    }
+}
+
+impl From<MicAngle> for u16 {
+    fn from(a: MicAngle) -> u16 {
+        a.degrees()
+    }
+}
+
+impl TryFrom<u16> for MicAngle {
+    type Error = String;
+
+    fn try_from(degrees: u16) -> Result<MicAngle, String> {
+        MicAngle::from_degrees(degrees).ok_or_else(|| format!("angle {degrees} (0 or 90)"))
     }
 }
 
@@ -713,7 +739,8 @@ pub fn spl_offset_from_tone(
             rustfft::num_complex::Complex::new(v * w, 0.0)
         })
         .collect();
-    let mut planner = rustfft::FftPlanner::<f64>::new();
+    // Scalar only (review RC10).
+    let mut planner = rustfft::FftPlannerScalar::<f64>::new();
     planner.plan_fft_forward(n).process(&mut buf);
     let half = n / 2;
     let bin_hz = f64::from(rate_hz) / n_f;
