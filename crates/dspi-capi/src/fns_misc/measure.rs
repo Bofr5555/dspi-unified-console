@@ -31,6 +31,21 @@ fn setup(p: *const c_char) -> Result<MeasureSetup> {
     })
 }
 
+/// `count` floats at `p`, copied; `None` for a null or misaligned pointer
+/// with a count.
+fn c_floats(p: *const f32, count: u32) -> Option<Vec<f32>> {
+    if count == 0 {
+        return Some(Vec::new());
+    }
+    if p.is_null() || !p.is_aligned() {
+        return None;
+    }
+    let n = usize::try_from(count).unwrap_or(0);
+    // SAFETY: a non-null, aligned buffer of `count` floats; the C caller's
+    // contract.
+    Some(unsafe { std::slice::from_raw_parts(p, n) }.to_vec())
+}
+
 /// A C wake-up callback for the measurement listener.
 struct CMeasure {
     callback: extern "C" fn(user_data: *mut c_void),
@@ -99,13 +114,11 @@ pub extern "C" fn dspi_measure_start(
 
 /// Push `count` mono samples (full scale ±1) of the microphone's capture
 /// from frame `first_frame` at `rate_hz`; `clipped` when the converter
-/// clipped. The state, or a failure for a block over 1 Mi samples or a null
+/// clipped. `samples` points at `count` floats (null with `count` 0). The
+/// state, or a failure for a block over 1 Mi samples or a null or misaligned
 /// pointer with a count.
-///
-/// # Safety
-/// `samples` points at `count` floats (or is null with `count` 0).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dspi_measure_capture_push(
+pub extern "C" fn dspi_measure_capture_push(
     core: *mut FfiCore,
     first_frame: u64,
     samples: *const f32,
@@ -115,16 +128,7 @@ pub unsafe extern "C" fn dspi_measure_capture_push(
     buf: *mut c_char,
     len: u32,
 ) -> u32 {
-    let block = if count == 0 {
-        Some(Vec::new())
-    } else if samples.is_null() || !samples.is_aligned() {
-        None
-    } else {
-        let n = usize::try_from(count).unwrap_or(0);
-        // SAFETY: a non-null, aligned buffer of `count` floats; the C
-        // caller's contract.
-        Some(unsafe { std::slice::from_raw_parts(samples, n) }.to_vec())
-    };
+    let block = c_floats(samples, count);
     text(core, buf, len, |c| {
         json_reply(
             block
@@ -221,20 +225,17 @@ mod tests_wp_p5ses {
         let s = read(|b, l| dspi_measure_state(h, b, l));
         assert_eq!(s["phase"], "idle");
         let samples = [0f32; 16];
-        // SAFETY: 16 floats.
-        let s = read(|b, l| unsafe {
-            dspi_measure_capture_push(h, 0, samples.as_ptr(), 16, 48_000, false, b, l)
-        });
+        let s =
+            read(|b, l| dspi_measure_capture_push(h, 0, samples.as_ptr(), 16, 48_000, false, b, l));
         assert_eq!(s["ok"], true);
         let r = read(|b, l| dspi_measure_result(h, b, l));
         assert_eq!(r["code"], "invalid");
         let bad = CString::new("{").unwrap();
         let r = read(|b, l| dspi_measure_start(h, bad.as_ptr(), b, l));
         assert_eq!(r["code"], "invalid");
-        // SAFETY: a null pointer with a count is refused.
-        let r = read(|b, l| unsafe {
-            dspi_measure_capture_push(h, 0, std::ptr::null(), 4, 48_000, false, b, l)
-        });
+        // A null pointer with a count is refused.
+        let r =
+            read(|b, l| dspi_measure_capture_push(h, 0, std::ptr::null(), 4, 48_000, false, b, l));
         assert_eq!(r["code"], "invalid");
         let s = read(|b, l| dspi_measure_stop(h, b, l));
         assert_eq!(s["ok"], true);

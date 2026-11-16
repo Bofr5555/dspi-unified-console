@@ -7034,11 +7034,9 @@ uint32_t dspi_measure_start(struct FfiCore *core, const char *setup_json, char *
 /**
  * Push `count` mono samples (full scale ±1) of the microphone's capture
  * from frame `first_frame` at `rate_hz`; `clipped` when the converter
- * clipped. The state, or a failure for a block over 1 Mi samples or a null
+ * clipped. `samples` points at `count` floats (null with `count` 0). The
+ * state, or a failure for a block over 1 Mi samples or a null or misaligned
  * pointer with a count.
- *
- * # Safety
- * `samples` points at `count` floats (or is null with `count` 0).
  */
 uint32_t dspi_measure_capture_push(struct FfiCore *core,
                                    uint64_t first_frame,
