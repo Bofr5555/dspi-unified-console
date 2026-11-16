@@ -30,6 +30,7 @@
 //! | [`outbound`] | notifications out: webhooks and push | P2WH |
 //! | [`tls_identity`] | the hub's TLS key, certificate, pin and rotation | SECKEY |
 //! | [`rest`] | the REST mirror under `/api/v1/` and API keys (`auth.mint`) | P2RS |
+//! | [`groups`] | named sets of inventory serials, `group.*`, `group:<id>` targets | P3GR |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -100,6 +101,8 @@ pub mod proxy;
 pub mod device_alarms;
 // -- WP P2SC -- schedules (they run with feature `api`)
 pub mod schedule;
+// -- WP P3GR -- groups
+pub mod groups;
 
 pub use auth::AccessMode;
 pub use error::HubError;

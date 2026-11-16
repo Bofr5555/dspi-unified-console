@@ -116,7 +116,9 @@ cap (`param_api_2`), never a silent one.
 ```
 
   A row may carry more fields of its own (`value`, `action`). A partial failure is reported, never retried later
-  (section 1.7). `group:<id>` targets are reserved for phase 3 and answer `unsupported` until then.
+  (section 1.7). `group:<id>` targets are expanded to the group's members (section 19.3, built: P3GR); an unknown
+  group is one `not_found` row, and a run answers at most 256 rows, the last `bad_request` "truncated" when there was
+  more.
 
 ### 1.4 Values
 
@@ -161,7 +163,7 @@ with (section 14).
 | `busy` | the session's in-flight limit, or one guard per device | spec 7.1 |
 | `rate_limited` | too many requests (`retry_in_ms` when known) | spec 7.1 |
 | `conflict` | the hub's state disagrees: a differing snapshot with the same id, a cap of a store reached, a pending guarded apply, a newer revision | new |
-| `unsupported` | the device or the hub lacks it (no `EXT_IDENTIFY`, a `group:` target, `fw.install`) | spec 7.1 |
+| `unsupported` | the device or the hub lacks it (no `EXT_IDENTIFY`, `fw.install`) | spec 7.1 |
 | `confirmation_required` | a gated write (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) without `"confirm": true` from an admin | the core's token rule |
 | `limit_exceeded` | the write crosses the device's limits profile; `limit` names it. Nothing was sent | P1HL |
 | `installer_lock` | the device is locked and the write is not volume, mute or preset | P1HL |
@@ -834,8 +836,8 @@ A rule:
   `snapshot.recall {snapshot or name}` (no guard), `system.scene.apply {scene}` (no target needed), `param.set {path,
   idx?, value}` for `vol.master`, `vol.user`, `vol.mute` and `out.mute` only. Other fields are dropped. A value outside
   the registry's range is reported by the run (`bad_request`), as the message itself answers it.
-- `targets`: at most 16 serials, each once (16 actions on 16 devices answer 256 rows, one frame); `group:<id>` is
-  reserved (phase 3, `unsupported` until then). A rule with any device action needs a target.
+- `targets`: at most 16 serials, each once (16 actions on 16 devices answer 256 rows, one frame); `group:<id>` entries
+  are taken too (any well-formed id) and expanded to the members when the rule runs (section 19.3, built: P3GR). A rule with any device action needs a target.
 - More than 256 rules is `conflict`; a malformed rule `bad_request`; an unknown `id` `not_found`.
 
 **The clock** (OD-P2h): local time in the hub machine's time zone (its zone database: `TZ`, `/etc/localtime`). At start,
