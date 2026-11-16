@@ -8,6 +8,8 @@
 // Origin rule), so it is the one hub such a page is sure to reach.
 
 import type { Access, FleetBackend, Installation, Source } from "./types";
+// -- WP SECWEB -- the scheme from the page (PLAN-SEC 4.6): an https page lists and opens `wss://` only
+import { forgetProxyPin, forPage, linkContext, type PageLocation } from "./security";
 
 const KEY = "dspi-web.hubs.v1";
 
@@ -20,6 +22,9 @@ export interface LocalOptions {
   storage?: KeyValueStore | null;
   /** The hub that served this page, if it was one. */
   servingHub?: string | null;
+  // -- WP SECWEB --
+  /** The page's location (default: this page's): on https every hub is `wss://`. */
+  location?: PageLocation | null;
 }
 
 interface SavedHub {
@@ -41,9 +46,12 @@ export class LocalBackend implements FleetBackend {
     const sources: Source[] = [{ kind: "demo" }, { kind: "usb" }];
     const own: Installation = { id: "local", name: "This console", sources, editable: true };
     const hubs: Source[] = [];
-    if (this.opts.servingHub) hubs.push({ kind: "hub", url: this.opts.servingHub });
+    // -- WP SECWEB -- never a `ws://` from an https page (mixed content): `wss://` to the same hub
+    const loc = this.opts.location === undefined ? pageLocation() : this.opts.location;
+    if (this.opts.servingHub) hubs.push({ kind: "hub", url: forPage(this.opts.servingHub, loc) });
     for (const h of this.memory) {
-      if (!hubs.some((s) => s.kind === "hub" && s.url === h.url)) hubs.push({ kind: "hub", url: h.url });
+      const url = forPage(h.url, loc);
+      if (!hubs.some((s) => s.kind === "hub" && s.url === url)) hubs.push({ kind: "hub", url });
     }
     own.sources.push(...hubs);
     return [own];
@@ -61,8 +69,10 @@ export class LocalBackend implements FleetBackend {
 
   async removeSource(_installationId: string, source: Source): Promise<void> {
     if (source.kind !== "hub") return;
-    this.memory = this.memory.filter((h) => h.url !== source.url);
+    this.memory = this.memory.filter((h) => h.url !== source.url && forPage(h.url, { protocol: "https:", host: "", hostname: "" }) !== source.url);
     this.save();
+    // -- WP SECWEB -- `uconsole web`'s proxy pinned this hub's key: removing it forgets that too
+    void linkContext().then((ctx) => forgetProxyPin(source.url, ctx), () => undefined);
   }
 
   async access(): Promise<Access> {
@@ -103,6 +113,12 @@ export function normaliseHubUrl(input: string): string {
   const u = new URL(s);
   const scheme = u.protocol === "https:" || u.protocol === "wss:" ? "wss:" : "ws:";
   return `${scheme}//${u.host}`;
+}
+
+// -- WP SECWEB --
+function pageLocation(): PageLocation | null {
+  const l = (globalThis as { location?: PageLocation }).location;
+  return l && typeof l.protocol === "string" ? { protocol: l.protocol, host: l.host, hostname: l.hostname } : null;
 }
 
 /** This page's storage, or null where it is refused (a private window, blocked site data). */

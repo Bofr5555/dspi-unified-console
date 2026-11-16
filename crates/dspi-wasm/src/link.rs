@@ -332,6 +332,11 @@ mod js {
     pub struct JsConnector;
 
     impl WsConnector for JsConnector {
+        // -- WP SECWEB -- the browser does the TLS, by the URL's scheme (`wss://`)
+        fn tls_by_scheme(&self) -> bool {
+            true
+        }
+
         fn connect(&self, url: &str, protocol: &str) -> Result<WsPair, LinkError> {
             let (u, p) = (url.as_bytes(), protocol.as_bytes());
             let ul =

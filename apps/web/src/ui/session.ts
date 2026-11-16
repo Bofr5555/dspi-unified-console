@@ -34,6 +34,8 @@ import type { HubToken, HubTokens } from "../fleet/hub-tokens";
 import { loadNotices, noticeOf } from "./texts";
 import { safeLocalStorage } from "../fleet/local";
 import { loadFieldRanges, loadProfile } from "../screens/installer/model";
+// -- WP SECWEB -- the link's encryption (the browser's TLS or the `uconsole web` proxy's)
+import { UNKNOWN_SECURITY, linkContext, routeLink, securityOf, type LinkContext, type LinkSecurity } from "../fleet/security";
 
 export interface SessionState {
   /** -- WP WB4b -- `pairing`: a hub wants its PIN; `choosing`: pick one of a hub's DSPis. */
@@ -41,6 +43,9 @@ export interface SessionState {
   snapshot: DeviceSnapshot | null;
   link: { phase: LinkPhase; pinSource?: string } | null;
   error: string;
+  // -- WP SECWEB --
+  /** A hub session's link encryption once read (null: no hub, or not read yet). */
+  security?: LinkSecurity | null;
   // -- WP WB4b --
   /** The hub's DSPis, while `choosing`. */
   devices: LinkDeviceRecord[];
@@ -120,6 +125,9 @@ export class Session {
   private unsubscribe: () => void;
   // -- WP WB4b -- the hub this session is on, and the id its token belongs to
   private hub: { url: string; hubId: string } | null = null;
+  // -- WP SECWEB -- the hub's address as listed (its tokens' key), and this page's link context
+  private hubKey = "";
+  private linkCtx: LinkContext | null = null;
   /** The serial of the hub DSPi this session opens or has open, if any. */
   deviceId = "";
   // -- WP P1WB2 --
@@ -140,6 +148,12 @@ export class Session {
     private readonly tokens: HubTokens | null = null,
   ) {
     this.unsubscribe = core.subscribe((e) => this.onEvent(e));
+  }
+
+  // -- WP SECWEB --
+  /** This page's link context (its location, the proxy), once a hub session read it. */
+  get linkContext(): LinkContext | null {
+    return this.linkCtx;
   }
 
   /** Why writes are off, or "" when this session may write. */
@@ -325,8 +339,14 @@ export class Session {
   // -- WP WB4b --
   private async openHub(url: string, deviceId: string): Promise<void> {
     this.deviceId = deviceId;
+    // -- WP SECWEB -- the address the core opens: `wss://` on an https page, the proxy on `uconsole web`'s
+    const key = url;
+    this.hubKey = key;
+    const ctx = await linkContext().catch((): LinkContext => ({ loc: null, proxy: false }));
+    this.linkCtx = ctx;
+    url = routeLink(url, ctx);
     try {
-      const saved = (await this.tokens?.get(url)) ?? null;
+      const saved = (await this.tokens?.get(key)) ?? null;
       const connect = (t: HubToken | null) => this.core.call("linkConnect", { url, token: t?.token ?? "", hubId: t?.hubId ?? "" });
       let hello: Awaited<ReturnType<typeof connect>>;
       try {
@@ -336,11 +356,12 @@ export class Session {
         // replaced, or the address moved): that token is for no hub here. Forget it and
         // connect without one; this hub then asks for its PIN.
         if (!(saved && e instanceof CoreCallError && e.code === "wrong_hub")) throw e;
-        this.tokens?.forget(url);
+        this.tokens?.forget(key);
         hello = await connect(null);
       }
-      if (hello.tokenRefused) this.tokens?.forget(url);
+      if (hello.tokenRefused) this.tokens?.forget(key);
       this.hub = { url, hubId: hello.hubId };
+      void this.readSecurity(); // -- WP SECWEB --
       this.set({ hubName: hello.hubName });
       if (hello.needsPairing) {
         this.set({ status: "pairing", link: { phase: "needs_pairing", pinSource: hello.pinSource } });
@@ -348,8 +369,18 @@ export class Session {
       }
       await this.afterAuth();
     } catch (e) {
-      this.set({ status: "failed", error: message(e) });
+      // -- WP SECWEB -- the proxy's refusal (a changed key, TLS refused) in its own words
+      const sec = ctx.proxy ? await securityOf(url, ctx).catch(() => null) : null;
+      this.set({ status: "failed", error: sec?.message || message(e), security: sec });
     }
+  }
+
+  // -- WP SECWEB --
+  /** Read the hub link's encryption again (after a connect and each reconnect). */
+  private async readSecurity(): Promise<void> {
+    if (!this.hub || !this.linkCtx) return;
+    const sec = await securityOf(this.hub.url, this.linkCtx).catch(() => UNKNOWN_SECURITY);
+    this.set({ security: sec });
   }
 
   /** The PIN the user typed; a wrong one keeps the prompt, with why. */
@@ -357,7 +388,7 @@ export class Session {
     if (!this.hub || this.state.status !== "pairing") return;
     try {
       const { token } = await this.core.call("linkPair", { pin });
-      this.tokens?.save(this.hub.url, { token, hubId: this.hub.hubId });
+      this.tokens?.save(this.hubKey || this.hub.url, { token, hubId: this.hub.hubId }); // -- WP SECWEB -- by the listed address
       this.set({ pinError: "" });
       await this.afterAuth();
     } catch (e) {
@@ -667,6 +698,7 @@ export class Session {
     else if (e.event === "link") {
       // -- WP MERGEP1D -- bound again after a reconnect: the hub's lock again
       if (e.phase === "bound" && this.state.link?.phase === "reconnecting") void this.refreshLock();
+      if (e.phase === "bound" && this.state.link?.phase === "reconnecting") void this.readSecurity(); // -- WP SECWEB --
       this.set({ link: { phase: e.phase, pinSource: e.pinSource } });
       // -- WP WB4b -- the hub's list may have changed (a DSPi came or went)
       if (this.state.status === "choosing") this.refreshDevices();

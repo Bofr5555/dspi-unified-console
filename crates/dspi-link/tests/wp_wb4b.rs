@@ -122,3 +122,51 @@ fn wp_wb4b_d_silence_past_the_limit_ends_the_session_only_on_a_turn() {
     let (code, _) = c.closed_reason().unwrap();
     assert!(dspi_link::should_reconnect(code), "a lost link is one to reconnect: {code:?}");
 }
+
+// -- WP SECWEB --
+/// The browser's socket (`tls_by_scheme`): a `wss://` URL is opened as the URL says (the
+/// browser does that TLS), never refused as "advertised but not served" for want of a
+/// TLS of the connector's own. Played here by a connector that maps `wss://` onto the
+/// fake hub's `ws://`, as a browser's TLS would carry it.
+struct BrowserLike;
+
+impl dspi_link::socket::WsConnector for BrowserLike {
+    fn connect(&self, url: &str, protocol: &str) -> Result<dspi_link::socket::WsPair, LinkError> {
+        let plain = url.strip_prefix("wss://").map_or_else(|| url.to_owned(), |r| format!("ws://{r}"));
+        TcpConnector::default().connect(&plain, protocol)
+    }
+
+    fn tls_by_scheme(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn wp_secweb_a_browser_socket_opens_wss_as_the_url_says() {
+    let hub = FakeHub::start(HubConfig::default()).unwrap();
+    let wss = hub.url().replacen("ws://", "wss://", 1);
+    set_caller_driven_on_this_thread(true);
+    let r = LinkClient::connect_tls(
+        &BrowserLike,
+        &wss,
+        &opts(None),
+        None,
+        &SessionConfig::default(),
+        &dspi_link::client::TlsOptions::default(),
+    );
+    set_caller_driven_on_this_thread(false);
+    let (c, state) = r.expect("a wss:// session through the browser's TLS");
+    assert_eq!(state, AuthState::Ready);
+    assert!(c.tls().is_none(), "no key the client could pin");
+    c.close();
+    // Without it (a native connector with no TLS), wss:// still never falls back.
+    let refused = LinkClient::connect_tls(
+        &TcpConnector::default(),
+        &wss,
+        &opts(None),
+        None,
+        &SessionConfig::default(),
+        &dspi_link::client::TlsOptions::default(),
+    );
+    assert!(matches!(refused, Err(LinkError::TlsRefused { .. })), "{:?}", refused.err());
+}

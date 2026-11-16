@@ -1127,3 +1127,16 @@
 .dspi-web .hub-edit label { display: grid; gap: 0.15rem; font-size: 0.85rem; min-width: 0; flex: 1 1 12rem; }
 .dspi-web .hub-edit input, .dspi-web .hub-edit textarea { min-width: 0; width: 100%; box-sizing: border-box; }
 .dspi-web .hub-edit-actions { display: flex; gap: 0.5rem; }
+
+/* -- WP SECWEB -- a hub link that is not encrypted: the connection bar red, said in words too
+   (" (unsecured)"); its info button; the hub settings' fingerprint, banner and downgrade warning */
+.dspi-web .sys-rail-item.link-unsecured { background: #b3261e; color: #fff; border-radius: 4px; padding: 1px 8px; }
+.dspi-web .sys-rail-item.link-unsecured .dot { background: #fff; }
+.dspi-web .link-info {
+  width: 1.3rem; height: 1.3rem; padding: 0; border-radius: 50%; font: italic 600 0.8rem/1 Georgia, serif;
+  border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer;
+}
+.dspi-web .hub-fingerprint code { font-size: 1rem; letter-spacing: 0.04em; }
+.dspi-web .hub-unencrypted { border-left: 4px solid var(--warn); }
+.dspi-web .hub-compat-warning { border: 2px solid var(--bad); }
+.dspi-web .hub-compat-warning h3 { color: var(--bad); margin-top: 0; }
