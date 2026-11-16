@@ -45,6 +45,9 @@ futures-core = { version = "0.3", optional = true }
 # -- WP C13 --
 # -- WP C14 --
 # -- WP C15 --
+# -- WP P5DOCK -- the measurement maths and documents (PLAN-P5): pure, wasm-clean,
+# no I/O; its FFT (rustfft, scalar) and base64 are already in the lock through it.
+dspi-measure.workspace = true
 # -- WP F1 --
 # The Kotlin and Swift binding's derives and exports (feature `uniffi`).
 uniffi = { workspace = true, optional = true }
@@ -92,6 +95,8 @@ proptest = "1"
 # The fake hub, for the Link session and fault-injection tests.
 # -- WP SECCORE -- `tls`: the fake hub serves TLS
 dspi-link = { path = "../dspi-link", features = ["fake-hub", "tls"] }
+# -- WP P5DOCK -- the simulated acoustic world (P5SIM) for the measurement tests (P5SES and later)
+dspi-measure = { workspace = true, features = ["sim"] }
 # -- WP F1 --
 
 [target.'cfg(unix)'.dependencies]
