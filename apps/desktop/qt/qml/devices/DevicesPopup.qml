@@ -121,14 +121,44 @@ PopoverPanel {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
-                        Text {
-                            objectName: "DevicesPopup.phaseText"
+                        // -- WP SECQT -- red, with " (unsecured)" and its info
+                        // button, while the session is not encrypted
+                        RowLayout {
                             Layout.fillWidth: true
-                            text: popup.inSession && LinkController.hubName.length
-                                  ? LinkController.hubName + ": " + LinkController.phaseText
-                                  : LinkController.phaseText
-                            font: Theme.fontBody
-                            color: popup.warn ? Theme.warning : Theme.text
+                            spacing: 2
+                            Text {
+                                objectName: "DevicesPopup.phaseText"
+                                Layout.fillWidth: true
+                                text: popup.inSession && LinkController.hubName.length
+                                      ? LinkController.hubName + ": " + LinkController.phaseText
+                                      : LinkController.phaseText
+                                font: Theme.fontBody
+                                color: LinkController.unsecured ? Theme.dangerText : popup.warn ? Theme.warning : Theme.text
+                                wrapMode: Text.Wrap
+                            }
+                            Text {
+                                objectName: "DevicesPopup.unsecured"
+                                Layout.alignment: Qt.AlignTop
+                                visible: LinkController.unsecured
+                                text: "(" + LinkController.unsecuredLabel + ")"
+                                font: Theme.fontBody
+                                color: Theme.dangerText
+                            }
+                            UnsecuredInfoButton {
+                                objectName: "DevicesPopup.unsecuredInfo"
+                                Layout.alignment: Qt.AlignTop
+                                visible: LinkController.unsecured
+                            }
+                        }
+                        // -- WP SECQT -- the verified key of an encrypted session
+                        Text {
+                            objectName: "DevicesPopup.hubKey"
+                            Layout.fillWidth: true
+                            visible: popup.inSession && LinkController.encrypted && LinkController.hubKey.length > 0
+                            //: %1 is the hub key's fingerprint, SHA256:K7Q2-M9XD-…
+                            text: qsTr("Encrypted · hub key %1").arg(LinkController.hubKey)
+                            font: Theme.fontSmall
+                            color: Theme.textMuted
                             wrapMode: Text.Wrap
                         }
                         Text {
@@ -214,10 +244,18 @@ PopoverPanel {
                         objectName: "DevicesPopup.foundHub." + modelData.id
                         iconName: modelData.kind === "console" ? "monitor" : "wifi"
                         title: modelData.name
-                        subtitle: modelData.deviceCount === 1
-                                  ? qsTr("%1:%2, 1 device").arg(modelData.host).arg(modelData.port)
-                                  : qsTr("%1:%2, %3 devices").arg(modelData.host).arg(modelData.port).arg(modelData.deviceCount || 0)
-                        current: popup.inSession && LinkController.hubId.toLowerCase() === String(modelData.id).toLowerCase()
+                        // -- WP SECQT -- the session's hub says whether its key is
+                        // verified or the connection is unencrypted
+                        readonly property bool here: popup.inSession
+                                                     && LinkController.hubId.toLowerCase() === String(modelData.id).toLowerCase()
+                        readonly property string security: !here ? ""
+                            : LinkController.encrypted ? qsTr("verified")
+                            : LinkController.unsecured ? qsTr("unencrypted") : ""
+                        subtitle: (modelData.deviceCount === 1
+                                   ? qsTr("%1:%2, 1 device").arg(modelData.host).arg(modelData.port)
+                                   : qsTr("%1:%2, %3 devices").arg(modelData.host).arg(modelData.port).arg(modelData.deviceCount || 0))
+                                  + (security.length ? " · " + security : "")
+                        current: here
                         enabled: !LinkController.busy
                         onClicked: DevicesController.connectFound(modelData)
                     }

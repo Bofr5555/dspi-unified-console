@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QThreadPool>
 #include <QTimer>
 #include <QVariantList>
@@ -68,6 +69,20 @@ class HubController : public QObject {
     // The open pairing window's six digits, "" when none is open
     Q_PROPERTY(QString pairingCode READ pairingCode NOTIFY pairingChanged)
     Q_PROPERTY(int pairingSecondsLeft READ pairingSecondsLeft NOTIFY pairingChanged)
+    // -- WP SECQT -- TLS on the hub's port (PLAN-SEC 4.1). A hub on the network
+    // requires TLS (HUB_OPT_TLS_REQUIRE); one on loopback has it off.
+    // `upstreamCompat` (hub/upstreamCompat, off by default) is the owner's
+    // opt-in compatibility mode for upstream DSPi Link clients: a security
+    // downgrade, switched on only after the warning listing `compatEffects`.
+    Q_PROPERTY(bool upstreamCompat READ upstreamCompat NOTIFY settingsChanged)
+    // The hub's own list of what compatibility mode turns off
+    // (dspi_hub_upstream_compat_effects)
+    Q_PROPERTY(QStringList compatEffects READ compatEffects CONSTANT)
+    // While running: "off", "on" or "require", as the start reported it
+    Q_PROPERTY(QString tlsMode READ tlsMode NOTIFY stateChanged)
+    // While running with TLS: the key's fingerprint, "SHA256:K7Q2-M9XD-…",
+    // shown with the pairing code
+    Q_PROPERTY(QString tlsFingerprint READ tlsFingerprint NOTIFY stateChanged)
 
 public:
     HubController(const AppContext &ctx, QObject *parent);
@@ -90,6 +105,18 @@ public:
     QVariantList clients() const { return m_clients; }
     QString pairingCode() const { return m_pairingCode; }
     int pairingSecondsLeft() const;
+    // -- WP SECQT --
+    bool upstreamCompat() const { return m_upstreamCompat; }
+    QStringList compatEffects() const { return m_compatEffects; }
+    QString tlsMode() const { return m_running ? m_tlsMode : QString(); }
+    QString tlsFingerprint() const { return m_running ? m_tlsFingerprint : QString(); }
+    // Compatibility mode on or off, stored; restarts a running hub. The page
+    // asks first, with the warning, before switching it on.
+    Q_INVOKABLE void setUpstreamCompat(bool on);
+    // The HUB_OPT_* a start passes: the app's, the smoke driver's `extra`, and
+    // the TLS mode: compatibility mode when asked, else what `extra` names,
+    // else off on loopback (nothing crosses a network) and required otherwise
+    static uint32_t startOptions(uint32_t extra, bool upstreamCompat);
 
     // A new name (restarts a running hub); "" keeps the one there is
     Q_INVOKABLE void setHubName(const QString &name);
@@ -125,7 +152,7 @@ signals:
 private:
     struct StartResult;
     static void eventThunk(uint8_t event, int32_t code, const char *text, void *self);
-    void onEvent(int event, int code);
+    void onEvent(int event, int code, const QString &text);
     void reconcile();
     void startHub();
     void stopHub();
@@ -166,6 +193,10 @@ private:
     std::atomic<bool> m_readQueued{ false };
     bool m_shutDown = false;
     QThreadPool m_thread;        // one thread: the hub's blocking calls, in order
+    // -- WP SECQT --
+    bool m_upstreamCompat = false;
+    QStringList m_compatEffects;
+    QString m_tlsMode, m_tlsFingerprint;
 };
 
 #endif // HUBCONTROLLER_H

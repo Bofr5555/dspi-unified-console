@@ -1709,6 +1709,7 @@ int32_t code,
 const char *text,
 void *user_data), void *user_data);
 uint32_t dspi_hub_saved_settings(const char *store_dir, char *buf, uint32_t len);
+uint32_t dspi_hub_upstream_compat_effects(char *buf, uint32_t len);
 uint32_t dspi_hub_start(struct FfiHub *hub,
 const char *name,
 const char *store_dir,
