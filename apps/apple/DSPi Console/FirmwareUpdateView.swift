@@ -203,6 +203,19 @@ struct FirmwareUpdateView: View {
                 .foregroundColor(.orange)
                 .padding(.top, 2)
             }
+            // -- WP SECSW -- SECFWV's label (the core's manifest and notice row)
+            if let notice = installer.imageNotice {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.shield")
+                        .font(.system(size: 10))
+                    Text(notice.title).font(.system(size: 10, weight: .semibold))
+                        + Text(" \(notice.reason) \(notice.action)").font(.system(size: 10))
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .foregroundColor(.orange)
+                .padding(.top, 2)
+                .accessibilityIdentifier("firmwareNotVerified")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

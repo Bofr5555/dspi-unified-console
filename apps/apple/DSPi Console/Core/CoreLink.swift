@@ -62,10 +62,20 @@ protocol RemoteHubTransport: DeviceTransport {
     func hubUpdated(_ hub: DiscoveredHub)
     /// Drive the hub's device `serial`, binding when the hub lists it.
     func bind(serial: String)
+    /// -- WP SECSW -- The questions to the person with the hub key shown
+    /// (LinkSecurity.swift's `LinkPairingUI`).
+    func setPairingUI(_ ui: LinkPairingUI?)
+    /// -- WP SECSW -- Dial the hub a confirmed `dspi://pair` link names; nil,
+    /// or why this transport cannot.
+    func connect(pairLink: LinkPairLink) -> String?
 }
 
 extension RemoteHubTransport {
     func hubUpdated(_ hub: DiscoveredHub) {}
+    func setPairingUI(_ ui: LinkPairingUI?) {}   // -- WP SECSW --
+    func connect(pairLink: LinkPairLink) -> String? {
+        "Pairing links need DSPi Link through the core (this console runs with -CoreTransport NO)."
+    }
 }
 
 extension NetworkTransport: RemoteHubTransport {}
@@ -145,6 +155,29 @@ final class CoreLink {
 
     private var listener: LinkEvents?
 
+    // -- WP SECSW -- the connection's security (PLAN-SEC 4.3)
+    /// The questions to the person with the hub key shown (LinkSecurity.swift);
+    /// without it, the plain prompts above.
+    weak var pairingUI: LinkPairingUI?
+    /// The hub's DNS-SD record says it serves TLS (`tls=1`): TLS is then
+    /// required even before a pin (ratchet (a)).  Once seen, kept.
+    private(set) var tlsAdvertised: Bool
+    /// A `dspi://pair` link the person confirmed: its credential (pinned to
+    /// the link's key) and hub id are this dial's, and its PIN is filled in.
+    /// Cleared by a pairing, a disconnect or pairing again.
+    private(set) var pairLink: LinkPairLink?
+    /// The core's `link_security()` as the last look saw it (nil: no session).
+    private(set) var security: dspi_core.LinkSecurity?
+    /// A dial or a session ended with one of `LinkRepair.codes`: only pairing
+    /// again (the person's answer) dials this hub again.
+    private(set) var repairCode: String?
+    /// The "encrypted connection set up" notice was shown for these keys.
+    private var keyNoticesShown = Set<String>()
+    /// Where the security feeds the connection bar; a test gives its own.
+    var securityCenter: LinkSecurityCenter = .shared
+    /// Where the one-off notices go; a test gives its own.
+    var notices: NoticeCenter = .main
+
     /// -- WP SW7 -- The lost-connection banner this session feeds
     /// (Core/LinkBannerView.swift); a test gives its own.  Main thread.
     var banner: LinkBannerCenter = .shared
@@ -153,7 +186,9 @@ final class CoreLink {
     ///   - expectedHubID: the hub's id when known ("" otherwise).
     ///   - core: the core to drive (a new one by default).
     init(hubID: String, hubName: String, expectedHubID: String, tokens: LinkTokenStore,
-         clientName: String, appVersion: String = CoreLink.appVersion, core: DspiCore = DspiCore()) {
+         clientName: String, appVersion: String = CoreLink.appVersion, core: DspiCore = DspiCore(),
+         tlsAdvertised: Bool = false) {   // -- WP SECSW --
+        self.tlsAdvertised = tlsAdvertised
         self.hubID = hubID
         self.hubName = hubName
         self.expectedHubID = expectedHubID.lowercased()
@@ -170,6 +205,9 @@ final class CoreLink {
         // -- WP SW7 -- no banner for a session that is gone
         let banner = self.banner, id = ObjectIdentifier(self)
         if Thread.isMainThread { banner.clear(id) } else { DispatchQueue.main.async { banner.clear(id) } }
+        // -- WP SECSW -- nor a security entry
+        let center = securityCenter, hub = hubID
+        if Thread.isMainThread { center.set(hub, nil) } else { DispatchQueue.main.async { center.set(hub, nil) } }
         let core = self.core
         statusQueue.async {
             core.setLinkListener(listener: nil)
@@ -190,7 +228,7 @@ final class CoreLink {
     /// A hub's transport through the core.
     static func transport(for hub: DiscoveredHub, tokens: LinkTokenStore, clientName: String) -> CoreBackedTransport {
         let link = CoreLink(hubID: hub.id, hubName: hub.name, expectedHubID: expectedID(of: hub),
-                            tokens: tokens, clientName: clientName)
+                            tokens: tokens, clientName: clientName, tlsAdvertised: hub.tls)   // -- WP SECSW --
         return CoreBackedTransport(link: .link(link))
     }
 
@@ -199,6 +237,7 @@ final class CoreLink {
     /// The stored token: under the hub's id, else (a typed address) under the
     /// composite's key, where the opt-out's client stored it.
     private func storedToken() -> String {
+        if let link = pairLink { return link.credential }   // -- WP SECSW --
         if !expectedHubID.isEmpty, let t = tokens.token(forHub: expectedHubID) { return t }
         return tokens.token(forHub: hubID) ?? ""
     }
@@ -241,18 +280,24 @@ final class CoreLink {
         if dialing { redialAfterDial = true; return }
         dialing = true
         redialAfterDial = false
+        repairCode = nil   // -- WP SECSW --
         epoch += 1
         let epoch = self.epoch
         let token = storedToken()
-        let expected = expectedHubID
+        let expected = pairLink?.hubId ?? expectedHubID   // -- WP SECSW --
+        let tls = tlsAdvertised
         let (core, name, version) = (self.core, clientName, appVersion)
         let address = url.absoluteString
-        Self.log.info("dialling \(address, privacy: .public) (token: \(!token.isEmpty), expected hub: \(expected.isEmpty ? "-" : expected, privacy: .public))")
+        Self.log.info("dialling \(address, privacy: .public) (credential: \(!token.isEmpty), expected hub: \(expected.isEmpty ? "-" : expected, privacy: .public), TLS advertised: \(tls))")
         dialQueue.async { [weak self] in
-            let result: Result<LinkHello, DspiError>
+            let result: Result<(LinkHello, dspi_core.LinkSecurity), DspiError>
             do {
-                result = .success(try core.linkConnect(url: address, clientName: name, appVersion: version,
-                                                       token: token, expectedHubId: expected))
+                // -- WP SECSW -- the advert's `tls=1` makes TLS required; the
+                // stored credential's pin is checked before its token goes out
+                let hello = try core.linkConnectAdvertised(url: address, clientName: name, appVersion: version,
+                                                           credential: token, expectedHubId: expected,
+                                                           tlsAdvertised: tls)
+                result = .success((hello, core.linkSecurity()))
             } catch {
                 result = .failure(error as? DspiError ?? .Transfer(msg: String(describing: error)))
             }
@@ -260,16 +305,17 @@ final class CoreLink {
         }
     }
 
-    private func dialed(_ result: Result<LinkHello, DspiError>, epoch: Int) {
+    private func dialed(_ result: Result<(LinkHello, dspi_core.LinkSecurity), DspiError>, epoch: Int) {
         guard epoch == self.epoch else { return }
         dialing = false
         guard wantConnection else { return }
         switch result {
-        case .success(let hello):
+        case .success(let (hello, security)):
             sessionLive = true
             if expectedHubID.isEmpty { expectedHubID = hello.hubId.lowercased() }
-            Self.log.info("hub \(hello.hubName, privacy: .public) answered (pairing: \(hello.needsPairing), token refused: \(hello.tokenRefused))")
+            Self.log.info("hub \(hello.hubName, privacy: .public) answered (pairing: \(hello.needsPairing), token refused: \(hello.tokenRefused), encrypted: \(security.encrypted))")
             transport?.linkError(nil)
+            applySecurity(security)   // -- WP SECSW --
             if hello.needsPairing {
                 if hello.tokenRefused { forgetToken() }
                 askPIN()
@@ -280,6 +326,8 @@ final class CoreLink {
             transport?.linkError(Self.words(error))
             transport?.linkSessionEnded()
             onConnectionFailed?()
+            // -- WP SECSW -- pairing again is the person's call; nothing redials
+            if let code = LinkRepair.code(of: error) { return askRepair(code) }
             if redialAfterDial { dial() }
         }
     }
@@ -311,6 +359,7 @@ final class CoreLink {
 
     /// A typed address's `/info` named the hub: its id becomes the expected one.
     func hubUpdated(_ hub: DiscoveredHub) {
+        if hub.id == hubID, hub.tls { tlsAdvertised = true }   // -- WP SECSW -- once seen, kept
         guard hub.id == hubID, expectedHubID.isEmpty else { return }
         let id = Self.expectedID(of: hub)
         if !id.isEmpty { expectedHubID = id.lowercased() }
@@ -341,6 +390,7 @@ final class CoreLink {
     /// picking the device again reconnects.
     func disconnect() {
         wantConnection = false
+        pairLink = nil   // -- WP SECSW --
         closeSession()
     }
 
@@ -355,6 +405,8 @@ final class CoreLink {
         sawReconnecting = false
         phase = .idle
         banner.clear(ObjectIdentifier(self))   // -- WP SW7 --
+        security = nil                          // -- WP SECSW --
+        securityCenter.set(hubID, nil)
         let core = self.core
         statusQueue.async { core.linkClose() }
         transport?.linkSessionEnded()
@@ -365,6 +417,18 @@ final class CoreLink {
     /// Ask for the hub's PIN (one prompt at a time).
     private func askPIN() {
         guard !pairingPromptShowing, !pairing else { return }
+        // -- WP SECSW -- with the hub key's fingerprint, and a link's PIN filled in
+        if let ui = pairingUI {
+            pairingPromptShowing = true
+            let ask = LinkPairingAsk(hubName: hubName, hubKey: security?.hubKey ?? "", pin: pairLink?.pin ?? "")
+            ui.askPIN(ask) { [weak self] pin in
+                DispatchQueue.main.async {
+                    self?.pairingPromptShowing = false
+                    self?.pinAnswered(pin)
+                }
+            }
+            return
+        }
         if let ask = asyncPairingPrompt {
             pairingPromptShowing = true
             ask(hubName) { [weak self] pin in
@@ -396,9 +460,10 @@ final class CoreLink {
         let epoch = self.epoch
         let core = self.core
         dialQueue.async { [weak self] in
-            let result: Result<String, DspiError>
+            let result: Result<(String, dspi_core.LinkSecurity), DspiError>
             do {
-                result = .success(try core.linkPair(pin: pin))
+                let token = try core.linkPair(pin: pin)
+                result = .success((token, core.linkSecurity()))   // -- WP SECSW --
             } catch {
                 result = .failure(error as? DspiError ?? .Transfer(msg: String(describing: error)))
             }
@@ -406,15 +471,21 @@ final class CoreLink {
         }
     }
 
-    private func paired(_ result: Result<String, DspiError>, epoch: Int) {
+    private func paired(_ result: Result<(String, dspi_core.LinkSecurity), DspiError>, epoch: Int) {
         guard epoch == self.epoch else { return }
         pairing = false
         guard wantConnection else { return }
         switch result {
-        case .success(let token):
+        case .success(let (token, security)):
+            // -- WP SECSW -- paired: the stored credential from here on
+            if let link = pairLink {
+                pairLink = nil
+                expectedHubID = link.hubId   // the dial expected it, and it answered
+            }
             // An open hub grants a session without a token.  The listener
             // stores a token too (it may come after a timeout); the same here.
             if !token.isEmpty { store(token: token, forHub: expectedHubID) }
+            applySecurity(security)   // -- WP SECSW --
             transport?.linkError(nil)
             scheduleFollow()
         case .failure(let error):
@@ -438,6 +509,72 @@ final class CoreLink {
         store(token: token, forHub: id)
     }
 
+    // MARK: Security  -- WP SECSW --
+
+    /// A confirmed `dspi://pair` link: dial the hub it names with its
+    /// credential (pinned to its key) and hub id.  A hub with another key
+    /// fails the dial with `hub_key_unverified` before any PIN goes out; the
+    /// prompt shows the key with the link's PIN filled in, and pairs only on
+    /// the person's tap.
+    func connect(pairLink link: LinkPairLink) {
+        assert(Thread.isMainThread)
+        guard let url = URL(string: link.url) else { return }
+        if sessionLive || dialing { closeSession() }
+        pairLink = link
+        tlsAdvertised = true
+        if expectedHubID.isEmpty { expectedHubID = link.hubId }
+        connect(to: url)
+    }
+
+    /// The core's `link_security()` of the live session: the connection bar's
+    /// state, the credential saved when it changed (a v1 token upgraded to v2
+    /// on the first TLS connection, a rotation), and the new-key notice once.
+    func applySecurity(_ s: dspi_core.LinkSecurity) {
+        security = s
+        securityCenter.set(hubID, HubConnectionSecurity(s))
+        if pairLink == nil, !s.credential.isEmpty, s.credential != storedToken() {
+            store(token: s.credential, forHub: expectedHubID)
+        }
+        if s.hubKeyNew, s.encrypted, !s.hubKey.isEmpty, keyNoticesShown.insert(s.hubKey).inserted {
+            notices.post(.result("Encrypted connection to \(hubName) set up; hub key \(s.hubKey)."))
+        }
+    }
+
+    /// One of `LinkRepair.codes`: nothing was sent.  The person may pair
+    /// again (the stored credential and its pin dropped, the hub dialled: it
+    /// asks for a PIN and shows its key) or leave the hub; there is no
+    /// "connect anyway".  After a pairing link the hub did not match, the
+    /// stored credential stays (the link was wrong, not the pairing) and
+    /// "Connect" dials as usual.
+    private func askRepair(_ code: String) {
+        let fromLink = pairLink != nil
+        repairCode = code
+        wantConnection = false
+        let text = LinkRepair.text(code: code, hubName: hubName, fromPairLink: fromLink)
+        transport?.linkError(text)
+        guard let ui = pairingUI else { return }
+        let ask = LinkRepairAsk(hubName: hubName, code: code, text: text,
+                                actionTitle: LinkRepair.actionTitle(code: code, fromPairLink: fromLink))
+        ui.askRepair(ask) { [weak self] again in
+            DispatchQueue.main.async { self?.repairAnswered(again, fromLink: fromLink) }
+        }
+    }
+
+    private func repairAnswered(_ again: Bool, fromLink: Bool) {
+        guard repairCode != nil else { return }
+        guard again else {
+            repairCode = nil
+            pairLink = nil
+            return
+        }
+        Self.log.info("pairing again (\(self.repairCode ?? "", privacy: .public))")
+        if !fromLink { forgetToken() }
+        pairLink = nil
+        repairCode = nil
+        wantConnection = true
+        dial()
+    }
+
     // MARK: Following the core's session
 
     /// Look at the core's status and devices once more (coalesced).
@@ -448,18 +585,21 @@ final class CoreLink {
         statusQueue.async { [weak self] in
             let status = core.linkStatus()
             let devices = core.linkDevices()
+            let security = core.linkSecurity()   // -- WP SECSW --
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.followQueued = false
-                self.follow(status, devices)
+                self.follow(status, devices, security)
             }
         }
     }
 
-    private func follow(_ status: dspi_core.LinkStatus, _ devices: [LinkDevice]) {
+    private func follow(_ status: dspi_core.LinkStatus, _ devices: [LinkDevice],
+                        _ seen: dspi_core.LinkSecurity? = nil) {
         lastStatus = status
         // A dial in progress: the status still describes the session before it.
         guard sessionLive, !dialing else { return }
+        if let seen = seen, status.connected { applySecurity(seen) }   // -- WP SECSW --
         let previous = phase
         phase = status.phase
         transport?.linkPhaseChanged(phase)
@@ -481,6 +621,10 @@ final class CoreLink {
             transport?.linkError(status.closeReason.isEmpty ? Self.phaseWords(status) : status.closeReason)
             transport?.linkSessionEnded()
             onConnectionFailed?()
+            security = nil                      // -- WP SECSW --
+            securityCenter.set(hubID, nil)
+            // -- WP SECSW -- a plaintext session the hub ended for TLS
+            if let code = LinkRepair.code(ofCloseReason: status.closeReason) { askRepair(code) }
         case .bound:
             transport?.linkError(nil)
             if sawReconnecting || previous != .bound, attached {
@@ -642,4 +786,10 @@ extension CoreBackedTransport: RemoteHubTransport {
     func hubSeen(at url: URL, reappeared: Bool) { linkSession?.hubSeen(at: url, reappeared: reappeared) }
     func hubUpdated(_ hub: DiscoveredHub) { linkSession?.hubUpdated(hub) }
     func bind(serial: String) { linkSession?.bind(serial: serial) }
+    // -- WP SECSW --
+    func setPairingUI(_ ui: LinkPairingUI?) { linkSession?.pairingUI = ui }
+    func connect(pairLink: LinkPairLink) -> String? {
+        linkOrDie.connect(pairLink: pairLink)
+        return nil
+    }
 }

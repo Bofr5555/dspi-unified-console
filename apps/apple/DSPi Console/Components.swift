@@ -526,6 +526,20 @@ struct CpuSection: View {
 struct ConnectionStatusIndicator: View {
     @ObservedObject var vm: DSPViewModel
     @ObservedObject private var lockNotice = DeviceLock.notice
+    /// -- WP SECSW -- the hub session's encryption (the owner's red rule)
+    @ObservedObject private var security = LinkSecurityCenter.shared
+
+    /// -- WP SECSW -- The selected hub device's connection is not encrypted.
+    private var unsecured: Bool {
+        vm.isDeviceConnected && security.security(of: vm.selectedDevice)?.isUnsecured == true
+    }
+
+    /// -- WP SECSW -- The picker's title: " (unsecured)" on the device in use.
+    private func title(_ device: DSPiDevice) -> String {
+        let text = vm.deviceTitle(device)
+        return unsecured && device == vm.selectedDevice ? text + LinkSecurityWording.suffix : text
+    }
+
     var body: some View {
         HStack(spacing: 6) {
 
@@ -549,7 +563,7 @@ struct ConnectionStatusIndicator: View {
                     || !(vm.selectedDevice.map { vm.availableDevices.contains($0) } ?? false)
                 BorderlessPopUpButton(
                     items: vm.availableDevices,
-                    titleForItem: { vm.deviceTitle($0) },
+                    titleForItem: { title($0) },   // -- WP SECSW --
                     selection: Binding(
                         get: {
                             if let selected = vm.selectedDevice,
@@ -577,6 +591,12 @@ struct ConnectionStatusIndicator: View {
                 }
                 .fixedSize()
                 .allowsHitTesting(pickable)
+                // -- WP SECSW -- red, with the words and the way to read why
+                .padding(.horizontal, unsecured ? 4 : 0)
+                .background(unsecured ? Color.red.opacity(0.35) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 4))
+                .accessibilityIdentifier(unsecured ? "connectionBarUnsecured" : "connectionBar")
+                if unsecured { UnsecuredInfoButton() }
             }
 
             // A command or flow refused with LOCKED (spec 7.7) shows here for a

@@ -10,6 +10,7 @@
 
 import Foundation
 import Combine
+import dspi_core   // -- WP SECSW --
 
 @MainActor
 final class LinkClientCoordinator: ObservableObject {
@@ -75,6 +76,23 @@ final class LinkClientCoordinator: ObservableObject {
         guard !trimmed.isEmpty else { return }
         if !manualAddresses.contains(trimmed) { manualAddresses.append(trimmed) }
         browser.addManual(trimmed)
+    }
+
+    // -- WP SECSW --
+    /// A confirmed `dspi://pair` link: its address joins the typed hubs (so the
+    /// hub stays listed and its devices can be picked), and the hub is dialled
+    /// with the link's credential, pinned to its key.  Nil, or why not.
+    func connect(pairLink link: LinkPairLink) -> String? {
+        let address = LinkPairLinks.address(link)
+        addManual(address)
+        guard let (host, port) = HubBrowser.parseAddress(address) else { return "Not a hub address: \(address)" }
+        var hub = hubs.first { $0.isManual && $0.host == host && $0.port == port }
+            ?? DiscoveredHub(id: "manual:\(host):\(port)", name: host, kind: "unknown", authMode: "pin",
+                             deviceCount: 0, serials: [], path: "/dspi/v1", tls: true, host: host, port: port,
+                             isManual: true)
+        hub.tls = true
+        if hub.infoHubID == nil { hub.infoHubID = link.hubId }
+        return composite.remoteTransport(for: hub).connect(pairLink: link)
     }
 
     func removeManual(_ hub: DiscoveredHub) {
