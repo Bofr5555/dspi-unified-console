@@ -530,6 +530,7 @@ impl LinkSession {
                         LinkError::HandshakeRefused { .. }
                             | LinkError::HubKeyChanged
                             | LinkError::HubKeyUnverified
+                            | LinkError::TlsRequired
                     )
                 );
                 self.unreported_end = Some((None, reason));
@@ -590,7 +591,8 @@ impl LinkSession {
         if self.needs_pin {
             return;
         }
-        if dspi_link::should_reconnect(code) {
+        // -- WP SECBFIXA -- not after 4003 `tls_required` either
+        if dspi_link::should_reconnect_after(code, &reason) {
             self.retry = None;
             self.schedule_retry(None, now);
         } else {
@@ -2616,6 +2618,7 @@ fn map_error(e: LinkError) -> DspiError {
         LinkError::HubKeyChanged => "hub_key_changed",
         LinkError::HubKeyUnverified => "hub_key_unverified",
         LinkError::TlsRefused { .. } => "tls_refused",
+        LinkError::TlsRequired => "tls_required", // -- WP SECBFIXA --
     };
     DspiError::Link {
         code: code.to_owned(),

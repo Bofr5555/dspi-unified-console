@@ -11,8 +11,9 @@
 //!   bytes), flags (`t`: TLS required, always set for a pin), and the key the
 //!   pinned one announced as its successor, signature verified, if any.
 //!
-//! Anything that is not a well-formed `v2` is read as a `v1` token: a hub's token
-//! never starts with `v2.` and four or five valid fields.
+//! A string that starts with `v2.` but does not parse is no credential at all (pair
+//! again; -- WP SECBFIXA --): it is never sent as a token. Anything else that is
+//! not a `v2` is read as a `v1` token.
 //!
 //! **The pairing link** `dspi://pair?h=<hid>&a=<host:port>&k=<pin>&p=<pin code>`
 //! (a QR code from the hub's display) is a hint, never a bypass: its `k` becomes
@@ -57,11 +58,21 @@ impl fmt::Debug for Credential {
 }
 
 impl Credential {
-    /// A credential string (`v1` or `v2`), trimmed. Never fails: what is not a
-    /// well-formed `v2` is a `v1` token.
+    /// A credential string (`v1` or `v2`), trimmed. Never fails. -- WP SECBFIXA --
+    /// A string that starts with `v2.` but is damaged is **no credential** (pair
+    /// again): it is never sent as a bare token, and a pinned record never
+    /// degrades to an unpinned one that could fall back to plaintext. Anything
+    /// else that is not a `v2` is a `v1` token.
     pub fn parse(text: &str) -> Credential {
         let text = text.trim();
-        Self::parse_v2(text).unwrap_or_else(|| Credential { token: text.to_owned(), pin: None, next: None })
+        if let Some(c) = Self::parse_v2(text) {
+            return c;
+        }
+        if text.starts_with("v2.") {
+            log::warn!("dspi-link: a stored v2 credential is damaged; pairing again is needed");
+            return Credential::default();
+        }
+        Credential { token: text.to_owned(), pin: None, next: None }
     }
 
     fn parse_v2(text: &str) -> Option<Credential> {
@@ -284,20 +295,24 @@ mod tests_wp_seccore {
         assert_eq!(Credential::parse(&same.encode()).next, None);
     }
 
+    // -- WP SECBFIXA -- (review secb F1) a damaged v2 is no credential, never a token
     #[test]
-    fn wp_seccore_malformed_v2_is_a_v1_token() {
+    fn wp_seccore_malformed_v2_is_no_credential() {
         let good = Credential { token: "t".into(), pin: Some(PIN), next: None }.encode();
+        let pin = pin_to_b64url(&PIN);
         for bad in [
             "v2.dA.short.t".to_owned(),
             "v2.dA".to_owned(),
             format!("{good}.x.y"),
             good.replace(".t", ".T"),
             "v2.!!.AAAA.t".to_owned(),
+            good.replace(&pin, &pin[..pin.len() - 1]),
         ] {
-            let c = Credential::parse(&bad);
-            assert_eq!(c.pin, None, "{bad}");
-            assert_eq!(c.token, bad);
+            assert_eq!(Credential::parse(&bad), Credential::default(), "{bad}");
         }
+        // Not v2-shaped at all: still a v1 token
+        assert_eq!(Credential::parse("v2token").token, "v2token");
+        assert_eq!(Credential::parse("v3.x").token, "v3.x");
     }
 
     #[test]

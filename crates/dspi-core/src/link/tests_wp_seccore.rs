@@ -480,3 +480,46 @@ fn wp_seccore_a_key_change_on_a_reconnect_ends_the_session_as_refused() {
     );
     assert_eq!(hub.tokens_seen().len(), seen, "no token to the new key");
 }
+
+// ── WP SECBFIXA (review secb F1, N4) ─────────────────────────────────
+
+#[test]
+fn wp_secbfixa_a_damaged_v2_credential_is_never_sent_as_a_token() {
+    let key = FakeTlsKey::generate();
+    let hub = tls_hub(&key);
+    let credential = pair(&hub);
+    let pin = pin_to_b64url(&key.pin());
+    let damaged = credential.replacen(&pin, &pin[..pin.len() - 1], 1);
+    assert_ne!(damaged, credential);
+    // The hub lost TLS (or an attacker resets it)
+    hub.set_tls(None);
+    let core = DspiCore::new();
+    let hello = connect(&core, &hub, &damaged).unwrap();
+    assert!(hello.needs_pairing, "no credential: pair again");
+    assert!(hub.tokens_seen().is_empty(), "nothing sent as a token");
+    assert_eq!(core.link_security().credential, "");
+}
+
+#[test]
+fn wp_secbfixa_a_tls_required_close_stops_with_a_typed_reason() {
+    let hub = pin_hub();
+    let token = pair(&hub);
+    hub.set_require_tls(true);
+    let core = DspiCore::new();
+    let started = Instant::now();
+    assert_eq!(code(connect(&core, &hub, &token)), "tls_required");
+    assert!(started.elapsed() < Duration::from_secs(5), "not retried");
+
+    // A live plaintext session the hub closes with 4003 tls_required: no reconnect
+    hub.set_require_tls(false);
+    let events = Arc::new(Events::default());
+    core.set_link_listener(Some(events.clone()));
+    connect(&core, &hub, &token).unwrap();
+    let before = hub.upgrades().0;
+    hub.close_all_with(4003, "tls_required");
+    wait_until("the end", || core.link_status().closed);
+    let st = core.link_status();
+    assert_eq!(st.close_reason, dspi_link::client::TLS_REQUIRED_REASON);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(hub.upgrades().0, before, "no reconnect");
+}
