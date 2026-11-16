@@ -1267,6 +1267,27 @@ export interface HubHealthRecord {
   unresponsive: boolean;
   unresponsiveSince: string;
   reset: HubResetRecord | null;
+  // -- WP P3HB --
+  /** The stream's underrun total (PDM ring, PDM DMA and S/PDIF added up) and starvation total; null before the hub read them. */
+  counters: HubStreamCountersRecord | null;
+  /** Clip events in the last minute; null on firmware with only the clip latch. */
+  clipPerMin: number | null;
+  /** The device's newest change and who made it; null when the hub has none. */
+  lastChange: HubLastChangeRecord | null;
+}
+
+// -- WP P3HB --
+/** A device's stream counters (`dspi_core::HubStreamCounters`). */
+export interface HubStreamCountersRecord {
+  underruns: number | null;
+  starvation: number | null;
+}
+
+/** A device's newest change (`dspi_core::HubLastChange`). `by` is "" when it names no one. */
+export interface HubLastChangeRecord {
+  at: string;
+  by: string;
+  text: string;
 }
 
 /** The hub's statistics (`dspi_core::HubStats`, Admin only). */

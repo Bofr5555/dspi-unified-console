@@ -52,6 +52,30 @@ pub struct TargetResult {
     pub msg: Option<String>,
 }
 
+// -- WP P3HB --
+/// A device's stream counters, as the health poll reads them (`REQ_GET_STATUS` 4, 6,
+/// 8 and 17, totals the diagnostics bundle's `device/stats.json` has). Each is `None`
+/// until it was read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+pub struct StreamCounters {
+    /// Output underruns: PDM ring, PDM DMA and S/PDIF (`REQ_GET_STATUS` 4, 6, 8) added up.
+    pub underruns: Option<u32>,
+    /// Output DMA starvations, every instance (`REQ_GET_STATUS` 17).
+    pub starvation: Option<u32>,
+}
+
+/// The newest history record of a change to a device (WP P3HB). A coalesced record
+/// counts once: it is written, and so published, once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LastChange {
+    /// When, ms since the Unix epoch (the record's `t`).
+    pub at_ms: i64,
+    /// Who made it (the record's `by`), when it names someone.
+    pub by: Option<String>,
+    /// The record's line.
+    pub text: String,
+}
+
 /// What the hub tells its services. Cheap to share: a subscriber gets an `Arc` of it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BusMessage {
@@ -121,6 +145,15 @@ pub enum BusMessage {
         uptime_s: Option<u32>,
         /// The firmware's hang count, where read; refreshed with `uptime_s`, every 60 s.
         hang_count: Option<u8>,
+        // -- WP P3HB --
+        /// The stream's underrun and starvation totals, once either is known (one
+        /// single read every 30 s, the four counters in turn).
+        counters: Option<StreamCounters>,
+        /// Extension clip events (0xE0) in the last minute; `None` on firmware that
+        /// only has the latch (no `NOTIFY_FEAT_CLIP_EVENT`).
+        clip_per_min: Option<u32>,
+        /// The device's newest history record of a change, and who made it.
+        last_change: Option<LastChange>,
     },
     /// A device stopped answering while attached.
     Unresponsive {

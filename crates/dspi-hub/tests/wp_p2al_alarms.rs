@@ -182,6 +182,10 @@ fn wp_p2al_a_raised_alarm_reaches_every_session_and_a_webhook() {
         temp_c: Some(64.5),
         uptime_s: None,
         hang_count: None,
+        // -- WP P3HB --
+        counters: None,
+        clip_per_min: None,
+        last_change: None,
     });
     let changed = ws.next("alarm.changed");
     assert_eq!(changed["v"], 1);

@@ -120,6 +120,10 @@ fn health(temp_c: Option<f32>, clip_mask: u32, uptime_s: Option<u32>) -> BusMess
         temp_c,
         uptime_s,
         hang_count: Some(0),
+        // -- WP P3HB --
+        counters: None,
+        clip_per_min: None,
+        last_change: None,
     }
 }
 
@@ -378,6 +382,10 @@ fn wp_p2evfix_one_restart_is_one_reset_record_whoever_sees_it_first() {
         temp_c: None,
         uptime_s: Some(u),
         hang_count: Some(hang),
+        // -- WP P3HB --
+        counters: None,
+        clip_per_min: None,
+        last_change: None,
     };
     let fa = |reason, u: u32, hang: u8| BusMessage::Facts {
         serial: S.into(),
@@ -473,6 +481,10 @@ fn wp_p2ev_the_health_poll_sees_a_restart_and_a_hang() {
         temp_c: None,
         uptime_s: Some(3),
         hang_count: Some(1),
+        // -- WP P3HB --
+        counters: None,
+        clip_per_min: None,
+        last_change: None,
     };
     let w = h.on_message(&hung, t.now());
     assert_eq!(w[0].kind, EventKind::Reset);

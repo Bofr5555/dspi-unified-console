@@ -79,6 +79,10 @@ function health(serial: string, extra: Partial<HubHealthRecord> = {}): HubHealth
     unresponsive: false,
     unresponsiveSince: "",
     reset: { reason: "watchdog", prevUptimeS: 100, at: "2026-11-15T11:00:00Z" },
+    // -- WP P3HB --
+    counters: null,
+    clipPerMin: null,
+    lastChange: null,
     ...extra,
   };
 }

@@ -1999,7 +1999,9 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * One health record per online device of the hub (`health.get`):
-     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+     * -- WP P3HB -- the stream counters, clip events a minute and the last
+     * change where the hub has them.
      * Every role. Slow: off the UI thread.
      *
      * Errors: [`DspiError::Unsupported`] without the `health` cap;

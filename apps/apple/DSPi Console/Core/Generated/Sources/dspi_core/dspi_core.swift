@@ -3072,7 +3072,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * One health record per online device of the hub (`health.get`):
-     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+     * -- WP P3HB -- the stream counters, clip events a minute and the last
+     * change where the hub has them.
      * Every role. Slow: off the UI thread.
      *
      * Errors: [`DspiError::Unsupported`] without the `health` cap;
@@ -8445,7 +8447,9 @@ open func hubEventsWatch(on: Bool, serial: String)throws   {try rustCallWithErro
     
     /**
      * One health record per online device of the hub (`health.get`):
-     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+     * -- WP P3HB -- the stream counters, clip events a minute and the last
+     * change where the hub has them.
      * Every role. Slow: off the UI thread.
      *
      * Errors: [`DspiError::Unsupported`] without the `health` cap;
@@ -28047,6 +28051,20 @@ public struct HubHealth {
      * The reset seen at attach or since.
      */
     public var reset: HubReset?
+    /**
+     * The stream's underrun and starvation totals, once the hub read either
+     * (one read every 30 s, the four counters in turn).
+     */
+    public var counters: HubStreamCounters?
+    /**
+     * Clip events in the last minute; `None` on firmware with only the clip
+     * latch (no extension clip events).
+     */
+    public var clipPerMin: UInt32?
+    /**
+     * The device's newest change and who made it, from the hub's history.
+     */
+    public var lastChange: HubLastChange?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -28083,7 +28101,18 @@ public struct HubHealth {
          */unresponsiveSince: String, 
         /**
          * The reset seen at attach or since.
-         */reset: HubReset?) {
+         */reset: HubReset?, 
+        /**
+         * The stream's underrun and starvation totals, once the hub read either
+         * (one read every 30 s, the four counters in turn).
+         */counters: HubStreamCounters?, 
+        /**
+         * Clip events in the last minute; `None` on firmware with only the clip
+         * latch (no extension clip events).
+         */clipPerMin: UInt32?, 
+        /**
+         * The device's newest change and who made it, from the hub's history.
+         */lastChange: HubLastChange?) {
         self.serial = serial
         self.handle = handle
         self.at = at
@@ -28095,6 +28124,9 @@ public struct HubHealth {
         self.unresponsive = unresponsive
         self.unresponsiveSince = unresponsiveSince
         self.reset = reset
+        self.counters = counters
+        self.clipPerMin = clipPerMin
+        self.lastChange = lastChange
     }
 }
 
@@ -28138,6 +28170,15 @@ extension HubHealth: Equatable, Hashable {
         if lhs.reset != rhs.reset {
             return false
         }
+        if lhs.counters != rhs.counters {
+            return false
+        }
+        if lhs.clipPerMin != rhs.clipPerMin {
+            return false
+        }
+        if lhs.lastChange != rhs.lastChange {
+            return false
+        }
         return true
     }
 
@@ -28153,6 +28194,9 @@ extension HubHealth: Equatable, Hashable {
         hasher.combine(unresponsive)
         hasher.combine(unresponsiveSince)
         hasher.combine(reset)
+        hasher.combine(counters)
+        hasher.combine(clipPerMin)
+        hasher.combine(lastChange)
     }
 }
 
@@ -28175,7 +28219,10 @@ public struct FfiConverterTypeHubHealth: FfiConverterRustBuffer {
                 hangCount: FfiConverterOptionUInt8.read(from: &buf), 
                 unresponsive: FfiConverterBool.read(from: &buf), 
                 unresponsiveSince: FfiConverterString.read(from: &buf), 
-                reset: FfiConverterOptionTypeHubReset.read(from: &buf)
+                reset: FfiConverterOptionTypeHubReset.read(from: &buf), 
+                counters: FfiConverterOptionTypeHubStreamCounters.read(from: &buf), 
+                clipPerMin: FfiConverterOptionUInt32.read(from: &buf), 
+                lastChange: FfiConverterOptionTypeHubLastChange.read(from: &buf)
         )
     }
 
@@ -28191,6 +28238,9 @@ public struct FfiConverterTypeHubHealth: FfiConverterRustBuffer {
         FfiConverterBool.write(value.unresponsive, into: &buf)
         FfiConverterString.write(value.unresponsiveSince, into: &buf)
         FfiConverterOptionTypeHubReset.write(value.reset, into: &buf)
+        FfiConverterOptionTypeHubStreamCounters.write(value.counters, into: &buf)
+        FfiConverterOptionUInt32.write(value.clipPerMin, into: &buf)
+        FfiConverterOptionTypeHubLastChange.write(value.lastChange, into: &buf)
     }
 }
 
@@ -28294,6 +28344,108 @@ public func FfiConverterTypeHubInventoryForgot_lift(_ buf: RustBuffer) throws ->
 #endif
 public func FfiConverterTypeHubInventoryForgot_lower(_ value: HubInventoryForgot) -> RustBuffer {
     return FfiConverterTypeHubInventoryForgot.lower(value)
+}
+
+
+/**
+ * A device's newest change in [`HubHealth`]: the newest history record of a
+ * write, recall, import, schedule run or new firmware.
+ */
+public struct HubLastChange {
+    /**
+     * When (ISO-8601 UTC).
+     */
+    public var at: String
+    /**
+     * Who made it (a client's name, a schedule); "" when the record names no
+     * one (a change at the device itself).
+     */
+    public var by: String
+    /**
+     * The record's line.
+     */
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * When (ISO-8601 UTC).
+         */at: String, 
+        /**
+         * Who made it (a client's name, a schedule); "" when the record names no
+         * one (a change at the device itself).
+         */by: String, 
+        /**
+         * The record's line.
+         */text: String) {
+        self.at = at
+        self.by = by
+        self.text = text
+    }
+}
+
+#if compiler(>=6)
+extension HubLastChange: Sendable {}
+#endif
+
+
+extension HubLastChange: Equatable, Hashable {
+    public static func ==(lhs: HubLastChange, rhs: HubLastChange) -> Bool {
+        if lhs.at != rhs.at {
+            return false
+        }
+        if lhs.by != rhs.by {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(at)
+        hasher.combine(by)
+        hasher.combine(text)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubLastChange: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubLastChange {
+        return
+            try HubLastChange(
+                at: FfiConverterString.read(from: &buf), 
+                by: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubLastChange, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.at, into: &buf)
+        FfiConverterString.write(value.by, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubLastChange_lift(_ buf: RustBuffer) throws -> HubLastChange {
+    return try FfiConverterTypeHubLastChange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubLastChange_lower(_ value: HubLastChange) -> RustBuffer {
+    return FfiConverterTypeHubLastChange.lower(value)
 }
 
 
@@ -31425,6 +31577,94 @@ public func FfiConverterTypeHubStatsDevice_lift(_ buf: RustBuffer) throws -> Hub
 #endif
 public func FfiConverterTypeHubStatsDevice_lower(_ value: HubStatsDevice) -> RustBuffer {
     return FfiConverterTypeHubStatsDevice.lower(value)
+}
+
+
+/**
+ * A device's stream counters in [`HubHealth`]. Each is `None` until the hub
+ * read it.
+ */
+public struct HubStreamCounters {
+    /**
+     * Output underruns (PDM ring, PDM DMA and S/PDIF added up), total since
+     * the device started.
+     */
+    public var underruns: UInt32?
+    /**
+     * Output starvations, total since the device started.
+     */
+    public var starvation: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Output underruns (PDM ring, PDM DMA and S/PDIF added up), total since
+         * the device started.
+         */underruns: UInt32?, 
+        /**
+         * Output starvations, total since the device started.
+         */starvation: UInt32?) {
+        self.underruns = underruns
+        self.starvation = starvation
+    }
+}
+
+#if compiler(>=6)
+extension HubStreamCounters: Sendable {}
+#endif
+
+
+extension HubStreamCounters: Equatable, Hashable {
+    public static func ==(lhs: HubStreamCounters, rhs: HubStreamCounters) -> Bool {
+        if lhs.underruns != rhs.underruns {
+            return false
+        }
+        if lhs.starvation != rhs.starvation {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(underruns)
+        hasher.combine(starvation)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubStreamCounters: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubStreamCounters {
+        return
+            try HubStreamCounters(
+                underruns: FfiConverterOptionUInt32.read(from: &buf), 
+                starvation: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubStreamCounters, into buf: inout [UInt8]) {
+        FfiConverterOptionUInt32.write(value.underruns, into: &buf)
+        FfiConverterOptionUInt32.write(value.starvation, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubStreamCounters_lift(_ buf: RustBuffer) throws -> HubStreamCounters {
+    return try FfiConverterTypeHubStreamCounters.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubStreamCounters_lower(_ value: HubStreamCounters) -> RustBuffer {
+    return FfiConverterTypeHubStreamCounters.lower(value)
 }
 
 
@@ -45576,6 +45816,30 @@ fileprivate struct FfiConverterOptionTypeHubEventRecord: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeHubLastChange: FfiConverterRustBuffer {
+    typealias SwiftType = HubLastChange?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubLastChange.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubLastChange.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeHubOutboundLast: FfiConverterRustBuffer {
     typealias SwiftType = HubOutboundLast?
 
@@ -45664,6 +45928,30 @@ fileprivate struct FfiConverterOptionTypeHubScheduleRun: FfiConverterRustBuffer 
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeHubScheduleRun.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubStreamCounters: FfiConverterRustBuffer {
+    typealias SwiftType = HubStreamCounters?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubStreamCounters.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubStreamCounters.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -49148,7 +49436,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_hub_events_watch() != 53028) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_hub_health() != 16703) {
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_health() != 60109) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_identify() != 8517) {
