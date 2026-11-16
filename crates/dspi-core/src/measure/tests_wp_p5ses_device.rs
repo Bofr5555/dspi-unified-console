@@ -988,3 +988,147 @@ fn wp_p5ses_device_positions_wait_for_the_user() {
     assert_eq!(r.log.lock().unwrap().len(), n);
     r.core.measure_stop();
 }
+
+// ── The other run kinds and placements ─────────────────────────────────
+
+#[test]
+fn wp_p5ses_device_a_summed_run_with_an_invert_mask() {
+    let r = rig();
+    // Two outputs at one distance, the second 6 dB quieter at the
+    // microphone and played inverted: the sum is the difference, 0.5.
+    let mut world = free_world(&[0.0, 0.0]);
+    world.outputs[1].gain_db = 20.0 * 0.5f64.log10();
+    let mut mic = Mic::new(&r, world);
+    let mut setup = walked(&[(0, MeasureRole::Full), (1, MeasureRole::Full)]);
+    setup.kind = MeasureRunKind::Summed;
+    setup.outputs[1].inverted = true;
+    r.core.measure_start(setup).unwrap();
+    let st = mic.run(40.0, |_| false);
+    assert_eq!(st.phase, MeasurePhase::Done, "{st:#?}");
+    let log = r.log.lock().unwrap();
+    let run = log
+        .iter()
+        .filter(|q| q.op == op::REQ_SIGGEN_SET_CONFIG)
+        .map(|q| dspi_proto::packets::SiggenConfig::decode(&q.data).unwrap())
+        .last()
+        .unwrap();
+    assert_eq!(
+        (run.channel_mask, run.invert_mask, run.repeat_count),
+        (0b11, 0b10, 1)
+    );
+    drop(log);
+    let doc = result_doc(&r.core);
+    assert_eq!(
+        doc.measurement.stimulus.kind,
+        dspi_measure::doc::RunKind::Summed
+    );
+    let resp = doc.measurement.outputs[0].response.to_response();
+    let freqs = dspi_measure::types::LogGrid::STANDARD.freqs().unwrap();
+    let mid: Vec<f64> = freqs
+        .iter()
+        .zip(&resp.mag_db)
+        .filter(|(f, _)| (500.0..=2_000.0).contains(*f))
+        .map(|(_, m)| *m)
+        .collect();
+    let mean = mid.iter().sum::<f64>() / mid.len() as f64;
+    let want = -6.0 + 20.0 * 0.5f64.log10() + f64::from(mic.chains[0].gain_db);
+    assert!(
+        (mean - want).abs() < 1.0,
+        "the inverted sum: {mean:.2} dB, {want:.2} wanted"
+    );
+}
+
+#[test]
+fn wp_p5ses_device_a_live_sweep_is_magnitude_only() {
+    let r = rig();
+    let mut mic = Mic::new(&r, free_world(&[0.0]));
+    let mut setup = walked(&[(0, MeasureRole::Full)]);
+    setup.kind = MeasureRunKind::LiveSweep;
+    r.core.measure_start(setup).unwrap();
+    let st = mic.run(30.0, |_| false);
+    assert_eq!(st.phase, MeasurePhase::Done, "{st:#?}");
+    assert_eq!(st.timing_reliable, Some(false));
+    let doc = result_doc(&r.core);
+    assert_eq!(
+        doc.measurement.stimulus.kind,
+        dspi_measure::doc::RunKind::LiveSweep
+    );
+    assert!(doc.measurement.outputs[0].arrival_ms.is_none());
+}
+
+#[test]
+fn wp_p5ses_device_headphone_reseats_are_averaged() {
+    let r = rig();
+    let mut mic = Mic::new(&r, free_world(&[0.0]));
+    let setup = MeasureSetup {
+        placement: MeasurePlacement::Headphones,
+        coupler: Some(MeasureCoupler::Iec60318_4),
+        count: 2,
+        outputs: outputs(&[(0, MeasureRole::Full)]),
+        sweep_ms: 1_000,
+        ..MeasureSetup::default()
+    };
+    r.core.measure_start(setup).unwrap();
+    let st = mic.run(40.0, |s| s.phase == MeasurePhase::WaitPosition);
+    assert_eq!(st.phase, MeasurePhase::WaitPosition, "{st:#?}");
+    // Every ramp level on a coupler starts at -60 dBFS and stays at or below
+    // -30.
+    {
+        let log = r.log.lock().unwrap();
+        let levels: Vec<f32> = log
+            .iter()
+            .filter(|q| q.op == op::REQ_SIGGEN_SET_CONFIG)
+            .map(|q| {
+                dspi_proto::packets::SiggenConfig::decode(&q.data)
+                    .unwrap()
+                    .level_db
+            })
+            .collect();
+        assert_eq!(levels[0], -60.0);
+        assert!(levels.iter().all(|l| *l <= -30.0), "{levels:?}");
+    }
+    // The headphones reseated; the microphone (and its count) starts anew.
+    mic.first = 900_000;
+    mic.next = 900_000;
+    mic.t0 = std::time::Instant::now();
+    r.core.measure_next_position().unwrap();
+    let st = mic.run(40.0, |_| false);
+    assert_eq!(st.phase, MeasurePhase::Done, "{st:#?}");
+    let doc = result_doc(&r.core);
+    assert_eq!(doc.measurement.positions, 2);
+    assert!(doc.measurement.outputs[0].response.spread_db.is_some());
+}
+
+#[test]
+fn wp_p5ses_device_the_second_preflight_checks_chains_and_its_own_guard() {
+    let r = rig();
+    let setup = walked(&[(0, MeasureRole::Full)]);
+    let plan = Plan::new(&setup).unwrap();
+    let s = r.core.get_state();
+    let mut chains: Chains = vec![(0, preflight::chain_of(&s, 0))];
+    let same = PreflightOptions {
+        expect_chains: Some(chains.clone()),
+        allow_guard: None,
+    };
+    assert!(r.core.measure_preflight_plan(&plan, &same).unwrap().clear);
+    chains[0].1.gain_db -= 3.0;
+    let changed = PreflightOptions {
+        expect_chains: Some(chains),
+        allow_guard: None,
+    };
+    let p = r.core.measure_preflight_plan(&plan, &changed).unwrap();
+    assert_eq!(keys(&p), vec!["measure.chain_changed".to_owned()]);
+    // A tune's own guard does not block its verify runs; another does.
+    let g = r.core.apply_guard_begin("Auto-tune".into(), 300).unwrap();
+    let own = PreflightOptions {
+        expect_chains: None,
+        allow_guard: Some(g.id),
+    };
+    assert!(r.core.measure_preflight_plan(&plan, &own).unwrap().clear);
+    let p = r
+        .core
+        .measure_preflight_plan(&plan, &PreflightOptions::default())
+        .unwrap();
+    assert_eq!(keys(&p), vec!["measure.guard_pending".to_owned()]);
+    r.core.apply_revert().unwrap();
+}

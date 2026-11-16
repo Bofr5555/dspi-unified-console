@@ -1698,6 +1698,28 @@ uint8_t ch,
 int32_t mirror,
 char *buf,
 uint32_t len);
+void dspi_measure_set_callback(struct FfiCore *core,
+void (*callback)(void *user_data),
+void *user_data);
+uint32_t dspi_measure_preflight(struct FfiCore *core,
+const char *setup_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_start(struct FfiCore *core, const char *setup_json, char *buf, uint32_t len);
+uint32_t dspi_measure_capture_push(struct FfiCore *core,
+uint64_t first_frame,
+const float *samples,
+uint32_t count,
+uint32_t rate_hz,
+bool clipped,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_tick(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_next_position(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_stop(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_state(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_result(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_clear(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,

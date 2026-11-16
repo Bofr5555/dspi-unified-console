@@ -6164,6 +6164,237 @@ data class LinkPhaseText(
 )
 
 /**
+ * One output to measure.
+ */
+data class MeasureOutput(
+    /**
+     * The output, 0-based.
+     */
+    val output: Int,
+    /**
+     * Its way.
+     */
+    val role: MeasureRole,
+    /**
+     * The speaker it belongs to (`L`, `R`, `Sub`), for the document.
+     */
+    val speaker: String,
+    /**
+     * Its alignment group: the outputs of one group are measured in one
+     * walked run (PLAN-P5 section 1.4 step 4). Ignored by the other kinds.
+     */
+    val group: Int,
+    /**
+     * A summed run plays this output inverted (its net programme polarity).
+     */
+    val inverted: Boolean,
+)
+
+/**
+ * What to measure and how (`measure_preflight`, `measure_start`). Every
+ * number 0 (or absent) is the plan's default.
+ */
+data class MeasureSetup(
+    /**
+     * The run kind.
+     */
+    val kind: MeasureRunKind,
+    /**
+     * The outputs, 1 to 16, each once.
+     */
+    val outputs: List<MeasureOutput>,
+    /**
+     * Where the microphone is.
+     */
+    val placement: MeasurePlacement,
+    /**
+     * Positions (3 to 9, multi-position) or reseats (1 to 9, headphones).
+     */
+    val count: Int,
+    /**
+     * The coupler, for headphones.
+     */
+    val coupler: MeasureCoupler?,
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated
+     * microphone (relative dB, no SPL cap).
+     */
+    val micDocument: String,
+    /**
+     * One sweep, ms (1000 to 15000; 0: 5500, 2700 for a live sweep).
+     */
+    val sweepMs: Long,
+    /**
+     * The gap after each cycle, ms (300 to 2000; 0: 1000 for speakers, 300
+     * on a coupler).
+     */
+    val gapMs: Long,
+    /**
+     * Passes of a walked run (2 to 8; 0: 3).
+     */
+    val passes: Int,
+    /**
+     * Pink noise, ms (1000 to 60000; 0: 10000).
+     */
+    val pinkMs: Long,
+    /**
+     * The generator's ceiling, peak dBFS: lower than the mode's default, or
+     * higher up to the hard cap (-6 speakers, -20 headphones).
+     */
+    val ceilingDb: Float?,
+    /**
+     * The SPL cap with a calibrated microphone, dB SPL (default 95 speakers,
+     * 90 on a coupler; at most 105 and 100).
+     */
+    val splCapDb: Float?,
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    val captureRateHz: Long,
+    /**
+     * The document's name ("" names it by the date).
+     */
+    val name: String,
+)
+
+/**
+ * One preflight finding: a notice key and its words.
+ */
+data class MeasureIssue(
+    /**
+     * The notice key (`notice_for_key`), e.g. `measure.volume_high`.
+     */
+    val key: String,
+    /**
+     * The output it is about, if one.
+     */
+    val output: Int?,
+    /**
+     * What it is, in words (English; the key localises).
+     */
+    val message: String,
+)
+
+/**
+ * What stands between the setup and a measurement (PLAN-P5 section 1.2).
+ */
+data class MeasurePreflight(
+    /**
+     * Nothing blocks: `measure_start` may play.
+     */
+    val clear: Boolean,
+    /**
+     * Every blocker, in words; nothing is played until they are clear.
+     */
+    val blockers: List<MeasureIssue>,
+    /**
+     * What does not block but the user should know.
+     */
+    val warnings: List<MeasureIssue>,
+)
+
+/**
+ * One output's ramp result.
+ */
+data class MeasureLevel(
+    /**
+     * The output.
+     */
+    val output: Int,
+    /**
+     * The generator's peak level the ramp settled on, dBFS.
+     */
+    val levelDb: Float,
+)
+
+/**
+ * A session's state: what the screens show and what the client must do.
+ */
+data class MeasureState(
+    /**
+     * Where it stands.
+     */
+    val phase: MeasurePhase,
+    /**
+     * The run kind.
+     */
+    val kind: MeasureRunKind,
+    /**
+     * The session holds the generator or the lock: Stop is shown.
+     */
+    val active: Boolean,
+    /**
+     * The client must push capture now (from the pre-roll to the end).
+     */
+    val wantsCapture: Boolean,
+    /**
+     * The capture rate the session expects, Hz.
+     */
+    val captureRateHz: Long,
+    /**
+     * The position (or reseat) being measured, 1-based.
+     */
+    val position: Int,
+    /**
+     * Positions (or reseats) in all.
+     */
+    val positions: Int,
+    /**
+     * The run being measured, 1-based.
+     */
+    val run: Int,
+    /**
+     * Runs in all.
+     */
+    val runs: Int,
+    /**
+     * The output now ramping or playing alone, if one.
+     */
+    val output: Int?,
+    /**
+     * The generator's level now, peak dBFS, while it plays.
+     */
+    val levelDb: Float?,
+    /**
+     * The ramps' results so far (this run).
+     */
+    val rampLevels: List<MeasureLevel>,
+    /**
+     * The run's level (the minimum of its ways' ramp levels).
+     */
+    val runLevelDb: Float?,
+    /**
+     * Frames pushed since the session began.
+     */
+    val frames: Long,
+    /**
+     * The capture frame at which the latest START was acknowledged.
+     */
+    val generatorStartFrame: Long?,
+    /**
+     * STARTs sent in this session (a client's simulated microphone renders
+     * each one).
+     */
+    val generatorStarts: Long,
+    /**
+     * The current phase's progress, 0 to 1.
+     */
+    val progress: Float,
+    /**
+     * Why it stopped, or what it asks.
+     */
+    val issue: MeasureIssue?,
+    /**
+     * The last run passed the timing quality gate (walked runs).
+     */
+    val timingReliable: Boolean?,
+    /**
+     * `measure_result` has a document.
+     */
+    val resultReady: Boolean,
+)
+
+/**
  * A mode: Simple, Advanced or Installer.
  */
 data class ModeEntry(
@@ -7186,6 +7417,140 @@ enum class HistorySource {
      * The repeat of an undone change, sent by [`DspiCore::redo`].
      */
     REDO,
+}
+
+/**
+ * What a run plays (PLAN-P5 section 1.1, review RC11).
+ */
+enum class MeasureRunKind {
+    /**
+     * Log sweeps, one output per cycle round-robin, 2 to 8 passes: responses
+     * with phase, arrivals and the timing quality gate.
+     */
+    WALKED,
+    /**
+     * One sweep on several outputs at once, each with its polarity (the
+     * generator's `invert_mask`): the measured sum of a transition.
+     */
+    SUMMED,
+    /**
+     * One sweep on one output (the live view): magnitude only.
+     */
+    LIVE_SWEEP,
+    /**
+     * Finite pink noise on one output (at most 60 s): the microphone RTA.
+     */
+    PINK,
+}
+
+/**
+ * A way of a loudspeaker, as the user confirmed the layout.
+ */
+enum class MeasureRole {
+    /**
+     * A full-range output.
+     */
+    FULL,
+    /**
+     * A subwoofer.
+     */
+    SUB,
+    /**
+     * The lowest way of a multi-way speaker.
+     */
+    LOW,
+    /**
+     * A middle way: needs an active high-pass to be measured (S6).
+     */
+    MID,
+    /**
+     * The highest way: needs an active high-pass to be measured (S6).
+     */
+    HIGH,
+}
+
+/**
+ * Where the microphone is (owner requirement R3).
+ */
+enum class MeasurePlacement {
+    /**
+     * Speakers, the listening position.
+     */
+    LISTENING_POSITION,
+    /**
+     * Speakers, 3 to 9 positions averaged (`count`).
+     */
+    MULTI_POSITION,
+    /**
+     * Speakers, the microphone close to each driver: one run per output.
+     */
+    NEAR_FIELD,
+    /**
+     * Headphones on a coupler, 1 to 9 reseats (`count`).
+     */
+    HEADPHONES,
+}
+
+/**
+ * A headphone coupler type.
+ */
+enum class MeasureCoupler {
+    /**
+     * An IEC 60318-4 (711-type) ear simulator.
+     */
+    IEC60318_4,
+    /**
+     * A flat-plate coupler.
+     */
+    FLAT_PLATE,
+    /**
+     * A head and torso simulator or another coupler with pinna.
+     */
+    HATS,
+}
+
+/**
+ * Where a session stands.
+ */
+enum class MeasurePhase {
+    /**
+     * No session on this core.
+     */
+    IDLE,
+    /**
+     * The generator is idle; the microphone's noise floor is taken.
+     */
+    PRE_ROLL,
+    /**
+     * The level ramp of one output (S3).
+     */
+    RAMP,
+    /**
+     * The run is playing.
+     */
+    RUN,
+    /**
+     * The run is analysed, a slice per tick.
+     */
+    ANALYSING,
+    /**
+     * Move the microphone (or reseat the headphones), then
+     * `measure_next_position`.
+     */
+    WAIT_POSITION,
+    /**
+     * The measurement is complete: `measure_result`.
+     */
+    DONE,
+    /**
+     * Stopped on a safety rule or by the user: nothing is kept.
+     */
+    ABORTED,
+    /**
+     * Stopped and asking the user (the microphone does not hear the output,
+     * no signal): nothing is kept.
+     */
+    FAILED,
 }
 
 /**

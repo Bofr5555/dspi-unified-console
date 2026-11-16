@@ -3151,6 +3151,109 @@ interface DspiCoreApi : AutoCloseable {
     fun linkSetUrl(url: String)
 
     /**
+     * Register (`Some`) or clear (`None`) the measurement listener: called
+     * when a session's phase changes, it stops, or it asks something. Called
+     * on the thread that pushed, ticked or stopped, with every core lock
+     * released; it may read `measure_state` but must not block.
+     */
+    fun measureSetListener(listener: MeasureListener?)
+
+    /**
+     * What stands between `setup` and a measurement, in words (PLAN-P5
+     * section 1.2): the volume (S2), the tweeter rule (S6), silence on the
+     * inputs (S8), locks and roles (S11), processing the maths does not model
+     * (S13), the plan's bounds (S7). Reads the device (the meters and the
+     * generator's caps); writes nothing.
+     *
+     * Errors: [`DspiError::Disconnected`]; [`DspiError::InvalidArgument`] for
+     * a setup that is not one (no outputs, an output twice, a count out of
+     * range); a transfer failure of the reads.
+     */
+    @Throws(DspiException::class)
+    fun measurePreflight(setup: MeasureSetup): MeasurePreflight
+
+    /**
+     * Start a measurement of `setup`: the preflight, the device lock
+     * "Measuring" (a 30 s lease, renewed by `measure_tick`), then the
+     * pre-roll. Nothing plays before the client has pushed the pre-roll and
+     * ticked. The client then pushes capture whenever `wants_capture` and
+     * calls `measure_tick` about every 50 ms until the phase is `done`,
+     * `aborted` or `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a session
+     * already running on this core, or a blocker (named in the message);
+     * [`DspiError::ReadOnly`] (read-only mode or connection) and
+     * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
+     * [`DspiError::Locked`] when another session holds the device lock;
+     * [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun measureStart(setup: MeasureSetup): MeasureState
+
+    /**
+     * Push one block of the microphone's capture: mono samples, full scale
+     * ±1, starting at frame `first_frame` of the client's own count, at
+     * `rate_hz`, `clipped` when the converter clipped. The safety checks run
+     * first, O(block) (S4, S5): a gap or repeat in the frame indices, a
+     * clip, the SPL cap. No analysis runs here. A push with no session, or
+     * while the session wants none, is ignored.
+     *
+     * Errors: none for the capture's content (a fault ends the session and
+     * shows in the state); [`DspiError::InvalidArgument`] for more than
+     * 1 Mi samples in one block.
+     */
+    @Throws(DspiException::class)
+    fun measureCapturePush(firstFrame: Long, samples: List<Float>, rateHz: Long, clipped: Boolean): MeasureState
+
+    /**
+     * Drive the session: apply queued notifications, judge them (S5), renew
+     * the lease, poll the generator and the meters (about 4 Hz), start the
+     * next step, run one analysis slice. Call it about every 50 ms while a
+     * session is active, off the UI thread (it blocks for a few transfers).
+     * Returns the state; never fails.
+     */
+    fun measureTick(): MeasureState
+
+    /**
+     * The microphone is at the next position (or the headphones reseated):
+     * go on with the next run.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the session is not waiting
+     * for a position.
+     */
+    @Throws(DspiException::class)
+    fun measureNextPosition(): MeasureState
+
+    /**
+     * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
+     * the run discarded, the lock given back. Idempotent; never fails.
+     */
+    fun measureStop(): MeasureState
+
+    /**
+     * The session's state, without I/O.
+     */
+    fun measureState(): MeasureState
+
+    /**
+     * The finished measurement as a `measurement` document's text (schema 1,
+     * derived curves only). File it with `measure_doc_put` (or the hub's).
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    @Throws(DspiException::class)
+    fun measureResult(): String
+
+    /**
+     * Forget a finished session (its result included), so the screens show
+     * none. Refused while one is active.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while a session is active.
+     */
+    @Throws(DspiException::class)
+    fun measureClear()
+
+    /**
      * The mode to show on a client of `platform` (`phone`, `desktop` or
      * `web`) when the user has chosen `chosen` (a mode id, or "" for none):
      * the locked-user state first, then a mode the hub pins, then the

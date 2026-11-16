@@ -977,10 +977,19 @@ impl Session {
                         runs::walked_result(&r, position, level, &self.plan)
                             .map_err(|e| issue("measure.no_signal", e.to_string())),
                     ),
-                    Err(dspi_measure::ir::TimingError::CycleIdentity(m)) => Some(Err(issue(
-                        "measure.abort.cycle_identity",
-                        format!("the capture does not line up with the run: {m}"),
-                    ))),
+                    // A single sweep not heard where its START puts it is
+                    // a sweep not heard; a walked run's cycles are its
+                    // identity (RC5b).
+                    Err(dspi_measure::ir::TimingError::CycleIdentity(m)) => {
+                        Some(Err(if self.plan.kind == MeasureRunKind::Walked {
+                            issue(
+                                "measure.abort.cycle_identity",
+                                format!("the capture does not line up with the run: {m}"),
+                            )
+                        } else {
+                            issue("measure.no_signal", format!("the sweep was not heard: {m}"))
+                        }))
+                    }
                     Err(e) => Some(Err(issue("measure.no_signal", e.to_string()))),
                 }
             }

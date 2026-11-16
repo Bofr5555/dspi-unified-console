@@ -512,6 +512,26 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun linkSetUrl(url: String): Unit = throw NotImplementedError("link_set_url")
 
+    override fun measureSetListener(listener: MeasureListener?): Unit = throw NotImplementedError("measure_set_listener")
+
+    override fun measurePreflight(setup: MeasureSetup): MeasurePreflight = throw NotImplementedError("measure_preflight")
+
+    override fun measureStart(setup: MeasureSetup): MeasureState = throw NotImplementedError("measure_start")
+
+    override fun measureCapturePush(firstFrame: Long, samples: List<Float>, rateHz: Long, clipped: Boolean): MeasureState = throw NotImplementedError("measure_capture_push")
+
+    override fun measureTick(): MeasureState = throw NotImplementedError("measure_tick")
+
+    override fun measureNextPosition(): MeasureState = throw NotImplementedError("measure_next_position")
+
+    override fun measureStop(): MeasureState = throw NotImplementedError("measure_stop")
+
+    override fun measureState(): MeasureState = throw NotImplementedError("measure_state")
+
+    override fun measureResult(): String = throw NotImplementedError("measure_result")
+
+    override fun measureClear(): Unit = throw NotImplementedError("measure_clear")
+
     override fun modeResolve(platform: String, chosen: String): ModeChoice = throw NotImplementedError("mode_resolve")
 
     override fun modeSetPinned(mode: String): Unit = throw NotImplementedError("mode_set_pinned")
