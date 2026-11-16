@@ -161,6 +161,8 @@ mod picoboot;
 mod measure_doc;
 // -- WP P5SES -- the measurement session (PLAN-P5)
 pub mod measure;
+// -- WP P5DEMO -- the demo's simulated microphone (PLAN-P5 OD-P5q)
+mod measure_sim;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 // -- WP P5SES --
@@ -332,6 +334,8 @@ pub use measure::{
     MeasureCoupler, MeasureIssue, MeasureLevel, MeasureOutput, MeasurePhase, MeasurePlacement,
     MeasurePreflight, MeasureRole, MeasureRunKind, MeasureSetup, MeasureState, MeasureTiming,
 };
+// -- WP P5DEMO --
+pub use measure_sim::{MeasureSimInfo, SIM_MIC_LABEL, SIM_WORLD};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///
@@ -394,6 +398,10 @@ pub struct DspiCore {
     /// The measurement session (`measure.rs`). Taken before `inner`, never
     /// after it.
     pub(crate) measure: measure::MeasureSlot,
+    // -- WP P5DEMO --
+    /// The demo's simulated microphone (`measure_sim.rs`). Taken before the
+    /// measurement slot and `inner`, never after them.
+    pub(crate) measure_sim: measure_sim::SimSlot,
 }
 
 // -- WP LK4 --
@@ -1007,6 +1015,8 @@ impl DspiCore {
             measure_dir: measure_doc::DirSlot::default(),
             // -- WP P5SES --
             measure: measure::MeasureSlot::default(),
+            // -- WP P5DEMO --
+            measure_sim: measure_sim::SimSlot::default(),
         })
     }
 }
