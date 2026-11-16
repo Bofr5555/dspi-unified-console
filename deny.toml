@@ -36,6 +36,8 @@ exceptions = [
     { crate = "xtask", allow = ["GPL-3.0-or-later"] },
     # -- WP WB2 -- the wasm gate's scenario module (ci/wasm-scenario)
     { crate = "dspi-wasm-scenario", allow = ["GPL-3.0-or-later"] },
+    # -- WP PLANP5 -- the measurement maths (crates/dspi-measure, PLAN-P5)
+    { crate = "dspi-measure", allow = ["GPL-3.0-or-later"] },
     # -- WP WB3 -- the web binding (crates/dspi-wasm)
     { crate = "dspi-wasm", allow = ["GPL-3.0-or-later"] },
     # -- WP LK3 -- the ESP32 bridge rig's UART tunnel (tools/esp-rig/tunnel; review c73 F2)

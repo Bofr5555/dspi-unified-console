@@ -24,6 +24,8 @@ members = [
     "crates/dspi-link",
     # -- WP HB0 --
     "crates/dspi-hub",
+    # -- WP PLANP5 -- the measurement maths (docs/core-merge/PLAN-P5.md)
+    "crates/dspi-measure",
     # -- WP WB2 -- the wasm gate's scenario module (ci/check.sh --step wasm-core)
     "ci/wasm-scenario",
     # -- WP WB3 -- the web binding (apps/web's Worker loads it)
@@ -51,6 +53,8 @@ dspi-core = { path = "crates/dspi-core" }
 dspi-link = { path = "crates/dspi-link" }
 # -- WP HB0 --
 dspi-hub = { path = "crates/dspi-hub" }
+# -- WP PLANP5 --
+dspi-measure = { path = "crates/dspi-measure" }
 
 anyhow = "1"
 thiserror = "2"
