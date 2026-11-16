@@ -882,6 +882,11 @@ pub(crate) fn parse_config(text: &str) -> std::result::Result<Value, String> {
             return Err("This file is not a DSPi configuration: it has no schema version.".into());
         }
     }
+    // -- WP P5DOCK -- a measurement, mic or target document configures no
+    // device: every path that reads a configuration refuses it, nothing sent
+    if measure_doc_kind(&doc).is_some() {
+        return Err(crate::measure_doc::MEASURE_DOC_REFUSAL.into());
+    }
     match top.get("channels").and_then(Value::as_array) {
         Some(c) if !c.is_empty() => Ok(doc),
         _ => Err("This file holds no channel settings.".into()),
@@ -2031,6 +2036,22 @@ pub(crate) fn doc_kind(doc: &Value) -> MetaKind {
             .and_then(|m| m.get("kind"))
             .and_then(Value::as_str),
     )
+}
+
+// -- WP P5DOCK --
+/// A document's measurement-family kind (`measurement`, `mic`, `target`),
+/// read from `meta.kind` as [`doc_kind`] reads the preset family's words;
+/// `None` for every other document. Such a document configures no device.
+pub(crate) fn measure_doc_kind(doc: &Value) -> Option<dspi_measure::doc::DocKind> {
+    doc.get("meta")
+        .and_then(|m| m.get("kind"))
+        .and_then(Value::as_str)
+        .and_then(dspi_measure::doc::DocKind::from_word)
+}
+
+/// Now as the `savedUtc` of a document written here (ISO-8601 UTC).
+pub(crate) fn utc_now_text() -> String {
+    utc_text(unix_now())
 }
 
 /// A state shaped like the device a document was written from, for a diff

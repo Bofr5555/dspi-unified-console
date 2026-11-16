@@ -157,6 +157,8 @@ pub mod pins;
 mod channel_clip;
 // -- WP P3PB -- the PICOBOOT writer (the hub's unattended flash)
 mod picoboot;
+// -- WP P5DOCK -- the measurement documents (PLAN-P5 T11) and the core's SectionModel
+mod measure_doc;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -169,6 +171,11 @@ pub use dspi_session::events::{EventKind, EventRecord, EventSink, ReadBatch};
 pub use events::EVENT_READ_MAX;
 // -- WP CG11 --
 pub use vreg::{VregCalPhase, VregCalView, VregChoice, VregDemoEvent};
+// -- WP P5DOCK --
+pub use measure_doc::{
+    MEASURE_DOC_REFUSAL, MeasureDocInfo, TargetInfo, TargetParam, measure_doc_info, mic_import,
+    target_builtins, target_import,
+};
 // Work-package sections: add re-exports only inside your own section.
 // -- WP C0 --
 // -- WP C1 --
@@ -369,6 +376,11 @@ pub struct DspiCore {
     // -- WP P1SA --
     /// The guarded apply (`guarded.rs`). Taken before `inner`, never after.
     pub(crate) guarded: guarded::GuardSlot,
+    // -- WP P5DOCK --
+    /// The folder the client named for measurement documents (none on the
+    /// web). Taken with or without `inner`, never `inner` after it.
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
+    pub(crate) measure_dir: measure_doc::DirSlot,
 }
 
 // -- WP LK4 --
@@ -974,6 +986,8 @@ impl DspiCore {
             ab: ab::AbSlot::default(),
             // -- WP P1SA --
             guarded: guarded::GuardSlot::default(),
+            // -- WP P5DOCK --
+            measure_dir: measure_doc::DirSlot::default(),
         })
     }
 }
