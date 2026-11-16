@@ -35,6 +35,14 @@
 //! that speaks TLS, a key not minted `plaintext_ok` is refused with `426`
 //! `tls_required` once it is known, before its request is read on (PLAN-SEC 4.7).
 //!
+//! **The fleet (WP P3RS, PLAN-P3 OD-P3l).** Groups, linked parameters, bulk apply and the
+//! rollout's reads, each onto its message (`hub-api.md` 14.2): a guarded group apply's
+//! run belongs to the key's session, as a guarded recall does; `/rollouts` and
+//! `/firmware` are read-only (any other method `405` with `Allow: GET`, so no flash and no
+//! upload over REST) and TLS only (`426` `tls_required` over plaintext, every key and
+//! mode). The key's one session serves its plain and TLS connections alike, so it is
+//! marked encrypted or not for each request by that request's own connection.
+//!
 //! Lock level: [`Rest`]'s table is a leaf. No hub call is made under it.
 
 use std::collections::BTreeMap;
@@ -299,6 +307,17 @@ impl Rest {
             }
             None => return fail(NOT_FOUND, "not_found", "no such REST path"),
         };
+        // -- WP P3RS -- the rollout's reads: over TLS only, whatever the key or the mode
+        if endpoint.tls_only() && !ctx.encrypted {
+            log::debug!("hub: refused a firmware read over plaintext REST");
+            return tls_required_reply(
+                ctx.hub_id,
+                "the firmware rollout is served over TLS only; use https",
+            );
+        }
+        if endpoint == Endpoint::FirmwareNone {
+            return fail(NOT_FOUND, "not_found", "no such REST path");
+        }
         let query = match parse_query(query) {
             Ok(query) => query,
             Err(why) => return fail(BAD_REQUEST, "bad_request", &why),
@@ -386,14 +405,10 @@ impl Rest {
                     && !plaintext_ok(ctx, authed.cid) =>
             {
                 log::debug!("hub: refused an API key over plaintext");
-                let mut reply = error_reply(
+                Err(tls_required_reply(
                     ctx.hub_id,
-                    "426 Upgrade Required",
-                    crate::server::TLS_REQUIRED,
                     "this API key works over https only (it was not minted plaintext_ok)",
-                );
-                reply.headers.push(("Upgrade", "TLS/1.3".to_owned()));
-                Err(reply)
+                ))
             }
             Ok(authed) => Ok((authed.cid, authed.role)),
             Err(AuthError::RateLimited) => {
@@ -460,6 +475,10 @@ impl Rest {
         // Held to the end of this call, whichever way it ends.
         let _turn = self.wait_turn(ctx.hub_id, cid, until)?;
         let session = self.session(ctx, cid, role)?;
+        // -- WP P3RS -- the key's one session serves its plain and its TLS
+        // connections: a `tls_only` family judges this request by its own connection.
+        // The key's turn is held, so no other request of it sees this.
+        session.set_encrypted(ctx.encrypted);
         let answer = control_plane(ctx.hub, &session, message).unwrap_or_else(|| {
             // Not one of the families: a hub without it (a service off).
             json!({"t": "err", "id": REQUEST_ID, "code": "unknown_type",
@@ -565,6 +584,8 @@ const UNAUTHORIZED: &str = "401 Unauthorized";
 const FORBIDDEN: &str = "403 Forbidden";
 const NOT_FOUND: &str = "404 Not Found";
 const TOO_MANY: &str = "429 Too Many Requests";
+// -- WP P3RS --
+const UPGRADE_REQUIRED: &str = "426 Upgrade Required";
 const UNAVAILABLE: &str = "503 Service Unavailable";
 
 /// The HTTP status of an answer's code (hub-api.md section 14.2).
@@ -581,6 +602,8 @@ fn status_of(code: &str) -> &'static str {
         "conflict" | "offline" => "409 Conflict",
         "locked" => "423 Locked",
         "rate_limited" => TOO_MANY,
+        // -- WP P3RS -- the rollout's reads over plaintext (hub-api.md 14.2, 21.1)
+        crate::server::TLS_REQUIRED => UPGRADE_REQUIRED,
         "unsupported" | "unknown_type" => "501 Not Implemented",
         "busy" | "device" => UNAVAILABLE,
         _ => "500 Internal Server Error",
@@ -608,6 +631,14 @@ fn plaintext_ok(ctx: &RestCtx<'_>, cid: u32) -> bool {
         .clients()
         .iter()
         .any(|c| c.cid == cid && c.plaintext_ok)
+}
+
+// -- WP P3RS --
+/// `426` `tls_required` with `Upgrade: TLS/1.3`.
+fn tls_required_reply(hub_id: &str, msg: &str) -> Reply {
+    let mut reply = error_reply(hub_id, UPGRADE_REQUIRED, crate::server::TLS_REQUIRED, msg);
+    reply.headers.push(("Upgrade", "TLS/1.3".to_owned()));
+    reply
 }
 
 fn error_reply(hub_id: &str, status: &'static str, code: &str, msg: &str) -> Reply {
@@ -643,7 +674,12 @@ fn translate(hub_id: &str, answer: &str) -> Reply {
                 .unwrap_or("internal"),
         ),
     };
-    json_reply(status, &Value::Object(map))
+    let mut reply = json_reply(status, &Value::Object(map));
+    // -- WP P3RS --
+    if status == UPGRADE_REQUIRED {
+        reply.headers.push(("Upgrade", "TLS/1.3".to_owned()));
+    }
+    reply
 }
 
 /// A request's body as a JSON object (empty for none): `Content-Length` only, at most
@@ -769,20 +805,78 @@ fn parse_query(query: &str) -> Result<BTreeMap<String, String>, String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Endpoint {
     Devices,
-    Param { serial: String, path: String },
-    PresetLoad { serial: String, slot: String },
-    Recall { serial: String, snapshot: String },
-    Events { serial: String },
+    Param {
+        serial: String,
+        path: String,
+    },
+    PresetLoad {
+        serial: String,
+        slot: String,
+    },
+    Recall {
+        serial: String,
+        snapshot: String,
+    },
+    Events {
+        serial: String,
+    },
     // -- WP P2CFIXA -- a guarded apply's end: `apply.confirm` or `apply.cancel`
-    Apply { serial: String, confirm: bool },
+    Apply {
+        serial: String,
+        confirm: bool,
+    },
     Alarms,
-    AlarmAck { alarm: String },
+    AlarmAck {
+        alarm: String,
+    },
     Health,
+    // -- WP P3RS -- the fleet (PLAN-P3 OD-P3l; hub-api.md 14.2)
+    Groups,
+    Group {
+        group: String,
+    },
+    GroupParam {
+        group: String,
+        path: String,
+    },
+    GroupPresetLoad {
+        group: String,
+        slot: String,
+    },
+    GroupApply {
+        group: String,
+    },
+    Run {
+        run: String,
+        confirm: bool,
+    },
+    /// `fw.rollout.status`, of one rollout or all. TLS only.
+    Rollouts {
+        rollout: Option<String>,
+    },
+    /// `fw.image.list`. TLS only.
+    Firmware,
+    /// A path under `/rollouts` or `/firmware` that names nothing: `GET` is 404, any
+    /// other method 405 with `Allow: GET` (no write of the rollout over REST).
+    FirmwareNone,
+}
+
+// -- WP P3RS --
+impl Endpoint {
+    /// The rollout's reads: served over TLS only, in every mode (hub-api.md 21.1).
+    fn tls_only(&self) -> bool {
+        matches!(
+            self,
+            Self::Rollouts { .. } | Self::Firmware | Self::FirmwareNone
+        )
+    }
 }
 
 const GET: &[&str] = &["GET"];
 const GET_PUT: &[&str] = &["GET", "PUT"];
 const POST: &[&str] = &["POST"];
+// -- WP P3RS --
+const PUT: &[&str] = &["PUT"];
 
 /// The endpoint a path names, with the methods it takes. `None`: no such path.
 fn route(path: &str) -> Option<(&'static [&'static str], Endpoint)> {
@@ -843,6 +937,51 @@ fn route(path: &str) -> Option<(&'static [&'static str], Endpoint)> {
             },
         ),
         ["health"] => (GET, Endpoint::Health),
+        // -- WP P3RS -- the fleet
+        ["groups"] => (GET, Endpoint::Groups),
+        ["groups", group] if !group.is_empty() => (
+            GET,
+            Endpoint::Group {
+                group: owned(group),
+            },
+        ),
+        ["groups", group, "params", param] if !group.is_empty() && !param.is_empty() => (
+            PUT,
+            Endpoint::GroupParam {
+                group: owned(group),
+                path: owned(param),
+            },
+        ),
+        ["groups", group, "presets", slot, "load"] if !group.is_empty() => (
+            POST,
+            Endpoint::GroupPresetLoad {
+                group: owned(group),
+                slot: owned(slot),
+            },
+        ),
+        ["groups", group, "apply"] if !group.is_empty() => (
+            POST,
+            Endpoint::GroupApply {
+                group: owned(group),
+            },
+        ),
+        ["runs", run, end @ ("confirm" | "cancel")] if !run.is_empty() => (
+            POST,
+            Endpoint::Run {
+                run: owned(run),
+                confirm: *end == "confirm",
+            },
+        ),
+        ["rollouts"] => (GET, Endpoint::Rollouts { rollout: None }),
+        ["rollouts", rollout] if !rollout.is_empty() => (
+            GET,
+            Endpoint::Rollouts {
+                rollout: Some(owned(rollout)),
+            },
+        ),
+        ["firmware"] => (GET, Endpoint::Firmware),
+        // No write of the rollout over REST (OD-P3l): whatever else is under these two.
+        ["rollouts" | "firmware", ..] => (GET, Endpoint::FirmwareNone),
         _ => return None,
     })
 }
@@ -954,6 +1093,63 @@ impl Endpoint {
                 }
                 "health.get"
             }
+            // -- WP P3RS -- the fleet; only what each body may say is taken from it
+            Self::Groups => "group.list",
+            Self::Group { group } => {
+                put("group", group.as_str().into());
+                "group.list"
+            }
+            Self::GroupParam { group, path } => {
+                put("group", group.as_str().into());
+                put("path", path.as_str().into());
+                if let Some(idx) = from_query("idx") {
+                    let idx: Vec<Value> = idx
+                        .split(',')
+                        .filter(|i| !i.trim().is_empty())
+                        .map(|i| number("idx", i).map(Value::from))
+                        .collect::<Result<_, _>>()?;
+                    put("idx", Value::Array(idx));
+                }
+                for name in ["value", "offsets"] {
+                    if let Some(v) = body.get(name) {
+                        put(name, v.clone());
+                    }
+                }
+                "group.param.set"
+            }
+            Self::GroupPresetLoad { group, slot } => {
+                put("group", group.as_str().into());
+                put("slot", number("the preset slot", slot)?.into());
+                if let Some(v) = body.get("map") {
+                    put("map", v.clone());
+                }
+                "group.preset.load"
+            }
+            Self::GroupApply { group } => {
+                put("group", group.as_str().into());
+                for name in ["snapshot", "name", "document", "guard", "timeout_ms"] {
+                    if let Some(v) = body.get(name) {
+                        put(name, v.clone());
+                    }
+                }
+                "group.apply"
+            }
+            Self::Run { run, confirm } => {
+                put("run", run.as_str().into());
+                if *confirm {
+                    "group.apply.confirm"
+                } else {
+                    "group.apply.cancel"
+                }
+            }
+            Self::Rollouts { rollout } => {
+                if let Some(id) = rollout {
+                    put("rollout", id.as_str().into());
+                }
+                "fw.rollout.status"
+            }
+            Self::Firmware => "fw.image.list",
+            Self::FirmwareNone => return Err("no such REST path".into()),
         };
         m.insert("t".into(), t.into());
         m.insert("id".into(), REQUEST_ID.into());
@@ -1248,5 +1444,199 @@ mod tests_wp_p2rs {
         for _ in 0..100 {
             assert!(rest.take_allowance(&unlimited, 11).is_ok());
         }
+    }
+}
+
+// -- WP P3RS --
+#[cfg(test)]
+mod tests_wp_p3rs {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    use super::*;
+
+    #[test]
+    fn wp_p3rs_the_fleets_paths_route_with_their_methods() {
+        assert_eq!(route("/api/v1/groups").unwrap(), (GET, Endpoint::Groups));
+        assert_eq!(
+            route("/api/v1/groups/g1").unwrap(),
+            (GET, Endpoint::Group { group: "g1".into() })
+        );
+        assert_eq!(
+            route("/api/v1/groups/g1/params/out.gain").unwrap(),
+            (
+                PUT,
+                Endpoint::GroupParam {
+                    group: "g1".into(),
+                    path: "out.gain".into()
+                }
+            )
+        );
+        assert_eq!(
+            route("/api/v1/groups/g1/presets/2/load").unwrap(),
+            (
+                POST,
+                Endpoint::GroupPresetLoad {
+                    group: "g1".into(),
+                    slot: "2".into()
+                }
+            )
+        );
+        assert_eq!(
+            route("/api/v1/groups/g1/apply").unwrap(),
+            (POST, Endpoint::GroupApply { group: "g1".into() })
+        );
+        assert_eq!(
+            route("/api/v1/runs/a3/confirm").unwrap(),
+            (
+                POST,
+                Endpoint::Run {
+                    run: "a3".into(),
+                    confirm: true
+                }
+            )
+        );
+        assert_eq!(
+            route("/api/v1/runs/a3/cancel").unwrap().1,
+            Endpoint::Run {
+                run: "a3".into(),
+                confirm: false
+            }
+        );
+        assert_eq!(
+            route("/api/v1/rollouts").unwrap(),
+            (GET, Endpoint::Rollouts { rollout: None })
+        );
+        assert_eq!(
+            route("/api/v1/rollouts/ro2").unwrap(),
+            (
+                GET,
+                Endpoint::Rollouts {
+                    rollout: Some("ro2".into())
+                }
+            )
+        );
+        assert_eq!(
+            route("/api/v1/firmware").unwrap(),
+            (GET, Endpoint::Firmware)
+        );
+        // Anything else under the rollout's two is read-only and names nothing.
+        for p in [
+            "/api/v1/rollouts/ro2/cancel",
+            "/api/v1/rollouts/",
+            "/api/v1/firmware/dspi.uf2",
+            "/api/v1/firmware/x/put",
+        ] {
+            assert_eq!(route(p).unwrap(), (GET, Endpoint::FirmwareNone), "{p}");
+        }
+        for p in [
+            "/api/v1/groups/",
+            "/api/v1/groups//apply",
+            "/api/v1/groups/g1/params",
+            "/api/v1/groups/g1/apply/confirm",
+            "/api/v1/runs/a3",
+            "/api/v1/runs//confirm",
+            "/api/v1/runs/a3/keep",
+        ] {
+            assert!(route(p).is_none(), "{p}");
+        }
+        for e in [
+            Endpoint::Rollouts { rollout: None },
+            Endpoint::Firmware,
+            Endpoint::FirmwareNone,
+        ] {
+            assert!(e.tls_only());
+        }
+        assert!(!Endpoint::Groups.tls_only());
+    }
+
+    #[test]
+    fn wp_p3rs_the_fleets_messages_take_only_what_each_body_may_say() {
+        let none = BTreeMap::new();
+        let body = |v: Value| v.as_object().unwrap().clone();
+        let hostile = body(
+            json!({"t": "fw.rollout.start", "group": "g9", "targets": ["X"],
+            "path": "vol.master", "run": "a9", "serial": "X", "value": -6.0,
+            "offsets": {"S1": -3.0}, "map": {"S1": 2}, "snapshot": "abc", "guard": true,
+            "timeout_ms": 4000}),
+        );
+        let q: BTreeMap<String, String> = [("idx".to_owned(), "0,1".to_owned())].into();
+        let m = Endpoint::GroupParam {
+            group: "g1".into(),
+            path: "out.gain".into(),
+        }
+        .message(&q, &hostile)
+        .unwrap();
+        assert_eq!(
+            m,
+            json!({"t": "group.param.set", "id": 1, "group": "g1", "path": "out.gain",
+                   "idx": [0, 1], "value": -6.0, "offsets": {"S1": -3.0}})
+        );
+        let m = Endpoint::GroupPresetLoad {
+            group: "g1".into(),
+            slot: "3".into(),
+        }
+        .message(&none, &hostile)
+        .unwrap();
+        assert_eq!(
+            m,
+            json!({"t": "group.preset.load", "id": 1, "group": "g1", "slot": 3,
+                   "map": {"S1": 2}})
+        );
+        assert!(
+            Endpoint::GroupPresetLoad {
+                group: "g1".into(),
+                slot: "x".into()
+            }
+            .message(&none, &Map::new())
+            .is_err()
+        );
+        let m = Endpoint::GroupApply { group: "g1".into() }
+            .message(&none, &hostile)
+            .unwrap();
+        assert_eq!(
+            m,
+            json!({"t": "group.apply", "id": 1, "group": "g1", "snapshot": "abc",
+                   "guard": true, "timeout_ms": 4000})
+        );
+        let m = Endpoint::Run {
+            run: "a2".into(),
+            confirm: false,
+        }
+        .message(&none, &hostile)
+        .unwrap();
+        assert_eq!(m, json!({"t": "group.apply.cancel", "id": 1, "run": "a2"}));
+        assert_eq!(
+            Endpoint::Group { group: "g4".into() }
+                .message(&none, &Map::new())
+                .unwrap(),
+            json!({"t": "group.list", "id": 1, "group": "g4"})
+        );
+        assert_eq!(
+            Endpoint::Rollouts {
+                rollout: Some("ro1".into())
+            }
+            .message(&none, &Map::new())
+            .unwrap(),
+            json!({"t": "fw.rollout.status", "id": 1, "rollout": "ro1"})
+        );
+        assert_eq!(
+            Endpoint::Firmware.message(&none, &Map::new()).unwrap()["t"],
+            "fw.image.list"
+        );
+        assert!(Endpoint::FirmwareNone.message(&none, &Map::new()).is_err());
+    }
+
+    #[test]
+    fn wp_p3rs_tls_required_is_426_with_upgrade() {
+        assert_eq!(status_of("tls_required"), "426 Upgrade Required");
+        let r = translate(
+            "H",
+            r#"{"t":"err","id":1,"v":1,"code":"tls_required","msg":"x"}"#,
+        );
+        assert_eq!(r.status, "426 Upgrade Required");
+        assert!(
+            r.headers
+                .iter()
+                .any(|(n, v)| *n == "Upgrade" && v == "TLS/1.3")
+        );
     }
 }

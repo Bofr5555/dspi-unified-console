@@ -34,14 +34,14 @@ use dspi_session::events::{EventKind, EventRecord};
 use serde_json::{Map, Value, json};
 
 use super::exec::Executor;
-use super::{ApiError, reply, require};
+use super::{ApiError, GroupBusy, reply, require};
 use crate::apply_guard::{ApplyRefused, EndResult};
 use crate::bus::BusMessage;
 use crate::groups::{GroupResolver, MAX_RESULT_ROWS};
 use crate::hub::HubHandle;
 use crate::registry::DeviceState;
 use crate::service::{HubService, ServiceSetup};
-use crate::session::{Role, Session, SessionId};
+use crate::session::{Role, Session};
 use crate::snapshots::{HubSnapshots, MAX_WIRE_DOC_BYTES};
 
 /// The `hello` cap of bulk apply (section 20.3).
@@ -68,6 +68,8 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 pub(crate) fn service(
     setup: &ServiceSetup<'_>,
     store: Option<Arc<HubSnapshots>>,
+    // -- WP P3RS -- shared with `group.param.*`
+    busy: GroupBusy,
 ) -> Option<Arc<dyn HubService>> {
     let groups = setup.group_resolver()?;
     let store = store?;
@@ -77,7 +79,7 @@ pub(crate) fn service(
         groups,
         runs: Mutex::new(Vec::new()),
         next_run: AtomicU64::new(0),
-        running: Mutex::new(BTreeSet::new()),
+        running: busy,
     }))
 }
 
@@ -120,20 +122,10 @@ struct BulkService {
     groups: Arc<dyn GroupResolver>,
     runs: Mutex<Vec<Run>>,
     next_run: AtomicU64,
-    /// Sessions with a group request running (`busy` for a second one).
-    running: Mutex<BTreeSet<SessionId>>,
-}
-
-/// Holds a session's slot in `running` while its request runs.
-struct Running<'a> {
-    set: &'a Mutex<BTreeSet<SessionId>>,
-    id: SessionId,
-}
-
-impl Drop for Running<'_> {
-    fn drop(&mut self) {
-        lock(self.set).remove(&self.id);
-    }
+    // -- WP P3RS --
+    /// Sessions with a group request running (`busy` for a second one), shared with
+    /// `group.param.*`.
+    running: GroupBusy,
 }
 
 impl HubService for BulkService {
@@ -159,7 +151,7 @@ impl HubService for BulkService {
             return Some(super::err(&Value::Null, &ApiError::bad("id is required")));
         };
         let result = require(session, Role::Control).and_then(|()| {
-            let _slot = self.enter(session)?;
+            let _slot = self.running.enter(session)?;
             match t {
                 "group.apply" => self.apply(hub, session, msg),
                 "group.apply.confirm" => self.settle(hub, session, msg, Settle::Confirm),
@@ -191,20 +183,6 @@ enum Settle {
 }
 
 impl BulkService {
-    /// `busy` while this session has another group request running.
-    fn enter(&self, session: &Session) -> Result<Running<'_>, ApiError> {
-        if !lock(&self.running).insert(session.id()) {
-            return Err(ApiError::new(
-                "busy",
-                "this session's other group request is still running",
-            ));
-        }
-        Ok(Running {
-            set: &self.running,
-            id: session.id(),
-        })
-    }
-
     fn apply(
         &self,
         hub: &HubHandle,

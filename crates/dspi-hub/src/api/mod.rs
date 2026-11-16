@@ -38,6 +38,9 @@ use crate::hub::HubHandle;
 use crate::registry::DeviceState;
 use crate::service::{HubService, ServiceSetup};
 use crate::session::Session;
+// -- WP P3RS --
+#[cfg(feature = "api")]
+use crate::session::SessionId;
 use crate::snapshots::HubSnapshots;
 
 pub mod transport;
@@ -69,6 +72,9 @@ pub const VERSION: u32 = 1;
 /// The services of this module, in the order they are consulted: the `snapshot` family
 /// (when the hub has a data folder), then the parameter API (with feature `api`).
 pub fn services(setup: &ServiceSetup<'_>) -> Vec<Arc<dyn HubService>> {
+    // -- WP P3RS -- one group request per session across both group families
+    #[cfg(feature = "api")]
+    let busy = GroupBusy::default();
     let store = setup.data_dir.map(|dir| Arc::new(HubSnapshots::open(dir)));
     let mut list: Vec<Arc<dyn HubService>> = Vec::new();
     if let Some(store) = &store {
@@ -78,12 +84,12 @@ pub fn services(setup: &ServiceSetup<'_>) -> Vec<Arc<dyn HubService>> {
     }
     // -- WP P3BA -- bulk apply, on a hub with groups and the snapshot store
     #[cfg(feature = "api")]
-    list.extend(bulk::service(setup, store.clone()));
+    list.extend(bulk::service(setup, store.clone(), busy.clone()));
     #[cfg(feature = "api")]
     list.push(Arc::new(ApiService::new(setup, store)));
     // -- WP P3GP --
     #[cfg(feature = "api")]
-    list.push(group::service(setup));
+    list.push(group::service(setup, busy));
     list
 }
 
@@ -397,6 +403,60 @@ pub(crate) fn run_action(
     }
 }
 
+// -- WP P3RS --
+// ── One group request per session ───────────────────────────────────────────
+
+#[cfg(feature = "api")]
+/// The sessions with a group request running: one set shared by `group.param.*`,
+/// `group.preset.load` ([`group`]) and `group.apply*` ([`bulk`]), so a session's second
+/// group request of either family is `busy` while its first runs (PLAN-P3 F4 and F5;
+/// the P3-B review's TOCTOU: a `group.param.set` landing under the guards a
+/// `group.apply` of the same session is still beginning).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct GroupBusy(Arc<std::sync::Mutex<std::collections::BTreeSet<SessionId>>>);
+
+#[cfg(feature = "api")]
+/// A session's running group request; dropped (however it ends), the session may run
+/// another.
+pub(crate) struct GroupTurn {
+    set: Arc<std::sync::Mutex<std::collections::BTreeSet<SessionId>>>,
+    id: SessionId,
+}
+
+#[cfg(feature = "api")]
+impl GroupBusy {
+    /// Mark `session`'s group request running: `busy` while another one of it runs.
+    pub(crate) fn enter(&self, session: &Session) -> Result<GroupTurn, ApiError> {
+        let id = session.id();
+        // The set is left whole before anything could panic.
+        let fresh = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(id);
+        if !fresh {
+            return Err(ApiError::new(
+                "busy",
+                "this session's other group request is still running",
+            ));
+        }
+        Ok(GroupTurn {
+            set: Arc::clone(&self.0),
+            id,
+        })
+    }
+}
+
+#[cfg(feature = "api")]
+impl Drop for GroupTurn {
+    fn drop(&mut self) {
+        self.set
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&self.id);
+    }
+}
+
 // ── Shared checks of the actions ────────────────────────────────────────────
 
 #[cfg(feature = "api")]
@@ -495,5 +555,102 @@ mod tests_wp_p2pa {
             (e.code, e.extra["limit"].as_str()),
             ("limit_exceeded", Some("out_gain"))
         );
+    }
+}
+
+// -- WP P3RS --
+#[cfg(feature = "api")]
+#[cfg(test)]
+mod tests_wp_p3rs {
+    #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::bus::Bus;
+    use crate::clock::{HubClock, SystemClock};
+    use crate::hub::{Hub, HubConfig};
+    use crate::service::{ServiceConfig, Waker};
+    use crate::session::Role;
+
+    #[test]
+    fn wp_p3rs_a_turn_is_one_per_session_and_freed_when_dropped() {
+        let hub = Hub::start(HubConfig::in_process("p3rs-busy")).unwrap();
+        let a = hub
+            .handle()
+            .open_principal(Role::Control, None, "A")
+            .unwrap();
+        let b = hub
+            .handle()
+            .open_principal(Role::Control, None, "B")
+            .unwrap();
+        let busy = GroupBusy::default();
+        let shared = busy.clone();
+        let turn = busy.enter(&a).unwrap();
+        assert_eq!(shared.enter(&a).err().map(|e| e.code), Some("busy"));
+        let other = shared.enter(&b).unwrap();
+        drop(turn);
+        let again = shared.enter(&a).unwrap();
+        drop((other, again));
+        hub.stop();
+    }
+
+    /// The P3-B review's TOCTOU: while a session's `group.apply` runs, its
+    /// `group.param.set` and `group.preset.load` are `busy`, and the other way round:
+    /// both families take their turn from the one set.
+    #[test]
+    fn wp_p3rs_group_params_and_bulk_apply_share_one_busy_set() {
+        // `ci/run.sh` points TMPDIR at the work volume, not tmpfs.
+        let dir = std::env::temp_dir().join(format!("wp-p3rs-unit-busy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let clock: Arc<dyn HubClock> = Arc::new(SystemClock);
+        let bus = Bus::new();
+        let wake = Waker::default();
+        let config = ServiceConfig {
+            groups: true,
+            ..ServiceConfig::default()
+        };
+        let bare = ServiceSetup {
+            data_dir: Some(&dir),
+            clock: &clock,
+            bus: &bus,
+            wake: &wake,
+            groups: None,
+        };
+        let groups = crate::groups::make(&config, &bare);
+        let setup = ServiceSetup { groups, ..bare };
+        let busy = GroupBusy::default();
+        let store = Some(Arc::new(HubSnapshots::open(&dir)));
+        let bulk = bulk::service(&setup, store, busy.clone()).unwrap();
+        let params = group::service(&setup, busy.clone());
+
+        let hub = Hub::start(HubConfig::in_process("p3rs-share")).unwrap();
+        let handle = hub.handle();
+        let s = handle
+            .open_principal(Role::Control, None, "Tablet")
+            .unwrap();
+        let code = |answer: Option<String>| -> String {
+            let v: Value = serde_json::from_str(&answer.unwrap()).unwrap();
+            v["code"].as_str().unwrap_or("ok").to_owned()
+        };
+        let set = json!({"t": "group.param.set", "id": 1, "targets": ["P3RS-A"],
+            "path": "out.gain", "idx": [0], "value": -6.0});
+        let load = json!({"t": "group.preset.load", "id": 2, "targets": ["P3RS-A"], "slot": 1});
+        let apply = json!({"t": "group.apply", "id": 3, "targets": ["P3RS-A"],
+            "snapshot": "nothing-filed"});
+
+        // A group.apply of the session is running (its turn is held).
+        let turn = busy.enter(&s).unwrap();
+        assert_eq!(code(params.handle_message(&handle, &s, &set)), "busy");
+        assert_eq!(code(params.handle_message(&handle, &s, &load)), "busy");
+        assert_eq!(code(bulk.handle_message(&handle, &s, &apply)), "busy");
+        // Another session is not held up.
+        let t = handle.open_principal(Role::Control, None, "Other").unwrap();
+        assert_ne!(code(params.handle_message(&handle, &t, &set)), "busy");
+        assert_ne!(code(bulk.handle_message(&handle, &t, &apply)), "busy");
+        drop(turn);
+        // Free again: each answers on its own merits (no such device, no such snapshot).
+        assert_ne!(code(params.handle_message(&handle, &s, &set)), "busy");
+        assert_ne!(code(bulk.handle_message(&handle, &s, &apply)), "busy");
+        hub.stop();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
