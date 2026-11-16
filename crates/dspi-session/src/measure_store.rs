@@ -63,6 +63,7 @@ pub const MAX_TARGETS: usize = 64;
 /// The most bytes of documents in the whole store.
 pub const MAX_STORE_BYTES: u64 = 64 << 20;
 /// The largest index this store reads; a larger one is rebuilt.
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
 const MAX_INDEX_BYTES: u64 = 1 << 20;
 /// The index format this build writes.
 const INDEX_VERSION: u32 = 1;
@@ -89,6 +90,7 @@ pub struct MeasureEntry {
 }
 
 /// The most entries any one folder may list (the largest bound above).
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
 fn max_count(kind: DocKind) -> usize {
     match kind {
         DocKind::Measurement => MAX_MEASUREMENTS_PER_DEVICE,
@@ -149,6 +151,7 @@ impl AnyDoc {
         }
     }
 
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), allow(dead_code))]
     fn set_id(&mut self, id: &str) {
         let slot = match self {
             AnyDoc::Measurement(d) => &mut d.measurement.id,
