@@ -10,7 +10,7 @@
 # Slices (static libraries, release profile):
 #   ios-arm64                      aarch64-apple-ios                      `usb` off
 #   ios-arm64_x86_64-simulator     aarch64-apple-ios-sim + x86_64-apple-ios  `usb` off
-#   macos-arm64_x86_64             aarch64-apple-darwin + x86_64-apple-darwin  `usb` on
+#   macos-arm64_x86_64             aarch64-apple-darwin + x86_64-apple-darwin  `usb` on, `hub` on (SW-M3)
 # iOS has no nusb backend, so dspi-ffi builds there with --no-default-features
 # (WP CG3); the API is the same, its USB methods report no devices.
 #
@@ -80,7 +80,9 @@ build() {
   echo "$target: $(cat "$libs")" >>"$out/native-static-libs.txt"
 }
 for t in "${ios_targets[@]}"; do build "$t" --no-default-features; done
-for t in "${mac_targets[@]}"; do build "$t"; done
+# -- WP SW-M3 -- the Mac's slices host a DSPi Link hub too (feature `hub`,
+# namespace dspi_hub); iOS has none (PLAN-CLIENTS section 8).
+for t in "${mac_targets[@]}"; do build "$t" --features hub; done
 
 lib() { echo "$CARGO_TARGET_DIR/$1/release/libdspi_ffi.a"; }
 slices=$out/slices
@@ -107,6 +109,7 @@ for ns in "${namespaces[@]}"; do
   [ -f "$config" ] || { echo "build-xcframework: namespace $ns has no $config" >&2; exit 1; }
   "$bindgen" generate --library "$dylib" --crate "$ns" --config "$config" \
     --language swift --no-format --out-dir "$out/swift"
+  python3 ci/uniffi_swift_imports.py "$out/swift/$ns.swift"   # -- WP SW-M3 --
   cp "$out/swift/${ns}FFI.h" "$out/headers/"
   { cat "$out/swift/${ns}FFI.modulemap"; echo; } >>"$out/headers/module.modulemap"
 done
@@ -162,6 +165,9 @@ ios_libs=$(sed -n 's/^aarch64-apple-ios: //p' "$out/native-static-libs.txt")
 targets=""
 deps=""
 for ns in "${namespaces[@]}"; do
+  # -- WP SW-M3 -- the hub's namespace is in the macOS slices only, and this
+  # package links every target on iOS too
+  [ "$ns" = dspi_hub ] && continue
   mkdir -p "$pkg/Sources/$ns"
   cp "$out/swift/$ns.swift" "$pkg/Sources/$ns/"
   targets+="    .target(name: \"$ns\", dependencies: [\"$name\"], linkerSettings: [

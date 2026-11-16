@@ -250,10 +250,22 @@ for s in "${steps[@]}"; do
       # -- WP SW-M1 -- the core's raw USB pipe (no lock, no token) stays inside
       # Core/CoreUsb.swift, the hub's device; its test mock is the one other user
       if [ "$s" = swift ]; then
-        stray=$(grep -rlE '\b(UsbPipe|UsbPipeProtocol|usbPipeScan|usbPipeWaitChange)\b' --include='*.swift' apps/apple |
+        stray=$(grep -rlE '\b(UsbPipe|UsbPipeProtocol)\b' --include='*.swift' apps/apple |
           grep -vE '/Core/Generated/|/Core/CoreUsb\.swift$|/DSPi ConsoleTests/CoreUsbSWM1Tests\.swift$' || true)
         if [ -n "$stray" ]; then echo "swift: the raw USB pipe is used outside Core/CoreUsb.swift:" >&2; echo "$stray" >&2; exit 1; fi
+        # -- WP SW-M3 -- the bus listing and hot-plug wait (no transfers) also
+        # in the core's own USB link (CoreBackedTransport's Link.usb)
+        stray=$(grep -rlE '\b(usbPipeScan|usbPipeWaitChange)\b' --include='*.swift' apps/apple |
+          grep -vE '/Core/Generated/|/Core/CoreUsb\.swift$|/Core/CoreBackedTransport\.swift$|/DSPi ConsoleTests/CoreUsbSWM1Tests\.swift$' || true)
+        if [ -n "$stray" ]; then echo "swift: the USB bus listing is used outside Core/CoreUsb.swift and Core/CoreBackedTransport.swift:" >&2; echo "$stray" >&2; exit 1; fi
         echo "swift: the raw USB pipe is only in Core/CoreUsb.swift"
+        # -- WP SW-M3 -- the Rust hub (module dspi_hub) is driven only by
+        # Core/CoreHub.swift; the Swift hub (LinkHub, LinkServer, LinkService) is
+        # built only by AppState (the opt-out); tests excepted
+        stray=$( { grep -rlE '^import dspi_hub$|\bHubHost\(' --include='*.swift' apps/apple | grep -vE '/Core/Generated/|/Core/CoreHub\.swift$|/DSPi ConsoleTests/'
+                   grep -rlE '\b(LinkHub|LinkServer|LinkService)\(' --include='*.swift' apps/apple | grep -vE '/DSPi Console/DSPi_ConsoleApp\.swift$|/DSPi ConsoleTests/'; } || true)
+        if [ -n "$stray" ]; then echo "swift: the Rust hub is driven outside Core/CoreHub.swift, or the Swift hub is built outside the opt-out:" >&2; echo "$stray" >&2; exit 1; fi
+        echo "swift: the Rust hub is only in Core/CoreHub.swift; the Swift hub only in the opt-out"
         # -- WP SW5 -- the core's MIDI handle stays in MIDI/CoreMidiPipe.swift,
         # and the Swift MIDI engine (the opt-out) is built only by AppState's
         # opt-out branches and by tests. -- WP SW5F -- the core's call is

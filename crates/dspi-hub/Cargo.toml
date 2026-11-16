@@ -34,6 +34,10 @@ api = ["dep:dspi-core"]
 # against a hub that sniffs and serves TLS (`ci/run.sh 'DSPI_HUB_TEST_TLS=compat
 # cargo test -p dspi-hub --features api,test-tls-mode'`).
 test-tls-mode = []
+# -- WP SW-M3 --
+# The Swift binding (ffi.rs): the UniFFI namespace `dspi_hub`, which the library
+# `crates/dspi-ffi` carries with its feature `hub` (the Mac app's slices only).
+uniffi = ["dep:uniffi", "app", "dspi-core/uniffi"]
 
 [dependencies]
 dspi-proto.workspace = true
@@ -49,6 +53,8 @@ dspi-link = { workspace = true, features = ["tls"] }
 # the clients run. Without default features: none of what they add is used here.
 dspi-session = { path = "../dspi-session", default-features = false }
 dspi-core = { workspace = true, optional = true }
+# -- WP SW-M3 --
+uniffi = { workspace = true, optional = true }
 thiserror.workspace = true
 log.workspace = true
 # policy/commands.json, the hub's command table (policy.rs).

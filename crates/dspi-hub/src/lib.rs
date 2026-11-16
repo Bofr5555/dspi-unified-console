@@ -30,6 +30,7 @@
 //! | [`outbound`] | notifications out: webhooks and push | P2WH |
 //! | [`tls_identity`] | the hub's TLS key, certificate, pin and rotation | SECKEY |
 //! | [`rest`] | the REST mirror under `/api/v1/` and API keys (`auth.mint`) | P2RS |
+//! | `ffi` (feature `uniffi`) | the Swift binding: the app hosts a hub | SW-M3 |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -37,6 +38,11 @@
     clippy::indexing_slicing,
     clippy::arithmetic_side_effects
 )]
+
+// -- WP SW-M3 -- The Swift binding (feature `uniffi`): the namespace `dspi_hub`,
+// whose symbols the library `crates/dspi-ffi` re-exports with its feature `hub`.
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
 
 pub mod advertise;
 // -- WP P1HA --
@@ -50,6 +56,9 @@ pub mod auth;
 mod bulk_gain;
 mod device;
 pub mod error;
+// -- WP SW-M3 --
+#[cfg(feature = "uniffi")]
+pub mod ffi;
 pub mod hub;
 pub mod local;
 // -- WP P1HL --
