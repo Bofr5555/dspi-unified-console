@@ -43,6 +43,9 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM | built (P2TM) |
 | 17 | [Deviations from the DSPi Link spec](#17-deviations-from-the-dspi-link-spec) | | | P2DOC | built (this page) |
 | 18 | [Every message](#18-every-message) | | | P2DOC | built (this page) |
+| 19 | [Groups](#19-groups) | `group.list`, `group.set`, `group.delete`, `group.changed`; `group:<id>` schedule targets | `groups` | P3GR; text P3DOC | draft |
+| 20 | [Group writes and bulk apply](#20-group-writes-and-bulk-apply) | `group.param.*`, `group.preset.load`, `group.apply*` | `group_params`, `group_apply` | P3GP (20.2), P3BA (20.3); text P3DOC | draft |
+| 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | draft |
 
 ---
 
@@ -481,6 +484,21 @@ found the uptime gone backwards). A field the firmware does not give, or not yet
 `uptime_s` and `hang_count` come from the reset-info read, every 60 s: they are as old as that read (`at` is the
 newest read of any field), so two records 2 s apart usually carry the same uptime, and the uptime moves in 60 s
 steps.
+
+<!-- WP P3DOC -->
+**For the health board** (*draft: P3HB*, PLAN-P3 F7, OD-P3m). A record gains three fields, each absent when the device or
+the hub has nothing for it; no cap changes (`health` as before), and a client that does not know them ignores them
+(section 1.1):
+
+| Field | Meaning | Read |
+|---|---|---|
+| `counters` | `{underruns, starvation}`: the output underrun counters (PDM ring, PDM DMA, S/PDIF) added up, and the stream starvation total, since the device started; the status counters a diagnostics bundle reads (`device/stats.json`). Absent until the first read, and on firmware without them | one more single read every 30 s on the device's queue, inside the poll budget, passing the lock like the other reads |
+| `clip_per_min` | clip events (`0xE0` notifications) in the last 60 s, a whole number; absent on firmware that has only the sticky latch (no `EXT_NOTIFY_FEATURES` bit 1), where `clip_mask` is the only clip reading | counted from the notifications the hub already receives; no read |
+| `last_change` | `{at, by, text}`: the device's newest history record that changed something (section 6), its time, who (`by`: a client's, key's, schedule's or rule's name) and one line for a person; a coalesced slider sweep counts once | from the history records on the hub's bus; no read |
+
+The board's thresholds are the alarm rules (section 7, `alarm.rules.get`): the hub keeps no second set, and a client
+colours a cell from the rules it reads. The hub still writes nothing here and never clears the clip latch; `Health` on
+the bus carries the same three fields for the alarms.
 
 Errors: `not_found` for a serial the hub does not know, `offline` for one it knows that is not attached, `no_device` for
 an unknown handle, `bad_request` for a wrong type or a serial and handle of two devices.
@@ -1036,6 +1054,32 @@ are percent-decoded (`device%3A3`).
 | `POST /api/v1/alarms/{id}/ack` | `alarm.ack` (P2AL's) |
 | `GET /api/v1/health?serial=` | `health.get` |
 
+<!-- WP P3DOC --> **The fleet's endpoints** (*draft: P3RS*, PLAN-P3 OD-P3l), within v1 and additive, each onto a message of
+sections 19 to 21 with its role, checks, answer and codes. `{id}` is a group's id (`g1`), `{run}` a bulk apply's run,
+`{rollout}` a rollout's id:
+
+| Method and path | Message |
+|---|---|
+| `GET /api/v1/groups` | `group.list` |
+| `GET /api/v1/groups/{id}` | `group.list {group: id}` (`404` `not_found` for an unknown group) |
+| `PUT /api/v1/groups/{id}/params/{path}?idx=0,1` body `{"value": ..., "offsets"?: {"<serial>": <dB>}}` | `group.param.set {group: id, ...}` (only `value` and `offsets` are taken from the body) |
+| `POST /api/v1/groups/{id}/presets/{n}/load` body `{"map"?: {"<serial>": <slot or name>}}` | `group.preset.load {group: id, slot: n, map?}` |
+| `POST /api/v1/groups/{id}/apply` body `{"snapshot"?: "<id>", "name"?: "...", "document"?: "...", "guard"?: true, "timeout_ms"?: n}` | `group.apply {group: id, ...}`; a document must fit the 64 KiB body cap (`413` otherwise): send a large one to the hub's store first and apply it by `snapshot` |
+| `POST /api/v1/runs/{run}/confirm` | `group.apply.confirm {run}` |
+| `POST /api/v1/runs/{run}/cancel` | `group.apply.cancel {run}` |
+| `GET /api/v1/rollouts` | `fw.rollout.status` (TLS only) |
+| `GET /api/v1/rollouts/{rollout}` | `fw.rollout.status {rollout}` (TLS only) |
+| `GET /api/v1/firmware` | `fw.image.list` (TLS only) |
+
+- **A guarded group apply belongs to the key's session**, as a guarded recall does above: only the same key confirms or
+  cancels its run, within the guards' deadlines and `rest_idle` of its last request; another key's
+  `/runs/{run}/confirm` is `404` `not_found`, and the run reverts when the key's idle session closes.
+- **No rollout start and no image upload over REST** (OD-P3l): a `POST` or `PUT` on `/api/v1/rollouts...` or
+  `/api/v1/firmware...` is `405` with `Allow: GET`; there is no path for `fw.rollout.start`, `fw.rollout.cancel`,
+  `fw.image.put` or `fw.image.delete`. A flash is an Admin's act in a console, and the body cap stays 64 KiB.
+- **The firmware reads are TLS only** (section 21.1): over plaintext they are `426` with `code` `tls_required` in every
+  mode, a key minted `plaintext_ok` and upstream compatibility included.
+
 | Code | HTTP status |
 |---|---|
 | `ok` | 200 |
@@ -1209,7 +1253,8 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 
 ## 18. Every message
 
-*State: built (P2DOC). Every request type `t` and event of phase 2, with its least role and its section.*
+*State: built (P2DOC). Every request type `t` and event of phase 2, with its least role and its section. Phase 3's rows
+(WP P3DOC, at the end) are **draft** until the WP named in the row builds them.*
 
 | `t` | Kind | Role | Cap | § |
 |---|---|---|---|---|
@@ -1266,3 +1311,379 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `hub.stats` | request | admin | `hub_stats` | 15 |
 | `hub.rename` | request | admin | `hub_stats` | 15 |
 | `fw.install` | existing | | | stays `unsupported` |
+<!-- WP P3DOC: phase 3's rows, draft until the WP in the last column builds them -->
+| `health.get` (gains `counters`, `clip_per_min`, `last_change`) | existing | viewer | `health` | 5 (draft: P3HB) |
+| `schedule.set` (`targets` take `group:<id>`) | existing | admin | `schedule`, `groups` | 19.3 (draft: P3GR) |
+| `group.list` | request | viewer | `groups` | 19.2 (draft: P3GR) |
+| `group.set` | request | admin | `groups` | 19.2 (draft: P3GR) |
+| `group.delete` | request | admin | `groups` | 19.2 (draft: P3GR) |
+| `group.changed` | event | | `groups` | 19.2 (draft: P3GR) |
+| `group.param.get` | request | viewer | `group_params` | 20.2 (draft: P3GP) |
+| `group.param.set` | request | control | `group_params` | 20.2 (draft: P3GP) |
+| `group.preset.load` | request | control | `group_params` | 20.2 (draft: P3GP) |
+| `group.apply` | request | control | `group_apply` | 20.3 (draft: P3BA) |
+| `group.apply.confirm` | request | control | `group_apply` | 20.3 (draft: P3BA) |
+| `group.apply.cancel` | request | control | `group_apply` | 20.3 (draft: P3BA) |
+| `fw.image.put` | request, TLS only | admin | `rollout` | 21.2 (draft: P3RO) |
+| `fw.image.list` | request, TLS only | viewer | `rollout` | 21.2 (draft: P3RO) |
+| `fw.image.delete` | request, TLS only | admin | `rollout` | 21.2 (draft: P3RO) |
+| `fw.rollout.start` | request, TLS only | admin | `rollout` | 21.3 (draft: P3RO) |
+| `fw.rollout.status` | request, TLS only | viewer | `rollout` | 21.3 (draft: P3RO) |
+| `fw.rollout.cancel` | request, TLS only | admin | `rollout` | 21.3 (draft: P3RO) |
+| `fw.rollout.changed` | event, encrypted sessions only | | `rollout` | 21.3 (draft: P3RO) |
+
+## 19. Groups
+
+*State: draft (P3GR, `crates/dspi-hub/src/groups.rs`; text WP P3DOC). PLAN-P3 F3, OD-P3a, OD-P3b. Sections 19 to 21
+are PRO phase 3 ([`docs/core-merge/PLAN-P3.md`](../core-merge/PLAN-P3.md)): the fleet in the web console.*
+
+A group is a named set of devices, kept by the hub: a name, a note and members, nothing more. A group has no role of its
+own (the three roles are per client, OD-P3a), no nesting, and a device may be in many groups. Groups are what the
+fan-outs of section 20, schedule targets (19.3) and group rollouts (section 21) address.
+
+### 19.1 What sections 19 to 21 share
+
+- **Additive to DSPi Link 1.2.** New types under new caps, each announced in `hello.caps` only while its service runs:
+
+  | Cap | Family | Announced |
+  |---|---|---|
+  | `groups` | section 19 (and `group:<id>` schedule targets) | on a hub with a data folder, unless turned off |
+  | `group_params` | section 20.2 | with `groups` and the parameter API |
+  | `group_apply` | section 20.3 | with `groups` and the hub's snapshots |
+  | `rollout` | section 21 | only with `uconsole hub --rollout`, on a hub that serves TLS (21.1) |
+
+  A hub without a family answers `unknown_type` (older hubs) or `unsupported`, and our clients send nothing without the
+  cap (`hub_caps()`). Answers carry `"v": 1`; events carry `v` and `hub`.
+- **No new error code.** Every answer of sections 19 to 21 uses the codes of section 1.6, and only those: `denied`,
+  `bad_request`, `unsupported`, `not_found`, `offline`, `conflict`, `rate_limited`, `locked`, `busy`, `limit_exceeded`,
+  `installer_lock`, `image_refused`, `confirmation_required`, `tls_required`, `device`, `internal`. A program written
+  against section 1.6 handles all of them. Two codes are used in a new place, and the section says so: `image_refused`
+  for a firmware image the rollout will not put on a device (21.3), and `tls_required` for any `fw.*` message over
+  plaintext (21.1).
+- **Field names follow section 1.1:** `id` is only the request id. A field naming a group is `group`, a bulk apply's run
+  `run`, a rollout `rollout`, a stored image `image` (its name). In an event the family's noun is the whole object, as
+  in `alarm.changed`. (PLAN-P3 writes `group.set {id?}`, `group.delete {id}`, `fw.rollout.status {id?}`; this page
+  spells them `group` and `rollout`.)
+- **Several devices answer with `results`** (section 1.3): one row per device, in the group's member order or the
+  order of `targets`; a row may carry fields of its own. At most 256 rows; a request that would answer more is
+  `bad_request` with nothing sent. A partial failure is reported, never retried.
+- **Every device write is a principal's** (section 1.7): the caller's child session through the parameter API's
+  executor (section 9), with the caller's role, client and name, its own session id from the hub's remote range, judged
+  per device by the role, the limits profile, the installer lock, the device lock and the voltage rule, and recorded in
+  that device's history with the caller in `by`. **The hub's own writes stay the closed list of three**: nothing in
+  sections 19 to 21 is one of them, not even the rollout's bootloader entry (21.3, step 4).
+- **One device after another.** Fan-outs, applies and rollouts go through members in order, one at a time (OD-P3d), and
+  a session runs one group request at a time (a second answers `busy` while the first runs). Nothing here is a standing
+  link between devices (OD-P3c): each request writes once, now.
+- **Roles:**
+
+  | Role | May |
+  |---|---|
+  | viewer | `group.list`, `group.param.get`, `fw.image.list`, `fw.rollout.status` |
+  | control | also `group.param.set`, `group.preset.load`, `group.apply`, `group.apply.confirm`, `group.apply.cancel` |
+  | admin | also `group.set`, `group.delete`, `fw.image.put`, `fw.image.delete`, `fw.rollout.start`, `fw.rollout.cancel` |
+
+  A lower role answers `denied` and nothing is sent. Admin is given on the hub's machine only (section 1.5).
+- **Stores:** `groups.json`, `rollout.json` and `firmware/` in the hub's data folder ([hub.md](hub.md), The store),
+  each written atomically, 0600 on Unix, with the corrupt-file rule of section 1.8. The diagnostics bundle carries
+  `groups.json` and `rollout.json` (names, serials, hashes, step texts: no secret) as `hub/groups.json` and
+  `hub/rollout.json`; it never carries an image. No image byte is ever written to a log, an event or a `Debug` line.
+
+### 19.2 Messages
+
+| `t` | Role | Request | Answer |
+|---|---|---|---|
+| `group.list` | viewer | `group?` (one group's id) | `groups`: every group, by id (`g1`, `g2`, ...), or the one asked; `not_found` for an unknown id |
+| `group.set` | admin | `group`: `{id?, name, note?, members}`; without `id` a new group, with `id` that group replaced whole | `group`: as stored, `created` (bool) |
+| `group.delete` | admin | `group` (its id) | `group` (the id) |
+
+A group:
+
+| Field | Meaning |
+|---|---|
+| `id` | the hub's: `g1`, `g2`, ...; never reused, also after a delete |
+| `name` | 1 to 48 characters after trimming, no control characters; need not be unique (address a group by `id`) |
+| `note` | at most 256 characters, any Unicode but control characters (newlines and tabs allowed, as in inventory notes); `null` when unset |
+| `members` | 0 to 64 serials, each one in the inventory (section 3) and each once, kept in the order given: the order fan-outs and rollouts use |
+
+- A member that is not an inventory serial is `not_found` (the `msg` names it); a serial given twice, a 65th member, a
+  name or note out of bounds, or a member that is not a serial (a `group:` entry: groups do not nest) is `bad_request`;
+  a 65th group is `conflict`; an unknown `id` in `group.set` or `group.delete` is `not_found`. A refusal changes
+  nothing.
+- A device that goes offline stays a member. A device forgotten (`inventory.forget`, or dropped past the inventory's
+  cap) leaves every group it was in, each with a `group.changed`.
+- `inventory.list` is unchanged and has no `groups` field (OD-P3b): `group.list` is the one source of membership, and a
+  client joins it to the inventory by serial.
+- Event to every session: `group.changed {v, hub, group, change}`: `group` the whole group as it is now (as it was, for
+  a delete), `change` one of `set`, `delete`, `forgot` (a member was forgotten).
+- `groups.json` is one JSON object, at most 64 groups. A torn file reads what it can, the whole file kept aside as
+  `groups.json.bad-<time>`.
+
+```json
+{"t": "group.set", "id": 21, "group": {"name": "Bar", "note": "Ceiling speakers",
+ "members": ["E46058388B1A2E2C", "E6614103E7A1B2C3"]}}
+{"t": "ok", "id": 21, "v": 1, "created": true, "group": {"id": "g1", "name": "Bar", "note": "Ceiling speakers",
+ "members": ["E46058388B1A2E2C", "E6614103E7A1B2C3"]}}
+```
+
+### 19.3 `group:<id>` in schedule targets
+
+A schedule rule's `targets` (section 12) may hold `group:<id>` beside serials, 16 entries in all as before; before phase
+3 such a target answered `unsupported`, and a rule made then simply starts working.
+
+- A group is resolved **when the rule runs**: a change of its members counts from the next run. `schedule.set` takes any
+  well-formed `group:<id>`; an unknown or deleted group is reported by the run.
+- Each action runs on every target in order, a group expanded to its members in member order. A device reached twice
+  (named directly and through a group, or through two groups) is written once per action, at its first place.
+- An unknown group is one row per action, `{"serial": "group:<id>", "action": ..., "ok": false, "code": "not_found"}`;
+  an empty group answers no rows. Offline members fail at once (`offline`), as any target.
+- A run answers at most 256 rows. A run that would go past it stops there: its 256th row is
+  `{"serial": "", "action": ..., "ok": false, "code": "bad_request", "msg": "truncated: ..."}`, and the actions past it
+  are not sent. The `schedule_failed` alarm is raised as for any failed row.
+- A `serial` field of a single-device message never takes a group.
+
+## 20. Group writes and bulk apply
+
+*State: draft (20.2: P3GP, `crates/dspi-hub/src/api/group.rs`, cap `group_params`; 20.3: P3BA,
+`crates/dspi-hub/src/api/bulk.rs`, cap `group_apply`; text WP P3DOC). PLAN-P3 F4, F5, OD-P3c, OD-P3d. Section 19.1
+applies.*
+
+### 20.1 Addressing and rows
+
+Every message of this section names its devices by exactly one of:
+
+- `group`: a group's id (section 19). Its members, in member order. An unknown group is `not_found` and nothing is sent;
+  an empty group answers `results: []`.
+- `targets`: 1 to 16 serials, each once.
+
+Both, neither, a serial twice or more than 16 is `bad_request`. Each member is judged on its own, and one member's
+refusal never stops the others. What a request as a whole answers, before anything is sent: `denied` (the role),
+`bad_request` (malformed, a value outside the registry's range, `offsets` on a path that is not in dB), `not_found` (the
+group), `busy` (this session's other group request still running). What a row answers:
+
+| Row `code` | When | Sent to that device |
+|---|---|---|
+| (none, `ok: true`) | written, read or applied | yes |
+| `not_found` | a `targets` serial the hub does not know; a preset `name` or slot the device does not have | nothing |
+| `offline` | the device is known but not attached; nothing waits for it | nothing |
+| `bad_request` | on a path that is not in dB, the value is outside this device's own range (an RP2040's input trim): only dB values are clamped (20.2) | nothing |
+| `unsupported` | the device lacks the path, or (20.3) cannot take the document: another platform, a wire format or output count its core refuses | nothing |
+| `limit_exceeded` | the write crosses the device's limits profile; `limit` names it | nothing |
+| `installer_lock` | the device is installer-locked and the write is not volume, mute or preset | nothing |
+| `image_refused` | (20.3) a whole image from a control caller on a device with a limits profile or a lock (P1HL) | nothing |
+| `locked` | another session holds the device's lock | nothing |
+| `conflict` | the device has a pending guarded apply, the caller's own included | nothing |
+| `device` | the device refused the command; `status` names the DSPi Link status | as the device took it |
+| `internal` | the hub failed; its log says why | unknown |
+
+### 20.2 Linked parameters (P3GP)
+
+One-shot fan-outs: the hub writes each member once, now, and keeps no link between them (OD-P3c); a later change on one
+member is not copied to the others.
+
+| `t` | Role | Request | Answer |
+|---|---|---|---|
+| `group.param.get` | viewer | `group` or `targets`, `path`, `idx?` | `path`, `idx`, `results`: rows with `value` (and `choice` or `value_b64`, as `param.get`) |
+| `group.param.set` | control | `group` or `targets`, `path`, `idx?`, `value`, `offsets?`: `{"<serial>": <dB>}` | `path`, `idx`, `results`: rows with `value` (what this device was sent and read back, as `param.set`) and `clamped: true` where the offset was clamped |
+| `group.preset.load` | control | `group` or `targets`, `slot` or `name`, `map?`: `{"<serial>": <slot or name>}` | `results`: rows with `slot` (the slot loaded) |
+
+- Each member is `param.set` or `preset.load` of sections 9 and 10, as the caller's child session: the same paths (only
+  those written by the API), the same values (section 1.4) and the same guards. A gated path (`"confirm": true` in
+  `param.set`) is not taken here: `bad_request`, naming `param.set`.
+- `value` must be inside the registry's range (`bad_request` for the request otherwise). **`offsets`** are allowed only
+  on a path whose unit is dB (`vol.master`, `vol.user`, `out.gain`, `pre`, `eq.gain`, ...), else `bad_request`. A
+  member of a dB path gets `value` plus its offset (0 without one), clamped into that device's own range; the row's
+  `value` is what was sent, `clamped: true` when the clamp moved it. A serial in `offsets` or `map` that the request does not address is
+  `bad_request`.
+- `map` gives a member its own slot (0 to 9) or preset name; the others get `slot` or `name`. A name is matched among
+  that device's presets, as `preset.load` matches it.
+
+```json
+{"t": "group.param.set", "id": 22, "group": "g1", "path": "vol.master", "value": -20.0,
+ "offsets": {"E6614103E7A1B2C3": -3.0}}
+{"t": "ok", "id": 22, "v": 1, "path": "vol.master", "idx": [], "results": [
+  {"serial": "E46058388B1A2E2C", "ok": true, "value": -20.0},
+  {"serial": "E6614103E7A1B2C3", "ok": false, "code": "limit_exceeded", "limit": "vol.master", "msg": "..."}]}
+```
+
+### 20.3 Bulk apply (P3BA)
+
+One snapshot or document applied to every member, each with its own way back.
+
+| `t` | Role | Request | Answer |
+|---|---|---|---|
+| `group.apply` | control | `group` or `targets`; exactly one of `snapshot` (a store id), `name`, `document` (its text, or the JSON object); `guard?` (bool), `timeout_ms?` (1000 to 600000, default 30000) | `run`, `results`: rows with `image`, `lines`, `notes` (as `snapshot.recall`'s answer) and `guard` (its id, with `guard: true`); `confirm_by` (with `guard: true`: the earliest guard deadline, a time) |
+| `group.apply.confirm` | control | `run` | `run`, `results`: one row per guard of the run, `ok` when kept; `conflict` for one that had already reverted |
+| `group.apply.cancel` | control | `run` | `run`, `results`: one row per guard of the run, reverted now; `conflict` for one that had already reverted |
+
+- **The source.** `snapshot` is a snapshot id of the hub's store (section 11.1), of any device; `name` must match
+  exactly one snapshot in the whole store (two are `conflict`, none `not_found`); `document` must fit one frame (section
+  11.2). One shared snapshot goes to every member: the document is applied as the core applies one from another device,
+  so its wire compatibility and output count decide each row (`unsupported` when that device's core refuses it).
+- **Each member** takes section 11.2's recall as the caller's child session: from control, a device with a limits
+  profile or a lock is that row's `image_refused` and gets nothing; from admin, the image is written and then held.
+  Each recall is a `recall` record in that device's history, with its `lines` and the caller's name in `by`.
+- **With `guard: true`, one guarded apply per device** ([hub.md](hub.md), Guarded apply; OD-P3d), begun as the caller
+  immediately before that device's write and reverting to that device's own captured state; all of them belong to the
+  caller's session. A device's deadline is its start plus `timeout_ms`. One `group.apply.confirm {run}` keeps every
+  guard of the run still pending; `group.apply.cancel {run}` reverts them now. A guard not confirmed by its deadline
+  reverts on its own, and every pending guard of a session's runs reverts when the session closes. A recall that fails
+  after its guard began is reverted at once, and its row is `ok: false`.
+- **Sequential:** the answer comes after the last member. On a large group the first members' guards may run out before
+  the run ends: such a row carries `reverted: true`, and the answer's `msg` says to raise `timeout_ms` (at most 600 s).
+- `run` is the hub's (`a1`, `a2`, ...), unique for the hub's run, and is answered with or without a guard. An unknown
+  run, or another session's, is `not_found`; a run whose guards are all settled answers its rows again. Over REST, a
+  run belongs to the key's session (section 14.2).
+
+```json
+{"t": "group.apply", "id": 23, "group": "g1", "name": "Doors open", "guard": true, "timeout_ms": 120000}
+{"t": "ok", "id": 23, "v": 1, "run": "a4", "confirm_by": "2026-11-16T20:02:01Z", "results": [
+  {"serial": "E46058388B1A2E2C", "ok": true, "image": true, "lines": ["..."], "notes": [], "guard": "17"},
+  {"serial": "E6614103E7A1B2C3", "ok": false, "code": "offline", "msg": "not attached"}]}
+{"t": "group.apply.confirm", "id": 24, "run": "a4"}
+{"t": "ok", "id": 24, "v": 1, "run": "a4", "results": [{"serial": "E46058388B1A2E2C", "ok": true}]}
+```
+
+## 21. Firmware rollout
+
+*State: draft (P3RO, `crates/dspi-hub/src/rollout.rs`; the PICOBOOT writer: P3PB, `crates/dspi-core/src/picoboot.rs`;
+text WP P3DOC). PLAN-P3 F6 and section 1.1, OD-P2b, OD-P3e to OD-P3i, OD-P3n, OD-P3o, OD-P3r. Section 19.1 applies.*
+
+The hub updates the firmware of a DSPi on its own USB with nobody at the rack: one device at a time, its settings
+exported first, the firmware guard asked with nobody to type, the device verified after it restarts, and an alarm when it
+does not come back. An Admin starts it; anyone may watch it. The spec's `fw.install` stays `unsupported` and
+`fw_install` stays out of `hello.caps` (OD-P3f): this is our own family, under the cap `rollout`.
+
+### 21.1 Where it runs, and TLS only
+
+- **Off by default.** The cap `rollout` is announced only on a hub started with `--rollout` ([hub.md](hub.md)) that
+  serves TLS (`--tls require`, or `on` with or without upstream compatibility). A `--tls off` hub has no rollout. The
+  cap is in every session's `hello`, plaintext ones too, so a console can say why the rollout is closed to it.
+- **TLS only, in every mode** (OD-P3n). Every `fw.*` request, the reads included, over a plaintext connection answers
+  `tls_required` and does nothing: in `on` and in upstream compatibility alike, whatever the token (`tls_only` or not)
+  or API key (`plaintext_ok` or not). `fw.rollout.changed` is sent to encrypted sessions only. REST: section 14.2.
+- **Only the hub's own USB devices.** A device the hub reaches some other way (the demo device, MIDI, the audio link)
+  is `unsupported`.
+- **Verified images only, by default** (OD-P3e). A stored image is flashed only when the release's manifest lists its
+  name and bytes (`verified: true`, SECFWV) unless the hub runs with `--allow-unverified-firmware`, the owner's bench
+  switch, which the hub shows as a warning ([hub.md](hub.md)).
+
+### 21.2 The image store
+
+| `t` | Role | Request | Answer |
+|---|---|---|---|
+| `fw.image.put` | admin | `name`, `seq`, `data`, `last` (bool) | each chunk: `name`, `seq`, `received` (bytes so far); with `last: true`: `image` (below), `created` |
+| `fw.image.list` | viewer | | `images` (oldest first), `max_images` (4), `max_bytes` (8388608) |
+| `fw.image.delete` | admin | `image` (its name) | `image` (the name) |
+
+- **Upload in chunks.** `name`: 1 to 64 characters of `A-Z a-z 0-9 . - _ +`, ending in `.uf2` (the manifest's names:
+  `verified` is judged by name and bytes). `seq` starts at 0 and goes up by one. `data` is base64 (RFC 4648, padded),
+  at most 49 152 characters (36 KiB of image), so a chunk fits a 64 KiB frame; `last: true` on the final chunk.
+- One upload per session at a time (a `seq` 0 while one is open is `busy`). A gap or a repeat in `seq` is `bad_request`
+  and drops the upload; so does an image past 8 MiB. An upload not finished within 2 min of its first chunk, or whose
+  session closes, is dropped; a later chunk of it is `not_found`.
+- **On the last chunk** the hub checks the whole image: `uf2_inspect` must find it valid (`bad_request`, with its
+  problem); a bundled name with other bytes (a damaged copy, `verify_bundled`'s mismatch) is `bad_request`. The same
+  name with the same bytes answers `created: false`; the same name with other bytes is `conflict` (delete it first); a
+  fifth image is `conflict`.
+- `fw.image.delete` of an image a running rollout uses is `conflict`; an unknown name `not_found`.
+- `uconsole hub firmware add FILE` (P3TM, section 16) puts a file in from the hub's machine with the same checks: the
+  one way in that needs no console.
+
+An image:
+
+| Field | Meaning |
+|---|---|
+| `name` | as uploaded |
+| `size` | bytes |
+| `sha256` | of the whole file, lowercase hex |
+| `firmware_version` | the version string `uf2_inspect` finds in the image (`""` when it has none) |
+| `platform` | `RP2040` or `RP2350`, from the UF2 family |
+| `stamp_mv` | the core-voltage stamp the firmware guard reads from the image, in mV; `null` when unstamped (which the guard counts as 1150) |
+| `verified` | `true` when the release's manifest lists this name and these bytes; `false`: shown as "not verified" |
+| `added_at`, `added_by` | when, and who (the client's name; `Hub console` for `uconsole hub firmware add`) |
+
+### 21.3 A rollout, step by step
+
+| `t` | Role | Request | Answer |
+|---|---|---|---|
+| `fw.rollout.start` | admin | `serial` (or `handle`) or `group`, `image` (a stored image's name), `while_live?` (bool, default `false`) | `rollout`: the record, `state` `running` |
+| `fw.rollout.status` | viewer | `rollout?` (an id) | `rollouts`: the records, newest first (64 kept), or the one asked (`not_found` otherwise) |
+| `fw.rollout.cancel` | admin | `rollout` | `rollout`: the record as it is now |
+
+Event to every encrypted session: `fw.rollout.changed {v, hub, rollout}`, the whole record, at every step.
+
+`fw.rollout.start` answers after steps 1 and 2 of its first device (a few hundred milliseconds). A refused start
+answers its code, touches nothing, leaves no record and raises no alarm. After `ok` the rollout runs on its own:
+follow it with `fw.rollout.changed` or `fw.rollout.status`. A group is the same, one member after another in member
+order, **stopped at the first failure** (OD-P3h); a later member's steps 1 and 2 run when its turn comes, and a refusal
+there ends the rollout `failed` at that step. Only one rollout runs on a hub at a time.
+
+The steps, as a client sees them in the record (`step`):
+
+| # | `step` | What the hub does | Refused or failed with |
+|---|---|---|---|
+| 1 | `check` | The device must be online on this hub's USB and answering, not under another session's lock, with no pending guarded apply, and muted (its mute, `vol.mute`, on, or its master volume at -128 dB) unless the request says `"while_live": true` (OD-P3r). No other rollout may run, and **no board may be in BOOTSEL already** (`bootloader_counts` 0 and 0). The image must be in the store, valid, of the device's platform, and verified unless the hub allows unverified images | `unsupported` (not on this hub's USB), `offline` (not attached, or not answering), `locked`, `conflict` (a pending guarded apply; a board already in BOOTSEL), `confirmation_required` (not muted, no `while_live`), `busy` (another rollout), `not_found` (no such image), `image_refused` with `reason` `platform` or `not_verified` |
+| 2 | `guard` | Reads the board as the Admin's child session (`firmware_guard_board`: `EXT_CORE_VREG`, else the status block) and asks the firmware guard **with no typed word and no typed phrase**: only "clear" goes on. The board record is kept for step 6, since a board in BOOTSEL cannot be asked | `image_refused` with `reason` the guard's: `image_invalid`, `overvolt` (stamped above 1.20 V and above the board), `image_unknown` (unstamped on a board above 1.15 V), `image_lower` (stamped lower), `board_unknown`; `msg` is the guard's own message. A K340 at 1.20 V takes exactly a 1.20 V image; a stock board (1.15 V) takes a 1.20 V image |
+| 3 | `export` | Captures the device's settings into the hub's snapshot store as "Before firmware <version>, <date>" (OD-P3o), and keeps its firmware version, `EXT_LIST`, board and `EXT_CORE_VREG` (live, stored, default) in the record | `conflict` (the store is full: nothing further is done), `device` |
+| 4 | `bootloader` | Sends the device to its bootloader as **the Admin's child session** (`enter_bootloader_confirmed`, the token minted inside; OD-P3g), judged by the role, the installer lock and the device lock like any client's write. The device leaves the bus. From here on a cancel is refused | `installer_lock`, `locked`, `device` |
+| 5 | `find` | Looks for the board in BOOTSEL every 500 ms for up to 15 s. **Exactly one** must appear (OD-P3i); on RP2350 its USB serial must be the device's serial (on RP2040 the boot ROM's serial is fixed, and uniqueness is the only check) | failed: none, more than one, or another serial. Nothing is written; the device may be left in BOOTSEL, and the alarm says so |
+| 6 | `flash` | Writes the image with the core's PICOBOOT writer: exclusive access with eject, out of XIP, erase the sectors the image covers, write, read back and compare, restart. The writer asks the guard again with step 2's board record | failed with the writer's step; a read-back that differs fails before the restart, leaving the board in BOOTSEL |
+| 7 | `wait` | Waits for the device to be online again, within 60 s | failed: did not come back |
+| 8 | `verify` | On the new attachment: the firmware version is the image's; `EXT_LIST` is not shorter than before; when the board needed 1.20 V, `EXT_CORE_VREG` reads stored and live 1200 mV. Then the settings are compared with the export: `settings` `unchanged`, `changed` or `unknown` | failed: another version, a shorter `EXT_LIST`, a core voltage that is not 1.20 V. `settings: changed` is not a failure: it is reported, and nothing is recalled |
+
+**`fw.rollout.cancel`** stops a rollout before step 4 of the device it is working on: that device ends `cancelled`
+(its export stays in the store), the members after it `not_tried`, the rollout `cancelled`. From step 4 on, and for a
+finished rollout, it is `conflict`: a flash is never interrupted.
+
+**At the end of each device** its history gets a `firmware` record with the Admin's client name in `by` and the steps'
+texts. A failure raises the alarm **`rollout_failed`** (critical, `subject` and `serial` the device, `message` with the
+step), cleared when a later rollout of that device ends `ok` or the device comes back with the expected firmware; and a
+group rollout stops, its remaining members `not_tried`. **The hub never recalls the export itself** (OD-P3h): when
+`settings` is `changed` a console offers "Recall the export", which is `snapshot.recall` of the step-3 snapshot, judged
+as any recall.
+
+A record:
+
+| Field | Meaning |
+|---|---|
+| `id` | the hub's: `ro1`, `ro2`, ...; never reused |
+| `target` | the serial, or `group:<id>` |
+| `image` | `{name, sha256, firmware_version}` |
+| `by`, `while_live` | the Admin's client name; as asked |
+| `state` | `running`, `ok`, `failed`, `cancelled` |
+| `started_at`, `ended_at` | times; `ended_at` `null` while running |
+| `devices` | one entry per device, in order (below) |
+
+A device's entry: `serial`; `state` (`pending`, `running`, `ok`, `failed`, `cancelled`, `not_tried`); `step` (the step
+it is at, or ended at); `steps`: `[{step, at, ok, text}]`, one per step done; `before`: `{fw, ext_list, board:
+{required_mv, source}, vreg: {live_mv, stored_mv, default_mv} or null, export}` (`export` the snapshot's id);
+`after`: `{fw, ext_list, vreg, settings}` once verified; `failed`: `{step, code?, text}` or `null`. `text` is one line
+for logs and people; a client shows the core's notice for the step and the code instead. `rollout.json` keeps the newest
+64 records.
+
+What one device costs: about 30 s (steps 2 to 4 a few hundred milliseconds, the BOOTSEL wait 5 to 15 s, the write about
+2 s for a 630 KB image, the restart and attach 2 to 5 s). The hub serves everything else meanwhile; the device is offline
+to every client for that time, as in any restart.
+
+```json
+{"t": "fw.rollout.start", "id": 31, "serial": "E46058388B1A2E2C", "image": "dspi-rp2350-1.2.0.uf2"}
+{"t": "ok", "id": 31, "v": 1, "rollout": {"id": "ro1", "target": "E46058388B1A2E2C", "state": "running",
+ "image": {"name": "dspi-rp2350-1.2.0.uf2", "sha256": "...", "firmware_version": "1.2.0"}, "by": "Bench console",
+ "while_live": false, "started_at": "2026-11-16T20:10:00Z", "ended_at": null,
+ "devices": [{"serial": "E46058388B1A2E2C", "state": "running", "step": "export", "steps": [
+   {"step": "check", "at": "2026-11-16T20:10:00Z", "ok": true, "text": "The device and the image can go ahead"},
+   {"step": "guard", "at": "2026-11-16T20:10:00Z", "ok": true, "text": "The image suits this board (1.20 V)"}],
+  "before": null, "after": null, "failed": null}]}}
+```
+
+### 21.4 What the hub never does
+
+- Write `EXT_CORE_VREG` (it reads it back), type `OVERVOLT` or the guard's phrase for anyone, or flash an image the
+  guard does not clear outright.
+- Flash two devices at once, a device while another board is in BOOTSEL, or a device not on its own USB; mount a
+  bootloader drive.
+- Retry a flash, a fan-out row or an apply; recall the export after a flash.
+- Take a `fw.*` message over plaintext, or start a rollout or take an image over REST.
+- Send `REQ_CLEAR_CLIPS`, keep a standing link between devices, or add a write of its own: the rollout's device writes
+  are the Admin's child session's (section 19.1).
