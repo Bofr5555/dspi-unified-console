@@ -200,12 +200,16 @@ final class HubP2SWMacHubTests: XCTestCase {
         XCTAssertEqual(ad.started?.ad.tls, true)
         XCTAssertTrue(ad.started?.ad.txtData().range(of: Data("tls=1".utf8)) != nil)
 
-        // A plaintext client is refused: the hub requires TLS.
+        // No plaintext session: a ws:// connect is refused, or the core's
+        // connect rule moves it to TLS (the hub's tls_required answer).
         let url = "ws://127.0.0.1:\(service.boundPort ?? 0)/dspi/v1"
         let client = DspiCore()
-        XCTAssertThrowsError(try p2swOffMain("a plaintext connect") {
+        let plain = try? p2swOffMain("a plaintext connect") {
             try client.linkConnect(url: url, clientName: "p2sw", appVersion: "0", token: "", expectedHubId: "")
-        })
+        }
+        if plain != nil {
+            XCTAssertTrue(client.linkSecurity().encrypted, "a session with a require hub is encrypted")
+        }
         client.linkClose()
 
         // The pairing link under the PIN carries the hub, the key and the PIN.
@@ -298,8 +302,12 @@ final class HubP2SWMacHubTests: XCTestCase {
         }
         XCTAssertTrue(hubCaps.onHub && hubCaps.identify && hubCaps.events && hubCaps.alarms && hubCaps.hubSnapshots,
                       "\(hubCaps)")
-        let identify = try p2swOffMain("identify") { try client.hubIdentify(seconds: 1, toneOutput: nil) }
-        _ = identify
+        // Identify reaches the hub's family; the demo device has no 0x0004, so
+        // the hub answers `unsupported` and sends nothing (P2ID's rule).
+        let identify = try p2swOffMain("identify") { () -> DspiError? in
+            do { _ = try client.hubIdentify(seconds: 1, toneOutput: nil); return nil } catch let e as DspiError { return e }
+        }
+        if let e = identify, case .Unsupported = e {} else if let e = identify { XCTFail("identify: \(e)") }
         let page = try p2swOffMain("the history") { try client.hubEventsRead(serial: "", afterId: 0, limit: 50) }
         XCTAssertFalse(page.records.isEmpty, "the attach is in the hub's history")
         _ = try p2swOffMain("the alarms") { try client.hubAlarms(serial: "", state: "active") }
