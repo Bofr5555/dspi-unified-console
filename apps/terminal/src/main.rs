@@ -734,7 +734,9 @@ OPTIONS:
                              name (--midi=PORT if it could be read as a command)
     --link <host[:port]>     connect through a DSPi Link hub; or a pasted
                              'dspi://pair?...' link from the hub's pairing screen
-                             (its key is checked, and pairing asks for a yes)
+                             (its key is checked, and pairing asks for a yes).
+                             A link with p= carries the PIN: on the command line
+                             it shows in `ps` and in shell history, as --pin does
     --hub [NAME]             the same, finding the hub on this network; NAME is
                              part of its name, its id or its address (--hub=NAME
                              if it could be read as a command). Several hubs and

@@ -964,11 +964,14 @@ pub(crate) fn status_of(core: &DspiCore, serial: &str, via: &str) -> Value {
 /// and " (unsecured)" after its `via` when it has no TLS.
 pub(crate) fn link_security_into(v: &mut Value, security: &dspi_core::LinkSecurity) {
     if let Some(via) = v.get("via").and_then(Value::as_str) {
-        let via = dspi_tui::shell::connect::with_security(via, Some(security.encrypted));
+        // -- WP SECFIX -- a hub on this machine is "local", not unsecured
+        let unsecured = !security.encrypted && !security.local;
+        let via = dspi_tui::shell::connect::with_security(via, unsecured);
         v["via"] = Value::String(via);
     }
     v["link"] = json!({
         "encrypted": security.encrypted,
+        "local": security.local, // -- WP SECFIX --
         "hubKey": security.hub_key,
     });
 }
@@ -994,7 +997,9 @@ fn print_status(v: &Value, json: bool) {
             "Connection  {}",
             dspi_tui::shell::connect::paint_unsecured(&s("/via"), colour)
         );
-        if v.pointer("/link/encrypted") == Some(&Value::Bool(false)) {
+        if v.pointer("/link/local") == Some(&Value::Bool(true)) {
+            // -- WP SECFIX -- nothing crosses a network: no warning
+        } else if v.pointer("/link/encrypted") == Some(&Value::Bool(false)) {
             println!("            not encrypted: see `{COMMAND} link security`");
         } else if !s("/link/hubKey").is_empty() {
             println!("Hub key     {}", s("/link/hubKey"));

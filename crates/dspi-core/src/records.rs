@@ -950,6 +950,13 @@ pub struct LinkSecurity {
     /// The session runs over TLS with a verified hub key. False: unencrypted
     /// (a hub without TLS, such as an upstream one): show the badge.
     pub encrypted: bool,
+    // -- WP SECFIX --
+    /// Not encrypted, but the hub is this machine (`localhost`, a loopback
+    /// address: `dspi_link::address::is_loopback_host`): nothing crosses a
+    /// network, so it is not shown as unsecured. Always false when
+    /// `encrypted`. The three cases: `encrypted`, `local`, neither
+    /// (unsecured: the red bar and " (unsecured)").
+    pub local: bool,
     /// The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
     pub hub_key: String,
     /// The last connection set a new pin (first use, or a rotation the old key

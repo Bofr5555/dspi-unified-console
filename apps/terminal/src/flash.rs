@@ -57,6 +57,12 @@ use dspi_core::{
     FirmwareGuardVerdict, Uf2Info, bootloader_drives, firmware_guard_board_in_bootloader,
     firmware_guard_check, info_platform, uf2_inspect,
 };
+use dspi_core::{
+    BundledFirmware,
+    NOTICE_FIRMWARE_NOT_VERIFIED,
+    notice_for_key,
+    verify_bundled, // -- WP SECFIX --
+};
 use dspi_proto::Platform;
 use dspi_proto::packets::FirmwareVersion;
 use dspi_transport::Transport;
@@ -272,6 +278,9 @@ struct Image {
     bytes: Vec<u8>,
     info: Uf2Info,
     name: String,
+    /// -- WP SECFIX -- the core's manifest on it, by its file name (SECFWV):
+    /// anything but `Verified` is labelled, never refused for it here.
+    bundled: BundledFirmware,
 }
 
 fn read_image(req: &Request, file: &Path) -> Result<Image, u8> {
@@ -290,7 +299,17 @@ fn read_image(req: &Request, file: &Path) -> Result<Image, u8> {
             &format!("{name} is not a firmware file: {problem}"),
         ));
     }
-    Ok(Image { bytes, info, name })
+    let base = file
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let bundled = verify_bundled(bytes.clone(), base); // -- WP SECFIX --
+    Ok(Image {
+        bytes,
+        info,
+        name,
+        bundled,
+    })
 }
 
 fn run(target: &Target, req: &Request, image: Option<&Image>, world: &mut dyn World) -> u8 {
@@ -483,6 +502,18 @@ fn check_chip(req: &Request, state: &DspState, image: &Image) -> Result<(), u8> 
     Ok(())
 }
 
+// -- WP SECFIX --
+/// The label of a file that is not a bundled DSPi Console image (SECFWV): the
+/// core's notice row `firmware.not_verified`, "Not a verified DSPi Console
+/// image: ...". `None` for a verified one.
+fn image_label(image: &Image) -> Option<String> {
+    if image.bundled == BundledFirmware::Verified {
+        return None;
+    }
+    let n = notice_for_key(NOTICE_FIRMWARE_NOT_VERIFIED.to_owned(), String::new());
+    Some(format!("{}: {} {}", n.title, n.reason, n.action))
+}
+
 fn describe_image(req: &Request, image: &Image) {
     let version = match image.info.firmware_version.as_str() {
         "" => "names no DSPi version".to_owned(),
@@ -494,6 +525,9 @@ fn describe_image(req: &Request, image: &Image) {
         chip(image.info.platform),
         image.info.payload_bytes
     ));
+    if let Some(label) = image_label(image) {
+        req.note(&label); // -- WP SECFIX --
+    }
 }
 
 fn volts(mv: u16) -> String {
@@ -605,7 +639,13 @@ fn dry_run(
     };
     req.result(
         &text,
-        json!({ "flashed": false, "dryRun": true, "board": board, "guard": verdict }),
+        json!({
+            "flashed": false,
+            "dryRun": true,
+            "board": board,
+            "guard": verdict,
+            "verified": image.bundled == BundledFirmware::Verified, // -- WP SECFIX --
+        }),
     );
     Err(if verdict.allowed {
         exit::OK

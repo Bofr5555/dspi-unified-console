@@ -737,6 +737,8 @@ impl DspiCore {
         let seen = s.client.as_ref().and_then(LinkClient::tls);
         LinkSecurity {
             encrypted: seen.is_some(),
+            // -- WP SECFIX --
+            local: seen.is_none() && dspi_link::address::is_loopback_url(&s.target.url),
             hub_key: seen
                 .map(|t| t.key)
                 .or(s.target.pin)

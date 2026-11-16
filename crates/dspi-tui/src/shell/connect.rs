@@ -326,9 +326,12 @@ pub fn unsecured_suffix() -> String {
     format!(" ({})", unsecured_words().badge)
 }
 
-/// `text` with the badge after it when `encrypted` is known to be false.
-pub fn with_security(text: &str, encrypted: Option<bool>) -> String {
-    if encrypted == Some(false) {
+/// `text` with the badge after it when the connection is `unsecured`: known
+/// not to be encrypted, and not to this machine (-- WP SECFIX --: a loopback
+/// hub is "local", as on the web; [`LinkTarget::unsecured`],
+/// `LinkSecurity::local`).
+pub fn with_security(text: &str, unsecured: bool) -> String {
+    if unsecured {
         format!("{text}{}", unsecured_suffix())
     } else {
         text.to_owned()
@@ -413,11 +416,12 @@ pub fn offer_repair(prompt: PinPrompt<'_>, hub: &str, address: &str, code: &str)
 }
 
 /// The hub's name for the PIN prompt and the pairing question: its
-/// fingerprint when the session has TLS, the badge when it has none.
-pub fn pairing_label(hub: &str, encrypted: bool, hub_key: &str) -> String {
-    if !encrypted {
+/// fingerprint when the session has TLS, the badge when it has none, and
+/// neither for a hub on this machine (`local`, -- WP SECFIX --).
+pub fn pairing_label(hub: &str, encrypted: bool, local: bool, hub_key: &str) -> String {
+    if !encrypted && !local {
         format!("{hub}{}", unsecured_suffix())
-    } else if hub_key.is_empty() {
+    } else if !encrypted || hub_key.is_empty() {
         hub.to_owned()
     } else {
         format!("{hub} (hub key {hub_key})")
@@ -497,6 +501,14 @@ impl LinkTarget {
             return Ok(false);
         }
         self.store_token(hub_id, credential).map(|()| true)
+    }
+
+    // -- WP SECFIX --
+    /// As reached, not encrypted, and not to this machine: the red
+    /// " (unsecured)". A hub on loopback (`localhost`, `127.0.0.1`, `::1`) is
+    /// "local", the same rule as the core's `LinkSecurity::local` and the web.
+    pub fn unsecured(&self) -> bool {
+        self.encrypted == Some(false) && !dspi_link::address::is_loopback_host(&self.host)
     }
 
     /// This target as reached: the security seen, and a pairing link's key and
@@ -888,7 +900,7 @@ impl Target {
             Self::Demo => "demo".into(),
             Self::Midi { .. } => "MIDI".into(),
             // -- WP SECTM -- a session known to run without TLS says so
-            Self::Link(l) => with_security(&format!("Link {}", l.host), l.encrypted),
+            Self::Link(l) => with_security(&format!("Link {}", l.host), l.unsecured()),
         }
     }
 
@@ -1343,7 +1355,12 @@ fn pair(
     let key = tls
         .map(|t| dspi_link::credential::pin_display(&t.key))
         .unwrap_or_default();
-    let label = pairing_label(&hub, tls.is_some(), &key);
+    let label = pairing_label(
+        &hub,
+        tls.is_some(),
+        dspi_link::address::is_loopback_host(&l.host),
+        &key,
+    );
     let given = match pair_link {
         Some(hint) => {
             confirm_pair_link(pin, &hub, &hint.hub_key)?;
@@ -3143,10 +3160,17 @@ mod tests_wp_sectm {
     fn pin_hub() -> FakeHub {
         FakeHub::start(HubConfig {
             auth: Auth::Fixed(PIN.into()),
+            // -- WP SECFIX -- not "local" (only 127.0.0.1, ::1 and localhost
+            // are), so a plaintext session here is unsecured, as on a LAN
+            bind: OFF_LOOPBACK.parse().unwrap(),
             ..HubConfig::default()
         })
         .unwrap()
     }
+
+    /// -- WP SECFIX -- A hub address the "local" rule does not cover, still on
+    /// this machine (Linux routes all of 127.0.0.0/8 to the loopback device).
+    const OFF_LOOPBACK: &str = "127.0.0.2:0";
 
     fn link(hub: &FakeHub, tokens: PathBuf) -> LinkTarget {
         LinkTarget {
@@ -3457,11 +3481,51 @@ mod tests_wp_sectm {
         assert!(!Target::Link(reached).via().contains("unsecured"));
     }
 
+    // -- WP SECFIX --
+    /// A plaintext hub on this machine is "local": no badge on the PIN prompt
+    /// or the connection, as the web shows it; the same hub off the "local"
+    /// rule's addresses is unsecured (the test above).
+    #[test]
+    fn wp_secfix_a_plaintext_hub_on_loopback_is_local_not_unsecured() {
+        let hub = FakeHub::start(HubConfig {
+            auth: Auth::Fixed(PIN.into()),
+            ..HubConfig::default()
+        })
+        .unwrap();
+        assert!(hub.addr().ip().is_loopback());
+        let tokens = scratch("secfix_local");
+        let person = Person::new(Some(PIN), None);
+        let plain = Target::Link(link(&hub, tokens)).connect(&person).unwrap();
+        let reached = plain.link.clone().unwrap();
+        assert_eq!(reached.encrypted, Some(false), "not encrypted");
+        assert!(!reached.unsecured(), "but local");
+        assert_eq!(
+            Target::Link(reached).via(),
+            format!("Link {}", hub.addr().ip())
+        );
+        assert!(
+            person.asked().iter().all(|a| !a.contains("unsecured")),
+            "{:?}",
+            person.asked()
+        );
+        for host in ["localhost", "::1", "hub.localhost"] {
+            let l = LinkTarget {
+                encrypted: Some(false),
+                ..LinkTarget::parse(host).unwrap()
+            };
+            assert!(!l.unsecured(), "{host}");
+        }
+        let lan = LinkTarget {
+            encrypted: Some(false),
+            ..LinkTarget::parse("192.168.1.5").unwrap()
+        };
+        assert!(lan.unsecured());
+    }
+
     #[test]
     fn wp_sectm_the_badge_is_words_first_colour_second() {
-        assert_eq!(with_security("Link h", Some(false)), "Link h (unsecured)");
-        assert_eq!(with_security("Link h", Some(true)), "Link h");
-        assert_eq!(with_security("Link h", None), "Link h");
+        assert_eq!(with_security("Link h", true), "Link h (unsecured)");
+        assert_eq!(with_security("Link h", false), "Link h");
         assert_eq!(
             paint_unsecured("Link h (unsecured)", false),
             "Link h (unsecured)"
@@ -3473,10 +3537,15 @@ mod tests_wp_sectm {
         assert_eq!(paint_unsecured("Link h", true), "Link h");
         assert!(!colour_allowed(false));
         assert!(parse_yes("y\n") && parse_yes(" YES ") && !parse_yes("") && !parse_yes("n"));
-        assert_eq!(pairing_label("Studio", false, ""), "Studio (unsecured)");
         assert_eq!(
-            pairing_label("Studio", true, "SHA256:K7Q2"),
+            pairing_label("Studio", false, false, ""),
+            "Studio (unsecured)"
+        );
+        assert_eq!(
+            pairing_label("Studio", true, false, "SHA256:K7Q2"),
             "Studio (hub key SHA256:K7Q2)"
         );
+        // -- WP SECFIX -- a hub on this machine: neither
+        assert_eq!(pairing_label("Studio", false, true, ""), "Studio");
     }
 }

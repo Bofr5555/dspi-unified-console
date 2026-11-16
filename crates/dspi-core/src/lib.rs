@@ -191,7 +191,8 @@ pub use autoeq::*;
 // -- WP CG8 --
 pub use firmware_guard::*;
 // -- WP SECFWV --
-pub use firmware_manifest::{BundledFirmware, verify_bundled};
+pub use firmware_manifest::NOTICE_NOT_VERIFIED as NOTICE_FIRMWARE_NOT_VERIFIED;
+pub use firmware_manifest::{BundledFirmware, verify_bundled}; // -- WP SECFIX --
 // -- WP CG10 --
 pub use link_text::*;
 // -- WP HB0 --
