@@ -113,12 +113,19 @@ struct InstallWritingCard: View {
                 Text("Writing firmware")
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
-                Text("\(Int((fraction * 100).rounded()))%")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(.secondary)
+                // -- WP SW-M2 -- the core writes in one call: no fraction to show
+                if fraction > 0 {
+                    Text("\(Int((fraction * 100).rounded()))%")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
             }
 
-            ProgressView(value: fraction)
+            if fraction > 0 {
+                ProgressView(value: fraction)
+            } else {
+                ProgressView().progressViewStyle(.linear)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 if let boardName {
@@ -137,6 +144,57 @@ struct InstallWritingCard: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(14)
+        .setupCard()
+    }
+}
+
+// MARK: - Guard question (WP SW-M2)
+
+/// The core's firmware guard (CG8) will not let the image on without the
+/// person's words: its sentence, the words to type (compared exactly, by the
+/// core too), and a way out that writes nothing.
+struct GuardQuestionCard: View {
+    let question: FirmwareGuardQuestion
+    /// The typed words; false when they are not the question's.
+    let answer: (String) -> Bool
+    let decline: () -> Void
+
+    @State private var typed = ""
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 28))
+                .foregroundColor(.orange)
+                .frame(height: 28)
+            Text("Confirm the firmware")
+                .font(.system(size: 13, weight: .semibold))
+            Text(question.message)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 340)
+            Text("To install it anyway, type \(question.phrase)")
+                .font(.system(size: 11, weight: .medium))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 340)
+            TextField(question.phrase, text: $typed)
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .frame(maxWidth: 300)
+                .accessibilityIdentifier("firmwareGuardWords")
+            HStack {
+                Button("Do Not Install", action: decline)
+                Button("Install Anyway") { _ = answer(typed) }
+                    .disabled(typed != question.phrase)
+                    .accessibilityIdentifier("firmwareGuardInstall")
+            }
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(14)
         .setupCard()
     }

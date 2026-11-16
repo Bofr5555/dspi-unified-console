@@ -27,7 +27,8 @@ struct GettingStartedView: View {
         self.vm = vm
         _installer = StateObject(wrappedValue: installer ?? FirmwareInstaller(
             locator: SystemBootloaderLocator(),
-            verifier: ViewModelFirmwareVerifier(vm: vm)))
+            verifier: ViewModelFirmwareVerifier(vm: vm),
+            boardReader: ViewModelBoardReader(vm: vm)))   // -- WP SW-M2 --
     }
 
     #if DEBUG
@@ -39,7 +40,8 @@ struct GettingStartedView: View {
         self.vm = vm
         _installer = StateObject(wrappedValue: installer ?? FirmwareInstaller(
             locator: SystemBootloaderLocator(),
-            verifier: ViewModelFirmwareVerifier(vm: vm)))
+            verifier: ViewModelFirmwareVerifier(vm: vm),
+            boardReader: ViewModelBoardReader(vm: vm)))   // -- WP SW-M2 --
         _current = State(initialValue: Stage(rawValue: stage) ?? .welcome)
     }
     #endif
@@ -253,8 +255,21 @@ struct GettingStartedView: View {
         return FirmwareVersion(v.major, v.minor, v.patch, v.beta).description
     }
 
+    // -- WP SW-M2 -- The core's firmware guard asking for the person's words
+    // takes the card; otherwise the installer's state.
     @ViewBuilder
     private var boardStatusCard: some View {
+        if let question = installer.question {
+            GuardQuestionCard(question: question,
+                              answer: { installer.answer($0) },
+                              decline: { installer.declineQuestion() })
+        } else {
+            boardStateCard
+        }
+    }
+
+    @ViewBuilder
+    private var boardStateCard: some View {
         switch installer.state {
         case .idle, .waitingForBoard:
             if confirmed {
@@ -382,8 +397,7 @@ struct GettingStartedView: View {
     /// soon as the board is ready, which it already is.
     private func beginInstall() {
         confirmed = true
-        installer.flashGate = { FirmwareFlashGate.refusal() }   // -- WP P1SW2F -- F3
-        installer.installWhenReady(confirmed: .firmwareFlash())
+        installer.installWhenReady(confirmed: .firmwareFlash())   // -- WP SW-M2 -- the gate is the installer's own
     }
 
     /// Commits to updating the device that is already connected and running.
@@ -392,13 +406,18 @@ struct GettingStartedView: View {
     /// answering, so there is no reply to wait for.
     private func beginConnectedDeviceInstall() {
         confirmed = true
-        installer.flashGate = { FirmwareFlashGate.refusal() }   // -- WP P1SW2F -- F3
-        guard installer.installWhenReady(confirmed: .firmwareFlash()) else { return }
-        guard !rebootRequested else { return }
-        rebootRequested = true
-        vm.enterBootloaderForInstall(confirmed: .enterBootloader()) { sent in
-            if !sent { installer.abandon(.deviceLocked) }
+        // -- WP SW-M2 -- the board's needs and the guard first, then the restart
+        var restart: (() -> Void)?
+        if !rebootRequested {
+            rebootRequested = true
+            let (vm, installer) = (vm, installer)
+            restart = {
+                vm.enterBootloaderForInstall(confirmed: .enterBootloader()) { sent in
+                    if !sent { installer.abandon(.deviceLocked) }
+                }
+            }
         }
+        installer.installWhenReady(confirmed: .firmwareFlash(), restart: restart)
     }
 
     /// Starts the install flow over after a failure: the view's flags and the

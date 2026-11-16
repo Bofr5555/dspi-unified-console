@@ -1192,7 +1192,7 @@ Owner: **SwiftUI on macOS and iOS over the Rust core; Swift keeps UI only**, wit
 
 **SW6: Link through the core.** [DONE f60845ef, wp/SW6: `Core/CoreLink.swift` drives the core's Link session under `CoreBackedTransport(link: .link)`; the core is the default for DSPi Link on Mac and iOS, `-CoreTransport NO` opts out to Swift's `LinkClient`; checked against the Swift hub in process and the Rust demo hub (see the WP report)] Size 1.5. **Owns:** `Link/LinkClient*.swift` replaced by `Core/CoreLink.swift`; keeps `HubBrowser.swift`, `LinkTokenStore.swift`, the pairing sheet. **Implements:** Bonjour stays in Swift (the entitlement belongs to it); `expected_hub_id`; `link_retry_now` on foreground; `rta_start` after a reconnect. Checks the Local Network prompt with Rust's BSD sockets. **Done when:** the run in `A7-LINK-CLIENT-REPORT.md` passes **[HW]**. **Deps:** SW4, XC1.
 
-**SW7: Banner and errors.** [IN PROGRESS wp/SW7] Size 0.5. **Owns:** `Core/LinkBannerView.swift`. **Done when:** the owner's rule holds in a fake-hub run; CG10's wording. **Deps:** SW6, CG10.
+**SW7: Banner and errors.** [IN REVIEW wp/SW7] Size 0.5. **Owns:** `Core/LinkBannerView.swift`. **Done when:** the owner's rule holds in a fake-hub run; CG10's wording. **Deps:** SW6, CG10.
 
 **SW8: Reads and the mirror.** [DONE 0755bba3, merged in review c6b] Size 3–3.5 (SW3). **SW-V1 and OD3 follow it.** **Owns:** `Commands.swift` "Bulk Parameter Transfer" and "Notification → State Mirroring" (about 840 lines). **Implements:** view-model state from `DspState`, notifications from the core, older firmware read-only. **Done when:** every view shows correct values on the demo device and fixtures; no echo flicker. **Deps:** SW4.
 
@@ -1229,7 +1229,7 @@ Then one WP per domain. Each **owns** its `Commands.swift` sections and wire use
 
 **SW-M1: USB through the core.** [DONE 30e9b0fe, wp/SWM1: the core's `UsbPipe` under `Core/CoreUsb.swift`; USBNotificationReader removed, USBDevice.swift keeps the device model; the core is the Mac's default, `-CoreTransport NO` opts out] Size 1–1.5. **Owns:** `Core/CoreUsb.swift`; reduces `USBDevice.swift` and `USBNotificationReader.swift`. **Implements:** `nusb`'s `macos_iokit` through CG3's `usb` feature, including hot-plug. **Done when:** a demo run and a mock test pass; the macOS target has no IOKit vendor path left outside the hub. **Deps:** SW4.
 
-**SW-M2: Firmware through the core.** [IN PROGRESS wp/SWM2] Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8, CG24.
+**SW-M2: Firmware through the core.** [IN REVIEW wp/SWM2] Size 0.5–1. **Owns:** `FirmwareInstaller.swift`, `BootloaderLocator.swift`, reduced to UI over C11's `firmware.rs` and CG8's guard. **Done when:** `FirmwareInstallerTests` pass; a fake drive test; guard cannot be skipped. **No real flash here. Deps:** SW-M1, CG8, CG24.
 
 **SW-M3: Hub over `dspi-hub`.** [IN PROGRESS wp/SWM3] Size 1–2. **Owns:** a UniFFI wrapper for the hub, `NetworkingSettingsView.swift` re-pointed; Swift hub files removed at the end. **Owner decided: "once it comes into the other versions it should come in here as well".** It does not block R-Mac. The Swift hub stays as the reference harness until HB7 passes, then retires. **Done when:** HB7's Swift client passes against the wrapper from the Mac app. **Deps:** HB7, SW-M1.
 

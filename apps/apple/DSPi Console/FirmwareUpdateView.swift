@@ -102,7 +102,8 @@ struct FirmwareUpdateView: View {
         self.onClose = onClose
         _installer = StateObject(wrappedValue: installer ?? FirmwareInstaller(
             locator: SystemBootloaderLocator(),
-            verifier: ViewModelFirmwareVerifier(vm: vm)))
+            verifier: ViewModelFirmwareVerifier(vm: vm),
+            boardReader: ViewModelBoardReader(vm: vm)))   // -- WP SW-M2 --
     }
 
     private var bundledVersion: String { FirmwareVersion.expected?.description ?? "unknown" }
@@ -228,8 +229,21 @@ struct FirmwareUpdateView: View {
 
     // MARK: Status card
 
+    // -- WP SW-M2 -- The core's firmware guard asking for the person's words
+    // takes the card; otherwise the installer's state.
     @ViewBuilder
     private var statusCard: some View {
+        if let question = installer.question {
+            GuardQuestionCard(question: question,
+                              answer: { installer.answer($0) },
+                              decline: { installer.declineQuestion() })
+        } else {
+            stateCard
+        }
+    }
+
+    @ViewBuilder
+    private var stateCard: some View {
         switch installer.state {
         case .idle, .waitingForBoard:
             if confirmed {
@@ -417,13 +431,19 @@ struct FirmwareUpdateView: View {
         // -- WP P1SW2F -- F3: the installer's lock refuses the write (the
         // core's row), as the core's flash does in Qt; this click is the
         // person's confirmation of the flash and of the restart.
-        installer.flashGate = { FirmwareFlashGate.refusal() }
-        guard installer.installWhenReady(confirmed: .firmwareFlash()) else { return }
-        guard vm.isDeviceConnected, !rebootRequested else { return }
-        rebootRequested = true
-        vm.enterBootloaderForInstall(confirmed: .enterBootloader()) { sent in
-            if !sent { installer.abandon(.deviceLocked) }
+        // -- WP SW-M2 -- The installer reads the board's needs and asks the
+        // core's guard first; the restart follows once that is settled.
+        var restart: (() -> Void)?
+        if vm.isDeviceConnected, !rebootRequested {
+            rebootRequested = true
+            let (vm, installer) = (vm, installer)
+            restart = {
+                vm.enterBootloaderForInstall(confirmed: .enterBootloader()) { sent in
+                    if !sent { installer.abandon(.deviceLocked) }
+                }
+            }
         }
+        installer.installWhenReady(confirmed: .firmwareFlash(), restart: restart)
     }
 
     /// Starts the whole flow over: the view's flags and the installer's
