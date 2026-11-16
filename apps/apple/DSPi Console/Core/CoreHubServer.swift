@@ -39,6 +39,8 @@ final class HubServerModel: ObservableObject {
     static let noCaps = HubCaps(onHub: false, inventory: false, identify: false, health: false, events: false,
                                 hubSnapshots: false, paramApi: false, hubStats: false, alarms: false,
                                 outbound: false, schedule: false, mqtt: false, apiKeys: false, rest: false,
+                                // -- review/swsec -- wave P3-C's fleet caps (main 462fcde1)
+                                groups: false, groupParams: false, groupApply: false, rollout: false,
                                 caps: [])
 
     /// The hub's families (`hubCaps`, no I/O), read again on every device change.
