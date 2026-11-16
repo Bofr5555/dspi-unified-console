@@ -262,6 +262,39 @@ pub struct MeasureSetup {
     pub capture_rate_hz: u32,
     /// The document's name ("" names it by the date).
     pub name: String,
+    /// Play at the start level only (-50 dBFS speakers, -60 dBFS headphones):
+    /// the ceiling is the start level, so the ramp never goes above it; every
+    /// other rule unchanged (P5SPIKE's timing test).
+    pub start_level_only: bool,
+}
+
+/// A walked run's timing (PLAN-P5 section 1.1 steps 6 and 7): the clock fit,
+/// every cycle's residual and the quality gate's verdict. Non-finite numbers
+/// read 0.
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeasureTiming {
+    /// The run passed the timing quality gate.
+    pub reliable: bool,
+    /// The microphone's clock against the DSPi's, ppm.
+    pub ratio_ppm: f64,
+    /// The clock ratio was fitted (two passes or more).
+    pub ratio_fitted: bool,
+    /// The largest cycle residual, µs.
+    pub max_residual_us: f64,
+    /// The residual bound the run was held to, µs.
+    pub residual_bound_us: f64,
+    /// The largest phase disagreement between repeats, degrees.
+    pub max_phase_spread_deg: f64,
+    /// Passes in the run.
+    pub passes: u16,
+    /// Why not reliable, in words (empty when reliable).
+    pub reasons: Vec<String>,
+    /// Each cycle's output, in run order.
+    pub cycle_outputs: Vec<u8>,
+    /// Each cycle's residual from the fit, µs, in run order.
+    pub cycle_residuals_us: Vec<f64>,
 }
 
 /// One preflight finding: a notice key and its words.
@@ -385,6 +418,11 @@ pub struct MeasureState {
     pub timing_reliable: Option<bool>,
     /// `measure_result` has a document.
     pub result_ready: bool,
+    /// The last analysed walked run's timing.
+    pub timing: Option<MeasureTiming>,
+    /// Gaps and repeats seen in the capture's frame indices (any one aborts
+    /// the session, S5).
+    pub frame_faults: u32,
 }
 
 // ── The notification tap (under `inner`) ───────────────────────────────

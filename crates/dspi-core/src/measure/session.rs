@@ -152,6 +152,8 @@ pub(crate) struct Session {
     document: Option<String>,
     progress: f32,
     timing_reliable: Option<bool>,
+    timing: Option<super::MeasureTiming>,
+    frame_faults: u32,
     /// The lock and the tap are still held: the core gives them back.
     release_pending: bool,
 }
@@ -200,6 +202,8 @@ impl Session {
             document: None,
             progress: 0.0,
             timing_reliable: None,
+            timing: None,
+            frame_faults: 0,
             release_pending: true,
         }
     }
@@ -297,6 +301,8 @@ impl Session {
             issue: self.issue.clone(),
             timing_reliable: self.timing_reliable,
             result_ready: self.document.is_some(),
+            timing: self.timing.clone(),
+            frame_faults: self.frame_faults,
         }
     }
 
@@ -376,6 +382,7 @@ impl Session {
             && want != first_frame
         {
             let what = if first_frame > want { "gap" } else { "repeat" };
+            self.frame_faults = self.frame_faults.saturating_add(1);
             self.abort(
                 dev,
                 issue(
@@ -1035,6 +1042,9 @@ impl Session {
             Some(Ok(r)) => {
                 if self.run == 0 {
                     self.timing_reliable = Some(r.timing_reliable);
+                }
+                if r.timing.is_some() {
+                    self.timing.clone_from(&r.timing);
                 }
                 self.results.push(r);
                 self.buf = Vec::new();

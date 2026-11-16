@@ -36268,7 +36268,13 @@ data class MeasureSetup (
     /**
      * The document's name ("" names it by the date).
      */
-    var `name`: kotlin.String
+    var `name`: kotlin.String, 
+    /**
+     * Play at the start level only (-50 dBFS speakers, -60 dBFS headphones):
+     * the ceiling is the start level, so the ramp never goes above it; every
+     * other rule unchanged (P5SPIKE's timing test).
+     */
+    var `startLevelOnly`: kotlin.Boolean
 ) {
     
     companion object
@@ -36294,6 +36300,7 @@ public object FfiConverterTypeMeasureSetup: FfiConverterRustBuffer<MeasureSetup>
             FfiConverterOptionalFloat.read(buf),
             FfiConverterUInt.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -36311,7 +36318,8 @@ public object FfiConverterTypeMeasureSetup: FfiConverterRustBuffer<MeasureSetup>
             FfiConverterOptionalFloat.allocationSize(value.`ceilingDb`) +
             FfiConverterOptionalFloat.allocationSize(value.`splCapDb`) +
             FfiConverterUInt.allocationSize(value.`captureRateHz`) +
-            FfiConverterString.allocationSize(value.`name`)
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`startLevelOnly`)
     )
 
     override fun write(value: MeasureSetup, buf: ByteBuffer) {
@@ -36329,6 +36337,7 @@ public object FfiConverterTypeMeasureSetup: FfiConverterRustBuffer<MeasureSetup>
             FfiConverterOptionalFloat.write(value.`splCapDb`, buf)
             FfiConverterUInt.write(value.`captureRateHz`, buf)
             FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`startLevelOnly`, buf)
     }
 }
 
@@ -36418,7 +36427,16 @@ data class MeasureState (
     /**
      * `measure_result` has a document.
      */
-    var `resultReady`: kotlin.Boolean
+    var `resultReady`: kotlin.Boolean, 
+    /**
+     * The last analysed walked run's timing.
+     */
+    var `timing`: MeasureTiming?, 
+    /**
+     * Gaps and repeats seen in the capture's frame indices (any one aborts
+     * the session, S5).
+     */
+    var `frameFaults`: kotlin.UInt
 ) {
     
     companion object
@@ -36450,6 +36468,8 @@ public object FfiConverterTypeMeasureState: FfiConverterRustBuffer<MeasureState>
             FfiConverterOptionalTypeMeasureIssue.read(buf),
             FfiConverterOptionalBoolean.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterOptionalTypeMeasureTiming.read(buf),
+            FfiConverterUInt.read(buf),
         )
     }
 
@@ -36473,7 +36493,9 @@ public object FfiConverterTypeMeasureState: FfiConverterRustBuffer<MeasureState>
             FfiConverterFloat.allocationSize(value.`progress`) +
             FfiConverterOptionalTypeMeasureIssue.allocationSize(value.`issue`) +
             FfiConverterOptionalBoolean.allocationSize(value.`timingReliable`) +
-            FfiConverterBoolean.allocationSize(value.`resultReady`)
+            FfiConverterBoolean.allocationSize(value.`resultReady`) +
+            FfiConverterOptionalTypeMeasureTiming.allocationSize(value.`timing`) +
+            FfiConverterUInt.allocationSize(value.`frameFaults`)
     )
 
     override fun write(value: MeasureState, buf: ByteBuffer) {
@@ -36497,6 +36519,107 @@ public object FfiConverterTypeMeasureState: FfiConverterRustBuffer<MeasureState>
             FfiConverterOptionalTypeMeasureIssue.write(value.`issue`, buf)
             FfiConverterOptionalBoolean.write(value.`timingReliable`, buf)
             FfiConverterBoolean.write(value.`resultReady`, buf)
+            FfiConverterOptionalTypeMeasureTiming.write(value.`timing`, buf)
+            FfiConverterUInt.write(value.`frameFaults`, buf)
+    }
+}
+
+
+
+/**
+ * A walked run's timing (PLAN-P5 section 1.1 steps 6 and 7): the clock fit,
+ * every cycle's residual and the quality gate's verdict. Non-finite numbers
+ * read 0.
+ */
+data class MeasureTiming (
+    /**
+     * The run passed the timing quality gate.
+     */
+    var `reliable`: kotlin.Boolean, 
+    /**
+     * The microphone's clock against the DSPi's, ppm.
+     */
+    var `ratioPpm`: kotlin.Double, 
+    /**
+     * The clock ratio was fitted (two passes or more).
+     */
+    var `ratioFitted`: kotlin.Boolean, 
+    /**
+     * The largest cycle residual, µs.
+     */
+    var `maxResidualUs`: kotlin.Double, 
+    /**
+     * The residual bound the run was held to, µs.
+     */
+    var `residualBoundUs`: kotlin.Double, 
+    /**
+     * The largest phase disagreement between repeats, degrees.
+     */
+    var `maxPhaseSpreadDeg`: kotlin.Double, 
+    /**
+     * Passes in the run.
+     */
+    var `passes`: kotlin.UShort, 
+    /**
+     * Why not reliable, in words (empty when reliable).
+     */
+    var `reasons`: List<kotlin.String>, 
+    /**
+     * Each cycle's output, in run order.
+     */
+    var `cycleOutputs`: kotlin.ByteArray, 
+    /**
+     * Each cycle's residual from the fit, µs, in run order.
+     */
+    var `cycleResidualsUs`: List<kotlin.Double>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTiming: FfiConverterRustBuffer<MeasureTiming> {
+    override fun read(buf: ByteBuffer): MeasureTiming {
+        return MeasureTiming(
+            FfiConverterBoolean.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTiming) = (
+            FfiConverterBoolean.allocationSize(value.`reliable`) +
+            FfiConverterDouble.allocationSize(value.`ratioPpm`) +
+            FfiConverterBoolean.allocationSize(value.`ratioFitted`) +
+            FfiConverterDouble.allocationSize(value.`maxResidualUs`) +
+            FfiConverterDouble.allocationSize(value.`residualBoundUs`) +
+            FfiConverterDouble.allocationSize(value.`maxPhaseSpreadDeg`) +
+            FfiConverterUShort.allocationSize(value.`passes`) +
+            FfiConverterSequenceString.allocationSize(value.`reasons`) +
+            FfiConverterByteArray.allocationSize(value.`cycleOutputs`) +
+            FfiConverterSequenceDouble.allocationSize(value.`cycleResidualsUs`)
+    )
+
+    override fun write(value: MeasureTiming, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`reliable`, buf)
+            FfiConverterDouble.write(value.`ratioPpm`, buf)
+            FfiConverterBoolean.write(value.`ratioFitted`, buf)
+            FfiConverterDouble.write(value.`maxResidualUs`, buf)
+            FfiConverterDouble.write(value.`residualBoundUs`, buf)
+            FfiConverterDouble.write(value.`maxPhaseSpreadDeg`, buf)
+            FfiConverterUShort.write(value.`passes`, buf)
+            FfiConverterSequenceString.write(value.`reasons`, buf)
+            FfiConverterByteArray.write(value.`cycleOutputs`, buf)
+            FfiConverterSequenceDouble.write(value.`cycleResidualsUs`, buf)
     }
 }
 
@@ -43633,6 +43756,38 @@ public object FfiConverterOptionalTypeMeasureIssue: FfiConverterRustBuffer<Measu
         } else {
             buf.put(1)
             FfiConverterTypeMeasureIssue.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeMeasureTiming: FfiConverterRustBuffer<MeasureTiming?> {
+    override fun read(buf: ByteBuffer): MeasureTiming? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureTiming.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureTiming?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureTiming.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureTiming?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureTiming.write(value, buf)
         }
     }
 }

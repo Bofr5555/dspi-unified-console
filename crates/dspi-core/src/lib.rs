@@ -323,7 +323,7 @@ pub use channel_clip::{
 // -- WP P5SES --
 pub use measure::{
     MeasureCoupler, MeasureIssue, MeasureLevel, MeasureOutput, MeasurePhase, MeasurePlacement,
-    MeasurePreflight, MeasureRole, MeasureRunKind, MeasureSetup, MeasureState,
+    MeasurePreflight, MeasureRole, MeasureRunKind, MeasureSetup, MeasureState, MeasureTiming,
 };
 
 /// The embedder API. Create one per app with [`DspiCore::new`].

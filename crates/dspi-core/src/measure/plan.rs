@@ -207,6 +207,8 @@ impl Plan {
             (START_SPEAKERS_DB, CEILING_SPEAKERS_DB, HARD_CAP_SPEAKERS_DB)
         };
         let ceiling_db = match setup.ceiling_db {
+            // The start level only: the ramp's first step is its last.
+            _ if setup.start_level_only => start,
             None => default_ceiling,
             Some(c) if c.is_finite() && (-120.0..=hard_cap).contains(&c) => c,
             Some(c) => {

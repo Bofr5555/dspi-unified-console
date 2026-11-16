@@ -4918,6 +4918,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureSetup.toDomain() =
         splCapDb = splCapDb,
         captureRateHz = captureRateHz.toLong(),
         name = name,
+        startLevelOnly = startLevelOnly,
     )
 
 internal fun MeasureSetup.toFfi() =
@@ -4936,6 +4937,35 @@ internal fun MeasureSetup.toFfi() =
         splCapDb = splCapDb,
         captureRateHz = captureRateHz.toUInt(),
         name = name,
+        startLevelOnly = startLevelOnly,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTiming.toDomain() =
+    MeasureTiming(
+        reliable = reliable,
+        ratioPpm = ratioPpm,
+        ratioFitted = ratioFitted,
+        maxResidualUs = maxResidualUs,
+        residualBoundUs = residualBoundUs,
+        maxPhaseSpreadDeg = maxPhaseSpreadDeg,
+        passes = passes.toInt(),
+        reasons = reasons,
+        cycleOutputs = cycleOutputs.map { it.toInt() and 0xFF },
+        cycleResidualsUs = cycleResidualsUs,
+    )
+
+internal fun MeasureTiming.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTiming(
+        reliable = reliable,
+        ratioPpm = ratioPpm,
+        ratioFitted = ratioFitted,
+        maxResidualUs = maxResidualUs,
+        residualBoundUs = residualBoundUs,
+        maxPhaseSpreadDeg = maxPhaseSpreadDeg,
+        passes = passes.toUShort(),
+        reasons = reasons,
+        cycleOutputs = ByteArray(cycleOutputs.size) { cycleOutputs[it].toByte() },
+        cycleResidualsUs = cycleResidualsUs,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureIssue.toDomain() =
@@ -5000,6 +5030,8 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureState.toDomain() =
         issue = issue?.let { it.toDomain() },
         timingReliable = timingReliable,
         resultReady = resultReady,
+        timing = timing?.let { it.toDomain() },
+        frameFaults = frameFaults.toLong(),
     )
 
 internal fun MeasureState.toFfi() =
@@ -5024,6 +5056,8 @@ internal fun MeasureState.toFfi() =
         issue = issue?.let { it.toFfi() },
         timingReliable = timingReliable,
         resultReady = resultReady,
+        timing = timing?.let { it.toFfi() },
+        frameFaults = frameFaults.toUInt(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.ModeEntry.toDomain() =

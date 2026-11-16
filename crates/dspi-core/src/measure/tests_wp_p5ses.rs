@@ -1053,3 +1053,29 @@ fn wp_p5ses_every_issue_key_has_a_notice_row() {
         assert_eq!(crate::notice_for_key(k.clone(), String::new()).key, *k);
     }
 }
+
+#[test]
+fn wp_p5ses_start_level_only_never_plays_above_the_start() {
+    for (placement, start) in [
+        (MeasurePlacement::ListeningPosition, -50.0),
+        (MeasurePlacement::Headphones, -60.0),
+    ] {
+        let mut st = setup(MeasureRunKind::Walked, &[0, 1]);
+        st.placement = placement;
+        st.start_level_only = true;
+        let mut s = session(&st, &[0, 1]);
+        let mut dev = Mock::new();
+        // A quiet microphone: a normal ramp would climb.
+        let mut room = Room::new(-90.0, hears(|_| 60.0));
+        drive(&mut s, &mut dev, &mut room, 60.0, |s, _| {
+            s.phase() == MeasurePhase::Run
+        });
+        assert_eq!(s.phase(), MeasurePhase::Run);
+        assert!(
+            levels(&dev).iter().all(|l| *l == start),
+            "{:?}",
+            levels(&dev)
+        );
+        assert_eq!(dev.starts.len(), 3, "one step per output, then the run");
+    }
+}

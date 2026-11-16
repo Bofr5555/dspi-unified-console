@@ -160,6 +160,7 @@ pub(crate) struct RunResult {
     pub(crate) timing_reliable: bool,
     pub(crate) max_residual_us: Option<f64>,
     pub(crate) ratio_ppm: f64,
+    pub(crate) timing: Option<super::MeasureTiming>,
 }
 
 fn mic_on(grid: &LogGrid, plan: &Plan) -> Option<Response> {
@@ -242,7 +243,21 @@ pub(crate) fn walked_result(
         .map(|o| output_response(o, a.band_hz, level_db, plan))
         .collect::<Result<Vec<_>>>()?;
     let reliable = a.quality.reliable && plan.kind == MeasureRunKind::Walked;
+    let fin = |v: f64| if v.is_finite() { v } else { 0.0 };
+    let timing = super::MeasureTiming {
+        reliable,
+        ratio_ppm: fin(a.clock.ratio_ppm),
+        ratio_fitted: a.clock.fitted,
+        max_residual_us: fin(a.quality.max_residual_us),
+        residual_bound_us: fin(a.quality.residual_bound_us),
+        max_phase_spread_deg: fin(a.quality.max_phase_spread_deg),
+        passes: a.quality.passes,
+        reasons: a.quality.reasons.clone(),
+        cycle_outputs: a.cycles.iter().map(|c| c.output).collect(),
+        cycle_residuals_us: a.cycles.iter().map(|c| fin(c.residual_us)).collect(),
+    };
     Ok(RunResult {
+        timing: Some(timing),
         position,
         outputs,
         level_db,
@@ -270,6 +285,7 @@ pub(crate) fn pink_result(spectrum: &Response, output: u8, level_db: f32) -> Res
         *v -= f64::from(level_db);
     }
     Ok(RunResult {
+        timing: None,
         position: 0,
         outputs: vec![OutputResult {
             output,
@@ -417,7 +433,27 @@ pub(crate) fn document(plan: &Plan, runs: &[RunResult], ctx: &DocContext<'_>) ->
                 },
                 timing_reliable: first.timing_reliable,
                 max_residual_us: first.max_residual_us,
-                extra: Map::new(),
+                // Position 1's timing in detail (P5SPIKE): kept as unknown
+                // keys by every reader.
+                extra: first
+                    .timing
+                    .as_ref()
+                    .and_then(|t| serde_json::to_value(t).ok())
+                    .and_then(|v| v.as_object().cloned())
+                    .map(|mut m| {
+                        m.retain(|k, _| {
+                            [
+                                "ratioPpm",
+                                "residualBoundUs",
+                                "reasons",
+                                "cycleOutputs",
+                                "cycleResidualsUs",
+                            ]
+                            .contains(&k.as_str())
+                        });
+                        m
+                    })
+                    .unwrap_or_default(),
             },
             outputs,
             positions: plan.positions.max(1),

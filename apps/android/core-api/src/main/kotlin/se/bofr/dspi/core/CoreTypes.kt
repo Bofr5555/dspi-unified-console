@@ -6255,6 +6255,60 @@ data class MeasureSetup(
      * The document's name ("" names it by the date).
      */
     val name: String,
+    /**
+     * Play at the start level only (-50 dBFS speakers, -60 dBFS headphones):
+     * the ceiling is the start level, so the ramp never goes above it; every
+     * other rule unchanged (P5SPIKE's timing test).
+     */
+    val startLevelOnly: Boolean,
+)
+
+/**
+ * A walked run's timing (PLAN-P5 section 1.1 steps 6 and 7): the clock fit,
+ * every cycle's residual and the quality gate's verdict. Non-finite numbers
+ * read 0.
+ */
+data class MeasureTiming(
+    /**
+     * The run passed the timing quality gate.
+     */
+    val reliable: Boolean,
+    /**
+     * The microphone's clock against the DSPi's, ppm.
+     */
+    val ratioPpm: Double,
+    /**
+     * The clock ratio was fitted (two passes or more).
+     */
+    val ratioFitted: Boolean,
+    /**
+     * The largest cycle residual, µs.
+     */
+    val maxResidualUs: Double,
+    /**
+     * The residual bound the run was held to, µs.
+     */
+    val residualBoundUs: Double,
+    /**
+     * The largest phase disagreement between repeats, degrees.
+     */
+    val maxPhaseSpreadDeg: Double,
+    /**
+     * Passes in the run.
+     */
+    val passes: Int,
+    /**
+     * Why not reliable, in words (empty when reliable).
+     */
+    val reasons: List<String>,
+    /**
+     * Each cycle's output, in run order.
+     */
+    val cycleOutputs: List<Int>,
+    /**
+     * Each cycle's residual from the fit, µs, in run order.
+     */
+    val cycleResidualsUs: List<Double>,
 )
 
 /**
@@ -6392,6 +6446,15 @@ data class MeasureState(
      * `measure_result` has a document.
      */
     val resultReady: Boolean,
+    /**
+     * The last analysed walked run's timing.
+     */
+    val timing: MeasureTiming?,
+    /**
+     * Gaps and repeats seen in the capture's frame indices (any one aborts
+     * the session, S5).
+     */
+    val frameFaults: Long,
 )
 
 /**

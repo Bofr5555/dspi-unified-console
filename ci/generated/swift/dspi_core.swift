@@ -38910,6 +38910,12 @@ public struct MeasureSetup {
      * The document's name ("" names it by the date).
      */
     public var name: String
+    /**
+     * Play at the start level only (-50 dBFS speakers, -60 dBFS headphones):
+     * the ceiling is the start level, so the ramp never goes above it; every
+     * other rule unchanged (P5SPIKE's timing test).
+     */
+    public var startLevelOnly: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -38959,7 +38965,12 @@ public struct MeasureSetup {
          */captureRateHz: UInt32, 
         /**
          * The document's name ("" names it by the date).
-         */name: String) {
+         */name: String, 
+        /**
+         * Play at the start level only (-50 dBFS speakers, -60 dBFS headphones):
+         * the ceiling is the start level, so the ramp never goes above it; every
+         * other rule unchanged (P5SPIKE's timing test).
+         */startLevelOnly: Bool) {
         self.kind = kind
         self.outputs = outputs
         self.placement = placement
@@ -38974,6 +38985,7 @@ public struct MeasureSetup {
         self.splCapDb = splCapDb
         self.captureRateHz = captureRateHz
         self.name = name
+        self.startLevelOnly = startLevelOnly
     }
 }
 
@@ -39026,6 +39038,9 @@ extension MeasureSetup: Equatable, Hashable {
         if lhs.name != rhs.name {
             return false
         }
+        if lhs.startLevelOnly != rhs.startLevelOnly {
+            return false
+        }
         return true
     }
 
@@ -39044,6 +39059,7 @@ extension MeasureSetup: Equatable, Hashable {
         hasher.combine(splCapDb)
         hasher.combine(captureRateHz)
         hasher.combine(name)
+        hasher.combine(startLevelOnly)
     }
 }
 
@@ -39069,7 +39085,8 @@ public struct FfiConverterTypeMeasureSetup: FfiConverterRustBuffer {
                 ceilingDb: FfiConverterOptionFloat.read(from: &buf), 
                 splCapDb: FfiConverterOptionFloat.read(from: &buf), 
                 captureRateHz: FfiConverterUInt32.read(from: &buf), 
-                name: FfiConverterString.read(from: &buf)
+                name: FfiConverterString.read(from: &buf), 
+                startLevelOnly: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -39088,6 +39105,7 @@ public struct FfiConverterTypeMeasureSetup: FfiConverterRustBuffer {
         FfiConverterOptionFloat.write(value.splCapDb, into: &buf)
         FfiConverterUInt32.write(value.captureRateHz, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.startLevelOnly, into: &buf)
     }
 }
 
@@ -39192,6 +39210,15 @@ public struct MeasureState {
      * `measure_result` has a document.
      */
     public var resultReady: Bool
+    /**
+     * The last analysed walked run's timing.
+     */
+    public var timing: MeasureTiming?
+    /**
+     * Gaps and repeats seen in the capture's frame indices (any one aborts
+     * the session, S5).
+     */
+    public var frameFaults: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -39256,7 +39283,14 @@ public struct MeasureState {
          */timingReliable: Bool?, 
         /**
          * `measure_result` has a document.
-         */resultReady: Bool) {
+         */resultReady: Bool, 
+        /**
+         * The last analysed walked run's timing.
+         */timing: MeasureTiming?, 
+        /**
+         * Gaps and repeats seen in the capture's frame indices (any one aborts
+         * the session, S5).
+         */frameFaults: UInt32) {
         self.phase = phase
         self.kind = kind
         self.active = active
@@ -39277,6 +39311,8 @@ public struct MeasureState {
         self.issue = issue
         self.timingReliable = timingReliable
         self.resultReady = resultReady
+        self.timing = timing
+        self.frameFaults = frameFaults
     }
 }
 
@@ -39347,6 +39383,12 @@ extension MeasureState: Equatable, Hashable {
         if lhs.resultReady != rhs.resultReady {
             return false
         }
+        if lhs.timing != rhs.timing {
+            return false
+        }
+        if lhs.frameFaults != rhs.frameFaults {
+            return false
+        }
         return true
     }
 
@@ -39371,6 +39413,8 @@ extension MeasureState: Equatable, Hashable {
         hasher.combine(issue)
         hasher.combine(timingReliable)
         hasher.combine(resultReady)
+        hasher.combine(timing)
+        hasher.combine(frameFaults)
     }
 }
 
@@ -39402,7 +39446,9 @@ public struct FfiConverterTypeMeasureState: FfiConverterRustBuffer {
                 progress: FfiConverterFloat.read(from: &buf), 
                 issue: FfiConverterOptionTypeMeasureIssue.read(from: &buf), 
                 timingReliable: FfiConverterOptionBool.read(from: &buf), 
-                resultReady: FfiConverterBool.read(from: &buf)
+                resultReady: FfiConverterBool.read(from: &buf), 
+                timing: FfiConverterOptionTypeMeasureTiming.read(from: &buf), 
+                frameFaults: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -39427,6 +39473,8 @@ public struct FfiConverterTypeMeasureState: FfiConverterRustBuffer {
         FfiConverterOptionTypeMeasureIssue.write(value.issue, into: &buf)
         FfiConverterOptionBool.write(value.timingReliable, into: &buf)
         FfiConverterBool.write(value.resultReady, into: &buf)
+        FfiConverterOptionTypeMeasureTiming.write(value.timing, into: &buf)
+        FfiConverterUInt32.write(value.frameFaults, into: &buf)
     }
 }
 
@@ -39443,6 +39491,205 @@ public func FfiConverterTypeMeasureState_lift(_ buf: RustBuffer) throws -> Measu
 #endif
 public func FfiConverterTypeMeasureState_lower(_ value: MeasureState) -> RustBuffer {
     return FfiConverterTypeMeasureState.lower(value)
+}
+
+
+/**
+ * A walked run's timing (PLAN-P5 section 1.1 steps 6 and 7): the clock fit,
+ * every cycle's residual and the quality gate's verdict. Non-finite numbers
+ * read 0.
+ */
+public struct MeasureTiming {
+    /**
+     * The run passed the timing quality gate.
+     */
+    public var reliable: Bool
+    /**
+     * The microphone's clock against the DSPi's, ppm.
+     */
+    public var ratioPpm: Double
+    /**
+     * The clock ratio was fitted (two passes or more).
+     */
+    public var ratioFitted: Bool
+    /**
+     * The largest cycle residual, µs.
+     */
+    public var maxResidualUs: Double
+    /**
+     * The residual bound the run was held to, µs.
+     */
+    public var residualBoundUs: Double
+    /**
+     * The largest phase disagreement between repeats, degrees.
+     */
+    public var maxPhaseSpreadDeg: Double
+    /**
+     * Passes in the run.
+     */
+    public var passes: UInt16
+    /**
+     * Why not reliable, in words (empty when reliable).
+     */
+    public var reasons: [String]
+    /**
+     * Each cycle's output, in run order.
+     */
+    public var cycleOutputs: Data
+    /**
+     * Each cycle's residual from the fit, µs, in run order.
+     */
+    public var cycleResidualsUs: [Double]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The run passed the timing quality gate.
+         */reliable: Bool, 
+        /**
+         * The microphone's clock against the DSPi's, ppm.
+         */ratioPpm: Double, 
+        /**
+         * The clock ratio was fitted (two passes or more).
+         */ratioFitted: Bool, 
+        /**
+         * The largest cycle residual, µs.
+         */maxResidualUs: Double, 
+        /**
+         * The residual bound the run was held to, µs.
+         */residualBoundUs: Double, 
+        /**
+         * The largest phase disagreement between repeats, degrees.
+         */maxPhaseSpreadDeg: Double, 
+        /**
+         * Passes in the run.
+         */passes: UInt16, 
+        /**
+         * Why not reliable, in words (empty when reliable).
+         */reasons: [String], 
+        /**
+         * Each cycle's output, in run order.
+         */cycleOutputs: Data, 
+        /**
+         * Each cycle's residual from the fit, µs, in run order.
+         */cycleResidualsUs: [Double]) {
+        self.reliable = reliable
+        self.ratioPpm = ratioPpm
+        self.ratioFitted = ratioFitted
+        self.maxResidualUs = maxResidualUs
+        self.residualBoundUs = residualBoundUs
+        self.maxPhaseSpreadDeg = maxPhaseSpreadDeg
+        self.passes = passes
+        self.reasons = reasons
+        self.cycleOutputs = cycleOutputs
+        self.cycleResidualsUs = cycleResidualsUs
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTiming: Sendable {}
+#endif
+
+
+extension MeasureTiming: Equatable, Hashable {
+    public static func ==(lhs: MeasureTiming, rhs: MeasureTiming) -> Bool {
+        if lhs.reliable != rhs.reliable {
+            return false
+        }
+        if lhs.ratioPpm != rhs.ratioPpm {
+            return false
+        }
+        if lhs.ratioFitted != rhs.ratioFitted {
+            return false
+        }
+        if lhs.maxResidualUs != rhs.maxResidualUs {
+            return false
+        }
+        if lhs.residualBoundUs != rhs.residualBoundUs {
+            return false
+        }
+        if lhs.maxPhaseSpreadDeg != rhs.maxPhaseSpreadDeg {
+            return false
+        }
+        if lhs.passes != rhs.passes {
+            return false
+        }
+        if lhs.reasons != rhs.reasons {
+            return false
+        }
+        if lhs.cycleOutputs != rhs.cycleOutputs {
+            return false
+        }
+        if lhs.cycleResidualsUs != rhs.cycleResidualsUs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(reliable)
+        hasher.combine(ratioPpm)
+        hasher.combine(ratioFitted)
+        hasher.combine(maxResidualUs)
+        hasher.combine(residualBoundUs)
+        hasher.combine(maxPhaseSpreadDeg)
+        hasher.combine(passes)
+        hasher.combine(reasons)
+        hasher.combine(cycleOutputs)
+        hasher.combine(cycleResidualsUs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTiming: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTiming {
+        return
+            try MeasureTiming(
+                reliable: FfiConverterBool.read(from: &buf), 
+                ratioPpm: FfiConverterDouble.read(from: &buf), 
+                ratioFitted: FfiConverterBool.read(from: &buf), 
+                maxResidualUs: FfiConverterDouble.read(from: &buf), 
+                residualBoundUs: FfiConverterDouble.read(from: &buf), 
+                maxPhaseSpreadDeg: FfiConverterDouble.read(from: &buf), 
+                passes: FfiConverterUInt16.read(from: &buf), 
+                reasons: FfiConverterSequenceString.read(from: &buf), 
+                cycleOutputs: FfiConverterData.read(from: &buf), 
+                cycleResidualsUs: FfiConverterSequenceDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTiming, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.reliable, into: &buf)
+        FfiConverterDouble.write(value.ratioPpm, into: &buf)
+        FfiConverterBool.write(value.ratioFitted, into: &buf)
+        FfiConverterDouble.write(value.maxResidualUs, into: &buf)
+        FfiConverterDouble.write(value.residualBoundUs, into: &buf)
+        FfiConverterDouble.write(value.maxPhaseSpreadDeg, into: &buf)
+        FfiConverterUInt16.write(value.passes, into: &buf)
+        FfiConverterSequenceString.write(value.reasons, into: &buf)
+        FfiConverterData.write(value.cycleOutputs, into: &buf)
+        FfiConverterSequenceDouble.write(value.cycleResidualsUs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTiming_lift(_ buf: RustBuffer) throws -> MeasureTiming {
+    return try FfiConverterTypeMeasureTiming.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTiming_lower(_ value: MeasureTiming) -> RustBuffer {
+    return FfiConverterTypeMeasureTiming.lower(value)
 }
 
 
@@ -51354,6 +51601,30 @@ fileprivate struct FfiConverterOptionTypeMeasureIssue: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeMeasureIssue.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMeasureTiming: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureTiming?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureTiming.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureTiming.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }

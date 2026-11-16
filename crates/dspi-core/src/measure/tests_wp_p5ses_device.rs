@@ -491,9 +491,24 @@ fn wp_p5ses_device_a_three_output_walked_run_matches_the_world() {
     let st = mic.run(90.0, |_| false);
     assert_eq!(st.phase, MeasurePhase::Done, "{st:#?}");
     assert_eq!(st.timing_reliable, Some(true));
+    // The timing in detail (P5SPIKE): every cycle's residual, the clock.
+    let t = st.timing.clone().unwrap();
+    assert!(t.reliable && t.ratio_fitted && t.reasons.is_empty());
+    assert_eq!(t.cycle_residuals_us.len(), 9);
+    assert_eq!(t.cycle_outputs, vec![0, 1, 2, 0, 1, 2, 0, 1, 2]);
+    assert!(t.max_residual_us <= t.residual_bound_us);
+    assert!((t.ratio_ppm - 80.0).abs() < 1.0, "{} ppm", t.ratio_ppm);
+    assert_eq!(st.frame_faults, 0);
     let doc = result_doc(&r.core);
     let m = &doc.measurement;
     assert!(m.capture.timing_reliable);
+    assert_eq!(
+        m.capture.extra["cycleResidualsUs"]
+            .as_array()
+            .unwrap()
+            .len(),
+        9
+    );
     assert_eq!(m.outputs.len(), 3);
     let freqs = dspi_measure::types::LogGrid::STANDARD.freqs().unwrap();
     for (i, o) in m.outputs.iter().enumerate() {
@@ -562,6 +577,7 @@ fn wp_p5ses_device_a_dropped_block_aborts() {
     let st = mic.run(60.0, |_| false);
     assert_eq!(st.phase, MeasurePhase::Aborted, "{st:#?}");
     assert_eq!(st.issue.unwrap().key, "measure.abort.frame_gap");
+    assert_eq!(st.frame_faults, 1);
     let log = r.log.lock().unwrap();
     let stops = log
         .iter()
@@ -594,6 +610,7 @@ fn wp_p5ses_device_a_slow_ratio_wander_is_timing_unreliable() {
     let st = mic.run(90.0, |_| false);
     assert_eq!(st.phase, MeasurePhase::Done, "{st:#?}");
     assert_eq!(st.timing_reliable, Some(false));
+    assert!(!st.timing.as_ref().unwrap().reasons.is_empty());
     let doc = result_doc(&r.core);
     assert!(!doc.measurement.capture.timing_reliable);
     assert!(
