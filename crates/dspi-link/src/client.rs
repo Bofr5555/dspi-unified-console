@@ -605,6 +605,11 @@ impl LinkClient {
         cfg: &SessionConfig,
         tls: &TlsOptions,
     ) -> Result<(LinkClient, AuthState), LinkError> {
+        // -- WP SECWEB -- the browser's socket: its own TLS by the scheme, nothing to pin
+        if connector.tls_by_scheme() {
+            let pair = connector.connect(url, SUB_PROTOCOL)?;
+            return Self::connect_over(pair, opts, events, cfg, None);
+        }
         let wss = url.starts_with("wss://");
         let required = tls.pin.is_some() || tls.advertised || wss;
         if required || !tls.plaintext_known {

@@ -16,6 +16,7 @@
 //   GET  /?hub=n          the standalone page, its <meta name="dspi-hub"> naming
 //                         hub n's address on this origin: ws://<this>/h/n/dspi/v1
 //   ws://<this>/h/n/dspi/v1   hub n (the Origin rule first)
+//   GET  /dspi/v1/info    -- WP SECWEB -- a hub's facts as the page reads them (no TLS, no proxy)
 //
 // The page's address names the fake hub through a path on this origin: what a
 // fleet server does when it proxies its hubs (apps/web/README.md).
@@ -106,6 +107,11 @@ const server = httpServer(async (req, res) => {
     console.error(`hub host: ${e}`);
     if (!res.headersSent) res.writeHead(500);
     res.end(String(e));
+    return;
+  }
+  // -- WP SECWEB -- a hub's /dspi/v1/info, as the page reads it: no TLS here, no pinning proxy
+  if (url.pathname === "/dspi/v1/info") {
+    res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ tls: false, upstream_compat: false, proxy: false }));
     return;
   }
   if (req.method !== "GET" && req.method !== "HEAD") {

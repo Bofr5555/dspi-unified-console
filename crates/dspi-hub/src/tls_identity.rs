@@ -346,7 +346,8 @@ fn tighten_file(path: &Path) {
     let _ = path;
 }
 
-fn read_limited(path: &Path, max: u64) -> io::Result<Vec<u8>> {
+// -- WP SECWEB -- crate-wide: the proxy's pins file too
+pub(crate) fn read_limited(path: &Path, max: u64) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     File::open(path)?
         .take(max.saturating_add(1))
@@ -378,7 +379,8 @@ fn private_file(path: &Path) -> io::Result<File> {
 }
 
 /// Write through a 0600 temp file and rename, as the store does.
-fn write_private(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), HubError> {
+// -- WP SECWEB -- crate-wide: the proxy's pins file too
+pub(crate) fn write_private(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), HubError> {
     let path = dir.join(name);
     let temp = dir.join(format!("{name}.tmp"));
     let written = (|| {

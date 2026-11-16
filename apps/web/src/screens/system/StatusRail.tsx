@@ -13,6 +13,8 @@ import { useFeed } from "./SystemScreen";
 import { MODES, mayWrite, railAlarms, subjectName, systemMuted, writeNote, type Alarm, type Mode } from "./model";
 // -- WP P1WB2 -- the mode switch onto the core's mode manifest and its resolution (P1LK)
 import type { ModeChoice } from "../../core/protocol";
+// -- WP SECWEB -- a hub link that is not encrypted: red, " (unsecured)", and the info button
+import { UnsecuredMark, isUnsecured } from "../../ui/LinkSecurity";
 
 export function StatusRail(props: {
   feed: SystemFeed;
@@ -49,9 +51,10 @@ export function StatusRail(props: {
   return (
     <aside class="sys-rail" aria-label="Status">
       <div class="sys-rail-row">
-        <span class="sys-rail-item" aria-label="Connection">
+        <span class={`sys-rail-item${kind === "hub" && isUnsecured(ss.security) ? " link-unsecured" : ""}`} aria-label="Connection">
           <span class={`dot dot-${ss.status}`} aria-hidden="true" />
           {ss.status === "open" && (!ss.link || ss.link.phase === "bound") ? "Connected" : "Not connected"} · {where}
+          {kind === "hub" ? <UnsecuredMark security={ss.security} ctx={props.session.linkContext} /> : null /* -- WP SECWEB -- */}
         </span>
         {hub ? (
           <span class="sys-rail-item" aria-label="Scene">

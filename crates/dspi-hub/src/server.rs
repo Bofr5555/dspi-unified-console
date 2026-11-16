@@ -778,6 +778,10 @@ struct Shared {
     host_names: Vec<String>,
     /// [`Shared::own_names`]'s last answer and when. A leaf lock.
     own_names: Mutex<Option<(Instant, OwnNames)>>,
+    // -- WP SECWEB --
+    /// The `uconsole web` pinning proxy ([`crate::proxy`]): on a loopback hub with its
+    /// web pages only ([`crate::proxy::enabled`]).
+    proxy: Option<Arc<crate::proxy::Proxy>>,
 }
 
 // -- WP SECSRV --
@@ -1718,6 +1722,9 @@ enum Next {
     Close,
     /// Becomes a WebSocket, already counted in that budget. The `Sec-WebSocket-Accept`.
     Upgrade(String),
+    // -- WP SECWEB --
+    /// Becomes the proxy's relay to a hub already dialled and judged (`crate::proxy`).
+    Proxy(String, Box<crate::proxy::Dialled>),
 }
 
 fn kept(alive: bool) -> Next {
@@ -1840,6 +1847,11 @@ fn serve_on<S: IntoWire>(
                 upgrade(shared, id, tcp, encrypted, tail, &accept, peer);
                 return;
             }
+            // -- WP SECWEB --
+            Next::Proxy(accept, dialled) => {
+                proxy_relay(shared, id, tcp, tail, &accept, *dialled);
+                return;
+            }
         }
     }
 }
@@ -1879,6 +1891,10 @@ fn answer<S: HubStream + ?Sized>(
     let misdirected = !encrypted && !host_allowed(&request, || shared.own_names());
     if misdirected && path != WS_PATH {
         return misdirected_page(shared, tcp, until);
+    }
+    // -- WP SECWEB -- the `uconsole web` pinning proxy, on a loopback hub only
+    if let (Some(proxy), Some(route)) = (shared.proxy.as_ref(), crate::proxy::route(path)) {
+        return proxy_answer(shared, id, tcp, proxy, route, &request, until);
     }
     if path == WS_PATH {
         match check_upgrade(shared, &request, encrypted) {
@@ -2263,6 +2279,292 @@ fn upgrade<S: IntoWire>(
             .close(CLOSE_SHUTTING_DOWN, TLS_REQUIRED_REASON);
     }
     connection.run(reader, upgraded);
+}
+
+// -- WP SECWEB -- the `uconsole web` pinning proxy's HTTP side (crate::proxy)
+
+/// Whether `host` (`name[:port]`, `[v6][:port]`) is a loopback name on `port`.
+fn loopback_authority(host: &str, port: u16) -> bool {
+    parse_http_origin(&format!("http://{}", host.trim()))
+        .is_some_and(|(h, p)| p == port && matches!(h.as_str(), "localhost" | "127.0.0.1" | "::1"))
+}
+
+/// A proxy request: from a loopback peer, to a loopback `Host` on this port; an upgrade
+/// or a forget from this page's own loopback `Origin` only (a page anywhere else, or a
+/// request with no `Origin`, is refused), a status read with no foreign `Origin`.
+fn proxy_answer<S: HubStream + ?Sized>(
+    shared: &Shared,
+    id: u64,
+    tcp: &mut S,
+    proxy: &crate::proxy::Proxy,
+    route: crate::proxy::Route<'_>,
+    request: &httparse::Request<'_, '_>,
+    until: Instant,
+) -> Next {
+    use crate::proxy::Route;
+    const FORBIDDEN: &str = "403 Forbidden";
+    let peer_ok = tcp.peer_ip().is_ok_and(|ip| ip.is_loopback());
+    let host_ok = single_header(request, "Host")
+        .ok()
+        .flatten()
+        .is_some_and(|h| loopback_authority(h, shared.port));
+    let origin = single_header(request, "Origin");
+    let origin_ok = |required: bool| match origin {
+        Ok(Some(o)) => o
+            .strip_prefix("http://")
+            .is_some_and(|rest| loopback_authority(rest, shared.port)),
+        Ok(None) => !required,
+        Err(()) => false,
+    };
+    let (target, required, method) = match route {
+        Route::Link(t) => (t, true, "GET"),
+        Route::Security(t) => (t, false, "GET"),
+        Route::Forget(t) => (t, true, "POST"),
+    };
+    if !peer_ok || !host_ok || !origin_ok(required) {
+        log::debug!("hub: refused a proxy request (peer, Host or Origin)");
+        respond(shared, tcp, FORBIDDEN, &[TEXT], b"Refused.", false, until);
+        return Next::Close;
+    }
+    if request.method != Some(method) {
+        let status = "405 Method Not Allowed";
+        let headers = [TEXT, ("Allow", method)];
+        respond(shared, tcp, status, &headers, b"Not allowed.", false, until);
+        return Next::Close;
+    }
+    let Some(target) = crate::proxy::decode_target(target) else {
+        respond(
+            shared,
+            tcp,
+            "404 Not Found",
+            &[TEXT],
+            b"Not found.",
+            false,
+            until,
+        );
+        return Next::Close;
+    };
+    let json_headers = [
+        ("Content-Type", "application/json"),
+        ("Cache-Control", "no-store"),
+    ];
+    match route {
+        Route::Security(_) => {
+            let body = match proxy.status(&target) {
+                Some(s) => serde_json::to_string(&s).unwrap_or_default(),
+                None => "{}".to_owned(),
+            };
+            let keep = keep_alive(request);
+            kept(respond(
+                shared,
+                tcp,
+                "200 OK",
+                &json_headers,
+                body.as_bytes(),
+                keep,
+                until,
+            ))
+        }
+        Route::Forget(_) => {
+            let body = json!({ "forgotten": proxy.forget(&target) }).to_string();
+            respond(
+                shared,
+                tcp,
+                "200 OK",
+                &json_headers,
+                body.as_bytes(),
+                false,
+                until,
+            );
+            Next::Close
+        }
+        Route::Link(_) => {
+            let accept = match check_upgrade(shared, request, false) {
+                Ok(accept) => accept,
+                Err((status, why)) => {
+                    respond(shared, tcp, status, &[TEXT], why.as_bytes(), false, until);
+                    return Next::Close;
+                }
+            };
+            if !shared.promote(id) {
+                let headers = [TEXT, ("Retry-After", "5")];
+                let status = "503 Service Unavailable";
+                respond(shared, tcp, status, &headers, BUSY, false, until);
+                return Next::Close;
+            }
+            match proxy.dial(&target) {
+                Ok(dialled) => Next::Proxy(accept, Box::new(dialled)),
+                Err(refusal) => {
+                    let why = refusal.message();
+                    let status = "502 Bad Gateway";
+                    respond(shared, tcp, status, &[TEXT], why.as_bytes(), false, until);
+                    Next::Close
+                }
+            }
+        }
+    }
+}
+
+/// A close code a WebSocket may carry on the wire: the hub's own, or 1000.
+fn wire_close_code(code: Option<u16>) -> u16 {
+    match code {
+        Some(c @ (1000..=1003 | 1007..=1011 | 3000..=4999)) => c,
+        _ => CLOSE_NORMAL,
+    }
+}
+
+/// The page's WebSocket relayed to the dialled hub, message for message, once the hub's
+/// hello is judged ([`crate::proxy::Proxy::judge`]; a refusal closes the page's socket
+/// with 4000 and the refusal's code). Ends when either side closes (the other is then closed), or the hub stops.
+fn proxy_relay<S: IntoWire>(
+    shared: &Arc<Shared>,
+    id: u64,
+    mut tcp: S,
+    tail: Vec<u8>,
+    accept: &str,
+    dialled: crate::proxy::Dialled,
+) {
+    use dspi_link::socket::{WsMessage, WsRecv};
+    let Some(proxy) = shared.proxy.as_ref() else {
+        dialled.sender.close(CLOSE_NORMAL);
+        return;
+    };
+    let upgraded = Instant::now();
+    let response = format!(
+        "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\
+         Sec-WebSocket-Accept: {accept}\r\nSec-WebSocket-Protocol: {SUBPROTOCOL}\r\n\r\n"
+    );
+    let limits = &shared.limits;
+    let stall = limits.write_stall;
+    let raw = tcp.raw_tcp();
+    let set = raw
+        .set_write_timeout(Some(stall))
+        .and(raw.set_read_timeout(Some(limits.read_tick)));
+    let answered = set.is_ok()
+        && write_by(&mut tcp, response.as_bytes(), stall, after(upgraded, stall)).is_ok();
+    if !answered {
+        dialled.sender.close(CLOSE_NORMAL);
+        return;
+    }
+    let halves = tcp
+        .raw_tcp()
+        .try_clone()
+        .and_then(|cut_off| Ok((cut_off, tcp.into_wires()?)));
+    let Ok((cut_off, (reader, writer))) = halves else {
+        dialled.sender.close(CLOSE_NORMAL);
+        return;
+    };
+    let config = server_ws_config(MAX_FRAME as usize);
+    let mut reader = WebSocket::from_partially_read(reader, tail, WsRole::Server, Some(config));
+    let writer = WebSocket::from_raw_socket(writer, WsRole::Server, Some(config));
+    let tx = Arc::new(WsTx {
+        ws: Mutex::new(writer),
+        tcp: cut_off,
+        close_grace: limits.close_grace,
+        closing: OnceLock::new(),
+    });
+    shared.set_tx(id, &tx);
+    // The page's hello first (nothing secret in it), then the hub's, judged.
+    let hello_by = after(upgraded, limits.auth_timeout);
+    let mut client_hello = None;
+    while client_hello.is_none() && Instant::now() < hello_by && tx.close_deadline().is_none() {
+        match reader.read() {
+            Ok(Message::Text(t)) => client_hello = Some(t.as_str().to_owned()),
+            Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_)) => {}
+            Err(tungstenite::Error::Io(e)) if is_timeout(&e) && !reader.get_ref().is_broken() => {}
+            Ok(_) | Err(_) => break,
+        }
+    }
+    let judged = match client_hello {
+        Some(h) => proxy.judge(dialled, h),
+        None => {
+            dialled.sender.close(CLOSE_NORMAL);
+            Err(crate::proxy::Refusal::Protocol)
+        }
+    };
+    let crate::proxy::Judged {
+        sender,
+        mut receiver,
+        hello,
+    } = match judged {
+        Ok(j) => j,
+        Err(refusal) => {
+            tx.close(CLOSE_PROTOCOL, refusal.code());
+            if let Some(deadline) = tx.close_deadline()
+                && let Ok(mut raw) = reader.get_mut().raw_tcp().try_clone()
+            {
+                drain(&mut raw, deadline);
+            }
+            tx.abort();
+            return;
+        }
+    };
+    if tx.send(Message::text(hello)).is_err() {
+        sender.close(CLOSE_NORMAL);
+        tx.abort();
+        return;
+    }
+    // The hub to the page, on a thread of its own.
+    let hub_gone = Arc::new(AtomicBool::new(false));
+    let down = {
+        let (tx, hub_gone) = (Arc::clone(&tx), Arc::clone(&hub_gone));
+        thread::Builder::new()
+            .name(format!("hub-proxy-{id}"))
+            .spawn(move || {
+                while tx.close_deadline().is_none() {
+                    let sent = match receiver.recv() {
+                        WsRecv::Message(WsMessage::Text(t)) => tx.send(Message::text(t)),
+                        WsRecv::Message(WsMessage::Binary(b)) => tx.send(Message::binary(b)),
+                        WsRecv::Alive | WsRecv::Idle => Ok(()),
+                        WsRecv::Closed { code, reason } => {
+                            tx.close(wire_close_code(code), &reason);
+                            break;
+                        }
+                    };
+                    if sent.is_err() {
+                        tx.abort();
+                        break;
+                    }
+                }
+                hub_gone.store(true, Ordering::SeqCst);
+            })
+    };
+    let Ok(down) = down else {
+        sender.close(CLOSE_NORMAL);
+        tx.abort();
+        return;
+    };
+    // The page to the hub, here.
+    while tx.close_deadline().is_none() && !hub_gone.load(Ordering::SeqCst) {
+        let forwarded = match reader.read() {
+            Ok(Message::Text(t)) => sender.send(WsMessage::Text(t.as_str().to_owned())),
+            Ok(Message::Binary(b)) => sender.send(WsMessage::Binary(b.to_vec())),
+            Ok(Message::Close(frame)) => {
+                sender.close(wire_close_code(frame.as_ref().map(|f| u16::from(f.code))));
+                break;
+            }
+            Ok(_) => Ok(()),
+            Err(tungstenite::Error::Io(e)) if is_timeout(&e) && !reader.get_ref().is_broken() => {
+                Ok(())
+            }
+            Err(_) => break,
+        };
+        if forwarded.is_err() {
+            tx.close(CLOSE_KEEPALIVE, "the hub went away");
+            break;
+        }
+    }
+    sender.close(CLOSE_NORMAL);
+    if tx.close_deadline().is_none() {
+        tx.close(CLOSE_NORMAL, "");
+    }
+    if let Some(deadline) = tx.close_deadline()
+        && let Ok(mut raw) = reader.get_mut().raw_tcp().try_clone()
+    {
+        drain(&mut raw, deadline);
+    }
+    tx.abort();
+    let _ = down.join();
 }
 
 /// The sending half of a WebSocket. The writer thread sends through it once there is
@@ -3240,6 +3542,10 @@ impl Shared {
             "tls": self.policy.serves_tls(),
             "ws": WS_PATH,
             "devices": devices,
+            // -- WP SECWEB -- the hub's settings page shows the downgrade warning; a
+            // page of `uconsole web` reaches other hubs through the pinning proxy
+            "upstream_compat": self.policy.upstream_compat,
+            "proxy": self.proxy.is_some(),
         });
         if let (Some(tls), Some(map)) = (&self.tls, info.as_object_mut()) {
             let spki = guard(&tls.identity).pin().to_b64url();
@@ -3364,6 +3670,9 @@ impl Server {
                 .filter(|h| !h.is_empty())
                 .collect(),
             own_names: Mutex::new(None),
+            // -- WP SECWEB --
+            proxy: crate::proxy::enabled(config.bind, config.web)
+                .then(|| Arc::new(crate::proxy::Proxy::new(config.store_dir.clone()))),
         });
         let acceptor = {
             let shared = Arc::clone(&shared);

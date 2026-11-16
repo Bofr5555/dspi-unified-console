@@ -130,6 +130,15 @@ pub trait WsConnector: Send + Sync {
         let _ = (url, protocol, trust, handshake_within);
         Err(LinkError::TlsRefused { advertised: false })
     }
+
+    // -- WP SECWEB --
+    /// The socket under this connector does TLS itself, by the URL's scheme (the
+    /// browser's WebSocket: `wss://` is TLS checked by the browser's own trust, `ws://`
+    /// is not, and no key can be pinned). [`crate::client::LinkClient::connect_tls`]
+    /// then connects with [`Self::connect`] as the URL says, never trying TLS of its own.
+    fn tls_by_scheme(&self) -> bool {
+        false
+    }
 }
 
 // -- WP SECCORE --

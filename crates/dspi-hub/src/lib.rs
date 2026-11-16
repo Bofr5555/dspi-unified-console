@@ -94,6 +94,8 @@ pub mod api;
 pub mod tls_identity;
 // -- WP P2RS --
 pub mod rest;
+// -- WP SECWEB -- the `uconsole web` pinning proxy
+pub mod proxy;
 // -- WP P2AL -- device alarms
 pub mod device_alarms;
 // -- WP P2SC -- schedules (they run with feature `api`)
