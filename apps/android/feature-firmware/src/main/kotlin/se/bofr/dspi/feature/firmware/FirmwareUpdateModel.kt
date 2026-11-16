@@ -9,6 +9,7 @@ package se.bofr.dspi.feature.firmware
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import se.bofr.dspi.bridge.FirmwareLabel
 
 /** What will be written. */
 sealed class FirmwareSource {
@@ -44,6 +45,14 @@ class FirmwareUpdateModel(
     var source by mutableStateOf<FirmwareSource>(FirmwareSource.Bundled)
         private set
 
+    /**
+     * -- WP SECFIX -- The chosen local file is not a bundled image (the core's manifest):
+     * "Not a verified DSPi Console image" and why, shown with it. Null for the bundled
+     * release, or a file that is one byte for byte. Never a refusal.
+     */
+    var localLabel by mutableStateOf<FirmwareLabel?>(null)
+        private set
+
     /** Why the last chosen file was refused, null if it wasn't. */
     var localFileError by mutableStateOf<String?>(null)
         private set
@@ -68,12 +77,19 @@ class FirmwareUpdateModel(
 
     fun chooseBundled() {
         if (!canChangeSetup) return
-        if (apply(FirmwareSource.Bundled, useDrive, driveVolume)) localFileError = null
+        if (apply(FirmwareSource.Bundled, useDrive, driveVolume)) {
+            localFileError = null
+            localLabel = null // -- WP SECFIX --
+        }
     }
 
-    fun chooseLocal(image: FirmwareImage) {
+    /** [label]: [se.bofr.dspi.bridge.CoreTools.firmwareLabel] of [image] (-- WP SECFIX --). */
+    fun chooseLocal(image: FirmwareImage, label: FirmwareLabel? = FirmwareLabel.FALLBACK) {
         if (!canChangeSetup) return
-        if (apply(FirmwareSource.Local(image), useDrive, driveVolume)) localFileError = null
+        if (apply(FirmwareSource.Local(image), useDrive, driveVolume)) {
+            localFileError = null
+            localLabel = label
+        }
     }
 
     fun localFileRefused(reason: String) {

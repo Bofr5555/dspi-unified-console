@@ -410,7 +410,9 @@ pub(crate) mod link {
 
     // -- WP SECCORE --
     /// The session's encryption: JSON {ok, encrypted, hubKey, hubKeyNew,
-    /// credential}. `encrypted` false: show the "unencrypted" badge. `credential`:
+    /// credential, local}. `encrypted` false: show the "unencrypted" badge,
+    /// unless `local` (-- WP SECFIX --: the hub is this machine, a loopback
+    /// address; nothing crosses a network, so no badge). `credential`:
     /// store it when it differs from the stored one ("" without a token).
     /// Returns the length needed.
     #[unsafe(no_mangle)]
@@ -422,6 +424,7 @@ pub(crate) mod link {
                 "hubKey": s.hub_key,
                 "hubKeyNew": s.hub_key_new,
                 "credential": s.credential,
+                "local": s.local, // -- WP SECFIX --
             })))
         })
     }

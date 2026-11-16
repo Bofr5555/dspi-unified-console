@@ -106,6 +106,52 @@ fn wp_seccore_a_plaintext_hub_still_connects_unencrypted_with_v1() {
     assert_eq!(link_credential_hub_key(token), "");
 }
 
+// -- WP SECFIX --
+/// `local`: not encrypted, and the hub is this machine (127.0.0.1, ::1,
+/// localhost). The same hub at 127.0.0.2, a loopback-routed address outside
+/// the rule, is not local (unsecured), and an encrypted session is never local.
+#[test]
+fn wp_secfix_a_plaintext_hub_on_loopback_is_local() {
+    let hub = pin_hub();
+    assert_eq!(hub.addr().ip().to_string(), "127.0.0.1");
+    let core = DspiCore::new();
+    assert!(!core.link_security().local, "no session: nothing");
+    connect(&core, &hub, "").unwrap();
+    let sec = core.link_security();
+    assert!(!sec.encrypted && sec.local, "{sec:?}");
+    core.link_close();
+    // By name too
+    let by_name = hub.url().replace("127.0.0.1", "localhost");
+    core.link_connect(
+        by_name,
+        "wp-secfix".into(),
+        "test".into(),
+        String::new(),
+        String::new(),
+    )
+    .unwrap();
+    assert!(core.link_security().local);
+    core.link_close();
+
+    let off = FakeHub::start(HubConfig {
+        auth: Auth::Fixed(PIN.into()),
+        bind: "127.0.0.2:0".parse().unwrap(),
+        ..HubConfig::default()
+    })
+    .unwrap();
+    connect(&core, &off, "").unwrap();
+    let sec = core.link_security();
+    assert!(!sec.encrypted && !sec.local, "unsecured: {sec:?}");
+    core.link_close();
+
+    let key = FakeTlsKey::generate();
+    let tls = tls_hub(&key);
+    connect(&core, &tls, "").unwrap();
+    let sec = core.link_security();
+    assert!(sec.encrypted && !sec.local, "{sec:?}");
+    core.link_close();
+}
+
 #[test]
 fn wp_seccore_a_plaintext_hub_that_waits_on_the_hello_connects_after_the_try() {
     let hub = pin_hub();

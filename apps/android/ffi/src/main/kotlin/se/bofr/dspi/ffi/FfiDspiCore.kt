@@ -1978,6 +1978,7 @@ internal fun LinkAddress.toFfi() =
 internal fun se.bofr.dspi.ffi.uniffi.LinkSecurity.toDomain() =
     LinkSecurity(
         encrypted = encrypted,
+        local = local,
         hubKey = hubKey,
         hubKeyNew = hubKeyNew,
         credential = credential,
@@ -1986,6 +1987,7 @@ internal fun se.bofr.dspi.ffi.uniffi.LinkSecurity.toDomain() =
 internal fun LinkSecurity.toFfi() =
     se.bofr.dspi.ffi.uniffi.LinkSecurity(
         encrypted = encrypted,
+        local = local,
         hubKey = hubKey,
         hubKeyNew = hubKeyNew,
         credential = credential,

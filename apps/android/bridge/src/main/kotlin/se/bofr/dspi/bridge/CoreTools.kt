@@ -6,6 +6,7 @@ package se.bofr.dspi.bridge
 
 import se.bofr.dspi.core.AutoEqDatabaseInfo
 import se.bofr.dspi.core.AutoEqFetch
+import se.bofr.dspi.core.BundledFirmware
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.FirmwareGuardBoard
 import se.bofr.dspi.core.FirmwareGuardBoardSource
@@ -38,6 +39,15 @@ interface CoreTools {
      */
     fun autoeqUpdate(dbPath: String, url: String, fetch: AutoEqFetch): AutoEqDatabaseInfo
 
+    /**
+     * -- WP SECFIX -- The label of a firmware file the user picked (SECFWV): null when the
+     * core's manifest finds it is a bundled image byte for byte (`verify_bundled` with its
+     * file [name]), else "Not a verified DSPi Console image" and what that means, the core's
+     * notice row `firmware.not_verified`. Information, not a refusal. Hashes the image: call
+     * off the main thread. Without a core nothing can be verified, so the label shows.
+     */
+    fun firmwareLabel(image: ByteArray, name: String): FirmwareLabel? = FirmwareLabel.FALLBACK
+
     companion object {
         /** An unknown board: what the guard is given when nothing better is known. */
         val UNKNOWN_BOARD = FirmwareGuardBoard(requiredMv = 0, source = FirmwareGuardBoardSource.BOOTLOADER)
@@ -67,6 +77,18 @@ interface CoreTools {
     }
 }
 
+// -- WP SECFIX --
+/** [CoreTools.firmwareLabel]: the label and its explanation, in the core's words. */
+data class FirmwareLabel(val title: String, val text: String) {
+    companion object {
+        /** The notice row's key. */
+        const val NOTICE_KEY = "firmware.not_verified"
+
+        /** When the core cannot be asked: the row's title, no explanation. */
+        val FALLBACK = FirmwareLabel("Not a verified DSPi Console image", "")
+    }
+}
+
 internal class CoreToolsImpl(private val bridge: DspiBridgeImpl) : CoreTools {
     override suspend fun firmwareGuardBoard(): FirmwareGuardBoard =
         bridge.onFfi { runCatching { bridge.core.firmwareGuardBoard() }.getOrDefault(CoreTools.UNKNOWN_BOARD) }
@@ -83,6 +105,17 @@ internal class CoreToolsImpl(private val bridge: DspiBridgeImpl) : CoreTools {
 
     override fun autoeqUpdate(dbPath: String, url: String, fetch: AutoEqFetch): AutoEqDatabaseInfo =
         bridge.core.autoeqUpdate(dbPath, url, fetch)
+
+    // -- WP SECFIX --
+    // A failed call verifies nothing: the label shows
+    override fun firmwareLabel(image: ByteArray, name: String): FirmwareLabel? = runCatching {
+        if (bridge.core.verifyBundled(image.toWire(), name) == BundledFirmware.VERIFIED) {
+            null
+        } else {
+            val n = bridge.core.noticeForKey(FirmwareLabel.NOTICE_KEY, "")
+            if (n.key == FirmwareLabel.NOTICE_KEY) FirmwareLabel(n.title, "${n.reason} ${n.action}") else FirmwareLabel.FALLBACK
+        }
+    }.getOrDefault(FirmwareLabel.FALLBACK)
 
     private fun ByteArray.toWire(): List<Int> = List(size) { this[it].toInt() and 0xFF }
 }

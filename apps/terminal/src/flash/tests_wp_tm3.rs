@@ -301,10 +301,45 @@ fn file(bytes: Vec<u8>) -> Image {
     let info = uf2_inspect(bytes.clone());
     assert!(info.valid, "{}", info.problem);
     Image {
+        bundled: verify_bundled(bytes.clone(), "test.uf2".into()), // -- WP SECFIX --
         bytes,
         info,
         name: "test.uf2".into(),
     }
+}
+
+// -- WP SECFIX --
+/// A file of the user's is labelled "Not a verified DSPi Console image" (the
+/// core's row) and still flashes; the bundled image under its own name is not
+/// labelled.
+#[test]
+fn wp_secfix_a_user_file_is_labelled_not_verified_and_not_refused() {
+    let image = plain();
+    assert_eq!(image.bundled, BundledFirmware::NotBundled);
+    let label = image_label(&image).unwrap();
+    assert!(
+        label.starts_with("Not a verified DSPi Console image: "),
+        "{label}"
+    );
+    let mut world = Fake::new("secfix_label").answers(&["y"]);
+    assert_eq!(flash(&mut world, &image, &[]), exit::OK);
+    assert_eq!(
+        world.written(),
+        Some(image.bytes.clone()),
+        "written all the same"
+    );
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../desktop/qt/firmware");
+    let name = "DSPi-RP2350-v1.1.6.uf2";
+    let bytes = std::fs::read(root.join(name)).unwrap();
+    let bundled = Image {
+        bundled: verify_bundled(bytes.clone(), name.into()),
+        info: uf2_inspect(bytes.clone()),
+        bytes,
+        name: name.into(),
+    };
+    assert_eq!(bundled.bundled, BundledFirmware::Verified);
+    assert_eq!(image_label(&bundled), None);
 }
 
 /// An unstamped image, as every image is today.

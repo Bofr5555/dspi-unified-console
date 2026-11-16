@@ -549,7 +549,8 @@ WHILE IT RUNS, on a terminal, type:
     quit                      stop sharing
 
 Clients pair over TLS: compare the key's fingerprint shown with the PIN, or scan
-its QR code. With --tls off or --upstream-compat a PIN crosses the network in
+its QR code. The QR code and the pairing link (it holds the PIN) go only to a
+terminal, and to --json readers as pairLink; a log gets neither. With --tls off or --upstream-compat a PIN crosses the network in
 plain text: pair on a network you trust.
 Clients on the network cannot raise a unit's core voltage above 1.20 V;
 do that on this machine. Logs go to standard error (RUST_LOG).
@@ -1766,17 +1767,12 @@ fn begin_pairing(running: &Running, json: bool) -> Option<dspi_hub::auth::Pairin
                          plain text. Pair on a network you trust.)"
                     );
                 }
-                if let Some(link) = &link {
-                    if std::io::stdout().is_terminal()
-                        && let Some(lines) = pair_qr::lines(link)
-                    {
-                        println!("Scan to pair (the key comes with the PIN):");
-                        for line in lines {
-                            println!("{line}");
-                        }
-                    }
-                    println!("Pairing link: {link}");
-                }
+                // -- WP SECFIX -- the link (it carries the PIN and the key) only to a
+                // terminal; a log or a pipe gets the PIN line alone, `--json` the link
+                print!(
+                    "{}",
+                    pair_link_block(link.as_deref(), std::io::stdout().is_terminal())
+                );
                 println!("{PAIRED_ROLE_NOTE}");
             }
             Some(shown)
@@ -1786,6 +1782,26 @@ fn begin_pairing(running: &Running, json: bool) -> Option<dspi_hub::auth::Pairin
             None
         }
     }
+}
+
+// -- WP SECFIX --
+/// What follows the PIN line: on a `terminal`, the QR code (when the link fits
+/// one) and the link, each line ending in a newline; nothing otherwise (a log
+/// or a pipe keeps no link; `--json` readers have `pairLink`).
+fn pair_link_block(link: Option<&str>, terminal: bool) -> String {
+    let Some(link) = link.filter(|_| terminal) else {
+        return String::new();
+    };
+    let mut out = String::new();
+    if let Some(lines) = pair_qr::lines(link) {
+        out.push_str("Scan to pair (the key comes with the PIN):\n");
+        for line in lines {
+            out.push_str(&line);
+            out.push('\n');
+        }
+    }
+    out.push_str(&format!("Pairing link: {link}\n"));
+    out
 }
 
 // -- WP SECPAIR --
@@ -4425,6 +4441,25 @@ mod tests_wp_secpair {
         ] {
             assert!(matches!(parsed(bad), Err(Failure::Usage(_))), "{bad:?}");
         }
+    }
+
+    // -- WP SECFIX --
+    #[test]
+    fn wp_secfix_the_pairing_link_goes_only_to_a_terminal() {
+        let link = "dspi://pair?h=0b3e7c1e-1111-4222-8333-444455556666&a=hub.local:11915\
+                    &k=q83vEjRWeJCrze8SNFZ4kKvN7xI0VniQq83vEjRWeJA&p=482913";
+        assert_eq!(
+            pair_link_block(Some(link), false),
+            "",
+            "a log or a pipe: no link"
+        );
+        assert_eq!(pair_link_block(None, true), "", "TLS off: no link");
+        let shown = pair_link_block(Some(link), true);
+        assert!(
+            shown.contains(&format!("Pairing link: {link}\n")),
+            "{shown}"
+        );
+        assert!(shown.contains("Scan to pair"), "{shown}");
     }
 
     #[test]

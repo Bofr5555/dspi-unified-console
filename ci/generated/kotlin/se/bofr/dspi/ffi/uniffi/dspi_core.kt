@@ -32660,6 +32660,14 @@ data class LinkSecurity (
      */
     var `encrypted`: kotlin.Boolean, 
     /**
+     * Not encrypted, but the hub is this machine (`localhost`, a loopback
+     * address: `dspi_link::address::is_loopback_host`): nothing crosses a
+     * network, so it is not shown as unsecured. Always false when
+     * `encrypted`. The three cases: `encrypted`, `local`, neither
+     * (unsecured: the red bar and " (unsecured)").
+     */
+    var `local`: kotlin.Boolean, 
+    /**
      * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
      */
     var `hubKey`: kotlin.String, 
@@ -32685,6 +32693,7 @@ public object FfiConverterTypeLinkSecurity: FfiConverterRustBuffer<LinkSecurity>
     override fun read(buf: ByteBuffer): LinkSecurity {
         return LinkSecurity(
             FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
@@ -32693,6 +32702,7 @@ public object FfiConverterTypeLinkSecurity: FfiConverterRustBuffer<LinkSecurity>
 
     override fun allocationSize(value: LinkSecurity) = (
             FfiConverterBoolean.allocationSize(value.`encrypted`) +
+            FfiConverterBoolean.allocationSize(value.`local`) +
             FfiConverterString.allocationSize(value.`hubKey`) +
             FfiConverterBoolean.allocationSize(value.`hubKeyNew`) +
             FfiConverterString.allocationSize(value.`credential`)
@@ -32700,6 +32710,7 @@ public object FfiConverterTypeLinkSecurity: FfiConverterRustBuffer<LinkSecurity>
 
     override fun write(value: LinkSecurity, buf: ByteBuffer) {
             FfiConverterBoolean.write(value.`encrypted`, buf)
+            FfiConverterBoolean.write(value.`local`, buf)
             FfiConverterString.write(value.`hubKey`, buf)
             FfiConverterBoolean.write(value.`hubKeyNew`, buf)
             FfiConverterString.write(value.`credential`, buf)

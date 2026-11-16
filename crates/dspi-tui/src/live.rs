@@ -2830,7 +2830,7 @@ impl Live {
         let target = target.pinned(&self.state.caps.serial);
         self.shell.model.via = target.via();
         // -- WP SECTM -- a hub session without TLS: the badge, and once why
-        let unsecured = matches!(&target, Target::Link(l) if l.encrypted == Some(false));
+        let unsecured = matches!(&target, Target::Link(l) if l.unsecured()); // -- WP SECFIX -- not on loopback
         if unsecured && !self.shell.model.link_unsecured {
             let words = connect::unsecured_words();
             self.note(format!("{} {}", words.info, words.action));
@@ -7559,6 +7559,22 @@ mod tests_wp_sectm {
         }
         let (live, _, _) = on(&Target::Demo, 140);
         assert!(!live.shell.model.link_unsecured);
+    }
+
+    // -- WP SECFIX --
+    #[test]
+    fn wp_secfix_a_plaintext_session_on_loopback_has_no_badge() {
+        for host in ["localhost", "127.0.0.1", "::1"] {
+            let t = Target::Link(LinkTarget {
+                encrypted: Some(false),
+                ..LinkTarget::parse(host).unwrap()
+            });
+            let (live, top, _) = on(&t, 140);
+            assert!(!live.shell.model.link_unsecured, "{host}");
+            assert!(!top.contains("unsecured"), "{host}: {top}");
+            let status = live.shell.model.status.clone().unwrap_or_default();
+            assert!(!status.contains("VPN"), "no explanation either: {status}");
+        }
     }
 
     #[test]

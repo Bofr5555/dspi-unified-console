@@ -2355,6 +2355,10 @@ Do you wish to proceed?</source>
 <context>
     <name>FirmwareController</name>
     <message>
+        <source>Not a verified DSPi Console image</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>unknown</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5175,6 +5179,18 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>That is not a pairing link from a DSPi hub. Open the hub&apos;s pairing screen again, or type its address.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>That is not a pairing link from a DSPi hub.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This hub did not present the key in the pairing link, so nothing was sent to it. Check that the link is from this hub&apos;s pairing screen.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The hub did not answer.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6868,6 +6884,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>This connection is not encrypted (%1): the PIN crosses the network as plain text.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The PIN comes from the pairing link. Pair if this is your hub and the key matches.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

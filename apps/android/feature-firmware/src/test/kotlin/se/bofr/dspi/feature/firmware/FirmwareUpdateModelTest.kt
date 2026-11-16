@@ -65,11 +65,28 @@ class FirmwareUpdateModelTest {
         val custom = FirmwareImage(BootloaderBoard.Chip.RP2350, "DSPi-1v20.uf2", null, TestUf2.image(4), isBundled = false)
         m.chooseLocal(custom)
         assertEquals("DSPi-1v20.uf2", m.imageLabel)
+        // -- WP SECFIX -- labelled not verified (the default: nothing verified it), and not refused
+        assertEquals(se.bofr.dspi.bridge.FirmwareLabel.FALLBACK, m.localLabel)
         m.start(deviceConnected = false) {}
         advanceUntilIdle()
         assertEquals(listOf(board to custom), picoboot.written)
         // No version to compare: the device returning is the success.
         assertEquals(FirmwareInstallState.Verified(FirmwareVersion(9, 9, 9)), m.installer.state.value)
+    }
+
+    // -- WP SECFIX --
+    @Test fun wpSecfixTheNotVerifiedLabelGoesWithTheLocalFile() = runTest {
+        val m = model()
+        val label = se.bofr.dspi.bridge.FirmwareLabel("Not a verified DSPi Console image", "Why.")
+        m.chooseLocal(FirmwareImage(null, "mine.uf2", null, TestUf2.image(1), false), label)
+        assertEquals(label, m.localLabel)
+        assertEquals(null, m.localFileError)
+        m.chooseLocal(FirmwareImage(null, "DSPi-RP2350-v1.1.6.uf2", null, TestUf2.image(1), false), null)
+        assertEquals("a verified copy: no label", null, m.localLabel)
+        m.chooseLocal(FirmwareImage(null, "mine.uf2", null, TestUf2.image(1), false), label)
+        m.chooseBundled()
+        assertEquals(FirmwareSource.Bundled, m.source)
+        assertEquals(null, m.localLabel)
     }
 
     @Test fun setupIsFrozenOnceCommitted() = runTest {

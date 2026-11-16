@@ -196,6 +196,12 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 assert!(has_row(family), "{family}");
                 continue;
             }
+            // -- WP SECFIX -- the label of a firmware file that is not a
+            // bundled one: no error makes this key, the clients ask for it
+            if family == "firmware" {
+                assert_eq!(n.key, crate::firmware_manifest::NOTICE_NOT_VERIFIED);
+                continue;
+            }
             // -- WP P2CC2 -- the hub's alarms: no error makes these keys,
             // `hub_alarm_notice` answers them by the alarm's code
             if family == crate::hub_server::NOTICE_ALARM_FAMILY {

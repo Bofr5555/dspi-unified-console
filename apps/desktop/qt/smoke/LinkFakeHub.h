@@ -22,11 +22,13 @@ namespace linksmoke {
 // One dspi-link-fakehub process, with its faults on stdin
 class FakeHubProcess {
 public:
-    bool start(const QStringList &args) {
+    // -- WP SECFIX -- `bind`: 127.0.0.2:0 for a hub that is not "local" (only
+    // 127.0.0.1, ::1 and localhost are), so a plaintext session is unsecured
+    bool start(const QStringList &args, const QString &bind = QStringLiteral("127.0.0.1:0")) {
         const QString binary = qEnvironmentVariable("DSPI_SMOKE_FAKEHUB");
         if (binary.isEmpty()) return false;
         m_proc.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-        m_proc.start(binary, QStringList { "--bind", "127.0.0.1:0" } + args);
+        m_proc.start(binary, QStringList { "--bind", bind } + args);
         if (!m_proc.waitForStarted(5000) || !m_proc.waitForReadyRead(5000)) return false;
         // fake DSPi Link hub "NAME" (kind) on ADDR id ID auth AUTH
         const QString line = QString::fromUtf8(m_proc.readLine());

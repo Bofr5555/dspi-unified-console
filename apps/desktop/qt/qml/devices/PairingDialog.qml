@@ -11,6 +11,10 @@ import UConsole
 // -- WP SECQT -- Over TLS it shows the key the hub presented, to compare with
 // the one the hub shows beside its PIN; the pairing pins that key. Without
 // TLS it says the PIN crosses the network unencrypted, in red and in words.
+// -- WP SECFIX -- After a dspi://pair link (LinkController.openPairLink) the
+// link's PIN is filled in: the hub's name and key are on screen, and Pair is
+// the user's yes. A hub on this machine (LinkController.local) is not
+// unsecured: no red line.
 Dialog {
     id: dialog
     objectName: "PairingDialog"
@@ -27,7 +31,7 @@ Dialog {
 
     onAskedChanged: asked ? open() : close()
     Component.onCompleted: if (asked) open()
-    onAboutToShow: pin.text = ""
+    onAboutToShow: pin.text = LinkController.pairLinkPin   // -- WP SECFIX -- "" but after a pairing link
     onOpened: pin.forceActiveFocus()
     onRejected: if (asked) LinkController.closeSession()
 
@@ -143,6 +147,16 @@ Dialog {
             UnsecuredInfoButton {
                 objectName: "PairingDialog.unsecuredInfo"
             }
+        }
+        // -- WP SECFIX -- the PIN came with a pairing link: say so, and what Pair means
+        Text {
+            objectName: "PairingDialog.fromLink"
+            Layout.fillWidth: true
+            visible: LinkController.pairLinkPin.length > 0
+            text: qsTr("The PIN comes from the pairing link. Pair if this is your hub and the key matches.")
+            font: Theme.fontSmall
+            color: Theme.textMuted
+            wrapMode: Text.Wrap
         }
         TextField {
             id: pin

@@ -157,6 +157,30 @@ ToolWindow {
                     color: Theme.warning
                     wrapMode: Text.Wrap
                 }
+                // -- WP SECFIX -- a file that is not this Console's own image (the
+                // core's manifest): labelled, in words, and still allowed
+                ColumnLayout {
+                    objectName: "FirmwareWindow.unverified"
+                    Layout.fillWidth: true
+                    visible: window.fw.unverifiedLabel.length > 0
+                    spacing: 2
+                    Text {
+                        objectName: "FirmwareWindow.unverifiedLabel"
+                        Layout.fillWidth: true
+                        text: window.fw.unverifiedLabel
+                        font: Qt.font({ pixelSize: 13, weight: Font.DemiBold })
+                        color: Theme.text
+                        wrapMode: Text.Wrap
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: text.length > 0
+                        text: window.fw.unverifiedText
+                        font: Theme.fontSmall
+                        color: Theme.textMuted
+                        wrapMode: Text.Wrap
+                    }
+                }
                 RowLayout {
                     objectName: "FirmwareWindow.downgradeNote"
                     Layout.fillWidth: true

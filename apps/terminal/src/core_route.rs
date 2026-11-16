@@ -320,7 +320,8 @@ fn dlink_attempt(
     let mut paired = false;
     if hello.needs_pairing {
         let security = core.link_security();
-        let label = connect::pairing_label(&hub, security.encrypted, &security.hub_key);
+        let label =
+            connect::pairing_label(&hub, security.encrypted, security.local, &security.hub_key);
         let given = match pair_link {
             Some(hint) => {
                 if let Err(e) = connect::confirm_pair_link(pin, &hub, &hint.hub_key) {
@@ -1947,6 +1948,10 @@ mod tests_wp_sectm {
     fn pin_hub() -> FakeHub {
         FakeHub::start(HubConfig {
             auth: Auth::Fixed(PIN.into()),
+            // -- WP SECFIX -- off the "local" rule's addresses (127.0.0.1, ::1,
+            // localhost), still on this machine: a plaintext session here is
+            // unsecured, as on a LAN
+            bind: "127.0.0.2:0".parse().unwrap(),
             ..HubConfig::default()
         })
         .unwrap()
@@ -2014,6 +2019,7 @@ mod tests_wp_sectm {
         let person = Person::new(Some(PIN), None);
         dlink_session(&core, l, &person).unwrap();
         assert!(!core.link_security().encrypted);
+        assert!(!core.link_security().local, "127.0.0.2: not local"); // -- WP SECFIX --
         let mut v = serde_json::json!({ "via": "Link h" });
         crate::pro::link_security_into(&mut v, &core.link_security());
         assert_eq!(v["via"], "Link h (unsecured)");
@@ -2045,6 +2051,34 @@ mod tests_wp_sectm {
             "{notes:?}"
         );
         key
+    }
+
+    // -- WP SECFIX --
+    /// A plaintext hub on loopback through the core: `local`, so neither the
+    /// PIN prompt nor the status says "(unsecured)", and `link.local` says
+    /// why; the same hub off loopback is unsecured (`pinned` above).
+    #[test]
+    fn wp_secfix_core_a_plaintext_hub_on_loopback_is_local() {
+        let hub = FakeHub::start(HubConfig {
+            auth: Auth::Fixed(PIN.into()),
+            ..HubConfig::default()
+        })
+        .unwrap();
+        assert_eq!(hub.addr().ip().to_string(), "127.0.0.1");
+        let l = link(&hub, "secfix_local");
+        let core = DspiCore::new();
+        let person = Person::new(Some(PIN), None);
+        dlink_session(&core, &l, &person).unwrap();
+        let security = core.link_security();
+        assert!(!security.encrypted && security.local, "{security:?}");
+        let mut v = serde_json::json!({ "via": "Link h" });
+        crate::pro::link_security_into(&mut v, &security);
+        assert_eq!(v["via"], "Link h");
+        assert_eq!(v["link"]["local"], true);
+        assert_eq!(v["link"]["encrypted"], false);
+        let asked = person.asked.lock().unwrap().clone();
+        assert!(asked.iter().all(|a| !a.contains("unsecured")), "{asked:?}");
+        core.link_close();
     }
 
     #[test]

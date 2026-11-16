@@ -48,6 +48,13 @@ use crate::records::Uf2Info;
 /// The manifest, as `tools/firmware_manifest.py` writes it.
 const MANIFEST_JSON: &str = include_str!("../../../firmware/manifest.json");
 
+// -- WP SECFIX --
+/// The notice row of the label every client shows for a firmware file that is
+/// not [`BundledFirmware::Verified`] (a file the user picked): its title is
+/// the label, "Not a verified DSPi Console image"; the reason and action say
+/// what that means. Information, not a refusal.
+pub const NOTICE_NOT_VERIFIED: &str = "firmware.not_verified";
+
 /// [`verify_bundled`]'s answer: is this the firmware image the app bundles?
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
@@ -374,5 +381,17 @@ mod tests_wp_secfwv {
             verify_bundled(image, RP2350.to_lowercase()),
             BundledFirmware::NotBundled
         );
+    }
+
+    // -- WP SECFIX --
+    /// The clients' label for a picked file: one row of the core's notice
+    /// table, information (never a refusal), the plan's words.
+    #[test]
+    fn wp_secfix_the_not_verified_label_is_one_notice_row() {
+        let n = crate::notice_for_key(NOTICE_NOT_VERIFIED.into(), String::new());
+        assert_eq!(n.key, NOTICE_NOT_VERIFIED);
+        assert_eq!(n.kind, crate::NoticeKind::Info);
+        assert_eq!(n.title, "Not a verified DSPi Console image");
+        assert!(!n.reason.is_empty() && !n.action.is_empty());
     }
 }

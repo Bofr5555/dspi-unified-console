@@ -1,16 +1,16 @@
 //! -- WP SECPAIR -- The pairing link as a QR code in Unicode blocks (PLAN-SEC 4.3), for
-//! `uconsole hub`'s pairing line: a phone scans `dspi://pair?h=&a=&k=&p=`, so the hub's
+//! `uconsole hub`'s pairing line: a QR scanner reads `dspi://pair?h=&a=&k=&p=`, so the hub's
 //! key reaches it out of band with the PIN, and pairing by it cannot be relayed.
 //!
 //! Two modules per character cell (`▀`, `▄`, `█`, space), dark on an explicit light
-//! background (ANSI), so it scans on a dark terminal too, with a quiet zone of
-//! [`QUIET`] modules. Only for a terminal: a log or `--json` gets the link instead.
+//! background (ANSI), so it stands out on a dark terminal too, with the standard's
+//! quiet zone of [`QUIET`] modules. Only for a terminal (-- WP SECFIX --: the link itself too; `--json`
+//! carries the link, and a log gets neither).
 
 use qrcodegen::{QrCode, QrCodeEcc};
 
-/// Light modules around the code. The standard asks for 4; 2 scans with every phone
-/// camera tried and keeps the code on an 80x24 terminal.
-const QUIET: i32 = 2;
+/// Light modules around the code: the quiet zone the standard asks for (-- WP SECFIX --).
+const QUIET: i32 = 4;
 /// Black on bright white, then back to the terminal's colours.
 const START: &str = "\x1b[30;107m";
 const END: &str = "\x1b[0m";

@@ -274,7 +274,8 @@ fun remoteStrip(s: LinkSessionState, lockNotice: Boolean = false, wording: LinkW
 // -- WP SECAN --
 /**
  * The owner's rule (2026-11-15): while the app is on a hub over an unencrypted connection
- * ([HubSecurity.encrypted] false), the bar says so: red, " (unsecured)" appended. Only the
+ * ([HubSecurity.unsecured]: not encrypted, and not this device's own loopback, -- WP SECFIX --),
+ * the bar says so: red, " (unsecured)" appended. Only the
  * states with a live hub connection (the PIN prompt, the device choice, waiting for a
  * board, connected); a lost or failed connection has its own banner.
  */
@@ -288,7 +289,8 @@ fun ConnectionStrip.Remote.secured(
         s is LinkSessionState.WaitingForDevice ||
         s is LinkSessionState.Connected
     val hub = s.hub ?: return this
-    if (!live || security == null || security.encrypted || !security.hubId.equals(hub.id, ignoreCase = true)) return this
+    // -- WP SECFIX -- a hub on this device is local: not unsecured
+    if (!live || security == null || !security.unsecured || !security.hubId.equals(hub.id, ignoreCase = true)) return this
     val suffix = wording.suffix()
     return copy(text = text + suffix, unsecured = true, suffix = suffix)
 }

@@ -62,6 +62,7 @@ bool unreachable(const QString &code) {
 struct LinkController::Security {
     bool read = false;   // the call answered
     bool encrypted = false;
+    bool local = false;   // -- WP SECFIX --
     bool hubKeyNew = false;
     QString hubKey, credential;
 };
@@ -300,6 +301,8 @@ void LinkController::applyHello(const QJsonObject &hello) {
 // ---- Calls -------------------------------------------------------------------
 
 bool LinkController::connectToAddress(const QString &address, const QString &expectedHubId) {
+    // -- WP SECFIX -- a pasted pairing link
+    if (address.trimmed().startsWith(QLatin1String("dspi:"), Qt::CaseInsensitive)) return openPairLink(address);
     const QByteArray text = address.trimmed().toUtf8();
     const QJsonObject parsed = readObject([&](char *b, uint32_t n) { return dspi_link_parse_address(text.constData(), b, n); });
     if (!isOk(parsed)) {
@@ -322,10 +325,41 @@ void LinkController::connectToHub(const QString &url, const QString &expectedHub
     dial(url, expectedHubId, tlsAdvertised, true);
 }
 
+// -- WP SECFIX -- The core reads the link (never this code): its errors name
+// no part of it, so neither the PIN nor the key reaches errorText or a log
+bool LinkController::openPairLink(const QString &text) {
+    const QByteArray t = text.trimmed().toUtf8();
+    const QJsonObject link = readObject([&](char *b, uint32_t n) { return dspi_link_parse_pair_link(t.constData(), b, n); });
+    if (!isOk(link)) {
+        setError(QStringLiteral("invalid"), tr("That is not a pairing link from a DSPi hub. Open the hub's pairing "
+                                               "screen again, or type its address."));
+        return false;
+    }
+    const QString url = str(link, "url"), hubId = str(link, "hubId"), credential = str(link, "credential");
+    if (url.isEmpty() || hubId.isEmpty() || credential.isEmpty()) {
+        setError(QStringLiteral("invalid"), tr("That is not a pairing link from a DSPi hub."));
+        return false;
+    }
+    dial(url, hubId, false, false, credential);
+    setPairLinkPin(str(link, "pin"));
+    return true;
+}
+
+void LinkController::setPairLinkPin(const QString &pin) {
+    if (pin == m_linkPin) return;
+    m_linkPin = pin;
+    emit pairLinkChanged();
+}
+
 // -- WP SECQT -- `useStored` false: no credential goes out (rePair), so the hub
 // asks for its PIN and the prompt shows the key it presents
-void LinkController::dial(const QString &url, const QString &expectedHubId, bool tlsAdvertised, bool useStored) {
+void LinkController::dial(const QString &url, const QString &expectedHubId, bool tlsAdvertised, bool useStored,
+                          const QString &credential) {
     m_holdEnd = false;
+    // -- WP SECFIX -- a link's PIN belongs to that link's dial only
+    setPairLinkPin(QString());
+    m_linkRefused = false;
+    const bool fromLink = !credential.isEmpty();
     const unsigned generation = ++m_generation;
     m_closeWanted = false;
     setError(QString(), QString());
@@ -334,7 +368,7 @@ void LinkController::dial(const QString &url, const QString &expectedHubId, bool
     m_lastExpected = expectedHubId;
     m_lastTls = tlsAdvertised;
     const QByteArray u = url.toUtf8(), name = clientName(), version = AppIdentity::version().toUtf8();
-    post([this, generation, u, name, version, expectedHubId, tlsAdvertised, useStored] {
+    post([this, generation, u, name, version, expectedHubId, tlsAdvertised, useStored, credential, fromLink] {
         FfiCore *c = m_core;
         const auto dial = [&](const QString &token, const QString &expected) {
             const QByteArray t = token.toUtf8(), e = expected.toUtf8();
@@ -343,7 +377,9 @@ void LinkController::dial(const QString &url, const QString &expectedHubId, bool
                                                     t.constData(), e.constData(), tlsAdvertised, b, n);
             });
         };
-        QString used = expectedHubId.isEmpty() || !useStored ? QString() : m_store->load(expectedHubId);
+        QString used = fromLink ? credential   // -- WP SECFIX --
+                       : expectedHubId.isEmpty() || !useStored ? QString()
+                                                               : m_store->load(expectedHubId);
         QString dialledFor = expectedHubId;
         QJsonObject hello = dial(used, expectedHubId);
         // Dialled by address: the hub has named itself now, so a token stored
@@ -379,7 +415,7 @@ void LinkController::dial(const QString &url, const QString &expectedHubId, bool
         const Security security = ok ? readSecurity(c) : Security{};
         QMetaObject::invokeMethod(
             this,
-            [this, hello, ok, expectedHubId, used, security, dialledFor] {
+            [this, hello, ok, expectedHubId, used, security, dialledFor, fromLink] {
                 track(-1);
                 if (ok) {
                     applyHello(hello);
@@ -393,9 +429,18 @@ void LinkController::dial(const QString &url, const QString &expectedHubId, bool
                     if (hello.value(QLatin1String("tokenRefused")).toBool()) emit tokensChanged(m_hubId);
                 } else {
                     m_failedHubId = dialledFor;   // -- WP SECQT --
+                    if (fromLink) setPairLinkPin(QString());   // -- WP SECFIX -- the link is spent
                     const QString code = str(hello, "code");
-                    setError(code.isEmpty() ? QStringLiteral("io") : code,
-                             str(hello, "error").isEmpty() ? tr("The hub did not answer.") : str(hello, "error"));
+                    // -- WP SECFIX -- the link's key was not met: nothing went out,
+                    // and pairing again would not be the answer
+                    if (fromLink && code.startsWith(QLatin1String("hub_key"))) {
+                        m_linkRefused = true;
+                        setError(code, tr("This hub did not present the key in the pairing link, so nothing was sent "
+                                          "to it. Check that the link is from this hub's pairing screen."));
+                    } else {
+                        setError(code.isEmpty() ? QStringLiteral("io") : code,
+                                 str(hello, "error").isEmpty() ? tr("The hub did not answer.") : str(hello, "error"));
+                    }
                     if (unreachable(m_errorCode)) emit dialFailed(expectedHubId, m_errorCode);
                 }
                 refreshStatus();
@@ -420,6 +465,7 @@ void LinkController::pair(const QString &pin) {
                 track(-1);
                 if (isOk(reply)) {
                     setError(QString(), QString());
+                    setPairLinkPin(QString());   // -- WP SECFIX -- spent
                     // -- WP SECQT -- the credential, pinned when the pairing ran
                     // over TLS; the key was on the prompt
                     m_noticedKey = m_hubKey;
@@ -526,6 +572,7 @@ void LinkController::afterBind(const QString &serial) {
 
 void LinkController::closeSession() {
     m_holdEnd = false;
+    setPairLinkPin(QString());   // -- WP SECFIX --
     ++m_generation;
     m_closeWanted = true;
     dspi_link_close(m_core);   // returns within about 100 ms, also during a dial
@@ -536,6 +583,7 @@ void LinkController::closeSession() {
 
 void LinkController::leaveForLocal() {
     m_holdEnd = false;
+    setPairLinkPin(QString());   // -- WP SECFIX --
     ++m_generation;
     m_closeWanted = true;
     dspi_link_close(m_core);
@@ -583,6 +631,7 @@ LinkController::Security LinkController::readSecurity(FfiCore *core) {
     Security s;
     s.read = isOk(o);
     s.encrypted = o.value(QLatin1String("encrypted")).toBool();
+    s.local = o.value(QLatin1String("local")).toBool();   // -- WP SECFIX --
     s.hubKeyNew = o.value(QLatin1String("hubKeyNew")).toBool();
     s.hubKey = str(o, "hubKey");
     s.credential = str(o, "credential");
@@ -591,9 +640,10 @@ LinkController::Security LinkController::readSecurity(FfiCore *core) {
 
 void LinkController::applySecurity(const Security &s) {
     if (!s.read) return;
-    const bool changed = !m_securityKnown || s.encrypted != m_encrypted || s.hubKey != m_hubKey;
+    const bool changed = !m_securityKnown || s.encrypted != m_encrypted || s.hubKey != m_hubKey || s.local != m_local;
     m_securityKnown = true;
     m_encrypted = s.encrypted;
+    m_local = s.local;   // -- WP SECFIX --
     m_hubKey = s.hubKey;
     if (changed) emit securityChanged();
     updateUnsecured();
@@ -613,16 +663,18 @@ void LinkController::applySecurity(const Security &s) {
 }
 
 void LinkController::clearSecurity() {
-    if (!m_securityKnown && m_hubKey.isEmpty() && !m_encrypted) return;
+    if (!m_securityKnown && m_hubKey.isEmpty() && !m_encrypted && !m_local) return;
     m_securityKnown = false;
     m_encrypted = false;
+    m_local = false;   // -- WP SECFIX --
     m_hubKey.clear();
     emit securityChanged();
     updateUnsecured();
 }
 
 void LinkController::updateUnsecured() {
-    const bool now = inSession() && m_securityKnown && !m_encrypted;
+    // -- WP SECFIX -- a hub on this machine is local, not unsecured
+    const bool now = inSession() && m_securityKnown && !m_encrypted && !m_local;
     if (now == m_unsecured) return;
     m_unsecured = now;
     emit securityChanged();
