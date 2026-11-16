@@ -124,6 +124,20 @@ class HubAlarmsIdentifyWpP2anTest {
     @Test
     fun wpP2anARaisedAlarmShowsOnceAndIsAcknowledgedOnTheHub() {
         val core = FakeHubDspiCore()
+        // -- WP ANDFIX1 -- the alert and the notice line are written on main (the alarm's notice is read on the FFI thread)
+        val offMain = Collections.synchronizedList(mutableListOf<String>())
+        val observer = Snapshot.registerGlobalWriteObserver {
+            if (Looper.myLooper() != Looper.getMainLooper()) offMain += Thread.currentThread().name
+        }
+        try {
+            alarmShownOnceAndAcknowledged(core)
+        } finally {
+            observer.dispose()
+        }
+        assertEquals("Compose state written off the main thread", emptyList<String>(), offMain.toList())
+    }
+
+    private fun alarmShownOnceAndAcknowledged(core: FakeHubDspiCore) {
         val bridge = scaffold(core)
         val a = core.hubRaiseAlarm("device_restarted", severity = "critical", message = "watchdog")
         pumpUntil("alarm") { bridge.hubServer.alarms.value.any { it.id == a.id } }
