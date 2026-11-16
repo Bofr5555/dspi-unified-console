@@ -1452,6 +1452,44 @@ fn wp_p3ro_cancel_before_the_entry_stops_the_queue_and_after_it_is_conflict() {
     r.hub.stop();
 }
 
+// -- review p3d -- The hub's one rollout slot is free when a rollout's record says it
+// ended: a console that starts the next one the moment `fw.rollout.status` (or
+// `fw.rollout.changed`) shows the end is not answered `busy`. Before, the slot was freed
+// only after the end was written and announced, so a status read that waited on that
+// write was answered "ended" with the slot still taken.
+#[test]
+fn review_p3d_the_slot_is_free_when_the_record_has_ended() {
+    let (r, _admin) = ready("slot", "P3D-SLOT");
+    let hub = r.hub.handle();
+    let me = hub
+        .open_console_principal(Role::Admin, "P3D slot test")
+        .unwrap();
+    let ask = |msg: Value| -> Value {
+        serde_json::from_str(&hub.service_request(&me, &msg).expect("answered")).unwrap()
+    };
+    let start = json!({"t": "fw.rollout.start", "id": 1, "image": "dspi-1.1.7.uf2",
+        "serial": "P3D-SLOT", "while_live": true});
+    let mut v = ask(start.clone());
+    for round in 0..10 {
+        assert!(ok(&v), "round {round}: {v}");
+        let id = v["rollout"]["id"].as_str().unwrap().to_owned();
+        let begun = Instant::now();
+        // No pause between the reads: the next start follows the end as closely as a
+        // client can.
+        loop {
+            let st = ask(json!({"t": "fw.rollout.status", "id": 2, "rollout": id}));
+            if st["rollouts"][0]["state"] != "running" {
+                assert_eq!(st["rollouts"][0]["state"], "ok", "{st}");
+                break;
+            }
+            assert!(begun.elapsed() < WAIT, "rollout {id} did not end");
+        }
+        v = ask(start.clone());
+    }
+    assert!(ok(&v), "{v}");
+    r.hub.stop();
+}
+
 // ── The upload ──────────────────────────────────────────────────────────────
 
 // -- WP P3WRO -- (review p3c N2) a console whose middle chunk failed starts again at

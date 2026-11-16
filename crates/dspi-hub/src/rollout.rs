@@ -660,6 +660,36 @@ impl Shared {
         true
     }
 
+    // -- review p3d --
+    /// A rollout's worker ends: as [`Self::update`], and the hub's one slot is freed
+    /// under the same lock, so that a console which starts the next rollout the moment
+    /// it is told this one ended is not answered `busy`. The slot is freed whether or
+    /// not the record still ran (a cancelled one ended when it was cancelled; its
+    /// worker ends here).
+    fn end(&self, hub: &HubHandle, id: &str, f: impl FnOnce(&mut Record)) {
+        let record = {
+            let mut st = lock(&self.state);
+            let record = st
+                .records
+                .iter_mut()
+                .find(|r| r.id == id && r.state == "running")
+                .map(|r| {
+                    f(r);
+                    r.clone()
+                });
+            if st.running.as_ref().is_some_and(|r| r.id == id) {
+                st.running = None;
+            }
+            if record.is_some() {
+                self.persist_locked(&st);
+            }
+            record
+        };
+        if let Some(record) = record {
+            self.announce(hub, &record);
+        }
+    }
+
     /// Catch up with the health poll: who is silent.
     fn refresh_health(&self) {
         let messages = self.health.drain();
