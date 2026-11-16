@@ -5936,6 +5936,57 @@ data class OutputLabelInput(
 )
 
 /**
+ * A board in BOOTSEL mode with a PICOBOOT interface.
+ */
+data class BootDevice(
+    /**
+     * 0 RP2040 (`2E8A:0003`), 1 RP2350 (`2E8A:000F`), as `Uf2Info::platform`.
+     */
+    val platform: Int,
+    /**
+     * The boot ROM's USB serial. On an RP2350 it is the chip's unique id,
+     * which is the DSPi's serial; the RP2040's ROM reports a fixed string,
+     * so it is `None` there and only uniqueness identifies the board.
+     */
+    val serial: String?,
+    /**
+     * Where it is on the bus (`<bus>-<port>.<port>...`), stable across a
+     * re-enumeration on the same port.
+     */
+    val busLocation: String,
+)
+
+/**
+ * What a PICOBOOT flash did.
+ */
+data class FlashReport(
+    /**
+     * The target's platform.
+     */
+    val platform: Int,
+    /**
+     * The target's serial, as [`BootDevice::serial`].
+     */
+    val serial: String?,
+    /**
+     * The image's DSPi version (`Uf2Info::firmware_version`), "" if none.
+     */
+    val firmwareVersion: String,
+    /**
+     * 4 KiB sectors erased, written and read back.
+     */
+    val sectors: Long,
+    /**
+     * Bytes written (whole sectors).
+     */
+    val bytesWritten: Long,
+    /**
+     * How long it took, in ms.
+     */
+    val elapsedMs: Long,
+)
+
+/**
  * One function: its kind and, for the indexed kinds, which one.
  */
 data class PinFunction(

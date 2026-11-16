@@ -586,6 +586,62 @@ pub fn uf2_inspect(image: Vec<u8>) -> Uf2Info {
     inspect(&image)
 }
 
+// -- WP P3PB -- the image's flash pages, for the PICOBOOT writer (picoboot.rs)
+/// One 256-byte flash page of a checked image.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct Page {
+    /// Its flash address (in the XIP window, page-aligned).
+    pub(crate) addr: u32,
+    /// Its bytes.
+    pub(crate) data: [u8; PAGE_SIZE as usize],
+}
+
+impl std::fmt::Debug for Page {
+    // Never the image's bytes (PLAN-P3 section 3: no image bytes in logs).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Page(0x{:08x})", self.addr)
+    }
+}
+
+/// The flash pages of `image`, sorted by address, the RP2350-E10 block left
+/// out as [`uf2_inspect`] does (it is the ROM's drive-copy aid, not part of
+/// the image). Empty unless `info` is a valid inspection of these very bytes
+/// (its family and block count must match), so a caller cannot pair one
+/// image's verdict with another's pages.
+pub(crate) fn uf2_pages(info: &Uf2Info, image: &[u8]) -> Vec<Page> {
+    if !info.valid {
+        return Vec::new();
+    }
+    let Ok(checked) = validate(image) else {
+        return Vec::new();
+    };
+    if checked.family != info.family_id || checked.num_blocks != info.num_blocks {
+        return Vec::new();
+    }
+    checked
+        .pages
+        .iter()
+        .filter_map(|&(addr, data)| {
+            Some(Page {
+                addr,
+                data: data.try_into().ok()?,
+            })
+        })
+        .collect()
+}
+
+/// The XIP flash window of `platform` (`Uf2Info::platform`): `(start, end)`
+/// with `end` exclusive. `None` for an unknown platform.
+pub(crate) fn flash_window_of(platform: i8) -> Option<(u32, u32)> {
+    match platform {
+        PLATFORM_RP2040 | PLATFORM_RP2350 => {
+            Some((XIP_BASE, XIP_BASE.saturating_add(flash_window(platform))))
+        }
+        _ => None,
+    }
+}
+// -- end WP P3PB --
+
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// Whether the open device runs firmware `version`: the leading

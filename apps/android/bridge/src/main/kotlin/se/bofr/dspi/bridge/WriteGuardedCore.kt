@@ -1364,7 +1364,13 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "hubMqttStatus",
             "hubApiKeys",
             "hubApiKeyMint",
-            "hubApiKeyRevoke"
+            "hubApiKeyRevoke",
+            // -- WP P3PB -- the PICOBOOT writer: a board already in BOOTSEL, not
+            // the device (pass-through as flashConfirmed; the core takes a
+            // firmware_flash token and the guard first; Android has no bus, so
+            // the listing is empty and the flash answers Unsupported)
+            "picobootDevices",
+            "picobootFlashConfirmed"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

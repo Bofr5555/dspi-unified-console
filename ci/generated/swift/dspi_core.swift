@@ -4013,6 +4013,31 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func pasteChannel(clip: ChannelClip, ch: UInt8, options: ChannelPasteOptions) throws 
     
     /**
+     * Flash `image` into the boot ROM of `target` (one of
+     * [`picoboot_devices`]) over PICOBOOT, with no drive mounted (module
+     * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
+     * before the board entered BOOTSEL; the guard must say clear for it with
+     * nothing typed, so an image that would ask a person anything is
+     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * [`DspiCore::flash_confirmed`] does (mint it once the board is in
+     * BOOTSEL; it works with no device open), and the installer lock holds.
+     * Blocks for up to 60 s.
+     *
+     * `Ok` means every sector was written and read back identical and the
+     * reboot was acknowledged; the caller confirms by the DSPi coming back
+     * with the image's version. On an error after the first erase the board
+     * stays in BOOTSEL (nothing is retried).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] without a good token;
+     * [`DspiError::FirmwareGuardBlocked`] or [`DspiError::InvalidArgument`]
+     * for an image the guard does not clear, of another chip, or not
+     * firmware; [`DspiError::Unsupported`] where the bus cannot be reached;
+     * [`DspiError::Transfer`] naming the step for anything the transfer or
+     * the ROM did. In every error before the first command nothing was sent.
+     */
+    func picobootFlashConfirmed(image: Data, target: BootDevice, board: FirmwareGuardBoard, token: String?) throws  -> FlashReport
+    
+    /**
      * Whether `function` may move to `pin`: `None` when it may, else why
      * not (with the status the firmware would answer and, when another
      * function holds it, which). From the mirror: no device I/O. The pin
@@ -9865,6 +9890,40 @@ open func pasteChannel(clip: ChannelClip, ch: UInt8, options: ChannelPasteOption
         FfiConverterTypeChannelPasteOptions_lower(options),$0
     )
 }
+}
+    
+    /**
+     * Flash `image` into the boot ROM of `target` (one of
+     * [`picoboot_devices`]) over PICOBOOT, with no drive mounted (module
+     * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
+     * before the board entered BOOTSEL; the guard must say clear for it with
+     * nothing typed, so an image that would ask a person anything is
+     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * [`DspiCore::flash_confirmed`] does (mint it once the board is in
+     * BOOTSEL; it works with no device open), and the installer lock holds.
+     * Blocks for up to 60 s.
+     *
+     * `Ok` means every sector was written and read back identical and the
+     * reboot was acknowledged; the caller confirms by the DSPi coming back
+     * with the image's version. On an error after the first erase the board
+     * stays in BOOTSEL (nothing is retried).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] without a good token;
+     * [`DspiError::FirmwareGuardBlocked`] or [`DspiError::InvalidArgument`]
+     * for an image the guard does not clear, of another chip, or not
+     * firmware; [`DspiError::Unsupported`] where the bus cannot be reached;
+     * [`DspiError::Transfer`] naming the step for anything the transfer or
+     * the ROM did. In every error before the first command nothing was sent.
+     */
+open func picobootFlashConfirmed(image: Data, target: BootDevice, board: FirmwareGuardBoard, token: String?)throws  -> FlashReport  {
+    return try  FfiConverterTypeFlashReport_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_picoboot_flash_confirmed(self.uniffiClonePointer(),
+        FfiConverterData.lower(image),
+        FfiConverterTypeBootDevice_lower(target),
+        FfiConverterTypeFirmwareGuardBoard_lower(board),
+        FfiConverterOptionString.lower(token),$0
+    )
+})
 }
     
     /**
@@ -20962,6 +21021,111 @@ public func FfiConverterTypeBiquadSection_lower(_ value: BiquadSection) -> RustB
 
 
 /**
+ * A board in BOOTSEL mode with a PICOBOOT interface.
+ */
+public struct BootDevice {
+    /**
+     * 0 RP2040 (`2E8A:0003`), 1 RP2350 (`2E8A:000F`), as `Uf2Info::platform`.
+     */
+    public var platform: Int8
+    /**
+     * The boot ROM's USB serial. On an RP2350 it is the chip's unique id,
+     * which is the DSPi's serial; the RP2040's ROM reports a fixed string,
+     * so it is `None` there and only uniqueness identifies the board.
+     */
+    public var serial: String?
+    /**
+     * Where it is on the bus (`<bus>-<port>.<port>...`), stable across a
+     * re-enumeration on the same port.
+     */
+    public var busLocation: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 0 RP2040 (`2E8A:0003`), 1 RP2350 (`2E8A:000F`), as `Uf2Info::platform`.
+         */platform: Int8, 
+        /**
+         * The boot ROM's USB serial. On an RP2350 it is the chip's unique id,
+         * which is the DSPi's serial; the RP2040's ROM reports a fixed string,
+         * so it is `None` there and only uniqueness identifies the board.
+         */serial: String?, 
+        /**
+         * Where it is on the bus (`<bus>-<port>.<port>...`), stable across a
+         * re-enumeration on the same port.
+         */busLocation: String) {
+        self.platform = platform
+        self.serial = serial
+        self.busLocation = busLocation
+    }
+}
+
+#if compiler(>=6)
+extension BootDevice: Sendable {}
+#endif
+
+
+extension BootDevice: Equatable, Hashable {
+    public static func ==(lhs: BootDevice, rhs: BootDevice) -> Bool {
+        if lhs.platform != rhs.platform {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.busLocation != rhs.busLocation {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(platform)
+        hasher.combine(serial)
+        hasher.combine(busLocation)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBootDevice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BootDevice {
+        return
+            try BootDevice(
+                platform: FfiConverterInt8.read(from: &buf), 
+                serial: FfiConverterOptionString.read(from: &buf), 
+                busLocation: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BootDevice, into buf: inout [UInt8]) {
+        FfiConverterInt8.write(value.platform, into: &buf)
+        FfiConverterOptionString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.busLocation, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBootDevice_lift(_ buf: RustBuffer) throws -> BootDevice {
+    return try FfiConverterTypeBootDevice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBootDevice_lower(_ value: BootDevice) -> RustBuffer {
+    return FfiConverterTypeBootDevice.lower(value)
+}
+
+
+/**
  * How many boards in bootloader mode are attached, per chip.
  */
 public struct BootloaderCounts {
@@ -25481,6 +25645,147 @@ public func FfiConverterTypeFirmwareGuardVerdict_lift(_ buf: RustBuffer) throws 
 #endif
 public func FfiConverterTypeFirmwareGuardVerdict_lower(_ value: FirmwareGuardVerdict) -> RustBuffer {
     return FfiConverterTypeFirmwareGuardVerdict.lower(value)
+}
+
+
+/**
+ * What a PICOBOOT flash did.
+ */
+public struct FlashReport {
+    /**
+     * The target's platform.
+     */
+    public var platform: Int8
+    /**
+     * The target's serial, as [`BootDevice::serial`].
+     */
+    public var serial: String?
+    /**
+     * The image's DSPi version (`Uf2Info::firmware_version`), "" if none.
+     */
+    public var firmwareVersion: String
+    /**
+     * 4 KiB sectors erased, written and read back.
+     */
+    public var sectors: UInt32
+    /**
+     * Bytes written (whole sectors).
+     */
+    public var bytesWritten: UInt64
+    /**
+     * How long it took, in ms.
+     */
+    public var elapsedMs: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The target's platform.
+         */platform: Int8, 
+        /**
+         * The target's serial, as [`BootDevice::serial`].
+         */serial: String?, 
+        /**
+         * The image's DSPi version (`Uf2Info::firmware_version`), "" if none.
+         */firmwareVersion: String, 
+        /**
+         * 4 KiB sectors erased, written and read back.
+         */sectors: UInt32, 
+        /**
+         * Bytes written (whole sectors).
+         */bytesWritten: UInt64, 
+        /**
+         * How long it took, in ms.
+         */elapsedMs: UInt64) {
+        self.platform = platform
+        self.serial = serial
+        self.firmwareVersion = firmwareVersion
+        self.sectors = sectors
+        self.bytesWritten = bytesWritten
+        self.elapsedMs = elapsedMs
+    }
+}
+
+#if compiler(>=6)
+extension FlashReport: Sendable {}
+#endif
+
+
+extension FlashReport: Equatable, Hashable {
+    public static func ==(lhs: FlashReport, rhs: FlashReport) -> Bool {
+        if lhs.platform != rhs.platform {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.firmwareVersion != rhs.firmwareVersion {
+            return false
+        }
+        if lhs.sectors != rhs.sectors {
+            return false
+        }
+        if lhs.bytesWritten != rhs.bytesWritten {
+            return false
+        }
+        if lhs.elapsedMs != rhs.elapsedMs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(platform)
+        hasher.combine(serial)
+        hasher.combine(firmwareVersion)
+        hasher.combine(sectors)
+        hasher.combine(bytesWritten)
+        hasher.combine(elapsedMs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFlashReport: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FlashReport {
+        return
+            try FlashReport(
+                platform: FfiConverterInt8.read(from: &buf), 
+                serial: FfiConverterOptionString.read(from: &buf), 
+                firmwareVersion: FfiConverterString.read(from: &buf), 
+                sectors: FfiConverterUInt32.read(from: &buf), 
+                bytesWritten: FfiConverterUInt64.read(from: &buf), 
+                elapsedMs: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FlashReport, into buf: inout [UInt8]) {
+        FfiConverterInt8.write(value.platform, into: &buf)
+        FfiConverterOptionString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.firmwareVersion, into: &buf)
+        FfiConverterUInt32.write(value.sectors, into: &buf)
+        FfiConverterUInt64.write(value.bytesWritten, into: &buf)
+        FfiConverterUInt64.write(value.elapsedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFlashReport_lift(_ buf: RustBuffer) throws -> FlashReport {
+    return try FfiConverterTypeFlashReport.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFlashReport_lower(_ value: FlashReport) -> RustBuffer {
+    return FfiConverterTypeFlashReport.lower(value)
 }
 
 
@@ -46386,6 +46691,31 @@ fileprivate struct FfiConverterSequenceTypeBiquadSection: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeBootDevice: FfiConverterRustBuffer {
+    typealias SwiftType = [BootDevice]
+
+    public static func write(_ value: [BootDevice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeBootDevice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [BootDevice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [BootDevice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeBootDevice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeBootloaderDrive: FfiConverterRustBuffer {
     typealias SwiftType = [BootloaderDrive]
 
@@ -48287,6 +48617,17 @@ public func outputLabelsFor(input: OutputLabelInput) -> [OutputLabel]  {
 })
 }
 /**
+ * Boards in BOOTSEL mode with a PICOBOOT interface (`2E8A:0003` RP2040,
+ * `2E8A:000F` RP2350). Empty where the bus cannot be enumerated (Android,
+ * and a build without the `usb` feature: iOS, the web).
+ */
+public func picobootDevices() -> [BootDevice]  {
+    return try!  FfiConverterSequenceTypeBootDevice.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_picoboot_devices($0
+    )
+})
+}
+/**
  * The shape of platform `platform_id` (`DspState::platform_id`), for laying
  * out pages before or without a device. A connected device's own counts are
  * in `DspState` (`num_input_channels`, `num_output_channels`); this is the
@@ -48624,6 +48965,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_output_labels_for() != 60813) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_picoboot_devices() != 58975) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_platform_shape() != 51628) {
@@ -49401,6 +49745,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_paste_channel() != 43676) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed() != 50736) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_pin_check() != 43599) {
