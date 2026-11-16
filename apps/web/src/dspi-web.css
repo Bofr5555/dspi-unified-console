@@ -1140,3 +1140,44 @@
 .dspi-web .hub-unencrypted { border-left: 4px solid var(--warn); }
 .dspi-web .hub-compat-warning { border: 2px solid var(--bad); }
 .dspi-web .hub-compat-warning h3 { color: var(--bad); margin-top: 0; }
+
+/* -- WP P3OV -- the Overview: a dense table of the outputs, a card per output where the session is narrow */
+.dspi-web .overview { container-type: inline-size; min-width: 0; }
+.dspi-web .overview h3 { margin: 0.25rem 0 0.5rem; }
+.dspi-web .overview h4 { margin: 0 0 0.25rem; font-size: 0.85rem; }
+.dspi-web .ov-kind { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+.dspi-web .ov-inputs { border: 1px solid var(--line); border-radius: 8px; padding: 0.35rem 0.6rem; background: var(--panel); margin-bottom: 0.6rem; }
+.dspi-web .ov-input-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.2rem 1rem; }
+.dspi-web .ov-input { display: grid; grid-template-columns: minmax(0, 7rem) minmax(4rem, 1fr); align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+.dspi-web .ov-input-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .ov-meter { position: relative; display: block; height: 0.5rem; min-width: 4rem; background: var(--line); border-radius: 3px; overflow: hidden; }
+.dspi-web .ov-meter-fill { display: block; height: 100%; background: var(--meter); }
+.dspi-web .ov-meter-hold { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--text, currentColor); opacity: 0.8; }
+.dspi-web .ov-meter.clip .ov-meter-fill { background: var(--bad); }
+.dspi-web .ov-meter.stale { opacity: 0.45; filter: grayscale(1); }
+.dspi-web .ov-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.dspi-web .ov-table th, .dspi-web .ov-table td { padding: 0.25rem 0.35rem; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.dspi-web .ov-table thead th { border-top: 0; font-size: 0.78rem; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.dspi-web .ov-name { font-weight: 600; min-width: 7rem; max-width: 12rem; overflow-wrap: anywhere; }
+.dspi-web .ov-state { color: var(--muted); font-weight: 400; font-size: 0.8rem; }
+.dspi-web .ov-off .ov-label { color: var(--muted); }
+.dspi-web .ov-routing { max-width: 14rem; }
+.dspi-web .ov-src { display: inline-block; margin-right: 0.5rem; white-space: nowrap; }
+.dspi-web .ov-src-gain, .dspi-web .ov-src-inv, .dspi-web .ov-none { color: var(--muted); }
+.dspi-web .ov-gain .value-field input { width: 5.2rem; height: 1.8rem; font-size: 0.85rem; }
+.dspi-web .ov-gain .value-field .step { height: 1.8rem; }
+.dspi-web .ov-delay, .dspi-web .ov-limit, .dspi-web .ov-gr { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dspi-web .ov-mute-btn { min-height: 0; padding: 0.1rem 0.5rem; }
+.dspi-web .ov-clip-on { color: var(--bad); font-weight: 700; }
+.dspi-web .ov-clip-off { color: var(--muted); }
+.dspi-web .ov-level { min-width: 5rem; width: 14%; }
+@container (max-width: 720px) {
+  .dspi-web .ov-table, .dspi-web .ov-table tbody, .dspi-web .ov-table tr, .dspi-web .ov-table th, .dspi-web .ov-table td { display: block; }
+  .dspi-web .ov-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .dspi-web .ov-table tbody { display: grid; gap: 0.5rem; }
+  .dspi-web .ov-table .ov-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.2rem 0.75rem; border: 1px solid var(--line); border-radius: 8px; padding: 0.4rem 0.6rem; background: var(--panel); }
+  .dspi-web .ov-table .ov-row > * { border-top: 0; padding: 0.1rem 0; min-width: 0; max-width: none; width: auto; }
+  .dspi-web .ov-row > .ov-name, .dspi-web .ov-row > .ov-routing, .dspi-web .ov-row > .ov-level { grid-column: 1 / -1; }
+  .dspi-web .ov-row > td::before { content: attr(data-label); display: block; font-size: 0.72rem; color: var(--muted); }
+  .dspi-web .ov-src { white-space: normal; }
+}

@@ -155,12 +155,13 @@ test("SW3: the mode is remembered per device, or for every device, Advanced by d
   assert.equal(loadMode(store, "S1"), "advanced");
   assert.equal(loadMode(null, "S1"), "advanced");
   // -- WP WB6H -- the effects after the matrix, in every mode; -- WP WB6I -- settings last
-  assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["main", "eq", "inputs", "matrix", "effects", "snapshots", "settings"]); // -- WP P1DCFIX -- recall and A/B only (-- WP WB6G -- Inputs after EQ)
+  // -- WP P3OV -- the Overview after the effects, in every mode
+  assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["main", "eq", "inputs", "matrix", "effects", "overview", "snapshots", "settings"]); // -- WP P1DCFIX -- recall and A/B only (-- WP WB6G -- Inputs after EQ)
   // -- WP P1WB1 -- Snapshots and Files in Advanced and Installer
   // -- WP WB6J -- the tool screens before the event log; -- WP WB6L -- Control Surfaces after Files; -- WP WB6H -- Effects; -- WP WB6I -- Settings last
-  assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "main", "eq", "inputs", "matrix", "effects", "snapshots", "files", "surfaces", "generator", "analyser", "stats", "monitor", "events", "settings"]);
+  assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "main", "eq", "inputs", "matrix", "effects", "overview", "snapshots", "files", "surfaces", "generator", "analyser", "stats", "monitor", "events", "settings"]);
   // -- WP P1WB2 -- the Installer page last, in the Installer mode
-  assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "inputs", "matrix", "effects", "snapshots", "files", "surfaces", "system", "generator", "analyser", "stats", "monitor", "events", "installer", "settings"]);
+  assert.deepEqual(screensFor("installer", false).map((s) => s.id), ["main", "eq", "inputs", "matrix", "effects", "overview", "snapshots", "files", "surfaces", "system", "generator", "analyser", "stats", "monitor", "events", "installer", "settings"]);
 });
 
 test("SW3: words: results, ops, frames; the rail puts alarms on first, critical first", () => {

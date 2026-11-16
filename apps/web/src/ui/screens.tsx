@@ -66,6 +66,8 @@ import { hubSettingsShown, withHubSettings } from "../screens/hub-settings/model
 // -- WP P2WB1 -- the hub's devices, health and alarms; its alarms in the health panel
 import { HubFeed, hubScreenShown } from "../screens/hub/feed";
 import { HUB_SCREEN, HUB_SCREEN_ID, HubAlarmBanner, useHubView } from "../screens/hub/HubScreen";
+// -- WP P3OV -- the Overview: every output in one table, every channel's meter (every mode)
+import { OverviewScreen } from "../screens/overview/OverviewScreen";
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -118,6 +120,7 @@ export const SCREENS: ScreenDef[] = [
   { id: "matrix", label: "Matrix", View: MatrixScreen },
   // -- WP WB6H -- (UI-MODES: "Dynamics and effects", in every mode)
   { id: "effects", label: "Effects", View: EffectsScreen },
+  { id: "overview", label: "Overview", View: OverviewScreen }, // -- WP P3OV -- (PLAN-P3 U1, OD-P3j: every mode)
   // -- WP SW3 -- (UI-MODES: the Pro layer, not in Simple)
   { id: "system", label: "System", View: SystemScreen },
   // -- WP P1WB1 -- (Advanced and Installer: setting up and handing over;
