@@ -12,6 +12,7 @@ import type { ScreenDef, ScreenProps } from "../../ui/screens";
 import { HubFeed, type HubView, type Said } from "./feed";
 import { alarmSummary, alarmTitle, deviceRows, durationText, rowActions, shortTime, tagsFrom, type HubRow } from "./model";
 import { useSessionState } from "../../ui/components";
+import { HealthBoard } from "./HealthBoard"; // -- WP P3WHB --
 
 /** The screen's entry (screens.tsx shows it when `hubScreenShown`). */
 export const HUB_SCREEN_ID = "hub";
@@ -38,6 +39,7 @@ export const HubScreen: FunctionComponent<ScreenProps> = (props) => {
     <div class="hub-screen">
       {/* -- SEC hook (SECWEB, PLAN-SEC section 6) -- the "unencrypted" banner and the hub's fingerprint go here */}
       <HubDevices feed={feed} view={view} props={props} />
+      {/* -- WP P3WHB -- */ view.caps?.health ? <HealthBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} /> : null}
       {view.caps?.alarms ? <AlarmBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} /> : null}
       {/* -- WP P2WB3 -- */}
       {view.caps?.hubStats && view.role === "admin" && !props.session.readOnlyReason ? <HubName feed={feed} name={hubName} /> : null}
