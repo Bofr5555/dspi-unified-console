@@ -95,6 +95,16 @@ case "$platform" in
     # thread stalls on the AutoEQ import and the read-only mode, sheets
     # that never dismiss, UI waits that time out, and the demo device not
     # opening through the core under DSPI_CORE_TRANSPORT=1).
+    # -- review/swsec (2026-11-16) -- What the review's focused run on the
+    # merged tree saw, with the app's main thread sampled: the stalls are the
+    # VM's GPU (the main thread waits in RenderBox, -[RBLayer display] and
+    # -[_MTLCommandBuffer waitUntilScheduled]), not the core or the hub model.
+    # testDoubleTapAddsABandAndLongPressDeletesIt failed again that way;
+    # testSW18AutoEQMenuMakesAppliesAndClearsAFavorite PASSED alone, but took
+    # 10 minutes (the AutoEQ browser's layout on a starved main thread), which
+    # is the execution-time allowance it exceeded in P2SW's rerun: skipped
+    # here for its cost, not because it always fails.  Which tests a stall
+    # hits changes from run to run, so this list cannot make the row green.
     if [ "$(sysctl -n kern.hv_vmm_present 2>/dev/null)" = 1 ] ||
        sysctl -n machdep.cpu.features 2>/dev/null | grep -qw VMM; then
       for t in "DSPi Console iOSUITests/ExtensionChannelUITests/testPairEditorPicksAMapAndValidatesACustomOne" \
