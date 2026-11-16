@@ -394,10 +394,13 @@ fn wp_p2sc_rules_are_checked_and_capped() {
     let mut r = daily("08:00");
     r["actions"] = json!([{"t": "preset.save", "slot": 1, "confirm": true}]);
     assert_eq!(bad(&mut e, r), "bad_request");
-    // Groups are phase 3's.
+    // -- WP P3GR -- a well-formed group is taken (resolved when the rule runs); a
+    // malformed one is refused.
     let mut r = daily("08:00");
     r["targets"] = json!(["group:hall"]);
-    assert_eq!(bad(&mut e, r), "unsupported");
+    e.set(None, &r).unwrap();
+    r["targets"] = json!(["group:a b"]);
+    assert_eq!(bad(&mut e, r), "bad_request");
     // Device actions need targets; a scene does not.
     let mut r = daily("08:00");
     r["targets"] = json!([]);

@@ -15,8 +15,9 @@ import {
   type Method,
   type Request,
 } from "../../src/core/protocol";
-import { LocalBackend, normaliseHubUrl, type KeyValueStore } from "../../src/fleet/local";
+import { LocalBackend, PAIR_LINK_REFUSED, normaliseHubUrl, type KeyValueStore } from "../../src/fleet/local";
 import { pageEnv } from "../../src/fleet/env";
+import { isLoopbackHost } from "../../src/fleet/security"; // -- WP SECFIX --
 
 /** A core that records how many calls run at once. */
 class CountingCore implements CoreImpl {
@@ -174,6 +175,13 @@ test("hub addresses normalise to ws:// or wss://", () => {
   assert.equal(normaliseHubUrl("https://hub.example:443/x"), "wss://hub.example");
   assert.equal(normaliseHubUrl("ws://192.168.1.5:11915"), "ws://192.168.1.5:11915");
   assert.throws(() => normaliseHubUrl("not a url with spaces://"));
+  // -- WP SECFIX -- a pasted pairing link is refused, and not repeated (it holds a PIN)
+  const link = "dspi://pair?h=0b3e7c1e-1111-4222-8333-444455556666&a=hub.local:11915&k=q83vEjRWeJCrze8SNFZ4kKvN7xI0VniQq83vEjRWeJA&p=482913";
+  assert.throws(
+    () => normaliseHubUrl(` ${link} `),
+    (e: unknown) => e instanceof Error && e.message === PAIR_LINK_REFUSED && !e.message.includes("482913") && !e.message.includes("dspi://"),
+  );
+  assert.throws(() => normaliseHubUrl("DSPI://pair?h=x"), /pairing link/);
 });
 
 test("page env: USB needs a secure page and WebUSB; the reasons name no device", () => {
@@ -201,4 +209,12 @@ test("WB3: dispose stops the Worker even when a core call never returns (c6a F-4
   await client.dispose(20);
   assert.equal(terminated, true);
   await assert.rejects(pending, (e: CoreCallError) => e.code === "not_open");
+});
+
+// -- WP SECFIX -- "local" is one rule: the web's set is the core's (dspi-link
+// address::is_loopback_host, its test wp_secfix_loopback_is_one_rule uses these lists)
+test("wp secfix: the loopback rule is the core's", () => {
+  for (const h of ["localhost", "LOCALHOST", "hub.localhost", "127.0.0.1", "::1", "[::1]"]) assert.ok(isLoopbackHost(h), h);
+  for (const h of ["", "10.0.0.2", "192.168.1.5", "dspi-abc.local", "localhost.example.com", "notlocalhost", "::", "[fe80::1]", "127.0.0.2", "localhost."])
+    assert.ok(!isLoopbackHost(h), h);
 });

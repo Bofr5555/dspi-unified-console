@@ -57,6 +57,18 @@
             <meta-data
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/dspi_device_filter" />
+            <!-- WP SECAN: a hub's pairing link, dspi://pair?h=&a=&k=&p= (its QR code, opened
+                 by a scanner app; no camera permission here). Any app can send one, so it
+                 is only offered: one tap to dial, the key checked against the hub's TLS
+                 key, and another tap on the PIN prompt to pair. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="pair"
+                    android:scheme="dspi" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

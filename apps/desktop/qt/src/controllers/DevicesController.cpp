@@ -231,7 +231,10 @@ void DevicesController::chooseUsb(const QString &serial) {
 void DevicesController::connectFound(const QVariantMap &hub) {
     const QString url = hub.value(QStringLiteral("url")).toString();
     if (url.isEmpty()) return;
-    if (LinkController *l = link()) l->connectToHub(url, hub.value(QStringLiteral("id")).toString());
+    // -- WP SECQT -- what the hub's record advertises: TLS then never falls
+    // back to plaintext (ratchet (a))
+    if (LinkController *l = link())
+        l->connectToHub(url, hub.value(QStringLiteral("id")).toString(), hub.value(QStringLiteral("tlsAdvertised")).toBool());
 }
 
 bool DevicesController::connectAddress(const QString &address) {

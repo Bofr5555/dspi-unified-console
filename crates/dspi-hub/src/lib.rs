@@ -31,6 +31,7 @@
 //! | [`tls_identity`] | the hub's TLS key, certificate, pin and rotation | SECKEY |
 //! | [`rest`] | the REST mirror under `/api/v1/` and API keys (`auth.mint`) | P2RS |
 //! | `ffi` (feature `uniffi`) | the Swift binding: the app hosts a hub | SW-M3 |
+//! | [`groups`] | named sets of inventory serials, `group.*`, `group:<id>` targets | P3GR |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -103,10 +104,14 @@ pub mod api;
 pub mod tls_identity;
 // -- WP P2RS --
 pub mod rest;
+// -- WP SECWEB -- the `uconsole web` pinning proxy
+pub mod proxy;
 // -- WP P2AL -- device alarms
 pub mod device_alarms;
 // -- WP P2SC -- schedules (they run with feature `api`)
 pub mod schedule;
+// -- WP P3GR -- groups
+pub mod groups;
 
 pub use auth::AccessMode;
 pub use error::HubError;
@@ -140,6 +145,8 @@ pub use clock::{HubClock, SystemClock, TestClock};
 pub use service::{DeviceEvent, HubService, ServiceConfig, SessionLabel};
 // -- WP P2HP --
 pub use health::HealthConfig;
+// -- WP P3HB --
+pub use bus::{LastChange, StreamCounters};
 // -- WP P2EV --
 pub use history::HistoryConfig;
 // -- WP P2SC --

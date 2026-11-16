@@ -52,6 +52,47 @@ pub fn ws_url(host: &str, port: u16, path: Option<&str>) -> String {
     format!("ws://{}:{port}{path}", bracket(host))
 }
 
+// -- WP SECFIX --
+/// Whether `host` (a name or an IP address, IPv6 with or without brackets)
+/// is this machine: `localhost` or a name under `.localhost` (RFC 6761), or
+/// the loopback address `127.0.0.1` or `::1`. A connection to it never
+/// crosses a network, so an unencrypted one is "local", not unsecured. The
+/// one rule every client uses: the web's `isLoopbackHost` is the same set.
+/// The rest of `127.0.0.0/8` is left out on purpose, as the web leaves it
+/// out: it errs toward showing "unsecured", never away from it (and the
+/// tests reach a hub at `127.0.0.2` as one that is not local).
+pub fn is_loopback_host(host: &str) -> bool {
+    let h = host.trim();
+    let h = h.strip_prefix('[').and_then(|r| r.strip_suffix(']')).unwrap_or(h);
+    if let Ok(ip) = h.parse::<std::net::IpAddr>() {
+        return ip == std::net::IpAddr::from([127, 0, 0, 1])
+            || ip == std::net::IpAddr::from(std::net::Ipv6Addr::LOCALHOST);
+    }
+    let lower = h.to_ascii_lowercase();
+    lower == "localhost" || lower.ends_with(".localhost")
+}
+
+// -- WP SECFIX --
+/// The host of a `ws://` or `wss://` URL (brackets of an IPv6 address
+/// removed); `None` for anything else.
+pub fn url_host(url: &str) -> Option<&str> {
+    let rest = url.strip_prefix("ws://").or_else(|| url.strip_prefix("wss://"))?;
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+    let host = if let Some(v6) = authority.strip_prefix('[') {
+        v6.split_once(']')?.0
+    } else {
+        authority.rsplit_once(':').map_or(authority, |(h, _)| h)
+    };
+    (!host.is_empty()).then_some(host)
+}
+
+// -- WP SECFIX --
+/// [`is_loopback_host`] of a `ws(s)://` URL's host; false for anything else.
+pub fn is_loopback_url(url: &str) -> bool {
+    url_host(url).is_some_and(is_loopback_host)
+}
+
 /// `GET http://host:port/dspi/v1/info` (plain HTTP/1.1, no redirects).
 pub fn fetch_info(host: &str, port: u16, timeout: Duration) -> Result<InfoDoc, LinkError> {
     let io = |e: std::io::Error| LinkError::Io(e.to_string());
@@ -235,6 +276,40 @@ fn read_chunked(r: &mut impl Read, mut have: Vec<u8>) -> Result<Vec<u8>, Framing
 
 #[cfg(test)]
 mod tests {
+
+    // -- WP SECFIX --
+    #[test]
+    fn wp_secfix_loopback_is_one_rule() {
+        for h in ["localhost", "LOCALHOST", "hub.localhost", "127.0.0.1", "::1", "[::1]", "[0:0:0:0:0:0:0:1]"] {
+            assert!(is_loopback_host(h), "{h}");
+        }
+        for h in [
+            "",
+            "10.0.0.2",
+            "192.168.1.5",
+            "dspi-abc.local",
+            "localhost.example.com",
+            "notlocalhost",
+            "::",
+            "[fe80::1]",
+            "127.0.0.2",
+            "::ffff:127.0.0.1",
+            "localhost.",
+        ] {
+            assert!(!is_loopback_host(h), "{h}");
+        }
+        assert!(is_loopback_url("ws://localhost:11915/dspi/v1"));
+        assert!(is_loopback_url("ws://127.0.0.1:11915"));
+        assert!(is_loopback_url("wss://[::1]:11915/dspi/v1"));
+        assert!(!is_loopback_url("ws://192.168.1.5:11915/dspi/v1"));
+        assert!(!is_loopback_url("ws://localhost.evil.example:11915/"));
+        assert!(!is_loopback_url("ws://evil.example/localhost"));
+        assert!(!is_loopback_url("ws://localhost@evil.example:11915/"));
+        assert!(!is_loopback_url("http://localhost:11915/"));
+        assert!(!is_loopback_url("not a url"));
+        assert_eq!(url_host("ws://[fe80::1]:11915/dspi/v1"), Some("fe80::1"));
+        assert_eq!(url_host("ws://hub:11915"), Some("hub"));
+    }
     use super::*;
 
     #[test]

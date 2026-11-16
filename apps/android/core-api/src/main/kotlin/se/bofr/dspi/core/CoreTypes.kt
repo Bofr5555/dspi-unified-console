@@ -1589,6 +1589,14 @@ data class LinkSecurity(
      */
     val encrypted: Boolean,
     /**
+     * Not encrypted, but the hub is this machine (`localhost`, a loopback
+     * address: `dspi_link::address::is_loopback_host`): nothing crosses a
+     * network, so it is not shown as unsecured. Always false when
+     * `encrypted`. The three cases: `encrypted`, `local`, neither
+     * (unsecured: the red bar and " (unsecured)").
+     */
+    val local: Boolean,
+    /**
      * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
      */
     val hubKey: String,
@@ -4392,6 +4400,56 @@ data class HubHealth(
      * The reset seen at attach or since.
      */
     val reset: HubReset?,
+    /**
+     * The stream's underrun and starvation totals, once the hub read either
+     * (one read every 30 s, the four counters in turn).
+     */
+    val counters: HubStreamCounters?,
+    /**
+     * Clip events in the last minute; `None` on firmware with only the clip
+     * latch (no extension clip events).
+     */
+    val clipPerMin: Long?,
+    /**
+     * The device's newest change and who made it, from the hub's history.
+     */
+    val lastChange: HubLastChange?,
+)
+
+/**
+ * A device's stream counters in [`HubHealth`]. Each is `None` until the hub
+ * read it.
+ */
+data class HubStreamCounters(
+    /**
+     * Output underruns (PDM ring, PDM DMA and S/PDIF added up), total since
+     * the device started.
+     */
+    val underruns: Long?,
+    /**
+     * Output starvations, total since the device started.
+     */
+    val starvation: Long?,
+)
+
+/**
+ * A device's newest change in [`HubHealth`]: the newest history record of a
+ * write, recall, import, schedule run or new firmware.
+ */
+data class HubLastChange(
+    /**
+     * When (ISO-8601 UTC).
+     */
+    val at: String,
+    /**
+     * Who made it (a client's name, a schedule); "" when the record names no
+     * one (a change at the device itself).
+     */
+    val by: String,
+    /**
+     * The record's line.
+     */
+    val text: String,
 )
 
 /**
@@ -5925,6 +5983,57 @@ data class OutputLabelInput(
      * The K340 crossfeed pair map, 4 bytes; empty or zero elsewhere.
      */
     val crossfeedPairMap: List<Int>,
+)
+
+/**
+ * A board in BOOTSEL mode with a PICOBOOT interface.
+ */
+data class BootDevice(
+    /**
+     * 0 RP2040 (`2E8A:0003`), 1 RP2350 (`2E8A:000F`), as `Uf2Info::platform`.
+     */
+    val platform: Int,
+    /**
+     * The boot ROM's USB serial. On an RP2350 it is the chip's unique id,
+     * which is the DSPi's serial; the RP2040's ROM reports a fixed string,
+     * so it is `None` there and only uniqueness identifies the board.
+     */
+    val serial: String?,
+    /**
+     * Where it is on the bus (`<bus>-<port>.<port>...`), stable across a
+     * re-enumeration on the same port.
+     */
+    val busLocation: String,
+)
+
+/**
+ * What a PICOBOOT flash did.
+ */
+data class FlashReport(
+    /**
+     * The target's platform.
+     */
+    val platform: Int,
+    /**
+     * The target's serial, as [`BootDevice::serial`].
+     */
+    val serial: String?,
+    /**
+     * The image's DSPi version (`Uf2Info::firmware_version`), "" if none.
+     */
+    val firmwareVersion: String,
+    /**
+     * 4 KiB sectors erased, written and read back.
+     */
+    val sectors: Long,
+    /**
+     * Bytes written (whole sectors).
+     */
+    val bytesWritten: Long,
+    /**
+     * How long it took, in ms.
+     */
+    val elapsedMs: Long,
 )
 
 /**

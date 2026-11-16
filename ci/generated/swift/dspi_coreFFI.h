@@ -1741,6 +1741,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(void*_Non
 void uniffi_dspi_core_fn_method_dspicore_paste_channel(void*_Nonnull ptr, RustBuffer clip, uint8_t ch, RustBuffer options, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PICOBOOT_FLASH_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PICOBOOT_FLASH_CONFIRMED
+RustBuffer uniffi_dspi_core_fn_method_dspicore_picoboot_flash_confirmed(void*_Nonnull ptr, RustBuffer image, RustBuffer target, RustBuffer board, RustBuffer token, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PIN_CHECK
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_PIN_CHECK
 RustBuffer uniffi_dspi_core_fn_method_dspicore_pin_check(void*_Nonnull ptr, RustBuffer function, uint8_t pin, RustCallStatus *_Nonnull out_status
@@ -2954,6 +2959,12 @@ RustBuffer uniffi_dspi_core_fn_func_output_cards_for(RustBuffer input, RustCallS
 RustBuffer uniffi_dspi_core_fn_func_output_labels_for(RustBuffer input, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_PICOBOOT_DEVICES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_PICOBOOT_DEVICES
+RustBuffer uniffi_dspi_core_fn_func_picoboot_devices(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_PLATFORM_SHAPE
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_PLATFORM_SHAPE
 RustBuffer uniffi_dspi_core_fn_func_platform_shape(uint8_t platform_id, RustCallStatus *_Nonnull out_status
@@ -3568,6 +3579,12 @@ uint16_t uniffi_dspi_core_checksum_func_output_cards_for(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_OUTPUT_LABELS_FOR
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_OUTPUT_LABELS_FOR
 uint16_t uniffi_dspi_core_checksum_func_output_labels_for(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_PICOBOOT_DEVICES
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_PICOBOOT_DEVICES
+uint16_t uniffi_dspi_core_checksum_func_picoboot_devices(void
     
 );
 #endif
@@ -5122,6 +5139,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PASTE_CHANNEL
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PASTE_CHANNEL
 uint16_t uniffi_dspi_core_checksum_method_dspicore_paste_channel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PICOBOOT_FLASH_CONFIRMED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_PICOBOOT_FLASH_CONFIRMED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed(void
     
 );
 #endif

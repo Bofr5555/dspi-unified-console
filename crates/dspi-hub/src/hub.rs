@@ -285,6 +285,9 @@ impl Hub {
             Some(network) => {
                 let store = crate::store::HubStore::load(&network.store_dir)?;
                 let auth = Arc::new(crate::auth::AuthStore::new(store, network.access)?);
+                // -- WP SECPAIR -- the services' clock, and idle expiry of tokens
+                auth.set_clock(Arc::clone(&config.services.clock));
+                auth.set_token_idle(network.token_idle);
                 if config.hub_id.is_empty() {
                     config.hub_id = auth.hub_id();
                 }

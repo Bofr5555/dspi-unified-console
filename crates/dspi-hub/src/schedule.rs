@@ -3,9 +3,11 @@
 //! Rules in `<data>/schedule.json` (Admin): on given days at a local time, or once at a
 //! local date and time, a list of actions (`preset.load`, `snapshot.recall`,
 //! `system.scene.apply`, `param.set` for `vol.master`, `vol.user`, `vol.mute` and
-//! `out.mute`) on a list of targets (serials; `group:<id>` is phase 3's and answers
-//! `unsupported`). At most [`MAX_RULES`] rules of at most [`MAX_ACTIONS`] actions and
-//! [`MAX_TARGETS`] targets.
+//! `out.mute`) on a list of targets (serials, and `group:<id>`: WP P3GR, expanded to the
+//! group's members when the rule runs, an unknown group one `not_found` row). At most
+//! [`MAX_RULES`] rules of at most [`MAX_ACTIONS`] actions and [`MAX_TARGETS`] targets; a
+//! run answers at most [`crate::groups::MAX_RESULT_ROWS`] rows, the last saying
+//! "truncated" when there was more (nothing after it runs).
 //!
 //! **Who writes (OD-P2m, the session-id rule).** A run opens the principal
 //! `Schedule: <name>` with the Admin role ([`HubHandle::open_principal`]: a session id
@@ -517,11 +519,12 @@ impl Rule {
             )));
         }
         for t in &targets {
-            if t.starts_with("group:") {
-                return Err(Refusal::new(
-                    "unsupported",
-                    "group targets come with phase 3's groups",
-                ));
+            // -- WP P3GR -- a group is resolved when the rule runs, not here.
+            if t.starts_with(crate::groups::TARGET_PREFIX) {
+                if !crate::groups::valid_group_target(t) {
+                    return Err(Refusal::bad(format!("{t:?} is not a group")));
+                }
+                continue;
             }
             if !crate::inventory::valid_serial(t) {
                 return Err(Refusal::bad(format!("{t:?} is not a serial")));
@@ -1122,6 +1125,8 @@ mod service_impl {
         ready: Condvar,
         exec: Executor,
         snaps: Option<HubSnapshots>,
+        // -- WP P3GR --
+        groups: Option<Arc<dyn crate::groups::GroupResolver>>,
         clock: Arc<dyn HubClock>,
         bus: Arc<Bus>,
         wake: Waker,
@@ -1235,6 +1240,8 @@ mod service_impl {
                 ready: Condvar::new(),
                 exec: Executor::new(Arc::clone(&clock), setup.wake.clone()),
                 snaps: setup.data_dir.map(HubSnapshots::open),
+                // -- WP P3GR --
+                groups: setup.group_resolver(),
                 clock,
                 bus: Arc::clone(setup.bus),
                 wake: setup.wake.clone(),
@@ -1418,6 +1425,7 @@ mod service_impl {
             (at, results)
         }
 
+        // -- WP P3GR -- `group:<id>` targets expanded here, and the run's rows capped.
         fn actions(
             &self,
             hub: &HubHandle,
@@ -1425,9 +1433,25 @@ mod service_impl {
             rule: &Rule,
             results: &mut Vec<TargetResult>,
         ) {
+            use crate::groups::{Expanded, MAX_RESULT_ROWS, expand, truncated_row, unknown_row};
+            // Before each step: with the rows nearly used up and more to do than this one
+            // step, the last row says so and nothing more runs.
+            let full = |results: &mut Vec<TargetResult>, label: &str, last_step: bool| {
+                if results.len() < MAX_RESULT_ROWS.saturating_sub(1) || last_step {
+                    return false;
+                }
+                results.truncate(MAX_RESULT_ROWS.saturating_sub(1));
+                results.push(truncated_row(Some(label.to_owned())));
+                true
+            };
+            let count = rule.actions.len();
             for (i, a) in rule.actions.iter().enumerate() {
                 let label = format!("{i}:{}", a.t);
+                let last_action = i.saturating_add(1) == count;
                 if !a.per_device() {
+                    if full(results, &label, last_action) {
+                        return;
+                    }
                     let scene = a.fields.get("scene").and_then(Value::as_str).unwrap_or("");
                     match hub.system_apply_scene(scene, principal.role()) {
                         Ok(report) => results.extend(scene_rows(&label, &report)),
@@ -1449,9 +1473,29 @@ mod service_impl {
                             });
                         }
                     }
+                    if results.len() > MAX_RESULT_ROWS {
+                        results.truncate(MAX_RESULT_ROWS.saturating_sub(1));
+                        results.push(truncated_row(Some(label.clone())));
+                        return;
+                    }
                     continue;
                 }
-                for serial in &rule.targets {
+                // The members as they are now: a group edited since the rule was set runs
+                // on its members of this moment.
+                let targets = expand(&rule.targets, self.groups.as_deref());
+                let n = targets.len();
+                for (k, target) in targets.into_iter().enumerate() {
+                    let last_step = last_action && k.saturating_add(1) == n;
+                    if full(results, &label, last_step) {
+                        return;
+                    }
+                    let serial = match target {
+                        Expanded::Serial(serial) => serial,
+                        Expanded::Unknown(t) => {
+                            results.push(unknown_row(&t, Some(label.clone())));
+                            continue;
+                        }
+                    };
                     let mut msg = a.fields.clone();
                     msg.insert("t".into(), json!(a.t));
                     msg.insert("serial".into(), json!(serial));
@@ -1463,7 +1507,7 @@ mod service_impl {
                         a.t,
                         &Value::Object(msg),
                     );
-                    results.push(row(serial, &label, r));
+                    results.push(row(&serial, &label, r));
                 }
             }
         }

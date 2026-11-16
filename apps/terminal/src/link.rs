@@ -23,6 +23,11 @@ impl Prompt for Person {
         crate::prompt_pin(hub, pin_source)
     }
 
+    // -- WP SECTM --
+    fn confirm(&self, question: &str) -> Option<bool> {
+        confirm_on_terminal(question)
+    }
+
     fn pick(&self, choices: &[String]) -> Option<usize> {
         use std::io::IsTerminal;
         if !std::io::stdin().is_terminal() {
@@ -46,6 +51,10 @@ fn parse_choice(line: &str, count: usize) -> Option<usize> {
 
 /// `uconsole link ...`; `flags` starts at the word `link`.
 pub fn run(flags: &[&str], json: bool) -> u8 {
+    // -- WP SECTM --
+    if flags.get(1) == Some(&"security") {
+        return security(json);
+    }
     let window = match parse_args(flags.get(1..).unwrap_or_default()) {
         Ok(window) => window,
         Err(e) => {
@@ -77,14 +86,77 @@ fn parse_args(args: &[&str]) -> Result<Duration, String> {
             }
             // The flags every command may carry.
             flag if flag.starts_with("--") => {}
-            other => return Err(format!("`link {other}`: the command is `link scan`")),
+            other => {
+                return Err(format!(
+                    "`link {other}`: the commands are `link scan` and `link security`"
+                ));
+            }
         }
     }
     if scan {
         Ok(window)
     } else {
-        Err("link what? the command is `link scan`".into())
+        Err("link what? the commands are `link scan` and `link security`".into())
     }
+}
+
+// -- WP SECTM --
+/// `uconsole link security`: what " (unsecured)" after a hub connection means,
+/// in the core's words (`dlink.unsecured.info`), calm and short.
+fn security(json: bool) -> u8 {
+    let info = dspi_core::notice_for_key(connect::NOTICE_UNSECURED_INFO.into(), String::new());
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "key": info.key,
+                "title": info.title,
+                "reason": info.reason,
+                "action": info.action,
+            })
+        );
+    } else {
+        println!("{}", security_text(&info));
+    }
+    exit::OK
+}
+
+/// The explanation as printed.
+fn security_text(info: &dspi_core::Notice) -> String {
+    format!(
+        "{}\n\n{}\n\n{}\n\nA hub connection with encryption shows its hub key in `{COMMAND} status`; \
+         one without says \"({})\" after the connection.",
+        info.title,
+        info.reason,
+        info.action,
+        connect::unsecured_words().badge
+    )
+}
+
+// -- WP SECTM --
+/// The core's words for the badge and its explanation, for dspi-tui (which
+/// does not link the core), and a yes/no on the terminal for pairing by a
+/// link and pairing again. Called once at start.
+pub fn install_terminal_prompts() {
+    let badge = dspi_core::notice_for_key(connect::NOTICE_UNSECURED.into(), String::new());
+    let info = dspi_core::notice_for_key(connect::NOTICE_UNSECURED_INFO.into(), String::new());
+    connect::set_unsecured_words(connect::UnsecuredWords {
+        badge: badge.title,
+        info: info.reason,
+        action: info.action,
+    });
+    connect::set_confirmer(confirm_on_terminal);
+}
+
+/// A yes or no from the person at this terminal; `None` without one.
+fn confirm_on_terminal(question: &str) -> Option<bool> {
+    use std::io::{IsTerminal, Write};
+    if !std::io::stdin().is_terminal() {
+        return None;
+    }
+    eprint!("{question} [y/N] ");
+    std::io::stderr().flush().ok()?;
+    Some(connect::parse_yes(&crate::read_stdin_line()?))
 }
 
 /// As `uconsole list` does: nothing there is exit code 2, and `[]` for a script.
@@ -257,5 +329,24 @@ mod tests_wp_tm9 {
         for bad in ["0", "3", "", "x", "-1"] {
             assert_eq!(parse_choice(bad, 2), None, "{bad}");
         }
+    }
+}
+
+// -- WP SECTM --
+#[cfg(test)]
+mod tests_wp_sectm {
+    use super::*;
+
+    #[test]
+    fn wp_sectm_link_security_explains_calmly() {
+        let info = dspi_core::notice_for_key(connect::NOTICE_UNSECURED_INFO.into(), String::new());
+        let text = security_text(&info);
+        assert!(
+            text.contains("trusted local network or over a VPN"),
+            "{text}"
+        );
+        assert!(text.contains("pairing PIN"), "{text}");
+        assert!(text.contains("(unsecured)"), "{text}");
+        assert!(parse_args(&["security"]).is_err(), "not a scan");
     }
 }

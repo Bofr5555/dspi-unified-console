@@ -3072,7 +3072,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * One health record per online device of the hub (`health.get`):
-     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+     * -- WP P3HB -- the stream counters, clip events a minute and the last
+     * change where the hub has them.
      * Every role. Slow: off the UI thread.
      *
      * Errors: [`DspiError::Unsupported`] without the `health` cap;
@@ -4011,6 +4013,31 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * transfer errors.
      */
     func pasteChannel(clip: ChannelClip, ch: UInt8, options: ChannelPasteOptions) throws 
+    
+    /**
+     * Flash `image` into the boot ROM of `target` (one of
+     * [`picoboot_devices`]) over PICOBOOT, with no drive mounted (module
+     * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
+     * before the board entered BOOTSEL; the guard must say clear for it with
+     * nothing typed, so an image that would ask a person anything is
+     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * [`DspiCore::flash_confirmed`] does (mint it once the board is in
+     * BOOTSEL; it works with no device open), and the installer lock holds.
+     * Blocks for up to 60 s.
+     *
+     * `Ok` means every sector was written and read back identical and the
+     * reboot was acknowledged; the caller confirms by the DSPi coming back
+     * with the image's version. On an error after the first erase the board
+     * stays in BOOTSEL (nothing is retried).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] without a good token;
+     * [`DspiError::FirmwareGuardBlocked`] or [`DspiError::InvalidArgument`]
+     * for an image the guard does not clear, of another chip, or not
+     * firmware; [`DspiError::Unsupported`] where the bus cannot be reached;
+     * [`DspiError::Transfer`] naming the step for anything the transfer or
+     * the ROM did. In every error before the first command nothing was sent.
+     */
+    func picobootFlashConfirmed(image: Data, target: BootDevice, board: FirmwareGuardBoard, token: String?) throws  -> FlashReport
     
     /**
      * Whether `function` may move to `pin`: `None` when it may, else why
@@ -8445,7 +8472,9 @@ open func hubEventsWatch(on: Bool, serial: String)throws   {try rustCallWithErro
     
     /**
      * One health record per online device of the hub (`health.get`):
-     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+     * -- WP P3HB -- the stream counters, clip events a minute and the last
+     * change where the hub has them.
      * Every role. Slow: off the UI thread.
      *
      * Errors: [`DspiError::Unsupported`] without the `health` cap;
@@ -9865,6 +9894,40 @@ open func pasteChannel(clip: ChannelClip, ch: UInt8, options: ChannelPasteOption
         FfiConverterTypeChannelPasteOptions_lower(options),$0
     )
 }
+}
+    
+    /**
+     * Flash `image` into the boot ROM of `target` (one of
+     * [`picoboot_devices`]) over PICOBOOT, with no drive mounted (module
+     * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
+     * before the board entered BOOTSEL; the guard must say clear for it with
+     * nothing typed, so an image that would ask a person anything is
+     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * [`DspiCore::flash_confirmed`] does (mint it once the board is in
+     * BOOTSEL; it works with no device open), and the installer lock holds.
+     * Blocks for up to 60 s.
+     *
+     * `Ok` means every sector was written and read back identical and the
+     * reboot was acknowledged; the caller confirms by the DSPi coming back
+     * with the image's version. On an error after the first erase the board
+     * stays in BOOTSEL (nothing is retried).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] without a good token;
+     * [`DspiError::FirmwareGuardBlocked`] or [`DspiError::InvalidArgument`]
+     * for an image the guard does not clear, of another chip, or not
+     * firmware; [`DspiError::Unsupported`] where the bus cannot be reached;
+     * [`DspiError::Transfer`] naming the step for anything the transfer or
+     * the ROM did. In every error before the first command nothing was sent.
+     */
+open func picobootFlashConfirmed(image: Data, target: BootDevice, board: FirmwareGuardBoard, token: String?)throws  -> FlashReport  {
+    return try  FfiConverterTypeFlashReport_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_picoboot_flash_confirmed(self.uniffiClonePointer(),
+        FfiConverterData.lower(image),
+        FfiConverterTypeBootDevice_lower(target),
+        FfiConverterTypeFirmwareGuardBoard_lower(board),
+        FfiConverterOptionString.lower(token),$0
+    )
+})
 }
     
     /**
@@ -20962,6 +21025,111 @@ public func FfiConverterTypeBiquadSection_lower(_ value: BiquadSection) -> RustB
 
 
 /**
+ * A board in BOOTSEL mode with a PICOBOOT interface.
+ */
+public struct BootDevice {
+    /**
+     * 0 RP2040 (`2E8A:0003`), 1 RP2350 (`2E8A:000F`), as `Uf2Info::platform`.
+     */
+    public var platform: Int8
+    /**
+     * The boot ROM's USB serial. On an RP2350 it is the chip's unique id,
+     * which is the DSPi's serial; the RP2040's ROM reports a fixed string,
+     * so it is `None` there and only uniqueness identifies the board.
+     */
+    public var serial: String?
+    /**
+     * Where it is on the bus (`<bus>-<port>.<port>...`), stable across a
+     * re-enumeration on the same port.
+     */
+    public var busLocation: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 0 RP2040 (`2E8A:0003`), 1 RP2350 (`2E8A:000F`), as `Uf2Info::platform`.
+         */platform: Int8, 
+        /**
+         * The boot ROM's USB serial. On an RP2350 it is the chip's unique id,
+         * which is the DSPi's serial; the RP2040's ROM reports a fixed string,
+         * so it is `None` there and only uniqueness identifies the board.
+         */serial: String?, 
+        /**
+         * Where it is on the bus (`<bus>-<port>.<port>...`), stable across a
+         * re-enumeration on the same port.
+         */busLocation: String) {
+        self.platform = platform
+        self.serial = serial
+        self.busLocation = busLocation
+    }
+}
+
+#if compiler(>=6)
+extension BootDevice: Sendable {}
+#endif
+
+
+extension BootDevice: Equatable, Hashable {
+    public static func ==(lhs: BootDevice, rhs: BootDevice) -> Bool {
+        if lhs.platform != rhs.platform {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.busLocation != rhs.busLocation {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(platform)
+        hasher.combine(serial)
+        hasher.combine(busLocation)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBootDevice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BootDevice {
+        return
+            try BootDevice(
+                platform: FfiConverterInt8.read(from: &buf), 
+                serial: FfiConverterOptionString.read(from: &buf), 
+                busLocation: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BootDevice, into buf: inout [UInt8]) {
+        FfiConverterInt8.write(value.platform, into: &buf)
+        FfiConverterOptionString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.busLocation, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBootDevice_lift(_ buf: RustBuffer) throws -> BootDevice {
+    return try FfiConverterTypeBootDevice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBootDevice_lower(_ value: BootDevice) -> RustBuffer {
+    return FfiConverterTypeBootDevice.lower(value)
+}
+
+
+/**
  * How many boards in bootloader mode are attached, per chip.
  */
 public struct BootloaderCounts {
@@ -25485,6 +25653,147 @@ public func FfiConverterTypeFirmwareGuardVerdict_lower(_ value: FirmwareGuardVer
 
 
 /**
+ * What a PICOBOOT flash did.
+ */
+public struct FlashReport {
+    /**
+     * The target's platform.
+     */
+    public var platform: Int8
+    /**
+     * The target's serial, as [`BootDevice::serial`].
+     */
+    public var serial: String?
+    /**
+     * The image's DSPi version (`Uf2Info::firmware_version`), "" if none.
+     */
+    public var firmwareVersion: String
+    /**
+     * 4 KiB sectors erased, written and read back.
+     */
+    public var sectors: UInt32
+    /**
+     * Bytes written (whole sectors).
+     */
+    public var bytesWritten: UInt64
+    /**
+     * How long it took, in ms.
+     */
+    public var elapsedMs: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The target's platform.
+         */platform: Int8, 
+        /**
+         * The target's serial, as [`BootDevice::serial`].
+         */serial: String?, 
+        /**
+         * The image's DSPi version (`Uf2Info::firmware_version`), "" if none.
+         */firmwareVersion: String, 
+        /**
+         * 4 KiB sectors erased, written and read back.
+         */sectors: UInt32, 
+        /**
+         * Bytes written (whole sectors).
+         */bytesWritten: UInt64, 
+        /**
+         * How long it took, in ms.
+         */elapsedMs: UInt64) {
+        self.platform = platform
+        self.serial = serial
+        self.firmwareVersion = firmwareVersion
+        self.sectors = sectors
+        self.bytesWritten = bytesWritten
+        self.elapsedMs = elapsedMs
+    }
+}
+
+#if compiler(>=6)
+extension FlashReport: Sendable {}
+#endif
+
+
+extension FlashReport: Equatable, Hashable {
+    public static func ==(lhs: FlashReport, rhs: FlashReport) -> Bool {
+        if lhs.platform != rhs.platform {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.firmwareVersion != rhs.firmwareVersion {
+            return false
+        }
+        if lhs.sectors != rhs.sectors {
+            return false
+        }
+        if lhs.bytesWritten != rhs.bytesWritten {
+            return false
+        }
+        if lhs.elapsedMs != rhs.elapsedMs {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(platform)
+        hasher.combine(serial)
+        hasher.combine(firmwareVersion)
+        hasher.combine(sectors)
+        hasher.combine(bytesWritten)
+        hasher.combine(elapsedMs)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFlashReport: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FlashReport {
+        return
+            try FlashReport(
+                platform: FfiConverterInt8.read(from: &buf), 
+                serial: FfiConverterOptionString.read(from: &buf), 
+                firmwareVersion: FfiConverterString.read(from: &buf), 
+                sectors: FfiConverterUInt32.read(from: &buf), 
+                bytesWritten: FfiConverterUInt64.read(from: &buf), 
+                elapsedMs: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FlashReport, into buf: inout [UInt8]) {
+        FfiConverterInt8.write(value.platform, into: &buf)
+        FfiConverterOptionString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.firmwareVersion, into: &buf)
+        FfiConverterUInt32.write(value.sectors, into: &buf)
+        FfiConverterUInt64.write(value.bytesWritten, into: &buf)
+        FfiConverterUInt64.write(value.elapsedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFlashReport_lift(_ buf: RustBuffer) throws -> FlashReport {
+    return try FfiConverterTypeFlashReport.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFlashReport_lower(_ value: FlashReport) -> RustBuffer {
+    return FfiConverterTypeFlashReport.lower(value)
+}
+
+
+/**
  * A guarded apply's state: [`DspiCore::apply_status`] and every guarded call.
  */
 public struct GuardedApply {
@@ -28047,6 +28356,20 @@ public struct HubHealth {
      * The reset seen at attach or since.
      */
     public var reset: HubReset?
+    /**
+     * The stream's underrun and starvation totals, once the hub read either
+     * (one read every 30 s, the four counters in turn).
+     */
+    public var counters: HubStreamCounters?
+    /**
+     * Clip events in the last minute; `None` on firmware with only the clip
+     * latch (no extension clip events).
+     */
+    public var clipPerMin: UInt32?
+    /**
+     * The device's newest change and who made it, from the hub's history.
+     */
+    public var lastChange: HubLastChange?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -28083,7 +28406,18 @@ public struct HubHealth {
          */unresponsiveSince: String, 
         /**
          * The reset seen at attach or since.
-         */reset: HubReset?) {
+         */reset: HubReset?, 
+        /**
+         * The stream's underrun and starvation totals, once the hub read either
+         * (one read every 30 s, the four counters in turn).
+         */counters: HubStreamCounters?, 
+        /**
+         * Clip events in the last minute; `None` on firmware with only the clip
+         * latch (no extension clip events).
+         */clipPerMin: UInt32?, 
+        /**
+         * The device's newest change and who made it, from the hub's history.
+         */lastChange: HubLastChange?) {
         self.serial = serial
         self.handle = handle
         self.at = at
@@ -28095,6 +28429,9 @@ public struct HubHealth {
         self.unresponsive = unresponsive
         self.unresponsiveSince = unresponsiveSince
         self.reset = reset
+        self.counters = counters
+        self.clipPerMin = clipPerMin
+        self.lastChange = lastChange
     }
 }
 
@@ -28138,6 +28475,15 @@ extension HubHealth: Equatable, Hashable {
         if lhs.reset != rhs.reset {
             return false
         }
+        if lhs.counters != rhs.counters {
+            return false
+        }
+        if lhs.clipPerMin != rhs.clipPerMin {
+            return false
+        }
+        if lhs.lastChange != rhs.lastChange {
+            return false
+        }
         return true
     }
 
@@ -28153,6 +28499,9 @@ extension HubHealth: Equatable, Hashable {
         hasher.combine(unresponsive)
         hasher.combine(unresponsiveSince)
         hasher.combine(reset)
+        hasher.combine(counters)
+        hasher.combine(clipPerMin)
+        hasher.combine(lastChange)
     }
 }
 
@@ -28175,7 +28524,10 @@ public struct FfiConverterTypeHubHealth: FfiConverterRustBuffer {
                 hangCount: FfiConverterOptionUInt8.read(from: &buf), 
                 unresponsive: FfiConverterBool.read(from: &buf), 
                 unresponsiveSince: FfiConverterString.read(from: &buf), 
-                reset: FfiConverterOptionTypeHubReset.read(from: &buf)
+                reset: FfiConverterOptionTypeHubReset.read(from: &buf), 
+                counters: FfiConverterOptionTypeHubStreamCounters.read(from: &buf), 
+                clipPerMin: FfiConverterOptionUInt32.read(from: &buf), 
+                lastChange: FfiConverterOptionTypeHubLastChange.read(from: &buf)
         )
     }
 
@@ -28191,6 +28543,9 @@ public struct FfiConverterTypeHubHealth: FfiConverterRustBuffer {
         FfiConverterBool.write(value.unresponsive, into: &buf)
         FfiConverterString.write(value.unresponsiveSince, into: &buf)
         FfiConverterOptionTypeHubReset.write(value.reset, into: &buf)
+        FfiConverterOptionTypeHubStreamCounters.write(value.counters, into: &buf)
+        FfiConverterOptionUInt32.write(value.clipPerMin, into: &buf)
+        FfiConverterOptionTypeHubLastChange.write(value.lastChange, into: &buf)
     }
 }
 
@@ -28294,6 +28649,108 @@ public func FfiConverterTypeHubInventoryForgot_lift(_ buf: RustBuffer) throws ->
 #endif
 public func FfiConverterTypeHubInventoryForgot_lower(_ value: HubInventoryForgot) -> RustBuffer {
     return FfiConverterTypeHubInventoryForgot.lower(value)
+}
+
+
+/**
+ * A device's newest change in [`HubHealth`]: the newest history record of a
+ * write, recall, import, schedule run or new firmware.
+ */
+public struct HubLastChange {
+    /**
+     * When (ISO-8601 UTC).
+     */
+    public var at: String
+    /**
+     * Who made it (a client's name, a schedule); "" when the record names no
+     * one (a change at the device itself).
+     */
+    public var by: String
+    /**
+     * The record's line.
+     */
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * When (ISO-8601 UTC).
+         */at: String, 
+        /**
+         * Who made it (a client's name, a schedule); "" when the record names no
+         * one (a change at the device itself).
+         */by: String, 
+        /**
+         * The record's line.
+         */text: String) {
+        self.at = at
+        self.by = by
+        self.text = text
+    }
+}
+
+#if compiler(>=6)
+extension HubLastChange: Sendable {}
+#endif
+
+
+extension HubLastChange: Equatable, Hashable {
+    public static func ==(lhs: HubLastChange, rhs: HubLastChange) -> Bool {
+        if lhs.at != rhs.at {
+            return false
+        }
+        if lhs.by != rhs.by {
+            return false
+        }
+        if lhs.text != rhs.text {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(at)
+        hasher.combine(by)
+        hasher.combine(text)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubLastChange: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubLastChange {
+        return
+            try HubLastChange(
+                at: FfiConverterString.read(from: &buf), 
+                by: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubLastChange, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.at, into: &buf)
+        FfiConverterString.write(value.by, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubLastChange_lift(_ buf: RustBuffer) throws -> HubLastChange {
+    return try FfiConverterTypeHubLastChange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubLastChange_lower(_ value: HubLastChange) -> RustBuffer {
+    return FfiConverterTypeHubLastChange.lower(value)
 }
 
 
@@ -31429,6 +31886,94 @@ public func FfiConverterTypeHubStatsDevice_lower(_ value: HubStatsDevice) -> Rus
 
 
 /**
+ * A device's stream counters in [`HubHealth`]. Each is `None` until the hub
+ * read it.
+ */
+public struct HubStreamCounters {
+    /**
+     * Output underruns (PDM ring, PDM DMA and S/PDIF added up), total since
+     * the device started.
+     */
+    public var underruns: UInt32?
+    /**
+     * Output starvations, total since the device started.
+     */
+    public var starvation: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Output underruns (PDM ring, PDM DMA and S/PDIF added up), total since
+         * the device started.
+         */underruns: UInt32?, 
+        /**
+         * Output starvations, total since the device started.
+         */starvation: UInt32?) {
+        self.underruns = underruns
+        self.starvation = starvation
+    }
+}
+
+#if compiler(>=6)
+extension HubStreamCounters: Sendable {}
+#endif
+
+
+extension HubStreamCounters: Equatable, Hashable {
+    public static func ==(lhs: HubStreamCounters, rhs: HubStreamCounters) -> Bool {
+        if lhs.underruns != rhs.underruns {
+            return false
+        }
+        if lhs.starvation != rhs.starvation {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(underruns)
+        hasher.combine(starvation)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubStreamCounters: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubStreamCounters {
+        return
+            try HubStreamCounters(
+                underruns: FfiConverterOptionUInt32.read(from: &buf), 
+                starvation: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubStreamCounters, into buf: inout [UInt8]) {
+        FfiConverterOptionUInt32.write(value.underruns, into: &buf)
+        FfiConverterOptionUInt32.write(value.starvation, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubStreamCounters_lift(_ buf: RustBuffer) throws -> HubStreamCounters {
+    return try FfiConverterTypeHubStreamCounters.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubStreamCounters_lower(_ value: HubStreamCounters) -> RustBuffer {
+    return FfiConverterTypeHubStreamCounters.lower(value)
+}
+
+
+/**
  * Settings of the I2C control interface.
  */
 public struct I2cConfig {
@@ -33636,6 +34181,14 @@ public struct LinkSecurity {
      */
     public var encrypted: Bool
     /**
+     * Not encrypted, but the hub is this machine (`localhost`, a loopback
+     * address: `dspi_link::address::is_loopback_host`): nothing crosses a
+     * network, so it is not shown as unsecured. Always false when
+     * `encrypted`. The three cases: `encrypted`, `local`, neither
+     * (unsecured: the red bar and " (unsecured)").
+     */
+    public var local: Bool
+    /**
      * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
      */
     public var hubKey: String
@@ -33658,6 +34211,13 @@ public struct LinkSecurity {
          * (a hub without TLS, such as an upstream one): show the badge.
          */encrypted: Bool, 
         /**
+         * Not encrypted, but the hub is this machine (`localhost`, a loopback
+         * address: `dspi_link::address::is_loopback_host`): nothing crosses a
+         * network, so it is not shown as unsecured. Always false when
+         * `encrypted`. The three cases: `encrypted`, `local`, neither
+         * (unsecured: the red bar and " (unsecured)").
+         */local: Bool, 
+        /**
          * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
          */hubKey: String, 
         /**
@@ -33669,6 +34229,7 @@ public struct LinkSecurity {
          * differs from the stored one.
          */credential: String) {
         self.encrypted = encrypted
+        self.local = local
         self.hubKey = hubKey
         self.hubKeyNew = hubKeyNew
         self.credential = credential
@@ -33685,6 +34246,9 @@ extension LinkSecurity: Equatable, Hashable {
         if lhs.encrypted != rhs.encrypted {
             return false
         }
+        if lhs.local != rhs.local {
+            return false
+        }
         if lhs.hubKey != rhs.hubKey {
             return false
         }
@@ -33699,6 +34263,7 @@ extension LinkSecurity: Equatable, Hashable {
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(encrypted)
+        hasher.combine(local)
         hasher.combine(hubKey)
         hasher.combine(hubKeyNew)
         hasher.combine(credential)
@@ -33715,6 +34280,7 @@ public struct FfiConverterTypeLinkSecurity: FfiConverterRustBuffer {
         return
             try LinkSecurity(
                 encrypted: FfiConverterBool.read(from: &buf), 
+                local: FfiConverterBool.read(from: &buf), 
                 hubKey: FfiConverterString.read(from: &buf), 
                 hubKeyNew: FfiConverterBool.read(from: &buf), 
                 credential: FfiConverterString.read(from: &buf)
@@ -33723,6 +34289,7 @@ public struct FfiConverterTypeLinkSecurity: FfiConverterRustBuffer {
 
     public static func write(_ value: LinkSecurity, into buf: inout [UInt8]) {
         FfiConverterBool.write(value.encrypted, into: &buf)
+        FfiConverterBool.write(value.local, into: &buf)
         FfiConverterString.write(value.hubKey, into: &buf)
         FfiConverterBool.write(value.hubKeyNew, into: &buf)
         FfiConverterString.write(value.credential, into: &buf)
@@ -45554,6 +46121,30 @@ fileprivate struct FfiConverterOptionTypeHubEventRecord: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeHubLastChange: FfiConverterRustBuffer {
+    typealias SwiftType = HubLastChange?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubLastChange.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubLastChange.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeHubOutboundLast: FfiConverterRustBuffer {
     typealias SwiftType = HubOutboundLast?
 
@@ -45642,6 +46233,30 @@ fileprivate struct FfiConverterOptionTypeHubScheduleRun: FfiConverterRustBuffer 
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeHubScheduleRun.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHubStreamCounters: FfiConverterRustBuffer {
+    typealias SwiftType = HubStreamCounters?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHubStreamCounters.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHubStreamCounters.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -46356,6 +46971,31 @@ fileprivate struct FfiConverterSequenceTypeBiquadSection: FfiConverterRustBuffer
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeBiquadSection.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeBootDevice: FfiConverterRustBuffer {
+    typealias SwiftType = [BootDevice]
+
+    public static func write(_ value: [BootDevice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeBootDevice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [BootDevice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [BootDevice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeBootDevice.read(from: &buf))
         }
         return seq
     }
@@ -48265,6 +48905,17 @@ public func outputLabelsFor(input: OutputLabelInput) -> [OutputLabel]  {
 })
 }
 /**
+ * Boards in BOOTSEL mode with a PICOBOOT interface (`2E8A:0003` RP2040,
+ * `2E8A:000F` RP2350). Empty where the bus cannot be enumerated (Android,
+ * and a build without the `usb` feature: iOS, the web).
+ */
+public func picobootDevices() -> [BootDevice]  {
+    return try!  FfiConverterSequenceTypeBootDevice.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_picoboot_devices($0
+    )
+})
+}
+/**
  * The shape of platform `platform_id` (`DspState::platform_id`), for laying
  * out pages before or without a device. A connected device's own counts are
  * in `DspState` (`num_input_channels`, `num_output_channels`); this is the
@@ -48602,6 +49253,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_output_labels_for() != 60813) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_picoboot_devices() != 58975) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_platform_shape() != 51628) {
@@ -49126,7 +49780,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_hub_events_watch() != 53028) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_hub_health() != 16703) {
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_health() != 60109) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_identify() != 8517) {
@@ -49379,6 +50033,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_paste_channel() != 43676) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed() != 50736) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_pin_check() != 43599) {

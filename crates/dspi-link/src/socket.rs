@@ -86,6 +86,14 @@ pub trait WsSender: Send + Sync {
     /// Send a close frame (best effort) and shut the socket down, which also
     /// ends a blocked [`WsReceiver::recv`].
     fn close(&self, code: u16);
+
+    // -- WP SECPAKE --
+    /// The TLS exporter `auth.pair2` binds to (`crate::pake::EXPORTER_LABEL`, 32
+    /// bytes) when this socket is our own TLS; `None` otherwise (plaintext, the
+    /// browser's socket, test fakes). Secret to the connection: never logged.
+    fn tls_binding(&self) -> Option<[u8; 32]> {
+        None
+    }
 }
 
 pub trait WsReceiver: Send {
@@ -129,6 +137,15 @@ pub trait WsConnector: Send + Sync {
     ) -> Result<(WsPair, Pin), LinkError> {
         let _ = (url, protocol, trust, handshake_within);
         Err(LinkError::TlsRefused { advertised: false })
+    }
+
+    // -- WP SECWEB --
+    /// The socket under this connector does TLS itself, by the URL's scheme (the
+    /// browser's WebSocket: `wss://` is TLS checked by the browser's own trust, `ws://`
+    /// is not, and no key can be pinned). [`crate::client::LinkClient::connect_tls`]
+    /// then connects with [`Self::connect`] as the URL says, never trying TLS of its own.
+    fn tls_by_scheme(&self) -> bool {
+        false
     }
 }
 
@@ -383,7 +400,7 @@ impl WsConnector for TcpConnector {
         let reader = Pipe::plain(tcp, Arc::clone(&wlock), Arc::clone(&broken), Some(deadline));
         let mut writer = Pipe::plain(write_half, wlock, Arc::clone(&broken), None);
         writer.buffered = true;
-        upgrade(url, protocol, reader, writer, shutdown, broken)
+        upgrade(url, protocol, reader, writer, shutdown, broken, None)
     }
 
     // -- WP SECCORE --
@@ -409,6 +426,8 @@ impl WsConnector for TcpConnector {
             LinkError::TlsRefused { advertised: false }
         })?;
         let io = |e: io::Error| LinkError::Io(e.to_string());
+        // -- WP SECPAKE --
+        let binding = crate::pake::Binding::of(&tls).map(|b| b.into_bytes());
         let wlock = Arc::new(Mutex::new(()));
         let broken = Arc::new(AtomicBool::new(false));
         let write_tls = tls.try_clone().map_err(io)?;
@@ -417,7 +436,7 @@ impl WsConnector for TcpConnector {
         let mut writer = Pipe::over_tls(write_tls, wlock, Arc::clone(&broken), None).map_err(io)?;
         writer.buffered = true;
         let wss = url.strip_prefix("ws://").map_or_else(|| url.to_owned(), |rest| format!("wss://{rest}"));
-        let pair = upgrade(&wss, protocol, reader, writer, shutdown, broken)?;
+        let pair = upgrade(&wss, protocol, reader, writer, shutdown, broken, binding)?;
         Ok((pair, outcome.presented().0))
     }
 }
@@ -441,6 +460,7 @@ fn upgrade(
     writer: Pipe,
     shutdown: TcpStream,
     broken: Arc<AtomicBool>,
+    binding: Option<[u8; 32]>, // -- WP SECPAKE --
 ) -> Result<WsPair, LinkError> {
     let mut request = url.into_client_request().map_err(|e| LinkError::Handshake(e.to_string()))?;
     request.headers_mut().insert(
@@ -458,7 +478,7 @@ fn upgrade(
     reader.get_ref().tcp.set_read_timeout(Some(READ_TICK)).map_err(|e| LinkError::Io(e.to_string()))?;
     let writer = WebSocket::from_raw_socket(writer, Role::Client, Some(config()));
     Ok((
-        Box::new(TcpSender { ws: Mutex::new(writer), shutdown }),
+        Box::new(TcpSender { ws: Mutex::new(writer), shutdown, binding }),
         Box::new(TcpReceiver { ws: reader, close_code: None, close_text: String::new(), broken }),
     ))
 }
@@ -466,9 +486,16 @@ fn upgrade(
 struct TcpSender {
     ws: Mutex<WebSocket<Pipe>>,
     shutdown: TcpStream,
+    // -- WP SECPAKE --
+    binding: Option<[u8; 32]>,
 }
 
 impl WsSender for TcpSender {
+    // -- WP SECPAKE --
+    fn tls_binding(&self) -> Option<[u8; 32]> {
+        self.binding
+    }
+
     fn send(&self, msg: WsMessage) -> io::Result<()> {
         let m = match msg {
             WsMessage::Text(t) => Message::text(t),

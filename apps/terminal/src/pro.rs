@@ -912,7 +912,11 @@ pub(crate) fn cmd_status(target: &Target, flags: &[&str], json: bool) -> u8 {
         Ok(o) => o,
         Err(c) => return c,
     };
-    let v = status_of(&opened.core, &opened.serial, &target.via());
+    let mut v = status_of(&opened.core, &opened.serial, &target.via());
+    // -- WP SECTM -- a hub session's encryption, and the badge without it
+    if matches!(target, Target::Link(_)) {
+        link_security_into(&mut v, &opened.core.link_security());
+    }
     print_status(&v, json);
     exit::OK
 }
@@ -955,6 +959,23 @@ pub(crate) fn status_of(core: &DspiCore, serial: &str, via: &str) -> Value {
     })
 }
 
+// -- WP SECTM --
+/// A hub session's `link` facts (`encrypted`, `hubKey`) into the status view,
+/// and " (unsecured)" after its `via` when it has no TLS.
+pub(crate) fn link_security_into(v: &mut Value, security: &dspi_core::LinkSecurity) {
+    if let Some(via) = v.get("via").and_then(Value::as_str) {
+        // -- WP SECFIX -- a hub on this machine is "local", not unsecured
+        let unsecured = !security.encrypted && !security.local;
+        let via = dspi_tui::shell::connect::with_security(via, unsecured);
+        v["via"] = Value::String(via);
+    }
+    v["link"] = json!({
+        "encrypted": security.encrypted,
+        "local": security.local, // -- WP SECFIX --
+        "hubKey": security.hub_key,
+    });
+}
+
 fn print_status(v: &Value, json: bool) {
     if json {
         println!("{v}");
@@ -969,7 +990,21 @@ fn print_status(v: &Value, json: bool) {
             .unwrap_or_default()
     };
     let flag = |p: &str| v.pointer(p).and_then(Value::as_bool).unwrap_or(false);
-    println!("Connection  {}", s("/via"));
+    // -- WP SECTM -- the badge red on a terminal, and where the explanation is
+    {
+        let colour = dspi_tui::shell::connect::colour_allowed(std::io::stdout().is_terminal());
+        println!(
+            "Connection  {}",
+            dspi_tui::shell::connect::paint_unsecured(&s("/via"), colour)
+        );
+        if v.pointer("/link/local") == Some(&Value::Bool(true)) {
+            // -- WP SECFIX -- nothing crosses a network: no warning
+        } else if v.pointer("/link/encrypted") == Some(&Value::Bool(false)) {
+            println!("            not encrypted: see `{COMMAND} link security`");
+        } else if !s("/link/hubKey").is_empty() {
+            println!("Hub key     {}", s("/link/hubKey"));
+        }
+    }
     if flag("/document/offline") {
         println!("File        {}", s("/document/fileName"));
     } else {

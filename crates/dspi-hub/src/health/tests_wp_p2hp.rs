@@ -337,6 +337,10 @@ fn wp_p2hp_each_period_gives_one_health_from_the_newest_reading() {
             temp_c: Some(35.0),
             uptime_s: Some(100),
             hang_count: Some(0),
+            // -- WP P3HB --
+            counters: None,
+            clip_per_min: None,
+            last_change: None,
         }]
     );
     let r = t.record();

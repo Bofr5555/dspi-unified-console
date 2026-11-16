@@ -23,6 +23,8 @@ import { AlarmRules } from "./AlarmRules";
 import { Mqtt } from "./Mqtt";
 import { Outbound } from "./Outbound";
 import { Schedules } from "./Schedules";
+// -- WP SECWEB -- the link's fingerprint or the "unencrypted" banner; the compatibility mode warning
+import { HubLinkSecurity, UpstreamCompatWarning } from "../../ui/LinkSecurity";
 import { HUB_SETTINGS_ROLE_KEY, HUB_SETTINGS_SCREEN, KEY_ROLES, localTime, mayEdit, mintedFrom, roleWord, sectionsOf, type MintedKey } from "./model";
 
 /** The hub's caps and this session's role on it, read again when the Link phase changes. */
@@ -58,9 +60,11 @@ export function HubSettingsScreen(props: ScreenProps) {
   return (
     <div class="hub-settings-screen">
       <h2 class="hub-settings-title">Hub Settings</h2>
-      {/* -- HOOK SECWEB (PLAN-SEC SEC-C) -- the hub's TLS fingerprint and the "unencrypted" banner go here */}
-      {/* -- HOOK SECWEB (PLAN-SEC SEC-C) -- the hub's upstream-compatibility mode (owner-approved: off by default,
-          a large warning that security is downgraded, listing what turns off) goes here, Admin only */}
+      {/* -- WP SECWEB -- the hub's TLS fingerprint and the "unencrypted" banner */}
+      <HubLinkSecurity security={st.security} ctx={session.linkContext} />
+      {/* -- WP SECWEB -- the hub's upstream-compatibility mode (owner-approved: off by default,
+          a large warning that security is downgraded, listing what turns off), Admin only */}
+      <UpstreamCompatWarning security={st.security} admin={role === "admin"} />
       {role && role !== "admin" ? <NoticeRow rowKey={HUB_SETTINGS_ROLE_KEY} label="Read-only" cls="read-only" /> : null}
       {role === "admin" && ro ? (
         <p class="note read-only" role="note" aria-label="Read-only">

@@ -1999,7 +1999,9 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * One health record per online device of the hub (`health.get`):
-     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+     * -- WP P3HB -- the stream counters, clip events a minute and the last
+     * change where the hub has them.
      * Every role. Slow: off the UI thread.
      *
      * Errors: [`DspiError::Unsupported`] without the `health` cap;
@@ -3740,6 +3742,32 @@ interface DspiCoreApi : AutoCloseable {
     fun setTubeParam(idx: Int, value: Float)
 
     /**
+     * Flash `image` into the boot ROM of `target` (one of
+     * [`picoboot_devices`]) over PICOBOOT, with no drive mounted (module
+     * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
+     * before the board entered BOOTSEL; the guard must say clear for it with
+     * nothing typed, so an image that would ask a person anything is
+     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * [`DspiCore::flash_confirmed`] does (mint it once the board is in
+     * BOOTSEL; it works with no device open), and the installer lock holds.
+     * Blocks for up to 60 s.
+     *
+     * `Ok` means every sector was written and read back identical and the
+     * reboot was acknowledged; the caller confirms by the DSPi coming back
+     * with the image's version. On an error after the first erase the board
+     * stays in BOOTSEL (nothing is retried).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] without a good token;
+     * [`DspiError::FirmwareGuardBlocked`] or [`DspiError::InvalidArgument`]
+     * for an image the guard does not clear, of another chip, or not
+     * firmware; [`DspiError::Unsupported`] where the bus cannot be reached;
+     * [`DspiError::Transfer`] naming the step for anything the transfer or
+     * the ROM did. In every error before the first command nothing was sent.
+     */
+    @Throws(DspiException::class)
+    fun picobootFlashConfirmed(image: List<Int>, target: BootDevice, board: FirmwareGuardBoard, token: String?): FlashReport
+
+    /**
      * The pin map (WP CG-SWS-b): the platform's valid GPIOs, each function
      * with its pin, whether it holds it and the pins it may move to, and
      * who holds every held GPIO. From the mirror and the last
@@ -5124,6 +5152,15 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun outputCardsFor(input: OutputLabelInput): List<OutputCard>
+
+    /**
+     * Boards in BOOTSEL mode with a PICOBOOT interface (`2E8A:0003` RP2040,
+     * `2E8A:000F` RP2350). Empty where the bus cannot be enumerated (Android,
+     * and a build without the `usb` feature: iOS, the web).
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun picobootDevices(): List<BootDevice>
 
     /**
      * The shape of platform `platform_id` (`DspState::platform_id`), for laying

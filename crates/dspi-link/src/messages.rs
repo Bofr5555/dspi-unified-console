@@ -427,6 +427,24 @@ pub mod out {
         v.to_string()
     }
 
+    // -- WP SECPAKE --
+    /// `auth.pair2` step 1: our SPAKE2 message (base64url).
+    pub fn auth_pair2_start(id: u64, name: &str, role: &str, pake: &str) -> String {
+        json!({"t": "auth.pair2", "id": id, "step": 1, "name": name, "role": role, "pake": pake}).to_string()
+    }
+
+    // -- WP SECPAKE --
+    /// `auth.pair2` step 2: our confirmation MAC (base64url).
+    pub fn auth_pair2_confirm(id: u64, confirm: &str) -> String {
+        json!({"t": "auth.pair2", "id": id, "step": 2, "confirm": confirm}).to_string()
+    }
+
+    // -- WP SECPAKE --
+    /// `auth.rotate` (OD-SECg): a fresh token for this session's client.
+    pub fn auth_rotate(id: u64) -> String {
+        json!({"t": "auth.rotate", "id": id}).to_string()
+    }
+
     pub fn device_list(id: u64) -> String {
         json!({"t": "device.list", "id": id}).to_string()
     }

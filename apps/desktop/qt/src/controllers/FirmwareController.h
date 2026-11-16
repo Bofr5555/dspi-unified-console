@@ -71,6 +71,12 @@ class FirmwareController : public QObject {
     Q_PROPERTY(bool custom READ custom NOTIFY imageChanged)
     // Why the custom image cannot be used ("" when it can)
     Q_PROPERTY(QString imageProblem READ imageProblem NOTIFY imageChanged)
+    // -- WP SECFIX -- A custom image that is not a bundled one byte for byte
+    // (the core's manifest, dspi_firmware_verify_bundled; SECFWV): the label
+    // "Not a verified DSPi Console image" and what it means (the core's notice
+    // row firmware.not_verified). Information, not a refusal; "" otherwise.
+    Q_PROPERTY(QString unverifiedLabel READ unverifiedLabel NOTIFY imageChanged)
+    Q_PROPERTY(QString unverifiedText READ unverifiedText NOTIFY imageChanged)
     // ---- The guard's typed confirmation ----
     Q_PROPERTY(bool guardAsking READ guardAsking NOTIFY guardChanged)
     Q_PROPERTY(QString guardMessage READ guardMessage NOTIFY guardChanged)
@@ -123,6 +129,10 @@ public:
     bool imageChecked() const;
     bool custom() const { return !m_customPath.isEmpty(); }
     QString imageProblem() const { return m_customProblem; }
+    // -- WP SECFIX --
+    bool imageUnverified() const { return custom() && m_customImage.bundled != QLatin1String("verified"); }
+    QString unverifiedLabel() const { return imageUnverified() ? m_unverifiedLabel : QString(); }
+    QString unverifiedText() const { return imageUnverified() ? m_unverifiedText : QString(); }
 
     bool guardAsking() const { return m_guardAsking; }
     QString guardMessage() const { return m_guardMessage; }
@@ -183,6 +193,7 @@ private:
         int chip = -1;
         bool valid = false;
         QString problem;
+        QString bundled;     // -- WP SECFIX -- the manifest's answer: verified, notBundled, mismatch
     };
     enum Error {
         NoError, MultipleBoards, VolumeNotMounted, ImageMissing, ImageStale, WriteFailed, DeviceDidNotReturn,
@@ -217,6 +228,7 @@ private:
     QString m_customPath;
     Image m_customImage;
     QString m_customProblem;
+    QString m_unverifiedLabel, m_unverifiedText;   // -- WP SECFIX -- the core's row, read once
 
     State m_state = Idle;
     Error m_error = NoError;

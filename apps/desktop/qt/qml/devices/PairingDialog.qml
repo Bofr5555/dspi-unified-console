@@ -8,6 +8,13 @@ import UConsole
 // window, and does not hold the app up: the window behind it keeps updating.
 // Six digits or nothing reaches the hub; a wrong PIN leaves it open with the
 // core's reason under the field. Cancel leaves the hub.
+// -- WP SECQT -- Over TLS it shows the key the hub presented, to compare with
+// the one the hub shows beside its PIN; the pairing pins that key. Without
+// TLS it says the PIN crosses the network unencrypted, in red and in words.
+// -- WP SECFIX -- After a dspi://pair link (LinkController.openPairLink) the
+// link's PIN is filled in: the hub's name and key are on screen, and Pair is
+// the user's yes. A hub on this machine (LinkController.local) is not
+// unsecured: no red line.
 Dialog {
     id: dialog
     objectName: "PairingDialog"
@@ -24,7 +31,7 @@ Dialog {
 
     onAskedChanged: asked ? open() : close()
     Component.onCompleted: if (asked) open()
-    onAboutToShow: pin.text = ""
+    onAboutToShow: pin.text = LinkController.pairLinkPin   // -- WP SECFIX -- "" but after a pairing link
     onOpened: pin.forceActiveFocus()
     onRejected: if (asked) LinkController.closeSession()
 
@@ -87,6 +94,68 @@ Dialog {
             text: LinkController.phaseText
             font: Theme.fontBody
             color: Theme.text
+            wrapMode: Text.Wrap
+        }
+        // -- WP SECQT -- the hub's key, before the PIN goes out
+        ColumnLayout {
+            objectName: "PairingDialog.key"
+            Layout.fillWidth: true
+            visible: LinkController.encrypted && LinkController.hubKey.length > 0
+            spacing: 2
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Hub key")
+                font: Theme.fontSmall
+                color: Theme.textMuted
+            }
+            TextEdit {
+                objectName: "PairingDialog.hubKey"
+                Layout.fillWidth: true
+                text: LinkController.hubKey
+                readOnly: true
+                selectByMouse: true
+                font: Qt.font({ family: Shell.monospaceFamily, pixelSize: 15 })
+                color: Theme.text
+                selectionColor: Theme.selection
+                selectedTextColor: Theme.text
+                wrapMode: TextEdit.WrapAnywhere
+                Accessible.role: Accessible.StaticText
+                Accessible.name: qsTr("Hub key")
+                Accessible.description: text
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Check that the hub shows the same key next to its PIN.")
+                font: Theme.fontSmall
+                color: Theme.textMuted
+                wrapMode: Text.Wrap
+            }
+        }
+        RowLayout {
+            objectName: "PairingDialog.unsecured"
+            Layout.fillWidth: true
+            visible: LinkController.unsecured
+            spacing: 2
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("This connection is not encrypted (%1): the PIN crosses the network as plain text.")
+                      .arg(LinkController.unsecuredLabel)
+                font: Theme.fontSmall
+                color: Theme.dangerText
+                wrapMode: Text.Wrap
+            }
+            UnsecuredInfoButton {
+                objectName: "PairingDialog.unsecuredInfo"
+            }
+        }
+        // -- WP SECFIX -- the PIN came with a pairing link: say so, and what Pair means
+        Text {
+            objectName: "PairingDialog.fromLink"
+            Layout.fillWidth: true
+            visible: LinkController.pairLinkPin.length > 0
+            text: qsTr("The PIN comes from the pairing link. Pair if this is your hub and the key matches.")
+            font: Theme.fontSmall
+            color: Theme.textMuted
             wrapMode: Text.Wrap
         }
         TextField {

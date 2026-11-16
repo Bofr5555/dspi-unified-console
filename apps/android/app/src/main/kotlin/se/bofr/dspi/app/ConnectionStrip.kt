@@ -3,6 +3,9 @@ package se.bofr.dspi.app
 import se.bofr.dspi.core.DspiException
 import se.bofr.dspi.core.LinkPhase
 import se.bofr.dspi.core.LinkPhaseText
+import se.bofr.dspi.core.Notice
+import se.bofr.dspi.core.NoticeKind
+import se.bofr.dspi.link.HubSecurity
 import se.bofr.dspi.link.LinkHub
 import se.bofr.dspi.link.LinkSessionState
 import se.bofr.dspi.usb.UsbSessionState
@@ -53,9 +56,19 @@ sealed interface ConnectionStrip {
      * REMOTE (DSPi Link): always visible, so a remote unit is never mistaken for the USB one.
      * [lost] (WP AN5): the connection is lost and the core is reconnecting, shown as the
      * owner's banner; [detail], the banner's second line, is the hub and the core's `close_reason`.
+     * -- WP SECAN -- [unsecured]: the hub connection is not encrypted (owner rule 2026-11-15):
+     * the bar is red, [text] ends in " (unsecured)" (so it is never colour alone) and an
+     * info button beside it explains ([UnsecuredWording.info]).
      */
-    data class Remote(override val text: String, val actions: List<RemoteAction>, val lost: Boolean = false, val detail: String = "") :
-        ConnectionStrip
+    data class Remote(
+        override val text: String,
+        val actions: List<RemoteAction>,
+        val lost: Boolean = false,
+        val detail: String = "",
+        val unsecured: Boolean = false,
+        /** " (unsecured)" when [unsecured]: the end of [text], which a narrow bar never cuts off. */
+        val suffix: String = ""
+    ) : ConnectionStrip
 }
 
 /** [DISCONNECT]'s label is CG10's `reconnecting.disconnect` (a test holds them equal). */
@@ -100,6 +113,38 @@ fun interface LinkWording {
 /** `pin_source` of a hub with a PIN of its own; anything else is a window PIN (spec 6.2). */
 const val FIXED_PIN = "fixed"
 
+// -- WP SECAN --
+/** The core's notice row of the unsecured bar: its title is the suffix's word. */
+const val UNSECURED_NOTICE_KEY = "dlink.unsecured"
+
+/** The core's notice row the info button beside "(unsecured)" opens: calm, what it means, how to turn TLS on. */
+const val UNSECURED_INFO_NOTICE_KEY = "dlink.unsecured.info"
+
+/** The shared words of the unsecured bar (the core's notice table, every client the same). */
+fun interface UnsecuredWording {
+    fun notice(key: String): Notice
+
+    /** " (unsecured)", appended to the bar's text. */
+    fun suffix(): String = " (" + notice(UNSECURED_NOTICE_KEY).title + ")"
+
+    /** The info button's explanation. */
+    fun info(): Notice = notice(UNSECURED_INFO_NOTICE_KEY)
+
+    companion object {
+        /** The core's table; no core instance needed (as [LinkWording.CORE]). */
+        val CORE: UnsecuredWording = object : UnsecuredWording {
+            private val rows = mutableMapOf<String, Notice>()
+
+            override fun notice(key: String): Notice = synchronized(rows) {
+                rows.getOrPut(key) {
+                    val n = se.bofr.dspi.ffi.uniffi.noticeForKey(key, "")
+                    Notice(n.key, NoticeKind.valueOf(n.kind.name), n.title, n.reason, n.action, n.detail)
+                }
+            }
+        }
+    }
+}
+
 fun connectionStrip(
     mode: AppMode,
     state: UsbSessionState,
@@ -107,11 +152,14 @@ fun connectionStrip(
     lockNotice: Boolean = false,
     wording: LinkWording = LinkWording.CORE,
     // -- WP P1AN1 -- the demo stack holds a document opened offline
-    document: String? = null
+    document: String? = null,
+    // -- WP SECAN --
+    security: HubSecurity? = null,
+    unsecuredWording: UnsecuredWording = UnsecuredWording.CORE
 ): ConnectionStrip = when {
     mode == AppMode.DEMO && document != null -> ConnectionStrip.Document(document)
     mode == AppMode.DEMO -> ConnectionStrip.Demo
-    mode == AppMode.REMOTE -> remoteStrip(remote, lockNotice, wording)
+    mode == AppMode.REMOTE -> remoteStrip(remote, lockNotice, wording).secured(remote, security, unsecuredWording)
     else -> when (state) {
         UsbSessionState.NoDevice -> ConnectionStrip.NoDevice
         is UsbSessionState.PermissionRequired ->
@@ -221,4 +269,28 @@ fun remoteStrip(s: LinkSessionState, lockNotice: Boolean = false, wording: LinkW
         )
         is LinkSessionState.Failed -> ConnectionStrip.Remote(s.reason, listOf(RemoteAction.CONNECT, d))
     }
+}
+
+// -- WP SECAN --
+/**
+ * The owner's rule (2026-11-15): while the app is on a hub over an unencrypted connection
+ * ([HubSecurity.unsecured]: not encrypted, and not this device's own loopback, -- WP SECFIX --),
+ * the bar says so: red, " (unsecured)" appended. Only the
+ * states with a live hub connection (the PIN prompt, the device choice, waiting for a
+ * board, connected); a lost or failed connection has its own banner.
+ */
+fun ConnectionStrip.Remote.secured(
+    s: LinkSessionState,
+    security: HubSecurity?,
+    wording: UnsecuredWording = UnsecuredWording.CORE
+): ConnectionStrip.Remote {
+    val live = s is LinkSessionState.NeedsPin ||
+        s is LinkSessionState.ChooseDevice ||
+        s is LinkSessionState.WaitingForDevice ||
+        s is LinkSessionState.Connected
+    val hub = s.hub ?: return this
+    // -- WP SECFIX -- a hub on this device is local: not unsecured
+    if (!live || security == null || !security.unsecured || !security.hubId.equals(hub.id, ignoreCase = true)) return this
+    val suffix = wording.suffix()
+    return copy(text = text + suffix, unsecured = true, suffix = suffix)
 }

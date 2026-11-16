@@ -169,6 +169,10 @@ pub struct ServiceConfig {
     /// Schedules (`schedule.*`, `<data>/schedule.json`); off when `None`. They run
     /// through the parameter API's executor: feature `api`.
     pub schedule: Option<crate::schedule::ScheduleConfig>,
+    // -- WP P3GR --
+    /// Groups (`group.*`, `<data>/groups.json`); the schedule's `group:<id>` targets
+    /// resolve through them.
+    pub groups: bool,
 }
 
 impl Default for ServiceConfig {
@@ -190,6 +194,8 @@ impl Default for ServiceConfig {
             alarms: false,
             // -- WP P2SC --
             schedule: None,
+            // -- WP P3GR --
+            groups: false,
         }
     }
 }
@@ -205,6 +211,21 @@ pub struct ServiceSetup<'a> {
     pub bus: &'a Arc<Bus>,
     /// How to wake the timer when `next_due` moved earlier.
     pub wake: &'a Waker,
+    // -- WP P3GR --
+    /// The groups, when [`ServiceConfig::groups`] runs them: made before every other
+    /// service, so each can resolve `group:<id>` ([`ServiceSetup::group_resolver`]).
+    pub groups: Option<Arc<crate::groups::GroupsService>>,
+}
+
+// -- WP P3GR --
+impl ServiceSetup<'_> {
+    /// How a service resolves `group:<id>`; `None` on a hub without groups (a group
+    /// target is then a `not_found` row).
+    pub fn group_resolver(&self) -> Option<Arc<dyn crate::groups::GroupResolver>> {
+        self.groups
+            .as_ref()
+            .map(|g| Arc::clone(g) as Arc<dyn crate::groups::GroupResolver>)
+    }
 }
 
 /// The list: every service the hub runs, in the order they are consulted.
@@ -217,6 +238,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     list.extend(crate::health::service(config, setup));
     // -- WP P2IN --
     list.extend(crate::inventory::service(config, setup));
+    // -- WP P3GR --
+    list.extend(crate::groups::service(setup));
     // -- WP P2ID --
     list.extend(crate::identify::service(config, setup));
     // -- WP P2HS --
@@ -366,6 +389,17 @@ impl Services {
         let bus = Bus::new();
         let wake = Waker::default();
         let clock = Arc::clone(&config.clock);
+        // -- WP P3GR -- the groups first: the others resolve `group:<id>` through them.
+        let groups = crate::groups::make(
+            config,
+            &ServiceSetup {
+                data_dir: data_dir.as_deref(),
+                clock: &clock,
+                bus: &bus,
+                wake: &wake,
+                groups: None,
+            },
+        );
         let list = registered(
             config,
             &ServiceSetup {
@@ -373,6 +407,8 @@ impl Services {
                 clock: &clock,
                 bus: &bus,
                 wake: &wake,
+                // -- WP P3GR --
+                groups,
             },
         );
         let labels = Arc::new(Labels::default());

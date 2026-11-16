@@ -1697,6 +1697,11 @@ Switching an output is instant and never writes to flash. The pin, name and powe
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Encrypted · hub key %1</source>
+        <extracomment>%1 is the hub key&apos;s fingerprint, SHA256:K7Q2-M9XD-…</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Attempt %1, next try in %2 s</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1710,6 +1715,14 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
     <message>
         <source>Find hubs automatically</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>verified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unencrypted</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2341,6 +2354,10 @@ Do you wish to proceed?</source>
 </context>
 <context>
     <name>FirmwareController</name>
+    <message>
+        <source>Not a verified DSPi Console image</source>
+        <translation type="unfinished"></translation>
+    </message>
     <message>
         <source>unknown</source>
         <translation type="unfinished"></translation>
@@ -4848,6 +4865,13 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
 </context>
 <context>
+    <name>KeyNotice</name>
+    <message>
+        <source>OK</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>LevelMeter</name>
     <message>
         <source>Level</source>
@@ -5127,6 +5151,10 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
 <context>
     <name>LinkController</name>
     <message>
+        <source>unsecured</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Another console is applying changes</source>
         <translation type="unfinished"></translation>
     </message>
@@ -5151,11 +5179,28 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>That is not a pairing link from a DSPi hub. Open the hub&apos;s pairing screen again, or type its address.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>That is not a pairing link from a DSPi hub.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This hub did not present the key in the pairing link, so nothing was sent to it. Check that the link is from this hub&apos;s pairing screen.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>The hub did not answer.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>No secret store answered, so this hub&apos;s pairing is saved in a file only your account can read (%1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Encrypted connection set up; hub key %1</source>
+        <extracomment>%1 is the hub key&apos;s fingerprint, SHA256:K7Q2-M9XD-…</extracomment>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -6144,7 +6189,15 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The pairing code crosses the network as plain text, without encryption.</source>
+        <source>Connections are encrypted. Clients check this hub&apos;s key when they pair.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upstream compatibility mode is on: clients may connect and pair without encryption.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This hub listens on this machine only, without encryption.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6176,6 +6229,26 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Hub key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upstream compatibility mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lets upstream DSPi Link clients, which cannot encrypt, connect. Lowers this hub&apos;s security.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Security downgraded: upstream compatibility mode is on</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use it only on a network you trust, and only while you need it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Paired Clients</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6193,6 +6266,11 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Pairing code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hub key %1</source>
+        <extracomment>%1 is the hub key&apos;s fingerprint, SHA256:K7Q2-M9XD-…</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6333,6 +6411,18 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Keep awake while sharing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn on upstream compatibility mode?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This downgrades the hub&apos;s security. While it is on:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Turn On</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -6782,6 +6872,22 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>the hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hub key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check that the hub shows the same key next to its PIN.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This connection is not encrypted (%1): the PIN crosses the network as plain text.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The PIN comes from the pairing link. Pair if this is your hub and the key matches.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -7312,6 +7418,41 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Bypass Master EQ</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>RePairDialog</name>
+    <message>
+        <source>This hub&apos;s key changed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub&apos;s key does not match</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub refused an encrypted connection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub requires encryption</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing was sent to it. Pair again only if you know why the key changed, for example because the hub was set up again. Otherwise another machine may be posing as this hub.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing was sent to it. Pairing again starts over with the hub&apos;s PIN; check the key the hub shows.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pair Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -8134,6 +8275,18 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>DSPi Link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hub key</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upstream compatibility mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Encryption TLS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -11551,6 +11704,13 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>Failed to save preset (%1). Device switch aborted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>UnsecuredInfoButton</name>
+    <message>
+        <source>OK</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

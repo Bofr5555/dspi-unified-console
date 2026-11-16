@@ -684,6 +684,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun setTubeParam(idx: Int, value: Float) = call { core.setTubeParam(idx.toUByte(), value) }
 
+    override fun picobootFlashConfirmed(image: List<Int>, target: BootDevice, board: FirmwareGuardBoard, token: String?): FlashReport = call { core.picobootFlashConfirmed(ByteArray(image.size) { image[it].toByte() }, target.toFfi(), board.toFfi(), token).toDomain() }
+
     override fun pinMap(): PinMap = core.pinMap().toDomain()
 
     override fun pinCheck(function: PinFunction, pin: Int): PinRefusal? = core.pinCheck(function.toFfi(), pin.toUByte())?.let { it.toDomain() }
@@ -935,6 +937,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = se.bofr.dspi.ffi.uniffi.outputLabelsFor(input.toFfi()).map { it.toDomain() }
 
     override fun outputCardsFor(input: OutputLabelInput): List<OutputCard> = se.bofr.dspi.ffi.uniffi.outputCardsFor(input.toFfi()).map { it.toDomain() }
+
+    override fun picobootDevices(): List<BootDevice> = se.bofr.dspi.ffi.uniffi.picobootDevices().map { it.toDomain() }
 
     override fun platformShape(platformId: Int): PlatformShape = se.bofr.dspi.ffi.uniffi.platformShape(platformId.toUByte()).toDomain()
 
@@ -1978,6 +1982,7 @@ internal fun LinkAddress.toFfi() =
 internal fun se.bofr.dspi.ffi.uniffi.LinkSecurity.toDomain() =
     LinkSecurity(
         encrypted = encrypted,
+        local = local,
         hubKey = hubKey,
         hubKeyNew = hubKeyNew,
         credential = credential,
@@ -1986,6 +1991,7 @@ internal fun se.bofr.dspi.ffi.uniffi.LinkSecurity.toDomain() =
 internal fun LinkSecurity.toFfi() =
     se.bofr.dspi.ffi.uniffi.LinkSecurity(
         encrypted = encrypted,
+        local = local,
         hubKey = hubKey,
         hubKeyNew = hubKeyNew,
         credential = credential,
@@ -3684,6 +3690,9 @@ internal fun se.bofr.dspi.ffi.uniffi.HubHealth.toDomain() =
         unresponsive = unresponsive,
         unresponsiveSince = unresponsiveSince,
         reset = reset?.let { it.toDomain() },
+        counters = counters?.let { it.toDomain() },
+        clipPerMin = clipPerMin?.let { it.toLong() },
+        lastChange = lastChange?.let { it.toDomain() },
     )
 
 internal fun HubHealth.toFfi() =
@@ -3699,6 +3708,35 @@ internal fun HubHealth.toFfi() =
         unresponsive = unresponsive,
         unresponsiveSince = unresponsiveSince,
         reset = reset?.let { it.toFfi() },
+        counters = counters?.let { it.toFfi() },
+        clipPerMin = clipPerMin?.let { it.toUInt() },
+        lastChange = lastChange?.let { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubStreamCounters.toDomain() =
+    HubStreamCounters(
+        underruns = underruns?.let { it.toLong() },
+        starvation = starvation?.let { it.toLong() },
+    )
+
+internal fun HubStreamCounters.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubStreamCounters(
+        underruns = underruns?.let { it.toUInt() },
+        starvation = starvation?.let { it.toUInt() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubLastChange.toDomain() =
+    HubLastChange(
+        at = at,
+        by = by,
+        text = text,
+    )
+
+internal fun HubLastChange.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubLastChange(
+        at = at,
+        by = by,
+        text = text,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HubStatsDevice.toDomain() =
@@ -4661,6 +4699,40 @@ internal fun OutputLabelInput.toFfi() =
         outputFilters = outputFilters.map { it.map { it.toFfi() } },
         outputEnabled = outputEnabled,
         crossfeedPairMap = ByteArray(crossfeedPairMap.size) { crossfeedPairMap[it].toByte() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.BootDevice.toDomain() =
+    BootDevice(
+        platform = platform.toInt(),
+        serial = serial,
+        busLocation = busLocation,
+    )
+
+internal fun BootDevice.toFfi() =
+    se.bofr.dspi.ffi.uniffi.BootDevice(
+        platform = platform.toByte(),
+        serial = serial,
+        busLocation = busLocation,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.FlashReport.toDomain() =
+    FlashReport(
+        platform = platform.toInt(),
+        serial = serial,
+        firmwareVersion = firmwareVersion,
+        sectors = sectors.toLong(),
+        bytesWritten = bytesWritten.toLong(),
+        elapsedMs = elapsedMs.toLong(),
+    )
+
+internal fun FlashReport.toFfi() =
+    se.bofr.dspi.ffi.uniffi.FlashReport(
+        platform = platform.toByte(),
+        serial = serial,
+        firmwareVersion = firmwareVersion,
+        sectors = sectors.toUInt(),
+        bytesWritten = bytesWritten.toULong(),
+        elapsedMs = elapsedMs.toULong(),
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.PinFunction.toDomain() =

@@ -54,8 +54,10 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -445,7 +447,15 @@ private fun ConnectionStripBar(
     // Demo and REMOTE stand out, so neither is taken for the USB unit
     val demo = strip is ConnectionStrip.Demo || strip is ConnectionStrip.Remote || strip is ConnectionStrip.Document // -- WP P1AN1 --
     val colors = MaterialTheme.colorScheme
-    val ink = if (demo) colors.onTertiaryContainer else colors.onSurfaceVariant
+    // -- WP SECAN -- an unencrypted hub connection: the bar is red (its text says so too)
+    val unsecured = strip is ConnectionStrip.Remote && strip.unsecured
+    val ink = if (unsecured) {
+        colors.onErrorContainer
+    } else if (demo) {
+        colors.onTertiaryContainer
+    } else {
+        colors.onSurfaceVariant
+    }
     val actions: List<Pair<String, () -> Unit>> =
         when (strip) {
             ConnectionStrip.Demo -> listOf("Exit demo" to onExitDemo)
@@ -458,7 +468,13 @@ private fun ConnectionStripBar(
         Modifier
             .testTag(CONNECTION_STRIP_TAG)
             .fillMaxWidth()
-            .background(if (demo) colors.tertiaryContainer else colors.surfaceVariant)
+            .background(
+                when {
+                    unsecured -> colors.errorContainer // -- WP SECAN --
+                    demo -> colors.tertiaryContainer
+                    else -> colors.surfaceVariant
+                }
+            )
     ) {
         // -- WP AN42 -- a phone: one line (the short text, the whole of it on a long-press and to
         // TalkBack), Undo and Redo, and the strip's actions and devices behind the overflow
@@ -469,16 +485,32 @@ private fun ConnectionStripBar(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             if (compact) {
-                HelpTip(if (strip.short != strip.text) strip.text else "", Modifier.weight(1f)) {
-                    Text(
-                        strip.short,
-                        Modifier.semantics { if (strip.short != strip.text) contentDescription = strip.text },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ink,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                // -- WP SECAN -- "(unsecured)" is never cut off: it is measured before the
+                // weighted text, which is ellipsised instead; TalkBack reads the whole text once
+                val suffix = (strip as? ConnectionStrip.Remote)?.suffix.orEmpty()
+                val described = strip.short != strip.text || suffix.isNotEmpty()
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    HelpTip(if (described) strip.text else "", Modifier.weight(1f, fill = suffix.isEmpty())) {
+                        Text(
+                            strip.short.removeSuffix(suffix),
+                            Modifier.semantics { if (described) contentDescription = strip.text },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (suffix.isNotEmpty()) {
+                        Text(
+                            suffix,
+                            Modifier.clearAndSetSemantics { testTag = UNSECURED_SUFFIX_TAG },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = ink,
+                            maxLines = 1
+                        )
+                    }
                 }
+                if (unsecured) UnsecuredInfoButton(ink) // -- WP SECAN --
                 if (installerBadge) InstallerBadge(ink) // -- WP P1AN2 --
                 history?.let { UndoRedoButtons(it, ink) }
                 // -- WP P1AN1 -- Snapshots first in the overflow: the bar keeps its one line
@@ -491,7 +523,11 @@ private fun ConnectionStripBar(
                     identifyEntry // -- WP P2AN -- last, below the device list
                 )
             } else {
-                Text(strip.text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = ink)
+                // -- WP SECAN -- the info button right after "(unsecured)"
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(strip.text, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyMedium, color = ink)
+                    if (unsecured) UnsecuredInfoButton(ink)
+                }
                 actions.forEach { (label, act) -> TextButton(onClick = act) { Text(label) } }
                 // -- WP P1AN1 --
                 onSnapshots?.let { TextButton(onClick = it, Modifier.testTag(SNAPSHOTS_ENTRY_TAG)) { Text(SNAPSHOTS_ENTRY) } }

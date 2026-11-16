@@ -63,6 +63,8 @@ use dspi_link::socket::{Pipe, server_pipes, server_ws_config};
 // -- WP SECSRV --
 use dspi_link::status;
 use dspi_link::tls::{self as link_tls, SpkiHash, TlsPipe};
+// -- WP SECPAKE --
+use dspi_link::pake::{self, Binding, HubPake};
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use serde_json::{Map, Value, json};
@@ -80,7 +82,6 @@ use crate::session::{CLOSE_REVOKED, CLOSE_SHUTTING_DOWN, Outbound, Outbox, Pop, 
 use crate::store::{parse_role, role_name, unix_seconds};
 // -- WP SECSRV --
 use crate::tls_identity::{TlsIdentity, TlsIdentityEvent, TlsNames};
-use std::time::SystemTime;
 
 /// `limits.max_frame`: the largest WebSocket frame and message taken (spec 4).
 pub const MAX_FRAME: u32 = 65536;
@@ -254,6 +255,24 @@ pub fn downgrade_warning(policy: TlsPolicy, loopback: bool) -> Option<String> {
     Some(text)
 }
 
+// -- WP SECPAIR --
+/// `dspi://pair?h=<hid>&a=<host:port>&k=<pin, base64url>&p=<PIN>`, the pairing link a
+/// hub's QR code carries (PLAN-SEC 4.3; dspi-link's `parse_pair_link` reads it). An
+/// IPv6 host is bracketed. `pin_code` empty: no `p`.
+pub fn pair_link(hid: &str, host: &str, port: u16, key: &SpkiHash, pin_code: &str) -> String {
+    let host = if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host.to_owned()
+    };
+    let mut link = format!("dspi://pair?h={hid}&a={host}:{port}&k={}", key.to_b64url());
+    if !pin_code.is_empty() {
+        link.push_str("&p=");
+        link.push_str(pin_code);
+    }
+    link
+}
+
 /// What one socket may cost. The defaults are the spec's where it names one. Tests
 /// shorten the times.
 ///
@@ -396,6 +415,11 @@ pub struct NetworkConfig {
     /// More names the hub answers to over plaintext (the `Host` rule), lower case:
     /// a DNS name it is reached by that is not its mDNS name (`--host-name`).
     pub host_names: Vec<String>,
+    // -- WP SECPAIR --
+    /// How long a console's token may go unused before it is forgotten (OD-SECg,
+    /// `--token-idle-days`); `None`: never. [`crate::auth::DEFAULT_TOKEN_IDLE`] by
+    /// default. API keys do not expire.
+    pub token_idle: Option<Duration>,
 }
 
 // -- WP SECSRV --
@@ -479,6 +503,8 @@ impl NetworkConfig {
             tls: default_tls().0,
             upstream_compat: default_tls().1,
             host_names: Vec::new(),
+            // -- WP SECPAIR --
+            token_idle: Some(crate::auth::DEFAULT_TOKEN_IDLE),
         }
     }
 }
@@ -778,6 +804,13 @@ struct Shared {
     host_names: Vec<String>,
     /// [`Shared::own_names`]'s last answer and when. A leaf lock.
     own_names: Mutex<Option<(Instant, OwnNames)>>,
+    // -- WP SECPAIR --
+    /// [`NetworkConfig::bind`]: where a pairing link points when nothing better is known.
+    bind: IpAddr,
+    // -- WP SECWEB --
+    /// The `uconsole web` pinning proxy ([`crate::proxy`]): on a loopback hub with its
+    /// web pages only ([`crate::proxy::enabled`]).
+    proxy: Option<Arc<crate::proxy::Proxy>>,
 }
 
 // -- WP SECSRV --
@@ -879,10 +912,59 @@ impl NetworkControl {
             return Err(HubError::Io("TLS is off on this hub".into()));
         };
         let names = guard(&tls.names).clone();
-        let event = guard(&tls.identity).rotate(&names, SystemTime::now(), forget_old)?;
+        // -- WP SECPAKE -- the services' clock, as `key_next` reads it
+        let event = guard(&tls.identity).rotate(&names, shared.hub.clock().wall(), forget_old)?;
         shared.reload_tls();
         shared.hub.emit(crate::hub::HubEvent::Tls(event.clone()));
         Ok(event)
+    }
+
+    // -- WP SECPAIR --
+    /// The QR code's `dspi://pair?h=<hid>&a=<host:port>&k=<pin>&p=<PIN>` for an open
+    /// window (PLAN-SEC 4.3): the key travels with the PIN, out of band, so pairing by
+    /// it is MITM-proof. `None` with TLS off (there is no key to pin). It carries the
+    /// PIN: show it where the PIN is shown, never log it.
+    pub fn pair_link(&self, window: &crate::auth::PairingWindow) -> Option<String> {
+        let pin = self.shared.tls_pin()?;
+        Some(pair_link(
+            &self.shared.hub_id,
+            &self.pair_host(),
+            self.shared.port,
+            &pin,
+            &window.pin,
+        ))
+    }
+
+    // -- WP SECPAIR --
+    /// Where a pairing link sends a client: the hub's advertised `.local` name, else
+    /// the address it is bound to, else its first LAN address (IPv4 first), else
+    /// `localhost`.
+    pub fn pair_host(&self) -> String {
+        let shared = &self.shared;
+        if shared.bind.is_loopback() {
+            return shared.bind.to_string();
+        }
+        let advertised = shared.hub.advertised().map(|names| names.host);
+        if let Some(name) = advertised.as_deref().or(shared.mdns_name.as_deref()) {
+            let name = name.trim().trim_end_matches('.');
+            if !name.is_empty() {
+                return name.to_ascii_lowercase();
+            }
+        }
+        if !shared.bind.is_unspecified() {
+            return shared.bind.to_string();
+        }
+        let usable = |ip: &IpAddr| {
+            !ip.is_loopback()
+                && !ip.is_unspecified()
+                && !matches!(ip, IpAddr::V6(v6) if v6.is_unicast_link_local())
+        };
+        let mut ips: Vec<IpAddr> = if_addrs::get_if_addrs()
+            .map(|list| list.iter().map(|i| i.ip()).filter(usable).collect())
+            .unwrap_or_default();
+        ips.sort_by_key(|ip| ip.is_ipv6());
+        ips.first()
+            .map_or_else(|| "localhost".to_owned(), IpAddr::to_string)
     }
 
     // -- WP TM26 --
@@ -991,6 +1073,28 @@ impl Shared {
         self.tls.as_ref().map(|tls| Arc::clone(&guard(&tls.config)))
     }
 
+    // -- WP SECPAIR --
+    /// The pin of the key served now; `None` with TLS off.
+    fn tls_pin(&self) -> Option<SpkiHash> {
+        self.tls.as_ref().map(|tls| guard(&tls.identity).pin())
+    }
+
+    // -- WP SECPAIR --
+    /// `hello.hub.key_next` while a rotation is announced: `{"spki": <new pin>,
+    /// "prev_spki": <old SPKI DER>, "sig": <old key's signature>}`, base64url without
+    /// padding (what SECCORE's client verifies). All public.
+    fn key_next(&self) -> Option<Value> {
+        let tls = self.tls.as_ref()?;
+        // -- WP SECPAKE -- the services' clock (SEC-C review), as the store's is
+        let next = guard(&tls.identity).key_next(self.hub.clock().wall())?;
+        let b64 = |bytes: &[u8]| data_encoding::BASE64URL_NOPAD.encode(bytes);
+        Some(json!({
+            "spki": next.spki.to_b64url(),
+            "prev_spki": b64(&next.prev_spki_der),
+            "sig": b64(&next.sig),
+        }))
+    }
+
     /// Make the rustls config again from the identity (a new certificate or key). A
     /// config that cannot be made leaves the last one, with a log line.
     fn reload_tls(&self) {
@@ -1033,7 +1137,7 @@ impl Shared {
             return;
         }
         guard(&tls.names).clone_from(&names);
-        let refreshed = guard(&tls.identity).refresh(&names, SystemTime::now());
+        let refreshed = guard(&tls.identity).refresh(&names, self.hub.clock().wall()); // -- WP SECPAKE --
         match refreshed {
             Ok(Some(event)) => {
                 self.reload_tls();
@@ -1385,6 +1489,11 @@ trait IntoWire: HubStream + Sized {
     fn raw_tcp(&self) -> &TcpStream;
     /// The reader's and the writer's halves, buffered (a frame goes out whole).
     fn into_wires(self) -> io::Result<(Wire, Wire)>;
+    // -- WP SECPAKE --
+    /// The TLS exporter `auth.pair2` binds to; `None` over plaintext.
+    fn pair_binding(&self) -> Option<Binding> {
+        None
+    }
 }
 
 impl IntoWire for TcpStream {
@@ -1401,6 +1510,11 @@ impl IntoWire for TcpStream {
 impl IntoWire for TlsPipe {
     fn raw_tcp(&self) -> &TcpStream {
         self.tcp()
+    }
+
+    // -- WP SECPAKE --
+    fn pair_binding(&self) -> Option<Binding> {
+        Binding::of(self)
     }
 
     fn into_wires(mut self) -> io::Result<(Wire, Wire)> {
@@ -1718,6 +1832,9 @@ enum Next {
     Close,
     /// Becomes a WebSocket, already counted in that budget. The `Sec-WebSocket-Accept`.
     Upgrade(String),
+    // -- WP SECWEB --
+    /// Becomes the proxy's relay to a hub already dialled and judged (`crate::proxy`).
+    Proxy(String, Box<crate::proxy::Dialled>),
 }
 
 fn kept(alive: bool) -> Next {
@@ -1840,6 +1957,11 @@ fn serve_on<S: IntoWire>(
                 upgrade(shared, id, tcp, encrypted, tail, &accept, peer);
                 return;
             }
+            // -- WP SECWEB --
+            Next::Proxy(accept, dialled) => {
+                proxy_relay(shared, id, tcp, tail, &accept, *dialled);
+                return;
+            }
         }
     }
 }
@@ -1879,6 +2001,10 @@ fn answer<S: HubStream + ?Sized>(
     let misdirected = !encrypted && !host_allowed(&request, || shared.own_names());
     if misdirected && path != WS_PATH {
         return misdirected_page(shared, tcp, until);
+    }
+    // -- WP SECWEB -- the `uconsole web` pinning proxy, on a loopback hub only
+    if let (Some(proxy), Some(route)) = (shared.proxy.as_ref(), crate::proxy::route(path)) {
+        return proxy_answer(shared, id, tcp, proxy, route, &request, until);
     }
     if path == WS_PATH {
         match check_upgrade(shared, &request, encrypted) {
@@ -2223,6 +2349,8 @@ fn upgrade<S: IntoWire>(
         return;
     }
     let limits = &shared.limits;
+    // -- WP SECPAKE -- before the stream is cut in two halves
+    let binding = tcp.pair_binding();
     // -- WP SECSRV -- on the socket: a TLS half's reads go by its timeout from here
     let raw = tcp.raw_tcp();
     let set = raw
@@ -2255,6 +2383,13 @@ fn upgrade<S: IntoWire>(
         last_system_status: None,
         // -- WP SECSRV --
         encrypted,
+        // -- WP SECPAIR --
+        hub_key: encrypted.then(|| shared.tls_pin()).flatten(),
+        // -- WP SECPAKE --
+        binding,
+        pair2: None,
+        pair2_starts: 0,
+        live_cid: None,
     };
     if !encrypted && !shared.policy.serves_plaintext() {
         log::debug!("hub: closed a plaintext WebSocket: TLS is required");
@@ -2263,6 +2398,292 @@ fn upgrade<S: IntoWire>(
             .close(CLOSE_SHUTTING_DOWN, TLS_REQUIRED_REASON);
     }
     connection.run(reader, upgraded);
+}
+
+// -- WP SECWEB -- the `uconsole web` pinning proxy's HTTP side (crate::proxy)
+
+/// Whether `host` (`name[:port]`, `[v6][:port]`) is a loopback name on `port`.
+fn loopback_authority(host: &str, port: u16) -> bool {
+    parse_http_origin(&format!("http://{}", host.trim()))
+        .is_some_and(|(h, p)| p == port && matches!(h.as_str(), "localhost" | "127.0.0.1" | "::1"))
+}
+
+/// A proxy request: from a loopback peer, to a loopback `Host` on this port; an upgrade
+/// or a forget from this page's own loopback `Origin` only (a page anywhere else, or a
+/// request with no `Origin`, is refused), a status read with no foreign `Origin`.
+fn proxy_answer<S: HubStream + ?Sized>(
+    shared: &Shared,
+    id: u64,
+    tcp: &mut S,
+    proxy: &crate::proxy::Proxy,
+    route: crate::proxy::Route<'_>,
+    request: &httparse::Request<'_, '_>,
+    until: Instant,
+) -> Next {
+    use crate::proxy::Route;
+    const FORBIDDEN: &str = "403 Forbidden";
+    let peer_ok = tcp.peer_ip().is_ok_and(|ip| ip.is_loopback());
+    let host_ok = single_header(request, "Host")
+        .ok()
+        .flatten()
+        .is_some_and(|h| loopback_authority(h, shared.port));
+    let origin = single_header(request, "Origin");
+    let origin_ok = |required: bool| match origin {
+        Ok(Some(o)) => o
+            .strip_prefix("http://")
+            .is_some_and(|rest| loopback_authority(rest, shared.port)),
+        Ok(None) => !required,
+        Err(()) => false,
+    };
+    let (target, required, method) = match route {
+        Route::Link(t) => (t, true, "GET"),
+        Route::Security(t) => (t, false, "GET"),
+        Route::Forget(t) => (t, true, "POST"),
+    };
+    if !peer_ok || !host_ok || !origin_ok(required) {
+        log::debug!("hub: refused a proxy request (peer, Host or Origin)");
+        respond(shared, tcp, FORBIDDEN, &[TEXT], b"Refused.", false, until);
+        return Next::Close;
+    }
+    if request.method != Some(method) {
+        let status = "405 Method Not Allowed";
+        let headers = [TEXT, ("Allow", method)];
+        respond(shared, tcp, status, &headers, b"Not allowed.", false, until);
+        return Next::Close;
+    }
+    let Some(target) = crate::proxy::decode_target(target) else {
+        respond(
+            shared,
+            tcp,
+            "404 Not Found",
+            &[TEXT],
+            b"Not found.",
+            false,
+            until,
+        );
+        return Next::Close;
+    };
+    let json_headers = [
+        ("Content-Type", "application/json"),
+        ("Cache-Control", "no-store"),
+    ];
+    match route {
+        Route::Security(_) => {
+            let body = match proxy.status(&target) {
+                Some(s) => serde_json::to_string(&s).unwrap_or_default(),
+                None => "{}".to_owned(),
+            };
+            let keep = keep_alive(request);
+            kept(respond(
+                shared,
+                tcp,
+                "200 OK",
+                &json_headers,
+                body.as_bytes(),
+                keep,
+                until,
+            ))
+        }
+        Route::Forget(_) => {
+            let body = json!({ "forgotten": proxy.forget(&target) }).to_string();
+            respond(
+                shared,
+                tcp,
+                "200 OK",
+                &json_headers,
+                body.as_bytes(),
+                false,
+                until,
+            );
+            Next::Close
+        }
+        Route::Link(_) => {
+            let accept = match check_upgrade(shared, request, false) {
+                Ok(accept) => accept,
+                Err((status, why)) => {
+                    respond(shared, tcp, status, &[TEXT], why.as_bytes(), false, until);
+                    return Next::Close;
+                }
+            };
+            if !shared.promote(id) {
+                let headers = [TEXT, ("Retry-After", "5")];
+                let status = "503 Service Unavailable";
+                respond(shared, tcp, status, &headers, BUSY, false, until);
+                return Next::Close;
+            }
+            match proxy.dial(&target) {
+                Ok(dialled) => Next::Proxy(accept, Box::new(dialled)),
+                Err(refusal) => {
+                    let why = refusal.message();
+                    let status = "502 Bad Gateway";
+                    respond(shared, tcp, status, &[TEXT], why.as_bytes(), false, until);
+                    Next::Close
+                }
+            }
+        }
+    }
+}
+
+/// A close code a WebSocket may carry on the wire: the hub's own, or 1000.
+fn wire_close_code(code: Option<u16>) -> u16 {
+    match code {
+        Some(c @ (1000..=1003 | 1007..=1011 | 3000..=4999)) => c,
+        _ => CLOSE_NORMAL,
+    }
+}
+
+/// The page's WebSocket relayed to the dialled hub, message for message, once the hub's
+/// hello is judged ([`crate::proxy::Proxy::judge`]; a refusal closes the page's socket
+/// with 4000 and the refusal's code). Ends when either side closes (the other is then closed), or the hub stops.
+fn proxy_relay<S: IntoWire>(
+    shared: &Arc<Shared>,
+    id: u64,
+    mut tcp: S,
+    tail: Vec<u8>,
+    accept: &str,
+    dialled: crate::proxy::Dialled,
+) {
+    use dspi_link::socket::{WsMessage, WsRecv};
+    let Some(proxy) = shared.proxy.as_ref() else {
+        dialled.sender.close(CLOSE_NORMAL);
+        return;
+    };
+    let upgraded = Instant::now();
+    let response = format!(
+        "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\
+         Sec-WebSocket-Accept: {accept}\r\nSec-WebSocket-Protocol: {SUBPROTOCOL}\r\n\r\n"
+    );
+    let limits = &shared.limits;
+    let stall = limits.write_stall;
+    let raw = tcp.raw_tcp();
+    let set = raw
+        .set_write_timeout(Some(stall))
+        .and(raw.set_read_timeout(Some(limits.read_tick)));
+    let answered = set.is_ok()
+        && write_by(&mut tcp, response.as_bytes(), stall, after(upgraded, stall)).is_ok();
+    if !answered {
+        dialled.sender.close(CLOSE_NORMAL);
+        return;
+    }
+    let halves = tcp
+        .raw_tcp()
+        .try_clone()
+        .and_then(|cut_off| Ok((cut_off, tcp.into_wires()?)));
+    let Ok((cut_off, (reader, writer))) = halves else {
+        dialled.sender.close(CLOSE_NORMAL);
+        return;
+    };
+    let config = server_ws_config(MAX_FRAME as usize);
+    let mut reader = WebSocket::from_partially_read(reader, tail, WsRole::Server, Some(config));
+    let writer = WebSocket::from_raw_socket(writer, WsRole::Server, Some(config));
+    let tx = Arc::new(WsTx {
+        ws: Mutex::new(writer),
+        tcp: cut_off,
+        close_grace: limits.close_grace,
+        closing: OnceLock::new(),
+    });
+    shared.set_tx(id, &tx);
+    // The page's hello first (nothing secret in it), then the hub's, judged.
+    let hello_by = after(upgraded, limits.auth_timeout);
+    let mut client_hello = None;
+    while client_hello.is_none() && Instant::now() < hello_by && tx.close_deadline().is_none() {
+        match reader.read() {
+            Ok(Message::Text(t)) => client_hello = Some(t.as_str().to_owned()),
+            Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_)) => {}
+            Err(tungstenite::Error::Io(e)) if is_timeout(&e) && !reader.get_ref().is_broken() => {}
+            Ok(_) | Err(_) => break,
+        }
+    }
+    let judged = match client_hello {
+        Some(h) => proxy.judge(dialled, h),
+        None => {
+            dialled.sender.close(CLOSE_NORMAL);
+            Err(crate::proxy::Refusal::Protocol)
+        }
+    };
+    let crate::proxy::Judged {
+        sender,
+        mut receiver,
+        hello,
+    } = match judged {
+        Ok(j) => j,
+        Err(refusal) => {
+            tx.close(CLOSE_PROTOCOL, refusal.code());
+            if let Some(deadline) = tx.close_deadline()
+                && let Ok(mut raw) = reader.get_mut().raw_tcp().try_clone()
+            {
+                drain(&mut raw, deadline);
+            }
+            tx.abort();
+            return;
+        }
+    };
+    if tx.send(Message::text(hello)).is_err() {
+        sender.close(CLOSE_NORMAL);
+        tx.abort();
+        return;
+    }
+    // The hub to the page, on a thread of its own.
+    let hub_gone = Arc::new(AtomicBool::new(false));
+    let down = {
+        let (tx, hub_gone) = (Arc::clone(&tx), Arc::clone(&hub_gone));
+        thread::Builder::new()
+            .name(format!("hub-proxy-{id}"))
+            .spawn(move || {
+                while tx.close_deadline().is_none() {
+                    let sent = match receiver.recv() {
+                        WsRecv::Message(WsMessage::Text(t)) => tx.send(Message::text(t)),
+                        WsRecv::Message(WsMessage::Binary(b)) => tx.send(Message::binary(b)),
+                        WsRecv::Alive | WsRecv::Idle => Ok(()),
+                        WsRecv::Closed { code, reason } => {
+                            tx.close(wire_close_code(code), &reason);
+                            break;
+                        }
+                    };
+                    if sent.is_err() {
+                        tx.abort();
+                        break;
+                    }
+                }
+                hub_gone.store(true, Ordering::SeqCst);
+            })
+    };
+    let Ok(down) = down else {
+        sender.close(CLOSE_NORMAL);
+        tx.abort();
+        return;
+    };
+    // The page to the hub, here.
+    while tx.close_deadline().is_none() && !hub_gone.load(Ordering::SeqCst) {
+        let forwarded = match reader.read() {
+            Ok(Message::Text(t)) => sender.send(WsMessage::Text(t.as_str().to_owned())),
+            Ok(Message::Binary(b)) => sender.send(WsMessage::Binary(b.to_vec())),
+            Ok(Message::Close(frame)) => {
+                sender.close(wire_close_code(frame.as_ref().map(|f| u16::from(f.code))));
+                break;
+            }
+            Ok(_) => Ok(()),
+            Err(tungstenite::Error::Io(e)) if is_timeout(&e) && !reader.get_ref().is_broken() => {
+                Ok(())
+            }
+            Err(_) => break,
+        };
+        if forwarded.is_err() {
+            tx.close(CLOSE_KEEPALIVE, "the hub went away");
+            break;
+        }
+    }
+    sender.close(CLOSE_NORMAL);
+    if tx.close_deadline().is_none() {
+        tx.close(CLOSE_NORMAL, "");
+    }
+    if let Some(deadline) = tx.close_deadline()
+        && let Ok(mut raw) = reader.get_mut().raw_tcp().try_clone()
+    {
+        drain(&mut raw, deadline);
+    }
+    tx.abort();
+    let _ = down.join();
 }
 
 /// The sending half of a WebSocket. The writer thread sends through it once there is
@@ -2413,6 +2834,35 @@ struct Connection {
     // -- WP SECSRV --
     /// It came over TLS. SECPAIR's `tls_only` mark and `ok.hub_key` go by it.
     encrypted: bool,
+    // -- WP SECPAIR --
+    /// The pin of the key this connection's TLS was handshaken with, as the hub held
+    /// it at the upgrade: `ok.hub_key`. `None` over plaintext.
+    hub_key: Option<SpkiHash>,
+    // -- WP SECPAKE --
+    /// The TLS exporter `auth.pair2` is bound to; `None` over plaintext.
+    binding: Option<Binding>,
+    /// `auth.pair2` between its two steps.
+    pair2: Option<Pair2Pending>,
+    /// `auth.pair2` first steps on this connection: each costs the hub a SPAKE2
+    /// computation, so they are capped ([`PAIR2_STARTS`]).
+    pair2_starts: u32,
+    /// The console whose session this connection holds, told to the store at the end.
+    live_cid: Option<u32>,
+}
+
+// -- WP SECPAKE --
+/// `auth.pair2` first steps one connection may make: a client needs one per PIN
+/// it tries, and the address is shut out after five wrong ones anyway.
+pub const PAIR2_STARTS: u32 = 8;
+
+// -- WP SECPAKE --
+/// What `auth.pair2`'s first step leaves for its second.
+#[derive(Debug)]
+struct Pair2Pending {
+    pake: HubPake,
+    secret: crate::auth::Pair2Secret,
+    name: String,
+    requested: Option<Role>,
 }
 
 // -- fixup sw2x --
@@ -2424,6 +2874,10 @@ impl Drop for Connection {
     fn drop(&mut self) {
         if let Some(session) = &self.session {
             self.shared.hub.close_session(session.id());
+        }
+        // -- WP SECPAKE -- its last use is now: idle expiry counts from here
+        if let Some(cid) = self.live_cid.take() {
+            self.shared.auth.session_closed(cid);
         }
         self.tx.abort();
         if let Some(writer) = self.writer.take() {
@@ -2556,6 +3010,8 @@ impl Connection {
             "hello" => self.on_hello(),
             "auth.token" => self.on_auth_token(id, message),
             "auth.pair" => self.on_auth_pair(id, message),
+            // -- WP SECPAKE --
+            "auth.pair2" => self.on_auth_pair2(id, message),
             _ => match self.live_session() {
                 Some(session) => {
                     // -- WP P2RS -- the chain in one place, which the REST mirror runs too
@@ -2607,10 +3063,12 @@ impl Connection {
         let Some(token) = message.get("token").and_then(Value::as_str) else {
             return self.reply(err(id, "bad_request", Some("no token")));
         };
+        // -- WP SECPAIR -- ratchet (b): over TLS the token is marked `tls_only`; a
+        // marked one is refused over plaintext
         match self
             .shared
             .auth
-            .verify_token(token, self.peer, Instant::now())
+            .verify_link_token(token, self.peer, Instant::now(), self.encrypted)
         {
             // -- WP P2CFIXA -- an API key is for REST and MQTT, never a DSPi Link session
             Ok(authed) if authed.kind == crate::auth::ClientKind::Api => self.reply(err(
@@ -2620,8 +3078,9 @@ impl Connection {
             )),
             Ok(authed) => {
                 let shared = Arc::clone(&self.shared);
+                let hub_key = self.hub_key; // -- WP SECPAIR --
                 self.open_session(authed.role, Some(authed.cid), move |session| {
-                    Some(auth_ok(&shared, id, session, None))
+                    Some(auth_ok(&shared, id, session, None, hub_key.as_ref()))
                 });
             }
             Err(e) => self.reply(auth_err(id, e)),
@@ -2656,15 +3115,136 @@ impl Connection {
             },
         };
         let name = message.get("name").and_then(Value::as_str).unwrap_or("");
-        match self
-            .shared
-            .auth
-            .pair(pin, name, requested, self.peer, Instant::now())
-        {
+        // -- WP SECPAIR -- issued over TLS: `tls_only`, and `ok.hub_key` names the key
+        match self.shared.auth.pair_over(
+            pin,
+            name,
+            requested,
+            self.peer,
+            Instant::now(),
+            self.encrypted,
+        ) {
             Ok(authed) => {
                 let shared = Arc::clone(&self.shared);
+                let hub_key = self.hub_key;
                 self.open_session(authed.role, Some(authed.cid), move |session| {
-                    Some(auth_ok(&shared, id, session, authed.token.as_deref()))
+                    Some(auth_ok(
+                        &shared,
+                        id,
+                        session,
+                        authed.token.as_deref(),
+                        hub_key.as_ref(),
+                    ))
+                });
+            }
+            Err(e) => self.reply(auth_err(id, e)),
+        }
+    }
+
+    // -- WP SECPAKE --
+    /// `auth.pair2` (PLAN-SEC SECPAKE, `docs/integrator/hub-api.md`): SPAKE2 with the
+    /// window's PIN, bound to this connection's TLS exporter, so no PIN crosses and a
+    /// machine in the middle fails at its first guess. Step 1 (`pake`) is answered with
+    /// the hub's SPAKE2 message and counts nothing; step 2 (`confirm`) is a PIN
+    /// attempt: a confirmation that does not verify is a wrong PIN in the same ledgers
+    /// as `auth.pair`'s, and a right one is answered as `auth.pair` is, with the hub's
+    /// own `confirm`. TLS only, whatever the plaintext policy.
+    fn on_auth_pair2(&mut self, id: Option<u64>, message: &Map<String, Value>) {
+        if self.shared.auth.mode() == AccessMode::Open {
+            return self.open_access_ok(id);
+        }
+        if self.session.is_some() {
+            return self.already_authenticated(id);
+        }
+        let Some(binding) = self.binding.filter(|_| self.encrypted) else {
+            return self.reply(err(
+                id,
+                TLS_REQUIRED,
+                Some("auth.pair2 needs an encrypted connection"),
+            ));
+        };
+        match message.get("step").and_then(Value::as_u64) {
+            Some(1) => self.pair2_start(id, message, binding),
+            Some(2) => self.pair2_confirm(id, message),
+            _ => self.reply(err(id, "bad_request", Some("step must be 1 or 2"))),
+        }
+    }
+
+    // -- WP SECPAKE --
+    fn pair2_start(&mut self, id: Option<u64>, message: &Map<String, Value>, binding: Binding) {
+        self.pair2 = None;
+        if self.pair2_starts >= PAIR2_STARTS {
+            return self.reply(err(id, "rate_limited", Some("too many auth.pair2 starts")));
+        }
+        self.pair2_starts = self.pair2_starts.saturating_add(1);
+        let requested = match message.get("role") {
+            None | Some(Value::Null) => None,
+            Some(role) => match role.as_str().and_then(parse_role) {
+                Some(role) => Some(role),
+                None => return self.reply(err(id, "bad_request", Some("unknown role"))),
+            },
+        };
+        let role_word = message.get("role").and_then(Value::as_str).unwrap_or("");
+        let name = message.get("name").and_then(Value::as_str).unwrap_or("");
+        let Some(msg_a) = message
+            .get("pake")
+            .and_then(Value::as_str)
+            .and_then(|t| pake::decode(t, pake::MESSAGE_LEN).ok())
+        else {
+            return self.reply(err(id, "bad_request", Some("no pake message")));
+        };
+        let secret = match self.shared.auth.pair2_secret(self.peer, Instant::now()) {
+            Ok(secret) => secret,
+            Err(e) => return self.reply(auth_err(id, e)),
+        };
+        let hid = &self.shared.hub_id;
+        match HubPake::respond(secret.bytes(), hid, name, role_word, &msg_a, binding) {
+            Ok((hub_side, msg_b)) => {
+                self.pair2 = Some(Pair2Pending {
+                    pake: hub_side,
+                    secret,
+                    name: name.to_owned(),
+                    requested,
+                });
+                self.reply(ok(id, json!({"pake": pake::encode(&msg_b)})));
+            }
+            Err(pake::PakeError::Internal) => self.reply(err(id, "internal", None)),
+            Err(_) => self.reply(err(id, "bad_request", Some("bad pake message"))),
+        }
+    }
+
+    // -- WP SECPAKE --
+    fn pair2_confirm(&mut self, id: Option<u64>, message: &Map<String, Value>) {
+        let Some(pending) = self.pair2.take() else {
+            return self.reply(err(id, "bad_request", Some("no auth.pair2 step 1")));
+        };
+        // A missing or malformed confirmation is a failed one: it was the attempt.
+        let hub_mac = message
+            .get("confirm")
+            .and_then(Value::as_str)
+            .and_then(|t| pake::decode(t, pake::CONFIRM_LEN).ok())
+            .and_then(|mac| pending.pake.confirm(&mac).ok());
+        match self.shared.auth.pair2_finish(
+            &pending.secret,
+            hub_mac.is_some(),
+            &pending.name,
+            pending.requested,
+            self.peer,
+            Instant::now(),
+        ) {
+            Ok(authed) => {
+                let shared = Arc::clone(&self.shared);
+                let hub_key = self.hub_key;
+                let confirm = hub_mac.map(|m| pake::encode(&m)).unwrap_or_default();
+                self.open_session(authed.role, Some(authed.cid), move |session| {
+                    let text = auth_ok(
+                        &shared,
+                        id,
+                        session,
+                        authed.token.as_deref(),
+                        hub_key.as_ref(),
+                    );
+                    Some(with_field(text, "confirm", confirm.into()))
                 });
             }
             Err(e) => self.reply(auth_err(id, e)),
@@ -2678,7 +3258,13 @@ impl Connection {
             self.open_session(Role::Admin, None, |_| None);
         }
         if let Some(session) = self.live_session() {
-            self.reply(auth_ok(&self.shared, id, &session, None));
+            self.reply(auth_ok(
+                &self.shared,
+                id,
+                &session,
+                None,
+                self.hub_key.as_ref(),
+            ));
         }
     }
 
@@ -2701,6 +3287,11 @@ impl Connection {
         };
         self.session = Some(Arc::clone(&session));
         shared.set_session(self.id, &session);
+        // -- WP SECPAKE -- in use while it lasts (idle expiry)
+        if let Some(cid) = cid {
+            shared.auth.session_opened(cid);
+            self.live_cid = Some(cid);
+        }
         // Listed first, then asked: a revocation or a role change either finds the session
         // in the table, or has already happened and is seen here.
         if let Some(cid) = cid {
@@ -2774,6 +3365,8 @@ impl Connection {
                 None => return,
             },
             "auth.set_role" => self.auth_set_role(id, message),
+            // -- WP SECPAIR -- a fresh token for this session's client, in place
+            "auth.rotate" => self.auth_rotate(id, session),
             // -- WP P2RS -- an API key, shown in this answer only
             "auth.mint" if !admin => denied(),
             "auth.mint" => crate::rest::mint(&self.shared.auth, id, message, session.role()),
@@ -2787,6 +3380,38 @@ impl Connection {
             _ => err(id, "unknown_type", None),
         };
         self.reply(answer);
+    }
+
+    // -- WP SECPAIR --
+    /// `auth.rotate` (OD-SECg): this session's client swaps its token for a fresh one,
+    /// `{"token", "hub_key"?}`; the old one is dead once this is answered. Any role. A
+    /// new token crosses here, so over plaintext only where pairing may
+    /// ([`TlsPolicy::plaintext_pairing`]). Open access has no token to rotate.
+    fn auth_rotate(&self, id: Option<u64>, session: &Session) -> String {
+        let Some(cid) = session.client_id() else {
+            return err(
+                id,
+                "bad_request",
+                Some("this session has no token to rotate"),
+            );
+        };
+        if !self.encrypted && !self.shared.policy.plaintext_pairing() {
+            return err(
+                id,
+                TLS_REQUIRED,
+                Some("a new token is given over an encrypted connection only"),
+            );
+        }
+        match self.shared.auth.rotate_token(cid, self.encrypted) {
+            Ok(rotated) => {
+                let mut body = json!({"token": rotated.token});
+                if let (Some(key), Some(map)) = (&self.hub_key, body.as_object_mut()) {
+                    map.insert("hub_key".into(), key.to_b64url().into());
+                }
+                ok(id, body)
+            }
+            Err(e) => auth_err(id, e),
+        }
     }
 
     // -- WP SW2 --
@@ -3149,12 +3774,28 @@ fn auth_err(id: Option<u64>, e: AuthError) -> String {
         AuthError::RateLimited => "rate_limited",
         AuthError::TableFull => "busy",
         AuthError::Internal => "internal",
+        // -- WP SECPAIR --
+        AuthError::TlsRequired => {
+            return err(
+                id,
+                TLS_REQUIRED,
+                Some("this token has been used encrypted: connect with TLS"),
+            );
+        }
     };
     err(id, code, None)
 }
 
-/// The `ok` to `auth.token` and `auth.pair` (spec 7.3).
-fn auth_ok(shared: &Shared, id: Option<u64>, session: &Session, token: Option<&str>) -> String {
+/// The `ok` to `auth.token` and `auth.pair` (spec 7.3). -- WP SECPAIR -- Over TLS with
+/// `hub_key`, the pin of the key the connection met (PLAN-SEC 4.3): a client checks it
+/// against the key its TLS verified.
+fn auth_ok(
+    shared: &Shared,
+    id: Option<u64>,
+    session: &Session,
+    token: Option<&str>,
+    hub_key: Option<&SpkiHash>,
+) -> String {
     let role = session.role();
     let denied = shared.hub.denied(role);
     let mut body = json!({
@@ -3165,7 +3806,23 @@ fn auth_ok(shared: &Shared, id: Option<u64>, session: &Session, token: Option<&s
     if let (Some(token), Some(map)) = (token, body.as_object_mut()) {
         map.insert("token".into(), token.into());
     }
+    // -- WP SECPAIR --
+    if let (Some(key), Some(map)) = (hub_key, body.as_object_mut()) {
+        map.insert("hub_key".into(), key.to_b64url().into());
+    }
     ok(id, body)
+}
+
+// -- WP SECPAKE --
+/// `text`, a JSON object, with `key` set to `value`.
+fn with_field(text: String, key: &str, value: Value) -> String {
+    match serde_json::from_str::<Value>(&text) {
+        Ok(Value::Object(mut map)) => {
+            map.insert(key.into(), value);
+            Value::Object(map).to_string()
+        }
+        _ => text,
+    }
 }
 
 impl Shared {
@@ -3196,14 +3853,23 @@ impl Shared {
         }
         // -- WP P2RS -- `auth.mint` always; `/api/v1/` while it is on
         caps.push(crate::rest::CAP_API_KEYS);
+        // -- WP SECPAKE -- `auth.pair2`, on a hub that serves TLS (it needs TLS)
+        if self.tls.is_some() {
+            caps.push(pake::CAP);
+        }
         if self.rest.is_on() {
             caps.push(crate::rest::CAP_REST);
         }
         let mode = self.auth.mode();
+        // -- WP SECPAIR -- a key rotation's announcement, while it lasts (PLAN-SEC 4.2)
+        let mut hub = self.hub_info();
+        if let (Some(next), Some(map)) = (self.key_next(), hub.as_object_mut()) {
+            map.insert("key_next".into(), next);
+        }
         let mut hello = json!({
             "t": "hello",
             "proto": {"major": PROTO_MAJOR, "minor": PROTO_MINOR},
-            "hub": self.hub_info(),
+            "hub": hub,
             "auth": mode.wire_name(),
             "caps": caps,
             "limits": {
@@ -3240,6 +3906,10 @@ impl Shared {
             "tls": self.policy.serves_tls(),
             "ws": WS_PATH,
             "devices": devices,
+            // -- WP SECWEB -- the hub's settings page shows the downgrade warning; a
+            // page of `uconsole web` reaches other hubs through the pinning proxy
+            "upstream_compat": self.policy.upstream_compat,
+            "proxy": self.proxy.is_some(),
         });
         if let (Some(tls), Some(map)) = (&self.tls, info.as_object_mut()) {
             let spki = guard(&tls.identity).pin().to_b64url();
@@ -3313,7 +3983,7 @@ impl Server {
         let tls = if policy.serves_tls() {
             let names = TlsNames::new(config.mdns_name.as_deref(), &[]);
             let (identity, at_start) =
-                TlsIdentity::load(&config.store_dir, &hub_id, &names, SystemTime::now())?;
+                TlsIdentity::load(&config.store_dir, &hub_id, &names, hub.clock().wall())?; // -- WP SECPAKE --
             log::info!(
                 "hub: TLS {}, key {}",
                 policy.mode.name(),
@@ -3364,6 +4034,11 @@ impl Server {
                 .filter(|h| !h.is_empty())
                 .collect(),
             own_names: Mutex::new(None),
+            // -- WP SECPAIR --
+            bind: config.bind,
+            // -- WP SECWEB --
+            proxy: crate::proxy::enabled(config.bind, config.web)
+                .then(|| Arc::new(crate::proxy::Proxy::new(config.store_dir.clone()))),
         });
         let acceptor = {
             let shared = Arc::clone(&shared);

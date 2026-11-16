@@ -140,6 +140,8 @@ mod exit {
 }
 
 fn main() -> ExitCode {
+    // -- WP SECTM -- the core's words for "(unsecured)", and yes/no questions
+    link::install_terminal_prompts();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flags: Vec<&str> = args.iter().map(String::as_str).collect();
     // -- WP ROMODE -- `--read-only`, anywhere: the client read-only mode
@@ -472,8 +474,13 @@ fn parse_target<'a>(flags: &[&'a str]) -> Result<(Target, Vec<&'a str>), String>
             ..LinkTarget::find(wanted)
         })
     } else if let Some(address) = link {
-        let parsed = LinkTarget::parse(&address)
-            .ok_or_else(|| format!("`{address}` is not a hub address; try HOST[:PORT]"))?;
+        // -- WP SECTM -- or a pasted `dspi://pair` link (never echoed: it holds a PIN)
+        let parsed = if address.starts_with("dspi:") {
+            LinkTarget::from_pair_link(&address)?
+        } else {
+            LinkTarget::parse(&address)
+                .ok_or_else(|| format!("`{address}` is not a hub address; try HOST[:PORT]"))?
+        };
         Target::Link(LinkTarget {
             device,
             pin,
@@ -590,6 +597,7 @@ USAGE:
                              (--midi: the MIDI ports; --link: the hub's devices)
     {COMMAND} link scan       list the DSPi Link hubs on this network
                              (--timeout <seconds> to listen longer, --json)
+    {COMMAND} link security   what (unsecured) after a hub connection means
     {COMMAND} params          list every parameter this build knows
     {COMMAND} get <path> [i..] read one parameter
     {COMMAND} set <path> [i..] v write one parameter, and confirm it
@@ -724,7 +732,11 @@ OPTIONS:
     --demo                   use the built-in simulated device
     --midi [PORT]            connect over USB MIDI; PORT is part of the port's
                              name (--midi=PORT if it could be read as a command)
-    --link <host[:port]>     connect through a DSPi Link hub
+    --link <host[:port]>     connect through a DSPi Link hub; or a pasted
+                             'dspi://pair?...' link from the hub's pairing screen
+                             (its key is checked, and pairing asks for a yes).
+                             A link with p= carries the PIN: on the command line
+                             it shows in `ps` and in shell history, as --pin does
     --hub [NAME]             the same, finding the hub on this network; NAME is
                              part of its name, its id or its address (--hub=NAME
                              if it could be read as a command). Several hubs and
@@ -2874,7 +2886,9 @@ fn fail_open(e: OpenError) -> u8 {
             eprintln!("{COMMAND}: {other}");
             if matches!(
                 other,
-                OpenError::NeedsPin { .. } | OpenError::PinRefused { .. }
+                OpenError::NeedsPin { .. }
+                    | OpenError::PinRefused { .. }
+                    | OpenError::NotConfirmed { .. } // -- WP SECTM --
             ) {
                 exit::USAGE
             } else {

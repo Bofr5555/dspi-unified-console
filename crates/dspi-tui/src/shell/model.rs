@@ -93,6 +93,10 @@ pub struct ShellModel {
     pub serial_short: String,
     /// The link, when it is not plain USB: `MIDI`, `Link <host>`, `demo`.
     pub via: String,
+    // -- WP SECTM --
+    /// The link is a hub session without TLS: `via` ends in " (unsecured)",
+    /// which the title row shows in the danger colour.
+    pub link_unsecured: bool,
     /// The extension channel's sub-commands (`ext xfeed vreg`); empty on
     /// stock firmware.
     pub ext: String,
@@ -197,6 +201,7 @@ impl ShellModel {
             // -- WP P1TM --
             document: None,
             via: String::new(),
+            link_unsecured: false, // -- WP SECTM --
             ext: String::new(),
             connected: false,
             // -- WP TM8 --

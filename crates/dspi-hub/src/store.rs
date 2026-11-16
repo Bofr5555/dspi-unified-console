@@ -3,6 +3,7 @@
 //! only hashes (spec 6.2).
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -56,8 +57,9 @@ impl ClientKind {
     }
 }
 
-/// One paired client, as stored: the hash, never the token.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One paired client, as stored: the hash, never the token. -- WP SECPAIR -- `Debug` by
+/// hand: not even the hash goes to a log.
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct StoredClient {
     pub(crate) cid: u32,
     pub(crate) name: String,
@@ -70,6 +72,27 @@ pub(crate) struct StoredClient {
     /// May be used over plaintext once the Link port speaks TLS (OD-SECk, WP SECSRV).
     /// Stored and listed; no effect yet.
     pub(crate) plaintext_ok: bool,
+    // -- WP SECPAIR --
+    /// Ratchet (b) of OD-SECm: this console's token has been used over TLS, so it is
+    /// refused over plaintext from then on (PLAN-SEC 4.3).
+    pub(crate) tls_only: bool,
+}
+
+// -- WP SECPAIR --
+impl fmt::Debug for StoredClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StoredClient")
+            .field("cid", &self.cid)
+            .field("name", &self.name)
+            .field("role", &self.role)
+            .field("created", &self.created)
+            .field("last_seen", &self.last_seen)
+            .field("token_hash", &"<redacted>")
+            .field("kind", &self.kind)
+            .field("plaintext_ok", &self.plaintext_ok)
+            .field("tls_only", &self.tls_only)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -86,6 +109,9 @@ struct ClientRecord {
     kind: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     plaintext_ok: bool,
+    // -- WP SECPAIR -- absent until the token is used over TLS
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    tls_only: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -299,6 +325,8 @@ fn stored_client(record: ClientRecord) -> Option<StoredClient> {
         // -- WP P2RS -- an unknown kind is dropped alone, as a mangled record is
         kind: ClientKind::parse(record.kind.as_deref())?,
         plaintext_ok: record.plaintext_ok,
+        // -- WP SECPAIR --
+        tls_only: record.tls_only,
     })
 }
 
@@ -433,6 +461,8 @@ impl HubStore {
                     // -- WP P2RS --
                     kind: (c.kind != ClientKind::Console).then(|| c.kind.wire_name().to_owned()),
                     plaintext_ok: c.plaintext_ok,
+                    // -- WP SECPAIR --
+                    tls_only: c.tls_only,
                 })
                 .collect(),
             device_names: self.device_names.clone(),
@@ -658,6 +688,8 @@ pub(crate) mod tests_wp_hb1 {
             token_hash: [7; 32],
             kind: ClientKind::Console,
             plaintext_ok: false,
+            // -- WP SECPAIR --
+            tls_only: false,
         }
     }
 

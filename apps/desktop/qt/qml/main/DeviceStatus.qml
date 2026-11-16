@@ -10,6 +10,10 @@ import UConsole
 // hub device's lock (LinkController.lockNotice), the line shows that notice in
 // the warning colour instead; during a hub session the tooltip is the Link
 // client's (LinkController.sessionTip: the device via the hub).
+// -- WP SECQT -- A hub session that is not encrypted (a plaintext or upstream
+// hub, or one in compatibility mode) turns the line red and says so in words,
+// " (unsecured)" after the name (the core's dlink.unsecured), with an info
+// button beside it: not colour alone.
 AbstractButton {
     id: button
     objectName: "DeviceStatus.button"
@@ -20,6 +24,10 @@ AbstractButton {
         ? qsTr("File: %1").arg(FilesController.offlineFile)
         : DeviceModel.connected ? DeviceModel.deviceTitle : qsTr("No Devices")
     readonly property string notice: LinkController.lockNotice
+    // -- WP SECQT --
+    readonly property bool unsecured: DeviceModel.remote && LinkController.unsecured && !FilesController.offline
+    readonly property string shownLine: unsecured
+        ? shownName + " (" + LinkController.unsecuredLabel + ")" : shownName
     readonly property string tip: FilesController.offline   // -- WP P1QT1 --
         ? qsTr("A file is open, not a device: edits change the file once you save it (File > Save File).")
         : DeviceModel.remote && LinkController.sessionTip.length > 0
@@ -64,8 +72,21 @@ AbstractButton {
             Layout.fillWidth: true
             text: button.notice.length ? button.notice : button.shownName
             font: Theme.fontSmall
-            color: button.notice.length ? Theme.warning : DeviceModel.connected ? Theme.text : Theme.dangerText
+            color: button.notice.length ? Theme.warning
+                 : button.unsecured || !DeviceModel.connected ? Theme.dangerText : Theme.text
             elide: Text.ElideRight
+        }
+        // -- WP SECQT -- " (unsecured)", never elided, and what it means, calmly
+        Text {
+            objectName: "DeviceStatus.unsecured"
+            visible: button.unsecured
+            text: "(" + LinkController.unsecuredLabel + ")"
+            font: Theme.fontSmall
+            color: Theme.dangerText
+        }
+        UnsecuredInfoButton {
+            objectName: "DeviceStatus.unsecuredInfo"
+            visible: button.unsecured
         }
         // -- WP QPI3 -- a DSPi the app sees but cannot open: the help again
         // (behaviour.md §13, the status area offers it)
@@ -85,9 +106,11 @@ AbstractButton {
     }
     background: Rectangle {
         radius: Theme.radiusSmall
-        color: button.down ? Theme.controlPressed : button.hovered ? Theme.controlHover : "transparent"
-        border.width: button.visualFocus ? 2 : 0
-        border.color: Theme.focusRing
+        // -- WP SECQT -- red while unsecured
+        color: button.down ? Theme.controlPressed : button.hovered ? Theme.controlHover
+             : button.unsecured ? Theme.bannerFill("error") : "transparent"
+        border.width: button.visualFocus ? 2 : button.unsecured ? 1 : 0
+        border.color: button.visualFocus ? Theme.focusRing : Theme.danger
     }
 
     HelpTip {
@@ -96,6 +119,6 @@ AbstractButton {
     }
 
     Accessible.role: Accessible.Button
-    Accessible.name: shownName
+    Accessible.name: shownLine   // -- WP SECQT --
     Accessible.description: notice.length ? notice + ". " + tip : tip
 }

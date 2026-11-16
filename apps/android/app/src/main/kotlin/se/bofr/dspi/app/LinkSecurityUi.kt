@@ -1,0 +1,175 @@
+// -- WP SECAN -- The hub connection's security in the UI (PLAN-SEC 4.3, owner rule
+// 2026-11-15): the info button beside "(unsecured)", the new-key notice, the
+// pair-again dialog of REPAIR_CODES, and the confirmation of a `dspi://pair` link.
+package se.bofr.dspi.app
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import se.bofr.dspi.core.LinkPairLink
+import se.bofr.dspi.link.HubSecurity
+import se.bofr.dspi.link.LinkSessionState
+import se.bofr.dspi.link.REPAIR_CODES
+import se.bofr.dspi.ui.DspiIcons
+
+/** Test tag of the info button beside "(unsecured)". */
+internal const val UNSECURED_INFO_TAG = "unsecured-info"
+
+/** Test tag of the narrow bar's " (unsecured)" (read once, with the bar's text). */
+internal const val UNSECURED_SUFFIX_TAG = "unsecured-suffix"
+
+/** Test tag of the explanation it opens. */
+internal const val UNSECURED_INFO_DIALOG_TAG = "unsecured-info-dialog"
+
+/** Its accessible name. */
+internal const val UNSECURED_INFO_LABEL = "Why unsecured?"
+
+/** The small info button beside "(unsecured)"; opens the core's calm explanation. */
+@Composable
+internal fun UnsecuredInfoButton(tint: Color, wording: UnsecuredWording = UnsecuredWording.CORE) {
+    var open by remember { mutableStateOf(false) }
+    IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp).testTag(UNSECURED_INFO_TAG)) {
+        Icon(DspiIcons.info, contentDescription = UNSECURED_INFO_LABEL, tint = tint, modifier = Modifier.size(18.dp))
+    }
+    if (open) UnsecuredInfoDialog(wording) { open = false }
+}
+
+@Composable
+internal fun UnsecuredInfoDialog(wording: UnsecuredWording = UnsecuredWording.CORE, onDismiss: () -> Unit) {
+    val n = wording.info()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag(UNSECURED_INFO_DIALOG_TAG),
+        title = { Text(n.title) },
+        text = {
+            Column {
+                Text(n.reason)
+                Spacer(Modifier.height(8.dp))
+                Text(n.action, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } }
+    )
+}
+
+/** The failed dial offers pairing again: one of [REPAIR_CODES]. */
+fun offersRePair(s: LinkSessionState): Boolean = s is LinkSessionState.Failed && s.code in REPAIR_CODES
+
+/** Why pairing again is offered, by the core's code; nothing was sent to the hub in any of them. */
+fun rePairText(s: LinkSessionState.Failed): String {
+    val hub = s.hub.name
+    return when (s.code) {
+        "hub_key_changed" ->
+            "$hub presented another key than the one it had when this app paired with it, so nothing was sent to it. " +
+                "If the hub was set up again or its key was reset, pair again and check that the key matches the one the hub shows."
+        "hub_key_unverified" -> if (s.fromPairLink) {
+            "$hub did not present the key in the pairing link, so no PIN was sent. The link may be old or not from this hub. " +
+                "Connect to the hub as usual instead."
+        } else {
+            "$hub did not present the key it was expected to have, so nothing was stored. Pair again and check the key the hub shows."
+        }
+        "tls_refused" ->
+            "$hub was set up with encryption, or says it supports it, but refused an encrypted connection. Nothing was sent unencrypted. " +
+                "Check the hub's encryption setting, then pair again."
+        else -> "$hub accepts only encrypted connections. Pair again to set one up."
+    }
+}
+
+/** Test tag of the pair-again dialog. */
+internal const val REPAIR_DIALOG_TAG = "repair-dialog"
+
+@Composable
+internal fun RePairDialog(s: LinkSessionState.Failed, onRePair: () -> Unit, onDismiss: () -> Unit) {
+    val label = if (s.fromPairLink && s.code == "hub_key_unverified") "Connect" else "Pair Again"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag(REPAIR_DIALOG_TAG),
+        title = { Text("Could not connect securely") },
+        text = { Text(rePairText(s)) },
+        confirmButton = { TextButton(onClick = onRePair) { Text(label) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+/** "Encrypted connection set up; hub key …", once per hub key. */
+@Composable
+internal fun HubKeyNoticeDialog(security: HubSecurity, hubName: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Encrypted connection set up") },
+        text = {
+            Column {
+                Text("The connection to $hubName is now encrypted. Hub key:")
+                Spacer(Modifier.height(4.dp))
+                Text(security.hubKey, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "From now on this app connects to the hub only if it presents this key.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } }
+    )
+}
+
+/** Test tag of the pairing link's confirmation. */
+internal const val PAIR_LINK_DIALOG_TAG = "pair-link-dialog"
+
+/**
+ * A `dspi://pair` link arrived (a scanned QR code, from any app): a hint, never a bypass.
+ * Nothing is dialled before this tap, and the key is checked against the hub's TLS key
+ * before the PIN prompt; the prompt itself needs another tap.
+ */
+fun pairLinkText(link: LinkPairLink, linkEnabled: Boolean): String = buildString {
+    append("Pair with the hub at ")
+    append(if (':' in link.host) "[${link.host}]:${link.port}" else "${link.host}:${link.port}")
+    append("? This app connects only if the hub presents this key:")
+    if (!linkEnabled) append("\n\nDSPi Link is turned on for this.")
+}
+
+@Composable
+internal fun PairLinkDialog(link: LinkPairLink, linkEnabled: Boolean, onContinue: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.testTag(PAIR_LINK_DIALOG_TAG),
+        title = { Text("Pairing link") },
+        text = {
+            Column {
+                Text(pairLinkText(link, linkEnabled))
+                Spacer(Modifier.height(4.dp))
+                Text(link.hubKey, fontFamily = FontFamily.Monospace)
+            }
+        },
+        confirmButton = { TextButton(onClick = onContinue) { Text("Continue") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+/** A `dspi://` link the core could not read. */
+@Composable
+internal fun BadPairLinkDialog(reason: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Not a pairing link") },
+        text = { Text("This link cannot be used to pair: $reason") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } }
+    )
+}

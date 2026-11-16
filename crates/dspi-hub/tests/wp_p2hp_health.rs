@@ -146,6 +146,9 @@ fn fast() -> HealthConfig {
         reset_info_every: Duration::from_millis(300),
         unresponsive_after: Duration::from_millis(1500),
         retry_after: Duration::from_millis(300),
+        // -- WP P3HB --
+        counters_every: Duration::from_millis(300),
+        clip_window: Duration::from_secs(60),
     }
 }
 

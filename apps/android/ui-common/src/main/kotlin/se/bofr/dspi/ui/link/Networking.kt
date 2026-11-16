@@ -16,10 +16,16 @@ data class NetworkHubRow(
     /** Added by address: can be removed. */
     val manual: Boolean,
     /** The hub this phone is connected to. */
-    val active: Boolean
+    val active: Boolean,
+    /**
+     * -- WP SECAN -- the encryption badge: "Verified" (paired, key pinned), "Encrypted" (its
+     * record offers TLS), "Unencrypted", or "" (a typed address, not known yet).
+     */
+    val badge: String = ""
 )
 
-data class PairedHubRow(val id: String, val name: String)
+/** -- WP SECAN -- [hubKey]: the fingerprint its pairing is pinned to, "" when paired without encryption. */
+data class PairedHubRow(val id: String, val name: String, val hubKey: String = "")
 
 /** What Settings › Networking shows (DSPi Link client, owner decisions D2/D7). */
 data class NetworkingUiState(

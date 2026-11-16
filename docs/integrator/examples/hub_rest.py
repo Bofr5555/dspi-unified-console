@@ -4,21 +4,42 @@
 
 The hub runs with --rest; an Admin mints an API key on the hub's machine
 (`uconsole hub api-key new "My script"`, or `api-key new "My script"` at a
-running hub's prompt) and the key is shown once:
+running hub's prompt) and the key is shown once. The hub speaks TLS with its
+own self-signed key (docs/integrator/security.md): export its certificate on
+the hub's machine once, `uconsole hub tls cert > hub.pem`, and trust only it:
 
-    DSPI_HUB=http://hub.local:11915 DSPI_KEY=... ./hub_rest.py [SERIAL]
+    DSPI_HUB=https://hub.local:11915 DSPI_CA=hub.pem DSPI_KEY=... ./hub_rest.py [SERIAL]
 
-The key crosses the network in plain text: keep the hub on a network you trust.
+With DSPI_CA the hub's own certificate is the only one trusted, so only the
+key it was issued for passes; the name in DSPI_HUB need not be in it (an
+address works too). Export it again after `uconsole hub tls rotate`.
+A plain http:// URL works only with a hub started with --tls off or
+--upstream-compat, and then the key crosses the network in plain text.
+(With the requests library: requests.get(url, headers=..., verify="hub.pem"),
+which also checks the name, so use the hub's .local name.)
 """
 
 import json
 import os
+import ssl
 import sys
 import urllib.error
 import urllib.request
 
-HUB = os.environ.get("DSPI_HUB", "http://hub.local:11915").rstrip("/")
+HUB = os.environ.get("DSPI_HUB", "https://hub.local:11915").rstrip("/")
 KEY = os.environ.get("DSPI_KEY", "")
+CA = os.environ.get("DSPI_CA", "")
+
+
+def tls_context():
+    """The hub's own certificate as the only trust anchor, or the system's roots."""
+    if not CA:
+        return None
+    ctx = ssl.create_default_context(cafile=CA)
+    # Only the hub's own self-signed certificate is trusted, so the key is what is
+    # checked; the hub's certificate names its .local name, not every address.
+    ctx.check_hostname = False
+    return ctx
 
 
 def call(method, path, body=None):
@@ -31,7 +52,7 @@ def call(method, path, body=None):
         headers={"Authorization": "Bearer " + KEY, "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(req, timeout=10, context=tls_context()) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
         try:
@@ -39,6 +60,9 @@ def call(method, path, body=None):
         except ValueError:
             err = {}
         sys.exit(f"{method} {path}: HTTP {e.code} {err.get('code', '')}: {err.get('msg', '')}")
+    except urllib.error.URLError as e:
+        # A certificate that is not the hub's (DSPI_CA) ends here, before the key is sent.
+        sys.exit(f"{method} {path}: {e.reason}")
 
 
 def main():

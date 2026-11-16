@@ -823,6 +823,10 @@ fn wp_p2ha_end_to_end_a_real_alarm_reaches_mqtt_and_the_sensor() {
         temp_c: Some(64.5),
         uptime_s: None,
         hang_count: None,
+        // -- WP P3HB --
+        counters: None,
+        clip_per_min: None,
+        last_change: None,
     });
     let topic = format!("{BASE}/{serial}/event");
     wait_until("the alarm on MQTT", || {

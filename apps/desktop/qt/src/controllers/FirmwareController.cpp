@@ -58,6 +58,19 @@ QJsonObject guardCheck(const QByteArray &bytes, int requiredMv, const QByteArray
            })).object();
 }
 
+// -- WP SECFIX -- The core's manifest on `bytes` named `name` ("" for none):
+// verified, notBundled or mismatch. Worker thread.
+QString verifyBundled(const QByteArray &bytes, const QString &name) {
+    const QByteArray n = name.toUtf8();
+    return QJsonDocument::fromJson(readSized([&](char *b, uint32_t len) {
+               return dspi_firmware_verify_bundled(reinterpret_cast<const uint8_t *>(bytes.constData()),
+                                                   uint32_t(bytes.size()), n.constData(), b, len);
+           }))
+        .object()
+        .value(QStringLiteral("value"))
+        .toString();
+}
+
 // A sentence of the core's, as a line on its own
 QString sentence(QString text) {
     if (!text.isEmpty()) text[0] = text.at(0).toUpper();
@@ -67,6 +80,17 @@ QString sentence(QString text) {
 
 FirmwareController::FirmwareController(const AppContext &ctx, QObject *parent)
     : QObject(parent), m_ctx(ctx), m_locator(new BootloaderLocator(ctx.core, this)) {
+    // -- WP SECFIX -- the label's words: the core's row (a pure function of the build)
+    {
+        const QJsonObject row = QJsonDocument::fromJson(readSized([](char *b, uint32_t n) {
+                                    return dspi_notice_for("firmware.not_verified", nullptr, b, n);
+                                })).object();
+        const bool ours = row.value(QStringLiteral("key")).toString() == QLatin1String("firmware.not_verified");
+        m_unverifiedLabel = ours ? row.value(QStringLiteral("title")).toString() : tr("Not a verified DSPi Console image");
+        m_unverifiedText = ours ? row.value(QStringLiteral("reason")).toString() + QLatin1Char(' ')
+                                      + row.value(QStringLiteral("action")).toString()
+                                : QString();
+    }
     loadBundled();
     connect(m_locator, &BootloaderLocator::scanned, this, &FirmwareController::onScan);
     connect(ctx.device, &DeviceModel::snapshotApplied, this, [this] {
@@ -195,7 +219,9 @@ void FirmwareController::useCustomImage(const QString &path) {
             QFile f(path);
             QByteArray bytes;
             if (f.open(QIODevice::ReadOnly) && f.size() <= kMaxImageBytes) bytes = f.readAll();
-            const QJsonObject info = inspect(bytes);
+            QJsonObject info = inspect(bytes);
+            // -- WP SECFIX -- by its file name: a copy of a bundled image is verified
+            info.insert(QStringLiteral("bundled"), verifyBundled(bytes, QFileInfo(path).fileName()));
             // An image the core refuses: the guard's sentence says why
             const QString refusal = info.value(QStringLiteral("valid")).toBool()
                                         ? QString()
@@ -211,6 +237,7 @@ void FirmwareController::useCustomImage(const QString &path) {
             m_customImage.valid = info.value(QStringLiteral("valid")).toBool();
             m_customImage.version = info.value(QStringLiteral("firmwareVersion")).toString();
             m_customImage.chip = info.value(QStringLiteral("platform")).toInt(-1);
+            m_customImage.bundled = info.value(QStringLiteral("bundled")).toString();   // -- WP SECFIX --
             m_customProblem = sentence(std::get<2>(r));
             if (m_customImage.valid && device >= 0 && m_customImage.chip != device)
                 m_customProblem = tr("This image is for the %1; the connected device is an %2.")

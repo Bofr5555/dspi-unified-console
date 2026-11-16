@@ -1914,6 +1914,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2020,6 +2024,8 @@ fun uniffi_dspi_core_checksum_func_onboarding_whats_new_json(
 fun uniffi_dspi_core_checksum_func_output_cards_for(
 ): Short
 fun uniffi_dspi_core_checksum_func_output_labels_for(
+): Short
+fun uniffi_dspi_core_checksum_func_picoboot_devices(
 ): Short
 fun uniffi_dspi_core_checksum_func_platform_shape(
 ): Short
@@ -2538,6 +2544,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_output_labels(
 fun uniffi_dspi_core_checksum_method_dspicore_outputs_without_limiter(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_paste_channel(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_pin_check(
 ): Short
@@ -3449,6 +3457,8 @@ fun uniffi_dspi_core_fn_method_dspicore_outputs_without_limiter(`ptr`: Pointer,`
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_paste_channel(`ptr`: Pointer,`clip`: RustBuffer.ByValue,`ch`: Byte,`options`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_picoboot_flash_confirmed(`ptr`: Pointer,`image`: RustBuffer.ByValue,`target`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_pin_check(`ptr`: Pointer,`function`: RustBuffer.ByValue,`pin`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_pin_holder(`ptr`: Pointer,`pin`: Byte,`excluding`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3929,6 +3939,8 @@ fun uniffi_dspi_core_fn_func_output_cards_for(`input`: RustBuffer.ByValue,uniffi
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_output_labels_for(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_picoboot_devices(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_platform_shape(`platformId`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_quantize_delay(`ms`: Float,uniffi_out_err: UniffiRustCallStatus, 
@@ -4215,6 +4227,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_output_labels_for() != 60813.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_picoboot_devices() != 58975.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_platform_shape() != 51628.toShort()) {
@@ -4739,7 +4754,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_events_watch() != 53028.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_health() != 16703.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_health() != 60109.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_identify() != 8517.toShort()) {
@@ -4992,6 +5007,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_paste_channel() != 43676.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed() != 50736.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_pin_check() != 43599.toShort()) {
@@ -8834,7 +8852,9 @@ public interface DspiCoreInterface {
     
     /**
      * One health record per online device of the hub (`health.get`):
-     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+     * -- WP P3HB -- the stream counters, clip events a minute and the last
+     * change where the hub has them.
      * Every role. Slow: off the UI thread.
      *
      * Errors: [`DspiError::Unsupported`] without the `health` cap;
@@ -9773,6 +9793,31 @@ public interface DspiCoreInterface {
      * transfer errors.
      */
     fun `pasteChannel`(`clip`: ChannelClip, `ch`: kotlin.UByte, `options`: ChannelPasteOptions)
+    
+    /**
+     * Flash `image` into the boot ROM of `target` (one of
+     * [`picoboot_devices`]) over PICOBOOT, with no drive mounted (module
+     * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
+     * before the board entered BOOTSEL; the guard must say clear for it with
+     * nothing typed, so an image that would ask a person anything is
+     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * [`DspiCore::flash_confirmed`] does (mint it once the board is in
+     * BOOTSEL; it works with no device open), and the installer lock holds.
+     * Blocks for up to 60 s.
+     *
+     * `Ok` means every sector was written and read back identical and the
+     * reboot was acknowledged; the caller confirms by the DSPi coming back
+     * with the image's version. On an error after the first erase the board
+     * stays in BOOTSEL (nothing is retried).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] without a good token;
+     * [`DspiError::FirmwareGuardBlocked`] or [`DspiError::InvalidArgument`]
+     * for an image the guard does not clear, of another chip, or not
+     * firmware; [`DspiError::Unsupported`] where the bus cannot be reached;
+     * [`DspiError::Transfer`] naming the step for anything the transfer or
+     * the ROM did. In every error before the first command nothing was sent.
+     */
+    fun `picobootFlashConfirmed`(`image`: kotlin.ByteArray, `target`: BootDevice, `board`: FirmwareGuardBoard, `token`: kotlin.String?): FlashReport
     
     /**
      * Whether `function` may move to `pin`: `None` when it may, else why
@@ -14998,7 +15043,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
     /**
      * One health record per online device of the hub (`health.get`):
-     * CPU, the clip latch, temperature, uptime, hangs, whether it answers.
+     * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
+     * -- WP P3HB -- the stream counters, clip events a minute and the last
+     * change where the hub has them.
      * Every role. Slow: off the UI thread.
      *
      * Errors: [`DspiError::Unsupported`] without the `health` cap;
@@ -16823,6 +16870,42 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 }
     }
     
+    
+
+    
+    /**
+     * Flash `image` into the boot ROM of `target` (one of
+     * [`picoboot_devices`]) over PICOBOOT, with no drive mounted (module
+     * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
+     * before the board entered BOOTSEL; the guard must say clear for it with
+     * nothing typed, so an image that would ask a person anything is
+     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * [`DspiCore::flash_confirmed`] does (mint it once the board is in
+     * BOOTSEL; it works with no device open), and the installer lock holds.
+     * Blocks for up to 60 s.
+     *
+     * `Ok` means every sector was written and read back identical and the
+     * reboot was acknowledged; the caller confirms by the DSPi coming back
+     * with the image's version. On an error after the first erase the board
+     * stays in BOOTSEL (nothing is retried).
+     *
+     * Errors: [`DspiError::ConfirmationRequired`] without a good token;
+     * [`DspiError::FirmwareGuardBlocked`] or [`DspiError::InvalidArgument`]
+     * for an image the guard does not clear, of another chip, or not
+     * firmware; [`DspiError::Unsupported`] where the bus cannot be reached;
+     * [`DspiError::Transfer`] naming the step for anything the transfer or
+     * the ROM did. In every error before the first command nothing was sent.
+     */
+    @Throws(DspiException::class)override fun `picobootFlashConfirmed`(`image`: kotlin.ByteArray, `target`: BootDevice, `board`: FirmwareGuardBoard, `token`: kotlin.String?): FlashReport {
+            return FfiConverterTypeFlashReport.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_picoboot_flash_confirmed(
+        it, FfiConverterByteArray.lower(`image`),FfiConverterTypeBootDevice.lower(`target`),FfiConverterTypeFirmwareGuardBoard.lower(`board`),FfiConverterOptionalString.lower(`token`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -26360,6 +26443,57 @@ public object FfiConverterTypeBiquadSection: FfiConverterRustBuffer<BiquadSectio
 
 
 /**
+ * A board in BOOTSEL mode with a PICOBOOT interface.
+ */
+data class BootDevice (
+    /**
+     * 0 RP2040 (`2E8A:0003`), 1 RP2350 (`2E8A:000F`), as `Uf2Info::platform`.
+     */
+    var `platform`: kotlin.Byte, 
+    /**
+     * The boot ROM's USB serial. On an RP2350 it is the chip's unique id,
+     * which is the DSPi's serial; the RP2040's ROM reports a fixed string,
+     * so it is `None` there and only uniqueness identifies the board.
+     */
+    var `serial`: kotlin.String?, 
+    /**
+     * Where it is on the bus (`<bus>-<port>.<port>...`), stable across a
+     * re-enumeration on the same port.
+     */
+    var `busLocation`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBootDevice: FfiConverterRustBuffer<BootDevice> {
+    override fun read(buf: ByteBuffer): BootDevice {
+        return BootDevice(
+            FfiConverterByte.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: BootDevice) = (
+            FfiConverterByte.allocationSize(value.`platform`) +
+            FfiConverterOptionalString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`busLocation`)
+    )
+
+    override fun write(value: BootDevice, buf: ByteBuffer) {
+            FfiConverterByte.write(value.`platform`, buf)
+            FfiConverterOptionalString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`busLocation`, buf)
+    }
+}
+
+
+
+/**
  * How many boards in bootloader mode are attached, per chip.
  */
 data class BootloaderCounts (
@@ -28593,6 +28727,75 @@ public object FfiConverterTypeFirmwareGuardVerdict: FfiConverterRustBuffer<Firmw
 
 
 /**
+ * What a PICOBOOT flash did.
+ */
+data class FlashReport (
+    /**
+     * The target's platform.
+     */
+    var `platform`: kotlin.Byte, 
+    /**
+     * The target's serial, as [`BootDevice::serial`].
+     */
+    var `serial`: kotlin.String?, 
+    /**
+     * The image's DSPi version (`Uf2Info::firmware_version`), "" if none.
+     */
+    var `firmwareVersion`: kotlin.String, 
+    /**
+     * 4 KiB sectors erased, written and read back.
+     */
+    var `sectors`: kotlin.UInt, 
+    /**
+     * Bytes written (whole sectors).
+     */
+    var `bytesWritten`: kotlin.ULong, 
+    /**
+     * How long it took, in ms.
+     */
+    var `elapsedMs`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFlashReport: FfiConverterRustBuffer<FlashReport> {
+    override fun read(buf: ByteBuffer): FlashReport {
+        return FlashReport(
+            FfiConverterByte.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FlashReport) = (
+            FfiConverterByte.allocationSize(value.`platform`) +
+            FfiConverterOptionalString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`firmwareVersion`) +
+            FfiConverterUInt.allocationSize(value.`sectors`) +
+            FfiConverterULong.allocationSize(value.`bytesWritten`) +
+            FfiConverterULong.allocationSize(value.`elapsedMs`)
+    )
+
+    override fun write(value: FlashReport, buf: ByteBuffer) {
+            FfiConverterByte.write(value.`platform`, buf)
+            FfiConverterOptionalString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`firmwareVersion`, buf)
+            FfiConverterUInt.write(value.`sectors`, buf)
+            FfiConverterULong.write(value.`bytesWritten`, buf)
+            FfiConverterULong.write(value.`elapsedMs`, buf)
+    }
+}
+
+
+
+/**
  * A guarded apply's state: [`DspiCore::apply_status`] and every guarded call.
  */
 data class GuardedApply (
@@ -29907,7 +30110,21 @@ data class HubHealth (
     /**
      * The reset seen at attach or since.
      */
-    var `reset`: HubReset?
+    var `reset`: HubReset?, 
+    /**
+     * The stream's underrun and starvation totals, once the hub read either
+     * (one read every 30 s, the four counters in turn).
+     */
+    var `counters`: HubStreamCounters?, 
+    /**
+     * Clip events in the last minute; `None` on firmware with only the clip
+     * latch (no extension clip events).
+     */
+    var `clipPerMin`: kotlin.UInt?, 
+    /**
+     * The device's newest change and who made it, from the hub's history.
+     */
+    var `lastChange`: HubLastChange?
 ) {
     
     companion object
@@ -29930,6 +30147,9 @@ public object FfiConverterTypeHubHealth: FfiConverterRustBuffer<HubHealth> {
             FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterOptionalTypeHubReset.read(buf),
+            FfiConverterOptionalTypeHubStreamCounters.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalTypeHubLastChange.read(buf),
         )
     }
 
@@ -29944,7 +30164,10 @@ public object FfiConverterTypeHubHealth: FfiConverterRustBuffer<HubHealth> {
             FfiConverterOptionalUByte.allocationSize(value.`hangCount`) +
             FfiConverterBoolean.allocationSize(value.`unresponsive`) +
             FfiConverterString.allocationSize(value.`unresponsiveSince`) +
-            FfiConverterOptionalTypeHubReset.allocationSize(value.`reset`)
+            FfiConverterOptionalTypeHubReset.allocationSize(value.`reset`) +
+            FfiConverterOptionalTypeHubStreamCounters.allocationSize(value.`counters`) +
+            FfiConverterOptionalUInt.allocationSize(value.`clipPerMin`) +
+            FfiConverterOptionalTypeHubLastChange.allocationSize(value.`lastChange`)
     )
 
     override fun write(value: HubHealth, buf: ByteBuffer) {
@@ -29959,6 +30182,9 @@ public object FfiConverterTypeHubHealth: FfiConverterRustBuffer<HubHealth> {
             FfiConverterBoolean.write(value.`unresponsive`, buf)
             FfiConverterString.write(value.`unresponsiveSince`, buf)
             FfiConverterOptionalTypeHubReset.write(value.`reset`, buf)
+            FfiConverterOptionalTypeHubStreamCounters.write(value.`counters`, buf)
+            FfiConverterOptionalUInt.write(value.`clipPerMin`, buf)
+            FfiConverterOptionalTypeHubLastChange.write(value.`lastChange`, buf)
     }
 }
 
@@ -30001,6 +30227,56 @@ public object FfiConverterTypeHubInventoryForgot: FfiConverterRustBuffer<HubInve
     override fun write(value: HubInventoryForgot, buf: ByteBuffer) {
             FfiConverterString.write(value.`serial`, buf)
             FfiConverterSequenceString.write(value.`forgot`, buf)
+    }
+}
+
+
+
+/**
+ * A device's newest change in [`HubHealth`]: the newest history record of a
+ * write, recall, import, schedule run or new firmware.
+ */
+data class HubLastChange (
+    /**
+     * When (ISO-8601 UTC).
+     */
+    var `at`: kotlin.String, 
+    /**
+     * Who made it (a client's name, a schedule); "" when the record names no
+     * one (a change at the device itself).
+     */
+    var `by`: kotlin.String, 
+    /**
+     * The record's line.
+     */
+    var `text`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubLastChange: FfiConverterRustBuffer<HubLastChange> {
+    override fun read(buf: ByteBuffer): HubLastChange {
+        return HubLastChange(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubLastChange) = (
+            FfiConverterString.allocationSize(value.`at`) +
+            FfiConverterString.allocationSize(value.`by`) +
+            FfiConverterString.allocationSize(value.`text`)
+    )
+
+    override fun write(value: HubLastChange, buf: ByteBuffer) {
+            FfiConverterString.write(value.`at`, buf)
+            FfiConverterString.write(value.`by`, buf)
+            FfiConverterString.write(value.`text`, buf)
     }
 }
 
@@ -31575,6 +31851,49 @@ public object FfiConverterTypeHubStatsDevice: FfiConverterRustBuffer<HubStatsDev
 
 
 /**
+ * A device's stream counters in [`HubHealth`]. Each is `None` until the hub
+ * read it.
+ */
+data class HubStreamCounters (
+    /**
+     * Output underruns (PDM ring, PDM DMA and S/PDIF added up), total since
+     * the device started.
+     */
+    var `underruns`: kotlin.UInt?, 
+    /**
+     * Output starvations, total since the device started.
+     */
+    var `starvation`: kotlin.UInt?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubStreamCounters: FfiConverterRustBuffer<HubStreamCounters> {
+    override fun read(buf: ByteBuffer): HubStreamCounters {
+        return HubStreamCounters(
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubStreamCounters) = (
+            FfiConverterOptionalUInt.allocationSize(value.`underruns`) +
+            FfiConverterOptionalUInt.allocationSize(value.`starvation`)
+    )
+
+    override fun write(value: HubStreamCounters, buf: ByteBuffer) {
+            FfiConverterOptionalUInt.write(value.`underruns`, buf)
+            FfiConverterOptionalUInt.write(value.`starvation`, buf)
+    }
+}
+
+
+
+/**
  * Settings of the I2C control interface.
  */
 data class I2cConfig (
@@ -32660,6 +32979,14 @@ data class LinkSecurity (
      */
     var `encrypted`: kotlin.Boolean, 
     /**
+     * Not encrypted, but the hub is this machine (`localhost`, a loopback
+     * address: `dspi_link::address::is_loopback_host`): nothing crosses a
+     * network, so it is not shown as unsecured. Always false when
+     * `encrypted`. The three cases: `encrypted`, `local`, neither
+     * (unsecured: the red bar and " (unsecured)").
+     */
+    var `local`: kotlin.Boolean, 
+    /**
      * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
      */
     var `hubKey`: kotlin.String, 
@@ -32685,6 +33012,7 @@ public object FfiConverterTypeLinkSecurity: FfiConverterRustBuffer<LinkSecurity>
     override fun read(buf: ByteBuffer): LinkSecurity {
         return LinkSecurity(
             FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
@@ -32693,6 +33021,7 @@ public object FfiConverterTypeLinkSecurity: FfiConverterRustBuffer<LinkSecurity>
 
     override fun allocationSize(value: LinkSecurity) = (
             FfiConverterBoolean.allocationSize(value.`encrypted`) +
+            FfiConverterBoolean.allocationSize(value.`local`) +
             FfiConverterString.allocationSize(value.`hubKey`) +
             FfiConverterBoolean.allocationSize(value.`hubKeyNew`) +
             FfiConverterString.allocationSize(value.`credential`)
@@ -32700,6 +33029,7 @@ public object FfiConverterTypeLinkSecurity: FfiConverterRustBuffer<LinkSecurity>
 
     override fun write(value: LinkSecurity, buf: ByteBuffer) {
             FfiConverterBoolean.write(value.`encrypted`, buf)
+            FfiConverterBoolean.write(value.`local`, buf)
             FfiConverterString.write(value.`hubKey`, buf)
             FfiConverterBoolean.write(value.`hubKeyNew`, buf)
             FfiConverterString.write(value.`credential`, buf)
@@ -39506,6 +39836,38 @@ public object FfiConverterOptionalTypeHubEventRecord: FfiConverterRustBuffer<Hub
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeHubLastChange: FfiConverterRustBuffer<HubLastChange?> {
+    override fun read(buf: ByteBuffer): HubLastChange? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubLastChange.read(buf)
+    }
+
+    override fun allocationSize(value: HubLastChange?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubLastChange.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubLastChange?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubLastChange.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeHubOutboundLast: FfiConverterRustBuffer<HubOutboundLast?> {
     override fun read(buf: ByteBuffer): HubOutboundLast? {
         if (buf.get().toInt() == 0) {
@@ -39624,6 +39986,38 @@ public object FfiConverterOptionalTypeHubScheduleRun: FfiConverterRustBuffer<Hub
         } else {
             buf.put(1)
             FfiConverterTypeHubScheduleRun.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubStreamCounters: FfiConverterRustBuffer<HubStreamCounters?> {
+    override fun read(buf: ByteBuffer): HubStreamCounters? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubStreamCounters.read(buf)
+    }
+
+    override fun allocationSize(value: HubStreamCounters?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubStreamCounters.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubStreamCounters?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubStreamCounters.write(value, buf)
         }
     }
 }
@@ -40480,6 +40874,34 @@ public object FfiConverterSequenceTypeBiquadSection: FfiConverterRustBuffer<List
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeBiquadSection.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeBootDevice: FfiConverterRustBuffer<List<BootDevice>> {
+    override fun read(buf: ByteBuffer): List<BootDevice> {
+        val len = buf.getInt()
+        return List<BootDevice>(len) {
+            FfiConverterTypeBootDevice.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<BootDevice>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeBootDevice.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<BootDevice>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeBootDevice.write(it, buf)
         }
     }
 }
@@ -42633,6 +43055,20 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_output_labels_for(
         FfiConverterTypeOutputLabelInput.lower(`input`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Boards in BOOTSEL mode with a PICOBOOT interface (`2E8A:0003` RP2040,
+         * `2E8A:000F` RP2350). Empty where the bus cannot be enumerated (Android,
+         * and a build without the `usb` feature: iOS, the web).
+         */ fun `picobootDevices`(): List<BootDevice> {
+            return FfiConverterSequenceTypeBootDevice.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_picoboot_devices(
+        _status)
 }
     )
     }

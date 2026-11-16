@@ -618,6 +618,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun setTubeParam(idx: Int, value: Float): Unit = throw NotImplementedError("set_tube_param")
 
+    override fun picobootFlashConfirmed(image: List<Int>, target: BootDevice, board: FirmwareGuardBoard, token: String?): FlashReport = throw NotImplementedError("picoboot_flash_confirmed")
+
     override fun pinMap(): PinMap = throw NotImplementedError("pin_map")
 
     override fun pinCheck(function: PinFunction, pin: Int): PinRefusal? = throw NotImplementedError("pin_check")
@@ -869,6 +871,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun outputLabelsFor(input: OutputLabelInput): List<OutputLabel> = throw NotImplementedError("output_labels_for")
 
     override fun outputCardsFor(input: OutputLabelInput): List<OutputCard> = throw NotImplementedError("output_cards_for")
+
+    override fun picobootDevices(): List<BootDevice> = throw NotImplementedError("picoboot_devices")
 
     override fun platformShape(platformId: Int): PlatformShape = throw NotImplementedError("platform_shape")
 

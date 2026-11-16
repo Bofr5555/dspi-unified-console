@@ -155,6 +155,8 @@ mod platform;
 pub mod pins;
 // -- WP CLIP1 -- the channel clipboard (Copy / Paste Parameters)
 mod channel_clip;
+// -- WP P3PB -- the PICOBOOT writer (the hub's unattended flash)
+mod picoboot;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -191,7 +193,8 @@ pub use autoeq::*;
 // -- WP CG8 --
 pub use firmware_guard::*;
 // -- WP SECFWV --
-pub use firmware_manifest::{BundledFirmware, verify_bundled};
+pub use firmware_manifest::NOTICE_NOT_VERIFIED as NOTICE_FIRMWARE_NOT_VERIFIED;
+pub use firmware_manifest::{BundledFirmware, verify_bundled}; // -- WP SECFIX --
 // -- WP CG10 --
 pub use link_text::*;
 // -- WP HB0 --
@@ -237,6 +240,8 @@ pub use notice_text::{
 };
 // -- WP P1TK --
 pub use confirm::{CONFIRM_TOKEN_TTL_MS, ConfirmOp};
+// -- WP P3PB --
+pub use picoboot::{BootDevice, FlashReport, picoboot_devices};
 // -- WP P1SN --
 pub use snapshot::{SnapshotInfo, SnapshotRecall};
 // -- WP P1OF --
@@ -271,6 +276,8 @@ pub use hub_server::{
     HubServerListener, HubSnapshotDocument, HubSnapshotPut, HubSnapshotRecall, HubStats,
     HubStatsDevice, MergedSnapshot, SnapshotMergedList,
 };
+// -- WP P3HB --
+pub use hub_server::{HubLastChange, HubStreamCounters};
 // -- WP P2CC2 --
 pub use hub_server::{
     HubAlarm, HubAlarmRule, HubApiKey, HubApiKeyMinted, HubMqttSettings, HubMqttStatus, HubMqttTls,

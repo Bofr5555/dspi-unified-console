@@ -87,9 +87,12 @@ internal class FirmwareInstallSession private constructor(context: Context, val 
     /** Reads and checks a picked .uf2 off the main thread, then offers it. */
     fun readLocalFile(uri: Uri) {
         scope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { LocalFirmware.read(appContext, uri) } }
+            // -- WP SECFIX -- and the core's label for it, off the main thread too
+            val result = withContext(Dispatchers.IO) {
+                runCatching { LocalFirmware.read(appContext, uri) }.map { it to bridge.coreTools.firmwareLabel(it.bytes, it.name) }
+            }
             result.fold(
-                onSuccess = { model.chooseLocal(it) },
+                onSuccess = { (image, label) -> model.chooseLocal(image, label) },
                 onFailure = { e ->
                     model.localFileRefused(
                         if (e is Uf2FormatException) {

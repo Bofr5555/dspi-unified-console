@@ -1151,6 +1151,11 @@ void dspi_notify_tap_set(struct FfiCore *core, bool enabled);
 uint32_t dspi_notify_tap_drain(struct FfiCore *core, char *buf, uint32_t len);
 uint64_t dspi_connection_generation(struct FfiCore *core);
 uint32_t dspi_uf2_inspect(const uint8_t *image, uint32_t image_len, char *buf, uint32_t len);
+uint32_t dspi_firmware_verify_bundled(const uint8_t *image,
+uint32_t image_len,
+const char *name,
+char *buf,
+uint32_t len);
 uint32_t dspi_bootloader_drives(char *buf, uint32_t len);
 int8_t dspi_firmware_version_matches(struct FfiCore *core, const char *version);
 uint32_t dspi_core_vreg_cal_view(struct FfiCore *core, char *buf, uint32_t len);
@@ -1709,6 +1714,7 @@ int32_t code,
 const char *text,
 void *user_data), void *user_data);
 uint32_t dspi_hub_saved_settings(const char *store_dir, char *buf, uint32_t len);
+uint32_t dspi_hub_upstream_compat_effects(char *buf, uint32_t len);
 uint32_t dspi_hub_start(struct FfiHub *hub,
 const char *name,
 const char *store_dir,

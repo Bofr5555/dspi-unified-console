@@ -346,7 +346,8 @@ fn tighten_file(path: &Path) {
     let _ = path;
 }
 
-fn read_limited(path: &Path, max: u64) -> io::Result<Vec<u8>> {
+// -- WP SECWEB -- crate-wide: the proxy's pins file too
+pub(crate) fn read_limited(path: &Path, max: u64) -> io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     File::open(path)?
         .take(max.saturating_add(1))
@@ -378,7 +379,8 @@ fn private_file(path: &Path) -> io::Result<File> {
 }
 
 /// Write through a 0600 temp file and rename, as the store does.
-fn write_private(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), HubError> {
+// -- WP SECWEB -- crate-wide: the proxy's pins file too
+pub(crate) fn write_private(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), HubError> {
     let path = dir.join(name);
     let temp = dir.join(format!("{name}.tmp"));
     let written = (|| {
@@ -853,6 +855,108 @@ impl TlsIdentity {
     }
 }
 
+// -- WP SECPAIR --
+/// What a hub's TLS folder holds, read without a hub running and without changing
+/// anything (`uconsole hub tls cert|fingerprint` with the hub stopped). Public data only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredTls {
+    /// The key's pin.
+    pub pin: SpkiHash,
+    /// `cert.pem`.
+    pub certificate_pem: String,
+    /// The names the certificate carries.
+    pub names: Vec<String>,
+    /// The certificate's end, Unix seconds.
+    pub not_after: u64,
+    /// While a rotation is announced, until when (Unix seconds).
+    pub rotation_until: Option<u64>,
+}
+
+// -- WP SECPAIR --
+impl TlsIdentity {
+    /// The certificate and pin kept under `data_dir`, as [`Self::load`] would find
+    /// them, without making, issuing or moving anything. `None`: no TLS identity there
+    /// that reads (the hub has not run with TLS, or [`Self::load`] would issue again).
+    pub fn peek(data_dir: &Path) -> Option<StoredTls> {
+        let dir = data_dir.join(TLS_DIR);
+        let meta = read_meta(&dir.join(META_FILE))?;
+        let (der, pem) = read_cert(&dir.join(CERT_FILE), &meta)?;
+        let pin = SpkiHash::from_hex(&meta.pin)?;
+        let of_cert = SpkiHash::of_cert(&der).ok()?;
+        if !of_cert.ct_eq(&pin) {
+            return None;
+        }
+        Some(StoredTls {
+            pin,
+            certificate_pem: pem,
+            names: meta.names,
+            not_after: meta.not_after,
+            rotation_until: meta
+                .rotation
+                .map(|r| r.at.saturating_add(ROTATION_DAYS.saturating_mul(DAY))),
+        })
+    }
+}
+
+// -- WP SECPAIR --
+impl TlsNames {
+    /// The names a stored certificate was issued for, back as [`TlsNames`], so a hub
+    /// that is not running can rotate its key (`uconsole hub tls rotate`) without
+    /// issuing for other names: `localhost` and `<hid>.dspi.local` are always added,
+    /// any other DNS name is the mDNS one, and addresses are the static ones.
+    pub fn from_stored(sans: &[String], hid: &str) -> Self {
+        let stable = format!("{}.dspi.local", hid.to_ascii_lowercase());
+        let mut ips = Vec::new();
+        let mut host = None;
+        for name in sans {
+            match name.parse::<IpAddr>() {
+                Ok(ip) => ips.push(ip),
+                Err(_) if name == "localhost" || *name == stable => {}
+                Err(_) => host = host.or(Some(name.as_str())),
+            }
+        }
+        Self::new(host, &ips)
+    }
+}
+
 #[cfg(test)]
 #[path = "tls_identity/tests_wp_seckey.rs"]
 mod tests_wp_seckey;
+
+// -- WP SECPAIR --
+#[cfg(test)]
+mod tests_wp_secpair {
+    #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
+    use super::*;
+    use crate::store::tests_wp_hb1::scratch;
+
+    #[test]
+    fn wp_secpair_peek_reads_without_changing_and_names_round_trip() {
+        let dir = scratch("secpair-peek");
+        assert_eq!(TlsIdentity::peek(&dir), None, "nothing yet");
+        let hid = "0b3e7c1e-1111-4222-8333-444455556666";
+        let ip: IpAddr = "192.168.1.5".parse().unwrap();
+        let names = TlsNames::new(Some("dspi-abc.local"), &[ip]);
+        let now = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_800_000_000);
+        let (id, _) = TlsIdentity::load(&dir, hid, &names, now).unwrap();
+        let before = fs::read(dir.join(TLS_DIR).join(META_FILE)).unwrap();
+        let seen = TlsIdentity::peek(&dir).unwrap();
+        assert_eq!(seen.pin, id.pin());
+        assert_eq!(seen.certificate_pem, id.certificate_pem());
+        assert_eq!(seen.rotation_until, None);
+        assert_eq!(fs::read(dir.join(TLS_DIR).join(META_FILE)).unwrap(), before);
+        assert_eq!(TlsNames::from_stored(&seen.names, hid), names);
+        // A rotation is seen, and the names kept.
+        let mut id = id;
+        id.rotate(&names, now, false).unwrap();
+        let seen = TlsIdentity::peek(&dir).unwrap();
+        assert_eq!(seen.pin, id.pin());
+        assert_eq!(
+            seen.rotation_until,
+            Some(1_800_000_000 + ROTATION_DAYS * DAY)
+        );
+        // A stray cert.pem is not taken for the identity.
+        fs::write(dir.join(TLS_DIR).join(CERT_FILE), "junk").unwrap();
+        assert_eq!(TlsIdentity::peek(&dir), None);
+    }
+}

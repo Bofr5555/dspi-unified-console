@@ -8,10 +8,17 @@ import UConsole
 // Windows, while sharing, the firewall and Public-network rows (behaviour.md
 // §10, §11). While the page shows, the hub browser runs and the firewall is
 // read again every few seconds.
+// -- WP SECQT -- The hub requires TLS on the network (PLAN-SEC 4.1): its key's
+// fingerprint shows with the pairing code, for the client to compare. The
+// upstream compatibility switch asks first, with the large warning listing
+// exactly what it turns off (the hub's own list), and the warning stays on
+// the page while the mode is on.
 SettingsPage {
     id: page
     objectName: "NetworkingPage"
     readonly property bool pinAccess: HubController.access === "pin"
+    // -- WP SECQT -- the compatibility question, for the smoke driver
+    readonly property alias compatDialog: compatQuestion
     readonly property bool watching: visible && Window.window !== null && Window.window.visible
     readonly property string fwRules: FirewallController.rules
     readonly property bool firewallShown: FirewallController.supported && HubController.sharing
@@ -253,7 +260,14 @@ SettingsPage {
         title: qsTr("This Hub")
         iconName: "radio"
         footer: [qsTr("Other consoles see this console as a hub with this name. Sharing works on your local network only. To reach it from elsewhere, use a VPN such as Tailscale. Don't forward the port on your router."),
-                 qsTr("The pairing code crosses the network as plain text, without encryption."),
+                 // -- WP SECQT -- what the hub's TLS mode means for pairing
+                 HubController.running && HubController.tlsMode === "require"
+                     ? qsTr("Connections are encrypted. Clients check this hub's key when they pair.")
+                 : HubController.running && HubController.upstreamCompat
+                     ? qsTr("Upstream compatibility mode is on: clients may connect and pair without encryption.")
+                 : HubController.running && HubController.tlsMode === "off"
+                     ? qsTr("This hub listens on this machine only, without encryption.")
+                 : "",
                  HubController.running ? qsTr("Turn sharing off to change the port.") : ""]
                 .filter(line => line.length > 0).join("\n")
         RowLayout {
@@ -313,6 +327,91 @@ SettingsPage {
                 }
             }
         }
+        // -- WP SECQT -- the hub's key, for comparing with a client's
+        RowLayout {
+            objectName: "Networking.tlsKeyRow"
+            visible: HubController.tlsFingerprint.length > 0
+            Layout.fillWidth: true
+            spacing: Theme.spacing
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Hub key")
+                font: Theme.fontBody
+                color: Theme.text
+            }
+            TextEdit {
+                objectName: "Networking.tlsKey"
+                text: HubController.tlsFingerprint
+                readOnly: true
+                selectByMouse: true
+                font: Qt.font({ family: Shell.monospaceFamily, pixelSize: 13 })
+                color: Theme.textMuted
+                selectionColor: Theme.selection
+                selectedTextColor: Theme.text
+                Accessible.role: Accessible.StaticText
+                Accessible.name: qsTr("Hub key")
+                Accessible.description: text
+            }
+        }
+        // -- WP SECQT -- upstream compatibility mode: asks first, with the warning
+        SettingsToggle {
+            id: compatToggle
+            objectName: "Networking.upstreamCompat"
+            title: qsTr("Upstream compatibility mode")
+            caption: qsTr("Lets upstream DSPi Link clients, which cannot encrypt, connect. Lowers this hub's security.")
+            checked: HubController.upstreamCompat
+            onToggled: on => {
+                if (!on) {
+                    HubController.setUpstreamCompat(false)
+                    return
+                }
+                compatToggle.control.checked = Qt.binding(() => HubController.upstreamCompat)
+                compatQuestion.open()
+            }
+        }
+        ColumnLayout {
+            objectName: "Networking.compatWarning"
+            visible: HubController.upstreamCompat
+            Layout.fillWidth: true
+            spacing: 4
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Icon {
+                    name: "triangle-alert"
+                    size: 16
+                    color: Theme.dangerText
+                }
+                Text {
+                    objectName: "Networking.compatWarningTitle"
+                    Layout.fillWidth: true
+                    text: qsTr("Security downgraded: upstream compatibility mode is on")
+                    font: Theme.fontTitle
+                    color: Theme.dangerText
+                    wrapMode: Text.Wrap
+                }
+            }
+            Repeater {
+                model: HubController.compatEffects
+                delegate: Text {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 22
+                    text: "• " + modelData
+                    font: Theme.fontBody
+                    color: Theme.text
+                    wrapMode: Text.Wrap
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                Layout.leftMargin: 22
+                text: qsTr("Use it only on a network you trust, and only while you need it.")
+                font: Theme.fontBody
+                color: Theme.dangerText
+                wrapMode: Text.Wrap
+            }
+        }
     }
 
     // ---- Paired clients ----------------------------------------------------------------
@@ -355,6 +454,16 @@ SettingsPage {
                 Accessible.role: Accessible.StaticText
                 Accessible.name: qsTr("Pairing code")
                 Accessible.description: text
+            }
+            // -- WP SECQT -- the key the client should see on its prompt
+            Text {
+                objectName: "Networking.pairingKey"
+                Layout.alignment: Qt.AlignHCenter
+                visible: HubController.tlsFingerprint.length > 0
+                //: %1 is the hub key's fingerprint, SHA256:K7Q2-M9XD-…
+                text: qsTr("Hub key %1").arg(HubController.tlsFingerprint)
+                font: Qt.font({ family: Shell.monospaceFamily, pixelSize: 13 })
+                color: Theme.text
             }
             Text {
                 objectName: "Networking.pairingExpiry"
@@ -651,6 +760,22 @@ SettingsPage {
             enabled: SystemIntegration.keepAwakeSupported
             checked: SystemIntegration.keepAwake
             onToggled: on => SystemIntegration.keepAwake = on
+        }
+    }
+
+    // -- WP SECQT -- the large warning before compatibility mode goes on
+    QuestionDialog {
+        id: compatQuestion
+        objectName: "Networking.compatQuestion"
+        title: qsTr("Turn on upstream compatibility mode?")
+        text: [qsTr("This downgrades the hub's security. While it is on:")]
+              .concat(HubController.compatEffects.map(line => "• " + line))
+              .concat([qsTr("Use it only on a network you trust, and only while you need it.")])
+              .join("\n\n")
+        acceptText: qsTr("Turn On")
+        destructive: true
+        onAnswered: answer => {
+            if (answer === "accept") HubController.setUpstreamCompat(true)
         }
     }
 

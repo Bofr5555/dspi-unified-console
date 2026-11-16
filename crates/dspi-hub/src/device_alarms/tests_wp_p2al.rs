@@ -138,6 +138,10 @@ fn health(serial: &str, cpu: Option<u8>, clip_mask: u32, temp_c: Option<f32>) ->
         temp_c,
         uptime_s: None,
         hang_count: None,
+        // -- WP P3HB --
+        counters: None,
+        clip_per_min: None,
+        last_change: None,
     }
 }
 

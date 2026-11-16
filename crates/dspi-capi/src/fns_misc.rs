@@ -1677,6 +1677,31 @@ pub extern "C" fn dspi_uf2_inspect(
     })
 }
 
+// -- WP SECFIX --
+/// Whether `image` (`image_len` bytes) is the bundled firmware file `name` (a
+/// file name, any leading path ignored; null or "" for a file the user picked
+/// with no name to give), in JSON: `{ok, value}` with `value` `"verified"`,
+/// `"notBundled"` (show the label, the notice row `firmware.not_verified`;
+/// not a refusal) or `"mismatch"` (a bundled name with other bytes: do not
+/// offer it; the guard refuses it too). A consistency check, not tamper
+/// protection (SECFWV). A null image is an empty one.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_firmware_verify_bundled(
+    image: *const u8,
+    image_len: u32,
+    name: *const c_char,
+    buf: *mut c_char,
+    len: u32,
+) -> u32 {
+    free_text(buf, len, || {
+        let name = c_str(name).unwrap_or_default().to_owned();
+        json_reply(Ok(dspi_core::verify_bundled(
+            c_bytes(image, image_len),
+            name,
+        )))
+    })
+}
+
 /// The boards' bootloader drives that are mounted, in JSON (`value`: a list
 /// of `{path, platform, info}`).
 #[unsafe(no_mangle)]
@@ -2254,6 +2279,28 @@ mod tests_clean1 {
         let mut buf = vec![0u8; needed as usize];
         assert_eq!(f(buf.as_mut_ptr().cast(), needed), needed);
         serde_json::from_slice(&buf[..needed as usize - 1]).unwrap()
+    }
+
+    // -- WP SECFIX --
+    #[test]
+    fn wp_secfix_verify_bundled_over_the_c_abi() {
+        let image = stock_image();
+        let ask = |bytes: &[u8], name: *const c_char| {
+            reply(|b, l| {
+                dspi_firmware_verify_bundled(bytes.as_ptr(), bytes.len() as u32, name, b, l)
+            })
+        };
+        let bundled = CString::new("Firmware/DSPi-RP2350-v1.1.6.uf2").unwrap();
+        let verified = ask(&image, bundled.as_ptr());
+        assert_eq!(verified["ok"], true, "{verified}");
+        assert_eq!(verified["value"], "verified", "{verified}");
+        assert_eq!(ask(&image, null())["value"], "notBundled");
+        let mut flipped = image.clone();
+        let mid = flipped.len() / 2;
+        flipped[mid] ^= 1;
+        assert_eq!(ask(&flipped, bundled.as_ptr())["value"], "mismatch");
+        let empty = reply(|b, l| dspi_firmware_verify_bundled(null(), 0, null(), b, l));
+        assert_eq!(empty["value"], "notBundled", "{empty}");
     }
 
     #[test]

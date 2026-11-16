@@ -21,10 +21,12 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filter
 import se.bofr.dspi.bridge.BridgeEvent
 import se.bofr.dspi.core.DspiException
+import se.bofr.dspi.core.LinkPairLink
 import se.bofr.dspi.feature.presets.DocumentOpener
 import se.bofr.dspi.feature.presets.LocalDocumentOpener
 import se.bofr.dspi.feature.settings.LocalAboutJson
 import se.bofr.dspi.ui.DspiTheme
+import se.bofr.dspi.ui.collectAsStateOnMain
 import se.bofr.dspi.ui.link.LocalNetworking
 import se.bofr.dspi.ui.settings.LocalAppSettings
 import se.bofr.dspi.ui.state.LocalAppState
@@ -40,6 +42,10 @@ import se.bofr.dspi.ui.state.LocalAppState
 class MainActivity : ComponentActivity() {
     private val app get() = application as DspiApplication
 
+    // -- WP SECAN -- a `dspi://pair` link waiting for the user's confirmation (or why it is not one)
+    private var pairLink by mutableStateOf<LinkPairLink?>(null)
+    private var badPairLink by mutableStateOf<String?>(null)
+
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* nothing to do either way */ }
 
@@ -48,6 +54,7 @@ class MainActivity : ComponentActivity() {
         // a recreated Activity (rotation) still carries the launch intent: hand it over once
         if (savedInstanceState == null) {
             handAttachedIntent(intent)
+            handPairLink(intent) // -- WP SECAN --
             requestNotificationPermission()
         }
         setContent {
@@ -62,6 +69,7 @@ class MainActivity : ComponentActivity() {
                 val hubs by app.networking.hubs.collectAsStateWithLifecycle() // -- WP AN7 --
                 var networkingOpen by remember { mutableStateOf(false) }
                 val document by bridge.snapshots.offline.collectAsStateWithLifecycle() // -- WP P1AN1 --
+                val security by modes.remoteSecurity.collectAsStateOnMain() // -- WP SECAN --
                 // macOS DeviceLockNotice: "Another console is applying changes" for 4 s after a LOCKED refusal
                 var lockNotice by remember { mutableStateOf(false) }
                 LaunchedEffect(bridge) {
@@ -80,7 +88,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     AppScaffold(
                         bridge = bridge,
-                        strip = connectionStrip(mode, usbState, remote, lockNotice, document = document?.fileName), // -- WP P1AN1 --
+                        // -- WP P1AN1 --, SECAN: the security
+                        strip = connectionStrip(mode, usbState, remote, lockNotice, document = document?.fileName, security = security),
                         // -- WP AN7 -- every user switch goes through the Unsaved Changes flow
                         onExitDemo = { modes.switchTo(DeviceChoice.Usb) },
                         onRequestPermission = { app.session.requestPermission(this) },
@@ -107,8 +116,26 @@ class MainActivity : ComponentActivity() {
                                 onCancelPin = { modes.remoteSession?.cancelPin() },
                                 onChoose = { modes.remoteSession?.chooseDevice(it) },
                                 onCancelChoice = { modes.exitRemote() },
-                                onUsbAnswer = { modes.answerUsbPrompt(it) }
+                                onUsbAnswer = { modes.answerUsbPrompt(it) },
+                                // -- WP SECAN --
+                                security = security,
+                                onRePair = { modes.remoteSession?.rePair() },
+                                onKeyNoticeSeen = { modes.remoteSession?.ackKeyNotice() }
                             )
+                            // -- WP SECAN -- a pairing link: one tap before anything is dialled
+                            pairLink?.let { l ->
+                                PairLinkDialog(
+                                    l,
+                                    link.enabled,
+                                    onContinue = {
+                                        pairLink = null
+                                        if (!link.enabled) app.networking.setEnabled(true)
+                                        modes.pairByLink(l)
+                                    },
+                                    onDismiss = { pairLink = null }
+                                )
+                            }
+                            badPairLink?.let { r -> BadPairLinkDialog(r) { badPairLink = null } }
                             if (networkingOpen) NetworkingDialog(app.networking) { networkingOpen = false }
                         }
                     )
@@ -121,6 +148,22 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handAttachedIntent(intent)
+        handPairLink(intent) // -- WP SECAN --
+    }
+
+    // -- WP SECAN --
+    /**
+     * A `dspi://pair` link (a scanner app's intent; any app can send one): read by the core
+     * ([readPairLink]) and only offered, never acted on without the user's tap.
+     */
+    private fun handPairLink(intent: Intent?) {
+        when (val r = readPairLink(intent?.action, intent?.dataString, app.parsePairLink)) {
+            null -> Unit
+            else -> r.fold(onSuccess = {
+                badPairLink = null
+                pairLink = it
+            }, onFailure = { badPairLink = it.message ?: "not a valid pairing link" })
+        }
     }
 
     /** Via the app's gate: after the links are loaded (review A3); application context, the Activity may be gone by then. */
@@ -156,3 +199,17 @@ class MainActivity : ComponentActivity() {
  */
 fun shouldAskNotificationPermission(granted: Boolean, askedBefore: Boolean, rationale: Boolean): Boolean =
     !granted && (!askedBefore || rationale)
+
+// -- WP SECAN --
+/**
+ * The pairing link in a VIEW intent, by the core's parser (`link_parse_pair_link`), or
+ * null when the intent is no `dspi:` link at all. [parse] is the core's, swapped in tests.
+ */
+fun readPairLink(action: String?, data: String?, parse: (String) -> LinkPairLink): Result<LinkPairLink>? {
+    if (action != Intent.ACTION_VIEW || data == null || !data.startsWith("dspi:", ignoreCase = true)) return null
+    return try {
+        Result.success(parse(data))
+    } catch (e: DspiException) {
+        Result.failure(IllegalArgumentException((e as? DspiException.InvalidArgument)?.msg ?: e.message.orEmpty()))
+    }
+}
