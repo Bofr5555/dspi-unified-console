@@ -1985,6 +1985,9 @@ mod tests_wp_c9 {
         assert!(!core.rta_get_ownership().following);
         // Someone else's, with its origin, also over a released request.
         core.rta_set_request(request(0));
+        // -- WP FLAKE5 -- the device holds what its event says (a readback
+        // of ours meanwhile would rightly end the following).
+        dev.lock().unwrap().config = Some(config(engine::TAP_OUTPUT, 0b10));
         note(config(engine::TAP_OUTPUT, 0b10), false, 9);
         let o = core.rta_get_ownership();
         assert!(o.following);
@@ -2017,7 +2020,7 @@ mod tests_wp_c9 {
 
     #[test]
     fn wp_cg5_an_event_no_device_could_send_is_ignored() {
-        let (core, _dev) = driving_on(0b1, TransportKind::Usb);
+        let (core, dev) = driving_on(0b1, TransportKind::Usb);
         for c in impossible() {
             core.lock().rta.note_config(&event(c, 1), false, 9);
             assert_eq!(core.rta_get_ownership(), RtaOwnership::default(), "{c:?}");
@@ -2027,6 +2030,10 @@ mod tests_wp_c9 {
             fft_order: 8,
             ..config(engine::TAP_INPUT, 0b11)
         };
+        // -- WP FLAKE5 -- the device applied it, as the event says: otherwise
+        // the worker's next readback still shows ours, and the core rightly
+        // goes back to driving before the ownership is read.
+        dev.lock().unwrap().config = Some(top);
         core.lock().rta.note_config(&event(top, 1), false, 9);
         assert_eq!(core.rta_get_ownership().mask, 0b11);
         // And an impossible one leaves that alone.
