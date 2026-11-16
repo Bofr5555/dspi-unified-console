@@ -246,7 +246,11 @@ fn cut(s: &str, max: usize) -> String {
 /// The time an id of this store was made from (its leading digits, ms), 0
 /// for an id that does not start with one.
 pub fn saved_ms_of_id(id: &str) -> i64 {
-    let digits: String = id.chars().take_while(char::is_ascii_digit).take(18).collect();
+    let digits: String = id
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .take(18)
+        .collect();
     digits.parse().unwrap_or(0)
 }
 
@@ -285,9 +289,7 @@ pub fn parse_index(text: &str, kind: DocKind) -> Vec<MeasureEntry> {
         let Ok(entry) = serde_json::from_value::<MeasureEntry>(e.clone()) else {
             continue;
         };
-        if valid_id(&entry.id)
-            && entry.kind == kind.word()
-            && !out.iter().any(|o| o.id == entry.id)
+        if valid_id(&entry.id) && entry.kind == kind.word() && !out.iter().any(|o| o.id == entry.id)
         {
             out.push(entry);
         }

@@ -38,7 +38,8 @@ fn wp_p5dock_the_same_text_through_the_web_binding() {
         "micImport",
         json!({ "name": "Mic", "fileName": "umik1_7000001.txt", "text": UMIK }),
     );
-    let core = dspi_core::mic_import("Mic".into(), "umik1_7000001.txt".into(), UMIK.into()).unwrap();
+    let core =
+        dspi_core::mic_import("Mic".into(), "umik1_7000001.txt".into(), UMIK.into()).unwrap();
     let mic_text = mic["text"].as_str().unwrap().to_owned();
     assert_eq!(without_time(&mic_text), without_time(&core));
 
@@ -54,14 +55,20 @@ fn wp_p5dock_the_same_text_through_the_web_binding() {
         "iec60318_4".into(),
     )
     .unwrap();
-    assert_eq!(without_time(t["text"].as_str().unwrap()), without_time(&core_t));
+    assert_eq!(
+        without_time(t["text"].as_str().unwrap()),
+        without_time(&core_t)
+    );
 
     assert_eq!(
         ok(h, "targetBuiltins", json!({})),
         serde_json::to_value(dspi_core::target_builtins()).unwrap()
     );
     let info = ok(h, "measureDocInfo", json!({ "text": mic_text }));
-    assert_eq!((info["kind"].clone(), info["name"].clone()), (json!("mic"), json!("Mic")));
+    assert_eq!(
+        (info["kind"].clone(), info["name"].clone()),
+        (json!("mic"), json!("Mic"))
+    );
 
     // Refusals.
     assert_eq!(
@@ -78,7 +85,11 @@ fn wp_p5dock_the_same_text_through_the_web_binding() {
     );
     // An export takes a measurement's text, never an id.
     assert_eq!(
-        run(h, "measurementExportRew", json!({ "text": "1763287200000", "output": 0 }))["code"],
+        run(
+            h,
+            "measurementExportRew",
+            json!({ "text": "1763287200000", "output": 0 })
+        )["code"],
         "invalid"
     );
     let r = run(

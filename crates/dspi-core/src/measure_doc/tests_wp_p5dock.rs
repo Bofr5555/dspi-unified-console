@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use dspi_measure::doc::{MeasurementDoc, MicDoc, TargetDoc, TargetDefinition};
+use dspi_measure::doc::{MeasurementDoc, MicDoc, TargetDefinition, TargetDoc};
 use dspi_measure::types::ChannelChain;
 use dspi_transport::{DeviceDescriptor, FakeDevice, NotificationSource, Transport, TransportCaps};
 use serde_json::{Value, json};
@@ -37,7 +37,9 @@ struct Case {
 
 include!("../curves_ref.rs");
 
-fn band_spec(&(filter_type, freq, q, gain, qp, bypass): &(u8, f32, f32, f32, f32, bool)) -> BandSpec {
+fn band_spec(
+    &(filter_type, freq, q, gain, qp, bypass): &(u8, f32, f32, f32, f32, bool),
+) -> BandSpec {
     BandSpec {
         filter_type,
         bypass,
@@ -72,7 +74,10 @@ fn eval(sections: &[Coeffs], f: f64, fs: f64) -> (f64, f64) {
         let (hr, hi) = ((nr * dr + ni * di) / d2, (ni * dr - nr * di) / d2);
         (re, im) = (re * hr - im * hi, re * hi + im * hr);
     }
-    (10.0 * (re * re + im * im).log10(), im.atan2(re).to_degrees())
+    (
+        10.0 * (re * re + im * im).log10(),
+        im.atan2(re).to_degrees(),
+    )
 }
 
 fn wrap(d: f64) -> f64 {
@@ -288,15 +293,16 @@ fn measurement_text() -> String {
     let outputs: Vec<Value> = [0u8, 2]
         .iter()
         .map(|o| {
-            let response = dspi_measure::doc::Curve::from_response(&dspi_measure::types::Response {
-                grid: LogGrid::STANDARD,
-                mag_db: (0..n)
-                    .map(|i| 70.0 + f64::from(*o) + (i as f64 * 0.01).sin())
-                    .collect(),
-                phase_deg: Some((0..n).map(|i| -(i as f64) * 0.5).collect()),
-                valid: Some((0..n).map(|i| i > 100).collect()),
-                spl: true,
-            });
+            let response =
+                dspi_measure::doc::Curve::from_response(&dspi_measure::types::Response {
+                    grid: LogGrid::STANDARD,
+                    mag_db: (0..n)
+                        .map(|i| 70.0 + f64::from(*o) + (i as f64 * 0.01).sin())
+                        .collect(),
+                    phase_deg: Some((0..n).map(|i| -(i as f64) * 0.5).collect()),
+                    valid: Some((0..n).map(|i| i > 100).collect()),
+                    spl: true,
+                });
             json!({
                 "output": o,
                 "role": if *o == 0 { "low" } else { "high" },
@@ -333,18 +339,25 @@ fn measurement_text() -> String {
 fn wp_p5dock_the_store_through_the_api() {
     let (core, outs) = rig();
     // No folder named: empty lists, Io for the rest.
-    assert_eq!(core.measure_docs(String::new(), String::new()).unwrap(), vec![]);
+    assert_eq!(
+        core.measure_docs(String::new(), String::new()).unwrap(),
+        vec![]
+    );
     assert!(matches!(
         core.measure_doc_put(measurement_text()),
         Err(DspiError::Io { .. })
     ));
     let dir = store_dir("api");
-    core.measure_set_dir(dir.to_string_lossy().into_owned()).unwrap();
+    core.measure_set_dir(dir.to_string_lossy().into_owned())
+        .unwrap();
     let sent = outs.load(Ordering::SeqCst);
 
     let m = core.measure_doc_put(measurement_text()).unwrap();
     assert_eq!(m.serial, "P5DOCK-DEMO", "the open device's serial");
-    assert_eq!((m.kind.as_str(), m.saved_ms), ("measurement", 1_763_287_200_000));
+    assert_eq!(
+        (m.kind.as_str(), m.saved_ms),
+        ("measurement", 1_763_287_200_000)
+    );
     let mic = core
         .measure_doc_put(
             mic_import(
@@ -380,10 +393,14 @@ fn wp_p5dock_the_store_through_the_api() {
         vec![m.clone()]
     );
     assert_eq!(
-        core.measure_docs("measurement".into(), "OTHER".into()).unwrap(),
+        core.measure_docs("measurement".into(), "OTHER".into())
+            .unwrap(),
         vec![]
     );
-    assert_eq!(core.measure_docs("MIC".into(), String::new()).unwrap(), vec![mic.clone()]);
+    assert_eq!(
+        core.measure_docs("MIC".into(), String::new()).unwrap(),
+        vec![mic.clone()]
+    );
     assert!(matches!(
         core.measure_docs("preset".into(), String::new()),
         Err(DspiError::InvalidArgument { .. })
@@ -403,13 +420,19 @@ fn wp_p5dock_the_store_through_the_api() {
     let n = core.measure_doc_note(t.id.clone(), "warm".into()).unwrap();
     assert_eq!((n.name.as_str(), n.note.as_str()), ("Mein Ziel 🎯", "warm"));
     let td = TargetDoc::from_text(&core.measure_doc_get(t.id.clone()).unwrap()).unwrap();
-    assert_eq!((td.meta.name.as_str(), td.target.note.as_str()), ("Mein Ziel 🎯", "warm"));
+    assert_eq!(
+        (td.meta.name.as_str(), td.target.note.as_str()),
+        ("Mein Ziel 🎯", "warm")
+    );
 
     // The REW export, by id and by text, alike.
     let by_id = core.measurement_export_rew(m.id.clone(), 2).unwrap();
     let by_text = core.measurement_export_rew(text, 2).unwrap();
     assert_eq!(by_id, by_text);
-    assert!(by_id.starts_with("* Measurement data exported by the DSPi console"), "{by_id}");
+    assert!(
+        by_id.starts_with("* Measurement data exported by the DSPi console"),
+        "{by_id}"
+    );
     assert!(by_id.contains("Output 3 (L high)"), "{by_id}");
     let line = by_id.lines().find(|l| !l.starts_with('*')).unwrap();
     assert_eq!(line.split_whitespace().count(), 3, "{line}");
@@ -433,7 +456,10 @@ fn wp_p5dock_the_store_through_the_api() {
     // None of it touched the device.
     assert_eq!(outs.load(Ordering::SeqCst), sent);
     core.measure_set_dir(String::new()).unwrap();
-    assert_eq!(core.measure_docs(String::new(), String::new()).unwrap(), vec![]);
+    assert_eq!(
+        core.measure_docs(String::new(), String::new()).unwrap(),
+        vec![]
+    );
 }
 
 #[test]
@@ -507,7 +533,8 @@ fn wp_p5dock_config_import_of_a_measurement_is_refused_with_nothing_sent() {
             let p: Value =
                 serde_json::from_str(&core.config_preview(text.clone(), 0, u32::MAX)).unwrap();
             assert_eq!(p["error"], MEASURE_DOC_REFUSAL, "{p}");
-            let i: Value = serde_json::from_str(&crate::files::config_inspect(text.clone())).unwrap();
+            let i: Value =
+                serde_json::from_str(&crate::files::config_inspect(text.clone())).unwrap();
             assert_eq!(i["ok"], false, "{i}");
             assert!(core.snapshot_recall_document(text.clone()).is_err());
             assert_eq!(outs.load(Ordering::SeqCst), sent, "nothing sent");
@@ -518,18 +545,38 @@ fn wp_p5dock_config_import_of_a_measurement_is_refused_with_nothing_sent() {
 #[test]
 fn wp_p5dock_mic_import_reads_every_p5cal_fixture() {
     let cases: &[(&str, &str, &str, u16)] = &[
-        ("umik1_7000001.txt", cal_fixture!("umik1_7000001.txt"), "umik", 0),
+        (
+            "umik1_7000001.txt",
+            cal_fixture!("umik1_7000001.txt"),
+            "umik",
+            0,
+        ),
         (
             "umik2_8000002_90deg.txt",
             cal_fixture!("umik2_8000002_90deg.txt"),
             "umik",
             90,
         ),
-        ("umik_90_comment.txt", cal_fixture!("umik_90_comment.txt"), "umik", 90),
-        ("rew_sensitivity.txt", cal_fixture!("rew_sensitivity.txt"), "rew", 0),
+        (
+            "umik_90_comment.txt",
+            cal_fixture!("umik_90_comment.txt"),
+            "umik",
+            90,
+        ),
+        (
+            "rew_sensitivity.txt",
+            cal_fixture!("rew_sensitivity.txt"),
+            "rew",
+            0,
+        ),
         ("rew_phase.txt", cal_fixture!("rew_phase.txt"), "rew", 0),
         ("csv_comma.csv", cal_fixture!("csv_comma.csv"), "csv", 0),
-        ("csv_semicolon.csv", cal_fixture!("csv_semicolon.csv"), "csv", 0),
+        (
+            "csv_semicolon.csv",
+            cal_fixture!("csv_semicolon.csv"),
+            "csv",
+            0,
+        ),
         ("csv_tab.txt", cal_fixture!("csv_tab.txt"), "csv", 0),
     ];
     for (file, text, format, angle) in cases {
@@ -602,7 +649,12 @@ fn wp_p5dock_target_import_and_builtins() {
     assert_eq!(s.target.coupler, None);
     for (u, c) in [("room", ""), ("speakers", "ear"), ("", "")] {
         assert!(matches!(
-            target_import("x".into(), cal_fixture!("target_rew.txt").into(), u.into(), c.into()),
+            target_import(
+                "x".into(),
+                cal_fixture!("target_rew.txt").into(),
+                u.into(),
+                c.into()
+            ),
             Err(DspiError::InvalidArgument { .. })
         ));
     }
@@ -648,7 +700,10 @@ fn wp_p5dock_measure_docs_on_a_core_without_a_folder_never_fail() {
     for k in ["", "measurement", "mic", "target"] {
         assert_eq!(core.measure_docs(k.into(), "x".into()).unwrap(), vec![]);
     }
-    assert!(matches!(core.measure_doc_get("1".into()), Err(DspiError::Io { .. })));
+    assert!(matches!(
+        core.measure_doc_get("1".into()),
+        Err(DspiError::Io { .. })
+    ));
     assert!(matches!(
         core.measure_doc_delete("1".into()),
         Err(DspiError::Io { .. })

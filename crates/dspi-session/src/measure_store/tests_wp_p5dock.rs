@@ -44,12 +44,7 @@ fn flat_curve() -> Curve {
 pub(crate) fn measurement_text(serial: &str, name: &str, saved_ms: i64, id: &str) -> String {
     MeasurementDoc {
         schema_version: 1,
-        meta: Meta::new(
-            DocKind::Measurement,
-            name,
-            "2026-11-16T10:00:00Z",
-            "test",
-        ),
+        meta: Meta::new(DocKind::Measurement, name, "2026-11-16T10:00:00Z", "test"),
         measurement: Measurement {
             id: id.into(),
             serial: serial.into(),
@@ -144,7 +139,10 @@ fn wp_p5dock_put_list_get_rename_note_delete() {
         .put(&measurement_text("DEMO", "Living room", 1_000, ""), 5)
         .unwrap();
     assert_eq!(m.id, id_for(1_000, 0));
-    assert_eq!((m.kind.as_str(), m.serial.as_str()), ("measurement", "DEMO"));
+    assert_eq!(
+        (m.kind.as_str(), m.serial.as_str()),
+        ("measurement", "DEMO")
+    );
     assert_eq!((m.name.as_str(), m.saved_ms), ("Living room", 1_000));
     assert!(filed.contains(&format!("\"id\": \"{}\"", m.id)), "{filed}");
     let (mic, _) = s.put(&mic_text("UMIK-1 “a” 🎤"), 2_000).unwrap();
@@ -155,15 +153,28 @@ fn wp_p5dock_put_list_get_rename_note_delete() {
     assert_eq!(t.id, id_for(2_000, 1), "unique in the whole store");
 
     // The folders.
-    assert!(s.root().join("s-DEMO").join(format!("{}.dspipreset", m.id)).is_file());
+    assert!(
+        s.root()
+            .join("s-DEMO")
+            .join(format!("{}.dspipreset", m.id))
+            .is_file()
+    );
     assert!(s.root().join(MIC_DIR).join(INDEX_FILE).is_file());
-    assert!(s.root().join(TARGET_DIR).join(format!("{}.dspipreset", t.id)).is_file());
+    assert!(
+        s.root()
+            .join(TARGET_DIR)
+            .join(format!("{}.dspipreset", t.id))
+            .is_file()
+    );
 
     let all: Vec<_> = s.list(None, None).into_iter().map(|e| e.id).collect();
     assert_eq!(all, vec![m.id.clone(), mic.id.clone(), t.id.clone()]);
     assert_eq!(s.list(Some(DocKind::Mic), None), vec![mic.clone()]);
     assert_eq!(s.list(Some(DocKind::Measurement), Some("OTHER")), vec![]);
-    assert_eq!(s.list(Some(DocKind::Measurement), Some("DEMO")), vec![m.clone()]);
+    assert_eq!(
+        s.list(Some(DocKind::Measurement), Some("DEMO")),
+        vec![m.clone()]
+    );
     // A serial is for measurements only.
     assert_eq!(s.list(Some(DocKind::Target), Some("DEMO")), vec![t.clone()]);
 
@@ -174,10 +185,16 @@ fn wp_p5dock_put_list_get_rename_note_delete() {
     let r = s.rename(&m.id, "Kväll – 夜").unwrap();
     assert_eq!(r.name, "Kväll – 夜");
     let n = s.set_note(&m.id, "after the rug\nline 2").unwrap();
-    assert_eq!((n.name.as_str(), n.note.as_str()), ("Kväll – 夜", "after the rug\nline 2"));
+    assert_eq!(
+        (n.name.as_str(), n.note.as_str()),
+        ("Kväll – 夜", "after the rug\nline 2")
+    );
     let (_, text) = s.read(&m.id).unwrap();
     let d = AnyDoc::parse(&text).unwrap();
-    assert_eq!((d.name(), d.note()), ("Kväll – 夜", "after the rug\nline 2"));
+    assert_eq!(
+        (d.name(), d.note()),
+        ("Kväll – 夜", "after the rug\nline 2")
+    );
     // A name past the bound is cut, never refused.
     let long = s.rename(&t.id, &"x".repeat(1000)).unwrap();
     assert_eq!(long.name.chars().count(), dspi_measure::doc::MAX_NAME_CHARS);
@@ -208,7 +225,9 @@ fn wp_p5dock_ids_are_kept_when_free_and_never_paths() {
     for bad in ["", "../a", "a/b", "A", "-1", "a.b", "index"] {
         assert!(s.read(bad).is_err(), "{bad}");
     }
-    assert!(matches!(s.read("../../etc/passwd"), Err(e) if e.kind() == std::io::ErrorKind::NotFound));
+    assert!(
+        matches!(s.read("../../etc/passwd"), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+    );
 }
 
 #[test]
@@ -251,7 +270,11 @@ fn wp_p5dock_a_damaged_document_is_set_aside() {
     let (m, _) = s.put(&mic_text("m"), 3_000).unwrap();
     let dir = s.root().join("s-DEMO");
     // A torn document the index names: refused and set aside on read.
-    fs::write(dir.join(format!("{}.dspipreset", a.id)), "{\"schemaVersion\": 1,").unwrap();
+    fs::write(
+        dir.join(format!("{}.dspipreset", a.id)),
+        "{\"schemaVersion\": 1,",
+    )
+    .unwrap();
     let e = s.read(&a.id).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::InvalidData, "{e}");
     assert!(e.to_string().contains("set aside"), "{e}");
@@ -278,7 +301,10 @@ fn wp_p5dock_a_damaged_document_is_set_aside() {
         " ".repeat(dspi_measure::doc::MAX_MIC_BYTES + 1),
     )
     .unwrap();
-    assert_eq!(s.read(&m.id).unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+    assert_eq!(
+        s.read(&m.id).unwrap_err().kind(),
+        std::io::ErrorKind::InvalidData
+    );
     assert_eq!(s.list(Some(DocKind::Mic), None), vec![]);
 }
 
@@ -308,7 +334,8 @@ fn wp_p5dock_an_id_two_folders_hold_is_refused() {
 fn wp_p5dock_a_full_store_refuses_and_keeps_what_it_has() {
     let s = MeasureStore::new(store_dir("full"));
     for i in 0..MAX_MICS {
-        s.put(&mic_text(&format!("m{i}")), 1_000 + i as i64).unwrap();
+        s.put(&mic_text(&format!("m{i}")), 1_000 + i as i64)
+            .unwrap();
     }
     let e = s.put(&mic_text("one more"), 9_000).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::QuotaExceeded, "{e}");
@@ -320,7 +347,11 @@ fn wp_p5dock_a_full_store_refuses_and_keeps_what_it_has() {
     fs::create_dir_all(&dir).unwrap();
     let one = measurement_text("DEMO", "m", 1, "");
     for i in 0..MAX_MEASUREMENTS_PER_DEVICE {
-        fs::write(dir.join(format!("{}.dspipreset", id_for(10 + i as i64, 0))), &one).unwrap();
+        fs::write(
+            dir.join(format!("{}.dspipreset", id_for(10 + i as i64, 0))),
+            &one,
+        )
+        .unwrap();
     }
     let e = s.put(&one, 0).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::QuotaExceeded, "{e}");
@@ -337,7 +368,12 @@ fn wp_p5dock_the_store_holds_at_most_64_mib() {
     f.set_len(MAX_STORE_BYTES - 100).unwrap();
     let e = s.put(&mic_text("m"), 0).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::QuotaExceeded, "{e}");
-    assert!(!s.root().join(MIC_DIR).join(format!("{}.dspipreset", id_for(0, 0))).exists());
+    assert!(
+        !s.root()
+            .join(MIC_DIR)
+            .join(format!("{}.dspipreset", id_for(0, 0)))
+            .exists()
+    );
 }
 
 #[test]
@@ -356,7 +392,8 @@ fn wp_p5dock_put_refuses_what_is_not_a_measurement_document() {
         snapshot.into(),
         big,
         no_serial.to_string(),
-        measurement_text("DEMO", "a", 1, "").replace("\"schemaVersion\": 1", "\"schemaVersion\": 2"),
+        measurement_text("DEMO", "a", 1, "")
+            .replace("\"schemaVersion\": 1", "\"schemaVersion\": 2"),
     ] {
         let e = s.put(&bad, 0).unwrap_err();
         assert_eq!(e.kind(), std::io::ErrorKind::InvalidData, "{e}");
@@ -377,15 +414,20 @@ fn wp_p5dock_files_are_the_users_alone() {
     assert_eq!(mode(dir.join(INDEX_FILE)), 0o600);
     assert_eq!(mode(dir.clone()), 0o700);
     // No temporary file is left behind.
-    assert!(fs::read_dir(&dir).unwrap().flatten().all(|e| !e
-        .file_name()
-        .to_string_lossy()
-        .ends_with(".tmp")));
+    assert!(
+        fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .all(|e| !e.file_name().to_string_lossy().ends_with(".tmp"))
+    );
 }
 
 #[test]
 fn wp_p5dock_saved_ms_of_an_id() {
-    assert_eq!(saved_ms_of_id(&id_for(1_763_287_200_000, 0)), 1_763_287_200_000);
+    assert_eq!(
+        saved_ms_of_id(&id_for(1_763_287_200_000, 0)),
+        1_763_287_200_000
+    );
     assert_eq!(saved_ms_of_id(&id_for(5, 3)), 5);
     assert_eq!(saved_ms_of_id("abc"), 0);
     assert_eq!(saved_ms_of_id(&"9".repeat(40)), 999_999_999_999_999_999);

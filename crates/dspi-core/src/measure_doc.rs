@@ -34,9 +34,9 @@ use dspi_measure::export::{RewExport, rew_text};
 use dspi_measure::target::{TargetUse, builtins, import_target};
 use dspi_measure::types::{BandSpec, Coeffs, Coupler, LogGrid, MeasureError, SectionModel};
 use dspi_proto::enums::FilterType;
-use dspi_session::measure_store::{AnyDoc, MeasureEntry, valid_id};
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use dspi_session::measure_store::MeasureStore;
+use dspi_session::measure_store::{AnyDoc, MeasureEntry, valid_id};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -45,8 +45,7 @@ use crate::{DspiCore, DspiError, Result};
 
 /// What `config_import` and the other document paths say of a measurement
 /// document (`files.rs`): it configures no device.
-pub const MEASURE_DOC_REFUSAL: &str =
-    "This is a measurement, microphone or target document: it configures no device. \
+pub const MEASURE_DOC_REFUSAL: &str = "This is a measurement, microphone or target document: it configures no device. \
      Open it in Measurements instead.";
 
 /// The longest file name a `mic` document keeps, characters.
@@ -261,7 +260,8 @@ fn clean(s: &str, max: usize) -> String {
 pub fn measure_doc_info(text: String) -> Result<MeasureDocInfo> {
     let d = AnyDoc::parse(&text).map_err(measure_error)?;
     let id = d.id().to_string();
-    Ok(d.entry(&id, u64::try_from(text.len()).unwrap_or(u64::MAX)).into())
+    Ok(d.entry(&id, u64::try_from(text.len()).unwrap_or(u64::MAX))
+        .into())
 }
 
 /// A `mic` document from a microphone's calibration file (miniDSP UMIK-1 or
@@ -293,8 +293,8 @@ pub fn mic_import(name: String, file_name: String, file_text: String) -> Result<
             }
         }
     };
-    let mut mic = MicCal::from_calibration(&name, &cal, None, &LogGrid::STANDARD)
-        .map_err(measure_error)?;
+    let mut mic =
+        MicCal::from_calibration(&name, &cal, None, &LogGrid::STANDARD).map_err(measure_error)?;
     mic.source_name = file_name;
     mic.source_hash = Sha256::digest(file_text.as_bytes())
         .iter()
@@ -535,11 +535,7 @@ impl DspiCore {
                 msg: format!("the measurement documents' folder: {e}"),
             })?;
         }
-        *self
-            .measure_dir
-            .0
-            .lock()
-            .unwrap_or_else(|p| p.into_inner()) = dir;
+        *self.measure_dir.0.lock().unwrap_or_else(|p| p.into_inner()) = dir;
         Ok(())
     }
 
@@ -567,9 +563,9 @@ impl DspiCore {
         let text = match &mut d {
             AnyDoc::Measurement(m) if m.measurement.serial.is_empty() => {
                 let open = self.lock().conn.as_ref().map(|c| c.serial.clone());
-                m.measurement.serial = open.filter(|s| !s.is_empty()).ok_or_else(|| {
-                    invalid("the measurement names no device, and none is open")
-                })?;
+                m.measurement.serial = open
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| invalid("the measurement names no device, and none is open"))?;
                 d.to_text().map_err(measure_error)?
             }
             _ => text.to_string(),

@@ -51,9 +51,7 @@ pub extern "C" fn dspi_measure_docs(
         json_reply(
             optional_text(kind, "kind")
                 .and_then(|k| Ok((k, optional_text(serial, "serial")?)))
-                .and_then(|(k, s)| {
-                    c.measure_docs(k.unwrap_or_default(), s.unwrap_or_default())
-                }),
+                .and_then(|(k, s)| c.measure_docs(k.unwrap_or_default(), s.unwrap_or_default())),
         )
     })
 }
@@ -244,7 +242,10 @@ mod tests_wp_p5dock {
     fn reply(f: impl FnOnce(*mut c_char, u32) -> u32) -> String {
         let mut buf = vec![0 as c_char; 1024 * 1024];
         let needed = f(buf.as_mut_ptr(), buf.len() as u32);
-        assert!(needed > 0 && needed as usize <= buf.len(), "needed {needed}");
+        assert!(
+            needed > 0 && needed as usize <= buf.len(),
+            "needed {needed}"
+        );
         // SAFETY: the call wrote a NUL-terminated reply into `buf`.
         unsafe { CStr::from_ptr(buf.as_ptr()) }
             .to_string_lossy()
@@ -267,8 +268,8 @@ mod tests_wp_p5dock {
         let c = |s: &str| CString::new(s).unwrap();
         let (name, file, umik) = (c("Mic"), c("umik1_7000001.txt"), c(UMIK));
         let mic = reply(|b, l| dspi_mic_import(name.as_ptr(), file.as_ptr(), umik.as_ptr(), b, l));
-        let core = dspi_core::mic_import("Mic".into(), "umik1_7000001.txt".into(), UMIK.into())
-            .unwrap();
+        let core =
+            dspi_core::mic_import("Mic".into(), "umik1_7000001.txt".into(), UMIK.into()).unwrap();
         assert_eq!(without_time(&mic), without_time(&core));
 
         let (tn, tt, use_, cpl) = (c("T"), c(TARGET), c("headphones"), c("hats"));
@@ -293,12 +294,20 @@ mod tests_wp_p5dock {
 
         let info_in = c(&mic);
         let info = json_of(&reply(|b, l| dspi_measure_doc_info(info_in.as_ptr(), b, l)));
-        assert_eq!((info["ok"].clone(), info["kind"].clone()), (json!(true), json!("mic")));
+        assert_eq!(
+            (info["ok"].clone(), info["kind"].clone()),
+            (json!(true), json!("mic"))
+        );
 
         // Failures in the document's place, typed.
         let bad = c("no numbers");
-        let r = json_of(&reply(|b, l| dspi_mic_import(null(), null(), bad.as_ptr(), b, l)));
-        assert_eq!((r["ok"].clone(), r["code"].clone()), (json!(false), json!("invalid")));
+        let r = json_of(&reply(|b, l| {
+            dspi_mic_import(null(), null(), bad.as_ptr(), b, l)
+        }));
+        assert_eq!(
+            (r["ok"].clone(), r["code"].clone()),
+            (json!(false), json!("invalid"))
+        );
         let r = json_of(&reply(|b, l| dspi_measure_doc_info(null(), b, l)));
         assert_eq!(r["code"], "invalid");
         let r = json_of(&reply(|b, l| {
@@ -326,22 +335,33 @@ mod tests_wp_p5dock {
         let r = json_of(&reply(|b, l| dspi_measure_set_dir(h, dir_c.as_ptr(), b, l)));
         assert_eq!(r["ok"], true, "{r}");
         let put = json_of(&reply(|b, l| dspi_measure_doc_put(h, mic.as_ptr(), b, l)));
-        assert_eq!((put["ok"].clone(), put["kind"].clone()), (json!(true), json!("mic")));
+        assert_eq!(
+            (put["ok"].clone(), put["kind"].clone()),
+            (json!(true), json!("mic"))
+        );
         let id = CString::new(put["id"].as_str().unwrap()).unwrap();
         let list = json_of(&reply(|b, l| dspi_measure_docs(h, null(), null(), b, l)));
         assert_eq!(list["value"].as_array().unwrap().len(), 1, "{list}");
         let k = CString::new("target").unwrap();
-        let list = json_of(&reply(|b, l| dspi_measure_docs(h, k.as_ptr(), null(), b, l)));
+        let list = json_of(&reply(|b, l| {
+            dspi_measure_docs(h, k.as_ptr(), null(), b, l)
+        }));
         assert_eq!(list["value"], json!([]));
         let text = reply(|b, l| dspi_measure_doc_get(h, id.as_ptr(), b, l));
         assert_eq!(json_of(&text)["mic"]["id"], put["id"]);
         let nm = CString::new("Röd").unwrap();
-        let r = json_of(&reply(|b, l| dspi_measure_doc_rename(h, id.as_ptr(), nm.as_ptr(), b, l)));
+        let r = json_of(&reply(|b, l| {
+            dspi_measure_doc_rename(h, id.as_ptr(), nm.as_ptr(), b, l)
+        }));
         assert_eq!(r["name"], "Röd");
-        let r = json_of(&reply(|b, l| dspi_measure_doc_note(h, id.as_ptr(), nm.as_ptr(), b, l)));
+        let r = json_of(&reply(|b, l| {
+            dspi_measure_doc_note(h, id.as_ptr(), nm.as_ptr(), b, l)
+        }));
         assert_eq!(r["note"], "Röd");
         // Not a measurement: no REW export.
-        let r = json_of(&reply(|b, l| dspi_measurement_export_rew(h, id.as_ptr(), 0, b, l)));
+        let r = json_of(&reply(|b, l| {
+            dspi_measurement_export_rew(h, id.as_ptr(), 0, b, l)
+        }));
         assert_eq!(r["code"], "invalid", "{r}");
         let r = json_of(&reply(|b, l| dspi_measure_doc_delete(h, id.as_ptr(), b, l)));
         assert_eq!(r["ok"], true);
