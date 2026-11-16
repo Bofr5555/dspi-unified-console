@@ -2,6 +2,7 @@
 #include "Core.h"
 #include "DeviceModel.h"
 #include "IconProvider.h"
+#include "MeasureSpike.h"   // -- WP P5QCAP --
 #include "Poller.h"
 #include "Registrar.h"
 #include "Shell.h"
@@ -57,11 +58,14 @@ int main(int argc, char *argv[]) {
     args.addOption(version);
     const QCommandLineOption demo(QStringLiteral("demo"), QApplication::translate("main", "Open the demo device."));
     args.addOption(demo);
+    MeasureSpike::addOptions(args);   // -- WP P5QCAP -- hidden development switches
     args.process(app);
     if (args.isSet(version)) {
         std::printf("%s %s\n", qPrintable(AppIdentity::displayName()), qPrintable(AppIdentity::version()));
         return 0;
     }
+    // -- WP P5QCAP -- --audio-inputs, --measure-spike: no window, no core
+    if (const int spike = MeasureSpike::runIfAsked(args, app); spike >= 0) return spike;
 
     FfiCore *ffi = dspi_core_new();
     if (!ffi) {
