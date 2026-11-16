@@ -20,6 +20,8 @@ static const Registrar::Controller<LinkController> linkController;
 static const Registrar::Banner linkBanner("LinkBanner", 20);
 static const Registrar::Banner lockNotice("LockNotice", 25);
 static const Registrar::Banner tokenNotice("TokenNotice", 40);
+// -- WP SECQT -- a new hub key, once, beside the token notice
+static const Registrar::Banner keyNoticeBanner("KeyNotice", 41);
 
 namespace {
 
@@ -56,6 +58,14 @@ bool unreachable(const QString &code) {
 
 } // namespace
 
+// -- WP SECQT -- The session's encryption (dspi_link_security)
+struct LinkController::Security {
+    bool read = false;   // the call answered
+    bool encrypted = false;
+    bool hubKeyNew = false;
+    QString hubKey, credential;
+};
+
 // What one read of the session gives (the reader thread hands it over whole)
 struct LinkController::Status {
     QString phase = QStringLiteral("idle");
@@ -65,6 +75,7 @@ struct LinkController::Status {
     int session = 0;
     bool tokenRefused = false;
     QVariantList devices;
+    Security security;   // -- WP SECQT --
 };
 
 LinkController::LinkController(const AppContext &ctx, QObject *parent)
@@ -94,6 +105,15 @@ void LinkController::init() {
     m_reader.setMaxThreadCount(1);
     m_reader.setExpiryTimeout(-1);
     dspi_link_set_listener(m_core, &LinkController::eventThunk, this);
+    // -- WP SECQT -- the core's words for an unencrypted session (a pure
+    // function of the build: read once)
+    const auto row = [](const char *key) {
+        return readObject([key](char *b, uint32_t n) { return dspi_notice_for(key, nullptr, b, n); });
+    };
+    const QJsonObject label = row("dlink.unsecured"), info = row("dlink.unsecured.info");
+    m_unsecuredLabel = str(label, "key") == QLatin1String("dlink.unsecured") ? str(label, "title") : tr("unsecured");
+    m_unsecuredInfoTitle = str(info, "title");
+    m_unsecuredInfoText = str(info, "reason") + QStringLiteral("\n\n") + str(info, "action");
     applyStatus(Status{});
 }
 
@@ -115,8 +135,14 @@ void LinkController::eventThunk(uint8_t event, int32_t, const char *text, const 
     if (event == LINK_EVENT_TOKEN_ISSUED) {
         const QString hubId = QString::fromUtf8(text);
         const QString issued = QString::fromUtf8(token);
-        QMetaObject::invokeMethod(link, [link, hubId, issued] { link->storeToken(hubId, issued); },
-                                  Qt::QueuedConnection);
+        QMetaObject::invokeMethod(
+            link,
+            [link, hubId, issued] {
+                // -- WP SECQT -- the credential, pinned when it came over TLS
+                if (hubId == link->m_hubId) link->m_credential = issued;
+                link->storeToken(hubId, issued);
+            },
+            Qt::QueuedConnection);
         return;
     }
     QMetaObject::invokeMethod(link, &LinkController::refreshStatus, Qt::QueuedConnection);
@@ -163,6 +189,7 @@ void LinkController::refreshStatus() {
         s.devices = jsonValue(readSized([c](char *b, uint32_t n) { return dspi_link_devices(c, b, n); }))
                         .toArray()
                         .toVariantList();
+        s.security = readSecurity(c);   // -- WP SECQT --
         QMetaObject::invokeMethod(this, [this, s] { applyStatus(s); }, Qt::QueuedConnection);
     });
 }
@@ -194,6 +221,12 @@ void LinkController::applyStatus(const Status &s) {
     if (phase != QLatin1String("reconnecting") || !s.devices.isEmpty()) m_devices = s.devices;
     emit statusChanged();
     emit devicesChanged();
+    // -- WP SECQT -- the encryption with it; none outside a session. While
+    // reconnecting the core has no connection to read it from: the last
+    // reading stands until it is back.
+    if (!inSession()) clearSecurity();
+    else if (phase != QLatin1String("reconnecting")) applySecurity(s.security);
+    updateUnsecured();
 
     if (s.tokenRefused && !m_hubId.isEmpty()) {
         const QString hub = m_hubId;
@@ -285,29 +318,45 @@ bool LinkController::connectToAddress(const QString &address, const QString &exp
     return true;
 }
 
-void LinkController::connectToHub(const QString &url, const QString &expectedHubId) {
+void LinkController::connectToHub(const QString &url, const QString &expectedHubId, bool tlsAdvertised) {
+    dial(url, expectedHubId, tlsAdvertised, true);
+}
+
+// -- WP SECQT -- `useStored` false: no credential goes out (rePair), so the hub
+// asks for its PIN and the prompt shows the key it presents
+void LinkController::dial(const QString &url, const QString &expectedHubId, bool tlsAdvertised, bool useStored) {
     m_holdEnd = false;
     const unsigned generation = ++m_generation;
     m_closeWanted = false;
     setError(QString(), QString());
+    clearSecurity();
+    m_lastUrl = url;
+    m_lastExpected = expectedHubId;
+    m_lastTls = tlsAdvertised;
     const QByteArray u = url.toUtf8(), name = clientName(), version = AppIdentity::version().toUtf8();
-    post([this, generation, u, name, version, expectedHubId] {
+    post([this, generation, u, name, version, expectedHubId, tlsAdvertised, useStored] {
         FfiCore *c = m_core;
         const auto dial = [&](const QString &token, const QString &expected) {
             const QByteArray t = token.toUtf8(), e = expected.toUtf8();
             return actOnce([&](char *b, uint32_t n) {
-                return dspi_link_connect(c, u.constData(), name.constData(), version.constData(), t.constData(),
-                                         e.constData(), b, n);
+                return dspi_link_connect_advertised(c, u.constData(), name.constData(), version.constData(),
+                                                    t.constData(), e.constData(), tlsAdvertised, b, n);
             });
         };
-        QJsonObject hello = dial(expectedHubId.isEmpty() ? QString() : m_store->load(expectedHubId), expectedHubId);
+        QString used = expectedHubId.isEmpty() || !useStored ? QString() : m_store->load(expectedHubId);
+        QString dialledFor = expectedHubId;
+        QJsonObject hello = dial(used, expectedHubId);
         // Dialled by address: the hub has named itself now, so a token stored
         // for that id may go to it, held to that id
-        if (isOk(hello) && expectedHubId.isEmpty() && hello.value(QLatin1String("needsPairing")).toBool()
+        if (useStored && isOk(hello) && expectedHubId.isEmpty() && hello.value(QLatin1String("needsPairing")).toBool()
             && generation == m_generation) {
             const QString named = str(hello, "hubId");
             const QString stored = m_store->load(named);
-            if (!stored.isEmpty()) hello = dial(stored, named);
+            dialledFor = named;
+            if (!stored.isEmpty()) {
+                used = stored;
+                hello = dial(stored, named);
+            }
         }
         const bool ok = isOk(hello);
         if (generation != m_generation) {
@@ -320,16 +369,30 @@ void LinkController::connectToHub(const QString &url, const QString &expectedHub
             QMetaObject::invokeMethod(this, [this] { track(-1); }, Qt::QueuedConnection);
             return;
         }
-        if (ok && hello.value(QLatin1String("tokenRefused")).toBool()) m_store->forget(str(hello, "hubId"));
+        if (ok && hello.value(QLatin1String("tokenRefused")).toBool()) {
+            m_store->forget(str(hello, "hubId"));
+            used.clear();
+        }
+        // -- WP SECQT -- the store already holds what went out: the save below
+        // is only for a credential the core changed (a v1 token now pinned)
+        if (ok && !used.isEmpty()) m_lastSaved = str(hello, "hubId") + QLatin1Char('\n') + used;
+        const Security security = ok ? readSecurity(c) : Security{};
         QMetaObject::invokeMethod(
             this,
-            [this, hello, ok, expectedHubId] {
+            [this, hello, ok, expectedHubId, used, security, dialledFor] {
                 track(-1);
                 if (ok) {
                     applyHello(hello);
                     setError(QString(), QString());
+                    m_failedHubId.clear();
+                    m_credential = used;   // -- WP SECQT --
+                    // A pairing to come shows the key on its prompt: no notice
+                    // for it afterwards
+                    if (hello.value(QLatin1String("needsPairing")).toBool()) m_noticedKey = security.hubKey;
+                    applySecurity(security);
                     if (hello.value(QLatin1String("tokenRefused")).toBool()) emit tokensChanged(m_hubId);
                 } else {
+                    m_failedHubId = dialledFor;   // -- WP SECQT --
                     const QString code = str(hello, "code");
                     setError(code.isEmpty() ? QStringLiteral("io") : code,
                              str(hello, "error").isEmpty() ? tr("The hub did not answer.") : str(hello, "error"));
@@ -357,7 +420,13 @@ void LinkController::pair(const QString &pin) {
                 track(-1);
                 if (isOk(reply)) {
                     setError(QString(), QString());
-                    if (!str(reply, "token").isEmpty()) storeToken(hub, str(reply, "token"));
+                    // -- WP SECQT -- the credential, pinned when the pairing ran
+                    // over TLS; the key was on the prompt
+                    m_noticedKey = m_hubKey;
+                    if (!str(reply, "token").isEmpty()) {
+                        if (hub == m_hubId) m_credential = str(reply, "token");
+                        storeToken(hub, str(reply, "token"));
+                    }
                 } else {
                     setError(str(reply, "code").isEmpty() ? QStringLiteral("io") : str(reply, "code"),
                              str(reply, "error").isEmpty() ? tr("The hub did not answer.") : str(reply, "error"));
@@ -500,4 +569,77 @@ void LinkController::dismissTokenWarning() {
     if (m_tokenWarning.isEmpty()) return;
     m_tokenWarning.clear();
     emit tokenWarningChanged();
+}
+
+// ---- Encryption (-- WP SECQT --) ----------------------------------------------
+
+bool LinkController::offersRePair(const QString &code) {
+    return code == QLatin1String("hub_key_changed") || code == QLatin1String("hub_key_unverified")
+           || code == QLatin1String("tls_refused") || code == QLatin1String("tls_required");
+}
+
+LinkController::Security LinkController::readSecurity(FfiCore *core) {
+    const QJsonObject o = readObject([core](char *b, uint32_t n) { return dspi_link_security(core, b, n); });
+    Security s;
+    s.read = isOk(o);
+    s.encrypted = o.value(QLatin1String("encrypted")).toBool();
+    s.hubKeyNew = o.value(QLatin1String("hubKeyNew")).toBool();
+    s.hubKey = str(o, "hubKey");
+    s.credential = str(o, "credential");
+    return s;
+}
+
+void LinkController::applySecurity(const Security &s) {
+    if (!s.read) return;
+    const bool changed = !m_securityKnown || s.encrypted != m_encrypted || s.hubKey != m_hubKey;
+    m_securityKnown = true;
+    m_encrypted = s.encrypted;
+    m_hubKey = s.hubKey;
+    if (changed) emit securityChanged();
+    updateUnsecured();
+    // The core changed the credential (a v1 token pinned at its first TLS
+    // use, a rotation the old key signed): keep the new one
+    if (!s.credential.isEmpty() && s.credential != m_credential && !m_hubId.isEmpty()) {
+        m_credential = s.credential;
+        storeToken(m_hubId, s.credential);
+    }
+    // A key the user has not seen yet: say so once
+    if (s.encrypted && s.hubKeyNew && !s.hubKey.isEmpty() && s.hubKey != m_noticedKey) {
+        m_noticedKey = s.hubKey;
+        //: %1 is the hub key's fingerprint, SHA256:K7Q2-M9XD-…
+        m_keyNotice = tr("Encrypted connection set up; hub key %1").arg(s.hubKey);
+        emit keyNoticeChanged();
+    }
+}
+
+void LinkController::clearSecurity() {
+    if (!m_securityKnown && m_hubKey.isEmpty() && !m_encrypted) return;
+    m_securityKnown = false;
+    m_encrypted = false;
+    m_hubKey.clear();
+    emit securityChanged();
+    updateUnsecured();
+}
+
+void LinkController::updateUnsecured() {
+    const bool now = inSession() && m_securityKnown && !m_encrypted;
+    if (now == m_unsecured) return;
+    m_unsecured = now;
+    emit securityChanged();
+}
+
+void LinkController::rePair() {
+    if (!rePairOffered() || m_lastUrl.isEmpty()) return;
+    const QString hub = m_failedHubId.isEmpty() ? m_lastExpected : m_failedHubId;
+    dial(m_lastUrl, hub, m_lastTls, false);
+}
+
+void LinkController::dismissRePair() {
+    if (rePairOffered()) setError(QString(), QString());
+}
+
+void LinkController::dismissKeyNotice() {
+    if (m_keyNotice.isEmpty()) return;
+    m_keyNotice.clear();
+    emit keyNoticeChanged();
 }

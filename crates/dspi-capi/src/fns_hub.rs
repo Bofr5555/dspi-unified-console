@@ -698,6 +698,23 @@ pub extern "C" fn dspi_hub_saved_settings(
     })
 }
 
+// -- WP SECQT --
+/// What upstream compatibility mode (`HUB_OPT_UPSTREAM_COMPAT`) turns off, for the
+/// large warning an app shows before it is switched on and while it is on: JSON {ok,
+/// effects: [sentence, ...], tlsOffEffects: [sentence, ...]}, the hub's own lists
+/// (`UPSTREAM_COMPAT_EFFECTS`, and `TLS_OFF_EFFECTS` for a hub with TLS off on a
+/// network address). Needs no hub. Returns the length needed; 0 for a panic.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_hub_upstream_compat_effects(buf: *mut c_char, len: u32) -> u32 {
+    guard(0, || {
+        let answer = json!({
+            "effects": dspi_hub::server::UPSTREAM_COMPAT_EFFECTS,
+            "tlsOffEffects": dspi_hub::server::TLS_OFF_EFFECTS,
+        });
+        copy_whole(&reply(Ok(answer)), buf, len)
+    })
+}
+
 // ── Running ───────────────────────────────────────────────────────
 
 /// Start the hub: its threads and its socket, then, with `HUB_OPT_USB` and without
@@ -941,6 +958,11 @@ pub extern "C" fn dspi_hub_set_role(hub: *mut FfiHub, cid: u32, role: *const c_c
         h.view().is_some_and(|v| v.control.set_role(cid, role))
     })
 }
+
+// -- WP SECQT --
+#[cfg(test)]
+#[path = "fns_hub/tests_wp_secqt.rs"]
+mod tests_wp_secqt;
 
 #[cfg(test)]
 #[path = "fns_hub/tests_wp_hb6.rs"]

@@ -17,6 +17,9 @@ Item {
     }
     PairingDialog {
     }
+    // -- WP SECQT --
+    RePairDialog {
+    }
 
     Connections {
         target: DevicesController

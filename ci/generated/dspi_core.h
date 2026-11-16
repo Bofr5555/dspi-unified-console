@@ -7183,6 +7183,15 @@ bool dspi_hub_set_listener(struct FfiHub *hub, void (*callback)(uint8_t event,
 uint32_t dspi_hub_saved_settings(const char *store_dir, char *buf, uint32_t len);
 
 /**
+ * What upstream compatibility mode (`HUB_OPT_UPSTREAM_COMPAT`) turns off, for the
+ * large warning an app shows before it is switched on and while it is on: JSON {ok,
+ * effects: [sentence, ...], tlsOffEffects: [sentence, ...]}, the hub's own lists
+ * (`UPSTREAM_COMPAT_EFFECTS`, and `TLS_OFF_EFFECTS` for a hub with TLS off on a
+ * network address). Needs no hub. Returns the length needed; 0 for a panic.
+ */
+uint32_t dspi_hub_upstream_compat_effects(char *buf, uint32_t len);
+
+/**
  * Start the hub: its threads and its socket, then, with `HUB_OPT_USB` and without
  * `HUB_OPT_APP`, the first bus scan. Replies JSON {ok, hubId, name, port, access,
  * tokensRevoked}. Blocks. If it fails, nothing is left running.

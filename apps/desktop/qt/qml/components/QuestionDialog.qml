@@ -7,7 +7,8 @@ import UConsole
 // reset). Up to three answers: `acceptText` (the default, Enter),
 // `rejectText` (Escape, or closing it) and an optional `alternativeText`
 // ("Don't Save"). `answered(answer)` gives "accept", "reject" or "alternative",
-// exactly once per question.
+// exactly once per question. An empty `rejectText` leaves one button, for a
+// notice that only needs reading (-- WP SECQT --).
 //
 //     QuestionDialog {
 //         id: ask
@@ -111,6 +112,7 @@ Dialog {
             spacing: Theme.spacingSmall
             AppButton {
                 objectName: "QuestionDialog.reject"
+                visible: dialog.rejectText.length > 0   // -- WP SECQT -- an OK-only notice
                 text: dialog.rejectText
                 onClicked: dialog.finish("reject")
             }

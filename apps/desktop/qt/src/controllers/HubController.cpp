@@ -33,7 +33,10 @@ static const SettingsRegistry::Page networkingPage{
       QT_TRANSLATE_NOOP("SettingsPages", "Connect by Address"), QT_TRANSLATE_NOOP("SettingsPages", "Running in the Background"),
       QT_TRANSLATE_NOOP("SettingsPages", "Show in the tray"), QT_TRANSLATE_NOOP("SettingsPages", "Start in the tray only"),
       QT_TRANSLATE_NOOP("SettingsPages", "Open at login"), QT_TRANSLATE_NOOP("SettingsPages", "Keep awake while sharing"),
-      QT_TRANSLATE_NOOP("SettingsPages", "Windows Firewall"), QT_TRANSLATE_NOOP("SettingsPages", "DSPi Link") } };
+      QT_TRANSLATE_NOOP("SettingsPages", "Windows Firewall"), QT_TRANSLATE_NOOP("SettingsPages", "DSPi Link"),
+      // -- WP SECQT --
+      QT_TRANSLATE_NOOP("SettingsPages", "Hub key"), QT_TRANSLATE_NOOP("SettingsPages", "Upstream compatibility mode"),
+      QT_TRANSLATE_NOOP("SettingsPages", "Encryption TLS") } };
 
 namespace {
 
@@ -41,6 +44,7 @@ const char *const kSharingKey = "hub/sharing";
 const char *const kNameKey = "hub/name";
 const char *const kPortKey = "hub/port";
 const char *const kAccessKey = "hub/access";
+const char *const kCompatKey = "hub/upstreamCompat";   // -- WP SECQT --
 constexpr int kDefaultPort = 11915;   // the Mac's LinkDiscovery.defaultPort
 
 QJsonObject parse(const QByteArray &reply) { return QJsonDocument::fromJson(reply).object(); }
@@ -114,6 +118,12 @@ HubController::HubController(const AppContext &ctx, QObject *parent)
     m_port = s.value(QLatin1String(kPortKey), kDefaultPort).toInt();
     const QString access = s.value(QLatin1String(kAccessKey)).toString();
     if (access == QLatin1String("pin") || access == QLatin1String("none")) m_access = access;
+    // -- WP SECQT -- compatibility mode, and the hub's list of what it turns off
+    m_upstreamCompat = s.value(QLatin1String(kCompatKey), false).toBool();
+    const QJsonObject effects =
+        parse(readSized([](char *b, uint32_t n) { return dspi_hub_upstream_compat_effects(b, n); }));
+    for (const QJsonValue &line : effects.value(QLatin1String("effects")).toArray())
+        m_compatEffects << line.toString();
 
     m_hub = dspi_hub_new();
     if (m_hub) dspi_hub_set_listener(m_hub, &HubController::eventThunk, this);
@@ -171,13 +181,21 @@ void HubController::onHubThread(Job job, Done done) {
 // ---- Events -------------------------------------------------------------------
 
 // The hub's event thread: schedule and return
-void HubController::eventThunk(uint8_t event, int32_t code, const char *, void *self) {
+void HubController::eventThunk(uint8_t event, int32_t code, const char *text, void *self) {
     auto *hub = static_cast<HubController *>(self);
-    QMetaObject::invokeMethod(hub, [hub, event, code]() { hub->onEvent(event, code); }, Qt::QueuedConnection);
+    const QString words = text ? QString::fromUtf8(text) : QString();
+    QMetaObject::invokeMethod(hub, [hub, event, code, words]() { hub->onEvent(event, code, words); },
+                              Qt::QueuedConnection);
 }
 
-void HubController::onEvent(int event, int code) {
+void HubController::onEvent(int event, int code, const QString &text) {
     switch (event) {
+    case HUB_EVENT_TLS_KEY:   // -- WP SECQT -- a new key or certificate: its fingerprint
+        if (!text.isEmpty() && text != m_tlsFingerprint) {
+            m_tlsFingerprint = text;
+            emit stateChanged();
+        }
+        return;
     case HUB_EVENT_SESSION_OPENED:
         m_sessions.insert(code);
         emit stateChanged();
@@ -227,7 +245,7 @@ void HubController::startHub() {
     const QByteArray dir = QDir::toNativeSeparators(m_storeDir).toUtf8();
     const uint16_t port = uint16_t(m_port);
     const uint8_t access = m_access == QLatin1String("none") ? HUB_ACCESS_OPEN : HUB_ACCESS_PIN;
-    const uint32_t options = HUB_OPT_USB | HUB_OPT_APP | m_extraOptions;
+    const uint32_t options = startOptions(m_extraOptions, m_upstreamCompat);   // -- WP SECQT --
     const bool demo = m_device->demo();
     onHubThread(
         [=]() {
@@ -254,6 +272,9 @@ void HubController::startHub() {
             m_boundPort = r.reply.value(QLatin1String("port")).toInt();
             m_lanAddress = lanAddress(); // -- WP QPI2 -- once per start, not per tray refresh
             m_ownDemo = r.demo;
+            // -- WP SECQT -- the TLS mode in force and the key clients pin
+            m_tlsMode = r.reply.value(QLatin1String("tls")).toString();
+            m_tlsFingerprint = r.reply.value(QLatin1String("tlsFingerprint")).toString();
             const QString name = r.reply.value(QLatin1String("name")).toString();
             if (!name.isEmpty() && name != m_hubName) {
                 m_hubName = name;
@@ -327,6 +348,25 @@ void HubController::setAccess(const QString &mode) {
     emit settingsChanged();
     if (m_running || m_busy) m_restart = true;
     reconcile();
+}
+
+// -- WP SECQT --
+void HubController::setUpstreamCompat(bool on) {
+    if (on == m_upstreamCompat) return;
+    m_upstreamCompat = on;
+    QSettings().setValue(QLatin1String(kCompatKey), on);
+    emit settingsChanged();
+    if (m_running || m_busy) m_restart = true;
+    reconcile();
+}
+
+uint32_t HubController::startOptions(uint32_t extra, bool upstreamCompat) {
+    const uint32_t tlsBits = HUB_OPT_TLS_ON | HUB_OPT_TLS_REQUIRE | HUB_OPT_UPSTREAM_COMPAT;
+    const uint32_t options = HUB_OPT_USB | HUB_OPT_APP | extra;
+    if (upstreamCompat) return (options & ~tlsBits) | HUB_OPT_UPSTREAM_COMPAT;
+    if (options & tlsBits) return options;
+    if (options & HUB_OPT_LOOPBACK) return options;
+    return options | HUB_OPT_TLS_REQUIRE;
 }
 
 int HubController::revokeCost(const QString &mode) const { return m_revokeCosts.value(mode).toInt(); }
