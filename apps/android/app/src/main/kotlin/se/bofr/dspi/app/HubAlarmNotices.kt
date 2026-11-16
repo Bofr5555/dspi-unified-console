@@ -18,6 +18,7 @@ import se.bofr.dspi.ui.alert.AlertButtonRole
 import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.AlertStyle
 import se.bofr.dspi.ui.alert.ConsoleAlert
+import se.bofr.dspi.ui.onMainThread
 
 class HubAlarmNotices(private val bridge: DspiBridge, private val scope: CoroutineScope, private val noticeLine: (String) -> Unit = {}) {
     /** The alarms' own alert slot, drawn by the scaffold. */
@@ -49,14 +50,22 @@ class HubAlarmNotices(private val bridge: DspiBridge, private val scope: Corouti
             // Still on? Another console may have acknowledged it meanwhile
             if (bridge.hubServer.alarms.value.none { it.id == a.id && it.state == HubServer.ALARM_RAISED }) return@launch next()
             val notice = bridge.hubServer.alarmNotice(a)
-            host.show(alertOf(a, notice, canAcknowledge = bridge.writesAllowed.value, onAcknowledge = { acknowledge(a) }, onLater = ::next))
+            // -- WP ANDFIX1 -- back on main after the FFI call: the alert host's state and the queue are main-thread only
+            onMainThread {
+                val alert = alertOf(a, notice, bridge.writesAllowed.value, onAcknowledge = { acknowledge(a) }, onLater = ::next)
+                host.show(alert)
+            }
         }
     }
 
     private fun acknowledge(a: HubAlarm) {
         scope.launch {
-            bridge.hubServer.acknowledge(a.id).onFailure { noticeLine(it.message ?: "The alarm could not be acknowledged.") }
-            next()
+            val r = bridge.hubServer.acknowledge(a.id)
+            // -- WP ANDFIX1 -- the notice line and the queue on main
+            onMainThread {
+                r.onFailure { noticeLine(it.message ?: "The alarm could not be acknowledged.") }
+                next()
+            }
         }
     }
 
@@ -82,9 +91,12 @@ class HubAlarmNotices(private val bridge: DspiBridge, private val scope: Corouti
 class IdentifyAction(private val bridge: DspiBridge, private val scope: CoroutineScope, private val noticeLine: (String) -> Unit) {
     fun run() {
         scope.launch {
-            bridge.hubServer.identify(IDENTIFY_SECONDS)
-                .onSuccess { noticeLine(BLINKING) }
-                .onFailure { noticeLine(it.message ?: "Identify did not work.") }
+            val r = bridge.hubServer.identify(IDENTIFY_SECONDS)
+            // -- WP ANDFIX1 -- the call resumes on the FFI thread under a test dispatcher: the notice line (Compose state) on main
+            onMainThread {
+                r.onSuccess { noticeLine(BLINKING) }
+                    .onFailure { noticeLine(it.message ?: "Identify did not work.") }
+            }
         }
     }
 
