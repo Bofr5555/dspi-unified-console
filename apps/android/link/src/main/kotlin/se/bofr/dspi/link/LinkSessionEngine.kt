@@ -407,7 +407,7 @@ class LinkSessionEngine(
     private suspend fun open(h: LinkHub, gen: Int, expectedHubId: String): LinkHello? {
         val token = if (expectedHubId.isEmpty()) "" else tokens.token(expectedHubId).orEmpty()
         val hello = try {
-            ops.connect(ops.wsUrl(h.host, h.port, h.path), clientName(), appVersion, token, expectedHubId)
+            ops.connect(ops.wsUrl(h.host, h.port, h.path), clientName(), appVersion, token, expectedHubId, h.tlsAdvertised)
         } catch (e: DspiException) {
             if (gen == generation) {
                 _state.value = LinkSessionState.Failed(h, describe(e))

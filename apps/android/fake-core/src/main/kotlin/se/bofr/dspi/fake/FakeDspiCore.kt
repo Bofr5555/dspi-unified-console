@@ -560,6 +560,16 @@ open class FakeDspiCore(
             linkHello.copy(needsPairing = !linkReady)
         }
 
+    // SEC-B: the advert changes nothing on a fake hub; the dial is linkConnect's
+    override fun linkConnectAdvertised(
+        url: String,
+        clientName: String,
+        appVersion: String,
+        credential: String,
+        expectedHubId: String,
+        tlsAdvertised: Boolean
+    ): LinkHello = linkConnect(url, clientName, appVersion, credential, expectedHubId)
+
     override fun linkPair(pin: String): String = op("linkPair", device = false) {
         if (!linkOpen) throw DspiException.Disconnected()
         if (pin.trim() != linkPin) throw DspiException.Link("denied", "wrong PIN")

@@ -1,16 +1,28 @@
 package se.bofr.dspi.link
 
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import se.bofr.dspi.ffi.FfiDspiCore
 
 class HubAndStoreTest {
     private fun txt(vararg kv: Pair<String, String>) = kv.associate { it.first to it.second.toByteArray() }
 
+    /** The core's one TXT reader (SEC-B), as the app hands it to [NsdHubBrowser]. */
+    private val core = FfiDspiCore()
+
+    @After
+    fun close() = core.close()
+
+    private fun parse(name: String, attrs: Map<String, ByteArray?>, host: String, port: Int) =
+        HubTxt.parse(name, attrs, host, port, core::linkParseTxt)
+
     @Test
     fun txtRecordOfASpecHub() {
-        val hub = HubTxt.parse(
+        val hub = parse(
             "Studio Mac",
             txt(
                 "v" to "1",
@@ -35,14 +47,21 @@ class HubAndStoreTest {
     @Test
     fun txtRecordRules() {
         val base = arrayOf("v" to "1", "hid" to "x", "kind" to "bridge", "auth" to "none", "n" to "1")
-        assertNull("no hid", HubTxt.parse("a", txt("v" to "1"), "h", 1))
-        assertNull("no version", HubTxt.parse("a", txt("hid" to "x"), "h", 1))
-        assertNull("TLS hubs are not supported", HubTxt.parse("a", txt(*base, "tls" to "1"), "h", 1))
-        val h = HubTxt.parse("a", txt(*base, "path" to "/x", "zz" to "unknown"), "fe80::1", 8080)!!
+        assertNull("no hid", parse("a", txt("v" to "1"), "h", 1))
+        assertNull("no version", parse("a", txt("hid" to "x"), "h", 1))
+        // SEC-B: a TLS hub (our `uconsole hub`'s default) is listed, with the flag the dial needs
+        val tls = parse("a", txt(*base, "tls" to "1"), "h", 1)!!
+        assertTrue(tls.tlsAdvertised)
+        assertFalse("tls=0 is plaintext", parse("a", txt(*base, "tls" to "0"), "h", 1)!!.tlsAdvertised)
+        assertFalse("an upstream hub writes no tls", parse("a", txt(*base), "h", 1)!!.tlsAdvertised)
+        assertNull("v below 1", parse("a", txt("v" to "0", "hid" to "x"), "h", 1))
+        val empty = mapOf<String, ByteArray?>("v" to "1".toByteArray(), "hid" to "x".toByteArray(), "web" to null)
+        assertEquals("a key without a value is kept", "x", parse("a", empty, "h", 1)!!.id)
+        val h = parse("a", txt(*base, "path" to "/x", "zz" to "unknown"), "fe80::1", 8080)!!
         assertEquals("/x", h.path)
         assertTrue(h.isOpen)
         assertEquals("[fe80::1]:8080", h.displayAddress)
-        assertEquals("Studio Mac", HubTxt.unescapeName("Studio\\032Mac"))
+        assertEquals("Studio Mac", parse("Studio\\032Mac", txt(*base), "h", 1)!!.name)
     }
 
     @Test
