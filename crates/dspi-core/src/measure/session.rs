@@ -711,7 +711,7 @@ impl Session {
     ) -> bool {
         // Never above the plan's ceiling, whatever built `cfg` (S3; the
         // device's own check only knows the speakers' hard cap).
-        if !(cfg.level_db <= self.plan.ceiling_db) {
+        if cfg.level_db.is_nan() || cfg.level_db > self.plan.ceiling_db {
             self.abort(
                 dev,
                 issue(
