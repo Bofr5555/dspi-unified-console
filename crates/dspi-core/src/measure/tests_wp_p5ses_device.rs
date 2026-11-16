@@ -1168,3 +1168,116 @@ fn wp_p5ses_device_a_lock_the_client_holds_refuses_the_start() {
     assert_eq!(r.core.measure_state().phase, MeasurePhase::Idle);
     r.core.device_lock_release();
 }
+
+// ── Review P5-B ─────────────────────────────────────────────────────────
+
+/// Review P5-B (S2): a volume the host raised a moment before the start, its
+/// notification received but not yet applied by the client, is the volume the
+/// preflight judges: the start is refused and nothing is sent.
+#[test]
+fn wp_p5b_device_a_volume_raised_just_before_the_start_is_seen() {
+    let r = rig();
+    assert!(r.remote.measure_host_volume(-3.0));
+    // The notification reaches the core's queue; nobody pumps it.
+    std::thread::sleep(Duration::from_millis(100));
+    let e = r
+        .core
+        .measure_start(walked(&[(0, MeasureRole::Full)]))
+        .unwrap_err();
+    assert!(
+        matches!(&e, DspiError::InvalidArgument { msg } if msg.contains("volume")),
+        "{e:?}"
+    );
+    assert!(r.log.lock().unwrap().is_empty(), "nothing was sent");
+    assert_eq!(r.core.measure_state().phase, MeasurePhase::Idle);
+}
+
+/// Review P5-B, decision (a): what the spike front ends read. A walked run
+/// at the start level only, through the state as JSON (the C and wasm
+/// bindings serialise this record): the level never above the start, every
+/// timing field and the verdict; then a second run stopped by the user sends
+/// exactly one `STOP_NOW` and nothing else.
+#[test]
+fn wp_p5b_device_a_start_level_only_run_gives_the_timing_and_one_stop() {
+    let r = rig();
+    let mut setup = walked(&[(0, MeasureRole::Full), (1, MeasureRole::Full)]);
+    setup.start_level_only = true;
+    setup.placement = MeasurePlacement::Headphones;
+    setup.coupler = Some(MeasureCoupler::FlatPlate);
+    let mut mic = Mic::new(&r, free_world(&[0.0, 0.25]));
+    r.core.measure_start(setup.clone()).unwrap();
+    let st = mic.run(120.0, |_| false);
+    assert_eq!(st.phase, MeasurePhase::Done, "{:?}", st.issue);
+    let v = serde_json::to_value(&st).unwrap();
+    assert_eq!(v["phase"], "done");
+    assert_eq!(v["resultReady"], true);
+    assert_eq!(v["frameFaults"], 0);
+    assert_eq!(v["generatorStarts"], 3, "a step per output, then the run");
+    let t = &v["timing"];
+    for key in [
+        "reliable",
+        "ratioPpm",
+        "ratioFitted",
+        "maxResidualUs",
+        "residualBoundUs",
+        "maxPhaseSpreadDeg",
+        "passes",
+        "reasons",
+        "cycleOutputs",
+        "cycleResidualsUs",
+    ] {
+        assert!(!t[key].is_null(), "timing.{key} in {t}");
+    }
+    assert_eq!(t["passes"], 3);
+    assert_eq!(t["cycleOutputs"], serde_json::json!([0, 1, 0, 1, 0, 1]));
+    assert_eq!(t["cycleResidualsUs"].as_array().unwrap().len(), 6);
+    assert_eq!(v["timingReliable"], t["reliable"]);
+    assert!((t["ratioPpm"].as_f64().unwrap() - 80.0).abs() < 5.0, "{t}");
+    // Every level the generator was given is the headphones' start level.
+    let staged: Vec<f32> = r
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|q| q.op == op::REQ_SIGGEN_SET_CONFIG)
+        .map(|q| {
+            dspi_proto::packets::SiggenConfig::decode(&q.data)
+                .unwrap()
+                .level_db
+        })
+        .collect();
+    assert_eq!(staged, vec![-60.0; 3], "{staged:?}");
+    let doc: serde_json::Value = serde_json::from_str(&r.core.measure_result().unwrap()).unwrap();
+    assert_eq!(doc["measurement"]["stimulus"]["levelDb"], -60.0);
+    assert!(doc["measurement"]["capture"]["cycleResidualsUs"].is_array());
+
+    // The user's Stop, mid-run.
+    r.core.measure_clear().unwrap();
+    r.log.lock().unwrap().clear();
+    let mut mic = Mic::new(&r, free_world(&[0.0, 0.25]));
+    r.core.measure_start(setup).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    while mic.step().phase != MeasurePhase::Run {
+        assert!(std::time::Instant::now() < deadline, "the run never began");
+    }
+    r.log.lock().unwrap().clear();
+    let st = r.core.measure_stop();
+    assert_eq!(st.phase, MeasurePhase::Aborted);
+    assert_eq!(st.issue.as_ref().unwrap().key, "measure.stopped");
+    // Stop again, tick, push: nothing more is sent.
+    r.core.measure_stop();
+    r.core.measure_tick();
+    r.core
+        .measure_capture_push(mic.next, vec![0.0; 960], RATE, false)
+        .unwrap();
+    let log = r.log.lock().unwrap();
+    let stops = log
+        .iter()
+        .filter(|q| q.op == op::REQ_SIGGEN_CONTROL && q.value == crate::consts::SIGGEN_CTL_STOP_NOW)
+        .count();
+    assert_eq!(stops, 1, "{log:?}");
+    assert!(
+        log.iter().all(|q| q.op == op::REQ_SIGGEN_CONTROL),
+        "nothing but the generator's control: {log:?}"
+    );
+}

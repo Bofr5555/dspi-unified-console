@@ -608,14 +608,14 @@ impl Session {
             f64::from(self.ctx.device_rate_hz) / f64::from(self.plan.capture_rate_hz.max(1));
         let est = next.saturating_sub(p.start) as f64 * ratio;
         let slack = STATUS_SLACK_MS * f64::from(self.ctx.device_rate_hz) / 1000.0;
-        // The firmware advances the walk at the end of a cycle, a model might
-        // at the end of its gap: either is in range.
-        let gap = f64::from(schedule.sweep.gap_samples);
+        // The firmware counts a cycle and steps the walk at the cycle's end
+        // (`siggen.c` `segment_finished`), as the schedule models it and the
+        // demo device plays it (review P5-B, decision b): no further slack.
         let observed = GeneratorStatus {
             active_channel: st.active_channel,
             cycles_done: st.cycles_done,
         };
-        if schedule.status_consistent(est - slack - gap, est + slack, observed) {
+        if schedule.status_consistent(est - slack, est + slack, observed) {
             Ok(())
         } else {
             Err(issue(
@@ -709,6 +709,21 @@ impl Session {
         walked: bool,
         now: Instant,
     ) -> bool {
+        // Never above the plan's ceiling, whatever built `cfg` (S3; the
+        // device's own check only knows the speakers' hard cap).
+        if !(cfg.level_db <= self.plan.ceiling_db) {
+            self.abort(
+                dev,
+                issue(
+                    "measure.abort.generator",
+                    format!(
+                        "refused a generator level of {} dBFS above the ceiling of {} dBFS",
+                        cfg.level_db, self.plan.ceiling_db
+                    ),
+                ),
+            );
+            return false;
+        }
         if let Err(e) = dev.start(cfg) {
             let key = if matches!(e, DspiError::Disconnected) {
                 "measure.abort.disconnected"

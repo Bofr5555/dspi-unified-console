@@ -833,6 +833,10 @@ impl DspiCore {
                     msg: "busy: a measurement is already running on this device".into(),
                 });
             }
+            // What the device already said is applied before the preflight
+            // judges the mirror: a volume raised a moment ago (the host's own
+            // USB volume) must be the one S2 sees (review P5-B).
+            self.settle_notifications();
             let pre = self.measure_preflight_plan(&plan, options)?;
             if let Some(e) = preflight::refusal(&pre) {
                 return Err(e);

@@ -207,8 +207,6 @@ impl Plan {
             (START_SPEAKERS_DB, CEILING_SPEAKERS_DB, HARD_CAP_SPEAKERS_DB)
         };
         let ceiling_db = match setup.ceiling_db {
-            // The start level only: the ramp's first step is its last.
-            _ if setup.start_level_only => start,
             None => default_ceiling,
             Some(c) if c.is_finite() && (-120.0..=hard_cap).contains(&c) => c,
             Some(c) => {
@@ -216,6 +214,13 @@ impl Plan {
                     "a ceiling of {c} dBFS (at most {hard_cap} dBFS)"
                 )));
             }
+        };
+        // The start level only: the ramp's first step is its last. A ceiling
+        // the setup names below the start level still holds (review P5-B).
+        let ceiling_db = if setup.start_level_only {
+            ceiling_db.min(start)
+        } else {
+            ceiling_db
         };
         let (default_spl, hard_spl) = if headphones {
             (SPL_CAP_HEADPHONES, SPL_HARD_CAP_HEADPHONES)

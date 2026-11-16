@@ -1079,3 +1079,72 @@ fn wp_p5ses_start_level_only_never_plays_above_the_start() {
         assert_eq!(dev.starts.len(), 3, "one step per output, then the run");
     }
 }
+
+// ── Review P5-B ─────────────────────────────────────────────────────────
+
+/// Review P5-B: the start level only never raises a ceiling the setup names
+/// below it, and still refuses a ceiling that is not one.
+#[test]
+fn wp_p5b_start_level_only_keeps_a_lower_ceiling() {
+    let mut st = setup(MeasureRunKind::Walked, &[0, 1]);
+    st.start_level_only = true;
+    st.ceiling_db = Some(-70.0);
+    let mut s = session(&st, &[0, 1]);
+    let mut dev = Mock::new();
+    let mut room = Room::new(-90.0, hears(|_| 60.0));
+    drive(&mut s, &mut dev, &mut room, 60.0, |s, _| {
+        s.phase() == MeasurePhase::Run
+    });
+    assert_eq!(s.phase(), MeasurePhase::Run);
+    assert!(
+        levels(&dev).iter().all(|l| *l == -70.0),
+        "{:?}",
+        levels(&dev)
+    );
+    for bad in [f32::NAN, 0.0, -3.0, f32::INFINITY] {
+        st.ceiling_db = Some(bad);
+        assert!(
+            Plan::new(&st).is_err(),
+            "a ceiling of {bad} with the start level only"
+        );
+    }
+    // Above the start level it is the start level.
+    st.ceiling_db = Some(-12.0);
+    assert_eq!(Plan::new(&st).unwrap().ceiling_db, -50.0);
+}
+
+/// Review P5-B: a ramp step that ends by itself just before the push path's
+/// STOP_NOW reaches it sends its own "completed" and nothing for the stop
+/// (`siggen.c`: STOP_NOW on an idle generator announces nothing). That is the
+/// step's end, not someone else's stop.
+#[test]
+fn wp_p5b_a_step_completing_under_its_stop_is_its_end() {
+    use super::safety::{GenView, STOP_COMPLETED, STOP_HOST, judge_event};
+    let mut g = GenView {
+        playing: false,
+        stopping: true,
+        starts_pending: 0,
+    };
+    let done = TapEvent::Siggen {
+        state: 0,
+        reason: STOP_COMPLETED,
+    };
+    assert_eq!(judge_event(done, &mut g), Ok(true));
+    assert!(!g.stopping);
+    // Nothing is awaited any more: a stray echo is ignored, and a stop while
+    // we play and did not ask is still foreign.
+    assert_eq!(judge_event(done, &mut g), Ok(false));
+    let mut g = GenView {
+        playing: true,
+        stopping: false,
+        starts_pending: 0,
+    };
+    let host = TapEvent::Siggen {
+        state: 0,
+        reason: STOP_HOST,
+    };
+    assert_eq!(
+        judge_event(host, &mut g).unwrap_err().key,
+        "measure.abort.generator"
+    );
+}

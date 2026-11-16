@@ -361,6 +361,13 @@ pub(crate) fn judge_event(e: TapEvent, g: &mut GenView) -> Result<bool, MeasureI
                     g.playing = false;
                     Ok(true)
                 }
+                // It ended by itself just before our STOP_NOW reached it
+                // (a ramp step the push path stopped at its very end): an
+                // idle generator sends no second event (review P5-B).
+                STOP_COMPLETED if g.stopping => {
+                    g.stopping = false;
+                    Ok(true)
+                }
                 STOP_HOST if g.stopping => {
                     g.stopping = false;
                     Ok(true)
