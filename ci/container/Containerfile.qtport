@@ -8,6 +8,9 @@
 # with the base and the toolchain pinned. :4 had Rust 1.99.1. Compared with :4 by
 # `rpm -qa` on 2026-11-06: the same 694 packages, one version differs (tzdata).
 #
+# :6 (-- WP P5QCAP --) adds Qt Multimedia for Linux and MinGW (qt6-qtmultimedia-devel,
+# mingw64-qt6-qtmultimedia): the Qt app's microphone (QAudioSource, PLAN-P5 OD-P5s).
+#
 # Sources: Fedora's repositories (dnf checks each package's signature against the
 # keys in the base image) and static.rust-lang.org. Fedora's mirrors keep only the
 # current update of a package, so package versions are as of the build and only the
@@ -32,6 +35,7 @@ RUN dnf -y install --setopt=install_weak_deps=False \
       mingw64-qt5-qtsvg mingw64-qt5-qttools mingw64-qt5-qttools-tools mingw64-qt5-qtwinextras \
       mingw64-qt6-qtbase mingw64-qt6-qtdeclarative mingw64-qt6-qtsvg mingw64-qt6-qttools mingw64-qt6-qtshadertools \
       mingw64-qt6-qt5compat \
+      qt6-qtmultimedia-devel mingw64-qt6-qtmultimedia \
       wine-core wine-common xorg-x11-server-Xvfb dejavu-sans-fonts google-noto-sans-fonts \
       curl ca-certificates \
       xwd ImageMagick mesa-dri-drivers mesa-libGL xdotool kf6-kwindowsystem-devel kf5-kwindowsystem-devel \
