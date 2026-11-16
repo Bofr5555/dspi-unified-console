@@ -1,7 +1,7 @@
 // G1 (owner decision): the bridge's last line of defence for read-only mode.
 package se.bofr.dspi.bridge
 
-// -- WP P1AB, P2CC2, P2CC3 -- (one sorted block: ktlint import-ordering)
+// -- WP P1AB, P2CC2, P2CC3, P3CC -- (one sorted block: ktlint import-ordering)
 import se.bofr.dspi.core.AbCompare
 import se.bofr.dspi.core.AbSide
 import se.bofr.dspi.core.AlinkSceneRecall
@@ -18,14 +18,22 @@ import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.core.GuardedApply
 import se.bofr.dspi.core.HistoryMove
 import se.bofr.dspi.core.HubDevice
+import se.bofr.dspi.core.HubFleetTarget
+import se.bofr.dspi.core.HubGroupParams
+import se.bofr.dspi.core.HubGroupRow
+import se.bofr.dspi.core.HubGroupRun
 import se.bofr.dspi.core.HubInventoryForgot
 import se.bofr.dspi.core.HubLimitsSet
+import se.bofr.dspi.core.HubOffset
+import se.bofr.dspi.core.HubPresetPick
+import se.bofr.dspi.core.HubRollout
 import se.bofr.dspi.core.HubScheduleRun
 import se.bofr.dspi.core.HubSnapshotRecall
 import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.IdentifyInfo
 import se.bofr.dspi.core.LimitsApply
 import se.bofr.dspi.core.LockState
+import se.bofr.dspi.core.ParamValue
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.SnapshotRecall
 import se.bofr.dspi.core.UartConfig
@@ -781,6 +789,45 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.hubIdentifySerial(serial, seconds, toneOutput)
     }
 
+    // -- WP P3CC -- the hub's fleet writes: a group write, a group's preset
+    // load and a bulk apply write every member (as this console's child
+    // session); a rollout flashes them. Confirm and cancel of a run, a
+    // rollout's cancel, groups and the image store pass (as applyConfirm,
+    // applyRevert and the hub's snapshot store; the core's read-only mode
+    // and the hub's roles gate them)
+    override fun hubGroupParamSet(
+        target: HubFleetTarget,
+        path: String,
+        idx: List<Long>,
+        value: ParamValue,
+        offsets: List<HubOffset>
+    ): HubGroupParams {
+        guard("hubGroupParamSet")
+        return inner.hubGroupParamSet(target, path, idx, value, offsets)
+    }
+
+    override fun hubGroupPresetLoad(target: HubFleetTarget, slot: Int?, name: String, map: List<HubPresetPick>): List<HubGroupRow> {
+        guard("hubGroupPresetLoad")
+        return inner.hubGroupPresetLoad(target, slot, name, map)
+    }
+
+    override fun hubGroupApply(
+        target: HubFleetTarget,
+        snapshot: String,
+        name: String,
+        document: String,
+        guard: Boolean,
+        timeoutMs: Long
+    ): HubGroupRun {
+        this.guard("hubGroupApply") // `guard` here is the parameter
+        return inner.hubGroupApply(target, snapshot, name, document, guard, timeoutMs)
+    }
+
+    override fun hubRolloutStart(target: HubFleetTarget, image: String, whileLive: Boolean): HubRollout {
+        guard("hubRolloutStart")
+        return inner.hubRolloutStart(target, image, whileLive)
+    }
+
     override fun filtersImport(text: String, wires: List<Int>): String {
         guard("filtersImport")
         return inner.filtersImport(text, wires)
@@ -991,7 +1038,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "hubInventorySet",
             "hubInventoryForget",
             "hubRename",
-            "hubIdentifySerial"
+            "hubIdentifySerial",
+            // -- WP P3CC --
+            "hubGroupParamSet",
+            "hubGroupPresetLoad",
+            "hubGroupApply",
+            "hubRolloutStart"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1370,7 +1422,23 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // firmware_flash token and the guard first; Android has no bus, so
             // the listing is empty and the flash answers Unsupported)
             "picobootDevices",
-            "picobootFlashConfirmed"
+            "picobootFlashConfirmed",
+            // -- WP P3CC -- the hub's fleet families: reads, the step notice,
+            // groups and the image store (the hub's own data), and the run's
+            // confirm/cancel and the rollout's cancel (as applyConfirm and
+            // applyRevert: settling never needs write access)
+            "hubGroups",
+            "hubGroupSet",
+            "hubGroupDelete",
+            "hubGroupParamGet",
+            "hubGroupApplyConfirm",
+            "hubGroupApplyCancel",
+            "hubFirmwareImages",
+            "hubFirmwarePut",
+            "hubFirmwareDelete",
+            "hubRollouts",
+            "hubRolloutCancel",
+            "hubRolloutStepNotice"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

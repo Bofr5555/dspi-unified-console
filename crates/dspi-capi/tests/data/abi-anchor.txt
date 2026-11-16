@@ -1607,6 +1607,64 @@ uint8_t seconds,
 uint8_t tone_output,
 char *buf,
 uint32_t len);
+uint32_t dspi_hub_groups(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_group_set(struct FfiCore *core, const char *group_json, char *buf, uint32_t len);
+uint32_t dspi_hub_group_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_hub_group_param_get(struct FfiCore *core,
+const char *target_json,
+const char *path,
+const char *idx_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_group_param_set(struct FfiCore *core,
+const char *target_json,
+const char *path,
+const char *idx_json,
+const char *value_json,
+const char *offsets_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_group_preset_load(struct FfiCore *core,
+const char *target_json,
+uint8_t slot,
+const char *name,
+const char *map_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_group_apply(struct FfiCore *core,
+const char *target_json,
+const char *snapshot,
+const char *name,
+const char *document,
+bool guard,
+uint32_t timeout_ms,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_group_apply_confirm(struct FfiCore *core,
+const char *run,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_group_apply_cancel(struct FfiCore *core,
+const char *run,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_firmware_images(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_firmware_put(struct FfiCore *core,
+const char *name,
+const uint8_t *data,
+uint32_t data_len,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_firmware_delete(struct FfiCore *core, const char *name, char *buf, uint32_t len);
+uint32_t dspi_hub_rollout_start(struct FfiCore *core,
+const char *target_json,
+const char *image,
+bool while_live,
+char *buf,
+uint32_t len);
+uint32_t dspi_hub_rollouts(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_hub_rollout_cancel(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_hub_rollout_step_notice(const char *step, const char *line, char *buf, uint32_t len);
 float dspi_quantize_master_volume(float db);
 uint16_t dspi_vreg_code_mv(uint8_t code, uint8_t platform_id);
 uint32_t dspi_vreg_code_label(uint8_t code, uint8_t platform_id, char *buf, uint32_t len);

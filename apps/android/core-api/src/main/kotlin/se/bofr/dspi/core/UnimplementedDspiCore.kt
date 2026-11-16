@@ -386,6 +386,36 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun hubApiKeyRevoke(cid: Long): Unit = throw NotImplementedError("hub_api_key_revoke")
 
+    override fun hubGroups(): List<HubGroup> = throw NotImplementedError("hub_groups")
+
+    override fun hubGroupSet(group: HubGroup): HubGroupSet = throw NotImplementedError("hub_group_set")
+
+    override fun hubGroupDelete(id: String): Unit = throw NotImplementedError("hub_group_delete")
+
+    override fun hubGroupParamGet(target: HubFleetTarget, path: String, idx: List<Long>): HubGroupParams = throw NotImplementedError("hub_group_param_get")
+
+    override fun hubGroupParamSet(target: HubFleetTarget, path: String, idx: List<Long>, value: ParamValue, offsets: List<HubOffset>): HubGroupParams = throw NotImplementedError("hub_group_param_set")
+
+    override fun hubGroupPresetLoad(target: HubFleetTarget, slot: Int?, name: String, map: List<HubPresetPick>): List<HubGroupRow> = throw NotImplementedError("hub_group_preset_load")
+
+    override fun hubGroupApply(target: HubFleetTarget, snapshot: String, name: String, document: String, guard: Boolean, timeoutMs: Long): HubGroupRun = throw NotImplementedError("hub_group_apply")
+
+    override fun hubGroupApplyConfirm(run: String): HubGroupRun = throw NotImplementedError("hub_group_apply_confirm")
+
+    override fun hubGroupApplyCancel(run: String): HubGroupRun = throw NotImplementedError("hub_group_apply_cancel")
+
+    override fun hubFirmwareImages(): HubFirmwareImages = throw NotImplementedError("hub_firmware_images")
+
+    override fun hubFirmwarePut(name: String, bytes: List<Int>): HubFirmwarePut = throw NotImplementedError("hub_firmware_put")
+
+    override fun hubFirmwareDelete(name: String): Unit = throw NotImplementedError("hub_firmware_delete")
+
+    override fun hubRolloutStart(target: HubFleetTarget, image: String, whileLive: Boolean): HubRollout = throw NotImplementedError("hub_rollout_start")
+
+    override fun hubRollouts(id: String): List<HubRollout> = throw NotImplementedError("hub_rollouts")
+
+    override fun hubRolloutCancel(id: String): HubRollout = throw NotImplementedError("hub_rollout_cancel")
+
     override fun hubInventorySet(serial: String, location: String?, note: String?, tags: List<String>?): HubDevice = throw NotImplementedError("hub_inventory_set")
 
     override fun hubInventoryForget(serial: String, withData: Boolean): HubInventoryForgot = throw NotImplementedError("hub_inventory_forget")
@@ -827,6 +857,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun verifyBundled(image: List<Int>, name: String): BundledFirmware = throw NotImplementedError("verify_bundled")
 
     override fun hubAlarmNotice(alarm: HubAlarm, time: String): Notice = throw NotImplementedError("hub_alarm_notice")
+
+    override fun hubRolloutStepNotice(step: String, text: String): Notice = throw NotImplementedError("hub_rollout_step_notice")
 
     override fun limitsFieldRanges(): List<LimitFieldRange> = throw NotImplementedError("limits_field_ranges")
 

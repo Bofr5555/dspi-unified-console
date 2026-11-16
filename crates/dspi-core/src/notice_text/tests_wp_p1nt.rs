@@ -202,6 +202,17 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 assert_eq!(n.key, crate::firmware_manifest::NOTICE_NOT_VERIFIED);
                 continue;
             }
+            // -- WP P3CC -- a rollout's steps: no error makes these keys,
+            // `hub_rollout_step_notice` answers them by the step
+            if family == crate::hub_server::NOTICE_ROLLOUT_FAMILY {
+                assert!(
+                    crate::hub_server::ROLLOUT_STEPS.contains(&code)
+                        || n.key == crate::hub_server::NOTICE_ROLLOUT_UNKNOWN,
+                    "{}: not a step hub_server names",
+                    n.key
+                );
+                continue;
+            }
             // -- WP P2CC2 -- the hub's alarms: no error makes these keys,
             // `hub_alarm_notice` answers them by the alarm's code
             if family == crate::hub_server::NOTICE_ALARM_FAMILY {

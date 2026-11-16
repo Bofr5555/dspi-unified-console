@@ -1918,6 +1918,38 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1988,6 +2020,8 @@ fun uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(
 fun uniffi_dspi_core_checksum_func_firmware_guard_check(
 ): Short
 fun uniffi_dspi_core_checksum_func_hub_alarm_notice(
+): Short
+fun uniffi_dspi_core_checksum_func_hub_rollout_step_notice(
 ): Short
 fun uniffi_dspi_core_checksum_func_known_feature_names(
 ): Short
@@ -2375,6 +2409,30 @@ fun uniffi_dspi_core_checksum_method_dspicore_hub_events_read(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_events_watch(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_firmware_delete(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_firmware_images(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_firmware_put(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_group_apply(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_group_apply_cancel(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_group_apply_confirm(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_group_delete(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_group_param_get(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_group_param_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_group_preset_load(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_group_set(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_groups(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_health(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_identify(
@@ -2412,6 +2470,12 @@ fun uniffi_dspi_core_checksum_method_dspicore_hub_pin_clear(
 fun uniffi_dspi_core_checksum_method_dspicore_hub_pin_set(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_rename(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_rollout_cancel(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_rollout_start(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_rollouts(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_schedule_delete(
 ): Short
@@ -3287,6 +3351,30 @@ fun uniffi_dspi_core_fn_method_dspicore_hub_events_read(`ptr`: Pointer,`serial`:
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_events_watch(`ptr`: Pointer,`on`: Byte,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_core_fn_method_dspicore_hub_firmware_delete(`ptr`: Pointer,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_hub_firmware_images(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_firmware_put(`ptr`: Pointer,`name`: RustBuffer.ByValue,`bytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_group_apply(`ptr`: Pointer,`target`: RustBuffer.ByValue,`snapshot`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`document`: RustBuffer.ByValue,`guard`: Byte,`timeoutMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_group_apply_cancel(`ptr`: Pointer,`run`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_group_apply_confirm(`ptr`: Pointer,`run`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_group_delete(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_hub_group_param_get(`ptr`: Pointer,`target`: RustBuffer.ByValue,`path`: RustBuffer.ByValue,`idx`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_group_param_set(`ptr`: Pointer,`target`: RustBuffer.ByValue,`path`: RustBuffer.ByValue,`idx`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,`offsets`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_group_preset_load(`ptr`: Pointer,`target`: RustBuffer.ByValue,`slot`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`map`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_group_set(`ptr`: Pointer,`group`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_groups(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_health(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_identify(`ptr`: Pointer,`seconds`: Byte,`toneOutput`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3324,6 +3412,12 @@ fun uniffi_dspi_core_fn_method_dspicore_hub_pin_clear(`ptr`: Pointer,uniffi_out_
 fun uniffi_dspi_core_fn_method_dspicore_hub_pin_set(`ptr`: Pointer,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_rename(`ptr`: Pointer,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_rollout_cancel(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_rollout_start(`ptr`: Pointer,`target`: RustBuffer.ByValue,`image`: RustBuffer.ByValue,`whileLive`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_rollouts(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_schedule_delete(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -3903,6 +3997,8 @@ fun uniffi_dspi_core_fn_func_firmware_guard_check(`image`: RustBuffer.ByValue,`b
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_hub_alarm_notice(`alarm`: RustBuffer.ByValue,`time`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_hub_rollout_step_notice(`step`: RustBuffer.ByValue,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_known_feature_names(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_limits_field_ranges(uniffi_out_err: UniffiRustCallStatus, 
@@ -4173,6 +4269,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_hub_rollout_step_notice() != 44519.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_known_feature_names() != 45045.toShort()) {
@@ -4754,6 +4853,42 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_events_watch() != 53028.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_firmware_delete() != 16891.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_firmware_images() != 38142.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_firmware_put() != 50491.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_group_apply() != 43611.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_group_apply_cancel() != 34062.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_group_apply_confirm() != 25993.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_group_delete() != 49977.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_group_param_get() != 55752.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_group_param_set() != 6466.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_group_preset_load() != 27399.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_group_set() != 42368.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_groups() != 1939.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_health() != 60109.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4809,6 +4944,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_rename() != 39300.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_rollout_cancel() != 20667.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_rollout_start() != 27847.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_rollouts() != 32398.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_schedule_delete() != 22406.toShort()) {
@@ -8851,6 +8995,151 @@ public interface DspiCoreInterface {
     fun `hubEventsWatch`(`on`: kotlin.Boolean, `serial`: kotlin.String)
     
     /**
+     * Delete image `name` from the hub's store (`fw.image.delete`). Admin
+     * of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`, `conflict` (a running
+     * rollout uses it); as [`DspiCore::hub_firmware_put`].
+     */
+    fun `hubFirmwareDelete`(`name`: kotlin.String)
+    
+    /**
+     * The hub's firmware images (`fw.image.list`). Every role, over an
+     * encrypted session only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `rollout` cap (nothing
+     * sent); [`DspiError::Link`] `tls_required` over a plaintext session;
+     * [`DspiError::Disconnected`].
+     */
+    fun `hubFirmwareImages`(): HubFirmwareImages
+    
+    /**
+     * Put firmware image `bytes` in the hub's store as `name` (`fw.image.put`,
+     * 36 KiB a chunk, one upload per session). The hub checks the whole
+     * image on the last chunk (`uf2_inspect`, the manifest by name and
+     * bytes). Nothing goes over a plaintext session: the store is read first
+     * (its `tls_required`). The bytes are never logged. Admin of the hub.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no bytes or more than
+     * [`FIRMWARE_MAX_BYTES`] (nothing sent), and the hub's `bad_request` (a
+     * name or image it refuses); [`DspiError::Link`] `conflict` (the name
+     * with other bytes; a fifth image), `busy` (an upload is open);
+     * [`DspiError::Denied`] below Admin; [`DspiError::ReadOnly`] (nothing
+     * sent); as [`DspiCore::hub_firmware_images`].
+     */
+    fun `hubFirmwarePut`(`name`: kotlin.String, `bytes`: kotlin.ByteArray): HubFirmwarePut
+    
+    /**
+     * Apply one snapshot to every device of `target` (`group.apply`):
+     * exactly one of `snapshot` (an id in the hub's store), `name` (one
+     * snapshot's name in the store) or `document` (a snapshot document's
+     * text, at most 61 440 bytes compact). Each member is the hub's recall
+     * as this console's child session. With `guard`, one guarded apply per
+     * device (`timeout_ms` 1000 to 600 000; 0 for the hub's 30 s): confirm
+     * the run ([`DspiCore::hub_group_apply_confirm`]) or each reverts at its
+     * deadline. Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a source that is not
+     * exactly one, or a document that is no JSON object (nothing sent);
+     * [`DspiError::Link`] `conflict` for a document over the wire cap
+     * (nothing sent) and two snapshots of that name; `not_found`; as
+     * [`DspiCore::hub_group_param_set`] (cap `group_apply`).
+     */
+    fun `hubGroupApply`(`target`: HubFleetTarget, `snapshot`: kotlin.String, `name`: kotlin.String, `document`: kotlin.String, `guard`: kotlin.Boolean, `timeoutMs`: kotlin.UInt): HubGroupRun
+    
+    /**
+     * Revert every pending guard of run `run` now (`group.apply.cancel`):
+     * one row per guard, `reverted` set. Errors: as
+     * [`DspiCore::hub_group_apply_confirm`].
+     */
+    fun `hubGroupApplyCancel`(`run`: kotlin.String): HubGroupRun
+    
+    /**
+     * Keep every pending guard of bulk-apply run `run`
+     * (`group.apply.confirm`): one row per guard, `conflict` for one that
+     * had already reverted. Only the session that ran it. Control or Admin.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` (an unknown run, or another
+     * session's); as [`DspiCore::hub_group_apply`].
+     */
+    fun `hubGroupApplyConfirm`(`run`: kotlin.String): HubGroupRun
+    
+    /**
+     * Delete group `id` (`group.delete`; its id is never given again).
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an empty id (nothing sent);
+     * [`DspiError::Link`] `not_found`; as [`DspiCore::hub_group_set`].
+     */
+    fun `hubGroupDelete`(`id`: kotlin.String)
+    
+    /**
+     * Read `path` (`idx` its indices) on every device of `target`
+     * (`group.param.get`): one row per member, in member order, each with
+     * its value or its code. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `group_params` cap
+     * (nothing sent); [`DspiError::InvalidArgument`] for a target that is
+     * both or neither (nothing sent) and the hub's `bad_request`;
+     * [`DspiError::Link`] `not_found` (the group), `busy` (this session's
+     * other group request runs); [`DspiError::Disconnected`].
+     */
+    fun `hubGroupParamGet`(`target`: HubFleetTarget, `path`: kotlin.String, `idx`: List<kotlin.UInt>): HubGroupParams
+    
+    /**
+     * Write `value` to `path` on every device of `target`, one after
+     * another as this console's child session (`group.param.set`): each
+     * judged on its own by role, limits and lock; a refused row stops no
+     * other. `offsets` (dB paths only) add to the value per member, clamped
+     * into that device's range (`clamped` in its row). Control or Admin.
+     * Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_group_param_get`];
+     * [`DspiError::InvalidArgument`] for a structured value (nothing sent),
+     * a value outside the registry's range, offsets on a path not in dB;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`] (nothing
+     * sent).
+     */
+    fun `hubGroupParamSet`(`target`: HubFleetTarget, `path`: kotlin.String, `idx`: List<kotlin.UInt>, `value`: ParamValue, `offsets`: List<HubOffset>): HubGroupParams
+    
+    /**
+     * Load a preset on every device of `target` (`group.preset.load`): by
+     * `slot` (0 to 9) or by `name`, one of the two; `map` gives a member
+     * its own. One row per member, with the slot and name loaded. Control
+     * or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for both or neither of slot
+     * and name (nothing sent); as [`DspiCore::hub_group_param_set`].
+     */
+    fun `hubGroupPresetLoad`(`target`: HubFleetTarget, `slot`: kotlin.UByte?, `name`: kotlin.String, `map`: List<HubPresetPick>): List<HubGroupRow>
+    
+    /**
+     * Store `group` on the hub (`group.set`): without an id a new group,
+     * with one that group replaced whole (an empty note clears it). The
+     * hub's bounds: a name of 1 to 48 characters, a note of at most 256,
+     * at most 64 members, each an inventory serial and each once; 64 groups.
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] past a bound (`bad_request`);
+     * [`DspiError::Link`] `not_found` (a member not in the inventory, an
+     * unknown id), `conflict` (a 65th group); [`DspiError::Denied`] below
+     * Admin; [`DspiError::ReadOnly`] (nothing sent); as
+     * [`DspiCore::hub_groups`].
+     */
+    fun `hubGroupSet`(`group`: HubGroup): HubGroupSet
+    
+    /**
+     * The hub's groups, by id (`group.list`). Every role. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `groups` cap (nothing
+     * sent); [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    fun `hubGroups`(): List<HubGroup>
+    
+    /**
      * One health record per online device of the hub (`health.get`):
      * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
      * -- WP P3HB -- the stream counters, clip events a minute and the last
@@ -9085,6 +9374,46 @@ public interface DspiCoreInterface {
      * [`DspiError::ReadOnly`] (nothing sent); [`DspiError::Disconnected`].
      */
     fun `hubRename`(`name`: kotlin.String): kotlin.String
+    
+    /**
+     * Cancel rollout `id` (`fw.rollout.cancel`): before the bootloader entry
+     * of the device it is working on, never during a flash. The record as
+     * it is now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `conflict` (past the entry, or ended),
+     * `not_found`; as [`DspiCore::hub_rollout_start`].
+     */
+    fun `hubRolloutCancel`(`id`: kotlin.String): HubRollout
+    
+    /**
+     * Start a firmware rollout of stored image `image` on `target`: one
+     * serial, or a group (one member after another, stopped at the first
+     * failure) (`fw.rollout.start`). The device must be muted unless
+     * `while_live`. The answer comes after the first device's check and
+     * guard steps; follow the rest with `fw.rollout.changed`
+     * ([`super::HubServerEvent::rollout`]) or [`DspiCore::hub_rollouts`].
+     * Admin of the hub, over an encrypted session. Slow: off the UI thread.
+     *
+     * Errors (nothing touched): [`DspiError::InvalidArgument`] for a target
+     * that is not one serial or one group (nothing sent);
+     * [`DspiError::Unsupported`] (not on the hub's own USB);
+     * [`DspiError::Locked`]; [`DspiError::ConfirmationRequired`] (not
+     * muted); [`DspiError::ImageRefused`] (another platform, not verified,
+     * the firmware guard's refusal); [`DspiError::Link`] `offline`,
+     * `conflict`, `busy`, `not_found`, `tls_required`; as
+     * [`DspiCore::hub_firmware_put`].
+     */
+    fun `hubRolloutStart`(`target`: HubFleetTarget, `image`: kotlin.String, `whileLive`: kotlin.Boolean): HubRollout
+    
+    /**
+     * The hub's rollouts, newest first (`fw.rollout.status`; the hub keeps
+     * 64), or only rollout `id` ("" for all). Every role, over an encrypted
+     * session. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` for an unknown id; as
+     * [`DspiCore::hub_firmware_images`].
+     */
+    fun `hubRollouts`(`id`: kotlin.String): List<HubRollout>
     
     /**
      * Delete rule `id` (`schedule.delete`). Admin of the hub. Slow: off the
@@ -15042,6 +15371,281 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Delete image `name` from the hub's store (`fw.image.delete`). Admin
+     * of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`, `conflict` (a running
+     * rollout uses it); as [`DspiCore::hub_firmware_put`].
+     */
+    @Throws(DspiException::class)override fun `hubFirmwareDelete`(`name`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_firmware_delete(
+        it, FfiConverterString.lower(`name`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The hub's firmware images (`fw.image.list`). Every role, over an
+     * encrypted session only. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `rollout` cap (nothing
+     * sent); [`DspiError::Link`] `tls_required` over a plaintext session;
+     * [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubFirmwareImages`(): HubFirmwareImages {
+            return FfiConverterTypeHubFirmwareImages.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_firmware_images(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Put firmware image `bytes` in the hub's store as `name` (`fw.image.put`,
+     * 36 KiB a chunk, one upload per session). The hub checks the whole
+     * image on the last chunk (`uf2_inspect`, the manifest by name and
+     * bytes). Nothing goes over a plaintext session: the store is read first
+     * (its `tls_required`). The bytes are never logged. Admin of the hub.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no bytes or more than
+     * [`FIRMWARE_MAX_BYTES`] (nothing sent), and the hub's `bad_request` (a
+     * name or image it refuses); [`DspiError::Link`] `conflict` (the name
+     * with other bytes; a fifth image), `busy` (an upload is open);
+     * [`DspiError::Denied`] below Admin; [`DspiError::ReadOnly`] (nothing
+     * sent); as [`DspiCore::hub_firmware_images`].
+     */
+    @Throws(DspiException::class)override fun `hubFirmwarePut`(`name`: kotlin.String, `bytes`: kotlin.ByteArray): HubFirmwarePut {
+            return FfiConverterTypeHubFirmwarePut.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_firmware_put(
+        it, FfiConverterString.lower(`name`),FfiConverterByteArray.lower(`bytes`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Apply one snapshot to every device of `target` (`group.apply`):
+     * exactly one of `snapshot` (an id in the hub's store), `name` (one
+     * snapshot's name in the store) or `document` (a snapshot document's
+     * text, at most 61 440 bytes compact). Each member is the hub's recall
+     * as this console's child session. With `guard`, one guarded apply per
+     * device (`timeout_ms` 1000 to 600 000; 0 for the hub's 30 s): confirm
+     * the run ([`DspiCore::hub_group_apply_confirm`]) or each reverts at its
+     * deadline. Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a source that is not
+     * exactly one, or a document that is no JSON object (nothing sent);
+     * [`DspiError::Link`] `conflict` for a document over the wire cap
+     * (nothing sent) and two snapshots of that name; `not_found`; as
+     * [`DspiCore::hub_group_param_set`] (cap `group_apply`).
+     */
+    @Throws(DspiException::class)override fun `hubGroupApply`(`target`: HubFleetTarget, `snapshot`: kotlin.String, `name`: kotlin.String, `document`: kotlin.String, `guard`: kotlin.Boolean, `timeoutMs`: kotlin.UInt): HubGroupRun {
+            return FfiConverterTypeHubGroupRun.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_group_apply(
+        it, FfiConverterTypeHubFleetTarget.lower(`target`),FfiConverterString.lower(`snapshot`),FfiConverterString.lower(`name`),FfiConverterString.lower(`document`),FfiConverterBoolean.lower(`guard`),FfiConverterUInt.lower(`timeoutMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Revert every pending guard of run `run` now (`group.apply.cancel`):
+     * one row per guard, `reverted` set. Errors: as
+     * [`DspiCore::hub_group_apply_confirm`].
+     */
+    @Throws(DspiException::class)override fun `hubGroupApplyCancel`(`run`: kotlin.String): HubGroupRun {
+            return FfiConverterTypeHubGroupRun.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_group_apply_cancel(
+        it, FfiConverterString.lower(`run`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Keep every pending guard of bulk-apply run `run`
+     * (`group.apply.confirm`): one row per guard, `conflict` for one that
+     * had already reverted. Only the session that ran it. Control or Admin.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` (an unknown run, or another
+     * session's); as [`DspiCore::hub_group_apply`].
+     */
+    @Throws(DspiException::class)override fun `hubGroupApplyConfirm`(`run`: kotlin.String): HubGroupRun {
+            return FfiConverterTypeHubGroupRun.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_group_apply_confirm(
+        it, FfiConverterString.lower(`run`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Delete group `id` (`group.delete`; its id is never given again).
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an empty id (nothing sent);
+     * [`DspiError::Link`] `not_found`; as [`DspiCore::hub_group_set`].
+     */
+    @Throws(DspiException::class)override fun `hubGroupDelete`(`id`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_group_delete(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Read `path` (`idx` its indices) on every device of `target`
+     * (`group.param.get`): one row per member, in member order, each with
+     * its value or its code. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `group_params` cap
+     * (nothing sent); [`DspiError::InvalidArgument`] for a target that is
+     * both or neither (nothing sent) and the hub's `bad_request`;
+     * [`DspiError::Link`] `not_found` (the group), `busy` (this session's
+     * other group request runs); [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `hubGroupParamGet`(`target`: HubFleetTarget, `path`: kotlin.String, `idx`: List<kotlin.UInt>): HubGroupParams {
+            return FfiConverterTypeHubGroupParams.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_group_param_get(
+        it, FfiConverterTypeHubFleetTarget.lower(`target`),FfiConverterString.lower(`path`),FfiConverterSequenceUInt.lower(`idx`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Write `value` to `path` on every device of `target`, one after
+     * another as this console's child session (`group.param.set`): each
+     * judged on its own by role, limits and lock; a refused row stops no
+     * other. `offsets` (dB paths only) add to the value per member, clamped
+     * into that device's range (`clamped` in its row). Control or Admin.
+     * Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_group_param_get`];
+     * [`DspiError::InvalidArgument`] for a structured value (nothing sent),
+     * a value outside the registry's range, offsets on a path not in dB;
+     * [`DspiError::Denied`] for a Viewer; [`DspiError::ReadOnly`] (nothing
+     * sent).
+     */
+    @Throws(DspiException::class)override fun `hubGroupParamSet`(`target`: HubFleetTarget, `path`: kotlin.String, `idx`: List<kotlin.UInt>, `value`: ParamValue, `offsets`: List<HubOffset>): HubGroupParams {
+            return FfiConverterTypeHubGroupParams.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_group_param_set(
+        it, FfiConverterTypeHubFleetTarget.lower(`target`),FfiConverterString.lower(`path`),FfiConverterSequenceUInt.lower(`idx`),FfiConverterTypeParamValue.lower(`value`),FfiConverterSequenceTypeHubOffset.lower(`offsets`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Load a preset on every device of `target` (`group.preset.load`): by
+     * `slot` (0 to 9) or by `name`, one of the two; `map` gives a member
+     * its own. One row per member, with the slot and name loaded. Control
+     * or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for both or neither of slot
+     * and name (nothing sent); as [`DspiCore::hub_group_param_set`].
+     */
+    @Throws(DspiException::class)override fun `hubGroupPresetLoad`(`target`: HubFleetTarget, `slot`: kotlin.UByte?, `name`: kotlin.String, `map`: List<HubPresetPick>): List<HubGroupRow> {
+            return FfiConverterSequenceTypeHubGroupRow.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_group_preset_load(
+        it, FfiConverterTypeHubFleetTarget.lower(`target`),FfiConverterOptionalUByte.lower(`slot`),FfiConverterString.lower(`name`),FfiConverterSequenceTypeHubPresetPick.lower(`map`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Store `group` on the hub (`group.set`): without an id a new group,
+     * with one that group replaced whole (an empty note clears it). The
+     * hub's bounds: a name of 1 to 48 characters, a note of at most 256,
+     * at most 64 members, each an inventory serial and each once; 64 groups.
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] past a bound (`bad_request`);
+     * [`DspiError::Link`] `not_found` (a member not in the inventory, an
+     * unknown id), `conflict` (a 65th group); [`DspiError::Denied`] below
+     * Admin; [`DspiError::ReadOnly`] (nothing sent); as
+     * [`DspiCore::hub_groups`].
+     */
+    @Throws(DspiException::class)override fun `hubGroupSet`(`group`: HubGroup): HubGroupSet {
+            return FfiConverterTypeHubGroupSet.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_group_set(
+        it, FfiConverterTypeHubGroup.lower(`group`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The hub's groups, by id (`group.list`). Every role. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Unsupported`] without the `groups` cap (nothing
+     * sent); [`DspiError::Disconnected`]; the hub's refusal.
+     */
+    @Throws(DspiException::class)override fun `hubGroups`(): List<HubGroup> {
+            return FfiConverterSequenceTypeHubGroup.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_groups(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * One health record per online device of the hub (`health.get`):
      * CPU, the clip latch, temperature, uptime, hangs, whether it answers;
      * -- WP P3HB -- the stream counters, clip events a minute and the last
@@ -15479,6 +16083,79 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_rename(
         it, FfiConverterString.lower(`name`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Cancel rollout `id` (`fw.rollout.cancel`): before the bootloader entry
+     * of the device it is working on, never during a flash. The record as
+     * it is now. Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `conflict` (past the entry, or ended),
+     * `not_found`; as [`DspiCore::hub_rollout_start`].
+     */
+    @Throws(DspiException::class)override fun `hubRolloutCancel`(`id`: kotlin.String): HubRollout {
+            return FfiConverterTypeHubRollout.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_rollout_cancel(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Start a firmware rollout of stored image `image` on `target`: one
+     * serial, or a group (one member after another, stopped at the first
+     * failure) (`fw.rollout.start`). The device must be muted unless
+     * `while_live`. The answer comes after the first device's check and
+     * guard steps; follow the rest with `fw.rollout.changed`
+     * ([`super::HubServerEvent::rollout`]) or [`DspiCore::hub_rollouts`].
+     * Admin of the hub, over an encrypted session. Slow: off the UI thread.
+     *
+     * Errors (nothing touched): [`DspiError::InvalidArgument`] for a target
+     * that is not one serial or one group (nothing sent);
+     * [`DspiError::Unsupported`] (not on the hub's own USB);
+     * [`DspiError::Locked`]; [`DspiError::ConfirmationRequired`] (not
+     * muted); [`DspiError::ImageRefused`] (another platform, not verified,
+     * the firmware guard's refusal); [`DspiError::Link`] `offline`,
+     * `conflict`, `busy`, `not_found`, `tls_required`; as
+     * [`DspiCore::hub_firmware_put`].
+     */
+    @Throws(DspiException::class)override fun `hubRolloutStart`(`target`: HubFleetTarget, `image`: kotlin.String, `whileLive`: kotlin.Boolean): HubRollout {
+            return FfiConverterTypeHubRollout.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_rollout_start(
+        it, FfiConverterTypeHubFleetTarget.lower(`target`),FfiConverterString.lower(`image`),FfiConverterBoolean.lower(`whileLive`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The hub's rollouts, newest first (`fw.rollout.status`; the hub keeps
+     * 64), or only rollout `id` ("" for all). Every role, over an encrypted
+     * session. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found` for an unknown id; as
+     * [`DspiCore::hub_firmware_images`].
+     */
+    @Throws(DspiException::class)override fun `hubRollouts`(`id`: kotlin.String): List<HubRollout> {
+            return FfiConverterSequenceTypeHubRollout.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_rollouts(
+        it, FfiConverterString.lower(`id`),_status)
 }
     }
     )
@@ -29653,6 +30330,22 @@ data class HubCaps (
      */
     var `rest`: kotlin.Boolean, 
     /**
+     * `group.*` ([`DspiCore::hub_groups`]).
+     */
+    var `groups`: kotlin.Boolean, 
+    /**
+     * `group.param.*`, `group.preset.load` ([`DspiCore::hub_group_param_set`]).
+     */
+    var `groupParams`: kotlin.Boolean, 
+    /**
+     * `group.apply*` ([`DspiCore::hub_group_apply`]).
+     */
+    var `groupApply`: kotlin.Boolean, 
+    /**
+     * `fw.*` ([`DspiCore::hub_rollout_start`]; over TLS only).
+     */
+    var `rollout`: kotlin.Boolean, 
+    /**
      * Every cap of the hub's `hello`, as it sent them.
      */
     var `caps`: List<kotlin.String>
@@ -29667,6 +30360,10 @@ data class HubCaps (
 public object FfiConverterTypeHubCaps: FfiConverterRustBuffer<HubCaps> {
     override fun read(buf: ByteBuffer): HubCaps {
         return HubCaps(
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
@@ -29700,6 +30397,10 @@ public object FfiConverterTypeHubCaps: FfiConverterRustBuffer<HubCaps> {
             FfiConverterBoolean.allocationSize(value.`mqtt`) +
             FfiConverterBoolean.allocationSize(value.`apiKeys`) +
             FfiConverterBoolean.allocationSize(value.`rest`) +
+            FfiConverterBoolean.allocationSize(value.`groups`) +
+            FfiConverterBoolean.allocationSize(value.`groupParams`) +
+            FfiConverterBoolean.allocationSize(value.`groupApply`) +
+            FfiConverterBoolean.allocationSize(value.`rollout`) +
             FfiConverterSequenceString.allocationSize(value.`caps`)
     )
 
@@ -29718,6 +30419,10 @@ public object FfiConverterTypeHubCaps: FfiConverterRustBuffer<HubCaps> {
             FfiConverterBoolean.write(value.`mqtt`, buf)
             FfiConverterBoolean.write(value.`apiKeys`, buf)
             FfiConverterBoolean.write(value.`rest`, buf)
+            FfiConverterBoolean.write(value.`groups`, buf)
+            FfiConverterBoolean.write(value.`groupParams`, buf)
+            FfiConverterBoolean.write(value.`groupApply`, buf)
+            FfiConverterBoolean.write(value.`rollout`, buf)
             FfiConverterSequenceString.write(value.`caps`, buf)
     }
 }
@@ -30057,6 +30762,576 @@ public object FfiConverterTypeHubEventRecord: FfiConverterRustBuffer<HubEventRec
             FfiConverterOptionalUInt.write(value.`uptimeS`, buf)
             FfiConverterSequenceString.write(value.`lines`, buf)
             FfiConverterUInt.write(value.`count`, buf)
+    }
+}
+
+
+
+/**
+ * A firmware image in the hub's store ([`DspiCore::hub_firmware_images`]).
+ */
+data class HubFirmwareImage (
+    /**
+     * As uploaded (`...uf2`).
+     */
+    var `name`: kotlin.String, 
+    /**
+     * Bytes.
+     */
+    var `size`: kotlin.ULong, 
+    /**
+     * Of the whole file, lowercase hex.
+     */
+    var `sha256`: kotlin.String, 
+    /**
+     * The DSPi version in the image; "" when none.
+     */
+    var `firmwareVersion`: kotlin.String, 
+    /**
+     * `RP2040` or `RP2350`.
+     */
+    var `platform`: kotlin.String, 
+    /**
+     * The core-voltage stamp, mV; `None` when unstamped.
+     */
+    var `stampMv`: kotlin.UShort?, 
+    /**
+     * The release's manifest lists this name with these bytes.
+     */
+    var `verified`: kotlin.Boolean, 
+    /**
+     * When (ISO-8601 UTC).
+     */
+    var `addedAt`: kotlin.String, 
+    /**
+     * Who: a client's name.
+     */
+    var `addedBy`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubFirmwareImage: FfiConverterRustBuffer<HubFirmwareImage> {
+    override fun read(buf: ByteBuffer): HubFirmwareImage {
+        return HubFirmwareImage(
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUShort.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubFirmwareImage) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterULong.allocationSize(value.`size`) +
+            FfiConverterString.allocationSize(value.`sha256`) +
+            FfiConverterString.allocationSize(value.`firmwareVersion`) +
+            FfiConverterString.allocationSize(value.`platform`) +
+            FfiConverterOptionalUShort.allocationSize(value.`stampMv`) +
+            FfiConverterBoolean.allocationSize(value.`verified`) +
+            FfiConverterString.allocationSize(value.`addedAt`) +
+            FfiConverterString.allocationSize(value.`addedBy`)
+    )
+
+    override fun write(value: HubFirmwareImage, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterULong.write(value.`size`, buf)
+            FfiConverterString.write(value.`sha256`, buf)
+            FfiConverterString.write(value.`firmwareVersion`, buf)
+            FfiConverterString.write(value.`platform`, buf)
+            FfiConverterOptionalUShort.write(value.`stampMv`, buf)
+            FfiConverterBoolean.write(value.`verified`, buf)
+            FfiConverterString.write(value.`addedAt`, buf)
+            FfiConverterString.write(value.`addedBy`, buf)
+    }
+}
+
+
+
+/**
+ * The hub's image store ([`DspiCore::hub_firmware_images`]).
+ */
+data class HubFirmwareImages (
+    /**
+     * Oldest first.
+     */
+    var `images`: List<HubFirmwareImage>, 
+    /**
+     * Images the store keeps at most.
+     */
+    var `maxImages`: kotlin.UInt, 
+    /**
+     * Bytes an image may have at most.
+     */
+    var `maxBytes`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubFirmwareImages: FfiConverterRustBuffer<HubFirmwareImages> {
+    override fun read(buf: ByteBuffer): HubFirmwareImages {
+        return HubFirmwareImages(
+            FfiConverterSequenceTypeHubFirmwareImage.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubFirmwareImages) = (
+            FfiConverterSequenceTypeHubFirmwareImage.allocationSize(value.`images`) +
+            FfiConverterUInt.allocationSize(value.`maxImages`) +
+            FfiConverterULong.allocationSize(value.`maxBytes`)
+    )
+
+    override fun write(value: HubFirmwareImages, buf: ByteBuffer) {
+            FfiConverterSequenceTypeHubFirmwareImage.write(value.`images`, buf)
+            FfiConverterUInt.write(value.`maxImages`, buf)
+            FfiConverterULong.write(value.`maxBytes`, buf)
+    }
+}
+
+
+
+/**
+ * What [`DspiCore::hub_firmware_put`] stored.
+ */
+data class HubFirmwarePut (
+    /**
+     * The image as the hub has it.
+     */
+    var `image`: HubFirmwareImage, 
+    /**
+     * False: the hub already held this name with these bytes.
+     */
+    var `created`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubFirmwarePut: FfiConverterRustBuffer<HubFirmwarePut> {
+    override fun read(buf: ByteBuffer): HubFirmwarePut {
+        return HubFirmwarePut(
+            FfiConverterTypeHubFirmwareImage.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubFirmwarePut) = (
+            FfiConverterTypeHubFirmwareImage.allocationSize(value.`image`) +
+            FfiConverterBoolean.allocationSize(value.`created`)
+    )
+
+    override fun write(value: HubFirmwarePut, buf: ByteBuffer) {
+            FfiConverterTypeHubFirmwareImage.write(value.`image`, buf)
+            FfiConverterBoolean.write(value.`created`, buf)
+    }
+}
+
+
+
+/**
+ * Which devices a group request addresses: exactly one of a group's id or
+ * 1 to 16 serials (section 20.1).
+ */
+data class HubFleetTarget (
+    /**
+     * A group's id; "" when [`HubFleetTarget::serials`] is used.
+     */
+    var `group`: kotlin.String, 
+    /**
+     * Serials, each once; empty when [`HubFleetTarget::group`] is used.
+     */
+    var `serials`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubFleetTarget: FfiConverterRustBuffer<HubFleetTarget> {
+    override fun read(buf: ByteBuffer): HubFleetTarget {
+        return HubFleetTarget(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubFleetTarget) = (
+            FfiConverterString.allocationSize(value.`group`) +
+            FfiConverterSequenceString.allocationSize(value.`serials`)
+    )
+
+    override fun write(value: HubFleetTarget, buf: ByteBuffer) {
+            FfiConverterString.write(value.`group`, buf)
+            FfiConverterSequenceString.write(value.`serials`, buf)
+    }
+}
+
+
+
+/**
+ * A group of the hub's ([`DspiCore::hub_groups`]; [`DspiCore::hub_group_set`]
+ * takes one).
+ */
+data class HubGroup (
+    /**
+     * The hub's id (`g1`, `g2`, ...; never reused); "" for a new group.
+     */
+    var `id`: kotlin.String, 
+    /**
+     * 1 to 48 characters.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * At most 256 characters; "" when unset.
+     */
+    var `note`: kotlin.String, 
+    /**
+     * 0 to 64 inventory serials, each once, in the order fan-outs use.
+     */
+    var `members`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubGroup: FfiConverterRustBuffer<HubGroup> {
+    override fun read(buf: ByteBuffer): HubGroup {
+        return HubGroup(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubGroup) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`note`) +
+            FfiConverterSequenceString.allocationSize(value.`members`)
+    )
+
+    override fun write(value: HubGroup, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`note`, buf)
+            FfiConverterSequenceString.write(value.`members`, buf)
+    }
+}
+
+
+
+/**
+ * A parameter fan-out's answer ([`DspiCore::hub_group_param_get`],
+ * [`DspiCore::hub_group_param_set`]).
+ */
+data class HubGroupParams (
+    /**
+     * The path.
+     */
+    var `path`: kotlin.String, 
+    /**
+     * Its indices.
+     */
+    var `idx`: List<kotlin.UInt>, 
+    /**
+     * One row per member, in order.
+     */
+    var `results`: List<HubGroupRow>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubGroupParams: FfiConverterRustBuffer<HubGroupParams> {
+    override fun read(buf: ByteBuffer): HubGroupParams {
+        return HubGroupParams(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceUInt.read(buf),
+            FfiConverterSequenceTypeHubGroupRow.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubGroupParams) = (
+            FfiConverterString.allocationSize(value.`path`) +
+            FfiConverterSequenceUInt.allocationSize(value.`idx`) +
+            FfiConverterSequenceTypeHubGroupRow.allocationSize(value.`results`)
+    )
+
+    override fun write(value: HubGroupParams, buf: ByteBuffer) {
+            FfiConverterString.write(value.`path`, buf)
+            FfiConverterSequenceUInt.write(value.`idx`, buf)
+            FfiConverterSequenceTypeHubGroupRow.write(value.`results`, buf)
+    }
+}
+
+
+
+/**
+ * One device's row of a group request (sections 20.1 to 20.3). The fields a
+ * request does not use are empty, `None` or false.
+ */
+data class HubGroupRow (
+    /**
+     * The device.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * Written, read or applied.
+     */
+    var `ok`: kotlin.Boolean, 
+    /**
+     * The hub's code when not (`offline`, `limit_exceeded`, ...); "" when ok.
+     */
+    var `code`: kotlin.String, 
+    /**
+     * The hub's words; "" when none.
+     */
+    var `msg`: kotlin.String, 
+    /**
+     * The notice row for [`HubGroupRow::code`] ("" when ok).
+     */
+    var `noticeKey`: kotlin.String, 
+    /**
+     * The limit crossed (`limit_exceeded`).
+     */
+    var `limit`: kotlin.String, 
+    /**
+     * A parameter's value: what was read, or what was sent and read back.
+     */
+    var `value`: ParamValue?, 
+    /**
+     * A choice's label, where the path has labels.
+     */
+    var `choice`: kotlin.String, 
+    /**
+     * A structured value, base64 (as `param.get` answers it).
+     */
+    var `valueB64`: kotlin.String, 
+    /**
+     * The member's offset was clamped into its range.
+     */
+    var `clamped`: kotlin.Boolean, 
+    /**
+     * The preset slot loaded.
+     */
+    var `slot`: kotlin.UByte?, 
+    /**
+     * The preset's name.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * An apply: the whole image was written.
+     */
+    var `image`: kotlin.Boolean, 
+    /**
+     * An apply: what changed.
+     */
+    var `lines`: List<kotlin.String>, 
+    /**
+     * An apply: what was not written, and why.
+     */
+    var `notes`: List<kotlin.String>, 
+    /**
+     * An apply with a guard: the device's guard id.
+     */
+    var `guard`: kotlin.ULong?, 
+    /**
+     * The guard reverted (ran out before the run ended, or cancelled).
+     */
+    var `reverted`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubGroupRow: FfiConverterRustBuffer<HubGroupRow> {
+    override fun read(buf: ByteBuffer): HubGroupRow {
+        return HubGroupRow(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeParamValue.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterOptionalULong.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubGroupRow) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterBoolean.allocationSize(value.`ok`) +
+            FfiConverterString.allocationSize(value.`code`) +
+            FfiConverterString.allocationSize(value.`msg`) +
+            FfiConverterString.allocationSize(value.`noticeKey`) +
+            FfiConverterString.allocationSize(value.`limit`) +
+            FfiConverterOptionalTypeParamValue.allocationSize(value.`value`) +
+            FfiConverterString.allocationSize(value.`choice`) +
+            FfiConverterString.allocationSize(value.`valueB64`) +
+            FfiConverterBoolean.allocationSize(value.`clamped`) +
+            FfiConverterOptionalUByte.allocationSize(value.`slot`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`image`) +
+            FfiConverterSequenceString.allocationSize(value.`lines`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`) +
+            FfiConverterOptionalULong.allocationSize(value.`guard`) +
+            FfiConverterBoolean.allocationSize(value.`reverted`)
+    )
+
+    override fun write(value: HubGroupRow, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterBoolean.write(value.`ok`, buf)
+            FfiConverterString.write(value.`code`, buf)
+            FfiConverterString.write(value.`msg`, buf)
+            FfiConverterString.write(value.`noticeKey`, buf)
+            FfiConverterString.write(value.`limit`, buf)
+            FfiConverterOptionalTypeParamValue.write(value.`value`, buf)
+            FfiConverterString.write(value.`choice`, buf)
+            FfiConverterString.write(value.`valueB64`, buf)
+            FfiConverterBoolean.write(value.`clamped`, buf)
+            FfiConverterOptionalUByte.write(value.`slot`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`image`, buf)
+            FfiConverterSequenceString.write(value.`lines`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+            FfiConverterOptionalULong.write(value.`guard`, buf)
+            FfiConverterBoolean.write(value.`reverted`, buf)
+    }
+}
+
+
+
+/**
+ * A bulk apply's run ([`DspiCore::hub_group_apply`], its confirm and
+ * cancel).
+ */
+data class HubGroupRun (
+    /**
+     * The hub's id of the run (`a1`, ...).
+     */
+    var `run`: kotlin.String, 
+    /**
+     * The earliest guard deadline (ISO-8601 UTC); "" without a guard.
+     */
+    var `confirmBy`: kotlin.String, 
+    /**
+     * The hub's note (guards that ran out: raise the timeout); "" when none.
+     */
+    var `msg`: kotlin.String, 
+    /**
+     * One row per member (apply) or per guard (confirm, cancel).
+     */
+    var `results`: List<HubGroupRow>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubGroupRun: FfiConverterRustBuffer<HubGroupRun> {
+    override fun read(buf: ByteBuffer): HubGroupRun {
+        return HubGroupRun(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeHubGroupRow.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubGroupRun) = (
+            FfiConverterString.allocationSize(value.`run`) +
+            FfiConverterString.allocationSize(value.`confirmBy`) +
+            FfiConverterString.allocationSize(value.`msg`) +
+            FfiConverterSequenceTypeHubGroupRow.allocationSize(value.`results`)
+    )
+
+    override fun write(value: HubGroupRun, buf: ByteBuffer) {
+            FfiConverterString.write(value.`run`, buf)
+            FfiConverterString.write(value.`confirmBy`, buf)
+            FfiConverterString.write(value.`msg`, buf)
+            FfiConverterSequenceTypeHubGroupRow.write(value.`results`, buf)
+    }
+}
+
+
+
+/**
+ * What [`DspiCore::hub_group_set`] stored.
+ */
+data class HubGroupSet (
+    /**
+     * The group as the hub now has it.
+     */
+    var `group`: HubGroup, 
+    /**
+     * A new group (no id was given).
+     */
+    var `created`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubGroupSet: FfiConverterRustBuffer<HubGroupSet> {
+    override fun read(buf: ByteBuffer): HubGroupSet {
+        return HubGroupSet(
+            FfiConverterTypeHubGroup.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubGroupSet) = (
+            FfiConverterTypeHubGroup.allocationSize(value.`group`) +
+            FfiConverterBoolean.allocationSize(value.`created`)
+    )
+
+    override fun write(value: HubGroupSet, buf: ByteBuffer) {
+            FfiConverterTypeHubGroup.write(value.`group`, buf)
+            FfiConverterBoolean.write(value.`created`, buf)
     }
 }
 
@@ -30632,6 +31907,47 @@ public object FfiConverterTypeHubMqttTls: FfiConverterRustBuffer<HubMqttTls> {
 
 
 /**
+ * One member's offset of [`DspiCore::hub_group_param_set`] (dB paths only).
+ */
+data class HubOffset (
+    /**
+     * The member.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * Added to the value, dB.
+     */
+    var `db`: kotlin.Double
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubOffset: FfiConverterRustBuffer<HubOffset> {
+    override fun read(buf: ByteBuffer): HubOffset {
+        return HubOffset(
+            FfiConverterString.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubOffset) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterDouble.allocationSize(value.`db`)
+    )
+
+    override fun write(value: HubOffset, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterDouble.write(value.`db`, buf)
+    }
+}
+
+
+
+/**
  * A target's last delivery try.
  */
 data class HubOutboundLast (
@@ -31021,6 +32337,54 @@ public object FfiConverterTypeHubPinSet: FfiConverterRustBuffer<HubPinSet> {
 
 
 /**
+ * One member's own preset of [`DspiCore::hub_group_preset_load`].
+ */
+data class HubPresetPick (
+    /**
+     * The member.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * Its slot (0 to 9); `None` when [`HubPresetPick::name`] is used.
+     */
+    var `slot`: kotlin.UByte?, 
+    /**
+     * A preset's name; "" when [`HubPresetPick::slot`] is used.
+     */
+    var `name`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubPresetPick: FfiConverterRustBuffer<HubPresetPick> {
+    override fun read(buf: ByteBuffer): HubPresetPick {
+        return HubPresetPick(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubPresetPick) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterOptionalUByte.allocationSize(value.`slot`) +
+            FfiConverterString.allocationSize(value.`name`)
+    )
+
+    override fun write(value: HubPresetPick, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterOptionalUByte.write(value.`slot`, buf)
+            FfiConverterString.write(value.`name`, buf)
+    }
+}
+
+
+
+/**
  * A reset as the hub saw it (`EXT_RESET_INFO`).
  */
 data class HubReset (
@@ -31064,6 +32428,483 @@ public object FfiConverterTypeHubReset: FfiConverterRustBuffer<HubReset> {
             FfiConverterString.write(value.`reason`, buf)
             FfiConverterOptionalUInt.write(value.`prevUptimeS`, buf)
             FfiConverterString.write(value.`at`, buf)
+    }
+}
+
+
+
+/**
+ * A rollout ([`DspiCore::hub_rollouts`], `fw.rollout.changed`).
+ */
+data class HubRollout (
+    /**
+     * The hub's id (`ro1`, ...; never reused).
+     */
+    var `id`: kotlin.String, 
+    /**
+     * The serial, or `group:<id>`.
+     */
+    var `target`: kotlin.String, 
+    /**
+     * The image's name.
+     */
+    var `image`: kotlin.String, 
+    /**
+     * Its SHA-256.
+     */
+    var `imageSha256`: kotlin.String, 
+    /**
+     * Its DSPi version.
+     */
+    var `imageVersion`: kotlin.String, 
+    /**
+     * The Admin's client name.
+     */
+    var `by`: kotlin.String, 
+    /**
+     * Started without the mute check.
+     */
+    var `whileLive`: kotlin.Boolean, 
+    /**
+     * `running`, `ok`, `failed`, `cancelled`.
+     */
+    var `state`: kotlin.String, 
+    /**
+     * ISO-8601 UTC.
+     */
+    var `startedAt`: kotlin.String, 
+    /**
+     * ISO-8601 UTC; "" while running.
+     */
+    var `endedAt`: kotlin.String, 
+    /**
+     * One entry per device, in order.
+     */
+    var `devices`: List<HubRolloutDevice>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubRollout: FfiConverterRustBuffer<HubRollout> {
+    override fun read(buf: ByteBuffer): HubRollout {
+        return HubRollout(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeHubRolloutDevice.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubRollout) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`target`) +
+            FfiConverterString.allocationSize(value.`image`) +
+            FfiConverterString.allocationSize(value.`imageSha256`) +
+            FfiConverterString.allocationSize(value.`imageVersion`) +
+            FfiConverterString.allocationSize(value.`by`) +
+            FfiConverterBoolean.allocationSize(value.`whileLive`) +
+            FfiConverterString.allocationSize(value.`state`) +
+            FfiConverterString.allocationSize(value.`startedAt`) +
+            FfiConverterString.allocationSize(value.`endedAt`) +
+            FfiConverterSequenceTypeHubRolloutDevice.allocationSize(value.`devices`)
+    )
+
+    override fun write(value: HubRollout, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`target`, buf)
+            FfiConverterString.write(value.`image`, buf)
+            FfiConverterString.write(value.`imageSha256`, buf)
+            FfiConverterString.write(value.`imageVersion`, buf)
+            FfiConverterString.write(value.`by`, buf)
+            FfiConverterBoolean.write(value.`whileLive`, buf)
+            FfiConverterString.write(value.`state`, buf)
+            FfiConverterString.write(value.`startedAt`, buf)
+            FfiConverterString.write(value.`endedAt`, buf)
+            FfiConverterSequenceTypeHubRolloutDevice.write(value.`devices`, buf)
+    }
+}
+
+
+
+/**
+ * A device after it came back (step 8).
+ */
+data class HubRolloutAfter (
+    /**
+     * Its firmware version.
+     */
+    var `fw`: kotlin.String, 
+    /**
+     * `EXT_LIST`.
+     */
+    var `extList`: List<kotlin.UShort>, 
+    /**
+     * `EXT_CORE_VREG`, where it has one.
+     */
+    var `vreg`: HubRolloutVreg?, 
+    /**
+     * Against the export: `unchanged`, `changed` or `unknown`.
+     */
+    var `settings`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubRolloutAfter: FfiConverterRustBuffer<HubRolloutAfter> {
+    override fun read(buf: ByteBuffer): HubRolloutAfter {
+        return HubRolloutAfter(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceUShort.read(buf),
+            FfiConverterOptionalTypeHubRolloutVreg.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubRolloutAfter) = (
+            FfiConverterString.allocationSize(value.`fw`) +
+            FfiConverterSequenceUShort.allocationSize(value.`extList`) +
+            FfiConverterOptionalTypeHubRolloutVreg.allocationSize(value.`vreg`) +
+            FfiConverterString.allocationSize(value.`settings`)
+    )
+
+    override fun write(value: HubRolloutAfter, buf: ByteBuffer) {
+            FfiConverterString.write(value.`fw`, buf)
+            FfiConverterSequenceUShort.write(value.`extList`, buf)
+            FfiConverterOptionalTypeHubRolloutVreg.write(value.`vreg`, buf)
+            FfiConverterString.write(value.`settings`, buf)
+    }
+}
+
+
+
+/**
+ * A device before its flash (step 3).
+ */
+data class HubRolloutBefore (
+    /**
+     * Its firmware version.
+     */
+    var `fw`: kotlin.String, 
+    /**
+     * `EXT_LIST`.
+     */
+    var `extList`: List<kotlin.UShort>, 
+    /**
+     * The lowest core voltage the board may be left on, mV (0 unknown).
+     */
+    var `requiredMv`: kotlin.UShort, 
+    /**
+     * Where that came from.
+     */
+    var `boardSource`: kotlin.String, 
+    /**
+     * `EXT_CORE_VREG`, where it has one.
+     */
+    var `vreg`: HubRolloutVreg?, 
+    /**
+     * The export's snapshot id in the hub's store; "" when none.
+     */
+    var `export`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubRolloutBefore: FfiConverterRustBuffer<HubRolloutBefore> {
+    override fun read(buf: ByteBuffer): HubRolloutBefore {
+        return HubRolloutBefore(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeHubRolloutVreg.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubRolloutBefore) = (
+            FfiConverterString.allocationSize(value.`fw`) +
+            FfiConverterSequenceUShort.allocationSize(value.`extList`) +
+            FfiConverterUShort.allocationSize(value.`requiredMv`) +
+            FfiConverterString.allocationSize(value.`boardSource`) +
+            FfiConverterOptionalTypeHubRolloutVreg.allocationSize(value.`vreg`) +
+            FfiConverterString.allocationSize(value.`export`)
+    )
+
+    override fun write(value: HubRolloutBefore, buf: ByteBuffer) {
+            FfiConverterString.write(value.`fw`, buf)
+            FfiConverterSequenceUShort.write(value.`extList`, buf)
+            FfiConverterUShort.write(value.`requiredMv`, buf)
+            FfiConverterString.write(value.`boardSource`, buf)
+            FfiConverterOptionalTypeHubRolloutVreg.write(value.`vreg`, buf)
+            FfiConverterString.write(value.`export`, buf)
+    }
+}
+
+
+
+/**
+ * One device of a rollout.
+ */
+data class HubRolloutDevice (
+    /**
+     * The device.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * `pending`, `running`, `ok`, `failed`, `cancelled`, `not_tried`.
+     */
+    var `state`: kotlin.String, 
+    /**
+     * The step it is at or ended at ("" before its first).
+     */
+    var `step`: kotlin.String, 
+    /**
+     * The steps done, in order.
+     */
+    var `steps`: List<HubRolloutStep>, 
+    /**
+     * Before its flash.
+     */
+    var `before`: HubRolloutBefore?, 
+    /**
+     * After it came back.
+     */
+    var `after`: HubRolloutAfter?, 
+    /**
+     * Why it failed.
+     */
+    var `failed`: HubRolloutFailed?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubRolloutDevice: FfiConverterRustBuffer<HubRolloutDevice> {
+    override fun read(buf: ByteBuffer): HubRolloutDevice {
+        return HubRolloutDevice(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeHubRolloutStep.read(buf),
+            FfiConverterOptionalTypeHubRolloutBefore.read(buf),
+            FfiConverterOptionalTypeHubRolloutAfter.read(buf),
+            FfiConverterOptionalTypeHubRolloutFailed.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubRolloutDevice) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`state`) +
+            FfiConverterString.allocationSize(value.`step`) +
+            FfiConverterSequenceTypeHubRolloutStep.allocationSize(value.`steps`) +
+            FfiConverterOptionalTypeHubRolloutBefore.allocationSize(value.`before`) +
+            FfiConverterOptionalTypeHubRolloutAfter.allocationSize(value.`after`) +
+            FfiConverterOptionalTypeHubRolloutFailed.allocationSize(value.`failed`)
+    )
+
+    override fun write(value: HubRolloutDevice, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`state`, buf)
+            FfiConverterString.write(value.`step`, buf)
+            FfiConverterSequenceTypeHubRolloutStep.write(value.`steps`, buf)
+            FfiConverterOptionalTypeHubRolloutBefore.write(value.`before`, buf)
+            FfiConverterOptionalTypeHubRolloutAfter.write(value.`after`, buf)
+            FfiConverterOptionalTypeHubRolloutFailed.write(value.`failed`, buf)
+    }
+}
+
+
+
+/**
+ * Why a device's part ended badly.
+ */
+data class HubRolloutFailed (
+    /**
+     * The step.
+     */
+    var `step`: kotlin.String, 
+    /**
+     * The hub's code, where a refusal had one; "" otherwise.
+     */
+    var `code`: kotlin.String, 
+    /**
+     * The hub's line.
+     */
+    var `text`: kotlin.String, 
+    /**
+     * The notice row of the code (`dlink.<code>`, `image_refused`, ...);
+     * "" without a code (then the step's row says it).
+     */
+    var `noticeKey`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubRolloutFailed: FfiConverterRustBuffer<HubRolloutFailed> {
+    override fun read(buf: ByteBuffer): HubRolloutFailed {
+        return HubRolloutFailed(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubRolloutFailed) = (
+            FfiConverterString.allocationSize(value.`step`) +
+            FfiConverterString.allocationSize(value.`code`) +
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterString.allocationSize(value.`noticeKey`)
+    )
+
+    override fun write(value: HubRolloutFailed, buf: ByteBuffer) {
+            FfiConverterString.write(value.`step`, buf)
+            FfiConverterString.write(value.`code`, buf)
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterString.write(value.`noticeKey`, buf)
+    }
+}
+
+
+
+/**
+ * One step a rollout's device went through.
+ */
+data class HubRolloutStep (
+    /**
+     * One of [`ROLLOUT_STEPS`].
+     */
+    var `step`: kotlin.String, 
+    /**
+     * When (ISO-8601 UTC).
+     */
+    var `at`: kotlin.String, 
+    /**
+     * It went through.
+     */
+    var `ok`: kotlin.Boolean, 
+    /**
+     * The hub's line (for a log); a client shows [`HubRolloutStep::notice_key`].
+     */
+    var `text`: kotlin.String, 
+    /**
+     * The session the step's device request went out as, where it has one.
+     */
+    var `session`: kotlin.UInt?, 
+    /**
+     * `rollout.<step>` ([`hub_rollout_step_notice`]).
+     */
+    var `noticeKey`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubRolloutStep: FfiConverterRustBuffer<HubRolloutStep> {
+    override fun read(buf: ByteBuffer): HubRolloutStep {
+        return HubRolloutStep(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubRolloutStep) = (
+            FfiConverterString.allocationSize(value.`step`) +
+            FfiConverterString.allocationSize(value.`at`) +
+            FfiConverterBoolean.allocationSize(value.`ok`) +
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterOptionalUInt.allocationSize(value.`session`) +
+            FfiConverterString.allocationSize(value.`noticeKey`)
+    )
+
+    override fun write(value: HubRolloutStep, buf: ByteBuffer) {
+            FfiConverterString.write(value.`step`, buf)
+            FfiConverterString.write(value.`at`, buf)
+            FfiConverterBoolean.write(value.`ok`, buf)
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterOptionalUInt.write(value.`session`, buf)
+            FfiConverterString.write(value.`noticeKey`, buf)
+    }
+}
+
+
+
+/**
+ * `EXT_CORE_VREG` as the rollout read it, mV.
+ */
+data class HubRolloutVreg (
+    /**
+     * The live setting.
+     */
+    var `liveMv`: kotlin.UShort?, 
+    /**
+     * The stored selection.
+     */
+    var `storedMv`: kotlin.UShort?, 
+    /**
+     * The build default.
+     */
+    var `defaultMv`: kotlin.UShort?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubRolloutVreg: FfiConverterRustBuffer<HubRolloutVreg> {
+    override fun read(buf: ByteBuffer): HubRolloutVreg {
+        return HubRolloutVreg(
+            FfiConverterOptionalUShort.read(buf),
+            FfiConverterOptionalUShort.read(buf),
+            FfiConverterOptionalUShort.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubRolloutVreg) = (
+            FfiConverterOptionalUShort.allocationSize(value.`liveMv`) +
+            FfiConverterOptionalUShort.allocationSize(value.`storedMv`) +
+            FfiConverterOptionalUShort.allocationSize(value.`defaultMv`)
+    )
+
+    override fun write(value: HubRolloutVreg, buf: ByteBuffer) {
+            FfiConverterOptionalUShort.write(value.`liveMv`, buf)
+            FfiConverterOptionalUShort.write(value.`storedMv`, buf)
+            FfiConverterOptionalUShort.write(value.`defaultMv`, buf)
     }
 }
 
@@ -31526,7 +33367,17 @@ data class HubServerEvent (
     /**
      * `schedule.ran`'s run.
      */
-    var `run`: HubScheduleRun?
+    var `run`: HubScheduleRun?, 
+    /**
+     * `group.changed`'s group (as it is now; as it was, for a delete);
+     * [`HubServerEvent::change`] is `set`, `delete` or `forgot`.
+     */
+    var `group`: HubGroup?, 
+    /**
+     * `fw.rollout.changed`'s whole record; [`HubServerEvent::serial`] is
+     * the device whose entry changed, where the hub says.
+     */
+    var `rollout`: HubRollout?
 ) {
     
     companion object
@@ -31546,6 +33397,8 @@ public object FfiConverterTypeHubServerEvent: FfiConverterRustBuffer<HubServerEv
             FfiConverterString.read(buf),
             FfiConverterOptionalTypeHubAlarm.read(buf),
             FfiConverterOptionalTypeHubScheduleRun.read(buf),
+            FfiConverterOptionalTypeHubGroup.read(buf),
+            FfiConverterOptionalTypeHubRollout.read(buf),
         )
     }
 
@@ -31557,7 +33410,9 @@ public object FfiConverterTypeHubServerEvent: FfiConverterRustBuffer<HubServerEv
             FfiConverterString.allocationSize(value.`snapshot`) +
             FfiConverterString.allocationSize(value.`change`) +
             FfiConverterOptionalTypeHubAlarm.allocationSize(value.`alarm`) +
-            FfiConverterOptionalTypeHubScheduleRun.allocationSize(value.`run`)
+            FfiConverterOptionalTypeHubScheduleRun.allocationSize(value.`run`) +
+            FfiConverterOptionalTypeHubGroup.allocationSize(value.`group`) +
+            FfiConverterOptionalTypeHubRollout.allocationSize(value.`rollout`)
     )
 
     override fun write(value: HubServerEvent, buf: ByteBuffer) {
@@ -31569,6 +33424,8 @@ public object FfiConverterTypeHubServerEvent: FfiConverterRustBuffer<HubServerEv
             FfiConverterString.write(value.`change`, buf)
             FfiConverterOptionalTypeHubAlarm.write(value.`alarm`, buf)
             FfiConverterOptionalTypeHubScheduleRun.write(value.`run`, buf)
+            FfiConverterOptionalTypeHubGroup.write(value.`group`, buf)
+            FfiConverterOptionalTypeHubRollout.write(value.`rollout`, buf)
     }
 }
 
@@ -39836,6 +41693,38 @@ public object FfiConverterOptionalTypeHubEventRecord: FfiConverterRustBuffer<Hub
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeHubGroup: FfiConverterRustBuffer<HubGroup?> {
+    override fun read(buf: ByteBuffer): HubGroup? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubGroup.read(buf)
+    }
+
+    override fun allocationSize(value: HubGroup?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubGroup.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubGroup?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubGroup.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeHubLastChange: FfiConverterRustBuffer<HubLastChange?> {
     override fun read(buf: ByteBuffer): HubLastChange? {
         if (buf.get().toInt() == 0) {
@@ -39922,6 +41811,166 @@ public object FfiConverterOptionalTypeHubReset: FfiConverterRustBuffer<HubReset?
         } else {
             buf.put(1)
             FfiConverterTypeHubReset.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubRollout: FfiConverterRustBuffer<HubRollout?> {
+    override fun read(buf: ByteBuffer): HubRollout? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubRollout.read(buf)
+    }
+
+    override fun allocationSize(value: HubRollout?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubRollout.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubRollout?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubRollout.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubRolloutAfter: FfiConverterRustBuffer<HubRolloutAfter?> {
+    override fun read(buf: ByteBuffer): HubRolloutAfter? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubRolloutAfter.read(buf)
+    }
+
+    override fun allocationSize(value: HubRolloutAfter?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubRolloutAfter.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubRolloutAfter?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubRolloutAfter.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubRolloutBefore: FfiConverterRustBuffer<HubRolloutBefore?> {
+    override fun read(buf: ByteBuffer): HubRolloutBefore? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubRolloutBefore.read(buf)
+    }
+
+    override fun allocationSize(value: HubRolloutBefore?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubRolloutBefore.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubRolloutBefore?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubRolloutBefore.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubRolloutFailed: FfiConverterRustBuffer<HubRolloutFailed?> {
+    override fun read(buf: ByteBuffer): HubRolloutFailed? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubRolloutFailed.read(buf)
+    }
+
+    override fun allocationSize(value: HubRolloutFailed?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubRolloutFailed.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubRolloutFailed?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubRolloutFailed.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeHubRolloutVreg: FfiConverterRustBuffer<HubRolloutVreg?> {
+    override fun read(buf: ByteBuffer): HubRolloutVreg? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeHubRolloutVreg.read(buf)
+    }
+
+    override fun allocationSize(value: HubRolloutVreg?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeHubRolloutVreg.allocationSize(value)
+        }
+    }
+
+    override fun write(value: HubRolloutVreg?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeHubRolloutVreg.write(value, buf)
         }
     }
 }
@@ -41304,6 +43353,90 @@ public object FfiConverterSequenceTypeHubEventRecord: FfiConverterRustBuffer<Lis
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeHubFirmwareImage: FfiConverterRustBuffer<List<HubFirmwareImage>> {
+    override fun read(buf: ByteBuffer): List<HubFirmwareImage> {
+        val len = buf.getInt()
+        return List<HubFirmwareImage>(len) {
+            FfiConverterTypeHubFirmwareImage.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubFirmwareImage>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubFirmwareImage.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubFirmwareImage>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubFirmwareImage.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubGroup: FfiConverterRustBuffer<List<HubGroup>> {
+    override fun read(buf: ByteBuffer): List<HubGroup> {
+        val len = buf.getInt()
+        return List<HubGroup>(len) {
+            FfiConverterTypeHubGroup.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubGroup>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubGroup.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubGroup>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubGroup.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubGroupRow: FfiConverterRustBuffer<List<HubGroupRow>> {
+    override fun read(buf: ByteBuffer): List<HubGroupRow> {
+        val len = buf.getInt()
+        return List<HubGroupRow>(len) {
+            FfiConverterTypeHubGroupRow.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubGroupRow>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubGroupRow.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubGroupRow>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubGroupRow.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeHubHealth: FfiConverterRustBuffer<List<HubHealth>> {
     override fun read(buf: ByteBuffer): List<HubHealth> {
         val len = buf.getInt()
@@ -41360,6 +43493,34 @@ public object FfiConverterSequenceTypeHubModePin: FfiConverterRustBuffer<List<Hu
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeHubOffset: FfiConverterRustBuffer<List<HubOffset>> {
+    override fun read(buf: ByteBuffer): List<HubOffset> {
+        val len = buf.getInt()
+        return List<HubOffset>(len) {
+            FfiConverterTypeHubOffset.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubOffset>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubOffset.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubOffset>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubOffset.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeHubOutboundSecret: FfiConverterRustBuffer<List<HubOutboundSecret>> {
     override fun read(buf: ByteBuffer): List<HubOutboundSecret> {
         val len = buf.getInt()
@@ -41406,6 +43567,118 @@ public object FfiConverterSequenceTypeHubOutboundTarget: FfiConverterRustBuffer<
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeHubOutboundTarget.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubPresetPick: FfiConverterRustBuffer<List<HubPresetPick>> {
+    override fun read(buf: ByteBuffer): List<HubPresetPick> {
+        val len = buf.getInt()
+        return List<HubPresetPick>(len) {
+            FfiConverterTypeHubPresetPick.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubPresetPick>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubPresetPick.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubPresetPick>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubPresetPick.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubRollout: FfiConverterRustBuffer<List<HubRollout>> {
+    override fun read(buf: ByteBuffer): List<HubRollout> {
+        val len = buf.getInt()
+        return List<HubRollout>(len) {
+            FfiConverterTypeHubRollout.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubRollout>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubRollout.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubRollout>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubRollout.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubRolloutDevice: FfiConverterRustBuffer<List<HubRolloutDevice>> {
+    override fun read(buf: ByteBuffer): List<HubRolloutDevice> {
+        val len = buf.getInt()
+        return List<HubRolloutDevice>(len) {
+            FfiConverterTypeHubRolloutDevice.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubRolloutDevice>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubRolloutDevice.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubRolloutDevice>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubRolloutDevice.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeHubRolloutStep: FfiConverterRustBuffer<List<HubRolloutStep>> {
+    override fun read(buf: ByteBuffer): List<HubRolloutStep> {
+        val len = buf.getInt()
+        return List<HubRolloutStep>(len) {
+            FfiConverterTypeHubRolloutStep.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HubRolloutStep>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHubRolloutStep.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HubRolloutStep>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHubRolloutStep.write(it, buf)
         }
     }
 }
@@ -42798,6 +45071,21 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_hub_alarm_notice(
         FfiConverterTypeHubAlarm.lower(`alarm`),FfiConverterString.lower(`time`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * What to tell the user about a rollout's step: its row `rollout.<step>`
+         * (what the step does, and what to do when it fails there). A step this
+         * build does not know gets [`NOTICE_ROLLOUT_UNKNOWN`]'s row. The detail is
+         * `text` (the hub's line). No I/O.
+         */ fun `hubRolloutStepNotice`(`step`: kotlin.String, `text`: kotlin.String): Notice {
+            return FfiConverterTypeNotice.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_hub_rollout_step_notice(
+        FfiConverterString.lower(`step`),FfiConverterString.lower(`text`),_status)
 }
     )
     }

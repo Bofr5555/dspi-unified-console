@@ -452,6 +452,36 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun hubApiKeyRevoke(cid: Long) = call { core.hubApiKeyRevoke(cid.toUInt()) }
 
+    override fun hubGroups(): List<HubGroup> = call { core.hubGroups().map { it.toDomain() } }
+
+    override fun hubGroupSet(group: HubGroup): HubGroupSet = call { core.hubGroupSet(group.toFfi()).toDomain() }
+
+    override fun hubGroupDelete(id: String) = call { core.hubGroupDelete(id) }
+
+    override fun hubGroupParamGet(target: HubFleetTarget, path: String, idx: List<Long>): HubGroupParams = call { core.hubGroupParamGet(target.toFfi(), path, idx.map { it.toUInt() }).toDomain() }
+
+    override fun hubGroupParamSet(target: HubFleetTarget, path: String, idx: List<Long>, value: ParamValue, offsets: List<HubOffset>): HubGroupParams = call { core.hubGroupParamSet(target.toFfi(), path, idx.map { it.toUInt() }, value.toFfi(), offsets.map { it.toFfi() }).toDomain() }
+
+    override fun hubGroupPresetLoad(target: HubFleetTarget, slot: Int?, name: String, map: List<HubPresetPick>): List<HubGroupRow> = call { core.hubGroupPresetLoad(target.toFfi(), slot?.let { it.toUByte() }, name, map.map { it.toFfi() }).map { it.toDomain() } }
+
+    override fun hubGroupApply(target: HubFleetTarget, snapshot: String, name: String, document: String, guard: Boolean, timeoutMs: Long): HubGroupRun = call { core.hubGroupApply(target.toFfi(), snapshot, name, document, guard, timeoutMs.toUInt()).toDomain() }
+
+    override fun hubGroupApplyConfirm(run: String): HubGroupRun = call { core.hubGroupApplyConfirm(run).toDomain() }
+
+    override fun hubGroupApplyCancel(run: String): HubGroupRun = call { core.hubGroupApplyCancel(run).toDomain() }
+
+    override fun hubFirmwareImages(): HubFirmwareImages = call { core.hubFirmwareImages().toDomain() }
+
+    override fun hubFirmwarePut(name: String, bytes: List<Int>): HubFirmwarePut = call { core.hubFirmwarePut(name, ByteArray(bytes.size) { bytes[it].toByte() }).toDomain() }
+
+    override fun hubFirmwareDelete(name: String) = call { core.hubFirmwareDelete(name) }
+
+    override fun hubRolloutStart(target: HubFleetTarget, image: String, whileLive: Boolean): HubRollout = call { core.hubRolloutStart(target.toFfi(), image, whileLive).toDomain() }
+
+    override fun hubRollouts(id: String): List<HubRollout> = call { core.hubRollouts(id).map { it.toDomain() } }
+
+    override fun hubRolloutCancel(id: String): HubRollout = call { core.hubRolloutCancel(id).toDomain() }
+
     override fun hubInventorySet(serial: String, location: String?, note: String?, tags: List<String>?): HubDevice = call { core.hubInventorySet(serial, location, note, tags).toDomain() }
 
     override fun hubInventoryForget(serial: String, withData: Boolean): HubInventoryForgot = call { core.hubInventoryForget(serial, withData).toDomain() }
@@ -893,6 +923,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun verifyBundled(image: List<Int>, name: String): BundledFirmware = se.bofr.dspi.ffi.uniffi.verifyBundled(ByteArray(image.size) { image[it].toByte() }, name).toDomain()
 
     override fun hubAlarmNotice(alarm: HubAlarm, time: String): Notice = se.bofr.dspi.ffi.uniffi.hubAlarmNotice(alarm.toFfi(), time).toDomain()
+
+    override fun hubRolloutStepNotice(step: String, text: String): Notice = se.bofr.dspi.ffi.uniffi.hubRolloutStepNotice(step, text).toDomain()
 
     override fun limitsFieldRanges(): List<LimitFieldRange> = se.bofr.dspi.ffi.uniffi.limitsFieldRanges().map { it.toDomain() }
 
@@ -3597,6 +3629,10 @@ internal fun se.bofr.dspi.ffi.uniffi.HubCaps.toDomain() =
         mqtt = mqtt,
         apiKeys = apiKeys,
         rest = rest,
+        groups = groups,
+        groupParams = groupParams,
+        groupApply = groupApply,
+        rollout = rollout,
         caps = caps,
     )
 
@@ -3616,6 +3652,10 @@ internal fun HubCaps.toFfi() =
         mqtt = mqtt,
         apiKeys = apiKeys,
         rest = rest,
+        groups = groups,
+        groupParams = groupParams,
+        groupApply = groupApply,
+        rollout = rollout,
         caps = caps,
     )
 
@@ -3835,6 +3875,8 @@ internal fun se.bofr.dspi.ffi.uniffi.HubServerEvent.toDomain() =
         change = change,
         alarm = alarm?.let { it.toDomain() },
         run = run?.let { it.toDomain() },
+        group = group?.let { it.toDomain() },
+        rollout = rollout?.let { it.toDomain() },
     )
 
 internal fun HubServerEvent.toFfi() =
@@ -3847,6 +3889,8 @@ internal fun HubServerEvent.toFfi() =
         change = change,
         alarm = alarm?.let { it.toFfi() },
         run = run?.let { it.toFfi() },
+        group = group?.let { it.toFfi() },
+        rollout = rollout?.let { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HubSnapshotDocument.toDomain() =
@@ -4311,6 +4355,334 @@ internal fun HubApiKeyMinted.toFfi() =
         role = role,
         plaintextOk = plaintextOk,
         key = (key as FfiHubSecret).inner,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubGroup.toDomain() =
+    HubGroup(
+        id = id,
+        name = name,
+        note = note,
+        members = members,
+    )
+
+internal fun HubGroup.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubGroup(
+        id = id,
+        name = name,
+        note = note,
+        members = members,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubGroupSet.toDomain() =
+    HubGroupSet(
+        group = group.toDomain(),
+        created = created,
+    )
+
+internal fun HubGroupSet.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubGroupSet(
+        group = group.toFfi(),
+        created = created,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubFleetTarget.toDomain() =
+    HubFleetTarget(
+        group = group,
+        serials = serials,
+    )
+
+internal fun HubFleetTarget.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubFleetTarget(
+        group = group,
+        serials = serials,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubOffset.toDomain() =
+    HubOffset(
+        serial = serial,
+        db = db,
+    )
+
+internal fun HubOffset.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubOffset(
+        serial = serial,
+        db = db,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubPresetPick.toDomain() =
+    HubPresetPick(
+        serial = serial,
+        slot = slot?.let { it.toInt() },
+        name = name,
+    )
+
+internal fun HubPresetPick.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubPresetPick(
+        serial = serial,
+        slot = slot?.let { it.toUByte() },
+        name = name,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubGroupRow.toDomain() =
+    HubGroupRow(
+        serial = serial,
+        ok = ok,
+        code = code,
+        msg = msg,
+        noticeKey = noticeKey,
+        limit = limit,
+        value = value?.let { it.toDomain() },
+        choice = choice,
+        valueB64 = valueB64,
+        clamped = clamped,
+        slot = slot?.let { it.toInt() },
+        name = name,
+        image = image,
+        lines = lines,
+        notes = notes,
+        guard = guard?.let { it.toLong() },
+        reverted = reverted,
+    )
+
+internal fun HubGroupRow.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubGroupRow(
+        serial = serial,
+        ok = ok,
+        code = code,
+        msg = msg,
+        noticeKey = noticeKey,
+        limit = limit,
+        value = value?.let { it.toFfi() },
+        choice = choice,
+        valueB64 = valueB64,
+        clamped = clamped,
+        slot = slot?.let { it.toUByte() },
+        name = name,
+        image = image,
+        lines = lines,
+        notes = notes,
+        guard = guard?.let { it.toULong() },
+        reverted = reverted,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubGroupParams.toDomain() =
+    HubGroupParams(
+        path = path,
+        idx = idx.map { it.toLong() },
+        results = results.map { it.toDomain() },
+    )
+
+internal fun HubGroupParams.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubGroupParams(
+        path = path,
+        idx = idx.map { it.toUInt() },
+        results = results.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubGroupRun.toDomain() =
+    HubGroupRun(
+        run = run,
+        confirmBy = confirmBy,
+        msg = msg,
+        results = results.map { it.toDomain() },
+    )
+
+internal fun HubGroupRun.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubGroupRun(
+        run = run,
+        confirmBy = confirmBy,
+        msg = msg,
+        results = results.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubFirmwareImage.toDomain() =
+    HubFirmwareImage(
+        name = name,
+        size = size.toLong(),
+        sha256 = sha256,
+        firmwareVersion = firmwareVersion,
+        platform = platform,
+        stampMv = stampMv?.let { it.toInt() },
+        verified = verified,
+        addedAt = addedAt,
+        addedBy = addedBy,
+    )
+
+internal fun HubFirmwareImage.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubFirmwareImage(
+        name = name,
+        size = size.toULong(),
+        sha256 = sha256,
+        firmwareVersion = firmwareVersion,
+        platform = platform,
+        stampMv = stampMv?.let { it.toUShort() },
+        verified = verified,
+        addedAt = addedAt,
+        addedBy = addedBy,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubFirmwareImages.toDomain() =
+    HubFirmwareImages(
+        images = images.map { it.toDomain() },
+        maxImages = maxImages.toLong(),
+        maxBytes = maxBytes.toLong(),
+    )
+
+internal fun HubFirmwareImages.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubFirmwareImages(
+        images = images.map { it.toFfi() },
+        maxImages = maxImages.toUInt(),
+        maxBytes = maxBytes.toULong(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubFirmwarePut.toDomain() =
+    HubFirmwarePut(
+        image = image.toDomain(),
+        created = created,
+    )
+
+internal fun HubFirmwarePut.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubFirmwarePut(
+        image = image.toFfi(),
+        created = created,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubRolloutStep.toDomain() =
+    HubRolloutStep(
+        step = step,
+        at = at,
+        ok = ok,
+        text = text,
+        session = session?.let { it.toLong() },
+        noticeKey = noticeKey,
+    )
+
+internal fun HubRolloutStep.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubRolloutStep(
+        step = step,
+        at = at,
+        ok = ok,
+        text = text,
+        session = session?.let { it.toUInt() },
+        noticeKey = noticeKey,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubRolloutVreg.toDomain() =
+    HubRolloutVreg(
+        liveMv = liveMv?.let { it.toInt() },
+        storedMv = storedMv?.let { it.toInt() },
+        defaultMv = defaultMv?.let { it.toInt() },
+    )
+
+internal fun HubRolloutVreg.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubRolloutVreg(
+        liveMv = liveMv?.let { it.toUShort() },
+        storedMv = storedMv?.let { it.toUShort() },
+        defaultMv = defaultMv?.let { it.toUShort() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubRolloutBefore.toDomain() =
+    HubRolloutBefore(
+        fw = fw,
+        extList = extList.map { it.toInt() },
+        requiredMv = requiredMv.toInt(),
+        boardSource = boardSource,
+        vreg = vreg?.let { it.toDomain() },
+        export = export,
+    )
+
+internal fun HubRolloutBefore.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubRolloutBefore(
+        fw = fw,
+        extList = extList.map { it.toUShort() },
+        requiredMv = requiredMv.toUShort(),
+        boardSource = boardSource,
+        vreg = vreg?.let { it.toFfi() },
+        export = export,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubRolloutAfter.toDomain() =
+    HubRolloutAfter(
+        fw = fw,
+        extList = extList.map { it.toInt() },
+        vreg = vreg?.let { it.toDomain() },
+        settings = settings,
+    )
+
+internal fun HubRolloutAfter.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubRolloutAfter(
+        fw = fw,
+        extList = extList.map { it.toUShort() },
+        vreg = vreg?.let { it.toFfi() },
+        settings = settings,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubRolloutFailed.toDomain() =
+    HubRolloutFailed(
+        step = step,
+        code = code,
+        text = text,
+        noticeKey = noticeKey,
+    )
+
+internal fun HubRolloutFailed.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubRolloutFailed(
+        step = step,
+        code = code,
+        text = text,
+        noticeKey = noticeKey,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubRolloutDevice.toDomain() =
+    HubRolloutDevice(
+        serial = serial,
+        state = state,
+        step = step,
+        steps = steps.map { it.toDomain() },
+        before = before?.let { it.toDomain() },
+        after = after?.let { it.toDomain() },
+        failed = failed?.let { it.toDomain() },
+    )
+
+internal fun HubRolloutDevice.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubRolloutDevice(
+        serial = serial,
+        state = state,
+        step = step,
+        steps = steps.map { it.toFfi() },
+        before = before?.let { it.toFfi() },
+        after = after?.let { it.toFfi() },
+        failed = failed?.let { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubRollout.toDomain() =
+    HubRollout(
+        id = id,
+        target = target,
+        image = image,
+        imageSha256 = imageSha256,
+        imageVersion = imageVersion,
+        by = by,
+        whileLive = whileLive,
+        state = state,
+        startedAt = startedAt,
+        endedAt = endedAt,
+        devices = devices.map { it.toDomain() },
+    )
+
+internal fun HubRollout.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubRollout(
+        id = id,
+        target = target,
+        image = image,
+        imageSha256 = imageSha256,
+        imageVersion = imageVersion,
+        by = by,
+        whileLive = whileLive,
+        state = state,
+        startedAt = startedAt,
+        endedAt = endedAt,
+        devices = devices.map { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HubInventoryForgot.toDomain() =

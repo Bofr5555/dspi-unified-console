@@ -2430,6 +2430,17 @@ impl DspiCore {
         t: &str,
         fields: serde_json::Map<String, serde_json::Value>,
     ) -> Result<serde_json::Value> {
+        self.link_hub_request_within(t, fields, HUB_REQUEST_TIMEOUT)
+    }
+
+    // -- WP P3CC -- a group request answers after its last member
+    /// [`Self::link_hub_request`] waiting up to `timeout` for the answer.
+    pub(crate) fn link_hub_request_within(
+        &self,
+        t: &str,
+        fields: serde_json::Map<String, serde_json::Value>,
+        timeout: Duration,
+    ) -> Result<serde_json::Value> {
         let client = {
             let mut inner = self.lock();
             let client = inner
@@ -2442,9 +2453,7 @@ impl DspiCore {
             crate::read_only::check_hub_request(&mut inner, t)?;
             client
         };
-        client
-            .request_json(t, fields, HUB_REQUEST_TIMEOUT)
-            .map_err(map_error)
+        client.request_json(t, fields, timeout).map_err(map_error)
     }
 
     /// The role the hub gave this session (`viewer`, `control`, `admin`); ""

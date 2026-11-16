@@ -56,7 +56,7 @@ pub const CAP_REST: &str = "rest";
 
 /// Every alarm code the hub raises: the device's (section 7) and the audio
 /// link's (`audio-link.md`). Each has a notice row `alarm.<code>`.
-pub const ALARM_CODES: [&str; 18] = [
+pub const ALARM_CODES: [&str; 19] = [
     "device_offline",
     "unresponsive",
     "device_restarted",
@@ -75,6 +75,8 @@ pub const ALARM_CODES: [&str; 18] = [
     "usb_realign_failed",
     "usb_setting_restored",
     "usb_realigned",
+    // -- WP P3CC -- the firmware rollout's (hub-api.md section 21.3)
+    "rollout_failed",
 ];
 
 /// The notice rows' family: `alarm.<code>`.

@@ -82,6 +82,8 @@ mod hub_server;
 mod hub_server_admin;
 // -- WP P2CC3 -- the hub's device and name writes
 mod hub_server_manage;
+// -- WP P3CC -- the hub's fleet families (groups, group writes, bulk apply, rollout)
+mod hub_server_fleet;
 // -- WP CG-SWS-a --
 mod sws_a;
 // -- WP CG-SWS-b -- the pin map
