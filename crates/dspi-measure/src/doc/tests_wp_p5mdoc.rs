@@ -888,18 +888,50 @@ fn small_measurement_text() -> String {
 fn every_reader(text: &str) {
     let _ = doc_kind(text);
     if let Ok(d) = MeasurementDoc::from_text(text) {
-        let t = d.to_text().unwrap();
-        assert_eq!(MeasurementDoc::from_text(&t).unwrap(), d);
+        let back = MeasurementDoc::from_text(&d.to_text().unwrap()).unwrap();
+        assert!(same_doc(&back, &d));
     }
     if let Ok(d) = MicDoc::from_text(text) {
-        assert_eq!(MicDoc::from_text(&d.to_text().unwrap()).unwrap(), d);
+        let back = MicDoc::from_text(&d.to_text().unwrap()).unwrap();
+        assert!(same_doc(&back, &d));
     }
     if let Ok(d) = TargetDoc::from_text(text) {
-        assert_eq!(TargetDoc::from_text(&d.to_text().unwrap()).unwrap(), d);
+        let back = TargetDoc::from_text(&d.to_text().unwrap()).unwrap();
+        assert!(same_doc(&back, &d));
     }
     if let Ok(d) = MeasureDocument::from_text(text) {
         assert!(d.to_text().is_ok());
     }
+}
+
+/// Equal as JSON, numbers to 1e-12 relative: serde_json's parser (without
+/// its `float_roundtrip` feature) may read an extreme decimal one ulp off.
+/// Curves are integers and compare exactly.
+fn same_doc<T: Serialize>(a: &T, b: &T) -> bool {
+    fn same(a: &Value, b: &Value) -> bool {
+        match (a, b) {
+            (Value::Number(x), Value::Number(y)) => match (x.as_f64(), y.as_f64()) {
+                (Some(x), Some(y)) => x == y || (x - y).abs() <= 1e-12 * x.abs().max(y.abs()),
+                _ => x == y,
+            },
+            (Value::Array(x), Value::Array(y)) => {
+                x.len() == y.len() && x.iter().zip(y).all(|(x, y)| same(x, y))
+            }
+            (Value::Object(x), Value::Object(y)) => {
+                x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| same(v, w)))
+            }
+            _ => a == b,
+        }
+    }
+    let (a, b) = (
+        serde_json::to_value(a).unwrap(),
+        serde_json::to_value(b).unwrap(),
+    );
+    let ok = same(&a, &b);
+    if !ok {
+        eprintln!("differ:\n{a}\n{b}");
+    }
+    ok
 }
 
 /// A JSON value proptest picks to put in place of a field.
@@ -942,8 +974,6 @@ fn paths(v: &Value, at: String, out: &mut Vec<String>) {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(256))]
-
     /// Byte-level mutations of a valid document: replaced bytes, a cut, an
     /// inserted run.
     #[test]
@@ -1059,4 +1089,38 @@ proptest! {
         prop_assert!(finite || !ok);
         prop_assert_eq!(ok, d.to_text().is_ok());
     }
+}
+
+// ── the contract's examples ───────────────────────────────────────────────
+
+/// Every JSON example in `docs/integrator/measurement.md` reads: the documents
+/// as their kind, the bare curve as a curve with the values the page states.
+#[test]
+fn wp_p5mdoc_the_contract_examples_read() {
+    let page = include_str!("../../../../docs/integrator/measurement.md");
+    let blocks: Vec<&str> = page
+        .split("```json\n")
+        .skip(1)
+        .filter_map(|b| b.split("```").next())
+        .collect();
+    assert_eq!(blocks.len(), 4, "the curve and one document of each kind");
+    let mut kinds = Vec::new();
+    for b in blocks {
+        if b.contains("\"schemaVersion\"") {
+            let d = MeasureDocument::from_text(b).unwrap_or_else(|e| panic!("{e}: {b}"));
+            kinds.push(d.kind());
+        } else {
+            let c: Curve = serde_json::from_str(b).unwrap();
+            assert!(close(&c.mag_db[..3], &[80.0, 82.52, 82.73], 1e-9));
+            assert!(close(
+                &c.phase_deg.unwrap()[..3],
+                &[0.0, -36.0, -72.0],
+                1e-9
+            ));
+            let v = c.valid.unwrap();
+            assert!(!v[0] && v[1..].iter().all(|x| *x));
+            assert!(c.spl);
+        }
+    }
+    assert_eq!(kinds, DocKind::ALL);
 }

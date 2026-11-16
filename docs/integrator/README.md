@@ -30,6 +30,7 @@ Licensing of the software described here: see [`NOTICE.md`](../../NOTICE.md).
 | [limits-profiles.md](limits-profiles.md) | Limits profiles: ranges an installation locks down (PRO1 S1) | built (P1LM) |
 | [installer-lock.md](installer-lock.md) | The installer's PIN, the locked-user state and the mode manifest (PRO1 S4, U7) | built (P1LK) |
 | [read-only-mode.md](read-only-mode.md) | The client read-only mode: a diagnostic that refuses every write in the core, not a security boundary (WP ROMODE) | built |
+| [measurement.md](measurement.md) | Measurement and auto-tune (PRO phase 5): the signal path through the device's generator, the safety rules, placements and couplers, the auto-tune's steps, the `measurement`, `mic` and `target` documents and their compact curves, the hub's store (WP P5MDOC) | draft; the documents (section 7) built |
 
 ## Ways in, today
 

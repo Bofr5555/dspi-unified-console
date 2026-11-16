@@ -46,6 +46,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 19 | [Groups](#19-groups) | `group.list`, `group.set`, `group.delete`, `group.changed`; `group:<id>` schedule targets | `groups` | P3GR; text P3DOC | built (P3GR; text P3DOC) |
 | 20 | [Group writes and bulk apply](#20-group-writes-and-bulk-apply) | `group.param.*`, `group.preset.load`, `group.apply*` | `group_params`, `group_apply` | P3GP (20.2), P3BA (20.3); text P3DOC | built (P3GP, P3BA; text P3DOC) |
 | 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | built (P3RO; the writer P3PB) |
+| 22 | [Measurement documents](#22-measurement-documents) | `measure.doc.*` | `hub_measure` | P5HUB; text P5MDOC | draft |
 
 ---
 
@@ -1393,6 +1394,14 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `fw.rollout.status` | request, TLS only | viewer | `rollout` | 21.3 (built: P3RO) |
 | `fw.rollout.cancel` | request, TLS only | admin | `rollout` | 21.3 (built: P3RO) |
 | `fw.rollout.changed` | event, encrypted sessions only | | `rollout`, `serial`, `step` | 21.3 (built: P3RO; `serial`, `step`: P3CC) |
+<!-- WP P5MDOC: phase 5's rows, draft until P5HUB builds them -->
+| `measure.doc.list` | request | viewer | `hub_measure` | 22.2 (draft: P5HUB) |
+| `measure.doc.get` | request | viewer | `hub_measure` | 22.2 (draft: P5HUB) |
+| `measure.doc.put` | request | control | `hub_measure` | 22.2 (draft: P5HUB) |
+| `measure.doc.rename` | request | control | `hub_measure` | 22.2 (draft: P5HUB) |
+| `measure.doc.note` | request | control | `hub_measure` | 22.2 (draft: P5HUB) |
+| `measure.doc.delete` | request | admin | `hub_measure` | 22.2 (draft: P5HUB) |
+| `measure.doc.changed` | event | | `hub_measure` | 22.2 (draft: P5HUB) |
 
 ## 19. Groups
 
@@ -1805,3 +1814,62 @@ What the code does where the text above leaves room, or is stricter than it:
   `alarm.rules.set` says. Each step has a notice row `rollout.<step>` (`hub_rollout_step_notice`).
 - **The core's calls (P3CC):** `dspi_core::hub_server::fleet` has a typed call for every message of sections 19 to 21
   (`hub_groups`, `hub_group_set`, ..., `hub_rollout_cancel`), through C, UniFFI and the web binding.
+
+---
+
+## 22. Measurement documents
+
+*State: draft (P5HUB builds it, `crates/dspi-hub/src/measurements.rs`; text WP P5MDOC). PRO phase 5
+([`docs/core-merge/PLAN-P5.md`](../core-merge/PLAN-P5.md)): measurement and auto-tune. The documents themselves are
+[measurement.md section 7](measurement.md#7-the-documents); this section is only how the hub keeps and serves them.*
+
+### 22.1 What the hub keeps
+
+The hub's shared copy of the three measurement kinds (`meta.kind` `measurement`, `mic`, `target`), in `measurements/` in
+its `--store` folder, in the client store's own format (P5DOCK: a folder per serial for measurements, `mic/` and `target/`
+folders, an `index.json` cache rebuilt from the documents). The rules are the snapshot store's (section 11.1):
+
+- **The hub's copy wins:** a client that holds the same id with different content shows the hub's and keeps its own as
+  a local copy; nothing is overwritten silently. The core's `measure_docs` merges the hub's list with the local one, the
+  hub's winning.
+- **The id is the client's**, taken from the document's block (`measurement.id`, `mic.id`, `target.id`) and kept; the hub
+  never makes one. A document without an id, or with one the store would not make, is `bad_request`.
+- **Bounds:** a `measurement` document at most 1 MiB, a `mic` or `target` at most 256 KiB, measured as filed
+  (pretty-printed); 100 measurements a device, 32 microphones, 64 targets, 64 MiB in all. A cap reached is `conflict`.
+  Names (at most 256 characters) and notes (at most 4096) take any Unicode.
+- **The hub reads each document with `dspi_measure::doc`'s readers**: a document of another kind, schema or shape, or
+  one past its bounds, is `bad_request`; a measurement is filed under its own `serial`. A stored file that no longer
+  reads is set aside by the corrupt-file rule (section 1.8).
+- **The hub acts on no document:** it never writes a device from one, never measures (the microphone is the client's),
+  and adds no write of its own. No REST mirror in this phase.
+
+### 22.2 Messages
+
+`doc` is a document's store id; `id` is the request id, as on every message. An entry is the index's own object:
+`{doc, kind, name, note, serial, savedMs, bytes}` (`serial` empty for a `mic` or `target`).
+
+| `t` | Role | Request | Answer |
+|---|---|---|---|
+| `measure.doc.list` | viewer | `kind`; `serial` (measurements: required) | `kind`, `serial`, `docs`: entries, oldest first |
+| `measure.doc.get` | viewer | `doc`; `seq` for a later part | `doc`: the entry, `document` (compact JSON text), or its parts (below) |
+| `measure.doc.put` | control | `document` (its text or the JSON object), or its parts | `doc`: the entry, `created` (`false` when the hub already held it with the same content) |
+| `measure.doc.rename` | control | `doc`, `name` | `doc`: the entry |
+| `measure.doc.note` | control | `doc`, `note` | `doc`: the entry |
+| `measure.doc.delete` | admin | `doc` | `kind`, `serial`, `doc`: the id |
+
+- **Event** to every session: `measure.doc.changed {v, hub, kind, serial?, doc, change}` (`change`: `put`, `rename`,
+  `note`, `delete`).
+- **Large documents (draft; P5HUB measures the DSPi Link frame limit and settles it).** A snapshot is at most 61 440
+  bytes compact on the wire (section 11.1); a measurement may be up to 1 MiB. A document whose compact form is larger
+  is sent in parts: each `get` answer carries `seq` (from 0), `last` (true on the final part) and `part` (a slice of the
+  compact text), and the client asks for the next with `measure.doc.get {doc, seq}`; a `put` sends `seq`, `last` and
+  `part` the same way, at most one upload per session, the document checked only when whole. A three-way stereo
+  measurement is about 81 KB compact: two parts.
+- **Errors** are this page's codes (section 1.6), no new one: `bad_request` (not such a document, a bound, a part out of
+  order), `not_found` (an unknown `doc`), `conflict` (an id the hub holds with different content or for another device,
+  a cap reached), `denied` (the role).
+- **Without the cap** (an upstream Weeb Labs hub, or ours before P5HUB) every `hub_measure_*` core call is `Unsupported`
+  and sends nothing; documents stay in the client's own store.
+- **The core's calls (P5HUB):** `hub_measure_docs`, `hub_measure_doc_get`, `hub_measure_doc_put`,
+  `hub_measure_doc_rename`, `hub_measure_doc_note`, `hub_measure_doc_delete`, through C, UniFFI and the web binding.
+- **Diagnostics:** the bundle carries the store's index only (names, kinds, serials and sizes), never a document's curves.
