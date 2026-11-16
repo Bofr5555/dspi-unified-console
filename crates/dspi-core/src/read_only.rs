@@ -147,6 +147,10 @@ pub(crate) fn check_hub_request(inner: &mut Inner, t: &str) -> Result<()> {
     if crate::hub_server::HUB_SERVER_READS.contains(&t) {
         return Ok(());
     }
+    // -- WP P3WGR -- settling a bulk apply's run (keep or revert what it wrote)
+    if crate::hub_server::HUB_SERVER_SETTLES.contains(&t) {
+        return Ok(());
+    }
     refuse(inner)
 }
 
@@ -249,3 +253,7 @@ impl DspiCore {
 #[path = "read_only/tests_wp_romode.rs"]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_romode;
+// -- WP P3WGR --
+#[cfg(test)]
+#[path = "read_only/tests_wp_p3wgr.rs"]
+mod tests_wp_p3wgr;
