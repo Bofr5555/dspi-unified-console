@@ -595,7 +595,7 @@ An alarm in this family:
 | `cpu` | warning | at or above `above_pct` for `for_s` | a reading under it, or detached | on, `above_pct` 90, `for_s` 10 |
 | `schedule_failed` | warning | a schedule's run with a failed action (`subject` the rule's id) | acknowledged | on |
 | `clock_unset` | warning | the hub's clock reads before its build date (2026-11-15 in this build); schedules wait | the clock is set | on |
-| `rollout_failed` | critical | a device's firmware rollout failed (section 21.3; `message` names the step) | a later rollout of the device ends `ok`, or the device attaches with the image's firmware (not after a failed verify: then only a rollout that ends `ok`); acknowledging keeps it on | always on: it has no rule, and `alarm.rules.*` do not list it (P3RO) |
+| `rollout_failed` | critical | a device's firmware rollout failed (section 21.3; `message` names the step) | a later rollout of the device ends `ok`, or the device attaches with the image's firmware (not after a failed verify: then only a rollout that ends `ok`); acknowledging keeps it on | always on: `alarm.rules.get` lists it (P3CC), and `alarm.rules.set` cannot turn its `on` off |
 
 Rules: `{"<code>": {"on": bool, ...thresholds}, "clip": {"on": true, "per_minute": 10, "mute_on_storm": false}, ...}`
 with the fields the table names: `after_s` (1 to 86400), `per_minute` (1 to 1000), `above_c` (0 to 150),
@@ -1337,7 +1337,7 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `fw.rollout.start` | request, TLS only | admin | `rollout` | 21.3 (built: P3RO) |
 | `fw.rollout.status` | request, TLS only | viewer | `rollout` | 21.3 (built: P3RO) |
 | `fw.rollout.cancel` | request, TLS only | admin | `rollout` | 21.3 (built: P3RO) |
-| `fw.rollout.changed` | event, encrypted sessions only | | `rollout` | 21.3 (built: P3RO) |
+| `fw.rollout.changed` | event, encrypted sessions only | | `rollout`, `serial`, `step` | 21.3 (built: P3RO; `serial`, `step`: P3CC) |
 
 ## 19. Groups
 
@@ -1631,7 +1631,9 @@ An image:
 | `fw.rollout.status` | viewer | `rollout?` (an id) | `rollouts`: the records, newest first (64 kept), or the one asked (`not_found` otherwise) |
 | `fw.rollout.cancel` | admin | `rollout` | `rollout`: the record as it is now |
 
-Event to every encrypted session: `fw.rollout.changed {v, hub, rollout}`, the whole record, at every step.
+Event to every encrypted session: `fw.rollout.changed {v, hub, rollout, serial?, step?}`, the whole record, at every
+step; `serial` and `step` (P3CC) name the device whose entry changed (the one running, else the last one that ran) and
+its step, so a client need not compare records.
 
 `fw.rollout.start` answers after steps 1 and 2 of its first device (a few hundred milliseconds). A refused start
 answers its code, touches nothing, leaves no record and raises no alarm. After `ok` the rollout runs on its own:
@@ -1743,5 +1745,8 @@ What the code does where the text above leaves room, or is stricter than it:
   `picoboot_flash_confirmed` (tests inject fakes there). `serves_tls` is set by the hub from its TLS mode.
   `dspi_hub::rollout::images::add_file` is the image store's way in from the hub's machine (P3TM's
   `uconsole hub firmware add`), with the upload's checks.
-- **Not yet in the core's lists:** `rollout_failed` has no row in the core's `ALARM_CODES` and notices
-  (`alarm.rollout_failed`) until P3CC adds them; it is therefore kept out of `device_alarms::CODES` and the rules.
+- **In the core's lists (P3CC):** `rollout_failed` is in the core's `ALARM_CODES` with its notice row
+  `alarm.rollout_failed`, and in `device_alarms::CODES`, so `alarm.rules.get` lists it; its `on` stays true whatever
+  `alarm.rules.set` says. Each step has a notice row `rollout.<step>` (`hub_rollout_step_notice`).
+- **The core's calls (P3CC):** `dspi_core::hub_server::fleet` has a typed call for every message of sections 19 to 21
+  (`hub_groups`, `hub_group_set`, ..., `hub_rollout_cancel`), through C, UniFFI and the web binding.
