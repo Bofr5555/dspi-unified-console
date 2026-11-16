@@ -275,7 +275,9 @@ fn fft(x: &[f64], n: usize) -> Vec<C64> {
     let mut buf: Vec<C64> = (0..n)
         .map(|i| C64::new(*x.get(i).unwrap_or(&0.0), 0.0))
         .collect();
-    FftPlanner::new().plan_fft_forward(n).process(&mut buf);
+    FftPlannerScalar::new()
+        .plan_fft_forward(n)
+        .process(&mut buf);
     buf
 }
 

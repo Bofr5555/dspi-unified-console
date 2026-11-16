@@ -53,7 +53,7 @@
 use std::sync::Arc;
 
 use rustfft::num_complex::Complex;
-use rustfft::{Fft, FftPlanner};
+use rustfft::{Fft, FftPlannerScalar};
 
 use crate::stimulus::{GeneratorStatus, WalkSchedule};
 use crate::types::{LogGrid, MeasureError};
@@ -89,6 +89,9 @@ const SNIPPET_MS: f64 = 10.0;
 const XCORR_UPSAMPLE: usize = 16;
 /// Half-width of the band-limited interpolator of [`ImpulseResponse::peak_index`].
 const INTERP_HALF: i64 = 16;
+/// Where a response's onset is taken: the first sample whose magnitude reaches
+/// this fraction of the largest ([`ImpulseResponse::onset_index`]).
+pub const ONSET_FRACTION: f64 = 0.3;
 /// The most frequencies one windowed response is evaluated at.
 const MAX_WINDOW_FREQS: usize = 4 * crate::types::MAX_GRID_POINTS;
 /// The longest frequency-dependent window, samples (bounds its cost).
@@ -343,6 +346,9 @@ pub struct OutputIr {
     pub ir: ImpulseResponse,
     /// The response's peak, a fractional index into `ir.samples`.
     pub peak_index: f64,
+    /// The response's onset ([`ImpulseResponse::onset_index`]), a fractional
+    /// index into `ir.samples`: the centre for its windows.
+    pub onset_index: f64,
     /// The peak's arrival after the run's earliest output, ms.
     pub arrival_ms: f64,
     /// Repeats averaged.
@@ -486,7 +492,9 @@ struct Fourier {
 
 impl Fourier {
     fn new(n: usize) -> Fourier {
-        let mut planner = FftPlanner::new();
+        // Scalar only (review RC10): no run-time SIMD choice, whatever
+        // features another crate of the build switches on in `rustfft`.
+        let mut planner = FftPlannerScalar::new();
         let fwd = planner.plan_fft_forward(n);
         let inv = planner.plan_fft_inverse(n);
         let len = fwd
@@ -722,6 +730,45 @@ impl ImpulseResponse {
         let any = self.samples.iter().any(|v| *v != 0.0);
         (any && p.is_finite()).then_some(p)
     }
+
+    // -- review P5-A --
+    /// The response's onset: the fractional index at which `|h|` first
+    /// reaches [`ONSET_FRACTION`] of its largest value (linear between
+    /// samples); `None` for an empty or silent response.
+    ///
+    /// **The centre for a window** ([`fdw_response`], [`fixed_gate`]). The
+    /// peak of a band-limited response (a mid-range between two crossover
+    /// filters) sits on one of several lobes of nearly equal height, and
+    /// noise decides which: the peak then jumps by half a period of the
+    /// band's centre from one run to the next, a window centred on it cuts
+    /// into the lobes before it, and the measured phase through a transition
+    /// changes with it. The onset does not jump.
+    pub fn onset_index(&self) -> Option<f64> {
+        let max = self
+            .samples
+            .iter()
+            .map(|v| v.abs())
+            .filter(|v| v.is_finite())
+            .fold(0.0, f64::max);
+        if max <= 0.0 {
+            return None;
+        }
+        let threshold = ONSET_FRACTION * max;
+        let i = self.samples.iter().position(|v| v.abs() >= threshold)?;
+        let Some(before) = i.checked_sub(1).and_then(|j| self.samples.get(j)) else {
+            return Some(0.0);
+        };
+        let (a, b) = (
+            before.abs(),
+            self.samples.get(i).map_or(threshold, |v| v.abs()),
+        );
+        let frac = if b > a {
+            ((threshold - a) / (b - a)).clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        Some(i as f64 - 1.0 + frac)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -883,7 +930,9 @@ fn dft_at(h: &[f64], from: usize, to: usize, zero: usize, f: f64, w: impl Fn(usi
 }
 
 /// The frequency-dependent window (FDW): at each frequency a window
-/// `cycles / f` long around `centre`, a quarter of it before (half-Hann rise)
+/// `cycles / f` long around `centre` (the response's onset,
+/// [`ImpulseResponse::onset_index`]; not its peak, which jumps between the
+/// lobes of a band-limited response), a quarter of it before (half-Hann rise)
 /// and three quarters after (half-Hann fall), at most the response and at least
 /// 16 samples long. [`ALIGNMENT_WINDOW_CYCLES`] and [`FIT_WINDOW_CYCLES`] are
 /// the plan's two uses. Phase is relative to the response's `zero_index`.
@@ -1810,6 +1859,7 @@ impl WalkedAnalyser {
                 output,
                 ir,
                 peak_index: peak,
+                onset_index: 0.0,
                 arrival_ms: 0.0,
                 repeats,
                 noise_db,
@@ -1836,6 +1886,7 @@ impl WalkedAnalyser {
                 o.ir.samples = shift_left(&o.ir.samples, delta);
                 o.peak_index -= delta;
             }
+            o.onset_index = o.ir.onset_index().unwrap_or(o.peak_index);
         }
         if repeats < self.options.min_passes_reliable {
             self.reasons.push(format!(
