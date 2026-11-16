@@ -13,6 +13,8 @@ import { HubFeed, type HubView, type Said } from "./feed";
 import { alarmSummary, alarmTitle, deviceRows, durationText, rowActions, shortTime, tagsFrom, type HubRow } from "./model";
 import { useSessionState } from "../../ui/components";
 import { HealthBoard } from "./HealthBoard"; // -- WP P3WHB --
+import { Rollout } from "./Rollout"; // -- WP P3WRO --
+import { rolloutShown } from "./rollout-model"; // -- WP P3WRO --
 
 /** The screen's entry (screens.tsx shows it when `hubScreenShown`). */
 export const HUB_SCREEN_ID = "hub";
@@ -40,6 +42,9 @@ export const HubScreen: FunctionComponent<ScreenProps> = (props) => {
       {/* -- SEC hook (SECWEB, PLAN-SEC section 6) -- the "unencrypted" banner and the hub's fingerprint go here */}
       <HubDevices feed={feed} view={view} props={props} />
       {/* -- WP P3WHB -- */ view.caps?.health ? <HealthBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} /> : null}
+      {/* -- WP P3WRO -- the firmware rollout: an Admin's, on a hub with the `rollout` cap */ rolloutShown(view.caps, view.role) ? (
+        <Rollout session={props.session} hub={feed} view={view} ask={props.ask} readOnly={props.session.readOnlyReason} />
+      ) : null}
       {view.caps?.alarms ? <AlarmBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} /> : null}
       {/* -- WP P2WB3 -- */}
       {view.caps?.hubStats && view.role === "admin" && !props.session.readOnlyReason ? <HubName feed={feed} name={hubName} /> : null}

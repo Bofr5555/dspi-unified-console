@@ -1218,3 +1218,30 @@
 /* -- WP WBCLIP -- the EQ screen's channel menu: as the tools beside it, opening rightwards from its button */
 .dspi-web .eq-tools > .menu > button { line-height: 20px; padding-top: 5px; padding-bottom: 5px; }
 .dspi-web .eq-tools > .menu [role="menu"] { right: auto; left: 0; }
+
+/* -- WP P3WRO -- the firmware rollout on the hub screen: images, the start row, each rollout's steps */
+.dspi-web .hub-rollout { min-width: 0; }
+.dspi-web .hub-rollout h3 { margin: 1rem 0 0.25rem; font-size: 1rem; }
+.dspi-web .hub-rollout-tls, .dspi-web .hub-rollout-alarm { margin: 0.5rem 0; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid var(--bad); overflow-wrap: anywhere; }
+.dspi-web .hub-image-verified.ok { color: var(--ok); }
+.dspi-web .hub-image-verified.warn { color: var(--warn); }
+.dspi-web .hub-images td.hub-image-name { overflow-wrap: anywhere; }
+.dspi-web .hub-rollout-upload, .dspi-web .hub-rollout-start, .dspi-web .hub-rollout-cancel { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-top: 0.5rem; }
+.dspi-web .hub-rollout-start label { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; max-width: 100%; }
+.dspi-web .hub-rollout-start select { max-width: 100%; }
+.dspi-web .hub-rollout-progress { display: inline-flex; align-items: center; gap: 0.5rem; overflow-wrap: anywhere; }
+.dspi-web .hub-rollout-record { margin-top: 0.75rem; padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
+.dspi-web .hub-rollout-record.failed { border-color: var(--bad); }
+.dspi-web .hub-rollout-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 0.75rem; }
+.dspi-web .hub-rollout-device { margin-top: 0.5rem; }
+.dspi-web .hub-rollout-steps { list-style: none; margin: 0.25rem 0; padding: 0; }
+.dspi-web .hub-rollout-steps li { padding: 0.1rem 0; overflow-wrap: anywhere; }
+.dspi-web .hub-step .hub-step-mark { display: inline-block; width: 1.25rem; text-align: center; }
+.dspi-web .hub-step.done .hub-step-mark { color: var(--ok); }
+.dspi-web .hub-step.failed { color: var(--bad); }
+.dspi-web .hub-step.running .hub-step-title { font-weight: 600; }
+.dspi-web .hub-step.pending, .dspi-web .hub-step.skipped { color: var(--muted); }
+.dspi-web .hub-step-text { color: var(--muted); font-size: 0.85rem; }
+.dspi-web .hub-rollout-result { margin: 0.25rem 0 0.5rem; padding-left: 1.25rem; }
+.dspi-web .hub-rollout-plan ol { padding-left: 1.25rem; }
+.dspi-web .hub-rule-always { color: var(--muted); font-weight: normal; }

@@ -15,6 +15,7 @@ import {
   boardColumns,
   boardRows,
   cellTone,
+  alarmTone, // -- WP P3WRO --
   clipText,
   filterRows,
   nextSort,
@@ -127,6 +128,9 @@ const TONE_COLUMN: Partial<Record<SortKey, ToneColumn>> = { cpu: "cpu", temp: "t
 
 /** Why a cell is coloured: the rule's threshold in words. */
 function toneTitle(col: ToneColumn, t: Thresholds, r: BoardRow): string {
+  // -- WP P3WRO -- coloured by a raised alarm whose rule's threshold is not known here
+  if ((col === "cpu" && t.cpuPct === null) || (col === "temp" && t.tempC === null) || (col === "clip" && r.clipPerMin !== null && t.clipPerMin === null))
+    return "The hub's alarm about this is raised";
   if (col === "cpu") return `At or above the hub's CPU alarm rule (${t.cpuPct}%)`;
   if (col === "temp") return `At or above the hub's temperature alarm rule (${t.tempC} °C)`;
   return r.clipPerMin !== null ? `At or above the hub's clip alarm rule (${t.clipPerMin} a minute)` : "Clipped since someone cleared it";
@@ -144,7 +148,7 @@ function Cell(p: {
 }) {
   const { col, row: r } = p;
   const tc = TONE_COLUMN[col];
-  const tone: Tone = tc && r.online ? cellTone(tc, r, p.t) : "";
+  const tone: Tone = tc && r.online ? alarmTone(tc, r) || cellTone(tc, r, p.t) : ""; // -- WP P3WRO -- the raised alarm's severity first
   const cls = `hub-health-${col}${tone ? ` tone-${tone}` : ""}`;
   const attrs = { class: cls, "data-label": p.label, "data-tone": tone || undefined, title: tone && tc ? toneTitle(tc, p.t, r) : undefined };
   const dash = "–";

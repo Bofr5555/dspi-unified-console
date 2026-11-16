@@ -764,11 +764,14 @@ impl RolloutService {
         let received = {
             let mut st = lock(&sh.state);
             if seq == 0 {
-                if st.uploads.contains_key(&sid) {
-                    return Err(ApiError::new(
-                        "busy",
-                        "this session has an upload open; finish it first",
-                    ));
+                // -- WP P3WRO -- (review p3c N2) a seq 0 starts this session's upload
+                // again: the one it had open (a client whose middle chunk failed) is
+                // dropped rather than holding the session busy for UPLOAD_TIMEOUT.
+                if let Some(old) = st.uploads.remove(&sid) {
+                    log::info!(
+                        "hub rollout: the upload of {} was dropped for a new one",
+                        old.name
+                    );
                 }
                 if st.uploads.len() >= MAX_UPLOADS {
                     return Err(ApiError::new(
