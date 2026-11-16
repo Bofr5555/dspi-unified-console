@@ -22,6 +22,7 @@ import {
   type IdentifyInfoRecord,
   type NoticeRecord,
 } from "../../core/protocol";
+import type { HubAlarmRuleRecord } from "../../core/hub-settings-protocol"; // -- WP P3WHB --
 import type { Session } from "../../ui/session";
 import type { Condition, HubAlarmSource } from "../../ui/status-rail/health";
 import { noticeOf } from "../../ui/texts";
@@ -29,6 +30,10 @@ import { alarmConditions, alarmIdOf, clockTime, sortAlarms, withAlarm, withDevic
 
 /** How often the hub is read while the page is visible, ms. */
 export const HUB_POLL_MS = 5000;
+
+// -- WP P3WHB --
+/** How often the alarm rules (the health board's thresholds) are read again, ms. */
+export const RULES_POLL_MS = 30_000;
 
 /** The seconds an Identify blinks for. */
 export const IDENTIFY_SECONDS = 10;
@@ -47,6 +52,9 @@ export interface HubView {
   error: string;
   /** The alarms' notices, by alarm id (the core's words). */
   notices: Record<string, NoticeRecord>;
+  // -- WP P3WHB --
+  /** The hub's alarm rules (`hubAlarmRulesGet`), the health board's thresholds; [] when not read. */
+  rules: HubAlarmRuleRecord[];
 }
 
 /** What one action said: a line for the user, and the notice it came with. */
@@ -68,7 +76,7 @@ export function hubScreenShown(caps: HubCapsRecord | null): boolean {
 }
 
 export class HubFeed {
-  view: HubView = { caps: null, role: "", devices: [], health: [], alarms: [], stats: null, error: "", notices: {} };
+  view: HubView = { caps: null, role: "", devices: [], health: [], alarms: [], stats: null, error: "", notices: {}, rules: [] /* -- WP P3WHB -- */ };
   private readonly listeners = new Set<() => void>();
   private readonly alarmListeners = new Set<(on: Condition[]) => void>();
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -79,6 +87,7 @@ export class HubFeed {
   private readonly periodMs: number;
   private readonly visible: () => boolean;
   private phase: string | null = null;
+  private rulesAt = 0; // -- WP P3WHB -- when the rules were read last (Date.now()), 0 never
 
   constructor(
     private readonly session: Session,
@@ -235,7 +244,8 @@ export class HubFeed {
       caps = null;
     }
     if (!caps?.onHub) {
-      this.set({ caps, role: "", devices: [], health: [], alarms: [], stats: null, error: "" });
+      this.set({ caps, role: "", devices: [], health: [], alarms: [], stats: null, error: "", rules: [] /* -- WP P3WHB -- */ });
+      this.rulesAt = 0; // -- WP P3WHB --
       return;
     }
     const role = await core.call("hubRole", undefined).then((r) => r?.role ?? "", () => this.view.role);
@@ -255,6 +265,15 @@ export class HubFeed {
     await take(caps.health, () => core.call("hubHealth", undefined), (v) => (patch.health = v), () => (patch.health = []));
     await take(caps.alarms, () => core.call("hubAlarms", {}), (v) => (patch.alarms = sortAlarms(v)), () => (patch.alarms = []));
     await take(caps.hubStats && role === "admin", () => core.call("hubStats", undefined), (v) => (patch.stats = v), () => (patch.stats = null));
+    // -- WP P3WHB -- the alarm rules, every RULES_POLL_MS: a failed read keeps the last ones and is not the page's error.
+    if (caps.alarms && (!this.rulesAt || Date.now() - this.rulesAt >= RULES_POLL_MS)) {
+      try {
+        patch.rules = await core.call("hubAlarmRulesGet", undefined);
+        this.rulesAt = Date.now();
+      } catch {
+        // The board shows its cells uncoloured until a read goes.
+      }
+    } else if (!caps.alarms) patch.rules = [];
     if (errors.length) patch.error = errors[0]!;
     if (!this.running) return;
     this.set(patch);

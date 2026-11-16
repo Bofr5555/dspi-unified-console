@@ -1181,3 +1181,36 @@
   .dspi-web .ov-row > td::before { content: attr(data-label); display: block; font-size: 0.72rem; color: var(--muted); }
   .dspi-web .ov-src { white-space: normal; }
 }
+
+/* -- WP P3WHB -- the hub screen's health board: a sortable table, cells coloured from the hub's alarm rules, a card per DSPi where narrow */
+.dspi-web .hub-health { container-type: inline-size; min-width: 0; }
+.dspi-web .hub-health .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+.dspi-web .hub-health-filter { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; min-width: 0; }
+.dspi-web .hub-health-filter input { min-width: 0; width: 10rem; max-width: 100%; }
+.dspi-web .hub-health-wrap { position: relative; max-width: 100%; overflow-x: auto; }
+.dspi-web .hub-health-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.5rem; }
+.dspi-web .hub-health-table th { text-align: left; padding: 0.2rem 0.3rem; white-space: nowrap; }
+.dspi-web .hub-health-table td { padding: 0.3rem; border-top: 1px solid var(--line); vertical-align: top; font-variant-numeric: tabular-nums; }
+.dspi-web .hub-sort { background: none; border: 0; padding: 0; min-height: 0; font: inherit; font-weight: 600; font-size: 0.78rem; color: var(--muted); cursor: pointer; }
+.dspi-web .hub-health-row.offline td { color: var(--muted); }
+.dspi-web .hub-health-table td.tone-warn { color: var(--warn); font-weight: 700; }
+.dspi-web .hub-health-table td.tone-bad { color: var(--bad); font-weight: 700; }
+.dspi-web .hub-change-text, .dspi-web .hub-change-by { display: block; }
+.dspi-web .hub-change-by { font-size: 0.78rem; color: var(--muted); }
+.dspi-web .hub-row-alarms { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+.dspi-web .hub-row-alarm { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.5rem; border-left: 3px solid var(--warn); padding-left: 0.35rem; }
+.dspi-web .hub-row-alarm.bad { border-left-color: var(--bad); }
+.dspi-web .hub-row-alarm.acknowledged { border-left-color: var(--line); }
+.dspi-web .hub-row-alarm button { min-height: 0; padding: 0.1rem 0.5rem; }
+@container (max-width: 900px) {
+  .dspi-web .hub-health-table, .dspi-web .hub-health-table tbody, .dspi-web .hub-health-table tr, .dspi-web .hub-health-table td { display: block; }
+  .dspi-web .hub-health-table thead { display: block; }
+  .dspi-web .hub-health-table thead tr { display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; }
+  .dspi-web .hub-health-table thead th { display: block; padding: 0; }
+  .dspi-web .hub-health-table tbody { display: grid; gap: 0.5rem; margin-top: 0.5rem; }
+  .dspi-web .hub-health-table .hub-health-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.2rem 0.75rem; border: 1px solid var(--line); border-radius: 8px; padding: 0.4rem 0.6rem; background: var(--panel); }
+  .dspi-web .hub-health-row > td { border-top: 0; padding: 0.1rem 0; min-width: 0; overflow-wrap: anywhere; }
+  .dspi-web .hub-health-row > .hub-health-name, .dspi-web .hub-health-row > .hub-health-change, .dspi-web .hub-health-row > .hub-health-alarms { grid-column: 1 / -1; }
+  .dspi-web .hub-health-row > td:not(.hub-health-name)::before { content: attr(data-label); display: block; font-size: 0.72rem; color: var(--muted); font-weight: 400; }
+  .dspi-web .hub-health-wrap { overflow-x: visible; }
+}
