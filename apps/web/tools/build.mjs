@@ -117,6 +117,16 @@ if (args.has("--unit")) {
     if (wasm && existsSync(wasm)) cpSync(wasm, join(out, "test/dspi_wasm.wasm"));
     // -- WP WB6K -- the test pages' bundles look for the built-in AutoEQ database beside them
     cpSync(join(out, "autoeq_database.json"), join(out, "test/autoeq_database.json"));
+    // -- Review P5-B -- the P5SPIKE page (tools/spike), for test/e2e/spike_p5b.spec.ts. Only with
+    // --pages: the built console never has it (tools/spike/build.mjs makes the owner's copy).
+    await build({
+      ...common,
+      entryPoints: { "spike/measure-spike": "tools/spike/measure-spike.ts" },
+      outdir: out,
+      minify: false,
+    });
+    cpSync(join(root, "tools/spike/measure-spike.html"), join(out, "spike/measure-spike.html"));
+    cpSync(join(root, "tools/spike/measure-spike.css"), join(out, "spike/measure-spike.css"));
   }
   console.log("built dist/");
 }

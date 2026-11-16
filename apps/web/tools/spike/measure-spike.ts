@@ -9,9 +9,11 @@
 // downloads what the timing says (the clock ratio, every cycle's residual, the verdict) with the
 // frame gaps this page saw. The page itself plays nothing; the record holds no audio (S12).
 //
-// The measure_* calls are P5SES's (same wave). Until it is merged the core answers that it
-// does not know them; the names and the push's parameters are this page's typed seam
-// (`SpikeCore`), the only place to change if P5SES names them otherwise.
+// The measure calls are P5SES's, by the names its web binding gives them (crates/dspi-wasm/src/
+// measure.rs: `measurePreflight` and `measureStart` take `{setup}`, `measureCapturePush` the
+// block). Review P5-B wired them here (`SpikeCore`), with the setup the session really takes;
+// `startLevelOnly` is forced on whatever the text box says, and the record is built from the
+// session's state when the run ends, whether or not it has a result.
 
 import { CoreClient } from "../../src/core/client";
 import {
@@ -35,6 +37,7 @@ interface SpikeCore {
   state(): Promise<unknown>;
   stop(): Promise<unknown>;
   result(): Promise<unknown>;
+  generator(): Promise<unknown>;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -62,13 +65,14 @@ let record: unknown = null;
 function spikeCore(c: CoreClient): SpikeCore {
   const call = (m: string, p: unknown) => c.call(m as never, p as never) as Promise<unknown>;
   return {
-    preflight: (setup) => call("measure_preflight", setup),
-    start: (setup) => call("measure_start", setup),
-    push: (b) => call("measure_capture_push", measurePushParams(b)),
-    tick: () => call("measure_tick", undefined),
-    state: () => call("measure_state", undefined),
-    stop: () => call("measure_stop", undefined),
-    result: () => call("measure_result", undefined),
+    preflight: (setup) => call("measurePreflight", { setup }),
+    start: (setup) => call("measureStart", { setup }),
+    push: (b) => call("measureCapturePush", measurePushParams(b)),
+    tick: () => call("measureTick", undefined),
+    state: () => call("measureState", undefined),
+    stop: () => call("measureStop", undefined),
+    result: () => call("measureResult", undefined),
+    generator: () => call("siggenStatus", undefined),
   };
 }
 
@@ -100,8 +104,12 @@ $("usb").addEventListener("click", async () => {
 
 $("demo").addEventListener("click", async () => {
   try {
-    await freshClient().call("open", { kind: "demo" });
-    show("device", "The demo DSPi is open (simulated; nothing is played anywhere).");
+    const c = freshClient();
+    await c.call("open", { kind: "demo" });
+    // The demo's volume is above what a measurement starts at (S2). It is a simulated device,
+    // so the page lowers it; a real DSPi is never written to (its preflight says what to change).
+    await c.call("write" as never, { path: "vol.user", value: { float: -20 } } as never);
+    show("device", "The demo DSPi is open (simulated; nothing is played anywhere). Its volume is set to -20 dB.");
     log("demo device open");
   } catch (e) {
     show("device", errText(e));
@@ -214,20 +222,24 @@ $("mic-stop").addEventListener("click", () => void capture?.stop());
 
 // ---- 3. the run ----
 
-/** A first guess at P5SES's setup: two outputs walked, three passes, the ceiling at the start level. */
+/**
+ * The session's setup (`MeasureSetup`): two outputs walked, three passes, on a coupler (the
+ * start level is -60 dBFS; a speaker placement's is -50), the start level only.
+ */
 function defaultSetup(rateHz: number): string {
   return JSON.stringify(
     {
       kind: "walked",
       outputs: [
-        { output: 0, role: "Low" },
-        { output: 1, role: "High" },
+        { output: 0, role: "full", speaker: "L" },
+        { output: 1, role: "full", speaker: "L" },
       ],
-      alignmentGroups: [[0, 1]],
-      placement: { mode: "listeningPosition" },
+      placement: "headphones",
+      coupler: "flatPlate",
       passes: 3,
-      ceilingDb: -60,
+      startLevelOnly: true,
       captureRateHz: rateHz,
+      name: "P5SPIKE (web)",
     },
     null,
     2,
@@ -235,8 +247,10 @@ function defaultSetup(rateHz: number): string {
 }
 ($("setup") as HTMLTextAreaElement).value = defaultSetup(48_000);
 
-function setup(): unknown {
-  return JSON.parse(($("setup") as HTMLTextAreaElement).value);
+/** The text box's setup; the start level only, whatever it says (the page never plays above it). */
+function setup(): Record<string, unknown> {
+  const s = JSON.parse(($("setup") as HTMLTextAreaElement).value) as Record<string, unknown>;
+  return { ...s, startLevelOnly: true };
 }
 
 $("preflight").addEventListener("click", async () => {
@@ -260,29 +274,68 @@ $("run").addEventListener("click", async () => {
     return;
   }
   if (ticker) clearInterval(ticker);
-  let n = 0;
+  phases.length = 0;
+  maxLevelDb = null;
+  stoppedBy = "";
+  record = null;
+  delete $("timing").dataset.record;
+  ($("download") as HTMLButtonElement).disabled = true;
   let busy = false;
   ticker = setInterval(async () => {
     if (busy) return;
     busy = true;
     try {
-      await core!.tick();
-      if (n++ % 3 === 0) show("state", await core!.state());
+      const st = (await core!.tick()) as SessionState;
+      notePhase(st);
+      show("state", st);
+      if (st.active === false) {
+        if (ticker) clearInterval(ticker);
+        ticker = null;
+        await buildRecord();
+      }
     } catch (e) {
       show("state", errText(e));
     } finally {
       busy = false;
     }
-  }, 100);
+  }, 50);
 });
 
+/** What the page reads of the session's state (`MeasureState`). */
+interface SessionState {
+  phase?: string;
+  active?: boolean;
+  levelDb?: number | null;
+  frames?: number;
+  resultReady?: boolean;
+  timing?: { reliable?: boolean } | null;
+  issue?: { key?: string; message?: string } | null;
+}
+const phases: { phase: string; atMs: number; frames: number }[] = [];
+let maxLevelDb: number | null = null;
+let stoppedBy = "";
+let runT0 = 0;
+function notePhase(st: SessionState): void {
+  if (typeof st.levelDb === "number") maxLevelDb = maxLevelDb === null ? st.levelDb : Math.max(maxLevelDb, st.levelDb);
+  if (!st.phase || phases[phases.length - 1]?.phase === st.phase) return;
+  if (phases.length === 0) runT0 = performance.now();
+  phases.push({ phase: st.phase, atMs: Math.round(performance.now() - runT0), frames: st.frames ?? 0 });
+  log(`session: ${st.phase}`);
+}
+
 async function stopAll(): Promise<void> {
+  const wasRunning = ticker !== null;
   if (ticker) clearInterval(ticker);
   ticker = null;
   try {
-    await core?.stop();
+    const st = (await core?.stop()) as SessionState | undefined;
+    if (st) notePhase(st);
   } catch (e) {
     log(`stop: ${errText(e)}`);
+  }
+  if (wasRunning) {
+    stoppedBy = "user";
+    await buildRecord();
   }
   await capture?.stop();
   log("stopped");
@@ -303,14 +356,28 @@ function timingParts(v: unknown, path = "", out: Record<string, unknown> = {}, d
   return out;
 }
 
-$("result").addEventListener("click", async () => {
+/**
+ * The record of a run, from the session's state (and its document when it has one): shown, and
+ * ready to download. Built when the session ends, by itself or by Stop.
+ */
+async function buildRecord(): Promise<void> {
   try {
-    const raw = await core!.result();
-    const doc = typeof raw === "string" ? JSON.parse(raw) : raw;
-    const state = await core!.state().catch((e) => errText(e));
-    const timing = { ...timingParts(state), ...timingParts(doc) };
+    const state = (await core!.state()) as SessionState;
+    notePhase(state);
+    let doc: unknown = null;
+    if (state.resultReady) {
+      const raw = await core!.result();
+      doc = typeof raw === "string" ? JSON.parse(raw) : raw;
+    }
+    const generatorAfter = await core!.generator().catch((e) => errText(e));
+    const verdict = state.timing
+      ? state.timing.reliable
+        ? "timing reliable"
+        : "timing unreliable"
+      : `no timing: ${state.phase ?? ""} ${state.issue?.key ?? ""} ${state.issue?.message ?? ""}`.trim();
     record = {
       kind: "p5spike",
+      client: "web",
       savedUtc: new Date().toISOString(),
       userAgent: navigator.userAgent,
       capture: capture?.report ?? null,
@@ -318,16 +385,26 @@ $("result").addEventListener("click", async () => {
       discontinuities,
       pushFailures,
       setup: setup(),
-      timing,
+      phases,
+      maxLevelDb,
+      stoppedBy,
+      verdict,
+      timing: state.timing ?? null,
+      timingParts: { ...timingParts(state), ...timingParts(doc) },
       state,
+      generatorAfter,
       result: doc,
     };
-    show("timing", { frames: (record as { frames: unknown }).frames, discontinuities, timing });
+    show("timing", { verdict, frames: (record as { frames: unknown }).frames, discontinuities, timing: state.timing ?? null });
+    $("timing").dataset.record = JSON.stringify(record, (k, v) => (k === "result" ? undefined : v));
     ($("download") as HTMLButtonElement).disabled = false;
+    log(`record ready: ${verdict}`);
   } catch (e) {
     show("timing", errText(e));
   }
-});
+}
+
+$("result").addEventListener("click", () => void buildRecord());
 
 $("download").addEventListener("click", () => {
   if (!record) return;

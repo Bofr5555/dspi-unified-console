@@ -12,7 +12,7 @@
   <body>
     <header>
       <h1>P5SPIKE: microphone timing (development only)</h1>
-      <p>The generator plays at the start level only (the setup's ceiling). This page plays nothing itself.</p>
+      <p>The generator plays at the start level only. This page plays nothing itself.</p>
       <button id="stop-all" type="button" class="stop">Stop everything</button>
     </header>
     <main>
@@ -39,7 +39,7 @@
       </section>
       <section aria-labelledby="h-run">
         <h2 id="h-run">3. The run</h2>
-        <p>The setup is P5SES's <code>measure_start</code> setup, as JSON: edit it to that call's fields.</p>
+        <p>The setup is the session's <code>MeasureSetup</code>, as JSON. <code>startLevelOnly</code> is always on: -60 dBFS on a coupler, -50 dBFS for a speaker placement. On a real DSPi set the volume to -12 dB or below first; the preflight names every blocker.</p>
         <textarea id="setup" rows="14" cols="72" spellcheck="false"></textarea>
         <p>
           <button id="preflight" type="button">Preflight</button>

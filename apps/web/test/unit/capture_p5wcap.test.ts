@@ -37,7 +37,11 @@ import {
 
 const CHROME = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 const FIREFOX = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
-const tick = () => new Promise((r) => setTimeout(r, 10));
+/** Review P5-B: wait for what a MessagePort delivers, not for a fixed time (a loaded host took more than `tick`). */
+async function until(what: string, cond: () => boolean): Promise<void> {
+  for (let i = 0; i < 1000 && !cond(); i++) await new Promise((r) => setTimeout(r, 5));
+  assert.ok(cond(), `waited 5 s for ${what}`);
+}
 /** Node keeps a process alive while a MessagePort listens: every port a test makes is closed at the end. */
 const ports: MessagePort[] = [];
 after(() => {
@@ -181,7 +185,7 @@ test("P5WCAP: the processor on a fake worklet scope: blocks on the handed port w
   scope.currentFrame = 0;
   assert.equal(p.process([[ramp(0, 128)]]), true);
   page.postMessage({ kind: "port", port: toCore.port1 }, [toCore.port1]);
-  await tick();
+  await until("the port to reach the processor", () => (p as unknown as { out?: unknown }).out != null);
   for (let q = 1; q <= 4; q++) {
     scope.currentFrame = q * 128;
     p.process([[ramp(q * 128, 128)]]);
@@ -192,9 +196,9 @@ test("P5WCAP: the processor on a fake worklet scope: blocks on the handed port w
   scope.currentFrame = 768;
   p.process([[ramp(768, 128)]]);
   page.postMessage({ kind: "stop" });
-  await tick();
+  await until("the stop's acknowledgement", () => acks.length > 0);
   assert.equal(p.process([[ramp(896, 128)]]), false, "stopped");
-  await tick();
+  await until("the end mark", () => got.some((m) => (m as { kind: string }).kind === "end"));
   const blocks = got.filter((m) => (m as { kind: string }).kind === "block") as WorkletBlock[];
   assert.deepEqual(
     blocks.map((b) => [b.firstFrame, b.samples.length]),
