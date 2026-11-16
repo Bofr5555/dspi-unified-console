@@ -1667,7 +1667,8 @@ does not come back. An Admin starts it; anyone may watch it. The spec's `fw.inst
 - **Upload in chunks.** `name`: 1 to 64 characters of `A-Z a-z 0-9 . - _ +`, ending in `.uf2` (the manifest's names:
   `verified` is judged by name and bytes). `seq` starts at 0 and goes up by one. `data` is base64 (RFC 4648, padded),
   at most 49 152 characters (36 KiB of image), so a chunk fits a 64 KiB frame; `last: true` on the final chunk.
-- One upload per session at a time (a `seq` 0 while one is open is `busy`). A gap or a repeat in `seq` is `bad_request`
+- One upload per session at a time: a `seq` 0 while one is open starts it again, the open one dropped (P3WRO, so a
+  console whose middle chunk failed need not wait for the 2 min). A gap or a repeat in `seq` is `bad_request`
   and drops the upload; so does an image past 8 MiB. An upload not finished within 2 min of its first chunk, or whose
   session closes, is dropped; a later chunk of it is `not_found`.
 - **On the last chunk** the hub checks the whole image: `uf2_inspect` must find it valid (`bad_request`, with its
@@ -1805,7 +1806,7 @@ What the code does where the text above leaves room, or is stricter than it:
 - **A later member of a group** refused in its steps 1 or 2 ends that device `failed` at that step (with the code),
   raises `rollout_failed` for it although nothing was sent to it, and stops the rollout.
 - **Uploads:** besides one per session, at most 2 are open on the hub at once (each holds its image in memory until
-  the last chunk); a third `seq` 0 is `busy`.
+  the last chunk); a third session's `seq` 0 is `busy` (a session's own restart does not count, P3WRO).
 - **A hub stopped during a rollout** reads the record back on its next start as `failed` at the step it was at, its
   device's alarm raised, the members after it `not_tried`.
 - **Embedding:** `ServiceConfig::rollout: Some(RolloutConfig { allow_unverified_firmware, boot_scan, writer, .. })`

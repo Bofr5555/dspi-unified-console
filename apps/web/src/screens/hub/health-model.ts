@@ -141,6 +141,20 @@ export function cellTone(col: ToneColumn, r: BoardRow, t: Thresholds): Tone {
   }
 }
 
+// -- WP P3WRO -- (review p3c NIT) a cell whose alarm is raised takes that alarm's severity
+/** The alarm code that is about each coloured column. */
+const COLUMN_ALARM: Record<ToneColumn, string> = { cpu: "cpu", temp: "temperature", clip: "clip" };
+
+/**
+ * A cell's colour from the alarm the hub raised about it (critical: bad, else warn), so the
+ * board and the alarm agree; "" when no such alarm is raised (then `cellTone` decides).
+ */
+export function alarmTone(col: ToneColumn, r: BoardRow): Tone {
+  const a = r.alarms.find((x) => x.code === COLUMN_ALARM[col] && x.state === "raised");
+  if (!a) return "";
+  return a.severity === "critical" ? "bad" : "warn";
+}
+
 /** The clip cell's words: events a minute, or the latch on firmware with only that. */
 export function clipText(r: BoardRow): string {
   if (r.clipPerMin !== null) return `${r.clipPerMin}/min`;

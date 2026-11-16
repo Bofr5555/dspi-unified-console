@@ -9,6 +9,10 @@ import { failure } from "../installer/HubAdmin";
 import { alarmLabel, numberOf, ruleFields, withRule } from "./model";
 import { Done, Problem, type SectionProps } from "./parts";
 
+// -- WP P3WRO -- (review p3c N3) the rules the hub keeps on whatever is sent: `alarm.rules.set`
+// cannot turn `rollout_failed` off (hub-api.md section 21), so its switch shows it on and fixed.
+import { ALWAYS_ON_ALARMS as ALWAYS_ON } from "../hub/rollout-model";
+
 export function AlarmRules(props: SectionProps) {
   const { session, edit } = props;
   const [rules, setRules] = useState<HubAlarmRuleRecord[] | null>(null);
@@ -52,12 +56,14 @@ export function AlarmRules(props: SectionProps) {
         <div class="hub-rules">
           {rules.map((r) => {
             const label = alarmLabel(r.code, noticeRow(`alarm.${r.code}`)?.title);
+            const always = ALWAYS_ON.has(r.code); // -- WP P3WRO --
             return (
               <fieldset key={r.code} class="hub-rule" aria-label={label}>
                 <legend>
-                  <label>
-                    <input type="checkbox" checked={r.on} disabled={disabled} onChange={(e) => change(r.code, { on: (e.target as HTMLInputElement).checked })} />{" "}
+                  <label title={always ? "Always on: the hub does not let this alarm be turned off" : undefined}>
+                    <input type="checkbox" checked={r.on || always} disabled={disabled || always} onChange={(e) => change(r.code, { on: (e.target as HTMLInputElement).checked })} />{" "}
                     {label}
+                    {always ? <span class="hub-rule-always"> (always on)</span> : null}
                   </label>
                 </legend>
                 <div class="power-rows">
