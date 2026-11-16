@@ -34,6 +34,44 @@ fn wp_p3wgr_read_only_lets_a_run_be_settled_and_nothing_else() {
     }
 }
 
+// -- review p3d -- `fw.rollout.cancel` settles too (it only stops a rollout); nothing
+// that starts or writes is in the set, whatever is added to it later.
+#[test]
+fn review_p3d_read_only_lets_a_rollout_be_cancelled_and_never_started() {
+    assert_eq!(
+        HUB_SERVER_SETTLES,
+        [
+            "group.apply.confirm",
+            "group.apply.cancel",
+            "fw.rollout.cancel"
+        ],
+        "a new entry needs the owner's decision: it passes the read-only gate"
+    );
+    let core = DspiCore::new();
+    core.set_client_read_only(true).unwrap();
+    let mut inner = core.lock();
+    assert_eq!(
+        super::check_hub_request(&mut inner, "fw.rollout.cancel"),
+        Ok(())
+    );
+    for t in [
+        "fw.rollout.start",
+        "fw.image.put",
+        "fw.image.delete",
+        "fw.rollout.cancel.x",
+        "fw.rollout",
+        "rollout.cancel",
+        "FW.ROLLOUT.CANCEL",
+        "",
+    ] {
+        assert_eq!(
+            super::check_hub_request(&mut inner, t),
+            Err(DspiError::ReadOnly),
+            "{t:?}"
+        );
+    }
+}
+
 #[cfg(feature = "link")]
 mod through_the_fake_hub {
     use std::sync::Arc;
@@ -55,6 +93,52 @@ mod through_the_fake_hub {
                 _ => return None,
             })
         })
+    }
+
+    // -- review p3d --
+    #[test]
+    fn review_p3d_a_read_only_console_cancels_a_rollout_but_starts_none() {
+        let mut cfg = HubConfig::default();
+        cfg.caps.push(crate::hub_server::CAP_ROLLOUT.to_owned());
+        let hub = FakeHub::start(cfg).unwrap();
+        let rollout = json!({"rollout": {"id": "ro1", "state": "cancelled", "devices": []}});
+        hub.set_json_responder(Some(Arc::new(move |r: &Value| {
+            matches!(r["t"].as_str()?, "fw.rollout.start" | "fw.rollout.cancel")
+                .then(|| rollout.clone())
+        })));
+        let core = DspiCore::new();
+        core.link_connect(
+            hub.url(),
+            "review-p3d".into(),
+            "test".into(),
+            String::new(),
+            String::new(),
+        )
+        .unwrap();
+        let start = Instant::now();
+        while core.link_devices().is_empty() {
+            assert!(start.elapsed() < Duration::from_secs(10), "no device list");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        core.set_client_read_only(true).unwrap();
+        let target = HubFleetTarget {
+            group: String::new(),
+            serials: vec!["A".into()],
+        };
+        assert_eq!(
+            core.hub_rollout_start(target, "dspi.uf2".into(), true)
+                .err(),
+            Some(DspiError::ReadOnly)
+        );
+        assert_eq!(core.hub_rollout_cancel("ro1".into()).unwrap().id, "ro1");
+        let types: Vec<String> = hub
+            .json_requests()
+            .into_iter()
+            .filter_map(|r| r["t"].as_str().map(str::to_owned))
+            .filter(|t| t.starts_with("fw."))
+            .collect();
+        assert_eq!(types, ["fw.rollout.cancel"], "no start is sent");
+        core.link_close();
     }
 
     #[test]

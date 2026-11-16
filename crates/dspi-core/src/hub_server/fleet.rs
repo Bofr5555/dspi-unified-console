@@ -28,7 +28,9 @@
 //! while the hub session is down, the hub's refusals typed (a `fw.*` request
 //! over a plaintext session is the hub's `tls_required`, as
 //! [`DspiError::Link`] with that code), and the client read-only mode lets
-//! out only the reads ([`super::HUB_SERVER_READS`]). A fan-out or an apply
+//! out only the reads ([`super::HUB_SERVER_READS`]) and what settles or stops
+//! ([`super::HUB_SERVER_SETTLES`]: a run's confirm and cancel, a rollout's
+//! cancel). A fan-out or an apply
 //! answers after its last member: these calls wait up to
 //! [`GROUP_REQUEST_TIMEOUT_S`] seconds. Off the UI thread.
 

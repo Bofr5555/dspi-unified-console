@@ -147,7 +147,8 @@ pub(crate) fn check_hub_request(inner: &mut Inner, t: &str) -> Result<()> {
     if crate::hub_server::HUB_SERVER_READS.contains(&t) {
         return Ok(());
     }
-    // -- WP P3WGR -- settling a bulk apply's run (keep or revert what it wrote)
+    // -- WP P3WGR -- settling a bulk apply's run (keep or revert what it wrote);
+    // -- review p3d -- and stopping a rollout (`fw.rollout.cancel`)
     if crate::hub_server::HUB_SERVER_SETTLES.contains(&t) {
         return Ok(());
     }
