@@ -498,6 +498,28 @@ three-way stereo measurement with phase on the standard grid stays under 100 KiB
 by each parser; `proptest_*` over mutated documents; the links resolve; the no-host-noun check passes. **Deps:** the
 seam. **Clients:** P5DOCK, P5SES, P5HUB, P5TUNE.
 
+**Wave P5-A review outcomes** (`work/review-p5a/REPORT.md`; binding for P5-B and later, they amend the entries above):
+- **One level convention:** a full-scale sine reads 0 dBFS (`types::FULL_SCALE_SINE_DB`); `cal::level_dbfs`,
+  `spl_offset_from_tone`, a `mic` document's `splOffsetDb` and the microphone RTA's bands all use it.
+- **One smoothing kernel** (`response::smooth_magnitudes`), two domains: dB for a graph (`response::smooth`), power for
+  the fit and any level estimate (`SmoothingDomain::Power`).
+- **T2's rule is phase agreement, not "the flattest summed magnitude":** `align` and `crossover_corner` both choose
+  delay and polarity by the two ways' phase agreement through their overlap (a Linkwitz-Riley pair sums almost as flat
+  with the wrong polarity half a period later, and a driver resonance then decided; a correctly wired tweeter was
+  flipped on P5SIM's room). A flip needs a 10 % margin. An **odd-order Butterworth pair** is aligned to quadrature and
+  its polarity is never changed. The summed check (step 6) is unchanged.
+- **Windows are centred on a response's onset** (`OutputIr.onset_index`), never on its peak (the peak of a band-limited
+  way jumps between lobes from run to run). P5SES builds a `Response` from P5TIME's windowed values with
+  `response::from_grid_values` (the arrival as its reference delay), masks every point outside `WalkedAnalysis.band_hz`
+  and takes the SNR from `OutputIr.noise_db` plus `10·log10(Σw²)`; `crates/dspi-measure/tests/common/mod.rs` is the
+  worked example, `tests/p5a_end_to_end.rs` the whole chain.
+- **A fit that replaces a band in use lists that band** (rewritten, or flat): every entry of `FitResult.bands` is
+  written. A fit of a speaker's sum applied to one way's PEQ is only right well below that way's crossover (P5TUNE: fit
+  the bass on the woofer's chain below half its corner, or put the same band on every way that plays there).
+- **Built-in targets** are stored by `target::Builtin::id` and `params`; `doc::Target::from_target`/`to_target` and
+  `doc::MicCal::from_calibration` are the only conversions between P5CAL's types and the documents.
+- `min_passes_reliable` stays 3: P5SES never lowers it; a two-pass run is "timing unreliable" by definition.
+
 ### Wave P5-B: the core session, the core documents, the clients' capture
 
 **P5DOCK: Documents in the core.** [TODO] Size 2.5. Wave P5-B. **Owns:** new `crates/dspi-core/src/measure_doc.rs` (and

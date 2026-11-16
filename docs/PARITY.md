@@ -223,6 +223,28 @@ Tests: dspi-hub `tests/wp_lkui1_system_view.rs` (the core's calls against a real
 Control and Viewer); Qt smoke section `lkui1-system` against `uconsole --demo hub --alink`; Android
 `SystemScreenModelWpLkui1Test`, `SystemScreenWpLkui1Test` (Robolectric) on the fake core's `FakeAlinkSystem`.
 
+### J. Measurement and auto-tune (PRO phase 5)
+
+*WP P5MDOC, 2026-11-16. Beyond the macOS floor: tuning with a calibrated measurement microphone, the device's generator as
+the only stimulus ([`docs/integrator/measurement.md`](integrator/measurement.md), plan
+[`docs/core-merge/PLAN-P5.md`](core-merge/PLAN-P5.md)). Everything is the core's (`dspi-measure`, `dspi-core`'s
+`measure`); a client adds the microphone's capture and its screens. Web and Qt first, the Terminal for documents and the
+tune from a document, Android and Swift in a later batch (OD-P5m). A cell names the WP that adds it; P5FIN marks them.*
+
+| # | Feature | Web | Qt desktop | Terminal | Android | Swift (macOS, iOS) |
+|---|---|---|---|---|---|---|
+| J1 | A measurement run: walked sweeps through the generator, the safety ramp and aborts (S1 to S13), the device lock, the timing quality | P5WCAP, P5WMS | P5QCAP, P5QUI | ✗ (no microphone capture) | later batch | later batch |
+| J2 | Microphone calibration and targets: import of UMIK, REW and CSV files to `mic` and `target` documents; dB SPL, marked approximate until a calibrator check | P5WMS | P5QUI | P5TM (`measure mic import`, `measure target import`) | later batch | later batch |
+| J3 | Placements and couplers: listening position, several positions, near-field, headphones on a coupler with reseats | P5WMS | P5QUI | n.a. (no capture) | later batch | later batch |
+| J4 | Live response with the target and the predicted curve; "cut this peak", "fit this range" as one undo group | P5WMS | P5QUI | ✗ | later batch | later batch |
+| J5 | Microphone RTA (pink-referenced, 1/1 to 1/48 octave, hold and compare); the passive RTA for a Viewer | P5WMS | P5QUI | ✗ | later batch | later batch |
+| J6 | Auto-tune: delay and polarity, crossover corner and levels, the mandatory summed check, the target fit, one proposal applied guarded between two snapshots, A/B | P5WAT | P5QUI | P5TM (`measure tune ID`, from a document) | later batch | later batch |
+| J7 | The `measurement`, `mic` and `target` documents: local store and the hub's (`measure.doc.*`), merged with the hub's winning; rename, note, delete by role | P5WAT | P5QUI | P5TM (`measure docs`, `show`) | later batch | later batch |
+| J8 | REW text export of a measured output | the core call `measurement_export_rew` (P5DOCK); no screen WP names it yet | as Web | P5TM (`measure export`) | later batch | later batch |
+
+The document model under J7 is built (P5MDOC, `crates/dspi-measure/src/doc.rs`); the stores and calls are P5DOCK and
+P5HUB.
+
 ---
 
 ## 3. Gap list per app

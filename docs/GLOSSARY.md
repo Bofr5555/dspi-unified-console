@@ -163,6 +163,30 @@ many devices at once.*
 | **Overview** | The web console's screen with every output of one device in one table, and every meter. Not "System" (below) | | |
 | **System** | Restated: the audio link system, its units, rooms, zones and signal chain (section 3.1, the System screen). Never the many-device views: those are the hub's pages, and one device's dense table is the Overview | | |
 
+### 3.4 Measurement and auto-tune
+
+*WP P5MDOC, 2026-11-16. PRO phase 5 ([`docs/core-merge/PLAN-P5.md`](core-merge/PLAN-P5.md); the contract:
+[`docs/integrator/measurement.md`](integrator/measurement.md)). The words a client shows for tuning with a measurement
+microphone.*
+
+| Term | Meaning | Unit and range | Registry |
+|---|---|---|---|
+| **Measurement** | A run of the generator on one or more outputs while the measurement microphone listens, and the document that keeps its results: each output's response, the chain it was measured through, the timing quality. Kept per device; never holds audio | at most 16 outputs, 9 positions | |
+| **Generator** | The device's own test signal generator: sweeps, pink noise and tones on chosen outputs, through their crossover and EQ. The only source of test audio when measuring. Not "Signal source" or "Test tone player" | peak level, dBFS, -120 to 0 | `sig.*` |
+| **Sweep** | A tone gliding from 20 Hz to 20 kHz on a logarithmic scale, played by the generator; repeated passes are averaged. Not "Chirp" | 1 to 15 s | |
+| **Impulse response** | What one output does to a single click, worked out from the sweep the microphone heard; the response and the timing come from it. Kept only while measuring, never in a document | | |
+| **Target** | The curve a tune aims for, drawn dashed on every graph: built in (flat, tilt, house curve, a coupler's default) or imported from a file. Not "Reference curve" | dB | |
+| **Microphone calibration** | The measurement microphone's own correction and sensitivity, imported from its calibration file; with it the graphs read in dB SPL, marked approximate until a calibrator check. Not "Mic profile" | dB, dB SPL | |
+| **Placement** | Where the measurement microphone is: the listening position, several positions averaged, near-field at one driver, or headphones on a coupler | 3 to 9 positions, 1 to 9 reseats | |
+| **Coupler** | The fixture a headphone is measured on: an IEC 60318-4 ear simulator, a flat-plate coupler, or a head and torso simulator. Each has its own default target. Not "Rig" or "Dummy head" | | |
+| **Way** | One driver's share of a loudspeaker on its own output: Full, Sub, Low, Mid or High. A High way is never measured without its protective high-pass | | |
+| **Alignment group** | The outputs measured in one run and aligned to each other: by default one speaker's ways, or the whole system when it fits in one run. Delays are only compared within a group | | |
+| **Auto-tune** | The guided tune of a speaker from its measurement: delay and polarity, crossover corner and levels, then a target EQ fit, shown as one proposal and applied only with a guarded apply between a "Before" and an "After" snapshot. Not "Room correction" | | |
+| **Live response** | The measured response of one output, updated after each short sweep or as pink noise plays, shown with the target and the predicted curve of a pending change | | |
+| **Microphone RTA** | The real-time spectrum of what the measurement microphone hears, with pink noise or programme audio. Always "Microphone RTA" in full: "RTA" alone is ambiguous | 1/1 to 1/48 octave | |
+| **Device analyser** | The device's own spectrum of its inputs and outputs (the firmware's analyser). Not the Microphone RTA | | `rta.*` |
+| **Timing quality** | Whether a measurement's timing can be trusted for delay, polarity and crossover changes: "Timing reliable" or "Timing unreliable" (then only its magnitudes are used) | at most 10 µs per cycle | |
+
 ## 4. Units
 
 | Unit | Meaning | Used for |

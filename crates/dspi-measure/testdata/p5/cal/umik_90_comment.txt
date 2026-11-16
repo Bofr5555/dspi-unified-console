@@ -1,0 +1,4 @@
+"Sens Factor =-1.0dB, SERNO: 7000003"
+* 90deg calibration
+20 0
+1000 0

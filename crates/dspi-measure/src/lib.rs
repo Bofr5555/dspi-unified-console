@@ -64,3 +64,9 @@ pub mod wav;
 pub mod doc;
 
 pub use types::*;
+
+// -- review P5-A -- what the wave's parts must agree on (one level
+// convention, one smoothing, one filter response, cal and target types that
+// line up with the documents).
+#[cfg(test)]
+mod tests_review_p5a;

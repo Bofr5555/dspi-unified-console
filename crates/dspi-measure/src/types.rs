@@ -20,6 +20,18 @@ pub const GRID_POINTS_PER_OCTAVE: u16 = 96;
 /// calibration and document (OD-P5g).
 pub const MAX_GRID_POINTS: usize = 2048;
 
+// -- review P5-A -- one level convention for the whole crate.
+/// The crate's dBFS convention: **a full-scale sine reads 0 dBFS** (AES17, and
+/// what REW shows), so an RMS level is `10·log10(mean square) +
+/// FULL_SCALE_SINE_DB`, with full scale ±1.0. Every level this crate states
+/// in dBFS or turns into dB SPL uses it: `cal::level_dbfs`,
+/// `cal::spl_offset_from_tone`, a `mic` document's `splOffsetDb`, and the
+/// microphone RTA's bands (`rta`), so `dB SPL = dBFS + offset` holds with one
+/// offset everywhere. (A square wave at full scale reads +3.01 dBFS; a
+/// *peak* level, as the generator's `level_db` and the clip checks use, is a
+/// different quantity and says so.)
+pub const FULL_SCALE_SINE_DB: f64 = 3.010_299_956_639_812;
+
 /// Errors of the measurement maths. Typed, never a panic (PLAN.md section 1.7).
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum MeasureError {
