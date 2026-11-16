@@ -417,6 +417,10 @@ impl GroupBook {
             None if self.groups.len() >= MAX_GROUPS => Err(GroupError::Full(format!(
                 "the hub holds {MAX_GROUPS} groups already"
             ))),
+            // -- WP P3GP -- ids are never reused: the last number is never given.
+            None if self.next_id == u64::MAX => Err(GroupError::Full(
+                "the hub has given every group id it has; no new group can be made".into(),
+            )),
             None => Ok(()),
         }
     }
@@ -432,8 +436,11 @@ impl GroupBook {
         let id = match edit.id {
             Some(id) => id,
             None => {
+                // -- WP P3GP -- `check` refused u64::MAX, so this never wraps or repeats.
                 let n = self.next_id;
-                self.next_id = n.saturating_add(1);
+                self.next_id = n.checked_add(1).ok_or_else(|| {
+                    GroupError::Full("the hub has given every group id it has".into())
+                })?;
                 format!("g{n}")
             }
         };
@@ -546,6 +553,9 @@ impl GroupBook {
                 }
             }
         }
+        // -- WP P3GP -- capped at u64::MAX, which `check` never gives: a kept `g<MAX>`
+        // (or a file's `next_id` of MAX) leaves the book unable to make a group rather
+        // than give an id again.
         let past = groups
             .iter()
             .filter_map(|g| id_number(&g.id))
@@ -955,3 +965,68 @@ impl HubService for GroupsService {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p3gr;
+
+// -- WP P3GP --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p3gp {
+    use super::*;
+
+    fn edit(name: &str) -> GroupEdit {
+        GroupEdit {
+            id: None,
+            name: name.into(),
+            note: None,
+            members: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn wp_p3gp_the_last_group_id_is_never_given_so_none_is_reused() {
+        let text = format!(
+            "{{\"v\":1,\"next_id\":{},\"groups\":[\n{{\"id\":\"g7\",\"name\":\"Hall\"}}\n]}}\n",
+            u64::MAX - 1
+        );
+        let (mut book, whole) = GroupBook::from_file(&text);
+        assert!(whole);
+        let g = book.set(edit("Last")).unwrap();
+        assert_eq!(g.id, format!("g{}", u64::MAX - 1));
+        assert_eq!(book.next_id(), u64::MAX);
+        let e = book.set(edit("One more")).unwrap_err();
+        assert_eq!(e.code(), "conflict", "{e}");
+        assert_eq!(book.len(), 2, "nothing made");
+        // A group may still be replaced.
+        let again = GroupEdit {
+            id: Some("g7".into()),
+            ..edit("Hall 2")
+        };
+        assert_eq!(book.set(again).unwrap().name, "Hall 2");
+        // Read back, the book stays where it was.
+        let (book, _) = GroupBook::from_file(&book.to_file());
+        assert_eq!(book.next_id(), u64::MAX);
+        assert_eq!(book.clone().set(edit("x")).unwrap_err().code(), "conflict");
+    }
+
+    #[test]
+    fn wp_p3gp_a_kept_group_at_the_last_id_caps_next_id() {
+        let text = format!(
+            "{{\"v\":1,\"next_id\":3,\"groups\":[\n{{\"id\":\"g{}\",\"name\":\"Top\"}}\n]}}\n",
+            u64::MAX
+        );
+        let (mut book, _) = GroupBook::from_file(&text);
+        assert_eq!(book.next_id(), u64::MAX);
+        assert_eq!(book.set(edit("x")).unwrap_err().code(), "conflict");
+        // A torn file's line reading gives the same.
+        let torn = text.replace("\n]}\n", "");
+        let (mut book, _) = GroupBook::from_file(&torn);
+        assert_eq!(book.next_id(), u64::MAX);
+        assert_eq!(book.set(edit("x")).unwrap_err().code(), "conflict");
+    }
+
+    #[test]
+    fn wp_p3gp_a_group_as_a_member_says_groups_do_not_nest() {
+        let e = GroupEdit::parse(&json!({"name": "Bar", "members": ["group:g1"]})).unwrap_err();
+        assert_eq!(e.code(), "bad_request");
+        assert!(e.to_string().contains("groups do not nest"), "{e}");
+    }
+}

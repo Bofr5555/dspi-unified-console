@@ -51,6 +51,9 @@ mod params;
 mod presets;
 #[cfg(feature = "api")]
 mod recall;
+// -- WP P3GP --
+#[cfg(feature = "api")]
+mod group;
 
 #[cfg(feature = "api")]
 pub use exec::{IDLE_CLOSE, MAX_CORES, SWEEP};
@@ -72,6 +75,9 @@ pub fn services(setup: &ServiceSetup<'_>) -> Vec<Arc<dyn HubService>> {
     }
     #[cfg(feature = "api")]
     list.push(Arc::new(ApiService::new(setup, store)));
+    // -- WP P3GP --
+    #[cfg(feature = "api")]
+    list.push(group::service(setup));
     list
 }
 
