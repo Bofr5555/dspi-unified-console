@@ -155,6 +155,8 @@ mod platform;
 pub mod pins;
 // -- WP CLIP1 -- the channel clipboard (Copy / Paste Parameters)
 mod channel_clip;
+// -- WP P3PB -- the PICOBOOT writer (the hub's unattended flash)
+mod picoboot;
 
 pub use callbacks::{DeviceEvents, LinkListener, MidiSender, NotifyListener, RtaListener};
 pub use curves::*;
@@ -238,6 +240,8 @@ pub use notice_text::{
 };
 // -- WP P1TK --
 pub use confirm::{CONFIRM_TOKEN_TTL_MS, ConfirmOp};
+// -- WP P3PB --
+pub use picoboot::{BootDevice, FlashReport, picoboot_devices};
 // -- WP P1SN --
 pub use snapshot::{SnapshotInfo, SnapshotRecall};
 // -- WP P1OF --
