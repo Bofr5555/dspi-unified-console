@@ -15,6 +15,11 @@
 // ci/generated/swift/DspiConstants.swift, checked by ci/drift.sh likewise.
 // `import dspi_constants`; plain Swift, it needs no library.
 //
+// -- WP SW-M3 -- Sources/dspi_hub/dspi_hub.swift is the Rust hub's binding
+// (dspi-hub's `uniffi` feature), in the macOS slices only: its own product,
+// DSPiHubBindings, which only the macOS app links.  It uses dspi_core's
+// DspiCore, so it depends on that module.
+//
 // The XCFramework is a build product (gitignored): run build-xcframework.sh
 // before opening or building the Xcode project.
 import PackageDescription
@@ -35,12 +40,14 @@ let package = Package(
   platforms: [.macOS("14.6"), .iOS("17.0")],
   products: [
     .library(name: "DSPiCoreBindings", targets: ["dspi_core", "dspi_ffi", "dspi_constants"]),
+    .library(name: "DSPiHubBindings", targets: ["dspi_hub"]),   // -- WP SW-M3 -- macOS only
   ],
   targets: [
     .binaryTarget(name: "DSPiCore", path: "../../../build/xcframework/DSPiCore.xcframework"),
     .target(name: "dspi_core", dependencies: ["DSPiCore"], linkerSettings: systemLibraries),
     .target(name: "dspi_ffi", dependencies: ["DSPiCore"], linkerSettings: systemLibraries),
     .target(name: "dspi_constants"), // -- WP SW25 --
+    .target(name: "dspi_hub", dependencies: ["DSPiCore", "dspi_core"], linkerSettings: systemLibraries),   // -- WP SW-M3 --
   ],
   swiftLanguageVersions: [.v5]
 )

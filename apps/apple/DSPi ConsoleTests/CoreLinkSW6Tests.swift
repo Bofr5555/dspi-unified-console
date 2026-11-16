@@ -219,7 +219,7 @@ final class CoreLinkSW6Tests: XCTestCase {
 
 #if os(macOS)
 /// The Swift hub's device: Swift's demo FakeTransport.
-private final class SW6FakeHubDevice: HubDevice {
+private final class SW6FakeHubDevice: DSPi_Console.HubDevice {   // -- review batch6 -- dspi_core has a HubDevice record too (P2CC1)
     let fake: FakeTransport
     let info: HubDeviceInfo
     var generation: UInt64 { fake.generation }

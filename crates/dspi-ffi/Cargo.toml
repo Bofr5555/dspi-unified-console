@@ -27,13 +27,20 @@ required-features = ["cli"]
 dspi-core = { path = "../dspi-core", default-features = false, features = ["uniffi", "link"] }
 uniffi.workspace = true
 log.workspace = true
+# -- WP SW-M3 -- The hub's binding (namespace `dspi_hub`), feature `hub` only.
+dspi-hub = { path = "../dspi-hub", default-features = false, features = ["uniffi"], optional = true }
 
 [features]
 # -- WP CG3 --
 # On for Android and the host; iOS builds with --no-default-features.
 default = ["usb"]
-usb = ["dspi-core/usb"]
+usb = ["dspi-core/usb", "dspi-hub?/usb"]  # -- WP SW-M3 -- the hub's USB too
 cli = ["uniffi/cli"]
+# -- WP SW-M3 -- Hosting a DSPi Link hub (dspi-hub's `uniffi` binding), for the
+# Mac app's slices only (apps/apple/build-xcframework.sh): no hub on iOS or in
+# Android's Play build (PLAN-CLIENTS section 8). With `usb`, the hub finds USB
+# devices too.
+hub = ["dep:dspi-hub"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 # Logcat, the only log an Android app has. Same version as the Android app.

@@ -640,6 +640,16 @@ frame-ancestors 'none'`, `nosniff`, `no-cache` with an ETag (304), `Referrer-Pol
 **TM11.** `dspi-hub` without `app`. **SW-M3.** A UniFFI wrapper over the same; `DeviceBroker`
 is a plain Rust trait today and needs no export if the wrapper's `AppLink` stays in Rust.
 
+<!-- WP SW-M3 -->
+**SW-M3 as built.** `dspi-hub/src/ffi.rs`, feature `uniffi`, namespace `dspi_hub`, carried by `dspi-ffi`'s feature
+`hub`, which only the Mac's slices build (`apps/apple/build-xcframework.sh`): no hub on iOS or in Android's Play build.
+`HubHost` is `FfiHub` one for one (one object, many runs; `Hub` in one slot; reads and the listener hold a `HubHandle` or a
+`NetworkControl`; calls but reads refused in the listener, `InCallback`), with typed records and `HubHostError` in place of
+JSON. `attach_app` takes the app's `DspiCore` (a type of the `dspi_core` namespace), so `AppLink` stays in Rust; one addition
+for demos and conformance runs, `demo_turn_knob`. Mac app: `Core/CoreHub.swift` (`CoreHubService`) runs it while sharing is
+on, as Qt does (R1): the local core opens USB itself (`CoreBackedTransport` `Link.usb`) and is attached on start; Bonjour,
+power assertions and preferences stay Swift. The Swift hub is the opt-out (`-CoreTransport NO`, `-CoreHub NO`).
+
 **P1HA, `apply_guard.rs`, for P1SA and P1HL.** `apply.begin/confirm/cancel/status` and the
 `apply.ended` event (`docs/integrator/hub.md`, "Guarded apply"); cap `apply_guard`, `v: 1`.
 `apply_guard::handle_message` is chained after `lock::handle_message` in the connection's reader.

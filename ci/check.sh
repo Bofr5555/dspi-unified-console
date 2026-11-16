@@ -250,10 +250,22 @@ for s in "${steps[@]}"; do
       # -- WP SW-M1 -- the core's raw USB pipe (no lock, no token) stays inside
       # Core/CoreUsb.swift, the hub's device; its test mock is the one other user
       if [ "$s" = swift ]; then
-        stray=$(grep -rlE '\b(UsbPipe|UsbPipeProtocol|usbPipeScan|usbPipeWaitChange)\b' --include='*.swift' apps/apple |
+        stray=$(grep -rlE '\b(UsbPipe|UsbPipeProtocol)\b' --include='*.swift' apps/apple |
           grep -vE '/Core/Generated/|/Core/CoreUsb\.swift$|/DSPi ConsoleTests/CoreUsbSWM1Tests\.swift$' || true)
         if [ -n "$stray" ]; then echo "swift: the raw USB pipe is used outside Core/CoreUsb.swift:" >&2; echo "$stray" >&2; exit 1; fi
+        # -- WP SW-M3 -- the bus listing and hot-plug wait (no transfers) also
+        # in the core's own USB link (CoreBackedTransport's Link.usb)
+        stray=$(grep -rlE '\b(usbPipeScan|usbPipeWaitChange)\b' --include='*.swift' apps/apple |
+          grep -vE '/Core/Generated/|/Core/CoreUsb\.swift$|/Core/CoreBackedTransport\.swift$|/DSPi ConsoleTests/CoreUsbSWM1Tests\.swift$' || true)
+        if [ -n "$stray" ]; then echo "swift: the USB bus listing is used outside Core/CoreUsb.swift and Core/CoreBackedTransport.swift:" >&2; echo "$stray" >&2; exit 1; fi
         echo "swift: the raw USB pipe is only in Core/CoreUsb.swift"
+        # -- WP SW-M3 -- the Rust hub (module dspi_hub) is driven only by
+        # Core/CoreHub.swift; the Swift hub (LinkHub, LinkServer, LinkService) is
+        # built only by AppState (the opt-out); tests excepted
+        stray=$( { grep -rlE '^import dspi_hub$|\bHubHost\(' --include='*.swift' apps/apple | grep -vE '/Core/Generated/|/Core/CoreHub\.swift$|/DSPi ConsoleTests/'
+                   grep -rlE '\b(LinkHub|LinkServer|LinkService)\(' --include='*.swift' apps/apple | grep -vE '/DSPi Console/DSPi_ConsoleApp\.swift$|/DSPi ConsoleTests/'; } || true)
+        if [ -n "$stray" ]; then echo "swift: the Rust hub is driven outside Core/CoreHub.swift, or the Swift hub is built outside the opt-out:" >&2; echo "$stray" >&2; exit 1; fi
+        echo "swift: the Rust hub is only in Core/CoreHub.swift; the Swift hub only in the opt-out"
         # -- WP SW5 -- the core's MIDI handle stays in MIDI/CoreMidiPipe.swift,
         # and the Swift MIDI engine (the opt-out) is built only by AppState's
         # opt-out branches and by tests. -- WP SW5F -- the core's call is
@@ -293,6 +305,31 @@ for s in "${steps[@]}"; do
           grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
         if [ -n "$stray" ]; then echo "swift: a firmware file writes or finds a drive itself (the core's job):" >&2; echo "$stray" >&2; exit 1; fi
         echo "swift: firmware goes to a drive only through the core's flashConfirmed, in FirmwareInstaller.swift"
+        # -- WP SWS7 -- the effect views name their live settings
+        # (DSPViewModel.LiveFloat, the core's registry paths), never an
+        # opcode: the vendor codes are the opt-out's, in Commands.swift.
+        stray=$(cd "apps/apple/DSPi Console" && grep -nE '\bREQ_[A-Z0-9_]+|\bliveRequest\b' \
+          CrossfeedView.swift LoudnessView.swift VolumeLevellerView.swift PsychoacousticBassView.swift SubharmonicSynthView.swift || true)
+        if [ -n "$stray" ]; then echo "swift: an effect view names an opcode (use DSPViewModel.LiveFloat):" >&2; echo "$stray" >&2; exit 1; fi
+        echo "swift: the five effect views name no opcode"
+        # -- WP SWS4 -- filter files are the core's (filtersInspect/Import/Export):
+        # the Swift reader and writer (the opt-out) live only in FilterFile.swift,
+        # DSPMath.swift keeps only the type codes' table, and the app reaches the
+        # opt-out only through its two entry points, each behind a no-core guard
+        # in DSPi_ConsoleApp.swift; tests excepted. AutoEQ's ParametricEQ reader
+        # (AutoEQManager.swift) is SWS11's, not a filter file.
+        app='apps/apple/DSPi Console'
+        stray=$( { grep -rlP '\bFilterFile\.(?!swift\b)|\b(parseDSPiFile|parseREWFile|generateExportString|applyREWFile|applyDSPiFile|ParsedREWFile|ParsedDSPiFile|ParsedChannelData)\b|DSPi Console Filter Settings' --include='*.swift' "$app" |
+                     grep -vE '/Core/Generated/|/FilterFile\.swift$'
+                   grep -rlE 'fileCode' --include='*.swift' "$app" | grep -vE '/FilterFile\.swift$|/DSPMath\.swift$'
+                   grep -rlE '\boptOutFilter(Import|Export)\b' --include='*.swift' "$app" | grep -vE '/FilterFile\.swift$|/DSPi_ConsoleApp\.swift$'; } || true)
+        if [ -n "$stray" ]; then echo "swift: a filter-file parser or writer outside the opt-out (FilterFile.swift):" >&2; echo "$stray" >&2; exit 1; fi
+        calls=$(grep -cE '\boptOutFilter(Import|Export)\(' "$app/DSPi_ConsoleApp.swift" || true)
+        guarded=$(grep -B1 -E '\boptOutFilter(Import|Export)\(' "$app/DSPi_ConsoleApp.swift" | grep -cE 'guard let source = vm\.transport\.coreStateSource else \{' || true)
+        if [ "$calls" != 2 ] || [ "$guarded" != 2 ]; then
+          echo "swift: the opt-out's filter files must be reached only behind a no-core guard (calls $calls, guarded $guarded)" >&2; exit 1
+        fi
+        echo "swift: filter files are the core's; the Swift reader and writer only in the opt-out (FilterFile.swift)"
       fi ;;
     licences) python3 ci/licence-inventory.py --gate --fetch-console ;;
     deny)

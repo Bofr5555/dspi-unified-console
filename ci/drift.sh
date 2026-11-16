@@ -59,7 +59,8 @@ rm -rf "$CARGO_TARGET_DIR"/debug/build/dspi-capi-*
 cargo build --locked -p dspi-capi
 cp crates/dspi-capi/include/dspi_core.h "$out/dspi_core.h"
 
-cargo build --locked -p dspi-ffi --features cli
+# -- WP SW-M3 -- with `hub`: the Mac app's library, so the hub's namespace too
+cargo build --locked -p dspi-ffi --features cli,hub
 lib_dir=$CARGO_TARGET_DIR/debug
 lib=$lib_dir/libdspi_ffi.so
 mapfile -t namespaces < <(nm -D --defined-only "$lib" |
@@ -73,6 +74,8 @@ for lang in kotlin swift; do
       --config "$config" --language "$lang" --no-format --out-dir "$out/$lang"
   done
 done
+# -- WP SW-M3 -- one namespace's Swift using another's types imports it
+python3 ci/uniffi_swift_imports.py "$out"/swift/*.swift
 
 # -- WP SW25 --
 python3 apps/apple/Tools/gen_swift_constants.py "$out/swift/DspiConstants.swift"

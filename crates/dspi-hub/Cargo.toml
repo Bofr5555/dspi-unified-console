@@ -38,6 +38,10 @@ test-tls-mode = []
 # The firmware rollout (rollout.rs, PLAN-P3 F6): the parameter API's executor, the
 # core's PICOBOOT writer over its USB. Off by default: `uconsole hub` asks for it.
 rollout = ["api", "usb", "dspi-core/usb"]
+# -- WP SW-M3 --
+# The Swift binding (ffi.rs): the UniFFI namespace `dspi_hub`, which the library
+# `crates/dspi-ffi` carries with its feature `hub` (the Mac app's slices only).
+uniffi = ["dep:uniffi", "app", "dspi-core/uniffi"]
 
 [dependencies]
 dspi-proto.workspace = true
@@ -53,6 +57,8 @@ dspi-link = { workspace = true, features = ["tls"] }
 # the clients run. Without default features: none of what they add is used here.
 dspi-session = { path = "../dspi-session", default-features = false }
 dspi-core = { workspace = true, optional = true }
+# -- WP SW-M3 --
+uniffi = { workspace = true, optional = true }
 thiserror.workspace = true
 log.workspace = true
 # policy/commands.json, the hub's command table (policy.rs).

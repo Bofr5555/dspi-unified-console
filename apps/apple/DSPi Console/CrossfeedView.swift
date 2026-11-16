@@ -294,7 +294,7 @@ struct CrossfeedView: View {
                 caption: "Simulates head shadow lowpass cutoff. Lower = more bass crossfeed. Typical: 650-700 Hz.",
                 live: { v in
                     let c = min(max(v, 500), 2000)
-                    vm.sendFloatParamToDevice(REQ_SET_CROSSFEED_FREQ, c)
+                    vm.sendFloatParamToDevice(.crossfeedFreq, c)
                     graphLive.set(.freq, c)
                 },
                 set: { val in
@@ -317,7 +317,7 @@ struct CrossfeedView: View {
                 caption: "Crossfeed attenuation below direct signal. Higher = more crossfeed. Typical: 4.5-9.5 dB.",
                 live: { v in
                     let c = min(max(v, 0), 15)
-                    vm.sendFloatParamToDevice(REQ_SET_CROSSFEED_FEED, c)
+                    vm.sendFloatParamToDevice(.crossfeedFeed, c)
                     graphLive.set(.feed, c)
                 },
                 set: { val in

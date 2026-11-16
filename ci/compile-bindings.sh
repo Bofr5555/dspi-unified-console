@@ -16,7 +16,8 @@ set -euo pipefail
 lang=${1:?usage: compile-bindings.sh kotlin|swift}
 case "$lang" in kotlin|swift) ;; *) echo "unknown language $lang" >&2; exit 2 ;; esac
 
-cargo build --locked -p dspi-ffi --features cli
+# -- WP SW-M3 -- with `hub`, as the Mac app's library: every namespace
+cargo build --locked -p dspi-ffi --features cli,hub
 lib_dir=$CARGO_TARGET_DIR/debug
 lib=$lib_dir/libdspi_ffi.so
 
@@ -34,6 +35,8 @@ for ns in "${namespaces[@]}"; do
   "$lib_dir/uniffi-bindgen" generate --library "$lib" --crate "$ns" \
     --config "$config" --language "$lang" --no-format --out-dir "$out/src"
 done
+# -- WP SW-M3 -- one namespace's Swift using another's types imports it
+if [ "$lang" = swift ]; then python3 ci/uniffi_swift_imports.py "$out"/src/*.swift; fi
 
 case "$lang" in
   kotlin)
@@ -49,13 +52,24 @@ case "$lang" in
     ;;
   swift)
     # Swift 5 mode, the language mode of the Apple app's Xcode project.
+    # -- WP SW-M3 -- a namespace may use another's types (dspi_hub takes dspi_core's
+    # DspiCore): every module sees the ones built before it, in name order, and
+    # links against them. The library's directory comes first: the module
+    # dspi_ffi is a libdspi_ffi.so of its own in $out/build.
+    built=()
     for ns in "${namespaces[@]}"; do
+      deps=()
+      for b in ${built[@]+"${built[@]}"}; do
+        deps+=(-Xcc "-fmodule-map-file=$out/src/${b}FFI.modulemap" "-l$b")
+      done
       /opt/swift/bin/swiftc -swift-version 5 -parse-as-library -module-name "$ns" \
         -emit-library -use-ld=lld -Xlinker --no-undefined \
         -I "$out/src" -Xcc "-fmodule-map-file=$out/src/${ns}FFI.modulemap" \
         -L "$lib_dir" -ldspi_ffi \
+        -I "$out/build" -L "$out/build" ${deps[@]+"${deps[@]}"} \
         -emit-module -emit-module-path "$out/build/$ns.swiftmodule" \
         -o "$out/build/lib$ns.so" "$out/src/$ns.swift"
+      built+=("$ns")
     done
     echo "compiled and linked ${#namespaces[@]} Swift modules: ${namespaces[*]}"
     # -- WP SW25 -- The generated constants (the committed copy, which the drift

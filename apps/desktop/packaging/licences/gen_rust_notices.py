@@ -18,7 +18,7 @@ container (cargo and the crate registry):
 ci/check.sh's qt step runs --check, which fails when the committed file is stale.
 
 -- WP REL013M -- With --swift: apps/apple/licences/rust-crates.txt, the crates in
-the Swift macOS app's core (`-p dspi-ffi`, default features, as
+the Swift macOS app's core (`-p dspi-ffi`, default features and -- WP SW-M3 -- `hub`, as
 apps/apple/build-xcframework.sh builds its macOS slices) for aarch64-apple-darwin
 and x86_64-apple-darwin. apps/apple/package-macos.sh puts it into the app's
 LICENSES/; ci/check.sh's swift step runs --swift --check.
@@ -33,7 +33,7 @@ TOP = Path(__file__).resolve().parents[4]
 SWIFT = "--swift" in sys.argv   # -- WP REL013M --
 if SWIFT:
     OUT = TOP / "apps/apple/licences/rust-crates.txt"
-    SELECT = ["-p", "dspi-ffi"]
+    SELECT = ["-p", "dspi-ffi", "--features", "hub"]   # -- WP SW-M3 -- the Mac slices' hub
     TARGETS = ("aarch64-apple-darwin", "x86_64-apple-darwin")
     TITLE = "Third-party Rust crates linked into uConsole for DSPi's core (dspi_ffi) in the Swift macOS app\n"
     SCOPE = "The union for Apple silicon and Intel: a crate may be linked on only one of them.\n"

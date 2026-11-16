@@ -4,14 +4,27 @@
 //
 //  The Networking settings page: turn local-network sharing on or off, name
 //  the hub, choose the auth mode, pair new clients and manage the paired ones.
-//  It drives the LinkService coordinator, which owns the server, the DNS-SD
-//  advertisement and the auth store.  See networking_plan.md Phase 3.
+//  It drives the sharing coordinator: -- WP SW-M3 -- the Rust hub's
+//  (Core/CoreHub.swift, `CoreHubService`) by default, the Swift hub's
+//  `LinkService` under the opt-out (`AppState.usesCoreHub`), both through
+//  `HubSharingModel`.  See networking_plan.md Phase 3.
 //
 
 import SwiftUI
 
 struct NetworkingSettingsTab: View {
-    @ObservedObject private var service = AppState.shared.linkService
+    // -- WP SW-M3 -- the Rust hub's service, or the Swift hub's (opt-out)
+    var body: some View {
+        if let hub = AppState.shared.coreHub {
+            NetworkingSettingsPage(service: hub)
+        } else {
+            NetworkingSettingsPage(service: AppState.shared.linkService)
+        }
+    }
+}
+
+struct NetworkingSettingsPage<Service: HubSharingModel>: View {
+    @ObservedObject var service: Service
     @ObservedObject private var menuBar = MenuBarController.shared
     @ObservedObject private var client = AppState.shared.linkClientCoordinator
 
@@ -24,7 +37,8 @@ struct NetworkingSettingsTab: View {
     private enum Field { case hubName, port }
 
     /// The sidebar's Networking badge colour, so the header reads as the same page.
-    private static let tint = Color(red: 0.290, green: 0.455, blue: 0.600)
+    // -- WP SW-M3 -- computed: a generic view has no static stored properties
+    private static var tint: Color { Color(red: 0.290, green: 0.455, blue: 0.600) }
 
     var body: some View {
         Form {
@@ -36,6 +50,16 @@ struct NetworkingSettingsTab: View {
         }
         .formStyle(.grouped)
         .endsEditingOnClickOutside()
+        // -- WP SW-M3 -- a change of access mode that forgets paired clients asks first
+        .alert("Change the access mode?",
+               isPresented: Binding(get: { service.accessChangeCost != nil },
+                                    set: { if !$0 { service.cancelAccessChange() } })) {
+            Button("Change and Forget Clients", role: .destructive) { service.confirmAccessChange() }
+            Button("Cancel", role: .cancel) { service.cancelAccessChange() }
+        } message: {
+            let n = service.accessChangeCost ?? 0
+            Text("\(n) paired client\(n == 1 ? "" : "s") will be forgotten and must pair again. This cannot be undone.")
+        }
         .onChange(of: service.hubName) { _, name in hubNameDraft = name }   // a remote rename
         // Commit whenever a field loses focus, whether by Enter or a click elsewhere.
         .onChange(of: focus) { old, _ in
@@ -154,11 +178,11 @@ struct NetworkingSettingsTab: View {
             if let pin = service.activePIN {
                 pairingCodeRow(pin)
             }
-            if service.clients.isEmpty {
+            if service.clientRows.isEmpty {
                 Text("No paired clients yet.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(service.clients) { client in
+                ForEach(service.clientRows) { client in
                     clientRow(client)
                 }
             }
@@ -201,7 +225,7 @@ struct NetworkingSettingsTab: View {
         .padding(.vertical, 8)
     }
 
-    private func clientRow(_ client: PairedClient) -> some View {
+    private func clientRow(_ client: HubClientRow) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "person.crop.circle.fill")
                 .font(.title2).foregroundStyle(.secondary)

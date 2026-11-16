@@ -17,7 +17,9 @@ class AppState: ObservableObject {
     // -- WP SW2 -- No real device under XCTest unless the run opts in (TestHostGuard).
     // -- WP SW-M1 -- The local DSPi on USB through the Rust core's `usb`
     // feature (Core/CoreUsb.swift), not the app's own IOKit driver.
-    let usb = CoreUsb(startMonitoring: TestHostGuard.mayOpenDevices)
+    // -- WP SW-M3 -- Built only when used: the Swift hub's device (the
+    // opt-out); by default the local core opens USB itself (`coreTransport`).
+    lazy var usb = CoreUsb(startMonitoring: TestHostGuard.mayOpenDevices)
 
     /// The DSPi Link gateway.  It owns the USB device's command path; the local
     /// UI is session 1 on it, exactly like a remote client, so ordering,
@@ -87,9 +89,28 @@ class AppState: ObservableObject {
     // -- WP SW4 -- The Rust core drives the local device, over the hub's
     // session 1 (docs/SWIFT-SEAMS.md 5.4), or its own demo device with
     // `-LocalTransport demo`.
+    // -- WP SW-M3 -- By default the core's own USB (`Link.usb`), handed to the
+    // Rust hub while the Mac shares (`coreHub`); `-CoreHub NO` keeps the
+    // Swift hub's session 1.
     lazy var coreTransport: CoreBackedTransport = AppState.usesDemoTransport
         ? CoreBackedTransport(link: .demo, autoSelect: true)
-        : CoreBackedTransport(link: .host(localTransport, .hub))
+        : AppState.usesCoreHub
+            ? CoreBackedTransport(link: .usb(direct: TestHostGuard.mayOpenDevices))
+            : CoreBackedTransport(link: .host(localTransport, .hub))
+
+    // -- WP SW-M3 -- The Mac's DSPi Link hub from the Rust core
+    // (Core/CoreHub.swift): it serves the local core's USB devices, or its own
+    // demo device with `-LocalTransport demo`.  nil under the opt-out.
+    @MainActor lazy var coreHub: CoreHubService? = AppState.usesCoreHub
+        ? CoreHubService(devices: AppState.usesDemoTransport ? .demo : .app(coreTransport))
+        : nil
+
+    /// -- WP SW-M3 -- The hub's id, for the hub browser to leave this Mac's
+    /// own hub out: the Rust hub's stored one (nil before its first start), or
+    /// the Swift hub's.
+    var ownHubID: String? {
+        AppState.usesCoreHub ? CoreHubService.savedHubID() : linkHub.auth.hubID.uuidString.lowercased()
+    }
 
     // -- WP SW-M1 -- With the core: the DSPi's USB MIDI port stays the
     // fallback when the vendor interface cannot be opened, as SWF2 set up.
@@ -138,7 +159,7 @@ class AppState: ObservableObject {
     /// feeding the composite so shared devices reach the device picker.
     @MainActor lazy var linkClientCoordinator: LinkClientCoordinator =
         LinkClientCoordinator(composite: transport,
-                              ownHubID: linkHub.auth.hubID.uuidString.lowercased())
+                              ownHubID: ownHubID)   // -- WP SW-M3 --
     #else
     /// The demo device: a simulated DSPi that answers every request from
     /// fixture state.
@@ -238,6 +259,24 @@ class AppState: ObservableObject {
     /// the same flag (`-CoreTransport NO` / DSPI_CORE_TRANSPORT=0), which
     /// keeps Swift's `LinkClient` and `NetworkTransport`.
     static var usesCoreLink: Bool { usesCoreTransport }
+
+    /// -- WP SW-M3 -- The Mac shares its devices through the Rust hub
+    /// (Core/CoreHub.swift) and its core opens USB itself, unless opted out:
+    /// `-CoreTransport NO` (all Swift), or `-CoreHub NO` (the core over the
+    /// Swift hub's session 1, SW-M1's path).  A hardware test run
+    /// (TestHostGuard's opt-ins) keeps the Swift hub unless `-CoreHub YES`:
+    /// its harness reads the device raw through CoreUsb.
+    static var usesCoreHub: Bool {
+        #if os(macOS)
+        guard usesCoreTransport else { return false }
+        if UserDefaults.standard.object(forKey: "CoreHub") != nil {
+            return UserDefaults.standard.bool(forKey: "CoreHub")
+        }
+        return !(TestHostGuard.underXCTest && TestHostGuard.mayOpenDevices)
+        #else
+        return false
+        #endif
+    }
 
     /// -- WP SW5 -- Back in the foreground: the DSPi on USB MIDI re-checks
     /// that it answers, then everything is re-read (or it reconnects).
@@ -10675,27 +10714,17 @@ struct FileMenuActions {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
+        let contents: String
         do {
-            let contents = try String(contentsOf: url, encoding: .utf8)
-
-            if contents.hasPrefix("# DSPi Console") {
-                // DSPi Console format - parse and show multi-channel picker
-                if let parsed = parseDSPiFile(contents) {
-                    showMultiChannelPicker(file: parsed)
-                } else {
-                    showError(AppNotices.file("Not a DSPi Console filter file this version reads."))
-                }
-            } else {
-                // REW format - parse and show single-channel picker
-                let parsed = parseREWFile(contents)
-                if parsed.filters.isEmpty {
-                    showError(AppNotices.file("No valid filters found in the file."))
-                } else {
-                    showSingleChannelPicker(parsed)
-                }
-            }
+            contents = try String(contentsOf: url, encoding: .utf8)
         } catch {
             showError(AppNotices.file(error))
+            return
+        }
+        // -- WP SWS4 -- through a core, the core reads, offers and applies
+        // the file (`runFilterImport`); the alert is this app's.
+        runFilterImport(contents, vm: AppState.shared.viewModel) { prompt, choices, picked in
+            if let chosen = runChannelPicker(message: prompt, choices: choices) { picked(chosen) }
         }
     }
 
@@ -10707,13 +10736,19 @@ struct FileMenuActions {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        let output = generateExportString()
-
-        do {
-            try output.write(to: url, atomically: true, encoding: .utf8)
-            showSuccess("Filters exported")
-        } catch {
-            showError(AppNotices.file(error))
+        // -- WP SWS4 -- through a core, the core's file (`filterExportText`)
+        filterExportText(vm: AppState.shared.viewModel) { outcome in
+            switch outcome {
+            case .text(let output):
+                do {
+                    try output.write(to: url, atomically: true, encoding: .utf8)
+                    showSuccess("Filters exported")
+                } catch {
+                    showError(AppNotices.file(error))
+                }
+            case .refused(let notice):
+                showError(notice)
+            }
         }
     }
 
@@ -11002,201 +11037,173 @@ extension FileMenuActions {
         return lines.joined(separator: "\n\n")
     }
 
-    // MARK: - Parsing
+    // MARK: - Filter files (-- WP SWS4 --)
+    //
+    // Through a core (every transport but the opt-out, `-CoreTransport NO`),
+    // the core reads, writes and applies filter files: `filtersInspect` for
+    // the picker, `filtersImport` for the writes (under the device lock, as
+    // one undo step), `filtersExport` for the file.  The panels, sheets and
+    // notices stay here.  The opt-out's Swift reader and writer are in
+    // FilterFile.swift (`optOutFilterImport`, `optOutFilterExport`).
 
-    struct ParsedREWFile {
-        var filters: [FilterParams] = []
-        /// REW and AutoEQ lead their exports with the preamp cut that keeps the
-        /// filter set from clipping; nil when the file carries none.
-        var preamp: Float? = nil
+    /// The undo step an import is.
+    static let filterImportLabel = "Import Filters"
+
+    /// What the picker offers for a file, and how to apply the choice.
+    struct FilterImportOffer {
+        let prompt: String
+        let choices: [ImportChannelChoice]
+        /// Write the file to the chosen channels (ids); `done` runs on the
+        /// main thread with the notice to show.
+        let apply: (_ chosen: [Int], _ done: @escaping (ConsoleNotice) -> Void) -> Void
     }
 
-    static func parseREWFile(_ contents: String) -> ParsedREWFile {
-        var parsed = ParsedREWFile()
+    /// A file read for import: an offer, or why it cannot be imported.
+    enum FilterImportStep {
+        case offer(FilterImportOffer)
+        case refused(ConsoleNotice)
+    }
 
-        for line in contents.components(separatedBy: .newlines) {
-            if let preamp = FilterFile.parsePreamp(line: line) {
-                parsed.preamp = preamp
-                continue
-            }
-            guard let band = FilterFile.parse(line: line) else { continue }
-            // Disabled entries are dropped rather than kept as flat placeholders:
-            // a REW file numbers its own slots, so packing the enabled ones is
-            // what the user expects when importing into our band layout.
-            guard band.enabled else { continue }
-            parsed.filters.append(band.params)
+    /// An export: the file's text, or why there is none.
+    enum FilterExportOutcome {
+        case text(String)
+        case refused(ConsoleNotice)
+    }
+
+    /// The picker's prompt, for both paths.
+    static func filterImportPrompt(native: Bool, filters: Int, preamp: Float?) -> String {
+        if native {
+            return "This file contains filter settings for multiple channels. Select which channels to import:"
         }
-
-        return parsed
+        var prompt = "Found \(filters) filter(s)"
+        if let preamp {
+            prompt += String(format: " and a %+.1f dB preamp", preamp)
+        }
+        return prompt + ". Select which channel(s) to apply them to:"
     }
 
-    struct ParsedChannelData {
-        var filters: [FilterParams]
-        var enableState: Bool? // nil = no state info (input, or legacy format)
-        // nil (not merely empty) means the file carried no such section, so the
-        // import must leave the device's current values alone rather than
-        // clearing them - older files have neither.
-        var xover: [FilterParams]? = nil
-        var preamp: Float? = nil
-    }
-
-    struct ParsedDSPiFile {
-        var channels: [Int: ParsedChannelData]
-        /// Version stamp from the file, or 1 when it predates the stamp.
-        var formatVersion: Int
-    }
-
-    static func parseDSPiFile(_ contents: String, vm: DSPViewModel = AppState.shared.viewModel) -> ParsedDSPiFile? {
-        var result: [Int: ParsedChannelData] = [:]
-        var formatVersion = 1
-        var currentChannel: Int? = nil
-
-        // Header content is keyed by channel index, never by name, so a renamed
-        // channel still round-trips.  The output state suffix is optional so a
-        // hand-edited file still loads (the enable state is then left alone).
-        let inputPattern = try? NSRegularExpression(pattern: "^Input\\s+(\\d+):")
-        let outputPattern = try? NSRegularExpression(pattern: "^Output\\s+(\\d+):.*?(?:\\s*\\((Enabled|Disabled)\\))?\\s*$")
-
-        for line in contents.components(separatedBy: .newlines) {
-            if let version = FilterFile.parseFormatVersion(line: line) {
-                formatVersion = version
-                continue
-            }
-
-            // Check for channel header [...]
-            if line.hasPrefix("[") && line.hasSuffix("]") {
-                let headerContent = String(line.dropFirst().dropLast())
-                // A header we don't recognise ends the previous section rather
-                // than leaving it open, or its bands would land on the wrong
-                // channel.
-                currentChannel = nil
-
-                // [Input N: Name]
-                if let match = inputPattern?.firstMatch(in: headerContent, options: [], range: NSRange(headerContent.startIndex..., in: headerContent)),
-                   let idxRange = Range(match.range(at: 1), in: headerContent),
-                   let inputIdx = Int(headerContent[idxRange]),
-                   inputIdx >= 0 && inputIdx < vm.chOut1 {
-                    currentChannel = inputIdx
-                    result[inputIdx] = ParsedChannelData(filters: [], enableState: nil)
+    /// Import Filters after the file is read: what it holds (`pick` shows
+    /// the channel picker and calls back with the ticked ids, or not at all
+    /// when cancelled), then the writes and their notice.  Main thread.
+    static func runFilterImport(_ contents: String, vm: DSPViewModel,
+                                pick: @escaping (String, [ImportChannelChoice], @escaping ([Int]) -> Void) -> Void) {
+        filterImportStep(contents, vm: vm) { step in
+            switch step {
+            case .refused(let notice):
+                NoticeCenter.main.post(notice)
+            case .offer(let offer):
+                pick(offer.prompt, offer.choices) { chosen in
+                    guard !chosen.isEmpty else { return }
+                    offer.apply(chosen) { NoticeCenter.main.post($0) }
                 }
-                // Legacy input headers (pre-index format): [USB L] / [USB R]
-                else if headerContent == "USB L" {
-                    currentChannel = 0
-                    result[0] = ParsedChannelData(filters: [], enableState: nil)
-                } else if headerContent == "USB R" {
-                    currentChannel = 1
-                    result[1] = ParsedChannelData(filters: [], enableState: nil)
-                }
-                // [Output N: Name (Enabled/Disabled)]
-                else if let match = outputPattern?.firstMatch(in: headerContent, options: [], range: NSRange(headerContent.startIndex..., in: headerContent)),
-                        let idxRange = Range(match.range(at: 1), in: headerContent),
-                        let outputIdx = Int(headerContent[idxRange]),
-                        outputIdx >= 0 && outputIdx <= 8 {
-                    let eqCh = vm.eqChannel(forOutput: outputIdx)
-                    let enabled = Range(match.range(at: 2), in: headerContent)
-                        .map { headerContent[$0] == "Enabled" }
-                    currentChannel = eqCh
-                    result[eqCh] = ParsedChannelData(filters: [], enableState: enabled)
-                }
-                // A file from DSPi Console for Windows, whose sections are keyed
-                // by the built-in channel name rather than by index.
-                else if let ref = FilterFile.windowsChannel(header: headerContent,
-                                                            pdmOutput: vm.pdmOutputIndex) {
-                    switch ref {
-                    case .input(let input) where input < vm.chOut1:
-                        currentChannel = input
-                        result[input] = ParsedChannelData(filters: [], enableState: nil)
-                    case .output(let output) where output < vm.numOutputChannels:
-                        let eqCh = vm.eqChannel(forOutput: output)
-                        currentChannel = eqCh
-                        result[eqCh] = ParsedChannelData(filters: [], enableState: nil)
-                    default:
-                        break   // a channel this platform doesn't have
-                    }
-                }
-                // Backward compat: old channel names (map to V16 output channels)
-                else if headerContent == "Out L" {
-                    currentChannel = vm.eqChannel(forOutput: 0)
-                    result[vm.eqChannel(forOutput: 0)] = ParsedChannelData(filters: [], enableState: nil)
-                } else if headerContent == "Out R" {
-                    currentChannel = vm.eqChannel(forOutput: 1)
-                    result[vm.eqChannel(forOutput: 1)] = ParsedChannelData(filters: [], enableState: nil)
-                } else if headerContent == "Sub" {
-                    currentChannel = vm.eqChannel(forOutput: vm.pdmOutputIndex)
-                    result[vm.eqChannel(forOutput: vm.pdmOutputIndex)] = ParsedChannelData(filters: [], enableState: nil)
-                }
-                continue
-            }
-
-            guard let channel = currentChannel else { continue }
-
-            if let preamp = FilterFile.parsePreamp(line: line) {
-                result[channel]?.preamp = preamp
-                continue
-            }
-
-            // Parse band line.  Unlike the REW path, an OFF/unknown entry keeps
-            // its slot as a flat placeholder so band indices stay aligned with
-            // the file.
-            guard let band = FilterFile.parse(line: line) else { continue }
-            let params = band.enabled ? band.params : FilterParams(type: .flat)
-
-            switch band.bank {
-            case .peq:
-                result[channel]?.filters.append(params)
-            case .crossover:
-                var xover = result[channel]?.xover ?? []
-                xover.append(params)
-                result[channel]?.xover = xover
             }
         }
-
-        return result.isEmpty ? nil : ParsedDSPiFile(channels: result, formatVersion: formatVersion)
     }
 
-    // MARK: - Export
-
-    static func generateExportString(vm: DSPViewModel = AppState.shared.viewModel) -> String {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-
-        var output = "# DSPi Console Filter Settings\n"
-        output += "# Exported: \(dateFormatter.string(from: Date()))\n"
-        output += "# Format: \(FilterFile.formatVersion)\n\n"
-
-        // Input channels.  Headers are keyed by index, with the (renameable)
-        // channel name carried alongside for readability only.  Only the
-        // currently active inputs are written - the inactive ones aren't
-        // editable in the UI, so exporting their banks would be noise.
-        for eqCh in 0..<vm.numMatrixInputs {
-            output += "[Input \(eqCh): \(vm.channelNames[eqCh])]\n"
-            output += FilterFile.formatPreamp(vm.preampDB[eqCh])
-            for (i, filter) in (vm.channelData[eqCh] ?? []).enumerated() {
-                output += FilterFile.format(index: i + 1, band: filter)
-            }
-            output += "\n"
+    /// What `contents` holds for this device: through a core, its
+    /// `filtersInspect` (off the main thread); the opt-out's reader
+    /// otherwise.  `done` runs on the main thread.
+    static func filterImportStep(_ contents: String, vm: DSPViewModel,
+                                 done: @escaping (FilterImportStep) -> Void) {
+        guard let source = vm.transport.coreStateSource else {
+            return done(optOutFilterImport(contents, vm: vm))
         }
-
-        // Output channels (platform-aware).  Each carries its PEQ bank and, on
-        // crossover-capable firmware, its four crossover bands.
-        for outputIdx in 0..<vm.numOutputChannels {
-            let eqCh = vm.eqChannel(forOutput: outputIdx)
-            let name = vm.channelNames[eqCh]
-            let state = vm.outputEnabled[outputIdx] ? "Enabled" : "Disabled"
-            output += "[Output \(outputIdx): \(name) (\(state))]\n"
-            for (i, filter) in (vm.channelData[eqCh] ?? []).enumerated() {
-                output += FilterFile.format(index: i + 1, band: filter)
+        let inputs = UInt8(clamping: vm.numMatrixInputs)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let reply = source.call { $0.filtersInspect(text: contents, inputs: inputs) }
+            let step: FilterImportStep
+            switch reply {
+            case .success(let json): step = coreFilterOffer(json, text: contents, source: source)
+            case .failure(let error): step = .refused(.of(error, detail: "The filter file was not read."))
             }
-            if vm.firmwareSupportsCrossover {
-                for (i, band) in (vm.xoverData[eqCh] ?? []).enumerated() {
-                    output += FilterFile.format(bank: .crossover, index: i + 1, band: band)
-                }
-            }
-            output += "\n"
+            DispatchQueue.main.async { done(step) }
         }
-
-        return output
     }
+
+    /// `filtersInspect`'s JSON as the picker's offer.  A channel's id is its
+    /// wire channel, which `filtersImport` takes.
+    static func coreFilterOffer(_ json: String, text: String, source: CoreStateSource) -> FilterImportStep {
+        let reply = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] ?? [:]
+        let kind = reply["kind"] as? String ?? "error"
+        if kind == "error" {
+            let error = reply["error"] as? String ?? ""
+            return .refused(AppNotices.file(error.isEmpty ? "The filter file could not be read." : error))
+        }
+        let native = kind == "native"
+        let choices: [ImportChannelChoice] = (reply["channels"] as? [[String: Any]] ?? []).compactMap { ch in
+            guard let wire = (ch["wire"] as? NSNumber)?.intValue else { return nil }
+            let label = ch["label"] as? String ?? ""
+            return ImportChannelChoice(id: wire, name: label.isEmpty ? "Ch \(wire)" : label,
+                                       selected: (ch["checked"] as? Bool) ?? false)
+        }
+        guard !choices.isEmpty else {
+            return .refused(AppNotices.file(native ? "Not a DSPi Console filter file this version reads."
+                                                   : "No valid filters found in the file."))
+        }
+        let filters = (reply["filters"] as? NSNumber)?.intValue ?? 0
+        let preamp = (reply["preamp"] as? NSNumber)?.floatValue
+        return .offer(FilterImportOffer(prompt: filterImportPrompt(native: native, filters: filters, preamp: preamp),
+                                        choices: choices) { chosen, done in
+            applyCoreFilters(text, wires: chosen, source: source, done: done)
+        })
+    }
+
+    /// `filtersImport` on the chosen wire channels, as one undo step: off
+    /// the main thread, behind the writes queued before it, then the state
+    /// published.  A refusal (another console holds the lock, read-only
+    /// firmware, nothing applies) is the core's sentence.
+    static func applyCoreFilters(_ text: String, wires: [Int], source: CoreStateSource,
+                                 done: @escaping (ConsoleNotice) -> Void) {
+        let chosen = Data(wires.map { UInt8(clamping: $0) })
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = source.writeAndWait { core -> String in
+                core.beginGroup(label: filterImportLabel)
+                defer { core.endGroup() }
+                return core.filtersImport(text: text, wires: chosen)
+            }
+            let notice: ConsoleNotice
+            switch result {
+            case .success(let json): notice = filterImportNotice(json)
+            case .failure(let error): notice = .of(error, detail: "The filters were not imported.")
+            }
+            DispatchQueue.main.async { done(notice) }
+        }
+    }
+
+    /// `filtersImport`'s JSON reply `{ok, error, lines}` as the notice: its
+    /// lines (the first the summary, then what was left out), or its error
+    /// with any lines after it.
+    static func filterImportNotice(_ json: String) -> ConsoleNotice {
+        let reply = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] ?? [:]
+        let lines = reply["lines"] as? [String] ?? []
+        let notes = lines.isEmpty ? "" : "\n\n" + lines.joined(separator: "\n")
+        guard reply["ok"] as? Bool == true else {
+            let error = reply["error"] as? String ?? ""
+            return .result((error.isEmpty ? "The filters were not imported." : error) + notes, kind: .warning)
+        }
+        guard let summary = lines.first else { return .result("Filters imported") }
+        let rest = lines.dropFirst()
+        return .result(summary + (rest.isEmpty ? "" : "\n\n" + rest.joined(separator: "\n")))
+    }
+
+    /// Export Filters' text: through a core, its `filtersExport` (off the
+    /// main thread); the opt-out's writer otherwise.  `done` runs on the
+    /// main thread.
+    static func filterExportText(vm: DSPViewModel, done: @escaping (FilterExportOutcome) -> Void) {
+        guard let source = vm.transport.coreStateSource else {
+            return done(.text(optOutFilterExport(vm: vm)))
+        }
+        let inputs = UInt8(clamping: vm.numMatrixInputs)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let outcome: FilterExportOutcome
+            switch source.call({ try $0.filtersExport(inputs: inputs) }) {
+            case .success(let text): outcome = .text(text)
+            case .failure(let error): outcome = .refused(.of(error, detail: "The filters were not exported."))
+            }
+            DispatchQueue.main.async { done(outcome) }
+        }
+    }
+
 }
 
 #if os(macOS)
@@ -11234,24 +11241,6 @@ extension FileMenuActions {
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
         return checkboxes.filter { $0.state == .on }.map(\.tag)
     }
-
-    private static func showSingleChannelPicker(_ file: ParsedREWFile) {
-        let vm = AppState.shared.viewModel
-        guard let chosen = runChannelPicker(message: importPrompt(for: file),
-                                            choices: channelChoices(for: file, vm: vm)) else { return }
-        let report = applyREWFile(file, to: chosen, vm: vm)
-        if !chosen.isEmpty {
-            showSuccess("Filters imported to \(chosen.count) channel(s)" + report.notes)
-        }
-    }
-
-    private static func showMultiChannelPicker(file: ParsedDSPiFile) {
-        let vm = AppState.shared.viewModel
-        guard let chosen = runChannelPicker(message: importPrompt(for: file),
-                                            choices: channelChoices(for: file, vm: vm)) else { return }
-        let report = applyDSPiFile(file, to: chosen, vm: vm)
-        showSuccess("Filters imported" + report.notes)
-    }
 }
 #endif
 
@@ -11265,171 +11254,6 @@ extension FileMenuActions {
         let name: String
         var selected: Bool
     }
-
-    static func importPrompt(for file: ParsedREWFile) -> String {
-        var prompt = "Found \(file.filters.count) filter(s)"
-        if let preamp = file.preamp {
-            prompt += String(format: " and a %+.1f dB preamp", preamp)
-        }
-        return prompt + ". Select which channel(s) to apply them to:"
-    }
-
-    static func importPrompt(for file: ParsedDSPiFile) -> String {
-        "This file contains filter settings for multiple channels. Select which channels to import:"
-    }
-
-    /// A REW file goes to the active inputs (ticked) or the enabled outputs.
-    static func channelChoices(for file: ParsedREWFile, vm: DSPViewModel) -> [ImportChannelChoice] {
-        var choices: [ImportChannelChoice] = []
-        // Active input channels (checked by default)
-        for eqCh in 0..<vm.numMatrixInputs {
-            choices.append(ImportChannelChoice(id: eqCh, name: vm.channelNames[eqCh], selected: true))
-        }
-        // Enabled output channels (unchecked by default)
-        for outputIdx in 0..<vm.numOutputChannels where vm.outputEnabled[outputIdx] {
-            let eqCh = vm.eqChannel(forOutput: outputIdx)
-            choices.append(ImportChannelChoice(id: eqCh, name: vm.channelNames[eqCh], selected: false))
-        }
-        return choices
-    }
-
-    /// A DSPi Console file offers each channel it carries, all ticked.
-    static func channelChoices(for file: ParsedDSPiFile, vm: DSPViewModel) -> [ImportChannelChoice] {
-        // Show channels in order: inputs then outputs (full unified range).
-        (0..<vm.numChannels).compactMap { eqCh in
-            guard file.channels[eqCh] != nil else { return nil }
-            let name = eqCh < vm.channelNames.count ? vm.channelNames[eqCh] : "Ch \(eqCh)"
-            return ImportChannelChoice(id: eqCh, name: name, selected: true)
-        }
-    }
-
-    // MARK: - Applying
-
-    /// A REW or AutoEQ file's bands on each chosen channel.
-    @discardableResult
-    static func applyREWFile(_ file: ParsedREWFile, to channels: [Int],
-                             vm: DSPViewModel = AppState.shared.viewModel) -> ImportReport {
-        var report = ImportReport()
-        for eqCh in channels {
-            report.merge(applyFilters(file.filters, to: eqCh, vm: vm))
-            // Preamp is an input-only trim; outputs have no equivalent, so a
-            // REW file's preamp is dropped when targeting one.
-            if let preamp = file.preamp {
-                if eqCh < vm.chOut1 {
-                    vm.setPreampChannel(channel: eqCh, db: preamp)
-                } else {
-                    report.preampDropped = true
-                }
-            }
-        }
-        return report
-    }
-
-    /// A DSPi Console file's sections on each chosen channel.
-    @discardableResult
-    static func applyDSPiFile(_ file: ParsedDSPiFile, to channels: [Int],
-                              vm: DSPViewModel = AppState.shared.viewModel) -> ImportReport {
-        var report = ImportReport()
-        // A file from a newer build may carry sections this one doesn't know
-        // about, and they'd be dropped silently otherwise.
-        report.newerFormat = file.formatVersion > FilterFile.formatVersion
-
-        for eqCh in channels {
-            guard let data = file.channels[eqCh] else { continue }
-
-            report.merge(applyFilters(data.filters, to: eqCh, vm: vm))
-            if let preamp = data.preamp, eqCh < vm.chOut1 {
-                vm.setPreampChannel(channel: eqCh, db: preamp)
-            }
-            if let xover = data.xover {
-                applyCrossover(xover, to: eqCh, report: &report, vm: vm)
-            }
-            // Restore enable/disable state for output channels
-            if eqCh >= vm.chOut1, let enabled = data.enableState {
-                vm.setOutputEnable(output: eqCh - vm.chOut1, enabled: enabled)
-            }
-        }
-        return report
-    }
-
-    /// What an import couldn't carry across, so the confirmation can say so
-    /// instead of leaving the user to spot it.
-    struct ImportReport {
-        var truncated = 0                     // filters past the channel's band count
-        var unsupported: Set<FilterType> = [] // types this firmware would reject
-        var crossoverSkipped = false
-        var preampDropped = false
-        var newerFormat = false
-
-        mutating func merge(_ other: ImportReport) {
-            truncated = max(truncated, other.truncated)
-            unsupported.formUnion(other.unsupported)
-            crossoverSkipped = crossoverSkipped || other.crossoverSkipped
-            preampDropped = preampDropped || other.preampDropped
-            newerFormat = newerFormat || other.newerFormat
-        }
-
-        var notes: String {
-            var lines: [String] = []
-            if truncated > 0 {
-                lines.append("\(truncated) filter(s) past the end of each channel's band bank were not applied.")
-            }
-            if !unsupported.isEmpty {
-                let names = unsupported.map(\.name).sorted().joined(separator: ", ")
-                lines.append("Skipped filter types the connected firmware doesn't support: \(names).")
-            }
-            if crossoverSkipped {
-                lines.append("Crossover settings were skipped - the connected firmware doesn't support crossovers.")
-            }
-            if preampDropped {
-                lines.append("The file's preamp was not applied to output channels, which have no input trim.")
-            }
-            if newerFormat {
-                lines.append("This file was written by a newer version of uConsole for DSPi; some settings may have been ignored.")
-            }
-            return lines.isEmpty ? "" : "\n\n" + lines.joined(separator: "\n")
-        }
-    }
-
-    @discardableResult
-    private static func applyFilters(_ filters: [FilterParams], to channelIndex: Int, vm: DSPViewModel) -> ImportReport {
-        var report = ImportReport()
-        let bandCount = vm.channelData[channelIndex]?.count ?? 10
-        report.truncated = max(0, filters.count - bandCount)
-
-        for band in 0..<bandCount {
-            // Bands past the end of the file are cleared, so an import fully
-            // replaces the bank rather than leaving stale filters behind.
-            var p = band < filters.count ? filters[band] : FilterParams(type: .flat)
-            if isUnsupported(p.type, vm: vm) {
-                report.unsupported.insert(p.type)
-                p = FilterParams(type: .flat)
-            }
-            vm.setFilter(ch: channelIndex, band: band, p: p)
-        }
-
-        return report
-    }
-
-    private static func applyCrossover(_ bands: [FilterParams], to channelIndex: Int, report: inout ImportReport,
-                                       vm: DSPViewModel) {
-        guard channelIndex >= vm.chOut1 else { return }
-        if vm.isDeviceConnected && !vm.firmwareSupportsCrossover {
-            report.crossoverSkipped = true
-            return
-        }
-
-        for band in 0..<DSPViewModel.crossoverBandsPerChannel {
-            let p = band < bands.count ? bands[band] : FilterParams(type: .flat)
-            vm.setCrossoverBand(ch: channelIndex, localBand: band, p: p)
-        }
-    }
-
-    /// True when the connected firmware would reject this filter type.
-    private static func isUnsupported(_ type: FilterType, vm: DSPViewModel) -> Bool {
-        !vm.firmwareSupports(filterType: type)
-    }
-
 }
 
 #if os(macOS)
@@ -11464,42 +11288,28 @@ struct FileMenuActions {
         }
     }
 
+    // -- WP SWS4 -- through a core, the core reads, offers and applies the
+    // file (`runFilterImport`); the sheet is this app's.
     static func importFilters(_ contents: String, vm: DSPViewModel) {
-        if contents.hasPrefix("# DSPi Console") {
-            // DSPi Console format - pick from the channels it carries
-            guard let parsed = parseDSPiFile(contents, vm: vm) else {
-                showError(AppNotices.file("Not a DSPi Console filter file this version reads."))
-                return
-            }
-            FileImportSheets.chooseChannels(message: importPrompt(for: parsed),
-                                            choices: channelChoices(for: parsed, vm: vm)) { chosen in
-                let report = applyDSPiFile(parsed, to: chosen, vm: vm)
-                showSuccess("Filters imported" + report.notes)
-            }
-        } else {
-            // REW format - pick the channels to put its one band list on
-            let parsed = parseREWFile(contents)
-            guard !parsed.filters.isEmpty else {
-                showError(AppNotices.file("No valid filters found in the file."))
-                return
-            }
-            FileImportSheets.chooseChannels(message: importPrompt(for: parsed),
-                                            choices: channelChoices(for: parsed, vm: vm)) { chosen in
-                let report = applyREWFile(parsed, to: chosen, vm: vm)
-                if !chosen.isEmpty {
-                    showSuccess("Filters imported to \(chosen.count) channel(s)" + report.notes)
-                }
-            }
+        runFilterImport(contents, vm: vm) { prompt, choices, picked in
+            FileImportSheets.chooseChannels(message: prompt, choices: choices, onImport: picked)
         }
     }
 
     static func exportFilters() {
-        let output = generateExportString()
-        DocumentPicker.export(Data(output.utf8), fileName: "DSPi Filters.txt") { outcome in
+        // -- WP SWS4 -- through a core, the core's file (`filterExportText`)
+        filterExportText(vm: AppState.shared.viewModel) { outcome in
+            let output: String
             switch outcome {
-            case .saved:             showSuccess("Filters exported")
-            case .cancelled:         break
-            case .failed(let error): showError(AppNotices.file(error))
+            case .text(let text):        output = text
+            case .refused(let notice):   return showError(notice)
+            }
+            DocumentPicker.export(Data(output.utf8), fileName: "DSPi Filters.txt") { outcome in
+                switch outcome {
+                case .saved:             showSuccess("Filters exported")
+                case .cancelled:         break
+                case .failed(let error): showError(AppNotices.file(error))
+                }
             }
         }
     }
@@ -11898,7 +11708,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Logger(subsystem: AppIdentity.logSubsystem, category: "link")
             .notice("Launch: sharing preference is \(resumeSharing, privacy: .public)")
         if resumeSharing {
-            _ = AppState.shared.linkService
+            // -- WP SW-M3 -- the Rust hub's service, or the Swift hub's (opt-out)
+            if AppState.usesCoreHub { _ = AppState.shared.coreHub } else { _ = AppState.shared.linkService }
         }
         // Likewise the hub browser: shared devices from other hubs reach the
         // picker only once the coordinator exists, so build it now if it has
