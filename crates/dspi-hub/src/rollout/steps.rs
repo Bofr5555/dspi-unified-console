@@ -569,7 +569,8 @@ impl Run {
         }
         let ended = self.sh.now_iso();
         let state = if ok { "ok" } else { "failed" };
-        self.sh.update(&self.hub, &self.id, |r| {
+        // -- review p3d -- the slot is freed with the record's end, before it is announced
+        self.sh.end(&self.hub, &self.id, |r| {
             for d in &mut r.devices {
                 if d.state == "pending" {
                     d.state = "not_tried".into();
@@ -587,12 +588,6 @@ impl Run {
             r.state = state.into();
             r.ended_at = Some(ended);
         });
-        {
-            let mut st = lock(&self.sh.state);
-            if st.running.as_ref().is_some_and(|r| r.id == self.id) {
-                st.running = None;
-            }
-        }
         self.hub.close_session(self.principal.id());
         self.hub.wake_services();
         log::warn!("hub rollout: {} ended", self.id);

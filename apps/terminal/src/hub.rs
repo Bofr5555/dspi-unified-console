@@ -82,6 +82,8 @@ use crate::exit;
 mod pair_qr;
 // -- WP P3TM -- groups, firmware and the rollout at the prompt and with the hub stopped
 mod fleet;
+// -- WP P3WRO -- `--with-rollout-bench`: the web console's rollout tests' fake DSPi, boot ROM and writer
+mod rollout_bench;
 
 /// What a hub is called when nobody has named it (as HB6's).
 const DEFAULT_NAME: &str = "DSPi Hub";
@@ -211,6 +213,11 @@ struct RunOptions {
     /// `--allow-unverified-firmware` (with `--rollout`): images the release's manifest
     /// does not list may be flashed too (OD-P3e, the owner's bench switch).
     allow_unverified_firmware: bool,
+    // -- WP P3WRO --
+    /// `--with-rollout-bench` (a test option, with `--demo --rollout`): one more
+    /// simulated DSPi "on this hub's USB" and a fake boot ROM and writer
+    /// (`hub/rollout_bench.rs`); nothing touches USB.
+    rollout_bench: bool,
 }
 
 // -- WP SECSRV --
@@ -539,6 +546,9 @@ OPTIONS:
                               simulated DSPi without the audio link (unit P)
     --with-usb-lock-error     test option, with --demo --alink: the USB-direct
                               unit Rear L/R can't lock (its host out of range)
+    --with-rollout-bench      test option, with --demo --rollout: one more
+                              simulated DSPi as if on this machine's USB, and a
+                              simulated bootloader and writer (nothing is written)
     --loopback                listen on this machine only, and do not advertise
     --no-keep-awake           let the machine sleep while sharing
     --store <dir>             where the hub keeps its id, clients and device names
@@ -655,6 +665,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     let (mut token_idle, mut forget_old) = (Some(dspi_hub::auth::DEFAULT_TOKEN_IDLE), false);
     // -- WP P3TM --
     let (mut rollout, mut allow_unverified_firmware) = (false, false);
+    let mut rollout_bench = false; // -- WP P3WRO --
     let mut port_given = false;
     let mut words = Vec::new();
 
@@ -761,6 +772,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             "--no-groups" => services.groups = false,
             "--rollout" => rollout = true,
             "--allow-unverified-firmware" => allow_unverified_firmware = true,
+            "--with-rollout-bench" => rollout_bench = true, // -- WP P3WRO --
             f if f.starts_with('-') => return Err(usage(format!("`{f}` is not a hub option"))),
             word => words.push(word),
         }
@@ -793,6 +805,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 | "--no-groups"
                 | "--rollout"
                 | "--allow-unverified-firmware"
+                | "--with-rollout-bench" // -- WP P3WRO --
         ) {
             run_only.push(flag);
         }
@@ -865,6 +878,22 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                     "--allow-unverified-firmware is for a hub started with --rollout".into(),
                 ));
             }
+            // -- WP P3WRO --
+            if rollout_bench && !(demo && rollout) {
+                return Err(usage(format!(
+                    "--with-rollout-bench is a test option of `{COMMAND} --demo hub --rollout`"
+                )));
+            }
+            // -- review p3d -- never beside --alink: its --with-usb scans this machine's
+            // real DSPis, and with the bench's simulated bootloader and writer a rollout
+            // would send a real board to BOOTSEL and then write nothing to it.
+            if rollout_bench && alink {
+                return Err(usage(
+                    "--with-rollout-bench does not go with --alink: the bench has one \
+                     simulated DSPi of its own"
+                        .into(),
+                ));
+            }
             if rollout && tls.policy(loopback || local).mode == TlsMode::Off {
                 return Err(usage(
                     "--rollout needs TLS, and this hub would serve none (--tls off, or \
@@ -905,6 +934,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 // -- WP P3TM --
                 rollout,
                 allow_unverified_firmware,
+                rollout_bench, // -- WP P3WRO --
             }));
         }
         ["help"] => return Ok(HubCommand::Help),
@@ -1197,6 +1227,13 @@ fn start_with(
         });
     }
     tweak(&mut config);
+    // -- WP P3WRO -- the test bench's boot ROM and writer
+    let bench = opts
+        .rollout_bench
+        .then(|| Arc::new(rollout_bench::Bench::default()));
+    if let Some(b) = &bench {
+        rollout_bench::install(b, &mut config);
+    }
     // A scan only once the listener is in, below.
     config.initial_scan = false;
     // -- WP WB7 -- `uconsole web` leaves USB to the browser unless asked.
@@ -1261,6 +1298,10 @@ fn start_with(
             // -- WP P2CC3 -- with the diagnostics extension, so Identify works
             .attach(Box::new(demo_device()), 0)
             .map_err(|e| Failure::Failed(format!("the demo device did not attach: {e}")))?;
+        // -- WP P3WRO --
+        if let Some(b) = &bench {
+            b.start(running.handle.clone()).map_err(Failure::Failed)?;
+        }
     } else {
         running.handle.scan_now();
     }
@@ -2718,6 +2759,7 @@ mod tests_wp_tm11 {
             // -- WP P3TM --
             rollout: false,
             allow_unverified_firmware: false,
+            rollout_bench: false, // -- WP P3WRO --
         }
     }
 
@@ -3693,6 +3735,7 @@ mod tests_wp_sw3 {
             // -- WP P3TM --
             rollout: false,
             allow_unverified_firmware: false,
+            rollout_bench: false, // -- WP P3WRO --
         }
     }
 }
@@ -3798,6 +3841,7 @@ mod tests_wp_hwlk1f {
             // -- WP P3TM --
             rollout: false,
             allow_unverified_firmware: false,
+            rollout_bench: false, // -- WP P3WRO --
         }
     }
 

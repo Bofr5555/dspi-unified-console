@@ -216,6 +216,8 @@ export interface HubSettingsMethods {
   hubApiKeyRevoke: { params: { cid: number }; result: null };
   // The hub's snapshot store
   snapshotListMerged: { params: { serial?: string }; result: SnapshotMergedListRecord };
+  // -- WP P3WGR -- one device's snapshots in the hub's store ("" the open one), the bulk apply's picker
+  hubSnapshotsList: { params: { serial?: string }; result: SnapshotInfoRecord[] };
   hubSnapshotsGet: { params: { id: string }; result: { snapshot: SnapshotInfoRecord; document: string } };
   hubSnapshotsPut: { params: { serial?: string; text: string }; result: { snapshot: SnapshotInfoRecord; created: boolean } };
   hubSnapshotsRename: { params: { id: string; name: string }; result: SnapshotInfoRecord };

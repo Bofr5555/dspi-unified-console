@@ -119,8 +119,10 @@ pub const HUB_ERR_DEVICE: &str = "device";
 /// `inventory.set`/`forget`, `hub.rename`; P2CC2: `alarm.ack`,
 /// `alarm.rules.set`, `schedule.set`/`delete`/`run_now`, `outbound.set`/`test`,
 /// `mqtt.set`, `auth.mint`/`revoke`; P3CC: `group.set`/`delete`,
-/// `group.param.set`, `group.preset.load`, `group.apply*`, `fw.image.put`/
-/// `delete`, `fw.rollout.start`/`cancel`). `event.watch` only asks for events.
+/// `group.param.set`, `group.preset.load`, `group.apply`, `fw.image.put`/
+/// `delete`, `fw.rollout.start`; `group.apply.confirm`/`cancel` and
+/// `fw.rollout.cancel` pass as [`HUB_SERVER_SETTLES`], -- WP P3WGR --).
+/// `event.watch` only asks for events.
 pub const HUB_SERVER_READS: [&str; 19] = [
     "inventory.list",
     "health.get",
@@ -143,6 +145,24 @@ pub const HUB_SERVER_READS: [&str; 19] = [
     "group.param.get",
     "fw.image.list",
     "fw.rollout.status",
+];
+
+// -- WP P3WGR --
+/// The hub requests that settle a bulk apply's guarded run (`group.apply.confirm`,
+/// `group.apply.cancel`): the client read-only mode lets them out too, as it
+/// must let a run begun before the mode was turned on be kept or reverted
+/// (settling never needs write access; Android's `WriteGuardedCore` passes
+/// them the same way). They write nothing new: the hub keeps or reverts what
+/// the run already wrote.
+///
+/// -- review p3d -- and `fw.rollout.cancel` (coordinator decision): it only
+/// stops a rollout before its next bootloader entry and starts or writes
+/// nothing (Android passes `hubRolloutCancel` the same way).
+/// `fw.rollout.start` stays refused.
+pub const HUB_SERVER_SETTLES: [&str; 3] = [
+    "group.apply.confirm",
+    "group.apply.cancel",
+    "fw.rollout.cancel",
 ];
 
 /// [`MergedSnapshot::location`]: only in this console's store.

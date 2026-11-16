@@ -150,7 +150,8 @@ On the hub's machine: `uconsole hub tls fingerprint` prints the pin in curl's fo
   machine posing as the hub. Give it a key of its own with the least role it needs.
   [`examples/home-assistant.yaml`](examples/home-assistant.yaml).
 
-These examples run against a hub that requires TLS in CI (`apps/terminal/tests/wp_secdoc_examples.rs`).
+These examples run against a hub that requires TLS in CI (`apps/terminal/tests/wp_secdoc_examples.rs`; the fleet's
+endpoints: `wp_p3frz_examples.rs`).
 
 ## Notifications out: webhooks and MQTT
 
@@ -195,6 +196,45 @@ Details: hub-api.md sections 8 and 13.
 - **AutoEQ data** is fetched over https only, and parsed as data, never run.
 - **RP2350 secure boot** (signed images, OTP) is deliberately not used: burning OTP is permanent, and a lost key would
   end firmware updates for good.
+
+### The hub's firmware rollout
+
+<!-- WP P3FRZ (PLAN-P3 F6 and section 3, OD-P2b, OD-P3e, OD-P3g, OD-P3n) -->
+A hub started with `--rollout` ([hub.md](hub.md)) can update the firmware of the DSPis on its own USB with nobody at
+the rack: an Admin starts it from a console, the hub does one device at a time, exports its settings to the hub's
+snapshots first, checks the device after it restarts, and raises the `rollout_failed` alarm when it does not come
+back. The steps: [hub-api.md](hub-api.md) section 21. A hub that could be made to flash devices is the integrity risk
+named at the top of this page, so the rollout is held to these rules:
+
+- **Off unless asked.** No `--rollout`, no rollout: the hub answers no `fw.*` message and no console shows it.
+- **TLS only.** Every `fw.*` message and the REST firmware reads are refused over plaintext (`tls_required`) in every
+  mode, upstream compatibility and `plaintext_ok` keys included; the hub will not start with `--rollout` when it
+  serves no TLS. A flash command or an image never crosses the network in the clear.
+- **Admins only, and judged.** Uploading, deleting and starting are Admin's; Control and Viewer may watch. Admin is
+  given only on the hub's machine. The bootloader entry is the Admin's own write through the hub, judged by the
+  role, the installer lock and the device lock like any client's, and recorded in the device's history under the
+  Admin's name; it is not one of the hub's own writes. **REST cannot start a rollout or upload an image** (`405`).
+- **Verified images only, by default.** An image goes on a device only when the release's manifest lists its name and
+  bytes, as for the apps' bundled firmware (above). `--allow-unverified-firmware` lifts that
+  for a bench and makes the hub start with a warning; every list still labels each image "not verified". Each image
+  is also checked as a UF2 for the device's chip.
+- **The firmware guard, with nobody to type.** The hub asks the same guard a person meets when flashing from an app,
+  with no typed word and no typed phrase: only an image the guard clears outright goes on, and the writer asks it again
+  before writing. So an image stamped above the board's core voltage or above 1.20 V, an unstamped or lower image on a
+  1.20 V board (a K340), or an unknown board is refused; a K340 takes only a 1.20 V image.
+- **One board, the right board.** No rollout starts while any board is in BOOTSEL; after the bootloader entry exactly
+  one must appear, and on RP2350 it must report the device's serial. The image is read back and compared before the
+  board restarts.
+- **What the hub never does:** write the core voltage (it only reads it back, and a 1.20 V board must read 1.20 V
+  after), type `OVERVOLT` or the guard's phrase for anyone, flash two devices at once, mount a bootloader drive, retry
+  a flash, or recall the export by itself (a person decides, with the result in front of them).
+- **No image bytes in logs, events or the diagnostics bundle.** `rollout.json` (names, serials, hashes, step texts) is
+  in the bundle; the images are not.
+
+What a stolen Admin credential could still do: start a rollout of an image the hub already holds, over TLS, verified
+(unless the hub was started with the bench switch), on a muted device or with `while_live` spelled out, recorded with
+the client's name and alarmed on failure. Revoke the client (`uconsole hub revoke <cid>`) and keep Admin tokens on
+machines you control; an unused one expires after 180 days.
 
 ## Secrets at rest
 

@@ -1452,7 +1452,88 @@ fn wp_p3ro_cancel_before_the_entry_stops_the_queue_and_after_it_is_conflict() {
     r.hub.stop();
 }
 
+// -- review p3d -- The hub's one rollout slot is free when a rollout's record says it
+// ended: a console that starts the next one the moment `fw.rollout.status` (or
+// `fw.rollout.changed`) shows the end is not answered `busy`. Before, the slot was freed
+// only after the end was written and announced, so a status read that waited on that
+// write was answered "ended" with the slot still taken.
+#[test]
+fn review_p3d_the_slot_is_free_when_the_record_has_ended() {
+    let (r, _admin) = ready("slot", "P3D-SLOT");
+    let hub = r.hub.handle();
+    let me = hub
+        .open_console_principal(Role::Admin, "P3D slot test")
+        .unwrap();
+    let ask = |msg: Value| -> Value {
+        serde_json::from_str(&hub.service_request(&me, &msg).expect("answered")).unwrap()
+    };
+    let start = json!({"t": "fw.rollout.start", "id": 1, "image": "dspi-1.1.7.uf2",
+        "serial": "P3D-SLOT", "while_live": true});
+    let mut v = ask(start.clone());
+    for round in 0..10 {
+        assert!(ok(&v), "round {round}: {v}");
+        let id = v["rollout"]["id"].as_str().unwrap().to_owned();
+        let begun = Instant::now();
+        // No pause between the reads: the next start follows the end as closely as a
+        // client can.
+        loop {
+            let st = ask(json!({"t": "fw.rollout.status", "id": 2, "rollout": id}));
+            if st["rollouts"][0]["state"] != "running" {
+                assert_eq!(st["rollouts"][0]["state"], "ok", "{st}");
+                break;
+            }
+            assert!(begun.elapsed() < WAIT, "rollout {id} did not end");
+        }
+        v = ask(start.clone());
+    }
+    assert!(ok(&v), "{v}");
+    r.hub.stop();
+}
+
 // ── The upload ──────────────────────────────────────────────────────────────
+
+// -- WP P3WRO -- (review p3c N2) a console whose middle chunk failed starts again at
+// once: the session's own open upload does not hold it busy for two minutes, while
+// another session's upload is left alone and the hub's cap still holds.
+#[test]
+fn wp_p3wro_seq_0_restarts_the_sessions_own_upload() {
+    let r = rig("restart");
+    let mut admin = r.admin();
+    let img = image("1.1.7", Some("1200"));
+    let b64 = data_encoding::BASE64.encode(&img);
+    let s0 = admin.ask(json!({"t": "fw.image.put", "name": "a.uf2", "seq": 0,
+        "data": &b64[..4096], "last": false}));
+    assert!(ok(&s0), "{s0}");
+    // The console's chunk 1 never arrived (a dropped answer); it starts over at once.
+    let s0 = admin.ask(json!({"t": "fw.image.put", "name": "a.uf2", "seq": 0,
+        "data": &b64[..4096], "last": false}));
+    assert!(ok(&s0), "{s0}");
+    assert_eq!(s0["received"], 3072, "counted from the new start: {s0}");
+    let done = admin.ask(json!({"t": "fw.image.put", "name": "a.uf2", "seq": 1,
+        "data": &b64[4096..], "last": true}));
+    assert!(ok(&done), "{done}");
+    assert_eq!(done["image"]["size"], img.len(), "{done}");
+    // Another session's open upload is not touched by this one's restarts, and two
+    // open uploads are still the hub's most.
+    let mut other = r.admin();
+    let o0 = other.ask(json!({"t": "fw.image.put", "name": "o.uf2", "seq": 0,
+        "data": &b64[..4096], "last": false}));
+    assert!(ok(&o0), "{o0}");
+    let a0 = admin.ask(json!({"t": "fw.image.put", "name": "b.uf2", "seq": 0,
+        "data": &b64[..4096], "last": false}));
+    assert!(ok(&a0), "{a0}");
+    let a0 = admin.ask(json!({"t": "fw.image.put", "name": "b.uf2", "seq": 0,
+        "data": &b64[..4096], "last": false}));
+    assert!(ok(&a0), "a restart does not count against the cap: {a0}");
+    let mut third = r.admin();
+    let t0 = third.ask(json!({"t": "fw.image.put", "name": "t.uf2", "seq": 0,
+        "data": &b64[..4096], "last": false}));
+    assert_eq!(code(&t0), "busy", "{t0}");
+    let o1 = other.ask(json!({"t": "fw.image.put", "name": "o.uf2", "seq": 1,
+        "data": &b64[4096..], "last": true}));
+    assert!(ok(&o1), "{o1}");
+    r.hub.stop();
+}
 
 #[test]
 fn wp_p3ro_the_upload_has_its_caps_and_its_timeout() {
@@ -1465,12 +1546,19 @@ fn wp_p3ro_the_upload_has_its_caps_and_its_timeout() {
         "data": &b64[..4096], "last": false}));
     assert!(ok(&first), "{first}");
     assert_eq!(first["received"], 3072);
-    // A second upload in the same session is busy.
-    let busy = admin.ask(
+    // -- WP P3WRO -- (review p3c N2) a seq 0 in the same session starts its upload
+    // again: the open one is dropped, so its next chunk names another image.
+    let again = admin.ask(
         json!({"t": "fw.image.put", "name": "b.uf2", "seq": 0, "data": "",
         "last": false}),
     );
-    assert_eq!(code(&busy), "busy", "{busy}");
+    assert!(ok(&again), "{again}");
+    let stale = admin.ask(json!({"t": "fw.image.put", "name": "a.uf2", "seq": 1,
+        "data": &b64[4096..], "last": true}));
+    assert_eq!(code(&stale), "bad_request", "{stale}");
+    let first = admin.ask(json!({"t": "fw.image.put", "name": "a.uf2", "seq": 0,
+        "data": &b64[..4096], "last": false}));
+    assert!(ok(&first), "{first}");
     let rest = admin.ask(json!({"t": "fw.image.put", "name": "a.uf2", "seq": 1,
         "data": &b64[4096..], "last": true}));
     assert!(ok(&rest), "{rest}");

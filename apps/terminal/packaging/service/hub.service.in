@@ -32,7 +32,9 @@ RestartPreventExitStatus=1 4
 Environment=RUST_LOG=warn
 # SIGTERM stops sharing cleanly: clients are told, USB devices let go.
 KillSignal=SIGTERM
-TimeoutStopSec=20
+# 90 s: a --rollout hub waits up to ~60 s for a flash to finish; a SIGKILL mid-flash
+# leaves the board in BOOTSEL with a partial image.
+TimeoutStopSec=90
 NoNewPrivileges=yes
 
 [Install]

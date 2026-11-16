@@ -848,7 +848,6 @@ fn wp_p3cc_groups_and_their_writes_through_the_core() {
                 vec![],
             )
             .unwrap_err(),
-        admin.hub_group_apply_cancel("a1".into()).unwrap_err(),
         admin
             .hub_firmware_put(IMAGE.into(), image("1.1.7", 0))
             .unwrap_err(),
@@ -857,6 +856,16 @@ fn wp_p3cc_groups_and_their_writes_through_the_core() {
             .unwrap_err(),
     ] {
         assert_eq!(e, DspiError::ReadOnly);
+    }
+    // -- review p3d -- what settles or stops goes out in read-only (P3WGR's
+    // HUB_SERVER_SETTLES, with fw.rollout.cancel): the hub answers, here that it
+    // knows no such run or rollout.
+    for e in [
+        admin.hub_group_apply_confirm("a1".into()).unwrap_err(),
+        admin.hub_group_apply_cancel("a1".into()).unwrap_err(),
+        admin.hub_rollout_cancel("ro9".into()).unwrap_err(),
+    ] {
+        assert_eq!(link_code(&e), "not_found", "{e:?}");
     }
     admin.set_client_read_only(false).unwrap();
     assert!(admin.hub_firmware_images().unwrap().images.is_empty());

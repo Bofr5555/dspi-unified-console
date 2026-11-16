@@ -522,6 +522,10 @@ pins when updated. A `require` hub needs updated clients. The upstream Swift con
 
 ## 5. Work packages
 
+*Status marks (WP P3FRZ, 2026-11-16, checked against `git log --first-parent main` at `462fcde1`): each WP's merge into its
+review branch and that branch's merge into `main`; SEC-C and SEC-D's review branches were taken into `main` as they were, so
+their merges are on `main`'s first-parent line. SECSW is under review; SECDEF is partial (its mark says what is built).*
+
 Sizes are this project's units (one unit is about one hour of agent time with review); these are estimates. All the
 rules of `PLAN-CLIENTS.md` section 1, `WP-BRIEF.md`, the wave1 brief, and `PLAN-P2.md` section 2's hub rules apply:
 - containers only, no tmpfs, no devices, scoped checks
@@ -537,7 +541,7 @@ gets them). `rcgen` is new to `dspi-hub` only.
 
 ### Wave SEC-A: foundations (parallel with P2-C; touches no P2-C file)
 
-**SECPIPE: TLS stream and pin verifier in `dspi-link`.** Size 3.
+**SECPIPE: TLS stream and pin verifier in `dspi-link`.** [DONE 2026-11-15: `a8ba5a5a` into review/seca, main `2c7dc985`] Size 3.
 - **Owns:**
   - new `crates/dspi-link/src/tls.rs` and `tls/tests_wp_secpipe.rs`
   - the `tls` feature in `crates/dspi-link/Cargo.toml`: rustls 0.23 with ring, `std`, TLS 1.3; on for native, never for
@@ -572,7 +576,7 @@ gets them). `rcgen` is new to `dspi-hub` only.
   - the Android `.so` size delta measured with `DSPI_PROFILE=cross` and reported
 - **Deps:** none.
 
-**SECKEY: The hub's TLS identity.** Size 1.5.
+**SECKEY: The hub's TLS identity.** [DONE 2026-11-15: `9f97ab47` into review/seca, main `2c7dc985`] Size 1.5.
 - **Owns:**
   - new `crates/dspi-hub/src/tls_identity.rs`
   - the folder `<data>/tls/`
@@ -600,7 +604,7 @@ gets them). `rcgen` is new to `dspi-hub` only.
   - `cargo deny check` passes
 - **Deps:** none.
 
-**SECOUT: HTTPS webhooks and MQTT over TLS.** Size 3. SECMQ is folded in: one shared connector and one TLS test fixture.
+**SECOUT: HTTPS webhooks and MQTT over TLS.** [DONE 2026-11-15: `a8d6c0f1` into `wp/MQWIRE` (wired into the MQTT service there), `59a21a53` into review/p2c, main `3b74cec3`] Size 3. SECMQ is folded in: one shared connector and one TLS test fixture.
 - **Owns:**
   - new `crates/dspi-hub/src/outbound/tls.rs` (the shared outbound connector)
   - in `outbound/http.rs` and `outbound/mod.rs`, the `https://` path and the `plaintext`, `ca_pem` and `pin_sha256`
@@ -638,7 +642,7 @@ gets them). `rcgen` is new to `dspi-hub` only.
     - the password redacted in every Debug or log
 - **Deps:** P2WH merged (P2-B) and P2MQC (merged).
 
-**SECREL: Release keys and the Swift updater key.** Size 1 (0.5 Linux, 0.5 Mac VM).
+**SECREL: Release keys and the Swift updater key.** [DONE 2026-11-15: `69a2848e` into review/seca, main `2c7dc985`; with TEST keys: the real keys wait for the owner, OD-SECj] Size 1 (0.5 Linux, 0.5 Mac VM).
 - **Owns:**
   - `ci/release-sums.sh` (fail instead of skip)
   - `apps/apple/DSPi Console/AppUpdateInstaller.swift` (the public key constant)
@@ -652,7 +656,7 @@ gets them). `rcgen` is new to `dspi-hub` only.
 - **Deps:** OD-SECj (owner action, asked 2026-11-15). The owner generates the real keys and commits `minisign.pub`.
   The WP builds with a test key and a constant that is swapped at release.
 
-**SECFWV: Bundled firmware consistency and the CI digest test.** Size 1.75.
+**SECFWV: Bundled firmware consistency and the CI digest test.** [DONE 2026-11-15: `3f935035` into review/seca, main `2c7dc985`] Size 1.75.
 - **Owns:**
   - new `crates/dspi-core/src/firmware_manifest.rs`
   - a generator script under `tools/` that writes the manifest from the pinned digests
@@ -673,19 +677,19 @@ gets them). `rcgen` is new to `dspi-hub` only.
   - a user file is labelled and not refused
 - **Deps:** none.
 
-**SECQTA: Qt AutoEQ https-only.** Size 0.25.
+**SECQTA: Qt AutoEQ https-only.** [DONE 2026-11-15: `60e7b770` (with SECDENY) into review/seca, main `2c7dc985`] Size 0.25.
 - **Owns:** `apps/desktop/qt/src/controllers/AutoEqController.cpp`'s fetch.
 - **Done when:** a non-https URL is refused, a loopback http URL is still allowed for `SmokeAutoEq`, and a redirect to
   http is refused.
 - **Deps:** none.
 
-**SECDENY: Advisories in cargo-deny.** Size 0.25.
+**SECDENY: Advisories in cargo-deny.** [DONE 2026-11-15: `60e7b770` (with SECQTA) into review/seca, main `2c7dc985`] Size 0.25.
 - **Owns:** `deny.toml` (`[advisories]`, with the advisory database fetched inside the container, `ci/` step text).
 - **Done when:** `ci/check.sh --step deny` runs the advisory check offline-capable (a cached database) and is green, or
   each finding is listed as an ignore with a reason.
 - **Deps:** none.
 
-**FWSEC1 (firmware, `bofr-main`): per-transport gates for dangerous ops.** Size 1.5.
+**FWSEC1 (firmware, `bofr-main`): per-transport gates for dangerous ops.** [DONE 2026-11-15, in the firmware repository: `8ba8b72` merge of `wp/FWSEC1` on `bofr-main`] Size 1.5.
 - Decided under OD-SECh; the owner has been asked (2026-11-15) to confirm the iOS line.
 - **Owns:**
   - in `vendor_commands.c`'s dispatcher, the per-source refusal (`_active_source`, as at `vendor_commands.c:4763-4766`;
@@ -716,7 +720,7 @@ Wave SEC-A total: **12.25**. The Mac VM part of SECREL is 0.5.
 
 ### Wave SEC-B: the hub speaks TLS (after P2-C merges: it edits `server.rs`, `auth.rs` and `store.rs`, which P2RS owns in P2-C)
 
-**SECSRV: TLS on the Link port.** Size 3, or 4 if P2RS has not made the request path generic over the stream (section 6).
+**SECSRV: TLS on the Link port.** [DONE 2026-11-16: `0aef15b8` into review/secb, main `948d192e`; review fixes SECBFIXA-C `7591342b`, `5c2c42b5`, `28ebb0f2`] Size 3, or 4 if P2RS has not made the request path generic over the stream (section 6).
 - **Owns:**
   - in `crates/dspi-hub/src/server.rs`:
     - the accept path (sniff and wrap)
@@ -745,7 +749,7 @@ Wave SEC-A total: **12.25**. The Mac VM part of SECREL is 0.5.
   - every existing `wp_hb1_server`, `hostile_lan` and P2RS test passes in both `off` and `on`
 - **Deps:** SECPIPE, SECKEY, P2RS.
 
-**SECDISC: Advertising and discovery.** Size 1.
+**SECDISC: Advertising and discovery.** [DONE 2026-11-16: `8ef5bcb9` into review/secb, main `948d192e`] Size 1.
 - **Owns:** `HubAdvert::txt` and `parse_service` in `crates/dspi-link/src/discovery.rs` (and `discovery/tests_*`), plus
   `crates/dspi-hub/src/advertise.rs`'s TXT input.
 - **Implements:** section 4.4:
@@ -761,7 +765,7 @@ Wave SEC-A total: **12.25**. The Mac VM part of SECREL is 0.5.
   - the Windows DNS-SD path is unchanged (its existing tests)
 - **Deps:** none (the hint is a string field; no SECPIPE type is needed).
 
-**SECCORE: TLS-first connect and pins in the core.** Size 2.5.
+**SECCORE: TLS-first connect and pins in the core.** [DONE 2026-11-16: `6a14c543` into review/secb, main `948d192e`] Size 2.5.
 - **Owns:**
   - in `crates/dspi-link/src/socket.rs` and `client.rs`: `wss://`, the `TlsPipe` use, `ConnectOptions.pin` and
     `ConnectOptions.tls_advertised`
@@ -795,7 +799,7 @@ SEC-B total: **6.5** (7.5 if SECSRV has to do the stream refactor).
 
 ### Wave SEC-C: pairing and clients (after SEC-B)
 
-**SECPAIR: Pairing bound to the key, rotation and lifetimes.** Size 2.5.
+**SECPAIR: Pairing bound to the key, rotation and lifetimes.** [DONE 2026-11-16: `f1bf4731` into review/secc, on main's first-parent line] Size 2.5.
 - **Owns:**
   - in `crates/dspi-hub/src/auth.rs` and `store.rs`:
     - `ok.hub_key`
@@ -819,7 +823,7 @@ SEC-B total: **6.5** (7.5 if SECSRV has to do the stream refactor).
   - **no token, PIN, PIN hash or key material in any log line, event, Debug or diagnostics bundle** (S9)
 - **Deps:** SECSRV, SECKEY, SECCORE.
 
-**SECWEB: The web console over TLS, and the `uconsole web` pinning proxy.** Size 3.5.
+**SECWEB: The web console over TLS, and the `uconsole web` pinning proxy.** [DONE 2026-11-16: `3a94f48b` into review/secc, on main's first-parent line] Size 3.5.
 - **Owns:**
   - `apps/web/src/fleet/local.ts` (scheme from `location.protocol`; `wss` for https hubs)
   - the fingerprint display and the "unencrypted" banner in the hub pages (the files P2WB1 and P2WB2 created, under
@@ -839,7 +843,7 @@ SEC-B total: **6.5** (7.5 if SECSRV has to do the stream refactor).
   - a mixed-content `ws://` from an https page is never attempted
 - **Deps:** SECSRV, SECCORE, P2WB1/P2WB2 (if they have merged; otherwise the console's existing hub page).
 
-**SECQT, SECAN, SECTM: Pairing and key UI per client.** Size 1 each (SECTM 0.5).
+**SECQT, SECAN, SECTM: Pairing and key UI per client.** [DONE 2026-11-16: SECQT `1f686c55`, SECAN `c8d60a48`, SECTM `90611248` into review/secc, on main's first-parent line] Size 1 each (SECTM 0.5).
 - **Owns:** each client's pairing dialog and hub list: Qt `LinkController.cpp` plus its QML, Android `LinkSessionEngine`
   plus the pairing screen, and terminal `crates/dspi-tui/src/shell/connect.rs`.
 - **Implements:**
@@ -857,7 +861,7 @@ SEC-B total: **6.5** (7.5 if SECSRV has to do the stream refactor).
   - a `dspi://pair` link with a wrong `k=` refused
 - **Deps:** SECCORE, SECFWV. The end-to-end TLS pairing test is SECPAIR's; the clients test against the core.
 
-**SECSW: Swift, the same, on the VM.** Size 1.5.
+**SECSW: Swift, the same, on the VM.** [UNDER REVIEW 2026-11-16: `wp/SECSW` merged into `review/swsec` (`6847e658`, with P2SW), not into main; not done] Size 1.5.
 - **Owns:** the Swift pairing and hub-list views, `LinkTokenStore.swift` (v2 credential,
   `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), and the iOS `dspi://` URL handling.
 - **Done when:**
@@ -870,7 +874,7 @@ SEC-C total: **10**.
 
 ### Wave SEC-D: PAKE, defaults, docs
 
-**SECPAKE: PAKE pairing.** Size 3. Scheduled, as OD-SECc decides.
+**SECPAKE: PAKE pairing.** [DONE 2026-11-16: `30b65b62` into review/secd, on main's first-parent line] Size 3. Scheduled, as OD-SECc decides.
 - **Owns:**
   - new `crates/dspi-link/src/pake.rs` and `auth.pair2` in `auth.rs`
   - the `spake2` crate (RustCrypto, MIT or Apache-2.0; `curve25519-dalek` and `hkdf` are new too) under markers
@@ -885,7 +889,7 @@ SEC-C total: **10**.
   - `cargo deny check` passes
 - **Deps:** SECPAIR.
 
-**SECDOC: Security docs and deviations.** Size 1.
+**SECDOC: Security docs and deviations.** [DONE 2026-11-16: `10d07f99` into review/secd, on main's first-parent line; the review fixes SECFIX `17f87b8a`] Size 1.
 - **Owns:**
   - new `docs/integrator/security.md` (this threat model, user-facing)
   - `docs/integrator/hub.md` (modes, "Security deviations", trusted-network text rewritten)
@@ -895,10 +899,18 @@ SEC-C total: **10**.
   hub in a container.
 - **Deps:** SECPAKE's protocol text (soft: SECDOC documents `auth.pair2` from SECPAKE's entry). Otherwise SEC-C.
 
-**SECDEF: The default mode.** Size 0.5.
+**SECDEF: The default mode.** [PARTIAL 2026-11-16, checked by WP P3FRZ. No WP of its own was run, and after OD-SECb's
+reconsideration (section 7) none is needed for the hub: `uconsole hub` defaults to `require` since SECSRV (`db55f583`,
+merged `0aef15b8`, main `948d192e`), and the done-when tests were written by SECDOC (`394afbf6`, merged `10d07f99`):
+`apps/terminal/tests/wp_secdef_default.rs` asserts the `require` default of a network `uconsole hub`, and
+`crates/dspi-hub/tests/wp_secdef_upgrade.rs` the upgrade of a pre-TLS store in `off`, `on` and `require`. **What remains:**
+the Mac app's `HubStartOptions` default. On main `HubStartOptions` (`crates/dspi-hub/src/ffi.rs`) has no TLS field;
+P2SW adds it with `require` as the default (`6ccbce1e`), merged into `review/swsec` (`8ab3698f`) and under review. SECDEF
+is done when that merges to main with a test of the default] Size 0.5.
 - **Owns:** the `--tls` default and the Mac `HubStartOptions` default.
 - **Implements:** OD-SECb. The first TLS release ships `on`; this WP is the flip to `require` in the release after all
-  clients ship SEC-C.
+  clients ship SEC-C. **[Superseded for `uconsole hub` by OD-SECb's reconsideration of 2026-11-15 (section 7): it ships `require` from
+  the first TLS release.]**
 - **Done when:** the default is asserted in tests, and the upgrade path of an existing hub store is tested (key
   generated on first start, old tokens still valid in `on`).
 - **Deps:** SEC-C on all clients.
@@ -972,6 +984,15 @@ in OD-P2e stay. The prose lines at `PLAN-P2.md:23-24` and §5 (`:550`) are marke
 **Recorded 2026-11-15** (coordinator, after the Fable review `work/review-plansec/REPORT.md`):
 - **Every OD below is DECIDED as recommended.** OD-SECa is decided by the owner's stated intent ("we should be able to
   follow proper best practices for security").
+- **OD-SECb reconsidered 2026-11-15** (recorded here by WP P3FRZ, 2026-11-16; it was made while SECSRV was built and was
+  written down only in the code): **`uconsole hub` defaults to `require` from the first TLS release**, not `on`, because
+  no released client needs plaintext (the owner's compatibility policy: only Android is released, in closed test). `off` stays the default on loopback (and for `uconsole web`); `--tls on` and `--upstream-compat` remain for
+  upstream and not-yet-updated clients. Built by SECSRV (`db55f583`, merged `0aef15b8`, main `948d192e`): the code says
+  so in `crates/dspi-hub/src/server.rs` (`TlsMode`: "`uconsole hub` defaults to [`TlsMode::Require`] (OD-SECb,
+  reconsidered 2026-11-15) and to `Off` on loopback") and `apps/terminal/src/hub.rs` (`TlsOptions::policy`: "`require`
+  unless asked otherwise (OD-SECb, reconsidered 2026-11-15: no released client needs plaintext)"). The library's own
+  default (`NetworkConfig`, `TlsMode::default()`) stays `Off`, so an embedder chooses. What remains of SECDEF is the
+  Mac app's `HubStartOptions` default (SECDEF's mark).
 - **Two owner questions remain, both asked 2026-11-15:**
   - **OD-SECj:** the owner generates and holds the release keys. SECREL builds with test keys until then.
   - **OD-SECh:** confirm that iPhone and iPad never need bootloader entry or a core voltage above 1.20 V. The recorded
@@ -981,7 +1002,7 @@ in OD-P2e stay. The prose lines at `PLAN-P2.md:23-24` and §5 (`:550`) are marke
 | ID | Question | Options | Decision | Why |
 |---|---|---|---|---|
 | **OD-SECa** | Encrypt DSPi Link at all (reverses the earlier "not encrypted, no pinning"). **DECIDED** (owner's intent, 2026-11-15) | (1) keep plaintext, document it (today); (2) TLS 1.3 with a per-hub self-signed key and SPKI pinning bound to pairing; (3) TLS with a local CA the user installs on every client | **(2)** | The owner's premise that it cannot be helped holds for the device links, not for DSPi Link. Both ends are our software, and every non-browser client goes through one Rust core, so pinning is written once. Today one passive guest on the Wi-Fi gets a never-expiring Control token, and `expected_hub_id` can be fooled by echoing a public UUID. (3) asks every user to install a root CA, which is worse practice than a pin |
-| **OD-SECb** | Default `--tls` mode. **DECIDED** | (1) `off`; (2) `on` (both, `tlsk`); (3) `require` | **(2) in the first TLS release; (3) the default in the release after all clients ship SEC-C**; `--tls on` documented for the upstream Swift console | `on` keeps the upstream console and not-yet-updated clients working, while updated clients go TLS-first with no downgrade. `require` is the end state; going straight to it would strand every existing install |
+| **OD-SECb** | Default `--tls` mode. **DECIDED** | (1) `off`; (2) `on` (both, `tlsk`); (3) `require` | **(2) in the first TLS release; (3) the default in the release after all clients ship SEC-C**; `--tls on` documented for the upstream Swift console **[Reconsidered 2026-11-15: `uconsole hub` defaults to (3) `require` from the first TLS release, `off` on loopback; built by SECSRV `db55f583`. Recorded in the paragraph above this table.]** | `on` keeps the upstream console and not-yet-updated clients working, while updated clients go TLS-first with no downgrade. `require` is the end state; going straight to it would strand every existing install |
 | **OD-SECc** | How MITM-resistant first pairing must be. **DECIDED** | (1) TOFU plus the fingerprint shown with the PIN; (2) (1) plus a QR code carrying the pin; (3) a PAKE (SPAKE2) bound to the TLS exporter | **(1) and (2) in SEC-C; (3) scheduled in SEC-D (SECPAKE), not optional**; browsers stay at (1) | A typed PIN after a MITM'd TLS is otherwise relayable. A PIN-derived MAC alone falls to an offline search of 10⁶ PINs, which is why (3) is a PAKE, the method Matter (SPAKE2+) and HomeKit (SRP) use. All native clients share the core, so (3) is one implementation. Browsers cannot reach the TLS exporter |
 | **OD-SECd** | Certificate generation. **DECIDED** | (1) `rcgen` (MIT or Apache-2.0; pulls `yasna`, `pem`, `time`); (2) hand-rolled DER; (3) shelling out to `openssl` | **(1)** | Maintained, well-tested X.509 encoding. (2) is security-relevant encoding we would own forever. (3) is a runtime dependency that Windows and the Mac slice lack |
 | **OD-SECe** | Webhook `http://`. **DECIDED** | (1) https only; (2) https by default, http only with `plaintext: true` to a private, loopback or link-local destination checked after resolution on every send; (3) both freely | **(2)** | A LAN receiver often has no certificate, and the HMAC still authenticates the hub. A plaintext body to the internet is never acceptable |

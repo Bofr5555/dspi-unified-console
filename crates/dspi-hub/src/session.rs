@@ -109,17 +109,27 @@ impl Session {
         })
     }
 
-    // -- WP P3RO --
-    /// Whether the session's connection is TLS. False for every session the hub opens
-    /// itself (the app's, a principal's, a child's) and for a plaintext connection: what
-    /// a `tls_only` family (the rollout, `hub-api.md` 21.1) checks.
+    // -- WP P3RO -- (doc: WP P3FRZ)
+    /// Whether what this session sends and receives is protected from the network: what
+    /// a `tls_only` family (the rollout, `hub-api.md` 21.1) checks. True for the session
+    /// of a TLS connection (set where the server opens it), for an API key's REST session
+    /// while it serves a request that came over TLS (set per request: the key's one
+    /// session serves its plain and its TLS requests, each judged by its own connection,
+    /// WP P3RS), and for the console principal of the hub's own machine
+    /// ([`HubHandle::open_console_principal`](crate::HubHandle::open_console_principal),
+    /// WP P3TM: nothing it sends crosses a network). False for a plaintext connection and
+    /// for every other session the hub opens itself (the app's, a principal's, a
+    /// child's).
     pub fn encrypted(&self) -> bool {
         self.encrypted.load(Ordering::SeqCst)
     }
 
-    // -- WP P3RO --
-    /// Mark the session's connection TLS: the server's one call, where it opens the
-    /// session of an encrypted connection.
+    // -- WP P3RO -- (doc: WP P3FRZ)
+    /// Set [`Session::encrypted`]. Called where the server opens a connection's session
+    /// (from the connection's TLS state), by the REST path before each request of a
+    /// key's session (that request's connection), and by
+    /// [`HubHandle::open_console_principal`](crate::HubHandle::open_console_principal)
+    /// (`true`). Never for any other session the hub opens itself.
     pub(crate) fn set_encrypted(&self, on: bool) {
         self.encrypted.store(on, Ordering::SeqCst);
     }

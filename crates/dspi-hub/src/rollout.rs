@@ -660,6 +660,36 @@ impl Shared {
         true
     }
 
+    // -- review p3d --
+    /// A rollout's worker ends: as [`Self::update`], and the hub's one slot is freed
+    /// under the same lock, so that a console which starts the next rollout the moment
+    /// it is told this one ended is not answered `busy`. The slot is freed whether or
+    /// not the record still ran (a cancelled one ended when it was cancelled; its
+    /// worker ends here).
+    fn end(&self, hub: &HubHandle, id: &str, f: impl FnOnce(&mut Record)) {
+        let record = {
+            let mut st = lock(&self.state);
+            let record = st
+                .records
+                .iter_mut()
+                .find(|r| r.id == id && r.state == "running")
+                .map(|r| {
+                    f(r);
+                    r.clone()
+                });
+            if st.running.as_ref().is_some_and(|r| r.id == id) {
+                st.running = None;
+            }
+            if record.is_some() {
+                self.persist_locked(&st);
+            }
+            record
+        };
+        if let Some(record) = record {
+            self.announce(hub, &record);
+        }
+    }
+
     /// Catch up with the health poll: who is silent.
     fn refresh_health(&self) {
         let messages = self.health.drain();
@@ -764,11 +794,14 @@ impl RolloutService {
         let received = {
             let mut st = lock(&sh.state);
             if seq == 0 {
-                if st.uploads.contains_key(&sid) {
-                    return Err(ApiError::new(
-                        "busy",
-                        "this session has an upload open; finish it first",
-                    ));
+                // -- WP P3WRO -- (review p3c N2) a seq 0 starts this session's upload
+                // again: the one it had open (a client whose middle chunk failed) is
+                // dropped rather than holding the session busy for UPLOAD_TIMEOUT.
+                if let Some(old) = st.uploads.remove(&sid) {
+                    log::info!(
+                        "hub rollout: the upload of {} was dropped for a new one",
+                        old.name
+                    );
                 }
                 if st.uploads.len() >= MAX_UPLOADS {
                     return Err(ApiError::new(
