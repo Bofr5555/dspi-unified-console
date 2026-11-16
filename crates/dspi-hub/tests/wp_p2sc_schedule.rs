@@ -298,7 +298,7 @@ fn wp_p2sc_only_an_admin_edits_or_runs_and_every_role_lists() {
         assert_eq!(list["local_time"], "2027-01-04T12:00");
         assert_eq!(list["clock_unset"], false);
     }
-    // Admin edits: an unknown rule, a group target, a rule changed and deleted.
+    // Admin edits: an unknown rule, a malformed group target, a rule changed and deleted.
     let mut changed = volume_rule("Doors", &[serial], -14.0);
     changed["id"] = json!("r9");
     assert_eq!(
@@ -306,10 +306,11 @@ fn wp_p2sc_only_an_admin_edits_or_runs_and_every_role_lists() {
         "not_found"
     );
     changed["id"] = json!("r1");
-    changed["targets"] = json!(["group:hall"]);
+    // -- WP P3GR -- `group:<id>` is resolved at run time now; one with no id is refused.
+    changed["targets"] = json!(["group:"]);
     assert_eq!(
         code(&admin.ask(json!({"t": "schedule.set", "rule": changed.clone()}))),
-        "unsupported"
+        "bad_request"
     );
     changed["targets"] = json!([serial]);
     let set = admin.ask(json!({"t": "schedule.set", "rule": changed}));
