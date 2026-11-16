@@ -149,6 +149,7 @@ test("WBCLIP refusals: read only writes nothing and says why; the core's refusal
 
   const session = await demoSession();
   const board = channelClipboard(session);
+  board.clear(); // -- WP WBCLIP2 -- the clip is the page's: forget the view session's copy
   assert.equal(await board.copy(250), false);
   assert.match(session.state.error, /\S/, "the core's words for a channel the device lacks");
   assert.equal(board.hasClip, false, "a failed copy keeps nothing");
