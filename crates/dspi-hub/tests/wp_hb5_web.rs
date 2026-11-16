@@ -12,6 +12,14 @@ use dspi_hub::web;
 use dspi_hub::{Hub, HubConfig};
 use dspi_transport::FakeDevice;
 
+// -- review secb -- the TLS mode these tests run against: `off`, or under the
+// test-only feature `test-tls-mode` what DSPI_HUB_TEST_TLS asks for. Where TLS is
+// served, an `https` own Origin is the hub's page too, `/info` says `tls`, and a
+// ClientHello is a TLS handshake, not a bad request.
+fn tls_served() -> bool {
+    NetworkConfig::new(std::path::PathBuf::new()).tls != dspi_hub::TlsMode::Off
+}
+
 fn store_dir() -> PathBuf {
     static NEXT: AtomicU32 = AtomicU32::new(0);
     // `ci/run.sh` points TMPDIR at the home volume, not tmpfs.
@@ -142,9 +150,10 @@ fn wp_hb5_the_pages_own_origin_reaches_the_socket_and_others_do_not() {
         101
     );
     assert_eq!(upgrade_status(port, "http://evil.example"), 403);
+    // -- review secb -- our own https page: ours only where the hub serves TLS
     assert_eq!(
         upgrade_status(port, &format!("https://127.0.0.1:{port}")),
-        403
+        if tls_served() { 101 } else { 403 }
     );
     hub.stop();
 }

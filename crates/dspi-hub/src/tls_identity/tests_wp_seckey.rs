@@ -177,7 +177,13 @@ fn wp_seckey_the_first_start_makes_a_private_key_and_a_certificate() {
     // SANs: localhost, the stable name, the mDNS name; no address.
     let stable = format!("{HID}.dspi.local");
     assert_eq!(id.names(), [stable.as_str(), HOST, "localhost"]);
-    assert_eq!(id.not_after() - (now() - 3600), VALIDITY_DAYS * DAY);
+    // -- review secb -- issued a moment before `now()` is read again: a second may
+    // have turned over in between (seen once in the gate)
+    let validity = id.not_after() - (now() - 3600);
+    assert!(
+        (VALIDITY_DAYS * DAY - 2..=VALIDITY_DAYS * DAY).contains(&validity),
+        "{validity}"
+    );
 }
 
 #[test]
