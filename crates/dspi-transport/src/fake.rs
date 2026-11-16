@@ -156,6 +156,8 @@ mod document;
 pub use document::DocumentSeed;
 // -- WP CG-SWS-b -- the pin setters
 mod pins;
+// -- WP P5SES -- the measurement session's test hooks
+mod measure_hooks;
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
