@@ -8,7 +8,15 @@
 //! - **PIN pairing is the default.** `--open` (every connection an admin, no PIN) only
 //!   when asked, with a warning. A PIN is shown only here, on this machine's terminal or
 //!   in its log, and only while a window is open: `--pair` opens one at the start, and
-//!   `pair` typed at a running hub opens another. It crosses the network in plain text.
+//!   `pair` typed at a running hub opens another. -- WP SECPAIR -- With TLS (the default)
+//!   it is shown with the hub key's fingerprint and, on a terminal, a QR code of the
+//!   pairing link (`dspi://pair?...&k=<key>&p=<PIN>`), so a phone pins the key out of band;
+//!   only with `--tls off` or `--upstream-compat` does a PIN cross the network in plain text.
+//! - -- WP SECPAIR -- **Keys and lifetimes.** `uconsole hub tls cert|fingerprint|rotate`
+//!   (or `tls ...` typed at a running hub): the certificate, the key's fingerprint, a new
+//!   key signed by the old one (`--forget-old`: unsigned, after a compromise; every
+//!   client pairs again). A console's token unused for 180 days is forgotten
+//!   (`--token-idle-days`; 0: never).
 //! - **Clients and roles** are commands: typed at a running hub on a terminal (they then
 //!   reach the live sessions), or `uconsole hub clients|role|revoke` with the hub stopped.
 //!   A hub holds a lock file in its store, so those refuse while one runs: the store has
@@ -69,6 +77,9 @@ use dspi_tui::shell::connect::{Target, printable};
 use serde_json::{Value, json};
 
 use crate::exit;
+
+// -- WP SECPAIR --
+mod pair_qr;
 
 /// What a hub is called when nobody has named it (as HB6's).
 const DEFAULT_NAME: &str = "DSPi Hub";
@@ -187,6 +198,10 @@ struct RunOptions {
     // -- WP SECSRV --
     /// `--tls`, `--upstream-compat`, `--host-name`.
     tls: TlsOptions,
+    // -- WP SECPAIR --
+    /// `--token-idle-days`: a console's token unused this long is forgotten; `None`:
+    /// never (`0`).
+    token_idle: Option<Duration>,
 }
 
 // -- WP SECSRV --
@@ -332,6 +347,24 @@ enum HubCommand {
         store: PathBuf,
         cid: u32,
     },
+    // -- WP SECPAIR --
+    /// `uconsole hub tls cert|fingerprint|rotate`, with the hub stopped.
+    Tls {
+        store: PathBuf,
+        action: TlsAction,
+    },
+}
+
+// -- WP SECPAIR --
+/// What `tls ...` does, at the prompt or with the hub stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TlsAction {
+    /// The certificate, PEM: `uconsole hub tls cert > hub.pem`.
+    Cert,
+    /// The key's fingerprint, and its `curl --pinnedpubkey` form.
+    Fingerprint,
+    /// A new key; `forget_old`: unsigned (a compromise).
+    Rotate { forget_old: bool },
 }
 
 /// `uconsole hub ...`; `flags` starts at the word `hub`, without the target flags.
@@ -374,6 +407,8 @@ pub fn run(target: &Target, flags: &[&str], json: bool) -> u8 {
                 .map(|key| print_minted(&key, json))
         }
         HubCommand::ApiKeyList { store } => offline_keys(&store, json),
+        // -- WP SECPAIR --
+        HubCommand::Tls { store, action } => offline_tls(&store, action, json),
         HubCommand::ApiKeyRevoke { store, cid } => {
             offline_auth(&store, |auth| revoke_key(auth, cid, |c| auth.revoke(c)))
                 .map(|()| say_key_revoked(cid, json))
@@ -421,6 +456,15 @@ USAGE:
     {COMMAND} hub api-key list     the API keys (hub stopped)
     {COMMAND} hub api-key revoke <cid>
                               revoke an API key (hub stopped)
+    {COMMAND} hub tls cert         the hub's TLS certificate, PEM (for curl
+                              --cacert, Home Assistant, a browser)
+    {COMMAND} hub tls fingerprint  the hub key's fingerprint, and curl's
+                              --pinnedpubkey form
+    {COMMAND} hub tls rotate [--forget-old]
+                              a new TLS key (hub stopped). Clients follow it,
+                              signed by the old key, for 30 days. --forget-old
+                              (the old key was exposed): unsigned, and every
+                              client must pair again
 
 OPTIONS:
     --name <name>             the hub's name, kept for the next start
@@ -472,6 +516,9 @@ OPTIONS:
     --host-name <name>        a DNS name this hub is reached by besides its .local
                               name and its addresses, for unencrypted clients
                               (the DNS-rebinding check); may be repeated
+    --token-idle-days <n>     forget a paired client whose token has not been
+                              used for n days (default 180; 0: never). API keys
+                              do not expire
     --data <dir>              where the services keep their files (inventory,
                               history, alarms, schedules, snapshots, MQTT,
                               notifications); default: the store
@@ -495,11 +542,15 @@ WHILE IT RUNS, on a terminal, type:
     api-key new <name> [role] mint an API key (default control), shown once
     api-key list              the API keys
     api-key revoke <cid>      revoke an API key, at once
+    tls fingerprint           the hub key's fingerprint
+    tls cert                  the hub's TLS certificate, PEM
+    tls rotate [--forget-old] a new TLS key, served at once
     status                    the hub's address and access
     quit                      stop sharing
 
-Clients pair over TLS. With --tls off or --upstream-compat a PIN crosses the
-network in plain text: pair on a network you trust.
+Clients pair over TLS: compare the key's fingerprint shown with the PIN, or scan
+its QR code. With --tls off or --upstream-compat a PIN crosses the network in
+plain text: pair on a network you trust.
 Clients on the network cannot raise a unit's core voltage above 1.20 V;
 do that on this machine. Logs go to standard error (RUST_LOG).
 ",
@@ -537,6 +588,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     let (mut rest_api, mut data, mut services) = (false, None, Services::default());
     // -- WP SECSRV --
     let mut tls = TlsOptions::default();
+    // -- WP SECPAIR --
+    let (mut token_idle, mut forget_old) = (Some(dspi_hub::auth::DEFAULT_TOKEN_IDLE), false);
     let mut port_given = false;
     let mut words = Vec::new();
 
@@ -629,6 +682,16 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 tls.host_names.push(name);
                 run_only.push("--host-name");
             }
+            // -- WP SECPAIR --
+            "--token-idle-days" => {
+                let text = value("a number of days")?;
+                let days: u64 = text.parse().ok().filter(|d| *d <= 36_500).ok_or_else(|| {
+                    usage(format!("`{}` is not a number of days", printable(&text)))
+                })?;
+                token_idle = (days > 0).then(|| Duration::from_secs(days.saturating_mul(86_400)));
+                run_only.push("--token-idle-days");
+            }
+            "--forget-old" => forget_old = true,
             f if f.starts_with('-') => return Err(usage(format!("`{f}` is not a hub option"))),
             word => words.push(word),
         }
@@ -711,6 +774,10 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             if local && !port_given {
                 port = LOCAL_PORT;
             }
+            // -- WP SECPAIR --
+            if forget_old {
+                return Err(usage("--forget-old is for `tls rotate`".into()));
+            }
             // -- WP SECSRV --
             if tls.upstream_compat && tls.mode == Some(TlsMode::Require) {
                 return Err(usage(
@@ -746,6 +813,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 services,
                 // -- WP SECSRV --
                 tls,
+                // -- WP SECPAIR --
+                token_idle,
             }));
         }
         ["help"] => return Ok(HubCommand::Help),
@@ -770,6 +839,11 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             store: store()?,
             cid: cid(rest.first())?,
         },
+        // -- WP SECPAIR --
+        ["tls", rest @ ..] => HubCommand::Tls {
+            store: store()?,
+            action: tls_action(rest, forget_old).map_err(usage)?,
+        },
         _ => {
             return Err(usage(format!(
                 "`{}` is not a hub command; see `{COMMAND} hub --help`",
@@ -781,6 +855,18 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
         return Err(usage(format!(
             "{flag} is for running a hub, not this command"
         )));
+    }
+    // -- WP SECPAIR --
+    if forget_old
+        && !matches!(
+            command,
+            HubCommand::Tls {
+                action: TlsAction::Rotate { .. },
+                ..
+            }
+        )
+    {
+        return Err(usage("--forget-old is for `tls rotate`".into()));
     }
     if demo {
         return Err(usage(
@@ -966,6 +1052,8 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     network.tls = policy.mode;
     network.upstream_compat = policy.upstream_compat;
     network.host_names = opts.tls.host_names.clone();
+    // -- WP SECPAIR --
+    network.token_idle = opts.token_idle;
     let mut config = HubConfig::in_process(&name);
     config.network = Some(network);
     // -- WP P2TM -- the phase-2 services, each on unless turned off
@@ -1358,6 +1446,8 @@ fn serve(opts: &RunOptions, json: bool) -> Result<(), Failure> {
         println!("Type `help` for commands, `quit` to stop sharing.");
     }
     while !stop.load(Ordering::Relaxed) {
+        // -- WP SECPAIR --
+        say_window_killed(&running, json);
         let Some(lines) = &typed else {
             std::thread::sleep(TICK);
             continue;
@@ -1503,6 +1593,19 @@ fn command(running: &Running, line: &str, json: bool) -> bool {
             Err(_) => say("api-key revoke <cid>"),
         },
         ["api-key", ..] => say("api-key new <name> [viewer|control|admin] | list | revoke <cid>"),
+        // -- WP SECPAIR --
+        ["tls", rest @ ..] => {
+            let forget_old = rest.contains(&"--forget-old");
+            let words: Vec<&str> = rest
+                .iter()
+                .copied()
+                .filter(|w| *w != "--forget-old")
+                .collect();
+            match tls_action(&words, forget_old) {
+                Ok(action) => live_tls(running, action, json),
+                Err(m) => say(&m),
+            }
+        }
         _ => say(&format!(
             "`{}`: not a hub command; type `help`",
             printable(line.trim())
@@ -1637,19 +1740,43 @@ fn begin_pairing(running: &Running, json: bool) -> Option<dspi_hub::auth::Pairin
         Ok(window) => {
             let shown = window.clone();
             let secs = window.expires.saturating_duration_since(now).as_secs();
+            // -- WP SECPAIR -- the key the client must see, and the link that carries it
+            let tls = running.control.tls();
+            let fingerprint = tls.pin.map(|p| p.display());
+            let link = running.control.pair_link(&window);
             if json {
                 println!(
                     "{}",
-                    json!({ "event": "pairing", "pin": window.pin, "expiresInSecs": secs })
+                    json!({
+                        "event": "pairing",
+                        "pin": window.pin,
+                        "expiresInSecs": secs,
+                        "fingerprint": fingerprint,
+                        "pairLink": link,
+                    })
                 );
             } else {
                 println!(
-                    "Pairing open for {secs} s. PIN: {}  (it crosses the network in plain \
-                     text: pair on a network you trust)",
-                    window.pin
+                    "{}",
+                    pairing_line(&window.pin, secs, fingerprint.as_deref())
                 );
-            }
-            if !json {
+                if tls.policy.plaintext_pairing() {
+                    println!(
+                        "(Unencrypted clients may pair too: their PIN crosses the network in \
+                         plain text. Pair on a network you trust.)"
+                    );
+                }
+                if let Some(link) = &link {
+                    if std::io::stdout().is_terminal()
+                        && let Some(lines) = pair_qr::lines(link)
+                    {
+                        println!("Scan to pair (the key comes with the PIN):");
+                        for line in lines {
+                            println!("{line}");
+                        }
+                    }
+                    println!("Pairing link: {link}");
+                }
                 println!("{PAIRED_ROLE_NOTE}");
             }
             Some(shown)
@@ -1659,6 +1786,147 @@ fn begin_pairing(running: &Running, json: bool) -> Option<dspi_hub::auth::Pairin
             None
         }
     }
+}
+
+// -- WP SECPAIR --
+/// "Pairing open for 120 s. PIN: 482913 · key SHA256:K7Q2-..." (PLAN-SEC 4.3): the
+/// fingerprint the client's pairing screen shows too. No key: TLS is off.
+fn pairing_line(pin: &str, secs: u64, fingerprint: Option<&str>) -> String {
+    match fingerprint {
+        Some(key) => format!(
+            "Pairing open for {secs} s. PIN: {pin} \u{b7} key {key}\n\
+             Check that the client shows this key before you type the PIN."
+        ),
+        None => format!(
+            "Pairing open for {secs} s. PIN: {pin}  (TLS is off: it crosses the network \
+             in plain text; pair on a network you trust)"
+        ),
+    }
+}
+
+// -- WP SECPAIR --
+/// Once per window ended by 5 wrong PINs (PLAN-SEC 4.5): said, so the person opens a
+/// new one knowingly.
+fn say_window_killed(running: &Running, json: bool) {
+    if !running.control.auth().take_window_killed() {
+        return;
+    }
+    if json {
+        println!(
+            "{}",
+            json!({ "event": "pairingClosed", "reason": "wrongPins" })
+        );
+    } else {
+        println!(
+            "Pairing was closed after 5 wrong PINs. If that was not you, someone on this \
+             network is guessing; type `pair` to open a new window."
+        );
+    }
+}
+
+// -- WP SECPAIR --
+/// `tls cert|fingerprint|rotate`, the words after `tls` (`--forget-old` taken out).
+fn tls_action(words: &[&str], forget_old: bool) -> Result<TlsAction, String> {
+    let action = match words {
+        ["cert"] => TlsAction::Cert,
+        [] | ["fingerprint"] => TlsAction::Fingerprint,
+        ["rotate"] => TlsAction::Rotate { forget_old },
+        _ => return Err("tls cert | fingerprint | rotate [--forget-old]".into()),
+    };
+    if forget_old && !matches!(action, TlsAction::Rotate { .. }) {
+        return Err("--forget-old is for `tls rotate`".into());
+    }
+    Ok(action)
+}
+
+// -- WP SECPAIR --
+/// The certificate or the fingerprint, from a running hub or a stopped one's folder.
+fn print_tls(action: TlsAction, pin: &dspi_hub::tls_identity::SpkiHash, pem: &str, json: bool) {
+    match (action, json) {
+        (TlsAction::Cert, false) => print!("{pem}"),
+        (TlsAction::Cert, true) => println!(
+            "{}",
+            json!({ "event": "tlsCertificate", "pem": pem, "fingerprint": pin.display() })
+        ),
+        (_, false) => {
+            println!("TLS key: {}", pin.display());
+            println!("curl --pinnedpubkey '{}'", pin.curl_pin());
+        }
+        (_, true) => println!(
+            "{}",
+            json!({
+                "event": "tlsFingerprint",
+                "fingerprint": pin.display(),
+                "pinnedpubkey": pin.curl_pin(),
+                "spki": pin.to_b64url(),
+            })
+        ),
+    }
+}
+
+// -- WP SECPAIR --
+/// A rotation's outcome, for people and `--json`.
+fn print_rotated(event: &TlsIdentityEvent, json: bool) {
+    let (kind, text) = tls_event_line(event);
+    if json {
+        let pin = tls_event_pin(event).display();
+        println!(
+            "{}",
+            json!({ "event": kind, "text": text, "fingerprint": pin })
+        );
+    } else {
+        println!("{text}");
+        if matches!(event, TlsIdentityEvent::Rotated { signed: true, .. }) {
+            println!(
+                "Paired clients follow the new key for 30 days (the old key signed it). A \
+                 client that does not connect within them must pair again."
+            );
+        }
+    }
+}
+
+// -- WP SECPAIR --
+/// `tls ...` typed at a running hub.
+fn live_tls(running: &Running, action: TlsAction, json: bool) {
+    let tls = running.control.tls();
+    let (Some(pin), Some(pem)) = (tls.pin, tls.certificate_pem) else {
+        say_error("TLS is off on this hub: it has no key", json);
+        return;
+    };
+    match action {
+        TlsAction::Rotate { forget_old } => match running.control.rotate_tls_key(forget_old) {
+            Ok(event) => print_rotated(&event, json),
+            Err(e) => say_error(&format!("no new key: {e}"), json),
+        },
+        _ => print_tls(action, &pin, &pem, json),
+    }
+}
+
+// -- WP SECPAIR --
+/// `uconsole hub tls ...` with the hub stopped: read from its folder, or (rotate) under
+/// the store's lock, for the names the certificate already carries.
+fn offline_tls(store: &Path, action: TlsAction, json: bool) -> Result<(), Failure> {
+    use dspi_hub::tls_identity::{TlsIdentity, TlsNames};
+    let none = || {
+        Failure::Usage(format!(
+            "no TLS key in {}: start the hub with TLS once",
+            store.display()
+        ))
+    };
+    let TlsAction::Rotate { forget_old } = action else {
+        let stored = TlsIdentity::peek(store).ok_or_else(none)?;
+        print_tls(action, &stored.pin, &stored.certificate_pem, json);
+        return Ok(());
+    };
+    let _lock = lock_store(store)?;
+    let stored = TlsIdentity::peek(store).ok_or_else(none)?;
+    let saved = SavedHub::peek(store)?.ok_or_else(none)?;
+    let names = TlsNames::from_stored(&stored.names, &saved.hub_id);
+    let now = SystemTime::now();
+    let (mut identity, _) = TlsIdentity::load(store, &saved.hub_id, &names, now)?;
+    let event = identity.rotate(&names, now, forget_old)?;
+    print_rotated(&event, json);
+    Ok(())
 }
 
 fn devices(running: &Running, json: bool) {
@@ -2283,6 +2551,8 @@ mod tests_wp_tm11 {
             services: Services::default(),
             // -- WP SECSRV --
             tls: TlsOptions::default(),
+            // -- WP SECPAIR --
+            token_idle: Some(dspi_hub::auth::DEFAULT_TOKEN_IDLE),
         }
     }
 
@@ -3253,6 +3523,8 @@ mod tests_wp_sw3 {
             services: Services::default(),
             // -- WP SECSRV --
             tls: TlsOptions::default(),
+            // -- WP SECPAIR --
+            token_idle: Some(dspi_hub::auth::DEFAULT_TOKEN_IDLE),
         }
     }
 }
@@ -3353,6 +3625,8 @@ mod tests_wp_hwlk1f {
             services: Services::default(),
             // -- WP SECSRV --
             tls: TlsOptions::default(),
+            // -- WP SECPAIR --
+            token_idle: Some(dspi_hub::auth::DEFAULT_TOKEN_IDLE),
         }
     }
 
@@ -4058,5 +4332,206 @@ mod tests_review_secb {
             policy(&["--tls", "off", "--upstream-compat"]),
             p(TlsMode::Off, true)
         );
+    }
+}
+
+// -- WP SECPAIR --
+#[cfg(test)]
+mod tests_wp_secpair {
+    #![allow(clippy::arithmetic_side_effects)]
+    use super::*;
+    use dspi_hub::tls_identity::TlsIdentity;
+
+    fn scratch(name: &str) -> PathBuf {
+        // Beside the test binary, in the target directory: never on tmpfs.
+        let dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("wp_secpair")
+            .join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn parsed(args: &[&str]) -> Result<HubCommand, Failure> {
+        parse(args, false, Some(PathBuf::from("/store")))
+    }
+
+    fn tls_options(store: &Path, mode: TlsMode) -> RunOptions {
+        let HubCommand::Run(mut o) = parse(
+            &["--loopback", "--no-keep-awake", "--port", "0"],
+            true,
+            Some(store.to_owned()),
+        )
+        .unwrap() else {
+            panic!("a run");
+        };
+        o.tls.mode = Some(mode);
+        o
+    }
+
+    #[test]
+    fn wp_secpair_token_idle_and_tls_commands_parse() {
+        let HubCommand::Run(o) = parsed(&[]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(o.token_idle, Some(dspi_hub::auth::DEFAULT_TOKEN_IDLE));
+        let HubCommand::Run(o) = parsed(&["--token-idle-days", "30"]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(o.token_idle, Some(Duration::from_secs(30 * 86_400)));
+        let HubCommand::Run(o) = parsed(&["--token-idle-days=0"]).unwrap() else {
+            panic!()
+        };
+        assert_eq!(o.token_idle, None, "0: never");
+        for bad in ["x", "-1", "99999999"] {
+            assert!(
+                matches!(parsed(&["--token-idle-days", bad]), Err(Failure::Usage(_))),
+                "{bad}"
+            );
+        }
+        assert!(matches!(
+            parsed(&["clients", "--token-idle-days", "3"]),
+            Err(Failure::Usage(_))
+        ));
+
+        let tls = |args: &[&str]| match parsed(args) {
+            Ok(HubCommand::Tls { action, store }) => {
+                assert_eq!(store, PathBuf::from("/store"));
+                Ok(action)
+            }
+            Ok(other) => panic!("{other:?}"),
+            Err(e) => Err(e),
+        };
+        assert_eq!(tls(&["tls", "cert"]), Ok(TlsAction::Cert));
+        assert_eq!(tls(&["tls", "fingerprint"]), Ok(TlsAction::Fingerprint));
+        assert_eq!(tls(&["tls"]), Ok(TlsAction::Fingerprint));
+        assert_eq!(
+            tls(&["tls", "rotate"]),
+            Ok(TlsAction::Rotate { forget_old: false })
+        );
+        assert_eq!(
+            tls(&["tls", "rotate", "--forget-old"]),
+            Ok(TlsAction::Rotate { forget_old: true })
+        );
+        for bad in [
+            &["tls", "cert", "--forget-old"][..],
+            &["tls", "wobble"],
+            &["--forget-old"],
+            &["clients", "--forget-old"],
+            &["tls", "rotate", "--tls", "on"],
+        ] {
+            assert!(matches!(parsed(bad), Err(Failure::Usage(_))), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn wp_secpair_the_pairing_line_shows_the_key() {
+        let line = pairing_line("482913", 120, Some("SHA256:K7Q2-M9XD-AAAA-BBBB"));
+        assert!(
+            line.contains("PIN: 482913 \u{b7} key SHA256:K7Q2-M9XD-AAAA-BBBB"),
+            "{line}"
+        );
+        assert!(line.contains("Check that the client shows this key"));
+        let off = pairing_line("482913", 120, None);
+        assert!(off.contains("plain text"), "{off}");
+    }
+
+    #[test]
+    fn wp_secpair_the_hub_runs_with_the_idle_limit_and_says_when_wrong_pins_close_pairing() {
+        let store = scratch("idle");
+        let mut o = tls_options(&store, TlsMode::Require);
+        o.token_idle = None;
+        let running = start(&o, true).unwrap();
+        assert_eq!(running.control.auth().token_idle(), None);
+        // The window, opened at the prompt, closed by wrong PINs: told once.
+        let w = begin_pairing(&running, true).unwrap();
+        assert!(
+            running.control.pair_link(&w).is_some(),
+            "TLS: a link with the key"
+        );
+        let wrong = if w.pin == "000000" {
+            "000001"
+        } else {
+            "000000"
+        };
+        for n in 0..5u8 {
+            let peer = IpAddr::V4(Ipv4Addr::new(10, 0, 0, n + 1));
+            let _ = running
+                .control
+                .auth()
+                .pair_over(wrong, "x", None, peer, Instant::now(), true);
+        }
+        say_window_killed(&running, true);
+        assert!(
+            !running.control.auth().take_window_killed(),
+            "told, and consumed"
+        );
+        drop(running);
+        let mut o = tls_options(&store, TlsMode::Require);
+        o.token_idle = Some(Duration::from_secs(86_400));
+        let running = start(&o, true).unwrap();
+        assert_eq!(
+            running.control.auth().token_idle(),
+            Some(Duration::from_secs(86_400))
+        );
+    }
+
+    #[test]
+    fn wp_secpair_tls_at_the_prompt_and_with_the_hub_stopped() {
+        let store = scratch("tls");
+        // Never run: nothing to show.
+        assert!(matches!(
+            offline_tls(&store, TlsAction::Fingerprint, true),
+            Err(Failure::Usage(_))
+        ));
+        let running = start(&tls_options(&store, TlsMode::Require), true).unwrap();
+        let first = running.control.tls().pin.unwrap();
+        // Read-only commands work while it runs; a rotation from outside waits for it.
+        offline_tls(&store, TlsAction::Fingerprint, true).unwrap();
+        offline_tls(&store, TlsAction::Cert, true).unwrap();
+        assert!(matches!(
+            offline_tls(&store, TlsAction::Rotate { forget_old: false }, true),
+            Err(Failure::Usage(m)) if m.contains("a hub is running")
+        ));
+        // At the prompt.
+        assert!(command(&running, "tls fingerprint", true));
+        assert!(command(&running, "tls cert", true));
+        assert!(command(&running, "tls rotate", true));
+        let second = running.control.tls().pin.unwrap();
+        assert_ne!(first, second);
+        assert!(
+            command(&running, "tls cert --forget-old", true),
+            "refused, not fatal"
+        );
+        assert_eq!(running.control.tls().pin.unwrap(), second);
+        drop(running);
+        // Stopped: rotate, signed, keeping the names.
+        let before = TlsIdentity::peek(&store).unwrap();
+        offline_tls(&store, TlsAction::Rotate { forget_old: false }, true).unwrap();
+        let after = TlsIdentity::peek(&store).unwrap();
+        assert_ne!(after.pin, before.pin);
+        assert_eq!(after.names, before.names);
+        assert!(after.rotation_until.is_some(), "announced");
+        offline_tls(&store, TlsAction::Rotate { forget_old: true }, true).unwrap();
+        let forgot = TlsIdentity::peek(&store).unwrap();
+        assert_ne!(forgot.pin, after.pin);
+        assert_eq!(forgot.rotation_until, None, "unsigned: nothing announced");
+        // The hub starts on the key the store holds.
+        let running = start(&tls_options(&store, TlsMode::Require), true).unwrap();
+        assert_eq!(running.control.tls().pin, Some(forgot.pin));
+    }
+
+    #[test]
+    fn wp_secpair_tls_off_has_no_key_to_show() {
+        let store = scratch("off");
+        let running = start(&tls_options(&store, TlsMode::Off), true).unwrap();
+        assert!(command(&running, "tls fingerprint", true));
+        assert!(command(&running, "tls rotate", true));
+        assert_eq!(running.control.tls().pin, None);
+        let w = begin_pairing(&running, true).unwrap();
+        assert_eq!(running.control.pair_link(&w), None);
     }
 }

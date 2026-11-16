@@ -43,6 +43,9 @@ dirs = "6"
 # -- WP P1EFIX -- the installer PIN is read without echo (raw mode). Already in
 # the graph through dspi-tui (same version): no new crate.
 crossterm = "0.28"
+# -- WP SECPAIR -- the pairing link as a QR code (PLAN-SEC 4.3). Nayuki's reference
+# encoder: MIT, no dependencies, no unsafe.
+qrcodegen = "1.8"
 
 # -- WP TM11 -- `uconsole hub` keeps the machine awake on Windows.
 [target.'cfg(windows)'.dependencies]
