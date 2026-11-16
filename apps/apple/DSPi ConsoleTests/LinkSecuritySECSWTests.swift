@@ -282,7 +282,7 @@ final class LinkSecuritySECSWTests: XCTestCase {
             let url = try XCTUnwrap(URL(string: text))
             XCTAssertTrue(LinkPairLinks.handles(url))
             guard case .failure(let why) = LinkPairLinks.parse(url) else { return XCTFail("parsed: \(text)") }
-            XCTAssertTrue(why.hasPrefix("Not a valid pairing link"), why)
+            XCTAssertTrue(why.message.hasPrefix("Not a valid pairing link"), why.message)
         }
         XCTAssertFalse(LinkPairLinks.handles(URL(string: "https://example.com/pair")!))
     }

@@ -167,12 +167,11 @@ final class CompositeTransport: DeviceTransport {
         return transport
     }
 
-    /// -- WP SECSW -- A confirmed `dspi://pair` link: its hub (`hub`, the
-    /// typed-address entry the coordinator added for the link's address) is
-    /// dialled with the link's credential and id.  Nil, or why not.
-    func connect(pairLink: LinkPairLink, hub: DiscoveredHub) -> String? {
-        let transport = remote(for: hub.id) ?? makeRemoteTransport(hub)
-        return transport.connect(pairLink: pairLink)
+    /// -- WP SECSW -- The transport of `hub` (the typed-address entry for a
+    /// confirmed `dspi://pair` link), registered but not dialled: the
+    /// coordinator dials it with the link (`connect(pairLink:)`).
+    func remoteTransport(for hub: DiscoveredHub) -> any RemoteHubTransport {
+        remote(for: hub.id) ?? makeRemoteTransport(hub)
     }
 
     /// A remote's socket failed.  It reconnects with backoff on its own; here

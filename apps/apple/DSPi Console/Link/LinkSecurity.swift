@@ -286,15 +286,20 @@ enum LinkPairLinks {
     /// Whether `url` is meant for this handler (a `dspi:` URL).
     static func handles(_ url: URL) -> Bool { url.scheme?.lowercased() == scheme }
 
+    /// Why a link was refused, in words to show.
+    struct Refusal: Error, Equatable {
+        let message: String
+    }
+
     /// The core's parse of `url`, or the reason it is refused.
-    static func parse(_ url: URL) -> Result<LinkPairLink, String> {
+    static func parse(_ url: URL) -> Result<LinkPairLink, Refusal> {
         do {
             return .success(try linkParsePairLink(text: url.absoluteString))
         } catch let error as DspiError {
-            if case .InvalidArgument(let msg) = error { return .failure("Not a valid pairing link: \(msg).") }
-            return .failure(ConsoleNotice.of(error).line)
+            if case .InvalidArgument(let msg) = error { return .failure(Refusal(message: "Not a valid pairing link: \(msg).")) }
+            return .failure(Refusal(message: ConsoleNotice.of(error).line))
         } catch {
-            return .failure("Not a valid pairing link.")
+            return .failure(Refusal(message: "Not a valid pairing link."))
         }
     }
 
@@ -317,7 +322,7 @@ enum LinkPairLinks {
                      notices: NoticeCenter = .main) {
         switch parse(url) {
         case .failure(let why):
-            notices.post(.result(why, kind: .error))
+            notices.post(.result(why.message, kind: .error))
         case .success(let link):
             guard let ui = ui else {
                 notices.post(.result("Pairing links cannot be confirmed here.", kind: .error))

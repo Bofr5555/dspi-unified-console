@@ -595,11 +595,11 @@ final class CoreLink {
     }
 
     private func follow(_ status: dspi_core.LinkStatus, _ devices: [LinkDevice],
-                        _ security: dspi_core.LinkSecurity? = nil) {
+                        _ seen: dspi_core.LinkSecurity? = nil) {
         lastStatus = status
         // A dial in progress: the status still describes the session before it.
         guard sessionLive, !dialing else { return }
-        if let security = security, status.connected { applySecurity(security) }   // -- WP SECSW --
+        if let seen = seen, status.connected { applySecurity(seen) }   // -- WP SECSW --
         let previous = phase
         phase = status.phase
         transport?.linkPhaseChanged(phase)

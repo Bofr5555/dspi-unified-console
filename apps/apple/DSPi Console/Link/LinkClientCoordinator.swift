@@ -10,6 +10,7 @@
 
 import Foundation
 import Combine
+import dspi_core   // -- WP SECSW --
 
 @MainActor
 final class LinkClientCoordinator: ObservableObject {
@@ -91,7 +92,7 @@ final class LinkClientCoordinator: ObservableObject {
                              isManual: true)
         hub.tls = true
         if hub.infoHubID == nil { hub.infoHubID = link.hubId }
-        return composite.connect(pairLink: link, hub: hub)
+        return composite.remoteTransport(for: hub).connect(pairLink: link)
     }
 
     func removeManual(_ hub: DiscoveredHub) {
