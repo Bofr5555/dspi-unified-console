@@ -22,6 +22,8 @@ Android get only what a single-device user needs (shared snapshots, the hub's hi
   schedules, hub-side recall) goes through the same limits and lock checks; none bypasses them.
 - **DSPi Link is not encrypted**, and hub-identity pinning is not to be added (owner). Phase 2 states plainly what that
   means for tokens, API keys and webhook secrets; it adds no TLS on the Link port.
+  **[Superseded by PLAN-SEC (OD-SECa, 2026-11-15; marked by WP SECDOC): the hub serves TLS 1.3 on the Link port, `require` by default, with the key pinned at pairing;
+  `docs/integrator/security.md`, `hub-api.md` section 2.]**
 - The 1.20 V core-voltage rule and the `OVERVOLT` word stay as they are. No phase-2 surface reaches `EXT_CORE_VREG` (it has
   no registry path; the extension opcode is Admin-only in the policy, and the API refuses raw opcodes).
 - No Qt or Swift tabs: the multi-device view is the web console served by the hub.
@@ -178,7 +180,8 @@ every message's request and answer shape, roles, events, error codes (`denied`, 
 `conflict`, `rate_limited`, `offline`, `locked`, the P1HL `limit_exceeded`/`installer_lock`/`image_refused` refusals), the
 multi-target result shape `results: [{serial, ok, code?, msg?}]` that phase 3 reuses, addressing by serial (handle also
 accepted where Link has it), plain JSON values with the registry's kind deciding, versioning (caps, `"v": 1`, additive
-only), the REST mapping table, the unencrypted-network warning in one place, and a section **"Deviations from the DSPi Link
+only), the REST mapping table, the unencrypted-network warning in one place (**[Superseded by PLAN-SEC (OD-SECa, 2026-11-15; marked by WP SECDOC): section 2 is now
+"Encryption and pairing"]**), and a section **"Deviations from the DSPi Link
 spec" (review S5)**: `/api/v1/` on the Link port against 4.2's "Nothing else is defined" and "no REST API" (one handler set
 keeps that sentence's reason, one path for serialisation, locking and attribution, true), the `--web` pages and the console
 under `/console/`, and `hub.stats`'s added `serial` in each device row. Marked "draft" per section until its WP marks it
@@ -200,7 +203,8 @@ the total cap removes the oldest rotated file first; an old build's reader reads
 `crates/dspi-hub/src/mqtt/client.rs` (and `mqtt/mod.rs`), not yet registered as a service. **Implements:** the packets the hub
 needs (CONNECT with will, CONNACK, PUBLISH QoS 0 and 1 with PUBACK, SUBSCRIBE/SUBACK, PINGREQ/PINGRESP, DISCONNECT), pure
 encode and decode with length limits; a blocking client over `std::net::TcpStream` on one thread with keep-alive, reconnect
-with backoff, a bounded outgoing queue, username and password; no TLS (OD-P2f), no async runtime, no new crate. **Done
+with backoff, a bounded outgoing queue, username and password; no TLS (OD-P2f; **[Superseded by PLAN-SEC (OD-SECa, 2026-11-15; marked by WP SECDOC): MQTT over TLS by SECOUT, wired by MQWIRE]**), no async runtime,
+no new crate. **Done
 when:** codec tests against fixed byte vectors and fuzzed lengths (proptest is a dev-dependency already), no panic on any
 input; a client test against an in-test fake broker: connect, publish retained, subscribe, a dropped broker reconnects and
 re-subscribes, the queue drops the oldest when full. **Deps:** none. **Clients:** none.
@@ -301,7 +305,8 @@ P2SV, P2SS. **Clients:** P2TM, integrators, every client's "Recall on the hub" (
 **P2WH: Webhooks and push.** [TODO] Size 1.5. Wave P2-B. **Owns:** new `crates/dspi-hub/src/outbound/` (`mod.rs`,
 `http.rs`, `hmac.rs`), the file `<data>/outbound.json`. Its diagnostics entry is added by P2AL in P2-C (one `diag.rs` owner
 per wave); until then the bundle simply lacks the file, which holds no secret it could leak. **Implements:** M4's HTTP half
-as in section 1: a minimal HTTP/1.1 POST over `TcpStream` (`http://` only, OD-P2f), timeouts (5 s connect, 10 s total), the
+as in section 1: a minimal HTTP/1.1 POST over `TcpStream` (`http://` only, OD-P2f; **[Superseded by PLAN-SEC (OD-SECa, 2026-11-15; marked by WP SECDOC): `https://` by SECOUT, `http://` only
+with `plaintext: true` to a private address]**), timeouts (5 s connect, 10 s total), the
 response read limited to the status line and at most 8 KiB, nothing else parsed (review N6); a bounded queue per target (at
 most 16 targets), backoff (1 s doubling to 5 min), the body `{v, hub, kind, serial?, at, text, alarm?}`, headers
 `X-DSPi-Timestamp` and `X-DSPi-Signature: sha256=<HMAC(secret, timestamp + "." + body)>`; HMAC-SHA256 **hand-rolled over
@@ -548,6 +553,6 @@ questions, one line each:
 - Send `REQ_CLEAR_CLIPS`, write the core voltage, or let any API reach a raw opcode.
 - Queue or replay a write for later: an offline target fails now and says so (the lost-Link rule, applied to the hub).
 - Add TLS or identity pinning to DSPi Link (owner), or an account system on the hub: the three roles and paired clients are
-  the boundary.
+  the boundary. **[Superseded by PLAN-SEC (OD-SECa, 2026-11-15; marked by WP SECDOC): TLS and pinning are added by the SEC waves; no account system still holds.]**
 - Ship admin pages in Qt, Swift or Android: the hub's settings are the web console's (and `uconsole hub`).
 - Build a fleet database or a cloud relay: JSON files in the hub's data folder are enough (PRO1 section 6).
