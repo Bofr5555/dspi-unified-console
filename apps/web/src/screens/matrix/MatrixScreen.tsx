@@ -3,7 +3,8 @@
 // descriptor and its slot), a crosspoint per cell (connect, level, polarity),
 // and per output ENABLE, GAIN, DELAY and MUTE. Enabling an output that shares
 // Core 1 with the PDM sub asks first, in the Console's words, and switches
-// over as the Console does. A column's menu renames the output.
+// over as the Console does. A column's menu renames the output
+// (-- WP WBCLIP -- and copies or pastes its parameters).
 //
 // Every change is the core's, read back: crosspoints by `crosspoint` (the
 // registry's `mix`), the rest by `write`. The delay follows the owner's rule
@@ -29,6 +30,8 @@ import { CROSSPOINT_RANGE } from "../outputs/OutputCard";
 import { clamp, compactGain, delayText, enableConflict, eqWorkerRange, outputSlotName, parseLevel, pdmOutput, stepGrid } from "../outputs/model";
 // -- WP WB6G -- the 8-channel layout's per-input trims
 import { InputTrimField } from "../inputs/InputsScreen";
+// -- WP WBCLIP -- the column menu's Copy and Paste Parameters (M45)
+import { clipEntries, useClipboard } from "../clipboard/model";
 
 export function MatrixScreen(props: ScreenProps) {
   const { session, ask } = props;
@@ -72,6 +75,7 @@ const MatrixView = memo(
       enabled: s.outputEnabled[o] ?? false,
     }));
     const [renaming, setRenaming] = useState<(typeof outs)[number] | null>(null);
+    const board = useClipboard(session); // -- WP WBCLIP --
     const crosspoint = (i: number, o: number, p: { enabled?: boolean; gain?: number; invert?: boolean }) =>
       session.change("crosspoint", {
         input: i,
@@ -149,6 +153,9 @@ const MatrixView = memo(
                           { label: "Rename…", onSelect: () => setRenaming(o) },
                           // -- WP WB6J -- Identify (M46)
                           { label: "Identify", onSelect: () => void identifyOutput(session, o.index) },
+                          // -- WP WBCLIP -- Copy / Paste Parameters (M45)
+                          "separator",
+                          ...clipEntries(board, o.wire, ro),
                         ]}
                       />
                       <span class="m-desc" style={{ color: channelColour(o.wire) }}>

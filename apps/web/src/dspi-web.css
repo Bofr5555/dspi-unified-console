@@ -1214,3 +1214,7 @@
   .dspi-web .hub-health-row > td:not(.hub-health-name)::before { content: attr(data-label); display: block; font-size: 0.72rem; color: var(--muted); font-weight: 400; }
   .dspi-web .hub-health-wrap { overflow-x: visible; }
 }
+
+/* -- WP WBCLIP -- the EQ screen's channel menu: as the tools beside it, opening rightwards from its button */
+.dspi-web .eq-tools > .menu > button { line-height: 20px; padding-top: 5px; padding-bottom: 5px; }
+.dspi-web .eq-tools > .menu [role="menu"] { right: auto; left: 0; }

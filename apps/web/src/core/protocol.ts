@@ -431,7 +431,7 @@ export type CoreEvent =
   | { event: "hubServer"; events: HubServerEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */ {
+export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */, ClipboardMethods /* -- WP WBCLIP -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -1812,4 +1812,23 @@ export interface SettingsMethods {
   vregClear: { params: undefined; result: VregCalView };
   /** The demo device only: `hang`, `reboot`, `power_cycle`, `advance`. */
   vregDemoEvent: { params: { event: "hang" | "reboot" | "power_cycle" | "advance"; seconds?: number }; result: null };
+}
+
+// -- WP WBCLIP -- the channel clipboard (CLIP1, crates/dspi-wasm/src/clipboard.rs)
+/**
+ * A copied channel: the core's clip document (`dspi_core::channel_clip_to_json`),
+ * `{kind: "dspi.channelClip", version, sourceChannel, sourceName, filters, crossover, output}`.
+ * The page keeps it as it is and hands it back to `pasteChannel`.
+ */
+export type ChannelClip = { kind: "dspi.channelClip"; version: number; sourceChannel: number; sourceName: string } & Record<string, unknown>;
+
+export interface ClipboardMethods {
+  /** Wire channel `ch` (inputs, then outputs) from the mirror, nothing sent. `invalid` for a channel the device lacks. */
+  copyChannel: { params: { ch: number }; result: { clip: ChannelClip } };
+  /**
+   * Put `clip` onto wire channel `ch`, its PEQ onto the linked partner `mirror` too, by
+   * the Console's rules; one undo step ("Paste Parameters"). A refusal (`invalid`,
+   * `read_only`, `installer_lock`, `limit_exceeded`, ...) writes nothing.
+   */
+  pasteChannel: { params: { clip: ChannelClip | string; ch: number; mirror?: number }; result: null };
 }
