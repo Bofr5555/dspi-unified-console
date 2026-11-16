@@ -67,7 +67,10 @@ refuses to do that unless it is also given `--forget-clients`.
 - **Stopping:** SIGTERM or Ctrl-C stops it cleanly. Clients are told and USB is
   released. A task ended from Task Scheduler is killed instead. That is safe, as
   the store is written atomically and the OS frees USB, but clients only see the
-  connection drop.
+  connection drop. The unit and the agent give the hub 90 s to stop: a hub started
+  with `--rollout` waits up to about 60 s for a flash in progress to finish, and a
+  kill mid-flash leaves the board in BOOTSEL with a partial image. On Windows, do not
+  end the task while a rollout is flashing.
 
 ## Windows: a service instead of a task
 

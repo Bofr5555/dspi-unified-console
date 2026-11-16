@@ -355,9 +355,11 @@ step: [hub-api.md](hub-api.md) section 21; why it is safe enough:
   then stops. A rollout stopped while it waited for a board or a restart ends there;
   at the next start its record reads `failed` at the step it was at, with the
   device's `rollout_failed` alarm raised and the members after it `not_tried`. A
-  service manager's stop timeout must allow those 60 s: the units in the release's
-  `service/` folder give the hub 20 s (`TimeoutStopSec=20`, launchd `ExitTimeOut` 20),
-  so for a hub with `--rollout` raise them to 90 s before installing.
+  service manager's stop timeout must allow those 60 s: the systemd unit and the
+  launchd agent in the release's `service/` folder give the hub 90 s
+  (`TimeoutStopSec=90`, `ExitTimeOut` 90); keep that if you write your own. A
+  Windows task ended from Task Scheduler is killed at once: do not end it while a
+  rollout is flashing.
 - The hub never raises a board's core voltage, never flashes two boards at once,
   never mounts a bootloader drive and never retries a flash: see section 21.4 of
   hub-api.md.

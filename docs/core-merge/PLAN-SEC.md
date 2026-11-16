@@ -899,10 +899,18 @@ SEC-C total: **10**.
   hub in a container.
 - **Deps:** SECPAKE's protocol text (soft: SECDOC documents `auth.pair2` from SECPAKE's entry). Otherwise SEC-C.
 
-**SECDEF: The default mode.** [PARTIAL 2026-11-16, checked by WP P3FRZ: no WP of its own was run. `uconsole hub` defaults to `require` since SECSRV (`db55f583`, merged `0aef15b8`; OD-SECb reconsidered 2026-11-15, `crates/dspi-hub/src/server.rs` `TlsMode` and `apps/terminal/src/hub.rs` `TlsOptions::policy`), and the done-when tests were written by SECDOC (`394afbf6`, merged `10d07f99`: `apps/terminal/tests/wp_secdef_default.rs`, `crates/dspi-hub/tests/wp_secdef_upgrade.rs`). The Mac `HubStartOptions` default is not on main: `HubStartOptions` has no TLS field there; P2SW (`wp/P2SW`, open) adds it with `require` as its default] Size 0.5.
+**SECDEF: The default mode.** [PARTIAL 2026-11-16, checked by WP P3FRZ. No WP of its own was run, and after OD-SECb's
+reconsideration (section 7) none is needed for the hub: `uconsole hub` defaults to `require` since SECSRV (`db55f583`,
+merged `0aef15b8`, main `948d192e`), and the done-when tests were written by SECDOC (`394afbf6`, merged `10d07f99`):
+`apps/terminal/tests/wp_secdef_default.rs` asserts the `require` default of a network `uconsole hub`, and
+`crates/dspi-hub/tests/wp_secdef_upgrade.rs` the upgrade of a pre-TLS store in `off`, `on` and `require`. **What remains:**
+the Mac app's `HubStartOptions` default. On main `HubStartOptions` (`crates/dspi-hub/src/ffi.rs`) has no TLS field;
+P2SW adds it with `require` as the default (`6ccbce1e`), merged into `review/swsec` (`8ab3698f`) and under review. SECDEF
+is done when that merges to main with a test of the default] Size 0.5.
 - **Owns:** the `--tls` default and the Mac `HubStartOptions` default.
 - **Implements:** OD-SECb. The first TLS release ships `on`; this WP is the flip to `require` in the release after all
-  clients ship SEC-C.
+  clients ship SEC-C. **[Superseded for `uconsole hub` by OD-SECb's reconsideration of 2026-11-15 (section 7): it ships `require` from
+  the first TLS release.]**
 - **Done when:** the default is asserted in tests, and the upgrade path of an existing hub store is tested (key
   generated on first start, old tokens still valid in `on`).
 - **Deps:** SEC-C on all clients.
@@ -976,6 +984,15 @@ in OD-P2e stay. The prose lines at `PLAN-P2.md:23-24` and §5 (`:550`) are marke
 **Recorded 2026-11-15** (coordinator, after the Fable review `work/review-plansec/REPORT.md`):
 - **Every OD below is DECIDED as recommended.** OD-SECa is decided by the owner's stated intent ("we should be able to
   follow proper best practices for security").
+- **OD-SECb reconsidered 2026-11-15** (recorded here by WP P3FRZ, 2026-11-16; it was made while SECSRV was built and was
+  written down only in the code): **`uconsole hub` defaults to `require` from the first TLS release**, not `on`, because
+  no released client needs plaintext (the owner's compatibility policy: only Android is released, in closed test). `off` stays the default on loopback (and for `uconsole web`); `--tls on` and `--upstream-compat` remain for
+  upstream and not-yet-updated clients. Built by SECSRV (`db55f583`, merged `0aef15b8`, main `948d192e`): the code says
+  so in `crates/dspi-hub/src/server.rs` (`TlsMode`: "`uconsole hub` defaults to [`TlsMode::Require`] (OD-SECb,
+  reconsidered 2026-11-15) and to `Off` on loopback") and `apps/terminal/src/hub.rs` (`TlsOptions::policy`: "`require`
+  unless asked otherwise (OD-SECb, reconsidered 2026-11-15: no released client needs plaintext)"). The library's own
+  default (`NetworkConfig`, `TlsMode::default()`) stays `Off`, so an embedder chooses. What remains of SECDEF is the
+  Mac app's `HubStartOptions` default (SECDEF's mark).
 - **Two owner questions remain, both asked 2026-11-15:**
   - **OD-SECj:** the owner generates and holds the release keys. SECREL builds with test keys until then.
   - **OD-SECh:** confirm that iPhone and iPad never need bootloader entry or a core voltage above 1.20 V. The recorded
@@ -985,7 +1002,7 @@ in OD-P2e stay. The prose lines at `PLAN-P2.md:23-24` and §5 (`:550`) are marke
 | ID | Question | Options | Decision | Why |
 |---|---|---|---|---|
 | **OD-SECa** | Encrypt DSPi Link at all (reverses the earlier "not encrypted, no pinning"). **DECIDED** (owner's intent, 2026-11-15) | (1) keep plaintext, document it (today); (2) TLS 1.3 with a per-hub self-signed key and SPKI pinning bound to pairing; (3) TLS with a local CA the user installs on every client | **(2)** | The owner's premise that it cannot be helped holds for the device links, not for DSPi Link. Both ends are our software, and every non-browser client goes through one Rust core, so pinning is written once. Today one passive guest on the Wi-Fi gets a never-expiring Control token, and `expected_hub_id` can be fooled by echoing a public UUID. (3) asks every user to install a root CA, which is worse practice than a pin |
-| **OD-SECb** | Default `--tls` mode. **DECIDED** | (1) `off`; (2) `on` (both, `tlsk`); (3) `require` | **(2) in the first TLS release; (3) the default in the release after all clients ship SEC-C**; `--tls on` documented for the upstream Swift console **[As built (noted by WP P3FRZ): reconsidered 2026-11-15 ("no released client needs plaintext", `apps/terminal/src/hub.rs` `TlsOptions::policy`): `uconsole hub` defaults to (3) `require` from SECSRV on, `off` on loopback; see SECDEF's mark.]** | `on` keeps the upstream console and not-yet-updated clients working, while updated clients go TLS-first with no downgrade. `require` is the end state; going straight to it would strand every existing install |
+| **OD-SECb** | Default `--tls` mode. **DECIDED** | (1) `off`; (2) `on` (both, `tlsk`); (3) `require` | **(2) in the first TLS release; (3) the default in the release after all clients ship SEC-C**; `--tls on` documented for the upstream Swift console **[Reconsidered 2026-11-15: `uconsole hub` defaults to (3) `require` from the first TLS release, `off` on loopback; built by SECSRV `db55f583`. Recorded in the paragraph above this table.]** | `on` keeps the upstream console and not-yet-updated clients working, while updated clients go TLS-first with no downgrade. `require` is the end state; going straight to it would strand every existing install |
 | **OD-SECc** | How MITM-resistant first pairing must be. **DECIDED** | (1) TOFU plus the fingerprint shown with the PIN; (2) (1) plus a QR code carrying the pin; (3) a PAKE (SPAKE2) bound to the TLS exporter | **(1) and (2) in SEC-C; (3) scheduled in SEC-D (SECPAKE), not optional**; browsers stay at (1) | A typed PIN after a MITM'd TLS is otherwise relayable. A PIN-derived MAC alone falls to an offline search of 10⁶ PINs, which is why (3) is a PAKE, the method Matter (SPAKE2+) and HomeKit (SRP) use. All native clients share the core, so (3) is one implementation. Browsers cannot reach the TLS exporter |
 | **OD-SECd** | Certificate generation. **DECIDED** | (1) `rcgen` (MIT or Apache-2.0; pulls `yasna`, `pem`, `time`); (2) hand-rolled DER; (3) shelling out to `openssl` | **(1)** | Maintained, well-tested X.509 encoding. (2) is security-relevant encoding we would own forever. (3) is a runtime dependency that Windows and the Mac slice lack |
 | **OD-SECe** | Webhook `http://`. **DECIDED** | (1) https only; (2) https by default, http only with `plaintext: true` to a private, loopback or link-local destination checked after resolution on every send; (3) both freely | **(2)** | A LAN receiver often has no certificate, and the HMAC still authenticates the hub. A plaintext body to the internet is never acceptable |
