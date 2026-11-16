@@ -884,6 +884,16 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                     "--with-rollout-bench is a test option of `{COMMAND} --demo hub --rollout`"
                 )));
             }
+            // -- review p3d -- never beside --alink: its --with-usb scans this machine's
+            // real DSPis, and with the bench's simulated bootloader and writer a rollout
+            // would send a real board to BOOTSEL and then write nothing to it.
+            if rollout_bench && alink {
+                return Err(usage(
+                    "--with-rollout-bench does not go with --alink: the bench has one \
+                     simulated DSPi of its own"
+                        .into(),
+                ));
+            }
             if rollout && tls.policy(loopback || local).mode == TlsMode::Off {
                 return Err(usage(
                     "--rollout needs TLS, and this hub would serve none (--tls off, or \

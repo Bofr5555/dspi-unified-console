@@ -69,6 +69,30 @@ fn wp_p3wro_the_bench_is_a_demo_rollout_test_option() {
             "{args:?} demo {demo}"
         );
     }
+    // -- review p3d -- Never beside --alink (whose --with-usb scans real DSPis): a real
+    // board would be sent to BOOTSEL and the simulated writer would write nothing.
+    for args in [
+        &[
+            "--tls",
+            "on",
+            "--rollout",
+            "--with-rollout-bench",
+            "--alink",
+        ][..],
+        &[
+            "--tls",
+            "on",
+            "--rollout",
+            "--with-rollout-bench",
+            "--alink",
+            "--with-usb",
+        ][..],
+    ] {
+        assert!(
+            matches!(run_options(args, true), Err(Failure::Usage(_))),
+            "{args:?}"
+        );
+    }
     // It is for running a hub only.
     assert!(matches!(
         parse(
