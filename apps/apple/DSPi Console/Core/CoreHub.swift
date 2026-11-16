@@ -524,6 +524,10 @@ final class CoreHubService: ObservableObject, HubSharingModel {
             refresh()
         case .stopped:
             break
+        case .tlsKey(let change, _):
+            // -- review batch6 (SECSRV glue) -- the hub's TLS key is not served yet
+            // (HubStartOptions has no TLS mode: SECSW); logged, nothing to show.
+            Self.log.notice("Link hub (core): TLS key \(String(describing: change), privacy: .public)")
         }
     }
 

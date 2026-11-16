@@ -3308,6 +3308,22 @@ sealed class HubHostEvent {
     object Stopped : HubHostEvent()
     
     
+    /**
+     * The hub's TLS key or certificate changed while it ran (`HubEvent::Tls`): public
+     * data only, as the C ABI's `HUB_EVENT_TLS_KEY`.
+     */
+    data class TlsKey(
+        /**
+         * What happened.
+         */
+        val `change`: HubTlsKeyChange, 
+        /**
+         * The key's pin, as clients show it.
+         */
+        val `pin`: kotlin.String) : HubHostEvent() {
+        companion object
+    }
+    
 
     
     companion object
@@ -3338,6 +3354,10 @@ public object FfiConverterTypeHubHostEvent : FfiConverterRustBuffer<HubHostEvent
                 FfiConverterUShort.read(buf),
                 )
             6 -> HubHostEvent.Stopped
+            7 -> HubHostEvent.TlsKey(
+                FfiConverterTypeHubTlsKeyChange.read(buf),
+                FfiConverterString.read(buf),
+                )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
     }
@@ -3387,6 +3407,14 @@ public object FfiConverterTypeHubHostEvent : FfiConverterRustBuffer<HubHostEvent
                 4UL
             )
         }
+        is HubHostEvent.TlsKey -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeHubTlsKeyChange.allocationSize(value.`change`)
+                + FfiConverterString.allocationSize(value.`pin`)
+            )
+        }
     }
 
     override fun write(value: HubHostEvent, buf: ByteBuffer) {
@@ -3423,7 +3451,60 @@ public object FfiConverterTypeHubHostEvent : FfiConverterRustBuffer<HubHostEvent
                 buf.putInt(6)
                 Unit
             }
+            is HubHostEvent.TlsKey -> {
+                buf.putInt(7)
+                FfiConverterTypeHubTlsKeyChange.write(value.`change`, buf)
+                FfiConverterString.write(value.`pin`, buf)
+                Unit
+            }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * What happened to the hub's TLS key ([`HubHostEvent::TlsKey`]).
+ */
+
+enum class HubTlsKeyChange {
+    
+    /**
+     * A first key, on a hub that had none.
+     */
+    CREATED,
+    /**
+     * The key could not be read and a new one was made: clients see "key changed".
+     */
+    REPLACED,
+    /**
+     * The certificate was issued again for the same key: no client notices.
+     */
+    CERTIFICATE_ISSUED,
+    /**
+     * A rotation made a new key.
+     */
+    ROTATED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubTlsKeyChange: FfiConverterRustBuffer<HubTlsKeyChange> {
+    override fun read(buf: ByteBuffer) = try {
+        HubTlsKeyChange.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: HubTlsKeyChange) = 4UL
+
+    override fun write(value: HubTlsKeyChange, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
     }
 }
 

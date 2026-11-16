@@ -400,6 +400,29 @@ pub enum HubHostEvent {
     },
     /// The hub has stopped: the last event of a run.
     Stopped,
+    // -- review batch6 (SECSRV glue) --
+    /// The hub's TLS key or certificate changed while it ran (`HubEvent::Tls`): public
+    /// data only, as the C ABI's `HUB_EVENT_TLS_KEY`.
+    TlsKey {
+        /// What happened.
+        change: HubTlsKeyChange,
+        /// The key's pin, as clients show it.
+        pin: String,
+    },
+}
+
+// -- review batch6 (SECSRV glue) --
+/// What happened to the hub's TLS key ([`HubHostEvent::TlsKey`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum HubTlsKeyChange {
+    /// A first key, on a hub that had none.
+    Created,
+    /// The key could not be read and a new one was made: clients see "key changed".
+    Replaced,
+    /// The certificate was issued again for the same key: no client notices.
+    CertificateIssued,
+    /// A rotation made a new key.
+    Rotated,
 }
 
 impl From<HubEvent> for HubHostEvent {
@@ -411,6 +434,20 @@ impl From<HubEvent> for HubHostEvent {
             HubEvent::SessionOpened { id } => Self::SessionOpened { id },
             HubEvent::SessionClosed { id } => Self::SessionClosed { id },
             HubEvent::Stopped => Self::Stopped,
+            // -- review batch6 (SECSRV glue) --
+            HubEvent::Tls(event) => {
+                use crate::tls_identity::TlsIdentityEvent as T;
+                let (change, pin) = match event {
+                    T::Created { pin } => (HubTlsKeyChange::Created, pin),
+                    T::KeyReplaced { pin, .. } => (HubTlsKeyChange::Replaced, pin),
+                    T::CertificateIssued { pin, .. } => (HubTlsKeyChange::CertificateIssued, pin),
+                    T::Rotated { pin, .. } => (HubTlsKeyChange::Rotated, pin),
+                };
+                Self::TlsKey {
+                    change,
+                    pin: pin.display(),
+                }
+            }
         }
     }
 }

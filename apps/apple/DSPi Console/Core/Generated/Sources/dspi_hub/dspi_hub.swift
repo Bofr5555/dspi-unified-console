@@ -2671,6 +2671,18 @@ public enum HubHostEvent {
      * The hub has stopped: the last event of a run.
      */
     case stopped
+    /**
+     * The hub's TLS key or certificate changed while it ran (`HubEvent::Tls`): public
+     * data only, as the C ABI's `HUB_EVENT_TLS_KEY`.
+     */
+    case tlsKey(
+        /**
+         * What happened.
+         */change: HubTlsKeyChange, 
+        /**
+         * The key's pin, as clients show it.
+         */pin: String
+    )
 }
 
 
@@ -2704,6 +2716,9 @@ public struct FfiConverterTypeHubHostEvent: FfiConverterRustBuffer {
         )
         
         case 6: return .stopped
+        
+        case 7: return .tlsKey(change: try FfiConverterTypeHubTlsKeyChange.read(from: &buf), pin: try FfiConverterString.read(from: &buf)
+        )
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2744,6 +2759,12 @@ public struct FfiConverterTypeHubHostEvent: FfiConverterRustBuffer {
         case .stopped:
             writeInt(&buf, Int32(6))
         
+        
+        case let .tlsKey(change,pin):
+            writeInt(&buf, Int32(7))
+            FfiConverterTypeHubTlsKeyChange.write(change, into: &buf)
+            FfiConverterString.write(pin, into: &buf)
+            
         }
     }
 }
@@ -2765,6 +2786,105 @@ public func FfiConverterTypeHubHostEvent_lower(_ value: HubHostEvent) -> RustBuf
 
 
 extension HubHostEvent: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * What happened to the hub's TLS key ([`HubHostEvent::TlsKey`]).
+ */
+
+public enum HubTlsKeyChange {
+    
+    /**
+     * A first key, on a hub that had none.
+     */
+    case created
+    /**
+     * The key could not be read and a new one was made: clients see "key changed".
+     */
+    case replaced
+    /**
+     * The certificate was issued again for the same key: no client notices.
+     */
+    case certificateIssued
+    /**
+     * A rotation made a new key.
+     */
+    case rotated
+}
+
+
+#if compiler(>=6)
+extension HubTlsKeyChange: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubTlsKeyChange: FfiConverterRustBuffer {
+    typealias SwiftType = HubTlsKeyChange
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubTlsKeyChange {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .created
+        
+        case 2: return .replaced
+        
+        case 3: return .certificateIssued
+        
+        case 4: return .rotated
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HubTlsKeyChange, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .created:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .replaced:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .certificateIssued:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .rotated:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubTlsKeyChange_lift(_ buf: RustBuffer) throws -> HubTlsKeyChange {
+    return try FfiConverterTypeHubTlsKeyChange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubTlsKeyChange_lower(_ value: HubTlsKeyChange) -> RustBuffer {
+    return FfiConverterTypeHubTlsKeyChange.lower(value)
+}
+
+
+extension HubTlsKeyChange: Equatable, Hashable {}
 
 
 
