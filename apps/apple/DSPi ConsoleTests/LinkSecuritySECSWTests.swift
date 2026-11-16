@@ -175,6 +175,39 @@ final class LinkSecuritySECSWTests: XCTestCase {
         XCTAssertEqual(UnsecuredInfoButton.label, "Why unsecured?")
     }
 
+    /// -- WP SECSWF -- The iOS toolbar's Devices button: red and "Devices
+    /// (unsecured)" for an unsecured session only; loopback, encrypted, no
+    /// hub and no connection are plain.
+    func testSECSWFTheDevicesButtonSaysUnsecuredExceptLoopback() {
+        let red = LinkSecurityWording.devicesButton(.unsecured, connected: true)
+        XCTAssertEqual(red.title, "Devices (unsecured)")
+        XCTAssertTrue(red.unsecured)
+        for (security, connected) in [(HubConnectionSecurity.local, true), (.encrypted(hubKey: "k"), true),
+                                      (nil, true), (.unsecured, false)] as [(HubConnectionSecurity?, Bool)] {
+            let plain = LinkSecurityWording.devicesButton(security, connected: connected)
+            XCTAssertEqual(plain.title, "Devices", "\(String(describing: security)), connected \(connected)")
+            XCTAssertFalse(plain.unsecured)
+        }
+    }
+
+    /// -- WP SECSWF -- (review N5) A credential read or written once is served
+    /// from the process's cache to every store of the service (the badges
+    /// make a store per row); a write or a removal goes through to it.
+    func testSECSWFCredentialsAreCachedAcrossStores() {
+        let service = "secswf-cache-\(UUID().uuidString)"
+        let a = LinkTokenStore(service: service), b = LinkTokenStore(service: service)
+        defer { a.removeToken(forHub: "hub-c") }
+        XCTAssertNil(b.token(forHub: "hub-c"))
+        a.setToken("tok-1", forHub: "hub-c")
+        XCTAssertEqual(b.token(forHub: "hub-c"), "tok-1", "a write reaches the cache, the cached miss is replaced")
+        // Gone from the Keychain behind the store's back: the cache answers.
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                       kSecAttrAccount as String: "hub-c"] as CFDictionary)
+        XCTAssertEqual(b.token(forHub: "hub-c"), "tok-1", "no Keychain read once known")
+        a.removeToken(forHub: "hub-c")
+        XCTAssertNil(b.token(forHub: "hub-c"))
+    }
+
     /// The center answers for a hub's device, and nothing for a local one.
     func testSECSWTheCenterAnswersForTheSelectedHubDevice() {
         let center = LinkSecurityCenter()

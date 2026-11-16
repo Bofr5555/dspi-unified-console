@@ -167,6 +167,7 @@ struct IOSRootView: View {
     @State private var showSettings = false
     @State private var showDevices = false
     @State private var didLaunch = false
+    @ObservedObject private var linkSecurity = LinkSecurityCenter.shared   // -- WP SECSWF --
 
     var body: some View {
         NavigationStack {
@@ -212,9 +213,17 @@ struct IOSRootView: View {
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
             IOSUndoButtons(undo: vm.undo)   // -- WP SWMAC1 --
+            // -- WP SECSWF -- the owner's rule on the main screen: red, "Devices (unsecured)"
+            let devices = LinkSecurityWording.devicesButton(linkSecurity.security(of: vm.selectedDevice),
+                                                            connected: vm.isDeviceConnected)
             Button { showDevices = true } label: {
-                Label("Devices", systemImage: vm.isDeviceConnected ? "cable.connector" : "cable.connector.slash")
+                Label(devices.title, systemImage: devices.unsecured ? "exclamationmark.shield"
+                      : vm.isDeviceConnected ? "cable.connector" : "cable.connector.slash")
             }
+            .tint(devices.unsecured ? .red : nil)
+            .foregroundStyle(devices.unsecured ? Color.red : Color.accentColor)
+            .accessibilityLabel(devices.title)
+            .accessibilityIdentifier(devices.unsecured ? "devicesUnsecured" : "devices")
             Menu {
                 toolsMenu
             } label: {
@@ -436,6 +445,12 @@ struct IOSDevicesSheet: View {
             List {
                 Section {
                     ForEach(vm.availableDevices) { device in
+                      // -- WP SECSW -- the owner's rule: " (unsecured)", red
+                      let unsecured = device == vm.selectedDevice && vm.isDeviceConnected
+                          && security.security(of: device)?.isUnsecured == true
+                      // -- WP SECSWF -- with the info button beside it (two
+                      // buttons in one row: both borderless, each its own tap)
+                      HStack {
                         Button {
                             vm.switchToDevice(device)
                         } label: {
@@ -444,9 +459,6 @@ struct IOSDevicesSheet: View {
                                 Image(systemName: device.isRemote ? "network" : isDemo ? "play.rectangle" : "cable.connector")
                                     .frame(width: 24)
                                 VStack(alignment: .leading) {
-                                    // -- WP SECSW -- the owner's rule: " (unsecured)", red
-                                    let unsecured = device == vm.selectedDevice && vm.isDeviceConnected
-                                        && security.security(of: device)?.isUnsecured == true
                                     Text(unsecured ? device.displayName + LinkSecurityWording.suffix : device.displayName)
                                         .foregroundStyle(unsecured ? Color.red : Color.primary)
                                     Text(device.isRemote ? "DSPi Link" : isDemo ? "Simulated DSPi, RP2350, firmware 1.1.6" : "USB, MIDI control port")
@@ -459,8 +471,12 @@ struct IOSDevicesSheet: View {
                                         .foregroundStyle(vm.isDeviceConnected ? .green : .secondary)
                                 }
                             }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.borderless)
                         .foregroundStyle(.primary)
+                        if unsecured { UnsecuredInfoButton() }   // -- WP SECSWF --
+                      }
                     }
                     if let error = vm.connectionError {
                         Text(error).font(.caption).foregroundStyle(.orange)

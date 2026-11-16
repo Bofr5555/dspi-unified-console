@@ -69,6 +69,15 @@ enum LinkSecurityWording {
     static func barText(_ text: String, _ security: HubConnectionSecurity?) -> String {
         security?.isUnsecured == true ? text + suffix : text
     }
+
+    // -- WP SECSWF --
+    /// The iOS toolbar's Devices button for the selected device's session
+    /// (`connected` false: no session to judge): "Devices (unsecured)" and red
+    /// when it is unsecured; plain otherwise, loopback (`local`) included.
+    static func devicesButton(_ security: HubConnectionSecurity?, connected: Bool) -> (title: String, unsecured: Bool) {
+        let unsecured = connected && security?.isUnsecured == true
+        return (unsecured ? "Devices" + suffix : "Devices", unsecured)
+    }
 }
 
 /// Each hub session's encryption, by the composite's hub key
@@ -118,6 +127,7 @@ struct UnsecuredInfoButton: View {
             .padding()
             .frame(width: 320)
             .accessibilityIdentifier("unsecuredInfoText")
+            .presentationCompactAdaptation(.popover)   // -- WP SECSWF -- a popover on the iPhone too
         }
     }
 }

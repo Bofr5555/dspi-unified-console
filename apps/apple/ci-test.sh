@@ -130,9 +130,16 @@ case "$platform" in
         args+=("-skip-testing:$t")
       done
       echo "ci-test: in a VM: skipping 20 iOS tests that fail only there (screenshot timeouts, gestures, document picker, sheets, main-thread stalls, the demo device through the core)"
+      # -- WP SECSWF -- a failed test runs up to twice more, as on macOS
+      args+=(-retry-tests-on-failure -test-iterations 3)
+      echo "ci-test: in a VM: retrying failed iOS tests"
     fi
     ;;
 esac
+
+# -- WP SECSWF -- No test hangs a run: a test past 10 minutes (the review saw
+# a RenderBox wait hold the macOS run 25 minutes) is ended and fails.
+args+=(-test-timeouts-enabled YES -maximum-test-execution-time-allowance 600)
 
 status=0
 skip=()

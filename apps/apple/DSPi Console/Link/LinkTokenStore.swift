@@ -80,8 +80,31 @@ final class LinkTokenStore {
         #endif
     }()
 
+    // -- WP SECSWF -- (review N5) The credentials this process read or wrote,
+    // by service and hub, a miss included: the hub lists' badges and every
+    // status look ask on main, and only the first ask reaches the Keychain.
+    // Every instance with the same service shares it; writes go through.
+    private static var cache: [String: String?] = [:]
+    private static let cacheLock = NSLock()
+    private func cacheKey(_ hubID: String) -> String { service + "\u{0}" + hubID }
+    private func cached(_ hubID: String) -> String?? {
+        Self.cacheLock.lock(); defer { Self.cacheLock.unlock() }
+        return Self.cache[cacheKey(hubID)]
+    }
+    private func remember(_ token: String?, forHub hubID: String) {
+        Self.cacheLock.lock(); defer { Self.cacheLock.unlock() }
+        Self.cache[cacheKey(hubID)] = .some(token)
+    }
+
     /// The stored credential (a token or a `v2` string), nil when none.
     func token(forHub hubID: String) -> String? {
+        if let known = cached(hubID) { return known }   // -- WP SECSWF --
+        let token = readToken(forHub: hubID)
+        remember(token, forHub: hubID)
+        return token
+    }
+
+    private func readToken(forHub hubID: String) -> String? {
         var query = baseQuery(hubID)
         query[kSecReturnData as String] = true
         query[kSecReturnAttributes as String] = true
@@ -110,10 +133,12 @@ final class LinkTokenStore {
             query[kSecValueData as String] = data
             SecItemAdd(query as CFDictionary, nil)
         }
+        remember(token, forHub: hubID)   // -- WP SECSWF --
     }
 
     func removeToken(forHub hubID: String) {
         SecItemDelete(baseQuery(hubID) as CFDictionary)
+        remember(nil, forHub: hubID)   // -- WP SECSWF --
     }
 
     /// -- WP SECSW -- The item's attributes as the keychain reports them (the
