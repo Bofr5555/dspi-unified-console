@@ -1030,12 +1030,27 @@ impl Shell {
         let rw = right.chars().count() as u16;
         // The link and the extension channel, as far as they fit: the
         // connection state on the right matters more.
-        for extra in [&m.via, &m.ext] {
-            if banner.is_none()
-                && !extra.is_empty()
-                && area.width > rw + left.chars().count() as u16 + extra.chars().count() as u16 + 5
-            {
+        // -- WP SECTM -- a hub session without TLS keeps at least its badge
+        let badge = connect::unsecured_suffix();
+        let badge_word = badge.trim_start().to_owned();
+        let mut unsecured_at = None;
+        for (i, extra) in [&m.via, &m.ext].into_iter().enumerate() {
+            let fits = |text: &str, left: &str| {
+                area.width > rw + left.chars().count() as u16 + text.chars().count() as u16 + 5
+            };
+            let mut extra = extra.as_str();
+            if i == 0 && m.link_unsecured && !fits(extra, &left) {
+                extra = &badge_word;
+            }
+            if banner.is_none() && !extra.is_empty() && fits(extra, &left) {
                 left.push_str(" · ");
+                if i == 0 && m.link_unsecured {
+                    let at = extra
+                        .rfind(&badge_word)
+                        .map(|b| extra.get(..b).map_or(0, |s| s.chars().count()));
+                    unsecured_at =
+                        at.map(|a| (left.chars().count() + a, badge_word.chars().count()));
+                }
                 left.push_str(extra);
             }
         }
@@ -1049,6 +1064,13 @@ impl Shell {
                 t.title()
             },
         );
+        // -- WP SECTM -- the badge in the danger colour (its words say it too)
+        if let Some((at, len)) = unsecured_at
+            && at + len <= area.width as usize
+        {
+            let text: String = left.chars().skip(at).take(len).collect();
+            buf.set_string(area.x + at as u16, area.y, text, t.title().fg(t.danger));
+        }
         if area.width > rw + left.chars().count() as u16 + 2 {
             let x = area.x + area.width - rw;
             buf.set_string(
