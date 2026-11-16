@@ -321,6 +321,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::settings::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP P5DOCK -- the measurement documents as text (src/measure_docs.rs)
+    if let Some(r) = crate::measure_docs::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {

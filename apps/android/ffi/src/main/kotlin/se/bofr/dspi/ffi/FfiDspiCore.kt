@@ -578,6 +578,22 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun linkSetUrl(url: String) = core.linkSetUrl(url)
 
+    override fun measureSetDir(dir: String) = call { core.measureSetDir(dir) }
+
+    override fun measureDocs(kind: String, serial: String): List<MeasureDocInfo> = call { core.measureDocs(kind, serial).map { it.toDomain() } }
+
+    override fun measureDocGet(id: String): String = call { core.measureDocGet(id) }
+
+    override fun measureDocPut(text: String): MeasureDocInfo = call { core.measureDocPut(text).toDomain() }
+
+    override fun measureDocRename(id: String, name: String): MeasureDocInfo = call { core.measureDocRename(id, name).toDomain() }
+
+    override fun measureDocNote(id: String, note: String): MeasureDocInfo = call { core.measureDocNote(id, note).toDomain() }
+
+    override fun measureDocDelete(id: String) = call { core.measureDocDelete(id) }
+
+    override fun measurementExportRew(doc: String, output: Int): String = call { core.measurementExportRew(doc, output.toUByte()) }
+
     override fun modeResolve(platform: String, chosen: String): ModeChoice = call { core.modeResolve(platform, chosen).toDomain() }
 
     override fun modeSetPinned(mode: String) = call { core.modeSetPinned(mode) }
@@ -949,6 +965,14 @@ class FfiDspiCore : DspiCoreApi {
     override fun aboutJson(): String = se.bofr.dspi.ffi.uniffi.aboutJson()
 
     override fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord = call { se.bofr.dspi.ffi.uniffi.linkParseTxt(serviceName, txt.map { it.toFfi() }).toDomain() }
+
+    override fun measureDocInfo(text: String): MeasureDocInfo = call { se.bofr.dspi.ffi.uniffi.measureDocInfo(text).toDomain() }
+
+    override fun micImport(name: String, fileName: String, fileText: String): String = call { se.bofr.dspi.ffi.uniffi.micImport(name, fileName, fileText) }
+
+    override fun targetImport(name: String, fileText: String, targetUse: String, coupler: String): String = call { se.bofr.dspi.ffi.uniffi.targetImport(name, fileText, targetUse, coupler) }
+
+    override fun targetBuiltins(): List<TargetInfo> = se.bofr.dspi.ffi.uniffi.targetBuiltins().map { it.toDomain() }
 
     override fun modeManifest(): ModeManifest = se.bofr.dspi.ffi.uniffi.modeManifest().toDomain()
 
@@ -4857,6 +4881,58 @@ internal fun LinkPhaseText.toFfi() =
         text = text,
         actionKey = actionKey,
         action = action,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureDocInfo.toDomain() =
+    MeasureDocInfo(
+        id = id,
+        kind = kind,
+        name = name,
+        note = note,
+        serial = serial,
+        savedMs = savedMs,
+        bytes = bytes.toLong(),
+    )
+
+internal fun MeasureDocInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureDocInfo(
+        id = id,
+        kind = kind,
+        name = name,
+        note = note,
+        serial = serial,
+        savedMs = savedMs,
+        bytes = bytes.toULong(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.TargetParam.toDomain() =
+    TargetParam(
+        name = name,
+        value = value,
+    )
+
+internal fun TargetParam.toFfi() =
+    se.bofr.dspi.ffi.uniffi.TargetParam(
+        name = name,
+        value = value,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.TargetInfo.toDomain() =
+    TargetInfo(
+        id = id,
+        name = name,
+        targetUse = targetUse,
+        coupler = coupler,
+        params = params.map { it.toDomain() },
+    )
+
+internal fun TargetInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.TargetInfo(
+        id = id,
+        name = name,
+        targetUse = targetUse,
+        coupler = coupler,
+        params = params.map { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.ModeEntry.toDomain() =

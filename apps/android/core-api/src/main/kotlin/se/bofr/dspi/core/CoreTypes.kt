@@ -6164,6 +6164,85 @@ data class LinkPhaseText(
 )
 
 /**
+ * One measurement, microphone or target document in a list
+ * ([`DspiCore::measure_docs`]).
+ */
+data class MeasureDocInfo(
+    /**
+     * The store's id, for the other calls ("" for a document not filed).
+     */
+    val id: String,
+    /**
+     * The kind: `measurement`, `mic` or `target`.
+     */
+    val kind: String,
+    /**
+     * The document's name; any Unicode.
+     */
+    val name: String,
+    /**
+     * The user's note; any Unicode.
+     */
+    val note: String,
+    /**
+     * The measured device's serial (measurements only, else "").
+     */
+    val serial: String,
+    /**
+     * When it was measured (a measurement) or filed (the others), ms since
+     * the Unix epoch; 0 when not known.
+     */
+    val savedMs: Long,
+    /**
+     * The document's size, bytes.
+     */
+    val bytes: Long,
+)
+
+/**
+ * One parameter of a built-in target, with its default.
+ */
+data class TargetParam(
+    /**
+     * The parameter's name, as a `target` document's `params` holds it.
+     */
+    val name: String,
+    /**
+     * Its default value.
+     */
+    val value: Double,
+)
+
+/**
+ * A built-in target ([`target_builtins`]): defined by parameters in our own
+ * code, no third-party data (OD-P5p).
+ */
+data class TargetInfo(
+    /**
+     * The stable id a `target` document names it by (`flat`, `tilt`,
+     * `house`, `coupler-iec60318-4`, `coupler-flat-plate`, `coupler-hats`).
+     */
+    val id: String,
+    /**
+     * The display name (it says the curve is ours).
+     */
+    val name: String,
+    /**
+     * `speakers` or `headphones`.
+     */
+    val targetUse: String,
+    /**
+     * The coupler it is the default for (`iec60318_4`, `flatPlate`,
+     * `hats`), "" for a speaker target.
+     */
+    val coupler: String,
+    /**
+     * Its parameters with their defaults (none for a fixed curve).
+     */
+    val params: List<TargetParam>,
+)
+
+/**
  * A mode: Simple, Advanced or Installer.
  */
 data class ModeEntry(

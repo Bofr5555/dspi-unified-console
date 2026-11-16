@@ -98,6 +98,8 @@ pub mod power_on;
 pub mod system;
 // -- WP ROMODE -- the client read-only mode
 pub mod read_only;
+// -- WP P5DOCK -- the measurement documents as text
+pub mod measure_docs;
 // -- WP CG-SWS-b -- the pin map
 pub mod pins;
 // -- WP WB6L -- the control-surface editor and the quick strip
