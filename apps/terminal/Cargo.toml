@@ -27,7 +27,7 @@ dspi-link.workspace = true
 # -- WP TM3 --
 # `uconsole flash`: the UF2 check, the drive and the firmware guard. Nothing else in
 # the terminal uses it.
-dspi-core = { workspace = true, features = ["link"] }  # -- WP TMCORE -- a hub's device as a core DSPi Link session
+dspi-core = { workspace = true, features = ["link", "measure-sim"] }  # -- WP TMCORE -- a hub's device as a core DSPi Link session; -- WP P5DEMO -- the demo's simulated microphone
 # -- WP TM11 --
 # `uconsole hub`: the hub itself, without `app` (no DspiCore in a headless hub).
 dspi-hub = { workspace = true, features = ["api", "rollout"] }  # -- WP P2TM -- the parameter API, schedules; -- WP P3TM -- the firmware rollout

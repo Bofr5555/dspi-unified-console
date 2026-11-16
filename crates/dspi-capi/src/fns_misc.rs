@@ -94,6 +94,8 @@ mod clipboard;
 mod measure_doc;
 // -- WP P5SES -- the measurement session
 mod measure;
+// -- WP P5DEMO -- the demo's simulated microphone
+mod measure_sim;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

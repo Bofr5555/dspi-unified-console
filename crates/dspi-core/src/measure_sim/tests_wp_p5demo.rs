@@ -331,3 +331,63 @@ fn wp_p5demo_an_unrenderable_configuration_is_an_issue_not_a_panic() {
     assert_eq!((first, s.len()), (0, 960));
     assert!(s.iter().all(|v| v.abs() < 1e-3));
 }
+
+/// A generator stopped before its end: after the sound already on its way
+/// (the microphone's 50 ms latency) and a short fade, the room's noise only.
+#[test]
+fn wp_p5demo_a_stop_before_the_end_silences_the_sweep() {
+    let chains = dspi_measure::sim::flat_chains(2);
+    let mut mic = SimMic::new(SEED, 2, 48_000);
+    mic.play(&walked_config(), &chains, 48_000, 0);
+    assert!(mic.uncut());
+    let before = blocks(&mut mic, 0, 25);
+    let loud = |b: &(u64, Vec<f32>, bool)| b.1.iter().fold(0f32, |m, v| m.max(v.abs()));
+    assert!(
+        before.iter().skip(5).all(|b| loud(b) > 1e-3),
+        "the sweep plays"
+    );
+    mic.stopped_at(24_000);
+    assert!(!mic.uncut());
+    // 24000 + 50 ms + 10 ms = 26880: the block from 26880 on is noise.
+    let after = blocks(&mut mic, 24_000, 20);
+    assert_eq!(after[0].0, 24_000, "contiguous");
+    assert!(
+        loud(&after[0]) > 1e-3,
+        "the sound on its way is still heard"
+    );
+    assert!(after.iter().skip(3).all(|b| loud(b) < 1e-3), "then silence");
+    let mut next = 24_000;
+    for (first, s, _) in &after {
+        assert_eq!(*first, next);
+        next += s.len() as u64;
+    }
+}
+
+/// The spike front ends' setup (two outputs walked, on a coupler, the start
+/// level only: -60 dBFS) reaches a timing verdict whatever the seed: four
+/// demo cores measured side by side.
+#[test]
+fn wp_p5demo_the_spike_setup_is_timing_reliable_for_any_seed() {
+    let runs: Vec<_> = [1u64, 7, 42, 0xDEAD_BEEF]
+        .into_iter()
+        .map(|seed| {
+            std::thread::spawn(move || {
+                let core = demo();
+                core.measure_sim_set(true, seed).unwrap();
+                let mut s = setup(&[0, 1]);
+                s.placement = MeasurePlacement::Headphones;
+                s.coupler = Some(crate::measure::MeasureCoupler::FlatPlate);
+                core.measure_start(s).unwrap();
+                (seed, run(&core, 120))
+            })
+        })
+        .collect();
+    for r in runs {
+        let (seed, st) = r.join().unwrap();
+        assert_eq!(st.phase, MeasurePhase::Done, "seed {seed}: {:?}", st.issue);
+        let t = st.timing.clone().unwrap();
+        assert!(t.reliable, "seed {seed}: {t:?}");
+        assert_eq!(t.cycle_residuals_us.len(), 6);
+        assert!(st.ramp_levels.iter().all(|l| l.level_db == -60.0), "{st:?}");
+    }
+}

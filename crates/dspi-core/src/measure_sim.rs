@@ -193,6 +193,10 @@ mod world {
     /// The most capture one feed pushes, seconds: a client that stalls
     /// catches up over several ticks, as a real microphone's backlog does.
     const MAX_FEED_S: u64 = 10;
+    /// The demo room's noise floor, dBFS RMS at the microphone.
+    const DEMO_NOISE_DBFS: f64 = -100.0;
+    /// `SIGGEN_STOP_COMPLETED`: the run ended by itself.
+    const STOP_COMPLETED: u8 = 2;
     /// The post-roll rendered after a run, device frames beyond its last gap.
     const TAIL_FRAMES: u64 = 4_800;
 
@@ -205,6 +209,9 @@ mod world {
         noise: u64,
         renders: u64,
         seg: Option<(Capture, usize)>,
+        /// The generator was stopped early: nothing it plays reaches the
+        /// microphone from this capture frame on.
+        cut: Option<u64>,
         issue: Option<String>,
     }
 
@@ -224,6 +231,10 @@ mod world {
                     Some(p)
                 })
                 .collect();
+            // A quiet room: the spike front ends play at the start level only
+            // (-60 dBFS), where the world's -85 dBFS left the sweep too
+            // close to the noise for the cycle-identity search.
+            world.noise_dbfs = Some(DEMO_NOISE_DBFS);
             world.clock.rate_hz = rate_hz;
             world.clock.block_frames = (rate_hz / 50).max(1);
             world.clock.first_frame = 0;
@@ -234,6 +245,7 @@ mod world {
                 noise: (seed ^ 0x2545_F491_4F6C_DD1D).max(1),
                 renders: 0,
                 seg: None,
+                cut: None,
                 issue: None,
             }
         }
@@ -241,6 +253,21 @@ mod world {
         /// Why the last configuration was not rendered.
         pub(crate) fn issue(&self) -> Option<String> {
             self.issue.clone()
+        }
+
+        /// A segment is playing that no stop has cut yet.
+        pub(crate) fn uncut(&self) -> bool {
+            self.seg.is_some() && self.cut.is_none()
+        }
+
+        /// The generator was stopped before its end around capture frame
+        /// `frame`: what it would still have played is not heard after the
+        /// sound already on its way (the microphone's latency) and a short
+        /// fade (the generator's is 5 ms).
+        pub(crate) fn stopped_at(&mut self, frame: u64) {
+            let rate = f64::from(self.world.clock.rate_hz);
+            let after = ((self.world.clock.latency_ms + 10.0) * rate / 1000.0).max(0.0) as u64;
+            self.cut = Some(frame.saturating_add(after));
         }
 
         /// The block length, frames (20 ms).
@@ -263,6 +290,7 @@ mod world {
             let mut w = self.world.clone();
             w.clock.first_frame = at;
             w.seed = self.seed.wrapping_add(self.renders);
+            self.cut = None;
             // The world has an output per device output; the chains follow.
             let model = CoreSectionModel;
             let chains: Vec<ChannelChain> = (0..w.outputs.len())
@@ -374,11 +402,26 @@ mod world {
         /// The block that starts at capture frame `next`: the rendered
         /// segment's while it lasts, then the room's noise.
         pub(crate) fn block(&mut self, next: u64) -> (u64, Vec<f32>, bool) {
-            if let Some((cap, i)) = self.seg.as_mut()
-                && let Some(b) = cap.blocks.get(*i).copied()
-            {
+            let seg = self.seg.as_mut().and_then(|(cap, i)| {
+                let b = cap.blocks.get(*i).copied()?;
                 *i = i.saturating_add(1);
-                return (b.first_frame, cap.block_samples(&b).to_vec(), b.clipped);
+                Some((b.first_frame, cap.block_samples(&b).to_vec(), b.clipped))
+            });
+            if let Some((first, mut samples, clipped)) = seg {
+                if let Some(cut) = self.cut {
+                    // From the cut on, the room's noise only.
+                    let keep = usize::try_from(cut.saturating_sub(first)).unwrap_or(usize::MAX);
+                    if keep < samples.len() {
+                        let tail = samples.len().saturating_sub(keep);
+                        let noise = self.noise_block(tail);
+                        samples.truncate(keep);
+                        samples.extend(noise);
+                        if keep == 0 {
+                            self.seg = None;
+                        }
+                    }
+                }
+                return (first, samples, clipped);
             }
             self.seg = None;
             let n = usize::try_from(self.block_frames()).unwrap_or(960);
@@ -527,6 +570,15 @@ mod world {
             if st.generator_starts > feed.seen {
                 feed.seen = st.generator_starts;
                 self.measure_sim_render(feed);
+            } else if feed.mic.as_ref().is_some_and(SimMic::uncut) {
+                // A stop before the end (the session's STOP_NOW, a ramp step
+                // cut short): it came after the last push, so at `next`.
+                let stopped = self
+                    .siggen_get_status()
+                    .is_ok_and(|g| g.state == 0 && g.stop_reason != STOP_COMPLETED);
+                if stopped && let Some(mic) = feed.mic.as_mut() {
+                    mic.stopped_at(feed.next);
+                }
             }
             // After the render (a whole run at once can take a while): the
             // generator went on playing meanwhile, and so did the room.
