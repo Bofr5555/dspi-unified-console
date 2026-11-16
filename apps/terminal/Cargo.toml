@@ -30,7 +30,10 @@ dspi-link.workspace = true
 dspi-core = { workspace = true, features = ["link"] }  # -- WP TMCORE -- a hub's device as a core DSPi Link session
 # -- WP TM11 --
 # `uconsole hub`: the hub itself, without `app` (no DspiCore in a headless hub).
-dspi-hub = { workspace = true, features = ["api"] }  # -- WP P2TM -- the parameter API, schedules
+dspi-hub = { workspace = true, features = ["api", "rollout"] }  # -- WP P2TM -- the parameter API, schedules; -- WP P3TM -- the firmware rollout
+# -- WP P3TM -- `firmware add` at the prompt uploads in base64 chunks. Already in the graph
+# through dspi-hub and dspi-link.
+data-encoding = "2"
 # The hub's logs on standard error, with tungstenite held at debug (HB6's rule).
 # Same as dspi-capi's.
 env_logger = { version = "0.11", default-features = false }

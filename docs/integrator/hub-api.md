@@ -1156,9 +1156,11 @@ later). An embedder that passes a name at every start (`uconsole hub --name`) pu
 
 ## 16. Scripting
 
-*State: built (P2TM). `apps/terminal/src/api.rs` (`uconsole api`), `apps/terminal/src/hub.rs` (the hub's switches,
-`api-key`, the prompt), `crates/dspi-cmd/src/api.rs` (the line's grammar); examples in
-[`examples/`](examples/), run against a demo hub by `apps/terminal/tests/wp_p2tm_examples.rs`.*
+*State: built (P2TM; groups, firmware and the rollout: P3TM). `apps/terminal/src/api.rs` (`uconsole api`),
+`apps/terminal/src/hub.rs` (the hub's switches, `api-key`, the prompt), `apps/terminal/src/hub/fleet.rs` (groups,
+firmware and the rollout at the prompt, `firmware add|list` with the hub stopped), `crates/dspi-cmd/src/api.rs` (the
+line's grammar); examples in [`examples/`](examples/), run against a demo hub by
+`apps/terminal/tests/wp_p2tm_examples.rs`.*
 
 No script engine in the hub (OD-P2g): a script calls the API from outside, and every rule the hub enforces (role,
 limits, the lock, the voltage rule, attribution) applies to it as to a console.
@@ -1175,6 +1177,9 @@ A hub started by `uconsole hub` runs every family of this page. Each can be turn
 | `--no-history` | event history (section 6) | on |
 | `--no-alarms` | alarms (section 7) | on |
 | `--no-schedule` | schedules (section 12) | on |
+| `--no-groups` | groups (section 19; group writes and bulk apply, section 20, address them) | on |
+| `--rollout` | the firmware rollout (section 21); refused at the start when the hub would serve no TLS (`--tls off`, or `--loopback` without `--tls on`) | off |
+| `--allow-unverified-firmware` | with `--rollout`: images the release's manifest does not list may be flashed too (OD-P3e, the bench switch); the hub prints a large warning when it starts | off |
 | `--rest` | the REST mirror (section 14.2) | off |
 | `--data <dir>` | where the families keep their files | the `--store` folder |
 
@@ -1184,7 +1189,30 @@ always there; MQTT and notifications send nothing until an admin sets them up. A
 
 At a running hub's prompt (a terminal) the person at the hub's machine types `inventory`, `alarms` (those on),
 `schedule` (the rules and their next runs) and `api-key new <name> [viewer|control|admin]`, `api-key list`,
-`api-key revoke <cid>`. The reads go as a viewer principal named `Hub console`. With the hub stopped, the same keys from
+`api-key revoke <cid>`. The reads go as a viewer principal named `Hub console`.
+
+<!-- WP P3TM --> Groups, firmware and the rollout at the prompt, as the person at the hub's machine (`Hub console`; the
+reads as a viewer, the rest as an admin, each command a principal session of its own). Nothing the prompt sends
+crosses a network, so its session counts as encrypted and the rollout's TLS-only family serves it; every other rule
+of the family applies (roles, the checks of step 1, the firmware guard with nobody to type, the image store's checks):
+
+| At the prompt | Message |
+|---|---|
+| `groups` | `group.list` |
+| `group set [<id>] <name> <serial>...` (the name one word here; with `<id>` that group replaced whole) | `group.set` |
+| `group delete <id>` | `group.delete` |
+| `firmware list` (each image with `verified` or `NOT VERIFIED`, platform, version, stamp, size, SHA-256, who added it) | `fw.image.list` |
+| `firmware add <file.uf2>` (the image's name is the file's) | `fw.image.put`, in chunks |
+| `rollout <serial\|group:<id>> <image> [--while-live]` | `fw.rollout.start` |
+| `rollout status [<id>]` | `fw.rollout.status` |
+| `rollout cancel <id>` | `fw.rollout.cancel` |
+
+A started rollout runs on; the prompt prints each device's end as it happens (`rollout: <serial> updated to firmware
+<version>` or `rollout: <serial> FAILED at <step>: ...`; with `--json` an `rolloutEnded` object). A family that is off
+says so (`--no-groups`, no `--rollout`). With the hub stopped, `uconsole hub firmware add <file.uf2>` and `uconsole
+hub firmware list` (`--store`, and `--data` as the hub's) put an image into the store and list it, with the same
+checks as an upload and `added_by` `Hub console`; while the hub runs they are refused, as `api-key` is: type them at
+its prompt. With the hub stopped, the same keys from
 a shell: `uconsole hub api-key new|list|revoke` (with `--store` when it is not the default; while the hub runs these
 are refused, as `uconsole hub role` is, since the running hub holds its store). A key is minted with the control role
 unless another is named, and is shown **once**, in that answer only. `api-key revoke` revokes keys only; a console is
@@ -1210,7 +1238,7 @@ The exit status follows `code` (section 1.6), so a script branches on it:
 | 0 | `ok` |
 | 1 | the command line itself (no type, fields that are not a JSON object) |
 | 2 | `not_found`, `no_device` |
-| 3 | any other refusal: `conflict`, `confirmation_required`, `device`, the client read-only mode |
+| 3 | any other refusal: `conflict`, `confirmation_required`, `device`, `tls_required` (a `fw.*` message over plaintext, section 21.1), the client read-only mode |
 | 4 | no hub reached, `timeout`, the connection closed, `internal` |
 | 5 | `unauthenticated`, `denied` |
 | 6 | `offline` |
@@ -1223,6 +1251,8 @@ uconsole --hub api inventory.list
 uconsole --hub api param.get '{"serial": "E46058388B1A2E2C", "path": "vol.master"}'
 uconsole --hub --device E46058388B1A2E2C api preset.load '{"name": "Live"}'
 uconsole --hub api schedule.set - < doors-open.json
+uconsole --hub api group.list
+uconsole --hub api fw.rollout.status '{"rollout": "ro1"}'
 ```
 
 A refusal's fields beyond `code` and `msg` (`limit`, `retry_in_ms`) are not printed yet: the DSPi Link client keeps
@@ -1234,6 +1264,26 @@ only those two.
 - [`examples/hub_rest.py`](examples/hub_rest.py): Python over REST with an API key, standard library only.
 - [`examples/home-assistant.yaml`](examples/home-assistant.yaml): Home Assistant's `rest_command` and REST sensors for a
   hub without a broker (MQTT discovery, section 13, is the better fit where there is one).
+
+<!-- WP P3TM --> A firmware update with nobody at the rack, on the hub's machine (run by
+`apps/terminal/src/hub/tests_wp_p3tm.rs` against an in-process hub with a fake BOOTSEL scan and writer):
+
+```text
+$ uconsole hub --rollout
+> firmware add dspi-rp2350-1.2.0.uf2
+added dspi-rp2350-1.2.0.uf2  verified  RP2350  fw 1.2.0  1.20 V  630272 bytes  sha256 ...  added by Hub console
+> group set Racks E46058388B1A2E2C E6614103E7A1B2C3
+group created: g1  Racks  (2 members): E46058388B1A2E2C, E6614103E7A1B2C3
+> rollout group:g1 dspi-rp2350-1.2.0.uf2
+rollout ro1 started; it runs on, and each device's end is shown here (`rollout status ro1` for the record)
+rollout: E46058388B1A2E2C updated to firmware 1.2.0: ...
+rollout: E6614103E7A1B2C3 updated to firmware 1.2.0: ...
+```
+
+A device that is not muted is refused (`confirmation_required`) unless the line ends `--while-live`: its audio stops
+for about 30 s. From a console elsewhere, an admin uses `uconsole api` over TLS (`fw.*` is refused over plaintext,
+exit status 3); a control or viewer console gets `denied` (5) for `fw.rollout.start`, and may read
+`fw.rollout.status` and `fw.image.list`.
 
 <!-- WP SECDOC --> All three examples work against a hub that requires TLS, and are run so by
 `apps/terminal/tests/wp_secdoc_examples.rs` (and over plaintext by `wp_p2tm_examples.rs`):

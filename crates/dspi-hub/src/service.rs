@@ -570,6 +570,17 @@ impl HubHandle {
         Ok(session)
     }
 
+    // -- WP P3TM --
+    /// [`HubHandle::open_principal`] for the embedder's own console on the hub's machine
+    /// (`uconsole hub`'s prompt), with no client: nothing it sends crosses a network, so
+    /// it counts as encrypted and a `tls_only` family (the rollout, `hub-api.md` 21.1)
+    /// serves it. Never for a session whose requests arrive over a connection.
+    pub fn open_console_principal(&self, role: Role, name: &str) -> Result<Arc<Session>, HubError> {
+        let session = self.open_principal(role, None, name)?;
+        session.set_encrypted(true);
+        Ok(session)
+    }
+
     /// Make the timer read every service's `next_due` again.
     pub fn wake_services(&self) {
         self.inner.services.wake.wake();

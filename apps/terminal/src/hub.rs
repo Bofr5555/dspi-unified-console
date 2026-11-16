@@ -80,6 +80,8 @@ use crate::exit;
 
 // -- WP SECPAIR --
 mod pair_qr;
+// -- WP P3TM -- groups, firmware and the rollout at the prompt and with the hub stopped
+mod fleet;
 
 /// What a hub is called when nobody has named it (as HB6's).
 const DEFAULT_NAME: &str = "DSPi Hub";
@@ -202,6 +204,13 @@ struct RunOptions {
     /// `--token-idle-days`: a console's token unused this long is forgotten; `None`:
     /// never (`0`).
     token_idle: Option<Duration>,
+    // -- WP P3TM --
+    /// `--rollout`: the firmware rollout (`fw.*`, hub-api.md 21); off by default, and
+    /// only on a hub that serves TLS.
+    rollout: bool,
+    /// `--allow-unverified-firmware` (with `--rollout`): images the release's manifest
+    /// does not list may be flashed too (OD-P3e, the owner's bench switch).
+    allow_unverified_firmware: bool,
 }
 
 // -- WP SECSRV --
@@ -290,6 +299,8 @@ struct Services {
     history: bool,
     alarms: bool,
     schedule: bool,
+    // -- WP P3TM --
+    groups: bool,
 }
 
 impl Default for Services {
@@ -301,6 +312,8 @@ impl Default for Services {
             history: true,
             alarms: true,
             schedule: true,
+            // -- WP P3TM --
+            groups: true,
         }
     }
 }
@@ -314,6 +327,8 @@ impl Services {
         config.history = self.history.then(HistoryConfig::default);
         config.alarms = self.alarms;
         config.schedule = self.schedule.then(ScheduleConfig::default);
+        // -- WP P3TM --
+        config.groups = self.groups;
     }
 }
 
@@ -352,6 +367,18 @@ enum HubCommand {
     Tls {
         store: PathBuf,
         action: TlsAction,
+    },
+    // -- WP P3TM --
+    /// `uconsole hub firmware add FILE`, with the hub stopped.
+    FirmwareAdd {
+        store: PathBuf,
+        data: Option<PathBuf>,
+        file: PathBuf,
+    },
+    /// `uconsole hub firmware list`, with the hub stopped.
+    FirmwareList {
+        store: PathBuf,
+        data: Option<PathBuf>,
     },
 }
 
@@ -413,6 +440,13 @@ pub fn run(target: &Target, flags: &[&str], json: bool) -> u8 {
             offline_auth(&store, |auth| revoke_key(auth, cid, |c| auth.revoke(c)))
                 .map(|()| say_key_revoked(cid, json))
         }
+        // -- WP P3TM --
+        HubCommand::FirmwareAdd { store, data, file } => {
+            fleet::offline_firmware_add(&store, data.as_deref(), &file, json)
+        }
+        HubCommand::FirmwareList { store, data } => {
+            fleet::offline_firmware_list(&store, data.as_deref(), json)
+        }
     };
     match done {
         Ok(()) => exit::OK,
@@ -465,6 +499,12 @@ USAGE:
                               signed by the old key, for 30 days. --forget-old
                               (the old key was exposed): unsigned, and every
                               client must pair again
+    {COMMAND} hub firmware add <file.uf2>
+                              put a firmware image into the hub's store for a
+                              rollout, with the upload's checks (hub stopped;
+                              while it runs, type `firmware add ...` at its
+                              prompt). --data as the hub's
+    {COMMAND} hub firmware list    the stored images (hub stopped)
 
 OPTIONS:
     --name <name>             the hub's name, kept for the next start
@@ -528,6 +568,16 @@ OPTIONS:
     --no-history              no shared event history (event.*)
     --no-alarms               no device alarms (alarm.*)
     --no-schedule             no schedules (schedule.*)
+    --no-groups               no device groups (group.*)
+    --rollout                 the firmware rollout (fw.*): an admin updates the
+                              firmware of the DSPis on this machine's USB from
+                              a console, one at a time, settings exported
+                              first. Off by default; needs TLS, and is served
+                              over TLS only
+    --allow-unverified-firmware
+                              WARNING, with --rollout: flash images the release
+                              does not list too (the bench switch). Without it
+                              only verified images go on a device
 
 WHILE IT RUNS, on a terminal, type:
     pair                      open pairing for 2 minutes and show the PIN
@@ -539,6 +589,18 @@ WHILE IT RUNS, on a terminal, type:
     inventory                 every device the hub has seen, online or not
     alarms                    the alarms that are on
     schedule                  the schedule's rules and their next runs
+    groups                    the device groups
+    group set [<id>] <name> <serial>...
+                              a new group (or group <id> replaced) of these
+                              devices; the name is one word here
+    group delete <id>         delete a group
+    firmware list             the stored firmware images
+    firmware add <file.uf2>   store an image for a rollout
+    rollout <serial|group:id> <image> [--while-live]
+                              update the firmware (with --rollout). The device
+                              must be muted unless --while-live
+    rollout status [<id>]     the rollouts, newest first
+    rollout cancel <id>       stop a rollout before its next bootloader entry
     api-key new <name> [role] mint an API key (default control), shown once
     api-key list              the API keys
     api-key revoke <cid>      revoke an API key, at once
@@ -591,6 +653,8 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     let mut tls = TlsOptions::default();
     // -- WP SECPAIR --
     let (mut token_idle, mut forget_old) = (Some(dspi_hub::auth::DEFAULT_TOKEN_IDLE), false);
+    // -- WP P3TM --
+    let (mut rollout, mut allow_unverified_firmware) = (false, false);
     let mut port_given = false;
     let mut words = Vec::new();
 
@@ -693,6 +757,10 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 run_only.push("--token-idle-days");
             }
             "--forget-old" => forget_old = true,
+            // -- WP P3TM --
+            "--no-groups" => services.groups = false,
+            "--rollout" => rollout = true,
+            "--allow-unverified-firmware" => allow_unverified_firmware = true,
             f if f.starts_with('-') => return Err(usage(format!("`{f}` is not a hub option"))),
             word => words.push(word),
         }
@@ -721,6 +789,10 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 | "--no-schedule"
                 // -- WP SECSRV --
                 | "--upstream-compat"
+                // -- WP P3TM --
+                | "--no-groups"
+                | "--rollout"
+                | "--allow-unverified-firmware"
         ) {
             run_only.push(flag);
         }
@@ -787,6 +859,20 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                         .into(),
                 ));
             }
+            // -- WP P3TM --
+            if allow_unverified_firmware && !rollout {
+                return Err(usage(
+                    "--allow-unverified-firmware is for a hub started with --rollout".into(),
+                ));
+            }
+            if rollout && tls.policy(loopback || local).mode == TlsMode::Off {
+                return Err(usage(
+                    "--rollout needs TLS, and this hub would serve none (--tls off, or \
+                     --loopback, which is off by default): a flash command never travels in \
+                     the clear. Give --tls on or --tls require"
+                        .into(),
+                ));
+            }
             return Ok(HubCommand::Run(RunOptions {
                 name,
                 port,
@@ -816,6 +902,9 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 tls,
                 // -- WP SECPAIR --
                 token_idle,
+                // -- WP P3TM --
+                rollout,
+                allow_unverified_firmware,
             }));
         }
         ["help"] => return Ok(HubCommand::Help),
@@ -845,6 +934,27 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             store: store()?,
             action: tls_action(rest, forget_old).map_err(usage)?,
         },
+        // -- WP P3TM -- `--data` says where the images are, as for a running hub
+        ["firmware", "add", file] => {
+            run_only.retain(|f| *f != "--data");
+            HubCommand::FirmwareAdd {
+                store: store()?,
+                data: data.clone(),
+                file: PathBuf::from(file),
+            }
+        }
+        ["firmware", "list"] => {
+            run_only.retain(|f| *f != "--data");
+            HubCommand::FirmwareList {
+                store: store()?,
+                data: data.clone(),
+            }
+        }
+        ["firmware", ..] => {
+            return Err(usage(format!(
+                "firmware add <file.uf2> | firmware list; see `{COMMAND} hub --help`"
+            )));
+        }
         _ => {
             return Err(usage(format!(
                 "`{}` is not a hub command; see `{COMMAND} hub --help`",
@@ -1000,6 +1110,9 @@ struct Running {
     console_url: Option<String>,
     // -- WP P2TM -- `--rest`
     rest: bool,
+    // -- WP P3TM -- each device's end of a rollout, said at the prompt; `None` without
+    // `--rollout`
+    rollout_ends: Option<dspi_hub::bus::Subscription>,
     _awake: Option<awake::KeepAwake>,
     _lock: File,
 }
@@ -1013,6 +1126,16 @@ impl Drop for Running {
 /// Start sharing. Nothing is claimed until the port is bound and the listener is in,
 /// and no client is let in until the device is (WP TM26).
 fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
+    start_with(opts, json, |_| {})
+}
+
+/// [`start`], with `tweak` given the hub's configuration last (-- WP P3TM --: the tests'
+/// fake BOOTSEL scan and writer).
+fn start_with(
+    opts: &RunOptions,
+    json: bool,
+    tweak: impl FnOnce(&mut HubConfig),
+) -> Result<Running, Failure> {
     let lock = lock_store(&opts.store)?;
     let saved = SavedHub::peek(&opts.store)?;
     let lost = saved
@@ -1064,6 +1187,16 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
         config.data_dir = Some(dir.clone());
     }
     opts.services.apply(&mut config.services);
+    // -- WP P3TM -- the rollout, only when asked (the hub sets `serves_tls`)
+    if opts.rollout {
+        config.services.rollout = Some(dspi_hub::rollout::RolloutConfig {
+            allow_unverified_firmware: opts.allow_unverified_firmware,
+            boot_scan: None,
+            writer: None,
+            serves_tls: false,
+        });
+    }
+    tweak(&mut config);
     // A scan only once the listener is in, below.
     config.initial_scan = false;
     // -- WP WB7 -- `uconsole web` leaves USB to the browser unless asked.
@@ -1074,8 +1207,11 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
     if opts.demo && opts.alink && opts.with_usb {
         config.bus = Some(Box::new(UsbBus::default()));
     }
+    // -- WP P3TM --
+    let rolls_out = config.services.rollout.is_some();
     let hub = Hub::start(config)?;
     let handle = hub.handle();
+    let rollout_ends = rolls_out.then(|| fleet::watch_rollouts(&handle)); // -- WP P3TM --
     // Always there on a hub started with a network side.
     let control = hub.network().ok_or(HubError::Stopped)?;
     if opts.name.is_some() {
@@ -1104,6 +1240,7 @@ fn start(opts: &RunOptions, json: bool) -> Result<Running, Failure> {
         access: opts.access,
         console_url,
         rest: opts.rest, // -- WP P2TM --
+        rollout_ends,    // -- WP P3TM --
         _awake: opts.keep_awake.then(awake::KeepAwake::begin).flatten(),
         _lock: lock,
     };
@@ -1441,6 +1578,8 @@ fn serve(opts: &RunOptions, json: bool) -> Result<(), Failure> {
     if opts.pair {
         let _ = begin_pairing(&running, json);
     }
+    // -- WP P3TM --
+    fleet::rollout_at_start(opts, json);
 
     let typed = std::io::stdin().is_terminal().then(read_lines).flatten();
     if typed.is_some() && !json {
@@ -1449,6 +1588,8 @@ fn serve(opts: &RunOptions, json: bool) -> Result<(), Failure> {
     while !stop.load(Ordering::Relaxed) {
         // -- WP SECPAIR --
         say_window_killed(&running, json);
+        // -- WP P3TM --
+        fleet::say_lines(&fleet::rollout_ends(&running, json));
         let Some(lines) = &typed else {
             std::thread::sleep(TICK);
             continue;
@@ -1532,6 +1673,11 @@ fn ignore_background_read() {}
 /// One typed line. `false` to stop.
 fn command(running: &Running, line: &str, json: bool) -> bool {
     let words: Vec<&str> = line.split_whitespace().collect();
+    // -- WP P3TM -- `groups`, `group ...`, `firmware ...`, `rollout ...`
+    if let Some(lines) = fleet::prompt(running, &words, json) {
+        fleet::say_lines(&lines);
+        return true;
+    }
     let say = |m: &str| {
         if json {
             println!("{}", json!({ "event": "error", "error": m }));
@@ -2569,6 +2715,9 @@ mod tests_wp_tm11 {
             tls: TlsOptions::default(),
             // -- WP SECPAIR --
             token_idle: Some(dspi_hub::auth::DEFAULT_TOKEN_IDLE),
+            // -- WP P3TM --
+            rollout: false,
+            allow_unverified_firmware: false,
         }
     }
 
@@ -3541,6 +3690,9 @@ mod tests_wp_sw3 {
             tls: TlsOptions::default(),
             // -- WP SECPAIR --
             token_idle: Some(dspi_hub::auth::DEFAULT_TOKEN_IDLE),
+            // -- WP P3TM --
+            rollout: false,
+            allow_unverified_firmware: false,
         }
     }
 }
@@ -3643,6 +3795,9 @@ mod tests_wp_hwlk1f {
             tls: TlsOptions::default(),
             // -- WP SECPAIR --
             token_idle: Some(dspi_hub::auth::DEFAULT_TOKEN_IDLE),
+            // -- WP P3TM --
+            rollout: false,
+            allow_unverified_firmware: false,
         }
     }
 
