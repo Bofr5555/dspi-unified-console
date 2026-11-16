@@ -1,5 +1,5 @@
 {
- "repo_commit": "6a14c543",
+ "repo_commit": "dc06920a",
  "rust": {
   "authors": [
    "Weeb Labs",
@@ -51,6 +51,11 @@
     "license": "MIT OR Apache-2.0",
     "version": "0.10.2"
    },
+   "cmov": {
+    "first_party": false,
+    "license": "Apache-2.0 OR MIT",
+    "version": "0.5.4"
+   },
    "const-oid": {
     "first_party": false,
     "license": "Apache-2.0 OR MIT",
@@ -65,6 +70,16 @@
     "first_party": false,
     "license": "MIT OR Apache-2.0",
     "version": "0.2.2"
+   },
+   "ctutils": {
+    "first_party": false,
+    "license": "Apache-2.0 OR MIT",
+    "version": "0.4.8"
+   },
+   "curve25519-dalek": {
+    "first_party": false,
+    "license": "BSD-3-Clause",
+    "version": "5.0.0"
    },
    "data-encoding": {
     "first_party": false,
@@ -145,6 +160,16 @@
     "first_party": false,
     "license": "MIT OR Apache-2.0",
     "version": "0.5.0"
+   },
+   "hkdf": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.13.0"
+   },
+   "hmac": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.13.0"
    },
    "http": {
     "first_party": false,
@@ -265,6 +290,11 @@
     "first_party": false,
     "license": "MIT OR Apache-2.0",
     "version": "0.6.1"
+   },
+   "spake2": {
+    "first_party": false,
+    "license": "MIT OR Apache-2.0",
+    "version": "0.5.0-pre.0"
    },
    "static_assertions": {
     "first_party": false,
@@ -424,6 +454,7 @@
    "crates/dspi-link/src/frames.rs",
    "crates/dspi-link/src/lib.rs",
    "crates/dspi-link/src/messages.rs",
+   "crates/dspi-link/src/pake.rs",
    "crates/dspi-link/src/socket.rs",
    "crates/dspi-link/src/tls.rs",
    "crates/dspi-proto/src/bulk_gain.rs",
@@ -521,7 +552,7 @@
    "Weeb Labs",
    "owner (bofr)"
   ],
-  "commit": "6a14c54370779a2b81f8e9a5e14facbd638bb84e",
+  "commit": "dc06920accaf33a276f21700fc0ce2b7b1cc315e",
   "files": [
    "DSPi Console iOS/Info.plist",
    "DSPi Console/AboutLicence.swift",
@@ -557,6 +588,7 @@
    "DSPi Console/Core/CoreSnapshots.swift",
    "DSPi Console/Core/CoreUndo.swift",
    "DSPi Console/Core/CoreUsb.swift",
+   "DSPi Console/Core/LinkBannerView.swift",
    "DSPi Console/Core/NoticeCenter.swift",
    "DSPi Console/Core/OutputLabels.swift",
    "DSPi Console/Core/ReadOnlyFloor.swift",

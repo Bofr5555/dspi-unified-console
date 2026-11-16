@@ -31,7 +31,7 @@ mdns = ["dep:mdns-sd", "dep:windows-sys"]
 # dependencies exist only off the web, and so does the module, so the web build
 # never has it even with the feature on. Off by default; the core turns it on
 # for native targets (SECCORE).
-tls = ["dep:rustls", "dep:rustls-webpki", "dep:ring"]
+tls = ["dep:rustls", "dep:rustls-webpki", "dep:ring", "dep:spake2"]
 
 [dependencies]
 # Sync WebSocket over std::net::TcpStream (RFC 6455), no TLS: the protocol is
@@ -69,6 +69,15 @@ rustls-webpki = { version = "0.103.16", default-features = false, features = ["a
 # SHA-256 of the SPKI and the ECDSA P-256 check of a key rotation signature:
 # the crypto rustls already runs on here, rather than sha2 beside it.
 ring = { version = "0.17.14", optional = true }
+# -- WP SECPAKE -- SPAKE2 for `auth.pair2` (pake.rs; PLAN-SEC SECPAKE, OD-SECc):
+# RustCrypto's, MIT or Apache-2.0, the Ed25519 group. 0.5.0-pre.0 rather than
+# 0.4.0: the same protocol code on the RustCrypto generation the lock already
+# holds (sha2 0.11, digest 0.11, rand_core 0.10), where 0.4 would pull a second,
+# older stack (sha2 0.10, rand_core 0.6, curve25519-dalek 4). New with it:
+# curve25519-dalek 5.0.0 (BSD-3-Clause), hkdf 0.13.0 and hmac 0.13.0. No
+# `getrandom` feature: pake.rs seeds it from ring's SystemRandom, which can
+# fail without a panic. HKDF and HMAC of our own are ring's.
+spake2 = { version = "=0.5.0-pre.0", default-features = false, optional = true }
 
 # -- WP CG2, DISC2 -- The embedded mDNS daemon, everywhere but Windows (see above).
 [target.'cfg(not(windows))'.dependencies]

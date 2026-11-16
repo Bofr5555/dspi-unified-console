@@ -99,7 +99,9 @@ webpki-roots = "1"
 [dev-dependencies]
 # -- review seca -- SECPIPE's tls module for the SECKEY/SECPIPE cross tests
 # (tests/review_seca_tls_cross.rs). -- WP SECSRV -- now a normal dependency too.
-dspi-link = { workspace = true, features = ["tls"] }
+# -- WP SECPAKE -- `fake-hub` for its FakeTlsKey: the MITM proxy's own key
+# (tests/wp_secpake.rs).
+dspi-link = { workspace = true, features = ["tls", "fake-hub"] }
 dspi-transport = { path = "../dspi-transport", default-features = false, features = ["link"] }
 # -- WP HB2 --
 proptest = "1"

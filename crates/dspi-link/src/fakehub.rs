@@ -283,6 +283,12 @@ struct SessionRec {
     // -- WP SECCORE --
     /// The session runs over TLS.
     tls: bool,
+    // -- WP SECPAKE --
+    /// Its TLS exporter (`auth.pair2`), and the exchange between its steps.
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    binding: Option<crate::pake::Binding>,
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    pair2: Option<crate::pake::HubPake>,
 }
 
 // -- WP SECCORE --
@@ -400,6 +406,10 @@ struct State {
     /// A PIN window is open (spec 6.2: 5 failures or one success end it).
     window_open: bool,
     window_failures: u32,
+    // -- WP SECPAKE --
+    /// `auth.rotate`s answered, and `auth.pair2` first steps answered.
+    rotations: u32,
+    pair2_steps: u32,
     board: Board,
     pings_sent: u64,
     pongs_received: u64,
@@ -930,6 +940,8 @@ impl FakeHub {
             failures: HashMap::new(),
             window_open: true,
             window_failures: 0,
+            rotations: 0,   // -- WP SECPAKE --
+            pair2_steps: 0, // -- WP SECPAKE --
             board: if board_attached { Board::Online } else { Board::Absent },
             pings_sent: 0,
             pongs_received: 0,
@@ -1213,6 +1225,18 @@ impl FakeHub {
         lock(&self.state).tokens_seen.clone()
     }
 
+    // -- WP SECPAKE --
+    /// `auth.rotate`s answered.
+    pub fn rotations(&self) -> u32 {
+        lock(&self.state).rotations
+    }
+
+    // -- WP SECPAKE --
+    /// `auth.pair2` first steps answered (a pairing over TLS runs one per try).
+    pub fn pair2_steps(&self) -> u32 {
+        lock(&self.state).pair2_steps
+    }
+
     // -- WP P2CC1 --
     /// Answer request types this fake does not know (the hub's families past
     /// DSPi Link: `inventory.*`, `snapshot.*`, ...) with `f`; `None` again
@@ -1430,6 +1454,12 @@ fn serve(tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
     // Refusals come before the upgrade (http_server.c `refuse_handshake`)
     let peer = tcp.socket().peer_addr().ok().map(|a| a.ip());
     let tls = tcp.is_tls(); // -- WP SECCORE --
+                            // -- WP SECPAKE --
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    let binding = match &tcp {
+        Conn::Tls(pipe) => crate::pake::Binding::of(pipe),
+        Conn::Plain(_) => None,
+    };
     let (slot, tx_rx) = {
         let mut s = lock(&state);
         let refuse = if let Some(code) = s.faults.refuse_handshake {
@@ -1462,6 +1492,10 @@ fn serve(tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
                 peer,
                 held: Vec::new(),
                 tls, // -- WP SECCORE --
+                #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+                binding, // -- WP SECPAKE --
+                #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+                pair2: None,
             },
         );
         // -- WP SECCORE --
@@ -1733,6 +1767,98 @@ fn err_bare(id: &Value, code: &str) -> String {
 
 const RATE_LIMITED_MSG: &str = "too many failures; try again in a minute";
 
+// -- WP SECPAKE --
+/// A right PIN (`auth.pair`, `auth.pair2`): the session's role, token and `ok` body.
+fn pair_granted(s: &mut State, sid: u16, role: String) -> Value {
+    let token = if s.cfg.auth == Auth::None { None } else { Some(format!("tok-{sid}-{}", s.tokens.len())) };
+    if let Some(tok) = &token {
+        s.tokens.insert(tok.clone(), role.clone());
+    }
+    let denied = s.denied(&role);
+    if let Some(r) = s.sessions.get_mut(&sid) {
+        r.authed = true;
+        r.role = role.clone();
+        r.token = token.clone();
+    }
+    let mut extra = json!({"session": sid, "role": role, "policy": {"denied": denied}});
+    if let Some(tok) = token {
+        extra["token"] = json!(tok);
+    }
+    // -- WP SECCORE -- the key this session's TLS presents
+    if let Some(k) = s.hub_key_for(sid) {
+        extra["hub_key"] = json!(k);
+    }
+    extra
+}
+
+// -- WP SECPAKE --
+/// `auth.pair2`, as the hub runs it (dspi-hub `server.rs`): step 1 answers our
+/// SPAKE2 message; step 2 is the PIN attempt, counted as `auth.pair`'s.
+#[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+fn pair2(s: &mut State, sid: u16, id: &Value, v: &Value) -> Vec<String> {
+    use crate::pake::{self, HubPake};
+    let Some(binding) = s.sessions.get(&sid).and_then(|r| r.binding) else {
+        return vec![err(id, "tls_required", "auth.pair2 needs an encrypted connection")];
+    };
+    let peer = s.peer_of(sid);
+    if s.rate_limited(peer) {
+        return vec![err(id, "rate_limited", RATE_LIMITED_MSG)];
+    }
+    match v["step"].as_u64() {
+        Some(1) => {
+            let secret = match &s.cfg.auth {
+                Auth::Window(p) if s.window_open => pake::pin_secret(p),
+                Auth::Fixed(p) => pake::pin_secret(p),
+                // No window: a secret nobody can match
+                _ => pake::pin_secret("no window"),
+            };
+            let Some(msg_a) = v["pake"].as_str().and_then(|t| pake::decode(t, pake::MESSAGE_LEN).ok()) else {
+                return vec![err(id, "bad_request", "no pake message")];
+            };
+            let name = v["name"].as_str().unwrap_or("");
+            let role = v["role"].as_str().unwrap_or("");
+            match HubPake::respond(&secret, &s.cfg.hub_id, name, role, &msg_a, binding) {
+                Ok((side, msg_b)) => {
+                    if let Some(r) = s.sessions.get_mut(&sid) {
+                        r.pair2 = Some(side);
+                    }
+                    s.pair2_steps += 1;
+                    vec![ok(id, json!({"pake": pake::encode(&msg_b)}))]
+                }
+                Err(_) => vec![err(id, "bad_request", "bad pake message")],
+            }
+        }
+        Some(2) => {
+            let Some(side) = s.sessions.get_mut(&sid).and_then(|r| r.pair2.take()) else {
+                return vec![err(id, "bad_request", "no auth.pair2 step 1")];
+            };
+            let mac = v["confirm"]
+                .as_str()
+                .and_then(|t| pake::decode(t, pake::CONFIRM_LEN).ok())
+                .and_then(|m| side.confirm(&m).ok());
+            let window = matches!(s.cfg.auth, Auth::Window(_));
+            let Some(mac) = mac.filter(|_| !window || s.window_open) else {
+                s.auth_failed(peer);
+                if window {
+                    s.window_failures += 1;
+                    if s.window_failures >= 5 {
+                        s.window_open = false;
+                    }
+                }
+                return vec![err_bare(id, "unauthenticated")];
+            };
+            if window {
+                s.window_open = false;
+            }
+            let role = s.cfg.pin_role.clone();
+            let mut extra = pair_granted(s, sid, role);
+            extra["confirm"] = json!(pake::encode(&mac));
+            vec![ok(id, extra)]
+        }
+        _ => vec![err(id, "bad_request", "step must be 1 or 2")],
+    }
+}
+
 fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
     let Ok(v) = serde_json::from_str::<Value>(text) else { return vec![] };
     let t = v["t"].as_str().unwrap_or("");
@@ -1798,25 +1924,19 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
             if window {
                 s.window_open = false;
             }
-            let token = if s.cfg.auth == Auth::None { None } else { Some(format!("tok-{sid}-{}", s.tokens.len())) };
-            if let Some(tok) = &token {
-                s.tokens.insert(tok.clone(), role.clone());
+            // -- WP SECPAKE -- shared with `auth.pair2`
+            vec![ok(&id, pair_granted(&mut s, sid, role))]
+        }
+        // -- WP SECPAKE -- SPAKE2 pairing bound to this session's TLS (crate::pake)
+        "auth.pair2" => {
+            #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+            {
+                pair2(&mut s, sid, &id, &v)
             }
-            let denied = s.denied(&role);
-            if let Some(r) = s.sessions.get_mut(&sid) {
-                r.authed = true;
-                r.role = role.clone();
-                r.token = token.clone();
+            #[cfg(not(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown")))))]
+            {
+                vec![err(&id, "tls_required", "auth.pair2 needs TLS")]
             }
-            let mut extra = json!({"session": sid, "role": role, "policy": {"denied": denied}});
-            if let Some(tok) = token {
-                extra["token"] = json!(tok);
-            }
-            // -- WP SECCORE -- the key this session's TLS presents
-            if let Some(k) = s.hub_key_for(sid) {
-                extra["hub_key"] = json!(k);
-            }
-            vec![ok(&id, extra)]
         }
         "auth.token" => {
             let tok = v["token"].as_str().unwrap_or("").to_owned();
@@ -1851,6 +1971,24 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
             }
         }
         _ if !authed => vec![err(&id, "unauthenticated", "")],
+        // -- WP SECPAKE -- a fresh token for this session's client, the old one dead
+        "auth.rotate" => {
+            let old = s.sessions.get(&sid).and_then(|r| r.token.clone());
+            let Some(role) = old.as_ref().and_then(|t| s.tokens.remove(t)) else {
+                return vec![err(&id, "unauthenticated", "no token to rotate")];
+            };
+            s.rotations += 1;
+            let tok = format!("tok-{sid}-r{}", s.rotations);
+            s.tokens.insert(tok.clone(), role);
+            if let Some(r) = s.sessions.get_mut(&sid) {
+                r.token = Some(tok.clone());
+            }
+            let mut extra = json!({"token": tok});
+            if let Some(k) = s.hub_key_for(sid) {
+                extra["hub_key"] = json!(k);
+            }
+            vec![ok(&id, extra)]
+        }
         "device.list" => {
             if s.faults.device_list_times > 0 {
                 s.faults.device_list_times -= 1;

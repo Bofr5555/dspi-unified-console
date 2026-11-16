@@ -769,6 +769,17 @@ impl LinkClient {
         if state == AuthState::Ready {
             c.fire_devices_changed();
         }
+        // -- WP SECPAKE -- a token that went to the hub's old key is swapped for a
+        // fresh one once the new key is accepted (PLAN-SEC 4.9). A failure keeps the
+        // old token, which still works: the next rotation-free connect is fine.
+        // Only with events to give the new token to: a caller without them calls
+        // [`LinkClient::rotate_token`] itself.
+        let told = lock(&c.inner.events).is_some();
+        if told && state == AuthState::Ready && c.inner.hello.pin_required() && c.inner.tls.is_some_and(|t| t.rotated) {
+            if let Err(e) = c.rotate_token() {
+                log::warn!("dspi-link: the token was not rotated after the hub's key rotation: {e}");
+            }
+        }
         Ok((c, state))
     }
 
@@ -807,23 +818,40 @@ impl LinkClient {
     /// PIN is [`LinkError::WrongPin`] and `rate_limited` [`LinkError::RateLimited`];
     /// the session stays open for another try.
     pub fn pair(&self, pin: &str, role: &str) -> Result<String, LinkError> {
+        // -- WP SECPAKE -- over our own TLS the PIN never crosses: `auth.pair2`
+        // (SPAKE2 bound to the TLS exporter). Never `auth.pair` there, whatever the
+        // hello says: a machine in the middle could strip the cap.
+        if self.inner.tls.is_some() {
+            return self.pair2(pin, role);
+        }
+        let v = self.pair_step(|id| out::auth_pair(id, pin, &self.inner.client_name, Some(role)))?;
+        self.finish_pairing(&v)
+    }
+
+    // -- WP SECPAKE -- `auth.pair`'s request, shared with `auth.pair2`'s two steps
+    /// One pairing request: a refused credential is [`LinkError::WrongPin`].
+    fn pair_step(&self, make: impl FnOnce(u64) -> String) -> Result<Value, LinkError> {
         let id = self.inner.next_id.fetch_add(1, Ordering::SeqCst);
         lock(&self.inner.open_pairs).insert(id);
-        let text = out::auth_pair(id, pin, &self.inner.client_name, Some(role));
+        let text = make(id);
         let result = self.request_id(id, text, self.inner.timing.request_timeout);
         // After a timeout the id stays: the reply may still come, and a Mac hub
         // has spent its window on it
         if !matches!(result, Err(LinkError::Timeout)) {
             lock(&self.inner.open_pairs).remove(&id);
         }
-        let v = result.map_err(|e| match e {
+        result.map_err(|e| match e {
             LinkError::Rejected { code, .. } if is_credential_refusal(&code) => {
                 LinkError::WrongPin { pin_source: self.inner.hello.pin_source_kind() }
             }
             e => typed_refusal(e),
-        })?;
+        })
+    }
+
+    // -- WP SECPAKE -- the end of either pairing
+    fn finish_pairing(&self, v: &Value) -> Result<String, LinkError> {
         // -- WP SECCORE -- a hub key the TLS key contradicts: nothing is kept
-        let token = match self.paired(&v) {
+        let token = match self.paired(v) {
             Ok(token) => token,
             Err(e) => {
                 self.close();
@@ -834,6 +862,74 @@ impl LinkClient {
         // read in session_state() and retry, not a failed pairing
         if let Err(e) = self.refresh_devices() {
             log::warn!("dspi-link: paired, but device.list failed: {e}");
+        }
+        Ok(token)
+    }
+
+    // -- WP SECPAKE --
+    /// `auth.pair2` (`crate::pake`): our SPAKE2 message, the hub's, our
+    /// confirmation, then the hub's checked before the token is kept. A hub whose
+    /// confirmation does not verify (it cannot, unless something between forged
+    /// the step) is [`LinkError::HubKeyUnverified`], and the session closes.
+    #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+    fn pair2(&self, pin: &str, role: &str) -> Result<String, LinkError> {
+        use crate::pake::{self, Binding, ClientPake};
+        let Some(binding) = self.inner.sender.tls_binding() else {
+            return Err(LinkError::Protocol("this connection cannot bind a pairing to its TLS".into()));
+        };
+        let name = &self.inner.client_name;
+        let hid = &self.inner.hello.hub.id;
+        let internal = |e: pake::PakeError| LinkError::Protocol(e.to_string());
+        let (ours, msg_a) = ClientPake::start(pin, hid, name, role, Binding::from_bytes(binding)).map_err(internal)?;
+        let pake_text = pake::encode(&msg_a);
+        let v = self.pair_step(|id| out::auth_pair2_start(id, name, role, &pake_text))?;
+        let msg_b = v
+            .get("pake")
+            .and_then(Value::as_str)
+            .and_then(|t| pake::decode(t, pake::MESSAGE_LEN).ok())
+            .ok_or_else(|| LinkError::Protocol("auth.pair2: no pake in the answer".into()))?;
+        let confirm = ours.finish(&msg_b).map_err(internal)?;
+        let confirm_text = pake::encode(confirm.confirm());
+        let v = self.pair_step(|id| out::auth_pair2_confirm(id, &confirm_text))?;
+        let verified = v
+            .get("confirm")
+            .and_then(Value::as_str)
+            .and_then(|t| pake::decode(t, pake::CONFIRM_LEN).ok())
+            .is_some_and(|mac| confirm.verify_hub(&mac).is_ok());
+        if !verified {
+            log::warn!("dspi-link: the hub's pairing confirmation does not verify; the token is not kept");
+            self.close();
+            return Err(LinkError::HubKeyUnverified);
+        }
+        self.finish_pairing(&v)
+    }
+
+    /// No TLS on the web: never reached (the session has no TLS of ours).
+    #[cfg(not(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown")))))]
+    fn pair2(&self, _pin: &str, _role: &str) -> Result<String, LinkError> {
+        Err(LinkError::Protocol("auth.pair2 needs TLS".into()))
+    }
+
+    // -- WP SECPAKE --
+    /// `auth.rotate` (PLAN-SEC 4.9, OD-SECg): a fresh token for this session's
+    /// client, in place; the old one is dead once the hub answers. The new one goes
+    /// to [`LinkEvents::token_issued`] as a pairing's does, and is returned. The
+    /// core calls it after it accepted a hub key rotation. Over TLS the answer's
+    /// `hub_key` must be the key TLS met, or nothing is kept.
+    pub fn rotate_token(&self) -> Result<String, LinkError> {
+        let v = self.request(out::auth_rotate, self.inner.timing.request_timeout).map_err(typed_refusal)?;
+        let ok: AuthOk = serde_json::from_value(v).unwrap_or_default();
+        if let (Some(seen), Some(said)) = (self.inner.tls, ok.hub_key.as_deref()) {
+            if crate::credential::pin_from_b64url(said).is_none_or(|k| !pin_eq(&k, &seen.key)) {
+                log::warn!("dspi-link: auth.rotate's hub_key is not the key TLS met; the token is not kept");
+                return Err(LinkError::HubKeyUnverified);
+            }
+        }
+        let token =
+            ok.token.filter(|t| !t.is_empty()).ok_or_else(|| LinkError::Protocol("auth.rotate: no token".into()))?;
+        let ev = lock(&self.inner.events).clone();
+        if let Some(ev) = ev {
+            ev.token_issued(&self.inner.hello.hub.id, &token);
         }
         Ok(token)
     }

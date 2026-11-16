@@ -27,6 +27,9 @@ pub mod socket;
 // -- WP SECPIPE -- native only: no sockets, rustls or ring on the web
 #[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
 pub mod tls;
+// -- WP SECPAKE -- SPAKE2 pairing bound to the TLS exporter (`auth.pair2`); with `tls`
+#[cfg(all(feature = "tls", not(all(target_arch = "wasm32", target_os = "unknown"))))]
+pub mod pake;
 
 #[cfg(feature = "fake-hub")]
 pub mod fakehub;
