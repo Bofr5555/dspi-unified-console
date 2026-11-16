@@ -32,6 +32,9 @@ use dspi_link::socket::TcpConnector;
 use dspi_link::{
     AuthState, ConnectOptions, LinkClient, LinkError, LinkEvents, RetryAdvice, SessionConfig,
 };
+// -- WP SECTM --
+use dspi_link::client::TlsOptions;
+use dspi_link::credential::Credential;
 use dspi_proto::generated::ext as ext_ids;
 // -- WP TM4 --
 use dspi_proto::generated::opcodes as op;
@@ -85,7 +88,7 @@ pub enum Target {
 }
 
 /// A hub, and which of its devices.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct LinkTarget {
     pub host: String,
     pub port: u16,
@@ -104,6 +107,47 @@ pub struct LinkTarget {
     pub hub_id: Option<String>,
     /// `--hub`: still to be found on the network; see [`locate_hub`].
     pub find: Option<HubQuery>,
+    // -- WP SECTM --
+    /// The hub's DNS-SD advert said TLS (`tls=1`, [`BrowsedHub::tls_advertised`]):
+    /// a failed TLS handshake is then `tls_refused`, never plaintext.
+    pub tls_advertised: bool,
+    /// A pasted `dspi://pair` link ([`LinkTarget::from_pair_link`]): the key
+    /// the hub must present before the link's PIN goes out.
+    pub pair_link: Option<PairHint>,
+    /// As reached: whether the session runs over TLS with a verified key.
+    /// `None` before a connect (or for a target as asked).
+    pub encrypted: Option<bool>,
+}
+
+// -- WP SECTM --
+/// What a `dspi://pair` link pins: shown on the confirmation, and the
+/// credential (key, no token) the first dial uses.
+#[derive(Clone, PartialEq, Eq)]
+pub struct PairHint {
+    /// The `v2` credential pinned to the link's `k=`, with no token.
+    pub credential: String,
+    /// The key's fingerprint, `SHA256:K7Q2-M9XD-4TNB-0ZRA`.
+    pub hub_key: String,
+}
+
+// -- WP SECTM --
+/// By hand: a PIN (from `--pin` or a pairing link) never reaches a log.
+impl std::fmt::Debug for LinkTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LinkTarget")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("device", &self.device)
+            .field("pin", &self.pin.as_ref().map(|_| "<redacted>"))
+            .field("tokens", &self.tokens)
+            .field("path", &self.path)
+            .field("hub_id", &self.hub_id)
+            .field("find", &self.find)
+            .field("tls_advertised", &self.tls_advertised)
+            .field("pair_link", &self.pair_link.as_ref().map(|p| &p.hub_key))
+            .field("encrypted", &self.encrypted)
+            .finish()
+    }
 }
 
 // -- WP TM9 --
@@ -128,6 +172,9 @@ impl LinkTarget {
             path: None,
             hub_id: None,
             find: None,
+            tls_advertised: false,
+            pair_link: None,
+            encrypted: None,
         })
     }
 
@@ -143,6 +190,9 @@ impl LinkTarget {
             path: None,
             hub_id: None,
             find: Some(HubQuery { wanted }),
+            tls_advertised: false,
+            pair_link: None,
+            encrypted: None,
         }
     }
 
@@ -154,6 +204,7 @@ impl LinkTarget {
             path: Some(hub.path.clone()),
             hub_id: Some(hub.id.clone()),
             find: None,
+            tls_advertised: hub.tls_advertised, // -- WP SECTM --
             ..self.clone()
         }
     }
@@ -216,6 +267,255 @@ impl LinkTarget {
     }
 }
 
+// -- WP SECTM --
+// Pairing and keys (docs/core-merge/PLAN-SEC.md 4.3, entry SECTM): the stored
+// record per hub is the core's opaque credential (`v1` bare token, or `v2` with
+// the hub key's pin), kept in the same 0600 token file; a pasted `dspi://pair`
+// link; the hub key's fingerprint at the PIN prompt; pairing again offered only
+// on a key or TLS refusal; and the "(unsecured)" badge of a session without TLS.
+
+/// The shared words for a session without TLS: the core's notice rows
+/// `dlink.unsecured` (the badge) and `dlink.unsecured.info` (the explanation).
+/// dspi-tui does not link the core, so the embedder hands them over
+/// ([`set_unsecured_words`]); these defaults are the table's English, and the
+/// Terminal's tests hold them to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsecuredWords {
+    /// `unsecured`: shown as " (unsecured)" after the connection's name.
+    pub badge: String,
+    /// The calm explanation (`dlink.unsecured.info` reason).
+    pub info: String,
+    /// What to do about it (`dlink.unsecured.info` action).
+    pub action: String,
+}
+
+/// The notice keys: `dlink`, the owner's name for DSPi Link (never bare `link`).
+pub const NOTICE_UNSECURED: &str = "dlink.unsecured";
+pub const NOTICE_UNSECURED_INFO: &str = "dlink.unsecured.info";
+
+impl Default for UnsecuredWords {
+    fn default() -> Self {
+        Self {
+            badge: "unsecured".into(),
+            info: "The connection to this hub is not encrypted. That is fine on a trusted local \
+                   network or over a VPN, but on any other network someone could read or change \
+                   what is sent, including the pairing PIN and settings."
+                .into(),
+            action: "If the hub supports encryption, turn TLS on in its settings, or turn its \
+                     upstream compatibility mode off; this console then connects encrypted by \
+                     itself."
+                .into(),
+        }
+    }
+}
+
+static UNSECURED_WORDS: std::sync::OnceLock<UnsecuredWords> = std::sync::OnceLock::new();
+
+/// Use the core's words for the badge and its explanation (once, at start).
+pub fn set_unsecured_words(words: UnsecuredWords) {
+    let _ = UNSECURED_WORDS.set(words);
+}
+
+/// The words in use.
+pub fn unsecured_words() -> UnsecuredWords {
+    UNSECURED_WORDS.get().cloned().unwrap_or_default()
+}
+
+/// " (unsecured)": what follows a connection's name when it has no TLS.
+pub fn unsecured_suffix() -> String {
+    format!(" ({})", unsecured_words().badge)
+}
+
+/// `text` with the badge after it when `encrypted` is known to be false.
+pub fn with_security(text: &str, encrypted: Option<bool>) -> String {
+    if encrypted == Some(false) {
+        format!("{text}{}", unsecured_suffix())
+    } else {
+        text.to_owned()
+    }
+}
+
+/// `text` (a line that may carry the badge) for a terminal: the badge in red
+/// when `colour`, else as it is. The words say it either way, so the meaning
+/// never rests on the colour alone.
+pub fn paint_unsecured(text: &str, colour: bool) -> String {
+    let suffix = unsecured_suffix();
+    if !colour || !text.contains(&suffix) {
+        return text.to_owned();
+    }
+    text.replacen(&suffix, &format!("\u{1b}[31m{suffix}\u{1b}[0m"), 1)
+}
+
+/// Whether a stream may be coloured: a terminal, `NO_COLOR` unset, and not
+/// `TERM=dumb`.
+pub fn colour_allowed(is_terminal: bool) -> bool {
+    is_terminal
+        && std::env::var_os("NO_COLOR").is_none()
+        && std::env::var("TERM").map_or(true, |t| t != "dumb")
+}
+
+/// The core's error codes after which pairing again is offered, and only
+/// these (PLAN-SEC 4.3): the hub presents another key, a pairing's key does
+/// not check out, or TLS was refused where it is required. Every other
+/// failure keeps the stored credential.
+pub const REPAIR_CODES: [&str; 4] = [
+    "hub_key_changed",
+    "hub_key_unverified",
+    "tls_refused",
+    "tls_required",
+];
+
+/// Whether `code` is one of [`REPAIR_CODES`].
+pub fn offers_repair(code: &str) -> bool {
+    REPAIR_CODES.contains(&code)
+}
+
+/// The code of a [`LinkError`], as the core names it, for the four that
+/// offer pairing again.
+pub fn repair_code(e: &LinkError) -> Option<&'static str> {
+    Some(match e {
+        LinkError::HubKeyChanged => "hub_key_changed",
+        LinkError::HubKeyUnverified => "hub_key_unverified",
+        LinkError::TlsRefused { .. } => "tls_refused",
+        LinkError::TlsRequired => "tls_required",
+        _ => return None,
+    })
+}
+
+/// Ask whether to forget this terminal's pairing with `hub` and pair again,
+/// after `code` (one of [`REPAIR_CODES`]). Nobody to ask: say how, and no.
+/// Re-pairing trusts whatever key the hub presents then, so the question
+/// says to compare the fingerprint the PIN prompt shows with the hub's.
+pub fn offer_repair(prompt: PinPrompt<'_>, hub: &str, address: &str, code: &str) -> bool {
+    let why = match code {
+        "hub_key_changed" => {
+            "this hub presents a different key than the one this terminal paired with"
+        }
+        "hub_key_unverified" => "this hub's key could not be verified",
+        "tls_refused" => "this hub refused the encrypted connection it should have",
+        "tls_required" => "this hub only accepts encrypted connections",
+        _ => return false,
+    };
+    let question = format!(
+        "{hub}: {why}; nothing was sent to it. If the hub was reinstalled or its key or \
+         settings were reset, pair again (compare the fingerprint shown with the PIN prompt \
+         with the hub's own). Forget the pairing and pair again?"
+    );
+    match prompt.confirm(&question) {
+        Some(yes) => yes,
+        None => {
+            prompt.note(&format!(
+                "{hub}: {why}. To pair again, run `{COMMAND} --link {address}` in a terminal and answer yes"
+            ));
+            false
+        }
+    }
+}
+
+/// The hub's name for the PIN prompt and the pairing question: its
+/// fingerprint when the session has TLS, the badge when it has none.
+pub fn pairing_label(hub: &str, encrypted: bool, hub_key: &str) -> String {
+    if !encrypted {
+        format!("{hub}{}", unsecured_suffix())
+    } else if hub_key.is_empty() {
+        hub.to_owned()
+    } else {
+        format!("{hub} (hub key {hub_key})")
+    }
+}
+
+/// A `dspi://pair` link's confirmation (PLAN-SEC 4.3: a hint, never a
+/// bypass). Its key has been checked by TLS by now; the person still says yes
+/// to this hub and fingerprint before the link's PIN goes out.
+pub fn confirm_pair_link(prompt: PinPrompt<'_>, hub: &str, hub_key: &str) -> Result<(), OpenError> {
+    let question = format!(
+        "Pair with {hub}, hub key {hub_key}, as the pairing link says? Check that the hub shows \
+         the same key."
+    );
+    match prompt.confirm(&question) {
+        Some(true) => Ok(()),
+        Some(false) => Err(OpenError::NotConfirmed {
+            hub: hub.to_owned(),
+            reason: "pairing not confirmed; nothing was sent".into(),
+        }),
+        None => Err(OpenError::NotConfirmed {
+            hub: hub.to_owned(),
+            reason: format!(
+                "a pairing link needs a yes from a person: run `{COMMAND}` with it in a terminal"
+            ),
+        }),
+    }
+}
+
+/// A person's answer to a yes/no question.
+pub fn parse_yes(line: &str) -> bool {
+    matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
+/// Who answers [`Prompt::confirm`] for a plain function or closure prompt:
+/// the embedder's (a question on the terminal), set once at start. Unset:
+/// nobody.
+type Confirmer = fn(&str) -> Option<bool>;
+static CONFIRMER: std::sync::OnceLock<Confirmer> = std::sync::OnceLock::new();
+
+/// Let function and closure prompts ask yes/no questions with `confirm`.
+pub fn set_confirmer(confirm: Confirmer) {
+    let _ = CONFIRMER.set(confirm);
+}
+
+impl LinkTarget {
+    // -- WP SECTM --
+    /// A pasted `dspi://pair?h=&a=&k=&p=` link (the hub's QR code), through the
+    /// core's parser: the hub's id and address, its PIN, and the key it must
+    /// present. The error never repeats the link (it holds the PIN).
+    pub fn from_pair_link(text: &str) -> Result<Self, String> {
+        let link = dspi_link::credential::parse_pair_link(text)
+            .map_err(|e| format!("not a usable pairing link: {e}"))?;
+        let hint = PairHint {
+            credential: link.credential().encode(),
+            hub_key: dspi_link::credential::pin_display(&link.key),
+        };
+        Ok(Self {
+            host: link.host.clone(),
+            port: link.port,
+            device: None,
+            pin: (!link.pin_code.is_empty()).then(|| link.pin_code.clone()),
+            tokens: None,
+            path: None,
+            hub_id: Some(link.hub_id.to_lowercase()),
+            find: None,
+            tls_advertised: false,
+            pair_link: Some(hint),
+            encrypted: None,
+        })
+    }
+
+    /// Keep `credential` for `hub_id` unless it is already the stored one.
+    /// Returns whether it was written.
+    pub fn store_credential(&self, hub_id: &str, credential: &str) -> std::io::Result<bool> {
+        if credential.is_empty() || self.stored_token(hub_id).as_deref() == Some(credential) {
+            return Ok(false);
+        }
+        self.store_token(hub_id, credential).map(|()| true)
+    }
+
+    /// This target as reached: the security seen, and a pairing link's key and
+    /// PIN spent (the pin is in the stored credential now).
+    pub fn reached_with(&self, hub_id: &str, encrypted: bool) -> Self {
+        Self {
+            hub_id: (!hub_id.is_empty()).then(|| hub_id.to_owned()),
+            encrypted: Some(encrypted),
+            pin: if self.pair_link.is_some() {
+                None
+            } else {
+                self.pin.clone()
+            },
+            pair_link: None,
+            ..self.clone()
+        }
+    }
+}
+
 // -- WP TMCORE --
 /// Pick a hub's device the way `--device` picks one: by the end of its serial
 /// or part of its name; with no `wanted`, the only one there is. Each item is
@@ -255,6 +555,11 @@ pub enum OpenError {
     /// A PIN was tried and refused.
     #[error("{hub}: {reason}")]
     PinRefused { hub: String, reason: String },
+    // -- WP SECTM --
+    /// A pairing (a `dspi://pair` link's) that the person did not confirm, or
+    /// that nobody was there to confirm. Nothing was sent to the hub.
+    #[error("{hub}: {reason}")]
+    NotConfirmed { hub: String, reason: String },
     /// More than one candidate, and nothing to tell them apart.
     #[error("{} {what} found ({}); select one with {flag}", .names.len(), .names.join(", "))]
     Ambiguous {
@@ -295,6 +600,7 @@ impl OpenError {
         match self {
             Self::NeedsPin { .. }
             | Self::PinRefused { .. }
+            | Self::NotConfirmed { .. } // -- WP SECTM --
             | Self::NoMidi
             | Self::ChannelMap
             | Self::Ambiguous { .. }
@@ -371,20 +677,50 @@ pub trait Prompt {
     fn pick(&self, _choices: &[String]) -> Option<usize> {
         None
     }
+
+    // -- WP SECTM --
+    /// A yes or no from the person (`question` ends in "?"); `None` when there
+    /// is nobody to ask. Pairing by a link and pairing again ask this.
+    fn confirm(&self, _question: &str) -> Option<bool> {
+        None
+    }
+
+    // -- WP SECTM --
+    /// Something the person should know that is not a problem (a hub key
+    /// pinned for the first time).
+    fn note(&self, message: &str) {
+        eprintln!("{COMMAND}: {message}");
+    }
 }
 
 impl<F: Fn(&str, &str) -> Option<String>> Prompt for F {
     fn pin(&self, hub: &str, pin_source: &str) -> Option<String> {
         self(hub, pin_source)
     }
+
+    // -- WP SECTM -- the embedder's terminal question, when it set one
+    fn confirm(&self, question: &str) -> Option<bool> {
+        CONFIRMER.get().and_then(|ask| ask(question))
+    }
 }
 
 /// How the opening functions take a [`Prompt`].
 pub type PinPrompt<'a> = &'a dyn Prompt;
 
-/// A prompt that has nobody to ask: a reconnect, or a check.
-pub fn no_prompt(_hub: &str, _source: &str) -> Option<String> {
-    None
+/// A prompt that has nobody to ask: a reconnect, or a check. -- WP SECTM --
+/// a value, not a function, so it never answers [`Prompt::confirm`] either
+/// (the interface may be drawing on the terminal).
+#[allow(non_upper_case_globals)]
+pub const no_prompt: NoPrompt = NoPrompt;
+
+/// See [`no_prompt`].
+#[derive(Debug, Clone, Copy)]
+pub struct NoPrompt;
+
+impl Prompt for NoPrompt {
+    fn pin(&self, _hub: &str, _pin_source: &str) -> Option<String> {
+        None
+    }
 }
 
 /// An opened device with everything the interface starts from.
@@ -551,7 +887,8 @@ impl Target {
             Self::Usb { .. } => String::new(),
             Self::Demo => "demo".into(),
             Self::Midi { .. } => "MIDI".into(),
-            Self::Link(l) => format!("Link {}", l.host),
+            // -- WP SECTM -- a session known to run without TLS says so
+            Self::Link(l) => with_security(&format!("Link {}", l.host), l.encrypted),
         }
     }
 
@@ -706,41 +1043,92 @@ fn link_error(l: &LinkTarget, source: LinkError) -> OpenError {
 /// the prompt takes it. The token is stored against the hub's id and looked up
 /// after the hello, so a hub never sees another hub's token. Only a refusal of
 /// the token itself forgets it: any other failure is an error, and it stays.
+///
+/// -- WP SECTM -- What is stored is the core's credential (PLAN-SEC 4.3): TLS
+/// first, a pinned hub over TLS only and its key checked before the token goes
+/// out; a `v1` token is upgraded to `v2` the first time TLS carries it. After
+/// `hub_key_changed`, `hub_key_unverified`, `tls_refused` or `tls_required`,
+/// and only then, the person is offered to forget the pairing and pair again.
 pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, OpenError> {
-    let store = l.token_store();
-    let lookup = store.clone();
-    // -- WP TM9 --
-    // An address that went to another hub gets no token, not even its own.
-    let asked = l.clone();
-    let cfg = SessionConfig {
-        token_for: Some(Arc::new(move |hub_id: &str| {
-            if asked.is_other_hub(hub_id) {
-                None
-            } else {
-                lookup.get(hub_id)
+    let mut hub_id = l.hub_id.clone();
+    match link_client_once(l, pin, &mut hub_id, false) {
+        Err(OpenError::Link { address, source }) => {
+            let code = repair_code(&source).filter(|_| l.pair_link.is_none());
+            let hub = hub_id.clone().unwrap_or_else(|| l.address());
+            if !code.is_some_and(|c| offer_repair(pin, &hub, &l.address(), c)) {
+                return Err(OpenError::Link { address, source });
             }
-        })),
-        ..SessionConfig::default()
+            if let Some(id) = &hub_id
+                && let Err(e) = l.token_store().forget(id)
+            {
+                pin.warn(&format!("could not forget the pairing with {hub} ({e})"));
+            }
+            link_client_once(l, pin, &mut hub_id, true)
+        }
+        other => other,
+    }
+}
+
+/// [`link_client`]'s one try. `hub_id` is filled in once a hello names the
+/// hub. `fresh`: pairing again, so no stored credential and no link's key.
+fn link_client_once(
+    l: &LinkTarget,
+    pin: PinPrompt<'_>,
+    hub_id: &mut Option<String>,
+    fresh: bool,
+) -> Result<LinkClient, OpenError> {
+    let store = l.token_store();
+    let pair_link = l.pair_link.as_ref().filter(|_| !fresh);
+    // The stored record, by the hub's id; never for a pairing link (whose PIN
+    // is the point) or a fresh pairing.
+    let stored = |id: &str| -> Option<Credential> {
+        (pair_link.is_none() && !fresh)
+            .then(|| store.get(id))
+            .flatten()
+            .map(|c| Credential::parse(&c))
     };
-    let opts = ConnectOptions {
-        client_name: "DSPi Terminal".into(),
-        app: COMMAND.into(),
-        app_version: env!("CARGO_PKG_VERSION").into(),
-        token: None,
+    // What TLS must meet: the link's key, or the stored pin of a known hub.
+    let known = match (pair_link, hub_id.as_deref()) {
+        (Some(hint), _) => Credential::parse(&hint.credential),
+        (None, Some(id)) => stored(id).unwrap_or_default(),
+        (None, None) => Credential::default(),
     };
-    let saver = Arc::new(TokenSaver {
-        store: store.clone(),
-        failed: Mutex::default(),
-    });
-    let events: Arc<dyn LinkEvents> = saver.clone();
-    let (client, auth) = LinkClient::connect_with(
-        &TcpConnector::default(),
-        &l.ws_url(),
-        &opts,
-        Some(events),
-        &cfg,
-    )
-    .map_err(|e| link_error(l, e))?;
+    let pinned_known = hub_id.is_some() || pair_link.is_some();
+    let (client, auth, credential) = match dial(l, &store, &known, pinned_known) {
+        Ok(Dialled::Done(client, auth, sent)) => (
+            client,
+            auth,
+            Credential {
+                token: sent,
+                ..known
+            },
+        ),
+        // An unknown hub whose id has a pinned record here: again, pinned
+        Ok(Dialled::Pinned(id, credential)) => {
+            *hub_id = Some(id);
+            match dial(l, &store, &credential, true) {
+                Ok(Dialled::Done(client, auth, _)) => (client, auth, credential),
+                Ok(Dialled::Pinned(..)) => {
+                    return Err(link_error(
+                        l,
+                        LinkError::Protocol("the hub's id changed".into()),
+                    ));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Err(OpenError::Link {
+            source: LinkError::HubKeyChanged,
+            ..
+        }) if pair_link.is_some() => {
+            // A link whose `k=` is not the key the hub presents: no PIN went out
+            return Err(link_error(l, LinkError::HubKeyUnverified));
+        }
+        Err(e) => return Err(e),
+    };
+    if hub_id.is_none() && !client.hello().hub.id.is_empty() {
+        *hub_id = Some(client.hello().hub.id.clone());
+    }
     // -- WP TM9 --
     if l.is_other_hub(&client.hello().hub.id) {
         let found = hub_name(&client, l);
@@ -750,11 +1138,17 @@ pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, Ope
             found,
         });
     }
+    let id = client.hello().hub.id.clone();
+    let tls = client.tls();
     let pin_source = match auth {
-        AuthState::Ready => return Ok(client),
+        AuthState::Ready => {
+            // A token TLS carried: pinned from now on (a v1 upgraded, a rotation)
+            learn_key(l, &client, &credential, pin);
+            return Ok(client);
+        }
         AuthState::NeedsPairing { pin_source } => pin_source,
         AuthState::TokenRefused { pin_source } => {
-            if let Err(e) = store.forget(&client.hello().hub.id) {
+            if let Err(e) = store.forget(&id) {
                 pin.warn(&format!(
                     "could not forget the refused pairing token for {} ({e}); it will be tried again next time",
                     hub_name(&client, l)
@@ -763,7 +1157,13 @@ pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, Ope
             pin_source
         }
     };
-    let paired = pair(l, &client, &pin_source, pin);
+    let saver = Arc::new(TokenSaver {
+        store: store.clone(),
+        tls,
+        failed: Mutex::default(),
+    });
+    client.set_events(Some(saver.clone()));
+    let paired = pair(l, &client, &pin_source, pin, pair_link);
     for e in saver.take_failures() {
         pin.warn(&format!(
             "could not save the pairing token for {} ({e}); it will ask for a PIN next time",
@@ -777,11 +1177,131 @@ pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, Ope
     Ok(client)
 }
 
+/// What a [`dial`] came to.
+enum Dialled {
+    /// With the token that went out ("" for none).
+    Done(LinkClient, AuthState, String),
+    /// The hello named a hub with a pinned record here, and the dial was not
+    /// pinned: nothing was sent; dial again with it.
+    Pinned(String, Credential),
+}
+
+/// One connect, TLS first, with `credential`'s pin. `pinned_known`: the hub's id
+/// is known, so a record looked up by the hello's id is this credential.
+fn dial(
+    l: &LinkTarget,
+    store: &TokenStore,
+    credential: &Credential,
+    pinned_known: bool,
+) -> Result<Dialled, OpenError> {
+    let lookup = store.clone();
+    let asked = l.clone();
+    let token = credential.token.clone();
+    let pinned_elsewhere: Arc<Mutex<Option<(String, Credential)>>> = Arc::default();
+    let found = Arc::clone(&pinned_elsewhere);
+    let sent: Arc<Mutex<String>> = Arc::default();
+    let went_out = Arc::clone(&sent);
+    // -- WP TM9 --
+    // An address that went to another hub gets no token, not even its own.
+    let cfg = SessionConfig {
+        token_for: Some(Arc::new(move |hub_id: &str| {
+            if asked.is_other_hub(hub_id) {
+                return None;
+            }
+            let give = |t: String| {
+                (!t.is_empty()).then(|| {
+                    went_out
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .clone_from(&t);
+                    t
+                })
+            };
+            if pinned_known {
+                return give(token.clone());
+            }
+            // -- WP SECTM -- an unpinned dial: only a v1 token may go out; a
+            // pinned one waits for a dial that checks its key
+            let stored = Credential::parse(&lookup.get(hub_id)?);
+            if stored.pin.is_some() {
+                *found.lock().unwrap_or_else(PoisonError::into_inner) =
+                    Some((hub_id.to_owned(), stored));
+                return None;
+            }
+            give(stored.token)
+        })),
+        ..SessionConfig::default()
+    };
+    let opts = ConnectOptions {
+        client_name: "DSPi Terminal".into(),
+        app: COMMAND.into(),
+        app_version: env!("CARGO_PKG_VERSION").into(),
+        token: None,
+    };
+    let tls = TlsOptions {
+        pin: credential.pin,
+        pin_next: credential.next,
+        advertised: l.tls_advertised,
+        plaintext_known: false,
+    };
+    let (client, auth) = LinkClient::connect_tls(
+        &TcpConnector::default(),
+        &l.ws_url(),
+        &opts,
+        None,
+        &cfg,
+        &tls,
+    )
+    .map_err(|e| link_error(l, e))?;
+    let elsewhere = pinned_elsewhere
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take();
+    if let Some((id, credential)) = elsewhere {
+        client.close();
+        return Ok(Dialled::Pinned(id, credential));
+    }
+    let sent = std::mem::take(&mut *sent.lock().unwrap_or_else(PoisonError::into_inner));
+    Ok(Dialled::Done(client, auth, sent))
+}
+
+/// A session that authenticated with `credential`'s token: keep the key TLS
+/// met as its pin (a `v1` token's first TLS, a proven rotation), and say so
+/// once.
+fn learn_key(l: &LinkTarget, client: &LinkClient, credential: &Credential, prompt: PinPrompt<'_>) {
+    let Some(seen) = client.tls() else {
+        return;
+    };
+    if credential.token.is_empty() {
+        return;
+    }
+    let id = client.hello().hub.id.clone();
+    let upgraded = Credential {
+        token: credential.token.clone(),
+        pin: Some(seen.key),
+        next: seen.next,
+    };
+    match l.store_credential(&id, &upgraded.encode()) {
+        Ok(true) if credential.pin != upgraded.pin => prompt.note(&format!(
+            "encrypted connection set up with {}; hub key {}",
+            hub_name(client, l),
+            dspi_link::credential::pin_display(&seen.key)
+        )),
+        Ok(_) => {}
+        Err(e) => prompt.warn(&format!(
+            "could not save the hub key for {} ({e}); it is checked again next time",
+            hub_name(client, l)
+        )),
+    }
+}
+
 /// Stores a token the moment the hub issues it, which is also how the `ok` that
 /// arrives after [`LinkClient::pair`] has timed out is heard. It runs on the
 /// client's reader thread, so failures wait here for whoever can report them.
 struct TokenSaver {
     store: TokenStore,
+    // -- WP SECTM -- the TLS the pairing ran over: the token is stored pinned
+    tls: Option<dspi_link::TlsSeen>,
     failed: Mutex<Vec<String>>,
 }
 
@@ -793,7 +1313,12 @@ impl TokenSaver {
 
 impl LinkEvents for TokenSaver {
     fn token_issued(&self, hub_id: &str, token: &str) {
-        if let Err(e) = self.store.put(hub_id, token) {
+        let credential = Credential {
+            token: token.to_owned(),
+            pin: self.tls.map(|t| t.key),
+            next: self.tls.and_then(|t| t.next),
+        };
+        if let Err(e) = self.store.put(hub_id, &credential.encode()) {
             self.failed
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -804,14 +1329,29 @@ impl LinkEvents for TokenSaver {
 
 /// Pair with the PIN, and the token goes to [`TokenSaver`]. After a timeout the
 /// session stays open for [`PAIR_GRACE`], in case the answer is only late.
+/// -- WP SECTM -- the prompt names the hub key (or "unsecured"); a pairing
+/// link's PIN goes out only after the person's yes.
 fn pair(
     l: &LinkTarget,
     client: &LinkClient,
     pin_source: &str,
     pin: PinPrompt<'_>,
+    pair_link: Option<&PairHint>,
 ) -> Result<(), OpenError> {
     let hub = hub_name(client, l);
-    let Some(code) = l.pin.clone().or_else(|| pin.pin(&hub, pin_source)) else {
+    let tls = client.tls();
+    let key = tls
+        .map(|t| dspi_link::credential::pin_display(&t.key))
+        .unwrap_or_default();
+    let label = pairing_label(&hub, tls.is_some(), &key);
+    let given = match pair_link {
+        Some(hint) => {
+            confirm_pair_link(pin, &hub, &hint.hub_key)?;
+            l.pin.clone()
+        }
+        None => l.pin.clone(),
+    };
+    let Some(code) = given.or_else(|| pin.pin(&label, pin_source)) else {
         return Err(OpenError::NeedsPin {
             hub,
             pin_source: pin_source.to_owned(),
@@ -859,10 +1399,8 @@ fn open_link_reached(
 ) -> Result<(Box<dyn Transport>, LinkTarget), OpenError> {
     let client = link_client(l, pin)?;
     let id = client.hello().hub.id.clone();
-    let reached = LinkTarget {
-        hub_id: (!id.is_empty()).then_some(id),
-        ..l.clone()
-    };
+    // -- WP SECTM -- with what the session runs over
+    let reached = l.reached_with(&id, client.tls().is_some());
     match bind_link_device(l, &client) {
         Ok(t) => Ok((t, reached)),
         Err(e) => {
@@ -1133,6 +1671,11 @@ impl Prompt for Collect {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(message.to_owned());
+    }
+
+    // -- WP SECTM --
+    fn note(&self, message: &str) {
+        self.warn(message);
     }
 }
 
@@ -2578,5 +3121,362 @@ mod tests_wp_tm9 {
             panic!("reached a real network from a test");
         };
         assert!(matches!(e, OpenError::NoMdns), "{e}");
+    }
+}
+
+// -- WP SECTM --
+#[cfg(test)]
+mod tests_wp_sectm {
+    use super::*;
+    use dspi_link::credential::{pin_display, pin_to_b64url};
+    use dspi_link::fakehub::{Auth, FakeHub, FakeTlsKey, HubConfig};
+
+    const PIN: &str = "123456";
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = test_dir().join(format!("sectm-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("tokens.toml")
+    }
+
+    fn pin_hub() -> FakeHub {
+        FakeHub::start(HubConfig {
+            auth: Auth::Fixed(PIN.into()),
+            ..HubConfig::default()
+        })
+        .unwrap()
+    }
+
+    fn link(hub: &FakeHub, tokens: PathBuf) -> LinkTarget {
+        LinkTarget {
+            tokens: Some(tokens),
+            ..LinkTarget::parse(&hub.addr().to_string()).unwrap()
+        }
+    }
+
+    fn hid() -> String {
+        HubConfig::default().hub_id
+    }
+
+    /// A person who types `pin` and answers `yes`, and what they were shown.
+    #[derive(Default)]
+    struct Person {
+        pin: Option<String>,
+        yes: Option<bool>,
+        asked: Mutex<Vec<String>>,
+        questions: Mutex<Vec<String>>,
+        notes: Mutex<Vec<String>>,
+    }
+
+    impl Person {
+        fn new(pin: Option<&str>, yes: Option<bool>) -> Self {
+            Self {
+                pin: pin.map(str::to_owned),
+                yes,
+                ..Self::default()
+            }
+        }
+        fn asked(&self) -> Vec<String> {
+            self.asked.lock().unwrap().clone()
+        }
+        fn questions(&self) -> Vec<String> {
+            self.questions.lock().unwrap().clone()
+        }
+        fn notes(&self) -> Vec<String> {
+            self.notes.lock().unwrap().clone()
+        }
+    }
+
+    impl Prompt for Person {
+        fn pin(&self, hub: &str, _pin_source: &str) -> Option<String> {
+            self.asked.lock().unwrap().push(hub.to_owned());
+            self.pin.clone()
+        }
+        fn warn(&self, message: &str) {
+            self.notes.lock().unwrap().push(message.to_owned());
+        }
+        fn confirm(&self, question: &str) -> Option<bool> {
+            self.questions.lock().unwrap().push(question.to_owned());
+            self.yes
+        }
+        fn note(&self, message: &str) {
+            self.notes.lock().unwrap().push(message.to_owned());
+        }
+    }
+
+    fn link_err(r: Result<LinkClient, OpenError>) -> LinkError {
+        match r {
+            Err(OpenError::Link { source, .. }) => source,
+            Err(e) => panic!("expected a Link error, got {e}"),
+            Ok(_) => panic!("expected a Link error, got a session"),
+        }
+    }
+
+    /// Paired in plaintext (a v1 token), then the hub turns TLS on: the next
+    /// connect pins its key and saves the v2 credential in the 0600 file.
+    fn paired_then_pinned(hub: &FakeHub, tokens: &Path) -> (LinkTarget, FakeTlsKey) {
+        let l = link(hub, tokens.to_owned());
+        let person = Person::new(Some(PIN), None);
+        link_client(&l, &person).unwrap().close();
+        let v1 = l.stored_token(&hid()).unwrap();
+        assert!(!v1.starts_with("v2."), "plaintext pairing: a v1 token");
+        assert!(
+            person.asked()[0].ends_with(" (unsecured)"),
+            "the PIN prompt says the pairing is unencrypted: {:?}",
+            person.asked()
+        );
+        let key = FakeTlsKey::generate();
+        hub.set_tls(Some(&key));
+        let client = link_client(&l, &person).unwrap();
+        assert!(client.tls().is_some(), "TLS first");
+        client.close();
+        let v2 = Credential::parse(&l.stored_token(&hid()).unwrap());
+        assert_eq!(v2.pin, Some(key.pin()), "pinned to the key TLS met");
+        assert_eq!(v2.token, v1, "the same token, upgraded");
+        assert!(
+            person
+                .notes()
+                .iter()
+                .any(|n| n.contains(&pin_display(&key.pin()))),
+            "the new hub key is said once: {:?}",
+            person.notes()
+        );
+        (l, key)
+    }
+
+    #[test]
+    fn wp_sectm_a_v1_token_is_upgraded_to_a_saved_v2_credential() {
+        let hub = pin_hub();
+        let tokens = scratch("upgrade");
+        let (l, key) = paired_then_pinned(&hub, &tokens);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&tokens).unwrap().permissions().mode();
+            assert_eq!(mode & 0o077, 0, "the credential file is 0600");
+        }
+        // Again: pinned, nothing new to save or say
+        let person = Person::new(None, None);
+        let client = link_client(&l, &person).unwrap();
+        assert_eq!(client.tls().map(|t| t.key), Some(key.pin()));
+        client.close();
+        assert!(person.notes().is_empty(), "{:?}", person.notes());
+        assert!(person.asked().is_empty(), "no PIN asked");
+    }
+
+    #[test]
+    fn wp_sectm_another_key_is_refused_and_pairing_again_only_on_a_yes() {
+        let hub = pin_hub();
+        let tokens = scratch("changed");
+        let (l, key) = paired_then_pinned(&hub, &tokens);
+        let stored = l.stored_token(&hid()).unwrap();
+        let other = FakeTlsKey::generate();
+        hub.set_tls(Some(&other));
+        let seen = hub.tokens_seen().len();
+
+        // Nobody to ask: refused, the record kept, and how to pair again said
+        let nobody = Person::new(None, None);
+        assert!(matches!(
+            link_err(link_client(&l, &nobody)),
+            LinkError::HubKeyChanged
+        ));
+        assert!(
+            nobody.notes().iter().any(|n| n.contains("pair again")),
+            "{:?}",
+            nobody.notes()
+        );
+        // A no: the same
+        let no = Person::new(Some(PIN), Some(false));
+        assert!(matches!(
+            link_err(link_client(&l, &no)),
+            LinkError::HubKeyChanged
+        ));
+        assert_eq!(no.questions().len(), 1);
+        assert!(no.asked().is_empty(), "no PIN asked after a no");
+        assert_eq!(
+            hub.tokens_seen().len(),
+            seen,
+            "no token went to the other key"
+        );
+        assert_eq!(l.stored_token(&hid()).as_deref(), Some(stored.as_str()));
+
+        // A yes: forgotten, paired again, pinned to the new key (shown at the PIN)
+        let yes = Person::new(Some(PIN), Some(true));
+        link_client(&l, &yes).unwrap().close();
+        let asked = yes.asked();
+        assert_eq!(asked.len(), 1);
+        assert!(asked[0].contains(&pin_display(&other.pin())), "{asked:?}");
+        let now = Credential::parse(&l.stored_token(&hid()).unwrap());
+        assert_eq!(now.pin, Some(other.pin()));
+        assert_ne!(now.pin, Some(key.pin()));
+    }
+
+    #[test]
+    fn wp_sectm_a_pinned_hub_without_tls_gets_no_token_in_plaintext() {
+        let hub = pin_hub();
+        let tokens = scratch("refused");
+        let (l, _) = paired_then_pinned(&hub, &tokens);
+        let stored = l.stored_token(&hid()).unwrap();
+        hub.set_tls(None);
+        let seen = hub.tokens_seen().len();
+        let nobody = Person::new(None, None);
+        assert!(matches!(
+            link_err(link_client(&l, &nobody)),
+            LinkError::TlsRefused { .. }
+        ));
+        assert_eq!(hub.tokens_seen().len(), seen, "never plaintext");
+        assert_eq!(
+            l.stored_token(&hid()).as_deref(),
+            Some(stored.as_str()),
+            "kept"
+        );
+    }
+
+    #[test]
+    fn wp_sectm_other_failures_keep_the_record_and_offer_nothing() {
+        let hub = pin_hub();
+        let tokens = scratch("other");
+        let (l, _) = paired_then_pinned(&hub, &tokens);
+        let stored = l.stored_token(&hid()).unwrap();
+        drop(hub);
+        let person = Person::new(Some(PIN), Some(true));
+        assert!(link_client(&l, &person).is_err());
+        assert!(person.questions().is_empty(), "no pairing again offered");
+        assert_eq!(l.stored_token(&hid()).as_deref(), Some(stored.as_str()));
+        assert!(!offers_repair("io") && !offers_repair("wrong_pin"));
+        for code in REPAIR_CODES {
+            assert!(offers_repair(code));
+        }
+        assert_eq!(repair_code(&LinkError::TlsRequired), Some("tls_required"));
+        assert_eq!(repair_code(&LinkError::Timeout), None);
+    }
+
+    fn pair_link(hub: &FakeHub, key: &FakeTlsKey, tokens: PathBuf) -> LinkTarget {
+        let text = format!(
+            "dspi://pair?h={}&a={}&k={}&p={PIN}",
+            hid(),
+            hub.addr(),
+            pin_to_b64url(&key.pin())
+        );
+        LinkTarget {
+            tokens: Some(tokens),
+            ..LinkTarget::from_pair_link(&text).unwrap()
+        }
+    }
+
+    #[test]
+    fn wp_sectm_a_pair_link_with_a_wrong_key_is_refused_before_any_pin() {
+        let key = FakeTlsKey::generate();
+        let hub = pin_hub();
+        hub.set_tls(Some(&key));
+        let tokens = scratch("wrong-k");
+        let l = pair_link(&hub, &FakeTlsKey::generate(), tokens);
+        let person = Person::new(Some(PIN), Some(true));
+        assert!(matches!(
+            link_err(link_client(&l, &person)),
+            LinkError::HubKeyUnverified
+        ));
+        assert!(
+            person.questions().is_empty(),
+            "never asked: the key failed first"
+        );
+        assert!(person.asked().is_empty());
+        assert_eq!(l.stored_token(&hid()), None, "nothing stored");
+    }
+
+    #[test]
+    fn wp_sectm_a_pair_link_pairs_only_after_a_yes() {
+        let key = FakeTlsKey::generate();
+        let hub = pin_hub();
+        hub.set_tls(Some(&key));
+        let tokens = scratch("pair-link");
+        let l = pair_link(&hub, &key, tokens);
+        assert_eq!(l.pin.as_deref(), Some(PIN));
+        assert!(!format!("{l:?}").contains(PIN), "no PIN in Debug: {l:?}");
+
+        assert!(matches!(
+            link_client(&l, &no_prompt),
+            Err(OpenError::NotConfirmed { .. })
+        ));
+        let no = Person::new(None, Some(false));
+        assert!(matches!(
+            link_client(&l, &no),
+            Err(OpenError::NotConfirmed { .. })
+        ));
+        assert_eq!(l.stored_token(&hid()), None);
+
+        let yes = Person::new(None, Some(true));
+        let client = link_client(&l, &yes).unwrap();
+        client.close();
+        let q = yes.questions();
+        assert_eq!(q.len(), 1);
+        assert!(
+            q[0].contains(&pin_display(&key.pin())),
+            "the fingerprint: {q:?}"
+        );
+        assert!(yes.asked().is_empty(), "the link's PIN, not a typed one");
+        let stored = Credential::parse(&l.stored_token(&hid()).unwrap());
+        assert_eq!(stored.pin, Some(key.pin()));
+        assert!(!stored.token.is_empty());
+        // As reached, the link is spent
+        let reached = l.reached_with(&hid(), true);
+        assert!(reached.pair_link.is_none() && reached.pin.is_none());
+    }
+
+    #[test]
+    fn wp_sectm_a_bad_pair_link_is_refused_without_repeating_it() {
+        for bad in [
+            "dspi://pair?h=x",
+            "dspi://pair?h=abc&a=host:1&k=AAAA&p=987654",
+            "dspi://other?h=abc",
+        ] {
+            let e = LinkTarget::from_pair_link(bad).unwrap_err();
+            assert!(!e.contains("987654") && !e.contains("dspi://"), "{e}");
+        }
+    }
+
+    #[test]
+    fn wp_sectm_reached_says_whether_the_session_is_encrypted() {
+        let hub = pin_hub();
+        let tokens = scratch("reached");
+        let person = Person::new(Some(PIN), None);
+        let plain = Target::Link(link(&hub, tokens.clone()))
+            .connect(&person)
+            .unwrap();
+        let reached = plain.link.clone().unwrap();
+        assert_eq!(reached.encrypted, Some(false));
+        assert!(Target::Link(reached).via().ends_with(" (unsecured)"));
+        drop(plain);
+
+        let key = FakeTlsKey::generate();
+        hub.set_tls(Some(&key));
+        let tls = Target::Link(link(&hub, tokens)).connect(&person).unwrap();
+        let reached = tls.link.clone().unwrap();
+        assert_eq!(reached.encrypted, Some(true));
+        assert!(!Target::Link(reached).via().contains("unsecured"));
+    }
+
+    #[test]
+    fn wp_sectm_the_badge_is_words_first_colour_second() {
+        assert_eq!(with_security("Link h", Some(false)), "Link h (unsecured)");
+        assert_eq!(with_security("Link h", Some(true)), "Link h");
+        assert_eq!(with_security("Link h", None), "Link h");
+        assert_eq!(
+            paint_unsecured("Link h (unsecured)", false),
+            "Link h (unsecured)"
+        );
+        assert_eq!(
+            paint_unsecured("Link h (unsecured)", true),
+            "Link h\u{1b}[31m (unsecured)\u{1b}[0m"
+        );
+        assert_eq!(paint_unsecured("Link h", true), "Link h");
+        assert!(!colour_allowed(false));
+        assert!(parse_yes("y\n") && parse_yes(" YES ") && !parse_yes("") && !parse_yes("n"));
+        assert_eq!(pairing_label("Studio", false, ""), "Studio (unsecured)");
+        assert_eq!(
+            pairing_label("Studio", true, "SHA256:K7Q2"),
+            "Studio (hub key SHA256:K7Q2)"
+        );
     }
 }

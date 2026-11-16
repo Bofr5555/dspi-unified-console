@@ -221,34 +221,82 @@ fn open_dlink(
 // session with no device bound (an inventory, a schedule: no device needed).
 /// The core's DSPi Link session to `l`'s hub, authenticated as
 /// [`open_dlink`] says, with no device bound yet: the hub's `hello`.
+///
+/// -- WP SECTM -- The stored record is the core's credential (PLAN-SEC 4.3),
+/// saved whenever the core's changes (a pairing over TLS, a `v1` token's
+/// first TLS, a rotation). The PIN prompt names the hub key or "unsecured"; a
+/// `dspi://pair` link's PIN goes out only after the person's yes. Pairing again
+/// is offered after `hub_key_changed`, `hub_key_unverified`, `tls_refused` and
+/// `tls_required`, and never otherwise.
 pub(crate) fn dlink_session(
     core: &DspiCore,
     l: &LinkTarget,
     pin: connect::PinPrompt<'_>,
 ) -> Result<dspi_core::LinkHello, OpenFailure> {
+    let mut hub_id = l.hub_id.clone();
+    match dlink_attempt(core, l, pin, &mut hub_id, false) {
+        Err(OpenFailure::Core(DspiError::Link { code, msg }))
+            if connect::offers_repair(&code) && l.pair_link.is_none() =>
+        {
+            let hub = hub_id.clone().unwrap_or_else(|| l.link_address());
+            if !connect::offer_repair(pin, &hub, &l.link_address(), &code) {
+                return Err(DspiError::Link { code, msg }.into());
+            }
+            if let Some(id) = &hub_id
+                && let Err(e) = l.forget_token(id)
+            {
+                pin.warn(&format!("could not forget the pairing with {hub} ({e})"));
+            }
+            dlink_attempt(core, l, pin, &mut hub_id, true)
+        }
+        other => other,
+    }
+}
+
+// -- WP SECTM --
+/// [`dlink_session`]'s one try. `hub_id` is filled in once a hello names the
+/// hub. `fresh`: pairing again, so no stored credential and no link's key.
+fn dlink_attempt(
+    core: &DspiCore,
+    l: &LinkTarget,
+    pin: connect::PinPrompt<'_>,
+    hub_id: &mut Option<String>,
+    fresh: bool,
+) -> Result<dspi_core::LinkHello, OpenFailure> {
     let url = l.link_url();
     let version = env!("CARGO_PKG_VERSION").to_owned();
-    let connect = |token: String, hub_id: String| {
-        core.link_connect(
+    let connect = |credential: String, hub_id: String| {
+        core.link_connect_advertised(
             url.clone(),
             CLIENT_NAME.into(),
             version.clone(),
-            token,
+            credential,
             hub_id,
+            l.tls_advertised,
         )
     };
-    // A known hub gets its token at once; an unknown one says who it is
-    // first, and is dialled again with its token if it has one here.
-    let mut hello = match &l.hub_id {
-        Some(id) => connect(l.stored_token(id).unwrap_or_default(), id.clone())?,
-        None => {
+    let pair_link = l.pair_link.as_ref().filter(|_| !fresh);
+    let stored = |id: &str| (!fresh).then(|| l.stored_token(id)).flatten();
+    // A pairing link: its key, no token. A known hub gets its credential at
+    // once; an unknown one says who it is first, and is dialled again with
+    // its credential if it has one here.
+    let mut hello = match (pair_link, hub_id.clone()) {
+        (Some(hint), id) => connect(hint.credential.clone(), id.unwrap_or_default())?,
+        (None, Some(id)) => connect(stored(&id).unwrap_or_default(), id)?,
+        (None, None) => {
             let first = connect(String::new(), String::new())?;
-            match l.stored_token(&first.hub_id) {
-                Some(token) if first.needs_pairing => connect(token, first.hub_id.clone())?,
+            *hub_id = Some(first.hub_id.clone()).filter(|id| !id.is_empty());
+            match stored(&first.hub_id) {
+                Some(credential) if first.needs_pairing => {
+                    connect(credential, first.hub_id.clone())?
+                }
                 _ => first,
             }
         }
     };
+    if hub_id.is_none() && !hello.hub_id.is_empty() {
+        *hub_id = Some(hello.hub_id.clone());
+    }
     if l.names_other_hub(&hello.hub_id) {
         core.link_close();
         return Err(OpenError::WrongHub {
@@ -269,8 +317,21 @@ pub(crate) fn dlink_session(
                 "could not forget the refused pairing token for {hub} ({e}); it will be tried again next time"
             ));
     }
+    let mut paired = false;
     if hello.needs_pairing {
-        let Some(code) = l.pin.clone().or_else(|| pin.pin(&hub, &hello.pin_source)) else {
+        let security = core.link_security();
+        let label = connect::pairing_label(&hub, security.encrypted, &security.hub_key);
+        let given = match pair_link {
+            Some(hint) => {
+                if let Err(e) = connect::confirm_pair_link(pin, &hub, &hint.hub_key) {
+                    core.link_close();
+                    return Err(e.into());
+                }
+                l.pin.clone()
+            }
+            None => l.pin.clone(),
+        };
+        let Some(code) = given.or_else(|| pin.pin(&label, &hello.pin_source)) else {
             core.link_close();
             return Err(OpenError::NeedsPin {
                 hub,
@@ -297,6 +358,20 @@ pub(crate) fn dlink_session(
             ));
         }
         hello.needs_pairing = false;
+        paired = true;
+    }
+    // The core's credential, saved when it changed (a v1 token pinned, a
+    // proven rotation), and the new key said once.
+    let security = core.link_security();
+    match l.store_credential(&hello.hub_id, &security.credential) {
+        Ok(true) if security.hub_key_new && !paired => pin.note(&format!(
+            "encrypted connection set up with {hub}; hub key {}",
+            security.hub_key
+        )),
+        Ok(_) => {}
+        Err(e) => pin.warn(&format!(
+            "could not save the hub key for {hub} ({e}); it is checked again next time"
+        )),
     }
     Ok(hello)
 }
@@ -328,10 +403,8 @@ fn pick_dlink_device(
         core.link_close();
         return Err(e.into());
     }
-    let reached = LinkTarget {
-        hub_id: (!hello.hub_id.is_empty()).then(|| hello.hub_id.clone()),
-        ..l.clone()
-    };
+    // -- WP SECTM -- with what the session runs over
+    let reached = l.reached_with(&hello.hub_id, core.link_security().encrypted);
     Ok((device.serial.clone(), reached))
 }
 
@@ -1857,5 +1930,215 @@ mod tests_wp_tmcore {
         assert_eq!(band(1).freq, 2500.0);
         live.run_command(s, "undo");
         assert_eq!((band(0), band(1)), before, "one undo, both sides back");
+    }
+}
+
+// -- WP SECTM --
+#[cfg(test)]
+mod tests_wp_sectm {
+    use super::*;
+    use crate::pro::tests::scratch;
+    use dspi_link::credential::{Credential, pin_display, pin_to_b64url};
+    use dspi_link::fakehub::{Auth, FakeHub, FakeTlsKey, HubConfig};
+    use std::sync::Mutex;
+
+    const PIN: &str = "123456";
+
+    fn pin_hub() -> FakeHub {
+        FakeHub::start(HubConfig {
+            auth: Auth::Fixed(PIN.into()),
+            ..HubConfig::default()
+        })
+        .unwrap()
+    }
+
+    fn hid() -> String {
+        HubConfig::default().hub_id
+    }
+
+    fn link(hub: &FakeHub, name: &str) -> LinkTarget {
+        LinkTarget {
+            tokens: Some(scratch(name).join("tokens.toml")),
+            ..LinkTarget::parse(&hub.addr().to_string()).unwrap()
+        }
+    }
+
+    #[derive(Default)]
+    struct Person {
+        pin: Option<String>,
+        yes: Option<bool>,
+        asked: Mutex<Vec<String>>,
+        questions: Mutex<Vec<String>>,
+        notes: Mutex<Vec<String>>,
+    }
+
+    impl Person {
+        fn new(pin: Option<&str>, yes: Option<bool>) -> Self {
+            Self {
+                pin: pin.map(str::to_owned),
+                yes,
+                ..Self::default()
+            }
+        }
+    }
+
+    impl connect::Prompt for Person {
+        fn pin(&self, hub: &str, _pin_source: &str) -> Option<String> {
+            self.asked.lock().unwrap().push(hub.to_owned());
+            self.pin.clone()
+        }
+        fn warn(&self, message: &str) {
+            self.notes.lock().unwrap().push(message.to_owned());
+        }
+        fn confirm(&self, question: &str) -> Option<bool> {
+            self.questions.lock().unwrap().push(question.to_owned());
+            self.yes
+        }
+        fn note(&self, message: &str) {
+            self.notes.lock().unwrap().push(message.to_owned());
+        }
+    }
+
+    fn code(r: Result<dspi_core::LinkHello, OpenFailure>) -> String {
+        match r {
+            Err(OpenFailure::Core(DspiError::Link { code, .. })) => code,
+            Err(e) => panic!("expected a Link error, got {e:?}"),
+            Ok(_) => panic!("expected a Link error, got a session"),
+        }
+    }
+
+    /// Paired over plaintext through the core (v1), then TLS on: pinned and
+    /// the v2 credential saved.
+    fn pinned(hub: &FakeHub, l: &LinkTarget) -> FakeTlsKey {
+        let core = DspiCore::new();
+        let person = Person::new(Some(PIN), None);
+        dlink_session(&core, l, &person).unwrap();
+        assert!(!core.link_security().encrypted);
+        let mut v = serde_json::json!({ "via": "Link h" });
+        crate::pro::link_security_into(&mut v, &core.link_security());
+        assert_eq!(v["via"], "Link h (unsecured)");
+        assert_eq!(v["link"]["encrypted"], false);
+        core.link_close();
+        let asked = person.asked.lock().unwrap().clone();
+        assert!(asked[0].ends_with(" (unsecured)"), "{asked:?}");
+        let v1 = l.stored_token(&hid()).unwrap();
+        assert!(!v1.starts_with("v2."));
+
+        let key = FakeTlsKey::generate();
+        hub.set_tls(Some(&key));
+        let core = DspiCore::new();
+        let person = Person::new(None, None);
+        dlink_session(&core, l, &person).unwrap();
+        let security = core.link_security();
+        assert!(security.encrypted);
+        let mut v = serde_json::json!({ "via": "Link h" });
+        crate::pro::link_security_into(&mut v, &security);
+        assert_eq!(v["via"], "Link h");
+        assert_eq!(v["link"]["hubKey"], pin_display(&key.pin()));
+        core.link_close();
+        let v2 = Credential::parse(&l.stored_token(&hid()).unwrap());
+        assert_eq!(v2.pin, Some(key.pin()), "saved, pinned");
+        assert_eq!(v2.token, v1, "the same token");
+        let notes = person.notes.lock().unwrap().clone();
+        assert!(
+            notes.iter().any(|n| n.contains(&pin_display(&key.pin()))),
+            "{notes:?}"
+        );
+        key
+    }
+
+    #[test]
+    fn wp_sectm_core_a_v1_token_is_upgraded_and_saved() {
+        let hub = pin_hub();
+        let l = link(&hub, "sectm_upgrade");
+        pinned(&hub, &l);
+    }
+
+    #[test]
+    fn wp_sectm_core_another_key_offers_pairing_again_and_only_a_yes_does_it() {
+        let hub = pin_hub();
+        let l = link(&hub, "sectm_changed");
+        pinned(&hub, &l);
+        let stored = l.stored_token(&hid()).unwrap();
+        let other = FakeTlsKey::generate();
+        hub.set_tls(Some(&other));
+
+        let core = DspiCore::new();
+        let no = Person::new(Some(PIN), Some(false));
+        assert_eq!(code(dlink_session(&core, &l, &no)), "hub_key_changed");
+        assert_eq!(no.questions.lock().unwrap().len(), 1);
+        assert_eq!(
+            l.stored_token(&hid()).as_deref(),
+            Some(stored.as_str()),
+            "kept"
+        );
+
+        let yes = Person::new(Some(PIN), Some(true));
+        dlink_session(&core, &l, &yes).unwrap();
+        core.link_close();
+        let asked = yes.asked.lock().unwrap().clone();
+        assert!(asked[0].contains(&pin_display(&other.pin())), "{asked:?}");
+        let now = Credential::parse(&l.stored_token(&hid()).unwrap());
+        assert_eq!(now.pin, Some(other.pin()), "pinned to the new key");
+    }
+
+    #[test]
+    fn wp_sectm_core_a_pair_link_is_checked_then_confirmed() {
+        let key = FakeTlsKey::generate();
+        let hub = pin_hub();
+        hub.set_tls(Some(&key));
+        let text = |k: &FakeTlsKey| {
+            format!(
+                "dspi://pair?h={}&a={}&k={}&p={PIN}",
+                hid(),
+                hub.addr(),
+                pin_to_b64url(&k.pin())
+            )
+        };
+        let tokens = scratch("sectm_pair_link").join("tokens.toml");
+        let with = |t: String| LinkTarget {
+            tokens: Some(tokens.clone()),
+            ..LinkTarget::from_pair_link(&t).unwrap()
+        };
+        let core = DspiCore::new();
+
+        // A wrong k=: refused before any question or PIN
+        let wrong = with(text(&FakeTlsKey::generate()));
+        let person = Person::new(None, Some(true));
+        assert_eq!(
+            code(dlink_session(&core, &wrong, &person)),
+            "hub_key_unverified"
+        );
+        assert!(person.questions.lock().unwrap().is_empty());
+        assert_eq!(wrong.stored_token(&hid()), None);
+
+        // The right one: nothing without a yes, paired and pinned with one
+        let right = with(text(&key));
+        let no = Person::new(None, Some(false));
+        assert!(matches!(
+            dlink_session(&core, &right, &no),
+            Err(OpenFailure::Open(OpenError::NotConfirmed { .. }))
+        ));
+        assert_eq!(right.stored_token(&hid()), None);
+        let yes = Person::new(None, Some(true));
+        dlink_session(&core, &right, &yes).unwrap();
+        core.link_close();
+        let q = yes.questions.lock().unwrap().clone();
+        assert!(q[0].contains(&pin_display(&key.pin())), "{q:?}");
+        assert!(yes.asked.lock().unwrap().is_empty(), "the link's PIN");
+        let stored = Credential::parse(&right.stored_token(&hid()).unwrap());
+        assert_eq!(stored.pin, Some(key.pin()));
+    }
+
+    #[test]
+    fn wp_sectm_the_badge_words_are_the_core_table() {
+        let defaults = connect::UnsecuredWords::default();
+        let badge = dspi_core::notice_for_key(connect::NOTICE_UNSECURED.into(), String::new());
+        let info = dspi_core::notice_for_key(connect::NOTICE_UNSECURED_INFO.into(), String::new());
+        assert_eq!(badge.key, connect::NOTICE_UNSECURED, "the row exists");
+        assert_eq!(info.key, connect::NOTICE_UNSECURED_INFO, "the row exists");
+        assert_eq!(defaults.badge, badge.title);
+        assert_eq!(defaults.info, info.reason);
+        assert_eq!(defaults.action, info.action);
     }
 }

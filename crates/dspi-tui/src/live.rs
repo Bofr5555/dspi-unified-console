@@ -2829,6 +2829,13 @@ impl Live {
     pub fn set_connection(&mut self, target: &Target, ext: &ExtState) {
         let target = target.pinned(&self.state.caps.serial);
         self.shell.model.via = target.via();
+        // -- WP SECTM -- a hub session without TLS: the badge, and once why
+        let unsecured = matches!(&target, Target::Link(l) if l.encrypted == Some(false));
+        if unsecured && !self.shell.model.link_unsecured {
+            let words = connect::unsecured_words();
+            self.note(format!("{} {}", words.info, words.action));
+        }
+        self.shell.model.link_unsecured = unsecured;
         self.shell.model.ext = connect::ext_label(ext);
         self.echo = EchoFilter::default();
         self.echo.set_bulk_source(ext.bulk_source());
@@ -2844,6 +2851,7 @@ impl Live {
     pub fn set_document(&mut self, name: &str) {
         self.shell.model.document = Some(connect::printable(name));
         self.shell.model.via = "file".into();
+        self.shell.model.link_unsecured = false; // -- WP SECTM --
     }
 
     /// Bring a lost device back, once one has been lost. Never blocks: the
@@ -7477,5 +7485,91 @@ mod tests_wp_tm12 {
             .filter(|c| c.value == "autoeq")
             .count();
         assert_eq!(listed, 1);
+    }
+}
+
+// -- WP SECTM --
+#[cfg(test)]
+mod tests_wp_sectm {
+    use super::*;
+    use crate::shell::connect::LinkTarget;
+    use crate::theme::{ColorDepth, Glyphs};
+    use dspi_transport::{FakeDevice, Transport};
+    use ratatui::buffer::Buffer;
+
+    /// A live interface on a demo device, connected "through" `target`.
+    fn on(target: &Target, width: u16) -> (Live, String, Buffer) {
+        let mut t: Box<dyn Transport> = Box::new(FakeDevice::demo());
+        let caps = dspi_session::probe(t.as_mut()).unwrap();
+        let ext = ExtState::probe(t.as_mut()).unwrap();
+        let mut session = Session::new(t, caps.clone()).unwrap();
+        let bulk = session.snapshot().unwrap();
+        let theme = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
+        let mut live = Live::new(
+            DeviceState::new(caps, bulk),
+            theme,
+            Performance::default(),
+            Box::new(ConsoleScreens::new()),
+        );
+        live.set_connection(target, &ext);
+        live.sync_model();
+        let area = Rect::new(0, 0, width, 40);
+        let mut buf = Buffer::empty(area);
+        live.draw(area, &mut buf);
+        let top: String = (0..area.width).map(|x| buf[(x, 0)].symbol()).collect();
+        (live, top, buf)
+    }
+
+    fn hub(encrypted: Option<bool>) -> Target {
+        Target::Link(LinkTarget {
+            encrypted,
+            ..LinkTarget::parse("studio.local").unwrap()
+        })
+    }
+
+    #[test]
+    fn wp_sectm_an_unencrypted_hub_session_says_unsecured_in_red() {
+        let (live, top, buf) = on(&hub(Some(false)), 140);
+        assert!(live.shell.model.link_unsecured);
+        assert_eq!(live.shell.model.via, "Link studio.local (unsecured)");
+        assert!(top.contains("· Link studio.local (unsecured)"), "{top}");
+        // Red, and the words carry it without colour too
+        let at = top.find("(unsecured)").unwrap();
+        let x = top.get(..at).unwrap().chars().count() as u16;
+        let danger = live.shell.theme.danger;
+        for dx in 0.."(unsecured)".len() as u16 {
+            assert_eq!(buf[(x + dx, 0)].fg, danger, "{top}");
+        }
+        assert_ne!(buf[(x.saturating_sub(3), 0)].fg, danger, "only the badge");
+        // Said once, with the calm explanation
+        let status = live.shell.model.status.clone().unwrap_or_default();
+        assert!(
+            status.contains("trusted local network or over a VPN"),
+            "{status}"
+        );
+    }
+
+    #[test]
+    fn wp_sectm_an_encrypted_or_unknown_session_has_no_badge() {
+        for encrypted in [Some(true), None] {
+            let (live, top, _) = on(&hub(encrypted), 140);
+            assert!(!live.shell.model.link_unsecured);
+            assert_eq!(live.shell.model.via, "Link studio.local");
+            assert!(!top.contains("unsecured"), "{top}");
+        }
+        let (live, _, _) = on(&Target::Demo, 140);
+        assert!(!live.shell.model.link_unsecured);
+    }
+
+    #[test]
+    fn wp_sectm_a_narrow_title_keeps_the_badge() {
+        // Where the link's name no longer fits, the badge still does
+        let narrow = (60..140)
+            .rev()
+            .map(|w| on(&hub(Some(false)), w).1)
+            .find(|top| !top.contains("Link studio.local"))
+            .expect("some width drops the link's name");
+        assert!(narrow.contains("· (unsecured)"), "{narrow}");
+        assert!(narrow.contains("Connected"), "{narrow}");
     }
 }

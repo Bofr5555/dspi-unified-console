@@ -22,7 +22,9 @@ serde = { workspace = true, features = ["derive"] }
 # -- WP R1 --
 # The hub session the terminal connects, pairs and closes (shell/connect.rs);
 # dspi-transport only wraps an open one.
-dspi-link.workspace = true
+# -- WP SECTM -- with `tls`: TLS first and the hub key's pin (PLAN-SEC 4.3),
+# rustls and ring, which this crate already links for ureq.
+dspi-link = { workspace = true, features = ["tls"] }
 # OpenError, as the other crates' typed errors.
 thiserror.workspace = true
 # -- WP TM12 --
