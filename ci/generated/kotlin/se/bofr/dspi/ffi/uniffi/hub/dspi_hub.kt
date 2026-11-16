@@ -771,6 +771,12 @@ internal open class UniffiVTableCallbackInterfaceHubHostListener(
 
 
 
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -786,7 +792,11 @@ internal open class UniffiVTableCallbackInterfaceHubHostListener(
 // when the library is loaded.
 internal interface IntegrityCheckingUniffiLib : Library {
     // Integrity check functions only
-    fun uniffi_dspi_hub_checksum_func_hub_saved_settings(
+    fun uniffi_dspi_hub_checksum_func_hub_default_start_options(
+): Short
+fun uniffi_dspi_hub_checksum_func_hub_saved_settings(
+): Short
+fun uniffi_dspi_hub_checksum_func_hub_security_effects(
 ): Short
 fun uniffi_dspi_hub_checksum_method_hubhost_attach_app(
 ): Short
@@ -801,6 +811,8 @@ fun uniffi_dspi_hub_checksum_method_hubhost_clients(
 fun uniffi_dspi_hub_checksum_method_hubhost_demo_turn_knob(
 ): Short
 fun uniffi_dspi_hub_checksum_method_hubhost_devices(
+): Short
+fun uniffi_dspi_hub_checksum_method_hubhost_pairing_link(
 ): Short
 fun uniffi_dspi_hub_checksum_method_hubhost_revoke(
 ): Short
@@ -889,6 +901,8 @@ fun uniffi_dspi_hub_fn_method_hubhost_demo_turn_knob(`ptr`: Pointer,uniffi_out_e
 ): Byte
 fun uniffi_dspi_hub_fn_method_hubhost_devices(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_hub_fn_method_hubhost_pairing_link(`ptr`: Pointer,`host`: RustBuffer.ByValue,`pin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_hub_fn_method_hubhost_revoke(`ptr`: Pointer,`cid`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun uniffi_dspi_hub_fn_method_hubhost_set_listener(`ptr`: Pointer,`listener`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -909,7 +923,11 @@ fun uniffi_dspi_hub_fn_init_callback_vtable_hubhostlistener(`vtable`: UniffiVTab
 ): Unit
 fun uniffi_dspi_hub_fn_method_hubhostlistener_on_hub_event(`ptr`: Pointer,`event`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_dspi_hub_fn_func_hub_default_start_options(`storeDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_hub_fn_func_hub_saved_settings(`storeDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_hub_fn_func_hub_security_effects(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun ffi_dspi_hub_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1037,7 +1055,13 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if (lib.uniffi_dspi_hub_checksum_func_hub_default_start_options() != 40533.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_hub_checksum_func_hub_saved_settings() != 4205.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_hub_checksum_func_hub_security_effects() != 28930.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_hub_checksum_method_hubhost_attach_app() != 3927.toShort()) {
@@ -1059,6 +1083,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_hub_checksum_method_hubhost_devices() != 941.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_hub_checksum_method_hubhost_pairing_link() != 36749.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_hub_checksum_method_hubhost_revoke() != 19098.toShort()) {
@@ -1584,6 +1611,15 @@ public interface HubHostInterface {
     fun `devices`(): List<HubSharedDevice>
     
     /**
+     * The pairing link a QR code carries (`dspi://pair?h=..&a=<host>:<port>&k=..`,
+     * with `&p=<pin>` when `pin` is not empty), for a client to pair with this hub
+     * and pin its key in one step. `host` is the address the client will use. `None`
+     * with no hub running, or with no TLS served (nothing to pin). Shows the PIN to
+     * whoever sees it: only on the screen that shows the PIN.
+     */
+    fun `pairingLink`(`host`: kotlin.String, `pin`: kotlin.String): kotlin.String?
+    
+    /**
      * Forget a paired client: its token stops working and its connections close at
      * once with code 4002, which clients do not reconnect from. Writes the store.
      * False with no hub running, no such client, or inside the listener.
@@ -1841,6 +1877,25 @@ open class HubHost: Disposable, AutoCloseable, HubHostInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_hub_fn_method_hubhost_devices(
         it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The pairing link a QR code carries (`dspi://pair?h=..&a=<host>:<port>&k=..`,
+     * with `&p=<pin>` when `pin` is not empty), for a client to pair with this hub
+     * and pin its key in one step. `host` is the address the client will use. `None`
+     * with no hub running, or with no TLS served (nothing to pin). Shows the PIN to
+     * whoever sees it: only on the screen that shows the PIN.
+     */override fun `pairingLink`(`host`: kotlin.String, `pin`: kotlin.String): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_hub_fn_method_hubhost_pairing_link(
+        it, FfiConverterString.lower(`host`),FfiConverterString.lower(`pin`),_status)
 }
     }
     )
@@ -2392,7 +2447,11 @@ data class HubHostStatus (
     /**
      * How long it has left.
      */
-    var `pairingExpiresInMs`: kotlin.ULong
+    var `pairingExpiresInMs`: kotlin.ULong, 
+    /**
+     * What it serves, TLS-wise.
+     */
+    var `security`: HubSecurity
 ) {
     
     companion object
@@ -2414,6 +2473,7 @@ public object FfiConverterTypeHubHostStatus: FfiConverterRustBuffer<HubHostStatu
             FfiConverterUInt.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterULong.read(buf),
+            FfiConverterTypeHubSecurity.read(buf),
         )
     }
 
@@ -2427,7 +2487,8 @@ public object FfiConverterTypeHubHostStatus: FfiConverterRustBuffer<HubHostStatu
             FfiConverterUInt.allocationSize(value.`inaccessible`) +
             FfiConverterUInt.allocationSize(value.`tokensRevoked`) +
             FfiConverterBoolean.allocationSize(value.`pairingOpen`) +
-            FfiConverterULong.allocationSize(value.`pairingExpiresInMs`)
+            FfiConverterULong.allocationSize(value.`pairingExpiresInMs`) +
+            FfiConverterTypeHubSecurity.allocationSize(value.`security`)
     )
 
     override fun write(value: HubHostStatus, buf: ByteBuffer) {
@@ -2441,6 +2502,7 @@ public object FfiConverterTypeHubHostStatus: FfiConverterRustBuffer<HubHostStatu
             FfiConverterUInt.write(value.`tokensRevoked`, buf)
             FfiConverterBoolean.write(value.`pairingOpen`, buf)
             FfiConverterULong.write(value.`pairingExpiresInMs`, buf)
+            FfiConverterTypeHubSecurity.write(value.`security`, buf)
     }
 }
 
@@ -2573,6 +2635,186 @@ public object FfiConverterTypeHubSavedSettings: FfiConverterRustBuffer<HubSavedS
 
 
 /**
+ * What a running hub serves, TLS-wise, and which optional families answer.
+ */
+data class HubSecurity (
+    /**
+     * The TLS mode.
+     */
+    var `tls`: HubTls, 
+    /**
+     * The upstream compatibility mode is on: show its warning while it is.
+     */
+    var `upstreamCompat`: kotlin.Boolean, 
+    /**
+     * The DNS-SD record carries `tls=1` (the hub's own rule: TLS served, and not in
+     * the compatibility mode).
+     */
+    var `advertisesTls`: kotlin.Boolean, 
+    /**
+     * The key's fingerprint as clients show it at pairing (`SHA256:XXXX-...`), while
+     * TLS is served.
+     */
+    var `fingerprint`: kotlin.String?, 
+    /**
+     * The caps of every service the hub runs (`hello.caps`' service part).
+     */
+    var `services`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubSecurity: FfiConverterRustBuffer<HubSecurity> {
+    override fun read(buf: ByteBuffer): HubSecurity {
+        return HubSecurity(
+            FfiConverterTypeHubTls.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubSecurity) = (
+            FfiConverterTypeHubTls.allocationSize(value.`tls`) +
+            FfiConverterBoolean.allocationSize(value.`upstreamCompat`) +
+            FfiConverterBoolean.allocationSize(value.`advertisesTls`) +
+            FfiConverterOptionalString.allocationSize(value.`fingerprint`) +
+            FfiConverterSequenceString.allocationSize(value.`services`)
+    )
+
+    override fun write(value: HubSecurity, buf: ByteBuffer) {
+            FfiConverterTypeHubTls.write(value.`tls`, buf)
+            FfiConverterBoolean.write(value.`upstreamCompat`, buf)
+            FfiConverterBoolean.write(value.`advertisesTls`, buf)
+            FfiConverterOptionalString.write(value.`fingerprint`, buf)
+            FfiConverterSequenceString.write(value.`services`, buf)
+    }
+}
+
+
+
+/**
+ * What a downgraded hub turns off, one sentence each, for the large warning an app
+ * shows before the user turns it on and while it is on (the hub's own lists).
+ */
+data class HubSecurityEffects (
+    /**
+     * The upstream compatibility mode's effects (`UPSTREAM_COMPAT_EFFECTS`).
+     */
+    var `upstreamCompat`: List<kotlin.String>, 
+    /**
+     * TLS off on a network address (`TLS_OFF_EFFECTS`).
+     */
+    var `tlsOff`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubSecurityEffects: FfiConverterRustBuffer<HubSecurityEffects> {
+    override fun read(buf: ByteBuffer): HubSecurityEffects {
+        return HubSecurityEffects(
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubSecurityEffects) = (
+            FfiConverterSequenceString.allocationSize(value.`upstreamCompat`) +
+            FfiConverterSequenceString.allocationSize(value.`tlsOff`)
+    )
+
+    override fun write(value: HubSecurityEffects, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`upstreamCompat`, buf)
+            FfiConverterSequenceString.write(value.`tlsOff`, buf)
+    }
+}
+
+
+
+/**
+ * The hub's optional services (`service.rs`'s switches), each off unless asked for
+ * (PLAN-P2 review S8): a Mac that shares its devices runs none of them by default.
+ * The snapshot store, `hub.stats`, notifications out and MQTT are not switches: the
+ * first two are DSPi Link's own families, the last two do nothing until an Admin sets
+ * up a target. Schedules need the parameter API (feature `api`), which this build
+ * does not carry.
+ */
+data class HubServices (
+    /**
+     * The health poll and device facts (`health.get`).
+     */
+    var `health`: kotlin.Boolean, 
+    /**
+     * Every DSPi ever attached (`inventory.*`, `inventory.json`).
+     */
+    var `inventory`: kotlin.Boolean, 
+    /**
+     * `device.identify`.
+     */
+    var `identify`: kotlin.Boolean, 
+    /**
+     * The shared event history (`event.*`, `events/`).
+     */
+    var `history`: kotlin.Boolean, 
+    /**
+     * Device alarms (`alarm.*`, `alarms.json`).
+     */
+    var `alarms`: kotlin.Boolean, 
+    /**
+     * Groups (`group.*`, `groups.json`).
+     */
+    var `groups`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubServices: FfiConverterRustBuffer<HubServices> {
+    override fun read(buf: ByteBuffer): HubServices {
+        return HubServices(
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubServices) = (
+            FfiConverterBoolean.allocationSize(value.`health`) +
+            FfiConverterBoolean.allocationSize(value.`inventory`) +
+            FfiConverterBoolean.allocationSize(value.`identify`) +
+            FfiConverterBoolean.allocationSize(value.`history`) +
+            FfiConverterBoolean.allocationSize(value.`alarms`) +
+            FfiConverterBoolean.allocationSize(value.`groups`)
+    )
+
+    override fun write(value: HubServices, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`health`, buf)
+            FfiConverterBoolean.write(value.`inventory`, buf)
+            FfiConverterBoolean.write(value.`identify`, buf)
+            FfiConverterBoolean.write(value.`history`, buf)
+            FfiConverterBoolean.write(value.`alarms`, buf)
+            FfiConverterBoolean.write(value.`groups`, buf)
+    }
+}
+
+
+
+/**
  * A device the hub serves, online or in its grace.
  */
 data class HubSharedDevice (
@@ -2663,7 +2905,7 @@ public object FfiConverterTypeHubSharedDevice: FfiConverterRustBuffer<HubSharedD
 
 
 /**
- * What a start is given.
+ * What a start is given. [`hub_default_start_options`] gives the defaults.
  */
 data class HubStartOptions (
     /**
@@ -2704,7 +2946,22 @@ data class HubStartOptions (
      * This machine's mDNS `.local` name, which then counts as the hub itself for
      * the web pages' `Origin` check. `None`: addresses only.
      */
-    var `mdnsName`: kotlin.String?
+    var `mdnsName`: kotlin.String?, 
+    /**
+     * TLS on the port, the web pages (`https://`) included. The key and certificate
+     * are kept in `store_dir`, made at the first start that needs them.
+     */
+    var `tls`: HubTls, 
+    /**
+     * Upstream compatibility (owner-approved, off by default): with [`HubTls::On`]
+     * only, PIN pairing and every API key over plaintext too, for upstream DSPi Link
+     * clients. [`hub_security_effects`] lists what it turns off: ask the user first.
+     */
+    var `upstreamCompat`: kotlin.Boolean, 
+    /**
+     * The optional services, each off unless asked for.
+     */
+    var `services`: HubServices
 ) {
     
     companion object
@@ -2725,6 +2982,9 @@ public object FfiConverterTypeHubStartOptions: FfiConverterRustBuffer<HubStartOp
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterTypeHubTls.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeHubServices.read(buf),
         )
     }
 
@@ -2737,7 +2997,10 @@ public object FfiConverterTypeHubStartOptions: FfiConverterRustBuffer<HubStartOp
             FfiConverterBoolean.allocationSize(value.`app`) +
             FfiConverterBoolean.allocationSize(value.`loopback`) +
             FfiConverterBoolean.allocationSize(value.`web`) +
-            FfiConverterOptionalString.allocationSize(value.`mdnsName`)
+            FfiConverterOptionalString.allocationSize(value.`mdnsName`) +
+            FfiConverterTypeHubTls.allocationSize(value.`tls`) +
+            FfiConverterBoolean.allocationSize(value.`upstreamCompat`) +
+            FfiConverterTypeHubServices.allocationSize(value.`services`)
     )
 
     override fun write(value: HubStartOptions, buf: ByteBuffer) {
@@ -2750,6 +3013,9 @@ public object FfiConverterTypeHubStartOptions: FfiConverterRustBuffer<HubStartOp
             FfiConverterBoolean.write(value.`loopback`, buf)
             FfiConverterBoolean.write(value.`web`, buf)
             FfiConverterOptionalString.write(value.`mdnsName`, buf)
+            FfiConverterTypeHubTls.write(value.`tls`, buf)
+            FfiConverterBoolean.write(value.`upstreamCompat`, buf)
+            FfiConverterTypeHubServices.write(value.`services`, buf)
     }
 }
 
@@ -2778,7 +3044,11 @@ data class HubStarted (
     /**
      * Paired clients this start forgot (a change of access mode).
      */
-    var `tokensRevoked`: kotlin.UInt
+    var `tokensRevoked`: kotlin.UInt, 
+    /**
+     * What the hub serves, TLS-wise.
+     */
+    var `security`: HubSecurity
 ) {
     
     companion object
@@ -2795,6 +3065,7 @@ public object FfiConverterTypeHubStarted: FfiConverterRustBuffer<HubStarted> {
             FfiConverterUShort.read(buf),
             FfiConverterTypeHubAccess.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterTypeHubSecurity.read(buf),
         )
     }
 
@@ -2803,7 +3074,8 @@ public object FfiConverterTypeHubStarted: FfiConverterRustBuffer<HubStarted> {
             FfiConverterString.allocationSize(value.`name`) +
             FfiConverterUShort.allocationSize(value.`port`) +
             FfiConverterTypeHubAccess.allocationSize(value.`access`) +
-            FfiConverterUInt.allocationSize(value.`tokensRevoked`)
+            FfiConverterUInt.allocationSize(value.`tokensRevoked`) +
+            FfiConverterTypeHubSecurity.allocationSize(value.`security`)
     )
 
     override fun write(value: HubStarted, buf: ByteBuffer) {
@@ -2812,6 +3084,7 @@ public object FfiConverterTypeHubStarted: FfiConverterRustBuffer<HubStarted> {
             FfiConverterUShort.write(value.`port`, buf)
             FfiConverterTypeHubAccess.write(value.`access`, buf)
             FfiConverterUInt.write(value.`tokensRevoked`, buf)
+            FfiConverterTypeHubSecurity.write(value.`security`, buf)
     }
 }
 
@@ -3466,6 +3739,53 @@ public object FfiConverterTypeHubHostEvent : FfiConverterRustBuffer<HubHostEvent
 
 
 /**
+ * The hub's TLS mode, as `uconsole hub --tls` takes it. [`hub_default_start_options`]
+ * says [`HubTls::Require`], as `uconsole hub` and the Qt app.
+ */
+
+enum class HubTls {
+    
+    /**
+     * Plaintext only, and no key is made: for a loopback hub (tests, HB7's
+     * conformance client). On a network address every protection TLS gives is off
+     * ([`HubSecurityEffects::tls_off`]).
+     */
+    OFF,
+    /**
+     * TLS and plaintext on one port. Plaintext pairing and API keys are refused,
+     * unless [`HubStartOptions::upstream_compat`].
+     */
+    ON,
+    /**
+     * TLS only: a plaintext client is told `tls_required`.
+     */
+    REQUIRE;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubTls: FfiConverterRustBuffer<HubTls> {
+    override fun read(buf: ByteBuffer) = try {
+        HubTls.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: HubTls) = 4UL
+
+    override fun write(value: HubTls, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * What happened to the hub's TLS key ([`HubHostEvent::TlsKey`]).
  */
 
@@ -3708,6 +4028,34 @@ public object FfiConverterOptionalTypeHubAccess: FfiConverterRustBuffer<HubAcces
 /**
  * @suppress
  */
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeHubClient: FfiConverterRustBuffer<List<HubClient>> {
     override fun read(buf: ByteBuffer): List<HubClient> {
         val len = buf.getInt()
@@ -3760,6 +4108,20 @@ public object FfiConverterSequenceTypeHubSharedDevice: FfiConverterRustBuffer<Li
 
 
         /**
+         * The options a Mac app starts its hub with unless the user chose otherwise: the
+         * stored name, the standard port, PIN pairing, every interface, **TLS required**,
+         * no upstream compatibility, **no optional service**, no USB, no app, no web pages.
+         */ fun `hubDefaultStartOptions`(`storeDir`: kotlin.String): HubStartOptions {
+            return FfiConverterTypeHubStartOptions.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_hub_fn_func_hub_default_start_options(
+        FfiConverterString.lower(`storeDir`),_status)
+}
+    )
+    }
+    
+
+        /**
          * What the store in `store_dir` holds, with or without a hub on it. Creates nothing
          * and changes nothing. Quick.
          */
@@ -3768,6 +4130,18 @@ public object FfiConverterSequenceTypeHubSharedDevice: FfiConverterRustBuffer<Li
     uniffiRustCallWithError(HubHostException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_hub_fn_func_hub_saved_settings(
         FfiConverterString.lower(`storeDir`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The hub's own lists of what a downgrade turns off. Needs no hub.
+         */ fun `hubSecurityEffects`(): HubSecurityEffects {
+            return FfiConverterTypeHubSecurityEffects.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_hub_fn_func_hub_security_effects(
+        _status)
 }
     )
     }

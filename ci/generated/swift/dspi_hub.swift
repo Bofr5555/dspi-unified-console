@@ -591,6 +591,15 @@ public protocol HubHostProtocol: AnyObject, Sendable {
     func devices()  -> [HubSharedDevice]
     
     /**
+     * The pairing link a QR code carries (`dspi://pair?h=..&a=<host>:<port>&k=..`,
+     * with `&p=<pin>` when `pin` is not empty), for a client to pair with this hub
+     * and pin its key in one step. `host` is the address the client will use. `None`
+     * with no hub running, or with no TLS served (nothing to pin). Shows the PIN to
+     * whoever sees it: only on the screen that shows the PIN.
+     */
+    func pairingLink(host: String, pin: String)  -> String?
+    
+    /**
      * Forget a paired client: its token stops working and its connections close at
      * once with code 4002, which clients do not reconnect from. Writes the store.
      * False with no hub running, no such client, or inside the listener.
@@ -780,6 +789,22 @@ open func demoTurnKnob() -> Bool  {
 open func devices() -> [HubSharedDevice]  {
     return try!  FfiConverterSequenceTypeHubSharedDevice.lift(try! rustCall() {
     uniffi_dspi_hub_fn_method_hubhost_devices(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The pairing link a QR code carries (`dspi://pair?h=..&a=<host>:<port>&k=..`,
+     * with `&p=<pin>` when `pin` is not empty), for a client to pair with this hub
+     * and pin its key in one step. `host` is the address the client will use. `None`
+     * with no hub running, or with no TLS served (nothing to pin). Shows the PIN to
+     * whoever sees it: only on the screen that shows the PIN.
+     */
+open func pairingLink(host: String, pin: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_dspi_hub_fn_method_hubhost_pairing_link(self.uniffiClonePointer(),
+        FfiConverterString.lower(host),
+        FfiConverterString.lower(pin),$0
     )
 })
 }
@@ -1297,6 +1322,10 @@ public struct HubHostStatus {
      * How long it has left.
      */
     public var pairingExpiresInMs: UInt64
+    /**
+     * What it serves, TLS-wise.
+     */
+    public var security: HubSecurity
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1331,7 +1360,10 @@ public struct HubHostStatus {
          */pairingOpen: Bool, 
         /**
          * How long it has left.
-         */pairingExpiresInMs: UInt64) {
+         */pairingExpiresInMs: UInt64, 
+        /**
+         * What it serves, TLS-wise.
+         */security: HubSecurity) {
         self.running = running
         self.hubId = hubId
         self.name = name
@@ -1342,6 +1374,7 @@ public struct HubHostStatus {
         self.tokensRevoked = tokensRevoked
         self.pairingOpen = pairingOpen
         self.pairingExpiresInMs = pairingExpiresInMs
+        self.security = security
     }
 }
 
@@ -1382,6 +1415,9 @@ extension HubHostStatus: Equatable, Hashable {
         if lhs.pairingExpiresInMs != rhs.pairingExpiresInMs {
             return false
         }
+        if lhs.security != rhs.security {
+            return false
+        }
         return true
     }
 
@@ -1396,6 +1432,7 @@ extension HubHostStatus: Equatable, Hashable {
         hasher.combine(tokensRevoked)
         hasher.combine(pairingOpen)
         hasher.combine(pairingExpiresInMs)
+        hasher.combine(security)
     }
 }
 
@@ -1417,7 +1454,8 @@ public struct FfiConverterTypeHubHostStatus: FfiConverterRustBuffer {
                 inaccessible: FfiConverterUInt32.read(from: &buf), 
                 tokensRevoked: FfiConverterUInt32.read(from: &buf), 
                 pairingOpen: FfiConverterBool.read(from: &buf), 
-                pairingExpiresInMs: FfiConverterUInt64.read(from: &buf)
+                pairingExpiresInMs: FfiConverterUInt64.read(from: &buf), 
+                security: FfiConverterTypeHubSecurity.read(from: &buf)
         )
     }
 
@@ -1432,6 +1470,7 @@ public struct FfiConverterTypeHubHostStatus: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.tokensRevoked, into: &buf)
         FfiConverterBool.write(value.pairingOpen, into: &buf)
         FfiConverterUInt64.write(value.pairingExpiresInMs, into: &buf)
+        FfiConverterTypeHubSecurity.write(value.security, into: &buf)
     }
 }
 
@@ -1710,6 +1749,369 @@ public func FfiConverterTypeHubSavedSettings_lower(_ value: HubSavedSettings) ->
 
 
 /**
+ * What a running hub serves, TLS-wise, and which optional families answer.
+ */
+public struct HubSecurity {
+    /**
+     * The TLS mode.
+     */
+    public var tls: HubTls
+    /**
+     * The upstream compatibility mode is on: show its warning while it is.
+     */
+    public var upstreamCompat: Bool
+    /**
+     * The DNS-SD record carries `tls=1` (the hub's own rule: TLS served, and not in
+     * the compatibility mode).
+     */
+    public var advertisesTls: Bool
+    /**
+     * The key's fingerprint as clients show it at pairing (`SHA256:XXXX-...`), while
+     * TLS is served.
+     */
+    public var fingerprint: String?
+    /**
+     * The caps of every service the hub runs (`hello.caps`' service part).
+     */
+    public var services: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The TLS mode.
+         */tls: HubTls, 
+        /**
+         * The upstream compatibility mode is on: show its warning while it is.
+         */upstreamCompat: Bool, 
+        /**
+         * The DNS-SD record carries `tls=1` (the hub's own rule: TLS served, and not in
+         * the compatibility mode).
+         */advertisesTls: Bool, 
+        /**
+         * The key's fingerprint as clients show it at pairing (`SHA256:XXXX-...`), while
+         * TLS is served.
+         */fingerprint: String?, 
+        /**
+         * The caps of every service the hub runs (`hello.caps`' service part).
+         */services: [String]) {
+        self.tls = tls
+        self.upstreamCompat = upstreamCompat
+        self.advertisesTls = advertisesTls
+        self.fingerprint = fingerprint
+        self.services = services
+    }
+}
+
+#if compiler(>=6)
+extension HubSecurity: Sendable {}
+#endif
+
+
+extension HubSecurity: Equatable, Hashable {
+    public static func ==(lhs: HubSecurity, rhs: HubSecurity) -> Bool {
+        if lhs.tls != rhs.tls {
+            return false
+        }
+        if lhs.upstreamCompat != rhs.upstreamCompat {
+            return false
+        }
+        if lhs.advertisesTls != rhs.advertisesTls {
+            return false
+        }
+        if lhs.fingerprint != rhs.fingerprint {
+            return false
+        }
+        if lhs.services != rhs.services {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(tls)
+        hasher.combine(upstreamCompat)
+        hasher.combine(advertisesTls)
+        hasher.combine(fingerprint)
+        hasher.combine(services)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubSecurity: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubSecurity {
+        return
+            try HubSecurity(
+                tls: FfiConverterTypeHubTls.read(from: &buf), 
+                upstreamCompat: FfiConverterBool.read(from: &buf), 
+                advertisesTls: FfiConverterBool.read(from: &buf), 
+                fingerprint: FfiConverterOptionString.read(from: &buf), 
+                services: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubSecurity, into buf: inout [UInt8]) {
+        FfiConverterTypeHubTls.write(value.tls, into: &buf)
+        FfiConverterBool.write(value.upstreamCompat, into: &buf)
+        FfiConverterBool.write(value.advertisesTls, into: &buf)
+        FfiConverterOptionString.write(value.fingerprint, into: &buf)
+        FfiConverterSequenceString.write(value.services, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSecurity_lift(_ buf: RustBuffer) throws -> HubSecurity {
+    return try FfiConverterTypeHubSecurity.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSecurity_lower(_ value: HubSecurity) -> RustBuffer {
+    return FfiConverterTypeHubSecurity.lower(value)
+}
+
+
+/**
+ * What a downgraded hub turns off, one sentence each, for the large warning an app
+ * shows before the user turns it on and while it is on (the hub's own lists).
+ */
+public struct HubSecurityEffects {
+    /**
+     * The upstream compatibility mode's effects (`UPSTREAM_COMPAT_EFFECTS`).
+     */
+    public var upstreamCompat: [String]
+    /**
+     * TLS off on a network address (`TLS_OFF_EFFECTS`).
+     */
+    public var tlsOff: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The upstream compatibility mode's effects (`UPSTREAM_COMPAT_EFFECTS`).
+         */upstreamCompat: [String], 
+        /**
+         * TLS off on a network address (`TLS_OFF_EFFECTS`).
+         */tlsOff: [String]) {
+        self.upstreamCompat = upstreamCompat
+        self.tlsOff = tlsOff
+    }
+}
+
+#if compiler(>=6)
+extension HubSecurityEffects: Sendable {}
+#endif
+
+
+extension HubSecurityEffects: Equatable, Hashable {
+    public static func ==(lhs: HubSecurityEffects, rhs: HubSecurityEffects) -> Bool {
+        if lhs.upstreamCompat != rhs.upstreamCompat {
+            return false
+        }
+        if lhs.tlsOff != rhs.tlsOff {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(upstreamCompat)
+        hasher.combine(tlsOff)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubSecurityEffects: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubSecurityEffects {
+        return
+            try HubSecurityEffects(
+                upstreamCompat: FfiConverterSequenceString.read(from: &buf), 
+                tlsOff: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubSecurityEffects, into buf: inout [UInt8]) {
+        FfiConverterSequenceString.write(value.upstreamCompat, into: &buf)
+        FfiConverterSequenceString.write(value.tlsOff, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSecurityEffects_lift(_ buf: RustBuffer) throws -> HubSecurityEffects {
+    return try FfiConverterTypeHubSecurityEffects.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubSecurityEffects_lower(_ value: HubSecurityEffects) -> RustBuffer {
+    return FfiConverterTypeHubSecurityEffects.lower(value)
+}
+
+
+/**
+ * The hub's optional services (`service.rs`'s switches), each off unless asked for
+ * (PLAN-P2 review S8): a Mac that shares its devices runs none of them by default.
+ * The snapshot store, `hub.stats`, notifications out and MQTT are not switches: the
+ * first two are DSPi Link's own families, the last two do nothing until an Admin sets
+ * up a target. Schedules need the parameter API (feature `api`), which this build
+ * does not carry.
+ */
+public struct HubServices {
+    /**
+     * The health poll and device facts (`health.get`).
+     */
+    public var health: Bool
+    /**
+     * Every DSPi ever attached (`inventory.*`, `inventory.json`).
+     */
+    public var inventory: Bool
+    /**
+     * `device.identify`.
+     */
+    public var identify: Bool
+    /**
+     * The shared event history (`event.*`, `events/`).
+     */
+    public var history: Bool
+    /**
+     * Device alarms (`alarm.*`, `alarms.json`).
+     */
+    public var alarms: Bool
+    /**
+     * Groups (`group.*`, `groups.json`).
+     */
+    public var groups: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The health poll and device facts (`health.get`).
+         */health: Bool, 
+        /**
+         * Every DSPi ever attached (`inventory.*`, `inventory.json`).
+         */inventory: Bool, 
+        /**
+         * `device.identify`.
+         */identify: Bool, 
+        /**
+         * The shared event history (`event.*`, `events/`).
+         */history: Bool, 
+        /**
+         * Device alarms (`alarm.*`, `alarms.json`).
+         */alarms: Bool, 
+        /**
+         * Groups (`group.*`, `groups.json`).
+         */groups: Bool) {
+        self.health = health
+        self.inventory = inventory
+        self.identify = identify
+        self.history = history
+        self.alarms = alarms
+        self.groups = groups
+    }
+}
+
+#if compiler(>=6)
+extension HubServices: Sendable {}
+#endif
+
+
+extension HubServices: Equatable, Hashable {
+    public static func ==(lhs: HubServices, rhs: HubServices) -> Bool {
+        if lhs.health != rhs.health {
+            return false
+        }
+        if lhs.inventory != rhs.inventory {
+            return false
+        }
+        if lhs.identify != rhs.identify {
+            return false
+        }
+        if lhs.history != rhs.history {
+            return false
+        }
+        if lhs.alarms != rhs.alarms {
+            return false
+        }
+        if lhs.groups != rhs.groups {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(health)
+        hasher.combine(inventory)
+        hasher.combine(identify)
+        hasher.combine(history)
+        hasher.combine(alarms)
+        hasher.combine(groups)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubServices: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubServices {
+        return
+            try HubServices(
+                health: FfiConverterBool.read(from: &buf), 
+                inventory: FfiConverterBool.read(from: &buf), 
+                identify: FfiConverterBool.read(from: &buf), 
+                history: FfiConverterBool.read(from: &buf), 
+                alarms: FfiConverterBool.read(from: &buf), 
+                groups: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubServices, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.health, into: &buf)
+        FfiConverterBool.write(value.inventory, into: &buf)
+        FfiConverterBool.write(value.identify, into: &buf)
+        FfiConverterBool.write(value.history, into: &buf)
+        FfiConverterBool.write(value.alarms, into: &buf)
+        FfiConverterBool.write(value.groups, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubServices_lift(_ buf: RustBuffer) throws -> HubServices {
+    return try FfiConverterTypeHubServices.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubServices_lower(_ value: HubServices) -> RustBuffer {
+    return FfiConverterTypeHubServices.lower(value)
+}
+
+
+/**
  * A device the hub serves, online or in its grace.
  */
 public struct HubSharedDevice {
@@ -1893,7 +2295,7 @@ public func FfiConverterTypeHubSharedDevice_lower(_ value: HubSharedDevice) -> R
 
 
 /**
- * What a start is given.
+ * What a start is given. [`hub_default_start_options`] gives the defaults.
  */
 public struct HubStartOptions {
     /**
@@ -1935,6 +2337,21 @@ public struct HubStartOptions {
      * the web pages' `Origin` check. `None`: addresses only.
      */
     public var mdnsName: String?
+    /**
+     * TLS on the port, the web pages (`https://`) included. The key and certificate
+     * are kept in `store_dir`, made at the first start that needs them.
+     */
+    public var tls: HubTls
+    /**
+     * Upstream compatibility (owner-approved, off by default): with [`HubTls::On`]
+     * only, PIN pairing and every API key over plaintext too, for upstream DSPi Link
+     * clients. [`hub_security_effects`] lists what it turns off: ask the user first.
+     */
+    public var upstreamCompat: Bool
+    /**
+     * The optional services, each off unless asked for.
+     */
+    public var services: HubServices
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1968,7 +2385,19 @@ public struct HubStartOptions {
         /**
          * This machine's mDNS `.local` name, which then counts as the hub itself for
          * the web pages' `Origin` check. `None`: addresses only.
-         */mdnsName: String?) {
+         */mdnsName: String?, 
+        /**
+         * TLS on the port, the web pages (`https://`) included. The key and certificate
+         * are kept in `store_dir`, made at the first start that needs them.
+         */tls: HubTls, 
+        /**
+         * Upstream compatibility (owner-approved, off by default): with [`HubTls::On`]
+         * only, PIN pairing and every API key over plaintext too, for upstream DSPi Link
+         * clients. [`hub_security_effects`] lists what it turns off: ask the user first.
+         */upstreamCompat: Bool, 
+        /**
+         * The optional services, each off unless asked for.
+         */services: HubServices) {
         self.name = name
         self.storeDir = storeDir
         self.port = port
@@ -1978,6 +2407,9 @@ public struct HubStartOptions {
         self.loopback = loopback
         self.web = web
         self.mdnsName = mdnsName
+        self.tls = tls
+        self.upstreamCompat = upstreamCompat
+        self.services = services
     }
 }
 
@@ -2015,6 +2447,15 @@ extension HubStartOptions: Equatable, Hashable {
         if lhs.mdnsName != rhs.mdnsName {
             return false
         }
+        if lhs.tls != rhs.tls {
+            return false
+        }
+        if lhs.upstreamCompat != rhs.upstreamCompat {
+            return false
+        }
+        if lhs.services != rhs.services {
+            return false
+        }
         return true
     }
 
@@ -2028,6 +2469,9 @@ extension HubStartOptions: Equatable, Hashable {
         hasher.combine(loopback)
         hasher.combine(web)
         hasher.combine(mdnsName)
+        hasher.combine(tls)
+        hasher.combine(upstreamCompat)
+        hasher.combine(services)
     }
 }
 
@@ -2048,7 +2492,10 @@ public struct FfiConverterTypeHubStartOptions: FfiConverterRustBuffer {
                 app: FfiConverterBool.read(from: &buf), 
                 loopback: FfiConverterBool.read(from: &buf), 
                 web: FfiConverterBool.read(from: &buf), 
-                mdnsName: FfiConverterOptionString.read(from: &buf)
+                mdnsName: FfiConverterOptionString.read(from: &buf), 
+                tls: FfiConverterTypeHubTls.read(from: &buf), 
+                upstreamCompat: FfiConverterBool.read(from: &buf), 
+                services: FfiConverterTypeHubServices.read(from: &buf)
         )
     }
 
@@ -2062,6 +2509,9 @@ public struct FfiConverterTypeHubStartOptions: FfiConverterRustBuffer {
         FfiConverterBool.write(value.loopback, into: &buf)
         FfiConverterBool.write(value.web, into: &buf)
         FfiConverterOptionString.write(value.mdnsName, into: &buf)
+        FfiConverterTypeHubTls.write(value.tls, into: &buf)
+        FfiConverterBool.write(value.upstreamCompat, into: &buf)
+        FfiConverterTypeHubServices.write(value.services, into: &buf)
     }
 }
 
@@ -2105,6 +2555,10 @@ public struct HubStarted {
      * Paired clients this start forgot (a change of access mode).
      */
     public var tokensRevoked: UInt32
+    /**
+     * What the hub serves, TLS-wise.
+     */
+    public var security: HubSecurity
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2123,12 +2577,16 @@ public struct HubStarted {
          */access: HubAccess, 
         /**
          * Paired clients this start forgot (a change of access mode).
-         */tokensRevoked: UInt32) {
+         */tokensRevoked: UInt32, 
+        /**
+         * What the hub serves, TLS-wise.
+         */security: HubSecurity) {
         self.hubId = hubId
         self.name = name
         self.port = port
         self.access = access
         self.tokensRevoked = tokensRevoked
+        self.security = security
     }
 }
 
@@ -2154,6 +2612,9 @@ extension HubStarted: Equatable, Hashable {
         if lhs.tokensRevoked != rhs.tokensRevoked {
             return false
         }
+        if lhs.security != rhs.security {
+            return false
+        }
         return true
     }
 
@@ -2163,6 +2624,7 @@ extension HubStarted: Equatable, Hashable {
         hasher.combine(port)
         hasher.combine(access)
         hasher.combine(tokensRevoked)
+        hasher.combine(security)
     }
 }
 
@@ -2179,7 +2641,8 @@ public struct FfiConverterTypeHubStarted: FfiConverterRustBuffer {
                 name: FfiConverterString.read(from: &buf), 
                 port: FfiConverterUInt16.read(from: &buf), 
                 access: FfiConverterTypeHubAccess.read(from: &buf), 
-                tokensRevoked: FfiConverterUInt32.read(from: &buf)
+                tokensRevoked: FfiConverterUInt32.read(from: &buf), 
+                security: FfiConverterTypeHubSecurity.read(from: &buf)
         )
     }
 
@@ -2189,6 +2652,7 @@ public struct FfiConverterTypeHubStarted: FfiConverterRustBuffer {
         FfiConverterUInt16.write(value.port, into: &buf)
         FfiConverterTypeHubAccess.write(value.access, into: &buf)
         FfiConverterUInt32.write(value.tokensRevoked, into: &buf)
+        FfiConverterTypeHubSecurity.write(value.security, into: &buf)
     }
 }
 
@@ -2795,6 +3259,99 @@ extension HubHostEvent: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * The hub's TLS mode, as `uconsole hub --tls` takes it. [`hub_default_start_options`]
+ * says [`HubTls::Require`], as `uconsole hub` and the Qt app.
+ */
+
+public enum HubTls {
+    
+    /**
+     * Plaintext only, and no key is made: for a loopback hub (tests, HB7's
+     * conformance client). On a network address every protection TLS gives is off
+     * ([`HubSecurityEffects::tls_off`]).
+     */
+    case off
+    /**
+     * TLS and plaintext on one port. Plaintext pairing and API keys are refused,
+     * unless [`HubStartOptions::upstream_compat`].
+     */
+    case on
+    /**
+     * TLS only: a plaintext client is told `tls_required`.
+     */
+    case require
+}
+
+
+#if compiler(>=6)
+extension HubTls: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubTls: FfiConverterRustBuffer {
+    typealias SwiftType = HubTls
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubTls {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .off
+        
+        case 2: return .on
+        
+        case 3: return .require
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HubTls, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .off:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .on:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .require:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubTls_lift(_ buf: RustBuffer) throws -> HubTls {
+    return try FfiConverterTypeHubTls.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubTls_lower(_ value: HubTls) -> RustBuffer {
+    return FfiConverterTypeHubTls.lower(value)
+}
+
+
+extension HubTls: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * What happened to the hub's TLS key ([`HubHostEvent::TlsKey`]).
  */
 
@@ -3038,6 +3595,31 @@ fileprivate struct FfiConverterOptionTypeHubAccess: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeHubClient: FfiConverterRustBuffer {
     typealias SwiftType = [HubClient]
 
@@ -3085,6 +3667,18 @@ fileprivate struct FfiConverterSequenceTypeHubSharedDevice: FfiConverterRustBuff
     }
 }
 /**
+ * The options a Mac app starts its hub with unless the user chose otherwise: the
+ * stored name, the standard port, PIN pairing, every interface, **TLS required**,
+ * no upstream compatibility, **no optional service**, no USB, no app, no web pages.
+ */
+public func hubDefaultStartOptions(storeDir: String) -> HubStartOptions  {
+    return try!  FfiConverterTypeHubStartOptions_lift(try! rustCall() {
+    uniffi_dspi_hub_fn_func_hub_default_start_options(
+        FfiConverterString.lower(storeDir),$0
+    )
+})
+}
+/**
  * What the store in `store_dir` holds, with or without a hub on it. Creates nothing
  * and changes nothing. Quick.
  */
@@ -3092,6 +3686,15 @@ public func hubSavedSettings(storeDir: String)throws  -> HubSavedSettings  {
     return try  FfiConverterTypeHubSavedSettings_lift(try rustCallWithError(FfiConverterTypeHubHostError_lift) {
     uniffi_dspi_hub_fn_func_hub_saved_settings(
         FfiConverterString.lower(storeDir),$0
+    )
+})
+}
+/**
+ * The hub's own lists of what a downgrade turns off. Needs no hub.
+ */
+public func hubSecurityEffects() -> HubSecurityEffects  {
+    return try!  FfiConverterTypeHubSecurityEffects_lift(try! rustCall() {
+    uniffi_dspi_hub_fn_func_hub_security_effects($0
     )
 })
 }
@@ -3111,7 +3714,13 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_dspi_hub_checksum_func_hub_default_start_options() != 40533) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_hub_checksum_func_hub_saved_settings() != 4205) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_hub_checksum_func_hub_security_effects() != 28930) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_hub_checksum_method_hubhost_attach_app() != 3927) {
@@ -3133,6 +3742,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_hub_checksum_method_hubhost_devices() != 941) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_hub_checksum_method_hubhost_pairing_link() != 36749) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_hub_checksum_method_hubhost_revoke() != 19098) {
