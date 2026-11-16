@@ -223,6 +223,62 @@ passwords, webhook bodies, and every parameter.** A webhook's signature proves t
   header, so a web page in a browser cannot use it (section 14).
 - `https://` and MQTT over TLS are refused with a reason, not downgraded (OD-P2f).
 
+<!-- WP SECPAKE -->
+### 2.x PAKE pairing: `auth.pair2`
+
+*State: built (SECPAKE; PLAN-SEC OD-SECc (3)). Code: `crates/dspi-link/src/pake.rs` (both sides), the hub's
+`auth.pair2` in `crates/dspi-hub/src/server.rs` and `auth.rs`; tests `crates/dspi-link/src/pake/tests_wp_secpake.rs`,
+`crates/dspi-hub/src/auth/tests_wp_secpake.rs`, `crates/dspi-hub/tests/wp_secpake.rs`.*
+
+A PIN typed into `auth.pair` is hidden by TLS from a listener, but not from a machine in the middle: a client pairing
+for the first time has no pin yet and trusts the first key it meets, so a proxy that terminates TLS on both sides reads
+the PIN and pairs itself. `auth.pair2` sends no PIN. Client and hub run SPAKE2 with the PIN as the password, and both
+confirm the agreed key with a MAC bound to **this** TLS connection, so a proxy fails at its first guess, and what it
+sees lets it test no other PIN offline. Five failed confirmations end the window, as five wrong PINs do.
+
+- **TLS only.** Over plaintext the answer is `tls_required` (whatever the plaintext policy: there is no exporter).
+  A hub that serves TLS lists the cap `pair2` in `hello.caps`.
+- **Our native clients use only `auth.pair2` over TLS**, never `auth.pair` there, whatever `caps` says (a proxy could
+  strip the cap). Over plaintext (an upstream WeebLabs hub, `--tls off`) they use `auth.pair`.
+- **`auth.pair` is unchanged**: browsers, which cannot reach the TLS exporter, keep it over TLS; upstream consoles keep
+  it in plaintext on a compatibility-mode hub. Its rules (OD-SECk) are section 2's.
+
+**The cryptography.** All fields are base64url without padding.
+
+| Item | Value |
+|---|---|
+| Group | SPAKE2 over Ed25519 (RustCrypto `spake2` 0.5, its M, N and key hash) |
+| Password | SHA-256 of the PIN's ASCII digits (what the hub keeps of a window's PIN) |
+| Identities | A: the client's `name` exactly as sent (UTF-8); B: the hub's `hid` |
+| SPAKE2 message | 33 bytes: a side byte (`A` 0x41 from the client, `B` 0x42 from the hub) and a compressed point |
+| Channel binding | TLS exporter (RFC 8446 7.5), label `EXPORTER-dspi-pair`, no context, 32 bytes |
+| Transcript | SHA-256 over, each prefixed by its length as a big-endian u64: `dspi-pair2 v1`, `hid`, `name`, `role` as sent (`""` if absent), the client's message, the hub's message |
+| Keys | PRK = HKDF-SHA256-Extract(salt = exporter, IKM = the SPAKE2 key); client key = Expand(PRK, `dspi-pair2 confirm client` ‖ transcript, 32); hub key = Expand(PRK, `dspi-pair2 confirm hub` ‖ transcript, 32) |
+| Confirmations | HMAC-SHA256(key, transcript), 32 bytes; checked in constant time |
+
+**The exchange.** Before authentication, on one connection:
+
+| Step | Client sends | Hub answers |
+|---|---|---|
+| 1 | `{"t":"auth.pair2","id":1,"step":1,"name":"Kitchen iPad","role":"control","pake":"<33 bytes>"}` | `{"t":"ok","id":1,"pake":"<33 bytes>"}` |
+| 2 | `{"t":"auth.pair2","id":2,"step":2,"confirm":"<32 bytes>"}` | `auth.pair`'s `ok` (`session`, `role`, `token`, `hub_key`, `policy`) plus `"confirm":"<32 bytes>"` |
+
+- **The client confirms first.** Step 1 tells the client nothing it can test a PIN with, so it counts nothing. Step 2
+  is the PIN attempt: a confirmation that is missing, malformed or does not verify is answered `unauthenticated` (no
+  `msg`) and counts as a wrong PIN, per address and against the window, in the same ledger as `auth.pair`.
+- The client checks the hub's `confirm` (and `hub_key` against the key TLS met) before it keeps the token; one that
+  does not verify means the token is dropped and the session closed.
+- With no window open, step 1 is answered as usual and step 2 fails as a wrong PIN. A new window between the steps also
+  fails step 2. The role is cut to `control` as with `auth.pair`; the token is `tls_only`.
+- Step 1 again replaces the exchange in progress. One connection may start at most 8 (`rate_limited` after that).
+- Other errors: `bad_request` (a step other than 1 or 2, a step 2 with no step 1, a `pake` that is not a 33-byte
+  message or not a point, an unknown `role`), `rate_limited` (the address is shut out), `busy` (the client table is
+  full), `internal`.
+
+**After a key rotation** (section 2, `hello.hub.key_next`) the core's client, once it has accepted the new key, calls
+`auth.rotate` in the same connect and stores the fresh token (PLAN-SEC 4.9).
+<!-- /WP SECPAKE -->
+
 ---
 
 ## 3. Inventory
@@ -1081,6 +1137,7 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `mqtt.status` | request | admin | `mqtt` | 13.1 |
 | `auth.mint` | request | admin | `api_keys` | 14.1 |
 | `auth.list` (gains `kind`, `plaintext_ok`) | existing | admin | `api_keys` | 14.1 |
+| `auth.pair2` (WP SECPAKE) | request, before authentication, TLS only | (pairs as `control`) | `pair2` | 2.x |
 | `hub.stats` | request | admin | `hub_stats` | 15 |
 | `hub.rename` | request | admin | `hub_stats` | 15 |
 | `fw.install` | existing | | | stays `unsupported` |

@@ -523,10 +523,20 @@ fn wp_secpair_an_idle_token_is_pruned_at_the_test_clocks_180_days() {
     let mut ws = Ws::open(tls(&t), &t.host());
     let token = ws.pair(&t.open_pin())["token"].as_str().unwrap().to_owned();
     drop(ws);
+    // -- WP SECPAKE -- a session's close is its last use (last_seen): the hub has
+    // seen each close before the clock moves on
+    let closed = |t: &Target| {
+        let by = Instant::now() + Duration::from_secs(5);
+        while t.net.connections() > 0 && Instant::now() < by {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+    closed(&t);
     clock.advance(Duration::from_secs(180 * DAY - 60));
     let mut ws = Ws::open(tls(&t), &t.host());
     assert_eq!(ws.token(&token)["t"], "ok", "used: a new 180 days start");
     drop(ws);
+    closed(&t);
     clock.advance(Duration::from_secs(180 * DAY));
     let mut ws = Ws::open(tls(&t), &t.host());
     let r = ws.token(&token);

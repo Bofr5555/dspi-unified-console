@@ -49,6 +49,9 @@ exceptions = [
     { crate = "subtle", allow = ["BSD-3-Clause"] },
     { crate = "untrusted", allow = ["ISC"] },
     { crate = "webpki-roots", allow = ["CDLA-Permissive-2.0"] },
+    # -- WP SECPAKE -- SPAKE2 pairing (dspi-link pake.rs): the Ed25519 group under
+    # RustCrypto's spake2, in every native core library.
+    { crate = "curve25519-dalek", allow = ["BSD-3-Clause"] },
 ]
 
 [bans]

@@ -837,6 +837,19 @@ impl TlsPipe {
     pub fn alpn_protocol(&self) -> Option<Vec<u8>> {
         lock(&self.shared.inner).conn.alpn_protocol().map(<[u8]>::to_vec)
     }
+
+    // -- WP SECPAKE --
+    /// RFC 8446 7.5's exporter of this connection: `out.len()` bytes under
+    /// `label`, no context. Both ends of one TLS connection get the same bytes;
+    /// two connections (a proxy's two legs) never do. `None` before the
+    /// handshake has finished or after it failed.
+    pub fn export_keying_material(&self, label: &[u8], out: &mut [u8]) -> Option<()> {
+        let g = lock(&self.shared.inner);
+        if g.failed.is_some() || g.conn.is_handshaking() {
+            return None;
+        }
+        g.conn.export_keying_material(out, label, None).ok().map(|_| ())
+    }
 }
 
 impl Read for TlsPipe {

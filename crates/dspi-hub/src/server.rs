@@ -63,6 +63,8 @@ use dspi_link::socket::{Pipe, server_pipes, server_ws_config};
 // -- WP SECSRV --
 use dspi_link::status;
 use dspi_link::tls::{self as link_tls, SpkiHash, TlsPipe};
+// -- WP SECPAKE --
+use dspi_link::pake::{self, Binding, HubPake};
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use serde_json::{Map, Value, json};
@@ -80,7 +82,6 @@ use crate::session::{CLOSE_REVOKED, CLOSE_SHUTTING_DOWN, Outbound, Outbox, Pop, 
 use crate::store::{parse_role, role_name, unix_seconds};
 // -- WP SECSRV --
 use crate::tls_identity::{TlsIdentity, TlsIdentityEvent, TlsNames};
-use std::time::SystemTime;
 
 /// `limits.max_frame`: the largest WebSocket frame and message taken (spec 4).
 pub const MAX_FRAME: u32 = 65536;
@@ -911,7 +912,8 @@ impl NetworkControl {
             return Err(HubError::Io("TLS is off on this hub".into()));
         };
         let names = guard(&tls.names).clone();
-        let event = guard(&tls.identity).rotate(&names, SystemTime::now(), forget_old)?;
+        // -- WP SECPAKE -- the services' clock, as `key_next` reads it
+        let event = guard(&tls.identity).rotate(&names, shared.hub.clock().wall(), forget_old)?;
         shared.reload_tls();
         shared.hub.emit(crate::hub::HubEvent::Tls(event.clone()));
         Ok(event)
@@ -1083,7 +1085,8 @@ impl Shared {
     /// padding (what SECCORE's client verifies). All public.
     fn key_next(&self) -> Option<Value> {
         let tls = self.tls.as_ref()?;
-        let next = guard(&tls.identity).key_next(SystemTime::now())?;
+        // -- WP SECPAKE -- the services' clock (SEC-C review), as the store's is
+        let next = guard(&tls.identity).key_next(self.hub.clock().wall())?;
         let b64 = |bytes: &[u8]| data_encoding::BASE64URL_NOPAD.encode(bytes);
         Some(json!({
             "spki": next.spki.to_b64url(),
@@ -1134,7 +1137,7 @@ impl Shared {
             return;
         }
         guard(&tls.names).clone_from(&names);
-        let refreshed = guard(&tls.identity).refresh(&names, SystemTime::now());
+        let refreshed = guard(&tls.identity).refresh(&names, self.hub.clock().wall()); // -- WP SECPAKE --
         match refreshed {
             Ok(Some(event)) => {
                 self.reload_tls();
@@ -1486,6 +1489,11 @@ trait IntoWire: HubStream + Sized {
     fn raw_tcp(&self) -> &TcpStream;
     /// The reader's and the writer's halves, buffered (a frame goes out whole).
     fn into_wires(self) -> io::Result<(Wire, Wire)>;
+    // -- WP SECPAKE --
+    /// The TLS exporter `auth.pair2` binds to; `None` over plaintext.
+    fn pair_binding(&self) -> Option<Binding> {
+        None
+    }
 }
 
 impl IntoWire for TcpStream {
@@ -1502,6 +1510,11 @@ impl IntoWire for TcpStream {
 impl IntoWire for TlsPipe {
     fn raw_tcp(&self) -> &TcpStream {
         self.tcp()
+    }
+
+    // -- WP SECPAKE --
+    fn pair_binding(&self) -> Option<Binding> {
+        Binding::of(self)
     }
 
     fn into_wires(mut self) -> io::Result<(Wire, Wire)> {
@@ -2336,6 +2349,8 @@ fn upgrade<S: IntoWire>(
         return;
     }
     let limits = &shared.limits;
+    // -- WP SECPAKE -- before the stream is cut in two halves
+    let binding = tcp.pair_binding();
     // -- WP SECSRV -- on the socket: a TLS half's reads go by its timeout from here
     let raw = tcp.raw_tcp();
     let set = raw
@@ -2370,6 +2385,11 @@ fn upgrade<S: IntoWire>(
         encrypted,
         // -- WP SECPAIR --
         hub_key: encrypted.then(|| shared.tls_pin()).flatten(),
+        // -- WP SECPAKE --
+        binding,
+        pair2: None,
+        pair2_starts: 0,
+        live_cid: None,
     };
     if !encrypted && !shared.policy.serves_plaintext() {
         log::debug!("hub: closed a plaintext WebSocket: TLS is required");
@@ -2818,6 +2838,31 @@ struct Connection {
     /// The pin of the key this connection's TLS was handshaken with, as the hub held
     /// it at the upgrade: `ok.hub_key`. `None` over plaintext.
     hub_key: Option<SpkiHash>,
+    // -- WP SECPAKE --
+    /// The TLS exporter `auth.pair2` is bound to; `None` over plaintext.
+    binding: Option<Binding>,
+    /// `auth.pair2` between its two steps.
+    pair2: Option<Pair2Pending>,
+    /// `auth.pair2` first steps on this connection: each costs the hub a SPAKE2
+    /// computation, so they are capped ([`PAIR2_STARTS`]).
+    pair2_starts: u32,
+    /// The console whose session this connection holds, told to the store at the end.
+    live_cid: Option<u32>,
+}
+
+// -- WP SECPAKE --
+/// `auth.pair2` first steps one connection may make: a client needs one per PIN
+/// it tries, and the address is shut out after five wrong ones anyway.
+pub const PAIR2_STARTS: u32 = 8;
+
+// -- WP SECPAKE --
+/// What `auth.pair2`'s first step leaves for its second.
+#[derive(Debug)]
+struct Pair2Pending {
+    pake: HubPake,
+    secret: crate::auth::Pair2Secret,
+    name: String,
+    requested: Option<Role>,
 }
 
 // -- fixup sw2x --
@@ -2829,6 +2874,10 @@ impl Drop for Connection {
     fn drop(&mut self) {
         if let Some(session) = &self.session {
             self.shared.hub.close_session(session.id());
+        }
+        // -- WP SECPAKE -- its last use is now: idle expiry counts from here
+        if let Some(cid) = self.live_cid.take() {
+            self.shared.auth.session_closed(cid);
         }
         self.tx.abort();
         if let Some(writer) = self.writer.take() {
@@ -2961,6 +3010,8 @@ impl Connection {
             "hello" => self.on_hello(),
             "auth.token" => self.on_auth_token(id, message),
             "auth.pair" => self.on_auth_pair(id, message),
+            // -- WP SECPAKE --
+            "auth.pair2" => self.on_auth_pair2(id, message),
             _ => match self.live_session() {
                 Some(session) => {
                     // -- WP P2RS -- the chain in one place, which the REST mirror runs too
@@ -3090,6 +3141,116 @@ impl Connection {
         }
     }
 
+    // -- WP SECPAKE --
+    /// `auth.pair2` (PLAN-SEC SECPAKE, `docs/integrator/hub-api.md`): SPAKE2 with the
+    /// window's PIN, bound to this connection's TLS exporter, so no PIN crosses and a
+    /// machine in the middle fails at its first guess. Step 1 (`pake`) is answered with
+    /// the hub's SPAKE2 message and counts nothing; step 2 (`confirm`) is a PIN
+    /// attempt: a confirmation that does not verify is a wrong PIN in the same ledgers
+    /// as `auth.pair`'s, and a right one is answered as `auth.pair` is, with the hub's
+    /// own `confirm`. TLS only, whatever the plaintext policy.
+    fn on_auth_pair2(&mut self, id: Option<u64>, message: &Map<String, Value>) {
+        if self.shared.auth.mode() == AccessMode::Open {
+            return self.open_access_ok(id);
+        }
+        if self.session.is_some() {
+            return self.already_authenticated(id);
+        }
+        let Some(binding) = self.binding.filter(|_| self.encrypted) else {
+            return self.reply(err(
+                id,
+                TLS_REQUIRED,
+                Some("auth.pair2 needs an encrypted connection"),
+            ));
+        };
+        match message.get("step").and_then(Value::as_u64) {
+            Some(1) => self.pair2_start(id, message, binding),
+            Some(2) => self.pair2_confirm(id, message),
+            _ => self.reply(err(id, "bad_request", Some("step must be 1 or 2"))),
+        }
+    }
+
+    // -- WP SECPAKE --
+    fn pair2_start(&mut self, id: Option<u64>, message: &Map<String, Value>, binding: Binding) {
+        self.pair2 = None;
+        if self.pair2_starts >= PAIR2_STARTS {
+            return self.reply(err(id, "rate_limited", Some("too many auth.pair2 starts")));
+        }
+        self.pair2_starts = self.pair2_starts.saturating_add(1);
+        let requested = match message.get("role") {
+            None | Some(Value::Null) => None,
+            Some(role) => match role.as_str().and_then(parse_role) {
+                Some(role) => Some(role),
+                None => return self.reply(err(id, "bad_request", Some("unknown role"))),
+            },
+        };
+        let role_word = message.get("role").and_then(Value::as_str).unwrap_or("");
+        let name = message.get("name").and_then(Value::as_str).unwrap_or("");
+        let Some(msg_a) = message
+            .get("pake")
+            .and_then(Value::as_str)
+            .and_then(|t| pake::decode(t, pake::MESSAGE_LEN).ok())
+        else {
+            return self.reply(err(id, "bad_request", Some("no pake message")));
+        };
+        let secret = match self.shared.auth.pair2_secret(self.peer, Instant::now()) {
+            Ok(secret) => secret,
+            Err(e) => return self.reply(auth_err(id, e)),
+        };
+        let hid = &self.shared.hub_id;
+        match HubPake::respond(secret.bytes(), hid, name, role_word, &msg_a, binding) {
+            Ok((hub_side, msg_b)) => {
+                self.pair2 = Some(Pair2Pending {
+                    pake: hub_side,
+                    secret,
+                    name: name.to_owned(),
+                    requested,
+                });
+                self.reply(ok(id, json!({"pake": pake::encode(&msg_b)})));
+            }
+            Err(pake::PakeError::Internal) => self.reply(err(id, "internal", None)),
+            Err(_) => self.reply(err(id, "bad_request", Some("bad pake message"))),
+        }
+    }
+
+    // -- WP SECPAKE --
+    fn pair2_confirm(&mut self, id: Option<u64>, message: &Map<String, Value>) {
+        let Some(pending) = self.pair2.take() else {
+            return self.reply(err(id, "bad_request", Some("no auth.pair2 step 1")));
+        };
+        // A missing or malformed confirmation is a failed one: it was the attempt.
+        let hub_mac = message
+            .get("confirm")
+            .and_then(Value::as_str)
+            .and_then(|t| pake::decode(t, pake::CONFIRM_LEN).ok())
+            .and_then(|mac| pending.pake.confirm(&mac).ok());
+        match self.shared.auth.pair2_finish(
+            &pending.secret,
+            hub_mac.is_some(),
+            &pending.name,
+            pending.requested,
+            self.peer,
+            Instant::now(),
+        ) {
+            Ok(authed) => {
+                let shared = Arc::clone(&self.shared);
+                let hub_key = self.hub_key;
+                let confirm = hub_mac.map(|m| pake::encode(&m)).unwrap_or_default();
+                self.open_session(authed.role, Some(authed.cid), move |session| {
+                    let text = auth_ok(
+                        &shared,
+                        id,
+                        session,
+                        authed.token.as_deref(),
+                        hub_key.as_ref(),
+                    );
+                    Some(with_field(text, "confirm", confirm.into()))
+                });
+            }
+            Err(e) => self.reply(auth_err(id, e)),
+        }
+    }
+
     /// A client on an open hub may still ask for its session id, with any PIN or token
     /// (spec 6.1).
     fn open_access_ok(&mut self, id: Option<u64>) {
@@ -3126,6 +3287,11 @@ impl Connection {
         };
         self.session = Some(Arc::clone(&session));
         shared.set_session(self.id, &session);
+        // -- WP SECPAKE -- in use while it lasts (idle expiry)
+        if let Some(cid) = cid {
+            shared.auth.session_opened(cid);
+            self.live_cid = Some(cid);
+        }
         // Listed first, then asked: a revocation or a role change either finds the session
         // in the table, or has already happened and is seen here.
         if let Some(cid) = cid {
@@ -3647,6 +3813,18 @@ fn auth_ok(
     ok(id, body)
 }
 
+// -- WP SECPAKE --
+/// `text`, a JSON object, with `key` set to `value`.
+fn with_field(text: String, key: &str, value: Value) -> String {
+    match serde_json::from_str::<Value>(&text) {
+        Ok(Value::Object(mut map)) => {
+            map.insert(key.into(), value);
+            Value::Object(map).to_string()
+        }
+        _ => text,
+    }
+}
+
 impl Shared {
     fn hub_info(&self) -> Value {
         json!({
@@ -3675,6 +3853,10 @@ impl Shared {
         }
         // -- WP P2RS -- `auth.mint` always; `/api/v1/` while it is on
         caps.push(crate::rest::CAP_API_KEYS);
+        // -- WP SECPAKE -- `auth.pair2`, on a hub that serves TLS (it needs TLS)
+        if self.tls.is_some() {
+            caps.push(pake::CAP);
+        }
         if self.rest.is_on() {
             caps.push(crate::rest::CAP_REST);
         }
@@ -3801,7 +3983,7 @@ impl Server {
         let tls = if policy.serves_tls() {
             let names = TlsNames::new(config.mdns_name.as_deref(), &[]);
             let (identity, at_start) =
-                TlsIdentity::load(&config.store_dir, &hub_id, &names, SystemTime::now())?;
+                TlsIdentity::load(&config.store_dir, &hub_id, &names, hub.clock().wall())?; // -- WP SECPAKE --
             log::info!(
                 "hub: TLS {}, key {}",
                 policy.mode.name(),

@@ -264,6 +264,9 @@ struct Inner {
     token_idle: Option<Duration>,
     /// The last window ended by [`FAILURE_LIMIT`] wrong PINs, not yet told.
     window_killed: bool,
+    // -- WP SECPAKE --
+    /// Consoles with a DSPi Link session open now, and how many: never idle.
+    live: BTreeMap<u32, usize>,
 }
 
 /// The hub's clients and pairing state. Lock level L1b: never held across I/O other
@@ -426,9 +429,15 @@ impl Inner {
             return 0;
         }
         let idle = idle.as_secs();
+        // -- WP SECPAKE -- a console in a session now is in use, however long ago it
+        // authenticated
+        let live = &self.live;
         let stale = |c: &StoredClient| {
             let seen = c.last_seen.unwrap_or(c.created).max(c.created);
-            c.kind == ClientKind::Console && seen >= floor && now.saturating_sub(seen) >= idle
+            c.kind == ClientKind::Console
+                && !live.contains_key(&c.cid)
+                && seen >= floor
+                && now.saturating_sub(seen) >= idle
         };
         let gone: Vec<u32> = self
             .store
@@ -459,6 +468,72 @@ impl Inner {
         self.store.clients().iter().fold(None, |found, c| {
             let same = hashes_equal(&c.token_hash, presented);
             if same { Some(c.cid) } else { found }
+        })
+    }
+
+    // -- WP SECPAKE -- `auth.pair`'s two outcomes, which `auth.pair2` shares
+    /// A wrong PIN (or a pairing confirmation that did not verify): it counts
+    /// against the address and the window, which five end.
+    fn wrong_pin(&mut self, peer: IpAddr, now: Instant) {
+        self.peers.note_failure(peer, now);
+        if let Some(w) = self.window.as_mut() {
+            w.failures = w.failures.saturating_add(1);
+            if w.failures >= FAILURE_LIMIT {
+                self.window = None;
+                // -- WP SECPAIR -- for the hub's UI (PLAN-SEC 4.5)
+                self.window_killed = true;
+                log::warn!("hub: pairing closed after {FAILURE_LIMIT} wrong PINs");
+            }
+        }
+    }
+
+    /// A right PIN: one client paired, its token stored, the window ended.
+    fn issue_pairing(
+        &mut self,
+        name: &str,
+        requested: Option<Role>,
+        peer: IpAddr,
+        encrypted: bool,
+    ) -> Result<Authed, AuthError> {
+        // -- WP SECPAIR -- idle clients make room first
+        self.prune_idle();
+        if self.store.clients().len() >= MAX_PAIRED_CLIENTS {
+            return Err(AuthError::TableFull);
+        }
+        let raw: [u8; 32] = random_bytes().map_err(|e| {
+            log::error!("hub: no token made: {e}");
+            AuthError::Internal
+        })?;
+        let token = BASE64URL_NOPAD.encode(&raw);
+        let role = requested.unwrap_or(Role::Control).min(PAIR_MAX_ROLE);
+        let seconds = self.wall_seconds(); // -- WP SECPAIR -- the hub's clock
+        let cid = self.store.take_cid();
+        self.store.clients_mut().push(StoredClient {
+            cid,
+            name: clean_name(name),
+            role,
+            created: seconds,
+            last_seen: Some(seconds),
+            token_hash: sha256(token.as_bytes()),
+            // -- WP P2RS --
+            kind: ClientKind::Console,
+            plaintext_ok: false,
+            // -- WP SECPAIR --
+            tls_only: encrypted,
+        });
+        if let Err(e) = self.save() {
+            log::error!("hub: pairing not stored: {e}");
+            self.store.clients_mut().retain(|c| c.cid != cid);
+            return Err(AuthError::Internal);
+        }
+        self.window = None;
+        self.peers.clear(peer);
+        Ok(Authed {
+            cid,
+            role,
+            token: Some(token),
+            // -- WP P2CFIXA --
+            kind: ClientKind::Console,
         })
     }
 }
@@ -526,6 +601,8 @@ impl AuthStore {
                 clock: Arc::new(SystemClock),
                 token_idle: Some(DEFAULT_TOKEN_IDLE),
                 window_killed: false,
+                // -- WP SECPAKE --
+                live: BTreeMap::new(),
             }),
         })
     }
@@ -619,59 +696,12 @@ impl AuthStore {
                 false
             }
         };
+        // -- WP SECPAKE -- the two halves shared with `auth.pair2`
         if !right {
-            s.peers.note_failure(peer, now);
-            if let Some(w) = s.window.as_mut() {
-                w.failures = w.failures.saturating_add(1);
-                if w.failures >= FAILURE_LIMIT {
-                    s.window = None;
-                    // -- WP SECPAIR -- for the hub's UI (PLAN-SEC 4.5)
-                    s.window_killed = true;
-                    log::warn!("hub: pairing closed after {FAILURE_LIMIT} wrong PINs");
-                }
-            }
+            s.wrong_pin(peer, now);
             return Err(AuthError::Unauthenticated);
         }
-        // -- WP SECPAIR -- idle clients make room first
-        s.prune_idle();
-        if s.store.clients().len() >= MAX_PAIRED_CLIENTS {
-            return Err(AuthError::TableFull);
-        }
-        let raw: [u8; 32] = random_bytes().map_err(|e| {
-            log::error!("hub: no token made: {e}");
-            AuthError::Internal
-        })?;
-        let token = BASE64URL_NOPAD.encode(&raw);
-        let role = requested.unwrap_or(Role::Control).min(PAIR_MAX_ROLE);
-        let seconds = s.wall_seconds(); // -- WP SECPAIR -- the hub's clock
-        let cid = s.store.take_cid();
-        s.store.clients_mut().push(StoredClient {
-            cid,
-            name: clean_name(name),
-            role,
-            created: seconds,
-            last_seen: Some(seconds),
-            token_hash: sha256(token.as_bytes()),
-            // -- WP P2RS --
-            kind: ClientKind::Console,
-            plaintext_ok: false,
-            // -- WP SECPAIR --
-            tls_only: encrypted,
-        });
-        if let Err(e) = s.save() {
-            log::error!("hub: pairing not stored: {e}");
-            s.store.clients_mut().retain(|c| c.cid != cid);
-            return Err(AuthError::Internal);
-        }
-        s.window = None;
-        s.peers.clear(peer);
-        Ok(Authed {
-            cid,
-            role,
-            token: Some(token),
-            // -- WP P2CFIXA --
-            kind: ClientKind::Console,
-        })
+        s.issue_pairing(name, requested, peer, encrypted)
     }
 
     /// `auth.token`. Rate limited per address. Every stored hash is compared, in
@@ -962,6 +992,115 @@ impl AuthStore {
             .clients()
             .iter()
             .any(|c| c.cid == cid && c.tls_only)
+    }
+}
+
+// -- WP SECPAKE --
+/// What `auth.pair2`'s first step leaves for its second: the SPAKE2 password it
+/// was answered with. Never logged.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Pair2Secret(TokenHash);
+
+impl fmt::Debug for Pair2Secret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Pair2Secret(<redacted>)")
+    }
+}
+
+impl Pair2Secret {
+    /// The password, SHA-256 of the window's PIN (`dspi_link::pake::pin_secret`).
+    pub fn bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+// -- WP SECPAKE --
+impl AuthStore {
+    /// `auth.pair2` step 1 (PLAN-SEC SECPAKE): the SPAKE2 password to answer with,
+    /// the hash of the open window's PIN. With no window (or an expired one) a
+    /// random one, so the step looks the same and the confirmation fails as a wrong
+    /// PIN. An address shut out for wrong PINs is [`AuthError::RateLimited`]. Counts
+    /// nothing: the answer lets a client test no PIN without step 2.
+    pub fn pair2_secret(&self, peer: IpAddr, now: Instant) -> Result<Pair2Secret, AuthError> {
+        let mut s = self.lock();
+        if s.peers.is_blocked(peer, now) {
+            return Err(AuthError::RateLimited);
+        }
+        if let Some(w) = s.window.as_ref().filter(|w| now < w.expires) {
+            return Ok(Pair2Secret(w.pin_hash));
+        }
+        drop(s);
+        random_bytes().map(Pair2Secret).map_err(|e| {
+            log::error!("hub: no pairing secret made: {e}");
+            AuthError::Internal
+        })
+    }
+
+    /// `auth.pair2` step 2: `confirmed` says whether the client's confirmation
+    /// verified against `secret`. It pairs as a right PIN does only if it did and
+    /// `secret` is still the open window's PIN; anything else is a wrong PIN, in the
+    /// same ledgers ([`FAILURE_LIMIT`] of them end the window). Always over TLS, so
+    /// the token is `tls_only`.
+    pub fn pair2_finish(
+        &self,
+        secret: &Pair2Secret,
+        confirmed: bool,
+        name: &str,
+        requested: Option<Role>,
+        peer: IpAddr,
+        now: Instant,
+    ) -> Result<Authed, AuthError> {
+        let mut s = self.lock();
+        if s.peers.is_blocked(peer, now) {
+            return Err(AuthError::RateLimited);
+        }
+        let current = match &s.window {
+            Some(w) if now < w.expires => hashes_equal(&w.pin_hash, &secret.0),
+            _ => {
+                s.window = None;
+                false
+            }
+        };
+        if !(confirmed && current) {
+            s.wrong_pin(peer, now);
+            return Err(AuthError::Unauthenticated);
+        }
+        s.issue_pairing(name, requested, peer, true)
+    }
+
+    /// A DSPi Link session of console `cid` opened: it is in use, and not forgotten
+    /// as idle while it lasts.
+    pub fn session_opened(&self, cid: u32) {
+        let mut s = self.lock();
+        let count = s.live.entry(cid).or_insert(0);
+        *count = count.saturating_add(1);
+    }
+
+    /// That session closed: `last_seen` is now (the hub's clock), so a session that
+    /// ran for longer than the idle limit does not leave its client to be forgotten
+    /// at once (SEC-C review).
+    pub fn session_closed(&self, cid: u32) {
+        let mut s = self.lock();
+        if let Some(count) = s.live.get_mut(&cid) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                s.live.remove(&cid);
+            }
+        }
+        let seconds = s.wall_seconds();
+        let Some(client) = s.client_mut(cid) else {
+            return;
+        };
+        let stale = client
+            .last_seen
+            .is_none_or(|seen| seconds.saturating_sub(seen) >= LAST_SEEN_RESOLUTION);
+        if !stale {
+            return;
+        }
+        client.last_seen = Some(seconds);
+        if let Err(e) = s.save() {
+            log::warn!("hub: last-seen time not stored: {e}");
+        }
     }
 }
 
@@ -1531,3 +1670,8 @@ mod tests_wp_hb1 {
 #[cfg(test)]
 #[path = "auth/tests_wp_secpair.rs"]
 mod tests_wp_secpair;
+
+// -- WP SECPAKE --
+#[cfg(test)]
+#[path = "auth/tests_wp_secpake.rs"]
+mod tests_wp_secpake;
