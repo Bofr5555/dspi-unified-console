@@ -1,0 +1,6 @@
+* Hand-written REW target fixture (WP P5CAL)
+20 6.0
+100 5.0
+500 1.0
+2000 -1.0
+20000 -4.0
