@@ -1281,3 +1281,37 @@ fn wp_p5b_device_a_start_level_only_run_gives_the_timing_and_one_stop() {
         "nothing but the generator's control: {log:?}"
     );
 }
+
+/// Review P5-B (S5, S11): switching the client read-only mode on while a run
+/// plays stops the measurement first, with the one `STOP_NOW` still allowed
+/// to go out. Without that the mode refuses the session's own stop, the
+/// user's Stop included, and the generator plays on to the end of its run.
+#[test]
+fn wp_p5b_device_read_only_switched_on_mid_run_stops_the_generator() {
+    let r = rig();
+    let mut mic = Mic::new(&r, free_world(&[0.0]));
+    r.core
+        .measure_start(walked(&[(0, MeasureRole::Full)]))
+        .unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    while mic.step().phase != MeasurePhase::Run {
+        assert!(std::time::Instant::now() < deadline, "the run never began");
+    }
+    r.log.lock().unwrap().clear();
+    r.core.set_client_read_only(true).unwrap();
+    let st = r.core.measure_state();
+    assert_eq!(st.phase, MeasurePhase::Aborted, "{st:?}");
+    assert_eq!(st.issue.as_ref().unwrap().key, "measure.stopped");
+    assert_eq!(r.core.siggen_get_status().unwrap().state, 0, "idle");
+    // Stop and tick again in read-only mode: nothing more is sent.
+    r.core.measure_stop();
+    r.core.measure_tick();
+    let log = r.log.lock().unwrap();
+    assert_eq!(
+        log.iter().map(|q| (q.op, q.value)).collect::<Vec<_>>(),
+        vec![(op::REQ_SIGGEN_CONTROL, crate::consts::SIGGEN_CTL_STOP_NOW)],
+        "{log:?}"
+    );
+    drop(log);
+    r.core.set_client_read_only(false).unwrap();
+}
