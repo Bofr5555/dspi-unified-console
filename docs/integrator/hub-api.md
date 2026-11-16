@@ -1704,10 +1704,11 @@ What the code does where the text above leaves room, or is stricter than it:
   steps 1, 2, 3 and 8, the bootloader entry of step 4) is that principal's child session through the parameter API's
   executor, so the run goes on when the Admin's console closes, the history names the Admin, and the hub's own
   writes stay the closed list of three. The bootloader step's entry in `steps` carries `session`, the child's id.
-- **Stricter than a console in step 1, again just before step 4:** a device under an installer lock (a PIN and the
-  pages it covers, P1HL) is `installer_lock` even for an Admin, who could otherwise pass the lock: lift the lock
-  first. A device lock held by any session, the asking console's included, is `locked` (the rollout's principal is
-  another session). Any pending guarded apply is `conflict`, the asking console's included.
+- **The locks, in step 1 and again just before step 4:** the installer lock (P1HL) judges the bootloader entry as
+  any write, so the rollout's Admin principal passes it, as an Admin's write does (an `installer_lock` refusal from
+  the hub would still end the step). A device lock held by any session, the asking console's included, is `locked`
+  (the rollout's principal is another session). Any pending guarded apply is `conflict`, the asking console's
+  included.
 - **`image_refused`** carries `reason` in every case: `platform` and `not_verified` (step 1); `image_invalid` also for a
   stored image whose bytes changed on disk since it was added (it is read again and hashed at every start) and for an
   image with no DSPi version (the verify could not be done); the guard's reasons (step 2).

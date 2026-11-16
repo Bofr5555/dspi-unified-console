@@ -365,6 +365,13 @@ impl Bench {
         }
     }
 
+    /// Hold every flash until [`Bench::release_flash`]. The gate is armed here, before the
+    /// writer is entered, so a release can never come before the writer waits on it.
+    fn hold_flashes(&self) {
+        *self.flash_gate.lock().unwrap() = true;
+        self.plan.lock().unwrap().hold_flash = true;
+    }
+
     fn release_flash(&self) {
         *self.flash_gate.lock().unwrap() = false;
         self.flash_released.notify_all();
@@ -420,8 +427,8 @@ impl Writer for Bench {
             .unwrap()
             .push((serial.clone(), board.clone(), image.len()));
         if self.plan.lock().unwrap().hold_flash {
+            // Armed by `hold_flashes`; released (false) by `release_flash`.
             let mut g = self.flash_gate.lock().unwrap();
-            *g = true;
             let start = Instant::now();
             while *g && start.elapsed() < WAIT {
                 g = self
@@ -1085,14 +1092,17 @@ fn wp_p3ro_a_start_is_refused_early_for_each_condition() {
     msg["image"] = "nothing.uf2".into();
     let v = admin.ask(msg);
     refused(&r, &mut admin, serial, &v, "not_found");
-    // An installer lock (a PIN and what it covers): refused even for an Admin.
+    // An installer lock (a PIN and what it covers) does not stop an Admin's rollout: the
+    // Admin's principal passes it, as an Admin's write does (PLAN-P3 step 4).
     let set = admin.ask(json!({"t": "limits.set", "handle": handle,
         "profile": {"lockedPages": ["eq"]}}));
     assert!(ok(&set), "{set}");
     let pin = admin.ask(json!({"t": "limits.pin", "handle": handle, "pin": "2468"}));
     assert!(ok(&pin), "{pin}");
     let v = admin.start(live(serial));
-    refused(&r, &mut admin, serial, &v, "installer_lock");
+    assert!(ok(&v), "{v}");
+    let id = v["rollout"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(admin.ended(&id)["state"], "ok", "under an installer lock");
     let unpin = admin.ask(json!({"t": "limits.pin", "handle": handle, "pin": null}));
     assert!(ok(&unpin), "{unpin}");
     // With nothing in the way it goes.
@@ -1101,7 +1111,7 @@ fn wp_p3ro_a_start_is_refused_early_for_each_condition() {
     let id = v["rollout"]["id"].as_str().unwrap().to_owned();
     assert_eq!(admin.ended(&id)["state"], "ok");
     // A second start while one runs is busy; its image is not deleted meanwhile.
-    r.bench.plan.lock().unwrap().hold_flash = true;
+    r.bench.hold_flashes();
     let v = admin.start(live(serial));
     assert!(ok(&v), "{v}");
     let id = v["rollout"]["id"].as_str().unwrap().to_owned();
@@ -1404,7 +1414,7 @@ fn wp_p3ro_cancel_before_the_entry_stops_the_queue_and_after_it_is_conflict() {
     let g = admin.ask(json!({"t": "group.set", "group": {"name": "Hall",
         "members": ["P3RO-CA", "P3RO-CB", "P3RO-CC"]}}));
     let gid = g["group"]["id"].as_str().unwrap().to_owned();
-    r.bench.plan.lock().unwrap().hold_flash = true;
+    r.bench.hold_flashes();
     let v = admin.start(json!({"group": gid, "while_live": true}));
     assert!(ok(&v), "{v}");
     // A is in its flash: a cancel is refused, the flash goes on.

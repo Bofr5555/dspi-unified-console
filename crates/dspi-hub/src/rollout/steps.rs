@@ -346,8 +346,9 @@ fn check_and_guard(
     })
 }
 
-/// The device's lock, its installer lock, a pending guard: what must be clear right up to
-/// the bootloader entry.
+/// The device's lock and a pending guard: what must be clear right up to the bootloader
+/// entry. The installer lock is the hub's to judge on the entry itself, as for any write:
+/// the rollout's Admin principal passes it (PLAN-P3 step 4).
 fn locks_clear(hub: &HubHandle, serial: &str, handle: u8) -> Result<(), ApiError> {
     if let Some(dev) = hub.device_by_serial(serial)
         && dev.router.lock_holder(Instant::now()).is_some()
@@ -355,12 +356,6 @@ fn locks_clear(hub: &HubHandle, serial: &str, handle: u8) -> Result<(), ApiError
         return Err(ApiError::new(
             "locked",
             "a session holds this device's lock; release it first",
-        ));
-    }
-    if hub.inner.limits.device(serial).locked {
-        return Err(ApiError::new(
-            "installer_lock",
-            "an installer lock is on this device: a rollout waits until it is lifted",
         ));
     }
     if hub
