@@ -1218,3 +1218,53 @@
 /* -- WP WBCLIP -- the EQ screen's channel menu: as the tools beside it, opening rightwards from its button */
 .dspi-web .eq-tools > .menu > button { line-height: 20px; padding-top: 5px; padding-bottom: 5px; }
 .dspi-web .eq-tools > .menu [role="menu"] { right: auto; left: 0; }
+
+/* -- WP P3WGR -- the hub screen's groups: the picker, the members, the editor, the action bar with offsets, bulk apply, results kept until dismissed, the fleet history */
+.dspi-web .hub-groups { container-type: inline-size; min-width: 0; }
+.dspi-web .hub-groups .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+.dspi-web .hub-group-pick { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+.dspi-web .hub-group-pick button[aria-pressed="true"] { border-color: var(--accent); font-weight: 700; }
+.dspi-web .hub-group-count { color: var(--muted); font-weight: 400; }
+.dspi-web .hub-group, .dspi-web .hub-group-actions, .dspi-web .hub-bulk, .dspi-web .hub-fleet-history { margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--line); min-width: 0; }
+.dspi-web .hub-group h3, .dspi-web .hub-group-actions h3, .dspi-web .hub-bulk h3, .dspi-web .hub-fleet-history h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+.dspi-web .hub-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 1rem; }
+.dspi-web .hub-group-ro { font-size: 0.85rem; }
+.dspi-web .hub-group-members { list-style: none; margin: 0.25rem 0 0; padding: 0; display: grid; gap: 0.2rem; }
+.dspi-web .hub-group-members li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.6rem; min-width: 0; }
+.dspi-web .hub-group-members li.offline .hub-name { color: var(--muted); }
+.dspi-web .hub-group-choose { flex: 1 1 100%; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 0.3rem 0.6rem; margin: 0; }
+.dspi-web .hub-group-choose ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; max-height: 16rem; overflow-y: auto; }
+.dspi-web .hub-group-choose label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.4rem; font-size: 0.9rem; }
+.dspi-web .hub-group-choose input { width: auto; }
+.dspi-web .hub-group-volume { display: flex; flex-wrap: wrap; align-items: end; gap: 0.4rem 0.75rem; }
+.dspi-web .hub-group-volume label, .dspi-web .hub-inline { display: inline-grid; gap: 0.15rem; font-size: 0.85rem; min-width: 0; }
+.dspi-web .hub-group-volume input { width: 7rem; max-width: 100%; }
+.dspi-web .hub-offsets input.hub-offset { width: 5rem; max-width: 100%; box-sizing: border-box; }
+.dspi-web .hub-offsets select, .dspi-web .hub-inline select { max-width: 100%; min-width: 0; }
+.dspi-web .hub-will-get { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dspi-web .hub-group-actions .hub-action-row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.4rem; margin-top: 0.5rem; }
+.dspi-web .hub-check { display: inline-flex !important; align-items: center; gap: 0.35rem; flex: 0 1 auto !important; }
+.dspi-web .hub-check input { width: auto !important; }
+.dspi-web .hub-confirm-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 1rem; margin-top: 0.5rem; }
+.dspi-web .hub-countdown { font-variant-numeric: tabular-nums; }
+.dspi-web .hub-results { margin-top: 0.6rem; border: 1px solid var(--line); border-left: 3px solid var(--ok, var(--accent)); border-radius: 6px; padding: 0.4rem 0.6rem; min-width: 0; }
+.dspi-web .hub-results.partial { border-left-color: var(--bad); }
+.dspi-web .hub-results-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.75rem; }
+.dspi-web .hub-results-head button { margin-left: auto; min-height: 0; padding: 0.1rem 0.6rem; }
+.dspi-web .hub-result-lines { list-style: none; margin: 0.3rem 0 0; padding: 0; display: grid; gap: 0.2rem; }
+.dspi-web .hub-result { display: flex; flex-wrap: wrap; gap: 0.1rem 0.6rem; min-width: 0; }
+.dspi-web .hub-result.bad .hub-result-text { color: var(--bad); }
+.dspi-web .hub-result.warn .hub-result-text { color: var(--warn); }
+@container (max-width: 640px) {
+  .dspi-web .hub-offsets, .dspi-web .hub-offsets tbody, .dspi-web .hub-offsets tr, .dspi-web .hub-offsets td { display: block; }
+  .dspi-web .hub-offsets thead { display: none; }
+  .dspi-web .hub-offsets tbody { display: grid; gap: 0.4rem; }
+  .dspi-web .hub-offsets tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.2rem 0.6rem; border: 1px solid var(--line); border-radius: 8px; padding: 0.35rem 0.5rem; }
+  .dspi-web .hub-offsets td { border-top: 0; padding: 0; min-width: 0; }
+  .dspi-web .hub-offsets td:first-child { grid-column: 1 / -1; }
+  .dspi-web .hub-offsets td:not(:first-child)::before { content: attr(data-label); display: block; font-size: 0.72rem; color: var(--muted); }
+  .dspi-web .hub-fleet-list, .dspi-web .hub-fleet-list tbody, .dspi-web .hub-fleet-list tr, .dspi-web .hub-fleet-list td { display: block; }
+  .dspi-web .hub-fleet-list thead { display: none; }
+  .dspi-web .hub-fleet-list tr { border-top: 1px solid var(--line); padding: 0.3rem 0; }
+  .dspi-web .hub-fleet-list td { border: 0; padding: 0; overflow-wrap: anywhere; }
+}

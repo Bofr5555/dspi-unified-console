@@ -119,8 +119,9 @@ pub const HUB_ERR_DEVICE: &str = "device";
 /// `inventory.set`/`forget`, `hub.rename`; P2CC2: `alarm.ack`,
 /// `alarm.rules.set`, `schedule.set`/`delete`/`run_now`, `outbound.set`/`test`,
 /// `mqtt.set`, `auth.mint`/`revoke`; P3CC: `group.set`/`delete`,
-/// `group.param.set`, `group.preset.load`, `group.apply*`, `fw.image.put`/
-/// `delete`, `fw.rollout.start`/`cancel`). `event.watch` only asks for events.
+/// `group.param.set`, `group.preset.load`, `group.apply`, `fw.image.put`/
+/// `delete`, `fw.rollout.start`/`cancel`; `group.apply.confirm`/`cancel` pass
+/// as [`HUB_SERVER_SETTLES`], -- WP P3WGR --). `event.watch` only asks for events.
 pub const HUB_SERVER_READS: [&str; 19] = [
     "inventory.list",
     "health.get",
@@ -144,6 +145,15 @@ pub const HUB_SERVER_READS: [&str; 19] = [
     "fw.image.list",
     "fw.rollout.status",
 ];
+
+// -- WP P3WGR --
+/// The hub requests that settle a bulk apply's guarded run (`group.apply.confirm`,
+/// `group.apply.cancel`): the client read-only mode lets them out too, as it
+/// must let a run begun before the mode was turned on be kept or reverted
+/// (settling never needs write access; Android's `WriteGuardedCore` passes
+/// them the same way). They write nothing new: the hub keeps or reverts what
+/// the run already wrote.
+pub const HUB_SERVER_SETTLES: [&str; 2] = ["group.apply.confirm", "group.apply.cancel"];
 
 /// [`MergedSnapshot::location`]: only in this console's store.
 pub const WHERE_LOCAL: &str = "local";
