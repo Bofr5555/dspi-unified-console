@@ -374,15 +374,23 @@ final class FirmwareInstaller: ObservableObject {
     }
 
     /// -- WP SECSW -- The label before anything is confirmed: every image this
-    /// installer would write, against the core's manifest (off main).
+    /// installer would write, against the core's manifest.  The files are
+    /// read off main; the core is asked on main, as `check` does (the
+    /// installer's serial queue carries only file reads and the write, so a
+    /// label never holds up an install queued behind it).
     private func checkImages() {
         let imageProvider = self.imageProvider
         queue.async { [weak self] in
-            let notice = BootloaderBoard.Chip.allCases.lazy.compactMap { chip -> ConsoleNotice? in
+            let images = BootloaderBoard.Chip.allCases.compactMap { chip -> (Data, String)? in
                 guard let image = try? imageProvider(chip), let bytes = try? Data(contentsOf: image.url) else { return nil }
-                return FirmwareImage.notVerifiedNotice(bytes, name: image.url.lastPathComponent)
-            }.first
-            DispatchQueue.main.async { if let notice { self?.imageNotice = notice } }
+                return (bytes, image.url.lastPathComponent)
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let notice = images.lazy.compactMap({ FirmwareImage.notVerifiedNotice($0.0, name: $0.1) }).first {
+                    self.imageNotice = notice
+                }
+            }
         }
     }
 
