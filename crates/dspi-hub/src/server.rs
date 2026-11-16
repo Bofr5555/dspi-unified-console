@@ -118,6 +118,8 @@ pub const TLS_REQUIRED: &str = "tls_required";
 const TLS_REFRESH_EVERY: Duration = Duration::from_secs(3600);
 /// How often the advertised name is compared with the certificate's.
 const TLS_NAMES_EVERY: Duration = Duration::from_secs(1);
+/// How long the hub's own names are kept before the interfaces are listed again.
+const OWN_NAMES_FOR: Duration = Duration::from_secs(1);
 
 // -- WP SECSRV --
 /// TLS on the Link port (PLAN-SEC 4.1; `uconsole hub --tls`). The library's default is
@@ -125,7 +127,9 @@ const TLS_NAMES_EVERY: Duration = Duration::from_secs(1);
 /// [`TlsMode::Require`] (OD-SECb, reconsidered 2026-11-15) and to `Off` on loopback.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TlsMode {
-    /// Plaintext only, the protocol as before: no key is made and no byte read ahead.
+    /// Plaintext only, the protocol as before, and no key is made. The first byte is
+    /// still peeked (not taken), so a ClientHello is answered `400` at once instead of
+    /// waiting out the head timeout.
     #[default]
     Off,
     /// TLS and plaintext both, by a connection's first byte. Over plaintext a PIN
@@ -398,7 +402,11 @@ pub struct NetworkConfig {
 /// The TLS mode [`NetworkConfig::new`] starts with: [`TlsMode::Off`], or under the
 /// test-only feature `test-tls-mode`, `DSPI_HUB_TEST_TLS` (`off`, `on`, `compat`: on
 /// with upstream compatibility, `require`), so the existing suites run against a hub
-/// that sniffs every connection.
+/// that sniffs every connection. The existing suites are meant for `off` and `compat`,
+/// where their plaintext clients pair and use REST as before (their assertions on
+/// `/info`'s `tls`, an `https` own Origin and a ClientHello follow the mode). In `on`
+/// and `require`, plaintext pairing and REST are refused by design, so every test that
+/// pairs over plaintext fails there.
 fn default_tls() -> (TlsMode, bool) {
     #[cfg(feature = "test-tls-mode")]
     {
@@ -445,7 +453,6 @@ impl NetworkConfig {
     /// Whether the DNS-SD record says TLS (spec 3.1's `tls=1`; SECDISC's
     /// `HubAdvert.tls`): whenever TLS is served (`on`, `require`), but not in upstream
     /// compatibility mode, where an upstream client would read it as "use `wss://`".
-    #[allow(dead_code)] // until SECDISC's `HubAdvert.tls` merges: hub.rs's marked line
     pub(crate) fn advertises_tls(&self) -> bool {
         self.tls != TlsMode::Off && !self.upstream_compat
     }
@@ -579,7 +586,9 @@ fn host_of(authority: &str) -> Option<String> {
 /// none at all (not a browser: every browser sends one), an IP address (a page cannot
 /// be rebound under one), a name with no dot (no public DNS name is one), or one of
 /// the hub's own names. A repeated or malformed one is refused.
-fn host_allowed(request: &httparse::Request<'_, '_>, own: &OwnNames) -> bool {
+///
+/// `own` is called only for a dotted name (review secb N2).
+fn host_allowed(request: &httparse::Request<'_, '_>, own: impl FnOnce() -> OwnNames) -> bool {
     let Ok(host) = single_header(request, "Host") else {
         return false;
     };
@@ -589,7 +598,7 @@ fn host_allowed(request: &httparse::Request<'_, '_>, own: &OwnNames) -> bool {
     host_of(host).is_some_and(|name| {
         name.parse::<IpAddr>().is_ok()
             || !name.contains('.')
-            || own.hosts.iter().any(|h| h.eq_ignore_ascii_case(&name))
+            || own().hosts.iter().any(|h| h.eq_ignore_ascii_case(&name))
     })
 }
 
@@ -767,6 +776,8 @@ struct Shared {
     tls: Option<TlsState>,
     /// [`NetworkConfig::host_names`].
     host_names: Vec<String>,
+    /// [`Shared::own_names`]'s last answer and when. A leaf lock.
+    own_names: Mutex<Option<(Instant, OwnNames)>>,
 }
 
 // -- WP SECSRV --
@@ -950,11 +961,21 @@ impl Shared {
     /// The names that count as the hub itself now: [`OwnNames::current`] with the name
     /// the responder holds (after a conflict the old one is somebody else's, so only the
     /// configured one until it runs, and after) and [`NetworkConfig::host_names`].
+    ///
+    /// Kept for [`OWN_NAMES_FOR`]: listing the interfaces costs a system call, and a
+    /// page load asks many times a second (review secb N2).
     fn own_names(&self) -> OwnNames {
+        let now = Instant::now();
+        if let Some((at, own)) = guard(&self.own_names).as_ref()
+            && now.saturating_duration_since(*at) < OWN_NAMES_FOR
+        {
+            return own.clone();
+        }
         let advertised = self.hub.advertised().map(|names| names.host);
         let name = advertised.as_deref().or(self.mdns_name.as_deref());
         let mut own = OwnNames::current(self.port, name);
         own.hosts.extend(self.host_names.iter().cloned());
+        *guard(&self.own_names) = Some((now, own.clone()));
         own
     }
 
@@ -1855,7 +1876,7 @@ fn answer<S: HubStream + ?Sized>(
         .unwrap_or_default();
     // -- WP SECSRV -- every route, before anything is said about the hub (an upgrade's
     // `Origin` is judged first, in `check_upgrade`, so a page learns as little as it can)
-    let misdirected = !encrypted && !host_allowed(&request, &shared.own_names());
+    let misdirected = !encrypted && !host_allowed(&request, || shared.own_names());
     if misdirected && path != WS_PATH {
         return misdirected_page(shared, tcp, until);
     }
@@ -3342,6 +3363,7 @@ impl Server {
                 .map(|h| h.trim().to_ascii_lowercase())
                 .filter(|h| !h.is_empty())
                 .collect(),
+            own_names: Mutex::new(None),
         });
         let acceptor = {
             let shared = Arc::clone(&shared);

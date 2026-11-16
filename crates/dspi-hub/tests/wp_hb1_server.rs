@@ -24,6 +24,14 @@ use socket2::{Domain, SockAddr, Socket, Type};
 use tungstenite::protocol::Role as WsRole;
 use tungstenite::{Message, WebSocket};
 
+// -- review secb -- the TLS mode these tests run against: `off`, or under the
+// test-only feature `test-tls-mode` what DSPI_HUB_TEST_TLS asks for. Where TLS is
+// served, an `https` own Origin is the hub's page too, `/info` says `tls`, and a
+// ClientHello is a TLS handshake, not a bad request.
+fn tls_served() -> bool {
+    NetworkConfig::new(std::path::PathBuf::new()).tls != dspi_hub::TlsMode::Off
+}
+
 const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 const WAIT: Duration = Duration::from_secs(10);
 const HELLO: &str = r#"{"t":"hello","proto":{"major":1,"minor":2},"client":{"name":"raw","app":"test","version":"0"}}"#;
@@ -616,7 +624,6 @@ fn wp_hb1_a_foreign_origin_is_refused() {
         "Origin:".to_owned(),
         "Origin: http://evil.example".to_owned(),
         format!("Origin: http://evil.example:{port}"),
-        format!("Origin: https://127.0.0.1:{port}"),
         format!("Origin: http://127.0.0.1:{}", port.wrapping_add(1)),
         format!("Origin: http://127.0.0.1:{port}/"),
         format!("Origin: http://127.0.0.1:{port}.evil.example"),
@@ -625,6 +632,10 @@ fn wp_hb1_a_foreign_origin_is_refused() {
     ] {
         assert_eq!(upgrade_status(port, &[&bad]), 403, "{bad}");
     }
+    // -- review secb -- our own https page: ours only where the hub serves TLS
+    let own_https = format!("Origin: https://127.0.0.1:{port}");
+    let want = if tls_served() { 101 } else { 403 };
+    assert_eq!(upgrade_status(port, &[&own_https]), want, "{own_https}");
     // Neither of two headers can make the other not count.
     let two = [
         format!("Origin: http://127.0.0.1:{port}"),
@@ -735,7 +746,8 @@ fn wp_hb1_the_info_endpoint_answers_as_spec_3_2() {
     assert!(head.contains("application/json"), "{head}");
     let info: dspi_link::messages::InfoDoc = serde_json::from_str(&body).unwrap();
     assert_eq!(info.auth, "pin");
-    assert!(!info.tls);
+    // -- review secb -- as the mode says
+    assert_eq!(info.tls, tls_served());
     assert_eq!(info.ws.as_deref(), Some("/dspi/v1"));
     assert_eq!(info.hub.id, b.hub.hub_id());
     assert_eq!(info.proto.major, 1);
@@ -752,6 +764,9 @@ fn wp_hb1_the_info_endpoint_answers_as_spec_3_2() {
 fn wp_hb1_other_http_gets_a_plain_refusal() {
     let b = pin_hub();
     let port = b.port;
+    // -- review secb -- a ClientHello: a plain 400 at once with TLS off, a TLS
+    // handshake (that these bytes fail, with no HTTP answer) where TLS is served
+    let hello_answer = if tls_served() { 0 } else { 400 };
     for (request, expect) in [
         ("GET / HTTP/1.1\r\n\r\n", 404),
         ("GET /index.html HTTP/1.1\r\n\r\n", 404),
@@ -764,7 +779,10 @@ fn wp_hb1_other_http_gets_a_plain_refusal() {
         ("GET /dspi/v1 HTTP/1.1\r\n\r\n", 400),
         ("POST /dspi/v1 HTTP/1.1\r\n\r\n", 400),
         // Not HTTP at all.
-        ("\x16\x03\x01\x02\x00\x01\x00\x01\x7c\x03\x03\r\n\r\n", 400),
+        (
+            "\x16\x03\x01\x02\x00\x01\x00\x01\x7c\x03\x03\r\n\r\n",
+            hello_answer,
+        ),
         ("\r\n\r\n", 400),
         ("GET\r\n\r\n", 400),
         ("GET / HTTP/9.9\r\n\r\n", 400),

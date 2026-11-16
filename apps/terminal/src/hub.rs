@@ -3953,3 +3953,110 @@ mod tests_wp_p2cc3 {
         assert!(!command(&running, "quit", false));
     }
 }
+
+// -- review secb -- `--tls`, `--upstream-compat`, `--host-name` and their defaults
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_review_secb {
+    use super::*;
+
+    fn run(args: &[&str]) -> Result<RunOptions, Failure> {
+        match parse(args, false, Some(PathBuf::from("/store")))? {
+            HubCommand::Run(o) => Ok(o),
+            other => panic!("{args:?}: {other:?}"),
+        }
+    }
+
+    fn policy(args: &[&str]) -> TlsPolicy {
+        let o = run(args).unwrap();
+        o.tls.policy(o.loopback)
+    }
+
+    #[test]
+    fn review_secb_tls_flags_parse() {
+        for (word, mode) in [
+            ("off", TlsMode::Off),
+            ("on", TlsMode::On),
+            ("require", TlsMode::Require),
+        ] {
+            assert_eq!(run(&["--tls", word]).unwrap().tls.mode, Some(mode));
+            assert_eq!(
+                run(&[&format!("--tls={word}")]).unwrap().tls.mode,
+                Some(mode)
+            );
+        }
+        assert!(matches!(run(&["--tls", "maybe"]), Err(Failure::Usage(_))));
+        assert!(matches!(run(&["--tls"]), Err(Failure::Usage(_))));
+        assert!(run(&["--upstream-compat"]).unwrap().tls.upstream_compat);
+        let o = run(&["--host-name", "Studio.LAN", "--host-name=hub.example"]).unwrap();
+        assert_eq!(o.tls.host_names, ["studio.lan", "hub.example"]);
+        for bad in ["", "a b", "x\"y", "evil/"] {
+            assert!(
+                matches!(run(&["--host-name", bad]), Err(Failure::Usage(_))),
+                "{bad:?}"
+            );
+        }
+        // Run options only
+        for flag in [
+            &["--tls", "on"][..],
+            &["--upstream-compat"],
+            &["--host-name", "x"],
+        ] {
+            let mut args = vec!["clients"];
+            args.extend_from_slice(flag);
+            assert!(
+                matches!(
+                    parse(&args, false, Some(PathBuf::from("/s"))),
+                    Err(Failure::Usage(_))
+                ),
+                "{flag:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn review_secb_require_with_upstream_compat_is_refused() {
+        assert!(matches!(
+            run(&["--tls", "require", "--upstream-compat"]),
+            Err(Failure::Usage(_))
+        ));
+        assert!(matches!(
+            run(&["--upstream-compat", "--tls=require"]),
+            Err(Failure::Usage(_))
+        ));
+        assert!(run(&["--tls", "on", "--upstream-compat"]).is_ok());
+    }
+
+    #[test]
+    fn review_secb_the_tls_defaults() {
+        let p = |mode, upstream_compat| TlsPolicy {
+            mode,
+            upstream_compat,
+        };
+        assert_eq!(
+            policy(&[]),
+            p(TlsMode::Require, false),
+            "require on the network"
+        );
+        assert_eq!(
+            policy(&["--loopback"]),
+            p(TlsMode::Off, false),
+            "off on loopback"
+        );
+        assert_eq!(policy(&["--local"]), p(TlsMode::Off, false), "uconsole web");
+        assert_eq!(policy(&["--upstream-compat"]), p(TlsMode::On, true));
+        assert_eq!(
+            policy(&["--loopback", "--upstream-compat"]),
+            p(TlsMode::On, true)
+        );
+        assert_eq!(
+            policy(&["--loopback", "--tls", "require"]),
+            p(TlsMode::Require, false)
+        );
+        assert_eq!(policy(&["--tls", "off"]), p(TlsMode::Off, false));
+        assert_eq!(
+            policy(&["--tls", "off", "--upstream-compat"]),
+            p(TlsMode::Off, true)
+        );
+    }
+}

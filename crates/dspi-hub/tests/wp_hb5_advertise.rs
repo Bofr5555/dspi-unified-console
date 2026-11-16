@@ -27,6 +27,14 @@ use dspi_transport::FakeDevice;
 use mdns_sd::{IfKind, Receiver, ServiceDaemon, ServiceEvent};
 use socket2::{Domain, Protocol, Socket, Type};
 
+// -- review secb -- the TLS mode these tests run against: `off`, or under the
+// test-only feature `test-tls-mode` what DSPI_HUB_TEST_TLS asks for. Where TLS is
+// served, an `https` own Origin is the hub's page too, `/info` says `tls`, and a
+// ClientHello is a TLS handshake, not a bad request.
+fn tls_served() -> bool {
+    NetworkConfig::new(std::path::PathBuf::new()).tls != dspi_hub::TlsMode::Off
+}
+
 const WAIT: Duration = Duration::from_secs(15);
 
 /// Tests of a conflict run alone. Between a responder's rename and our re-registering it
@@ -406,7 +414,12 @@ fn wp_hb5_a_page_opened_at_the_local_name_is_not_refused() {
     let host = names.host;
     assert_eq!(upgrade_status(port, &format!("http://{host}:{port}")), 101);
     assert_eq!(upgrade_status(port, &format!("http://{host}:1")), 403);
-    assert_eq!(upgrade_status(port, &format!("https://{host}:{port}")), 403);
+    // -- review secb -- the https page of that name: ours where TLS is served
+    let want = if tls_served() { 101 } else { 403 };
+    assert_eq!(
+        upgrade_status(port, &format!("https://{host}:{port}")),
+        want
+    );
     assert_eq!(
         upgrade_status(port, &format!("http://other-{host}:{port}")),
         403

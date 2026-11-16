@@ -2362,6 +2362,25 @@
 #define HUB_OPT_LOOPBACK 4
 
 /**
+ * `dspi_hub_start` option: TLS and plaintext both on the port (`--tls on`). Over
+ * plaintext a PIN pairing and an API key not minted `plaintext_ok` are refused.
+ */
+#define HUB_OPT_TLS_ON 8
+
+/**
+ * `dspi_hub_start` option: TLS only (`--tls require`). Not with `HUB_OPT_TLS_ON`.
+ */
+#define HUB_OPT_TLS_REQUIRE 16
+
+/**
+ * `dspi_hub_start` option: upstream compatibility (`--upstream-compat`), a security
+ * downgrade the app must show with its list of what turns off: TLS on, and plaintext
+ * pairing and every API key over plaintext too. Implies `HUB_OPT_TLS_ON`; not with
+ * `HUB_OPT_TLS_REQUIRE`. The start's reply carries `tls` and `upstreamCompat`.
+ */
+#define HUB_OPT_UPSTREAM_COMPAT 32
+
+/**
  * A device came online. `code` is its handle, `text` its serial.
  */
 #define HUB_EVENT_DEVICE_ONLINE 0

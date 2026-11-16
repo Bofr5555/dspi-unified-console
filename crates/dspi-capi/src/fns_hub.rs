@@ -58,7 +58,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use dspi_hub::app::AppLink;
 use dspi_hub::{
     AccessMode, DeviceState, Hub, HubConfig, HubError, HubEvent, HubHandle, HubListener,
-    NetworkConfig, NetworkControl, PairedClient, RegisteredDevice, Role, SavedHub, UsbBus,
+    NetworkConfig, NetworkControl, PairedClient, RegisteredDevice, Role, SavedHub, TlsMode, UsbBus,
 };
 use dspi_transport::FakeDevice;
 use serde_json::{Value, json};
@@ -81,7 +81,24 @@ pub const HUB_OPT_USB: u32 = 1;
 pub const HUB_OPT_APP: u32 = 2;
 /// `dspi_hub_start` option: listen on loopback only. For tests.
 pub const HUB_OPT_LOOPBACK: u32 = 4;
-const HUB_OPT_ALL: u32 = HUB_OPT_USB | HUB_OPT_APP | HUB_OPT_LOOPBACK;
+// -- review secb -- TLS on the port (PLAN-SEC 4.1). Neither bit: off, plaintext only,
+// for now (SEC-C flips Qt and the Mac to require).
+/// `dspi_hub_start` option: TLS and plaintext both on the port (`--tls on`). Over
+/// plaintext a PIN pairing and an API key not minted `plaintext_ok` are refused.
+pub const HUB_OPT_TLS_ON: u32 = 8;
+/// `dspi_hub_start` option: TLS only (`--tls require`). Not with `HUB_OPT_TLS_ON`.
+pub const HUB_OPT_TLS_REQUIRE: u32 = 16;
+/// `dspi_hub_start` option: upstream compatibility (`--upstream-compat`), a security
+/// downgrade the app must show with its list of what turns off: TLS on, and plaintext
+/// pairing and every API key over plaintext too. Implies `HUB_OPT_TLS_ON`; not with
+/// `HUB_OPT_TLS_REQUIRE`. The start's reply carries `tls` and `upstreamCompat`.
+pub const HUB_OPT_UPSTREAM_COMPAT: u32 = 32;
+const HUB_OPT_ALL: u32 = HUB_OPT_USB
+    | HUB_OPT_APP
+    | HUB_OPT_LOOPBACK
+    | HUB_OPT_TLS_ON
+    | HUB_OPT_TLS_REQUIRE
+    | HUB_OPT_UPSTREAM_COMPAT;
 
 /// A device came online. `code` is its handle, `text` its serial.
 pub const HUB_EVENT_DEVICE_ONLINE: u8 = 0;
@@ -414,6 +431,14 @@ fn parse_start(
     if options & !HUB_OPT_ALL != 0 {
         return Err(Failure::invalid("no such option"));
     }
+    // -- review secb --
+    if options & HUB_OPT_TLS_REQUIRE != 0
+        && options & (HUB_OPT_TLS_ON | HUB_OPT_UPSTREAM_COMPAT) != 0
+    {
+        return Err(Failure::invalid(
+            "HUB_OPT_TLS_REQUIRE goes with neither HUB_OPT_TLS_ON nor HUB_OPT_UPSTREAM_COMPAT",
+        ));
+    }
     Ok(StartArgs {
         name: clean_hub_name(name),
         store_dir: PathBuf::from(store_dir),
@@ -421,6 +446,21 @@ fn parse_start(
         access,
         options,
     })
+}
+
+// -- review secb --
+/// The TLS mode and upstream compatibility `options` ask for (checked by
+/// [`parse_start`]): off unless a bit says otherwise.
+fn tls_for(options: u32) -> (TlsMode, bool) {
+    let compat = options & HUB_OPT_UPSTREAM_COMPAT != 0;
+    let mode = if options & HUB_OPT_TLS_REQUIRE != 0 {
+        TlsMode::Require
+    } else if compat || options & HUB_OPT_TLS_ON != 0 {
+        TlsMode::On
+    } else {
+        TlsMode::Off
+    };
+    (mode, compat)
 }
 
 /// The hub's configuration. It never scans at start, not even a headless one: nothing is
@@ -432,6 +472,8 @@ fn config_for(args: &StartArgs, name: String) -> HubConfig {
     if args.options & HUB_OPT_LOOPBACK != 0 {
         network.bind = IpAddr::V4(Ipv4Addr::LOCALHOST);
     }
+    // -- review secb --
+    (network.tls, network.upstream_compat) = tls_for(args.options);
     let mut config = HubConfig::in_process(&name);
     config.network = Some(network);
     config.initial_scan = false;
@@ -491,6 +533,10 @@ impl FfiHub {
             "port": control.port(),
             "access": args.access.wire_name(),
             "tokensRevoked": tokens_revoked,
+            // -- review secb --
+            "tls": control.tls().policy.mode.name(),
+            "upstreamCompat": control.tls().policy.upstream_compat,
+            "tlsFingerprint": control.tls().pin.map(|p| p.display()),
         });
         *lock(&self.running) = Some(Running {
             hub,
