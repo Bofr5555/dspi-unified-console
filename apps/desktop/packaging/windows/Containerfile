@@ -8,12 +8,15 @@
 # packaging/licences/qt-<version>/ (licences/qt-modules.sh windows). When
 # Fedora moves on, the build stops here; update it, then run
 # release-sources.sh and licences/update-licences.sh.
+# -- WP P5QCAP -- mingw64-qt6-qtmultimedia: the microphone (QAudioSource); its
+# audio backend (WASAPI) is inside Qt6Multimedia.dll, no media plugin is bundled.
 FROM registry.fedoraproject.org/fedora:44
 ARG MINGW_QT_VERSION=6.11.2
 RUN dnf -y install --setopt=install_weak_deps=False \
       gcc cmake ninja-build python3 curl ca-certificates \
       mingw64-gcc-c++ mingw64-binutils \
       mingw64-qt6-qtbase mingw64-qt6-qtdeclarative mingw64-qt6-qtsvg mingw64-qt6-qttools \
+      mingw64-qt6-qtmultimedia \
       qt6-qtdeclarative-devel mingw32-nsis \
  && dnf clean all \
  && v=$(rpm -q --qf '%{VERSION}' mingw64-qt6-qtbase) \
