@@ -366,6 +366,6 @@ hub cannot read is kept aside as `<name>.bad-<time>` and the hub goes on with wh
 
 | Path | What | Bound | Diagnostics bundle |
 |---|---|---|---|
-| `groups.json` | the groups: id, name, note, members (P3GR) | 64 groups of 64 members | `hub/groups.json` |
+| `groups.json` | the groups: id, name, note, members (P3GR, built) | 64 groups of 64 members | `hub/groups.json` |
 | `rollout.json` | the firmware rollouts' records: target, image name and hash, steps and their texts, who started it (P3RO) | the newest 64 records | `hub/rollout.json` |
 | `firmware/` | the firmware images an Admin uploaded or `uconsole hub firmware add` put in, for a rollout (P3RO) | 4 images of at most 8 MiB | never |

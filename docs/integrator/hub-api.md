@@ -43,9 +43,9 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM | built (P2TM) |
 | 17 | [Deviations from the DSPi Link spec](#17-deviations-from-the-dspi-link-spec) | | | P2DOC | built (this page) |
 | 18 | [Every message](#18-every-message) | | | P2DOC | built (this page) |
-| 19 | [Groups](#19-groups) | `group.list`, `group.set`, `group.delete`, `group.changed`; `group:<id>` schedule targets | `groups` | P3GR; text P3DOC | draft |
+| 19 | [Groups](#19-groups) | `group.list`, `group.set`, `group.delete`, `group.changed`; `group:<id>` schedule targets | `groups` | P3GR; text P3DOC | built (P3GR; text P3DOC) |
 | 20 | [Group writes and bulk apply](#20-group-writes-and-bulk-apply) | `group.param.*`, `group.preset.load`, `group.apply*` | `group_params`, `group_apply` | P3GP (20.2), P3BA (20.3); text P3DOC | draft |
-| 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | draft |
+| 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | draft (the writer, P3PB, is built) |
 
 ---
 
@@ -488,7 +488,7 @@ newest read of any field), so two records 2 s apart usually carry the same uptim
 steps.
 
 <!-- WP P3DOC -->
-**For the health board** (*draft: P3HB*, PLAN-P3 F7, OD-P3m). A record gains three fields, each absent when the device or
+**For the health board** (*built: P3HB*, PLAN-P3 F7, OD-P3m). A record gains three fields, each absent when the device or
 the hub has nothing for it; no cap changes (`health` as before), and a client that does not know them ignores them
 (section 1.1):
 
@@ -1314,12 +1314,12 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `hub.rename` | request | admin | `hub_stats` | 15 |
 | `fw.install` | existing | | | stays `unsupported` |
 <!-- WP P3DOC: phase 3's rows, draft until the WP in the last column builds them -->
-| `health.get` (gains `counters`, `clip_per_min`, `last_change`) | existing | viewer | `health` | 5 (draft: P3HB) |
-| `schedule.set` (`targets` take `group:<id>`) | existing | admin | `schedule`, `groups` | 19.3 (draft: P3GR) |
-| `group.list` | request | viewer | `groups` | 19.2 (draft: P3GR) |
-| `group.set` | request | admin | `groups` | 19.2 (draft: P3GR) |
-| `group.delete` | request | admin | `groups` | 19.2 (draft: P3GR) |
-| `group.changed` | event | | `groups` | 19.2 (draft: P3GR) |
+| `health.get` (gains `counters`, `clip_per_min`, `last_change`) | existing | viewer | `health` | 5 (built: P3HB) |
+| `schedule.set` (`targets` take `group:<id>`) | existing | admin | `schedule`, `groups` | 19.3 (built: P3GR) |
+| `group.list` | request | viewer | `groups` | 19.2 (built: P3GR) |
+| `group.set` | request | admin | `groups` | 19.2 (built: P3GR) |
+| `group.delete` | request | admin | `groups` | 19.2 (built: P3GR) |
+| `group.changed` | event | | `groups` | 19.2 (built: P3GR) |
 | `group.param.get` | request | viewer | `group_params` | 20.2 (draft: P3GP) |
 | `group.param.set` | request | control | `group_params` | 20.2 (draft: P3GP) |
 | `group.preset.load` | request | control | `group_params` | 20.2 (draft: P3GP) |
@@ -1336,7 +1336,7 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 
 ## 19. Groups
 
-*State: draft (P3GR, `crates/dspi-hub/src/groups.rs`; text WP P3DOC). PLAN-P3 F3, OD-P3a, OD-P3b. Sections 19 to 21
+*State: built (P3GR, `crates/dspi-hub/src/groups.rs`; text WP P3DOC). PLAN-P3 F3, OD-P3a, OD-P3b. Sections 19 to 21
 are PRO phase 3 ([`docs/core-merge/PLAN-P3.md`](../core-merge/PLAN-P3.md)): the fleet in the web console.*
 
 A group is a named set of devices, kept by the hub: a name, a note and members, nothing more. A group has no role of its
@@ -1349,7 +1349,7 @@ fan-outs of section 20, schedule targets (19.3) and group rollouts (section 21) 
 
   | Cap | Family | Announced |
   |---|---|---|
-  | `groups` | section 19 (and `group:<id>` schedule targets) | on a hub with a data folder, unless turned off |
+  | `groups` | section 19 (and `group:<id>` schedule targets) | when the hub embedder turns `ServiceConfig::groups` on (`uconsole hub`: with P3TM, every hub with a data folder unless `--no-groups`) |
   | `group_params` | section 20.2 | with `groups` and the parameter API |
   | `group_apply` | section 20.3 | with `groups` and the hub's snapshots |
   | `rollout` | section 21 | only with `uconsole hub --rollout`, on a hub that serves TLS (21.1) |
@@ -1412,8 +1412,8 @@ A group:
   name or note out of bounds, or a member that is not a serial (a `group:` entry: groups do not nest) is `bad_request`;
   a 65th group is `conflict`; an unknown `id` in `group.set` or `group.delete` is `not_found`. A refusal changes
   nothing.
-- A device that goes offline stays a member. A device forgotten (`inventory.forget`, or dropped past the inventory's
-  cap) leaves every group it was in, each with a `group.changed`.
+- A device that goes offline stays a member. A device forgotten (`inventory.forget`) leaves every group it was in, each with a `group.changed`; a record the
+  inventory drops past its cap does not yet (its drop is not on the bus; a P3-B fix in `inventory.rs`).
 - `inventory.list` is unchanged and has no `groups` field (OD-P3b): `group.list` is the one source of membership, and a
   client joins it to the inventory by serial.
 - Event to every session: `group.changed {v, hub, group, change}`: `group` the whole group as it is now (as it was, for

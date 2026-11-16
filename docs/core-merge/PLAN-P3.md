@@ -197,7 +197,7 @@ Sizes are this project's units (about one hour of agent time with review); estim
 
 ### Core and hub WPs
 
-**P3PB: The PICOBOOT writer in the core.** [TODO] Size 3. Wave P3-A. **Owns:** new `crates/dspi-core/src/picoboot.rs`
+**P3PB: The PICOBOOT writer in the core.** [DONE 2026-11-16] Size 3. Wave P3-A. **Owns:** new `crates/dspi-core/src/picoboot.rs`
 (and `picoboot/tests_wp_p3pb.rs`), behind the core's `usb` feature (nusb is already there, `crates/dspi-core/Cargo.toml:59`);
 in `firmware.rs`, one marked block exposing the image's pages (`pub(crate) fn uf2_pages(&Uf2Info, &[u8]) -> Vec<Page>`,
 over the existing `Block` decode at `:138`, the E10 block left out as `uf2_inspect` does). **Implements:** OD-P2b's
@@ -220,7 +220,7 @@ the error names the step; an `EXCLUSIVE_ACCESS` refusal is reported, not retried
 sends nothing; a missing or wrong token is `ConfirmationRequired` with nothing sent; `proptest_*` over mutated images
 never panics; `cargo deny check` unchanged (no new crate). **Deps:** none. **Clients:** P3RO.
 
-**P3GR: Groups.** [TODO] Size 1.5. Wave P3-A. **Owns:** new `crates/dspi-hub/src/groups.rs` (`GroupBook`, the service,
+**P3GR: Groups.** [DONE 2026-11-16] Size 1.5. Wave P3-A. **Owns:** new `crates/dspi-hub/src/groups.rs` (`GroupBook`, the service,
 `<data>/groups.json`), the `group:<id>` resolution in `schedule.rs` under a marker (`:520-523`, through a `GroupResolver`
 trait defined in `groups.rs` and handed over `ServiceSetup`), the `DeviceForgotten` handling, the `groups.json` block in
 `diag.rs` (the one `diag.rs` edit of P3-A). **Implements:** F3 as in section 1: `group.list`, `group.set`, `group.delete`,
@@ -233,7 +233,7 @@ rule on `group:g1` runs on every member (a `results` row each) and on an unknown
 and the 65th member are `conflict`/`bad_request`; a torn file reads what it can; the bundle carries `groups.json`.
 **Deps:** none (P2IN, P2SC merged). **Clients:** P3GP, P3BA, P3RO (group rollouts), P3WGR, P3CC.
 
-**P3HB: Health for the board.** [TODO] Size 1.5. Wave P3-A. **Owns:** `crates/dspi-hub/src/health.rs` (P2HP's, merged),
+**P3HB: Health for the board.** [DONE 2026-11-16] Size 1.5. Wave P3-A. **Owns:** `crates/dspi-hub/src/health.rs` (P2HP's, merged),
 the `Health` fields in `bus.rs` under a marker (`:109-125`), the `HubHealth` record in `crates/dspi-core/src/hub_server.rs`
 under a marker (its fields are additive; the wasm binding's TypeScript record in `apps/web/src/core/protocol.ts:1257`
 too), binding wiring. **Implements:** F7's hub half: `counters {underruns, starvation}` from one more single read every
@@ -335,7 +335,7 @@ Each builds on the core's typed calls only (the Worker through the wasm binding,
 client talks JSON to the hub. `HubScreen.tsx` takes **one marked line per WP, added at merge** (PLAN-P2 review S7's
 rule), so the three hub WPs own disjoint new files.
 
-**P3OV: Web: the Overview.** [TODO] Size 2.5. Wave P3-A. **Owns:** new `apps/web/src/screens/overview/` (`OverviewScreen.tsx`,
+**P3OV: Web: the Overview.** [DONE 2026-11-16] Size 2.5. Wave P3-A. **Owns:** new `apps/web/src/screens/overview/` (`OverviewScreen.tsx`,
 `model.ts`, `OutputRow.tsx`, `Meters.tsx`), one marked line in `apps/web/src/ui/screens.tsx:111` (`SCREENS`), new
 `test/unit/overview_p3ov.test.ts`, `test/e2e/overview_p3ov.spec.ts`. **Implements:** U1 as in section 1 (OD-P3j): every
 output's routing sources, gain, delay, mute, limiter threshold and gain reduction, clip latch in one table; every input
@@ -385,7 +385,7 @@ an `http://` page) the start is refused with the TLS notice. **Deps:** P3CC (P3-
 
 ### Terminal and docs
 
-**P3DOC: The contract, drafted.** [TODO] Size 0.75. Wave P3-A. **Owns:** in `docs/integrator/hub-api.md`: new sections
+**P3DOC: The contract, drafted.** [DONE 2026-11-16] Size 0.75. Wave P3-A. **Owns:** in `docs/integrator/hub-api.md`: new sections
 19 Groups, 20 Group writes and bulk apply, 21 Firmware rollout, the F7 additions to section 5, the REST rows of 14.2, the
 "Every message" rows of section 18 (each marked draft until its WP marks it built); `docs/GLOSSARY.md` rows (Group,
 Bulk apply, Rollout, Overview; System restated as the alink system); `docs/integrator/hub.md` "The store" rows
