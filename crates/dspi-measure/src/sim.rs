@@ -171,7 +171,9 @@ impl RoomMode {
         };
         SimFilter::Peak {
             freq: self.freq,
-            q: std::f64::consts::PI * self.freq * t60 / 1000f64.ln(),
+            // The factor first (at most 0.91): a huge finite frequency
+            // must not overflow on the way (review P5-A, F5).
+            q: self.freq * (std::f64::consts::PI * t60 / 1000f64.ln()),
             gain_db: self.gain_db,
         }
     }
