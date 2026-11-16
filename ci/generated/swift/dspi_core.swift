@@ -33636,6 +33636,14 @@ public struct LinkSecurity {
      */
     public var encrypted: Bool
     /**
+     * Not encrypted, but the hub is this machine (`localhost`, a loopback
+     * address: `dspi_link::address::is_loopback_host`): nothing crosses a
+     * network, so it is not shown as unsecured. Always false when
+     * `encrypted`. The three cases: `encrypted`, `local`, neither
+     * (unsecured: the red bar and " (unsecured)").
+     */
+    public var local: Bool
+    /**
      * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
      */
     public var hubKey: String
@@ -33658,6 +33666,13 @@ public struct LinkSecurity {
          * (a hub without TLS, such as an upstream one): show the badge.
          */encrypted: Bool, 
         /**
+         * Not encrypted, but the hub is this machine (`localhost`, a loopback
+         * address: `dspi_link::address::is_loopback_host`): nothing crosses a
+         * network, so it is not shown as unsecured. Always false when
+         * `encrypted`. The three cases: `encrypted`, `local`, neither
+         * (unsecured: the red bar and " (unsecured)").
+         */local: Bool, 
+        /**
          * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
          */hubKey: String, 
         /**
@@ -33669,6 +33684,7 @@ public struct LinkSecurity {
          * differs from the stored one.
          */credential: String) {
         self.encrypted = encrypted
+        self.local = local
         self.hubKey = hubKey
         self.hubKeyNew = hubKeyNew
         self.credential = credential
@@ -33685,6 +33701,9 @@ extension LinkSecurity: Equatable, Hashable {
         if lhs.encrypted != rhs.encrypted {
             return false
         }
+        if lhs.local != rhs.local {
+            return false
+        }
         if lhs.hubKey != rhs.hubKey {
             return false
         }
@@ -33699,6 +33718,7 @@ extension LinkSecurity: Equatable, Hashable {
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(encrypted)
+        hasher.combine(local)
         hasher.combine(hubKey)
         hasher.combine(hubKeyNew)
         hasher.combine(credential)
@@ -33715,6 +33735,7 @@ public struct FfiConverterTypeLinkSecurity: FfiConverterRustBuffer {
         return
             try LinkSecurity(
                 encrypted: FfiConverterBool.read(from: &buf), 
+                local: FfiConverterBool.read(from: &buf), 
                 hubKey: FfiConverterString.read(from: &buf), 
                 hubKeyNew: FfiConverterBool.read(from: &buf), 
                 credential: FfiConverterString.read(from: &buf)
@@ -33723,6 +33744,7 @@ public struct FfiConverterTypeLinkSecurity: FfiConverterRustBuffer {
 
     public static func write(_ value: LinkSecurity, into buf: inout [UInt8]) {
         FfiConverterBool.write(value.encrypted, into: &buf)
+        FfiConverterBool.write(value.local, into: &buf)
         FfiConverterString.write(value.hubKey, into: &buf)
         FfiConverterBool.write(value.hubKeyNew, into: &buf)
         FfiConverterString.write(value.credential, into: &buf)

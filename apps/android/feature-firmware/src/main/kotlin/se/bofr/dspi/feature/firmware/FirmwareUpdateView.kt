@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -290,12 +291,26 @@ private fun SourcePicker(model: FirmwareUpdateModel, onChooseFile: () -> Unit) {
                 ?: "For example a custom DSPi build",
             onClick = onChooseFile
         )
+        // -- WP SECFIX -- a file that is not this app's own image: said, not refused
+        if (local != null) {
+            model.localLabel?.let { label ->
+                Column(Modifier.padding(start = 48.dp, bottom = 4.dp).testTag(UNVERIFIED_LABEL_TAG)) {
+                    Text(label.title, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    if (label.text.isNotEmpty()) {
+                        Text(label.text, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
         model.localFileError?.let { Text(it, fontSize = 12.sp, color = Orange, modifier = Modifier.padding(start = 48.dp, bottom = 4.dp)) }
         if (local != null && enabled) {
             TextButton(onClick = onChooseFile, modifier = Modifier.padding(start = 40.dp)) { Text("Choose Another File...") }
         }
     }
 }
+
+/** -- WP SECFIX -- Test tag of the "Not a verified DSPi Console image" label. */
+internal const val UNVERIFIED_LABEL_TAG = "firmware-unverified"
 
 @Composable
 private fun ChoiceRow(selected: Boolean, enabled: Boolean, title: String, detail: String, onClick: () -> Unit) {

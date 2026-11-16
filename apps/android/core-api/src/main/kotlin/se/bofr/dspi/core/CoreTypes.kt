@@ -1589,6 +1589,14 @@ data class LinkSecurity(
      */
     val encrypted: Boolean,
     /**
+     * Not encrypted, but the hub is this machine (`localhost`, a loopback
+     * address: `dspi_link::address::is_loopback_host`): nothing crosses a
+     * network, so it is not shown as unsecured. Always false when
+     * `encrypted`. The three cases: `encrypted`, `local`, neither
+     * (unsecured: the red bar and " (unsecured)").
+     */
+    val local: Boolean,
+    /**
      * The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none.
      */
     val hubKey: String,

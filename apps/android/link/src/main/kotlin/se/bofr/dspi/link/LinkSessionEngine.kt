@@ -664,7 +664,7 @@ class LinkSessionEngine(
         }
         val noticed = (h.id.lowercase() + "|" + sec.hubKey) in keysNoticed
         val notice = sec.encrypted && sec.hubKeyNew && sec.hubKey.isNotEmpty() && !noticed
-        val next = HubSecurity(h.id, sec.encrypted, sec.hubKey, notice)
+        val next = HubSecurity(h.id, sec.encrypted, sec.hubKey, notice, local = sec.local) // -- WP SECFIX -- local
         if (_security.value != next) _security.value = next
     }
 

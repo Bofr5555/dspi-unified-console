@@ -5079,6 +5079,21 @@ uint64_t dspi_connection_generation(struct FfiCore *core);
 uint32_t dspi_uf2_inspect(const uint8_t *image, uint32_t image_len, char *buf, uint32_t len);
 
 /**
+ * Whether `image` (`image_len` bytes) is the bundled firmware file `name` (a
+ * file name, any leading path ignored; null or "" for a file the user picked
+ * with no name to give), in JSON: `{ok, value}` with `value` `"verified"`,
+ * `"notBundled"` (show the label, the notice row `firmware.not_verified`;
+ * not a refusal) or `"mismatch"` (a bundled name with other bytes: do not
+ * offer it; the guard refuses it too). A consistency check, not tamper
+ * protection (SECFWV). A null image is an empty one.
+ */
+uint32_t dspi_firmware_verify_bundled(const uint8_t *image,
+                                      uint32_t image_len,
+                                      const char *name,
+                                      char *buf,
+                                      uint32_t len);
+
+/**
  * The boards' bootloader drives that are mounted, in JSON (`value`: a list
  * of `{path, platform, info}`).
  */
@@ -6949,7 +6964,9 @@ uint32_t dspi_link_connect_advertised(struct FfiCore *core,
 
 /**
  * The session's encryption: JSON {ok, encrypted, hubKey, hubKeyNew,
- * credential}. `encrypted` false: show the "unencrypted" badge. `credential`:
+ * credential, local}. `encrypted` false: show the "unencrypted" badge,
+ * unless `local` (-- WP SECFIX --: the hub is this machine, a loopback
+ * address; nothing crosses a network, so no badge). `credential`:
  * store it when it differs from the stored one ("" without a token).
  * Returns the length needed.
  */

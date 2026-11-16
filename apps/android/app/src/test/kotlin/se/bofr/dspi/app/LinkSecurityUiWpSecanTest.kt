@@ -112,6 +112,20 @@ class LinkSecurityUiWpSecanTest {
         assertFalse(remoteStrip(connected).secured(connected, null).unsecured)
     }
 
+    // -- WP SECFIX -- one rule with the web, Qt and the Terminal: not encrypted but local
+    // (the core's `local`: the hub is this device's loopback) is not unsecured
+    @Test
+    fun wpSecfixALocalHubKeepsTheBarAsItWas() {
+        val local = HubSecurity("6f1a", encrypted = false, hubKey = "", local = true)
+        assertFalse(local.unsecured)
+        assertTrue(plain.unsecured)
+        assertFalse(tls.unsecured)
+        val strip = connectionStrip(AppMode.REMOTE, UsbSessionState.NoDevice, connected, security = local) as ConnectionStrip.Remote
+        assertFalse(strip.unsecured)
+        assertEquals("Living room via Studio Mac", strip.text)
+        assertEquals(remoteStrip(connected), strip)
+    }
+
     @Test
     fun wpSecanAnEncryptedHubKeepsTheBarAsItWas() {
         val strip = connectionStrip(AppMode.REMOTE, UsbSessionState.NoDevice, connected, security = tls) as ConnectionStrip.Remote

@@ -549,7 +549,8 @@ WHILE IT RUNS, on a terminal, type:
     quit                      stop sharing
 
 Clients pair over TLS: compare the key's fingerprint shown with the PIN, or scan
-its QR code. With --tls off or --upstream-compat a PIN crosses the network in
+its QR code. The QR code and the pairing link (it holds the PIN) go only to a
+terminal, and to --json readers as pairLink; a log gets neither. With --tls off or --upstream-compat a PIN crosses the network in
 plain text: pair on a network you trust.
 Clients on the network cannot raise a unit's core voltage above 1.20 V;
 do that on this machine. Logs go to standard error (RUST_LOG).

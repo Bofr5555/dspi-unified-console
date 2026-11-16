@@ -106,9 +106,20 @@ export class LocalBackend implements FleetBackend {
   }
 }
 
-/** `host:port`, `ws://host:port` or `http://host:port/` all become `ws://host:port`. */
+// -- WP SECFIX --
+/** Why a pasted `dspi://pair` link is not taken here (it never repeats the link: it holds a PIN). */
+export const PAIR_LINK_REFUSED =
+  "That is a pairing link for the DSPi Console apps. A browser page cannot check the hub key it carries, so it is not used here: type the hub's address, and its PIN when the hub asks.";
+
+/**
+ * `host:port`, `ws://host:port` or `http://host:port/` all become `ws://host:port`.
+ * -- WP SECFIX -- A `dspi://pair` link throws [PAIR_LINK_REFUSED]: the browser does the TLS,
+ * so the page cannot hold the hub to the link's `k=` the way the core's parser does in the
+ * apps; and a page cannot receive `dspi://` links at all (only `web+` schemes register).
+ */
 export function normaliseHubUrl(input: string): string {
   let s = input.trim();
+  if (/^dspi:/i.test(s)) throw new Error(PAIR_LINK_REFUSED);
   if (!/^[a-z]+:\/\//i.test(s)) s = `ws://${s}`;
   const u = new URL(s);
   const scheme = u.protocol === "https:" || u.protocol === "wss:" ? "wss:" : "ws:";

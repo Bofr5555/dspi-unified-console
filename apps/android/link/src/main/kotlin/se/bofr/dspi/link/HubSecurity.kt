@@ -14,8 +14,17 @@ data class HubSecurity(
     /** The hub key's fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" when none. */
     val hubKey: String,
     /** Show "Encrypted connection set up; hub key …" now; once per hub and key ([LinkSessionEngine.ackKeyNotice]). */
-    val keyNotice: Boolean = false
-)
+    val keyNotice: Boolean = false,
+    /**
+     * -- WP SECFIX -- Not [encrypted], but the hub is this device (the core's `local`: 127.0.0.1,
+     * ::1, localhost, the same rule as every client): nothing crosses a network, so the bar is not
+     * red and says nothing.
+     */
+    val local: Boolean = false
+) {
+    /** -- WP SECFIX -- The bar is red and says "(unsecured)": neither encrypted nor local. */
+    val unsecured: Boolean get() = !encrypted && !local
+}
 
 /**
  * The `DspiException.Link` codes after which the app offers pairing again, and the only

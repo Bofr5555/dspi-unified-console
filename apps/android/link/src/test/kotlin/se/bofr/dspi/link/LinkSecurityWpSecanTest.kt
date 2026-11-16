@@ -53,7 +53,7 @@ class LinkSecurityWpSecanTest {
         var events: LinkListener? = null
         var status = status(LinkPhase.CHOOSE_DEVICE)
         var hello = hello()
-        var security: LinkSecurity? = LinkSecurity(encrypted = false, hubKey = "", hubKeyNew = false, credential = "")
+        var security: LinkSecurity? = LinkSecurity(encrypted = false, local = false, hubKey = "", hubKeyNew = false, credential = "")
         var connectError: DspiException? = null
         val log = ArrayList<String>()
         val pins = ArrayList<String>()
@@ -140,7 +140,8 @@ class LinkSecurityWpSecanTest {
         val s = Stack(this)
         s.tokens.setToken("hub-1", "Fake Hub", "v1-token")
         val pinned = "v2.djEtdG9rZW4.$key.t"
-        s.ops.security = LinkSecurity(encrypted = true, hubKey = "SHA256:AAAA-AAAA-AAAA-AAAA", hubKeyNew = true, credential = pinned)
+        s.ops.security =
+            LinkSecurity(encrypted = true, local = false, hubKey = "SHA256:AAAA-AAAA-AAAA-AAAA", hubKeyNew = true, credential = pinned)
         s.engine.connect(hub)
         runCurrent()
         assertEquals("the stored v1 token went out", "connect(v1-token, hub-1)", s.connects().single())
@@ -161,10 +162,17 @@ class LinkSecurityWpSecanTest {
         runCurrent()
         assertEquals(HubSecurity("hub-1", encrypted = false, hubKey = ""), s.engine.security.value)
         assertNull("no credential, nothing stored", s.tokens.token("hub-1"))
-        s.ops.security = LinkSecurity(encrypted = true, hubKey = "SHA256:K7Q2-M9XD-4TNB-0ZRA", hubKeyNew = false, credential = "")
+        s.ops.security =
+            LinkSecurity(encrypted = true, local = false, hubKey = "SHA256:K7Q2-M9XD-4TNB-0ZRA", hubKeyNew = false, credential = "")
         s.ops.events!!.onLinkStatusChanged()
         runCurrent()
         assertEquals(HubSecurity("hub-1", encrypted = true, hubKey = "SHA256:K7Q2-M9XD-4TNB-0ZRA"), s.engine.security.value)
+        // -- WP SECFIX -- the core's `local` reaches the UI: not unsecured
+        s.ops.security = LinkSecurity(encrypted = false, local = true, hubKey = "", hubKeyNew = false, credential = "")
+        s.ops.events!!.onLinkStatusChanged()
+        runCurrent()
+        assertEquals(HubSecurity("hub-1", encrypted = false, hubKey = "", local = true), s.engine.security.value)
+        assertEquals(false, s.engine.security.value!!.unsecured)
         s.engine.disconnect()
         runCurrent()
         assertNull(s.engine.security.value)
@@ -173,7 +181,8 @@ class LinkSecurityWpSecanTest {
     @Test
     fun wpSecanTheNewKeyNoticeComesOnce() = runTest {
         val s = Stack(this)
-        s.ops.security = LinkSecurity(encrypted = true, hubKey = "SHA256:K7Q2-M9XD-4TNB-0ZRA", hubKeyNew = true, credential = "")
+        s.ops.security =
+            LinkSecurity(encrypted = true, local = false, hubKey = "SHA256:K7Q2-M9XD-4TNB-0ZRA", hubKeyNew = true, credential = "")
         s.engine.connect(hub)
         runCurrent()
         assertTrue(s.engine.security.value!!.keyNotice)
@@ -187,7 +196,7 @@ class LinkSecurityWpSecanTest {
         runCurrent()
         assertFalse(s.engine.security.value!!.keyNotice)
         // Unencrypted never has one
-        s.ops.security = LinkSecurity(encrypted = false, hubKey = "", hubKeyNew = true, credential = "")
+        s.ops.security = LinkSecurity(encrypted = false, local = false, hubKey = "", hubKeyNew = true, credential = "")
         s.engine.connect(hub.copy(id = "hub-2"))
         runCurrent()
         assertFalse(s.engine.security.value!!.keyNotice)
@@ -221,7 +230,8 @@ class LinkSecurityWpSecanTest {
         s.ops.connectError = null
         s.ops.status = status(LinkPhase.NEEDS_PAIRING)
         s.ops.hello = hello().copy(needsPairing = true)
-        s.ops.security = LinkSecurity(encrypted = true, hubKey = "SHA256:NEW0-NEW0-NEW0-NEW0", hubKeyNew = false, credential = "")
+        s.ops.security =
+            LinkSecurity(encrypted = true, local = false, hubKey = "SHA256:NEW0-NEW0-NEW0-NEW0", hubKeyNew = false, credential = "")
         s.engine.rePair()
         runCurrent()
         assertEquals(listOf("hub-1"), s.tokens.removed)
@@ -262,7 +272,7 @@ class LinkSecurityWpSecanTest {
         s.ops.hello = hello().copy(hubId = hid, hubName = "Studio Mac", needsPairing = true)
         s.ops.status = status(LinkPhase.NEEDS_PAIRING)
         // As the core gives it: no token yet, so no credential to store
-        s.ops.security = LinkSecurity(encrypted = true, hubKey = l.hubKey, hubKeyNew = false, credential = "")
+        s.ops.security = LinkSecurity(encrypted = true, local = false, hubKey = l.hubKey, hubKeyNew = false, credential = "")
         s.engine.connectByLink(l)
         runCurrent()
         val prompt = s.engine.state.value as LinkSessionState.NeedsPin
