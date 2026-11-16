@@ -1,22 +1,34 @@
 # The hub's REST mirror in Home Assistant's configuration.yaml (docs/integrator/hub-api.md,
-# section 16). For most homes MQTT discovery (section 13) is the better fit: it makes the
-# entities by itself. This is for a hub without a broker.
+# sections 2 and 16). For most homes MQTT discovery (section 13) is the better fit: it makes the
+# entities by itself, and the hub connects out to the broker over TLS, verifying the broker's
+# certificate (a CA file or a pin), so nothing here needs the hub's own certificate.
 #
 # The hub runs with --rest. Mint a key on the hub's machine, control for a volume slider,
 # viewer for sensors only:   uconsole hub api-key new "Home Assistant"
 # and put "Bearer <key>" in secrets.yaml as dspi_bearer. Replace the serial and the address.
 # Home Assistant sends no Origin header, which the hub would refuse.
+#
+# TLS: the hub's certificate is self-signed, and Home Assistant's REST integrations cannot be
+# given a certificate file or a pin, only verify_ssl true or false. So this uses https with
+# verify_ssl: false: the key and the values are encrypted against anyone listening, but Home
+# Assistant does not check that it reached the real hub, so a machine on the network posing as
+# the hub could take the key. Give Home Assistant a key of its own with the least role it needs
+# (viewer for sensors), so it can be revoked alone. Plain http:// works only with a hub started
+# with --upstream-compat or --tls off (or, with --tls on, a key minted plaintext_ok), and then
+# anyone on the network can read the key.
 
 rest_command:
   dspi_set_volume:
-    url: "http://hub.local:11915/api/v1/devices/E46058388B1A2E2C/params/vol.master"
+    url: "https://hub.local:11915/api/v1/devices/E46058388B1A2E2C/params/vol.master"
+    verify_ssl: false
     method: put
     headers:
       Authorization: !secret dspi_bearer
     content_type: "application/json"
     payload: '{"value": {{ volume | float }}}'
   dspi_load_preset:
-    url: "http://hub.local:11915/api/v1/devices/E46058388B1A2E2C/presets/{{ slot | int }}/load"
+    url: "https://hub.local:11915/api/v1/devices/E46058388B1A2E2C/presets/{{ slot | int }}/load"
+    verify_ssl: false
     method: post
     headers:
       Authorization: !secret dspi_bearer
@@ -24,7 +36,8 @@ rest_command:
 sensor:
   - platform: rest
     name: "DSPi master volume"
-    resource: "http://hub.local:11915/api/v1/devices/E46058388B1A2E2C/params/vol.master"
+    resource: "https://hub.local:11915/api/v1/devices/E46058388B1A2E2C/params/vol.master"
+    verify_ssl: false
     headers:
       Authorization: !secret dspi_bearer
     value_template: "{{ value_json.value }}"
@@ -32,7 +45,8 @@ sensor:
     scan_interval: 30
   - platform: rest
     name: "DSPi alarms on"
-    resource: "http://hub.local:11915/api/v1/alarms?state=active"
+    resource: "https://hub.local:11915/api/v1/alarms?state=active"
+    verify_ssl: false
     headers:
       Authorization: !secret dspi_bearer
     value_template: "{{ value_json.alarms | length }}"

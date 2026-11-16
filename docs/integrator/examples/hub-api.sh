@@ -5,9 +5,11 @@
 #   HUB="--link 192.168.1.20" ./hub-api.sh E46058388B1A2E2C
 #
 # The first run pairs this console with the hub (it asks for the PIN, or give `--pin` in HUB);
-# a paired console has the control role. `uconsole api` exits by the hub's answer, so a
-# script branches on the status, not on text: 0 ok, 2 not found, 5 denied, 6 offline,
-# 7 past the installer's limits, 8 a bad request, 9 busy (try again), 4 no hub.
+# a paired console has the control role. The connection is TLS, pinned to the hub's key at that
+# first pairing: compare the fingerprint uconsole shows with the one the hub shows with the PIN.
+# `uconsole api` exits by the hub's answer, so a script branches on the status, not on text:
+# 0 ok, 2 not found, 5 denied, 6 offline, 7 past the installer's limits, 8 a bad request,
+# 9 busy (try again), 4 no hub.
 set -eu
 
 UCONSOLE=${UCONSOLE:-uconsole}

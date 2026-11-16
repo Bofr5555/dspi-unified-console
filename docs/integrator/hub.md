@@ -47,8 +47,20 @@ for a closed bench only.
 - `pair` (typed at the running hub) opens a window of 2 minutes and shows a
   6-digit PIN. A client that enters it gets a token, stored by the client; the
   hub stores only the token's SHA-256.
-- A PIN dies after 5 wrong tries from anywhere; wrong tries are also rate
-  limited per address.
+- <!-- WP SECDOC --> The PIN is shown with the hub key's fingerprint
+  (`PIN 482913 · key SHA256:K7Q2-M9XD-4TNB-0ZRA`) and, on a terminal, a QR code
+  of the pairing link `dspi://pair?h=<hid>&a=<host:port>&k=<key>&p=<PIN>`
+  (`--json`: the `pairing` event's `fingerprint` and `pairLink`). Compare the
+  fingerprint the client shows before typing the PIN; a phone that scans the
+  QR code gets the key out of band. Pairing happens over TLS only, unless the
+  hub runs `--tls off` or `--upstream-compat` (Encryption, below); the client
+  pins the key it paired with ([security.md](security.md)).
+- A PIN dies after 5 wrong tries from anywhere (`pairingClosed`, reason
+  `wrongPins`: open a new window knowingly); wrong tries are also rate
+  limited per address. A client retrying a revoked token is counted apart and
+  never closes a window.
+- <!-- WP SECDOC --> A console's token unused for 180 days is forgotten
+  (`--token-idle-days <n>`, 0: never); API keys do not expire.
 - At most 64 paired clients. `uconsole hub clients`, `role`, `revoke` manage
   them (with the hub stopped, or live at its prompt).
 - A service has no terminal: stop it, pair from `uconsole hub` in a terminal,
@@ -219,6 +231,89 @@ says so in the notice row `installer.hub_role`.
 
 Reference: `crates/dspi-hub/src/limits.rs`.
 
+## Encryption
+
+<!-- WP SECDOC (PLAN-SEC 4.1-4.4, 4.11-4.12) -->
+The hub speaks TLS 1.3 on its port with its own P-256 key, made at the first start
+with TLS and kept in the store (`tls/`). Clients pin the key's hash when they pair
+and refuse any other key from then on. Why, and what each client shows:
+[security.md](security.md). The protocol side: [hub-api.md](hub-api.md) section 2.
+
+`--tls <mode>` decides what the port serves. **`require` is the default** of
+`uconsole hub`; `off` is the default with `--loopback` and for `uconsole web`, where
+nothing crosses a network. A library embedder (`NetworkConfig`) chooses its own.
+
+| Over plaintext | `require` (default) | `on` | `--upstream-compat` (`on` + compatibility) | `off` |
+|---|---|---|---|---|
+| TLS served | yes | yes | yes | no, and no key is made |
+| pages, `/dspi/v1/info` | `426`, naming `https://` and the fingerprint | yes | yes | yes |
+| the WebSocket, with a token | upgraded, then closed 4003 `tls_required` | yes, unless the token was used over TLS before | yes, as `on` | yes |
+| `auth.pair` with a PIN | no | `tls_required` | yes | yes |
+| REST with an API key | `426` | only a key minted `plaintext_ok` | every key | every key |
+| DNS-SD `tls=1` | yes | yes | no | no |
+| start-up warning | none | none | **SECURITY DOWNGRADED**, listing what is off | **SECURITY DOWNGRADED** (on a network address) |
+
+- `--upstream-compat` is **off by default**, for upstream DSPi Link clients, which
+  cannot encrypt. It is refused with `--tls require`. The warning it starts with
+  lists exactly what it turns off (TLS no longer required, plaintext connections
+  readable and changeable, no key pinning on them, plaintext pairing, every API key
+  in plaintext, no `tls=1`); every client's hub settings show the same list.
+  Our own clients keep using TLS with such a hub.
+- `--host-name <name>` (repeatable): a DNS name the hub is reached by besides its
+  `.local` name and its addresses, for the plaintext `Host` check (DNS rebinding).
+- `--token-idle-days <n>`: a console's token unused this long is forgotten (default
+  180; 0: never).
+
+**The key**, on the hub's machine (at a running hub's prompt, type the same without
+`uconsole hub`; from a shell, `rotate` needs the hub stopped):
+
+| Command | Does |
+|---|---|
+| `uconsole hub tls fingerprint` | the fingerprint (`SHA256:K7Q2-M9XD-4TNB-0ZRA`) and curl's `--pinnedpubkey` form |
+| `uconsole hub tls cert` | the certificate, PEM: `> hub.pem` for curl `--cacert`, Python, a browser's store |
+| `uconsole hub tls rotate` | a new key, served at once, announced for 30 days signed by the old one: paired clients follow it by themselves |
+| `uconsole hub tls rotate --forget-old` | a new key with no signature (the old one was exposed): every client must pair again |
+
+The certificate is issued again, with the same key, when the hub's `.local` name
+changes or it is within 30 days of its end (825 days); a DHCP address change never
+does. A pin is the key's hash, so clients do not notice. A browser that accepted the
+old certificate warns once more.
+
+**Upgrading a hub from before TLS.** Nothing to do: at the first start with TLS the
+key is made, the hub id and the paired clients stay, and an updated client gets in
+with its old token over TLS and pins the key then (the one first-use moment; it
+shows the key's fingerprint once). With `--tls on` a client not yet
+updated keeps working in plaintext, until the same token has been used over TLS
+(by the updated client): from then on it is TLS only. With the
+default `require` it is told `tls_required` (4003) and must be updated; it does not
+need to pair again. REST keys minted before TLS work over https; in `on` they are
+refused in plaintext (`426`) unless minted `plaintext_ok`. Tested in
+`crates/dspi-hub/tests/wp_secdef_upgrade.rs` and
+`apps/terminal/tests/wp_secdef_default.rs`.
+
+**What stays plaintext:** mDNS (a hint only), loopback, and hubs started with
+`--tls off`. USB and the audio link are local: see [security.md](security.md).
+
+## Security deviations
+
+<!-- WP SECDOC (PLAN-SEC 4.12) -->
+What this hub does beyond DSPi Link 1.2 (the spec copy:
+`apps/apple/Documentation/dspi_link_protocol_spec.md`). Upstream is told nothing
+automatically; offering it upstream is the owner's call.
+
+| # | Spec | This hub | Old clients |
+|---|---|---|---|
+| 1 | 3.1: `tls=1` means "connect with `wss://`" | `tls=1` whenever TLS is served (`require`, `on`), not with upstream compatibility; no other TXT key (the plan's `tlsk` was not needed: SECDISC) | an upstream client that reads `tls=1` tries `wss://` and fails on the self-signed certificate: use `--upstream-compat` for it |
+| 2 | 4: `wss://` "when TLS is advertised" | TLS and plaintext on the same port, by the connection's first byte (`0x16`: TLS) | additive |
+| 3 | 6.4: TOFU keyed by `hid` | the key's SPKI hash, pinned at pairing (or a QR code's `k=`), refused on change with no override; only a rotation signed by the pinned key is followed | stricter, and consistent |
+| 4 | 7.3 `ok`, 7.2 `hello.hub` | `ok.hub_key` (the SPKI hash the connection met) on `auth.token`, `auth.pair`, `auth.rotate` over TLS; `hello.hub.key_next {spki, prev_spki, sig}` during a rotation | optional fields, ignored |
+| 5 | 6, 7.1 | `auth.rotate`, idle token expiry (180 days), close code 4003 `tls_required`, error `tls_required`; `auth.pair2` (PAKE, SECPAKE) | additive |
+| 6 | 6.2 | `auth.pair` over plaintext refused with `tls_required` in `on`, unless upstream compatibility | upstream consoles pair only with `--upstream-compat` |
+| 7 | 4, 3.2 | in `require`: HTTP `426` with the fingerprint; a WebSocket upgraded, then closed 4003 | upstream consoles cannot use a `require` hub; `--upstream-compat` serves them |
+| 8 | 3.2 | `/dspi/v1/info` gains `tls` (served), `tls_spki` (the pin, base64url), `upstream_compat`, `proxy` | readable over plaintext in `on` |
+| 9 | 4 | plaintext requests must name the hub (its addresses, `.local` name, `--host-name`), else `421` | browsers only |
+| 10 | 6.2 | a token once used over TLS is refused over plaintext (`tls_only`) | a client not updated keeps working until its token meets TLS |
+
 ## Network and firewall
 
 | What | Port | Notes |
@@ -229,9 +324,13 @@ Reference: `crates/dspi-hub/src/limits.rs`.
 
 - `--loopback` listens on this machine only and does not advertise.
 - `--web` also serves the web console and the hub's page to browsers on the
-  network, on the Link port.
-- A PIN crosses the network in plain text, and the protocol has no TLS: pair on
-  a network you trust, and keep the hub off networks you do not.
+  network, on the Link port (`https://<hub>:11915/console/`).
+- <!-- WP SECDOC --> Everything on the port is TLS 1.3 by default (Encryption,
+  below): nothing a client sends, PIN and token included, can be read on the
+  network. Still keep the hub off the internet: never behind router port
+  forwarding; use a VPN for remote access (spec 6.4). With `--tls off` or
+  `--upstream-compat`, unencrypted connections can be read by anyone on the
+  network: then pair on a network you trust only.
 
 To write: firewall commands per OS (firewalld, ufw, Windows Defender Firewall,
 the macOS application firewall); VLAN and routed-network notes (mDNS does not
@@ -241,7 +340,22 @@ cross routers).
 
 `hub-store.json` in the store folder (`--store`; default the user's local data
 folder, `uconsole/hub`): the hub id, its name, the access mode, the paired
-clients (name, role, times, token hash) and device names; limits profiles,
-PIN hashes and pinned modes (P1HL). One hub per store.
+clients (name, role, times, token hash, and `tls_only` once a token has been
+used over TLS) and device names; limits profiles, PIN hashes and pinned modes
+(P1HL). One hub per store.
 A diagnostics bundle includes it with the token hashes removed
 ([diagnostics.md](diagnostics.md)).
+
+<!-- WP SECDOC --> Beside it (the folder is 0700, every file 0600 on Unix):
+
+| Path | What |
+|---|---|
+| `tls/key.pem` | the hub's TLS key; never in a diagnostics bundle |
+| `tls/cert.pem` | its self-signed certificate (`uconsole hub tls cert`) |
+| `tls/identity.json` | the names the certificate was issued for, and a rotation's announcement |
+| `proxy-pins.json` | `uconsole web` only: the keys it pinned for other hubs |
+
+A corrupt or missing `key.pem` is set aside as `key.pem.bad-<time>` and a new key is
+made, with a loud log line: every paired client then reports that the hub's key
+changed and must pair again. Back up `tls/` with the store if the hub is moved to
+another machine.

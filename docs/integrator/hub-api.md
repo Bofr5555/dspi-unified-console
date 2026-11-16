@@ -20,7 +20,7 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | § | Family | Messages | Cap | Built by | State |
 |---|---|---|---|---|---|
 | 1 | [Conventions](#1-conventions) | | | P2DOC | built (this page) |
-| 2 | [On an unencrypted network](#2-on-an-unencrypted-network) | | | P2DOC | built (this page) |
+| 2 | [Encryption and pairing](#2-encryption-and-pairing) | `auth.pair`, `auth.pair2`, `auth.rotate`, `hello.hub.key_next` | | SECSRV, SECPAIR, SECPAKE; text SECDOC | built (`auth.pair2`: SECPAKE) |
 | 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | built |
 | 4 | [Identify](#4-identify) | `device.identify` | `identify` | P2ID | draft |
 | 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | draft |
@@ -164,6 +164,7 @@ with (section 14).
 | `installer_lock` | the device is locked and the write is not volume, mute or preset | P1HL |
 | `image_refused` | a whole image (`0xA1`, `0xA3`: a recall, an import) from control on a device with a profile or a lock | P1HL |
 | `internal` | the hub failed; the log says why | spec 7.1 |
+| `tls_required` | a PIN pairing, `auth.rotate`, a `tls_only` token or an API key over plaintext where the hub refuses it (section 2.1); also the reason of close 4003 | SECSRV, SECPAIR |
 
 A device's own refusal of a command (a DSPi Link status such as `STALL`) answers `err` with `code` `device` and `status` the
 DSPi Link status name (spec 8.1).
@@ -206,25 +207,72 @@ each of them with every secret replaced by `set` or `not set`.
 
 ---
 
-## 2. On an unencrypted network
+## 2. Encryption and pairing
 
-*State: built (P2DOC). The one place this page says it.*
+*State: built (SECSRV, SECDISC, SECCORE, SECPAIR, SECWEB; text WP SECDOC, which replaces P2DOC's "On an unencrypted
+network"). `crates/dspi-hub/src/server.rs` (the port, modes, `426`, 4003, `/info`), `auth.rs` (pairing, `tls_only`,
+idle expiry, `auth.rotate`), `tls_identity.rs` (the key), `crates/dspi-link/src/tls.rs` and `credential.rs` (the pin, the
+credential, the pairing link). Why and what users see: [security.md](security.md); the switches:
+[hub.md](hub.md), Encryption.*
 
-DSPi Link has no encryption, and the hub adds none (owner decision): no TLS on the DSPi Link port, no identity pinning.
-The REST mirror (section 14) runs on the same port, and MQTT (section 13) and webhooks (section 8) go out as plain
-`mqtt://` and `http://`. **Anyone on the same network can read all of it: PINs while pairing, tokens, API keys, broker
-passwords, webhook bodies, and every parameter.** A webhook's signature proves the hub sent it; it hides nothing.
+Everything on the hub's port is TLS 1.3 by default (`uconsole hub --tls require`): the DSPi Link WebSocket, `/dspi/v1/info`,
+the pages and the REST mirror (section 14), on the same port, decided by a connection's first byte. MQTT (section 13) and
+webhooks (section 8) go out over TLS too. A program that talks to the hub:
 
-- Keep the hub on a network you trust, never behind router port forwarding (spec 6.4). For remote access, use a VPN.
-- Give each integration its own API key with the least role it needs, so it can be revoked alone (`auth.revoke`).
-- API keys and webhook secrets are made by the hub and shown once; the hub keeps a hash of a key, and a webhook secret
-  only in its 0600 file.
-- The REST mirror is off unless the hub runs with `--rest`, and it refuses every request that carries an `Origin`
-  header, so a web page in a browser cannot use it (section 14).
-- `https://` and MQTT over TLS are refused with a reason, not downgraded (OD-P2f).
+- **Pins the hub's key.** The pin is SHA-256 of the key's SubjectPublicKeyInfo: base64url in messages and QR codes,
+  `sha256//<base64>` for curl, `SHA256:XXXX-XXXX-XXXX-XXXX` for people. On the hub's machine `uconsole hub tls
+  fingerprint` prints all three and `uconsole hub tls cert` the certificate (PEM). Check the key in the TLS handshake,
+  before any token or API key is sent; the certificate is self-signed, so check the key (or trust only that certificate),
+  not a name or a certificate authority. Our clients do this in the core (`dspi-link`), with the pin kept in the
+  credential below.
+- **Never falls back to plaintext** for a hub it pinned or one that advertises `tls=1`.
+- **Keeps the hub on a local network:** the hub drops peers that are not local; for remote access use a VPN, never router
+  port forwarding (spec 6.4).
+- **Gives each integration its own API key** with the least role it needs, so it can be revoked alone (`auth.revoke`).
+  API keys and webhook secrets are made by the hub and shown once; the hub keeps a hash of a key, and a webhook secret
+  only in its 0600 file. REST refuses every request that carries an `Origin` header (section 14).
+
+### 2.1 Modes
+
+| Over plaintext | `require` (the default) | `on` | `on` + upstream compatibility | `off` |
+|---|---|---|---|---|
+| `/dspi/v1/info`, pages | HTTP `426` (`Upgrade: TLS/1.3`; the body names `https://` and the fingerprint) | yes | yes | yes |
+| WebSocket with `auth.token` | upgraded, then closed 4003 `tls_required` | yes, unless the token is `tls_only` | as `on` | yes |
+| `auth.pair` | (closed above) | `err` `tls_required` | yes | yes |
+| `auth.rotate` | (closed above) | `err` `tls_required` | yes | yes |
+| REST with an API key | `426` (the same page) | `426` with `code` `tls_required`, unless the key was minted `plaintext_ok` | yes | yes |
+| DNS-SD `tls=1` | yes | yes | no | no |
+
+Over TLS everything is served in every mode but `off` (which answers a ClientHello with a plain `400`). Upstream
+compatibility (`--upstream-compat`, off by default, refused with `require`) is the owner-approved switch for upstream
+DSPi Link clients, which cannot encrypt; the hub starts with a warning listing what it turns off
+(`dspi_hub::server::UPSTREAM_COMPAT_EFFECTS`, the notice `dlink.upstream_compat`), and `/dspi/v1/info` says
+`"upstream_compat": true` so every client's hub settings show it. Over plaintext a request's `Host` must be one of the
+hub's addresses, its `.local` name or a `--host-name`, else `421` (DNS rebinding); over TLS any name is fine.
+
+`GET /dspi/v1/info` gains `tls` (whether TLS is served), `tls_spki` (the pin, base64url, while it is), `upstream_compat`
+and `proxy` (a `uconsole web` pinning proxy, section 2.5). It stays readable over plaintext in `on`, so a client can learn
+the pin it should see; that is a hint for display, never trust: the pin that counts is the one set at pairing.
+
+### 2.2 Pairing
+
+- **`auth.pair {pin, name?, role?}`** over TLS, as before (spec 6.2), and the `ok` gains **`hub_key`**: the pin of the key
+  this connection met. A client checks it against the key its TLS verified (a mismatch means a proxy in between) and
+  stores it as its pin. Over plaintext it is refused in `on` (`tls_required`, before the PIN is looked at: no guess is
+  counted, the window stays open).
+- The hub shows the PIN with the key's fingerprint and the **pairing link** `dspi://pair?h=<hid>&a=<host:port>&k=<pin,
+  base64url>&p=<PIN>` (`uconsole hub --json`: the `pairing` event's `fingerprint` and `pairLink`; a QR code on a
+  terminal). A client that takes a link connects with `k` as the pin, so the TLS key must match it before the PIN is
+  sent (`hub_key_unverified` otherwise); it still shows the hub's name and fingerprint and asks for a tap. The core's
+  parser: `dspi_link::credential::parse_pair_link`, `link_parse_pair_link` in the bindings.
+- **`auth.pair2`** (WP SECPAKE): PAKE pairing for native clients, SPAKE2 with the PIN as the password, the hub's id and
+  the client's name as the identities, the transcript bound to the TLS session (exporter label `EXPORTER-dspi-pair`).
+  Both sides confirm a MAC before the token is issued, so a man in the middle who relays two TLS legs fails at its first
+  guess and learns nothing to search offline; 5 failures end the window as for `auth.pair`. Browsers, which cannot
+  reach the TLS exporter, and upstream clients keep `auth.pair`. Its messages are SECPAKE's block below.
 
 <!-- WP SECPAKE -->
-### 2.x PAKE pairing: `auth.pair2`
+#### PAKE pairing: `auth.pair2`
 
 *State: built (SECPAKE; PLAN-SEC OD-SECc (3)). Code: `crates/dspi-link/src/pake.rs` (both sides), the hub's
 `auth.pair2` in `crates/dspi-hub/src/server.rs` and `auth.rs`; tests `crates/dspi-link/src/pake/tests_wp_secpake.rs`,
@@ -275,9 +323,70 @@ sees lets it test no other PIN offline. Five failed confirmations end the window
   message or not a point, an unknown `role`), `rate_limited` (the address is shut out), `busy` (the client table is
   full), `internal`.
 
-**After a key rotation** (section 2, `hello.hub.key_next`) the core's client, once it has accepted the new key, calls
+**After a key rotation** (section 2.4, `hello.hub.key_next`) the core's client, once it has accepted the new key, calls
 `auth.rotate` in the same connect and stores the fresh token (PLAN-SEC 4.9).
 <!-- /WP SECPAKE -->
+
+- Limits, unchanged in kind: a PIN works for 2 minutes; 5 wrong PINs from anywhere end the window, and from one address
+  (an IPv6 /64) within 60 s shut that address out for 60 s. Wrong tokens are counted in a ledger of their own, so a client
+  retrying a revoked token cannot end a pairing window.
+
+### 2.3 Tokens and `auth.rotate`
+
+- `auth.token {token}` over TLS answers `ok` with `hub_key`, as `auth.pair` does.
+- **`tls_only`**: a console's token issued over TLS, or used over TLS once, is refused over plaintext from then on
+  (`err` `tls_required`, "connect with TLS"), so an attacker who blocks TLS cannot collect it from a client that already
+  knows the hub encrypts. API keys are not marked: REST has `plaintext_ok`.
+- **Idle expiry**: a console's token unused for 180 days (`--token-idle-days`; 0: never) is forgotten and must pair
+  again; never while the hub's clock is implausible. API keys do not expire.
+- **`auth.rotate {}`**, any role, on an authenticated session with a token: `ok {token, hub_key?}`, a fresh token for the
+  same client, its role and `tls_only` kept; the old one is dead once this is answered. Over plaintext only where
+  pairing is (`tls_required` otherwise). `bad_request` on a session with no token (open access). A client calls it after
+  following a key rotation, and may call it at any time.
+- Changing between PIN and open access still revokes every token.
+
+### 2.4 Key rotation: `hello.hub.key_next`
+
+`uconsole hub tls rotate` (on the hub's machine) makes a new key and serves it at once. For 30 days `hello.hub` carries
+
+```json
+"key_next": {"spki": "<the new pin, base64url>", "prev_spki": "<the old key's DER SPKI, base64url>",
+             "sig": "<the old key's ECDSA P-256 signature, base64url>"}
+```
+
+where `sig` (ASN.1 DER) is over `"dspi-key-rotate\0" || hid || new_pin` (the hub id's UTF-8 bytes, then the new
+pin's 32 bytes; `dspi_link::tls::rotation_message`, `verify_rotation`). A client that pinned the old key re-pins only if `prev_spki` hashes to its pin and the signature
+verifies with it, before any token is sent; either because it saw `key_next` on an earlier connection, or because the
+handshake met a new key, which it then completes without sending the token, reads `hello`, and checks. Anything else is
+`hub_key_changed`: pair again. `rotate --forget-old` (the old key was exposed) announces nothing, so every client pairs
+again.
+
+### 2.5 What a client keeps, and what it shows
+
+- **The credential** (opaque to platforms, kept in their existing token stores): `v1` is a bare token from before TLS;
+  `v2.<token>.<pin>.<flags>[.<next>]` holds the token, the pin, `t` (TLS required) and a verified successor key. A `v1`
+  credential that meets a TLS hub is upgraded to `v2` on that connection (the first-use moment for a client paired before
+  TLS), and the platform saves it when it changes (`link_security().credential`). A damaged `v2` is no credential: pair
+  again.
+- **The errors** the core gives: `hub_key_changed` (another key: pair again), `hub_key_unverified` (a pairing link's key
+  did not match), `tls_refused` (TLS failed where it is required: no plaintext retry), `tls_required` (the hub's own
+  refusal, or its 4003 close).
+- **`link_security()`**: `encrypted`, `hub_key` (the fingerprint), `hub_key_new` (show the fingerprint once),
+  `credential`. **When `encrypted` is false** (an upstream hub, `--tls off`, compatibility mode) every client's connection
+  bar is **red** and its text ends in **"(unsecured)"**, with an info button explaining it (the notices `dlink.unsecured`,
+  `dlink.unsecured.info`, `dlink.unsecured.compat`); a hub on the same machine (loopback) is not shown so.
+- **The browser** cannot pin: the web console on `https://<hub>:11915/console/` asks the user to accept the certificate
+  once and shows the fingerprint to compare; `uconsole web` (`http://localhost:11916`) relays
+  `ws://localhost:11916/hub/<target>/dspi/v1` to other hubs over pinned TLS (`crates/dspi-hub/src/proxy.rs`), loopback
+  only. `GET /hub/<target>/dspi/v1/security` tells the page whether that link is encrypted and its fingerprint.
+
+### 2.6 Examples
+
+`curl`, Python and Home Assistant against a TLS hub: section 16.3 and [security.md](security.md). For any HTTP client:
+export the certificate once (`uconsole hub tls cert > hub.pem`), then either pin the key (`curl --pinnedpubkey
+'sha256//...' -k`) or trust only that certificate (`curl --cacert hub.pem`, Python `cafile="hub.pem"`, `requests`
+`verify="hub.pem"`); export again after a key rotation.
+
 
 ---
 
@@ -851,7 +960,7 @@ serial), each with a device block (`identifiers: ["dspi_<serial>"]`, the device'
 *State: built (P2RS). `crates/dspi-hub/src/rest.rs`, the `/api/v1/` route and body read in `server.rs`, the client
 kind in `auth.rs` and `store.rs`; tests `crates/dspi-hub/tests/wp_p2rs_rest.rs`. **TLS: SECSRV** (PLAN-SEC): the
 mirror is read and answered over the server's stream seam, so WP SECSRV serves it over TLS on the same port, adds the
-`Host` check on every route and gives `plaintext_ok` its effect. Until then section 2 holds for all of it.*
+`Host` check on every route and gives `plaintext_ok` its effect (built; section 2.1).*
 
 ### 14.1 API keys
 
@@ -869,8 +978,10 @@ consoles, the same `auth.revoke` and `auth.set_role`. `auth.list` rows gain `kin
   `unauthenticated`, and a console's token is no REST bearer (`401`).
 - The 65th client of either kind is refused: `auth.mint` answers `conflict`, a PIN pairing `busy` (spec 7.3). Revoke
   one first.
-- `plaintext_ok` is stored and listed and has **no effect yet**: once the port speaks TLS (SECSRV, OD-SECk), a key
-  without it is refused over plaintext.
+- `plaintext_ok` (OD-SECk; WP SECDOC): on a hub with `--tls on`, a key without it is refused over plaintext with
+  `426` `tls_required`, and one minted with it works there too (for a legacy script on a trusted network). With
+  `require` no key works over plaintext; with upstream compatibility or `off` every key does (section 2.1). Keys minted
+  before TLS have it false.
 - `name` and `role` are required (`bad_request`); a role above the caller's is `denied`. Rotation: mint a new key,
   then `auth.revoke` the old one.
 - In the embedding app: `AuthStore::mint_api_key` (`NetworkControl::auth`). `uconsole hub api-key new|list|revoke`
@@ -1068,8 +1179,17 @@ only those two.
 - [`examples/home-assistant.yaml`](examples/home-assistant.yaml): Home Assistant's `rest_command` and REST sensors for a
   hub without a broker (MQTT discovery, section 13, is the better fit where there is one).
 
-Everything on DSPi Link, the REST port and MQTT without TLS can be read by someone on the same network, API keys
-included (section 2): keep the hub on a network you trust.
+<!-- WP SECDOC --> All three examples work against a hub that requires TLS, and are run so by
+`apps/terminal/tests/wp_secdoc_examples.rs` (and over plaintext by `wp_p2tm_examples.rs`):
+
+- [`examples/hub_curl.sh`](examples/hub_curl.sh): curl, pinned to the hub's key with `--pinnedpubkey`.
+- `hub_rest.py` with `DSPI_CA=hub.pem`: the hub's own certificate as the only trust anchor.
+- `home-assistant.yaml`: `https://` with `verify_ssl: false` (Home Assistant's REST integrations take no certificate file
+  or pin), so it is encrypted but does not check the hub's key; MQTT discovery (section 13) avoids that.
+- `hub-api.sh`: `uconsole api` pins the key at pairing, as every console does.
+
+Without TLS (`--tls off`, upstream compatibility, a key minted `plaintext_ok`) anything on the port can be read by
+someone on the same network, API keys included: then keep the hub on a network you trust.
 
 ## 17. Deviations from the DSPi Link spec
 
@@ -1082,6 +1202,7 @@ types under new caps, new fields), which the spec allows (spec 10).*
 | 4.2 | `/` and static assets for an optional browser UI (`web=1`) | with `--web`: the hub's page under `/hub/` and the web console under `/console/` | the multi-device view is the web console served by the hub |
 | 7.9 | `hub.stats` device rows `{handle, cmds, errors, avg_rtt_ms, notify_dropped}` | each row also carries `serial` | an offline-safe key for a row, as every other family uses |
 | 7.1 | error codes `unauthenticated` to `internal` | adds `not_found`, `offline`, `conflict`, `confirmation_required`, `limit_exceeded`, `installer_lock`, `image_refused`, `device` (section 1.6) | additive; a client treats an unknown code as a failure with `msg` |
+| 3.1, 4, 6, 7.2, 7.3 | TLS only when advertised; TOFU keyed by `hid`; no rotation | TLS 1.3 by default on the same port, the key pinned at pairing, `tls=1`, `426`, close 4003, `ok.hub_key`, `hello.hub.key_next`, `auth.rotate`, `auth.pair2`, idle expiry, `tls_only`, the `Host` rule (section 2; every item: [hub.md](hub.md), Security deviations) | the security plan (PLAN-SEC, OD-SECa); upstream clients use a hub in upstream compatibility mode |
 
 Unchanged: `device.list` and its 60 s grace (the inventory is a separate family), every `/dspi/` path, every DSPi Link 1.2
 message's meaning, `fw.install` (`unsupported`), and the binary frames.
@@ -1137,7 +1258,11 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `mqtt.status` | request | admin | `mqtt` | 13.1 |
 | `auth.mint` | request | admin | `api_keys` | 14.1 |
 | `auth.list` (gains `kind`, `plaintext_ok`) | existing | admin | `api_keys` | 14.1 |
-| `auth.pair2` (WP SECPAKE) | request, before authentication, TLS only | (pairs as `control`) | `pair2` | 2.x |
+| `auth.pair` (gains `ok.hub_key`) | existing | | | 2.2 |
+| `auth.pair2` (WP SECPAKE) | request, before authentication, TLS only | (pairs as `control`) | `pair2` | 2.2 |
+| `auth.token` (gains `ok.hub_key`) | existing | | | 2.3 |
+| `auth.rotate` | request | viewer | | 2.3 |
+| `hello.hub.key_next` | field | | | 2.4 |
 | `hub.stats` | request | admin | `hub_stats` | 15 |
 | `hub.rename` | request | admin | `hub_stats` | 15 |
 | `fw.install` | existing | | | stays `unsupported` |
