@@ -149,6 +149,20 @@ client shows for what the hub keeps and does.*
 | **Snapshot** | Restated: a whole-device state kept by a client or by the hub, never on the device. A snapshot on the hub is shared; the hub's copy wins over a different one with the same id, which a client keeps as a local copy | | |
 | **Scene** | Restated: a hub's audio link system change at one audio link frame across units (section 3.1). Not a snapshot and not a preset | | |
 
+### 3.3 The fleet
+
+*WP P3DOC, 2026-11-16. PRO phase 3, the fleet in the web console ([`docs/core-merge/PLAN-P3.md`](core-merge/PLAN-P3.md);
+the contract: [`docs/integrator/hub-api.md`](integrator/hub-api.md) sections 5 and 19 to 21). The words a client shows for
+many devices at once.*
+
+| Term | Meaning | Unit and range | Registry |
+|---|---|---|---|
+| **Group** | A named set of devices kept by the hub, with a note: what a volume, a preset, a bulk apply, a schedule or a firmware rollout can be sent to at once. A device may be in many groups. A group has no role of its own and no group inside it. Not "Zone" (the audio link's) or "Tag" (an inventory label) | at most 64 groups of 64 devices | |
+| **Bulk apply** | Recalling one snapshot on every device of a group, one device after another, each with its own guarded apply and one confirm or cancel for all. Not "Broadcast" or "Sync" | | |
+| **Rollout** | A firmware update the hub carries out by itself on the devices on its own USB, one at a time: the settings exported first, the device checked after it restarts, an alarm if it does not come back. Started by an Admin. Not "Deploy" or "Push" | | |
+| **Overview** | The web console's screen with every output of one device in one table, and every meter. Not "System" (below) | | |
+| **System** | Restated: the audio link system, its units, rooms, zones and signal chain (section 3.1, the System screen). Never the many-device views: those are the hub's pages, and one device's dense table is the Overview | | |
+
 ## 4. Units
 
 | Unit | Meaning | Used for |

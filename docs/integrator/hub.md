@@ -359,3 +359,13 @@ A corrupt or missing `key.pem` is set aside as `key.pem.bad-<time>` and a new ke
 made, with a loud log line: every paired client then reports that the hub's key
 changed and must pair again. Back up `tls/` with the store if the hub is moved to
 another machine.
+
+<!-- WP P3DOC --> The fleet's files (PRO phase 3, [hub-api.md](hub-api.md) sections 19 to 21; draft until the WP
+named builds them), in the data folder (`--data`; by default the store folder), 0600 and written atomically; a file the
+hub cannot read is kept aside as `<name>.bad-<time>` and the hub goes on with what it could read:
+
+| Path | What | Bound | Diagnostics bundle |
+|---|---|---|---|
+| `groups.json` | the groups: id, name, note, members (P3GR) | 64 groups of 64 members | `hub/groups.json` |
+| `rollout.json` | the firmware rollouts' records: target, image name and hash, steps and their texts, who started it (P3RO) | the newest 64 records | `hub/rollout.json` |
+| `firmware/` | the firmware images an Admin uploaded or `uconsole hub firmware add` put in, for a rollout (P3RO) | 4 images of at most 8 MiB | never |
