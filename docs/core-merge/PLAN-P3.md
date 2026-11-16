@@ -303,7 +303,7 @@ says which members were not tried; `cancel` before entry stops the queue, after 
 timeout; `rollout.json` in the bundle, the images not; the hub's tests pass in `off`, `on` and `compat`. **Deps:** P3PB,
 P3GR (P3-A); P2PA, P2SS, P2HP, P2AL, P2EV (merged). **Clients:** P3WRO, P3TM, P3RS (read-only), P3CC.
 
-**P3CC: Core calls for groups, bulk apply, rollout.** [TODO] Size 2.5. Wave P3-C. **Owns:** new
+**P3CC: Core calls for groups, bulk apply, rollout.** [DONE 2026-11-16: `d74646ed` into review/p3c, main `462fcde1`] Size 2.5. Wave P3-C. **Owns:** new
 `crates/dspi-core/src/hub_server/fleet.rs` (a fourth section, as `admin.rs` and `manage.rs`), its `pub mod` line and
 cap constants in `hub_server.rs` under a marker, the notice rows `alarm.rollout_failed` and the rollout step texts in
 `assets/notices/notices.json` (shared wording, no host-device nouns), the TypeScript records in
@@ -319,14 +319,19 @@ call with and without the cap; the same text through C, UniFFI and wasm; a rollo
 the fake writer; `ci/drift.sh write` clean, the Android contract regenerated. **Deps:** P3GR, P3GP, P3BA, P3RO.
 **Clients:** P3WGR, P3WRO.
 
-**P3RS: REST for the fleet.** [TODO] Size 1.5. Wave P3-C. **Owns:** `crates/dspi-hub/src/rest.rs` (P2RS's, merged: the
+**P3RS: REST for the fleet.** [DONE 2026-11-16: `ba5549be` into review/p3c, main `462fcde1`] Size 1.5. Wave P3-C. **Owns:** `crates/dspi-hub/src/rest.rs` (P2RS's, merged: the
 new routes in `route`, `:788`, and their translation), the REST rows of `hub-api.md` section 14.2. **Implements:** the
 endpoints of section 1's REST row onto the existing messages, each judged as the key's principal; a guarded `apply` run
 belongs to the key's session (`/api/v1/runs/{run}/confirm|cancel` within `rest_idle`, as the single-device guard today);
 `GET /api/v1/rollouts`, `/rollouts/{id}` and `/firmware` read-only; **no `POST` that starts a rollout or uploads an
 image** (`405` with `Allow`); the body cap unchanged. **Done when:** conformance tests: each endpoint, a Viewer key's
 `PUT` `403`, a guarded group apply confirmed by the same key and reverted when another key tries, a rollout `POST` `405`,
-every existing P2RS and SECSRV REST test unchanged, in `on` and `require`. **Deps:** P3GP, P3BA, P3RO (P3-B). **Clients:**
+every existing P2RS and SECSRV REST test unchanged, in `on` and `require`. **[Reworded by WP P3FRZ (review p3c): "unchanged"
+cannot hold as written, since a `require` hub refuses plaintext REST clients by design (`426`). Read it as: every existing
+P2RS and SECSRV REST test passes unchanged in the modes its clients were written for (P2RS's plaintext suite in `off`
+and `compat`, the TLS suites in every mode), and P3RS's own tests pass in `on` and `require`, over TLS, with plaintext
+answered as `hub-api.md` section 14.2 says (`426` in `require`, only a key minted `plaintext_ok` in `on`, the firmware
+reads `426` in every mode). The p3c review ran it so.]** **Deps:** P3GP, P3BA, P3RO (P3-B). **Clients:**
 integrators.
 
 ### Web WPs
@@ -394,7 +399,7 @@ answer shape of section 1, roles, events, the `results` rows per family, the rol
 the `tls_only` rule, the no-new-error-code rule stated. **Done when:** every message type of section 1 has a row; the
 links resolve; the no-host-noun check passes on user-facing strings. **Deps:** none.
 
-**P3TM: Terminal.** [TODO] Size 1. Wave P3-C. **Owns:** `apps/terminal/src/hub.rs` (flags `--rollout`,
+**P3TM: Terminal.** [DONE 2026-11-16: `f2c8ec41` into review/p3c, main `462fcde1`] Size 1. Wave P3-C. **Owns:** `apps/terminal/src/hub.rs` (flags `--rollout`,
 `--allow-unverified-firmware`; prompt commands `groups`, `rollout <serial|group:id> <image>`, `firmware add FILE`,
 `firmware list`), the I7 examples section 16 of `hub-api.md`. **Implements:** `firmware add` puts a file into the hub's
 image store from the hub's machine (the same checks as the upload; the only path that needs no console), the prompt

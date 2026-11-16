@@ -1,9 +1,10 @@
 # The hub API
 
-*WP P2DOC, 2026-11-15: the contract of PRO phase 2 ([`docs/core-merge/PLAN-P2.md`](../core-merge/PLAN-P2.md)). Status:
-**v1, experimental** (OD-P2a): additive changes only, frozen as v1 once phase 3's fleet needs are in. Each family's
-section is **draft** until the WP named in its heading builds it and marks it **built**; a draft section is the shape
-that WP implements, not a promise that the hub answers it today.*
+*WP P2DOC, 2026-11-15: the contract of PRO phase 2 ([`docs/core-merge/PLAN-P2.md`](../core-merge/PLAN-P2.md));
+phase 3's fleet families, WP P3DOC ([`docs/core-merge/PLAN-P3.md`](../core-merge/PLAN-P3.md)). Status: **v1 frozen
+2026-11-16** (WP P3FRZ; OD-P2a, OD-P3l): additive only; a breaking change is `/api/v2/` and new message types
+(section 1.2). Each family's section says what built it; a section still marked **draft** is the shape its WP
+implements, not a promise that the hub answers it today.*
 
 The hub ([hub.md](hub.md)) keeps running with no console open. This page is everything another program can ask it beyond
 the DSPi Link 1.2 messages: its inventory of devices, Identify, health, the shared history, alarms and where they are sent,
@@ -21,31 +22,27 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 |---|---|---|---|---|---|
 | 1 | [Conventions](#1-conventions) | | | P2DOC | built (this page) |
 | 2 | [Encryption and pairing](#2-encryption-and-pairing) | `auth.pair`, `auth.pair2`, `auth.rotate`, `hello.hub.key_next` | | SECSRV, SECPAIR, SECPAKE; text SECDOC | built (`auth.pair2`: SECPAKE) |
-| 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | built |
-| 4 | [Identify](#4-identify) | `device.identify` | `identify` | P2ID | draft |
-| 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | draft |
+| 3 | [Inventory](#3-inventory) | `inventory.*` | `inventory` | P2IN | built (P2IN) |
 | 4 | [Identify](#4-identify) | `device.identify` | `identify` | P2ID | built (P2ID) |
-| 5 | [Health](#5-health) | `health.get` | `health` | P2HP | draft |
+| 5 | [Health](#5-health) | `health.get` | `health` | P2HP (board fields: P3HB) | built (P2HP; P3HB) |
 | 6 | [Event history](#6-event-history) | `event.*` | `events` | P2EV (records: P2EVW) | built |
-| 7 | [Alarms](#7-alarms) | `alarm.*` | `alarms` | P2AL | draft |
-| 8 | [Notifications out](#8-notifications-out) | `outbound.*` | `outbound` | P2WH | draft |
+| 7 | [Alarms](#7-alarms) | `alarm.*` | `alarms` | P2AL | built (P2AL) |
+| 8 | [Notifications out](#8-notifications-out) | `outbound.*` | `outbound` | P2WH | built (P2WH; HTTPS: SECOUT) |
 | 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | built (P2PA) |
 | 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | built (P2PA) |
 | 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | built (P2SS store, registered by P2PA; P2PA recall) |
-| 8 | [Notifications out](#8-notifications-out) | `outbound.*` | `outbound` | P2WH | built |
-| 9 | [Parameters](#9-parameters) | `param.*` | `param_api` | P2PA | draft |
-| 10 | [Presets](#10-presets) | `preset.*` | `param_api` | P2PA | draft |
-| 11 | [Snapshots on the hub](#11-snapshots-on-the-hub) | `snapshot.*` | `hub_snapshots` | P2SS (store), P2PA (recall) | draft |
 | 12 | [Schedules](#12-schedules) | `schedule.*` | `schedule` | P2SC | built (P2SC) |
 | 13 | [MQTT and Home Assistant](#13-mqtt-and-home-assistant) | `mqtt.*` | `mqtt` | P2MQ, P2HA | built (P2MQ: 13.1; P2HA: 13.2) |
-| 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS | built (P2RS) |
+| 14 | [REST and API keys](#14-rest-and-api-keys) | `auth.mint`, `/api/v1/` | `api_keys`, `rest` | P2RS (fleet endpoints: P3RS) | built (P2RS; P3RS) |
 | 15 | [Statistics and the hub's name](#15-statistics-and-the-hubs-name) | `hub.stats`, `hub.rename` | `hub_stats` | P2HS | built |
-| 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM | built (P2TM) |
+| 16 | [Scripting](#16-scripting) | `uconsole api` | | P2TM (fleet at the prompt: P3TM) | built (P2TM; P3TM) |
 | 17 | [Deviations from the DSPi Link spec](#17-deviations-from-the-dspi-link-spec) | | | P2DOC | built (this page) |
 | 18 | [Every message](#18-every-message) | | | P2DOC | built (this page) |
 | 19 | [Groups](#19-groups) | `group.list`, `group.set`, `group.delete`, `group.changed`; `group:<id>` schedule targets | `groups` | P3GR; text P3DOC | built (P3GR; text P3DOC) |
 | 20 | [Group writes and bulk apply](#20-group-writes-and-bulk-apply) | `group.param.*`, `group.preset.load`, `group.apply*` | `group_params`, `group_apply` | P3GP (20.2), P3BA (20.3); text P3DOC | built (P3GP, P3BA; text P3DOC) |
 | 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | built (P3RO; the writer P3PB) |
+
+<!-- WP P3FRZ: slot for P3WGR's and P3WRO's own marks on rows 19 to 21 (their web screens), added by them or at merge -->
 
 ---
 
@@ -93,9 +90,19 @@ hub without it answers `unknown_type` (an older hub) or `unsupported`. Caps of t
 | `api_keys` | section 14 (`auth.mint`, `kind` in `auth.list`) | always |
 | `rest` | section 14 (`/api/v1/`) | only while the hub runs with `--rest` |
 | `hub_stats` | section 15 (`hub.stats`, `hub.rename`) | always |
+| `groups` | section 19 (and `group:<id>` schedule targets) | while the groups service runs (`uconsole hub`: on, unless `--no-groups`) |
+| `group_params` | section 20.2 | with `groups` and the parameter API |
+| `group_apply` | section 20.3 | with `groups` and the hub's snapshots |
+| `rollout` | section 21 | only with `uconsole hub --rollout`, on a hub that serves TLS (21.1) |
 
-Within v1 a family only gains fields, messages and codes; nothing changes meaning. A breaking change would be a new
-cap (`param_api_2`), never a silent one.
+<!-- WP P3FRZ -->
+**v1 frozen 2026-11-16** (OD-P2a, OD-P3l; WP P3FRZ, after PRO phase 3's hub and core families merged): **additive
+only**. Within v1 a family only gains fields, messages, caps and codes (phase 3 added none to section 1.6); nothing
+changes meaning, nothing is removed, and a client ignores what it does not know (section 1.1). A breaking change is
+`/api/v2/` for REST and new message types (or a new cap, `param_api_2`) on DSPi Link, never a silent one. REST v1's
+paths (section 14.2) keep their methods, bodies, answers and status codes as built; more paths may be added, each onto
+an existing message. (Frozen as built: `GET /api/v1/groups/{id}` and `/api/v1/rollouts/{rollout}` answer the list
+shape of their message, `{"groups": [one]}` and `{"rollouts": [one]}`.)
 
 ### 1.3 Addressing a device
 
@@ -746,7 +753,7 @@ with a limits profile, as P1HL does (`limits.held` follows). `preset.save` witho
 
 ## 11. Snapshots on the hub
 
-*State: draft (P2SS: the store and its messages; P2PA: `snapshot.recall`).*
+*State: built (P2SS: the store and its messages; P2PA: `snapshot.recall`, 11.2).*
 
 The hub's shared copy of each device's snapshots, in `snapshots/`, in the client store's own format (one folder per
 serial, `index.json`, one `<id>.dspipreset` per snapshot; `crates/dspi-session/src/snapshot_store.rs`). **The hub's copy
@@ -1297,6 +1304,12 @@ exit status 3); a control or viewer console gets `denied` (5) for `fw.rollout.st
 Without TLS (`--tls off`, upstream compatibility, a key minted `plaintext_ok`) anything on the port can be read by
 someone on the same network, API keys included: then keep the hub on a network you trust.
 
+<!-- WP P3FRZ --> `hub_curl.sh SERIAL GROUP` and `hub_rest.py` also use the fleet's endpoints of v1 (section 14.2): the
+groups, a group's master volume with a per-member offset and its rows, and the firmware images and rollouts (read
+only; skipped with a note on a hub without `--rollout`). `apps/terminal/tests/wp_p3frz_examples.rs` runs both against
+a `uconsole --demo hub --rest --rollout` that requires TLS, with a group and an image, and checks that a `POST` on
+`/api/v1/rollouts` or `/api/v1/firmware` is `405`.
+
 ## 17. Deviations from the DSPi Link spec
 
 *State: built (P2DOC). What this hub does that DSPi Link 1.2 does not define. Everything else is additive (new message
@@ -1316,7 +1329,7 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 ## 18. Every message
 
 *State: built (P2DOC). Every request type `t` and event of phase 2, with its least role and its section. Phase 3's rows
-(WP P3DOC, at the end) are **draft** until the WP named in the row builds them.*
+(WP P3DOC, at the end) say which WP built each.*
 
 | `t` | Kind | Role | Cap | § |
 |---|---|---|---|---|
