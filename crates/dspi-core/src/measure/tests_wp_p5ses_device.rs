@@ -1010,7 +1010,7 @@ fn wp_p5ses_device_a_summed_run_with_an_invert_mask() {
         .iter()
         .filter(|q| q.op == op::REQ_SIGGEN_SET_CONFIG)
         .map(|q| dspi_proto::packets::SiggenConfig::decode(&q.data).unwrap())
-        .last()
+        .next_back()
         .unwrap();
     assert_eq!(
         (run.channel_mask, run.invert_mask, run.repeat_count),
@@ -1131,4 +1131,23 @@ fn wp_p5ses_device_the_second_preflight_checks_chains_and_its_own_guard() {
         .unwrap();
     assert_eq!(keys(&p), vec!["measure.guard_pending".to_owned()]);
     r.core.apply_revert().unwrap();
+}
+
+#[test]
+fn wp_p5ses_device_a_lock_the_client_holds_refuses_the_start() {
+    let r = rig();
+    r.core
+        .device_lock_acquire("Restoring".into(), 10_000)
+        .unwrap();
+    assert!(matches!(
+        r.core.measure_start(walked(&[(0, MeasureRole::Full)])),
+        Err(DspiError::Locked)
+    ));
+    assert!(r.log.lock().unwrap().is_empty(), "nothing played");
+    assert_eq!(
+        r.core.held_lock_holder(),
+        Some(crate::presets::Holder::Caller)
+    );
+    assert_eq!(r.core.measure_state().phase, MeasurePhase::Idle);
+    r.core.device_lock_release();
 }

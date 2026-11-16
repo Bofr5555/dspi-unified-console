@@ -5203,7 +5203,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_set_listener() != 176.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_start() != 32768.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_start() != 36814.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_state() != 64969.toShort()) {
@@ -10121,7 +10121,8 @@ public interface DspiCoreInterface {
      * already running on this core, or a blocker (named in the message);
      * [`DspiError::ReadOnly`] (read-only mode or connection) and
      * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
-     * [`DspiError::Locked`] when another session holds the device lock;
+     * [`DspiError::Locked`] when another session holds the device lock, or
+     * this console holds it through `device_lock_acquire`;
      * [`DspiError::Disconnected`].
      */
     fun `measureStart`(`setup`: MeasureSetup): MeasureState
@@ -17498,7 +17499,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * already running on this core, or a blocker (named in the message);
      * [`DspiError::ReadOnly`] (read-only mode or connection) and
      * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
-     * [`DspiError::Locked`] when another session holds the device lock;
+     * [`DspiError::Locked`] when another session holds the device lock, or
+     * this console holds it through `device_lock_acquire`;
      * [`DspiError::Disconnected`].
      */
     @Throws(DspiException::class)override fun `measureStart`(`setup`: MeasureSetup): MeasureState {

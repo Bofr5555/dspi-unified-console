@@ -607,7 +607,8 @@ impl DspiCore {
     /// already running on this core, or a blocker (named in the message);
     /// [`DspiError::ReadOnly`] (read-only mode or connection) and
     /// [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
-    /// [`DspiError::Locked`] when another session holds the device lock;
+    /// [`DspiError::Locked`] when another session holds the device lock, or
+    /// this console holds it through `device_lock_acquire`;
     /// [`DspiError::Disconnected`].
     pub fn measure_start(&self, setup: MeasureSetup) -> Result<MeasureState> {
         self.measure_start_with(&setup, &PreflightOptions::default())
@@ -784,30 +785,41 @@ impl DspiCore {
         options: &PreflightOptions,
     ) -> Result<MeasureState> {
         let plan = Plan::new(setup)?;
-        {
-            let slot = self.measure.lock();
+        // The slot is held from the busy check to the session's install, so
+        // two starts on one core cannot both pass (the slot comes before
+        // `inner`, which the steps below take).
+        let state = {
+            let mut slot = self.measure.lock();
             if slot.as_ref().is_some_and(Session::active) {
                 return Err(DspiError::InvalidArgument {
                     msg: "busy: a measurement is already running on this device".into(),
                 });
             }
-        }
-        let pre = self.measure_preflight_plan(&plan, options)?;
-        if let Some(e) = preflight::refusal(&pre) {
-            return Err(e);
-        }
-        let ctx = self.measure_context(&plan)?;
-        // What the device already said (the echo of the user's own last
-        // write, a volume lowered for this measurement) is applied before the
-        // tap judges anything: only what happens from here on is foreign.
-        self.settle_notifications();
-        // The lock before anything plays (a dead-man lease).
-        let lock = self.take_device_lock(session::LOCK_REASON, session::LEASE, true)?;
-        self.hold_device_lock(lock, session::LEASE, crate::presets::Holder::Measure);
-        self.lock().measure_tap.set(true);
-        let session = Session::new(plan, ctx, Instant::now());
-        let state = session.state();
-        *self.measure.lock() = Some(session);
+            let pre = self.measure_preflight_plan(&plan, options)?;
+            if let Some(e) = preflight::refusal(&pre) {
+                return Err(e);
+            }
+            let ctx = self.measure_context(&plan)?;
+            // What the device already said (the echo of the user's own last
+            // write, a volume lowered for this measurement) is applied before
+            // the tap judges anything: only what happens from here on is
+            // foreign.
+            self.settle_notifications();
+            // The lock before anything plays (a dead-man lease).
+            let lock = self.take_device_lock(session::LOCK_REASON, session::LEASE, true)?;
+            self.hold_device_lock(lock, session::LEASE, crate::presets::Holder::Measure);
+            // A lock the client already holds itself (`device_lock_acquire`)
+            // is not the session's to renew or give back: refused, nothing
+            // played.
+            if !self.measure_lock_renew(session::LOCK_REASON, session::LEASE, false) {
+                return Err(DspiError::Locked);
+            }
+            self.lock().measure_tap.set(true);
+            let session = Session::new(plan, ctx, Instant::now());
+            let state = session.state();
+            *slot = Some(session);
+            state
+        };
         self.measure.listener.call(|l| l.on_measure());
         Ok(state)
     }

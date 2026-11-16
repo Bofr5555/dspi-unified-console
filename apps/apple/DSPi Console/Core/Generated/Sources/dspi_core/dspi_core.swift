@@ -4069,7 +4069,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * already running on this core, or a blocker (named in the message);
      * [`DspiError::ReadOnly`] (read-only mode or connection) and
      * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
-     * [`DspiError::Locked`] when another session holds the device lock;
+     * [`DspiError::Locked`] when another session holds the device lock, or
+     * this console holds it through `device_lock_acquire`;
      * [`DspiError::Disconnected`].
      */
     func measureStart(setup: MeasureSetup) throws  -> MeasureState
@@ -10257,7 +10258,8 @@ open func measureSetListener(listener: MeasureListener?)  {try! rustCall() {
      * already running on this core, or a blocker (named in the message);
      * [`DspiError::ReadOnly`] (read-only mode or connection) and
      * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
-     * [`DspiError::Locked`] when another session holds the device lock;
+     * [`DspiError::Locked`] when another session holds the device lock, or
+     * this console holds it through `device_lock_acquire`;
      * [`DspiError::Disconnected`].
      */
 open func measureStart(setup: MeasureSetup)throws  -> MeasureState  {
@@ -55422,7 +55424,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_set_listener() != 176) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_start() != 32768) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_start() != 36814) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_state() != 64969) {

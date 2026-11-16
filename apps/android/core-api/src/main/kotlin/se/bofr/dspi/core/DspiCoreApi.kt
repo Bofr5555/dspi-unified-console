@@ -3184,7 +3184,8 @@ interface DspiCoreApi : AutoCloseable {
      * already running on this core, or a blocker (named in the message);
      * [`DspiError::ReadOnly`] (read-only mode or connection) and
      * [`DspiError::Denied`] (a Viewer through a hub) with nothing sent;
-     * [`DspiError::Locked`] when another session holds the device lock;
+     * [`DspiError::Locked`] when another session holds the device lock, or
+     * this console holds it through `device_lock_acquire`;
      * [`DspiError::Disconnected`].
      */
     @Throws(DspiException::class)
