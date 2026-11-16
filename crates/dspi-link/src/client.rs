@@ -370,6 +370,26 @@ pub fn should_reconnect(code: Option<u16>) -> bool {
     !matches!(code, Some(4000) | Some(4002))
 }
 
+// -- WP SECBFIXA --
+/// What [`hub_close_reason`] says for a hub that closed with 4003 `tls_required`
+/// (PLAN-SEC 4.1 `require` mode): plaintext is refused, trying again cannot help.
+pub const TLS_REQUIRED_REASON: &str = "this hub accepts only encrypted connections";
+
+/// [`close_reason`], reading the hub's own reason where it carries meaning: a 4003
+/// whose reason starts with `tls_required` is [`TLS_REQUIRED_REASON`].
+pub fn hub_close_reason(code: Option<u16>, hub_reason: &str) -> String {
+    if code == Some(4003) && hub_reason.starts_with("tls_required") {
+        return TLS_REQUIRED_REASON.into();
+    }
+    close_reason(code)
+}
+
+/// [`should_reconnect`], given the reason [`hub_close_reason`] made: never after
+/// [`TLS_REQUIRED_REASON`].
+pub fn should_reconnect_after(code: Option<u16>, reason: &str) -> bool {
+    should_reconnect(code) && reason != TLS_REQUIRED_REASON
+}
+
 #[derive(Default)]
 struct Session {
     session: Option<u16>,
@@ -765,7 +785,12 @@ impl LinkClient {
                 WsRecv::Message(_) | WsRecv::Alive | WsRecv::Idle => {}
                 WsRecv::Closed { code, reason } => {
                     log::debug!("dspi-link: closed during hello: {reason}");
-                    return Err(LinkError::Closed { code, reason: close_reason(code) });
+                    // -- WP SECBFIXA --
+                    let reason = hub_close_reason(code, &reason);
+                    if reason == TLS_REQUIRED_REASON {
+                        return Err(LinkError::TlsRequired);
+                    }
+                    return Err(LinkError::Closed { code, reason });
                 }
             }
         }
@@ -1446,7 +1471,7 @@ impl LinkClient {
                 }
                 WsRecv::Closed { code, reason } => {
                     log::debug!("dspi-link: socket closed: {reason}");
-                    self.socket_failed(code, &close_reason(code));
+                    self.socket_failed(code, &hub_close_reason(code, &reason)); // -- WP SECBFIXA --
                     ended = true;
                     break;
                 }
@@ -1522,7 +1547,7 @@ impl LinkClient {
                     }
                     WsRecv::Closed { code, reason } => {
                         log::debug!("dspi-link: socket closed: {reason}");
-                        me.socket_failed(code, &close_reason(code));
+                        me.socket_failed(code, &hub_close_reason(code, &reason)); // -- WP SECBFIXA --
                         break;
                     }
                 }

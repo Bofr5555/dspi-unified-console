@@ -244,6 +244,9 @@ enum Out {
     Text(String),
     Binary(Vec<u8>),
     Close(u16),
+    // -- WP SECBFIXA --
+    /// A close frame with a reason.
+    CloseWith(u16, String),
     /// Cut the TCP connection without a close frame.
     Abort,
 }
@@ -296,6 +299,10 @@ struct SecState {
     /// Without a key, wait for an HTTP head after a ClientHello instead of closing
     /// at once (a server whose parser does not refuse early).
     slow_plain: bool,
+    // -- WP SECBFIXA --
+    /// `require` mode: a plaintext upgrade is completed, then closed at once with
+    /// 4003 `tls_required`.
+    require_tls: bool,
     /// WebSocket upgrades: plaintext, and over TLS.
     plain_upgrades: u32,
     tls_upgrades: u32,
@@ -1061,6 +1068,21 @@ impl FakeHub {
     }
 
     /// Close every session with `code` (4003 = hub shutting down).
+    // -- WP SECBFIXA --
+    /// `require` mode from now on: plaintext upgrades are closed with 4003
+    /// `tls_required`.
+    pub fn set_require_tls(&self, on: bool) {
+        lock(&self.state).sec.require_tls = on;
+    }
+
+    /// Close every session with `code` and the close frame's `reason`.
+    pub fn close_all_with(&self, code: u16, reason: &str) {
+        let s = lock(&self.state);
+        for r in s.sessions.values() {
+            let _ = r.tx.send(Out::CloseWith(code, reason.to_owned()));
+        }
+    }
+
     pub fn close_all(&self, code: u16) {
         let s = lock(&self.state);
         for r in s.sessions.values() {
@@ -1460,6 +1482,15 @@ fn serve(tcp: TcpStream, state: Arc<Mutex<State>>, stop: Arc<AtomicBool>) {
         Ok(resp)
     });
     if let (Ok(mut ws), Ok(raw)) = (ws, raw) {
+        // -- WP SECBFIXA -- `require`: plaintext gets in only to hear why not
+        if !tls && lock(&state).sec.require_tls {
+            write_out(&mut ws, Out::CloseWith(4003, "tls_required: this hub accepts TLS only".into()));
+            let _ = raw.set_read_timeout(Some(Duration::from_millis(200)));
+            let _ = ws.read();
+            let mut s = lock(&state);
+            s.sessions.remove(&slot);
+            return;
+        }
         let _ = raw.set_read_timeout(Some(Duration::from_millis(5)));
         session(&mut ws, &state, &stop, slot, tx_rx);
     }
@@ -1496,6 +1527,12 @@ fn write_out(ws: &mut WebSocket<Replay>, o: Out) -> bool {
         Out::Binary(b) => ws.send(Message::binary(b)).is_ok(),
         Out::Close(code) => {
             send_close(ws, code);
+            false
+        }
+        // -- WP SECBFIXA --
+        Out::CloseWith(code, reason) => {
+            let _ = ws.close(Some(CloseFrame { code: CloseCode::from(code), reason: reason.into() }));
+            let _ = ws.flush();
             false
         }
         Out::Abort => {

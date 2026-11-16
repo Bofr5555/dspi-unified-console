@@ -459,7 +459,7 @@ fn upgrade(
     let writer = WebSocket::from_raw_socket(writer, Role::Client, Some(config()));
     Ok((
         Box::new(TcpSender { ws: Mutex::new(writer), shutdown }),
-        Box::new(TcpReceiver { ws: reader, close_code: None, broken }),
+        Box::new(TcpReceiver { ws: reader, close_code: None, close_text: String::new(), broken }),
     ))
 }
 
@@ -501,7 +501,21 @@ impl WsSender for TcpSender {
 struct TcpReceiver {
     ws: WebSocket<Pipe>,
     close_code: Option<u16>,
+    // -- WP SECBFIXA -- the close frame's reason, bounded (a 4003 `tls_required`)
+    close_text: String,
     broken: Arc<AtomicBool>,
+}
+
+// -- WP SECBFIXA --
+impl TcpReceiver {
+    /// The hub's close reason when it gave one, else `fallback`.
+    fn closed_text(&self, fallback: &str) -> String {
+        if self.close_code.is_some() && !self.close_text.is_empty() {
+            self.close_text.clone()
+        } else {
+            fallback.to_owned()
+        }
+    }
 }
 
 impl WsReceiver for TcpReceiver {
@@ -518,6 +532,8 @@ impl WsReceiver for TcpReceiver {
                 Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => return WsRecv::Alive,
                 Ok(Message::Frame(_)) => continue,
                 Ok(Message::Close(frame)) => {
+                    // -- WP SECBFIXA -- the reason too (a control frame: 123 bytes at most)
+                    self.close_text = frame.as_ref().map(|f| f.reason.as_str().to_owned()).unwrap_or_default();
                     self.close_code = frame.map(|f| u16::from(f.code));
                     continue; // the next read finishes the close handshake
                 }
@@ -528,9 +544,9 @@ impl WsReceiver for TcpReceiver {
                     return WsRecv::Idle
                 }
                 Err(tungstenite::Error::ConnectionClosed) | Err(tungstenite::Error::AlreadyClosed) => {
-                    return WsRecv::Closed { code: self.close_code, reason: "closed".into() }
+                    return WsRecv::Closed { code: self.close_code, reason: self.closed_text("closed") }
                 }
-                Err(e) => return WsRecv::Closed { code: self.close_code, reason: e.to_string() },
+                Err(e) => return WsRecv::Closed { code: self.close_code, reason: self.closed_text(&e.to_string()) },
             }
         }
     }

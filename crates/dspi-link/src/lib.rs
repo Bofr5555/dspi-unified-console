@@ -36,8 +36,8 @@ pub mod credential;
 use std::time::Duration;
 
 pub use client::{
-    close_reason, should_reconnect, AuthState, ConnectOptions, LinkClient, LinkEvents, NotifyItem, SessionConfig,
-    SessionState, Timing, TokenLookup,
+    close_reason, hub_close_reason, should_reconnect, should_reconnect_after, AuthState, ConnectOptions, LinkClient,
+    LinkEvents, NotifyItem, SessionConfig, SessionState, Timing, TokenLookup,
 };
 // -- WP LK2 --
 pub use client::CmdSpec;
@@ -109,6 +109,11 @@ pub enum LinkError {
         "this hub was set up with encryption but refused it"
     })]
     TlsRefused { advertised: bool },
+    // -- WP SECBFIXA --
+    /// The hub closed a plaintext session with 4003 `tls_required` (its `require`
+    /// mode): only TLS gets in, so retrying in plaintext cannot help.
+    #[error("{}", client::TLS_REQUIRED_REASON)]
+    TlsRequired,
 }
 
 /// Shortest wait after `rate_limited` (the hub locks an address for 60 s).
@@ -160,8 +165,8 @@ impl LinkError {
         const BUSY: RetryAdvice = RetryAdvice::Retry { min_delay: HUB_BUSY_BACKOFF };
         match self {
             LinkError::Io(_) | LinkError::Timeout | LinkError::Handshake(_) => NOW,
-            LinkError::Closed { code, .. } => {
-                if should_reconnect(*code) {
+            LinkError::Closed { code, reason } => {
+                if should_reconnect_after(*code, reason) {
                     NOW
                 } else {
                     RetryAdvice::Stop
@@ -180,6 +185,7 @@ impl LinkError {
             }
             // -- WP SECCORE -- a person must decide; a refused TLS may pass (a restart)
             LinkError::HubKeyChanged | LinkError::HubKeyUnverified => RetryAdvice::Stop,
+            LinkError::TlsRequired => RetryAdvice::Stop, // -- WP SECBFIXA --
             LinkError::TlsRefused { .. } => BUSY,
         }
     }
