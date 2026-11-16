@@ -856,6 +856,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dspi-measure"
+version = "0.13.0"
+dependencies = [
+ "dspi-proto",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "dspi-proto"
 version = "0.13.0"
 dependencies = [

@@ -1,0 +1,25 @@
+[package]
+name = "dspi-measure"
+description = "Measurement maths for the DSPi console: sweeps, impulse responses, calibration, targets, alignment, crossover and EQ fits (pure)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# -- WP PLANP5 -- the seam (docs/core-merge/PLAN-P5.md section 2). Pure: no I/O,
+# no threads, no clock, no device, no audio API. Runs unchanged in wasm32.
+[dependencies]
+dspi-proto.workspace = true
+thiserror.workspace = true
+serde = { workspace = true }
+# -- WP P5DSP -- (the FFT crates, OD-P5d)
+
+[features]
+# -- WP P5SIM -- the simulated acoustic world (speakers, rooms, couplers, a
+# drifting microphone clock) for tests, golden files and the demo device.
+sim = []
+
+[dev-dependencies]
+proptest = "1"
+serde_json.workspace = true
