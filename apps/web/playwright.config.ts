@@ -1,5 +1,14 @@
 // WP WB5: the e2e tests, in the official Playwright image (apps/web/tools/ci.sh).
 import { defineConfig, devices } from "@playwright/test";
+// -- WP P5WCAP -- the browsers' fake microphone (test/e2e/capture_p5wcap.spec.ts): Chromium's
+// plays P5SIM's rendering (test/fixtures/p5wcap-sim.wav, looped), Firefox's is its own tone.
+// Chromium's permission is the test context's to grant or not; Firefox's prompt is off (Playwright
+// cannot grant a microphone there), so its denial is a unit test. The spec runs the full Chromium
+// headless (`channel`), as the headless shell has no getUserMedia.
+import { fileURLToPath } from "node:url";
+const fakeMicWav = fileURLToPath(new URL("./test/fixtures/p5wcap-sim.wav", import.meta.url));
+const chromiumFakeMic = { args: ["--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${fakeMicWav}`] };
+const firefoxFakeMic = { firefoxUserPrefs: { "media.navigator.streams.fake": true, "media.navigator.permission.disabled": true } };
 
 const port = Number(process.env.PORT ?? 8737);
 // -- WP WB4b -- the page served by a hub (tools/hub-host.mjs over dspi-link's fake
@@ -27,8 +36,9 @@ export default defineConfig({
       : []),
   ],
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
-    { name: "narrow", use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 800 } } },
+    // -- WP P5WCAP -- launchOptions: the fake microphone
+    { name: "chromium", use: { ...devices["Desktop Chrome"], launchOptions: chromiumFakeMic } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"], launchOptions: firefoxFakeMic } },
+    { name: "narrow", use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 800 }, launchOptions: chromiumFakeMic } },
   ],
 });

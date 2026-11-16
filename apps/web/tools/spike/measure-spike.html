@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- WP P5WCAP: the P5SPIKE page. Development only: never in the built console (tools/spike/build.mjs).
+         Filled in by the hub that serves it (`uconsole web --console <dist-spike>`). -->
+    <meta name="dspi-hub" content="" />
+    <title>P5SPIKE: microphone timing</title>
+    <link rel="stylesheet" href="measure-spike.css" />
+  </head>
+  <body>
+    <header>
+      <h1>P5SPIKE: microphone timing (development only)</h1>
+      <p>The generator plays at the start level only (the setup's ceiling). This page plays nothing itself.</p>
+      <button id="stop-all" type="button" class="stop">Stop everything</button>
+    </header>
+    <main>
+      <section aria-labelledby="h-device">
+        <h2 id="h-device">1. The DSPi</h2>
+        <p>
+          <button id="usb" type="button">Choose a DSPi on USB</button>
+          <button id="demo" type="button">The demo DSPi (no hardware)</button>
+          <label>Hub <input id="hub-url" size="40" placeholder="ws://127.0.0.1:11916/dspi/v1" /></label>
+          <label>PIN <input id="hub-pin" size="8" inputmode="numeric" autocomplete="off" /></label>
+          <button id="hub" type="button">Connect to the hub</button>
+        </p>
+        <p><label>DSPi <select id="hub-devices"></select></label> <button id="hub-open" type="button" disabled>Open</button></p>
+        <p id="device" role="status">No DSPi open.</p>
+      </section>
+      <section aria-labelledby="h-mic">
+        <h2 id="h-mic">2. The microphone</h2>
+        <p>
+          <label>Microphone <select id="mics"><option value="">The browser's default</option></select></label>
+          <button id="mic-start" type="button">Start the microphone</button>
+          <button id="mic-stop" type="button">Stop the microphone</button>
+        </p>
+        <pre id="mic"></pre>
+      </section>
+      <section aria-labelledby="h-run">
+        <h2 id="h-run">3. The run</h2>
+        <p>The setup is P5SES's <code>measure_start</code> setup, as JSON: edit it to that call's fields.</p>
+        <textarea id="setup" rows="14" cols="72" spellcheck="false"></textarea>
+        <p>
+          <button id="preflight" type="button">Preflight</button>
+          <button id="run" type="button">Start the run</button>
+          <button id="run-stop" type="button" class="stop">Stop the run</button>
+        </p>
+        <pre id="state"></pre>
+      </section>
+      <section aria-labelledby="h-result">
+        <h2 id="h-result">4. Timing</h2>
+        <button id="result" type="button">Read the result</button>
+        <button id="download" type="button" disabled>Download the record</button>
+        <pre id="timing"></pre>
+      </section>
+      <section aria-labelledby="h-log">
+        <h2 id="h-log">Log</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script type="module" src="measure-spike.js"></script>
+  </body>
+</html>
