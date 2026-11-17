@@ -13,6 +13,9 @@
 //                                     the default; startLevelOnly is always forced on
 //       --measure-spike-demo          the demo DSPi (simulated; its volume set to -20 dB)
 //                                     in place of the first DSPi on USB
+//       --measure-spike-sim           -- WP P5DEMO -- the demo DSPi with its simulated
+//                                     microphone (P5SIM's room answers the generator): no
+//                                     capture is opened, the run reaches a timing verdict
 //
 // -- Review P5-B (decision a) -- The spike runs the core's measurement session
 // (P5SES) through the C ABI: the first DSPi on USB (or the demo), the preflight
@@ -47,6 +50,8 @@ namespace MeasureSpike {
 // The generator's level of the default setup, dBFS peak: the headphones' start
 // level (S3); a speaker placement's is -50.
 constexpr double kStartLevelDb = -60.0;
+// -- WP P5DEMO -- the simulated microphone's capture rate
+constexpr int kSimRateHz = 48000;
 
 struct Options {
     QString path;                 // the report
@@ -54,6 +59,8 @@ struct Options {
     int seconds = 120;            // the spike stops itself after this long
     bool demo = false;            // the demo DSPi in place of USB
     QString setupJson;            // empty: the default setup
+    bool simMic = false;          // -- WP P5DEMO -- the demo's simulated microphone (implies demo)
+    quint64 simSeed = 1;          // -- WP P5DEMO -- its world's seed
     dspi_capture::SourceFactory source;   // the capture's test seam (smoke tests)
 };
 

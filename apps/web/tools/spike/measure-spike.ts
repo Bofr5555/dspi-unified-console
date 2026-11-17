@@ -38,6 +38,8 @@ interface SpikeCore {
   stop(): Promise<unknown>;
   result(): Promise<unknown>;
   generator(): Promise<unknown>;
+  // -- WP P5DEMO -- the demo's simulated microphone
+  sim(on: boolean): Promise<unknown>;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -61,6 +63,9 @@ const discontinuities: { atBlock: number; kind: string; detail: unknown }[] = []
 let pushFailures = 0;
 let ticker: ReturnType<typeof setInterval> | null = null;
 let record: unknown = null;
+// -- WP P5DEMO -- the demo's simulated microphone is on: the core hears the generator itself
+// (P5SIM's room), the page opens no microphone and pushes nothing, the tick feeds the session.
+let simulated: { label?: string; on?: boolean } | null = null;
 
 function spikeCore(c: CoreClient): SpikeCore {
   const call = (m: string, p: unknown) => c.call(m as never, p as never) as Promise<unknown>;
@@ -73,10 +78,12 @@ function spikeCore(c: CoreClient): SpikeCore {
     stop: () => call("measureStop", undefined),
     result: () => call("measureResult", undefined),
     generator: () => call("siggenStatus", undefined),
+    sim: (on) => call("measureSimSet", { on, seed: 1 }),
   };
 }
 
 function freshClient(): CoreClient {
+  simulated = null; // -- WP P5DEMO --
   void client?.dispose();
   client = CoreClient.spawn(workerUrl);
   core = spikeCore(client);
@@ -220,6 +227,23 @@ $("mic-start").addEventListener("click", async () => {
 
 $("mic-stop").addEventListener("click", () => void capture?.stop());
 
+// -- WP P5DEMO -- the demo's simulated microphone (refused on a real DSPi: `unsupported`)
+$("mic-sim").addEventListener("click", async () => {
+  if (!core) {
+    show("mic", "Open the demo DSPi first: the simulated microphone is the demo's.");
+    return;
+  }
+  try {
+    await capture?.stop();
+    simulated = (await core.sim(true)) as { label?: string; on?: boolean };
+    show("mic", { simulatedMicrophone: simulated, rateHz: 48_000 });
+    log(`${simulated.label ?? "simulated microphone"} on`);
+  } catch (e) {
+    simulated = null;
+    show("mic", errText(e));
+  }
+});
+
 // ---- 3. the run ----
 
 /**
@@ -262,7 +286,7 @@ $("preflight").addEventListener("click", async () => {
 });
 
 $("run").addEventListener("click", async () => {
-  if (!capture || capture.stopped) {
+  if ((!capture || capture.stopped) && !simulated?.on) {
     show("state", "Start the microphone first: the run needs its capture from the pre-roll on.");
     return;
   }
@@ -381,6 +405,7 @@ async function buildRecord(): Promise<void> {
       savedUtc: new Date().toISOString(),
       userAgent: navigator.userAgent,
       capture: capture?.report ?? null,
+      simulatedMicrophone: simulated, // -- WP P5DEMO --
       frames: continuity && { blocks: continuity.blocks, frames: continuity.frames, gaps: continuity.gaps, repeats: continuity.repeats, clippedBlocks: continuity.clippedBlocks },
       discontinuities,
       pushFailures,
