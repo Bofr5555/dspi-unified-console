@@ -181,8 +181,9 @@ impl Admin<'_> {
         )
     }
 
-    /// `fw.rollout.start`; a `busy` in the moment after the last rollout's record ended
-    /// (the hub frees its slot just after announcing the end) is asked again.
+    /// `fw.rollout.start`, a `busy` asked again for up to 5 s. Since review P3-D (F1) a normal
+    /// end frees the hub's slot before the end is announced, so these tests (no cancels) should
+    /// not need it; only after a cancel does the worker keep the slot until it leaves its step.
     fn start(&self, msg: Value) -> Value {
         let begun = Instant::now();
         loop {

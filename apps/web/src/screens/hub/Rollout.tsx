@@ -308,7 +308,8 @@ function RolloutRecord(props: {
       </p>
       {r.state === "running" ? (
         <div class="hub-rollout-cancel">
-          <button type="button" disabled={props.busy || props.readOnly} onClick={() => void props.run(() => feed.cancel(r.id))}>
+          {/* Enabled in the client read-only mode too: the core lets fw.rollout.cancel out there, as BulkApply's Revert Now. */}
+          <button type="button" disabled={props.busy} onClick={() => void props.run(() => feed.cancel(r.id))}>
             Cancel Rollout
           </button>
           {cancellable ? null : (
