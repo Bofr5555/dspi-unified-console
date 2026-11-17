@@ -178,6 +178,12 @@ pub struct ServiceConfig {
     /// when `None`. It needs a data folder, and runs only on a hub that serves TLS.
     #[cfg(feature = "rollout")]
     pub rollout: Option<crate::rollout::RolloutConfig>,
+    // -- WP P5HUB --
+    /// The measurement documents (`measure.doc.*`, `<data>/measurements/`,
+    /// `measurements.rs`). On by default, as the snapshot store: an inert store that
+    /// writes no device; it runs only on a hub with a data folder. Off, the cap
+    /// `hub_measure` is not announced.
+    pub measure: bool,
 }
 
 impl Default for ServiceConfig {
@@ -204,6 +210,8 @@ impl Default for ServiceConfig {
             // -- WP P3RO --
             #[cfg(feature = "rollout")]
             rollout: None,
+            // -- WP P5HUB --
+            measure: true,
         }
     }
 }
@@ -267,6 +275,8 @@ fn registered(config: &ServiceConfig, setup: &ServiceSetup<'_>) -> Vec<Arc<dyn H
     // -- WP P3RO -- after the alarms, which hear its `RolloutEnded`
     #[cfg(feature = "rollout")]
     list.extend(crate::rollout::service(config, setup));
+    // -- WP P5HUB -- the measurement documents
+    list.extend(crate::measurements::service(config, setup));
     list.extend(config.extra.iter().cloned());
     list
 }

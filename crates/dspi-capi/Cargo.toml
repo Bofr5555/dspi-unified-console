@@ -15,7 +15,8 @@ name = "dspi_capi"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-dspi-core.workspace = true
+# -- WP P5DEMO -- `measure-sim`: the Qt app's demo mode has the simulated microphone
+dspi-core = { workspace = true, features = ["measure-sim"] }
 log.workspace = true
 serde_json.workspace = true
 # -- WP Q1 --

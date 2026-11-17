@@ -289,6 +289,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::hub_server_fleet::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP P5HUB -- the hub's measurement documents (src/hub_server_measure.rs)
+    if let Some(r) = crate::hub_server_measure::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     // -- WP P1WB2 -- the DAC mute of the power-on page (src/power_on.rs)
     if let Some(r) = crate::power_on::dispatch(&core, &req.method, req.params.clone()) {
         return r;
@@ -323,6 +327,14 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     }
     // -- WP P5DOCK -- the measurement documents as text (src/measure_docs.rs)
     if let Some(r) = crate::measure_docs::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP P5LIVE -- the live response and direct adjustments (src/measure_live.rs)
+    if let Some(r) = crate::measure_live::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
+    // -- WP P5DEMO -- the demo's simulated microphone (src/measure_sim.rs)
+    if let Some(r) = crate::measure_sim::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
     match req.method.as_str() {

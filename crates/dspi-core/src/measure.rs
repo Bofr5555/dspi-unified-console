@@ -51,6 +51,13 @@ mod preflight;
 mod runs;
 mod safety;
 mod session;
+// -- WP P5LIVE -- the live view and direct adjustments (PLAN-P5 T9, T5)
+mod live;
+pub use live::{
+    MeasureLiveAdjust, MeasureLiveBand, MeasureLiveChange, MeasureLiveCurve, MeasureLiveFrame,
+    MeasureLiveMode, MeasureLiveProposal, MeasureLiveRta, MeasureLiveSetup, MeasureLiveState,
+    MeasureRtaAveraging,
+};
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
@@ -61,6 +68,9 @@ mod tests_wp_p5ses_device;
 
 pub(crate) use plan::Plan;
 pub(crate) use preflight::PreflightOptions;
+// -- WP P5DEMO -- the simulated microphone renders through the chains the session reads
+#[cfg(any(test, feature = "measure-sim"))]
+pub(crate) use preflight::chain_of;
 use session::Session;
 
 /// Every notice key the session answers with (its rows in
@@ -114,6 +124,10 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.abort.programme",
     "measure.abort.output_peak",
     "measure.abort.limiter",
+    // -- WP P5LIVE --
+    "measure.live.no_frame",
+    "measure.live.nothing_to_change",
+    "measure.live.chain_changed",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────
@@ -541,6 +555,18 @@ pub(crate) fn note_notification(tap: &mut Tap, note: &Notification, own: bool) {
 pub(crate) struct MeasureSlot {
     session: Mutex<Option<Session>>,
     listener: crate::Slot<dyn MeasureListener>,
+    // -- WP P5LIVE --
+    /// The live view's control state: taken before the session's slot, never
+    /// after it.
+    live: Mutex<Option<live::Live>>,
+    /// What the live view shows (a leaf: nothing is taken under it).
+    live_view: Mutex<Option<live::View>>,
+    /// The live pink RTA's copy of the capture (a leaf, taken under the
+    /// session's slot by the push path).
+    live_tee: Mutex<live::Tee>,
+    /// The live view keeps the device lock between its sweeps: a session's
+    /// end leaves it held.
+    live_hold: std::sync::atomic::AtomicBool,
 }
 
 impl MeasureSlot {
@@ -669,6 +695,11 @@ impl DspiCore {
         rate_hz: u32,
         clipped: bool,
     ) -> Result<MeasureState> {
+        // -- WP P5DEMO -- the demo's simulated microphone owns the capture:
+        // a client's own push is ignored while it is on.
+        if self.measure_sim_owns_capture() {
+            return Ok(self.measure_state());
+        }
         if samples.len() > session::MAX_BLOCK {
             return Err(DspiError::InvalidArgument {
                 msg: format!(
@@ -695,6 +726,8 @@ impl DspiCore {
             );
             let changed = before != s.phase_key();
             let state = s.state();
+            // -- WP P5LIVE -- the live pink RTA's copy (no analysis here)
+            live::tee_push(&self.measure, &state, first_frame, &samples);
             if s.finished() {
                 self.measure_session_end(s);
             }
@@ -712,6 +745,8 @@ impl DspiCore {
     /// session is active, off the UI thread (it blocks for a few transfers).
     /// Returns the state; never fails.
     pub fn measure_tick(&self) -> MeasureState {
+        // -- WP P5DEMO -- the demo's simulated microphone pushes what it heard
+        self.measure_sim_feed();
         // Apply what the device said first (its flags are kept for the
         // client's own `process_notifications`).
         if self.measure.lock().is_some() {
@@ -758,22 +793,13 @@ impl DspiCore {
 
     /// The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
     /// the run discarded, the lock given back. Idempotent; never fails.
+    /// It ends the live view too (`measure_live_stop`).
     pub fn measure_stop(&self) -> MeasureState {
-        let (state, changed) = {
-            let mut slot = self.measure.lock();
-            let Some(s) = slot.as_mut() else {
-                return MeasureState::default();
-            };
-            let mut dev = CoreDevice { core: self };
-            let changed = s.stop_by_user(&mut dev);
-            let state = s.state();
-            self.measure_session_end(s);
-            (state, changed)
-        };
-        if changed {
-            self.measure.listener.call(|l| l.on_measure());
+        // -- WP P5LIVE -- Stop ends the live view, between its sweeps too
+        if self.measure.live_on() {
+            return self.measure_live_stop().session;
         }
-        state
+        self.measure_stop_session()
     }
 
     /// The session's state, without I/O.
@@ -815,6 +841,28 @@ impl DspiCore {
 }
 
 impl DspiCore {
+    // -- WP P5LIVE -- the session's Stop alone (the live view's own steps)
+    /// The user's Stop of the session alone: `SIGGEN_CTL_STOP_NOW` where the
+    /// device is reachable, the run discarded, the lock given back unless the
+    /// live view keeps it.
+    pub(crate) fn measure_stop_session(&self) -> MeasureState {
+        let (state, changed) = {
+            let mut slot = self.measure.lock();
+            let Some(s) = slot.as_mut() else {
+                return MeasureState::default();
+            };
+            let mut dev = CoreDevice { core: self };
+            let changed = s.stop_by_user(&mut dev);
+            let state = s.state();
+            self.measure_session_end(s);
+            (state, changed)
+        };
+        if changed {
+            self.measure.listener.call(|l| l.on_measure());
+        }
+        state
+    }
+
     /// [`DspiCore::measure_start`] with the options P5TUNE's verify runs need
     /// (their own guard allowed, the chains they were computed for).
     pub(crate) fn measure_start_with(
@@ -823,6 +871,22 @@ impl DspiCore {
         options: &PreflightOptions,
     ) -> Result<MeasureState> {
         let plan = Plan::new(setup)?;
+        // -- WP P5LIVE -- the live view's sweeps are its own
+        if self.measure.live_on() {
+            return Err(DspiError::InvalidArgument {
+                msg: "busy: the live view is running on this device".into(),
+            });
+        }
+        self.measure_start_plan(plan, options)
+    }
+
+    // -- WP P5LIVE -- a start from a plan (the live view sets its start level)
+    /// Start a session of `plan` (see [`DspiCore::measure_start`]).
+    pub(crate) fn measure_start_plan(
+        &self,
+        plan: Plan,
+        options: &PreflightOptions,
+    ) -> Result<MeasureState> {
         // The slot is held from the busy check to the session's install, so
         // two starts on one core cannot both pass (the slot comes before
         // `inner`, which the steps below take).
@@ -873,7 +937,14 @@ impl DspiCore {
             return;
         }
         self.lock().measure_tap.set(false);
-        self.end_held_lock(Some(crate::presets::Holder::Measure));
+        // -- WP P5LIVE -- the live view keeps the lock between its sweeps
+        if !self
+            .measure
+            .live_hold
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            self.end_held_lock(Some(crate::presets::Holder::Measure));
+        }
         s.released();
     }
 

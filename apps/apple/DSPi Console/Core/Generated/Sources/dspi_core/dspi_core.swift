@@ -3344,6 +3344,78 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func hubLimitsSet(document: String) throws  -> HubLimitsSet
     
     /**
+     * Delete document `id` from the hub (`measure.doc.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_measure_doc_rename`].
+     */
+    func hubMeasureDocDelete(id: String) throws 
+    
+    /**
+     * Document `id` on the hub with its text (`measure.doc.get`): a large
+     * one part by part, the whole checked against the hub's size and hash
+     * and read by its kind's reader. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `protocol` for an answer
+     * that does not make the document it announced; as
+     * [`DspiCore::hub_measure_docs`].
+     */
+    func hubMeasureDocGet(id: String) throws  -> HubMeasureDocument
+    
+    /**
+     * Set document `id`'s note on the hub (`measure.doc.note`; any Unicode,
+     * at most 4096 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_measure_doc_rename`].
+     */
+    func hubMeasureDocNote(id: String, note: String) throws  -> MeasureDocInfo
+    
+    /**
+     * File `document` (a measurement, microphone or target document's text)
+     * on the hub (`measure.doc.put`), under the id it carries. It is read
+     * and bounded here first (a text that is not such a document is refused
+     * with nothing sent); a measurement without a serial takes the open
+     * device's, a document without a store id the one a store would make
+     * first (from its time). Sent whole up to 61 440 bytes compact, in parts
+     * past it. The same document again is `created: false`. Control or
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not such a
+     * document or past its bound (nothing sent), or the hub's
+     * `bad_request`; [`DspiError::Link`] `conflict` (the hub holds another
+     * document with this id, or a cap is reached) or `busy` (too many
+     * uploads on the hub); [`DspiError::Denied`] for a Viewer;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_measure_docs`].
+     */
+    func hubMeasureDocPut(document: String) throws  -> HubMeasureDocPut
+    
+    /**
+     * Rename document `id` on the hub (`measure.doc.rename`; any Unicode, at
+     * most 256 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; [`DspiError::InvalidArgument`]
+     * past 256 characters (the hub's `bad_request`); as
+     * [`DspiCore::hub_measure_doc_put`].
+     */
+    func hubMeasureDocRename(id: String, name: String) throws  -> MeasureDocInfo
+    
+    /**
+     * The hub's documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind), oldest first within a kind (`measure.doc.list`): the
+     * measurements of device `serial` ("" the open device's; with kind ""
+     * and no device open, none), every microphone and target. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind;
+     * [`DspiError::Unsupported`] without the `hub_measure` cap (nothing
+     * sent); [`DspiError::Disconnected`] (also for kind `measurement`, serial
+     * "" and no device open); the hub's refusal.
+     */
+    func hubMeasureDocs(kind: String, serial: String) throws  -> [MeasureDocInfo]
+    
+    /**
      * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
      * one of the manifest's modes, "" to unpin). Hub-wide: every console of
      * that role shows it. Admin of the hub only. Slow: off the UI thread.
@@ -4073,6 +4145,139 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func measureDocs(kind: String, serial: String) throws  -> [MeasureDocInfo]
     
     /**
+     * The documents of `kind` (as [`DspiCore::measure_docs`]) on both sides:
+     * this console's store and, on a DSPi Link session to a hub that keeps
+     * them, the hub's ([`DspiCore::hub_measure_docs`]; its measurements are
+     * device `serial`'s, "" the open device's). Each row says where it is
+     * (`local`, `hub` or `both`). **The hub's wins:** an id both sides hold
+     * with different content (any field of the entry differs) is listed as
+     * the hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. A hub that cannot be read leaves the local rows, with
+     * `hub_notice_key` saying why. A round trip on a hub: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+    func measureDocsMerged(kind: String, serial: String) throws  -> MeasureDocsMerged
+    
+    /**
+     * Write the pending change `proposal_id` as **one undo group**
+     * (unguarded, as a manual edit; S10): the run in flight is stopped, each
+     * band through the typed setter (judged by read-only, the limits and the
+     * lock as any write), then the next run starts. Refused, with nothing
+     * written, unless the device's bands are still the ones the proposal was
+     * computed from. A write that fails puts back the ones before it.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no such pending proposal or
+     * a chain changed since the preview; the setters' errors
+     * ([`DspiError::ReadOnly`], [`DspiError::Denied`], the limits'
+     * refusals, a transfer failure).
+     */
+    func measureLiveApply(proposalId: UInt32) throws  -> MeasureLiveState
+    
+    /**
+     * The RTA's averaging preset; the average starts again (the held copy
+     * is kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs.
+     */
+    func measureLiveAveraging(averaging: MeasureRtaAveraging) throws  -> MeasureLiveState
+    
+    /**
+     * "Cut this peak": one free PEQ band (flat or bypassed now) from the fit
+     * on one octave about `freq_hz`, cut only, previewed as the pending
+     * change. `issue` says why nothing is proposed (no curve yet, nothing to
+     * cut, not trusted there, no free band).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`; the limits profile's refusal of the band.
+     */
+    func measureLiveCutPeak(output: UInt8, freqHz: Double) throws  -> MeasureLiveProposal
+    
+    /**
+     * Drop the pending change (nothing is written).
+     */
+    func measureLiveDiscard()  -> MeasureLiveState
+    
+    /**
+     * "Fit this range": the free PEQ bands fitted toward the target in
+     * `f1_hz..f2_hz` (held to the measurement's trusted range), with the
+     * placement's bounds (S9: boost +3 dB speakers, +6 dB headphones, never
+     * above the limits profile's cap; cut -15 dB; Q 0.3 to 10) and a
+     * headroom cut of the output gain for its net boost; previewed as the
+     * pending change. Every band the fit lists is written on apply.
+     *
+     * Errors: as [`DspiCore::measure_live_cut_peak`].
+     */
+    func measureLiveFitRange(output: UInt8, f1Hz: Double, f2Hz: Double) throws  -> MeasureLiveProposal
+    
+    /**
+     * What the live view shows now: the measured curve, the target levelled
+     * to it, the predicted curve of a pending (or unmeasured) change, the
+     * RTA, the pending proposal, the run's state. No I/O; safe from a
+     * listener.
+     */
+    func measureLiveFrame()  -> MeasureLiveFrame
+    
+    /**
+     * Hold (`true`) the RTA's spectrum for comparison, or drop the held
+     * copy (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs, or there
+     * is no spectrum to hold yet.
+     */
+    func measureLiveHold(on: Bool) throws  -> MeasureLiveState
+    
+    /**
+     * Preview `bands` (PEQ bands of `output`, the live view's) as a pending
+     * change: the predicted curve shows at once, nothing is written until
+     * `measure_live_apply`. An empty list drops the pending change.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`, a band index is past the output's PEQ, a value is not
+     * finite, or a type is not one the curves model; the limits profile's
+     * refusal ([`DspiError::LimitExceeded`] and kin) for a write it would
+     * refuse.
+     */
+    func measureLivePredict(output: UInt8, bands: [MeasureLiveBand]) throws  -> MeasureLiveProposal
+    
+    /**
+     * Start the live view of one output (PLAN-P5 T9, T5): short sweeps one
+     * after the other, or finite pink noise with the microphone RTA, each
+     * run under every rule of a measurement (the preflight, the ramp, the
+     * aborts; `measure_start`'s errors). The device lock is held until
+     * `measure_live_stop`. Then call `measure_live_tick` about every 50 ms
+     * (instead of `measure_tick`) and push capture whenever the session
+     * wants it (`measure_capture_push`); read `measure_live_frame`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a measurement
+     * or a live view already running, or a blocker (named);
+     * [`DspiError::ReadOnly`], [`DspiError::Denied`], [`DspiError::Locked`],
+     * [`DspiError::Disconnected`] as `measure_start`, with nothing sent.
+     */
+    func measureLiveStart(setup: MeasureLiveSetup) throws  -> MeasureLiveState
+    
+    /**
+     * Where the live view stands. No I/O; safe from a listener.
+     */
+    func measureLiveState()  -> MeasureLiveState
+    
+    /**
+     * Stop the live view: the run in flight stopped (one `STOP_NOW`), the
+     * lock given back. `measure_stop` does the same. Idempotent; never
+     * fails.
+     */
+    func measureLiveStop()  -> MeasureLiveState
+    
+    /**
+     * Drive the live view: renew the lock's lease, drive the run in flight
+     * (`measure_tick`), take a finished sweep's curve, feed the RTA, start
+     * the next run. Call it about every 50 ms while the live view runs, off
+     * the UI thread. A run's abort ends the live view (its reason in
+     * `issue`). Never fails.
+     */
+    func measureLiveTick()  -> MeasureLiveState
+    
+    /**
      * The microphone is at the next position (or the headphones reseated):
      * go on with the next run.
      *
@@ -4122,6 +4327,26 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func measureSetListener(listener: MeasureListener?) 
     
     /**
+     * The simulated microphone's state, without I/O.
+     */
+    func measureSimInfo()  -> MeasureSimInfo
+    
+    /**
+     * Turn the demo's simulated microphone on (`true`, its world drawn from
+     * `seed`) or off. On, it answers the demo DSPi's generator through
+     * P5SIM's three-way speaker in a room and feeds the measurement session
+     * from `measure_tick`: the client pushes no capture (its pushes are
+     * ignored) and labels the microphone "Simulated microphone". Off, the
+     * client's own capture is the microphone again.
+     *
+     * Errors: [`DspiError::Unsupported`] to turn it on over anything but a
+     * demo connection (a DSPi on USB, MIDI or through a hub) or in a build
+     * without it; [`DspiError::Disconnected`] with nothing open;
+     * [`DspiError::InvalidArgument`] while a measurement is running.
+     */
+    func measureSimSet(on: Bool, seed: UInt64) throws  -> MeasureSimInfo
+    
+    /**
      * Start a measurement of `setup`: the preflight, the device lock
      * "Measuring" (a 30 s lease, renewed by `measure_tick`), then the
      * pre-roll. Nothing plays before the client has pushed the pre-roll and
@@ -4147,6 +4372,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     /**
      * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
      * the run discarded, the lock given back. Idempotent; never fails.
+     * It ends the live view too (`measure_live_stop`).
      */
     func measureStop()  -> MeasureState
     
@@ -9244,6 +9470,116 @@ open func hubLimitsSet(document: String)throws  -> HubLimitsSet  {
 }
     
     /**
+     * Delete document `id` from the hub (`measure.doc.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_measure_doc_rename`].
+     */
+open func hubMeasureDocDelete(id: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_delete(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+}
+}
+    
+    /**
+     * Document `id` on the hub with its text (`measure.doc.get`): a large
+     * one part by part, the whole checked against the hub's size and hash
+     * and read by its kind's reader. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `protocol` for an answer
+     * that does not make the document it announced; as
+     * [`DspiCore::hub_measure_docs`].
+     */
+open func hubMeasureDocGet(id: String)throws  -> HubMeasureDocument  {
+    return try  FfiConverterTypeHubMeasureDocument_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_get(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * Set document `id`'s note on the hub (`measure.doc.note`; any Unicode,
+     * at most 4096 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_measure_doc_rename`].
+     */
+open func hubMeasureDocNote(id: String, note: String)throws  -> MeasureDocInfo  {
+    return try  FfiConverterTypeMeasureDocInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_note(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(note),$0
+    )
+})
+}
+    
+    /**
+     * File `document` (a measurement, microphone or target document's text)
+     * on the hub (`measure.doc.put`), under the id it carries. It is read
+     * and bounded here first (a text that is not such a document is refused
+     * with nothing sent); a measurement without a serial takes the open
+     * device's, a document without a store id the one a store would make
+     * first (from its time). Sent whole up to 61 440 bytes compact, in parts
+     * past it. The same document again is `created: false`. Control or
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not such a
+     * document or past its bound (nothing sent), or the hub's
+     * `bad_request`; [`DspiError::Link`] `conflict` (the hub holds another
+     * document with this id, or a cap is reached) or `busy` (too many
+     * uploads on the hub); [`DspiError::Denied`] for a Viewer;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_measure_docs`].
+     */
+open func hubMeasureDocPut(document: String)throws  -> HubMeasureDocPut  {
+    return try  FfiConverterTypeHubMeasureDocPut_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_put(self.uniffiClonePointer(),
+        FfiConverterString.lower(document),$0
+    )
+})
+}
+    
+    /**
+     * Rename document `id` on the hub (`measure.doc.rename`; any Unicode, at
+     * most 256 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; [`DspiError::InvalidArgument`]
+     * past 256 characters (the hub's `bad_request`); as
+     * [`DspiCore::hub_measure_doc_put`].
+     */
+open func hubMeasureDocRename(id: String, name: String)throws  -> MeasureDocInfo  {
+    return try  FfiConverterTypeMeasureDocInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_rename(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(name),$0
+    )
+})
+}
+    
+    /**
+     * The hub's documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind), oldest first within a kind (`measure.doc.list`): the
+     * measurements of device `serial` ("" the open device's; with kind ""
+     * and no device open, none), every microphone and target. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind;
+     * [`DspiError::Unsupported`] without the `hub_measure` cap (nothing
+     * sent); [`DspiError::Disconnected`] (also for kind `measurement`, serial
+     * "" and no device open); the hub's refusal.
+     */
+open func hubMeasureDocs(kind: String, serial: String)throws  -> [MeasureDocInfo]  {
+    return try  FfiConverterSequenceTypeMeasureDocInfo.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_docs(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),
+        FfiConverterString.lower(serial),$0
+    )
+})
+}
+    
+    /**
      * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
      * one of the manifest's modes, "" to unpin). Hub-wide: every console of
      * that role shows it. Admin of the hub only. Slow: off the UI thread.
@@ -10356,6 +10692,217 @@ open func measureDocs(kind: String, serial: String)throws  -> [MeasureDocInfo]  
 }
     
     /**
+     * The documents of `kind` (as [`DspiCore::measure_docs`]) on both sides:
+     * this console's store and, on a DSPi Link session to a hub that keeps
+     * them, the hub's ([`DspiCore::hub_measure_docs`]; its measurements are
+     * device `serial`'s, "" the open device's). Each row says where it is
+     * (`local`, `hub` or `both`). **The hub's wins:** an id both sides hold
+     * with different content (any field of the entry differs) is listed as
+     * the hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. A hub that cannot be read leaves the local rows, with
+     * `hub_notice_key` saying why. A round trip on a hub: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+open func measureDocsMerged(kind: String, serial: String)throws  -> MeasureDocsMerged  {
+    return try  FfiConverterTypeMeasureDocsMerged_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_docs_merged(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),
+        FfiConverterString.lower(serial),$0
+    )
+})
+}
+    
+    /**
+     * Write the pending change `proposal_id` as **one undo group**
+     * (unguarded, as a manual edit; S10): the run in flight is stopped, each
+     * band through the typed setter (judged by read-only, the limits and the
+     * lock as any write), then the next run starts. Refused, with nothing
+     * written, unless the device's bands are still the ones the proposal was
+     * computed from. A write that fails puts back the ones before it.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no such pending proposal or
+     * a chain changed since the preview; the setters' errors
+     * ([`DspiError::ReadOnly`], [`DspiError::Denied`], the limits'
+     * refusals, a transfer failure).
+     */
+open func measureLiveApply(proposalId: UInt32)throws  -> MeasureLiveState  {
+    return try  FfiConverterTypeMeasureLiveState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_apply(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(proposalId),$0
+    )
+})
+}
+    
+    /**
+     * The RTA's averaging preset; the average starts again (the held copy
+     * is kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs.
+     */
+open func measureLiveAveraging(averaging: MeasureRtaAveraging)throws  -> MeasureLiveState  {
+    return try  FfiConverterTypeMeasureLiveState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_averaging(self.uniffiClonePointer(),
+        FfiConverterTypeMeasureRtaAveraging_lower(averaging),$0
+    )
+})
+}
+    
+    /**
+     * "Cut this peak": one free PEQ band (flat or bypassed now) from the fit
+     * on one octave about `freq_hz`, cut only, previewed as the pending
+     * change. `issue` says why nothing is proposed (no curve yet, nothing to
+     * cut, not trusted there, no free band).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`; the limits profile's refusal of the band.
+     */
+open func measureLiveCutPeak(output: UInt8, freqHz: Double)throws  -> MeasureLiveProposal  {
+    return try  FfiConverterTypeMeasureLiveProposal_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_cut_peak(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(output),
+        FfiConverterDouble.lower(freqHz),$0
+    )
+})
+}
+    
+    /**
+     * Drop the pending change (nothing is written).
+     */
+open func measureLiveDiscard() -> MeasureLiveState  {
+    return try!  FfiConverterTypeMeasureLiveState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_discard(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * "Fit this range": the free PEQ bands fitted toward the target in
+     * `f1_hz..f2_hz` (held to the measurement's trusted range), with the
+     * placement's bounds (S9: boost +3 dB speakers, +6 dB headphones, never
+     * above the limits profile's cap; cut -15 dB; Q 0.3 to 10) and a
+     * headroom cut of the output gain for its net boost; previewed as the
+     * pending change. Every band the fit lists is written on apply.
+     *
+     * Errors: as [`DspiCore::measure_live_cut_peak`].
+     */
+open func measureLiveFitRange(output: UInt8, f1Hz: Double, f2Hz: Double)throws  -> MeasureLiveProposal  {
+    return try  FfiConverterTypeMeasureLiveProposal_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_fit_range(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(output),
+        FfiConverterDouble.lower(f1Hz),
+        FfiConverterDouble.lower(f2Hz),$0
+    )
+})
+}
+    
+    /**
+     * What the live view shows now: the measured curve, the target levelled
+     * to it, the predicted curve of a pending (or unmeasured) change, the
+     * RTA, the pending proposal, the run's state. No I/O; safe from a
+     * listener.
+     */
+open func measureLiveFrame() -> MeasureLiveFrame  {
+    return try!  FfiConverterTypeMeasureLiveFrame_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_frame(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Hold (`true`) the RTA's spectrum for comparison, or drop the held
+     * copy (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs, or there
+     * is no spectrum to hold yet.
+     */
+open func measureLiveHold(on: Bool)throws  -> MeasureLiveState  {
+    return try  FfiConverterTypeMeasureLiveState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_hold(self.uniffiClonePointer(),
+        FfiConverterBool.lower(on),$0
+    )
+})
+}
+    
+    /**
+     * Preview `bands` (PEQ bands of `output`, the live view's) as a pending
+     * change: the predicted curve shows at once, nothing is written until
+     * `measure_live_apply`. An empty list drops the pending change.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`, a band index is past the output's PEQ, a value is not
+     * finite, or a type is not one the curves model; the limits profile's
+     * refusal ([`DspiError::LimitExceeded`] and kin) for a write it would
+     * refuse.
+     */
+open func measureLivePredict(output: UInt8, bands: [MeasureLiveBand])throws  -> MeasureLiveProposal  {
+    return try  FfiConverterTypeMeasureLiveProposal_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_predict(self.uniffiClonePointer(),
+        FfiConverterUInt8.lower(output),
+        FfiConverterSequenceTypeMeasureLiveBand.lower(bands),$0
+    )
+})
+}
+    
+    /**
+     * Start the live view of one output (PLAN-P5 T9, T5): short sweeps one
+     * after the other, or finite pink noise with the microphone RTA, each
+     * run under every rule of a measurement (the preflight, the ramp, the
+     * aborts; `measure_start`'s errors). The device lock is held until
+     * `measure_live_stop`. Then call `measure_live_tick` about every 50 ms
+     * (instead of `measure_tick`) and push capture whenever the session
+     * wants it (`measure_capture_push`); read `measure_live_frame`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a measurement
+     * or a live view already running, or a blocker (named);
+     * [`DspiError::ReadOnly`], [`DspiError::Denied`], [`DspiError::Locked`],
+     * [`DspiError::Disconnected`] as `measure_start`, with nothing sent.
+     */
+open func measureLiveStart(setup: MeasureLiveSetup)throws  -> MeasureLiveState  {
+    return try  FfiConverterTypeMeasureLiveState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_start(self.uniffiClonePointer(),
+        FfiConverterTypeMeasureLiveSetup_lower(setup),$0
+    )
+})
+}
+    
+    /**
+     * Where the live view stands. No I/O; safe from a listener.
+     */
+open func measureLiveState() -> MeasureLiveState  {
+    return try!  FfiConverterTypeMeasureLiveState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_state(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Stop the live view: the run in flight stopped (one `STOP_NOW`), the
+     * lock given back. `measure_stop` does the same. Idempotent; never
+     * fails.
+     */
+open func measureLiveStop() -> MeasureLiveState  {
+    return try!  FfiConverterTypeMeasureLiveState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_stop(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Drive the live view: renew the lock's lease, drive the run in flight
+     * (`measure_tick`), take a finished sweep's curve, feed the RTA, start
+     * the next run. Call it about every 50 ms while the live view runs, off
+     * the UI thread. A run's abort ends the live view (its reason in
+     * `issue`). Never fails.
+     */
+open func measureLiveTick() -> MeasureLiveState  {
+    return try!  FfiConverterTypeMeasureLiveState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_live_tick(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * The microphone is at the next position (or the headphones reseated):
      * go on with the next run.
      *
@@ -10431,6 +10978,38 @@ open func measureSetListener(listener: MeasureListener?)  {try! rustCall() {
 }
     
     /**
+     * The simulated microphone's state, without I/O.
+     */
+open func measureSimInfo() -> MeasureSimInfo  {
+    return try!  FfiConverterTypeMeasureSimInfo_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_sim_info(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Turn the demo's simulated microphone on (`true`, its world drawn from
+     * `seed`) or off. On, it answers the demo DSPi's generator through
+     * P5SIM's three-way speaker in a room and feeds the measurement session
+     * from `measure_tick`: the client pushes no capture (its pushes are
+     * ignored) and labels the microphone "Simulated microphone". Off, the
+     * client's own capture is the microphone again.
+     *
+     * Errors: [`DspiError::Unsupported`] to turn it on over anything but a
+     * demo connection (a DSPi on USB, MIDI or through a hub) or in a build
+     * without it; [`DspiError::Disconnected`] with nothing open;
+     * [`DspiError::InvalidArgument`] while a measurement is running.
+     */
+open func measureSimSet(on: Bool, seed: UInt64)throws  -> MeasureSimInfo  {
+    return try  FfiConverterTypeMeasureSimInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_sim_set(self.uniffiClonePointer(),
+        FfiConverterBool.lower(on),
+        FfiConverterUInt64.lower(seed),$0
+    )
+})
+}
+    
+    /**
      * Start a measurement of `setup`: the preflight, the device lock
      * "Measuring" (a 30 s lease, renewed by `measure_tick`), then the
      * pre-roll. Nothing plays before the client has pushed the pre-roll and
@@ -10467,6 +11046,7 @@ open func measureState() -> MeasureState  {
     /**
      * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
      * the run discarded, the lock given back. Idempotent; never fails.
+     * It ends the live view too (`measure_live_stop`).
      */
 open func measureStop() -> MeasureState  {
     return try!  FfiConverterTypeMeasureState_lift(try! rustCall() {
@@ -28547,6 +29127,10 @@ public struct HubCaps {
      */
     public var rollout: Bool
     /**
+     * `measure.doc.*` ([`DspiCore::hub_measure_docs`]).
+     */
+    public var hubMeasure: Bool
+    /**
      * Every cap of the hub's `hello`, as it sent them.
      */
     public var caps: [String]
@@ -28609,6 +29193,9 @@ public struct HubCaps {
          * `fw.*` ([`DspiCore::hub_rollout_start`]; over TLS only).
          */rollout: Bool, 
         /**
+         * `measure.doc.*` ([`DspiCore::hub_measure_docs`]).
+         */hubMeasure: Bool, 
+        /**
          * Every cap of the hub's `hello`, as it sent them.
          */caps: [String]) {
         self.onHub = onHub
@@ -28629,6 +29216,7 @@ public struct HubCaps {
         self.groupParams = groupParams
         self.groupApply = groupApply
         self.rollout = rollout
+        self.hubMeasure = hubMeasure
         self.caps = caps
     }
 }
@@ -28694,6 +29282,9 @@ extension HubCaps: Equatable, Hashable {
         if lhs.rollout != rhs.rollout {
             return false
         }
+        if lhs.hubMeasure != rhs.hubMeasure {
+            return false
+        }
         if lhs.caps != rhs.caps {
             return false
         }
@@ -28719,6 +29310,7 @@ extension HubCaps: Equatable, Hashable {
         hasher.combine(groupParams)
         hasher.combine(groupApply)
         hasher.combine(rollout)
+        hasher.combine(hubMeasure)
         hasher.combine(caps)
     }
 }
@@ -28750,6 +29342,7 @@ public struct FfiConverterTypeHubCaps: FfiConverterRustBuffer {
                 groupParams: FfiConverterBool.read(from: &buf), 
                 groupApply: FfiConverterBool.read(from: &buf), 
                 rollout: FfiConverterBool.read(from: &buf), 
+                hubMeasure: FfiConverterBool.read(from: &buf), 
                 caps: FfiConverterSequenceString.read(from: &buf)
         )
     }
@@ -28773,6 +29366,7 @@ public struct FfiConverterTypeHubCaps: FfiConverterRustBuffer {
         FfiConverterBool.write(value.groupParams, into: &buf)
         FfiConverterBool.write(value.groupApply, into: &buf)
         FfiConverterBool.write(value.rollout, into: &buf)
+        FfiConverterBool.write(value.hubMeasure, into: &buf)
         FfiConverterSequenceString.write(value.caps, into: &buf)
     }
 }
@@ -31168,6 +31762,179 @@ public func FfiConverterTypeHubLimitsSet_lift(_ buf: RustBuffer) throws -> HubLi
 #endif
 public func FfiConverterTypeHubLimitsSet_lower(_ value: HubLimitsSet) -> RustBuffer {
     return FfiConverterTypeHubLimitsSet.lower(value)
+}
+
+
+/**
+ * A document filed on the hub ([`DspiCore::hub_measure_doc_put`]).
+ */
+public struct HubMeasureDocPut {
+    /**
+     * Its entry on the hub.
+     */
+    public var doc: MeasureDocInfo
+    /**
+     * False: the hub already held this document with the same content.
+     */
+    public var created: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its entry on the hub.
+         */doc: MeasureDocInfo, 
+        /**
+         * False: the hub already held this document with the same content.
+         */created: Bool) {
+        self.doc = doc
+        self.created = created
+    }
+}
+
+#if compiler(>=6)
+extension HubMeasureDocPut: Sendable {}
+#endif
+
+
+extension HubMeasureDocPut: Equatable, Hashable {
+    public static func ==(lhs: HubMeasureDocPut, rhs: HubMeasureDocPut) -> Bool {
+        if lhs.doc != rhs.doc {
+            return false
+        }
+        if lhs.created != rhs.created {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(doc)
+        hasher.combine(created)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubMeasureDocPut: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubMeasureDocPut {
+        return
+            try HubMeasureDocPut(
+                doc: FfiConverterTypeMeasureDocInfo.read(from: &buf), 
+                created: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubMeasureDocPut, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureDocInfo.write(value.doc, into: &buf)
+        FfiConverterBool.write(value.created, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMeasureDocPut_lift(_ buf: RustBuffer) throws -> HubMeasureDocPut {
+    return try FfiConverterTypeHubMeasureDocPut.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMeasureDocPut_lower(_ value: HubMeasureDocPut) -> RustBuffer {
+    return FfiConverterTypeHubMeasureDocPut.lower(value)
+}
+
+
+/**
+ * A measurement document on the hub with its text
+ * ([`DspiCore::hub_measure_doc_get`]).
+ */
+public struct HubMeasureDocument {
+    /**
+     * Its entry on the hub.
+     */
+    public var doc: MeasureDocInfo
+    /**
+     * The document's text (compact JSON), read and checked by its kind's
+     * reader.
+     */
+    public var document: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its entry on the hub.
+         */doc: MeasureDocInfo, 
+        /**
+         * The document's text (compact JSON), read and checked by its kind's
+         * reader.
+         */document: String) {
+        self.doc = doc
+        self.document = document
+    }
+}
+
+#if compiler(>=6)
+extension HubMeasureDocument: Sendable {}
+#endif
+
+
+extension HubMeasureDocument: Equatable, Hashable {
+    public static func ==(lhs: HubMeasureDocument, rhs: HubMeasureDocument) -> Bool {
+        if lhs.doc != rhs.doc {
+            return false
+        }
+        if lhs.document != rhs.document {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(doc)
+        hasher.combine(document)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubMeasureDocument: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubMeasureDocument {
+        return
+            try HubMeasureDocument(
+                doc: FfiConverterTypeMeasureDocInfo.read(from: &buf), 
+                document: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubMeasureDocument, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureDocInfo.write(value.doc, into: &buf)
+        FfiConverterString.write(value.document, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMeasureDocument_lift(_ buf: RustBuffer) throws -> HubMeasureDocument {
+    return try FfiConverterTypeHubMeasureDocument.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMeasureDocument_lower(_ value: HubMeasureDocument) -> RustBuffer {
+    return FfiConverterTypeHubMeasureDocument.lower(value)
 }
 
 
@@ -34684,6 +35451,16 @@ public struct HubServerEvent {
      * the device whose entry changed, where the hub says.
      */
     public var rollout: HubRollout?
+    /**
+     * `measure.doc.changed`'s document id ([`HubServerEvent::change`] is
+     * `put`, `rename`, `note` or `delete`; [`HubServerEvent::serial`] the
+     * measured device, "" for a microphone or target).
+     */
+    public var measureDoc: String
+    /**
+     * `measure.doc.changed`'s document kind: `measurement`, `mic` or `target`.
+     */
+    public var measureKind: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -34721,7 +35498,15 @@ public struct HubServerEvent {
         /**
          * `fw.rollout.changed`'s whole record; [`HubServerEvent::serial`] is
          * the device whose entry changed, where the hub says.
-         */rollout: HubRollout?) {
+         */rollout: HubRollout?, 
+        /**
+         * `measure.doc.changed`'s document id ([`HubServerEvent::change`] is
+         * `put`, `rename`, `note` or `delete`; [`HubServerEvent::serial`] the
+         * measured device, "" for a microphone or target).
+         */measureDoc: String, 
+        /**
+         * `measure.doc.changed`'s document kind: `measurement`, `mic` or `target`.
+         */measureKind: String) {
         self.kind = kind
         self.serial = serial
         self.record = record
@@ -34732,6 +35517,8 @@ public struct HubServerEvent {
         self.run = run
         self.group = group
         self.rollout = rollout
+        self.measureDoc = measureDoc
+        self.measureKind = measureKind
     }
 }
 
@@ -34772,6 +35559,12 @@ extension HubServerEvent: Equatable, Hashable {
         if lhs.rollout != rhs.rollout {
             return false
         }
+        if lhs.measureDoc != rhs.measureDoc {
+            return false
+        }
+        if lhs.measureKind != rhs.measureKind {
+            return false
+        }
         return true
     }
 
@@ -34786,6 +35579,8 @@ extension HubServerEvent: Equatable, Hashable {
         hasher.combine(run)
         hasher.combine(group)
         hasher.combine(rollout)
+        hasher.combine(measureDoc)
+        hasher.combine(measureKind)
     }
 }
 
@@ -34807,7 +35602,9 @@ public struct FfiConverterTypeHubServerEvent: FfiConverterRustBuffer {
                 alarm: FfiConverterOptionTypeHubAlarm.read(from: &buf), 
                 run: FfiConverterOptionTypeHubScheduleRun.read(from: &buf), 
                 group: FfiConverterOptionTypeHubGroup.read(from: &buf), 
-                rollout: FfiConverterOptionTypeHubRollout.read(from: &buf)
+                rollout: FfiConverterOptionTypeHubRollout.read(from: &buf), 
+                measureDoc: FfiConverterString.read(from: &buf), 
+                measureKind: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -34822,6 +35619,8 @@ public struct FfiConverterTypeHubServerEvent: FfiConverterRustBuffer {
         FfiConverterOptionTypeHubScheduleRun.write(value.run, into: &buf)
         FfiConverterOptionTypeHubGroup.write(value.group, into: &buf)
         FfiConverterOptionTypeHubRollout.write(value.rollout, into: &buf)
+        FfiConverterString.write(value.measureDoc, into: &buf)
+        FfiConverterString.write(value.measureKind, into: &buf)
     }
 }
 
@@ -38796,6 +39595,111 @@ public func FfiConverterTypeMeasureDocInfo_lower(_ value: MeasureDocInfo) -> Rus
 
 
 /**
+ * The documents of both sides ([`DspiCore::measure_docs_merged`]).
+ */
+public struct MeasureDocsMerged {
+    /**
+     * By kind (measurement, mic, target), then oldest first; on an id both
+     * sides hold with different content the hub's row comes first, then the
+     * local copy.
+     */
+    public var entries: [MergedMeasureDoc]
+    /**
+     * The hub's list is in it (a hub with `hub_measure` answered).
+     */
+    public var hubListed: Bool
+    /**
+     * Why the hub's list is not in it, as a notice row; "" when it is, or
+     * when there is no such hub.
+     */
+    public var hubNoticeKey: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * By kind (measurement, mic, target), then oldest first; on an id both
+         * sides hold with different content the hub's row comes first, then the
+         * local copy.
+         */entries: [MergedMeasureDoc], 
+        /**
+         * The hub's list is in it (a hub with `hub_measure` answered).
+         */hubListed: Bool, 
+        /**
+         * Why the hub's list is not in it, as a notice row; "" when it is, or
+         * when there is no such hub.
+         */hubNoticeKey: String) {
+        self.entries = entries
+        self.hubListed = hubListed
+        self.hubNoticeKey = hubNoticeKey
+    }
+}
+
+#if compiler(>=6)
+extension MeasureDocsMerged: Sendable {}
+#endif
+
+
+extension MeasureDocsMerged: Equatable, Hashable {
+    public static func ==(lhs: MeasureDocsMerged, rhs: MeasureDocsMerged) -> Bool {
+        if lhs.entries != rhs.entries {
+            return false
+        }
+        if lhs.hubListed != rhs.hubListed {
+            return false
+        }
+        if lhs.hubNoticeKey != rhs.hubNoticeKey {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(entries)
+        hasher.combine(hubListed)
+        hasher.combine(hubNoticeKey)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureDocsMerged: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureDocsMerged {
+        return
+            try MeasureDocsMerged(
+                entries: FfiConverterSequenceTypeMergedMeasureDoc.read(from: &buf), 
+                hubListed: FfiConverterBool.read(from: &buf), 
+                hubNoticeKey: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureDocsMerged, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeMergedMeasureDoc.write(value.entries, into: &buf)
+        FfiConverterBool.write(value.hubListed, into: &buf)
+        FfiConverterString.write(value.hubNoticeKey, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocsMerged_lift(_ buf: RustBuffer) throws -> MeasureDocsMerged {
+    return try FfiConverterTypeMeasureDocsMerged.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocsMerged_lower(_ value: MeasureDocsMerged) -> RustBuffer {
+    return FfiConverterTypeMeasureDocsMerged.lower(value)
+}
+
+
+/**
  * One preflight finding: a notice key and its words.
  */
 public struct MeasureIssue {
@@ -38976,6 +39880,1424 @@ public func FfiConverterTypeMeasureLevel_lift(_ buf: RustBuffer) throws -> Measu
 #endif
 public func FfiConverterTypeMeasureLevel_lower(_ value: MeasureLevel) -> RustBuffer {
     return FfiConverterTypeMeasureLevel.lower(value)
+}
+
+
+/**
+ * One PEQ band of the live output, as a proposal writes it.
+ */
+public struct MeasureLiveBand {
+    /**
+     * The PEQ band, 0-based.
+     */
+    public var band: UInt8
+    /**
+     * The firmware's filter type (0 flat, 1 peak, 2 low shelf, 3 high
+     * shelf, ...).
+     */
+    public var filterType: UInt8
+    /**
+     * Switched off.
+     */
+    public var bypass: Bool
+    /**
+     * Centre or corner, Hz.
+     */
+    public var freq: Float
+    /**
+     * Q.
+     */
+    public var q: Float
+    /**
+     * Gain, dB.
+     */
+    public var gain: Float
+    /**
+     * The Linkwitz Transform's target Q; unused otherwise.
+     */
+    public var qp: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The PEQ band, 0-based.
+         */band: UInt8, 
+        /**
+         * The firmware's filter type (0 flat, 1 peak, 2 low shelf, 3 high
+         * shelf, ...).
+         */filterType: UInt8, 
+        /**
+         * Switched off.
+         */bypass: Bool, 
+        /**
+         * Centre or corner, Hz.
+         */freq: Float, 
+        /**
+         * Q.
+         */q: Float, 
+        /**
+         * Gain, dB.
+         */gain: Float, 
+        /**
+         * The Linkwitz Transform's target Q; unused otherwise.
+         */qp: Float) {
+        self.band = band
+        self.filterType = filterType
+        self.bypass = bypass
+        self.freq = freq
+        self.q = q
+        self.gain = gain
+        self.qp = qp
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLiveBand: Sendable {}
+#endif
+
+
+extension MeasureLiveBand: Equatable, Hashable {
+    public static func ==(lhs: MeasureLiveBand, rhs: MeasureLiveBand) -> Bool {
+        if lhs.band != rhs.band {
+            return false
+        }
+        if lhs.filterType != rhs.filterType {
+            return false
+        }
+        if lhs.bypass != rhs.bypass {
+            return false
+        }
+        if lhs.freq != rhs.freq {
+            return false
+        }
+        if lhs.q != rhs.q {
+            return false
+        }
+        if lhs.gain != rhs.gain {
+            return false
+        }
+        if lhs.qp != rhs.qp {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(band)
+        hasher.combine(filterType)
+        hasher.combine(bypass)
+        hasher.combine(freq)
+        hasher.combine(q)
+        hasher.combine(gain)
+        hasher.combine(qp)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLiveBand: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLiveBand {
+        return
+            try MeasureLiveBand(
+                band: FfiConverterUInt8.read(from: &buf), 
+                filterType: FfiConverterUInt8.read(from: &buf), 
+                bypass: FfiConverterBool.read(from: &buf), 
+                freq: FfiConverterFloat.read(from: &buf), 
+                q: FfiConverterFloat.read(from: &buf), 
+                gain: FfiConverterFloat.read(from: &buf), 
+                qp: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLiveBand, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.band, into: &buf)
+        FfiConverterUInt8.write(value.filterType, into: &buf)
+        FfiConverterBool.write(value.bypass, into: &buf)
+        FfiConverterFloat.write(value.freq, into: &buf)
+        FfiConverterFloat.write(value.q, into: &buf)
+        FfiConverterFloat.write(value.gain, into: &buf)
+        FfiConverterFloat.write(value.qp, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveBand_lift(_ buf: RustBuffer) throws -> MeasureLiveBand {
+    return try FfiConverterTypeMeasureLiveBand.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveBand_lower(_ value: MeasureLiveBand) -> RustBuffer {
+    return FfiConverterTypeMeasureLiveBand.lower(value)
+}
+
+
+/**
+ * One band a proposal changes.
+ */
+public struct MeasureLiveChange {
+    /**
+     * The PEQ band, 0-based.
+     */
+    public var band: UInt8
+    /**
+     * What it is now.
+     */
+    public var before: MeasureLiveBand
+    /**
+     * What the proposal writes.
+     */
+    public var after: MeasureLiveBand
+    /**
+     * The change in words ("PEQ band 4: flat → peak -5.8 dB at 1.02 kHz,
+     * Q 4.1").
+     */
+    public var words: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The PEQ band, 0-based.
+         */band: UInt8, 
+        /**
+         * What it is now.
+         */before: MeasureLiveBand, 
+        /**
+         * What the proposal writes.
+         */after: MeasureLiveBand, 
+        /**
+         * The change in words ("PEQ band 4: flat → peak -5.8 dB at 1.02 kHz,
+         * Q 4.1").
+         */words: String) {
+        self.band = band
+        self.before = before
+        self.after = after
+        self.words = words
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLiveChange: Sendable {}
+#endif
+
+
+extension MeasureLiveChange: Equatable, Hashable {
+    public static func ==(lhs: MeasureLiveChange, rhs: MeasureLiveChange) -> Bool {
+        if lhs.band != rhs.band {
+            return false
+        }
+        if lhs.before != rhs.before {
+            return false
+        }
+        if lhs.after != rhs.after {
+            return false
+        }
+        if lhs.words != rhs.words {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(band)
+        hasher.combine(before)
+        hasher.combine(after)
+        hasher.combine(words)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLiveChange: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLiveChange {
+        return
+            try MeasureLiveChange(
+                band: FfiConverterUInt8.read(from: &buf), 
+                before: FfiConverterTypeMeasureLiveBand.read(from: &buf), 
+                after: FfiConverterTypeMeasureLiveBand.read(from: &buf), 
+                words: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLiveChange, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.band, into: &buf)
+        FfiConverterTypeMeasureLiveBand.write(value.before, into: &buf)
+        FfiConverterTypeMeasureLiveBand.write(value.after, into: &buf)
+        FfiConverterString.write(value.words, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveChange_lift(_ buf: RustBuffer) throws -> MeasureLiveChange {
+    return try FfiConverterTypeMeasureLiveChange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveChange_lower(_ value: MeasureLiveChange) -> RustBuffer {
+    return FfiConverterTypeMeasureLiveChange.lower(value)
+}
+
+
+/**
+ * A curve as the live graph draws it (10 Hz to 22 kHz, 1/48 octave).
+ */
+public struct MeasureLiveCurve {
+    /**
+     * Frequencies, Hz, ascending.
+     */
+    public var freqsHz: [Double]
+    /**
+     * Magnitude, dB (dB SPL when `spl`).
+     */
+    public var magDb: [Double]
+    /**
+     * Per point, trusted (untrusted points are drawn faint).
+     */
+    public var valid: [Bool]
+    /**
+     * The magnitudes are dB SPL (a calibrated microphone).
+     */
+    public var spl: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Frequencies, Hz, ascending.
+         */freqsHz: [Double], 
+        /**
+         * Magnitude, dB (dB SPL when `spl`).
+         */magDb: [Double], 
+        /**
+         * Per point, trusted (untrusted points are drawn faint).
+         */valid: [Bool], 
+        /**
+         * The magnitudes are dB SPL (a calibrated microphone).
+         */spl: Bool) {
+        self.freqsHz = freqsHz
+        self.magDb = magDb
+        self.valid = valid
+        self.spl = spl
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLiveCurve: Sendable {}
+#endif
+
+
+extension MeasureLiveCurve: Equatable, Hashable {
+    public static func ==(lhs: MeasureLiveCurve, rhs: MeasureLiveCurve) -> Bool {
+        if lhs.freqsHz != rhs.freqsHz {
+            return false
+        }
+        if lhs.magDb != rhs.magDb {
+            return false
+        }
+        if lhs.valid != rhs.valid {
+            return false
+        }
+        if lhs.spl != rhs.spl {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(freqsHz)
+        hasher.combine(magDb)
+        hasher.combine(valid)
+        hasher.combine(spl)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLiveCurve: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLiveCurve {
+        return
+            try MeasureLiveCurve(
+                freqsHz: FfiConverterSequenceDouble.read(from: &buf), 
+                magDb: FfiConverterSequenceDouble.read(from: &buf), 
+                valid: FfiConverterSequenceBool.read(from: &buf), 
+                spl: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLiveCurve, into buf: inout [UInt8]) {
+        FfiConverterSequenceDouble.write(value.freqsHz, into: &buf)
+        FfiConverterSequenceDouble.write(value.magDb, into: &buf)
+        FfiConverterSequenceBool.write(value.valid, into: &buf)
+        FfiConverterBool.write(value.spl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveCurve_lift(_ buf: RustBuffer) throws -> MeasureLiveCurve {
+    return try FfiConverterTypeMeasureLiveCurve.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveCurve_lower(_ value: MeasureLiveCurve) -> RustBuffer {
+    return FfiConverterTypeMeasureLiveCurve.lower(value)
+}
+
+
+/**
+ * What the live view shows now (`measure_live_frame`).
+ */
+public struct MeasureLiveFrame {
+    /**
+     * The live view runs.
+     */
+    public var active: Bool
+    /**
+     * What it plays.
+     */
+    public var mode: MeasureLiveMode
+    /**
+     * The output.
+     */
+    public var output: UInt8
+    /**
+     * Counts the measured curves (one per sweep; the RTA's per update).
+     */
+    public var seq: UInt32
+    /**
+     * The measured curve, if one.
+     */
+    public var measured: MeasureLiveCurve?
+    /**
+     * The target, levelled to the measured curve.
+     */
+    public var target: MeasureLiveCurve?
+    /**
+     * The predicted curve: of the pending change, or of a change already
+     * written that no sweep has measured yet.
+     */
+    public var predicted: MeasureLiveCurve?
+    /**
+     * The microphone RTA (pink mode).
+     */
+    public var rta: MeasureLiveRta?
+    /**
+     * The change previewed, if one.
+     */
+    public var pending: MeasureLiveProposal?
+    /**
+     * Why the live view stopped, if it did.
+     */
+    public var issue: MeasureIssue?
+    /**
+     * The current run's state.
+     */
+    public var session: MeasureState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The live view runs.
+         */active: Bool, 
+        /**
+         * What it plays.
+         */mode: MeasureLiveMode, 
+        /**
+         * The output.
+         */output: UInt8, 
+        /**
+         * Counts the measured curves (one per sweep; the RTA's per update).
+         */seq: UInt32, 
+        /**
+         * The measured curve, if one.
+         */measured: MeasureLiveCurve?, 
+        /**
+         * The target, levelled to the measured curve.
+         */target: MeasureLiveCurve?, 
+        /**
+         * The predicted curve: of the pending change, or of a change already
+         * written that no sweep has measured yet.
+         */predicted: MeasureLiveCurve?, 
+        /**
+         * The microphone RTA (pink mode).
+         */rta: MeasureLiveRta?, 
+        /**
+         * The change previewed, if one.
+         */pending: MeasureLiveProposal?, 
+        /**
+         * Why the live view stopped, if it did.
+         */issue: MeasureIssue?, 
+        /**
+         * The current run's state.
+         */session: MeasureState) {
+        self.active = active
+        self.mode = mode
+        self.output = output
+        self.seq = seq
+        self.measured = measured
+        self.target = target
+        self.predicted = predicted
+        self.rta = rta
+        self.pending = pending
+        self.issue = issue
+        self.session = session
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLiveFrame: Sendable {}
+#endif
+
+
+extension MeasureLiveFrame: Equatable, Hashable {
+    public static func ==(lhs: MeasureLiveFrame, rhs: MeasureLiveFrame) -> Bool {
+        if lhs.active != rhs.active {
+            return false
+        }
+        if lhs.mode != rhs.mode {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.seq != rhs.seq {
+            return false
+        }
+        if lhs.measured != rhs.measured {
+            return false
+        }
+        if lhs.target != rhs.target {
+            return false
+        }
+        if lhs.predicted != rhs.predicted {
+            return false
+        }
+        if lhs.rta != rhs.rta {
+            return false
+        }
+        if lhs.pending != rhs.pending {
+            return false
+        }
+        if lhs.issue != rhs.issue {
+            return false
+        }
+        if lhs.session != rhs.session {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(active)
+        hasher.combine(mode)
+        hasher.combine(output)
+        hasher.combine(seq)
+        hasher.combine(measured)
+        hasher.combine(target)
+        hasher.combine(predicted)
+        hasher.combine(rta)
+        hasher.combine(pending)
+        hasher.combine(issue)
+        hasher.combine(session)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLiveFrame: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLiveFrame {
+        return
+            try MeasureLiveFrame(
+                active: FfiConverterBool.read(from: &buf), 
+                mode: FfiConverterTypeMeasureLiveMode.read(from: &buf), 
+                output: FfiConverterUInt8.read(from: &buf), 
+                seq: FfiConverterUInt32.read(from: &buf), 
+                measured: FfiConverterOptionTypeMeasureLiveCurve.read(from: &buf), 
+                target: FfiConverterOptionTypeMeasureLiveCurve.read(from: &buf), 
+                predicted: FfiConverterOptionTypeMeasureLiveCurve.read(from: &buf), 
+                rta: FfiConverterOptionTypeMeasureLiveRta.read(from: &buf), 
+                pending: FfiConverterOptionTypeMeasureLiveProposal.read(from: &buf), 
+                issue: FfiConverterOptionTypeMeasureIssue.read(from: &buf), 
+                session: FfiConverterTypeMeasureState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLiveFrame, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.active, into: &buf)
+        FfiConverterTypeMeasureLiveMode.write(value.mode, into: &buf)
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterUInt32.write(value.seq, into: &buf)
+        FfiConverterOptionTypeMeasureLiveCurve.write(value.measured, into: &buf)
+        FfiConverterOptionTypeMeasureLiveCurve.write(value.target, into: &buf)
+        FfiConverterOptionTypeMeasureLiveCurve.write(value.predicted, into: &buf)
+        FfiConverterOptionTypeMeasureLiveRta.write(value.rta, into: &buf)
+        FfiConverterOptionTypeMeasureLiveProposal.write(value.pending, into: &buf)
+        FfiConverterOptionTypeMeasureIssue.write(value.issue, into: &buf)
+        FfiConverterTypeMeasureState.write(value.session, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveFrame_lift(_ buf: RustBuffer) throws -> MeasureLiveFrame {
+    return try FfiConverterTypeMeasureLiveFrame.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveFrame_lower(_ value: MeasureLiveFrame) -> RustBuffer {
+    return FfiConverterTypeMeasureLiveFrame.lower(value)
+}
+
+
+/**
+ * A direct adjustment, previewed: nothing is written until
+ * `measure_live_apply` with its id.
+ */
+public struct MeasureLiveProposal {
+    /**
+     * Its id (`measure_live_apply`).
+     */
+    public var id: UInt32
+    /**
+     * What made it.
+     */
+    public var adjust: MeasureLiveAdjust
+    /**
+     * The output.
+     */
+    public var output: UInt8
+    /**
+     * The undo step's label.
+     */
+    public var label: String
+    /**
+     * The bands it writes (empty: nothing to change, see `issue`).
+     */
+    public var changes: [MeasureLiveChange]
+    /**
+     * The output's gain now, dB.
+     */
+    public var gainBeforeDb: Float
+    /**
+     * The output's gain it writes, dB (a headroom cut; equal: unchanged).
+     */
+    public var gainAfterDb: Float
+    /**
+     * The RMS error to the target in the span before, dB (a fit's).
+     */
+    public var rmsBeforeDb: Double
+    /**
+     * The same, predicted after, dB.
+     */
+    public var rmsAfterDb: Double
+    /**
+     * What was done and why, in words.
+     */
+    public var notes: [String]
+    /**
+     * Why nothing is proposed, when nothing is.
+     */
+    public var issue: MeasureIssue?
+    /**
+     * The curve the change is predicted to give.
+     */
+    public var predicted: MeasureLiveCurve?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its id (`measure_live_apply`).
+         */id: UInt32, 
+        /**
+         * What made it.
+         */adjust: MeasureLiveAdjust, 
+        /**
+         * The output.
+         */output: UInt8, 
+        /**
+         * The undo step's label.
+         */label: String, 
+        /**
+         * The bands it writes (empty: nothing to change, see `issue`).
+         */changes: [MeasureLiveChange], 
+        /**
+         * The output's gain now, dB.
+         */gainBeforeDb: Float, 
+        /**
+         * The output's gain it writes, dB (a headroom cut; equal: unchanged).
+         */gainAfterDb: Float, 
+        /**
+         * The RMS error to the target in the span before, dB (a fit's).
+         */rmsBeforeDb: Double, 
+        /**
+         * The same, predicted after, dB.
+         */rmsAfterDb: Double, 
+        /**
+         * What was done and why, in words.
+         */notes: [String], 
+        /**
+         * Why nothing is proposed, when nothing is.
+         */issue: MeasureIssue?, 
+        /**
+         * The curve the change is predicted to give.
+         */predicted: MeasureLiveCurve?) {
+        self.id = id
+        self.adjust = adjust
+        self.output = output
+        self.label = label
+        self.changes = changes
+        self.gainBeforeDb = gainBeforeDb
+        self.gainAfterDb = gainAfterDb
+        self.rmsBeforeDb = rmsBeforeDb
+        self.rmsAfterDb = rmsAfterDb
+        self.notes = notes
+        self.issue = issue
+        self.predicted = predicted
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLiveProposal: Sendable {}
+#endif
+
+
+extension MeasureLiveProposal: Equatable, Hashable {
+    public static func ==(lhs: MeasureLiveProposal, rhs: MeasureLiveProposal) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.adjust != rhs.adjust {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        if lhs.changes != rhs.changes {
+            return false
+        }
+        if lhs.gainBeforeDb != rhs.gainBeforeDb {
+            return false
+        }
+        if lhs.gainAfterDb != rhs.gainAfterDb {
+            return false
+        }
+        if lhs.rmsBeforeDb != rhs.rmsBeforeDb {
+            return false
+        }
+        if lhs.rmsAfterDb != rhs.rmsAfterDb {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        if lhs.issue != rhs.issue {
+            return false
+        }
+        if lhs.predicted != rhs.predicted {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(adjust)
+        hasher.combine(output)
+        hasher.combine(label)
+        hasher.combine(changes)
+        hasher.combine(gainBeforeDb)
+        hasher.combine(gainAfterDb)
+        hasher.combine(rmsBeforeDb)
+        hasher.combine(rmsAfterDb)
+        hasher.combine(notes)
+        hasher.combine(issue)
+        hasher.combine(predicted)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLiveProposal: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLiveProposal {
+        return
+            try MeasureLiveProposal(
+                id: FfiConverterUInt32.read(from: &buf), 
+                adjust: FfiConverterTypeMeasureLiveAdjust.read(from: &buf), 
+                output: FfiConverterUInt8.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                changes: FfiConverterSequenceTypeMeasureLiveChange.read(from: &buf), 
+                gainBeforeDb: FfiConverterFloat.read(from: &buf), 
+                gainAfterDb: FfiConverterFloat.read(from: &buf), 
+                rmsBeforeDb: FfiConverterDouble.read(from: &buf), 
+                rmsAfterDb: FfiConverterDouble.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf), 
+                issue: FfiConverterOptionTypeMeasureIssue.read(from: &buf), 
+                predicted: FfiConverterOptionTypeMeasureLiveCurve.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLiveProposal, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.id, into: &buf)
+        FfiConverterTypeMeasureLiveAdjust.write(value.adjust, into: &buf)
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterSequenceTypeMeasureLiveChange.write(value.changes, into: &buf)
+        FfiConverterFloat.write(value.gainBeforeDb, into: &buf)
+        FfiConverterFloat.write(value.gainAfterDb, into: &buf)
+        FfiConverterDouble.write(value.rmsBeforeDb, into: &buf)
+        FfiConverterDouble.write(value.rmsAfterDb, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+        FfiConverterOptionTypeMeasureIssue.write(value.issue, into: &buf)
+        FfiConverterOptionTypeMeasureLiveCurve.write(value.predicted, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveProposal_lift(_ buf: RustBuffer) throws -> MeasureLiveProposal {
+    return try FfiConverterTypeMeasureLiveProposal.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveProposal_lower(_ value: MeasureLiveProposal) -> RustBuffer {
+    return FfiConverterTypeMeasureLiveProposal.lower(value)
+}
+
+
+/**
+ * The microphone RTA of the live view.
+ */
+public struct MeasureLiveRta {
+    /**
+     * The averaged spectrum in fractional-octave bands (dBFS, or dB SPL).
+     */
+    public var current: MeasureLiveCurve?
+    /**
+     * The held copy.
+     */
+    public var held: MeasureLiveCurve?
+    /**
+     * The current spectrum minus the held one, dB.
+     */
+    public var compare: MeasureLiveCurve?
+    /**
+     * FFT frames averaged so far.
+     */
+    public var frames: UInt64
+    /**
+     * The averaging preset.
+     */
+    public var averaging: MeasureRtaAveraging
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The averaged spectrum in fractional-octave bands (dBFS, or dB SPL).
+         */current: MeasureLiveCurve?, 
+        /**
+         * The held copy.
+         */held: MeasureLiveCurve?, 
+        /**
+         * The current spectrum minus the held one, dB.
+         */compare: MeasureLiveCurve?, 
+        /**
+         * FFT frames averaged so far.
+         */frames: UInt64, 
+        /**
+         * The averaging preset.
+         */averaging: MeasureRtaAveraging) {
+        self.current = current
+        self.held = held
+        self.compare = compare
+        self.frames = frames
+        self.averaging = averaging
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLiveRta: Sendable {}
+#endif
+
+
+extension MeasureLiveRta: Equatable, Hashable {
+    public static func ==(lhs: MeasureLiveRta, rhs: MeasureLiveRta) -> Bool {
+        if lhs.current != rhs.current {
+            return false
+        }
+        if lhs.held != rhs.held {
+            return false
+        }
+        if lhs.compare != rhs.compare {
+            return false
+        }
+        if lhs.frames != rhs.frames {
+            return false
+        }
+        if lhs.averaging != rhs.averaging {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(current)
+        hasher.combine(held)
+        hasher.combine(compare)
+        hasher.combine(frames)
+        hasher.combine(averaging)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLiveRta: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLiveRta {
+        return
+            try MeasureLiveRta(
+                current: FfiConverterOptionTypeMeasureLiveCurve.read(from: &buf), 
+                held: FfiConverterOptionTypeMeasureLiveCurve.read(from: &buf), 
+                compare: FfiConverterOptionTypeMeasureLiveCurve.read(from: &buf), 
+                frames: FfiConverterUInt64.read(from: &buf), 
+                averaging: FfiConverterTypeMeasureRtaAveraging.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLiveRta, into buf: inout [UInt8]) {
+        FfiConverterOptionTypeMeasureLiveCurve.write(value.current, into: &buf)
+        FfiConverterOptionTypeMeasureLiveCurve.write(value.held, into: &buf)
+        FfiConverterOptionTypeMeasureLiveCurve.write(value.compare, into: &buf)
+        FfiConverterUInt64.write(value.frames, into: &buf)
+        FfiConverterTypeMeasureRtaAveraging.write(value.averaging, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveRta_lift(_ buf: RustBuffer) throws -> MeasureLiveRta {
+    return try FfiConverterTypeMeasureLiveRta.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveRta_lower(_ value: MeasureLiveRta) -> RustBuffer {
+    return FfiConverterTypeMeasureLiveRta.lower(value)
+}
+
+
+/**
+ * What the live view measures and how (`measure_live_start`). Every number
+ * 0 (or absent) is the default.
+ */
+public struct MeasureLiveSetup {
+    /**
+     * The output, 0-based.
+     */
+    public var output: UInt8
+    /**
+     * Sweeps or pink noise with the RTA.
+     */
+    public var mode: MeasureLiveMode
+    /**
+     * Its way (the tweeter rule, S6, needs `mid` or `high` for those).
+     */
+    public var role: MeasureRole
+    /**
+     * Where the microphone is: the listening position, near field, or a
+     * headphone coupler (several positions are not live).
+     */
+    public var placement: MeasurePlacement
+    /**
+     * The coupler, for headphones.
+     */
+    public var coupler: MeasureCoupler?
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated one.
+     */
+    public var micDocument: String
+    /**
+     * A `target` document's text; "" for the placement's default target.
+     */
+    public var targetDocument: String
+    /**
+     * The graph's smoothing, 1/N octave (1 to 48); 0 for none.
+     */
+    public var smoothing: UInt8
+    /**
+     * One sweep, ms (1000 to 15000; 0: 2700).
+     */
+    public var sweepMs: UInt32
+    /**
+     * The gap after a sweep, ms (300 to 2000; 0: the placement's).
+     */
+    public var gapMs: UInt32
+    /**
+     * Pink noise per run, ms (1000 to 60000; 0: 30000, then re-armed).
+     */
+    public var pinkMs: UInt32
+    /**
+     * The generator's ceiling, peak dBFS (as a measurement's).
+     */
+    public var ceilingDb: Float?
+    /**
+     * The SPL cap with a calibrated microphone, dB SPL (as a measurement's).
+     */
+    public var splCapDb: Float?
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    public var captureRateHz: UInt32
+    /**
+     * The RTA's averaging.
+     */
+    public var averaging: MeasureRtaAveraging
+    /**
+     * The RTA's bands per octave (1 to 48; 0: 3).
+     */
+    public var bandsPerOctave: UInt8
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output, 0-based.
+         */output: UInt8, 
+        /**
+         * Sweeps or pink noise with the RTA.
+         */mode: MeasureLiveMode, 
+        /**
+         * Its way (the tweeter rule, S6, needs `mid` or `high` for those).
+         */role: MeasureRole, 
+        /**
+         * Where the microphone is: the listening position, near field, or a
+         * headphone coupler (several positions are not live).
+         */placement: MeasurePlacement, 
+        /**
+         * The coupler, for headphones.
+         */coupler: MeasureCoupler?, 
+        /**
+         * The microphone's `mic` document's text; "" for an uncalibrated one.
+         */micDocument: String, 
+        /**
+         * A `target` document's text; "" for the placement's default target.
+         */targetDocument: String, 
+        /**
+         * The graph's smoothing, 1/N octave (1 to 48); 0 for none.
+         */smoothing: UInt8, 
+        /**
+         * One sweep, ms (1000 to 15000; 0: 2700).
+         */sweepMs: UInt32, 
+        /**
+         * The gap after a sweep, ms (300 to 2000; 0: the placement's).
+         */gapMs: UInt32, 
+        /**
+         * Pink noise per run, ms (1000 to 60000; 0: 30000, then re-armed).
+         */pinkMs: UInt32, 
+        /**
+         * The generator's ceiling, peak dBFS (as a measurement's).
+         */ceilingDb: Float?, 
+        /**
+         * The SPL cap with a calibrated microphone, dB SPL (as a measurement's).
+         */splCapDb: Float?, 
+        /**
+         * The capture's rate, Hz (0: 48000).
+         */captureRateHz: UInt32, 
+        /**
+         * The RTA's averaging.
+         */averaging: MeasureRtaAveraging, 
+        /**
+         * The RTA's bands per octave (1 to 48; 0: 3).
+         */bandsPerOctave: UInt8) {
+        self.output = output
+        self.mode = mode
+        self.role = role
+        self.placement = placement
+        self.coupler = coupler
+        self.micDocument = micDocument
+        self.targetDocument = targetDocument
+        self.smoothing = smoothing
+        self.sweepMs = sweepMs
+        self.gapMs = gapMs
+        self.pinkMs = pinkMs
+        self.ceilingDb = ceilingDb
+        self.splCapDb = splCapDb
+        self.captureRateHz = captureRateHz
+        self.averaging = averaging
+        self.bandsPerOctave = bandsPerOctave
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLiveSetup: Sendable {}
+#endif
+
+
+extension MeasureLiveSetup: Equatable, Hashable {
+    public static func ==(lhs: MeasureLiveSetup, rhs: MeasureLiveSetup) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.mode != rhs.mode {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.placement != rhs.placement {
+            return false
+        }
+        if lhs.coupler != rhs.coupler {
+            return false
+        }
+        if lhs.micDocument != rhs.micDocument {
+            return false
+        }
+        if lhs.targetDocument != rhs.targetDocument {
+            return false
+        }
+        if lhs.smoothing != rhs.smoothing {
+            return false
+        }
+        if lhs.sweepMs != rhs.sweepMs {
+            return false
+        }
+        if lhs.gapMs != rhs.gapMs {
+            return false
+        }
+        if lhs.pinkMs != rhs.pinkMs {
+            return false
+        }
+        if lhs.ceilingDb != rhs.ceilingDb {
+            return false
+        }
+        if lhs.splCapDb != rhs.splCapDb {
+            return false
+        }
+        if lhs.captureRateHz != rhs.captureRateHz {
+            return false
+        }
+        if lhs.averaging != rhs.averaging {
+            return false
+        }
+        if lhs.bandsPerOctave != rhs.bandsPerOctave {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(mode)
+        hasher.combine(role)
+        hasher.combine(placement)
+        hasher.combine(coupler)
+        hasher.combine(micDocument)
+        hasher.combine(targetDocument)
+        hasher.combine(smoothing)
+        hasher.combine(sweepMs)
+        hasher.combine(gapMs)
+        hasher.combine(pinkMs)
+        hasher.combine(ceilingDb)
+        hasher.combine(splCapDb)
+        hasher.combine(captureRateHz)
+        hasher.combine(averaging)
+        hasher.combine(bandsPerOctave)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLiveSetup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLiveSetup {
+        return
+            try MeasureLiveSetup(
+                output: FfiConverterUInt8.read(from: &buf), 
+                mode: FfiConverterTypeMeasureLiveMode.read(from: &buf), 
+                role: FfiConverterTypeMeasureRole.read(from: &buf), 
+                placement: FfiConverterTypeMeasurePlacement.read(from: &buf), 
+                coupler: FfiConverterOptionTypeMeasureCoupler.read(from: &buf), 
+                micDocument: FfiConverterString.read(from: &buf), 
+                targetDocument: FfiConverterString.read(from: &buf), 
+                smoothing: FfiConverterUInt8.read(from: &buf), 
+                sweepMs: FfiConverterUInt32.read(from: &buf), 
+                gapMs: FfiConverterUInt32.read(from: &buf), 
+                pinkMs: FfiConverterUInt32.read(from: &buf), 
+                ceilingDb: FfiConverterOptionFloat.read(from: &buf), 
+                splCapDb: FfiConverterOptionFloat.read(from: &buf), 
+                captureRateHz: FfiConverterUInt32.read(from: &buf), 
+                averaging: FfiConverterTypeMeasureRtaAveraging.read(from: &buf), 
+                bandsPerOctave: FfiConverterUInt8.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLiveSetup, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterTypeMeasureLiveMode.write(value.mode, into: &buf)
+        FfiConverterTypeMeasureRole.write(value.role, into: &buf)
+        FfiConverterTypeMeasurePlacement.write(value.placement, into: &buf)
+        FfiConverterOptionTypeMeasureCoupler.write(value.coupler, into: &buf)
+        FfiConverterString.write(value.micDocument, into: &buf)
+        FfiConverterString.write(value.targetDocument, into: &buf)
+        FfiConverterUInt8.write(value.smoothing, into: &buf)
+        FfiConverterUInt32.write(value.sweepMs, into: &buf)
+        FfiConverterUInt32.write(value.gapMs, into: &buf)
+        FfiConverterUInt32.write(value.pinkMs, into: &buf)
+        FfiConverterOptionFloat.write(value.ceilingDb, into: &buf)
+        FfiConverterOptionFloat.write(value.splCapDb, into: &buf)
+        FfiConverterUInt32.write(value.captureRateHz, into: &buf)
+        FfiConverterTypeMeasureRtaAveraging.write(value.averaging, into: &buf)
+        FfiConverterUInt8.write(value.bandsPerOctave, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveSetup_lift(_ buf: RustBuffer) throws -> MeasureLiveSetup {
+    return try FfiConverterTypeMeasureLiveSetup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveSetup_lower(_ value: MeasureLiveSetup) -> RustBuffer {
+    return FfiConverterTypeMeasureLiveSetup.lower(value)
+}
+
+
+/**
+ * Where the live view stands (`measure_live_tick` and the other calls).
+ */
+public struct MeasureLiveState {
+    /**
+     * The live view runs.
+     */
+    public var active: Bool
+    /**
+     * What it plays.
+     */
+    public var mode: MeasureLiveMode
+    /**
+     * The output.
+     */
+    public var output: UInt8
+    /**
+     * Counts the measured curves.
+     */
+    public var seq: UInt32
+    /**
+     * Runs started (sweeps, or pink runs).
+     */
+    public var runs: UInt32
+    /**
+     * The level the next run starts its ramp at, peak dBFS.
+     */
+    public var levelDb: Float?
+    /**
+     * The pending proposal's id, if one.
+     */
+    public var pending: UInt32?
+    /**
+     * Why the live view stopped, if it did.
+     */
+    public var issue: MeasureIssue?
+    /**
+     * The current run's state.
+     */
+    public var session: MeasureState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The live view runs.
+         */active: Bool, 
+        /**
+         * What it plays.
+         */mode: MeasureLiveMode, 
+        /**
+         * The output.
+         */output: UInt8, 
+        /**
+         * Counts the measured curves.
+         */seq: UInt32, 
+        /**
+         * Runs started (sweeps, or pink runs).
+         */runs: UInt32, 
+        /**
+         * The level the next run starts its ramp at, peak dBFS.
+         */levelDb: Float?, 
+        /**
+         * The pending proposal's id, if one.
+         */pending: UInt32?, 
+        /**
+         * Why the live view stopped, if it did.
+         */issue: MeasureIssue?, 
+        /**
+         * The current run's state.
+         */session: MeasureState) {
+        self.active = active
+        self.mode = mode
+        self.output = output
+        self.seq = seq
+        self.runs = runs
+        self.levelDb = levelDb
+        self.pending = pending
+        self.issue = issue
+        self.session = session
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLiveState: Sendable {}
+#endif
+
+
+extension MeasureLiveState: Equatable, Hashable {
+    public static func ==(lhs: MeasureLiveState, rhs: MeasureLiveState) -> Bool {
+        if lhs.active != rhs.active {
+            return false
+        }
+        if lhs.mode != rhs.mode {
+            return false
+        }
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.seq != rhs.seq {
+            return false
+        }
+        if lhs.runs != rhs.runs {
+            return false
+        }
+        if lhs.levelDb != rhs.levelDb {
+            return false
+        }
+        if lhs.pending != rhs.pending {
+            return false
+        }
+        if lhs.issue != rhs.issue {
+            return false
+        }
+        if lhs.session != rhs.session {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(active)
+        hasher.combine(mode)
+        hasher.combine(output)
+        hasher.combine(seq)
+        hasher.combine(runs)
+        hasher.combine(levelDb)
+        hasher.combine(pending)
+        hasher.combine(issue)
+        hasher.combine(session)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLiveState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLiveState {
+        return
+            try MeasureLiveState(
+                active: FfiConverterBool.read(from: &buf), 
+                mode: FfiConverterTypeMeasureLiveMode.read(from: &buf), 
+                output: FfiConverterUInt8.read(from: &buf), 
+                seq: FfiConverterUInt32.read(from: &buf), 
+                runs: FfiConverterUInt32.read(from: &buf), 
+                levelDb: FfiConverterOptionFloat.read(from: &buf), 
+                pending: FfiConverterOptionUInt32.read(from: &buf), 
+                issue: FfiConverterOptionTypeMeasureIssue.read(from: &buf), 
+                session: FfiConverterTypeMeasureState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLiveState, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.active, into: &buf)
+        FfiConverterTypeMeasureLiveMode.write(value.mode, into: &buf)
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterUInt32.write(value.seq, into: &buf)
+        FfiConverterUInt32.write(value.runs, into: &buf)
+        FfiConverterOptionFloat.write(value.levelDb, into: &buf)
+        FfiConverterOptionUInt32.write(value.pending, into: &buf)
+        FfiConverterOptionTypeMeasureIssue.write(value.issue, into: &buf)
+        FfiConverterTypeMeasureState.write(value.session, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveState_lift(_ buf: RustBuffer) throws -> MeasureLiveState {
+    return try FfiConverterTypeMeasureLiveState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveState_lower(_ value: MeasureLiveState) -> RustBuffer {
+    return FfiConverterTypeMeasureLiveState.lower(value)
 }
 
 
@@ -39484,6 +41806,149 @@ public func FfiConverterTypeMeasureSetup_lift(_ buf: RustBuffer) throws -> Measu
 #endif
 public func FfiConverterTypeMeasureSetup_lower(_ value: MeasureSetup) -> RustBuffer {
     return FfiConverterTypeMeasureSetup.lower(value)
+}
+
+
+/**
+ * The simulated microphone's state (`measure_sim_info`, `measure_sim_set`).
+ */
+public struct MeasureSimInfo {
+    /**
+     * This build has it and the open connection is a demo device.
+     */
+    public var available: Bool
+    /**
+     * It is on: it answers the generator, the client pushes nothing.
+     */
+    public var on: Bool
+    /**
+     * What the screens call it ([`SIM_MIC_LABEL`]).
+     */
+    public var label: String
+    /**
+     * The world it stands in ([`SIM_WORLD`]).
+     */
+    public var world: String
+    /**
+     * The seed its world and noise are drawn from.
+     */
+    public var seed: UInt64
+    /**
+     * Why the last generator configuration could not be rendered (it then
+     * hears only the room's noise), if one.
+     */
+    public var issue: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * This build has it and the open connection is a demo device.
+         */available: Bool, 
+        /**
+         * It is on: it answers the generator, the client pushes nothing.
+         */on: Bool, 
+        /**
+         * What the screens call it ([`SIM_MIC_LABEL`]).
+         */label: String, 
+        /**
+         * The world it stands in ([`SIM_WORLD`]).
+         */world: String, 
+        /**
+         * The seed its world and noise are drawn from.
+         */seed: UInt64, 
+        /**
+         * Why the last generator configuration could not be rendered (it then
+         * hears only the room's noise), if one.
+         */issue: String?) {
+        self.available = available
+        self.on = on
+        self.label = label
+        self.world = world
+        self.seed = seed
+        self.issue = issue
+    }
+}
+
+#if compiler(>=6)
+extension MeasureSimInfo: Sendable {}
+#endif
+
+
+extension MeasureSimInfo: Equatable, Hashable {
+    public static func ==(lhs: MeasureSimInfo, rhs: MeasureSimInfo) -> Bool {
+        if lhs.available != rhs.available {
+            return false
+        }
+        if lhs.on != rhs.on {
+            return false
+        }
+        if lhs.label != rhs.label {
+            return false
+        }
+        if lhs.world != rhs.world {
+            return false
+        }
+        if lhs.seed != rhs.seed {
+            return false
+        }
+        if lhs.issue != rhs.issue {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(available)
+        hasher.combine(on)
+        hasher.combine(label)
+        hasher.combine(world)
+        hasher.combine(seed)
+        hasher.combine(issue)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureSimInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureSimInfo {
+        return
+            try MeasureSimInfo(
+                available: FfiConverterBool.read(from: &buf), 
+                on: FfiConverterBool.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                world: FfiConverterString.read(from: &buf), 
+                seed: FfiConverterUInt64.read(from: &buf), 
+                issue: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureSimInfo, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.available, into: &buf)
+        FfiConverterBool.write(value.on, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.world, into: &buf)
+        FfiConverterUInt64.write(value.seed, into: &buf)
+        FfiConverterOptionString.write(value.issue, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSimInfo_lift(_ buf: RustBuffer) throws -> MeasureSimInfo {
+    return try FfiConverterTypeMeasureSimInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureSimInfo_lower(_ value: MeasureSimInfo) -> RustBuffer {
+    return FfiConverterTypeMeasureSimInfo.lower(value)
 }
 
 
@@ -40052,6 +42517,109 @@ public func FfiConverterTypeMeasureTiming_lift(_ buf: RustBuffer) throws -> Meas
 #endif
 public func FfiConverterTypeMeasureTiming_lower(_ value: MeasureTiming) -> RustBuffer {
     return FfiConverterTypeMeasureTiming.lower(value)
+}
+
+
+/**
+ * One row of the merged list ([`DspiCore::measure_docs_merged`]).
+ */
+public struct MergedMeasureDoc {
+    /**
+     * The entry: the hub's where it holds the id (the hub's wins).
+     */
+    public var doc: MeasureDocInfo
+    /**
+     * [`super::WHERE_LOCAL`], [`super::WHERE_HUB`] or [`super::WHERE_BOTH`]
+     * (`where` in JSON).
+     */
+    public var location: String
+    /**
+     * This console's own copy of an id the hub holds with different
+     * content: listed beside the hub's, never overwritten by it.
+     */
+    public var localCopy: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The entry: the hub's where it holds the id (the hub's wins).
+         */doc: MeasureDocInfo, 
+        /**
+         * [`super::WHERE_LOCAL`], [`super::WHERE_HUB`] or [`super::WHERE_BOTH`]
+         * (`where` in JSON).
+         */location: String, 
+        /**
+         * This console's own copy of an id the hub holds with different
+         * content: listed beside the hub's, never overwritten by it.
+         */localCopy: Bool) {
+        self.doc = doc
+        self.location = location
+        self.localCopy = localCopy
+    }
+}
+
+#if compiler(>=6)
+extension MergedMeasureDoc: Sendable {}
+#endif
+
+
+extension MergedMeasureDoc: Equatable, Hashable {
+    public static func ==(lhs: MergedMeasureDoc, rhs: MergedMeasureDoc) -> Bool {
+        if lhs.doc != rhs.doc {
+            return false
+        }
+        if lhs.location != rhs.location {
+            return false
+        }
+        if lhs.localCopy != rhs.localCopy {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(doc)
+        hasher.combine(location)
+        hasher.combine(localCopy)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMergedMeasureDoc: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MergedMeasureDoc {
+        return
+            try MergedMeasureDoc(
+                doc: FfiConverterTypeMeasureDocInfo.read(from: &buf), 
+                location: FfiConverterString.read(from: &buf), 
+                localCopy: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MergedMeasureDoc, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureDocInfo.write(value.doc, into: &buf)
+        FfiConverterString.write(value.location, into: &buf)
+        FfiConverterBool.write(value.localCopy, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMergedMeasureDoc_lift(_ buf: RustBuffer) throws -> MergedMeasureDoc {
+    return try FfiConverterTypeMergedMeasureDoc.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMergedMeasureDoc_lower(_ value: MergedMeasureDoc) -> RustBuffer {
+    return FfiConverterTypeMergedMeasureDoc.lower(value)
 }
 
 
@@ -49788,6 +52356,174 @@ extension MeasureCoupler: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * What made a proposal.
+ */
+
+public enum MeasureLiveAdjust {
+    
+    /**
+     * "Cut this peak".
+     */
+    case cutPeak
+    /**
+     * "Fit this range".
+     */
+    case fitRange
+    /**
+     * An edit the client asked to preview.
+     */
+    case edit
+}
+
+
+#if compiler(>=6)
+extension MeasureLiveAdjust: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLiveAdjust: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureLiveAdjust
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLiveAdjust {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .cutPeak
+        
+        case 2: return .fitRange
+        
+        case 3: return .edit
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureLiveAdjust, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .cutPeak:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .fitRange:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .edit:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveAdjust_lift(_ buf: RustBuffer) throws -> MeasureLiveAdjust {
+    return try FfiConverterTypeMeasureLiveAdjust.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveAdjust_lower(_ value: MeasureLiveAdjust) -> RustBuffer {
+    return FfiConverterTypeMeasureLiveAdjust.lower(value)
+}
+
+
+extension MeasureLiveAdjust: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * What the live view plays.
+ */
+
+public enum MeasureLiveMode {
+    
+    /**
+     * Short log sweeps, one after the other: one magnitude curve per sweep.
+     */
+    case sweep
+    /**
+     * Finite pink noise with the microphone RTA (re-armed while live).
+     */
+    case pinkRta
+}
+
+
+#if compiler(>=6)
+extension MeasureLiveMode: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLiveMode: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureLiveMode
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLiveMode {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .sweep
+        
+        case 2: return .pinkRta
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureLiveMode, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .sweep:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .pinkRta:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveMode_lift(_ buf: RustBuffer) throws -> MeasureLiveMode {
+    return try FfiConverterTypeMeasureLiveMode.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLiveMode_lower(_ value: MeasureLiveMode) -> RustBuffer {
+    return FfiConverterTypeMeasureLiveMode.lower(value)
+}
+
+
+extension MeasureLiveMode: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Where a session stands.
  */
 
@@ -50138,6 +52874,95 @@ public func FfiConverterTypeMeasureRole_lower(_ value: MeasureRole) -> RustBuffe
 
 
 extension MeasureRole: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * The microphone RTA's averaging preset.
+ */
+
+public enum MeasureRtaAveraging {
+    
+    /**
+     * Exponential, 125 ms.
+     */
+    case fast
+    /**
+     * Exponential, 1 s.
+     */
+    case slow
+    /**
+     * Every frame since the start (or the last change) alike.
+     */
+    case infinite
+}
+
+
+#if compiler(>=6)
+extension MeasureRtaAveraging: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureRtaAveraging: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureRtaAveraging
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureRtaAveraging {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .fast
+        
+        case 2: return .slow
+        
+        case 3: return .infinite
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureRtaAveraging, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .fast:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .slow:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .infinite:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRtaAveraging_lift(_ buf: RustBuffer) throws -> MeasureRtaAveraging {
+    return try FfiConverterTypeMeasureRtaAveraging.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureRtaAveraging_lower(_ value: MeasureRtaAveraging) -> RustBuffer {
+    return FfiConverterTypeMeasureRtaAveraging.lower(value)
+}
+
+
+extension MeasureRtaAveraging: Equatable, Hashable {}
 
 
 
@@ -52188,6 +55013,78 @@ fileprivate struct FfiConverterOptionTypeMeasureIssue: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeMeasureLiveCurve: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureLiveCurve?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureLiveCurve.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureLiveCurve.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMeasureLiveProposal: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureLiveProposal?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureLiveProposal.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureLiveProposal.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMeasureLiveRta: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureLiveRta?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureLiveRta.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureLiveRta.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeMeasureTiming: FfiConverterRustBuffer {
     typealias SwiftType = MeasureTiming?
 
@@ -53926,6 +56823,56 @@ fileprivate struct FfiConverterSequenceTypeMeasureLevel: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeMeasureLiveBand: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureLiveBand]
+
+    public static func write(_ value: [MeasureLiveBand], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureLiveBand.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureLiveBand] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureLiveBand]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureLiveBand.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureLiveChange: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureLiveChange]
+
+    public static func write(_ value: [MeasureLiveChange], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureLiveChange.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureLiveChange] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureLiveChange]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureLiveChange.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMeasureOutput: FfiConverterRustBuffer {
     typealias SwiftType = [MeasureOutput]
 
@@ -53943,6 +56890,31 @@ fileprivate struct FfiConverterSequenceTypeMeasureOutput: FfiConverterRustBuffer
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeMeasureOutput.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMergedMeasureDoc: FfiConverterRustBuffer {
+    typealias SwiftType = [MergedMeasureDoc]
+
+    public static func write(_ value: [MergedMeasureDoc], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMergedMeasureDoc.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MergedMeasureDoc] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MergedMeasureDoc]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMergedMeasureDoc.read(from: &buf))
         }
         return seq
     }
@@ -56238,6 +59210,24 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_hub_limits_set() != 29899) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_delete() != 57404) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_get() != 49919) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_note() != 62100) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_put() != 41629) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_rename() != 26537) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_docs() != 34496) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin() != 57304) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -56436,6 +59426,45 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_docs() != 14119) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_docs_merged() != 53188) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_apply() != 20010) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_averaging() != 57827) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_cut_peak() != 13407) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_discard() != 4026) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_fit_range() != 57148) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_frame() != 64709) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_hold() != 56098) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_predict() != 4396) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_start() != 18767) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_state() != 54049) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_stop() != 48639) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_live_tick() != 24180) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_next_position() != 42088) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -56451,13 +59480,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_set_listener() != 176) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_sim_info() != 56939) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_sim_set() != 37329) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_start() != 36814) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_state() != 64969) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_stop() != 53664) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_stop() != 2867) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_tick() != 49262) {

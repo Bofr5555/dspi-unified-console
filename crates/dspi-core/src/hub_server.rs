@@ -77,6 +77,13 @@ pub use fleet::{
     NOTICE_ROLLOUT_UNKNOWN, ROLLOUT_STEPS, hub_rollout_step_notice,
 };
 
+// -- WP P5HUB -- the hub's measurement documents
+pub mod measure;
+pub use measure::{
+    CAP_HUB_MEASURE, HubMeasureDocPut, HubMeasureDocument, MEASURE_WIRE_PART_BYTES,
+    MEASURE_WIRE_WHOLE_BYTES, MeasureDocsMerged, MergedMeasureDoc,
+};
+
 /// Cap: `inventory.*` (hub-api.md section 3).
 pub const CAP_INVENTORY: &str = "inventory";
 /// Cap: `device.identify` (section 4).
@@ -123,7 +130,7 @@ pub const HUB_ERR_DEVICE: &str = "device";
 /// `delete`, `fw.rollout.start`; `group.apply.confirm`/`cancel` and
 /// `fw.rollout.cancel` pass as [`HUB_SERVER_SETTLES`], -- WP P3WGR --).
 /// `event.watch` only asks for events.
-pub const HUB_SERVER_READS: [&str; 19] = [
+pub const HUB_SERVER_READS: [&str; 21] = [
     "inventory.list",
     "health.get",
     "hub.stats",
@@ -145,6 +152,9 @@ pub const HUB_SERVER_READS: [&str; 19] = [
     "group.param.get",
     "fw.image.list",
     "fw.rollout.status",
+    // -- WP P5HUB -- reads only
+    "measure.doc.list",
+    "measure.doc.get",
 ];
 
 // -- WP P3WGR --
@@ -236,6 +246,9 @@ pub struct HubCaps {
     pub group_apply: bool,
     /// `fw.*` ([`DspiCore::hub_rollout_start`]; over TLS only).
     pub rollout: bool,
+    // -- WP P5HUB --
+    /// `measure.doc.*` ([`DspiCore::hub_measure_docs`]).
+    pub hub_measure: bool,
     /// Every cap of the hub's `hello`, as it sent them.
     pub caps: Vec<String>,
 }
@@ -483,6 +496,13 @@ pub struct HubServerEvent {
     /// `fw.rollout.changed`'s whole record; [`HubServerEvent::serial`] is
     /// the device whose entry changed, where the hub says.
     pub rollout: Option<HubRollout>,
+    // -- WP P5HUB --
+    /// `measure.doc.changed`'s document id ([`HubServerEvent::change`] is
+    /// `put`, `rename`, `note` or `delete`; [`HubServerEvent::serial`] the
+    /// measured device, "" for a microphone or target).
+    pub measure_doc: String,
+    /// `measure.doc.changed`'s document kind: `measurement`, `mic` or `target`.
+    pub measure_kind: String,
 }
 
 /// A snapshot on the hub with its document ([`DspiCore::hub_snapshots_get`]).
@@ -580,7 +600,7 @@ pub(crate) struct Events {
 
 /// The kinds of [`HubServerEvent`].
 #[cfg_attr(not(feature = "link"), allow(dead_code))]
-const KINDS: [&str; 7] = [
+const KINDS: [&str; 8] = [
     "event.added",
     "inventory.changed",
     "snapshot.changed",
@@ -590,6 +610,8 @@ const KINDS: [&str; 7] = [
     // -- WP P3CC --
     "group.changed",
     "fw.rollout.changed",
+    // -- WP P5HUB --
+    "measure.doc.changed",
 ];
 
 impl HubServerEvent {
@@ -642,6 +664,17 @@ impl HubServerEvent {
                         .map(fleet::rollout_from)
                 })
                 .flatten(),
+            // -- WP P5HUB --
+            measure_doc: if t == "measure.doc.changed" {
+                text(body.get("doc"))
+            } else {
+                String::new()
+            },
+            measure_kind: if t == "measure.doc.changed" {
+                text(body.get("kind"))
+            } else {
+                String::new()
+            },
         })
     }
 }
@@ -967,6 +1000,8 @@ fn caps_of(on_hub: bool, caps: Vec<String>) -> HubCaps {
         group_params: has(CAP_GROUP_PARAMS),
         group_apply: has(CAP_GROUP_APPLY),
         rollout: has(CAP_ROLLOUT),
+        // -- WP P5HUB --
+        hub_measure: has(CAP_HUB_MEASURE),
         caps,
     }
 }

@@ -2649,6 +2649,100 @@ interface DspiCoreApi : AutoCloseable {
     fun hubIdentifySerial(serial: String, seconds: Int, toneOutput: Int?): IdentifyInfo?
 
     /**
+     * The hub's documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind), oldest first within a kind (`measure.doc.list`): the
+     * measurements of device `serial` ("" the open device's; with kind ""
+     * and no device open, none), every microphone and target. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind;
+     * [`DspiError::Unsupported`] without the `hub_measure` cap (nothing
+     * sent); [`DspiError::Disconnected`] (also for kind `measurement`, serial
+     * "" and no device open); the hub's refusal.
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocs(kind: String, serial: String): List<MeasureDocInfo>
+
+    /**
+     * Document `id` on the hub with its text (`measure.doc.get`): a large
+     * one part by part, the whole checked against the hub's size and hash
+     * and read by its kind's reader. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `protocol` for an answer
+     * that does not make the document it announced; as
+     * [`DspiCore::hub_measure_docs`].
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocGet(id: String): HubMeasureDocument
+
+    /**
+     * File `document` (a measurement, microphone or target document's text)
+     * on the hub (`measure.doc.put`), under the id it carries. It is read
+     * and bounded here first (a text that is not such a document is refused
+     * with nothing sent); a measurement without a serial takes the open
+     * device's, a document without a store id the one a store would make
+     * first (from its time). Sent whole up to 61 440 bytes compact, in parts
+     * past it. The same document again is `created: false`. Control or
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not such a
+     * document or past its bound (nothing sent), or the hub's
+     * `bad_request`; [`DspiError::Link`] `conflict` (the hub holds another
+     * document with this id, or a cap is reached) or `busy` (too many
+     * uploads on the hub); [`DspiError::Denied`] for a Viewer;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_measure_docs`].
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocPut(document: String): HubMeasureDocPut
+
+    /**
+     * Rename document `id` on the hub (`measure.doc.rename`; any Unicode, at
+     * most 256 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; [`DspiError::InvalidArgument`]
+     * past 256 characters (the hub's `bad_request`); as
+     * [`DspiCore::hub_measure_doc_put`].
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocRename(id: String, name: String): MeasureDocInfo
+
+    /**
+     * Set document `id`'s note on the hub (`measure.doc.note`; any Unicode,
+     * at most 4096 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_measure_doc_rename`].
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocNote(id: String, note: String): MeasureDocInfo
+
+    /**
+     * Delete document `id` from the hub (`measure.doc.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_measure_doc_rename`].
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocDelete(id: String)
+
+    /**
+     * The documents of `kind` (as [`DspiCore::measure_docs`]) on both sides:
+     * this console's store and, on a DSPi Link session to a hub that keeps
+     * them, the hub's ([`DspiCore::hub_measure_docs`]; its measurements are
+     * device `serial`'s, "" the open device's). Each row says where it is
+     * (`local`, `hub` or `both`). **The hub's wins:** an id both sides hold
+     * with different content (any field of the entry differs) is listed as
+     * the hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. A hub that cannot be read leaves the local rows, with
+     * `hub_notice_key` saying why. A round trip on a hub: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+    @Throws(DspiException::class)
+    fun measureDocsMerged(kind: String, serial: String): MeasureDocsMerged
+
+    /**
      * The user's name for input source `source` (`REQ_GET_INPUT_SOURCE_NAME`,
      * registry `in.name`); "" when unnamed.
      *
@@ -3228,6 +3322,7 @@ interface DspiCoreApi : AutoCloseable {
     /**
      * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
      * the run discarded, the lock given back. Idempotent; never fails.
+     * It ends the live view too (`measure_live_stop`).
      */
     fun measureStop(): MeasureState
 
@@ -3253,6 +3348,131 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun measureClear()
+
+    /**
+     * Start the live view of one output (PLAN-P5 T9, T5): short sweeps one
+     * after the other, or finite pink noise with the microphone RTA, each
+     * run under every rule of a measurement (the preflight, the ramp, the
+     * aborts; `measure_start`'s errors). The device lock is held until
+     * `measure_live_stop`. Then call `measure_live_tick` about every 50 ms
+     * (instead of `measure_tick`) and push capture whenever the session
+     * wants it (`measure_capture_push`); read `measure_live_frame`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a measurement
+     * or a live view already running, or a blocker (named);
+     * [`DspiError::ReadOnly`], [`DspiError::Denied`], [`DspiError::Locked`],
+     * [`DspiError::Disconnected`] as `measure_start`, with nothing sent.
+     */
+    @Throws(DspiException::class)
+    fun measureLiveStart(setup: MeasureLiveSetup): MeasureLiveState
+
+    /**
+     * Drive the live view: renew the lock's lease, drive the run in flight
+     * (`measure_tick`), take a finished sweep's curve, feed the RTA, start
+     * the next run. Call it about every 50 ms while the live view runs, off
+     * the UI thread. A run's abort ends the live view (its reason in
+     * `issue`). Never fails.
+     */
+    fun measureLiveTick(): MeasureLiveState
+
+    /**
+     * What the live view shows now: the measured curve, the target levelled
+     * to it, the predicted curve of a pending (or unmeasured) change, the
+     * RTA, the pending proposal, the run's state. No I/O; safe from a
+     * listener.
+     */
+    fun measureLiveFrame(): MeasureLiveFrame
+
+    /**
+     * Where the live view stands. No I/O; safe from a listener.
+     */
+    fun measureLiveState(): MeasureLiveState
+
+    /**
+     * Stop the live view: the run in flight stopped (one `STOP_NOW`), the
+     * lock given back. `measure_stop` does the same. Idempotent; never
+     * fails.
+     */
+    fun measureLiveStop(): MeasureLiveState
+
+    /**
+     * Preview `bands` (PEQ bands of `output`, the live view's) as a pending
+     * change: the predicted curve shows at once, nothing is written until
+     * `measure_live_apply`. An empty list drops the pending change.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`, a band index is past the output's PEQ, a value is not
+     * finite, or a type is not one the curves model; the limits profile's
+     * refusal ([`DspiError::LimitExceeded`] and kin) for a write it would
+     * refuse.
+     */
+    @Throws(DspiException::class)
+    fun measureLivePredict(output: Int, bands: List<MeasureLiveBand>): MeasureLiveProposal
+
+    /**
+     * "Cut this peak": one free PEQ band (flat or bypassed now) from the fit
+     * on one octave about `freq_hz`, cut only, previewed as the pending
+     * change. `issue` says why nothing is proposed (no curve yet, nothing to
+     * cut, not trusted there, no free band).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`; the limits profile's refusal of the band.
+     */
+    @Throws(DspiException::class)
+    fun measureLiveCutPeak(output: Int, freqHz: Double): MeasureLiveProposal
+
+    /**
+     * "Fit this range": the free PEQ bands fitted toward the target in
+     * `f1_hz..f2_hz` (held to the measurement's trusted range), with the
+     * placement's bounds (S9: boost +3 dB speakers, +6 dB headphones, never
+     * above the limits profile's cap; cut -15 dB; Q 0.3 to 10) and a
+     * headroom cut of the output gain for its net boost; previewed as the
+     * pending change. Every band the fit lists is written on apply.
+     *
+     * Errors: as [`DspiCore::measure_live_cut_peak`].
+     */
+    @Throws(DspiException::class)
+    fun measureLiveFitRange(output: Int, f1Hz: Double, f2Hz: Double): MeasureLiveProposal
+
+    /**
+     * Write the pending change `proposal_id` as **one undo group**
+     * (unguarded, as a manual edit; S10): the run in flight is stopped, each
+     * band through the typed setter (judged by read-only, the limits and the
+     * lock as any write), then the next run starts. Refused, with nothing
+     * written, unless the device's bands are still the ones the proposal was
+     * computed from. A write that fails puts back the ones before it.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no such pending proposal or
+     * a chain changed since the preview; the setters' errors
+     * ([`DspiError::ReadOnly`], [`DspiError::Denied`], the limits'
+     * refusals, a transfer failure).
+     */
+    @Throws(DspiException::class)
+    fun measureLiveApply(proposalId: Long): MeasureLiveState
+
+    /**
+     * Drop the pending change (nothing is written).
+     */
+    fun measureLiveDiscard(): MeasureLiveState
+
+    /**
+     * Hold (`true`) the RTA's spectrum for comparison, or drop the held
+     * copy (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs, or there
+     * is no spectrum to hold yet.
+     */
+    @Throws(DspiException::class)
+    fun measureLiveHold(on: Boolean): MeasureLiveState
+
+    /**
+     * The RTA's averaging preset; the average starts again (the held copy
+     * is kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs.
+     */
+    @Throws(DspiException::class)
+    fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState
 
     /**
      * Keep measurement, microphone and target documents in files under
@@ -3338,6 +3558,27 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun measurementExportRew(doc: String, output: Int): String
+
+    /**
+     * Turn the demo's simulated microphone on (`true`, its world drawn from
+     * `seed`) or off. On, it answers the demo DSPi's generator through
+     * P5SIM's three-way speaker in a room and feeds the measurement session
+     * from `measure_tick`: the client pushes no capture (its pushes are
+     * ignored) and labels the microphone "Simulated microphone". Off, the
+     * client's own capture is the microphone again.
+     *
+     * Errors: [`DspiError::Unsupported`] to turn it on over anything but a
+     * demo connection (a DSPi on USB, MIDI or through a hub) or in a build
+     * without it; [`DspiError::Disconnected`] with nothing open;
+     * [`DspiError::InvalidArgument`] while a measurement is running.
+     */
+    @Throws(DspiException::class)
+    fun measureSimSet(on: Boolean, seed: Long): MeasureSimInfo
+
+    /**
+     * The simulated microphone's state, without I/O.
+     */
+    fun measureSimInfo(): MeasureSimInfo
 
     /**
      * The mode to show on a client of `platform` (`phone`, `desktop` or

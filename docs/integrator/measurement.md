@@ -23,7 +23,7 @@ Where this page and the code disagree, the code is right and the page is the bug
 | 5 | [The live view and direct adjustments](#5-the-live-view-and-direct-adjustments) | P5LIVE | draft |
 | 6 | [Locks, read-only and other clients](#6-locks-read-only-and-other-clients) | P5SES | draft |
 | 7 | [The documents](#7-the-documents) | P5MDOC (model), P5DOCK (stores and calls) | built (7.1 to 7.6); 7.7 draft |
-| 8 | [On the hub](#8-on-the-hub) | P5HUB | draft ([hub-api.md section 22](hub-api.md#22-measurement-documents)) |
+| 8 | [On the hub](#8-on-the-hub) | P5HUB | built ([hub-api.md section 22](hub-api.md#22-measurement-documents)) |
 | 9 | [What the core never does](#9-what-the-core-never-does) | all | draft |
 
 ---
@@ -370,14 +370,17 @@ serial?)`, `measure_doc_get(id)`, `measure_doc_put(text)`, `measure_doc_rename`,
 `target_builtins()`, `measurement_export_rew(id or text, output)` (REW text, not a document). The local store keeps a
 folder per serial for measurements and `mic/` and `target/` folders, an `index.json` cache rebuilt from the documents,
 atomic writes and the snapshot store's id and corrupt-file rules. Store caps: 100 measurements a device, 32 microphones,
-64 targets, 64 MiB in all. With a hub the lists merge, the hub's copy winning (section 8).
+64 targets, 64 MiB in all. With a hub the lists merge in `measure_docs_merged`, the hub's copy winning (section 8).
 
 ## 8. On the hub
 
-*State: draft (P5HUB).* The hub stores and serves the three kinds under the cap `hub_measure`; the messages are in
-[hub-api.md section 22](hub-api.md#22-measurement-documents). A client against a hub without the cap (an upstream Weeb Labs
-hub) keeps its documents locally and sends nothing; the measurement itself needs only the generator opcodes, which a hub
-forwards by its policy (class `control`).
+*State: built (P5HUB).* The hub stores and serves the three kinds under the cap `hub_measure`; the messages are in
+[hub-api.md section 22](hub-api.md#22-measurement-documents) (a large document travels in parts of one frame each). The
+core's calls are `hub_measure_docs`, `hub_measure_doc_get`, `hub_measure_doc_put`, `hub_measure_doc_rename`,
+`hub_measure_doc_note`, `hub_measure_doc_delete`, and `measure_docs_merged(kind, serial)`, which lists this console's
+documents and the hub's, the hub's copy winning (a differing local copy is listed beside it, never overwritten). A
+client against a hub without the cap (an upstream Weeb Labs hub) keeps its documents locally and sends nothing; the
+measurement itself needs only the generator opcodes, which a hub forwards by its policy (class `control`).
 
 ## 9. What the core never does
 

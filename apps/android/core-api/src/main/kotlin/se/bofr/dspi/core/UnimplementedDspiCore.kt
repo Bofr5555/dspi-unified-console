@@ -424,6 +424,20 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun hubIdentifySerial(serial: String, seconds: Int, toneOutput: Int?): IdentifyInfo? = throw NotImplementedError("hub_identify_serial")
 
+    override fun hubMeasureDocs(kind: String, serial: String): List<MeasureDocInfo> = throw NotImplementedError("hub_measure_docs")
+
+    override fun hubMeasureDocGet(id: String): HubMeasureDocument = throw NotImplementedError("hub_measure_doc_get")
+
+    override fun hubMeasureDocPut(document: String): HubMeasureDocPut = throw NotImplementedError("hub_measure_doc_put")
+
+    override fun hubMeasureDocRename(id: String, name: String): MeasureDocInfo = throw NotImplementedError("hub_measure_doc_rename")
+
+    override fun hubMeasureDocNote(id: String, note: String): MeasureDocInfo = throw NotImplementedError("hub_measure_doc_note")
+
+    override fun hubMeasureDocDelete(id: String): Unit = throw NotImplementedError("hub_measure_doc_delete")
+
+    override fun measureDocsMerged(kind: String, serial: String): MeasureDocsMerged = throw NotImplementedError("measure_docs_merged")
+
     override fun getInputSourceName(source: Int): String = throw NotImplementedError("get_input_source_name")
 
     override fun setInputSourceName(source: Int, name: String): Unit = throw NotImplementedError("set_input_source_name")
@@ -532,6 +546,30 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun measureClear(): Unit = throw NotImplementedError("measure_clear")
 
+    override fun measureLiveStart(setup: MeasureLiveSetup): MeasureLiveState = throw NotImplementedError("measure_live_start")
+
+    override fun measureLiveTick(): MeasureLiveState = throw NotImplementedError("measure_live_tick")
+
+    override fun measureLiveFrame(): MeasureLiveFrame = throw NotImplementedError("measure_live_frame")
+
+    override fun measureLiveState(): MeasureLiveState = throw NotImplementedError("measure_live_state")
+
+    override fun measureLiveStop(): MeasureLiveState = throw NotImplementedError("measure_live_stop")
+
+    override fun measureLivePredict(output: Int, bands: List<MeasureLiveBand>): MeasureLiveProposal = throw NotImplementedError("measure_live_predict")
+
+    override fun measureLiveCutPeak(output: Int, freqHz: Double): MeasureLiveProposal = throw NotImplementedError("measure_live_cut_peak")
+
+    override fun measureLiveFitRange(output: Int, f1Hz: Double, f2Hz: Double): MeasureLiveProposal = throw NotImplementedError("measure_live_fit_range")
+
+    override fun measureLiveApply(proposalId: Long): MeasureLiveState = throw NotImplementedError("measure_live_apply")
+
+    override fun measureLiveDiscard(): MeasureLiveState = throw NotImplementedError("measure_live_discard")
+
+    override fun measureLiveHold(on: Boolean): MeasureLiveState = throw NotImplementedError("measure_live_hold")
+
+    override fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState = throw NotImplementedError("measure_live_averaging")
+
     override fun measureSetDir(dir: String): Unit = throw NotImplementedError("measure_set_dir")
 
     override fun measureDocs(kind: String, serial: String): List<MeasureDocInfo> = throw NotImplementedError("measure_docs")
@@ -547,6 +585,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun measureDocDelete(id: String): Unit = throw NotImplementedError("measure_doc_delete")
 
     override fun measurementExportRew(doc: String, output: Int): String = throw NotImplementedError("measurement_export_rew")
+
+    override fun measureSimSet(on: Boolean, seed: Long): MeasureSimInfo = throw NotImplementedError("measure_sim_set")
+
+    override fun measureSimInfo(): MeasureSimInfo = throw NotImplementedError("measure_sim_info")
 
     override fun modeResolve(platform: String, chosen: String): ModeChoice = throw NotImplementedError("mode_resolve")
 

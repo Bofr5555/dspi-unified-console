@@ -495,6 +495,20 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun hubIdentifySerial(serial: String, seconds: Int, toneOutput: Int?): IdentifyInfo? = call { core.hubIdentifySerial(serial, seconds.toUByte(), toneOutput?.let { it.toUByte() })?.let { it.toDomain() } }
 
+    override fun hubMeasureDocs(kind: String, serial: String): List<MeasureDocInfo> = call { core.hubMeasureDocs(kind, serial).map { it.toDomain() } }
+
+    override fun hubMeasureDocGet(id: String): HubMeasureDocument = call { core.hubMeasureDocGet(id).toDomain() }
+
+    override fun hubMeasureDocPut(document: String): HubMeasureDocPut = call { core.hubMeasureDocPut(document).toDomain() }
+
+    override fun hubMeasureDocRename(id: String, name: String): MeasureDocInfo = call { core.hubMeasureDocRename(id, name).toDomain() }
+
+    override fun hubMeasureDocNote(id: String, note: String): MeasureDocInfo = call { core.hubMeasureDocNote(id, note).toDomain() }
+
+    override fun hubMeasureDocDelete(id: String) = call { core.hubMeasureDocDelete(id) }
+
+    override fun measureDocsMerged(kind: String, serial: String): MeasureDocsMerged = call { core.measureDocsMerged(kind, serial).toDomain() }
+
     override fun getInputSourceName(source: Int): String = call { core.getInputSourceName(source.toUByte()) }
 
     override fun setInputSourceName(source: Int, name: String) = call { core.setInputSourceName(source.toUByte(), name) }
@@ -603,6 +617,30 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun measureClear() = call { core.measureClear() }
 
+    override fun measureLiveStart(setup: MeasureLiveSetup): MeasureLiveState = call { core.measureLiveStart(setup.toFfi()).toDomain() }
+
+    override fun measureLiveTick(): MeasureLiveState = core.measureLiveTick().toDomain()
+
+    override fun measureLiveFrame(): MeasureLiveFrame = core.measureLiveFrame().toDomain()
+
+    override fun measureLiveState(): MeasureLiveState = core.measureLiveState().toDomain()
+
+    override fun measureLiveStop(): MeasureLiveState = core.measureLiveStop().toDomain()
+
+    override fun measureLivePredict(output: Int, bands: List<MeasureLiveBand>): MeasureLiveProposal = call { core.measureLivePredict(output.toUByte(), bands.map { it.toFfi() }).toDomain() }
+
+    override fun measureLiveCutPeak(output: Int, freqHz: Double): MeasureLiveProposal = call { core.measureLiveCutPeak(output.toUByte(), freqHz).toDomain() }
+
+    override fun measureLiveFitRange(output: Int, f1Hz: Double, f2Hz: Double): MeasureLiveProposal = call { core.measureLiveFitRange(output.toUByte(), f1Hz, f2Hz).toDomain() }
+
+    override fun measureLiveApply(proposalId: Long): MeasureLiveState = call { core.measureLiveApply(proposalId.toUInt()).toDomain() }
+
+    override fun measureLiveDiscard(): MeasureLiveState = core.measureLiveDiscard().toDomain()
+
+    override fun measureLiveHold(on: Boolean): MeasureLiveState = call { core.measureLiveHold(on).toDomain() }
+
+    override fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState = call { core.measureLiveAveraging(averaging.toFfi()).toDomain() }
+
     override fun measureSetDir(dir: String) = call { core.measureSetDir(dir) }
 
     override fun measureDocs(kind: String, serial: String): List<MeasureDocInfo> = call { core.measureDocs(kind, serial).map { it.toDomain() } }
@@ -618,6 +656,10 @@ class FfiDspiCore : DspiCoreApi {
     override fun measureDocDelete(id: String) = call { core.measureDocDelete(id) }
 
     override fun measurementExportRew(doc: String, output: Int): String = call { core.measurementExportRew(doc, output.toUByte()) }
+
+    override fun measureSimSet(on: Boolean, seed: Long): MeasureSimInfo = call { core.measureSimSet(on, seed.toULong()).toDomain() }
+
+    override fun measureSimInfo(): MeasureSimInfo = core.measureSimInfo().toDomain()
 
     override fun modeResolve(platform: String, chosen: String): ModeChoice = call { core.modeResolve(platform, chosen).toDomain() }
 
@@ -3682,6 +3724,7 @@ internal fun se.bofr.dspi.ffi.uniffi.HubCaps.toDomain() =
         groupParams = groupParams,
         groupApply = groupApply,
         rollout = rollout,
+        hubMeasure = hubMeasure,
         caps = caps,
     )
 
@@ -3705,6 +3748,7 @@ internal fun HubCaps.toFfi() =
         groupParams = groupParams,
         groupApply = groupApply,
         rollout = rollout,
+        hubMeasure = hubMeasure,
         caps = caps,
     )
 
@@ -3926,6 +3970,8 @@ internal fun se.bofr.dspi.ffi.uniffi.HubServerEvent.toDomain() =
         run = run?.let { it.toDomain() },
         group = group?.let { it.toDomain() },
         rollout = rollout?.let { it.toDomain() },
+        measureDoc = measureDoc,
+        measureKind = measureKind,
     )
 
 internal fun HubServerEvent.toFfi() =
@@ -3940,6 +3986,8 @@ internal fun HubServerEvent.toFfi() =
         run = run?.let { it.toFfi() },
         group = group?.let { it.toFfi() },
         rollout = rollout?.let { it.toFfi() },
+        measureDoc = measureDoc,
+        measureKind = measureKind,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HubSnapshotDocument.toDomain() =
@@ -4746,6 +4794,58 @@ internal fun HubInventoryForgot.toFfi() =
         forgot = forgot,
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.HubMeasureDocument.toDomain() =
+    HubMeasureDocument(
+        doc = doc.toDomain(),
+        document = document,
+    )
+
+internal fun HubMeasureDocument.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubMeasureDocument(
+        doc = doc.toFfi(),
+        document = document,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubMeasureDocPut.toDomain() =
+    HubMeasureDocPut(
+        doc = doc.toDomain(),
+        created = created,
+    )
+
+internal fun HubMeasureDocPut.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubMeasureDocPut(
+        doc = doc.toFfi(),
+        created = created,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MergedMeasureDoc.toDomain() =
+    MergedMeasureDoc(
+        doc = doc.toDomain(),
+        location = location,
+        localCopy = localCopy,
+    )
+
+internal fun MergedMeasureDoc.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MergedMeasureDoc(
+        doc = doc.toFfi(),
+        location = location,
+        localCopy = localCopy,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureDocsMerged.toDomain() =
+    MeasureDocsMerged(
+        entries = entries.map { it.toDomain() },
+        hubListed = hubListed,
+        hubNoticeKey = hubNoticeKey,
+    )
+
+internal fun MeasureDocsMerged.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureDocsMerged(
+        entries = entries.map { it.toFfi() },
+        hubListed = hubListed,
+        hubNoticeKey = hubNoticeKey,
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =
     HistoryEntry(
         path = path,
@@ -5084,6 +5184,206 @@ internal fun MeasureState.toFfi() =
         frameFaults = frameFaults.toUInt(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveSetup.toDomain() =
+    MeasureLiveSetup(
+        output = output.toInt(),
+        mode = mode.toDomain(),
+        role = role.toDomain(),
+        placement = placement.toDomain(),
+        coupler = coupler?.let { it.toDomain() },
+        micDocument = micDocument,
+        targetDocument = targetDocument,
+        smoothing = smoothing.toInt(),
+        sweepMs = sweepMs.toLong(),
+        gapMs = gapMs.toLong(),
+        pinkMs = pinkMs.toLong(),
+        ceilingDb = ceilingDb,
+        splCapDb = splCapDb,
+        captureRateHz = captureRateHz.toLong(),
+        averaging = averaging.toDomain(),
+        bandsPerOctave = bandsPerOctave.toInt(),
+    )
+
+internal fun MeasureLiveSetup.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLiveSetup(
+        output = output.toUByte(),
+        mode = mode.toFfi(),
+        role = role.toFfi(),
+        placement = placement.toFfi(),
+        coupler = coupler?.let { it.toFfi() },
+        micDocument = micDocument,
+        targetDocument = targetDocument,
+        smoothing = smoothing.toUByte(),
+        sweepMs = sweepMs.toUInt(),
+        gapMs = gapMs.toUInt(),
+        pinkMs = pinkMs.toUInt(),
+        ceilingDb = ceilingDb,
+        splCapDb = splCapDb,
+        captureRateHz = captureRateHz.toUInt(),
+        averaging = averaging.toFfi(),
+        bandsPerOctave = bandsPerOctave.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveCurve.toDomain() =
+    MeasureLiveCurve(
+        freqsHz = freqsHz,
+        magDb = magDb,
+        valid = valid,
+        spl = spl,
+    )
+
+internal fun MeasureLiveCurve.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLiveCurve(
+        freqsHz = freqsHz,
+        magDb = magDb,
+        valid = valid,
+        spl = spl,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveBand.toDomain() =
+    MeasureLiveBand(
+        band = band.toInt(),
+        filterType = filterType.toInt(),
+        bypass = bypass,
+        freq = freq,
+        q = q,
+        gain = gain,
+        qp = qp,
+    )
+
+internal fun MeasureLiveBand.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLiveBand(
+        band = band.toUByte(),
+        filterType = filterType.toUByte(),
+        bypass = bypass,
+        freq = freq,
+        q = q,
+        gain = gain,
+        qp = qp,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveChange.toDomain() =
+    MeasureLiveChange(
+        band = band.toInt(),
+        before = before.toDomain(),
+        after = after.toDomain(),
+        words = words,
+    )
+
+internal fun MeasureLiveChange.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLiveChange(
+        band = band.toUByte(),
+        before = before.toFfi(),
+        after = after.toFfi(),
+        words = words,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveProposal.toDomain() =
+    MeasureLiveProposal(
+        id = id.toLong(),
+        adjust = adjust.toDomain(),
+        output = output.toInt(),
+        label = label,
+        changes = changes.map { it.toDomain() },
+        gainBeforeDb = gainBeforeDb,
+        gainAfterDb = gainAfterDb,
+        rmsBeforeDb = rmsBeforeDb,
+        rmsAfterDb = rmsAfterDb,
+        notes = notes,
+        issue = issue?.let { it.toDomain() },
+        predicted = predicted?.let { it.toDomain() },
+    )
+
+internal fun MeasureLiveProposal.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLiveProposal(
+        id = id.toUInt(),
+        adjust = adjust.toFfi(),
+        output = output.toUByte(),
+        label = label,
+        changes = changes.map { it.toFfi() },
+        gainBeforeDb = gainBeforeDb,
+        gainAfterDb = gainAfterDb,
+        rmsBeforeDb = rmsBeforeDb,
+        rmsAfterDb = rmsAfterDb,
+        notes = notes,
+        issue = issue?.let { it.toFfi() },
+        predicted = predicted?.let { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveRta.toDomain() =
+    MeasureLiveRta(
+        current = current?.let { it.toDomain() },
+        held = held?.let { it.toDomain() },
+        compare = compare?.let { it.toDomain() },
+        frames = frames.toLong(),
+        averaging = averaging.toDomain(),
+    )
+
+internal fun MeasureLiveRta.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLiveRta(
+        current = current?.let { it.toFfi() },
+        held = held?.let { it.toFfi() },
+        compare = compare?.let { it.toFfi() },
+        frames = frames.toULong(),
+        averaging = averaging.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveFrame.toDomain() =
+    MeasureLiveFrame(
+        active = active,
+        mode = mode.toDomain(),
+        output = output.toInt(),
+        seq = seq.toLong(),
+        measured = measured?.let { it.toDomain() },
+        target = target?.let { it.toDomain() },
+        predicted = predicted?.let { it.toDomain() },
+        rta = rta?.let { it.toDomain() },
+        pending = pending?.let { it.toDomain() },
+        issue = issue?.let { it.toDomain() },
+        session = session.toDomain(),
+    )
+
+internal fun MeasureLiveFrame.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLiveFrame(
+        active = active,
+        mode = mode.toFfi(),
+        output = output.toUByte(),
+        seq = seq.toUInt(),
+        measured = measured?.let { it.toFfi() },
+        target = target?.let { it.toFfi() },
+        predicted = predicted?.let { it.toFfi() },
+        rta = rta?.let { it.toFfi() },
+        pending = pending?.let { it.toFfi() },
+        issue = issue?.let { it.toFfi() },
+        session = session.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveState.toDomain() =
+    MeasureLiveState(
+        active = active,
+        mode = mode.toDomain(),
+        output = output.toInt(),
+        seq = seq.toLong(),
+        runs = runs.toLong(),
+        levelDb = levelDb,
+        pending = pending?.let { it.toLong() },
+        issue = issue?.let { it.toDomain() },
+        session = session.toDomain(),
+    )
+
+internal fun MeasureLiveState.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLiveState(
+        active = active,
+        mode = mode.toFfi(),
+        output = output.toUByte(),
+        seq = seq.toUInt(),
+        runs = runs.toUInt(),
+        levelDb = levelDb,
+        pending = pending?.let { it.toUInt() },
+        issue = issue?.let { it.toFfi() },
+        session = session.toFfi(),
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.MeasureDocInfo.toDomain() =
     MeasureDocInfo(
         id = id,
@@ -5134,6 +5434,26 @@ internal fun TargetInfo.toFfi() =
         targetUse = targetUse,
         coupler = coupler,
         params = params.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSimInfo.toDomain() =
+    MeasureSimInfo(
+        available = available,
+        on = on,
+        label = label,
+        world = world,
+        seed = seed.toLong(),
+        issue = issue,
+    )
+
+internal fun MeasureSimInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSimInfo(
+        available = available,
+        on = on,
+        label = label,
+        world = world,
+        seed = seed.toULong(),
+        issue = issue,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.ModeEntry.toDomain() =
@@ -5874,6 +6194,46 @@ internal fun MeasurePhase.toFfi(): se.bofr.dspi.ffi.uniffi.MeasurePhase =
         MeasurePhase.DONE -> se.bofr.dspi.ffi.uniffi.MeasurePhase.DONE
         MeasurePhase.ABORTED -> se.bofr.dspi.ffi.uniffi.MeasurePhase.ABORTED
         MeasurePhase.FAILED -> se.bofr.dspi.ffi.uniffi.MeasurePhase.FAILED
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveMode.toDomain(): MeasureLiveMode =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureLiveMode.SWEEP -> MeasureLiveMode.SWEEP
+        se.bofr.dspi.ffi.uniffi.MeasureLiveMode.PINK_RTA -> MeasureLiveMode.PINK_RTA
+    }
+
+internal fun MeasureLiveMode.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureLiveMode =
+    when (this) {
+        MeasureLiveMode.SWEEP -> se.bofr.dspi.ffi.uniffi.MeasureLiveMode.SWEEP
+        MeasureLiveMode.PINK_RTA -> se.bofr.dspi.ffi.uniffi.MeasureLiveMode.PINK_RTA
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRtaAveraging.toDomain(): MeasureRtaAveraging =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureRtaAveraging.FAST -> MeasureRtaAveraging.FAST
+        se.bofr.dspi.ffi.uniffi.MeasureRtaAveraging.SLOW -> MeasureRtaAveraging.SLOW
+        se.bofr.dspi.ffi.uniffi.MeasureRtaAveraging.INFINITE -> MeasureRtaAveraging.INFINITE
+    }
+
+internal fun MeasureRtaAveraging.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureRtaAveraging =
+    when (this) {
+        MeasureRtaAveraging.FAST -> se.bofr.dspi.ffi.uniffi.MeasureRtaAveraging.FAST
+        MeasureRtaAveraging.SLOW -> se.bofr.dspi.ffi.uniffi.MeasureRtaAveraging.SLOW
+        MeasureRtaAveraging.INFINITE -> se.bofr.dspi.ffi.uniffi.MeasureRtaAveraging.INFINITE
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.toDomain(): MeasureLiveAdjust =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.CUT_PEAK -> MeasureLiveAdjust.CUT_PEAK
+        se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.FIT_RANGE -> MeasureLiveAdjust.FIT_RANGE
+        se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.EDIT -> MeasureLiveAdjust.EDIT
+    }
+
+internal fun MeasureLiveAdjust.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust =
+    when (this) {
+        MeasureLiveAdjust.CUT_PEAK -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.CUT_PEAK
+        MeasureLiveAdjust.FIT_RANGE -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.FIT_RANGE
+        MeasureLiveAdjust.EDIT -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.EDIT
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.NoticeKind.toDomain(): NoticeKind =

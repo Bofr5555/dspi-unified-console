@@ -41,6 +41,8 @@ final class HubServerModel: ObservableObject {
                                 outbound: false, schedule: false, mqtt: false, apiKeys: false, rest: false,
                                 // -- review/swsec -- wave P3-C's fleet caps (main 462fcde1)
                                 groups: false, groupParams: false, groupApply: false, rollout: false,
+                                // -- WP P5HUB -- the hub's measurement documents
+                                hubMeasure: false,
                                 caps: [])
 
     /// The hub's families (`hubCaps`, no I/O), read again on every device change.
