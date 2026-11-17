@@ -3,6 +3,7 @@
 # SHA-256 download.qt.io publishes for each (<file>.sha256 next to it). fetch-qt.sh checks
 # both: a file must match the pin here and download.qt.io's published hash.
 60cd5bd4b486d60d44f5bf214c19f8ce13353cb072df38e51dfae3deb8b20995  qt6_683/qt6_683/qt.qt6.683.addons.qtwaylandcompositor.linux_gcc_64/6.8.3-0-202503201345qtwayland-compositor-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z
+5d4fa3b0f8b84ad0d83b423362ccba8a77f295fbaf0bcdc19f1d355b8eb7cfaa  qt6_683/qt6_683/qt.qt6.683.addons.qtmultimedia.linux_gcc_64/6.8.3-0-202503201345qtmultimedia-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z
 d8fe882cae71284a7ca906b70b42840376882fe96f22fce1ba5a7a70ceeec799  qt6_683/qt6_683/qt.qt6.683.linux_gcc_64/6.8.3-0-202503201345qtbase-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z
 e330eb3abed3e0b9c9a278da971ec67306969f35020a3d54350a6ee86d57983d  qt6_683/qt6_683/qt.qt6.683.linux_gcc_64/6.8.3-0-202503201345qtsvg-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z
 6330a5ed0138393468be3ddcca458606e14a607f7191d8dbad3978004bdf29ee  qt6_683/qt6_683/qt.qt6.683.linux_gcc_64/6.8.3-0-202503201345qtdeclarative-Linux-RHEL_8_10-GCC-Linux-RHEL_8_10-X86_64.7z

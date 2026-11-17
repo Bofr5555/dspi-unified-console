@@ -718,6 +718,37 @@ fn wp_secout_a_corrected_url_is_tried_at_once() {
     assert!(matches!(o.take(e, now), Take::Ready(_)));
 }
 
+// -- WP FU1 --
+#[test]
+fn wp_fu1_a_failure_at_the_old_url_does_not_back_off_the_corrected_one() {
+    let mut o = Outbox::default();
+    o.set_targets(vec![target("a", "https://wrong.example/a")]);
+    let e = epoch_of(&o, "a");
+    o.enqueue(&notice(0), "h");
+    let now = Instant::now();
+    let to_old = take_ready(&mut o, e, now);
+    assert_eq!(to_old.url.host, "wrong.example");
+    // Corrected while the try to the old URL is in flight; that try then fails.
+    o.set_targets(vec![target("a", "https://right.example/a")]);
+    o.finish(to_old, &Outcome::Failed("x".into()), now, 1);
+    assert_eq!(o.counts("a"), Some((1, 0)), "queued again, not dropped");
+    // The corrected URL is due at once, and its own first failure waits the first backoff.
+    let job = take_ready(&mut o, e, now);
+    assert_eq!(job.url.host, "right.example");
+    o.finish(job, &Outcome::Failed("x".into()), now, 1);
+    match o.take(e, now) {
+        Take::Wait(Some(due)) => assert_eq!(due, now + BACKOFF_FIRST),
+        other => panic!("{other:?}"),
+    }
+    // A failure at the current URL still backs off as before (doubling).
+    let job = take_ready(&mut o, e, now + BACKOFF_FIRST);
+    o.finish(job, &Outcome::Failed("x".into()), now, 1);
+    match o.take(e, now) {
+        Take::Wait(Some(due)) => assert_eq!(due, now + BACKOFF_FIRST * 2),
+        other => panic!("{other:?}"),
+    }
+}
+
 #[test]
 fn wp_secout_targets_written_before_tls_are_kept_as_plaintext_with_a_notice() {
     let dir = scratch("migrate");

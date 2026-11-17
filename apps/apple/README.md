@@ -2061,6 +2061,8 @@ For every mouse gesture on the graph, see [Graph Editing Quick Reference](#graph
 
 The app bundles the matching firmware images from `DSPi Console/Firmware`.
 
+From the repository's Linux host, `ci/macvm.sh macos` or `ci/macvm.sh ios` copies the tree into the macOS VM and runs `ci-test.sh` there (build, unit tests, and on iOS UI tests in the Simulator). `ci/macvm.sh build macos` or `ci/macvm.sh build ios` only compiles: the core's XCFramework, then `xcodebuild build-for-testing` of the app and its test bundles, no tests (`ci-test.sh macos|ios --build-only`). Use it after a merge to catch Swift compile errors cheaply; the Linux `swift` and `ios-check` steps do not compile the app.
+
 ## License
 
 DSPi Console is released under the MIT License. See [LICENSE](LICENSE).

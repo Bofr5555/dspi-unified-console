@@ -378,8 +378,9 @@ export class RolloutFeed {
   async startRollout(target: HubFleetTarget, image: string, whileLive: boolean): Promise<Said & { rollout?: HubRolloutRecord }> {
     try {
       const ask = () => this.session.core.call("hubRolloutStart", { target, image, whileLive });
-      // The hub frees its one rollout slot just after it announces the last one's end: a
-      // start in that moment is asked once more.
+      // After a cancel the hub's record says cancelled at once, but its worker keeps the one
+      // rollout slot until it leaves its current step (ms on a device, longer on the bench): a
+      // start in that moment is asked once more. A normal end frees the slot before it is announced.
       const justEnded = !this.view.rollouts.some((x) => x.state === "running");
       const r = await ask().catch(async (e: unknown) => {
         if (!(justEnded && e instanceof CoreCallError && /one at a time/.test(e.message))) throw e;

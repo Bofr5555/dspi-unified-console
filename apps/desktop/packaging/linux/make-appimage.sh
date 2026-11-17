@@ -71,7 +71,13 @@ patchelf --set-rpath '$ORIGIN/../lib' "$bin"
 # runtime, GL/EGL and the GPU stack, X11 and xcb's core, Wayland's client,
 # fontconfig and FreeType, HarfBuzz, ALSA, D-Bus, zlib): bundling them breaks
 # graphics drivers and the system's ABI. Everything else comes along.
-EXCLUDED='^(linux-vdso|ld-linux-x86-64|libc|libm|libmvec|libdl|libpthread|librt|libresolv|libutil|libanl|libnss_.*|libthread_db|libstdc\+\+|libgcc_s|libGL|libEGL|libGLX|libGLdispatch|libOpenGL|libglapi|libgbm|libdrm|libX11|libX11-xcb|libxcb|libXext|libXau|libXdmcp|libwayland-client|libfontconfig|libfreetype|libharfbuzz|libasound|libdbus-1|libz|libexpat|libuuid|libcom_err|libgpg-error|libICE|libSM|libudev|libsystemd|libgcrypt|liblzma|libzstd|liblz4|libcap|libbz2)\.so'
+# -- WP FU1 -- Qt Multimedia (the microphone, P5QCAP) links PulseAudio's client,
+# libpulse.so.0: the system's, as ALSA is (it speaks to the desktop's sound server,
+# PulseAudio or PipeWire's pulse), with what only it pulls in (libpulsecommon,
+# libsndfile and its codecs, libasyncns, libapparmor). No multimedia plugin is
+# bundled: QAudioSource's PulseAudio backend is inside libQt6Multimedia, so the
+# FFmpeg media plugin and its libraries stay out, as on Windows.
+EXCLUDED='^(linux-vdso|ld-linux-x86-64|libc|libm|libmvec|libdl|libpthread|librt|libresolv|libutil|libanl|libnss_.*|libthread_db|libstdc\+\+|libgcc_s|libGL|libEGL|libGLX|libGLdispatch|libOpenGL|libglapi|libgbm|libdrm|libX11|libX11-xcb|libxcb|libXext|libXau|libXdmcp|libwayland-client|libfontconfig|libfreetype|libharfbuzz|libasound|libdbus-1|libz|libexpat|libuuid|libcom_err|libgpg-error|libICE|libSM|libudev|libsystemd|libgcrypt|liblzma|libzstd|liblz4|libcap|libbz2|libpulse|libpulsecommon-[0-9.]+|libsndfile|libFLAC|libvorbis|libvorbisenc|libogg|libopus|libmpg123|libmp3lame|libasyncns|libapparmor)\.so'
 deps() {  # every library ldd resolves for the ELF files under the AppDir
     find "$appdir/usr/bin" "$appdir/usr/lib" "$appdir/usr/plugins" "$appdir/usr/qml" -type f \
         \( -name '*.so*' -o -perm -u+x \) -print0 \

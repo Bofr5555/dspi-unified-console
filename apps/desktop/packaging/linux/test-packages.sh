@@ -126,14 +126,16 @@ done
 # The AppImage on a system with no Qt at all, on X11 (Xvfb): it brings its own.
 # Like every AppImage it uses the host's ALSA, GL, fontconfig and a few more
 # (make-appimage.sh's EXCLUDED), installed here without recommends
+# (-- WP FU1 -- and PulseAudio's client library, libpulse0 / pulseaudio-libs, for Qt Multimedia)
 # (not ubuntu:22.04: its glibc 2.35 is older than the release's 2.39)
 for img in docker.io/library/ubuntu:24.04 docker.io/library/debian:13 registry.fedoraproject.org/fedora:44; do
     name=appimage-${img##*/}; name=${name//:/-}
     t "$name" "$img" "
         if command -v apt-get >/dev/null; then
             apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends xvfb xauth libgl1 libegl1 libopengl0 libfontconfig1 libfreetype6 libharfbuzz0b \
-                libx11-6 libx11-xcb1 libxcb1 libsm6 libice6 libwayland-client0 libcom-err2 libgpg-error0 libasound2t64 libdbus-1-3 >/dev/null
-        else dnf -y -q install xorg-x11-server-Xvfb mesa-libGL mesa-libEGL fontconfig alsa-lib libglvnd-opengl dbus-libs >/dev/null; fi
+                libx11-6 libx11-xcb1 libxcb1 libsm6 libice6 libwayland-client0 libcom-err2 libgpg-error0 libasound2t64 libdbus-1-3 \
+                libpulse0 >/dev/null
+        else dnf -y -q install xorg-x11-server-Xvfb mesa-libGL mesa-libEGL fontconfig alsa-lib libglvnd-opengl dbus-libs pulseaudio-libs >/dev/null; fi
         cp /dist/uConsole-for-DSPi-*-x86_64.AppImage /root/app.AppImage && chmod +x /root/app.AppImage
         cd /root && ./app.AppImage --appimage-extract >/dev/null
         grep -q apprun-hooks squashfs-root/AppRun || { echo 'AppRun does not source apprun-hooks'; exit 1; }
