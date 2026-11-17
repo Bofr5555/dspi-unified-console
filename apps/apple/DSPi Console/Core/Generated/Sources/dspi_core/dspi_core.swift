@@ -3344,6 +3344,78 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func hubLimitsSet(document: String) throws  -> HubLimitsSet
     
     /**
+     * Delete document `id` from the hub (`measure.doc.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_measure_doc_rename`].
+     */
+    func hubMeasureDocDelete(id: String) throws 
+    
+    /**
+     * Document `id` on the hub with its text (`measure.doc.get`): a large
+     * one part by part, the whole checked against the hub's size and hash
+     * and read by its kind's reader. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `protocol` for an answer
+     * that does not make the document it announced; as
+     * [`DspiCore::hub_measure_docs`].
+     */
+    func hubMeasureDocGet(id: String) throws  -> HubMeasureDocument
+    
+    /**
+     * Set document `id`'s note on the hub (`measure.doc.note`; any Unicode,
+     * at most 4096 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_measure_doc_rename`].
+     */
+    func hubMeasureDocNote(id: String, note: String) throws  -> MeasureDocInfo
+    
+    /**
+     * File `document` (a measurement, microphone or target document's text)
+     * on the hub (`measure.doc.put`), under the id it carries. It is read
+     * and bounded here first (a text that is not such a document is refused
+     * with nothing sent); a measurement without a serial takes the open
+     * device's, a document without a store id the one a store would make
+     * first (from its time). Sent whole up to 61 440 bytes compact, in parts
+     * past it. The same document again is `created: false`. Control or
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not such a
+     * document or past its bound (nothing sent), or the hub's
+     * `bad_request`; [`DspiError::Link`] `conflict` (the hub holds another
+     * document with this id, or a cap is reached) or `busy` (too many
+     * uploads on the hub); [`DspiError::Denied`] for a Viewer;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_measure_docs`].
+     */
+    func hubMeasureDocPut(document: String) throws  -> HubMeasureDocPut
+    
+    /**
+     * Rename document `id` on the hub (`measure.doc.rename`; any Unicode, at
+     * most 256 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; [`DspiError::InvalidArgument`]
+     * past 256 characters (the hub's `bad_request`); as
+     * [`DspiCore::hub_measure_doc_put`].
+     */
+    func hubMeasureDocRename(id: String, name: String) throws  -> MeasureDocInfo
+    
+    /**
+     * The hub's documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind), oldest first within a kind (`measure.doc.list`): the
+     * measurements of device `serial` ("" the open device's; with kind ""
+     * and no device open, none), every microphone and target. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind;
+     * [`DspiError::Unsupported`] without the `hub_measure` cap (nothing
+     * sent); [`DspiError::Disconnected`] (also for kind `measurement`, serial
+     * "" and no device open); the hub's refusal.
+     */
+    func hubMeasureDocs(kind: String, serial: String) throws  -> [MeasureDocInfo]
+    
+    /**
      * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
      * one of the manifest's modes, "" to unpin). Hub-wide: every console of
      * that role shows it. Admin of the hub only. Slow: off the UI thread.
@@ -4071,6 +4143,21 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
      */
     func measureDocs(kind: String, serial: String) throws  -> [MeasureDocInfo]
+    
+    /**
+     * The documents of `kind` (as [`DspiCore::measure_docs`]) on both sides:
+     * this console's store and, on a DSPi Link session to a hub that keeps
+     * them, the hub's ([`DspiCore::hub_measure_docs`]; its measurements are
+     * device `serial`'s, "" the open device's). Each row says where it is
+     * (`local`, `hub` or `both`). **The hub's wins:** an id both sides hold
+     * with different content (any field of the entry differs) is listed as
+     * the hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. A hub that cannot be read leaves the local rows, with
+     * `hub_notice_key` saying why. A round trip on a hub: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+    func measureDocsMerged(kind: String, serial: String) throws  -> MeasureDocsMerged
     
     /**
      * The microphone is at the next position (or the headphones reseated):
@@ -9244,6 +9331,116 @@ open func hubLimitsSet(document: String)throws  -> HubLimitsSet  {
 }
     
     /**
+     * Delete document `id` from the hub (`measure.doc.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_measure_doc_rename`].
+     */
+open func hubMeasureDocDelete(id: String)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_delete(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+}
+}
+    
+    /**
+     * Document `id` on the hub with its text (`measure.doc.get`): a large
+     * one part by part, the whole checked against the hub's size and hash
+     * and read by its kind's reader. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `protocol` for an answer
+     * that does not make the document it announced; as
+     * [`DspiCore::hub_measure_docs`].
+     */
+open func hubMeasureDocGet(id: String)throws  -> HubMeasureDocument  {
+    return try  FfiConverterTypeHubMeasureDocument_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_get(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+    /**
+     * Set document `id`'s note on the hub (`measure.doc.note`; any Unicode,
+     * at most 4096 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_measure_doc_rename`].
+     */
+open func hubMeasureDocNote(id: String, note: String)throws  -> MeasureDocInfo  {
+    return try  FfiConverterTypeMeasureDocInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_note(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(note),$0
+    )
+})
+}
+    
+    /**
+     * File `document` (a measurement, microphone or target document's text)
+     * on the hub (`measure.doc.put`), under the id it carries. It is read
+     * and bounded here first (a text that is not such a document is refused
+     * with nothing sent); a measurement without a serial takes the open
+     * device's, a document without a store id the one a store would make
+     * first (from its time). Sent whole up to 61 440 bytes compact, in parts
+     * past it. The same document again is `created: false`. Control or
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not such a
+     * document or past its bound (nothing sent), or the hub's
+     * `bad_request`; [`DspiError::Link`] `conflict` (the hub holds another
+     * document with this id, or a cap is reached) or `busy` (too many
+     * uploads on the hub); [`DspiError::Denied`] for a Viewer;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_measure_docs`].
+     */
+open func hubMeasureDocPut(document: String)throws  -> HubMeasureDocPut  {
+    return try  FfiConverterTypeHubMeasureDocPut_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_put(self.uniffiClonePointer(),
+        FfiConverterString.lower(document),$0
+    )
+})
+}
+    
+    /**
+     * Rename document `id` on the hub (`measure.doc.rename`; any Unicode, at
+     * most 256 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; [`DspiError::InvalidArgument`]
+     * past 256 characters (the hub's `bad_request`); as
+     * [`DspiCore::hub_measure_doc_put`].
+     */
+open func hubMeasureDocRename(id: String, name: String)throws  -> MeasureDocInfo  {
+    return try  FfiConverterTypeMeasureDocInfo_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_rename(self.uniffiClonePointer(),
+        FfiConverterString.lower(id),
+        FfiConverterString.lower(name),$0
+    )
+})
+}
+    
+    /**
+     * The hub's documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind), oldest first within a kind (`measure.doc.list`): the
+     * measurements of device `serial` ("" the open device's; with kind ""
+     * and no device open, none), every microphone and target. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind;
+     * [`DspiError::Unsupported`] without the `hub_measure` cap (nothing
+     * sent); [`DspiError::Disconnected`] (also for kind `measurement`, serial
+     * "" and no device open); the hub's refusal.
+     */
+open func hubMeasureDocs(kind: String, serial: String)throws  -> [MeasureDocInfo]  {
+    return try  FfiConverterSequenceTypeMeasureDocInfo.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_hub_measure_docs(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),
+        FfiConverterString.lower(serial),$0
+    )
+})
+}
+    
+    /**
      * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
      * one of the manifest's modes, "" to unpin). Hub-wide: every console of
      * that role shows it. Admin of the hub only. Slow: off the UI thread.
@@ -10349,6 +10546,28 @@ open func measureDocRename(id: String, name: String)throws  -> MeasureDocInfo  {
 open func measureDocs(kind: String, serial: String)throws  -> [MeasureDocInfo]  {
     return try  FfiConverterSequenceTypeMeasureDocInfo.lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_measure_docs(self.uniffiClonePointer(),
+        FfiConverterString.lower(kind),
+        FfiConverterString.lower(serial),$0
+    )
+})
+}
+    
+    /**
+     * The documents of `kind` (as [`DspiCore::measure_docs`]) on both sides:
+     * this console's store and, on a DSPi Link session to a hub that keeps
+     * them, the hub's ([`DspiCore::hub_measure_docs`]; its measurements are
+     * device `serial`'s, "" the open device's). Each row says where it is
+     * (`local`, `hub` or `both`). **The hub's wins:** an id both sides hold
+     * with different content (any field of the entry differs) is listed as
+     * the hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. A hub that cannot be read leaves the local rows, with
+     * `hub_notice_key` saying why. A round trip on a hub: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+open func measureDocsMerged(kind: String, serial: String)throws  -> MeasureDocsMerged  {
+    return try  FfiConverterTypeMeasureDocsMerged_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_docs_merged(self.uniffiClonePointer(),
         FfiConverterString.lower(kind),
         FfiConverterString.lower(serial),$0
     )
@@ -28547,6 +28766,10 @@ public struct HubCaps {
      */
     public var rollout: Bool
     /**
+     * `measure.doc.*` ([`DspiCore::hub_measure_docs`]).
+     */
+    public var hubMeasure: Bool
+    /**
      * Every cap of the hub's `hello`, as it sent them.
      */
     public var caps: [String]
@@ -28609,6 +28832,9 @@ public struct HubCaps {
          * `fw.*` ([`DspiCore::hub_rollout_start`]; over TLS only).
          */rollout: Bool, 
         /**
+         * `measure.doc.*` ([`DspiCore::hub_measure_docs`]).
+         */hubMeasure: Bool, 
+        /**
          * Every cap of the hub's `hello`, as it sent them.
          */caps: [String]) {
         self.onHub = onHub
@@ -28629,6 +28855,7 @@ public struct HubCaps {
         self.groupParams = groupParams
         self.groupApply = groupApply
         self.rollout = rollout
+        self.hubMeasure = hubMeasure
         self.caps = caps
     }
 }
@@ -28694,6 +28921,9 @@ extension HubCaps: Equatable, Hashable {
         if lhs.rollout != rhs.rollout {
             return false
         }
+        if lhs.hubMeasure != rhs.hubMeasure {
+            return false
+        }
         if lhs.caps != rhs.caps {
             return false
         }
@@ -28719,6 +28949,7 @@ extension HubCaps: Equatable, Hashable {
         hasher.combine(groupParams)
         hasher.combine(groupApply)
         hasher.combine(rollout)
+        hasher.combine(hubMeasure)
         hasher.combine(caps)
     }
 }
@@ -28750,6 +28981,7 @@ public struct FfiConverterTypeHubCaps: FfiConverterRustBuffer {
                 groupParams: FfiConverterBool.read(from: &buf), 
                 groupApply: FfiConverterBool.read(from: &buf), 
                 rollout: FfiConverterBool.read(from: &buf), 
+                hubMeasure: FfiConverterBool.read(from: &buf), 
                 caps: FfiConverterSequenceString.read(from: &buf)
         )
     }
@@ -28773,6 +29005,7 @@ public struct FfiConverterTypeHubCaps: FfiConverterRustBuffer {
         FfiConverterBool.write(value.groupParams, into: &buf)
         FfiConverterBool.write(value.groupApply, into: &buf)
         FfiConverterBool.write(value.rollout, into: &buf)
+        FfiConverterBool.write(value.hubMeasure, into: &buf)
         FfiConverterSequenceString.write(value.caps, into: &buf)
     }
 }
@@ -31168,6 +31401,179 @@ public func FfiConverterTypeHubLimitsSet_lift(_ buf: RustBuffer) throws -> HubLi
 #endif
 public func FfiConverterTypeHubLimitsSet_lower(_ value: HubLimitsSet) -> RustBuffer {
     return FfiConverterTypeHubLimitsSet.lower(value)
+}
+
+
+/**
+ * A document filed on the hub ([`DspiCore::hub_measure_doc_put`]).
+ */
+public struct HubMeasureDocPut {
+    /**
+     * Its entry on the hub.
+     */
+    public var doc: MeasureDocInfo
+    /**
+     * False: the hub already held this document with the same content.
+     */
+    public var created: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its entry on the hub.
+         */doc: MeasureDocInfo, 
+        /**
+         * False: the hub already held this document with the same content.
+         */created: Bool) {
+        self.doc = doc
+        self.created = created
+    }
+}
+
+#if compiler(>=6)
+extension HubMeasureDocPut: Sendable {}
+#endif
+
+
+extension HubMeasureDocPut: Equatable, Hashable {
+    public static func ==(lhs: HubMeasureDocPut, rhs: HubMeasureDocPut) -> Bool {
+        if lhs.doc != rhs.doc {
+            return false
+        }
+        if lhs.created != rhs.created {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(doc)
+        hasher.combine(created)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubMeasureDocPut: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubMeasureDocPut {
+        return
+            try HubMeasureDocPut(
+                doc: FfiConverterTypeMeasureDocInfo.read(from: &buf), 
+                created: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubMeasureDocPut, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureDocInfo.write(value.doc, into: &buf)
+        FfiConverterBool.write(value.created, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMeasureDocPut_lift(_ buf: RustBuffer) throws -> HubMeasureDocPut {
+    return try FfiConverterTypeHubMeasureDocPut.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMeasureDocPut_lower(_ value: HubMeasureDocPut) -> RustBuffer {
+    return FfiConverterTypeHubMeasureDocPut.lower(value)
+}
+
+
+/**
+ * A measurement document on the hub with its text
+ * ([`DspiCore::hub_measure_doc_get`]).
+ */
+public struct HubMeasureDocument {
+    /**
+     * Its entry on the hub.
+     */
+    public var doc: MeasureDocInfo
+    /**
+     * The document's text (compact JSON), read and checked by its kind's
+     * reader.
+     */
+    public var document: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its entry on the hub.
+         */doc: MeasureDocInfo, 
+        /**
+         * The document's text (compact JSON), read and checked by its kind's
+         * reader.
+         */document: String) {
+        self.doc = doc
+        self.document = document
+    }
+}
+
+#if compiler(>=6)
+extension HubMeasureDocument: Sendable {}
+#endif
+
+
+extension HubMeasureDocument: Equatable, Hashable {
+    public static func ==(lhs: HubMeasureDocument, rhs: HubMeasureDocument) -> Bool {
+        if lhs.doc != rhs.doc {
+            return false
+        }
+        if lhs.document != rhs.document {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(doc)
+        hasher.combine(document)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHubMeasureDocument: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HubMeasureDocument {
+        return
+            try HubMeasureDocument(
+                doc: FfiConverterTypeMeasureDocInfo.read(from: &buf), 
+                document: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HubMeasureDocument, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureDocInfo.write(value.doc, into: &buf)
+        FfiConverterString.write(value.document, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMeasureDocument_lift(_ buf: RustBuffer) throws -> HubMeasureDocument {
+    return try FfiConverterTypeHubMeasureDocument.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHubMeasureDocument_lower(_ value: HubMeasureDocument) -> RustBuffer {
+    return FfiConverterTypeHubMeasureDocument.lower(value)
 }
 
 
@@ -34684,6 +35090,16 @@ public struct HubServerEvent {
      * the device whose entry changed, where the hub says.
      */
     public var rollout: HubRollout?
+    /**
+     * `measure.doc.changed`'s document id ([`HubServerEvent::change`] is
+     * `put`, `rename`, `note` or `delete`; [`HubServerEvent::serial`] the
+     * measured device, "" for a microphone or target).
+     */
+    public var measureDoc: String
+    /**
+     * `measure.doc.changed`'s document kind: `measurement`, `mic` or `target`.
+     */
+    public var measureKind: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -34721,7 +35137,15 @@ public struct HubServerEvent {
         /**
          * `fw.rollout.changed`'s whole record; [`HubServerEvent::serial`] is
          * the device whose entry changed, where the hub says.
-         */rollout: HubRollout?) {
+         */rollout: HubRollout?, 
+        /**
+         * `measure.doc.changed`'s document id ([`HubServerEvent::change`] is
+         * `put`, `rename`, `note` or `delete`; [`HubServerEvent::serial`] the
+         * measured device, "" for a microphone or target).
+         */measureDoc: String, 
+        /**
+         * `measure.doc.changed`'s document kind: `measurement`, `mic` or `target`.
+         */measureKind: String) {
         self.kind = kind
         self.serial = serial
         self.record = record
@@ -34732,6 +35156,8 @@ public struct HubServerEvent {
         self.run = run
         self.group = group
         self.rollout = rollout
+        self.measureDoc = measureDoc
+        self.measureKind = measureKind
     }
 }
 
@@ -34772,6 +35198,12 @@ extension HubServerEvent: Equatable, Hashable {
         if lhs.rollout != rhs.rollout {
             return false
         }
+        if lhs.measureDoc != rhs.measureDoc {
+            return false
+        }
+        if lhs.measureKind != rhs.measureKind {
+            return false
+        }
         return true
     }
 
@@ -34786,6 +35218,8 @@ extension HubServerEvent: Equatable, Hashable {
         hasher.combine(run)
         hasher.combine(group)
         hasher.combine(rollout)
+        hasher.combine(measureDoc)
+        hasher.combine(measureKind)
     }
 }
 
@@ -34807,7 +35241,9 @@ public struct FfiConverterTypeHubServerEvent: FfiConverterRustBuffer {
                 alarm: FfiConverterOptionTypeHubAlarm.read(from: &buf), 
                 run: FfiConverterOptionTypeHubScheduleRun.read(from: &buf), 
                 group: FfiConverterOptionTypeHubGroup.read(from: &buf), 
-                rollout: FfiConverterOptionTypeHubRollout.read(from: &buf)
+                rollout: FfiConverterOptionTypeHubRollout.read(from: &buf), 
+                measureDoc: FfiConverterString.read(from: &buf), 
+                measureKind: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -34822,6 +35258,8 @@ public struct FfiConverterTypeHubServerEvent: FfiConverterRustBuffer {
         FfiConverterOptionTypeHubScheduleRun.write(value.run, into: &buf)
         FfiConverterOptionTypeHubGroup.write(value.group, into: &buf)
         FfiConverterOptionTypeHubRollout.write(value.rollout, into: &buf)
+        FfiConverterString.write(value.measureDoc, into: &buf)
+        FfiConverterString.write(value.measureKind, into: &buf)
     }
 }
 
@@ -38796,6 +39234,111 @@ public func FfiConverterTypeMeasureDocInfo_lower(_ value: MeasureDocInfo) -> Rus
 
 
 /**
+ * The documents of both sides ([`DspiCore::measure_docs_merged`]).
+ */
+public struct MeasureDocsMerged {
+    /**
+     * By kind (measurement, mic, target), then oldest first; on an id both
+     * sides hold with different content the hub's row comes first, then the
+     * local copy.
+     */
+    public var entries: [MergedMeasureDoc]
+    /**
+     * The hub's list is in it (a hub with `hub_measure` answered).
+     */
+    public var hubListed: Bool
+    /**
+     * Why the hub's list is not in it, as a notice row; "" when it is, or
+     * when there is no such hub.
+     */
+    public var hubNoticeKey: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * By kind (measurement, mic, target), then oldest first; on an id both
+         * sides hold with different content the hub's row comes first, then the
+         * local copy.
+         */entries: [MergedMeasureDoc], 
+        /**
+         * The hub's list is in it (a hub with `hub_measure` answered).
+         */hubListed: Bool, 
+        /**
+         * Why the hub's list is not in it, as a notice row; "" when it is, or
+         * when there is no such hub.
+         */hubNoticeKey: String) {
+        self.entries = entries
+        self.hubListed = hubListed
+        self.hubNoticeKey = hubNoticeKey
+    }
+}
+
+#if compiler(>=6)
+extension MeasureDocsMerged: Sendable {}
+#endif
+
+
+extension MeasureDocsMerged: Equatable, Hashable {
+    public static func ==(lhs: MeasureDocsMerged, rhs: MeasureDocsMerged) -> Bool {
+        if lhs.entries != rhs.entries {
+            return false
+        }
+        if lhs.hubListed != rhs.hubListed {
+            return false
+        }
+        if lhs.hubNoticeKey != rhs.hubNoticeKey {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(entries)
+        hasher.combine(hubListed)
+        hasher.combine(hubNoticeKey)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureDocsMerged: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureDocsMerged {
+        return
+            try MeasureDocsMerged(
+                entries: FfiConverterSequenceTypeMergedMeasureDoc.read(from: &buf), 
+                hubListed: FfiConverterBool.read(from: &buf), 
+                hubNoticeKey: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureDocsMerged, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeMergedMeasureDoc.write(value.entries, into: &buf)
+        FfiConverterBool.write(value.hubListed, into: &buf)
+        FfiConverterString.write(value.hubNoticeKey, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocsMerged_lift(_ buf: RustBuffer) throws -> MeasureDocsMerged {
+    return try FfiConverterTypeMeasureDocsMerged.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureDocsMerged_lower(_ value: MeasureDocsMerged) -> RustBuffer {
+    return FfiConverterTypeMeasureDocsMerged.lower(value)
+}
+
+
+/**
  * One preflight finding: a notice key and its words.
  */
 public struct MeasureIssue {
@@ -40052,6 +40595,109 @@ public func FfiConverterTypeMeasureTiming_lift(_ buf: RustBuffer) throws -> Meas
 #endif
 public func FfiConverterTypeMeasureTiming_lower(_ value: MeasureTiming) -> RustBuffer {
     return FfiConverterTypeMeasureTiming.lower(value)
+}
+
+
+/**
+ * One row of the merged list ([`DspiCore::measure_docs_merged`]).
+ */
+public struct MergedMeasureDoc {
+    /**
+     * The entry: the hub's where it holds the id (the hub's wins).
+     */
+    public var doc: MeasureDocInfo
+    /**
+     * [`super::WHERE_LOCAL`], [`super::WHERE_HUB`] or [`super::WHERE_BOTH`]
+     * (`where` in JSON).
+     */
+    public var location: String
+    /**
+     * This console's own copy of an id the hub holds with different
+     * content: listed beside the hub's, never overwritten by it.
+     */
+    public var localCopy: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The entry: the hub's where it holds the id (the hub's wins).
+         */doc: MeasureDocInfo, 
+        /**
+         * [`super::WHERE_LOCAL`], [`super::WHERE_HUB`] or [`super::WHERE_BOTH`]
+         * (`where` in JSON).
+         */location: String, 
+        /**
+         * This console's own copy of an id the hub holds with different
+         * content: listed beside the hub's, never overwritten by it.
+         */localCopy: Bool) {
+        self.doc = doc
+        self.location = location
+        self.localCopy = localCopy
+    }
+}
+
+#if compiler(>=6)
+extension MergedMeasureDoc: Sendable {}
+#endif
+
+
+extension MergedMeasureDoc: Equatable, Hashable {
+    public static func ==(lhs: MergedMeasureDoc, rhs: MergedMeasureDoc) -> Bool {
+        if lhs.doc != rhs.doc {
+            return false
+        }
+        if lhs.location != rhs.location {
+            return false
+        }
+        if lhs.localCopy != rhs.localCopy {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(doc)
+        hasher.combine(location)
+        hasher.combine(localCopy)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMergedMeasureDoc: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MergedMeasureDoc {
+        return
+            try MergedMeasureDoc(
+                doc: FfiConverterTypeMeasureDocInfo.read(from: &buf), 
+                location: FfiConverterString.read(from: &buf), 
+                localCopy: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MergedMeasureDoc, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureDocInfo.write(value.doc, into: &buf)
+        FfiConverterString.write(value.location, into: &buf)
+        FfiConverterBool.write(value.localCopy, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMergedMeasureDoc_lift(_ buf: RustBuffer) throws -> MergedMeasureDoc {
+    return try FfiConverterTypeMergedMeasureDoc.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMergedMeasureDoc_lower(_ value: MergedMeasureDoc) -> RustBuffer {
+    return FfiConverterTypeMergedMeasureDoc.lower(value)
 }
 
 
@@ -53951,6 +54597,31 @@ fileprivate struct FfiConverterSequenceTypeMeasureOutput: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeMergedMeasureDoc: FfiConverterRustBuffer {
+    typealias SwiftType = [MergedMeasureDoc]
+
+    public static func write(_ value: [MergedMeasureDoc], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMergedMeasureDoc.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MergedMeasureDoc] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MergedMeasureDoc]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMergedMeasureDoc.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMergedSnapshot: FfiConverterRustBuffer {
     typealias SwiftType = [MergedSnapshot]
 
@@ -56238,6 +56909,24 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_hub_limits_set() != 29899) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_delete() != 57404) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_get() != 49919) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_note() != 62100) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_put() != 41629) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_rename() != 26537) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_hub_measure_docs() != 34496) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin() != 57304) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -56434,6 +57123,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_docs() != 14119) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_docs_merged() != 53188) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_next_position() != 42088) {

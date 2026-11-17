@@ -94,6 +94,8 @@ mod clipboard;
 mod measure_doc;
 // -- WP P5SES -- the measurement session
 mod measure;
+// -- WP P5HUB -- the hub's measurement documents
+mod hub_server_measure;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

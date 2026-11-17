@@ -108,6 +108,8 @@ pub mod surfaces;
 pub mod clipboard;
 // -- WP P5SES -- the measurement session
 pub mod measure;
+// -- WP P5HUB -- the hub's measurement documents
+pub mod hub_server_measure;
 // -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
 pub mod settings;
 // -- WP WB4a --

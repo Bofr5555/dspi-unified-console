@@ -4264,6 +4264,10 @@ data class HubCaps(
      */
     val rollout: Boolean,
     /**
+     * `measure.doc.*` ([`DspiCore::hub_measure_docs`]).
+     */
+    val hubMeasure: Boolean,
+    /**
      * Every cap of the hub's `hello`, as it sent them.
      */
     val caps: List<String>,
@@ -4652,6 +4656,16 @@ data class HubServerEvent(
      * the device whose entry changed, where the hub says.
      */
     val rollout: HubRollout?,
+    /**
+     * `measure.doc.changed`'s document id ([`HubServerEvent::change`] is
+     * `put`, `rename`, `note` or `delete`; [`HubServerEvent::serial`] the
+     * measured device, "" for a microphone or target).
+     */
+    val measureDoc: String,
+    /**
+     * `measure.doc.changed`'s document kind: `measurement`, `mic` or `target`.
+     */
+    val measureKind: String,
 )
 
 /**
@@ -5870,6 +5884,77 @@ data class HubInventoryForgot(
      * then `snapshots` if asked and it had any.
      */
     val forgot: List<String>,
+)
+
+/**
+ * A measurement document on the hub with its text
+ * ([`DspiCore::hub_measure_doc_get`]).
+ */
+data class HubMeasureDocument(
+    /**
+     * Its entry on the hub.
+     */
+    val doc: MeasureDocInfo,
+    /**
+     * The document's text (compact JSON), read and checked by its kind's
+     * reader.
+     */
+    val document: String,
+)
+
+/**
+ * A document filed on the hub ([`DspiCore::hub_measure_doc_put`]).
+ */
+data class HubMeasureDocPut(
+    /**
+     * Its entry on the hub.
+     */
+    val doc: MeasureDocInfo,
+    /**
+     * False: the hub already held this document with the same content.
+     */
+    val created: Boolean,
+)
+
+/**
+ * One row of the merged list ([`DspiCore::measure_docs_merged`]).
+ */
+data class MergedMeasureDoc(
+    /**
+     * The entry: the hub's where it holds the id (the hub's wins).
+     */
+    val doc: MeasureDocInfo,
+    /**
+     * [`super::WHERE_LOCAL`], [`super::WHERE_HUB`] or [`super::WHERE_BOTH`]
+     * (`where` in JSON).
+     */
+    val location: String,
+    /**
+     * This console's own copy of an id the hub holds with different
+     * content: listed beside the hub's, never overwritten by it.
+     */
+    val localCopy: Boolean,
+)
+
+/**
+ * The documents of both sides ([`DspiCore::measure_docs_merged`]).
+ */
+data class MeasureDocsMerged(
+    /**
+     * By kind (measurement, mic, target), then oldest first; on an id both
+     * sides hold with different content the hub's row comes first, then the
+     * local copy.
+     */
+    val entries: List<MergedMeasureDoc>,
+    /**
+     * The hub's list is in it (a hub with `hub_measure` answered).
+     */
+    val hubListed: Boolean,
+    /**
+     * Why the hub's list is not in it, as a notice row; "" when it is, or
+     * when there is no such hub.
+     */
+    val hubNoticeKey: String,
 )
 
 /**

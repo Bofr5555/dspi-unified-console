@@ -2649,6 +2649,100 @@ interface DspiCoreApi : AutoCloseable {
     fun hubIdentifySerial(serial: String, seconds: Int, toneOutput: Int?): IdentifyInfo?
 
     /**
+     * The hub's documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind), oldest first within a kind (`measure.doc.list`): the
+     * measurements of device `serial` ("" the open device's; with kind ""
+     * and no device open, none), every microphone and target. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind;
+     * [`DspiError::Unsupported`] without the `hub_measure` cap (nothing
+     * sent); [`DspiError::Disconnected`] (also for kind `measurement`, serial
+     * "" and no device open); the hub's refusal.
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocs(kind: String, serial: String): List<MeasureDocInfo>
+
+    /**
+     * Document `id` on the hub with its text (`measure.doc.get`): a large
+     * one part by part, the whole checked against the hub's size and hash
+     * and read by its kind's reader. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `protocol` for an answer
+     * that does not make the document it announced; as
+     * [`DspiCore::hub_measure_docs`].
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocGet(id: String): HubMeasureDocument
+
+    /**
+     * File `document` (a measurement, microphone or target document's text)
+     * on the hub (`measure.doc.put`), under the id it carries. It is read
+     * and bounded here first (a text that is not such a document is refused
+     * with nothing sent); a measurement without a serial takes the open
+     * device's, a document without a store id the one a store would make
+     * first (from its time). Sent whole up to 61 440 bytes compact, in parts
+     * past it. The same document again is `created: false`. Control or
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not such a
+     * document or past its bound (nothing sent), or the hub's
+     * `bad_request`; [`DspiError::Link`] `conflict` (the hub holds another
+     * document with this id, or a cap is reached) or `busy` (too many
+     * uploads on the hub); [`DspiError::Denied`] for a Viewer;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_measure_docs`].
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocPut(document: String): HubMeasureDocPut
+
+    /**
+     * Rename document `id` on the hub (`measure.doc.rename`; any Unicode, at
+     * most 256 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; [`DspiError::InvalidArgument`]
+     * past 256 characters (the hub's `bad_request`); as
+     * [`DspiCore::hub_measure_doc_put`].
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocRename(id: String, name: String): MeasureDocInfo
+
+    /**
+     * Set document `id`'s note on the hub (`measure.doc.note`; any Unicode,
+     * at most 4096 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_measure_doc_rename`].
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocNote(id: String, note: String): MeasureDocInfo
+
+    /**
+     * Delete document `id` from the hub (`measure.doc.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_measure_doc_rename`].
+     */
+    @Throws(DspiException::class)
+    fun hubMeasureDocDelete(id: String)
+
+    /**
+     * The documents of `kind` (as [`DspiCore::measure_docs`]) on both sides:
+     * this console's store and, on a DSPi Link session to a hub that keeps
+     * them, the hub's ([`DspiCore::hub_measure_docs`]; its measurements are
+     * device `serial`'s, "" the open device's). Each row says where it is
+     * (`local`, `hub` or `both`). **The hub's wins:** an id both sides hold
+     * with different content (any field of the entry differs) is listed as
+     * the hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. A hub that cannot be read leaves the local rows, with
+     * `hub_notice_key` saying why. A round trip on a hub: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+    @Throws(DspiException::class)
+    fun measureDocsMerged(kind: String, serial: String): MeasureDocsMerged
+
+    /**
      * The user's name for input source `source` (`REQ_GET_INPUT_SOURCE_NAME`,
      * registry `in.name`); "" when unnamed.
      *

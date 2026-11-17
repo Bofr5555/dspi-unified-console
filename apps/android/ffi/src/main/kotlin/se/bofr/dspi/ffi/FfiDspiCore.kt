@@ -495,6 +495,20 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun hubIdentifySerial(serial: String, seconds: Int, toneOutput: Int?): IdentifyInfo? = call { core.hubIdentifySerial(serial, seconds.toUByte(), toneOutput?.let { it.toUByte() })?.let { it.toDomain() } }
 
+    override fun hubMeasureDocs(kind: String, serial: String): List<MeasureDocInfo> = call { core.hubMeasureDocs(kind, serial).map { it.toDomain() } }
+
+    override fun hubMeasureDocGet(id: String): HubMeasureDocument = call { core.hubMeasureDocGet(id).toDomain() }
+
+    override fun hubMeasureDocPut(document: String): HubMeasureDocPut = call { core.hubMeasureDocPut(document).toDomain() }
+
+    override fun hubMeasureDocRename(id: String, name: String): MeasureDocInfo = call { core.hubMeasureDocRename(id, name).toDomain() }
+
+    override fun hubMeasureDocNote(id: String, note: String): MeasureDocInfo = call { core.hubMeasureDocNote(id, note).toDomain() }
+
+    override fun hubMeasureDocDelete(id: String) = call { core.hubMeasureDocDelete(id) }
+
+    override fun measureDocsMerged(kind: String, serial: String): MeasureDocsMerged = call { core.measureDocsMerged(kind, serial).toDomain() }
+
     override fun getInputSourceName(source: Int): String = call { core.getInputSourceName(source.toUByte()) }
 
     override fun setInputSourceName(source: Int, name: String) = call { core.setInputSourceName(source.toUByte(), name) }
@@ -3682,6 +3696,7 @@ internal fun se.bofr.dspi.ffi.uniffi.HubCaps.toDomain() =
         groupParams = groupParams,
         groupApply = groupApply,
         rollout = rollout,
+        hubMeasure = hubMeasure,
         caps = caps,
     )
 
@@ -3705,6 +3720,7 @@ internal fun HubCaps.toFfi() =
         groupParams = groupParams,
         groupApply = groupApply,
         rollout = rollout,
+        hubMeasure = hubMeasure,
         caps = caps,
     )
 
@@ -3926,6 +3942,8 @@ internal fun se.bofr.dspi.ffi.uniffi.HubServerEvent.toDomain() =
         run = run?.let { it.toDomain() },
         group = group?.let { it.toDomain() },
         rollout = rollout?.let { it.toDomain() },
+        measureDoc = measureDoc,
+        measureKind = measureKind,
     )
 
 internal fun HubServerEvent.toFfi() =
@@ -3940,6 +3958,8 @@ internal fun HubServerEvent.toFfi() =
         run = run?.let { it.toFfi() },
         group = group?.let { it.toFfi() },
         rollout = rollout?.let { it.toFfi() },
+        measureDoc = measureDoc,
+        measureKind = measureKind,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HubSnapshotDocument.toDomain() =
@@ -4744,6 +4764,58 @@ internal fun HubInventoryForgot.toFfi() =
     se.bofr.dspi.ffi.uniffi.HubInventoryForgot(
         serial = serial,
         forgot = forgot,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubMeasureDocument.toDomain() =
+    HubMeasureDocument(
+        doc = doc.toDomain(),
+        document = document,
+    )
+
+internal fun HubMeasureDocument.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubMeasureDocument(
+        doc = doc.toFfi(),
+        document = document,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.HubMeasureDocPut.toDomain() =
+    HubMeasureDocPut(
+        doc = doc.toDomain(),
+        created = created,
+    )
+
+internal fun HubMeasureDocPut.toFfi() =
+    se.bofr.dspi.ffi.uniffi.HubMeasureDocPut(
+        doc = doc.toFfi(),
+        created = created,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MergedMeasureDoc.toDomain() =
+    MergedMeasureDoc(
+        doc = doc.toDomain(),
+        location = location,
+        localCopy = localCopy,
+    )
+
+internal fun MergedMeasureDoc.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MergedMeasureDoc(
+        doc = doc.toFfi(),
+        location = location,
+        localCopy = localCopy,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureDocsMerged.toDomain() =
+    MeasureDocsMerged(
+        entries = entries.map { it.toDomain() },
+        hubListed = hubListed,
+        hubNoticeKey = hubNoticeKey,
+    )
+
+internal fun MeasureDocsMerged.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureDocsMerged(
+        entries = entries.map { it.toFfi() },
+        hubListed = hubListed,
+        hubNoticeKey = hubNoticeKey,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.HistoryEntry.toDomain() =

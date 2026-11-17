@@ -1436,6 +1436,36 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_limits_get(void*_Nonnull ptr,
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_limits_set(void*_Nonnull ptr, RustBuffer document, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOC_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOC_DELETE
+void uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_delete(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOC_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOC_GET
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_get(void*_Nonnull ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOC_NOTE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOC_NOTE
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_note(void*_Nonnull ptr, RustBuffer id, RustBuffer note, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOC_PUT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOC_PUT
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_put(void*_Nonnull ptr, RustBuffer document, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOC_RENAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOC_RENAME
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_rename(void*_Nonnull ptr, RustBuffer id, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOCS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MEASURE_DOCS
+RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_measure_docs(void*_Nonnull ptr, RustBuffer kind, RustBuffer serial, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MODE_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_HUB_MODE_PIN
 RustBuffer uniffi_dspi_core_fn_method_dspicore_hub_mode_pin(void*_Nonnull ptr, RustBuffer role, RustBuffer mode, RustCallStatus *_Nonnull out_status
@@ -1764,6 +1794,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_doc_rename(void*_Nonnull 
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOCS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOCS
 RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_docs(void*_Nonnull ptr, RustBuffer kind, RustBuffer serial, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOCS_MERGED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_DOCS_MERGED
+RustBuffer uniffi_dspi_core_fn_method_dspicore_measure_docs_merged(void*_Nonnull ptr, RustBuffer kind, RustBuffer serial, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_MEASURE_NEXT_POSITION
@@ -5014,6 +5049,42 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_limits_set(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOC_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOC_DELETE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOC_GET
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOC_GET
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_get(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOC_NOTE
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOC_NOTE
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_note(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOC_PUT
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOC_PUT
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_put(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOC_RENAME
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOC_RENAME
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_rename(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOCS
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MEASURE_DOCS
+uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_measure_docs(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MODE_PIN
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_HUB_MODE_PIN
 uint16_t uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin(void
@@ -5407,6 +5478,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_doc_rename(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOCS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOCS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_docs(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOCS_MERGED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_MEASURE_DOCS_MERGED
+uint16_t uniffi_dspi_core_checksum_method_dspicore_measure_docs_merged(void
     
 );
 #endif

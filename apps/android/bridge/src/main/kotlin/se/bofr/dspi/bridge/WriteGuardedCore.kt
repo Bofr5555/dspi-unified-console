@@ -1475,7 +1475,17 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureStop",
             "measureState",
             "measureResult",
-            "measureClear"
+            "measureClear",
+            // -- WP P5HUB -- the hub's measurement documents: the hub's own data
+            // (as hubSnapshots*), nothing sent to a device; the hub's role check
+            // and the core's read-only mode gate the writes
+            "hubMeasureDocs",
+            "hubMeasureDocGet",
+            "hubMeasureDocPut",
+            "hubMeasureDocRename",
+            "hubMeasureDocNote",
+            "hubMeasureDocDelete",
+            "measureDocsMerged"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

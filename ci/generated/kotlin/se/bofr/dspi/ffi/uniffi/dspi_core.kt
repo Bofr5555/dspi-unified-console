@@ -2018,6 +2018,20 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2527,6 +2541,18 @@ fun uniffi_dspi_core_checksum_method_dspicore_hub_limits_get(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_limits_set(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_delete(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_get(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_note(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_put(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_rename(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_hub_measure_docs(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_hub_mqtt_get(
@@ -2658,6 +2684,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_put(
 fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_rename(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_docs(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_docs_merged(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_next_position(
 ): Short
@@ -3508,6 +3536,18 @@ fun uniffi_dspi_core_fn_method_dspicore_hub_limits_get(`ptr`: Pointer,uniffi_out
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_limits_set(`ptr`: Pointer,`document`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_delete(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_get(`ptr`: Pointer,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_note(`ptr`: Pointer,`id`: RustBuffer.ByValue,`note`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_put(`ptr`: Pointer,`document`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_rename(`ptr`: Pointer,`id`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_hub_measure_docs(`ptr`: Pointer,`kind`: RustBuffer.ByValue,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_mode_pin(`ptr`: Pointer,`role`: RustBuffer.ByValue,`mode`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_hub_mqtt_get(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -3639,6 +3679,8 @@ fun uniffi_dspi_core_fn_method_dspicore_measure_doc_put(`ptr`: Pointer,`text`: R
 fun uniffi_dspi_core_fn_method_dspicore_measure_doc_rename(`ptr`: Pointer,`id`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_docs(`ptr`: Pointer,`kind`: RustBuffer.ByValue,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_docs_merged(`ptr`: Pointer,`kind`: RustBuffer.ByValue,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_next_position(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -5095,6 +5137,24 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_limits_set() != 29899.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_delete() != 57404.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_get() != 49919.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_note() != 62100.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_put() != 41629.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_measure_doc_rename() != 26537.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_measure_docs() != 34496.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_hub_mode_pin() != 57304.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -5291,6 +5351,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_docs() != 14119.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_docs_merged() != 53188.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_next_position() != 42088.toShort()) {
@@ -9504,6 +9567,78 @@ public interface DspiCoreInterface {
     fun `hubLimitsSet`(`document`: kotlin.String): HubLimitsSet
     
     /**
+     * Delete document `id` from the hub (`measure.doc.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_measure_doc_rename`].
+     */
+    fun `hubMeasureDocDelete`(`id`: kotlin.String)
+    
+    /**
+     * Document `id` on the hub with its text (`measure.doc.get`): a large
+     * one part by part, the whole checked against the hub's size and hash
+     * and read by its kind's reader. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `protocol` for an answer
+     * that does not make the document it announced; as
+     * [`DspiCore::hub_measure_docs`].
+     */
+    fun `hubMeasureDocGet`(`id`: kotlin.String): HubMeasureDocument
+    
+    /**
+     * Set document `id`'s note on the hub (`measure.doc.note`; any Unicode,
+     * at most 4096 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_measure_doc_rename`].
+     */
+    fun `hubMeasureDocNote`(`id`: kotlin.String, `note`: kotlin.String): MeasureDocInfo
+    
+    /**
+     * File `document` (a measurement, microphone or target document's text)
+     * on the hub (`measure.doc.put`), under the id it carries. It is read
+     * and bounded here first (a text that is not such a document is refused
+     * with nothing sent); a measurement without a serial takes the open
+     * device's, a document without a store id the one a store would make
+     * first (from its time). Sent whole up to 61 440 bytes compact, in parts
+     * past it. The same document again is `created: false`. Control or
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not such a
+     * document or past its bound (nothing sent), or the hub's
+     * `bad_request`; [`DspiError::Link`] `conflict` (the hub holds another
+     * document with this id, or a cap is reached) or `busy` (too many
+     * uploads on the hub); [`DspiError::Denied`] for a Viewer;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_measure_docs`].
+     */
+    fun `hubMeasureDocPut`(`document`: kotlin.String): HubMeasureDocPut
+    
+    /**
+     * Rename document `id` on the hub (`measure.doc.rename`; any Unicode, at
+     * most 256 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; [`DspiError::InvalidArgument`]
+     * past 256 characters (the hub's `bad_request`); as
+     * [`DspiCore::hub_measure_doc_put`].
+     */
+    fun `hubMeasureDocRename`(`id`: kotlin.String, `name`: kotlin.String): MeasureDocInfo
+    
+    /**
+     * The hub's documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind), oldest first within a kind (`measure.doc.list`): the
+     * measurements of device `serial` ("" the open device's; with kind ""
+     * and no device open, none), every microphone and target. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind;
+     * [`DspiError::Unsupported`] without the `hub_measure` cap (nothing
+     * sent); [`DspiError::Disconnected`] (also for kind `measurement`, serial
+     * "" and no device open); the hub's refusal.
+     */
+    fun `hubMeasureDocs`(`kind`: kotlin.String, `serial`: kotlin.String): List<MeasureDocInfo>
+    
+    /**
      * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
      * one of the manifest's modes, "" to unpin). Hub-wide: every console of
      * that role shows it. Admin of the hub only. Slow: off the UI thread.
@@ -10231,6 +10366,21 @@ public interface DspiCoreInterface {
      * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
      */
     fun `measureDocs`(`kind`: kotlin.String, `serial`: kotlin.String): List<MeasureDocInfo>
+    
+    /**
+     * The documents of `kind` (as [`DspiCore::measure_docs`]) on both sides:
+     * this console's store and, on a DSPi Link session to a hub that keeps
+     * them, the hub's ([`DspiCore::hub_measure_docs`]; its measurements are
+     * device `serial`'s, "" the open device's). Each row says where it is
+     * (`local`, `hub` or `both`). **The hub's wins:** an id both sides hold
+     * with different content (any field of the entry differs) is listed as
+     * the hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. A hub that cannot be read leaves the local rows, with
+     * `hub_notice_key` saying why. A round trip on a hub: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+    fun `measureDocsMerged`(`kind`: kotlin.String, `serial`: kotlin.String): MeasureDocsMerged
     
     /**
      * The microphone is at the next position (or the headphones reseated):
@@ -16284,6 +16434,143 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Delete document `id` from the hub (`measure.doc.delete`). Admin of the
+     * hub only. This console's own copy, if any, stays. Slow: off the UI
+     * thread.
+     *
+     * Errors: [`DspiError::Denied`] below Admin; as
+     * [`DspiCore::hub_measure_doc_rename`].
+     */
+    @Throws(DspiException::class)override fun `hubMeasureDocDelete`(`id`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_delete(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Document `id` on the hub with its text (`measure.doc.get`): a large
+     * one part by part, the whole checked against the hub's size and hash
+     * and read by its kind's reader. Every role. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; `protocol` for an answer
+     * that does not make the document it announced; as
+     * [`DspiCore::hub_measure_docs`].
+     */
+    @Throws(DspiException::class)override fun `hubMeasureDocGet`(`id`: kotlin.String): HubMeasureDocument {
+            return FfiConverterTypeHubMeasureDocument.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_get(
+        it, FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Set document `id`'s note on the hub (`measure.doc.note`; any Unicode,
+     * at most 4096 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: as [`DspiCore::hub_measure_doc_rename`].
+     */
+    @Throws(DspiException::class)override fun `hubMeasureDocNote`(`id`: kotlin.String, `note`: kotlin.String): MeasureDocInfo {
+            return FfiConverterTypeMeasureDocInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_note(
+        it, FfiConverterString.lower(`id`),FfiConverterString.lower(`note`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * File `document` (a measurement, microphone or target document's text)
+     * on the hub (`measure.doc.put`), under the id it carries. It is read
+     * and bounded here first (a text that is not such a document is refused
+     * with nothing sent); a measurement without a serial takes the open
+     * device's, a document without a store id the one a store would make
+     * first (from its time). Sent whole up to 61 440 bytes compact, in parts
+     * past it. The same document again is `created: false`. Control or
+     * Admin of the hub. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not such a
+     * document or past its bound (nothing sent), or the hub's
+     * `bad_request`; [`DspiError::Link`] `conflict` (the hub holds another
+     * document with this id, or a cap is reached) or `busy` (too many
+     * uploads on the hub); [`DspiError::Denied`] for a Viewer;
+     * [`DspiError::ReadOnly`]; as [`DspiCore::hub_measure_docs`].
+     */
+    @Throws(DspiException::class)override fun `hubMeasureDocPut`(`document`: kotlin.String): HubMeasureDocPut {
+            return FfiConverterTypeHubMeasureDocPut.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_put(
+        it, FfiConverterString.lower(`document`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Rename document `id` on the hub (`measure.doc.rename`; any Unicode, at
+     * most 256 characters). Control or Admin. Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::Link`] `not_found`; [`DspiError::InvalidArgument`]
+     * past 256 characters (the hub's `bad_request`); as
+     * [`DspiCore::hub_measure_doc_put`].
+     */
+    @Throws(DspiException::class)override fun `hubMeasureDocRename`(`id`: kotlin.String, `name`: kotlin.String): MeasureDocInfo {
+            return FfiConverterTypeMeasureDocInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_measure_doc_rename(
+        it, FfiConverterString.lower(`id`),FfiConverterString.lower(`name`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The hub's documents of `kind` (`measurement`, `mic`, `target`; ""
+     * every kind), oldest first within a kind (`measure.doc.list`): the
+     * measurements of device `serial` ("" the open device's; with kind ""
+     * and no device open, none), every microphone and target. Every role.
+     * Slow: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind;
+     * [`DspiError::Unsupported`] without the `hub_measure` cap (nothing
+     * sent); [`DspiError::Disconnected`] (also for kind `measurement`, serial
+     * "" and no device open); the hub's refusal.
+     */
+    @Throws(DspiException::class)override fun `hubMeasureDocs`(`kind`: kotlin.String, `serial`: kotlin.String): List<MeasureDocInfo> {
+            return FfiConverterSequenceTypeMeasureDocInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_hub_measure_docs(
+        it, FfiConverterString.lower(`kind`),FfiConverterString.lower(`serial`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Pin `role`'s mode on the hub (`viewer`, `control`, `admin`; `mode`
      * one of the manifest's modes, "" to unpin). Hub-wide: every console of
      * that role shows it. Admin of the hub only. Slow: off the UI thread.
@@ -17702,6 +17989,32 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_docs(
+        it, FfiConverterString.lower(`kind`),FfiConverterString.lower(`serial`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The documents of `kind` (as [`DspiCore::measure_docs`]) on both sides:
+     * this console's store and, on a DSPi Link session to a hub that keeps
+     * them, the hub's ([`DspiCore::hub_measure_docs`]; its measurements are
+     * device `serial`'s, "" the open device's). Each row says where it is
+     * (`local`, `hub` or `both`). **The hub's wins:** an id both sides hold
+     * with different content (any field of the entry differs) is listed as
+     * the hub's, and this console's as a local copy beside it; nothing is
+     * overwritten. A hub that cannot be read leaves the local rows, with
+     * `hub_notice_key` saying why. A round trip on a hub: off the UI thread.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for an unknown kind.
+     */
+    @Throws(DspiException::class)override fun `measureDocsMerged`(`kind`: kotlin.String, `serial`: kotlin.String): MeasureDocsMerged {
+            return FfiConverterTypeMeasureDocsMerged.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_docs_merged(
         it, FfiConverterString.lower(`kind`),FfiConverterString.lower(`serial`),_status)
 }
     }
@@ -31407,6 +31720,10 @@ data class HubCaps (
      */
     var `rollout`: kotlin.Boolean, 
     /**
+     * `measure.doc.*` ([`DspiCore::hub_measure_docs`]).
+     */
+    var `hubMeasure`: kotlin.Boolean, 
+    /**
      * Every cap of the hub's `hello`, as it sent them.
      */
     var `caps`: List<kotlin.String>
@@ -31421,6 +31738,7 @@ data class HubCaps (
 public object FfiConverterTypeHubCaps: FfiConverterRustBuffer<HubCaps> {
     override fun read(buf: ByteBuffer): HubCaps {
         return HubCaps(
+            FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
@@ -31462,6 +31780,7 @@ public object FfiConverterTypeHubCaps: FfiConverterRustBuffer<HubCaps> {
             FfiConverterBoolean.allocationSize(value.`groupParams`) +
             FfiConverterBoolean.allocationSize(value.`groupApply`) +
             FfiConverterBoolean.allocationSize(value.`rollout`) +
+            FfiConverterBoolean.allocationSize(value.`hubMeasure`) +
             FfiConverterSequenceString.allocationSize(value.`caps`)
     )
 
@@ -31484,6 +31803,7 @@ public object FfiConverterTypeHubCaps: FfiConverterRustBuffer<HubCaps> {
             FfiConverterBoolean.write(value.`groupParams`, buf)
             FfiConverterBoolean.write(value.`groupApply`, buf)
             FfiConverterBoolean.write(value.`rollout`, buf)
+            FfiConverterBoolean.write(value.`hubMeasure`, buf)
             FfiConverterSequenceString.write(value.`caps`, buf)
     }
 }
@@ -32654,6 +32974,90 @@ public object FfiConverterTypeHubLimitsSet: FfiConverterRustBuffer<HubLimitsSet>
     override fun write(value: HubLimitsSet, buf: ByteBuffer) {
             FfiConverterSequenceString.write(value.`held`, buf)
             FfiConverterTypeHubAdminState.write(value.`state`, buf)
+    }
+}
+
+
+
+/**
+ * A document filed on the hub ([`DspiCore::hub_measure_doc_put`]).
+ */
+data class HubMeasureDocPut (
+    /**
+     * Its entry on the hub.
+     */
+    var `doc`: MeasureDocInfo, 
+    /**
+     * False: the hub already held this document with the same content.
+     */
+    var `created`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubMeasureDocPut: FfiConverterRustBuffer<HubMeasureDocPut> {
+    override fun read(buf: ByteBuffer): HubMeasureDocPut {
+        return HubMeasureDocPut(
+            FfiConverterTypeMeasureDocInfo.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubMeasureDocPut) = (
+            FfiConverterTypeMeasureDocInfo.allocationSize(value.`doc`) +
+            FfiConverterBoolean.allocationSize(value.`created`)
+    )
+
+    override fun write(value: HubMeasureDocPut, buf: ByteBuffer) {
+            FfiConverterTypeMeasureDocInfo.write(value.`doc`, buf)
+            FfiConverterBoolean.write(value.`created`, buf)
+    }
+}
+
+
+
+/**
+ * A measurement document on the hub with its text
+ * ([`DspiCore::hub_measure_doc_get`]).
+ */
+data class HubMeasureDocument (
+    /**
+     * Its entry on the hub.
+     */
+    var `doc`: MeasureDocInfo, 
+    /**
+     * The document's text (compact JSON), read and checked by its kind's
+     * reader.
+     */
+    var `document`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHubMeasureDocument: FfiConverterRustBuffer<HubMeasureDocument> {
+    override fun read(buf: ByteBuffer): HubMeasureDocument {
+        return HubMeasureDocument(
+            FfiConverterTypeMeasureDocInfo.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HubMeasureDocument) = (
+            FfiConverterTypeMeasureDocInfo.allocationSize(value.`doc`) +
+            FfiConverterString.allocationSize(value.`document`)
+    )
+
+    override fun write(value: HubMeasureDocument, buf: ByteBuffer) {
+            FfiConverterTypeMeasureDocInfo.write(value.`doc`, buf)
+            FfiConverterString.write(value.`document`, buf)
     }
 }
 
@@ -34438,7 +34842,17 @@ data class HubServerEvent (
      * `fw.rollout.changed`'s whole record; [`HubServerEvent::serial`] is
      * the device whose entry changed, where the hub says.
      */
-    var `rollout`: HubRollout?
+    var `rollout`: HubRollout?, 
+    /**
+     * `measure.doc.changed`'s document id ([`HubServerEvent::change`] is
+     * `put`, `rename`, `note` or `delete`; [`HubServerEvent::serial`] the
+     * measured device, "" for a microphone or target).
+     */
+    var `measureDoc`: kotlin.String, 
+    /**
+     * `measure.doc.changed`'s document kind: `measurement`, `mic` or `target`.
+     */
+    var `measureKind`: kotlin.String
 ) {
     
     companion object
@@ -34460,6 +34874,8 @@ public object FfiConverterTypeHubServerEvent: FfiConverterRustBuffer<HubServerEv
             FfiConverterOptionalTypeHubScheduleRun.read(buf),
             FfiConverterOptionalTypeHubGroup.read(buf),
             FfiConverterOptionalTypeHubRollout.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -34473,7 +34889,9 @@ public object FfiConverterTypeHubServerEvent: FfiConverterRustBuffer<HubServerEv
             FfiConverterOptionalTypeHubAlarm.allocationSize(value.`alarm`) +
             FfiConverterOptionalTypeHubScheduleRun.allocationSize(value.`run`) +
             FfiConverterOptionalTypeHubGroup.allocationSize(value.`group`) +
-            FfiConverterOptionalTypeHubRollout.allocationSize(value.`rollout`)
+            FfiConverterOptionalTypeHubRollout.allocationSize(value.`rollout`) +
+            FfiConverterString.allocationSize(value.`measureDoc`) +
+            FfiConverterString.allocationSize(value.`measureKind`)
     )
 
     override fun write(value: HubServerEvent, buf: ByteBuffer) {
@@ -34487,6 +34905,8 @@ public object FfiConverterTypeHubServerEvent: FfiConverterRustBuffer<HubServerEv
             FfiConverterOptionalTypeHubScheduleRun.write(value.`run`, buf)
             FfiConverterOptionalTypeHubGroup.write(value.`group`, buf)
             FfiConverterOptionalTypeHubRollout.write(value.`rollout`, buf)
+            FfiConverterString.write(value.`measureDoc`, buf)
+            FfiConverterString.write(value.`measureKind`, buf)
     }
 }
 
@@ -36431,6 +36851,57 @@ public object FfiConverterTypeMeasureDocInfo: FfiConverterRustBuffer<MeasureDocI
 
 
 /**
+ * The documents of both sides ([`DspiCore::measure_docs_merged`]).
+ */
+data class MeasureDocsMerged (
+    /**
+     * By kind (measurement, mic, target), then oldest first; on an id both
+     * sides hold with different content the hub's row comes first, then the
+     * local copy.
+     */
+    var `entries`: List<MergedMeasureDoc>, 
+    /**
+     * The hub's list is in it (a hub with `hub_measure` answered).
+     */
+    var `hubListed`: kotlin.Boolean, 
+    /**
+     * Why the hub's list is not in it, as a notice row; "" when it is, or
+     * when there is no such hub.
+     */
+    var `hubNoticeKey`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureDocsMerged: FfiConverterRustBuffer<MeasureDocsMerged> {
+    override fun read(buf: ByteBuffer): MeasureDocsMerged {
+        return MeasureDocsMerged(
+            FfiConverterSequenceTypeMergedMeasureDoc.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureDocsMerged) = (
+            FfiConverterSequenceTypeMergedMeasureDoc.allocationSize(value.`entries`) +
+            FfiConverterBoolean.allocationSize(value.`hubListed`) +
+            FfiConverterString.allocationSize(value.`hubNoticeKey`)
+    )
+
+    override fun write(value: MeasureDocsMerged, buf: ByteBuffer) {
+            FfiConverterSequenceTypeMergedMeasureDoc.write(value.`entries`, buf)
+            FfiConverterBoolean.write(value.`hubListed`, buf)
+            FfiConverterString.write(value.`hubNoticeKey`, buf)
+    }
+}
+
+
+
+/**
  * One preflight finding: a notice key and its words.
  */
 data class MeasureIssue (
@@ -37046,6 +37517,56 @@ public object FfiConverterTypeMeasureTiming: FfiConverterRustBuffer<MeasureTimin
             FfiConverterSequenceString.write(value.`reasons`, buf)
             FfiConverterByteArray.write(value.`cycleOutputs`, buf)
             FfiConverterSequenceDouble.write(value.`cycleResidualsUs`, buf)
+    }
+}
+
+
+
+/**
+ * One row of the merged list ([`DspiCore::measure_docs_merged`]).
+ */
+data class MergedMeasureDoc (
+    /**
+     * The entry: the hub's where it holds the id (the hub's wins).
+     */
+    var `doc`: MeasureDocInfo, 
+    /**
+     * [`super::WHERE_LOCAL`], [`super::WHERE_HUB`] or [`super::WHERE_BOTH`]
+     * (`where` in JSON).
+     */
+    var `location`: kotlin.String, 
+    /**
+     * This console's own copy of an id the hub holds with different
+     * content: listed beside the hub's, never overwritten by it.
+     */
+    var `localCopy`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMergedMeasureDoc: FfiConverterRustBuffer<MergedMeasureDoc> {
+    override fun read(buf: ByteBuffer): MergedMeasureDoc {
+        return MergedMeasureDoc(
+            FfiConverterTypeMeasureDocInfo.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MergedMeasureDoc) = (
+            FfiConverterTypeMeasureDocInfo.allocationSize(value.`doc`) +
+            FfiConverterString.allocationSize(value.`location`) +
+            FfiConverterBoolean.allocationSize(value.`localCopy`)
+    )
+
+    override fun write(value: MergedMeasureDoc, buf: ByteBuffer) {
+            FfiConverterTypeMeasureDocInfo.write(value.`doc`, buf)
+            FfiConverterString.write(value.`location`, buf)
+            FfiConverterBoolean.write(value.`localCopy`, buf)
     }
 }
 
@@ -46324,6 +46845,34 @@ public object FfiConverterSequenceTypeMeasureOutput: FfiConverterRustBuffer<List
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeMeasureOutput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMergedMeasureDoc: FfiConverterRustBuffer<List<MergedMeasureDoc>> {
+    override fun read(buf: ByteBuffer): List<MergedMeasureDoc> {
+        val len = buf.getInt()
+        return List<MergedMeasureDoc>(len) {
+            FfiConverterTypeMergedMeasureDoc.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MergedMeasureDoc>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMergedMeasureDoc.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MergedMeasureDoc>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMergedMeasureDoc.write(it, buf)
         }
     }
 }
