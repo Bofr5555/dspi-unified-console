@@ -34,6 +34,7 @@ import se.bofr.dspi.ui.MacColors
 import se.bofr.dspi.ui.WritesExempt
 import se.bofr.dspi.ui.link.NetworkHubRow
 import se.bofr.dspi.ui.link.NetworkingController
+import se.bofr.dspi.ui.link.PairedHubRow
 
 /** macOS LinkDiscovery.defaultPort. */
 private const val DEFAULT_PORT = 11915
@@ -105,10 +106,11 @@ fun NetworkingSettingsTab(controller: NetworkingController) = WritesExempt {
         }
         if (s.paired.isNotEmpty()) {
             item {
-                SettingsSection("Paired Hubs", footer = "Forgetting a hub deletes its pairing; it asks for a PIN again next time.") {
+                // -- WP PINTLS -- Forget is the only way back to an unencrypted pairing (owner decision 2026-11-17)
+                SettingsSection("Paired Hubs", footer = PAIRED_HUBS_FOOTER) {
                     s.paired.forEach { p ->
                         // -- WP SECAN -- the key it is pinned to, or that it is not
-                        SettingRow(p.name.ifEmpty { p.id }, detail = if (p.hubKey.isEmpty()) "Unencrypted" else "Key ${p.hubKey}") {
+                        SettingRow(p.name.ifEmpty { p.id }, detail = pairedHubDetail(p)) {
                             TextButton(onClick = { controller.forget(p.id) }) { Text("Forget") }
                         }
                     }
@@ -172,3 +174,16 @@ private fun AddHubDialog(controller: NetworkingController, onDismiss: () -> Unit
 
 /** -- WP SECAN -- the hub list's badge for a hub without encryption (red). */
 private const val UNENCRYPTED_BADGE = "Unencrypted"
+
+// -- WP PINTLS -- (owner decision 2026-11-17) Pair Again keeps a hub that had a key encrypted-only;
+// Forget removes everything, the only way back to an unencrypted pairing.
+internal const val PAIRED_HUBS_FOOTER =
+    "Pairing again with a hub that had a key keeps it encrypted-only. Forgetting a hub deletes its pairing and its key; " +
+        "it asks for a PIN again next time, and a hub without encryption can then be paired unencrypted."
+
+/** A paired hub's line: the key it is pinned to, encrypted-only until paired again, or unencrypted. */
+internal fun pairedHubDetail(p: PairedHubRow): String = when {
+    p.hubKey.isNotEmpty() -> "Key ${p.hubKey}"
+    p.tlsOnly -> "Encrypted only; pair again"
+    else -> "Unencrypted"
+}

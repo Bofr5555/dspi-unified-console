@@ -185,8 +185,12 @@ public:
     Q_INVOKABLE void retryNow();
     Q_INVOKABLE void dismissTokenWarning();
     // -- WP SECQT -- Dial the hub of the last failure again with no stored
-    // credential, so it asks for its PIN and shows its key; the credential is
-    // replaced only by the new pairing. Only while rePairOffered.
+    // token, so it asks for its PIN and shows its key. Only while rePairOffered.
+    // -- WP PINTLS -- A hub that was pinned stays TLS-only (the core's unpaired
+    // record replaces the stored one): a plaintext hub then fails with
+    // tls_required_pinned before any PIN goes out. After tls_required_pinned
+    // this is Forget Hub: the record is removed, the only way back to an
+    // unencrypted pairing (owner decision 2026-11-17).
     Q_INVOKABLE void rePair();
     // Leaves the failure that offered re-pairing without pairing again
     Q_INVOKABLE void dismissRePair();
@@ -235,6 +239,8 @@ private:
     void applyHello(const QJsonObject &hello);
     void applyStatus(const Status &s);
     void storeToken(const QString &hubId, const QString &token);
+    // -- WP PINTLS -- on the worker: drop the token, keep a hub once pinned TLS-only
+    void dropPairing(const QString &hubId);
     // -- WP SECQT --
     static Security readSecurity(FfiCore *core);
     void applySecurity(const Security &s);

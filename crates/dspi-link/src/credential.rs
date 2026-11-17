@@ -10,9 +10,16 @@
 //!   link's), the SHA-256 of the hub key's SubjectPublicKeyInfo (base64url, 32
 //!   bytes), flags (`t`: TLS required, always set for a pin), and the key the
 //!   pinned one announced as its successor, signature verified, if any.
+//! - -- WP PINTLS -- `v2.<token>.<old pin or empty>.s`: a hub that **was pinned**
+//!   and whose pairing was dropped (Pair Again, a refused token; owner decision
+//!   2026-11-17). No key is enforced, but the hub is reached over TLS only: a
+//!   plaintext connect or pairing is refused (`tls_required_pinned`) before any
+//!   PIN or token goes out, and a TLS pairing pins the new key. Only removing
+//!   the record (Forget hub) allows plaintext again. See [`unpaired_record`].
 //!
-//! A string that starts with `v2.` but does not parse is no credential at all (pair
-//! again; -- WP SECBFIXA --): it is never sent as a token. Anything else that is
+//! A string that starts with `v2.` but does not parse carries no token and no key
+//! (pair again; -- WP SECBFIXA --): it is never sent as a token, and it still marks
+//! the hub TLS-only (-- WP PINTLS --), as the superseded record does. Anything else that is
 //! not a `v2` is read as a `v1` token.
 //!
 //! **The pairing link** `dspi://pair?h=<hid>&a=<host:port>&k=<pin>&p=<pin code>`
@@ -31,6 +38,9 @@ pub type Pin = [u8; 32];
 const V2: &str = "v2";
 /// Flag: the hub is only ever reached over TLS.
 const FLAG_TLS: char = 't';
+/// -- WP PINTLS -- Flag: the pin is superseded (the hub was pinned, its pairing
+/// dropped): TLS only, any key at the next pairing.
+const FLAG_SUPERSEDED: char = 's';
 /// Longest credential or pairing link read; anything longer is not one.
 const MAX_TEXT: usize = 4096;
 
@@ -44,6 +54,13 @@ pub struct Credential {
     /// The key [`Self::pin`]'s key announced as its successor (`hello.hub.key_next`
     /// on an earlier connection, its signature verified): accepted directly.
     pub next: Option<Pin>,
+    // -- WP PINTLS --
+    /// The hub was pinned before and its pairing was dropped (Pair Again):
+    /// TLS only, with no key enforced until the next pairing pins one. Only
+    /// meaningful without [`Self::pin`].
+    pub pinned_before: bool,
+    /// The superseded key, for display only (never checked).
+    pub previous: Option<Pin>,
 }
 
 /// By hand: the token never reaches a log.
@@ -53,16 +70,18 @@ impl fmt::Debug for Credential {
             .field("token", &if self.token.is_empty() { "" } else { "<redacted>" })
             .field("pin", &self.pin.map(|p| pin_display(&p)))
             .field("next", &self.next.map(|p| pin_display(&p)))
+            .field("pinned_before", &self.pinned_before)
             .finish()
     }
 }
 
 impl Credential {
     /// A credential string (`v1` or `v2`), trimmed. Never fails. -- WP SECBFIXA --
-    /// A string that starts with `v2.` but is damaged is **no credential** (pair
-    /// again): it is never sent as a bare token, and a pinned record never
-    /// degrades to an unpinned one that could fall back to plaintext. Anything
-    /// else that is not a `v2` is a `v1` token.
+    /// A string that starts with `v2.` but is damaged carries **no token and no
+    /// key** (pair again): it is never sent as a bare token, and it stays
+    /// [`Self::pinned_before`] (-- WP PINTLS --, review F1), so a pinned record
+    /// never degrades to one that could fall back to plaintext. Anything else
+    /// that is not a `v2` is a `v1` token.
     pub fn parse(text: &str) -> Credential {
         let text = text.trim();
         if let Some(c) = Self::parse_v2(text) {
@@ -70,9 +89,19 @@ impl Credential {
         }
         if text.starts_with("v2.") {
             log::warn!("dspi-link: a stored v2 credential is damaged; pairing again is needed");
-            return Credential::default();
+            // -- WP PINTLS -- (review F1) a `v2` record was pinned once: no token,
+            // no key, but still TLS only, so a damaged record cannot bring a hub
+            // back to plaintext (only Forget hub does)
+            return Credential { pinned_before: true, ..Credential::default() };
         }
-        Credential { token: text.to_owned(), pin: None, next: None }
+        Credential { token: text.to_owned(), ..Credential::default() }
+    }
+
+    // -- WP PINTLS --
+    /// The hub may only be reached over TLS: it is pinned, or was pinned before
+    /// (owner decision 2026-11-17). A plaintext connect is then refused.
+    pub fn tls_only(&self) -> bool {
+        self.pin.is_some() || self.pinned_before
     }
 
     fn parse_v2(text: &str) -> Option<Credential> {
@@ -85,11 +114,22 @@ impl Credential {
         }
         let token = BASE64URL_NOPAD.decode(parts.next()?.as_bytes()).ok()?;
         let token = String::from_utf8(token).ok()?;
-        let pin = pin_from_b64url(parts.next()?)?;
+        let pin_text = parts.next()?;
         let flags = parts.next()?;
         if !flags.chars().all(|c| c.is_ascii_lowercase()) {
             return None;
         }
+        // -- WP PINTLS -- a superseded pin: TLS only, no key enforced, no successor
+        if flags.contains(FLAG_SUPERSEDED) {
+            let previous = if pin_text.is_empty() { None } else { Some(pin_from_b64url(pin_text)?) };
+            // (review F2) such a record never carries a token: one would go out
+            // to whatever key answers, unchecked
+            if parts.next().is_some() || !token.is_empty() {
+                return None;
+            }
+            return Some(Credential { token, pin: None, next: None, pinned_before: true, previous });
+        }
+        let pin = pin_from_b64url(pin_text)?;
         let next = match parts.next() {
             Some(n) => Some(pin_from_b64url(n)?),
             None => None,
@@ -97,12 +137,20 @@ impl Credential {
         if parts.next().is_some() {
             return None;
         }
-        Some(Credential { token, pin: Some(pin), next })
+        Some(Credential { token, pin: Some(pin), next, ..Credential::default() })
     }
 
-    /// The string to store: the bare token without a pin (`v1`), else `v2`.
+    /// The string to store: the bare token without a pin (`v1`), else `v2`
+    /// (-- WP PINTLS -- also for a hub [`Self::pinned_before`]).
     pub fn encode(&self) -> String {
         let Some(pin) = &self.pin else {
+            if self.pinned_before {
+                // No token (review F2): none is ever kept without the key it belongs to
+                return format!(
+                    "{V2}..{}.{FLAG_SUPERSEDED}",
+                    self.previous.map(|p| BASE64URL_NOPAD.encode(&p)).unwrap_or_default()
+                );
+            }
             return self.token.clone();
         };
         let mut out = format!(
@@ -116,6 +164,24 @@ impl Credential {
         }
         out
     }
+}
+
+// -- WP PINTLS --
+/// What to keep in place of the stored credential `text` when its pairing is
+/// dropped (Pair Again after `hub_key_changed` or a TLS failure, a refused or
+/// revoked token): for a hub that was ever pinned (any `v2`, a damaged one
+/// included) a token-less record that still requires TLS (`v2..<old pin>.s`),
+/// so a later plaintext connect or pairing is refused before any PIN goes out
+/// (owner decision 2026-11-17). "" (nothing to keep) for a `v1` token or none:
+/// such a hub never had TLS. Forget hub (removing the record) is the only way
+/// back to plaintext.
+pub fn unpaired_record(text: &str) -> String {
+    let text = text.trim();
+    let c = Credential::parse(text);
+    if !c.tls_only() {
+        return String::new();
+    }
+    Credential { pinned_before: true, previous: c.pin.or(c.previous), ..Credential::default() }.encode()
 }
 
 /// A pin from base64url (no padding; trailing `=` tolerated).
@@ -181,7 +247,7 @@ impl fmt::Debug for PairLink {
 impl PairLink {
     /// The credential to connect with: pinned to `k`, no token yet.
     pub fn credential(&self) -> Credential {
-        Credential { token: String::new(), pin: Some(self.key), next: None }
+        Credential { token: String::new(), pin: Some(self.key), ..Credential::default() }
     }
 }
 
@@ -271,34 +337,37 @@ mod tests_wp_seccore {
 
     const PIN: Pin = [7u8; 32];
     const NEXT: Pin = [9u8; 32];
+    /// -- WP PINTLS -- (review F1) what a damaged `v2` record reads as.
+    const DAMAGED: Credential =
+        Credential { token: String::new(), pin: None, next: None, pinned_before: true, previous: None };
 
     #[test]
     fn wp_seccore_v1_is_the_bare_token() {
         let c = Credential::parse(" tok-12-0 ");
-        assert_eq!(c, Credential { token: "tok-12-0".into(), pin: None, next: None });
+        assert_eq!(c, Credential { token: "tok-12-0".into(), ..Credential::default() });
         assert_eq!(c.encode(), "tok-12-0");
     }
 
     #[test]
     fn wp_seccore_v2_round_trips() {
         for c in [
-            Credential { token: "abc.def+/=".into(), pin: Some(PIN), next: None },
-            Credential { token: String::new(), pin: Some(PIN), next: None },
-            Credential { token: "t".into(), pin: Some(PIN), next: Some(NEXT) },
+            Credential { token: "abc.def+/=".into(), pin: Some(PIN), ..Credential::default() },
+            Credential { token: String::new(), pin: Some(PIN), ..Credential::default() },
+            Credential { token: "t".into(), pin: Some(PIN), next: Some(NEXT), ..Credential::default() },
         ] {
             let s = c.encode();
             assert!(s.starts_with("v2."), "{s}");
             assert_eq!(Credential::parse(&s), c);
         }
         // A successor equal to the pin is not written
-        let same = Credential { token: "t".into(), pin: Some(PIN), next: Some(PIN) };
+        let same = Credential { token: "t".into(), pin: Some(PIN), next: Some(PIN), ..Credential::default() };
         assert_eq!(Credential::parse(&same.encode()).next, None);
     }
 
     // -- WP SECBFIXA -- (review secb F1) a damaged v2 is no credential, never a token
     #[test]
     fn wp_seccore_malformed_v2_is_no_credential() {
-        let good = Credential { token: "t".into(), pin: Some(PIN), next: None }.encode();
+        let good = Credential { token: "t".into(), pin: Some(PIN), ..Credential::default() }.encode();
         let pin = pin_to_b64url(&PIN);
         for bad in [
             "v2.dA.short.t".to_owned(),
@@ -308,7 +377,8 @@ mod tests_wp_seccore {
             "v2.!!.AAAA.t".to_owned(),
             good.replace(&pin, &pin[..pin.len() - 1]),
         ] {
-            assert_eq!(Credential::parse(&bad), Credential::default(), "{bad}");
+            // -- WP PINTLS -- (review F1) no token, no key, and still TLS only
+            assert_eq!(Credential::parse(&bad), DAMAGED, "{bad}");
         }
         // Not v2-shaped at all: still a v1 token
         assert_eq!(Credential::parse("v2token").token, "v2token");
@@ -317,7 +387,7 @@ mod tests_wp_seccore {
 
     #[test]
     fn wp_seccore_debug_never_shows_the_token() {
-        let c = Credential { token: "secret-token".into(), pin: Some(PIN), next: None };
+        let c = Credential { token: "secret-token".into(), pin: Some(PIN), ..Credential::default() };
         assert!(!format!("{c:?}").contains("secret-token"));
         let l = parse_pair_link(&format!("dspi://pair?h=abc&a=hub.local:11915&k={}&p=482913", pin_to_b64url(&PIN)))
             .unwrap();
@@ -357,6 +427,125 @@ mod tests_wp_seccore {
         ];
         for (text, want) in cases {
             assert_eq!(parse_pair_link(&text), Err(want), "{text}");
+        }
+    }
+
+    // -- WP PINTLS -- (owner decision 2026-11-17) a hub once pinned stays TLS-only
+    #[test]
+    fn wp_pintls_unpaired_record_keeps_tls_only() {
+        let pinned = Credential { token: "secret".into(), pin: Some(PIN), next: Some(NEXT), ..Credential::default() };
+        let kept = unpaired_record(&pinned.encode());
+        assert!(kept.starts_with("v2."), "{kept}");
+        assert!(!kept.contains(&BASE64URL_NOPAD.encode(b"secret")), "the token is dropped");
+        let c = Credential::parse(&kept);
+        assert_eq!(c.token, "");
+        assert_eq!(c.pin, None, "no key is enforced: the next pairing pins the new one");
+        assert_eq!(c.next, None);
+        assert!(c.pinned_before && c.tls_only());
+        assert_eq!(c.previous, Some(PIN));
+        // Pair Again twice: still TLS-only, same record
+        assert_eq!(unpaired_record(&kept), kept);
+        // A damaged v2 was pinned once too: TLS-only, no previous key
+        let damaged = Credential::parse(&unpaired_record("v2.dA.short.t"));
+        assert!(damaged.pinned_before && damaged.previous.is_none());
+        // A pairing link's pin with no token
+        let link_only = Credential { pin: Some(PIN), ..Credential::default() };
+        assert!(Credential::parse(&unpaired_record(&link_only.encode())).pinned_before);
+        // A v1 token or nothing: never pinned, nothing to keep
+        assert_eq!(unpaired_record("tok-12-0"), "");
+        assert_eq!(unpaired_record(""), "");
+        assert!(!Credential::parse("tok-12-0").tls_only());
+    }
+
+    #[test]
+    fn wp_pintls_superseded_round_trips_and_refuses_damage() {
+        for c in [
+            Credential { pinned_before: true, previous: Some(PIN), ..Credential::default() },
+            Credential { pinned_before: true, ..Credential::default() },
+        ] {
+            let s = c.encode();
+            assert!(s.ends_with(".s"), "{s}");
+            assert_eq!(Credential::parse(&s), c);
+        }
+        // (review F2) a superseded record never carries a token: not written, and
+        // one that has it is damaged (no token, still TLS only)
+        let with_token = Credential { token: "t".into(), pinned_before: true, ..Credential::default() };
+        assert_eq!(with_token.encode(), "v2...s");
+        assert_eq!(Credential::parse(&format!("v2.dA.{}.s", pin_to_b64url(&PIN))), DAMAGED);
+        assert_eq!(Credential::parse("v2.dA..s"), DAMAGED);
+        // A new pin replaces the superseded state
+        let repinned = Credential {
+            token: "t".into(),
+            pin: Some(NEXT),
+            pinned_before: true,
+            previous: Some(PIN),
+            ..Credential::default()
+        };
+        let back = Credential::parse(&repinned.encode());
+        assert_eq!((back.pin, back.pinned_before, back.previous), (Some(NEXT), false, None));
+        // Damaged superseded records are no credential, never a token
+        let p = pin_to_b64url(&PIN);
+        for bad in [format!("v2..{p}.s.{p}"), "v2..AAAA.s".to_owned(), "v2.!!..s".to_owned()] {
+            assert_eq!(Credential::parse(&bad), DAMAGED, "{bad}");
+            assert!(Credential::parse(&unpaired_record(&bad)).pinned_before, "{bad}");
+        }
+        // Debug shows the state, never the token
+        let c = Credential { token: "secret-token".into(), pinned_before: true, ..Credential::default() };
+        let d = format!("{c:?}");
+        assert!(d.contains("pinned_before: true") && !d.contains("secret-token"), "{d}");
+    }
+
+    // -- WP PINTLS -- (review) the record format under damage: thousands of
+    // mutated and random records. Never a panic; anything that starts with
+    // `v2.` stays TLS only whatever is done to it (only removing the record
+    // allows plaintext), never yields its own text as a token, and a record
+    // without a key never carries a token.
+    #[test]
+    fn wp_pintls_fuzz_a_v2_record_never_degrades_to_plaintext() {
+        let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let seeds = [
+            Credential { token: "tok-12-0".into(), pin: Some(PIN), ..Credential::default() }.encode(),
+            Credential { token: "t".into(), pin: Some(PIN), next: Some(NEXT), ..Credential::default() }.encode(),
+            Credential { pinned_before: true, previous: Some(PIN), ..Credential::default() }.encode(),
+            Credential { pinned_before: true, ..Credential::default() }.encode(),
+            "v2.".to_owned(),
+        ];
+        let alphabet: Vec<char> = "v2.st=-_ AZaz09\n\u{e9}%".chars().collect();
+        for round in 0..20_000_usize {
+            let mut text: Vec<char> = seeds[round % seeds.len()].chars().collect();
+            for _ in 0..=(next() % 4) {
+                let at = if text.len() <= 3 { 3 } else { 3 + (next() as usize) % (text.len() - 2) };
+                let c = alphabet[(next() as usize) % alphabet.len()];
+                match next() % 4 {
+                    0 if at < text.len() => text[at] = c,
+                    1 => text.insert(at.min(text.len()), c),
+                    2 if at < text.len() => drop(text.remove(at)),
+                    _ => text.truncate(at.max(3)),
+                }
+            }
+            let text: String = text.into_iter().collect();
+            assert!(text.starts_with("v2."), "{text:?}");
+            let c = Credential::parse(&text);
+            assert!(c.tls_only(), "{text:?} -> {c:?}");
+            assert_ne!(c.token, text.trim(), "{text:?}");
+            assert!(c.pin.is_some() || c.token.is_empty(), "a token with no key to check: {text:?}");
+            assert_eq!(c.pinned_before, c.pin.is_none(), "{text:?}");
+            // What is written back reads the same, and dropping the pairing keeps it TLS only
+            assert_eq!(Credential::parse(&c.encode()), c, "{text:?}");
+            let kept = Credential::parse(&unpaired_record(&text));
+            assert!(kept.pinned_before && kept.token.is_empty() && kept.pin.is_none(), "{text:?} -> {kept:?}");
+            assert_eq!(kept.previous, c.pin.or(c.previous), "{text:?}");
+        }
+        // Not a `v2` record at all: a `v1` token, nothing kept
+        for v1 in ["tok", "v2", "v2x.a.b.s", "V2.a.b.s", "v3..s"] {
+            assert!(!Credential::parse(v1).tls_only(), "{v1}");
+            assert_eq!(unpaired_record(v1), "", "{v1}");
         }
     }
 }

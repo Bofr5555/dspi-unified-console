@@ -39,7 +39,9 @@ class AppNetworkingController(
     private val parseAddress: (String) -> Pair<String, Int>?,
     private val wording: LinkWording = LinkWording.CORE,
     // -- WP SECAN -- the core's `link_credential_hub_key`: the pin a stored credential carries ("" = none)
-    private val credentialKey: (String) -> String = { "" }
+    private val credentialKey: (String) -> String = { "" },
+    // -- WP PINTLS -- the core's `link_credential_tls_only`: the record keeps the hub TLS-only
+    private val credentialTlsOnly: (String) -> Boolean = { false }
 ) : NetworkingController {
     private val visible = MutableStateFlow(false)
     private val pairedRevision = MutableStateFlow(0)
@@ -64,7 +66,7 @@ class AppNetworkingController(
                 hubs = hubs.map { row(it, remote) },
                 browsing = browsing,
                 browseError = error,
-                paired = tokens.paired().map { PairedHubRow(it.hubId, it.name, pinOf(it.hubId)) }, // -- WP SECAN --
+                paired = tokens.paired().map { PairedHubRow(it.hubId, it.name, pinOf(it.hubId), tlsOnlyOf(it.hubId)) }, // -- WP SECAN --
                 status = status(remote),
                 connected = remote != LinkSessionState.Idle
             )
@@ -97,6 +99,9 @@ class AppNetworkingController(
     // -- WP SECAN --
     /** The key fingerprint the stored credential of [hubId] is pinned to, "" when none. */
     private fun pinOf(hubId: String): String = tokens.token(hubId)?.let { runCatching { credentialKey(it) }.getOrNull() }.orEmpty()
+
+    // -- WP PINTLS --
+    private fun tlsOnlyOf(hubId: String): Boolean = tokens.token(hubId)?.let { runCatching { credentialTlsOnly(it) }.getOrNull() } == true
 
     private fun status(s: LinkSessionState): String = when (s) {
         LinkSessionState.Idle -> ""

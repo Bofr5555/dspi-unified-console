@@ -537,13 +537,24 @@ fn wp_secbfixa_a_damaged_v2_credential_is_never_sent_as_a_token() {
     let pin = pin_to_b64url(&key.pin());
     let damaged = credential.replacen(&pin, &pin[..pin.len() - 1], 1);
     assert_ne!(damaged, credential);
-    // The hub lost TLS (or an attacker resets it)
-    hub.set_tls(None);
+    // Over TLS: no token, no key enforced; pair again
     let core = DspiCore::new();
     let hello = connect(&core, &hub, &damaged).unwrap();
     assert!(hello.needs_pairing, "no credential: pair again");
+    assert!(core.link_security().encrypted);
     assert!(hub.tokens_seen().is_empty(), "nothing sent as a token");
     assert_eq!(core.link_security().credential, "");
+    core.link_close();
+    // The hub lost TLS (or an attacker resets it). -- WP PINTLS -- (review F1,
+    // owner decision 2026-11-17) the record was pinned once: still TLS only,
+    // so no plaintext session and no PIN prompt; only Forget hub allows that
+    hub.set_tls(None);
+    let plain = hub.upgrades().0;
+    assert_eq!(code(connect(&core, &hub, &damaged)), "tls_required_pinned");
+    assert_eq!(hub.upgrades().0, plain, "no plaintext session");
+    assert!(hub.tokens_seen().is_empty(), "nothing sent as a token");
+    assert!(link_credential_tls_only(damaged.clone()));
+    assert!(link_credential_tls_only(link_credential_unpaired(damaged)));
 }
 
 #[test]

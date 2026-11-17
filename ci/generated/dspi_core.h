@@ -7556,6 +7556,24 @@ uint32_t dspi_link_parse_pair_link(const char *text, char *buf, uint32_t len);
 uint32_t dspi_link_credential_hub_key(const char *credential, char *buf, uint32_t len);
 
 /**
+ * What to store in place of `credential` when its pairing is dropped
+ * (Pair Again, a refused or revoked token), as plain text: for a hub that
+ * was ever pinned a token-less record that keeps it TLS-only (a plaintext
+ * connect is then `tls_required_pinned`, before any PIN goes out); "" for a
+ * `v1` token or none: remove the record then. Only Forget hub (removing the
+ * record) allows plaintext again. Returns the length needed (1 for ""); 0
+ * for a null `credential` only (store nothing new then). Bytes that are not
+ * UTF-8 are a damaged record: one that began `v2.` stays TLS-only.
+ */
+uint32_t dspi_link_credential_unpaired(const char *credential, char *buf, uint32_t len);
+
+/**
+ * Whether a stored credential reaches its hub over TLS only (pinned, or
+ * pinned before, or a damaged `v2` record). False for a null `credential`.
+ */
+bool dspi_link_credential_tls_only(const char *credential);
+
+/**
  * The WebSocket URL for a hub, as plain text. `path` null or "" is the
  * default (`/dspi/v1`). Returns the length needed; 0 for a null or non-UTF-8
  * `host` or a non-UTF-8 `path`.

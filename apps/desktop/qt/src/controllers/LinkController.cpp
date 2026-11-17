@@ -232,7 +232,7 @@ void LinkController::applyStatus(const Status &s) {
     if (s.tokenRefused && !m_hubId.isEmpty()) {
         const QString hub = m_hubId;
         post([this, hub] {
-            m_store->forget(hub);
+            dropPairing(hub);   // -- WP PINTLS --
             QMetaObject::invokeMethod(this, [this, hub] { track(-1); emit tokensChanged(hub); }, Qt::QueuedConnection);
         });
     }
@@ -384,12 +384,16 @@ void LinkController::dial(const QString &url, const QString &expectedHubId, bool
         QJsonObject hello = dial(used, expectedHubId);
         // Dialled by address: the hub has named itself now, so a token stored
         // for that id may go to it, held to that id
-        if (useStored && isOk(hello) && expectedHubId.isEmpty() && hello.value(QLatin1String("needsPairing")).toBool()
-            && generation == m_generation) {
+        // -- WP PINTLS -- (review F3) also when the answer asks for no PIN and the
+        // record keeps the hub TLS-only (pinned, or pinned before): dialled again
+        // with it, so no unencrypted or unchecked session opens in that hub's name
+        if (useStored && isOk(hello) && expectedHubId.isEmpty() && generation == m_generation) {
             const QString named = str(hello, "hubId");
             const QString stored = m_store->load(named);
-            dialledFor = named;
-            if (!stored.isEmpty()) {
+            const bool asksPin = hello.value(QLatin1String("needsPairing")).toBool();
+            if (asksPin) dialledFor = named;
+            if (!stored.isEmpty() && (asksPin || dspi_link_credential_tls_only(stored.toUtf8().constData()))) {
+                dialledFor = named;
                 used = stored;
                 hello = dial(stored, named);
             }
@@ -406,7 +410,7 @@ void LinkController::dial(const QString &url, const QString &expectedHubId, bool
             return;
         }
         if (ok && hello.value(QLatin1String("tokenRefused")).toBool()) {
-            m_store->forget(str(hello, "hubId"));
+            dropPairing(str(hello, "hubId"));   // -- WP PINTLS --
             used.clear();
         }
         // -- WP SECQT -- the store already holds what went out: the save below
@@ -623,7 +627,18 @@ void LinkController::dismissTokenWarning() {
 
 bool LinkController::offersRePair(const QString &code) {
     return code == QLatin1String("hub_key_changed") || code == QLatin1String("hub_key_unverified")
-           || code == QLatin1String("tls_refused") || code == QLatin1String("tls_required");
+           || code == QLatin1String("tls_refused") || code == QLatin1String("tls_required")
+           || code == QLatin1String("tls_required_pinned");   // -- WP PINTLS -- offered as Forget Hub
+}
+
+// -- WP PINTLS --
+void LinkController::dropPairing(const QString &hubId) {
+    if (hubId.isEmpty()) return;
+    const QByteArray stored = m_store->load(hubId).toUtf8();
+    const QString kept = QString::fromUtf8(
+        readSized([&](char *b, uint32_t n) { return dspi_link_credential_unpaired(stored.constData(), b, n); }));
+    if (kept.isEmpty()) m_store->forget(hubId);
+    else m_store->save(hubId, kept);
 }
 
 LinkController::Security LinkController::readSecurity(FfiCore *core) {
@@ -683,7 +698,18 @@ void LinkController::updateUnsecured() {
 void LinkController::rePair() {
     if (!rePairOffered() || m_lastUrl.isEmpty()) return;
     const QString hub = m_failedHubId.isEmpty() ? m_lastExpected : m_failedHubId;
-    dial(m_lastUrl, hub, m_lastTls, false);
+    // -- WP PINTLS -- before the dial, on the same one-thread worker: Forget Hub
+    // after tls_required_pinned, else the token dropped and a hub once pinned
+    // kept TLS-only; the dial then uses what is stored
+    const bool forgetHub = m_errorCode == QLatin1String("tls_required_pinned");
+    if (!hub.isEmpty()) {
+        post([this, hub, forgetHub] {
+            if (forgetHub) m_store->forget(hub);
+            else dropPairing(hub);
+            QMetaObject::invokeMethod(this, [this, hub] { track(-1); emit tokensChanged(hub); }, Qt::QueuedConnection);
+        });
+    }
+    dial(m_lastUrl, hub, m_lastTls, !hub.isEmpty());
 }
 
 void LinkController::dismissRePair() {

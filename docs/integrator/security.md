@@ -58,6 +58,23 @@ macOS (all through the one Rust core, which does the pinning), `uconsole`, and t
 - **No downgrade.** A hub that advertises TLS (`tls=1` in its DNS-SD record) or is pinned is reached over TLS only; if
   TLS fails the client reports `tls_refused` and does not try plaintext. And a token
   once used over TLS is refused by the hub over plaintext from then on, so an attacker who blocks TLS cannot collect it.
+- **Pair Again stays encrypted** (owner decision 2026-11-17). Pairing again after `hub_key_changed` or `tls_refused`
+  (or a refused token) drops the token and the pin but keeps a record that the hub was pinned: the core's
+  `link_credential_unpaired` record (`v2..<old pin>.s`, no token). With it the hub is reached over TLS only, any key, and
+  the new pairing pins the new key. A hub that then refuses TLS (an attacker blocking it, or TLS turned off) is refused
+  with `tls_required_pinned` **before any PIN or token goes out**; the client's only offer is **Forget Hub**.
+- **Forget Hub is the only way back to plaintext.** It deletes the hub's whole record (token, key and the TLS-only
+  mark), and every client says so where it offers it: the hub can then be paired without encryption, with the red
+  "(unsecured)" bar. Desktop, Android, iOS and macOS offer it in the dialog after `tls_required_pinned` (Android also
+  under Settings > Networking > Paired Hubs), `uconsole` asks the same question in the terminal, and the web console's
+  `uconsole web` proxy forgets its pin when the hub is removed from the page's list. A plain `v1` token (a hub never
+  paired over TLS) keeps nothing when its pairing is dropped.
+- **The record rules however the hub is reached.** A damaged `v2` record carries no token and no key but still marks
+  its hub TLS-only. A hub dialled by address names itself in its hello; when a record here says that hub is TLS-only
+  (pinned, or pinned before), `uconsole`, the desktop app and Android dial it again with that record even if the answer
+  asked for no PIN, so no unencrypted or unchecked session opens in a pinned hub's name. What no client can do is
+  recognise a known hub that answers under another id, or under none: that is a first contact, shown with its id, the
+  key on the PIN prompt or the red "(unsecured)" bar.
 
 **Pairing.** The hub shows a 6-digit PIN for 2 minutes, with its key's fingerprint and a QR code of the pairing link
 `dspi://pair?h=<hid>&a=<host:port>&k=<key>&p=<PIN>`:
@@ -244,6 +261,6 @@ machines you control; an unused one expires after 180 days.
 | Token and API key hashes | `hub-store.json` | 0600; hashes only |
 | Webhook secrets, MQTT password and client key | `outbound.json`, `mqtt.json` | 0600; shown as `set` / `not set`; removed from diagnostics |
 | The `uconsole web` proxy's pins | `<store>/proxy-pins.json` | 0600, folder 0700; public keys, but the list of hubs is yours |
-| Client credentials | the platform's store (above) | the credential holds the token and the pin; a damaged one is no credential (pair again) |
+| Client credentials | the platform's store (above) | the credential holds the token and the pin; a damaged one is no credential (pair again, over TLS only); after Pair Again a token-less record keeps a pinned hub TLS-only until Forget Hub |
 
 On Windows the hub's files get no explicit ACL and inherit the profile's under `%LOCALAPPDATA%`.

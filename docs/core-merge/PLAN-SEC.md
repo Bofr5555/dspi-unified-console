@@ -993,6 +993,17 @@ in OD-P2e stay. The prose lines at `PLAN-P2.md:23-24` and §5 (`:550`) are marke
   unless asked otherwise (OD-SECb, reconsidered 2026-11-15: no released client needs plaintext)"). The library's own
   default (`NetworkConfig`, `TlsMode::default()`) stays `Off`, so an embedder chooses. What remains of SECDEF is the
   Mac app's `HubStartOptions` default (SECDEF's mark).
+- **OWNER DECISION 2026-11-17 (WP PINTLS): a hub that was once pinned stays TLS-only after "Pair Again".** Found by
+  review-swsec: Pair Again after `hub_key_changed` forgot the pin, so a hub that did not advertise `tls=1` could then be
+  paired in plaintext (Terminal, Swift, Qt and Android alike). Built once in the core: dropping a pairing (Pair Again, a
+  refused or revoked token) keeps the record `v2.<token>.<old pin or empty>.s` (`link_credential_unpaired`, no token;
+  `Credential::pinned_before`), with which the core reaches the hub over TLS only, trusts the key on first use and pins
+  it at the new pairing; a plaintext hub is refused with `tls_required_pinned` (notice `dlink.tls_required_pinned`)
+  before any PIN or token goes out. **Forget Hub** (removing the record) is the only way back to plaintext, and every
+  client's wording says so: after `tls_required_pinned` the one offer is Forget Hub (Qt, Android, Swift, `uconsole`);
+  Android's Paired Hubs list shows such a hub as "Encrypted only; pair again"; the web console has no Pair Again, and its
+  `uconsole web` proxy keeps a pin until the hub is removed (its refusal now says removing is the way back). A `v1`
+  token (never pinned) keeps nothing. Documented in `docs/integrator/security.md` ("Pair Again stays encrypted").
 - **Two owner questions remain, both asked 2026-11-15:**
   - **OD-SECj:** the owner generates and holds the release keys. SECREL builds with test keys until then.
   - **OD-SECh:** confirm that iPhone and iPad never need bootloader entry or a core voltage above 1.20 V. The recorded

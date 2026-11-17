@@ -224,16 +224,36 @@ class LinkSessionEngine(
     }
 
     /**
-     * Pair again after one of [REPAIR_CODES]: the stored credential (its pin) is dropped and
+     * Pair again after one of [REPAIR_CODES]: the stored token (and its pin) is dropped and
      * the hub dialled, so it asks for a PIN and shows its key. After a pairing link the hub
      * did not match, the stored credential stays: the link was wrong, not the pairing.
+     * -- WP PINTLS -- A hub that was pinned keeps the core's unpaired record, so it pairs over
+     * TLS only ([dropPairing]); after [FORGET_HUB_CODE] this is Forget Hub: the record goes,
+     * the only way back to an unencrypted pairing (owner decision 2026-11-17).
      */
     fun rePair() {
         val s = _state.value as? LinkSessionState.Failed ?: return
         if (s.code !in REPAIR_CODES) return
-        if (!s.fromPairLink) tokens.remove(s.hub.id)
-        log("link: pairing again (${s.code})")
+        if (s.code == FORGET_HUB_CODE) {
+            tokens.remove(s.hub.id)
+            log("link: forgetting the hub (${s.code})")
+        } else {
+            if (!s.fromPairLink) dropPairing(s.hub.id, s.hub.name)
+            log("link: pairing again (${s.code})")
+        }
         connect(s.hub, wantedSerial, null)
+    }
+
+    // -- WP PINTLS --
+    /** The token goes; a hub that was ever pinned keeps a record that stays TLS-only. */
+    private fun dropPairing(hubId: String, name: String) {
+        val kept = ops.credentialUnpaired(tokens.token(hubId).orEmpty())
+        if (kept.isEmpty()) {
+            tokens.remove(hubId)
+        } else {
+            val known = tokens.paired().firstOrNull { it.hubId.equals(hubId, ignoreCase = true) }?.name
+            tokens.setToken(hubId, known ?: name, kept)
+        }
     }
 
     /** The new-key notice was seen. */
@@ -453,7 +473,10 @@ class LinkSessionEngine(
         val first = open(h, gen, if (known) h.id else "") ?: return@withLock
         val named = merge(h, first)
         // Only the hello named this hub: dial once more, now that its token can go to it alone
-        val second = if (!known && first.needsPairing && tokens.token(named.id) != null) {
+        // -- WP PINTLS -- (review F3) also when the answer asks for no PIN and the record keeps the
+        // hub TLS-only (pinned, or pinned before): no unencrypted or unchecked session in its name
+        val record = if (known) null else tokens.token(named.id)
+        val second = if (record != null && (first.needsPairing || ops.credentialUnpaired(record).isNotEmpty())) {
             open(named, gen, named.id) ?: return@withLock
         } else {
             first
@@ -635,7 +658,7 @@ class LinkSessionEngine(
     /** The one place a stored token goes away by itself: the hub said it is bad. */
     private fun refuseToken(h: LinkHub) {
         refusalHandled = true
-        tokens.remove(h.id)
+        dropPairing(h.id, h.name) // -- WP PINTLS -- a hub once pinned stays TLS-only
         log("link: the hub refused the stored token")
     }
 

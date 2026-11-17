@@ -228,34 +228,59 @@ fn open_dlink(
 /// `dspi://pair` link's PIN goes out only after the person's yes. Pairing again
 /// is offered after `hub_key_changed`, `hub_key_unverified`, `tls_refused` and
 /// `tls_required`, and never otherwise.
+///
+/// -- WP PINTLS -- Pairing again keeps a hub that was pinned TLS-only (the
+/// core's `link_credential_unpaired` record): it pairs over TLS and is pinned
+/// anew, or fails with `tls_required_pinned` before any PIN goes out; then
+/// forgetting the hub is offered, the only way to an unencrypted pairing.
 pub(crate) fn dlink_session(
     core: &DspiCore,
     l: &LinkTarget,
     pin: connect::PinPrompt<'_>,
 ) -> Result<dspi_core::LinkHello, OpenFailure> {
     let mut hub_id = l.hub_id.clone();
-    match dlink_attempt(core, l, pin, &mut hub_id, false) {
-        Err(OpenFailure::Core(DspiError::Link { code, msg }))
-            if connect::offers_repair(&code) && l.pair_link.is_none() =>
-        {
-            let hub = hub_id.clone().unwrap_or_else(|| l.link_address());
-            if !connect::offer_repair(pin, &hub, &l.link_address(), &code) {
+    let mut fresh = false;
+    let mut repaired = false;
+    loop {
+        let (code, msg) = match dlink_attempt(core, l, pin, &mut hub_id, fresh) {
+            Err(OpenFailure::Core(DspiError::Link { code, msg })) => (code, msg),
+            other => return other,
+        };
+        let hub = hub_id.clone().unwrap_or_else(|| l.link_address());
+        if code == connect::TLS_REQUIRED_PINNED {
+            let Some(id) = hub_id.clone() else {
+                return Err(DspiError::Link { code, msg }.into());
+            };
+            if !connect::offer_forget(pin, &hub, &l.link_address()) {
                 return Err(DspiError::Link { code, msg }.into());
             }
-            if let Some(id) = &hub_id
-                && let Err(e) = l.forget_token(id)
-            {
-                pin.warn(&format!("could not forget the pairing with {hub} ({e})"));
+            if let Err(e) = l.forget_hub(&id) {
+                pin.warn(&format!("could not forget {hub} ({e})"));
+                return Err(DspiError::Link { code, msg }.into());
             }
-            dlink_attempt(core, l, pin, &mut hub_id, true)
+            fresh = true;
+            repaired = true;
+            continue;
         }
-        other => other,
+        if !(connect::offers_repair(&code) && l.pair_link.is_none() && !repaired)
+            || !connect::offer_repair(pin, &hub, &l.link_address(), &code)
+        {
+            return Err(DspiError::Link { code, msg }.into());
+        }
+        if let Some(id) = &hub_id
+            && let Err(e) = l.drop_pairing(id)
+        {
+            pin.warn(&format!("could not drop the pairing with {hub} ({e})"));
+        }
+        fresh = true;
+        repaired = true;
     }
 }
 
 // -- WP SECTM --
 /// [`dlink_session`]'s one try. `hub_id` is filled in once a hello names the
-/// hub. `fresh`: pairing again, so no stored credential and no link's key.
+/// hub. `fresh`: pairing again, so no stored token and no link's key; a hub
+/// once pinned is still TLS-only (-- WP PINTLS --).
 fn dlink_attempt(
     core: &DspiCore,
     l: &LinkTarget,
@@ -276,7 +301,14 @@ fn dlink_attempt(
         )
     };
     let pair_link = l.pair_link.as_ref().filter(|_| !fresh);
-    let stored = |id: &str| (!fresh).then(|| l.stored_token(id)).flatten();
+    // -- WP PINTLS -- fresh: what is kept after dropping the pairing
+    let stored = |id: &str| {
+        if fresh {
+            l.unpaired_credential(id)
+        } else {
+            l.stored_token(id)
+        }
+    };
     // A pairing link: its key, no token. A known hub gets its credential at
     // once; an unknown one says who it is first, and is dialled again with
     // its credential if it has one here.
@@ -286,8 +318,15 @@ fn dlink_attempt(
         (None, None) => {
             let first = connect(String::new(), String::new())?;
             *hub_id = Some(first.hub_id.clone()).filter(|id| !id.is_empty());
+            // -- WP PINTLS -- (review F3) also when the answer asks for no PIN
+            // and the record says TLS only (pinned, or pinned before): dialled
+            // again with it, so no unencrypted or unchecked session opens in
+            // that hub's name
             match stored(&first.hub_id) {
-                Some(credential) if first.needs_pairing => {
+                Some(credential)
+                    if first.needs_pairing
+                        || dspi_core::link::link_credential_tls_only(credential.clone()) =>
+                {
                     connect(credential, first.hub_id.clone())?
                 }
                 _ => first,
@@ -2114,6 +2153,114 @@ mod tests_wp_sectm {
         assert!(asked[0].contains(&pin_display(&other.pin())), "{asked:?}");
         let now = Credential::parse(&l.stored_token(&hid()).unwrap());
         assert_eq!(now.pin, Some(other.pin()), "pinned to the new key");
+    }
+
+    /// -- WP PINTLS -- (review F3) by address, an answer that names the hub and
+    /// asks for no PIN gets no unencrypted session while the record says TLS only.
+    #[test]
+    fn wp_pintls_core_an_open_answer_by_address_gets_no_plaintext_session() {
+        let hub = pin_hub();
+        let l = link(&hub, "pintls_core_open");
+        pinned(&hub, &l);
+        let impostor = FakeHub::start(HubConfig {
+            auth: Auth::None,
+            bind: "127.0.0.2:0".parse().unwrap(),
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let there = LinkTarget {
+            tokens: l.tokens.clone(),
+            ..LinkTarget::parse(&impostor.addr().to_string()).unwrap()
+        };
+        assert!(there.hub_id.is_none(), "dialled by address");
+        let core = DspiCore::new();
+        let nobody = Person::new(None, None);
+        assert_eq!(code(dlink_session(&core, &there, &nobody)), "tls_refused");
+        l.drop_pairing(&hid()).unwrap();
+        assert_eq!(
+            code(dlink_session(&core, &there, &nobody)),
+            "tls_required_pinned"
+        );
+        there.store_credential(&hid(), "v2.dA.short.t").unwrap();
+        assert_eq!(
+            code(dlink_session(&core, &there, &nobody)),
+            "tls_required_pinned"
+        );
+        assert!(impostor.tokens_seen().is_empty());
+        there.forget_hub(&hid()).unwrap();
+        dlink_session(&core, &there, &nobody).unwrap();
+        assert!(!core.link_security().encrypted);
+        core.link_close();
+    }
+
+    // -- WP PINTLS -- (owner decision 2026-11-17) a hub once pinned stays TLS-only
+    #[test]
+    fn wp_pintls_core_pair_again_is_tls_only_and_forget_is_the_way_back() {
+        let hub = pin_hub();
+        let l = link(&hub, "pintls_core");
+        pinned(&hub, &l);
+        hub.set_tls(None);
+        let seen = hub.tokens_seen().len();
+
+        // Pair Again kept the hub TLS-only: nobody to ask, refused, no PIN asked
+        l.drop_pairing(&hid()).unwrap();
+        let core = DspiCore::new();
+        let nobody = Person::new(None, None);
+        assert_eq!(
+            code(dlink_session(&core, &l, &nobody)),
+            "tls_required_pinned"
+        );
+        assert!(nobody.asked.lock().unwrap().is_empty(), "no PIN asked");
+        let notes = nobody.notes.lock().unwrap().clone();
+        assert!(
+            notes.iter().any(|n| n.contains("forget the hub")),
+            "{notes:?}"
+        );
+        assert_eq!(hub.tokens_seen().len(), seen);
+        assert!(Credential::parse(&l.stored_token(&hid()).unwrap()).pinned_before);
+
+        // A no to Forget: still refused, the record kept
+        let no = Person::new(Some(PIN), Some(false));
+        assert_eq!(code(dlink_session(&core, &l, &no)), "tls_required_pinned");
+        assert!(no.asked.lock().unwrap().is_empty());
+        assert!(l.stored_token(&hid()).is_some());
+
+        // A yes: forgotten, then paired unencrypted, the prompt saying so
+        let yes = Person::new(Some(PIN), Some(true));
+        dlink_session(&core, &l, &yes).unwrap();
+        assert!(!core.link_security().encrypted);
+        core.link_close();
+        let questions = yes.questions.lock().unwrap().clone();
+        assert_eq!(questions.len(), 1, "{questions:?}");
+        assert!(
+            questions[0].contains("Forget the hub entirely"),
+            "{questions:?}"
+        );
+        let asked = yes.asked.lock().unwrap().clone();
+        assert!(asked[0].ends_with(" (unsecured)"), "{asked:?}");
+        assert!(!l.stored_token(&hid()).unwrap().starts_with("v2."));
+    }
+
+    #[test]
+    fn wp_pintls_core_pair_again_over_tls_re_pins() {
+        let hub = pin_hub();
+        let l = link(&hub, "pintls_core_tls");
+        pinned(&hub, &l);
+        let other = FakeTlsKey::generate();
+        hub.set_tls(Some(&other));
+        // Pair Again after hub_key_changed: the yes drops the pairing, keeps TLS-only
+        let core = DspiCore::new();
+        let yes = Person::new(Some(PIN), Some(true));
+        dlink_session(&core, &l, &yes).unwrap();
+        assert!(core.link_security().encrypted);
+        core.link_close();
+        let questions = yes.questions.lock().unwrap().clone();
+        assert!(
+            questions[0].contains("only over an encrypted connection"),
+            "{questions:?}"
+        );
+        let now = Credential::parse(&l.stored_token(&hid()).unwrap());
+        assert_eq!(now.pin, Some(other.pin()));
     }
 
     #[test]

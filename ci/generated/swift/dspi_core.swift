@@ -3950,7 +3950,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * TLS is tried first. A pinned hub is reached over TLS only, with its key
      * checked before the token goes out: `hub_key_changed` when it is another
      * key (pair again), `hub_key_unverified` for a pairing link's pin,
-     * `tls_refused` when TLS fails; never plaintext. An unpinned hub without
+     * `tls_refused` when TLS fails; never plaintext. -- WP PINTLS -- A record
+     * from [`link_credential_unpaired`] (a hub pinned before, after Pair
+     * Again) is TLS only too, any key, pinned by the pairing:
+     * `tls_required_pinned` when TLS fails, before any PIN goes out. An unpinned hub without
      * TLS (an upstream hub) connects unencrypted, as before
      * (`link_security().encrypted` false). Same as
      * [`DspiCore::link_connect_advertised`] with no advert.
@@ -10375,7 +10378,10 @@ open func linkClose()  {try! rustCall() {
      * TLS is tried first. A pinned hub is reached over TLS only, with its key
      * checked before the token goes out: `hub_key_changed` when it is another
      * key (pair again), `hub_key_unverified` for a pairing link's pin,
-     * `tls_refused` when TLS fails; never plaintext. An unpinned hub without
+     * `tls_refused` when TLS fails; never plaintext. -- WP PINTLS -- A record
+     * from [`link_credential_unpaired`] (a hub pinned before, after Pair
+     * Again) is TLS only too, any key, pinned by the pairing:
+     * `tls_required_pinned` when TLS fails, before any PIN goes out. An unpinned hub without
      * TLS (an upstream hub) connects unencrypted, as before
      * (`link_security().encrypted` false). Same as
      * [`DspiCore::link_connect_advertised`] with no advert.
@@ -58007,6 +58013,36 @@ public func linkCredentialHubKey(credential: String) -> String  {
 })
 }
 /**
+ * Whether a stored credential reaches its hub over TLS only: pinned, or
+ * pinned before ([`link_credential_unpaired`]'s record). For the paired-hubs
+ * list: such a hub is never connected or paired unencrypted.
+ */
+public func linkCredentialTlsOnly(credential: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_link_credential_tls_only(
+        FfiConverterString.lower(credential),$0
+    )
+})
+}
+/**
+ * What to store in place of `credential` when the pairing with its hub is
+ * dropped: **Pair Again** (after `hub_key_changed`, `tls_refused`, ...), or a
+ * refused or revoked token. For a hub that was ever pinned this is a record
+ * with no token that still requires TLS: [`DspiCore::link_connect`] with it
+ * reaches the hub over TLS only (a failure is `tls_required_pinned`, before
+ * any PIN or token goes out), and the pairing then pins the new key. "" for a
+ * `v1` token or none (such a hub never had TLS): remove the record then.
+ * Owner decision 2026-11-17: a hub once pinned stays TLS-only; only
+ * **Forget hub** (removing its record) allows an unencrypted connection again.
+ */
+public func linkCredentialUnpaired(credential: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_link_credential_unpaired(
+        FfiConverterString.lower(credential),$0
+    )
+})
+}
+/**
  * `GET /dspi/v1/info` (spec 3.2). Blocks up to a few seconds.
  *
  * Errors: [`DspiError::Link`] with `io` or `protocol`.
@@ -58563,6 +58599,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_credential_hub_key() != 32759) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_link_credential_tls_only() != 51774) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_link_credential_unpaired() != 46408) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_fetch_info() != 23971) {
@@ -59366,7 +59408,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_link_close() != 64450) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_link_connect() != 64342) {
+    if (uniffi_dspi_core_checksum_method_dspicore_link_connect() != 27969) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised() != 37895) {

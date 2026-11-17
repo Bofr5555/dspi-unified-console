@@ -70,6 +70,8 @@ pub(crate) mod link {
     use dspi_core::link::{link_fetch_info, link_parse_address, link_ws_url};
     // -- WP SECCORE --
     use dspi_core::link::{link_credential_hub_key, link_parse_pair_link};
+    // -- WP PINTLS --
+    use dspi_core::link::{link_credential_tls_only, link_credential_unpaired};
     use dspi_core::{
         DspiCore, DspiError, LinkDevice, LinkHello, LinkInfo, LinkListener, LinkStatus, Result,
     };
@@ -620,6 +622,52 @@ pub(crate) mod link {
         })
     }
 
+    // -- WP PINTLS --
+    /// What to store in place of `credential` when its pairing is dropped
+    /// (Pair Again, a refused or revoked token), as plain text: for a hub that
+    /// was ever pinned a token-less record that keeps it TLS-only (a plaintext
+    /// connect is then `tls_required_pinned`, before any PIN goes out); "" for a
+    /// `v1` token or none: remove the record then. Only Forget hub (removing the
+    /// record) allows plaintext again. Returns the length needed (1 for ""); 0
+    /// for a null `credential` only (store nothing new then). Bytes that are not
+    /// UTF-8 are a damaged record: one that began `v2.` stays TLS-only.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_link_credential_unpaired(
+        credential: *const c_char,
+        buf: *mut c_char,
+        len: u32,
+    ) -> u32 {
+        guard(0, || {
+            let Some(credential) = credential_text(credential) else {
+                return 0;
+            };
+            copy_whole(&link_credential_unpaired(credential), buf, len)
+        })
+    }
+
+    /// -- WP PINTLS -- (review N1) A stored credential as text. Bytes that are
+    /// not UTF-8 are replaced, not refused: a damaged `v2` record must still
+    /// read as one (TLS only), never as "nothing to keep". `None` for null.
+    fn credential_text(credential: *const c_char) -> Option<String> {
+        if credential.is_null() {
+            return None;
+        }
+        // SAFETY: a non-null string argument is NUL-terminated and lives for
+        // the call; the C caller's contract.
+        let text = unsafe { std::ffi::CStr::from_ptr(credential) };
+        Some(text.to_string_lossy().into_owned())
+    }
+
+    // -- WP PINTLS --
+    /// Whether a stored credential reaches its hub over TLS only (pinned, or
+    /// pinned before, or a damaged `v2` record). False for a null `credential`.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_link_credential_tls_only(credential: *const c_char) -> bool {
+        guard(false, || {
+            credential_text(credential).is_some_and(link_credential_tls_only)
+        })
+    }
+
     /// The WebSocket URL for a hub, as plain text. `path` null or "" is the
     /// default (`/dspi/v1`). Returns the length needed; 0 for a null or non-UTF-8
     /// `host` or a non-UTF-8 `path`.
@@ -838,6 +886,70 @@ pub(crate) mod midi {
 #[path = "fns_link/tests_wp_cg1.rs"]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_cg1;
+
+// -- WP PINTLS --
+#[cfg(test)]
+mod tests_wp_pintls {
+    use std::ffi::{CStr, CString, c_char};
+    use std::ptr::null;
+
+    use crate::fns_link::link::{dspi_link_credential_tls_only, dspi_link_credential_unpaired};
+
+    fn unpaired(credential: &CStr) -> (u32, String) {
+        let mut buf = [0u8; 256];
+        let n = dspi_link_credential_unpaired(
+            credential.as_ptr(),
+            buf.as_mut_ptr().cast::<c_char>(),
+            256,
+        );
+        let text = CStr::from_bytes_until_nul(&buf)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned();
+        (n, text)
+    }
+
+    /// The C ABI's two credential functions: a `v2` record, damaged ones
+    /// included (not UTF-8 too), stays TLS-only when its pairing is dropped; a
+    /// `v1` token keeps nothing; null is the only error.
+    #[test]
+    fn wp_pintls_c_abi_keeps_a_v2_record_tls_only() {
+        let pin = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc";
+        let pinned = CString::new(format!("v2.dG9r.{pin}.t")).unwrap();
+        assert!(dspi_link_credential_tls_only(pinned.as_ptr()));
+        let (n, kept) = unpaired(&pinned);
+        assert_eq!(kept, format!("v2..{pin}.s"));
+        assert_eq!(n as usize, kept.len() + 1);
+        let kept = CString::new(kept).unwrap();
+        assert!(dspi_link_credential_tls_only(kept.as_ptr()));
+        assert_eq!(unpaired(&kept).1, kept.to_str().unwrap());
+
+        for damaged in [&b"v2.dA.short.t"[..], b"v2.\xff\xfe.x.t", b"v2."] {
+            let damaged = CString::new(damaged).unwrap();
+            assert!(
+                dspi_link_credential_tls_only(damaged.as_ptr()),
+                "{damaged:?}"
+            );
+            assert_eq!(unpaired(&damaged), (7, "v2...s".to_owned()), "{damaged:?}");
+        }
+        for v1 in [&b"tok-12-0"[..], b"", b"\xff\xfe"] {
+            let v1 = CString::new(v1).unwrap();
+            assert!(!dspi_link_credential_tls_only(v1.as_ptr()), "{v1:?}");
+            assert_eq!(unpaired(&v1), (1, String::new()), "{v1:?}");
+        }
+        assert!(!dspi_link_credential_tls_only(null()));
+        assert_eq!(
+            dspi_link_credential_unpaired(null(), std::ptr::null_mut(), 0),
+            0
+        );
+        // A buffer too small: the length needed, nothing written
+        assert_eq!(
+            dspi_link_credential_unpaired(pinned.as_ptr(), std::ptr::null_mut(), 0),
+            n
+        );
+    }
+}
 
 // -- WP LKUI1 --
 #[cfg(test)]
