@@ -163,8 +163,10 @@ impl Refusal {
             Refusal::HubKeyChanged => "This hub presented a different key than the one this console trusts. \
                  Someone may be posing as it. If you replaced or reset the hub, remove it and add it again."
                 .into(),
+            // -- WP PINTLS -- removing the hub is the only way back to plaintext; say so
             Refusal::TlsRefused => "This hub did not accept an encrypted connection, although it did before. \
-                 The console does not fall back to an unencrypted one."
+                 The console does not fall back to an unencrypted one. Removing the hub from this console \
+                 is the only way to connect to it without encryption."
                 .into(),
             Refusal::WrongHub => "Another hub answers at this address than the one this console trusts there. \
                  If the hub moved or was replaced, remove it and add it again."
@@ -722,6 +724,12 @@ mod tests {
             assert!(!r.message().is_empty());
         }
         assert_eq!(Refusal::HubKeyChanged.code(), "hub_key_changed");
+        // -- WP PINTLS -- removing the hub is the one way back to plaintext, and it says so
+        assert!(
+            Refusal::TlsRefused
+                .message()
+                .contains("only way to connect to it without encryption")
+        );
     }
 
     #[test]

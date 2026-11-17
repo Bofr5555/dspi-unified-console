@@ -2018,6 +2018,10 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2096,6 +2100,10 @@ fun uniffi_dspi_core_checksum_func_known_feature_names(
 fun uniffi_dspi_core_checksum_func_limits_field_ranges(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_credential_hub_key(
+): Short
+fun uniffi_dspi_core_checksum_func_link_credential_tls_only(
+): Short
+fun uniffi_dspi_core_checksum_func_link_credential_unpaired(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_fetch_info(
 ): Short
@@ -4164,6 +4172,10 @@ fun uniffi_dspi_core_fn_func_limits_field_ranges(uniffi_out_err: UniffiRustCallS
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_credential_hub_key(`credential`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_link_credential_tls_only(`credential`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_dspi_core_fn_func_link_credential_unpaired(`credential`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_fetch_info(`host`: RustBuffer.ByValue,`port`: Short,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_parse_address(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4448,6 +4460,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_credential_hub_key() != 32759.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_link_credential_tls_only() != 51774.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_link_credential_unpaired() != 46408.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_fetch_info() != 23971.toShort()) {
@@ -5233,7 +5251,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_close() != 64450.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_connect() != 64342.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_link_connect() != 27969.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_link_connect_advertised() != 37895.toShort()) {
@@ -10038,7 +10056,10 @@ public interface DspiCoreInterface {
      * TLS is tried first. A pinned hub is reached over TLS only, with its key
      * checked before the token goes out: `hub_key_changed` when it is another
      * key (pair again), `hub_key_unverified` for a pairing link's pin,
-     * `tls_refused` when TLS fails; never plaintext. An unpinned hub without
+     * `tls_refused` when TLS fails; never plaintext. -- WP PINTLS -- A record
+     * from [`link_credential_unpaired`] (a hub pinned before, after Pair
+     * Again) is TLS only too, any key, pinned by the pairing:
+     * `tls_required_pinned` when TLS fails, before any PIN goes out. An unpinned hub without
      * TLS (an upstream hub) connects unencrypted, as before
      * (`link_security().encrypted` false). Same as
      * [`DspiCore::link_connect_advertised`] with no advert.
@@ -17309,7 +17330,10 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * TLS is tried first. A pinned hub is reached over TLS only, with its key
      * checked before the token goes out: `hub_key_changed` when it is another
      * key (pair again), `hub_key_unverified` for a pairing link's pin,
-     * `tls_refused` when TLS fails; never plaintext. An unpinned hub without
+     * `tls_refused` when TLS fails; never plaintext. -- WP PINTLS -- A record
+     * from [`link_credential_unpaired`] (a hub pinned before, after Pair
+     * Again) is TLS only too, any key, pinned by the pairing:
+     * `tls_required_pinned` when TLS fails, before any PIN goes out. An unpinned hub without
      * TLS (an upstream hub) connects unencrypted, as before
      * (`link_security().encrypted` false). Same as
      * [`DspiCore::link_connect_advertised`] with no advert.
@@ -47549,6 +47573,40 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
             return FfiConverterString.lift(
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_credential_hub_key(
+        FfiConverterString.lower(`credential`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Whether a stored credential reaches its hub over TLS only: pinned, or
+         * pinned before ([`link_credential_unpaired`]'s record). For the paired-hubs
+         * list: such a hub is never connected or paired unencrypted.
+         */ fun `linkCredentialTlsOnly`(`credential`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_credential_tls_only(
+        FfiConverterString.lower(`credential`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * What to store in place of `credential` when the pairing with its hub is
+         * dropped: **Pair Again** (after `hub_key_changed`, `tls_refused`, ...), or a
+         * refused or revoked token. For a hub that was ever pinned this is a record
+         * with no token that still requires TLS: [`DspiCore::link_connect`] with it
+         * reaches the hub over TLS only (a failure is `tls_required_pinned`, before
+         * any PIN or token goes out), and the pairing then pins the new key. "" for a
+         * `v1` token or none (such a hub never had TLS): remove the record then.
+         * Owner decision 2026-11-17: a hub once pinned stays TLS-only; only
+         * **Forget hub** (removing its record) allows an unencrypted connection again.
+         */ fun `linkCredentialUnpaired`(`credential`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_credential_unpaired(
         FfiConverterString.lower(`credential`),_status)
 }
     )

@@ -30,7 +30,15 @@ data class HubSecurity(
  * The `DspiException.Link` codes after which the app offers pairing again, and the only
  * ones (PLAN-SEC 4.3): nothing was sent to the hub, and there is no "connect anyway".
  */
-val REPAIR_CODES: Set<String> = setOf("hub_key_changed", "hub_key_unverified", "tls_refused", "tls_required")
+val REPAIR_CODES: Set<String> = setOf("hub_key_changed", "hub_key_unverified", "tls_refused", "tls_required", FORGET_HUB_CODE)
+
+/**
+ * -- WP PINTLS -- (owner decision 2026-11-17) A hub that was pinned stays TLS-only after Pair
+ * Again (the core's `link_credential_unpaired` record). When it refuses TLS the core says
+ * `tls_required_pinned`, before any PIN goes out, and the one offer is Forget Hub: the record is
+ * removed, the only way back to an unencrypted pairing.
+ */
+const val FORGET_HUB_CODE = "tls_required_pinned"
 
 /** A hub list row's encryption badge. */
 enum class HubBadge(val label: String) {

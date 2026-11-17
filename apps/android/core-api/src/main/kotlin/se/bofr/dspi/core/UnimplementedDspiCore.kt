@@ -908,6 +908,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun linkCredentialHubKey(credential: String): String = throw NotImplementedError("link_credential_hub_key")
 
+    override fun linkCredentialUnpaired(credential: String): String = throw NotImplementedError("link_credential_unpaired")
+
+    override fun linkCredentialTlsOnly(credential: String): Boolean = throw NotImplementedError("link_credential_tls_only")
+
     override fun linkPhaseText(phase: LinkPhase, pinSource: String): LinkPhaseText = throw NotImplementedError("link_phase_text")
 
     override fun linkPhaseTexts(): List<LinkPhaseText> = throw NotImplementedError("link_phase_texts")

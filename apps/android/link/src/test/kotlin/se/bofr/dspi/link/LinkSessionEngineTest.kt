@@ -128,6 +128,9 @@ class LinkSessionEngineTest {
 
         override fun wsUrl(host: String, port: Int, path: String) = "ws://$host:$port$path"
 
+        // -- WP PINTLS -- these tests keep v1 tokens only: nothing to keep after a refusal
+        override fun credentialUnpaired(credential: String) = ""
+
         override fun phaseText(phase: LinkPhase, pinSource: String) = LinkPhaseText(phase.name, phase.name, "text of $phase", null, null)
 
         override fun setListener(listener: LinkListener?) {

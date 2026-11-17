@@ -3036,7 +3036,10 @@ interface DspiCoreApi : AutoCloseable {
      * TLS is tried first. A pinned hub is reached over TLS only, with its key
      * checked before the token goes out: `hub_key_changed` when it is another
      * key (pair again), `hub_key_unverified` for a pairing link's pin,
-     * `tls_refused` when TLS fails; never plaintext. An unpinned hub without
+     * `tls_refused` when TLS fails; never plaintext. -- WP PINTLS -- A record
+     * from [`link_credential_unpaired`] (a hub pinned before, after Pair
+     * Again) is TLS only too, any key, pinned by the pairing:
+     * `tls_required_pinned` when TLS fails, before any PIN goes out. An unpinned hub without
      * TLS (an upstream hub) connects unencrypted, as before
      * (`link_security().encrypted` false). Same as
      * [`DspiCore::link_connect_advertised`] with no advert.
@@ -5401,6 +5404,30 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun linkCredentialHubKey(credential: String): String
+
+    /**
+     * What to store in place of `credential` when the pairing with its hub is
+     * dropped: **Pair Again** (after `hub_key_changed`, `tls_refused`, ...), or a
+     * refused or revoked token. For a hub that was ever pinned this is a record
+     * with no token that still requires TLS: [`DspiCore::link_connect`] with it
+     * reaches the hub over TLS only (a failure is `tls_required_pinned`, before
+     * any PIN or token goes out), and the pairing then pins the new key. "" for a
+     * `v1` token or none (such a hub never had TLS): remove the record then.
+     * Owner decision 2026-11-17: a hub once pinned stays TLS-only; only
+     * **Forget hub** (removing its record) allows an unencrypted connection again.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun linkCredentialUnpaired(credential: String): String
+
+    /**
+     * Whether a stored credential reaches its hub over TLS only: pinned, or
+     * pinned before ([`link_credential_unpaired`]'s record). For the paired-hubs
+     * list: such a hub is never connected or paired unencrypted.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun linkCredentialTlsOnly(credential: String): Boolean
 
     /**
      * The wording of `phase`. `pin_source` is [`crate::LinkStatus::pin_source`]:

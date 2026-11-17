@@ -108,6 +108,9 @@ QString pinnedKey(const QString &credential) {
     return QString::fromUtf8(readSized([&](char *b, uint32_t n) { return dspi_link_credential_hub_key(c.constData(), b, n); }));
 }
 
+// -- WP PINTLS -- the record reaches its hub over TLS only (pinned, or pinned before)
+bool tlsOnly(const QString &credential) { return dspi_link_credential_tls_only(credential.toUtf8().constData()); }
+
 bool click(QQuickItem *item) {
     return item && item->isVisible() && item->isEnabled() && QMetaObject::invokeMethod(item, "clicked");
 }
@@ -121,12 +124,14 @@ void controllerChecks(SmokeDriver &d, const QString &scratch) {
     };
 
     // Re-pairing is offered for exactly these codes
-    const QStringList offered{ "hub_key_changed", "hub_key_unverified", "tls_refused", "tls_required" };
+    const QStringList offered{ "hub_key_changed", "hub_key_unverified", "tls_refused", "tls_required",
+                               "tls_required_pinned" };   // -- WP PINTLS -- its offer is Forget Hub
     bool rule = true;
     for (const QString &code : offered) rule = rule && LinkController::offersRePair(code);
     for (const char *code : { "wrong_pin", "wrong_hub", "io", "timeout", "rate_limited", "handshake_refused", "" })
         rule = rule && !LinkController::offersRePair(QString::fromLatin1(code));
-    d.check("secqt: re-pairing only for hub_key_changed, hub_key_unverified, tls_refused, tls_required", rule);
+    d.check("secqt: re-pairing only for hub_key_changed, hub_key_unverified, tls_refused, tls_required (+ pintls: "
+            "tls_required_pinned)", rule);
 
     // The core's words for an unencrypted session
     {
@@ -234,7 +239,10 @@ void controllerChecks(SmokeDriver &d, const QString &scratch) {
         d.check("secqt: re-pair: the hub asks for its PIN, showing its new key",
                 settled(l) && phaseIs(l, "needs_pairing") && l.errorCode().isEmpty() && l.encrypted()
                     && l.hubKey() == tlsHub->fingerprint);
-        d.check("secqt: re-pair: the old credential stays until paired", storedIn(file, tlsHub->id) == v2);
+        // -- WP PINTLS -- the token goes, the hub stays TLS-only until paired
+        d.check("pintls: re-pair: the token dropped, the record TLS-only with no key until paired",
+                tlsOnly(storedIn(file, tlsHub->id)) && pinnedKey(storedIn(file, tlsHub->id)).isEmpty()
+                    && storedIn(file, tlsHub->id) != v2);
         l.pair(tlsHub->pin());
         d.check("secqt: re-pair: paired", settled(l) && l.errorCode().isEmpty() && phaseIs(l, "choose_device"));
         d.check("secqt: re-pair: the credential now pins the new key", d.waitFor(3000, [&] {
@@ -308,6 +316,45 @@ void controllerChecks(SmokeDriver &d, const QString &scratch) {
         l.connectToHub(upgraded.url, upgraded.id);
         d.check("secqt: v1 upgrade: next run, pinned, no notice", settled(l) && l.errorCode().isEmpty()
                                                                      && phaseIs(l, "choose_device") && l.keyNotice().isEmpty());
+    }
+
+    // ---- -- WP PINTLS -- a hub once pinned stays TLS-only after Pair Again ------------------
+    // (owner decision 2026-11-17) The pinned hub comes back without TLS: Pair Again
+    // never pairs it in plaintext; only Forget Hub does, and the bar is then red.
+    {
+        OwnHub off;
+        const bool offUp = off.start(v1Store, HUB_ACCESS_PIN, 0);
+        d.check("pintls: the pinned hub, now without TLS", offUp && off.tls == QLatin1String("off"));
+        if (!offUp) return;
+        const QString pinned = storedIn(file, off.id);
+        d.check("pintls: its record is pinned", !pinnedKey(pinned).isEmpty());
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(off.offUrl, off.id);
+        d.check("pintls: pinned, no TLS: tls_refused, Pair Again offered, no session",
+                settled(l) && l.errorCode() == QLatin1String("tls_refused") && l.rePairOffered() && phaseIs(l, "idle"));
+        l.rePair();
+        d.check("pintls: Pair Again: tls_required_pinned before any PIN, no session",
+                settled(l) && l.errorCode() == QLatin1String("tls_required_pinned") && l.rePairOffered()
+                    && phaseIs(l, "idle") && !l.unsecured());
+        d.check("pintls: Pair Again: the record still TLS-only, the token gone", d.waitFor(3000, [&] {
+            const QString c = storedIn(file, off.id);
+            return !l.busy() && tlsOnly(c) && pinnedKey(c).isEmpty() && c != pinned;
+        }));
+        d.check("pintls: the words say Forget Hub is the way to no encryption",
+                l.errorText().contains(QLatin1String("forget the hub")));
+        l.rePair();   // the offer is Forget Hub now
+        d.check("pintls: Forget Hub: the hub asks for its PIN, unencrypted and red",
+                settled(l) && phaseIs(l, "needs_pairing") && l.errorCode().isEmpty() && !l.encrypted()
+                    && d.waitFor(3000, [&] { return l.unsecured(); }));
+        d.check("pintls: Forget Hub: the record is gone", storedIn(file, off.id).isEmpty());
+        l.pair(off.pin());
+        d.check("pintls: Forget Hub: paired in plaintext, a v1 token", settled(l) && d.waitFor(3000, [&] {
+            const QString c = storedIn(file, off.id);
+            return !l.busy() && !c.isEmpty() && !tlsOnly(c);
+        }));
+        l.closeSession();
+        settled(l);
     }
 
     // ---- Advertised TLS never falls back: tls_refused ----------------------------------------

@@ -3084,6 +3084,16 @@ RustBuffer uniffi_dspi_core_fn_func_limits_field_ranges(RustCallStatus *_Nonnull
 RustBuffer uniffi_dspi_core_fn_func_link_credential_hub_key(RustBuffer credential, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_CREDENTIAL_TLS_ONLY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_CREDENTIAL_TLS_ONLY
+int8_t uniffi_dspi_core_fn_func_link_credential_tls_only(RustBuffer credential, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_CREDENTIAL_UNPAIRED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_CREDENTIAL_UNPAIRED
+RustBuffer uniffi_dspi_core_fn_func_link_credential_unpaired(RustBuffer credential, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_FETCH_INFO
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_FETCH_INFO
 RustBuffer uniffi_dspi_core_fn_func_link_fetch_info(RustBuffer host, uint16_t port, RustCallStatus *_Nonnull out_status
@@ -3721,6 +3731,18 @@ uint16_t uniffi_dspi_core_checksum_func_limits_field_ranges(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_CREDENTIAL_HUB_KEY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_CREDENTIAL_HUB_KEY
 uint16_t uniffi_dspi_core_checksum_func_link_credential_hub_key(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_CREDENTIAL_TLS_ONLY
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_CREDENTIAL_TLS_ONLY
+uint16_t uniffi_dspi_core_checksum_func_link_credential_tls_only(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_CREDENTIAL_UNPAIRED
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_CREDENTIAL_UNPAIRED
+uint16_t uniffi_dspi_core_checksum_func_link_credential_unpaired(void
     
 );
 #endif

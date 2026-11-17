@@ -25,7 +25,13 @@ data class NetworkHubRow(
 )
 
 /** -- WP SECAN -- [hubKey]: the fingerprint its pairing is pinned to, "" when paired without encryption. */
-data class PairedHubRow(val id: String, val name: String, val hubKey: String = "")
+data class PairedHubRow(
+    val id: String,
+    val name: String,
+    val hubKey: String = "",
+    /** -- WP PINTLS -- The record keeps the hub TLS-only (pinned, or pinned before and paired again). */
+    val tlsOnly: Boolean = false
+)
 
 /** What Settings › Networking shows (DSPi Link client, owner decisions D2/D7). */
 data class NetworkingUiState(

@@ -262,8 +262,44 @@ impl LinkTarget {
     }
 
     /// Drop the token kept for `hub_id` (one the hub refused).
+    /// -- WP PINTLS -- A hub that was pinned keeps a token-less record that
+    /// still requires TLS ([`Self::drop_pairing`]); only [`Self::forget_hub`]
+    /// removes everything.
     pub fn forget_token(&self, hub_id: &str) -> std::io::Result<()> {
+        self.drop_pairing(hub_id)
+    }
+
+    // -- WP PINTLS --
+    /// Pair Again, or a refused or revoked token: the token goes, but a hub
+    /// that was ever pinned stays TLS-only (owner decision 2026-11-17): its
+    /// record becomes the core's unpaired one, so a later plaintext connect or
+    /// pairing is refused (`tls_required_pinned`) before any PIN goes out.
+    pub fn drop_pairing(&self, hub_id: &str) -> std::io::Result<()> {
+        let store = self.token_store();
+        let kept = store
+            .get(hub_id)
+            .map(|c| dspi_link::credential::unpaired_record(&c))
+            .unwrap_or_default();
+        if kept.is_empty() {
+            store.forget(hub_id)
+        } else {
+            store.put(hub_id, &kept)
+        }
+    }
+
+    /// Forget hub: remove its record entirely (token, key, the TLS-only mark).
+    /// The only way back to an unencrypted connection with a hub once pinned.
+    pub fn forget_hub(&self, hub_id: &str) -> std::io::Result<()> {
         self.token_store().forget(hub_id)
+    }
+
+    /// The record a fresh pairing dials with: what [`Self::drop_pairing`]
+    /// keeps of the stored one (no token; TLS-only for a hub once pinned).
+    pub fn unpaired_credential(&self, hub_id: &str) -> Option<String> {
+        self.token_store()
+            .get(hub_id)
+            .map(|c| dspi_link::credential::unpaired_record(&c))
+            .filter(|c| !c.is_empty())
     }
 }
 
@@ -385,8 +421,39 @@ pub fn repair_code(e: &LinkError) -> Option<&'static str> {
     })
 }
 
+// -- WP PINTLS --
+/// The core's code for a hub pinned before that refused TLS: only forgetting
+/// the hub helps (owner decision 2026-11-17), never pairing again.
+pub const TLS_REQUIRED_PINNED: &str = "tls_required_pinned";
+
+/// After [`TLS_REQUIRED_PINNED`]: ask whether to forget `hub` entirely, which
+/// is the only way to reach it without encryption. Nobody to ask: say how, and
+/// no. The question says plainly what forgetting gives up.
+pub fn offer_forget(prompt: PinPrompt<'_>, hub: &str, address: &str) -> bool {
+    let question = format!(
+        "{hub}: this hub was paired with encryption before, so this terminal connects to it only \
+         encrypted, and it refused encryption; nothing was sent, not even the PIN. Turn TLS on in \
+         the hub's settings if you can. Forget the hub entirely? Its pairing and key are deleted, \
+         and it can then be paired without encryption: on this network the PIN and settings \
+         could be read or changed."
+    );
+    match prompt.confirm(&question) {
+        Some(yes) => yes,
+        None => {
+            prompt.note(&format!(
+                "{hub}: paired with encryption before, and it refused encryption; nothing was sent. \
+                 To forget the hub (the only way to connect without encryption), run \
+                 `{COMMAND} --link {address}` in a terminal and answer yes"
+            ));
+            false
+        }
+    }
+}
+
 /// Ask whether to forget this terminal's pairing with `hub` and pair again,
 /// after `code` (one of [`REPAIR_CODES`]). Nobody to ask: say how, and no.
+/// -- WP PINTLS -- Pairing again keeps a hub that was pinned TLS-only: it
+/// never pairs unencrypted (only forgetting the hub allows that).
 /// Re-pairing trusts whatever key the hub presents then, so the question
 /// says to compare the fingerprint the PIN prompt shows with the hub's.
 pub fn offer_repair(prompt: PinPrompt<'_>, hub: &str, address: &str, code: &str) -> bool {
@@ -402,7 +469,7 @@ pub fn offer_repair(prompt: PinPrompt<'_>, hub: &str, address: &str, code: &str)
     let question = format!(
         "{hub}: {why}; nothing was sent to it. If the hub was reinstalled or its key or \
          settings were reset, pair again (compare the fingerprint shown with the PIN prompt \
-         with the hub's own). Forget the pairing and pair again?"
+         with the hub's own). It pairs only over an encrypted connection. Pair again?"
     );
     match prompt.confirm(&question) {
         Some(yes) => yes,
@@ -1061,28 +1128,55 @@ fn link_error(l: &LinkTarget, source: LinkError) -> OpenError {
 /// out; a `v1` token is upgraded to `v2` the first time TLS carries it. After
 /// `hub_key_changed`, `hub_key_unverified`, `tls_refused` or `tls_required`,
 /// and only then, the person is offered to forget the pairing and pair again.
+///
+/// -- WP PINTLS -- Pairing again keeps a hub that was pinned TLS-only (its
+/// record is the core's unpaired one): it pairs over TLS and is pinned anew,
+/// or fails with `tls_required_pinned` before any PIN goes out; the person is
+/// then offered to forget the hub, the only way to an unencrypted pairing.
 pub fn link_client(l: &LinkTarget, pin: PinPrompt<'_>) -> Result<LinkClient, OpenError> {
     let mut hub_id = l.hub_id.clone();
-    match link_client_once(l, pin, &mut hub_id, false) {
-        Err(OpenError::Link { address, source }) => {
-            let code = repair_code(&source).filter(|_| l.pair_link.is_none());
-            let hub = hub_id.clone().unwrap_or_else(|| l.address());
-            if !code.is_some_and(|c| offer_repair(pin, &hub, &l.address(), c)) {
+    let mut fresh = false;
+    let mut repaired = false;
+    loop {
+        let (address, source) = match link_client_once(l, pin, &mut hub_id, fresh) {
+            Err(OpenError::Link { address, source }) => (address, source),
+            other => return other,
+        };
+        let hub = hub_id.clone().unwrap_or_else(|| l.address());
+        let id = hub_id.clone();
+        if matches!(source, LinkError::TlsRequiredPinned) {
+            let Some(id) = id.filter(|_| l.pair_link.is_none() || fresh) else {
+                return Err(OpenError::Link { address, source });
+            };
+            if !offer_forget(pin, &hub, &l.address()) {
                 return Err(OpenError::Link { address, source });
             }
-            if let Some(id) = &hub_id
-                && let Err(e) = l.token_store().forget(id)
-            {
-                pin.warn(&format!("could not forget the pairing with {hub} ({e})"));
+            if let Err(e) = l.forget_hub(&id) {
+                pin.warn(&format!("could not forget {hub} ({e})"));
+                return Err(OpenError::Link { address, source });
             }
-            link_client_once(l, pin, &mut hub_id, true)
+            // Forgotten: a fresh pairing with no record, as for a new hub
+            fresh = true;
+            repaired = true;
+            continue;
         }
-        other => other,
+        let code = repair_code(&source).filter(|_| l.pair_link.is_none() && !repaired);
+        if !code.is_some_and(|c| offer_repair(pin, &hub, &l.address(), c)) {
+            return Err(OpenError::Link { address, source });
+        }
+        if let Some(id) = &id
+            && let Err(e) = l.drop_pairing(id)
+        {
+            pin.warn(&format!("could not drop the pairing with {hub} ({e})"));
+        }
+        fresh = true;
+        repaired = true;
     }
 }
 
 /// [`link_client`]'s one try. `hub_id` is filled in once a hello names the
-/// hub. `fresh`: pairing again, so no stored credential and no link's key.
+/// hub. `fresh`: pairing again, so no stored token and no link's key; a hub
+/// once pinned is still TLS-only (-- WP PINTLS --).
 fn link_client_once(
     l: &LinkTarget,
     pin: PinPrompt<'_>,
@@ -1093,8 +1187,13 @@ fn link_client_once(
     let pair_link = l.pair_link.as_ref().filter(|_| !fresh);
     // The stored record, by the hub's id; never for a pairing link (whose PIN
     // is the point) or a fresh pairing.
+    // -- WP PINTLS -- fresh: what is kept after dropping the pairing
     let stored = |id: &str| -> Option<Credential> {
-        (pair_link.is_none() && !fresh)
+        if fresh {
+            return l.unpaired_credential(id).map(|c| Credential::parse(&c));
+        }
+        pair_link
+            .is_none()
             .then(|| store.get(id))
             .flatten()
             .map(|c| Credential::parse(&c))
@@ -1160,7 +1259,8 @@ fn link_client_once(
         }
         AuthState::NeedsPairing { pin_source } => pin_source,
         AuthState::TokenRefused { pin_source } => {
-            if let Err(e) = store.forget(&id) {
+            // -- WP PINTLS -- a hub once pinned keeps its TLS-only mark
+            if let Err(e) = l.drop_pairing(&id) {
                 pin.warn(&format!(
                     "could not forget the refused pairing token for {} ({e}); it will be tried again next time",
                     hub_name(&client, l)
@@ -1235,7 +1335,8 @@ fn dial(
             // -- WP SECTM -- an unpinned dial: only a v1 token may go out; a
             // pinned one waits for a dial that checks its key
             let stored = Credential::parse(&lookup.get(hub_id)?);
-            if stored.pin.is_some() {
+            if stored.tls_only() {
+                // -- WP PINTLS -- a hub pinned before too
                 *found.lock().unwrap_or_else(PoisonError::into_inner) =
                     Some((hub_id.to_owned(), stored));
                 return None;
@@ -1255,6 +1356,7 @@ fn dial(
         pin_next: credential.next,
         advertised: l.tls_advertised,
         plaintext_known: false,
+        pinned_before: credential.pinned_before, // -- WP PINTLS --
     };
     let (client, auth) = LinkClient::connect_tls(
         &TcpConnector::default(),
@@ -1292,6 +1394,7 @@ fn learn_key(l: &LinkTarget, client: &LinkClient, credential: &Credential, promp
         token: credential.token.clone(),
         pin: Some(seen.key),
         next: seen.next,
+        ..Credential::default()
     };
     match l.store_credential(&id, &upgraded.encode()) {
         Ok(true) if credential.pin != upgraded.pin => prompt.note(&format!(
@@ -1329,6 +1432,7 @@ impl LinkEvents for TokenSaver {
             token: token.to_owned(),
             pin: self.tls.map(|t| t.key),
             next: self.tls.and_then(|t| t.next),
+            ..Credential::default()
         };
         if let Err(e) = self.store.put(hub_id, &credential.encode()) {
             self.failed
@@ -3191,6 +3295,8 @@ mod tests_wp_sectm {
         asked: Mutex<Vec<String>>,
         questions: Mutex<Vec<String>>,
         notes: Mutex<Vec<String>>,
+        // -- WP PINTLS -- answers to the first questions, in order; then `yes`
+        answers: Mutex<Vec<bool>>,
     }
 
     impl Person {
@@ -3222,7 +3328,12 @@ mod tests_wp_sectm {
         }
         fn confirm(&self, question: &str) -> Option<bool> {
             self.questions.lock().unwrap().push(question.to_owned());
-            self.yes
+            let mut answers = self.answers.lock().unwrap();
+            if answers.is_empty() {
+                self.yes
+            } else {
+                Some(answers.remove(0))
+            }
         }
         fn note(&self, message: &str) {
             self.notes.lock().unwrap().push(message.to_owned());
@@ -3374,6 +3485,103 @@ mod tests_wp_sectm {
         }
         assert_eq!(repair_code(&LinkError::TlsRequired), Some("tls_required"));
         assert_eq!(repair_code(&LinkError::Timeout), None);
+    }
+
+    // -- WP PINTLS -- (owner decision 2026-11-17) a hub once pinned stays TLS-only
+
+    /// Pinned, then the hub serves no TLS (an attacker resetting it, or TLS
+    /// turned off). Pair Again (yes) keeps it TLS-only: refused with
+    /// `tls_required_pinned` before any PIN; Forget is then offered (no here).
+    #[test]
+    fn wp_pintls_pair_again_never_pairs_in_plaintext() {
+        let hub = pin_hub();
+        let tokens = scratch("pintls-again");
+        let (l, key) = paired_then_pinned(&hub, &tokens);
+        hub.set_tls(None);
+        let seen = hub.tokens_seen().len();
+        let person = Person::new(Some(PIN), None);
+        *person.answers.lock().unwrap() = vec![true, false];
+        assert!(matches!(
+            link_err(link_client(&l, &person)),
+            LinkError::TlsRequiredPinned
+        ));
+        let questions = person.questions();
+        assert_eq!(questions.len(), 2, "{questions:?}");
+        assert!(
+            questions[0].contains("only over an encrypted connection"),
+            "{questions:?}"
+        );
+        assert!(
+            questions[1].contains("Forget the hub entirely")
+                && questions[1].contains("without encryption"),
+            "{questions:?}"
+        );
+        assert!(person.asked().is_empty(), "no PIN asked, so none sent");
+        assert_eq!(hub.tokens_seen().len(), seen, "no token in plaintext");
+        let kept = Credential::parse(&l.stored_token(&hid()).unwrap());
+        assert!(kept.pinned_before && kept.tls_only() && kept.token.is_empty());
+        assert_eq!(kept.previous, Some(key.pin()));
+
+        // Next time, nobody to ask: refused at once, and how to forget said
+        let nobody = Person::new(None, None);
+        assert!(matches!(
+            link_err(link_client(&l, &nobody)),
+            LinkError::TlsRequiredPinned
+        ));
+        assert!(nobody.asked().is_empty());
+        assert!(
+            nobody.notes().iter().any(|n| n.contains("forget the hub")),
+            "{:?}",
+            nobody.notes()
+        );
+        assert!(l.stored_token(&hid()).is_some(), "still TLS-only");
+    }
+
+    /// After Pair Again, a TLS pairing goes through and pins the new key.
+    #[test]
+    fn wp_pintls_pair_again_over_tls_re_pins() {
+        let hub = pin_hub();
+        let tokens = scratch("pintls-tls");
+        let (l, _) = paired_then_pinned(&hub, &tokens);
+        l.drop_pairing(&hid()).unwrap();
+        assert!(Credential::parse(&l.stored_token(&hid()).unwrap()).pinned_before);
+        let new_key = FakeTlsKey::generate();
+        hub.set_tls(Some(&new_key));
+        let person = Person::new(Some(PIN), None);
+        let client = link_client(&l, &person).unwrap();
+        assert_eq!(client.tls().map(|t| t.key), Some(new_key.pin()));
+        client.close();
+        assert_eq!(person.asked().len(), 1, "the PIN prompt");
+        assert!(person.asked()[0].contains(&pin_display(&new_key.pin())));
+        let now = Credential::parse(&l.stored_token(&hid()).unwrap());
+        assert_eq!(now.pin, Some(new_key.pin()));
+        assert!(!now.token.is_empty());
+    }
+
+    /// Forget hub is the only way back to plaintext: after a yes, the record is
+    /// gone and the pairing runs unencrypted, the prompt saying "(unsecured)".
+    #[test]
+    fn wp_pintls_forget_hub_allows_plaintext_again() {
+        let hub = pin_hub();
+        let tokens = scratch("pintls-forget");
+        let (l, _) = paired_then_pinned(&hub, &tokens);
+        l.drop_pairing(&hid()).unwrap();
+        hub.set_tls(None);
+        let person = Person::new(Some(PIN), Some(true));
+        let client = link_client(&l, &person).unwrap();
+        assert!(client.tls().is_none());
+        client.close();
+        assert_eq!(person.questions().len(), 1, "the Forget question only");
+        assert!(
+            person.asked()[0].ends_with(" (unsecured)"),
+            "{:?}",
+            person.asked()
+        );
+        let v1 = l.stored_token(&hid()).unwrap();
+        assert!(!v1.starts_with("v2."), "a plaintext v1 token: {v1}");
+        // A refused v1 token keeps nothing; a v1 hub was never pinned
+        l.drop_pairing(&hid()).unwrap();
+        assert!(l.stored_token(&hid()).is_none());
     }
 
     fn pair_link(hub: &FakeHub, key: &FakeTlsKey, tokens: PathBuf) -> LinkTarget {

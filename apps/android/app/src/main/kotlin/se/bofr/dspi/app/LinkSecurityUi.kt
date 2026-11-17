@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import se.bofr.dspi.core.LinkPairLink
+import se.bofr.dspi.link.FORGET_HUB_CODE
 import se.bofr.dspi.link.HubSecurity
 import se.bofr.dspi.link.LinkSessionState
 import se.bofr.dspi.link.REPAIR_CODES
@@ -87,9 +88,21 @@ fun rePairText(s: LinkSessionState.Failed): String {
         }
         "tls_refused" ->
             "$hub was set up with encryption, or says it supports it, but refused an encrypted connection. Nothing was sent unencrypted. " +
-                "Check the hub's encryption setting, then pair again."
+                "Check the hub's encryption setting, then pair again. Pairing again uses an encrypted connection only."
+        // -- WP PINTLS -- the one offer is Forget Hub, and the words say what it gives up
+        FORGET_HUB_CODE ->
+            "$hub was paired with encryption before, so this app connects to it only encrypted, and it refused encryption. " +
+                "Nothing was sent, not even the PIN. Turn TLS on in the hub's settings if you can. Forget Hub deletes its pairing " +
+                "and key; it can then be paired without encryption, and on this network the PIN and settings could be read or changed."
         else -> "$hub accepts only encrypted connections. Pair again to set one up."
     }
+}
+
+/** -- WP PINTLS -- The dialog's button: Forget Hub, Connect (a pairing link's) or Pair Again. */
+fun rePairLabel(s: LinkSessionState.Failed): String = when {
+    s.code == FORGET_HUB_CODE -> "Forget Hub"
+    s.fromPairLink && s.code == "hub_key_unverified" -> "Connect"
+    else -> "Pair Again"
 }
 
 /** Test tag of the pair-again dialog. */
@@ -97,7 +110,7 @@ internal const val REPAIR_DIALOG_TAG = "repair-dialog"
 
 @Composable
 internal fun RePairDialog(s: LinkSessionState.Failed, onRePair: () -> Unit, onDismiss: () -> Unit) {
-    val label = if (s.fromPairLink && s.code == "hub_key_unverified") "Connect" else "Pair Again"
+    val label = rePairLabel(s) // -- WP PINTLS --
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag(REPAIR_DIALOG_TAG),

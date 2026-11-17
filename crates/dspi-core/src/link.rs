@@ -299,6 +299,10 @@ struct Target {
     /// An unpinned hub that refused TLS earlier in this session: reconnects go
     /// straight to plaintext.
     plaintext_known: bool,
+    // -- WP PINTLS --
+    /// The stored record says the hub was pinned before (Pair Again): TLS
+    /// only, `tls_required_pinned` when it fails; the pairing pins the new key.
+    pinned_before: bool,
 }
 
 // -- WP SECCORE --
@@ -313,6 +317,7 @@ impl Target {
             token: self.token.clone(),
             pin: self.pin,
             next: self.pin_next,
+            ..Credential::default()
         }
         .encode()
     }
@@ -324,6 +329,7 @@ impl Target {
             pin_next: self.pin_next,
             advertised: self.tls_advertised,
             plaintext_known: self.plaintext_known,
+            pinned_before: self.pinned_before, // -- WP PINTLS --
         }
     }
 
@@ -677,7 +683,10 @@ impl DspiCore {
     /// TLS is tried first. A pinned hub is reached over TLS only, with its key
     /// checked before the token goes out: `hub_key_changed` when it is another
     /// key (pair again), `hub_key_unverified` for a pairing link's pin,
-    /// `tls_refused` when TLS fails; never plaintext. An unpinned hub without
+    /// `tls_refused` when TLS fails; never plaintext. -- WP PINTLS -- A record
+    /// from [`link_credential_unpaired`] (a hub pinned before, after Pair
+    /// Again) is TLS only too, any key, pinned by the pairing:
+    /// `tls_required_pinned` when TLS fails, before any PIN goes out. An unpinned hub without
     /// TLS (an upstream hub) connects unencrypted, as before
     /// (`link_security().encrypted` false). Same as
     /// [`DspiCore::link_connect_advertised`] with no advert.
@@ -777,6 +786,7 @@ impl DspiCore {
                     token,
                     pin: s.target.pin,
                     next: s.target.pin_next,
+                    ..Credential::default()
                 }
                 .encode());
             }
@@ -1115,6 +1125,7 @@ impl DspiCore {
             pin_next: credential.next,
             tls_advertised: advert.tls,
             plaintext_known: false,
+            pinned_before: credential.pinned_before, // -- WP PINTLS --
         };
         // -- WP WB4b -- decided on the caller's thread, as the client's own mode is
         let pumped = dspi_link::client::caller_driven();
@@ -2344,8 +2355,11 @@ fn dial_first(
             return Err(e);
         };
         // -- WP SECCORE -- a TLS the hub must have and refused: say so now
-        if matches!(e, LinkError::TlsRefused { .. }) {
-            return Err(e);
+        if matches!(
+            e,
+            LinkError::TlsRefused { .. } | LinkError::TlsRequiredPinned
+        ) {
+            return Err(e); // -- WP PINTLS -- the same for a hub pinned before
         }
         let RetryAdvice::Retry { min_delay } = e.retry_advice() else {
             return Err(e);
@@ -2630,6 +2644,7 @@ fn map_error(e: LinkError) -> DspiError {
         LinkError::HubKeyUnverified => "hub_key_unverified",
         LinkError::TlsRefused { .. } => "tls_refused",
         LinkError::TlsRequired => "tls_required", // -- WP SECBFIXA --
+        LinkError::TlsRequiredPinned => "tls_required_pinned", // -- WP PINTLS --
     };
     DspiError::Link {
         code: code.to_owned(),
@@ -3675,6 +3690,30 @@ pub fn link_credential_hub_key(credential: String) -> String {
         .unwrap_or_default()
 }
 
+// -- WP PINTLS --
+/// What to store in place of `credential` when the pairing with its hub is
+/// dropped: **Pair Again** (after `hub_key_changed`, `tls_refused`, ...), or a
+/// refused or revoked token. For a hub that was ever pinned this is a record
+/// with no token that still requires TLS: [`DspiCore::link_connect`] with it
+/// reaches the hub over TLS only (a failure is `tls_required_pinned`, before
+/// any PIN or token goes out), and the pairing then pins the new key. "" for a
+/// `v1` token or none (such a hub never had TLS): remove the record then.
+/// Owner decision 2026-11-17: a hub once pinned stays TLS-only; only
+/// **Forget hub** (removing its record) allows an unencrypted connection again.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn link_credential_unpaired(credential: String) -> String {
+    dspi_link::credential::unpaired_record(&credential)
+}
+
+// -- WP PINTLS --
+/// Whether a stored credential reaches its hub over TLS only: pinned, or
+/// pinned before ([`link_credential_unpaired`]'s record). For the paired-hubs
+/// list: such a hub is never connected or paired unencrypted.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn link_credential_tls_only(credential: String) -> bool {
+    Credential::parse(&credential).tls_only()
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "link/tests_wp_c15.rs"]
@@ -3711,6 +3750,11 @@ mod tests_wp_wb4b;
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "link/tests_wp_seccore.rs"]
 mod tests_wp_seccore;
+
+// -- WP PINTLS --
+#[cfg(test)]
+#[path = "link/tests_wp_pintls.rs"]
+mod tests_wp_pintls;
 
 // -- WP LKCLOSE --
 #[cfg(test)]

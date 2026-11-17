@@ -203,8 +203,17 @@ struct HubSecurityBadgeView: View {
 /// The `DspiError.Link` codes after which the app offers pairing again, and
 /// the only ones (PLAN-SEC 4.3): nothing was sent to the hub, and there is no
 /// "connect anyway".
+///
+/// -- WP PINTLS -- (owner decision 2026-11-17) Pairing again keeps a hub that
+/// was pinned TLS-only (the core's `linkCredentialUnpaired` record): it pairs
+/// over TLS only.  When such a hub refuses TLS (`tls_required_pinned`) the
+/// one offer is Forget Hub, which deletes its pairing and key; that is the
+/// only way back to an unencrypted connection, and the text says so.
 enum LinkRepair {
-    static let codes: Set<String> = ["hub_key_changed", "hub_key_unverified", "tls_refused", "tls_required"]
+    static let codes: Set<String> = ["hub_key_changed", "hub_key_unverified", "tls_refused", "tls_required",
+                                     forgetCode]
+    /// -- WP PINTLS -- the code whose only offer is Forget Hub.
+    static let forgetCode = "tls_required_pinned"
 
     /// The code of `error` when it is one of `codes`.
     static func code(of error: DspiError) -> String? {
@@ -220,6 +229,7 @@ enum LinkRepair {
         if reason.hasPrefix("tls_required") { return "tls_required" }
         if reason.hasPrefix("this hub's key changed") { return "hub_key_changed" }
         if reason.hasPrefix("this hub's key does not match") { return "hub_key_unverified" }
+        if reason.hasPrefix("this hub was paired with encryption before") { return forgetCode }   // -- WP PINTLS --
         return nil
     }
 
@@ -239,7 +249,13 @@ enum LinkRepair {
                     + "again and check the key the hub shows."
         case "tls_refused":
             return "\(hubName) was set up with encryption, or says it supports it, but refused an encrypted "
-                + "connection. Nothing was sent unencrypted. Check the hub's encryption setting, then pair again."
+                + "connection. Nothing was sent unencrypted. Check the hub's encryption setting, then pair again. "
+                + "Pairing again uses an encrypted connection only."
+        case forgetCode:   // -- WP PINTLS --
+            return "\(hubName) was paired with encryption before, so this console connects to it only encrypted, "
+                + "and it refused encryption. Nothing was sent, not even the PIN. Turn TLS on in the hub's settings "
+                + "if you can. Forget Hub deletes its pairing and key; it can then be paired without encryption, "
+                + "and on this network the PIN and settings could be read or changed."
         default:
             return "\(hubName) accepts only encrypted connections. Pair again to set one up."
         }
@@ -247,7 +263,8 @@ enum LinkRepair {
 
     /// The button that pairs again.
     static func actionTitle(code: String, fromPairLink: Bool) -> String {
-        fromPairLink && code == "hub_key_unverified" ? "Connect" : "Pair Again"
+        if code == forgetCode { return "Forget Hub" }   // -- WP PINTLS --
+        return fromPairLink && code == "hub_key_unverified" ? "Connect" : "Pair Again"
     }
 }
 

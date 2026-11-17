@@ -7424,6 +7424,10 @@ Macros are stored on the device alongside the controls and share their Save and 
 <context>
     <name>RePairDialog</name>
     <message>
+        <source>This hub was paired with encryption</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>This hub&apos;s key changed</source>
         <translation type="unfinished"></translation>
     </message>
@@ -7440,15 +7444,23 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Nothing was sent to it. Pair again only if you know why the key changed, for example because the hub was set up again. Otherwise another machine may be posing as this hub.</source>
+        <source>Nothing was sent to it, not even the PIN. Turn TLS on in the hub&apos;s settings if you can. Forget Hub deletes its pairing and key; it can then be paired without encryption, and on this network the PIN and settings could be read or changed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Nothing was sent to it. Pairing again starts over with the hub&apos;s PIN; check the key the hub shows.</source>
+        <source>Nothing was sent to it. Pair again only if you know why the key changed, for example because the hub was set up again. Otherwise another machine may be posing as this hub. Pairing again uses an encrypted connection only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing was sent to it. Pairing again starts over with the hub&apos;s PIN over an encrypted connection only; check the key the hub shows.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Pair Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forget Hub</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

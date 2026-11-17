@@ -232,7 +232,7 @@ void LinkController::applyStatus(const Status &s) {
     if (s.tokenRefused && !m_hubId.isEmpty()) {
         const QString hub = m_hubId;
         post([this, hub] {
-            m_store->forget(hub);
+            dropPairing(hub);   // -- WP PINTLS --
             QMetaObject::invokeMethod(this, [this, hub] { track(-1); emit tokensChanged(hub); }, Qt::QueuedConnection);
         });
     }
@@ -406,7 +406,7 @@ void LinkController::dial(const QString &url, const QString &expectedHubId, bool
             return;
         }
         if (ok && hello.value(QLatin1String("tokenRefused")).toBool()) {
-            m_store->forget(str(hello, "hubId"));
+            dropPairing(str(hello, "hubId"));   // -- WP PINTLS --
             used.clear();
         }
         // -- WP SECQT -- the store already holds what went out: the save below
@@ -623,7 +623,18 @@ void LinkController::dismissTokenWarning() {
 
 bool LinkController::offersRePair(const QString &code) {
     return code == QLatin1String("hub_key_changed") || code == QLatin1String("hub_key_unverified")
-           || code == QLatin1String("tls_refused") || code == QLatin1String("tls_required");
+           || code == QLatin1String("tls_refused") || code == QLatin1String("tls_required")
+           || code == QLatin1String("tls_required_pinned");   // -- WP PINTLS -- offered as Forget Hub
+}
+
+// -- WP PINTLS --
+void LinkController::dropPairing(const QString &hubId) {
+    if (hubId.isEmpty()) return;
+    const QByteArray stored = m_store->load(hubId).toUtf8();
+    const QString kept = QString::fromUtf8(
+        readSized([&](char *b, uint32_t n) { return dspi_link_credential_unpaired(stored.constData(), b, n); }));
+    if (kept.isEmpty()) m_store->forget(hubId);
+    else m_store->save(hubId, kept);
 }
 
 LinkController::Security LinkController::readSecurity(FfiCore *core) {
@@ -683,7 +694,18 @@ void LinkController::updateUnsecured() {
 void LinkController::rePair() {
     if (!rePairOffered() || m_lastUrl.isEmpty()) return;
     const QString hub = m_failedHubId.isEmpty() ? m_lastExpected : m_failedHubId;
-    dial(m_lastUrl, hub, m_lastTls, false);
+    // -- WP PINTLS -- before the dial, on the same one-thread worker: Forget Hub
+    // after tls_required_pinned, else the token dropped and a hub once pinned
+    // kept TLS-only; the dial then uses what is stored
+    const bool forgetHub = m_errorCode == QLatin1String("tls_required_pinned");
+    if (!hub.isEmpty()) {
+        post([this, hub, forgetHub] {
+            if (forgetHub) m_store->forget(hub);
+            else dropPairing(hub);
+            QMetaObject::invokeMethod(this, [this, hub] { track(-1); emit tokensChanged(hub); }, Qt::QueuedConnection);
+        });
+    }
+    dial(m_lastUrl, hub, m_lastTls, !hub.isEmpty());
 }
 
 void LinkController::dismissRePair() {

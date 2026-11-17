@@ -70,6 +70,8 @@ pub(crate) mod link {
     use dspi_core::link::{link_fetch_info, link_parse_address, link_ws_url};
     // -- WP SECCORE --
     use dspi_core::link::{link_credential_hub_key, link_parse_pair_link};
+    // -- WP PINTLS --
+    use dspi_core::link::{link_credential_tls_only, link_credential_unpaired};
     use dspi_core::{
         DspiCore, DspiError, LinkDevice, LinkHello, LinkInfo, LinkListener, LinkStatus, Result,
     };
@@ -617,6 +619,38 @@ pub(crate) mod link {
                 return 0;
             };
             copy_whole(&link_credential_hub_key(credential.to_owned()), buf, len)
+        })
+    }
+
+    // -- WP PINTLS --
+    /// What to store in place of `credential` when its pairing is dropped
+    /// (Pair Again, a refused or revoked token), as plain text: for a hub that
+    /// was ever pinned a token-less record that keeps it TLS-only (a plaintext
+    /// connect is then `tls_required_pinned`, before any PIN goes out); "" for a
+    /// `v1` token or none: remove the record then. Only Forget hub (removing the
+    /// record) allows plaintext again. Returns the length needed; 0 for a null or
+    /// non-UTF-8 `credential` (store nothing new then).
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_link_credential_unpaired(
+        credential: *const c_char,
+        buf: *mut c_char,
+        len: u32,
+    ) -> u32 {
+        guard(0, || {
+            let Some(credential) = c_str(credential) else {
+                return 0;
+            };
+            copy_whole(&link_credential_unpaired(credential.to_owned()), buf, len)
+        })
+    }
+
+    // -- WP PINTLS --
+    /// Whether a stored credential reaches its hub over TLS only (pinned, or
+    /// pinned before). False for a null or non-UTF-8 `credential`.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_link_credential_tls_only(credential: *const c_char) -> bool {
+        guard(false, || {
+            c_str(credential).is_some_and(|c| link_credential_tls_only(c.to_owned()))
         })
     }
 
