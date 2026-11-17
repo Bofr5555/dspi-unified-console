@@ -94,6 +94,8 @@ mod clipboard;
 mod measure_doc;
 // -- WP P5SES -- the measurement session
 mod measure;
+// -- WP P5LIVE -- the live response and direct adjustments
+mod measure_live;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

@@ -3228,6 +3228,7 @@ interface DspiCoreApi : AutoCloseable {
     /**
      * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
      * the run discarded, the lock given back. Idempotent; never fails.
+     * It ends the live view too (`measure_live_stop`).
      */
     fun measureStop(): MeasureState
 
@@ -3253,6 +3254,131 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun measureClear()
+
+    /**
+     * Start the live view of one output (PLAN-P5 T9, T5): short sweeps one
+     * after the other, or finite pink noise with the microphone RTA, each
+     * run under every rule of a measurement (the preflight, the ramp, the
+     * aborts; `measure_start`'s errors). The device lock is held until
+     * `measure_live_stop`. Then call `measure_live_tick` about every 50 ms
+     * (instead of `measure_tick`) and push capture whenever the session
+     * wants it (`measure_capture_push`); read `measure_live_frame`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a measurement
+     * or a live view already running, or a blocker (named);
+     * [`DspiError::ReadOnly`], [`DspiError::Denied`], [`DspiError::Locked`],
+     * [`DspiError::Disconnected`] as `measure_start`, with nothing sent.
+     */
+    @Throws(DspiException::class)
+    fun measureLiveStart(setup: MeasureLiveSetup): MeasureLiveState
+
+    /**
+     * Drive the live view: renew the lock's lease, drive the run in flight
+     * (`measure_tick`), take a finished sweep's curve, feed the RTA, start
+     * the next run. Call it about every 50 ms while the live view runs, off
+     * the UI thread. A run's abort ends the live view (its reason in
+     * `issue`). Never fails.
+     */
+    fun measureLiveTick(): MeasureLiveState
+
+    /**
+     * What the live view shows now: the measured curve, the target levelled
+     * to it, the predicted curve of a pending (or unmeasured) change, the
+     * RTA, the pending proposal, the run's state. No I/O; safe from a
+     * listener.
+     */
+    fun measureLiveFrame(): MeasureLiveFrame
+
+    /**
+     * Where the live view stands. No I/O; safe from a listener.
+     */
+    fun measureLiveState(): MeasureLiveState
+
+    /**
+     * Stop the live view: the run in flight stopped (one `STOP_NOW`), the
+     * lock given back. `measure_stop` does the same. Idempotent; never
+     * fails.
+     */
+    fun measureLiveStop(): MeasureLiveState
+
+    /**
+     * Preview `bands` (PEQ bands of `output`, the live view's) as a pending
+     * change: the predicted curve shows at once, nothing is written until
+     * `measure_live_apply`. An empty list drops the pending change.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`, a band index is past the output's PEQ, a value is not
+     * finite, or a type is not one the curves model; the limits profile's
+     * refusal ([`DspiError::LimitExceeded`] and kin) for a write it would
+     * refuse.
+     */
+    @Throws(DspiException::class)
+    fun measureLivePredict(output: Int, bands: List<MeasureLiveBand>): MeasureLiveProposal
+
+    /**
+     * "Cut this peak": one free PEQ band (flat or bypassed now) from the fit
+     * on one octave about `freq_hz`, cut only, previewed as the pending
+     * change. `issue` says why nothing is proposed (no curve yet, nothing to
+     * cut, not trusted there, no free band).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`; the limits profile's refusal of the band.
+     */
+    @Throws(DspiException::class)
+    fun measureLiveCutPeak(output: Int, freqHz: Double): MeasureLiveProposal
+
+    /**
+     * "Fit this range": the free PEQ bands fitted toward the target in
+     * `f1_hz..f2_hz` (held to the measurement's trusted range), with the
+     * placement's bounds (S9: boost +3 dB speakers, +6 dB headphones, never
+     * above the limits profile's cap; cut -15 dB; Q 0.3 to 10) and a
+     * headroom cut of the output gain for its net boost; previewed as the
+     * pending change. Every band the fit lists is written on apply.
+     *
+     * Errors: as [`DspiCore::measure_live_cut_peak`].
+     */
+    @Throws(DspiException::class)
+    fun measureLiveFitRange(output: Int, f1Hz: Double, f2Hz: Double): MeasureLiveProposal
+
+    /**
+     * Write the pending change `proposal_id` as **one undo group**
+     * (unguarded, as a manual edit; S10): the run in flight is stopped, each
+     * band through the typed setter (judged by read-only, the limits and the
+     * lock as any write), then the next run starts. Refused, with nothing
+     * written, unless the device's bands are still the ones the proposal was
+     * computed from. A write that fails puts back the ones before it.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no such pending proposal or
+     * a chain changed since the preview; the setters' errors
+     * ([`DspiError::ReadOnly`], [`DspiError::Denied`], the limits'
+     * refusals, a transfer failure).
+     */
+    @Throws(DspiException::class)
+    fun measureLiveApply(proposalId: Long): MeasureLiveState
+
+    /**
+     * Drop the pending change (nothing is written).
+     */
+    fun measureLiveDiscard(): MeasureLiveState
+
+    /**
+     * Hold (`true`) the RTA's spectrum for comparison, or drop the held
+     * copy (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs, or there
+     * is no spectrum to hold yet.
+     */
+    @Throws(DspiException::class)
+    fun measureLiveHold(on: Boolean): MeasureLiveState
+
+    /**
+     * The RTA's averaging preset; the average starts again (the held copy
+     * is kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs.
+     */
+    @Throws(DspiException::class)
+    fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState
 
     /**
      * Keep measurement, microphone and target documents in files under

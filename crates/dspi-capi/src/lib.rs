@@ -195,6 +195,8 @@ mod tests {
             "src/fns_misc/measure_doc.rs",
             // -- WP P5SES --
             "src/fns_misc/measure.rs",
+            // -- WP P5LIVE --
+            "src/fns_misc/measure_live.rs",
             "src/fns_browse.rs",
             "src/fns_link.rs",
             "src/fns_hub.rs",

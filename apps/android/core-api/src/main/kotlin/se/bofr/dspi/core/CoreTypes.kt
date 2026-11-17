@@ -6458,6 +6458,332 @@ data class MeasureState(
 )
 
 /**
+ * What the live view measures and how (`measure_live_start`). Every number
+ * 0 (or absent) is the default.
+ */
+data class MeasureLiveSetup(
+    /**
+     * The output, 0-based.
+     */
+    val output: Int,
+    /**
+     * Sweeps or pink noise with the RTA.
+     */
+    val mode: MeasureLiveMode,
+    /**
+     * Its way (the tweeter rule, S6, needs `mid` or `high` for those).
+     */
+    val role: MeasureRole,
+    /**
+     * Where the microphone is: the listening position, near field, or a
+     * headphone coupler (several positions are not live).
+     */
+    val placement: MeasurePlacement,
+    /**
+     * The coupler, for headphones.
+     */
+    val coupler: MeasureCoupler?,
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated one.
+     */
+    val micDocument: String,
+    /**
+     * A `target` document's text; "" for the placement's default target.
+     */
+    val targetDocument: String,
+    /**
+     * The graph's smoothing, 1/N octave (1 to 48); 0 for none.
+     */
+    val smoothing: Int,
+    /**
+     * One sweep, ms (1000 to 15000; 0: 2700).
+     */
+    val sweepMs: Long,
+    /**
+     * The gap after a sweep, ms (300 to 2000; 0: the placement's).
+     */
+    val gapMs: Long,
+    /**
+     * Pink noise per run, ms (1000 to 60000; 0: 30000, then re-armed).
+     */
+    val pinkMs: Long,
+    /**
+     * The generator's ceiling, peak dBFS (as a measurement's).
+     */
+    val ceilingDb: Float?,
+    /**
+     * The SPL cap with a calibrated microphone, dB SPL (as a measurement's).
+     */
+    val splCapDb: Float?,
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    val captureRateHz: Long,
+    /**
+     * The RTA's averaging.
+     */
+    val averaging: MeasureRtaAveraging,
+    /**
+     * The RTA's bands per octave (1 to 48; 0: 3).
+     */
+    val bandsPerOctave: Int,
+)
+
+/**
+ * A curve as the live graph draws it (10 Hz to 22 kHz, 1/48 octave).
+ */
+data class MeasureLiveCurve(
+    /**
+     * Frequencies, Hz, ascending.
+     */
+    val freqsHz: List<Double>,
+    /**
+     * Magnitude, dB (dB SPL when `spl`).
+     */
+    val magDb: List<Double>,
+    /**
+     * Per point, trusted (untrusted points are drawn faint).
+     */
+    val valid: List<Boolean>,
+    /**
+     * The magnitudes are dB SPL (a calibrated microphone).
+     */
+    val spl: Boolean,
+)
+
+/**
+ * One PEQ band of the live output, as a proposal writes it.
+ */
+data class MeasureLiveBand(
+    /**
+     * The PEQ band, 0-based.
+     */
+    val band: Int,
+    /**
+     * The firmware's filter type (0 flat, 1 peak, 2 low shelf, 3 high
+     * shelf, ...).
+     */
+    val filterType: Int,
+    /**
+     * Switched off.
+     */
+    val bypass: Boolean,
+    /**
+     * Centre or corner, Hz.
+     */
+    val freq: Float,
+    /**
+     * Q.
+     */
+    val q: Float,
+    /**
+     * Gain, dB.
+     */
+    val gain: Float,
+    /**
+     * The Linkwitz Transform's target Q; unused otherwise.
+     */
+    val qp: Float,
+)
+
+/**
+ * One band a proposal changes.
+ */
+data class MeasureLiveChange(
+    /**
+     * The PEQ band, 0-based.
+     */
+    val band: Int,
+    /**
+     * What it is now.
+     */
+    val before: MeasureLiveBand,
+    /**
+     * What the proposal writes.
+     */
+    val after: MeasureLiveBand,
+    /**
+     * The change in words ("PEQ band 4: flat → peak -5.8 dB at 1.02 kHz,
+     * Q 4.1").
+     */
+    val words: String,
+)
+
+/**
+ * A direct adjustment, previewed: nothing is written until
+ * `measure_live_apply` with its id.
+ */
+data class MeasureLiveProposal(
+    /**
+     * Its id (`measure_live_apply`).
+     */
+    val id: Long,
+    /**
+     * What made it.
+     */
+    val adjust: MeasureLiveAdjust,
+    /**
+     * The output.
+     */
+    val output: Int,
+    /**
+     * The undo step's label.
+     */
+    val label: String,
+    /**
+     * The bands it writes (empty: nothing to change, see `issue`).
+     */
+    val changes: List<MeasureLiveChange>,
+    /**
+     * The output's gain now, dB.
+     */
+    val gainBeforeDb: Float,
+    /**
+     * The output's gain it writes, dB (a headroom cut; equal: unchanged).
+     */
+    val gainAfterDb: Float,
+    /**
+     * The RMS error to the target in the span before, dB (a fit's).
+     */
+    val rmsBeforeDb: Double,
+    /**
+     * The same, predicted after, dB.
+     */
+    val rmsAfterDb: Double,
+    /**
+     * What was done and why, in words.
+     */
+    val notes: List<String>,
+    /**
+     * Why nothing is proposed, when nothing is.
+     */
+    val issue: MeasureIssue?,
+    /**
+     * The curve the change is predicted to give.
+     */
+    val predicted: MeasureLiveCurve?,
+)
+
+/**
+ * The microphone RTA of the live view.
+ */
+data class MeasureLiveRta(
+    /**
+     * The averaged spectrum in fractional-octave bands (dBFS, or dB SPL).
+     */
+    val current: MeasureLiveCurve?,
+    /**
+     * The held copy.
+     */
+    val held: MeasureLiveCurve?,
+    /**
+     * The current spectrum minus the held one, dB.
+     */
+    val compare: MeasureLiveCurve?,
+    /**
+     * FFT frames averaged so far.
+     */
+    val frames: Long,
+    /**
+     * The averaging preset.
+     */
+    val averaging: MeasureRtaAveraging,
+)
+
+/**
+ * What the live view shows now (`measure_live_frame`).
+ */
+data class MeasureLiveFrame(
+    /**
+     * The live view runs.
+     */
+    val active: Boolean,
+    /**
+     * What it plays.
+     */
+    val mode: MeasureLiveMode,
+    /**
+     * The output.
+     */
+    val output: Int,
+    /**
+     * Counts the measured curves (one per sweep; the RTA's per update).
+     */
+    val seq: Long,
+    /**
+     * The measured curve, if one.
+     */
+    val measured: MeasureLiveCurve?,
+    /**
+     * The target, levelled to the measured curve.
+     */
+    val target: MeasureLiveCurve?,
+    /**
+     * The predicted curve: of the pending change, or of a change already
+     * written that no sweep has measured yet.
+     */
+    val predicted: MeasureLiveCurve?,
+    /**
+     * The microphone RTA (pink mode).
+     */
+    val rta: MeasureLiveRta?,
+    /**
+     * The change previewed, if one.
+     */
+    val pending: MeasureLiveProposal?,
+    /**
+     * Why the live view stopped, if it did.
+     */
+    val issue: MeasureIssue?,
+    /**
+     * The current run's state.
+     */
+    val session: MeasureState,
+)
+
+/**
+ * Where the live view stands (`measure_live_tick` and the other calls).
+ */
+data class MeasureLiveState(
+    /**
+     * The live view runs.
+     */
+    val active: Boolean,
+    /**
+     * What it plays.
+     */
+    val mode: MeasureLiveMode,
+    /**
+     * The output.
+     */
+    val output: Int,
+    /**
+     * Counts the measured curves.
+     */
+    val seq: Long,
+    /**
+     * Runs started (sweeps, or pink runs).
+     */
+    val runs: Long,
+    /**
+     * The level the next run starts its ramp at, peak dBFS.
+     */
+    val levelDb: Float?,
+    /**
+     * The pending proposal's id, if one.
+     */
+    val pending: Long?,
+    /**
+     * Why the live view stopped, if it did.
+     */
+    val issue: MeasureIssue?,
+    /**
+     * The current run's state.
+     */
+    val session: MeasureState,
+)
+
+/**
  * One measurement, microphone or target document in a list
  * ([`DspiCore::measure_docs`]).
  */
@@ -7693,6 +8019,56 @@ enum class MeasurePhase {
      * no signal): nothing is kept.
      */
     FAILED,
+}
+
+/**
+ * What the live view plays.
+ */
+enum class MeasureLiveMode {
+    /**
+     * Short log sweeps, one after the other: one magnitude curve per sweep.
+     */
+    SWEEP,
+    /**
+     * Finite pink noise with the microphone RTA (re-armed while live).
+     */
+    PINK_RTA,
+}
+
+/**
+ * The microphone RTA's averaging preset.
+ */
+enum class MeasureRtaAveraging {
+    /**
+     * Exponential, 125 ms.
+     */
+    FAST,
+    /**
+     * Exponential, 1 s.
+     */
+    SLOW,
+    /**
+     * Every frame since the start (or the last change) alike.
+     */
+    INFINITE,
+}
+
+/**
+ * What made a proposal.
+ */
+enum class MeasureLiveAdjust {
+    /**
+     * "Cut this peak".
+     */
+    CUT_PEAK,
+    /**
+     * "Fit this range".
+     */
+    FIT_RANGE,
+    /**
+     * An edit the client asked to preview.
+     */
+    EDIT,
 }
 
 /**

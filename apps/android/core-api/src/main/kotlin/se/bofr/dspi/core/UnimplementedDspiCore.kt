@@ -532,6 +532,30 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun measureClear(): Unit = throw NotImplementedError("measure_clear")
 
+    override fun measureLiveStart(setup: MeasureLiveSetup): MeasureLiveState = throw NotImplementedError("measure_live_start")
+
+    override fun measureLiveTick(): MeasureLiveState = throw NotImplementedError("measure_live_tick")
+
+    override fun measureLiveFrame(): MeasureLiveFrame = throw NotImplementedError("measure_live_frame")
+
+    override fun measureLiveState(): MeasureLiveState = throw NotImplementedError("measure_live_state")
+
+    override fun measureLiveStop(): MeasureLiveState = throw NotImplementedError("measure_live_stop")
+
+    override fun measureLivePredict(output: Int, bands: List<MeasureLiveBand>): MeasureLiveProposal = throw NotImplementedError("measure_live_predict")
+
+    override fun measureLiveCutPeak(output: Int, freqHz: Double): MeasureLiveProposal = throw NotImplementedError("measure_live_cut_peak")
+
+    override fun measureLiveFitRange(output: Int, f1Hz: Double, f2Hz: Double): MeasureLiveProposal = throw NotImplementedError("measure_live_fit_range")
+
+    override fun measureLiveApply(proposalId: Long): MeasureLiveState = throw NotImplementedError("measure_live_apply")
+
+    override fun measureLiveDiscard(): MeasureLiveState = throw NotImplementedError("measure_live_discard")
+
+    override fun measureLiveHold(on: Boolean): MeasureLiveState = throw NotImplementedError("measure_live_hold")
+
+    override fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState = throw NotImplementedError("measure_live_averaging")
+
     override fun measureSetDir(dir: String): Unit = throw NotImplementedError("measure_set_dir")
 
     override fun measureDocs(kind: String, serial: String): List<MeasureDocInfo> = throw NotImplementedError("measure_docs")
