@@ -6,6 +6,10 @@
 #                                 macOS app and run its unit tests
 #   apps/apple/ci-test.sh ios     the same for the iOS app: unit and UI tests in
 #                                 an iPhone Simulator
+#   apps/apple/ci-test.sh macos|ios --build-only
+#                                 (WP FU1) the XCFramework, then xcodebuild
+#                                 build-for-testing of the app and its test
+#                                 bundles, no tests: Swift compile errors, cheaply
 #
 # Both runs must include WP SW2's CoreBindingsSW2Tests (core_info and the demo
 # device through the generated bindings), passed. Under XCTest the app opens no
@@ -22,7 +26,10 @@
 set -euo pipefail
 
 platform=${1:-}
-case "$platform" in macos|ios) ;; *) echo "usage: $0 macos|ios" >&2; exit 2 ;; esac
+case "$platform" in macos|ios) ;; *) echo "usage: $0 macos|ios [--build-only]" >&2; exit 2 ;; esac
+# -- WP FU1 --
+build_only=0
+case "${2:-}" in '') ;; --build-only) build_only=1 ;; *) echo "usage: $0 macos|ios [--build-only]" >&2; exit 2 ;; esac
 [ "$(uname -s)" = Darwin ] || { echo "ci-test: macOS only (the macOS VM)" >&2; exit 2; }
 here=$(cd "$(dirname "$0")" && pwd)
 
@@ -45,6 +52,7 @@ core_pass=(CoreBackedTransportSW4Tests FakeTransportTests ExtensionChannelWireTe
 case "$platform" in
   macos)
     args+=(-scheme "DSPi Console" -destination "platform=macOS,arch=$(uname -m)")
+    build_args=("${args[@]}")   # -- WP FU1 -- before the test-only options below
     core_pass+=(AdatWireTests ControlSurfacesWireTests I2sClockPinModeWireTests I2sSlaveWireTests
                 LimiterWireTests PsybassWireTests RtaWireTests SiggenWireTests SpdifInputWireTests
                 SubharmWireTests TubeWireTests UpmixerWireTests)   # -- WP SW4 --
@@ -78,6 +86,7 @@ case "$platform" in
     [ -n "$sim" ] || { echo "ci-test: no iPhone simulator available" >&2; exit 1; }
     echo "simulator: $sim"
     args+=(-scheme "DSPi Console iOS" -destination "id=${sim%% *}")
+    build_args=("${args[@]}")   # -- WP FU1 -- before the test-only options below
     bundle="DSPi Console iOSTests"   # -- WP SW4 --
     # -- WP SW18 -- An incremental build never removes a resource that left
     # the target, so a .uf2 image from an earlier build would stay in the
@@ -136,6 +145,15 @@ case "$platform" in
     fi
     ;;
 esac
+
+# -- WP FU1 -- build only: the app and its test bundles compile, nothing runs
+if [ "$build_only" = 1 ]; then
+  echo "-- xcodebuild build-for-testing ${build_args[*]}"
+  if xcodebuild build-for-testing -quiet "${build_args[@]}"; then
+    echo "ci-test $platform --build-only: built"; exit 0
+  fi
+  echo "ci-test $platform --build-only: FAILED" >&2; exit 1
+fi
 
 # -- WP SECSWF -- No test hangs a run: a test past 10 minutes (the review saw
 # a RenderBox wait hold the macOS run 25 minutes) is ended and fails.

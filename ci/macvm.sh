@@ -4,6 +4,11 @@
 #
 #   ci/macvm.sh macos   macOS Swift app: build, unit tests
 #   ci/macvm.sh ios     iOS app: build, unit and UI tests in the Simulator
+#   ci/macvm.sh build macos|ios   (WP FU1) build only: the XCFramework and
+#                       xcodebuild build-for-testing of the app and its test
+#                       bundles, no tests (apps/apple/ci-test.sh --build-only).
+#                       Catches Swift compile errors cheaply after a merge: the
+#                       Linux swift and ios-check steps do not compile the app
 #   ci/macvm.sh swift-dmg  Swift app: its .dmg (apps/apple/ci-dmg.sh), started
 #                       from the .dmg on the demo device, copied back the same
 #                       way (WP REL013M)
@@ -27,9 +32,15 @@ cd "$(dirname "$0")/.."
 platform=${1:-}
 case "$platform" in
   macos|ios) script="apps/apple/ci-test.sh $platform" ;;
+  # -- WP FU1 -- build only, no tests
+  build)
+    case "${2:-}" in
+      macos|ios) script="apps/apple/ci-test.sh $2 --build-only" ;;
+      *) echo "usage: $0 build macos|ios" >&2; exit 2 ;;
+    esac ;;
   # -- WP QP0 -- The Qt .dmg row is dropped: the Swift app is the Mac release
   swift-dmg) script=apps/apple/ci-dmg.sh ;;  # -- WP REL013M --
-  *) echo "usage: $0 macos|ios|swift-dmg" >&2; exit 2 ;;
+  *) echo "usage: $0 macos|ios|swift-dmg|build macos|ios" >&2; exit 2 ;;
 esac
 host=${DSPI_MACVM:-macvm}
 # -- WP SW-M1 -- the tree's key: letters, digits, dot, dash, underscore only
