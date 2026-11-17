@@ -320,6 +320,16 @@ final class LinkSecuritySECSWTests: XCTestCase {
                         .contains("encrypted connection only"))
     }
 
+    // -- WP SWPIN -- (review-pintls N2) only a record with a token is a pairing
+    func testSWPINOnlyARecordWithATokenCountsAsPaired() throws {
+        let kept = linkCredentialUnpaired(credential: try secswLink().credential)
+        XCTAssertTrue(linkCredentialTlsOnly(credential: kept))
+        XCTAssertFalse(LinkRecord.isPaired(kept), "pinned before: no token, asks for its PIN")
+        XCTAssertFalse(LinkRecord.isPaired(nil))
+        XCTAssertFalse(LinkRecord.isPaired(""))
+        XCTAssertTrue(LinkRecord.isPaired("a-v1-token"))
+    }
+
     // MARK: Pairing links
 
     /// The core parses a link; a wrong `k=` (or no key, or another scheme) is
@@ -591,6 +601,132 @@ final class CoreLinkSECSWSwiftHubTests: XCTestCase {
         XCTAssertEqual(ui.pinAsks.count, 1, "the PIN after Forget Hub")
         let stored = try XCTUnwrap(tokens.token(forHub: hub.hubID))
         XCTAssertFalse(stored.hasPrefix("v2."), "the hub's new (plaintext) pairing")
+        t.disconnect()
+    }
+
+    // -- WP SWPIN -- (review-pintls F4) a typed address with no expected id
+
+    /// A typed address whose `/info` did not load (no expected id), at a hub
+    /// whose record (under the id its hello names) is the pinned-before one:
+    /// dialled again with the record, refused `tls_required_pinned` (this hub
+    /// has no TLS) before any PIN; no plaintext session, no PIN prompt.
+    func testSWPINATypedAddressIsHeldToTheRecordOfTheHubItsHelloNames() throws {
+        let hub = try SECSWSwiftHub()
+        let tokens = secswTokens()
+        let kept = linkCredentialUnpaired(credential: try secswLink(hub: hub.hubID).credential)
+        tokens.setToken(kept, forHub: hub.hubID)
+        let ui = SECSWFakeUI()
+        ui.repairAnswers = [false]
+        let center = LinkSecurityCenter()
+        let manual = "manual:127.0.0.1:\(hub.port)"
+        let (c, t) = client(hub, id: manual, expected: "", tokens: tokens, ui: ui, center: center)
+        t.connect(to: hub.url)
+        t.bind(serial: hub.serial)
+        secswWait(20, "the TLS-only refusal") { !ui.repairs.isEmpty }
+        XCTAssertEqual(ui.repairs.first?.code, "tls_required_pinned")
+        XCTAssertEqual(ui.pinAsks.count, 0, "no PIN prompt on a plaintext session to a hub pinned before")
+        XCTAssertEqual(c.expectedHubID, hub.hubID, "the hello's id became the expected one")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertFalse(t.isConnected, "never connected in plaintext")
+        XCTAssertNil(center.byHub[manual], "no session was applied")
+        XCTAssertEqual(tokens.token(forHub: hub.hubID), kept, "the record is kept")
+        XCTAssertNil(tokens.token(forHub: manual))
+    }
+
+    /// The same typed address with a (plaintext) token stored under the hub's
+    /// id only: the hub asks for a PIN on the first dial, which is dialled
+    /// again with the token, so it connects without asking.
+    func testSWPINATypedAddressUsesTheTokenStoredUnderTheHubsID() throws {
+        let hub = try SECSWSwiftHub()
+        let tokens = secswTokens()
+        let ui = SECSWFakeUI()
+        ui.pins = [hub.auth.beginPairing()]
+        let center = LinkSecurityCenter()
+        let (_, first) = client(hub, tokens: tokens, ui: ui, center: center)
+        first.connect(to: hub.url)
+        first.bind(serial: hub.serial)
+        secswWait(20, "the first pairing") { first.isConnected }
+        first.disconnect()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertEqual(ui.pinAsks.count, 1)
+        let token = try XCTUnwrap(tokens.token(forHub: hub.hubID))
+        XCTAssertFalse(linkCredentialTlsOnly(credential: token))
+
+        let manual = "manual:127.0.0.1:\(hub.port)"
+        let (c, t) = client(hub, id: manual, expected: "", tokens: tokens, ui: ui, center: center)
+        t.connect(to: hub.url)
+        t.bind(serial: hub.serial)
+        secswWait(20, "the session with the stored token") { t.isConnected }
+        XCTAssertEqual(ui.pinAsks.count, 1, "no second PIN prompt")
+        XCTAssertEqual(c.expectedHubID, hub.hubID)
+        XCTAssertTrue(ui.repairs.isEmpty)
+        t.disconnect()
+    }
+
+    // -- review fu1 -- (F1) the copy under a typed address's key
+
+    /// A hub first paired at a typed address without TLS keeps a copy of its
+    /// token under the address's key.  Pinned later through another entry
+    /// (only the record under its own id follows), the copy is stale: with no
+    /// expected id it must not go out unencrypted to whoever answers there.
+    /// The hub sees no token; the record then refuses the plaintext session.
+    func testREVIEWFU1AStaleTokenUnderATypedAddressIsNotSentToAHubSincePinned() throws {
+        let hub = try SECSWSwiftHub()
+        let tokens = secswTokens()
+        let ui = SECSWFakeUI()
+        ui.pins = [hub.auth.beginPairing()]
+        ui.repairAnswers = [false]
+        let center = LinkSecurityCenter()
+        let manual = "manual:127.0.0.1:\(hub.port)"
+        let (_, first) = client(hub, id: manual, expected: "", tokens: tokens, ui: ui, center: center)
+        first.connect(to: hub.url)
+        first.bind(serial: hub.serial)
+        secswWait(20, "the first pairing") { first.isConnected }
+        first.disconnect()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        let stale = try XCTUnwrap(tokens.token(forHub: manual))
+        XCTAssertFalse(linkCredentialTlsOnly(credential: stale))
+        let kept = linkCredentialUnpaired(credential: try secswLink(hub: hub.hubID).credential)
+        tokens.setToken(kept, forHub: hub.hubID)
+        let before = hub.auth.clients.map { $0.lastSeen }
+        RunLoop.main.run(until: Date().addingTimeInterval(1.2))   // a later use would stamp another second
+        let (c, t) = client(hub, id: manual, expected: "", tokens: tokens, ui: ui, center: center)
+        t.connect(to: hub.url)
+        t.bind(serial: hub.serial)
+        secswWait(20, "the TLS-only refusal") { !ui.repairs.isEmpty }
+        XCTAssertEqual(ui.repairs.first?.code, "tls_required_pinned")
+        XCTAssertEqual(c.expectedHubID, hub.hubID)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertFalse(t.isConnected)
+        XCTAssertEqual(ui.pinAsks.count, 1, "only the first pairing asked")
+        XCTAssertEqual(hub.auth.clients.map { $0.lastSeen }, before, "the hub was shown no token")
+    }
+
+    /// A token kept only under the typed address's key (no record under the
+    /// hub's id) still connects without a PIN: held back on the first dial,
+    /// sent on the second, once the hub has named itself.
+    func testREVIEWFU1ATokenOnlyUnderATypedAddressStillConnectsWithoutAPIN() throws {
+        let hub = try SECSWSwiftHub()
+        let tokens = secswTokens()
+        let ui = SECSWFakeUI()
+        ui.pins = [hub.auth.beginPairing()]
+        let center = LinkSecurityCenter()
+        let manual = "manual:127.0.0.1:\(hub.port)"
+        let (_, first) = client(hub, id: manual, expected: "", tokens: tokens, ui: ui, center: center)
+        first.connect(to: hub.url)
+        first.bind(serial: hub.serial)
+        secswWait(20, "the first pairing") { first.isConnected }
+        first.disconnect()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        tokens.removeToken(forHub: hub.hubID)
+        XCTAssertNotNil(tokens.token(forHub: manual))
+        let (c, t) = client(hub, id: manual, expected: "", tokens: tokens, ui: ui, center: center)
+        t.connect(to: hub.url)
+        t.bind(serial: hub.serial)
+        secswWait(20, "the session with the address's token") { t.isConnected }
+        XCTAssertEqual(ui.pinAsks.count, 1, "no second PIN prompt")
+        XCTAssertEqual(c.expectedHubID, hub.hubID)
+        XCTAssertTrue(ui.repairs.isEmpty)
         t.disconnect()
     }
 

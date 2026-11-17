@@ -198,6 +198,19 @@ struct HubSecurityBadgeView: View {
     }
 }
 
+// -- WP SWPIN -- (review-pintls N2)
+/// A stored record that is a pairing: it carries a token (a `v1` token, or a
+/// `v2` credential with one).  The core's unpaired record (a hub pinned
+/// before: TLS only, no token) is not, so such a hub still asks for its PIN
+/// and is never picked on its own at launch.  `linkCredentialUnpaired` of a
+/// record with a token differs from it; of the unpaired record it is the same.
+enum LinkRecord {
+    static func isPaired(_ record: String?) -> Bool {
+        guard let record = record, !record.isEmpty else { return false }
+        return linkCredentialUnpaired(credential: record) != record
+    }
+}
+
 // MARK: - Pairing again
 
 /// The `DspiError.Link` codes after which the app offers pairing again, and

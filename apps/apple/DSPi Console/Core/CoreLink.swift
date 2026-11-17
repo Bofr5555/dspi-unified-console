@@ -239,7 +239,17 @@ final class CoreLink {
     private func storedToken() -> String {
         if let link = pairLink { return link.credential }   // -- WP SECSW --
         if !expectedHubID.isEmpty, let t = tokens.token(forHub: expectedHubID) { return t }
-        return tokens.token(forHub: hubID) ?? ""
+        let kept = tokens.token(forHub: hubID) ?? ""
+        // -- review fu1 -- (F1) With no expected id nothing says which hub
+        // answers, and the copy under the typed address's key can be stale:
+        // the hub may since have been pinned through another entry, which
+        // only updates the record under its own id.  A bare (`v1`) token
+        // would go out unencrypted to whoever answers, so it is held back:
+        // the hello names the hub, and `recordToRedial` dials again with the
+        // record for that id (or with this copy when there is none).  A
+        // pinned copy is safe to send: the core checks its key first.
+        if expectedHubID.isEmpty, !kept.isEmpty, !linkCredentialTlsOnly(credential: kept) { return "" }
+        return kept
     }
 
     /// A token the hub issued for `id` (the hub's own id).
@@ -249,7 +259,9 @@ final class CoreLink {
         if expectedHubID.isEmpty, !id.isEmpty { expectedHubID = id }
         tokens.setToken(token, forHub: id.isEmpty ? hubID : id)
         // A typed address has no id of its own until it answers: keep the
-        // token under its key too, for the next launch's first dial.
+        // token under its key too, for the next launch (a pinned one goes
+        // with the first dial; a bare one once the hub has named itself,
+        // see `storedToken`).
         if hubID.lowercased() != id { tokens.setToken(token, forHub: hubID) }
     }
 
@@ -314,16 +326,56 @@ final class CoreLink {
             } catch {
                 result = .failure(error as? DspiError ?? .Transfer(msg: String(describing: error)))
             }
-            DispatchQueue.main.async { self?.dialed(result, epoch: epoch) }
+            DispatchQueue.main.async { self?.dialed(result, epoch: epoch, credential: token, expected: expected) }
         }
     }
 
-    private func dialed(_ result: Result<(LinkHello, dspi_core.LinkSecurity), DspiError>, epoch: Int) {
+    // -- WP SWPIN -- (review-pintls F4)
+    /// A dial without the hub's expected id (a typed address whose `/info`
+    /// did not load: plain HTTP, droppable) went out without the record kept
+    /// under the id the hello names.  When that record says TLS only (pinned,
+    /// or pinned before), or exists and the hub asks for a PIN, the hub is
+    /// dialled again with it, so the core holds the session to the record:
+    /// no plaintext session and no PIN prompt in a pinned hub's name.  The
+    /// expected id is set first, so this happens at most once.
+    private func recordToRedial(_ hello: LinkHello, credential: String, expected: String) -> String? {
+        guard pairLink == nil, expected.isEmpty else { return nil }
+        let id = hello.hubId.lowercased()
+        guard !id.isEmpty else { return nil }
+        if let record = tokens.token(forHub: id), !record.isEmpty {
+            guard record != credential else { return nil }
+            return linkCredentialTlsOnly(credential: record) || hello.needsPairing ? id : nil
+        }
+        // -- review fu1 -- (F1) no record under the hub's id: the typed
+        // address's own copy, held back on the first dial (`storedToken`),
+        // is tried now that the hub has named itself
+        if hello.needsPairing, credential.isEmpty, let kept = tokens.token(forHub: hubID), !kept.isEmpty { return id }
+        return nil
+    }
+
+    private func dialed(_ result: Result<(LinkHello, dspi_core.LinkSecurity), DspiError>, epoch: Int,
+                        credential: String, expected: String) {
         guard epoch == self.epoch else { return }
         dialing = false
         guard wantConnection else { return }
         switch result {
         case .success(let (hello, security)):
+            // -- WP SWPIN -- (F4) the record for the hub the hello names rules
+            if let id = recordToRedial(hello, credential: credential, expected: expected) {
+                Self.log.info("hub \(id, privacy: .public) answered at a typed address without its record: dialling again with it")
+                expectedHubID = id
+                dial()   // the core closes the first session before it dials
+                return
+            }
+            // -- WP SWPIN -- never a PIN on a plaintext session to a hub whose
+            // record says TLS only (the core refuses such a dial; this holds
+            // even so)
+            if hello.needsPairing, !security.encrypted,
+               let record = tokens.token(forHub: hello.hubId.lowercased()), linkCredentialTlsOnly(credential: record) {
+                Self.log.error("a hub pinned before asked for a PIN in plaintext: refused")
+                closeSession()
+                return askRepair(LinkRepair.forgetCode)
+            }
             sessionLive = true
             if expectedHubID.isEmpty { expectedHubID = hello.hubId.lowercased() }
             Self.log.info("hub \(hello.hubName, privacy: .public) answered (pairing: \(hello.needsPairing), token refused: \(hello.tokenRefused), encrypted: \(security.encrypted))")

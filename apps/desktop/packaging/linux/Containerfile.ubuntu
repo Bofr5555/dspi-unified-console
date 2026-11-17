@@ -14,6 +14,8 @@ ARG RUST_TOOLCHAIN=1.99.1
 # -- WP QP20 -- The AppImage (make-appimage.sh): squashfs-tools and patchelf, and
 # the libraries Qt's platform plugins load that a desktop may lack, so the
 # AppImage bundles them (licences/stage.sh lists each with its copyright file)
+# -- WP FU1 -- libpulse0: Qt Multimedia's libQt6Multimedia needs libpulse.so.0 to
+# link and load; the AppImage takes the system's (make-appimage.sh EXCLUDED)
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ca-certificates curl p7zip-full cmake ninja-build g++ pkg-config file binutils \
@@ -22,6 +24,7 @@ RUN apt-get update \
       libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
       libxcb-render-util0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
       libxcb-xinput0 libxcb-util1 libwayland-cursor0 libwayland-egl1 libglib2.0-0t64 \
+      libpulse0 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY fetch-qt.sh qt-6.8.3.sha256 /opt/qt-pins/

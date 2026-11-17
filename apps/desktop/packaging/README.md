@@ -94,8 +94,11 @@ Every package carries the app's licence and, where it bundles libraries, theirs:
 Windows package bundles `Qt6Multimedia.dll`, whose WASAPI audio backend is built in, and **no multimedia plugin**:
 no FFmpeg and no Media Foundation playback (`windows/deploy-mingw.sh` fails if either appears). Its source and
 third-party notices are in the Windows notice (`qt-modules.sh windows` lists `qtmultimedia`; `licences/qt-6.11.2/`).
-The `.deb` and `.rpm` take the distribution's Qt Multimedia through their library dependencies. The AppImage's Qt
-(6.8.3, `linux/qt-6.8.3.sha256`) has no Qt Multimedia yet: adding the module there is open.
+The `.deb` and `.rpm` take the distribution's Qt Multimedia through their library dependencies. <!-- WP FU1 --> The
+AppImage's Qt (6.8.3, `linux/qt-6.8.3.sha256`) includes Qt Multimedia from download.qt.io (pinned and checked as the
+other archives); the AppImage bundles `libQt6Multimedia.so.6` with **no multimedia plugin** (the PulseAudio audio
+backend is inside the library) and uses the system's `libpulse.so.0`, as it uses the system's ALSA; its notices are in
+`licences/qt-6.8.3/` (`qt-modules.sh appimage` lists `qtmultimedia`).
 
 The app's About lists the files of whichever folder it finds (`AboutController`). The layout and its
 notice (`licences/NOTICE-distro.txt.in`) for the `.deb` and `.rpm` are `qt/cmake/wp/qp20.cmake`'s

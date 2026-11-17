@@ -4,6 +4,7 @@
 //
 
 import XCTest
+import dspi_core
 @testable import DSPi_Console
 
 final class CompositeTransportTests: XCTestCase {
@@ -69,6 +70,25 @@ final class CompositeTransportTests: XCTestCase {
         XCTAssertTrue(composite.isRemoteActive)
         XCTAssertEqual(fake.connectCalls.count, 1)
         tokens.removeToken(forHub: "hub-2")
+    }
+
+    /// -- WP SWPIN -- (review-pintls N2) a hub pinned before keeps a record
+    /// with no token (TLS only): it would ask for its PIN, so it is not picked
+    /// on its own at launch.
+    func testSWPINAPinnedBeforeRecordIsNotAPairingForTheAutoSelect() throws {
+        let (local, _, _) = makeLocal()
+        let fake = LinkClientFake()
+        let tokens = LinkTokenStore(service: "t-\(UUID())")
+        let link = try linkParsePairLink(text: "dspi://pair?h=abcdef01-0000-4000-8000-00000000c0de&a=10.0.0.2:11915&k="
+                                         + String(repeating: "A", count: 43))
+        let kept = linkCredentialUnpaired(credential: link.credential)
+        XCTAssertTrue(linkCredentialTlsOnly(credential: kept))
+        tokens.setToken(kept, forHub: "hub-3")
+        let composite = CompositeTransport(local: local, tokens: tokens, clientName: "T") { fake }
+        composite.updateHubs([hub("hub-3", serials: ["REMOTE0000REMOTE"])])
+        XCTAssertFalse(composite.isRemoteActive)
+        XCTAssertTrue(fake.connectCalls.isEmpty)
+        tokens.removeToken(forHub: "hub-3")
     }
 
     /// A local board with nothing attached to the hub: only USBDevice's

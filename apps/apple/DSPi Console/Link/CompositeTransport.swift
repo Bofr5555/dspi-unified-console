@@ -294,7 +294,7 @@ final class CompositeTransport: DeviceTransport {
         guard noLocal else { return }
         let candidate = merged.first { device in
             guard let ref = device.hub, let hub = hubs.first(where: { $0.id == ref.hubID }) else { return false }
-            return hub.authMode == "none" || tokens.token(forHub: hub.id) != nil
+            return hub.authMode == "none" || LinkRecord.isPaired(tokens.token(forHub: hub.id))   // -- WP SWPIN -- (N2)
         }
         guard let device = candidate else { return }
         autoSelecting = true

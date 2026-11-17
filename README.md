@@ -229,7 +229,7 @@ Per client:
 | Qt, Windows | `--step qt-windows` (MinGW app, zip and installer, the installer tested under Wine); `--step windows-msvc` builds the core and terminal with MSVC | `apps/desktop/packaging/windows/build-windows.sh` |
 | Qt release packages | not in `ci/check.sh`: `ci/release-desktop.sh --test` (matrix row `qt-packages`) builds every package in its own image and installs the Linux ones in clean containers | `apps/desktop/packaging/build-release.sh`, `linux/test-packages.sh` |
 | Android | `--step android` (core libraries), `android-tests`, `android-aab` | `apps/android/tools/ci.sh` |
-| Swift, macOS and iOS | not in a container: `ci/macvm.sh macos` or `ios` runs it in the macOS VM | `apps/apple/build-xcframework.sh`, then `apps/apple/ci-test.sh macos` or `ios` |
+| Swift, macOS and iOS | not in a container: `ci/macvm.sh macos` or `ios` runs it in the macOS VM; `ci/macvm.sh build macos` or `build ios` only compiles the app and its tests (`xcodebuild build-for-testing`), a cheap check after a merge | `apps/apple/build-xcframework.sh`, then `apps/apple/ci-test.sh macos` or `ios` (`--build-only` to compile without testing) |
 | Web | `--step web` (Chromium and Firefox on the core's demo) | `apps/web/README.md`; `uconsole web --demo` serves it on localhost |
 | Swift, macOS `.dmg` | not in a container: `ci/macvm.sh swift-dmg` builds the release `.dmg` and starts it on the demo device | `apps/apple/package-macos.sh`, then `apps/apple/test-dmg.sh` |
 | Bindings | `--step kotlin`, `--step swift`, `--step drift` | `ci/compile-bindings.sh` |

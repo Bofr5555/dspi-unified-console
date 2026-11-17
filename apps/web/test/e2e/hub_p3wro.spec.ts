@@ -10,6 +10,8 @@
 //   result's lines; a botched image fails at the verify with the alarm and its step, and
 //   "Recall the Export" recalls the hub's export; a cancel before the bootloader entry
 //   works, one after it is refused and said so, the alarm clears when a rollout ends ok.
+// - (FU1) A second page in the client read-only mode (`?readonly`) on the same Admin hub: Start
+//   and Add Image off, but Cancel Rollout on (the core lets fw.rollout.cancel out), and it works.
 // - Over plaintext (an http:// page on the `--tls on` hub): the TLS notice, nothing to start.
 // - A Control client (PIN pairing): no rollout on its hub screen.
 // Chromium, Firefox and 375 px with no sideways scroll.
@@ -108,9 +110,9 @@ async function stopHub(h: OwnHub | undefined): Promise<void> {
   await exited;
 }
 
-/** The console served by the hub (`scheme`): connect (pairing with the PIN when asked), open the demo DSPi, Advanced, the Hub tab. */
-async function openHubScreen(page: Page, hub: OwnHub, scheme: "https" | "http"): Promise<Locator> {
-  await page.goto(`${scheme}://127.0.0.1:${hub.port}/console/`);
+/** The console served by the hub (`scheme`, `query` such as "?readonly"): connect (pairing with the PIN when asked), open the demo DSPi, Advanced, the Hub tab. */
+async function openHubScreen(page: Page, hub: OwnHub, scheme: "https" | "http", query = ""): Promise<Locator> {
+  await page.goto(`${scheme}://127.0.0.1:${hub.port}/console/${query}`);
   const row = page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
   await row.getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
@@ -300,6 +302,29 @@ test.describe("P3WRO on a hub", () => {
     await expect(fourth).toHaveAttribute("data-state", "ok", { timeout: 90_000 });
     await expect(alarm).toHaveCount(0, { timeout: 30_000 });
     await noSidewaysScroll(page);
+
+    // -- WP FU1 -- the client read-only mode: nothing to start or upload, but a cancel goes out.
+    const viewer = await page.context().newPage();
+    const viewerErrors = errorsOf(viewer);
+    const roSession = await openHubScreen(viewer, hub, "https", "?readonly");
+    const roRollout = roSession.getByRole("region", { name: "Firmware rollout" });
+    await expect(roRollout).toBeVisible();
+    await expect(roRollout.getByRole("button", { name: "Start Update…" })).toBeDisabled();
+    await expect(roRollout.getByRole("button", { name: "Add Image…" })).toBeDisabled();
+    const fifth = await startOnBench(page, ro, "dspi-1.1.7.uf2");
+    const fifthId = (await fifth.getAttribute("aria-label"))!.replace(/^Rollout /, "");
+    const roFifth = roRollout.getByRole("group", { name: `Rollout ${fifthId}` });
+    await expect(roFifth).toHaveAttribute("data-state", "running", { timeout: 30_000 });
+    await expect(roFifth.getByRole("button", { name: "Cancel Rollout" })).toBeEnabled();
+    await expect(roRollout.getByRole("button", { name: "Start Update…" })).toBeDisabled();
+    await expect(roRollout.getByRole("button", { name: "Add Image…" })).toBeDisabled();
+    await roFifth.getByRole("button", { name: "Cancel Rollout" }).click();
+    await expect(roRollout.getByRole("status", { name: "Firmware action" })).toContainText("cancelled before the bootloader entry");
+    await expect(roFifth).toHaveAttribute("data-state", "cancelled");
+    await expect(fifth).toHaveAttribute("data-state", "cancelled", { timeout: 30_000 });
+    await noSidewaysScroll(viewer);
+    await viewer.close();
+    expect(viewerErrors).toEqual([]);
     expect(errors).toEqual([]);
   });
 

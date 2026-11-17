@@ -727,6 +727,9 @@ pub struct Job {
     // -- WP SECOUT --
     /// What an `https://` delivery trusts.
     pub trust: Result<Trust, TlsError>,
+    // -- WP FU1 --
+    /// The slot's destination when it was taken (see `Slot::dest`).
+    pub dest: u64,
 }
 
 /// What a worker is to do.
@@ -757,6 +760,10 @@ struct Slot {
     /// A one-time notice for the Admin (a target kept as `plaintext: true` on load),
     /// shown by `outbound.get` until the next `outbound.set`.
     notice: Option<String>,
+    // -- WP FU1 --
+    /// Counts the changes of the destination (URL or trust): a try that fails for one the
+    /// target no longer has does not back the corrected one off (review p2b F7).
+    dest: u64,
 }
 
 /// What `outbound.test` needs of a target: where, what, its secret and its trust.
@@ -785,7 +792,8 @@ impl Outbox {
     /// one that is now disabled loses its queue; one left out is gone (its worker stops).
     /// A kept target whose kind changed drops its queue (counted in `dropped`: bodies made
     /// for the other kind are never sent), and one whose destination changed (its URL or
-    /// what it trusts) starts its backoff again, so a corrected URL is tried at once.
+    /// what it trusts) starts its backoff again, so a corrected URL is tried at once; a try
+    /// to the old one still in flight that fails does not back it off again (WP FU1).
     pub fn set_targets(&mut self, targets: Vec<(Target, HttpUrl)>) {
         let mut old = std::mem::take(&mut self.slots);
         for (target, url) in targets {
@@ -805,6 +813,7 @@ impl Outbox {
                     if moved {
                         s.backoff = BACKOFF_FIRST;
                         s.not_before = None;
+                        s.dest = s.dest.wrapping_add(1); // -- WP FU1 --
                     }
                     s.notice = None;
                     s.target = target;
@@ -828,6 +837,7 @@ impl Outbox {
                         last: None,
                         worker: false,
                         notice: None,
+                        dest: 0, // -- WP FU1 --
                     }
                 }
             };
@@ -884,6 +894,7 @@ impl Outbox {
             secret: s.target.secret.clone(),
             delivery,
             trust: trust_of(&s.target),
+            dest: s.dest, // -- WP FU1 --
         })
     }
 
@@ -901,8 +912,11 @@ impl Outbox {
             s.not_before = None;
             return;
         }
-        s.not_before = Some(now.checked_add(s.backoff).unwrap_or(now));
-        s.backoff = s.backoff.saturating_mul(2).min(BACKOFF_MAX);
+        // -- WP FU1 -- a failure at a destination since corrected leaves the new one due now.
+        if job.dest == s.dest {
+            s.not_before = Some(now.checked_add(s.backoff).unwrap_or(now));
+            s.backoff = s.backoff.saturating_mul(2).min(BACKOFF_MAX);
+        }
         let mut delivery = job.delivery;
         delivery.attempts = delivery.attempts.saturating_add(1);
         // A body made for the kind the target had when it was taken is not sent as another.
@@ -1442,6 +1456,7 @@ impl OutboundService {
                 attempts: 0,
             },
             trust,
+            dest: 0, // -- WP FU1 -- never finished in the outbox
         };
         // On the asker's connection alone, at most the total limit.
         let outcome = deliver(&job, at, &self.shared.limits);
