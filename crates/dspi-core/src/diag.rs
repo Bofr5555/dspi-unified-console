@@ -19,6 +19,7 @@
 //! | `hub/schedule.json` | the hub's schedule rules (WP P2SC), secrets removed the same way |
 //! | `hub/groups.json` | the hub's groups (WP P3GR): names, notes, member serials; secrets removed the same way |
 //! | `hub/rollout.json` | the hub's firmware rollout records (WP P3RO): serials, image names and hashes, step texts; never an image (`firmware/` is not read) |
+//! | `hub/measurements.json` | the hub's measurement documents (WP P5HUB): the store's index only (kind, name, serial, size of each), never a document or its curves |
 //! | `hub/mqtt.json` | the hub's MQTT broker setting (WP P2MQ), the password and the `tls` keys, CA and pin as `set` / `not set` |
 //! | `system/os.json` | OS facts: name, architecture, release, the udev rule on Linux |
 //! | `system/usb.json` | DSPis and bootloaders on the bus, by enumeration only |
@@ -168,6 +169,8 @@ impl DspiCore {
         diag_hub_data(&mut b, &options.hub_store_dir, HUB_GROUPS_FILE);
         // -- WP P3RO --
         diag_hub_data(&mut b, &options.hub_store_dir, HUB_ROLLOUT_FILE);
+        // -- WP P5HUB --
+        diag_hub_measurements(&mut b, &options.hub_store_dir);
         b.json("system/os.json", &os_facts());
         b.json("system/usb.json", &self.diag_usb(&scrub));
         diag_client_files(&mut b, options.files, &scrub);
@@ -928,6 +931,76 @@ pub(crate) fn utc(ms: i64) -> (i64, u32, u32, u32, u32, u32) {
     (y, field(m), field(d), h, mi, s)
 }
 
+// -- WP P5HUB --
+/// The hub's measurement documents' folder in its data folder (dspi-hub
+/// `measurements.rs`).
+const HUB_MEASUREMENTS_DIR: &str = "measurements";
+/// Folders of the measurement store read at most (a serial's each, `mic`, `target`).
+const HUB_MEASUREMENT_FOLDERS_MAX: usize = 1024;
+/// The largest index read (the store's own limit).
+const HUB_MEASUREMENT_INDEX_MAX: u64 = 1 << 20;
+
+/// The hub's measurement documents as `hub/measurements.json`: from each folder's
+/// `index.json` only, each document's kind, name, serial and size; never a document,
+/// a note or a curve. No folder named, or no store: nothing, and no note.
+fn diag_hub_measurements(b: &mut Bundle, dir: &str) {
+    if dir.is_empty() {
+        return;
+    }
+    let root = Path::new(dir).join(HUB_MEASUREMENTS_DIR);
+    let Ok(rd) = std::fs::read_dir(&root) else {
+        return;
+    };
+    let mut folders: Vec<std::path::PathBuf> = rd
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| e.path())
+        .take(HUB_MEASUREMENT_FOLDERS_MAX)
+        .collect();
+    folders.sort();
+    let mut docs: Vec<Value> = Vec::new();
+    let mut total: u64 = 0;
+    for folder in folders {
+        let index = folder.join("index.json");
+        let bytes = match read_limited(&index, HUB_MEASUREMENT_INDEX_MAX) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                b.notes
+                    .push(format!("hub: {} unread: {e}", index.display()));
+                continue;
+            }
+        };
+        let Ok(v) = serde_json::from_slice::<Value>(&bytes) else {
+            b.notes.push(format!(
+                "hub: {} is not JSON and was left out",
+                index.display()
+            ));
+            continue;
+        };
+        for d in v
+            .get("documents")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let field = |k: &str| d.get(k).and_then(Value::as_str).unwrap_or_default();
+            let size = d.get("bytes").and_then(Value::as_u64).unwrap_or(0);
+            total = total.saturating_add(size);
+            docs.push(json!({
+                "kind": field("kind"),
+                "name": field("name"),
+                "serial": field("serial"),
+                "bytes": size,
+            }));
+        }
+    }
+    b.json(
+        "hub/measurements.json",
+        &json!({"count": docs.len(), "bytes": total, "documents": docs}),
+    );
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p0e;
@@ -955,3 +1028,7 @@ mod tests_wp_p3gr;
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests_wp_p3ro;
+// -- WP P5HUB --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_p5hub;

@@ -305,6 +305,8 @@ pub use hub_server::{
     HubRolloutBefore, HubRolloutDevice, HubRolloutFailed, HubRolloutStep, HubRolloutVreg,
     hub_rollout_step_notice,
 };
+// -- WP P5HUB --
+pub use hub_server::{HubMeasureDocPut, HubMeasureDocument, MeasureDocsMerged, MergedMeasureDoc};
 // -- WP ROMODE --
 pub use read_only::{
     GUARD_PENDING, HUB_READS, NOTICE_READ_ONLY_CLIENT, NOTICE_READ_ONLY_GUARD_PENDING,
