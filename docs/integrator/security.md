@@ -69,6 +69,12 @@ macOS (all through the one Rust core, which does the pinning), `uconsole`, and t
   under Settings > Networking > Paired Hubs), `uconsole` asks the same question in the terminal, and the web console's
   `uconsole web` proxy forgets its pin when the hub is removed from the page's list. A plain `v1` token (a hub never
   paired over TLS) keeps nothing when its pairing is dropped.
+- **The record rules however the hub is reached.** A damaged `v2` record carries no token and no key but still marks
+  its hub TLS-only. A hub dialled by address names itself in its hello; when a record here says that hub is TLS-only
+  (pinned, or pinned before), `uconsole`, the desktop app and Android dial it again with that record even if the answer
+  asked for no PIN, so no unencrypted or unchecked session opens in a pinned hub's name. What no client can do is
+  recognise a known hub that answers under another id, or under none: that is a first contact, shown with its id, the
+  key on the PIN prompt or the red "(unsecured)" bar.
 
 **Pairing.** The hub shows a 6-digit PIN for 2 minutes, with its key's fingerprint and a QR code of the pairing link
 `dspi://pair?h=<hid>&a=<host:port>&k=<key>&p=<PIN>`:

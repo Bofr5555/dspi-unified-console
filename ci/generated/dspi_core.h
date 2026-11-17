@@ -7561,14 +7561,15 @@ uint32_t dspi_link_credential_hub_key(const char *credential, char *buf, uint32_
  * was ever pinned a token-less record that keeps it TLS-only (a plaintext
  * connect is then `tls_required_pinned`, before any PIN goes out); "" for a
  * `v1` token or none: remove the record then. Only Forget hub (removing the
- * record) allows plaintext again. Returns the length needed; 0 for a null or
- * non-UTF-8 `credential` (store nothing new then).
+ * record) allows plaintext again. Returns the length needed (1 for ""); 0
+ * for a null `credential` only (store nothing new then). Bytes that are not
+ * UTF-8 are a damaged record: one that began `v2.` stays TLS-only.
  */
 uint32_t dspi_link_credential_unpaired(const char *credential, char *buf, uint32_t len);
 
 /**
  * Whether a stored credential reaches its hub over TLS only (pinned, or
- * pinned before). False for a null or non-UTF-8 `credential`.
+ * pinned before, or a damaged `v2` record). False for a null `credential`.
  */
 bool dspi_link_credential_tls_only(const char *credential);
 

@@ -473,7 +473,10 @@ class LinkSessionEngine(
         val first = open(h, gen, if (known) h.id else "") ?: return@withLock
         val named = merge(h, first)
         // Only the hello named this hub: dial once more, now that its token can go to it alone
-        val second = if (!known && first.needsPairing && tokens.token(named.id) != null) {
+        // -- WP PINTLS -- (review F3) also when the answer asks for no PIN and the record keeps the
+        // hub TLS-only (pinned, or pinned before): no unencrypted or unchecked session in its name
+        val record = if (known) null else tokens.token(named.id)
+        val second = if (record != null && (first.needsPairing || ops.credentialUnpaired(record).isNotEmpty())) {
             open(named, gen, named.id) ?: return@withLock
         } else {
             first

@@ -384,12 +384,16 @@ void LinkController::dial(const QString &url, const QString &expectedHubId, bool
         QJsonObject hello = dial(used, expectedHubId);
         // Dialled by address: the hub has named itself now, so a token stored
         // for that id may go to it, held to that id
-        if (useStored && isOk(hello) && expectedHubId.isEmpty() && hello.value(QLatin1String("needsPairing")).toBool()
-            && generation == m_generation) {
+        // -- WP PINTLS -- (review F3) also when the answer asks for no PIN and the
+        // record keeps the hub TLS-only (pinned, or pinned before): dialled again
+        // with it, so no unencrypted or unchecked session opens in that hub's name
+        if (useStored && isOk(hello) && expectedHubId.isEmpty() && generation == m_generation) {
             const QString named = str(hello, "hubId");
             const QString stored = m_store->load(named);
-            dialledFor = named;
-            if (!stored.isEmpty()) {
+            const bool asksPin = hello.value(QLatin1String("needsPairing")).toBool();
+            if (asksPin) dialledFor = named;
+            if (!stored.isEmpty() && (asksPin || dspi_link_credential_tls_only(stored.toUtf8().constData()))) {
+                dialledFor = named;
                 used = stored;
                 hello = dial(stored, named);
             }

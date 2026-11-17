@@ -322,6 +322,24 @@ void controllerChecks(SmokeDriver &d, const QString &scratch) {
     // (owner decision 2026-11-17) The pinned hub comes back without TLS: Pair Again
     // never pairs it in plaintext; only Forget Hub does, and the bar is then red.
     {
+        // (review F3) Dialled by address alone, the pinned hub answers without TLS
+        // and asks for no PIN (open access, or an impostor using its id): the
+        // record still rules, so no unencrypted session opens
+        OwnHub open;
+        const bool openUp = open.start(v1Store, HUB_ACCESS_OPEN, 0);
+        d.check("pintls: the pinned hub, open access and no TLS", openUp && open.tls == QLatin1String("off"));
+        if (!openUp) return;
+        const QString pinned = storedIn(file, open.id);
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(open.offUrl);
+        d.check("pintls: by address, no PIN asked: tls_refused all the same, no session",
+                settled(l) && l.errorCode() == QLatin1String("tls_refused") && l.rePairOffered() && phaseIs(l, "idle")
+                    && !l.unsecured());
+        d.check("pintls: by address, no PIN asked: the record untouched",
+                !pinnedKey(pinned).isEmpty() && storedIn(file, open.id) == pinned);
+    }
+    {
         OwnHub off;
         const bool offUp = off.start(v1Store, HUB_ACCESS_PIN, 0);
         d.check("pintls: the pinned hub, now without TLS", offUp && off.tls == QLatin1String("off"));

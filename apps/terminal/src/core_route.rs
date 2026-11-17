@@ -318,8 +318,15 @@ fn dlink_attempt(
         (None, None) => {
             let first = connect(String::new(), String::new())?;
             *hub_id = Some(first.hub_id.clone()).filter(|id| !id.is_empty());
+            // -- WP PINTLS -- (review F3) also when the answer asks for no PIN
+            // and the record says TLS only (pinned, or pinned before): dialled
+            // again with it, so no unencrypted or unchecked session opens in
+            // that hub's name
             match stored(&first.hub_id) {
-                Some(credential) if first.needs_pairing => {
+                Some(credential)
+                    if first.needs_pairing
+                        || dspi_core::link::link_credential_tls_only(credential.clone()) =>
+                {
                     connect(credential, first.hub_id.clone())?
                 }
                 _ => first,
@@ -2146,6 +2153,44 @@ mod tests_wp_sectm {
         assert!(asked[0].contains(&pin_display(&other.pin())), "{asked:?}");
         let now = Credential::parse(&l.stored_token(&hid()).unwrap());
         assert_eq!(now.pin, Some(other.pin()), "pinned to the new key");
+    }
+
+    /// -- WP PINTLS -- (review F3) by address, an answer that names the hub and
+    /// asks for no PIN gets no unencrypted session while the record says TLS only.
+    #[test]
+    fn wp_pintls_core_an_open_answer_by_address_gets_no_plaintext_session() {
+        let hub = pin_hub();
+        let l = link(&hub, "pintls_core_open");
+        pinned(&hub, &l);
+        let impostor = FakeHub::start(HubConfig {
+            auth: Auth::None,
+            bind: "127.0.0.2:0".parse().unwrap(),
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let there = LinkTarget {
+            tokens: l.tokens.clone(),
+            ..LinkTarget::parse(&impostor.addr().to_string()).unwrap()
+        };
+        assert!(there.hub_id.is_none(), "dialled by address");
+        let core = DspiCore::new();
+        let nobody = Person::new(None, None);
+        assert_eq!(code(dlink_session(&core, &there, &nobody)), "tls_refused");
+        l.drop_pairing(&hid()).unwrap();
+        assert_eq!(
+            code(dlink_session(&core, &there, &nobody)),
+            "tls_required_pinned"
+        );
+        there.store_credential(&hid(), "v2.dA.short.t").unwrap();
+        assert_eq!(
+            code(dlink_session(&core, &there, &nobody)),
+            "tls_required_pinned"
+        );
+        assert!(impostor.tokens_seen().is_empty());
+        there.forget_hub(&hid()).unwrap();
+        dlink_session(&core, &there, &nobody).unwrap();
+        assert!(!core.link_security().encrypted);
+        core.link_close();
     }
 
     // -- WP PINTLS -- (owner decision 2026-11-17) a hub once pinned stays TLS-only

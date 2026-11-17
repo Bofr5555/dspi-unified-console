@@ -1367,10 +1367,25 @@ fn dial(
         &tls,
     )
     .map_err(|e| link_error(l, e))?;
-    let elsewhere = pinned_elsewhere
+    let mut elsewhere = pinned_elsewhere
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .take();
+    // -- WP PINTLS -- (review F3) a hub dialled by address that asks for no PIN
+    // never reaches the token lookup above. Its record still rules: a hub
+    // pinned, or pinned before, is dialled again with it (TLS only, its key
+    // checked), so no answer at that address can open an unencrypted or
+    // unchecked session in the hub's name.
+    if elsewhere.is_none() && !pinned_known {
+        let id = client.hello().hub.id.clone();
+        if !id.is_empty() && !l.is_other_hub(&id) {
+            elsewhere = store
+                .get(&id)
+                .map(|c| Credential::parse(&c))
+                .filter(Credential::tls_only)
+                .map(|c| (id, c));
+        }
+    }
     if let Some((id, credential)) = elsewhere {
         client.close();
         return Ok(Dialled::Pinned(id, credential));
@@ -3535,6 +3550,49 @@ mod tests_wp_sectm {
             nobody.notes()
         );
         assert!(l.stored_token(&hid()).is_some(), "still TLS-only");
+    }
+
+    /// (review F3) Dialled by address, an answer that names the hub and asks for
+    /// no PIN (an impostor, or the hub reset to open access with TLS off) gets
+    /// no unencrypted session while the record says TLS only: pinned, pinned
+    /// before, or damaged. Forgetting the hub is the way back.
+    #[test]
+    fn wp_pintls_an_open_answer_by_address_gets_no_plaintext_session() {
+        let hub = pin_hub();
+        let tokens = scratch("pintls-open");
+        let (l, _) = paired_then_pinned(&hub, &tokens);
+        let impostor = FakeHub::start(HubConfig {
+            auth: Auth::None,
+            bind: OFF_LOOPBACK.parse().unwrap(),
+            ..HubConfig::default()
+        })
+        .unwrap();
+        let there = link(&impostor, tokens.clone());
+        assert!(there.hub_id.is_none(), "dialled by address");
+        let nobody = Person::new(None, None);
+        // Pinned
+        assert!(matches!(
+            link_err(link_client(&there, &nobody)),
+            LinkError::TlsRefused { .. }
+        ));
+        // Pinned before (Pair Again)
+        l.drop_pairing(&hid()).unwrap();
+        assert!(matches!(
+            link_err(link_client(&there, &nobody)),
+            LinkError::TlsRequiredPinned
+        ));
+        // A damaged record
+        there.store_credential(&hid(), "v2.dA.short.t").unwrap();
+        assert!(matches!(
+            link_err(link_client(&there, &nobody)),
+            LinkError::TlsRequiredPinned
+        ));
+        assert!(impostor.tokens_seen().is_empty());
+        // Forgotten: an open hub like any other
+        there.forget_hub(&hid()).unwrap();
+        let client = link_client(&there, &nobody).unwrap();
+        assert!(client.tls().is_none());
+        client.close();
     }
 
     /// After Pair Again, a TLS pairing goes through and pins the new key.

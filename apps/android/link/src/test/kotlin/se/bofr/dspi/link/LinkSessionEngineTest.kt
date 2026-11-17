@@ -96,8 +96,12 @@ class LinkSessionEngineTest {
 
         override suspend fun status() = status
 
-        override suspend fun fetchInfo(host: String, port: Int) =
-            LinkInfo("hub-from-info", "Info Hub", "console", "pin", 1, "/dspi/v1", emptyList())
+        var infoFails = false // WP PINTLS review F3: a typed address whose info document does not load
+
+        override suspend fun fetchInfo(host: String, port: Int): LinkInfo {
+            if (infoFails) throw DspiException.Link("io", "no info")
+            return LinkInfo("hub-from-info", "Info Hub", "console", "pin", 1, "/dspi/v1", emptyList())
+        }
 
         override suspend fun close() {
             closeGate?.await()
@@ -128,8 +132,8 @@ class LinkSessionEngineTest {
 
         override fun wsUrl(host: String, port: Int, path: String) = "ws://$host:$port$path"
 
-        // -- WP PINTLS -- these tests keep v1 tokens only: nothing to keep after a refusal
-        override fun credentialUnpaired(credential: String) = ""
+        // -- WP PINTLS -- as the core: a v2 record stays TLS-only, a v1 token keeps nothing
+        override fun credentialUnpaired(credential: String) = if (credential.startsWith("v2.")) "v2...s" else ""
 
         override fun phaseText(phase: LinkPhase, pinSource: String) = LinkPhaseText(phase.name, phase.name, "text of $phase", null, null)
 
@@ -222,6 +226,30 @@ class LinkSessionEngineTest {
         s.engine.connect(LinkHub.manual("10.0.2.2", 11915))
         runCurrent()
         assertEquals("connect(tok, hub-from-info)", s.ops.log.first { it.startsWith("connect") })
+    }
+
+    // WP PINTLS (review F3): by address alone, an answer that names a hub and asks for no PIN is
+    // dialled again with that hub's TLS-only record, so the core checks TLS and the key
+    @Test
+    fun wpPintlsATypedAddressThatAsksNoPinIsDialledAgainWithATlsOnlyRecord() = runTest {
+        val s = Stack(this)
+        s.ops.infoFails = true
+        s.ops.hello = hello().copy(hubId = "h1", needsPairing = false)
+        s.tokens.setToken("h1", "Hub", "v2..AAAA.s")
+        s.engine.connect(LinkHub.manual("10.0.2.2", 11915))
+        runCurrent()
+        assertEquals(listOf("connect(, )", "connect(v2..AAAA.s, h1)"), s.ops.log.filter { it.startsWith("connect") })
+    }
+
+    @Test
+    fun wpPintlsATypedAddressThatAsksNoPinKeepsItsSessionWithAV1Token() = runTest {
+        val s = Stack(this)
+        s.ops.infoFails = true
+        s.ops.hello = hello().copy(hubId = "h1", needsPairing = false)
+        s.tokens.setToken("h1", "Hub", "tok")
+        s.engine.connect(LinkHub.manual("10.0.2.2", 11915))
+        runCurrent()
+        assertEquals(listOf("connect(, )"), s.ops.log.filter { it.startsWith("connect") })
     }
 
     @Test
