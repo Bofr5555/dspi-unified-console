@@ -1103,6 +1103,8 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP PINTLS -- two pure functions over a stored credential
             "linkCredentialUnpaired",
             "linkCredentialTlsOnly",
+            // -- WP PINX -- a pure function over a stored credential
+            "linkCredentialHasToken",
             "bootloaderCounts",
             "captureBaseline",
             "checkCore1Conflict",

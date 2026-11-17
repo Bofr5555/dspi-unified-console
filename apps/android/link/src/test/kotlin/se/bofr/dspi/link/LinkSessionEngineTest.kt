@@ -241,6 +241,35 @@ class LinkSessionEngineTest {
         assertEquals(listOf("connect(, )", "connect(v2..AAAA.s, h1)"), s.ops.log.filter { it.startsWith("connect") })
     }
 
+    // WP PINX (review-fu1 F1, for Android): a record is read by the hub's id only. Even a copy
+    // under the typed address's key (none is written; planted here) never goes out, and the
+    // pinned record of the hub the hello names is what the second dial carries.
+    @Test
+    fun wpPinxAStaleCopyUnderATypedAddressIsNotSentToAHubSincePinned() = runTest {
+        val s = Stack(this)
+        s.ops.infoFails = true
+        s.ops.hello = hello().copy(hubId = "h1", needsPairing = true)
+        s.tokens.setToken(LinkHub.manualId("10.0.2.2", 11915), "Hub", "stale-v1")
+        s.tokens.setToken("h1", "Hub", "v2.dG9r.AAAA.t")
+        s.engine.connect(LinkHub.manual("10.0.2.2", 11915))
+        runCurrent()
+        val dials = s.ops.log.filter { it.startsWith("connect") }
+        assertEquals(listOf("connect(, )", "connect(v2.dG9r.AAAA.t, h1)"), dials)
+        assertTrue(dials.none { "stale-v1" in it })
+    }
+
+    // WP PINX: a v1 token under the hub's id goes with the second dial, once the hello named it
+    @Test
+    fun wpPinxATokenOnlyTypedAddressSendsItsTokenAfterTheHello() = runTest {
+        val s = Stack(this)
+        s.ops.infoFails = true
+        s.ops.hello = hello().copy(hubId = "h1", needsPairing = true)
+        s.tokens.setToken("h1", "Hub", "tok")
+        s.engine.connect(LinkHub.manual("10.0.2.2", 11915))
+        runCurrent()
+        assertEquals(listOf("connect(, )", "connect(tok, h1)"), s.ops.log.filter { it.startsWith("connect") })
+    }
+
     @Test
     fun wpPintlsATypedAddressThatAsksNoPinKeepsItsSessionWithAV1Token() = runTest {
         val s = Stack(this)

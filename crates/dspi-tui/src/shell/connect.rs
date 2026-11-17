@@ -3814,4 +3814,54 @@ mod tests_wp_sectm {
         // -- WP SECFIX -- a hub on this machine: neither
         assert_eq!(pairing_label("Studio", false, true, ""), "Studio");
     }
+
+    // -- WP PINX -- (review-fu1 F1, for the Terminal) Records are kept by the
+    // hub's id only, never by the typed address, and a dial by address sends no
+    // token before the hello names the hub and its record is read.
+
+    /// A hub pinned since its plaintext pairing, back without TLS and asking for
+    /// its PIN, dialled by address: no token goes out in plaintext, no PIN is asked.
+    #[test]
+    fn wp_pinx_a_pinned_hub_at_a_typed_address_gets_no_token_in_plaintext() {
+        let hub = pin_hub();
+        let tokens = scratch("pinx-stale");
+        let (l, _) = paired_then_pinned(&hub, &tokens);
+        let seen = hub.tokens_seen().len();
+        hub.set_tls(None);
+        let there = link(&hub, tokens);
+        assert!(there.hub_id.is_none(), "dialled by address");
+        let nobody = Person::new(None, None);
+        assert!(matches!(
+            link_err(link_client(&there, &nobody)),
+            LinkError::TlsRefused { .. }
+        ));
+        assert_eq!(hub.tokens_seen().len(), seen, "no token in plaintext");
+        assert!(nobody.asked().is_empty(), "no PIN asked");
+        let kept = Credential::parse(&l.stored_token(&hid()).unwrap());
+        assert!(
+            kept.pin.is_some() && !kept.token.is_empty(),
+            "the record kept"
+        );
+    }
+
+    /// A hub paired in plaintext (a v1 token, never pinned), dialled by address
+    /// again: its token goes once the hello names it, and no PIN is asked.
+    #[test]
+    fn wp_pinx_a_token_only_typed_address_connects_without_a_pin() {
+        let hub = pin_hub();
+        let tokens = scratch("pinx-v1");
+        let l = link(&hub, tokens.clone());
+        link_client(&l, &Person::new(Some(PIN), None))
+            .unwrap()
+            .close();
+        let v1 = l.stored_token(&hid()).unwrap();
+        assert!(!v1.starts_with("v2."));
+        let there = link(&hub, tokens);
+        let nobody = Person::new(None, None);
+        let client = link_client(&there, &nobody).unwrap();
+        assert!(client.tls().is_none());
+        client.close();
+        assert!(nobody.asked().is_empty(), "no PIN asked");
+        assert_eq!(hub.tokens_seen().last(), Some(&v1));
+    }
 }

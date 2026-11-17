@@ -2064,6 +2064,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2140,6 +2142,8 @@ fun uniffi_dspi_core_checksum_func_hub_rollout_step_notice(
 fun uniffi_dspi_core_checksum_func_known_feature_names(
 ): Short
 fun uniffi_dspi_core_checksum_func_limits_field_ranges(
+): Short
+fun uniffi_dspi_core_checksum_func_link_credential_has_token(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_credential_hub_key(
 ): Short
@@ -4296,6 +4300,8 @@ fun uniffi_dspi_core_fn_func_known_feature_names(uniffi_out_err: UniffiRustCallS
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_limits_field_ranges(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_link_credential_has_token(`credential`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_dspi_core_fn_func_link_credential_hub_key(`credential`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_credential_tls_only(`credential`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4583,6 +4589,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_limits_field_ranges() != 1854.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_link_credential_has_token() != 19004.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_credential_hub_key() != 32759.toShort()) {
@@ -49707,6 +49716,22 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_limits_field_ranges(
         _status)
+}
+    )
+    }
+    
+
+        /**
+         * Whether a stored credential carries a token: the hub is paired. True for a
+         * `v1` token and a `v2` credential with one; false for none, the
+         * [`link_credential_unpaired`] record (a hub pinned before: it asks for its
+         * PIN, over TLS) and a damaged `v2` record. For the paired-hubs list and the
+         * choice of a hub at launch.
+         */ fun `linkCredentialHasToken`(`credential`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_credential_has_token(
+        FfiConverterString.lower(`credential`),_status)
 }
     )
     }

@@ -3184,6 +3184,11 @@ RustBuffer uniffi_dspi_core_fn_func_limits_field_ranges(RustCallStatus *_Nonnull
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_CREDENTIAL_HAS_TOKEN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_CREDENTIAL_HAS_TOKEN
+int8_t uniffi_dspi_core_fn_func_link_credential_has_token(RustBuffer credential, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_CREDENTIAL_HUB_KEY
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_FUNC_LINK_CREDENTIAL_HUB_KEY
 RustBuffer uniffi_dspi_core_fn_func_link_credential_hub_key(RustBuffer credential, RustCallStatus *_Nonnull out_status
@@ -3830,6 +3835,12 @@ uint16_t uniffi_dspi_core_checksum_func_known_feature_names(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LIMITS_FIELD_RANGES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LIMITS_FIELD_RANGES
 uint16_t uniffi_dspi_core_checksum_func_limits_field_ranges(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_CREDENTIAL_HAS_TOKEN
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_FUNC_LINK_CREDENTIAL_HAS_TOKEN
+uint16_t uniffi_dspi_core_checksum_func_link_credential_has_token(void
     
 );
 #endif

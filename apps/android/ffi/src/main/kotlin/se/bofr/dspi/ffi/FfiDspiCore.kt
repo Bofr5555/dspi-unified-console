@@ -1025,6 +1025,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun linkCredentialTlsOnly(credential: String): Boolean = se.bofr.dspi.ffi.uniffi.linkCredentialTlsOnly(credential)
 
+    override fun linkCredentialHasToken(credential: String): Boolean = se.bofr.dspi.ffi.uniffi.linkCredentialHasToken(credential)
+
     override fun linkPhaseText(phase: LinkPhase, pinSource: String): LinkPhaseText = se.bofr.dspi.ffi.uniffi.linkPhaseText(phase.toFfi(), pinSource).toDomain()
 
     override fun linkPhaseTexts(): List<LinkPhaseText> = se.bofr.dspi.ffi.uniffi.linkPhaseTexts().map { it.toDomain() }

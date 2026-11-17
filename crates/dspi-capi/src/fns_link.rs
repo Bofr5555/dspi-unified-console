@@ -72,6 +72,8 @@ pub(crate) mod link {
     use dspi_core::link::{link_credential_hub_key, link_parse_pair_link};
     // -- WP PINTLS --
     use dspi_core::link::{link_credential_tls_only, link_credential_unpaired};
+    // -- WP PINX --
+    use dspi_core::link::link_credential_has_token;
     use dspi_core::{
         DspiCore, DspiError, LinkDevice, LinkHello, LinkInfo, LinkListener, LinkStatus, Result,
     };
@@ -668,6 +670,17 @@ pub(crate) mod link {
         })
     }
 
+    // -- WP PINX -- (review-fu1 N1)
+    /// Whether a stored credential carries a token (the hub is paired): false
+    /// for the token-less record of a hub pinned before, a damaged `v2` record
+    /// and a null `credential`.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_link_credential_has_token(credential: *const c_char) -> bool {
+        guard(false, || {
+            credential_text(credential).is_some_and(link_credential_has_token)
+        })
+    }
+
     /// The WebSocket URL for a hub, as plain text. `path` null or "" is the
     /// default (`/dspi/v1`). Returns the length needed; 0 for a null or non-UTF-8
     /// `host` or a non-UTF-8 `path`.
@@ -948,6 +961,36 @@ mod tests_wp_pintls {
             dspi_link_credential_unpaired(pinned.as_ptr(), std::ptr::null_mut(), 0),
             n
         );
+    }
+}
+
+// -- WP PINX --
+#[cfg(test)]
+mod tests_wp_pinx {
+    use std::ffi::CString;
+    use std::ptr::null;
+
+    use crate::fns_link::link::dspi_link_credential_has_token;
+
+    /// (review-fu1 N1) A record is a pairing only with a token in it.
+    #[test]
+    fn wp_pinx_c_abi_has_token() {
+        let pin = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc";
+        for (text, paired) in [
+            (format!("v2.dG9r.{pin}.t"), true),
+            ("tok-12-0".to_owned(), true),
+            (format!("v2..{pin}.s"), false),
+            ("v2.damaged".to_owned(), false),
+            (String::new(), false),
+        ] {
+            let c = CString::new(text.clone()).unwrap();
+            assert_eq!(
+                dspi_link_credential_has_token(c.as_ptr()),
+                paired,
+                "{text:?}"
+            );
+        }
+        assert!(!dspi_link_credential_has_token(null()));
     }
 }
 

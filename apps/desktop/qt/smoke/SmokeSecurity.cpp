@@ -340,6 +340,22 @@ void controllerChecks(SmokeDriver &d, const QString &scratch) {
                 !pinnedKey(pinned).isEmpty() && storedIn(file, open.id) == pinned);
     }
     {
+        // -- WP PINX -- (review-fu1 F1, for Qt) records are kept by the hub's id
+        // only: dialled by address, the pinned hub without TLS asking for its PIN
+        // gets no token before its hello named it, and then its record rules
+        OwnHub off;
+        const bool offUp = off.start(v1Store, HUB_ACCESS_PIN, 0);
+        d.check("pinx: the pinned hub, no TLS, asking for its PIN", offUp && off.tls == QLatin1String("off"));
+        if (!offUp) return;
+        const QString pinned = storedIn(file, off.id);
+        Run run(file);
+        LinkController &l = *run.link;
+        l.connectToHub(off.offUrl);
+        d.check("pinx: by address, a PIN asked: tls_refused, no session, no PIN prompt",
+                settled(l) && l.errorCode() == QLatin1String("tls_refused") && phaseIs(l, "idle") && !l.unsecured());
+        d.check("pinx: by address: the record untouched", !pinnedKey(pinned).isEmpty() && storedIn(file, off.id) == pinned);
+    }
+    {
         OwnHub off;
         const bool offUp = off.start(v1Store, HUB_ACCESS_PIN, 0);
         d.check("pintls: the pinned hub, now without TLS", offUp && off.tls == QLatin1String("off"));
@@ -373,6 +389,15 @@ void controllerChecks(SmokeDriver &d, const QString &scratch) {
         }));
         l.closeSession();
         settled(l);
+        // -- WP PINX -- a token-only (v1) hub at a typed address: its token goes
+        // once the hello names it, so it connects without a PIN
+        Run again(file);
+        LinkController &m = *again.link;
+        m.connectToHub(off.offUrl);
+        d.check("pinx: a v1 token by address: connected without a PIN, unencrypted",
+                settled(m) && m.errorCode().isEmpty() && phaseIs(m, "choose_device") && !m.encrypted());
+        m.closeSession();
+        settled(m);
     }
 
     // ---- Advertised TLS never falls back: tls_refused ----------------------------------------
