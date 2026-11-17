@@ -3714,6 +3714,17 @@ pub fn link_credential_tls_only(credential: String) -> bool {
     Credential::parse(&credential).tls_only()
 }
 
+// -- WP PINX -- (review-fu1 N1)
+/// Whether a stored credential carries a token: the hub is paired. True for a
+/// `v1` token and a `v2` credential with one; false for none, the
+/// [`link_credential_unpaired`] record (a hub pinned before: it asks for its
+/// PIN, over TLS) and a damaged `v2` record. For the paired-hubs list and the
+/// choice of a hub at launch.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn link_credential_has_token(credential: String) -> bool {
+    !Credential::parse(&credential).token.is_empty()
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "link/tests_wp_c15.rs"]
@@ -3755,6 +3766,11 @@ mod tests_wp_seccore;
 #[cfg(test)]
 #[path = "link/tests_wp_pintls.rs"]
 mod tests_wp_pintls;
+
+// -- WP PINX --
+#[cfg(test)]
+#[path = "link/tests_wp_pinx.rs"]
+mod tests_wp_pinx;
 
 // -- WP LKCLOSE --
 #[cfg(test)]

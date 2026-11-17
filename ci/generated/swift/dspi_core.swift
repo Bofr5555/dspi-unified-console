@@ -58002,6 +58002,20 @@ public func limitsFieldRanges() -> [LimitFieldRange]  {
 })
 }
 /**
+ * Whether a stored credential carries a token: the hub is paired. True for a
+ * `v1` token and a `v2` credential with one; false for none, the
+ * [`link_credential_unpaired`] record (a hub pinned before: it asks for its
+ * PIN, over TLS) and a damaged `v2` record. For the paired-hubs list and the
+ * choice of a hub at launch.
+ */
+public func linkCredentialHasToken(credential: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_dspi_core_fn_func_link_credential_has_token(
+        FfiConverterString.lower(credential),$0
+    )
+})
+}
+/**
  * The hub key fingerprint a stored credential is pinned to
  * (`SHA256:K7Q2-M9XD-4TNB-0ZRA`), "" for a `v1` credential (no TLS yet).
  */
@@ -58596,6 +58610,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_limits_field_ranges() != 1854) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_func_link_credential_has_token() != 19004) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_link_credential_hub_key() != 32759) {

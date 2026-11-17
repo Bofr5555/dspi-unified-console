@@ -5671,6 +5671,17 @@ interface DspiCoreApi : AutoCloseable {
     fun linkCredentialTlsOnly(credential: String): Boolean
 
     /**
+     * Whether a stored credential carries a token: the hub is paired. True for a
+     * `v1` token and a `v2` credential with one; false for none, the
+     * [`link_credential_unpaired`] record (a hub pinned before: it asks for its
+     * PIN, over TLS) and a damaged `v2` record. For the paired-hubs list and the
+     * choice of a hub at launch.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun linkCredentialHasToken(credential: String): Boolean
+
+    /**
      * The wording of `phase`. `pin_source` is [`crate::LinkStatus::pin_source`]:
      * it matters only to [`LinkPhase::NeedsPairing`], and anything but `fixed`
      * means `window`, as a hub that does not say does (spec 7.2).

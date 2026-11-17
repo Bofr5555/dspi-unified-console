@@ -2193,6 +2193,56 @@ mod tests_wp_sectm {
         core.link_close();
     }
 
+    // -- WP PINX -- (review-fu1 F1, for the Terminal) records are kept by the
+    // hub's id only, and a dial by address sends no token before the hello
+    // names the hub and its record is read
+    #[test]
+    fn wp_pinx_core_a_pinned_hub_at_a_typed_address_gets_no_token_in_plaintext() {
+        let hub = pin_hub();
+        let l = link(&hub, "pinx_core_stale");
+        pinned(&hub, &l);
+        let seen = hub.tokens_seen().len();
+        hub.set_tls(None);
+        let there = LinkTarget {
+            tokens: l.tokens.clone(),
+            ..LinkTarget::parse(&hub.addr().to_string()).unwrap()
+        };
+        assert!(there.hub_id.is_none(), "dialled by address");
+        let core = DspiCore::new();
+        let nobody = Person::new(None, None);
+        assert_eq!(code(dlink_session(&core, &there, &nobody)), "tls_refused");
+        assert_eq!(hub.tokens_seen().len(), seen, "no token in plaintext");
+        assert!(nobody.asked.lock().unwrap().is_empty(), "no PIN asked");
+        assert!(
+            Credential::parse(&l.stored_token(&hid()).unwrap())
+                .pin
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn wp_pinx_core_a_token_only_typed_address_connects_without_a_pin() {
+        let hub = pin_hub();
+        let l = link(&hub, "pinx_core_v1");
+        let core = DspiCore::new();
+        dlink_session(&core, &l, &Person::new(Some(PIN), None)).unwrap();
+        core.link_close();
+        let v1 = l.stored_token(&hid()).unwrap();
+        assert!(!v1.starts_with("v2."));
+        let there = LinkTarget {
+            tokens: l.tokens.clone(),
+            ..LinkTarget::parse(&hub.addr().to_string()).unwrap()
+        };
+        let core = DspiCore::new();
+        let nobody = Person::new(None, None);
+        let hello = dlink_session(&core, &there, &nobody).unwrap();
+        assert!(!hello.needs_pairing);
+        assert!(!core.link_security().encrypted);
+        core.link_close();
+        assert!(nobody.asked.lock().unwrap().is_empty(), "no PIN asked");
+        assert_eq!(hub.tokens_seen().last(), Some(&v1));
+    }
+
     // -- WP PINTLS -- (owner decision 2026-11-17) a hub once pinned stays TLS-only
     #[test]
     fn wp_pintls_core_pair_again_is_tls_only_and_forget_is_the_way_back() {

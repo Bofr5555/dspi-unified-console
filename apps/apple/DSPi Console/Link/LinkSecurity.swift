@@ -202,12 +202,13 @@ struct HubSecurityBadgeView: View {
 /// A stored record that is a pairing: it carries a token (a `v1` token, or a
 /// `v2` credential with one).  The core's unpaired record (a hub pinned
 /// before: TLS only, no token) is not, so such a hub still asks for its PIN
-/// and is never picked on its own at launch.  `linkCredentialUnpaired` of a
-/// record with a token differs from it; of the unpaired record it is the same.
+/// and is never picked on its own at launch.  -- WP PINX -- (review-fu1 N1)
+/// The core says so (`linkCredentialHasToken`): a damaged `v2` record, or a
+/// pinned one with an empty token, is not a pairing either.
 enum LinkRecord {
     static func isPaired(_ record: String?) -> Bool {
         guard let record = record, !record.isEmpty else { return false }
-        return linkCredentialUnpaired(credential: record) != record
+        return linkCredentialHasToken(credential: record)
     }
 }
 

@@ -330,6 +330,15 @@ final class LinkSecuritySECSWTests: XCTestCase {
         XCTAssertTrue(LinkRecord.isPaired("a-v1-token"))
     }
 
+    // -- WP PINX -- (review-fu1 N1) the core says whether a record has a token:
+    // a damaged v2 record is no pairing, so it is not picked at launch
+    func testPINXADamagedV2RecordIsNotPaired() throws {
+        XCTAssertFalse(LinkRecord.isPaired("v2.damaged"))
+        XCTAssertFalse(linkCredentialHasToken(credential: "v2.damaged"))
+        XCTAssertFalse(LinkRecord.isPaired(try secswLink().credential), "a pairing link's pin, no token")
+        XCTAssertTrue(linkCredentialHasToken(credential: "a-v1-token"))
+    }
+
     // MARK: Pairing links
 
     /// The core parses a link; a wrong `k=` (or no key, or another scheme) is

@@ -7574,6 +7574,13 @@ uint32_t dspi_link_credential_unpaired(const char *credential, char *buf, uint32
 bool dspi_link_credential_tls_only(const char *credential);
 
 /**
+ * Whether a stored credential carries a token (the hub is paired): false
+ * for the token-less record of a hub pinned before, a damaged `v2` record
+ * and a null `credential`.
+ */
+bool dspi_link_credential_has_token(const char *credential);
+
+/**
  * The WebSocket URL for a hub, as plain text. `path` null or "" is the
  * default (`/dspi/v1`). Returns the length needed; 0 for a null or non-UTF-8
  * `host` or a non-UTF-8 `path`.
