@@ -239,7 +239,17 @@ final class CoreLink {
     private func storedToken() -> String {
         if let link = pairLink { return link.credential }   // -- WP SECSW --
         if !expectedHubID.isEmpty, let t = tokens.token(forHub: expectedHubID) { return t }
-        return tokens.token(forHub: hubID) ?? ""
+        let kept = tokens.token(forHub: hubID) ?? ""
+        // -- review fu1 -- (F1) With no expected id nothing says which hub
+        // answers, and the copy under the typed address's key can be stale:
+        // the hub may since have been pinned through another entry, which
+        // only updates the record under its own id.  A bare (`v1`) token
+        // would go out unencrypted to whoever answers, so it is held back:
+        // the hello names the hub, and `recordToRedial` dials again with the
+        // record for that id (or with this copy when there is none).  A
+        // pinned copy is safe to send: the core checks its key first.
+        if expectedHubID.isEmpty, !kept.isEmpty, !linkCredentialTlsOnly(credential: kept) { return "" }
+        return kept
     }
 
     /// A token the hub issued for `id` (the hub's own id).
@@ -249,7 +259,9 @@ final class CoreLink {
         if expectedHubID.isEmpty, !id.isEmpty { expectedHubID = id }
         tokens.setToken(token, forHub: id.isEmpty ? hubID : id)
         // A typed address has no id of its own until it answers: keep the
-        // token under its key too, for the next launch's first dial.
+        // token under its key too, for the next launch (a pinned one goes
+        // with the first dial; a bare one once the hub has named itself,
+        // see `storedToken`).
         if hubID.lowercased() != id { tokens.setToken(token, forHub: hubID) }
     }
 
@@ -329,9 +341,16 @@ final class CoreLink {
     private func recordToRedial(_ hello: LinkHello, credential: String, expected: String) -> String? {
         guard pairLink == nil, expected.isEmpty else { return nil }
         let id = hello.hubId.lowercased()
-        guard !id.isEmpty, let record = tokens.token(forHub: id), !record.isEmpty, record != credential
-        else { return nil }
-        return linkCredentialTlsOnly(credential: record) || hello.needsPairing ? id : nil
+        guard !id.isEmpty else { return nil }
+        if let record = tokens.token(forHub: id), !record.isEmpty {
+            guard record != credential else { return nil }
+            return linkCredentialTlsOnly(credential: record) || hello.needsPairing ? id : nil
+        }
+        // -- review fu1 -- (F1) no record under the hub's id: the typed
+        // address's own copy, held back on the first dial (`storedToken`),
+        // is tried now that the hub has named itself
+        if hello.needsPairing, credential.isEmpty, let kept = tokens.token(forHub: hubID), !kept.isEmpty { return id }
+        return nil
     }
 
     private func dialed(_ result: Result<(LinkHello, dspi_core.LinkSecurity), DspiError>, epoch: Int,

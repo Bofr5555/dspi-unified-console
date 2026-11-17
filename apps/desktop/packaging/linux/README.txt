@@ -8,6 +8,11 @@ Run it as it is:
 (It needs FUSE 3 to mount itself. Without it, run it with
 --appimage-extract-and-run, or set APPIMAGE_EXTRACT_AND_RUN=1.)
 
+Like every AppImage it uses a few of the system's own libraries. Desktops have
+them; a minimal system may lack the PulseAudio client library (libpulse.so.0,
+also what PipeWire's desktops use), which the app needs to start: install
+libpulse0 (Debian, Ubuntu), pulseaudio-libs (Fedora) or libpulse (Arch, openSUSE).
+
 Or install it for yourself, with a menu entry:
     ./install.sh            (./install.sh --uninstall removes it again)
 
