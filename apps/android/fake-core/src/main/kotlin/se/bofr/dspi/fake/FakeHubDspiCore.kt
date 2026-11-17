@@ -76,6 +76,8 @@ open class FakeHubDspiCore(
         schedule = false, mqtt = false, apiKeys = false, rest = false,
         // -- WP P3CC -- the fleet families: none on this fake
         groups = has("groups"), groupParams = has("group_params"), groupApply = has("group_apply"), rollout = has("rollout"),
+        // -- WP P5HUB --
+        hubMeasure = has("hub_measure"),
         caps = if (onHub) hubCaps.sorted() else emptyList()
     )
 
@@ -145,7 +147,7 @@ open class FakeHubDspiCore(
     }
 
     private fun event(kind: String, record: HubEventRecord? = null, snapshot: String = "", change: String = "", alarm: HubAlarm? = null) =
-        HubServerEvent(kind, alarm?.serial ?: serial, record, null, snapshot, change, alarm, null, null, null)
+        HubServerEvent(kind, alarm?.serial ?: serial, record, null, snapshot, change, alarm, null, null, null, "", "") // -- WP P5HUB -- measureDoc, measureKind
 
     // ── Alarms ──
 

@@ -128,6 +128,8 @@ interface HubServer {
             apiKeys = false, rest = false,
             // -- WP P3CC --
             groups = false, groupParams = false, groupApply = false, rollout = false,
+            // -- WP P5HUB --
+            hubMeasure = false,
             caps = emptyList()
         )
 

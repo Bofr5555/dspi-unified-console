@@ -810,6 +810,7 @@ dependencies = [
  "data-encoding",
  "dspi-core",
  "dspi-link",
+ "dspi-measure",
  "dspi-proto",
  "dspi-session",
  "dspi-transport",

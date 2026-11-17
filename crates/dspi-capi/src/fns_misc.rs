@@ -96,6 +96,8 @@ mod measure_doc;
 mod measure;
 // -- WP P5LIVE -- the live response and direct adjustments
 mod measure_live;
+// -- WP P5HUB -- the hub's measurement documents
+mod hub_server_measure;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

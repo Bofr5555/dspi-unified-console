@@ -112,6 +112,8 @@ pub mod device_alarms;
 pub mod schedule;
 // -- WP P3GR -- groups
 pub mod groups;
+// -- WP P5HUB -- the measurement documents (`measure.doc.*`, hub-api.md section 22)
+pub mod measurements;
 // -- WP P3RO -- the firmware rollout (feature `rollout`)
 #[cfg(feature = "rollout")]
 pub mod rollout;

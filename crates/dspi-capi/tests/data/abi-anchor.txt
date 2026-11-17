@@ -1757,38 +1757,30 @@ uint32_t dspi_measure_stop(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_state(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_result(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_clear(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_measure_live_start(struct FfiCore *core,
-const char *setup_json,
+uint32_t dspi_hub_measure_docs(struct FfiCore *core,
+const char *kind,
+const char *serial,
 char *buf,
 uint32_t len);
-uint32_t dspi_measure_live_tick(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_measure_live_frame(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_measure_live_state(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_measure_live_stop(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_measure_live_predict(struct FfiCore *core,
-uint8_t output,
-const char *bands_json,
+uint32_t dspi_hub_measure_doc_get(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_hub_measure_doc_put(struct FfiCore *core,
+const char *document,
 char *buf,
 uint32_t len);
-uint32_t dspi_measure_live_cut_peak(struct FfiCore *core,
-uint8_t output,
-double freq_hz,
+uint32_t dspi_hub_measure_doc_rename(struct FfiCore *core,
+const char *id,
+const char *name,
 char *buf,
 uint32_t len);
-uint32_t dspi_measure_live_fit_range(struct FfiCore *core,
-uint8_t output,
-double f1_hz,
-double f2_hz,
+uint32_t dspi_hub_measure_doc_note(struct FfiCore *core,
+const char *id,
+const char *note,
 char *buf,
 uint32_t len);
-uint32_t dspi_measure_live_apply(struct FfiCore *core,
-uint32_t proposal_id,
-char *buf,
-uint32_t len);
-uint32_t dspi_measure_live_discard(struct FfiCore *core, char *buf, uint32_t len);
-uint32_t dspi_measure_live_hold(struct FfiCore *core, bool on, char *buf, uint32_t len);
-uint32_t dspi_measure_live_averaging(struct FfiCore *core,
-const char *averaging,
+uint32_t dspi_hub_measure_doc_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
+uint32_t dspi_measure_docs_merged(struct FfiCore *core,
+const char *kind,
+const char *serial,
 char *buf,
 uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,

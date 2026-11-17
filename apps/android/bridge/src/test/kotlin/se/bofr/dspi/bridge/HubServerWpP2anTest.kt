@@ -165,5 +165,5 @@ class HubServerWpP2anTest {
 
     private fun FakeHubDspiCore.listener() = serverListener
 
-    private fun hubEvent(a: HubAlarm) = se.bofr.dspi.core.HubServerEvent("alarm.changed", a.serial, null, null, "", "", a, null, null, null)
+    private fun hubEvent(a: HubAlarm) = se.bofr.dspi.core.HubServerEvent("alarm.changed", a.serial, null, null, "", "", a, null, null, null, "", "")
 }

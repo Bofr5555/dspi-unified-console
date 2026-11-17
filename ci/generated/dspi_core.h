@@ -7178,96 +7178,68 @@ uint32_t dspi_measure_result(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_clear(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Start the live view of `setup` (JSON): the live state, or a failure
- * (`invalid` naming the blockers, `read_only`, `denied`, `locked`).
+ * The hub's documents of `kind` (`measurement`, `mic`, `target`; null or ""
+ * every kind), measurements of device `serial` (null or "" the open
+ * device's): JSON `{ok, value: [{id, kind, name, note, serial, savedMs,
+ * bytes}, ...]}`.
  */
-uint32_t dspi_measure_live_start(struct FfiCore *core,
-                                 const char *setup_json,
-                                 char *buf,
-                                 uint32_t len);
+uint32_t dspi_hub_measure_docs(struct FfiCore *core,
+                               const char *kind,
+                               const char *serial,
+                               char *buf,
+                               uint32_t len);
 
 /**
- * Drive the live view (about every 50 ms, off the UI thread): the live
- * state (never a failure).
+ * Document `id` on the hub: JSON `{ok, doc: {id, kind, ...}, document}`
+ * (`document` its compact text; a large one is read in parts and checked).
  */
-uint32_t dspi_measure_live_tick(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_measure_doc_get(struct FfiCore *core, const char *id, char *buf, uint32_t len);
 
 /**
- * What the live view shows: the frame, without I/O (safe from the measure
- * callback).
+ * File a measurement, microphone or target document on the hub: JSON `{ok,
+ * doc: {...}, created}`; a text that is not such a document fails
+ * `invalid` with nothing sent.
  */
-uint32_t dspi_measure_live_frame(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_measure_doc_put(struct FfiCore *core,
+                                  const char *document,
+                                  char *buf,
+                                  uint32_t len);
 
 /**
- * The live state, without I/O.
+ * Rename document `id` on the hub: JSON, its entry.
  */
-uint32_t dspi_measure_live_state(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_hub_measure_doc_rename(struct FfiCore *core,
+                                     const char *id,
+                                     const char *name,
+                                     char *buf,
+                                     uint32_t len);
 
 /**
- * Stop the live view: the live state (never a failure).
+ * Set document `id`'s note on the hub: JSON, its entry.
  */
-uint32_t dspi_measure_live_stop(struct FfiCore *core, char *buf, uint32_t len);
-
-/**
- * Preview `bands_json` (a JSON array of `{band, filterType, bypass, freq, q,
- * gain, qp}`, PEQ bands of `output`) as the pending change: the proposal,
- * or a failure. An empty array drops the pending change.
- */
-uint32_t dspi_measure_live_predict(struct FfiCore *core,
-                                   uint8_t output,
-                                   const char *bands_json,
+uint32_t dspi_hub_measure_doc_note(struct FfiCore *core,
+                                   const char *id,
+                                   const char *note,
                                    char *buf,
                                    uint32_t len);
 
 /**
- * "Cut this peak" at `freq_hz` on `output`: the proposal (its `issue` says
- * why nothing is proposed), or a failure.
+ * Delete document `id` from the hub (Admin): JSON `{ok}` or a failure.
  */
-uint32_t dspi_measure_live_cut_peak(struct FfiCore *core,
-                                    uint8_t output,
-                                    double freq_hz,
-                                    char *buf,
-                                    uint32_t len);
+uint32_t dspi_hub_measure_doc_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
 
 /**
- * "Fit this range" `f1_hz..f2_hz` on `output`: the proposal, or a failure.
+ * The documents of `kind` (null or "" every kind) on both sides, measurements
+ * of `serial` (null or "": every device's here, the open device's on the
+ * hub): JSON `{ok, entries: [{doc, where, localCopy}], hubListed,
+ * hubNoticeKey}` (`where`: `local`, `hub` or `both`), or a failure for an
+ * unknown kind.
  */
-uint32_t dspi_measure_live_fit_range(struct FfiCore *core,
-                                     uint8_t output,
-                                     double f1_hz,
-                                     double f2_hz,
-                                     char *buf,
-                                     uint32_t len);
-
-/**
- * Write the pending change `proposal_id` as one undo step: the live state,
- * or a failure (`invalid` for no such change or a changed EQ, the setters'
- * refusals).
- */
-uint32_t dspi_measure_live_apply(struct FfiCore *core,
-                                 uint32_t proposal_id,
-                                 char *buf,
-                                 uint32_t len);
-
-/**
- * Drop the pending change: the live state.
- */
-uint32_t dspi_measure_live_discard(struct FfiCore *core, char *buf, uint32_t len);
-
-/**
- * Hold the RTA's spectrum (`on`) or drop the held copy: the live state, or
- * `invalid` with no RTA or nothing to hold.
- */
-uint32_t dspi_measure_live_hold(struct FfiCore *core, bool on, char *buf, uint32_t len);
-
-/**
- * The RTA's averaging, `"fast"`, `"slow"` or `"infinite"`: the live state,
- * or `invalid`.
- */
-uint32_t dspi_measure_live_averaging(struct FfiCore *core,
-                                     const char *averaging,
-                                     char *buf,
-                                     uint32_t len);
+uint32_t dspi_measure_docs_merged(struct FfiCore *core,
+                                  const char *kind,
+                                  const char *serial,
+                                  char *buf,
+                                  uint32_t len);
 
 /**
  * Start looking for hubs on the local network, replacing any browse running.

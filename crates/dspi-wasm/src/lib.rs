@@ -110,6 +110,8 @@ pub mod clipboard;
 pub mod measure;
 // -- WP P5LIVE -- the live response and direct adjustments
 pub mod measure_live;
+// -- WP P5HUB -- the hub's measurement documents
+pub mod hub_server_measure;
 // -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
 pub mod settings;
 // -- WP WB4a --

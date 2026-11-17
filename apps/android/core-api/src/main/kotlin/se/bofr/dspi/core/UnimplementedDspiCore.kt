@@ -424,6 +424,20 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun hubIdentifySerial(serial: String, seconds: Int, toneOutput: Int?): IdentifyInfo? = throw NotImplementedError("hub_identify_serial")
 
+    override fun hubMeasureDocs(kind: String, serial: String): List<MeasureDocInfo> = throw NotImplementedError("hub_measure_docs")
+
+    override fun hubMeasureDocGet(id: String): HubMeasureDocument = throw NotImplementedError("hub_measure_doc_get")
+
+    override fun hubMeasureDocPut(document: String): HubMeasureDocPut = throw NotImplementedError("hub_measure_doc_put")
+
+    override fun hubMeasureDocRename(id: String, name: String): MeasureDocInfo = throw NotImplementedError("hub_measure_doc_rename")
+
+    override fun hubMeasureDocNote(id: String, note: String): MeasureDocInfo = throw NotImplementedError("hub_measure_doc_note")
+
+    override fun hubMeasureDocDelete(id: String): Unit = throw NotImplementedError("hub_measure_doc_delete")
+
+    override fun measureDocsMerged(kind: String, serial: String): MeasureDocsMerged = throw NotImplementedError("measure_docs_merged")
+
     override fun getInputSourceName(source: Int): String = throw NotImplementedError("get_input_source_name")
 
     override fun setInputSourceName(source: Int, name: String): Unit = throw NotImplementedError("set_input_source_name")
