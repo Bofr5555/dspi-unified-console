@@ -332,6 +332,12 @@ pub use measure::{
     MeasureCoupler, MeasureIssue, MeasureLevel, MeasureOutput, MeasurePhase, MeasurePlacement,
     MeasurePreflight, MeasureRole, MeasureRunKind, MeasureSetup, MeasureState, MeasureTiming,
 };
+// -- WP P5LIVE --
+pub use measure::{
+    MeasureLiveAdjust, MeasureLiveBand, MeasureLiveChange, MeasureLiveCurve, MeasureLiveFrame,
+    MeasureLiveMode, MeasureLiveProposal, MeasureLiveRta, MeasureLiveSetup, MeasureLiveState,
+    MeasureRtaAveraging,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

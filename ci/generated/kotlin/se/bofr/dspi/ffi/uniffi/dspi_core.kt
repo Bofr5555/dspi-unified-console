@@ -2018,6 +2018,30 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2658,6 +2682,30 @@ fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_put(
 fun uniffi_dspi_core_checksum_method_dspicore_measure_doc_rename(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_docs(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_apply(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_averaging(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_cut_peak(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_discard(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_fit_range(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_frame(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_hold(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_predict(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_start(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_state(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_stop(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_live_tick(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_next_position(
 ): Short
@@ -3639,6 +3687,30 @@ fun uniffi_dspi_core_fn_method_dspicore_measure_doc_put(`ptr`: Pointer,`text`: R
 fun uniffi_dspi_core_fn_method_dspicore_measure_doc_rename(`ptr`: Pointer,`id`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_docs(`ptr`: Pointer,`kind`: RustBuffer.ByValue,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_apply(`ptr`: Pointer,`proposalId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_averaging(`ptr`: Pointer,`averaging`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_cut_peak(`ptr`: Pointer,`output`: Byte,`freqHz`: Double,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_discard(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_fit_range(`ptr`: Pointer,`output`: Byte,`f1Hz`: Double,`f2Hz`: Double,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_frame(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_hold(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_predict(`ptr`: Pointer,`output`: Byte,`bands`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_start(`ptr`: Pointer,`setup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_live_tick(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_next_position(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -5293,6 +5365,42 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_docs() != 14119.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_apply() != 20010.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_averaging() != 57827.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_cut_peak() != 13407.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_discard() != 4026.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_fit_range() != 57148.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_frame() != 64709.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_hold() != 56098.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_predict() != 4396.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_start() != 18767.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_state() != 54049.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_stop() != 48639.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_tick() != 24180.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_next_position() != 42088.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -5314,7 +5422,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_state() != 64969.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_stop() != 53664.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_stop() != 2867.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tick() != 49262.toShort()) {
@@ -10233,6 +10341,124 @@ public interface DspiCoreInterface {
     fun `measureDocs`(`kind`: kotlin.String, `serial`: kotlin.String): List<MeasureDocInfo>
     
     /**
+     * Write the pending change `proposal_id` as **one undo group**
+     * (unguarded, as a manual edit; S10): the run in flight is stopped, each
+     * band through the typed setter (judged by read-only, the limits and the
+     * lock as any write), then the next run starts. Refused, with nothing
+     * written, unless the device's bands are still the ones the proposal was
+     * computed from. A write that fails puts back the ones before it.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no such pending proposal or
+     * a chain changed since the preview; the setters' errors
+     * ([`DspiError::ReadOnly`], [`DspiError::Denied`], the limits'
+     * refusals, a transfer failure).
+     */
+    fun `measureLiveApply`(`proposalId`: kotlin.UInt): MeasureLiveState
+    
+    /**
+     * The RTA's averaging preset; the average starts again (the held copy
+     * is kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs.
+     */
+    fun `measureLiveAveraging`(`averaging`: MeasureRtaAveraging): MeasureLiveState
+    
+    /**
+     * "Cut this peak": one free PEQ band (flat or bypassed now) from the fit
+     * on one octave about `freq_hz`, cut only, previewed as the pending
+     * change. `issue` says why nothing is proposed (no curve yet, nothing to
+     * cut, not trusted there, no free band).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`; the limits profile's refusal of the band.
+     */
+    fun `measureLiveCutPeak`(`output`: kotlin.UByte, `freqHz`: kotlin.Double): MeasureLiveProposal
+    
+    /**
+     * Drop the pending change (nothing is written).
+     */
+    fun `measureLiveDiscard`(): MeasureLiveState
+    
+    /**
+     * "Fit this range": the free PEQ bands fitted toward the target in
+     * `f1_hz..f2_hz` (held to the measurement's trusted range), with the
+     * placement's bounds (S9: boost +3 dB speakers, +6 dB headphones, never
+     * above the limits profile's cap; cut -15 dB; Q 0.3 to 10) and a
+     * headroom cut of the output gain for its net boost; previewed as the
+     * pending change. Every band the fit lists is written on apply.
+     *
+     * Errors: as [`DspiCore::measure_live_cut_peak`].
+     */
+    fun `measureLiveFitRange`(`output`: kotlin.UByte, `f1Hz`: kotlin.Double, `f2Hz`: kotlin.Double): MeasureLiveProposal
+    
+    /**
+     * What the live view shows now: the measured curve, the target levelled
+     * to it, the predicted curve of a pending (or unmeasured) change, the
+     * RTA, the pending proposal, the run's state. No I/O; safe from a
+     * listener.
+     */
+    fun `measureLiveFrame`(): MeasureLiveFrame
+    
+    /**
+     * Hold (`true`) the RTA's spectrum for comparison, or drop the held
+     * copy (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs, or there
+     * is no spectrum to hold yet.
+     */
+    fun `measureLiveHold`(`on`: kotlin.Boolean): MeasureLiveState
+    
+    /**
+     * Preview `bands` (PEQ bands of `output`, the live view's) as a pending
+     * change: the predicted curve shows at once, nothing is written until
+     * `measure_live_apply`. An empty list drops the pending change.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`, a band index is past the output's PEQ, a value is not
+     * finite, or a type is not one the curves model; the limits profile's
+     * refusal ([`DspiError::LimitExceeded`] and kin) for a write it would
+     * refuse.
+     */
+    fun `measureLivePredict`(`output`: kotlin.UByte, `bands`: List<MeasureLiveBand>): MeasureLiveProposal
+    
+    /**
+     * Start the live view of one output (PLAN-P5 T9, T5): short sweeps one
+     * after the other, or finite pink noise with the microphone RTA, each
+     * run under every rule of a measurement (the preflight, the ramp, the
+     * aborts; `measure_start`'s errors). The device lock is held until
+     * `measure_live_stop`. Then call `measure_live_tick` about every 50 ms
+     * (instead of `measure_tick`) and push capture whenever the session
+     * wants it (`measure_capture_push`); read `measure_live_frame`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a measurement
+     * or a live view already running, or a blocker (named);
+     * [`DspiError::ReadOnly`], [`DspiError::Denied`], [`DspiError::Locked`],
+     * [`DspiError::Disconnected`] as `measure_start`, with nothing sent.
+     */
+    fun `measureLiveStart`(`setup`: MeasureLiveSetup): MeasureLiveState
+    
+    /**
+     * Where the live view stands. No I/O; safe from a listener.
+     */
+    fun `measureLiveState`(): MeasureLiveState
+    
+    /**
+     * Stop the live view: the run in flight stopped (one `STOP_NOW`), the
+     * lock given back. `measure_stop` does the same. Idempotent; never
+     * fails.
+     */
+    fun `measureLiveStop`(): MeasureLiveState
+    
+    /**
+     * Drive the live view: renew the lock's lease, drive the run in flight
+     * (`measure_tick`), take a finished sweep's curve, feed the RTA, start
+     * the next run. Call it about every 50 ms while the live view runs, off
+     * the UI thread. A run's abort ends the live view (its reason in
+     * `issue`). Never fails.
+     */
+    fun `measureLiveTick`(): MeasureLiveState
+    
+    /**
      * The microphone is at the next position (or the headphones reseated):
      * go on with the next run.
      *
@@ -10307,6 +10533,7 @@ public interface DspiCoreInterface {
     /**
      * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
      * the run discarded, the lock given back. Idempotent; never fails.
+     * It ends the live view too (`measure_live_stop`).
      */
     fun `measureStop`(): MeasureState
     
@@ -17711,6 +17938,251 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * Write the pending change `proposal_id` as **one undo group**
+     * (unguarded, as a manual edit; S10): the run in flight is stopped, each
+     * band through the typed setter (judged by read-only, the limits and the
+     * lock as any write), then the next run starts. Refused, with nothing
+     * written, unless the device's bands are still the ones the proposal was
+     * computed from. A write that fails puts back the ones before it.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for no such pending proposal or
+     * a chain changed since the preview; the setters' errors
+     * ([`DspiError::ReadOnly`], [`DspiError::Denied`], the limits'
+     * refusals, a transfer failure).
+     */
+    @Throws(DspiException::class)override fun `measureLiveApply`(`proposalId`: kotlin.UInt): MeasureLiveState {
+            return FfiConverterTypeMeasureLiveState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_apply(
+        it, FfiConverterUInt.lower(`proposalId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The RTA's averaging preset; the average starts again (the held copy
+     * is kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs.
+     */
+    @Throws(DspiException::class)override fun `measureLiveAveraging`(`averaging`: MeasureRtaAveraging): MeasureLiveState {
+            return FfiConverterTypeMeasureLiveState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_averaging(
+        it, FfiConverterTypeMeasureRtaAveraging.lower(`averaging`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * "Cut this peak": one free PEQ band (flat or bypassed now) from the fit
+     * on one octave about `freq_hz`, cut only, previewed as the pending
+     * change. `issue` says why nothing is proposed (no curve yet, nothing to
+     * cut, not trusted there, no free band).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`; the limits profile's refusal of the band.
+     */
+    @Throws(DspiException::class)override fun `measureLiveCutPeak`(`output`: kotlin.UByte, `freqHz`: kotlin.Double): MeasureLiveProposal {
+            return FfiConverterTypeMeasureLiveProposal.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_cut_peak(
+        it, FfiConverterUByte.lower(`output`),FfiConverterDouble.lower(`freqHz`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Drop the pending change (nothing is written).
+     */override fun `measureLiveDiscard`(): MeasureLiveState {
+            return FfiConverterTypeMeasureLiveState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_discard(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * "Fit this range": the free PEQ bands fitted toward the target in
+     * `f1_hz..f2_hz` (held to the measurement's trusted range), with the
+     * placement's bounds (S9: boost +3 dB speakers, +6 dB headphones, never
+     * above the limits profile's cap; cut -15 dB; Q 0.3 to 10) and a
+     * headroom cut of the output gain for its net boost; previewed as the
+     * pending change. Every band the fit lists is written on apply.
+     *
+     * Errors: as [`DspiCore::measure_live_cut_peak`].
+     */
+    @Throws(DspiException::class)override fun `measureLiveFitRange`(`output`: kotlin.UByte, `f1Hz`: kotlin.Double, `f2Hz`: kotlin.Double): MeasureLiveProposal {
+            return FfiConverterTypeMeasureLiveProposal.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_fit_range(
+        it, FfiConverterUByte.lower(`output`),FfiConverterDouble.lower(`f1Hz`),FfiConverterDouble.lower(`f2Hz`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * What the live view shows now: the measured curve, the target levelled
+     * to it, the predicted curve of a pending (or unmeasured) change, the
+     * RTA, the pending proposal, the run's state. No I/O; safe from a
+     * listener.
+     */override fun `measureLiveFrame`(): MeasureLiveFrame {
+            return FfiConverterTypeMeasureLiveFrame.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_frame(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Hold (`true`) the RTA's spectrum for comparison, or drop the held
+     * copy (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no live RTA runs, or there
+     * is no spectrum to hold yet.
+     */
+    @Throws(DspiException::class)override fun `measureLiveHold`(`on`: kotlin.Boolean): MeasureLiveState {
+            return FfiConverterTypeMeasureLiveState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_hold(
+        it, FfiConverterBoolean.lower(`on`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Preview `bands` (PEQ bands of `output`, the live view's) as a pending
+     * change: the predicted curve shows at once, nothing is written until
+     * `measure_live_apply`. An empty list drops the pending change.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when the live view does not
+     * measure `output`, a band index is past the output's PEQ, a value is not
+     * finite, or a type is not one the curves model; the limits profile's
+     * refusal ([`DspiError::LimitExceeded`] and kin) for a write it would
+     * refuse.
+     */
+    @Throws(DspiException::class)override fun `measureLivePredict`(`output`: kotlin.UByte, `bands`: List<MeasureLiveBand>): MeasureLiveProposal {
+            return FfiConverterTypeMeasureLiveProposal.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_predict(
+        it, FfiConverterUByte.lower(`output`),FfiConverterSequenceTypeMeasureLiveBand.lower(`bands`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Start the live view of one output (PLAN-P5 T9, T5): short sweeps one
+     * after the other, or finite pink noise with the microphone RTA, each
+     * run under every rule of a measurement (the preflight, the ramp, the
+     * aborts; `measure_start`'s errors). The device lock is held until
+     * `measure_live_stop`. Then call `measure_live_tick` about every 50 ms
+     * (instead of `measure_tick`) and push capture whenever the session
+     * wants it (`measure_capture_push`); read `measure_live_frame`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a measurement
+     * or a live view already running, or a blocker (named);
+     * [`DspiError::ReadOnly`], [`DspiError::Denied`], [`DspiError::Locked`],
+     * [`DspiError::Disconnected`] as `measure_start`, with nothing sent.
+     */
+    @Throws(DspiException::class)override fun `measureLiveStart`(`setup`: MeasureLiveSetup): MeasureLiveState {
+            return FfiConverterTypeMeasureLiveState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_start(
+        it, FfiConverterTypeMeasureLiveSetup.lower(`setup`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Where the live view stands. No I/O; safe from a listener.
+     */override fun `measureLiveState`(): MeasureLiveState {
+            return FfiConverterTypeMeasureLiveState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Stop the live view: the run in flight stopped (one `STOP_NOW`), the
+     * lock given back. `measure_stop` does the same. Idempotent; never
+     * fails.
+     */override fun `measureLiveStop`(): MeasureLiveState {
+            return FfiConverterTypeMeasureLiveState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_stop(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Drive the live view: renew the lock's lease, drive the run in flight
+     * (`measure_tick`), take a finished sweep's curve, feed the RTA, start
+     * the next run. Call it about every 50 ms while the live view runs, off
+     * the UI thread. A run's abort ends the live view (its reason in
+     * `issue`). Never fails.
+     */override fun `measureLiveTick`(): MeasureLiveState {
+            return FfiConverterTypeMeasureLiveState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_live_tick(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * The microphone is at the next position (or the headphones reseated):
      * go on with the next run.
      *
@@ -17858,6 +18330,7 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     /**
      * The user's Stop: `SIGGEN_CTL_STOP_NOW` where the device is reachable,
      * the run discarded, the lock given back. Idempotent; never fails.
+     * It ends the live view too (`measure_live_stop`).
      */override fun `measureStop`(): MeasureState {
             return FfiConverterTypeMeasureState.lift(
     callWithPointer {
@@ -36520,6 +36993,704 @@ public object FfiConverterTypeMeasureLevel: FfiConverterRustBuffer<MeasureLevel>
 
 
 /**
+ * One PEQ band of the live output, as a proposal writes it.
+ */
+data class MeasureLiveBand (
+    /**
+     * The PEQ band, 0-based.
+     */
+    var `band`: kotlin.UByte, 
+    /**
+     * The firmware's filter type (0 flat, 1 peak, 2 low shelf, 3 high
+     * shelf, ...).
+     */
+    var `filterType`: kotlin.UByte, 
+    /**
+     * Switched off.
+     */
+    var `bypass`: kotlin.Boolean, 
+    /**
+     * Centre or corner, Hz.
+     */
+    var `freq`: kotlin.Float, 
+    /**
+     * Q.
+     */
+    var `q`: kotlin.Float, 
+    /**
+     * Gain, dB.
+     */
+    var `gain`: kotlin.Float, 
+    /**
+     * The Linkwitz Transform's target Q; unused otherwise.
+     */
+    var `qp`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLiveBand: FfiConverterRustBuffer<MeasureLiveBand> {
+    override fun read(buf: ByteBuffer): MeasureLiveBand {
+        return MeasureLiveBand(
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLiveBand) = (
+            FfiConverterUByte.allocationSize(value.`band`) +
+            FfiConverterUByte.allocationSize(value.`filterType`) +
+            FfiConverterBoolean.allocationSize(value.`bypass`) +
+            FfiConverterFloat.allocationSize(value.`freq`) +
+            FfiConverterFloat.allocationSize(value.`q`) +
+            FfiConverterFloat.allocationSize(value.`gain`) +
+            FfiConverterFloat.allocationSize(value.`qp`)
+    )
+
+    override fun write(value: MeasureLiveBand, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`band`, buf)
+            FfiConverterUByte.write(value.`filterType`, buf)
+            FfiConverterBoolean.write(value.`bypass`, buf)
+            FfiConverterFloat.write(value.`freq`, buf)
+            FfiConverterFloat.write(value.`q`, buf)
+            FfiConverterFloat.write(value.`gain`, buf)
+            FfiConverterFloat.write(value.`qp`, buf)
+    }
+}
+
+
+
+/**
+ * One band a proposal changes.
+ */
+data class MeasureLiveChange (
+    /**
+     * The PEQ band, 0-based.
+     */
+    var `band`: kotlin.UByte, 
+    /**
+     * What it is now.
+     */
+    var `before`: MeasureLiveBand, 
+    /**
+     * What the proposal writes.
+     */
+    var `after`: MeasureLiveBand, 
+    /**
+     * The change in words ("PEQ band 4: flat → peak -5.8 dB at 1.02 kHz,
+     * Q 4.1").
+     */
+    var `words`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLiveChange: FfiConverterRustBuffer<MeasureLiveChange> {
+    override fun read(buf: ByteBuffer): MeasureLiveChange {
+        return MeasureLiveChange(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureLiveBand.read(buf),
+            FfiConverterTypeMeasureLiveBand.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLiveChange) = (
+            FfiConverterUByte.allocationSize(value.`band`) +
+            FfiConverterTypeMeasureLiveBand.allocationSize(value.`before`) +
+            FfiConverterTypeMeasureLiveBand.allocationSize(value.`after`) +
+            FfiConverterString.allocationSize(value.`words`)
+    )
+
+    override fun write(value: MeasureLiveChange, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`band`, buf)
+            FfiConverterTypeMeasureLiveBand.write(value.`before`, buf)
+            FfiConverterTypeMeasureLiveBand.write(value.`after`, buf)
+            FfiConverterString.write(value.`words`, buf)
+    }
+}
+
+
+
+/**
+ * A curve as the live graph draws it (10 Hz to 22 kHz, 1/48 octave).
+ */
+data class MeasureLiveCurve (
+    /**
+     * Frequencies, Hz, ascending.
+     */
+    var `freqsHz`: List<kotlin.Double>, 
+    /**
+     * Magnitude, dB (dB SPL when `spl`).
+     */
+    var `magDb`: List<kotlin.Double>, 
+    /**
+     * Per point, trusted (untrusted points are drawn faint).
+     */
+    var `valid`: List<kotlin.Boolean>, 
+    /**
+     * The magnitudes are dB SPL (a calibrated microphone).
+     */
+    var `spl`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLiveCurve: FfiConverterRustBuffer<MeasureLiveCurve> {
+    override fun read(buf: ByteBuffer): MeasureLiveCurve {
+        return MeasureLiveCurve(
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterSequenceBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLiveCurve) = (
+            FfiConverterSequenceDouble.allocationSize(value.`freqsHz`) +
+            FfiConverterSequenceDouble.allocationSize(value.`magDb`) +
+            FfiConverterSequenceBoolean.allocationSize(value.`valid`) +
+            FfiConverterBoolean.allocationSize(value.`spl`)
+    )
+
+    override fun write(value: MeasureLiveCurve, buf: ByteBuffer) {
+            FfiConverterSequenceDouble.write(value.`freqsHz`, buf)
+            FfiConverterSequenceDouble.write(value.`magDb`, buf)
+            FfiConverterSequenceBoolean.write(value.`valid`, buf)
+            FfiConverterBoolean.write(value.`spl`, buf)
+    }
+}
+
+
+
+/**
+ * What the live view shows now (`measure_live_frame`).
+ */
+data class MeasureLiveFrame (
+    /**
+     * The live view runs.
+     */
+    var `active`: kotlin.Boolean, 
+    /**
+     * What it plays.
+     */
+    var `mode`: MeasureLiveMode, 
+    /**
+     * The output.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Counts the measured curves (one per sweep; the RTA's per update).
+     */
+    var `seq`: kotlin.UInt, 
+    /**
+     * The measured curve, if one.
+     */
+    var `measured`: MeasureLiveCurve?, 
+    /**
+     * The target, levelled to the measured curve.
+     */
+    var `target`: MeasureLiveCurve?, 
+    /**
+     * The predicted curve: of the pending change, or of a change already
+     * written that no sweep has measured yet.
+     */
+    var `predicted`: MeasureLiveCurve?, 
+    /**
+     * The microphone RTA (pink mode).
+     */
+    var `rta`: MeasureLiveRta?, 
+    /**
+     * The change previewed, if one.
+     */
+    var `pending`: MeasureLiveProposal?, 
+    /**
+     * Why the live view stopped, if it did.
+     */
+    var `issue`: MeasureIssue?, 
+    /**
+     * The current run's state.
+     */
+    var `session`: MeasureState
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLiveFrame: FfiConverterRustBuffer<MeasureLiveFrame> {
+    override fun read(buf: ByteBuffer): MeasureLiveFrame {
+        return MeasureLiveFrame(
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeMeasureLiveMode.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalTypeMeasureLiveCurve.read(buf),
+            FfiConverterOptionalTypeMeasureLiveCurve.read(buf),
+            FfiConverterOptionalTypeMeasureLiveCurve.read(buf),
+            FfiConverterOptionalTypeMeasureLiveRta.read(buf),
+            FfiConverterOptionalTypeMeasureLiveProposal.read(buf),
+            FfiConverterOptionalTypeMeasureIssue.read(buf),
+            FfiConverterTypeMeasureState.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLiveFrame) = (
+            FfiConverterBoolean.allocationSize(value.`active`) +
+            FfiConverterTypeMeasureLiveMode.allocationSize(value.`mode`) +
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterUInt.allocationSize(value.`seq`) +
+            FfiConverterOptionalTypeMeasureLiveCurve.allocationSize(value.`measured`) +
+            FfiConverterOptionalTypeMeasureLiveCurve.allocationSize(value.`target`) +
+            FfiConverterOptionalTypeMeasureLiveCurve.allocationSize(value.`predicted`) +
+            FfiConverterOptionalTypeMeasureLiveRta.allocationSize(value.`rta`) +
+            FfiConverterOptionalTypeMeasureLiveProposal.allocationSize(value.`pending`) +
+            FfiConverterOptionalTypeMeasureIssue.allocationSize(value.`issue`) +
+            FfiConverterTypeMeasureState.allocationSize(value.`session`)
+    )
+
+    override fun write(value: MeasureLiveFrame, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`active`, buf)
+            FfiConverterTypeMeasureLiveMode.write(value.`mode`, buf)
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterUInt.write(value.`seq`, buf)
+            FfiConverterOptionalTypeMeasureLiveCurve.write(value.`measured`, buf)
+            FfiConverterOptionalTypeMeasureLiveCurve.write(value.`target`, buf)
+            FfiConverterOptionalTypeMeasureLiveCurve.write(value.`predicted`, buf)
+            FfiConverterOptionalTypeMeasureLiveRta.write(value.`rta`, buf)
+            FfiConverterOptionalTypeMeasureLiveProposal.write(value.`pending`, buf)
+            FfiConverterOptionalTypeMeasureIssue.write(value.`issue`, buf)
+            FfiConverterTypeMeasureState.write(value.`session`, buf)
+    }
+}
+
+
+
+/**
+ * A direct adjustment, previewed: nothing is written until
+ * `measure_live_apply` with its id.
+ */
+data class MeasureLiveProposal (
+    /**
+     * Its id (`measure_live_apply`).
+     */
+    var `id`: kotlin.UInt, 
+    /**
+     * What made it.
+     */
+    var `adjust`: MeasureLiveAdjust, 
+    /**
+     * The output.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * The undo step's label.
+     */
+    var `label`: kotlin.String, 
+    /**
+     * The bands it writes (empty: nothing to change, see `issue`).
+     */
+    var `changes`: List<MeasureLiveChange>, 
+    /**
+     * The output's gain now, dB.
+     */
+    var `gainBeforeDb`: kotlin.Float, 
+    /**
+     * The output's gain it writes, dB (a headroom cut; equal: unchanged).
+     */
+    var `gainAfterDb`: kotlin.Float, 
+    /**
+     * The RMS error to the target in the span before, dB (a fit's).
+     */
+    var `rmsBeforeDb`: kotlin.Double, 
+    /**
+     * The same, predicted after, dB.
+     */
+    var `rmsAfterDb`: kotlin.Double, 
+    /**
+     * What was done and why, in words.
+     */
+    var `notes`: List<kotlin.String>, 
+    /**
+     * Why nothing is proposed, when nothing is.
+     */
+    var `issue`: MeasureIssue?, 
+    /**
+     * The curve the change is predicted to give.
+     */
+    var `predicted`: MeasureLiveCurve?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLiveProposal: FfiConverterRustBuffer<MeasureLiveProposal> {
+    override fun read(buf: ByteBuffer): MeasureLiveProposal {
+        return MeasureLiveProposal(
+            FfiConverterUInt.read(buf),
+            FfiConverterTypeMeasureLiveAdjust.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeMeasureLiveChange.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterOptionalTypeMeasureIssue.read(buf),
+            FfiConverterOptionalTypeMeasureLiveCurve.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLiveProposal) = (
+            FfiConverterUInt.allocationSize(value.`id`) +
+            FfiConverterTypeMeasureLiveAdjust.allocationSize(value.`adjust`) +
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterSequenceTypeMeasureLiveChange.allocationSize(value.`changes`) +
+            FfiConverterFloat.allocationSize(value.`gainBeforeDb`) +
+            FfiConverterFloat.allocationSize(value.`gainAfterDb`) +
+            FfiConverterDouble.allocationSize(value.`rmsBeforeDb`) +
+            FfiConverterDouble.allocationSize(value.`rmsAfterDb`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`) +
+            FfiConverterOptionalTypeMeasureIssue.allocationSize(value.`issue`) +
+            FfiConverterOptionalTypeMeasureLiveCurve.allocationSize(value.`predicted`)
+    )
+
+    override fun write(value: MeasureLiveProposal, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`id`, buf)
+            FfiConverterTypeMeasureLiveAdjust.write(value.`adjust`, buf)
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterSequenceTypeMeasureLiveChange.write(value.`changes`, buf)
+            FfiConverterFloat.write(value.`gainBeforeDb`, buf)
+            FfiConverterFloat.write(value.`gainAfterDb`, buf)
+            FfiConverterDouble.write(value.`rmsBeforeDb`, buf)
+            FfiConverterDouble.write(value.`rmsAfterDb`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+            FfiConverterOptionalTypeMeasureIssue.write(value.`issue`, buf)
+            FfiConverterOptionalTypeMeasureLiveCurve.write(value.`predicted`, buf)
+    }
+}
+
+
+
+/**
+ * The microphone RTA of the live view.
+ */
+data class MeasureLiveRta (
+    /**
+     * The averaged spectrum in fractional-octave bands (dBFS, or dB SPL).
+     */
+    var `current`: MeasureLiveCurve?, 
+    /**
+     * The held copy.
+     */
+    var `held`: MeasureLiveCurve?, 
+    /**
+     * The current spectrum minus the held one, dB.
+     */
+    var `compare`: MeasureLiveCurve?, 
+    /**
+     * FFT frames averaged so far.
+     */
+    var `frames`: kotlin.ULong, 
+    /**
+     * The averaging preset.
+     */
+    var `averaging`: MeasureRtaAveraging
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLiveRta: FfiConverterRustBuffer<MeasureLiveRta> {
+    override fun read(buf: ByteBuffer): MeasureLiveRta {
+        return MeasureLiveRta(
+            FfiConverterOptionalTypeMeasureLiveCurve.read(buf),
+            FfiConverterOptionalTypeMeasureLiveCurve.read(buf),
+            FfiConverterOptionalTypeMeasureLiveCurve.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterTypeMeasureRtaAveraging.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLiveRta) = (
+            FfiConverterOptionalTypeMeasureLiveCurve.allocationSize(value.`current`) +
+            FfiConverterOptionalTypeMeasureLiveCurve.allocationSize(value.`held`) +
+            FfiConverterOptionalTypeMeasureLiveCurve.allocationSize(value.`compare`) +
+            FfiConverterULong.allocationSize(value.`frames`) +
+            FfiConverterTypeMeasureRtaAveraging.allocationSize(value.`averaging`)
+    )
+
+    override fun write(value: MeasureLiveRta, buf: ByteBuffer) {
+            FfiConverterOptionalTypeMeasureLiveCurve.write(value.`current`, buf)
+            FfiConverterOptionalTypeMeasureLiveCurve.write(value.`held`, buf)
+            FfiConverterOptionalTypeMeasureLiveCurve.write(value.`compare`, buf)
+            FfiConverterULong.write(value.`frames`, buf)
+            FfiConverterTypeMeasureRtaAveraging.write(value.`averaging`, buf)
+    }
+}
+
+
+
+/**
+ * What the live view measures and how (`measure_live_start`). Every number
+ * 0 (or absent) is the default.
+ */
+data class MeasureLiveSetup (
+    /**
+     * The output, 0-based.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Sweeps or pink noise with the RTA.
+     */
+    var `mode`: MeasureLiveMode, 
+    /**
+     * Its way (the tweeter rule, S6, needs `mid` or `high` for those).
+     */
+    var `role`: MeasureRole, 
+    /**
+     * Where the microphone is: the listening position, near field, or a
+     * headphone coupler (several positions are not live).
+     */
+    var `placement`: MeasurePlacement, 
+    /**
+     * The coupler, for headphones.
+     */
+    var `coupler`: MeasureCoupler?, 
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated one.
+     */
+    var `micDocument`: kotlin.String, 
+    /**
+     * A `target` document's text; "" for the placement's default target.
+     */
+    var `targetDocument`: kotlin.String, 
+    /**
+     * The graph's smoothing, 1/N octave (1 to 48); 0 for none.
+     */
+    var `smoothing`: kotlin.UByte, 
+    /**
+     * One sweep, ms (1000 to 15000; 0: 2700).
+     */
+    var `sweepMs`: kotlin.UInt, 
+    /**
+     * The gap after a sweep, ms (300 to 2000; 0: the placement's).
+     */
+    var `gapMs`: kotlin.UInt, 
+    /**
+     * Pink noise per run, ms (1000 to 60000; 0: 30000, then re-armed).
+     */
+    var `pinkMs`: kotlin.UInt, 
+    /**
+     * The generator's ceiling, peak dBFS (as a measurement's).
+     */
+    var `ceilingDb`: kotlin.Float?, 
+    /**
+     * The SPL cap with a calibrated microphone, dB SPL (as a measurement's).
+     */
+    var `splCapDb`: kotlin.Float?, 
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    var `captureRateHz`: kotlin.UInt, 
+    /**
+     * The RTA's averaging.
+     */
+    var `averaging`: MeasureRtaAveraging, 
+    /**
+     * The RTA's bands per octave (1 to 48; 0: 3).
+     */
+    var `bandsPerOctave`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLiveSetup: FfiConverterRustBuffer<MeasureLiveSetup> {
+    override fun read(buf: ByteBuffer): MeasureLiveSetup {
+        return MeasureLiveSetup(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureLiveMode.read(buf),
+            FfiConverterTypeMeasureRole.read(buf),
+            FfiConverterTypeMeasurePlacement.read(buf),
+            FfiConverterOptionalTypeMeasureCoupler.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterTypeMeasureRtaAveraging.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLiveSetup) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterTypeMeasureLiveMode.allocationSize(value.`mode`) +
+            FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
+            FfiConverterTypeMeasurePlacement.allocationSize(value.`placement`) +
+            FfiConverterOptionalTypeMeasureCoupler.allocationSize(value.`coupler`) +
+            FfiConverterString.allocationSize(value.`micDocument`) +
+            FfiConverterString.allocationSize(value.`targetDocument`) +
+            FfiConverterUByte.allocationSize(value.`smoothing`) +
+            FfiConverterUInt.allocationSize(value.`sweepMs`) +
+            FfiConverterUInt.allocationSize(value.`gapMs`) +
+            FfiConverterUInt.allocationSize(value.`pinkMs`) +
+            FfiConverterOptionalFloat.allocationSize(value.`ceilingDb`) +
+            FfiConverterOptionalFloat.allocationSize(value.`splCapDb`) +
+            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
+            FfiConverterTypeMeasureRtaAveraging.allocationSize(value.`averaging`) +
+            FfiConverterUByte.allocationSize(value.`bandsPerOctave`)
+    )
+
+    override fun write(value: MeasureLiveSetup, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterTypeMeasureLiveMode.write(value.`mode`, buf)
+            FfiConverterTypeMeasureRole.write(value.`role`, buf)
+            FfiConverterTypeMeasurePlacement.write(value.`placement`, buf)
+            FfiConverterOptionalTypeMeasureCoupler.write(value.`coupler`, buf)
+            FfiConverterString.write(value.`micDocument`, buf)
+            FfiConverterString.write(value.`targetDocument`, buf)
+            FfiConverterUByte.write(value.`smoothing`, buf)
+            FfiConverterUInt.write(value.`sweepMs`, buf)
+            FfiConverterUInt.write(value.`gapMs`, buf)
+            FfiConverterUInt.write(value.`pinkMs`, buf)
+            FfiConverterOptionalFloat.write(value.`ceilingDb`, buf)
+            FfiConverterOptionalFloat.write(value.`splCapDb`, buf)
+            FfiConverterUInt.write(value.`captureRateHz`, buf)
+            FfiConverterTypeMeasureRtaAveraging.write(value.`averaging`, buf)
+            FfiConverterUByte.write(value.`bandsPerOctave`, buf)
+    }
+}
+
+
+
+/**
+ * Where the live view stands (`measure_live_tick` and the other calls).
+ */
+data class MeasureLiveState (
+    /**
+     * The live view runs.
+     */
+    var `active`: kotlin.Boolean, 
+    /**
+     * What it plays.
+     */
+    var `mode`: MeasureLiveMode, 
+    /**
+     * The output.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Counts the measured curves.
+     */
+    var `seq`: kotlin.UInt, 
+    /**
+     * Runs started (sweeps, or pink runs).
+     */
+    var `runs`: kotlin.UInt, 
+    /**
+     * The level the next run starts its ramp at, peak dBFS.
+     */
+    var `levelDb`: kotlin.Float?, 
+    /**
+     * The pending proposal's id, if one.
+     */
+    var `pending`: kotlin.UInt?, 
+    /**
+     * Why the live view stopped, if it did.
+     */
+    var `issue`: MeasureIssue?, 
+    /**
+     * The current run's state.
+     */
+    var `session`: MeasureState
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLiveState: FfiConverterRustBuffer<MeasureLiveState> {
+    override fun read(buf: ByteBuffer): MeasureLiveState {
+        return MeasureLiveState(
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeMeasureLiveMode.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalTypeMeasureIssue.read(buf),
+            FfiConverterTypeMeasureState.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLiveState) = (
+            FfiConverterBoolean.allocationSize(value.`active`) +
+            FfiConverterTypeMeasureLiveMode.allocationSize(value.`mode`) +
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterUInt.allocationSize(value.`seq`) +
+            FfiConverterUInt.allocationSize(value.`runs`) +
+            FfiConverterOptionalFloat.allocationSize(value.`levelDb`) +
+            FfiConverterOptionalUInt.allocationSize(value.`pending`) +
+            FfiConverterOptionalTypeMeasureIssue.allocationSize(value.`issue`) +
+            FfiConverterTypeMeasureState.allocationSize(value.`session`)
+    )
+
+    override fun write(value: MeasureLiveState, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`active`, buf)
+            FfiConverterTypeMeasureLiveMode.write(value.`mode`, buf)
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterUInt.write(value.`seq`, buf)
+            FfiConverterUInt.write(value.`runs`, buf)
+            FfiConverterOptionalFloat.write(value.`levelDb`, buf)
+            FfiConverterOptionalUInt.write(value.`pending`, buf)
+            FfiConverterOptionalTypeMeasureIssue.write(value.`issue`, buf)
+            FfiConverterTypeMeasureState.write(value.`session`, buf)
+    }
+}
+
+
+
+/**
  * One output to measure.
  */
 data class MeasureOutput (
@@ -42232,6 +43403,88 @@ public object FfiConverterTypeMeasureCoupler: FfiConverterRustBuffer<MeasureCoup
 
 
 /**
+ * What made a proposal.
+ */
+
+enum class MeasureLiveAdjust {
+    
+    /**
+     * "Cut this peak".
+     */
+    CUT_PEAK,
+    /**
+     * "Fit this range".
+     */
+    FIT_RANGE,
+    /**
+     * An edit the client asked to preview.
+     */
+    EDIT;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLiveAdjust: FfiConverterRustBuffer<MeasureLiveAdjust> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureLiveAdjust.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureLiveAdjust) = 4UL
+
+    override fun write(value: MeasureLiveAdjust, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * What the live view plays.
+ */
+
+enum class MeasureLiveMode {
+    
+    /**
+     * Short log sweeps, one after the other: one magnitude curve per sweep.
+     */
+    SWEEP,
+    /**
+     * Finite pink noise with the microphone RTA (re-armed while live).
+     */
+    PINK_RTA;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLiveMode: FfiConverterRustBuffer<MeasureLiveMode> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureLiveMode.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureLiveMode) = 4UL
+
+    override fun write(value: MeasureLiveMode, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Where a session stands.
  */
 
@@ -42390,6 +43643,49 @@ public object FfiConverterTypeMeasureRole: FfiConverterRustBuffer<MeasureRole> {
     override fun allocationSize(value: MeasureRole) = 4UL
 
     override fun write(value: MeasureRole, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * The microphone RTA's averaging preset.
+ */
+
+enum class MeasureRtaAveraging {
+    
+    /**
+     * Exponential, 125 ms.
+     */
+    FAST,
+    /**
+     * Exponential, 1 s.
+     */
+    SLOW,
+    /**
+     * Every frame since the start (or the last change) alike.
+     */
+    INFINITE;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRtaAveraging: FfiConverterRustBuffer<MeasureRtaAveraging> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureRtaAveraging.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureRtaAveraging) = 4UL
+
+    override fun write(value: MeasureRtaAveraging, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
@@ -44288,6 +45584,102 @@ public object FfiConverterOptionalTypeMeasureIssue: FfiConverterRustBuffer<Measu
         } else {
             buf.put(1)
             FfiConverterTypeMeasureIssue.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeMeasureLiveCurve: FfiConverterRustBuffer<MeasureLiveCurve?> {
+    override fun read(buf: ByteBuffer): MeasureLiveCurve? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureLiveCurve.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureLiveCurve?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureLiveCurve.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureLiveCurve?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureLiveCurve.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeMeasureLiveProposal: FfiConverterRustBuffer<MeasureLiveProposal?> {
+    override fun read(buf: ByteBuffer): MeasureLiveProposal? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureLiveProposal.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureLiveProposal?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureLiveProposal.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureLiveProposal?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureLiveProposal.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeMeasureLiveRta: FfiConverterRustBuffer<MeasureLiveRta?> {
+    override fun read(buf: ByteBuffer): MeasureLiveRta? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureLiveRta.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureLiveRta?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureLiveRta.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureLiveRta?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureLiveRta.write(value, buf)
         }
     }
 }
@@ -46296,6 +47688,62 @@ public object FfiConverterSequenceTypeMeasureLevel: FfiConverterRustBuffer<List<
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeMeasureLevel.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureLiveBand: FfiConverterRustBuffer<List<MeasureLiveBand>> {
+    override fun read(buf: ByteBuffer): List<MeasureLiveBand> {
+        val len = buf.getInt()
+        return List<MeasureLiveBand>(len) {
+            FfiConverterTypeMeasureLiveBand.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureLiveBand>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureLiveBand.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureLiveBand>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureLiveBand.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureLiveChange: FfiConverterRustBuffer<List<MeasureLiveChange>> {
+    override fun read(buf: ByteBuffer): List<MeasureLiveChange> {
+        val len = buf.getInt()
+        return List<MeasureLiveChange>(len) {
+            FfiConverterTypeMeasureLiveChange.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureLiveChange>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureLiveChange.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureLiveChange>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureLiveChange.write(it, buf)
         }
     }
 }

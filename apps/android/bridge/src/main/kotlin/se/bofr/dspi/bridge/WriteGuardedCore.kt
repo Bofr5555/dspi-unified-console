@@ -33,6 +33,8 @@ import se.bofr.dspi.core.I2cConfig
 import se.bofr.dspi.core.IdentifyInfo
 import se.bofr.dspi.core.LimitsApply
 import se.bofr.dspi.core.LockState
+import se.bofr.dspi.core.MeasureLiveSetup
+import se.bofr.dspi.core.MeasureLiveState
 import se.bofr.dspi.core.MeasureSetup
 import se.bofr.dspi.core.MeasureState
 import se.bofr.dspi.core.ParamValue
@@ -693,6 +695,18 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.measureStart(setup)
     }
 
+    // -- WP P5LIVE -- the live view plays the generator (its start) and
+    // writes the previewed change (its apply)
+    override fun measureLiveStart(setup: MeasureLiveSetup): MeasureLiveState {
+        guard("measureLiveStart")
+        return inner.measureLiveStart(setup)
+    }
+
+    override fun measureLiveApply(proposalId: Long): MeasureLiveState {
+        guard("measureLiveApply")
+        return inner.measureLiveApply(proposalId)
+    }
+
     // -- WP P1AB -- a start with A given, a toggle and a keep recall a snapshot
     override fun abStart(aId: String, bId: String): AbCompare {
         guard("abStart")
@@ -1054,7 +1068,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "hubGroupApply",
             "hubRolloutStart",
             // -- WP P5SES --
-            "measureStart"
+            "measureStart",
+            // -- WP P5LIVE --
+            "measureLiveStart",
+            "measureLiveApply"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1475,7 +1492,20 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureStop",
             "measureState",
             "measureResult",
-            "measureClear"
+            "measureClear",
+            // -- WP P5LIVE -- the live view's reads, its tick (its started
+            // runs), its previews (nothing written), its stop (as
+            // measureStop), the RTA's hold and averaging
+            "measureLiveTick",
+            "measureLiveFrame",
+            "measureLiveState",
+            "measureLiveStop",
+            "measureLivePredict",
+            "measureLiveCutPeak",
+            "measureLiveFitRange",
+            "measureLiveDiscard",
+            "measureLiveHold",
+            "measureLiveAveraging"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

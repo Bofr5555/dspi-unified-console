@@ -325,6 +325,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::measure_docs::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP P5LIVE -- the live response and direct adjustments (src/measure_live.rs)
+    if let Some(r) = crate::measure_live::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {
