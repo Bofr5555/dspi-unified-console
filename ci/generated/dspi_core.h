@@ -7178,68 +7178,19 @@ uint32_t dspi_measure_result(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_clear(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * The hub's documents of `kind` (`measurement`, `mic`, `target`; null or ""
- * every kind), measurements of device `serial` (null or "" the open
- * device's): JSON `{ok, value: [{id, kind, name, note, serial, savedMs,
- * bytes}, ...]}`.
+ * Turn the simulated microphone on (`on`, its world drawn from `seed`) or
+ * off: the info, or a failure.
  */
-uint32_t dspi_hub_measure_docs(struct FfiCore *core,
-                               const char *kind,
-                               const char *serial,
-                               char *buf,
-                               uint32_t len);
+uint32_t dspi_measure_sim_set(struct FfiCore *core,
+                              bool on,
+                              uint64_t seed,
+                              char *buf,
+                              uint32_t len);
 
 /**
- * Document `id` on the hub: JSON `{ok, doc: {id, kind, ...}, document}`
- * (`document` its compact text; a large one is read in parts and checked).
+ * The simulated microphone's state, without I/O: the info.
  */
-uint32_t dspi_hub_measure_doc_get(struct FfiCore *core, const char *id, char *buf, uint32_t len);
-
-/**
- * File a measurement, microphone or target document on the hub: JSON `{ok,
- * doc: {...}, created}`; a text that is not such a document fails
- * `invalid` with nothing sent.
- */
-uint32_t dspi_hub_measure_doc_put(struct FfiCore *core,
-                                  const char *document,
-                                  char *buf,
-                                  uint32_t len);
-
-/**
- * Rename document `id` on the hub: JSON, its entry.
- */
-uint32_t dspi_hub_measure_doc_rename(struct FfiCore *core,
-                                     const char *id,
-                                     const char *name,
-                                     char *buf,
-                                     uint32_t len);
-
-/**
- * Set document `id`'s note on the hub: JSON, its entry.
- */
-uint32_t dspi_hub_measure_doc_note(struct FfiCore *core,
-                                   const char *id,
-                                   const char *note,
-                                   char *buf,
-                                   uint32_t len);
-
-/**
- * Delete document `id` from the hub (Admin): JSON `{ok}` or a failure.
- */
-uint32_t dspi_hub_measure_doc_delete(struct FfiCore *core, const char *id, char *buf, uint32_t len);
-
-/**
- * The documents of `kind` (null or "" every kind) on both sides, measurements
- * of `serial` (null or "": every device's here, the open device's on the
- * hub): JSON `{ok, entries: [{doc, where, localCopy}], hubListed,
- * hubNoticeKey}` (`where`: `local`, `hub` or `both`), or a failure for an
- * unknown kind.
- */
-uint32_t dspi_measure_docs_merged(struct FfiCore *core,
-                                  const char *kind,
-                                  const char *serial,
-                                  char *buf,
-                                  uint32_t len);
+uint32_t dspi_measure_sim_info(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
  * Start looking for hubs on the local network, replacing any browse running.

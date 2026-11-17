@@ -68,6 +68,9 @@ mod tests_wp_p5ses_device;
 
 pub(crate) use plan::Plan;
 pub(crate) use preflight::PreflightOptions;
+// -- WP P5DEMO -- the simulated microphone renders through the chains the session reads
+#[cfg(any(test, feature = "measure-sim"))]
+pub(crate) use preflight::chain_of;
 use session::Session;
 
 /// Every notice key the session answers with (its rows in
@@ -692,6 +695,11 @@ impl DspiCore {
         rate_hz: u32,
         clipped: bool,
     ) -> Result<MeasureState> {
+        // -- WP P5DEMO -- the demo's simulated microphone owns the capture:
+        // a client's own push is ignored while it is on.
+        if self.measure_sim_owns_capture() {
+            return Ok(self.measure_state());
+        }
         if samples.len() > session::MAX_BLOCK {
             return Err(DspiError::InvalidArgument {
                 msg: format!(
@@ -737,6 +745,8 @@ impl DspiCore {
     /// session is active, off the UI thread (it blocks for a few transfers).
     /// Returns the state; never fails.
     pub fn measure_tick(&self) -> MeasureState {
+        // -- WP P5DEMO -- the demo's simulated microphone pushes what it heard
+        self.measure_sim_feed();
         // Apply what the device said first (its flags are kept for the
         // client's own `process_notifications`).
         if self.measure.lock().is_some() {

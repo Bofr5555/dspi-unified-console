@@ -21,7 +21,8 @@ test-hooks = []
 [dependencies]
 dspi-proto = { path = "../dspi-proto" }
 # -- WP WB4b -- `link`: DSPi Link sessions over the browser's WebSocket (src/link.rs)
-dspi-core = { path = "../dspi-core", default-features = false, features = ["link"] }
+# -- WP P5DEMO -- `measure-sim`: the web's demo mode has the simulated microphone
+dspi-core = { path = "../dspi-core", default-features = false, features = ["link", "measure-sim"] }
 dspi-link = { path = "../dspi-link" }
 # -- WP WB6H -- the Tube Modeller's type and rectifier tables (`dspi_session::tube`), already in the graph through dspi-core
 dspi-session = { path = "../dspi-session", default-features = false }

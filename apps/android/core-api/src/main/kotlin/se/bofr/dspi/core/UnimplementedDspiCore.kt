@@ -586,6 +586,10 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun measurementExportRew(doc: String, output: Int): String = throw NotImplementedError("measurement_export_rew")
 
+    override fun measureSimSet(on: Boolean, seed: Long): MeasureSimInfo = throw NotImplementedError("measure_sim_set")
+
+    override fun measureSimInfo(): MeasureSimInfo = throw NotImplementedError("measure_sim_info")
+
     override fun modeResolve(platform: String, chosen: String): ModeChoice = throw NotImplementedError("mode_resolve")
 
     override fun modeSetPinned(mode: String): Unit = throw NotImplementedError("mode_set_pinned")

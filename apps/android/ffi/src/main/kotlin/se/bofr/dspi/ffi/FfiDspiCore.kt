@@ -657,6 +657,10 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun measurementExportRew(doc: String, output: Int): String = call { core.measurementExportRew(doc, output.toUByte()) }
 
+    override fun measureSimSet(on: Boolean, seed: Long): MeasureSimInfo = call { core.measureSimSet(on, seed.toULong()).toDomain() }
+
+    override fun measureSimInfo(): MeasureSimInfo = core.measureSimInfo().toDomain()
+
     override fun modeResolve(platform: String, chosen: String): ModeChoice = call { core.modeResolve(platform, chosen).toDomain() }
 
     override fun modeSetPinned(mode: String) = call { core.modeSetPinned(mode) }
@@ -5430,6 +5434,26 @@ internal fun TargetInfo.toFfi() =
         targetUse = targetUse,
         coupler = coupler,
         params = params.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSimInfo.toDomain() =
+    MeasureSimInfo(
+        available = available,
+        on = on,
+        label = label,
+        world = world,
+        seed = seed.toLong(),
+        issue = issue,
+    )
+
+internal fun MeasureSimInfo.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSimInfo(
+        available = available,
+        on = on,
+        label = label,
+        world = world,
+        seed = seed.toULong(),
+        issue = issue,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.ModeEntry.toDomain() =

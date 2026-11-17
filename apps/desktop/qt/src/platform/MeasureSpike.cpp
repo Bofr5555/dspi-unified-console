@@ -32,6 +32,8 @@ const QString kSpikeInput = QStringLiteral("measure-spike-input");
 const QString kSpikeSeconds = QStringLiteral("measure-spike-seconds");
 const QString kSpikeSetup = QStringLiteral("measure-spike-setup");
 const QString kSpikeDemo = QStringLiteral("measure-spike-demo");
+// -- WP P5DEMO --
+const QString kSpikeSim = QStringLiteral("measure-spike-sim");
 
 // Ctrl+C: the tick sees it and stops the session (one STOP_NOW)
 std::atomic<bool> g_interrupted{ false };
@@ -215,6 +217,17 @@ int run(const Options &o) {
         // written to: its preflight says what the owner must change.
         device = dspi_open_demo(core) && dspi_fetch_all(core) && dspi_set_user_volume(core, -20.0f);
         doc.insert(QStringLiteral("device"), QStringLiteral("demo"));
+        // -- WP P5DEMO -- the demo's simulated microphone answers the
+        // generator: no capture is opened, the tick feeds the session
+        if (device && o.simMic) {
+            const QJsonObject sim =
+                reply([&](char *b, uint32_t l) { return dspi_measure_sim_set(core, true, o.simSeed, b, l); });
+            doc.insert(QStringLiteral("simulatedMicrophone"), sim);
+            if (!sim.value(QStringLiteral("on")).toBool()) {
+                device = false;
+                failure = QStringLiteral("the simulated microphone did not turn on");
+            }
+        }
     } else if (core) {
         const QString serial = firstSerial(core);
         device = !serial.isEmpty() && dspi_select_device(core, serial.toUtf8().constData()) && dspi_fetch_all(core);
@@ -290,16 +303,15 @@ int run(const Options &o) {
         finish();
     };
 
-    QObject::connect(&capture, &AudioCapture::started, &loop, [&](int rateHz, int channels, const QString &name) {
-        doc.insert(QStringLiteral("input"), QJsonObject{ { QStringLiteral("id"), QString::fromLatin1(capture.deviceId().toHex()) },
-                                                         { QStringLiteral("name"), name } });
-        doc.insert(QStringLiteral("format"), QJsonObject{ { QStringLiteral("rateHz"), rateHz },
-                                                          { QStringLiteral("channels"), channels } });
-        std::printf("measure-spike: capturing %d Hz, %d channel(s) from \"%s\", at most %d s; the host plays nothing\n",
-                    rateHz, channels, qPrintable(name), o.seconds);
-        std::fflush(stdout);
-        limit.start(o.seconds * 1000);
-        if (!device) return;
+    // -- WP P5DEMO -- the loop ends with the capture's stop, or at once
+    // without a capture (the simulated microphone)
+    const auto endLoop = [&] {
+        if (capture.isRunning()) capture.stop();
+        else loop.quit();
+    };
+    // -- WP P5DEMO -- the session's start, from the capture's start (or, with
+    // the simulated microphone, from the loop's first turn)
+    const auto begin = [&](int rateHz) {
         const QJsonObject setup = sessionSetup(o.setupJson, rateHz);
         const QByteArray setupText = QJsonDocument(setup).toJson(QJsonDocument::Compact);
         doc.insert(QStringLiteral("setup"), setup);
@@ -311,7 +323,7 @@ int run(const Options &o) {
             failure = QStringLiteral("the preflight is not clear: see \"preflight\"");
             std::fprintf(stderr, "measure-spike: %s\n",
                          QJsonDocument(pre).toJson(QJsonDocument::Compact).constData());
-            capture.stop();
+            endLoop();
             return;
         }
         const QJsonObject st =
@@ -320,13 +332,25 @@ int run(const Options &o) {
             doc.insert(QStringLiteral("session"), QStringLiteral("refused"));
             doc.insert(QStringLiteral("start"), st);
             failure = QStringLiteral("the session did not start: ") + st.value(QStringLiteral("error")).toString();
-            capture.stop();
+            endLoop();
             return;
         }
         running = true;
         wall.start();
         note(st);
         ticker.start(50);
+    };
+    QObject::connect(&capture, &AudioCapture::started, &loop, [&](int rateHz, int channels, const QString &name) {
+        doc.insert(QStringLiteral("input"), QJsonObject{ { QStringLiteral("id"), QString::fromLatin1(capture.deviceId().toHex()) },
+                                                         { QStringLiteral("name"), name } });
+        doc.insert(QStringLiteral("format"), QJsonObject{ { QStringLiteral("rateHz"), rateHz },
+                                                          { QStringLiteral("channels"), channels } });
+        std::printf("measure-spike: capturing %d Hz, %d channel(s) from \"%s\", at most %d s; the host plays nothing\n",
+                    rateHz, channels, qPrintable(name), o.seconds);
+        std::fflush(stdout);
+        limit.start(o.seconds * 1000);
+        if (!device) return;
+        begin(rateHz);
     });
     QObject::connect(&capture, &AudioCapture::block, &loop, [&](const dspi_capture::Block &b) {
         if (!host.isValid()) host.start();
@@ -350,7 +374,7 @@ int run(const Options &o) {
     });
     QObject::connect(&limit, &QTimer::timeout, &loop, [&] {
         if (running) stop(QStringLiteral("time-limit"));
-        else capture.stop();
+        else endLoop();   // -- WP P5DEMO --
     });
     QObject::connect(&capture, &AudioCapture::failed, &loop, [&](dspi_capture::Failure f, const QString &detail) {
         failure = QString::fromLatin1(failureName(f)) + QStringLiteral(": ") + detail;
@@ -363,7 +387,24 @@ int run(const Options &o) {
     });
 
     const auto previous = std::signal(SIGINT, onInterrupt);
-    const bool opened = o.source ? capture.startWith(o.source, o.inputId) : capture.start(o.inputId);
+    // -- WP P5DEMO -- the simulated microphone: no capture is opened
+    const bool simulated = o.simMic && device;
+    if (simulated) {
+        const QString label = doc.value(QStringLiteral("simulatedMicrophone")).toObject().value(QStringLiteral("label")).toString();
+        doc.insert(QStringLiteral("input"), QJsonObject{ { QStringLiteral("id"), QString() }, { QStringLiteral("name"), label } });
+        doc.insert(QStringLiteral("format"), QJsonObject{ { QStringLiteral("rateHz"), kSimRateHz },
+                                                          { QStringLiteral("channels"), 1 } });
+        QTimer::singleShot(0, &loop, [&, label] {
+            std::printf("measure-spike: the demo's %s (%d Hz), at most %d s; the host plays and captures nothing\n",
+                        qPrintable(label), kSimRateHz, o.seconds);
+            std::fflush(stdout);
+            limit.start(o.seconds * 1000);
+            begin(kSimRateHz);
+        });
+    }
+    const bool opened = simulated || (o.simMic ? false
+                                               : (o.source ? capture.startWith(o.source, o.inputId)
+                                                           : capture.start(o.inputId)));
     if (opened) loop.exec();
     else if (failure.isEmpty()) failure = QStringLiteral("the capture did not start");
     std::signal(SIGINT, previous);
@@ -415,6 +456,8 @@ void addOptions(QCommandLineParser &args) {
         QCommandLineOption(kSpikeSetup, QStringLiteral("The spike's session setup (JSON file)."),
                            QStringLiteral("file")),
         QCommandLineOption(kSpikeDemo, QStringLiteral("The spike measures the demo DSPi.")),
+        // -- WP P5DEMO --
+        QCommandLineOption(kSpikeSim, QStringLiteral("The spike measures the demo DSPi with its simulated microphone.")),
     };
     for (QCommandLineOption o : options) {
         o.setFlags(QCommandLineOption::HiddenFromHelp);
@@ -435,6 +478,9 @@ int runIfAsked(const QCommandLineParser &args, QApplication &) {
     }
     o.inputId = QByteArray::fromHex(args.value(kSpikeInput).toLatin1());
     o.demo = args.isSet(kSpikeDemo);
+    // -- WP P5DEMO -- the simulated microphone needs the demo
+    o.simMic = args.isSet(kSpikeSim);
+    if (o.simMic) o.demo = true;
     if (args.isSet(kSpikeSetup)) {
         QFile f(args.value(kSpikeSetup));
         if (!f.open(QIODevice::ReadOnly) || !QJsonDocument::fromJson(f.readAll()).isObject()) {

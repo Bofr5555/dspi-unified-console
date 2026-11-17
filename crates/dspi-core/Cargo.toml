@@ -72,6 +72,10 @@ mdns = ["link", "dspi-link/mdns"]
 midir = ["dspi-transport/midir"]
 # UniFFI derives and exports, for crates/dspi-ffi (WP F1).
 uniffi = ["dep:uniffi"]
+# -- WP P5DEMO -- the demo's simulated microphone (measure_sim.rs): P5SIM's
+# world answers the demo device's generator. Demo connections only; on in the
+# web, Qt and Terminal builds, off in the mobile libraries.
+measure-sim = ["dspi-measure/sim"]
 
 [dev-dependencies]
 proptest = "1"

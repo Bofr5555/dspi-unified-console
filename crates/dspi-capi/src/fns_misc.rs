@@ -98,6 +98,8 @@ mod measure;
 mod measure_live;
 // -- WP P5HUB -- the hub's measurement documents
 mod hub_server_measure;
+// -- WP P5DEMO -- the demo's simulated microphone
+mod measure_sim;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
