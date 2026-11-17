@@ -57,6 +57,11 @@ dspi-link = { workspace = true, features = ["tls"] }
 # the clients run. Without default features: none of what they add is used here.
 dspi-session = { path = "../dspi-session", default-features = false }
 dspi-core = { workspace = true, optional = true }
+# -- WP P5HUB --
+# The measurement documents' kinds and bounds (measurements.rs): the readers the
+# client store (dspi-session's measure_store) files with. Already in the graph
+# through dspi-session.
+dspi-measure.workspace = true
 # -- WP SW-M3 --
 uniffi = { workspace = true, optional = true }
 thiserror.workspace = true
