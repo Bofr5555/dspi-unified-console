@@ -409,6 +409,9 @@ pub(crate) struct Live {
     headphones: bool,
     /// Where the next ramp starts.
     level: Option<f32>,
+    /// The chain `level` was settled through: a boost the chain gained since
+    /// (an applied change, the user's own edit) lowers the next ramp's start.
+    level_chain: Option<ChannelChain>,
     /// The level of the pink run in flight.
     run_level: Option<f32>,
     measured: Option<Measured>,
@@ -1042,7 +1045,19 @@ impl DspiCore {
             }
         };
         if let Some(l) = live.level {
-            // Never above what the last ramp settled on (S3).
+            // Never above what the last ramp settled on (S3), and lower by
+            // any boost the chain gained since: a change applied here or the
+            // user's own edit (review P5-C1), so no run starts louder at the
+            // microphone than the last ramp measured.
+            let now = self.live_chain(live.setup.output);
+            let rise = live
+                .level_chain
+                .as_ref()
+                .map_or(0.0, |c| max_rise_db(c, &now, &CoreSectionModel))
+                as f32;
+            let l = (l - rise.max(0.0)).max(-120.0);
+            live.level = Some(l);
+            live.level_chain = Some(now);
             plan.start_db = l.min(plan.ceiling_db).max(-120.0);
         }
         match self.measure_preflight_plan(&plan, &PreflightOptions::default()) {
@@ -1088,14 +1103,19 @@ impl DspiCore {
             return;
         };
         let level = doc.measurement.stimulus.level_db;
+        let output = live.setup.output;
+        let o = doc.measurement.outputs.iter().find(|o| o.output == output);
         if level.is_finite() {
             live.level = Some(level as f32);
+            // The chain the run (and its ramp) started with.
+            live.level_chain = o
+                .map(|o| o.chain.chain.clone())
+                .or_else(|| live.rta_chain.clone());
         }
         if live.pink() {
             return;
         }
-        let output = live.setup.output;
-        let Some(o) = doc.measurement.outputs.iter().find(|o| o.output == output) else {
+        let Some(o) = o else {
             return;
         };
         let chain = o.chain.chain.clone();
@@ -1338,6 +1358,7 @@ impl DspiCore {
             target,
             headphones,
             level: None,
+            level_chain: None,
             run_level: None,
             measured: None,
             rta_chain: None,
@@ -1685,12 +1706,8 @@ impl DspiCore {
             self.live_publish(live);
             return Err(e);
         }
-        // The next ramp starts lower by any boost the change added.
-        let after = self.live_chain(output);
-        let rise = max_rise_db(&chain_now, &after, &CoreSectionModel) as f32;
-        if let Some(l) = live.level.as_mut() {
-            *l = (*l - rise.max(0.0)).max(-120.0);
-        }
+        // The next ramp starts lower by any boost the change added
+        // (`live_rearm`, from the chain the level was settled through).
         live.pending = None;
         if let Some(r) = live.rta.as_mut() {
             r.reset();

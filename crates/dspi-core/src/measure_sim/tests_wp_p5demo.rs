@@ -27,7 +27,7 @@ fn settle(core: &DspiCore) {
 
 /// Make an open demo device ready to measure as a user would: the volume at
 /// -20 dB, the processing the maths does not model off, outputs on.
-fn make_ready(core: &DspiCore) {
+pub(super) fn make_ready(core: &DspiCore) {
     core.fetch_all().unwrap();
     core.set_user_volume(-20.0).unwrap();
     let s = core.get_state();
@@ -51,14 +51,14 @@ fn make_ready(core: &DspiCore) {
     settle(core);
 }
 
-fn demo() -> Arc<DspiCore> {
+pub(super) fn demo() -> Arc<DspiCore> {
     let core = DspiCore::new();
     core.open_demo().unwrap();
     make_ready(&core);
     core
 }
 
-fn setup(outputs: &[u8]) -> MeasureSetup {
+pub(super) fn setup(outputs: &[u8]) -> MeasureSetup {
     MeasureSetup {
         outputs: outputs
             .iter()
@@ -172,7 +172,7 @@ fn wp_p5demo_a_clients_push_is_ignored_while_it_is_on() {
 }
 
 /// The demo device behind a transport that says it is a DSPi on USB.
-struct UsbKind(FakeDevice);
+pub(super) struct UsbKind(pub(super) FakeDevice);
 
 impl Transport for UsbKind {
     fn control_in(&mut self, o: u8, v: u16, l: u16) -> dspi_transport::Result<Vec<u8>> {

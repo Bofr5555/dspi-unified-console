@@ -125,7 +125,7 @@ impl DspiCore {
             .and_then(|g| g.as_ref().and_then(Feed::issue));
         MeasureSimInfo {
             available,
-            on: self.measure_sim.on.load(Ordering::SeqCst),
+            on: self.measure_sim_on(),
             label: SIM_MIC_LABEL.to_owned(),
             world: SIM_WORLD.to_owned(),
             seed: self.measure_sim.seed.load(Ordering::SeqCst),
@@ -146,7 +146,22 @@ impl DspiCore {
     /// The simulated microphone owns the capture: a client's push is
     /// ignored (`measure_capture_push`).
     pub(crate) fn measure_sim_owns_capture(&self) -> bool {
-        self.measure_sim.on.load(Ordering::SeqCst) && !FEEDING.with(Cell::get)
+        !FEEDING.with(Cell::get) && self.measure_sim_on()
+    }
+
+    /// It is on, and the open connection is still a demo device. One left on
+    /// when the demo was replaced by a real connection is off from here on
+    /// (review P5-C1: before the first tick too, so a screen never reads
+    /// "on" over a real DSPi and a client's first pushes are not dropped).
+    fn measure_sim_on(&self) -> bool {
+        if !self.measure_sim.on.load(Ordering::SeqCst) {
+            return false;
+        }
+        if self.measure_sim_demo().is_none() {
+            self.measure_sim.on.store(false, Ordering::SeqCst);
+            return false;
+        }
+        true
     }
 
     #[cfg(not(any(test, feature = "measure-sim")))]
@@ -583,6 +598,13 @@ mod world {
             // After the render (a whole run at once can take a while): the
             // generator went on playing meanwhile, and so did the room.
             let now = Instant::now();
+            // Still the demo after the render (review P5-C1): nothing of the
+            // simulated room is ever pushed into a session on another device.
+            if self.measure_sim_demo().as_deref() != Some(feed.serial.as_str()) {
+                self.measure_sim.on.store(false, Ordering::SeqCst);
+                *g = None;
+                return;
+            }
             let Some(mic) = feed.mic.as_mut() else {
                 return;
             };
@@ -644,6 +666,9 @@ mod world {
     }
 }
 
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_review_p5c1;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p5demo;
