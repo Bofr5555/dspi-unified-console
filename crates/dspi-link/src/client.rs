@@ -249,6 +249,13 @@ pub struct TlsOptions {
     /// This hub was found plaintext earlier (unpinned, not advertised): do not
     /// try TLS first. Ignored with a pin or an advert.
     pub plaintext_known: bool,
+    // -- WP PINTLS --
+    /// The hub was pinned before and its pairing dropped (Pair Again;
+    /// [`crate::credential::Credential::pinned_before`]): TLS only, any key
+    /// trusted on first use for the new pairing. A failed TLS handshake is
+    /// [`LinkError::TlsRequiredPinned`], never a plaintext try, so no PIN or
+    /// token can go out unencrypted.
+    pub pinned_before: bool,
 }
 
 // -- WP SECCORE --
@@ -611,12 +618,16 @@ impl LinkClient {
             return Self::connect_over(pair, opts, events, cfg, None);
         }
         let wss = url.starts_with("wss://");
-        let required = tls.pin.is_some() || tls.advertised || wss;
+        let required = tls.pin.is_some() || tls.advertised || tls.pinned_before || wss; // -- WP PINTLS --
         if required || !tls.plaintext_known {
             let trust = tls.pin.map_or(TlsTrust::FirstUse, TlsTrust::Pinned);
             let within = (!required).then_some(TLS_TRY_WITHIN);
             match connector.connect_tls(url, SUB_PROTOCOL, trust, within) {
                 Ok((pair, key)) => return Self::connect_over(pair, opts, events, cfg, Some((tls, key))),
+                // -- WP PINTLS -- a hub pinned before: refused, typed, nothing sent
+                Err(LinkError::TlsRefused { .. }) if tls.pin.is_none() && tls.pinned_before => {
+                    return Err(LinkError::TlsRequiredPinned)
+                }
                 Err(LinkError::TlsRefused { .. }) if required => {
                     return Err(LinkError::TlsRefused { advertised: tls.pin.is_none() })
                 }

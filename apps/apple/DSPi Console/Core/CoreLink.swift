@@ -253,7 +253,20 @@ final class CoreLink {
         if hubID.lowercased() != id { tokens.setToken(token, forHub: hubID) }
     }
 
+    /// The token goes (Pair Again, a refused or revoked token), but -- WP
+    /// PINTLS -- a hub that was ever pinned keeps the core's unpaired record,
+    /// so it stays TLS-only: a plaintext dial is `tls_required_pinned` before
+    /// any PIN goes out (owner decision 2026-11-17).
     private func forgetToken() {
+        for id in Set([expectedHubID, hubID]) where !id.isEmpty {
+            let kept = linkCredentialUnpaired(credential: tokens.token(forHub: id) ?? "")
+            if kept.isEmpty { tokens.removeToken(forHub: id) } else { tokens.setToken(kept, forHub: id) }
+        }
+    }
+
+    /// -- WP PINTLS -- Forget Hub: the whole record (token, key, the TLS-only
+    /// mark) goes. The only way back to an unencrypted connection.
+    private func forgetHub() {
         if !expectedHubID.isEmpty { tokens.removeToken(forHub: expectedHubID) }
         tokens.removeToken(forHub: hubID)
     }
@@ -541,8 +554,10 @@ final class CoreLink {
     }
 
     /// One of `LinkRepair.codes`: nothing was sent.  The person may pair
-    /// again (the stored credential and its pin dropped, the hub dialled: it
-    /// asks for a PIN and shows its key) or leave the hub; there is no
+    /// again (the stored token and its pin dropped, the hub dialled: it
+    /// asks for a PIN and shows its key; -- WP PINTLS -- over TLS only for a hub
+    /// once pinned, and after `tls_required_pinned` the offer is Forget Hub)
+    /// or leave the hub; there is no
     /// "connect anyway".  After a pairing link the hub did not match, the
     /// stored credential stays (the link was wrong, not the pairing) and
     /// "Connect" dials as usual.
@@ -568,7 +583,8 @@ final class CoreLink {
             return
         }
         Self.log.info("pairing again (\(self.repairCode ?? "", privacy: .public))")
-        if !fromLink { forgetToken() }
+        // -- WP PINTLS -- Forget Hub for a hub pinned before; else TLS-only
+        if repairCode == LinkRepair.forgetCode { forgetHub() } else if !fromLink { forgetToken() }
         pairLink = nil
         repairCode = nil
         wantConnection = true

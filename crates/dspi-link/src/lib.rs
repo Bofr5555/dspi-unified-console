@@ -117,6 +117,17 @@ pub enum LinkError {
     /// mode): only TLS gets in, so retrying in plaintext cannot help.
     #[error("{}", client::TLS_REQUIRED_REASON)]
     TlsRequired,
+    // -- WP PINTLS --
+    /// `tls_required_pinned`: this hub was paired with encryption before (its
+    /// key pinned), and its pairing was dropped (Pair Again); it is reached over
+    /// TLS only, and the TLS handshake failed. Nothing was sent: no PIN, no
+    /// token. Only forgetting the hub allows an unencrypted connection again
+    /// (owner decision 2026-11-17).
+    #[error(
+        "this hub was paired with encryption before, so it is only reached encrypted, and it refused encryption; \
+         nothing was sent. To connect to it without encryption, forget the hub first"
+    )]
+    TlsRequiredPinned,
 }
 
 /// Shortest wait after `rate_limited` (the hub locks an address for 60 s).
@@ -189,7 +200,7 @@ impl LinkError {
             // -- WP SECCORE -- a person must decide; a refused TLS may pass (a restart)
             LinkError::HubKeyChanged | LinkError::HubKeyUnverified => RetryAdvice::Stop,
             LinkError::TlsRequired => RetryAdvice::Stop, // -- WP SECBFIXA --
-            LinkError::TlsRefused { .. } => BUSY,
+            LinkError::TlsRefused { .. } | LinkError::TlsRequiredPinned => BUSY, // -- WP PINTLS --
         }
     }
 }

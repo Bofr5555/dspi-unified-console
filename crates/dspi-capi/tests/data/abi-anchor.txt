@@ -1874,6 +1874,8 @@ void *user_data);
 uint32_t dspi_link_parse_address(const char *text, char *buf, uint32_t len);
 uint32_t dspi_link_parse_pair_link(const char *text, char *buf, uint32_t len);
 uint32_t dspi_link_credential_hub_key(const char *credential, char *buf, uint32_t len);
+uint32_t dspi_link_credential_unpaired(const char *credential, char *buf, uint32_t len);
+bool dspi_link_credential_tls_only(const char *credential);
 uint32_t dspi_link_ws_url(const char *host,
 uint16_t port,
 const char *path,

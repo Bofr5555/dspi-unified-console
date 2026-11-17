@@ -74,6 +74,14 @@ interface LinkCoreOps {
 
     fun wsUrl(host: String, port: Int, path: String): String
 
+    // -- WP PINTLS --
+    /**
+     * The core's `link_credential_unpaired`: what to keep of a stored [credential] when its
+     * pairing is dropped (Pair Again, a refused token). A hub that was ever pinned keeps a
+     * token-less record that stays TLS-only; "" (remove the record) for a v1 token or none.
+     */
+    fun credentialUnpaired(credential: String): String
+
     /** The core's wording for [phase] (CG10). */
     fun phaseText(phase: LinkPhase, pinSource: String): LinkPhaseText
 
@@ -135,6 +143,9 @@ class BridgeLinkCoreOps(
     override suspend fun detach(serial: String) = bridge.detachDevice(serial)
 
     override suspend fun restartAnalyser() = withContext(ffi) { core.rtaStart() }
+
+    // -- WP PINTLS -- a pure function of the core: no session, no lock
+    override fun credentialUnpaired(credential: String): String = core.linkCredentialUnpaired(credential)
 
     // -- WP MERGEP1D -- a hub request: on [network], as the session's calls are
     override suspend fun refreshLock() {

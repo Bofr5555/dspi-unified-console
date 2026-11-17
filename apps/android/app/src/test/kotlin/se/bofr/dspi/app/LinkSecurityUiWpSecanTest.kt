@@ -198,6 +198,25 @@ class LinkSecurityUiWpSecanTest {
         assertEquals(1, asked)
     }
 
+    // -- WP PINTLS -- (owner decision 2026-11-17) after tls_required_pinned the only offer is
+    // Forget Hub, and its words say it is the way back to an unencrypted pairing
+    @Test
+    fun wpPintlsAPinnedHubRefusingTlsOffersForgetHub() {
+        var asked = 0
+        val f = LinkSessionState.Failed(hub, "x", "tls_required_pinned")
+        assertTrue(offersRePair(f))
+        assertEquals("Forget Hub", rePairLabel(f))
+        assertEquals("Pair Again", rePairLabel(LinkSessionState.Failed(hub, "x", "hub_key_changed")))
+        val text = rePairText(f)
+        assertTrue(text, text.contains("not even the PIN") && text.contains("without encryption"))
+        assertTrue(rePairText(LinkSessionState.Failed(hub, "x", "tls_refused")).contains("encrypted connection only"))
+        rule.setContent { RePairDialog(f, onRePair = { asked++ }, onDismiss = {}) }
+        rule.onNodeWithText(text).assertIsDisplayed()
+        rule.onNodeWithText("Pair Again").assertDoesNotExist()
+        rule.onNodeWithText("Forget Hub").performClick()
+        assertEquals(1, asked)
+    }
+
     @Test
     fun wpSecanAPairingLinkIsReadByTheCoreAndOnlyOffered() {
         val link = LinkPairLink("6f1a", "192.168.1.20", 11915, "ws://192.168.1.20:11915/dspi/v1", tls.hubKey, "v2..x.t", "482913")

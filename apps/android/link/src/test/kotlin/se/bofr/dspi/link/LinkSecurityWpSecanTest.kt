@@ -101,6 +101,9 @@ class LinkSecurityWpSecanTest {
 
         override fun wsUrl(host: String, port: Int, path: String) = "ws://$host:$port$path"
 
+        // -- WP PINTLS -- the real core's function (a pure one)
+        override fun credentialUnpaired(credential: String) = se.bofr.dspi.ffi.uniffi.linkCredentialUnpaired(credential)
+
         override fun phaseText(phase: LinkPhase, pinSource: String) = LinkPhaseText(phase.name, phase.name, "text of $phase", null, null)
 
         override fun setListener(listener: LinkListener?) {
@@ -223,7 +226,8 @@ class LinkSecurityWpSecanTest {
         runCurrent()
         assertEquals(before, s.connects().size)
         assertEquals("v2.dG9r.$key.t", s.tokens.token("hub-1"))
-        // hub_key_changed: the pinned credential goes, and the hub is dialled without it (it asks for a PIN)
+        // hub_key_changed: the token and pin go, and the hub is dialled without them (it asks for a PIN);
+        // -- WP PINTLS -- what stays keeps it TLS-only
         s.ops.connectError = DspiException.Link("hub_key_changed", "this hub's key changed; pair again to trust the new key")
         s.engine.connect(hub)
         runCurrent()
@@ -234,11 +238,60 @@ class LinkSecurityWpSecanTest {
             LinkSecurity(encrypted = true, local = false, hubKey = "SHA256:NEW0-NEW0-NEW0-NEW0", hubKeyNew = false, credential = "")
         s.engine.rePair()
         runCurrent()
-        assertEquals(listOf("hub-1"), s.tokens.removed)
-        assertEquals("connect(, hub-1)", s.connects().last())
+        val kept = s.tokens.token("hub-1")!!
+        assertTrue("TLS-only after Pair Again: $kept", core.linkCredentialTlsOnly(kept))
+        assertEquals("no key enforced until the pairing", "", core.linkCredentialHubKey(kept))
+        assertFalse("the token is gone", "dG9r" in kept)
+        assertEquals("connect($kept, hub-1)", s.connects().last())
         val prompt = s.engine.state.value as LinkSessionState.NeedsPin
         assertEquals("the PIN prompt shows the key the hub presented", "SHA256:NEW0-NEW0-NEW0-NEW0", prompt.hubKey)
         assertEquals("", prompt.pin)
+    }
+
+    // -- WP PINTLS -- (owner decision 2026-11-17) a hub once pinned stays TLS-only
+
+    @Test
+    fun wpPintlsPairAgainKeepsTlsOnlyAndOnlyForgetHubRemovesIt() = runTest {
+        val s = Stack(this)
+        s.tokens.setToken("hub-1", "Fake Hub", "v2.dG9r.$key.t")
+        s.ops.connectError = DspiException.Link("tls_refused", "this hub was set up with encryption but refused it")
+        s.engine.connect(hub)
+        runCurrent()
+        // Pair Again: the core refuses the plaintext hub before any PIN
+        s.ops.connectError = DspiException.Link(FORGET_HUB_CODE, "this hub was paired with encryption before ...")
+        s.engine.rePair()
+        runCurrent()
+        val kept = s.tokens.token("hub-1")!!
+        assertTrue(core.linkCredentialTlsOnly(kept))
+        assertEquals("connect($kept, hub-1)", s.connects().last())
+        val failed = s.engine.state.value as LinkSessionState.Failed
+        assertEquals(FORGET_HUB_CODE, failed.code)
+        assertTrue("its offer is Forget Hub", failed.code in REPAIR_CODES)
+        assertTrue("no PIN went out", s.ops.pins.isEmpty())
+        assertTrue("nothing removed yet", s.tokens.removed.isEmpty())
+        // Forget Hub: the record goes, and the hub is dialled with nothing (an unencrypted pairing)
+        s.ops.connectError = null
+        s.ops.status = status(LinkPhase.NEEDS_PAIRING)
+        s.ops.hello = hello().copy(needsPairing = true)
+        s.engine.rePair()
+        runCurrent()
+        assertEquals(listOf("hub-1"), s.tokens.removed)
+        assertNull(s.tokens.token("hub-1"))
+        assertEquals("connect(, hub-1)", s.connects().last())
+        assertTrue(s.engine.state.value is LinkSessionState.NeedsPin)
+    }
+
+    @Test
+    fun wpPintlsARefusedTokenKeepsAPinnedHubTlsOnlyAndAV1HubNothing() = runTest {
+        val s = Stack(this)
+        s.tokens.setToken("hub-1", "Fake Hub", "v2.dG9r.$key.t")
+        s.ops.hello = hello().copy(needsPairing = true, tokenRefused = true)
+        s.ops.status = status(LinkPhase.NEEDS_PAIRING).copy(tokenRefused = true)
+        s.engine.connect(hub)
+        runCurrent()
+        val kept = s.tokens.token("hub-1")
+        assertTrue("kept TLS-only: $kept", kept != null && core.linkCredentialTlsOnly(kept))
+        assertEquals("v1", "", se.bofr.dspi.ffi.uniffi.linkCredentialUnpaired("a-v1-token"))
     }
 
     @Test

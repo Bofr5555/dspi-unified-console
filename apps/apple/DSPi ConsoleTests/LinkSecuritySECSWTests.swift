@@ -274,7 +274,8 @@ final class LinkSecuritySECSWTests: XCTestCase {
     // MARK: Pairing again
 
     func testSECSWOnlyTheKeyAndTLSCodesOfferPairingAgain() {
-        XCTAssertEqual(LinkRepair.codes, ["hub_key_changed", "hub_key_unverified", "tls_refused", "tls_required"])
+        XCTAssertEqual(LinkRepair.codes, ["hub_key_changed", "hub_key_unverified", "tls_refused", "tls_required",
+                                          "tls_required_pinned"])   // -- WP PINTLS --
         XCTAssertEqual(LinkRepair.code(of: .Link(code: "hub_key_changed", msg: "x")), "hub_key_changed")
         XCTAssertNil(LinkRepair.code(of: .Link(code: "wrong_pin", msg: "x")))
         XCTAssertNil(LinkRepair.code(of: .Disconnected))
@@ -290,6 +291,33 @@ final class LinkSecuritySECSWTests: XCTestCase {
         }
         XCTAssertEqual(LinkRepair.actionTitle(code: "hub_key_changed", fromPairLink: false), "Pair Again")
         XCTAssertEqual(LinkRepair.actionTitle(code: "hub_key_unverified", fromPairLink: true), "Connect")
+    }
+
+    // -- WP PINTLS -- (owner decision 2026-11-17) a hub once pinned stays TLS-only
+
+    /// The core's unpaired record keeps a pinned hub TLS-only and drops the
+    /// token; a v1 token keeps nothing.  `tls_required_pinned` offers only
+    /// Forget Hub, whose words say it is the way back to no encryption.
+    func testPINTLSPairAgainKeepsAPinnedHubTLSOnlyAndForgetIsTheWayBack() throws {
+        let link = try secswLink()
+        let kept = linkCredentialUnpaired(credential: link.credential)
+        XCTAssertTrue(kept.hasPrefix("v2."), kept)
+        XCTAssertTrue(linkCredentialTlsOnly(credential: kept))
+        XCTAssertEqual(linkCredentialHubKey(credential: kept), "", "no key enforced until the next pairing")
+        XCTAssertEqual(linkCredentialUnpaired(credential: kept), kept, "Pair Again twice: the same")
+        XCTAssertEqual(linkCredentialUnpaired(credential: "a-v1-token"), "")
+        XCTAssertFalse(linkCredentialTlsOnly(credential: "a-v1-token"))
+
+        XCTAssertEqual(LinkRepair.forgetCode, "tls_required_pinned")
+        XCTAssertEqual(LinkRepair.code(of: .Link(code: "tls_required_pinned", msg: "x")), "tls_required_pinned")
+        XCTAssertEqual(LinkRepair.actionTitle(code: "tls_required_pinned", fromPairLink: false), "Forget Hub")
+        let text = LinkRepair.text(code: "tls_required_pinned", hubName: "Studio", fromPairLink: false)
+        XCTAssertTrue(text.contains("Forget Hub") && text.contains("without encryption"), text)
+        XCTAssertTrue(text.contains("not even the PIN"), text)
+        XCTAssertEqual(LinkRepair.code(ofCloseReason: "this hub was paired with encryption before, so it is only "
+                                       + "reached encrypted, and it refused encryption"), "tls_required_pinned")
+        XCTAssertTrue(LinkRepair.text(code: "tls_refused", hubName: "Studio", fromPairLink: false)
+                        .contains("encrypted connection only"))
     }
 
     // MARK: Pairing links
@@ -520,8 +548,10 @@ final class CoreLinkSECSWSwiftHubTests: XCTestCase {
     }
 
     /// A pinned (v2) credential to a hub that serves no TLS: no plaintext
-    /// fallback, only pairing again; Cancel leaves it, Pair Again drops the
-    /// pin and pairs with the PIN.
+    /// fallback, only pairing again; Cancel leaves it.  -- WP PINTLS -- Pair
+    /// Again keeps the hub TLS-only: refused with `tls_required_pinned` before
+    /// any PIN, the record still TLS-only; only Forget Hub then pairs it in
+    /// plaintext (the owner decision 2026-11-17).
     func testSECSWAPinnedHubWithoutTLSOffersOnlyPairingAgainAndPairingAgainPairs() throws {
         let hub = try SECSWSwiftHub()
         let tokens = secswTokens()
@@ -539,12 +569,26 @@ final class CoreLinkSECSWSwiftHubTests: XCTestCase {
         XCTAssertFalse(t.isConnected, "never connected in plaintext")
         secswWait(5, "Cancel answered") { c.repairCode == nil }
 
+        // -- WP PINTLS -- Pair Again (yes), then Forget Hub declined
+        ui.repairAnswers = [true, false]
+        t.bind(serial: hub.serial)   // the person picks the device again
+        secswWait(20, "the TLS-only refusal") { ui.repairs.count == 3 }
+        XCTAssertEqual(ui.repairs[2].code, "tls_required_pinned")
+        XCTAssertEqual(ui.repairs[2].actionTitle, "Forget Hub")
+        XCTAssertEqual(ui.pinAsks.count, 0, "no PIN prompt, no PIN sent in plaintext")
+        let kept = try XCTUnwrap(tokens.token(forHub: hub.hubID))
+        XCTAssertTrue(linkCredentialTlsOnly(credential: kept), "still TLS-only: \(kept)")
+        XCTAssertFalse(t.isConnected)
+        secswWait(5, "Cancel answered") { c.repairCode == nil }
+
+        // Forget Hub: the record goes, and the hub pairs unencrypted
         ui.repairAnswers = [true]
         ui.pins = [hub.auth.beginPairing()]
-        t.bind(serial: hub.serial)   // the person picks the device again
-        secswWait(20, "the second refusal") { ui.repairs.count == 2 }
-        secswWait(20, "pairing again and the bind") { t.isConnected }
-        XCTAssertEqual(ui.pinAsks.count, 1, "Pair Again asks for the PIN")
+        t.bind(serial: hub.serial)
+        secswWait(20, "the refusal again") { ui.repairs.count == 4 }
+        XCTAssertEqual(ui.repairs[3].code, "tls_required_pinned")
+        secswWait(20, "pairing after Forget Hub and the bind") { t.isConnected }
+        XCTAssertEqual(ui.pinAsks.count, 1, "the PIN after Forget Hub")
         let stored = try XCTUnwrap(tokens.token(forHub: hub.hubID))
         XCTAssertFalse(stored.hasPrefix("v2."), "the hub's new (plaintext) pairing")
         t.disconnect()
