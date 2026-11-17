@@ -147,7 +147,8 @@ open class FakeHubDspiCore(
     }
 
     private fun event(kind: String, record: HubEventRecord? = null, snapshot: String = "", change: String = "", alarm: HubAlarm? = null) =
-        HubServerEvent(kind, alarm?.serial ?: serial, record, null, snapshot, change, alarm, null, null, null, "", "") // -- WP P5HUB -- measureDoc, measureKind
+        // -- WP P5HUB -- measureDoc, measureKind
+        HubServerEvent(kind, alarm?.serial ?: serial, record, null, snapshot, change, alarm, null, null, null, "", "")
 
     // ── Alarms ──
 
