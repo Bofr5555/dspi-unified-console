@@ -27,7 +27,7 @@
 //! object), one without it nothing ([`LinkNotice::HubServesPagedOnly`]) unless
 //! the hub serves legacy devices (our hub's cap `legacy_devices`). Paged
 //! answers retry only 0x01, 0x04, 0x17 and 0x84; the firmware's result codes
-//! 0x11..=0x1A are refusals ([`firmware_refusal`]); a `0x86` or `0x10` from a
+//! 0x10..=0x1A are refusals ([`firmware_refusal`]); a `0x86` or `0x10` from a
 //! device that answered before, or a changed `protocol` in the hub's list,
 //! makes the transport stale ([`LinkNotice::GenerationChanged`]): nothing more
 //! is sent, and the device is opened again.
@@ -283,8 +283,9 @@ impl LinkRoute {
 // -- WP PGLINKC --
 /// The DSPi Link client's own notices (PLAN-PG section 1.1 steps 5, 6, 8). Each
 /// is a [`TransportError::Incompatible`] whose words are [`LinkNotice::text`];
-/// [`LinkNotice::of`] gives it back, and [`LinkNotice::code`] is its notice's
-/// code (`transfer.<code>` in `assets/notices/notices.json`).
+/// [`LinkNotice::of`] gives it back, and [`LinkNotice::code`] is the code of
+/// its notice (`transfer.<code>`; the notices and the core's mapping are
+/// added outside this WP, PGCORE).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkNotice {
     /// A 1.2 hub, and the device refused the 1.1.6 platform read: it is
