@@ -78,7 +78,7 @@ for a closed bench only.
 
 ## Roles
 
-| Role | May | Command classes (`tests/fixtures/link/policy/commands.json`) |
+| Role | May | Command classes (`tests/fixtures/link/policy/commands-1.2.json`) |
 |---|---|---|
 | viewer | read, poll, receive notifications | `read` |
 | control | also change settings | `read`, `control` |

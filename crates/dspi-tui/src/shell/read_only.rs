@@ -40,7 +40,7 @@ use super::connect::printable;
 const APP: &str = "DSPi Terminal";
 
 /// Every IN command that only reads: the `read` class of the Link policy table
-/// (`tests/fixtures/link/policy/commands.json`, which a test holds this to),
+/// (`tests/fixtures/link/policy/commands-1.2.json`, which a test holds this to),
 /// plus [`REQ_EXTENSION`](op::REQ_EXTENSION), which that table leaves out and
 /// which reads on IN and writes on OUT.
 const READS: &[u8] = &[
@@ -483,7 +483,8 @@ mod tests_wp_tm4 {
     use crate::shell::{Tool, fixture};
     use crate::theme::{ColorDepth, Glyphs, Theme};
 
-    const POLICY: &str = include_str!("../../../../tests/fixtures/link/policy/commands.json");
+    // -- WP PGHPOL -- the 1.2 table, renamed from `commands.json`.
+    const POLICY: &str = include_str!("../../../../tests/fixtures/link/policy/commands-1.2.json");
 
     /// The firmware a section sits at, by name.
     fn off(name: &str) -> usize {

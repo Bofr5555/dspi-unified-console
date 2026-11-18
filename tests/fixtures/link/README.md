@@ -10,7 +10,7 @@ MIT licence (`LICENSE.DSPi-Link`, Copyright (c) 2026 Weeb Labs).
 | `frames/` | `fixtures/frames/` (`frames.json` + `*.bin`) | `crates/dspi-link/tests/fixtures.rs` (decode + byte-exact re-encode) |
 | `messages/` | `fixtures/messages/*.json` | `crates/dspi-link/tests/fixtures.rs` (parse, request shapes) |
 | `device/` | `fixtures/device/` (`bulk_v32.bin`, `platform.bin`, `status_wvalue9.bin`, `capture.json`) | the fake hub's simulated device (`crates/dspi-link/src/fakehub.rs`), capture checks |
-| `policy/commands.json` | `policy/commands.json` | the fake hub's role classes (viewer/control/admin) |
+| `policy/commands-1.2.json` | `policy/commands.json` (the 1.2 table, keyed by opcode) | the fake hub's role classes (viewer/control/admin), our hub's page-0 classes (`crates/dspi-hub/src/policy.rs`); renamed from `commands.json` by WP PGHPOL, content unchanged |
 
 `device/bulk_v32.bin` and `device/platform.bin` are byte-identical to
 `../bulk_v32.bin` / `../platform.bin` (DSPi-Link `05949b8`, the core FFI
@@ -69,4 +69,20 @@ SHA-256 (`sha256sum`):
     d4b239663d2547e446c71addb8fc845afa9e346ab6527236d55b161c7f1646e1  ./messages/poll_subscribe.json
     39d09aa20f3d0a72cccefc91e1c7594a43ed7ca95fb937e0391fe25f6a767c23  ./messages/poll_subscribe_ok.json
     437e6910ca4a72b93010d34ce8e3d243c1b5012ac80e2d78ef4d8c457841de50  ./messages/poll_unsubscribe.json
-    d0fe096fbe50b866564f26053e4b7e0b61d60f69dd0be428a5d07c8c98388170  ./policy/commands.json
+    d0fe096fbe50b866564f26053e4b7e0b61d60f69dd0be428a5d07c8c98388170  ./policy/commands-1.2.json
+
+## The 1.3 policy table (WP PGHPOL, 2026-11-18)
+
+`policy/commands-1.3.json` is upstream's `policy/commands.json` copied unchanged
+from **WeebLabs/DSPi-Link** at commit `4aec5ab293be4d7f7c515bf28f7d5aaec2e14b1f`
+("Harden the legacy-firmware guard after an independent audit"; the file last
+changed in "Policy table keyed by command ID; hub rules follow firmware 1.1.7",
+2026-11-17): spec 1.3, firmware 1.1.7, 211 rows keyed by command id. Same MIT
+licence (`LICENSE.DSPi-Link`). Our hub classes every page other than 0 by it
+(`crates/dspi-hub/src/policy.rs`, PLAN-PG section 1.6).
+
+`policy/private.json` is ours (not upstream's): the rows for our private pages
+0xE0-0xEF in the 1.3 table's shape, today the extension tunnel `0xE010`
+(`config` both ways).
+
+    ed95abd88dd5eed9b1cd8b402198ba127d961a3c223334ecf650a085dd3c0fb4  ./policy/commands-1.3.json
