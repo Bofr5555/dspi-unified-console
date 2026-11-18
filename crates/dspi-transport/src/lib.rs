@@ -375,7 +375,37 @@ pub trait Transport: Send {
             })
             .collect()
     }
+
+    // -- WP PLANPG -- (seam; PLAN-PG section 1.2)
+    /// Whether this link can carry a paged request: a non-zero `wIndex` high
+    /// byte to the device. The default is no, so a wrapper that does not
+    /// forward the paged calls fails closed and the probe takes the device for
+    /// a 1.1.6-generation one (which is safe: page 0 names nothing on paged
+    /// firmware).
+    fn carries_pages(&self) -> bool {
+        false
+    }
+
+    /// A paged GET of up to `max_len` bytes (a paged reply may be shorter than
+    /// asked; the caller sizes by the reply). Only after the probe said the
+    /// device is paged, except the probe itself (PLAN-PG section 1.1).
+    fn control_in_paged(&mut self, id: CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        let _ = (id, value, max_len);
+        Err(TransportError::Incompatible(NO_PAGES.into()))
+    }
+
+    /// A paged SET; a zero-length `data` is an action.
+    fn control_out_paged(&mut self, id: CmdId, value: u16, data: &[u8]) -> Result<()> {
+        let _ = (id, value, data);
+        Err(TransportError::Incompatible(NO_PAGES.into()))
+    }
 }
+
+// -- WP PLANPG --
+pub use dspi_proto::paged::CmdId;
+
+/// What a link without paged requests answers to one.
+pub const NO_PAGES: &str = "this connection cannot carry firmware 1.1.7 (paged) requests";
 
 // -- WP LK2 --
 /// One read of [`Transport::control_in_batch`].
