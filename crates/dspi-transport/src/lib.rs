@@ -36,6 +36,8 @@ pub mod clock;
 pub use fake::{Capture, FakeOptions, FakeRemote};
 // -- WP BULKFIX --
 pub use fake::{BulkDbDevice, BulkDbOptions, GainProbe};
+// -- WP PGFAKE2 --
+pub use fake::{FakeBoard, RebootTarget};
 // -- WP T5 --
 #[cfg(feature = "link")]
 pub use link::LinkTransport;
