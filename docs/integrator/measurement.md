@@ -58,9 +58,28 @@ Where this page and the code disagree, the code is right and the page is the bug
 6. **Timing:** one arrival per cycle; one common slope (the clock ratio between device and microphone) and one intercept
    per output, over at least two passes; the ratio removed per cycle in the frequency domain; each cycle deconvolved and
    the repeats averaged coherently. Delays between outputs **of one run** are valid; nothing compares arrivals across runs.
-7. **The timing quality gate:** a run is "timing reliable" only when every cycle's residual is at most 10 µs and the
-   repeats agree in phase (spread at most 10° where trusted). Otherwise its magnitudes are kept and it is marked
-   "timing unreliable": delay, polarity and crossover proposals are refused with that reason.
+   A cycle's arrival is the peak of the **envelope** of its deconvolved response, weighted by the pre-roll's noise and
+   limited to the sweep's band, refined against the **mean of the output's other repeats** (noise-weighted, the lag within
+   half a carrier period of the envelope's). When the envelope and the correlation disagree about which carrier peak is
+   the arrival (a band-limited way: a tweeter), the cycle's arrival is reported **ambiguous** and left out of the fit and
+   the gate's largest residual; it is never a number the gate trusts. An output's onset (the centre of its windows and
+   `arrival_ms` of a result) is where that envelope first reaches 30 % of its peak.
+7. **The timing quality gate:** a run is "timing reliable" only when every cycle's residual is at most 10 µs, no arrival
+   is ambiguous, the capture clock did not wander inside a sweep, and the repeats agree in phase in every third-octave band
+   of the check that is loud enough (20 dB per repeat, summed over the band). The check's bands are, by default, the
+   run's **transitions** (where two of its outputs are both loud and within 12 dB of each other; an output in none, a run
+   of one output, from 100 Hz to 10 kHz). A band's bound is the larger of 10° and 5 µs as a phase at its centre (10°
+   through every usual crossover, 18° at 10 kHz). Otherwise its magnitudes are kept and it is marked "timing
+   unreliable": delay, polarity and crossover proposals are refused with that reason. The summed run stays the arbiter of
+   delay and polarity (step 8). The reasons come in words and, in `dspi_measure::ir::TimingQuality::issues`, typed:
+
+   | Finding | Means | What to change |
+   |---|---|---|
+   | ambiguous arrival | the analyser could not tell which carrier peak is the arrival | more level or passes; it is not the capture |
+   | capture slip | a cycle sits off the clock fit while its delay is steady along its sweep: frames were lost or repeated between cycles | the capture path (another client, no resampler) |
+   | clock wander | "the capture clock wandered X µs / Y ppm inside its sweep against the other repeats" | a capture device with a stable clock (P5SPIKE's USB microphone wandered by 55 to 100 ppm); magnitudes are unaffected |
+   | phase spread | the repeats of an output disagree in phase in a band, more than its bound | usually one of the above; else movement or noise |
+
 8. **No loopback, no reference speaker, no firmware time stamp.** The one check that does not depend on the capture clock
    is the summed run, mandatory before any timing write is offered.
 9. **Noise and trust:** a 1 s pre-roll gives the noise floor; a point is trusted (`valid`) when its SNR is above 20 dB and
