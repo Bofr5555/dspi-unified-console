@@ -3,7 +3,13 @@
 //! and the judgement of what the notification path saw (S5). Pure: the
 //! session feeds it numbers and acts on what it answers.
 
-use super::{MeasureIssue, TapEvent};
+use dspi_measure::hearing::{BAND_MAX_HZ, BAND_MIN_HZ, Listener, NO_SNR_DB, Played, hearing_band};
+use dspi_measure::stimulus::{LogSweep, SweepConfig};
+use serde::Serialize;
+
+use super::plan::Plan;
+use super::runs::RAMP_SWEEP_MS;
+use super::{MeasureIssue, MeasureRunKind, TapEvent};
 
 /// A capture sample at or above this aborts, dBFS (S4).
 pub(crate) const CAPTURE_CLIP_DBFS: f32 = -1.0;
@@ -11,9 +17,11 @@ pub(crate) const CAPTURE_CLIP_DBFS: f32 = -1.0;
 pub(crate) const OUTPUT_PEAK_DBFS: f32 = -0.5;
 /// The ramp's step, dB (S3).
 pub(crate) const RAMP_STEP_DB: f32 = 6.0;
-/// The SNR at which a ramp stops, dB, in 100 Hz to 10 kHz (S3).
+/// The in-band SNR at which a ramp stops, dB, in 100 Hz to 10 kHz (S3,
+/// [`step_hearing`]).
 pub(crate) const RAMP_SNR_DB: f64 = 35.0;
-/// The signal is "above the noise" from this SNR on, dB.
+/// The signal is "above the noise" from this in-band SNR on, dB; a ramp never
+/// ends on a step heard less (S3, WP P5RAMPFIX).
 pub(crate) const HEARD_SNR_DB: f64 = 6.0;
 /// Once heard, a step must raise the microphone's level by at least this
 /// share of the step (3 dB of 6, S3).
@@ -37,104 +45,56 @@ pub(crate) fn clip_linear() -> f32 {
     linear(CAPTURE_CLIP_DBFS)
 }
 
-// ── Band level (100 Hz to 10 kHz) ──────────────────────────────────────
-
-/// A biquad, direct form I, `f64`.
-#[derive(Debug, Clone, Copy, Default)]
-struct Biquad {
-    b: [f64; 3],
-    a: [f64; 2],
-    x: [f64; 2],
-    y: [f64; 2],
-}
-
-impl Biquad {
-    /// RBJ's second-order high-pass (`high`) or low-pass at `f0`, Q 0.707.
-    fn pass(f0: f64, fs: f64, high: bool) -> Biquad {
-        let w = std::f64::consts::TAU * (f0 / fs).clamp(1e-6, 0.49);
-        let (sin, cos) = w.sin_cos();
-        let alpha = sin / (2.0 * std::f64::consts::FRAC_1_SQRT_2);
-        let a0 = 1.0 + alpha;
-        let (b0, b1) = if high {
-            ((1.0 + cos) / 2.0, -(1.0 + cos))
-        } else {
-            ((1.0 - cos) / 2.0, 1.0 - cos)
-        };
-        Biquad {
-            b: [b0 / a0, b1 / a0, b0 / a0],
-            a: [-2.0 * cos / a0, (1.0 - alpha) / a0],
-            ..Biquad::default()
-        }
-    }
-
-    fn run(&mut self, x: f64) -> f64 {
-        let [b0, b1, b2] = self.b;
-        let [a1, a2] = self.a;
-        let y = b0 * x + b1 * self.x[0] + b2 * self.x[1] - a1 * self.y[0] - a2 * self.y[1];
-        self.x = [x, self.x[0]];
-        self.y = [y, self.y[0]];
-        if y.is_finite() { y } else { 0.0 }
-    }
-}
-
-/// The capture's power in 100 Hz to 10 kHz per window of `window_ms`, each as
-/// a mean square (full scale ±1). Non-finite samples count as 0.
-pub(crate) fn band_powers(samples: &[f32], rate_hz: u32, window_ms: u32) -> Vec<f64> {
-    let fs = f64::from(rate_hz.max(1));
-    let mut hp = Biquad::pass(100.0, fs, true);
-    let mut lp = Biquad::pass(10_000.0, fs, false);
-    let n = usize::try_from(u64::from(rate_hz).saturating_mul(u64::from(window_ms)) / 1000)
-        .unwrap_or(usize::MAX)
-        .max(1);
-    let mut out = Vec::new();
-    let (mut sum, mut count) = (0.0f64, 0usize);
-    for s in samples {
-        let x = if s.is_finite() { f64::from(*s) } else { 0.0 };
-        let y = lp.run(hp.run(x));
-        sum += y * y;
-        count = count.saturating_add(1);
-        if count >= n {
-            out.push(sum / n as f64);
-            sum = 0.0;
-            count = 0;
-        }
-    }
-    if count > n / 2 {
-        out.push(sum / count as f64);
-    }
-    out
-}
-
 /// A mean square in dB (full scale sine 0 dB, the crate's convention).
 pub(crate) fn db(power: f64) -> f64 {
     10.0 * power.max(1e-30).log10() + dspi_measure::types::FULL_SCALE_SINE_DB
 }
 
-/// The noise floor of a pre-roll, dB (its windows' median band power).
-pub(crate) fn noise_db(samples: &[f32], rate_hz: u32) -> f64 {
-    let mut p = band_powers(samples, rate_hz, SPL_WINDOW_MS);
-    // The filters settle in the first window.
-    if p.len() > 2 {
-        p.remove(0);
+// ── Hearing (WP P5RAMPFIX) ─────────────────────────────────────────────
+
+/// The listener of a ramp's steps: from the pre-roll (the generator idle)
+/// and what the steps play, judged in the stimulus' band (100 Hz to 10 kHz
+/// within the sweep's) and never broadband, so low-frequency rumble is never
+/// taken for signal ([`dspi_measure::hearing`]). A sweep's steps are judged
+/// by its matched filter (the 1 s ramp sweep, rendered at the capture rate
+/// from the device rate), pink noise by its band levels.
+///
+/// Errors: the reason, as text; the session then hears nothing (fail
+/// closed).
+pub(crate) fn ramp_listener(
+    plan: &Plan,
+    device_rate_hz: u32,
+    pre_roll: &[f32],
+) -> std::result::Result<Listener, String> {
+    let rate = plan.capture_rate_hz;
+    if plan.kind == MeasureRunKind::Pink {
+        let band = hearing_band(BAND_MIN_HZ, BAND_MAX_HZ, rate);
+        return Listener::new(pre_roll, rate, band, Played::Pink).map_err(|e| e.to_string());
     }
-    if p.is_empty() {
-        return db(0.0);
-    }
-    p.sort_by(f64::total_cmp);
-    db(p.get(p.len() / 2).copied().unwrap_or(0.0))
+    let cfg = SweepConfig {
+        duration_ms: RAMP_SWEEP_MS,
+        ..plan.sweep
+    };
+    let sweep = LogSweep::new(device_rate_hz, &cfg).map_err(|e| e.to_string())?;
+    let template = sweep
+        .render_at_rate(rate, true)
+        .map_err(|e| e.to_string())?;
+    let band = hearing_band(sweep.start_freq_hz(), sweep.end_freq_hz(), rate);
+    Listener::new(pre_roll, rate, band, Played::Sweep(&template)).map_err(|e| e.to_string())
 }
 
-/// A ramp step's signal level, dB: the mean of its louder half of windows (a
-/// sweep spends a third of its time below 100 Hz).
-pub(crate) fn signal_db(samples: &[f32], rate_hz: u32) -> f64 {
-    let mut p = band_powers(samples, rate_hz, SPL_WINDOW_MS);
-    if p.is_empty() {
-        return db(0.0);
+/// A step's in-band SNR and in-band level, dB; [`NO_SNR_DB`] (and no level)
+/// without a listener or when the step cannot be judged (fail closed: not
+/// heard).
+pub(crate) fn step_hearing(listener: Option<&Listener>, step: &[f32]) -> (f64, Option<f64>) {
+    match listener.map(|l| l.hear(step)) {
+        Some(Ok(h)) => (h.snr_db, Some(h.level_db)),
+        Some(Err(e)) => {
+            log::debug!("ramp step not judged: {e}");
+            (NO_SNR_DB, None)
+        }
+        None => (NO_SNR_DB, None),
     }
-    p.sort_by(|a, b| b.total_cmp(a));
-    let half = p.len().div_ceil(2);
-    let top: f64 = p.iter().take(half).sum();
-    db(top / half as f64)
 }
 
 // ── SPL (Leq over 125 ms, broadband) ───────────────────────────────────
@@ -195,14 +155,24 @@ impl SplMeter {
 pub(crate) struct StepEval {
     /// The generator's level of the step, peak dBFS.
     pub(crate) level_db: f32,
-    /// The microphone's level in 100 Hz to 10 kHz, dB.
-    pub(crate) signal_db: f64,
-    /// The pre-roll's, dB.
-    pub(crate) noise_db: f64,
+    /// The microphone's in-band SNR, dB ([`step_hearing`]).
+    pub(crate) snr_db: f64,
+    /// The microphone's in-band level, dB on the listener's own scale (only
+    /// differences between steps mean anything); `None` if not judged.
+    pub(crate) in_band_db: Option<f64>,
     /// The capture clipped.
     pub(crate) clipped: bool,
     /// The loudest 125 ms, dB SPL, with a calibrated microphone.
     pub(crate) spl_db: Option<f64>,
+}
+
+/// One judged ramp step, as the document and the notices report it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StepRecord {
+    pub(crate) output: u8,
+    pub(crate) level_db: f32,
+    pub(crate) snr_db: f64,
 }
 
 /// What the ramp does next.
@@ -223,17 +193,26 @@ pub(crate) struct Ramp {
     pub(crate) start_db: f32,
     pub(crate) ceiling_db: f32,
     pub(crate) spl_cap_db: Option<f32>,
-    /// `(level, signal_db)` of each step so far.
-    pub(crate) history: Vec<(f32, f64)>,
+    /// The setup's start level only: the one step must be heard as well.
+    pub(crate) start_level_only: bool,
+    /// `(level, snr_db, in_band_db)` of each step so far.
+    pub(crate) history: Vec<(f32, f64, Option<f64>)>,
 }
 
 impl Ramp {
-    pub(crate) fn new(output: u8, start_db: f32, ceiling_db: f32, spl_cap_db: Option<f32>) -> Ramp {
+    pub(crate) fn new(
+        output: u8,
+        start_db: f32,
+        ceiling_db: f32,
+        spl_cap_db: Option<f32>,
+        start_level_only: bool,
+    ) -> Ramp {
         Ramp {
             output,
             start_db: start_db.min(ceiling_db),
             ceiling_db,
             spl_cap_db,
+            start_level_only,
             history: Vec::new(),
         }
     }
@@ -243,55 +222,109 @@ impl Ramp {
         self.start_db
     }
 
-    /// Judge a step and say what comes next.
+    /// The steps so far, for a notice: "-60 dBFS 1.2 dB, -54 dBFS 3.0 dB".
+    fn steps_text(&self) -> String {
+        self.history
+            .iter()
+            .map(|(l, s, _)| format!("{l} dBFS {s:.1} dB"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// Not heard where it must be (fail closed): the ramp asks.
+    fn not_heard(&self) -> RampNext {
+        let n = self.output.saturating_add(1);
+        let steps = self.steps_text();
+        RampNext::Ask(if self.start_level_only {
+            MeasureIssue::new(
+                "measure.start_level_quiet",
+                Some(self.output),
+                format!(
+                    "the microphone does not hear output {n} at the start level of {} dBFS \
+                     (in-band SNR {steps}; at least {HEARD_SNR_DB} dB needed): measure with \
+                     the ramp, or check the microphone and the wiring",
+                    self.start_db
+                ),
+            )
+        } else {
+            MeasureIssue::new(
+                "measure.mic_not_hearing",
+                Some(self.output),
+                format!(
+                    "the microphone does not hear output {n} (in-band SNR by step: {steps}; at \
+                     least {HEARD_SNR_DB} dB needed): check the microphone and the wiring"
+                ),
+            )
+        })
+    }
+
+    /// Judge a step and say what comes next. Every ending but a clip's
+    /// needs the step heard (in-band SNR at least [`HEARD_SNR_DB`]): a run
+    /// is never started at a level the microphone cannot hear (S3, WP
+    /// P5RAMPFIX).
     pub(crate) fn judge(&mut self, e: StepEval) -> RampNext {
         let n = self.output.saturating_add(1);
         let level = e.level_db;
+        let snr = if e.snr_db.is_finite() {
+            e.snr_db
+        } else {
+            NO_SNR_DB
+        };
         let quieter = |db: f32| (level - db).max(-120.0);
         if e.clipped {
             return RampNext::Done(quieter(CLIP_BACKOFF_DB));
         }
+        let prev = self.history.last().copied();
+        self.history.push((level, snr, e.in_band_db));
+        let heard = snr >= HEARD_SNR_DB;
         if let (Some(cap), Some(spl)) = (self.spl_cap_db, e.spl_db) {
+            // Past the cap the push path stopped the step: one step down.
             if spl >= f64::from(cap) {
                 return RampNext::Done(quieter(RAMP_STEP_DB));
             }
             if spl + f64::from(RAMP_STEP_DB) > f64::from(cap) {
-                self.history.push((level, e.signal_db));
-                return RampNext::Done(level);
+                return if heard {
+                    RampNext::Done(level)
+                } else {
+                    self.not_heard()
+                };
             }
         }
-        let snr = e.signal_db - e.noise_db;
-        let prev = self.history.last().copied();
-        self.history.push((level, e.signal_db));
         if snr >= RAMP_SNR_DB {
             return RampNext::Done(level);
         }
-        if let Some((prev_level, prev_db)) = prev
-            && prev_db - e.noise_db >= HEARD_SNR_DB
+        // Once heard, a step must raise the in-band level by half of it (the
+        // level, not the SNR: a sweep's SNR may stop rising at its own
+        // sidelobes while its level still follows).
+        if let Some((prev_level, prev_snr, prev_in_band)) = prev
+            && prev_snr >= HEARD_SNR_DB
         {
             let need = FOLLOW_SHARE * f64::from(level - prev_level);
-            if e.signal_db - prev_db < need {
+            let rise = match (e.in_band_db, prev_in_band) {
+                (Some(now), Some(before)) => now - before,
+                _ => snr - prev_snr,
+            };
+            if rise < need {
                 return RampNext::Ask(MeasureIssue::new(
                     "measure.mic_not_following",
                     Some(self.output),
                     format!(
-                        "the microphone does not follow output {n}: check the microphone and \
-                         the wiring"
+                        "the microphone does not follow output {n} (in-band SNR by step: {}): \
+                         check the microphone and the wiring",
+                        self.steps_text()
                     ),
                 ));
             }
         }
-        if level >= self.start_db + HEAR_BY_DB && snr < HEARD_SNR_DB {
-            return RampNext::Ask(MeasureIssue::new(
-                "measure.mic_not_hearing",
-                Some(self.output),
-                format!(
-                    "the microphone does not hear output {n}: check the microphone and the wiring"
-                ),
-            ));
+        if level >= self.start_db + HEAR_BY_DB && !heard {
+            return self.not_heard();
         }
         if level >= self.ceiling_db {
-            return RampNext::Done(self.ceiling_db);
+            return if heard {
+                RampNext::Done(self.ceiling_db)
+            } else {
+                self.not_heard()
+            };
         }
         RampNext::Step((level + RAMP_STEP_DB).min(self.ceiling_db))
     }

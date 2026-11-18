@@ -115,6 +115,9 @@ pub(crate) struct Plan {
     pub(crate) capture_rate_hz: u32,
     pub(crate) mic: Option<MicInfo>,
     pub(crate) name: String,
+    /// The setup's start level only (its ramp's one step must be heard too,
+    /// WP P5RAMPFIX).
+    pub(crate) start_level_only: bool,
 }
 
 fn invalid(msg: impl Into<String>) -> DspiError {
@@ -292,6 +295,7 @@ impl Plan {
             capture_rate_hz,
             mic,
             name: setup.name.clone(),
+            start_level_only: setup.start_level_only,
         })
     }
 

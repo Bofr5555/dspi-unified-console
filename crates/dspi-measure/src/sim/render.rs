@@ -426,6 +426,10 @@ fn capture(world: &World, sig: &[f32], plan: &CapturePlan) -> Result<Capture, Me
         if sigma > 0.0 {
             v += sigma * normal(world.seed, k as u64);
         }
+        // -- WP P5RAMPFIX -- rumble, by the capture's own frame index.
+        if world.rumble.is_some() {
+            v += super::rumble_at(world, origin.wrapping_add(ju));
+        }
         if v.abs() >= 1.0
             && let Some(c) = clip.get_mut(j.checked_div(block).unwrap_or(0))
         {
@@ -572,6 +576,12 @@ pub(crate) fn validate_world(w: &World) -> Result<(), MeasureError> {
         && !in_range(n, -200.0, 0.0)
     {
         return Err(invalid("the noise floor is out of range"));
+    }
+    // -- WP P5RAMPFIX --
+    if let Some(r) = w.rumble
+        && !(in_range(r.dbfs, -200.0, 0.0) && in_range(r.top_hz, 25.0, 400.0))
+    {
+        return Err(invalid("the rumble is out of range"));
     }
     let c = &w.clock;
     let ok = (8000..=192_000).contains(&c.rate_hz)

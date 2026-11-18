@@ -254,17 +254,19 @@ impl Mic {
         }
     }
 
-    fn noise_block(&mut self, n: usize) -> Vec<f32> {
+    fn noise_block(&mut self, first: u64, n: usize) -> Vec<f32> {
         let amp = self
             .world
             .noise_dbfs
             .map_or(0.0, |db| 10f32.powf(db as f32 / 20.0) * 3f32.sqrt());
         (0..n)
-            .map(|_| {
+            .map(|i| {
                 self.seed ^= self.seed << 13;
                 self.seed ^= self.seed >> 7;
                 self.seed ^= self.seed << 17;
-                amp * (((self.seed >> 40) as f32 / (1u64 << 24) as f32) * 2.0 - 1.0)
+                // -- WP P5RAMPFIX -- the world's rumble goes on between renders.
+                let rumble = dspi_measure::sim::rumble_at(&self.world, first + i as u64) as f32;
+                amp * (((self.seed >> 40) as f32 / (1u64 << 24) as f32) * 2.0 - 1.0) + rumble
             })
             .collect()
     }
@@ -365,7 +367,7 @@ impl Mic {
                 Some(b) => b,
                 None => {
                     self.seg = None;
-                    (self.next, self.noise_block(960), false)
+                    (self.next, self.noise_block(self.next, 960), false)
                 }
             };
             self.next = first + samples.len() as u64;
@@ -1314,4 +1316,111 @@ fn wp_p5b_device_read_only_switched_on_mid_run_stops_the_generator() {
     );
     drop(log);
     r.core.set_client_read_only(false).unwrap();
+}
+
+// -- WP P5RAMPFIX -- the ramp hears in band, never by broadband level.
+
+/// A flat output 45 dB down at the microphone, white noise at -85 dBFS and
+/// rumble at -45 dBFS RMS below 80 Hz: as the first real microphone in a
+/// headphone cup (P5SPIKE), audible in band, invisible broadband.
+fn rumble_world(sensitivity_db: f64) -> World {
+    let mut w = free_world(&[0.0]);
+    w.noise_dbfs = Some(-85.0);
+    w.rumble = Some(dspi_measure::sim::Rumble {
+        dbfs: -45.0,
+        top_hz: 80.0,
+    });
+    w.outputs[0].driver.sensitivity_db = sensitivity_db;
+    w
+}
+
+fn gen_levels(r: &Rig) -> Vec<f32> {
+    r.log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|q| q.op == op::REQ_SIGGEN_SET_CONFIG)
+        .map(|q| {
+            dspi_proto::packets::SiggenConfig::decode(&q.data)
+                .unwrap()
+                .level_db
+        })
+        .collect()
+}
+
+#[test]
+fn wp_p5rampfix_device_a_ramp_under_heavy_rumble_is_heard_in_band() {
+    let r = rig();
+    let mut mic = Mic::new(&r, rumble_world(-45.0));
+    r.core
+        .measure_start(walked(&[(0, MeasureRole::Full)]))
+        .unwrap();
+    let st = mic.run(60.0, |_| false);
+    assert_eq!(st.phase, MeasurePhase::Done, "{st:#?}");
+    let levels = gen_levels(&r);
+    // The ramp ended on a heard step, and the run played there.
+    let (run, steps) = levels.split_last().unwrap();
+    assert_eq!(steps.last(), Some(run), "{levels:?}");
+    assert!(*run <= -20.0, "{levels:?}");
+    // The document reports each step's in-band SNR (P5SPIKE/HIL logs): heard
+    // by start + 18 dB (where the broadband check heard nothing, see
+    // dspi-measure's wp_p5rampfix_sim_rumble_world_*), 35 dB at the end.
+    let doc = result_doc(&r.core);
+    let reported = doc.measurement.capture.extra["rampSteps"]
+        .as_array()
+        .unwrap();
+    assert_eq!(reported.len(), steps.len());
+    let snr_at = |level: f64| {
+        reported
+            .iter()
+            .find(|s| s["levelDb"].as_f64() == Some(level))
+            .and_then(|s| s["snrDb"].as_f64())
+    };
+    assert!(snr_at(-32.0).is_some_and(|s| s >= 6.0), "{reported:?}");
+    let last = reported.last().unwrap();
+    assert!(last["snrDb"].as_f64().unwrap() >= 35.0, "{reported:?}");
+    assert_eq!(last["output"], 0);
+}
+
+#[test]
+fn wp_p5rampfix_device_an_inaudible_output_fails_closed() {
+    let r = rig();
+    let mut mic = Mic::new(&r, rumble_world(-120.0));
+    r.core
+        .measure_start(walked(&[(0, MeasureRole::Full)]))
+        .unwrap();
+    let st = mic.run(40.0, |_| false);
+    assert_eq!(st.phase, MeasurePhase::Failed, "{st:#?}");
+    let issue = st.issue.unwrap();
+    assert_eq!(issue.key, "measure.mic_not_hearing");
+    assert!(issue.message.contains("in-band SNR"), "{}", issue.message);
+    // -50 to -32 dBFS and nothing louder, no run.
+    assert_eq!(gen_levels(&r), vec![-50.0, -44.0, -38.0, -32.0]);
+}
+
+#[test]
+fn wp_p5rampfix_device_the_start_level_only_must_be_heard() {
+    // Inaudible at the start level: refused before any run, the ramp named.
+    let r = rig();
+    let mut mic = Mic::new(&r, rumble_world(-120.0));
+    let mut setup = walked(&[(0, MeasureRole::Full), (1, MeasureRole::Full)]);
+    setup.start_level_only = true;
+    r.core.measure_start(setup.clone()).unwrap();
+    let st = mic.run(30.0, |_| false);
+    assert_eq!(st.phase, MeasurePhase::Failed, "{st:#?}");
+    let issue = st.issue.unwrap();
+    assert_eq!(issue.key, "measure.start_level_quiet");
+    assert_eq!(issue.output, Some(0));
+    assert_eq!(gen_levels(&r), vec![-50.0], "one step, no run");
+    assert!(st.timing.is_none() && !st.result_ready);
+    // Heard in band under the same rumble: it measures, at the start level.
+    let r = rig();
+    let mut world = rumble_world(-45.0);
+    world.outputs = vec![world.outputs[0].clone(), world.outputs[0].clone()];
+    let mut mic = Mic::new(&r, world);
+    r.core.measure_start(setup).unwrap();
+    let st = mic.run(60.0, |s| s.phase == MeasurePhase::Run);
+    assert_eq!(st.phase, MeasurePhase::Run, "{st:#?}");
+    assert!(gen_levels(&r).iter().all(|l| *l == -50.0));
+    mic.run(60.0, |_| false);
 }

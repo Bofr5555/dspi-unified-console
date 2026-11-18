@@ -161,6 +161,8 @@ pub(crate) struct RunResult {
     pub(crate) max_residual_us: Option<f64>,
     pub(crate) ratio_ppm: f64,
     pub(crate) timing: Option<super::MeasureTiming>,
+    /// The ramp's steps before this run, as judged (WP P5RAMPFIX).
+    pub(crate) ramp_steps: Vec<super::safety::StepRecord>,
 }
 
 fn mic_on(grid: &LogGrid, plan: &Plan) -> Option<Response> {
@@ -272,6 +274,7 @@ pub(crate) fn walked_result(
         } else {
             0.0
         },
+        ramp_steps: Vec::new(),
     })
 }
 
@@ -296,6 +299,7 @@ pub(crate) fn pink_result(spectrum: &Response, output: u8, level_db: f32) -> Res
         timing_reliable: false,
         max_residual_us: None,
         ratio_ppm: 0.0,
+        ramp_steps: Vec::new(),
     })
 }
 
@@ -435,25 +439,35 @@ pub(crate) fn document(plan: &Plan, runs: &[RunResult], ctx: &DocContext<'_>) ->
                 max_residual_us: first.max_residual_us,
                 // Position 1's timing in detail (P5SPIKE): kept as unknown
                 // keys by every reader.
-                extra: first
-                    .timing
-                    .as_ref()
-                    .and_then(|t| serde_json::to_value(t).ok())
-                    .and_then(|v| v.as_object().cloned())
-                    .map(|mut m| {
-                        m.retain(|k, _| {
-                            [
-                                "ratioPpm",
-                                "residualBoundUs",
-                                "reasons",
-                                "cycleOutputs",
-                                "cycleResidualsUs",
-                            ]
-                            .contains(&k.as_str())
-                        });
-                        m
-                    })
-                    .unwrap_or_default(),
+                extra: {
+                    let mut m = first
+                        .timing
+                        .as_ref()
+                        .and_then(|t| serde_json::to_value(t).ok())
+                        .and_then(|v| v.as_object().cloned())
+                        .map(|mut m| {
+                            m.retain(|k, _| {
+                                [
+                                    "ratioPpm",
+                                    "residualBoundUs",
+                                    "reasons",
+                                    "cycleOutputs",
+                                    "cycleResidualsUs",
+                                ]
+                                .contains(&k.as_str())
+                            });
+                            m
+                        })
+                        .unwrap_or_default();
+                    // -- WP P5RAMPFIX -- position 1's ramp, step by step with
+                    // its in-band SNR (P5SPIKE and HIL logs).
+                    if !first.ramp_steps.is_empty()
+                        && let Ok(v) = serde_json::to_value(&first.ramp_steps)
+                    {
+                        m.insert("rampSteps".into(), v);
+                    }
+                    m
+                },
             },
             outputs,
             positions: plan.positions.max(1),

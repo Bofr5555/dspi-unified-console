@@ -104,6 +104,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.muted",
     "measure.mic_not_following",
     "measure.mic_not_hearing",
+    // -- WP P5RAMPFIX --
+    "measure.start_level_quiet",
     "measure.stopped",
     "measure.no_signal",
     "measure.abort.volume",
