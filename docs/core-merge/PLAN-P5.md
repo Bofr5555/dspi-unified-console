@@ -205,9 +205,18 @@ The owner's rule, R5, item by item, and what enforces it. **S1 to S13 are the te
   **short walked log sweeps (about 1 s)**, the same kind as the run, so the run is never louder than what was measured
   (pink noise, 1/8-normalised, is only used for the pink-noise RTA and ramps itself the same way). Start levels:
   speakers **-50 dBFS**, headphones **-60 dBFS**; +6 dB a step until the microphone's SNR is 35 dB in 100 Hz to 10 kHz or
-  a ceiling. **Fail closed:** once the signal is above the noise, a 6 dB step must raise the microphone's level by at
-  least 3 dB; and by start + 18 dB the signal must be above the noise. Otherwise the ramp stops and the user is asked
-  ("the microphone does not hear this output: check the microphone and the wiring") before any higher level. Ceilings
+  a ceiling. **The SNR is in band, never broadband** (P5RAMPFIX, after P5SPIKE 2026-11-18: a real microphone's floor
+  was -51 dBFS broadband but nearly all 50 Hz rumble, so a step clearly audible at 1 kHz read "not heard"): a sweep
+  step is judged by the matched filter of the known sweep (P5TIME's model at the capture rate), whitened by the
+  pre-roll's noise spectrum, in the sweep's band within 100 Hz to 10 kHz, its loudest 2 ms against the same output's
+  loudest 2 ms away from the peak; a pink step by its third-octave band levels against the pre-roll's
+  (`dspi_measure::hearing`). Low-frequency rumble never counts as signal. **Fail closed:** once the signal is above
+  the noise (in-band SNR 6 dB), a 6 dB step must raise the microphone's in-band level by at least 3 dB; by start +
+  18 dB the signal must be above the noise; and no ramp ends on a step that is not above the noise (a ceiling or the
+  SPL cap reached first, and the start level only: `measure.start_level_quiet`, "too quiet to hear at the start
+  level: measure with the ramp"). Otherwise the ramp stops and the user is asked ("the microphone does not hear this
+  output: check the microphone and the wiring") before any higher level; the notice lists each step's in-band SNR,
+  and the document keeps them (`capture.rampSteps`). Ceilings
   (generator peak): speakers **-12 dBFS**, headphones **-30 dBFS** by default; the user may lower them and raise them only
   to the hard caps, **-6 dBFS** and **-20 dBFS**. With a calibrated microphone the ramp also stops at **95 dB SPL**
   (speakers) or **90 dB SPL** (on a coupler), Leq over 125 ms (hard caps 105 and 100). **A walked run has one

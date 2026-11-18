@@ -28,6 +28,7 @@
 //! | `sim` (feature `sim`) | the simulated acoustic world | P5SIM |
 //! | [`wav`] | a bounded WAV reader and writer (captures, replay golden files) | P5SIM |
 //! | [`doc`] | the `measurement`, `mic` and `target` documents | P5MDOC |
+//! | [`hearing`] | does the microphone hear a ramp step: the sweep's whitened matched filter, pink noise's band levels | P5RAMPFIX |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -62,6 +63,8 @@ pub mod sim;
 pub mod wav;
 // -- WP P5MDOC --
 pub mod doc;
+// -- WP P5RAMPFIX --
+pub mod hearing;
 
 pub use types::*;
 

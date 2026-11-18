@@ -105,14 +105,20 @@ impl Device for Mock {
     }
 }
 
-/// A microphone in a quiet room: white noise at `noise_dbfs` (RMS), plus a
-/// 1 kHz tone while the generator plays, of `gain(output, level)` amplitude.
+/// A microphone in a quiet room: white noise at `noise_dbfs` (RMS), plus
+/// what the generator plays at `gain(output, level)` peak amplitude: a ramp
+/// step's sweep as the generator renders it (WP P5RAMPFIX: the ramp hears by
+/// the sweep's matched filter), its pink noise as noise, and a run as a
+/// 1 kHz tone (its analysis is not these tests').
 struct Room {
     noise: f32,
     gain: Box<dyn Fn(u8, f32) -> f32>,
     seed: u64,
     frame: u64,
     phase: f64,
+    /// The playing configuration's samples so far, and its sweep.
+    played: u64,
+    sweep: Option<(SiggenConfig, Vec<f64>)>,
     /// The simulated clock's origin: time is the frames captured.
     t0: Instant,
 }
@@ -125,6 +131,8 @@ impl Room {
             seed: 0x9E37_79B9_7F4A_7C15,
             frame: 1_000,
             phase: 0.0,
+            played: 0,
+            sweep: None,
             t0: Instant::now(),
         }
     }
@@ -138,18 +146,55 @@ impl Room {
 
     /// The next block, and the device's time moved on by it.
     fn block(&mut self, dev: &mut Mock) -> (u64, Vec<f32>) {
-        let amp = match &dev.playing {
-            Some((cfg, _)) => {
+        let playing = dev.playing.as_ref().map(|(c, _)| c.clone());
+        let amp = match &playing {
+            Some(cfg) => {
                 let out = cfg.channel_mask.trailing_zeros() as u8;
                 (self.gain)(out, cfg.level_db)
             }
             None => 0.0,
         };
+        // A new configuration starts its sweep from its first sample.
+        let same = matches!((&playing, &self.sweep), (Some(c), Some((s, _))) if c == s);
+        if !same {
+            self.played = 0;
+            self.sweep = playing.as_ref().and_then(|c| {
+                let one = c.signal_type == super::preflight::SIG_LOG_SWEEP
+                    && c.repeat == 1
+                    && c.flags & crate::consts::SIGGEN_FLAG_WALK == 0;
+                one.then(|| {
+                    let sc = dspi_measure::stimulus::SweepConfig {
+                        f1_hz: c.p[0],
+                        f2_hz: c.p[1],
+                        duration_ms: c.duration_ms,
+                        gap_ms: c.gap_ms,
+                    };
+                    let sw = dspi_measure::stimulus::LogSweep::new(RATE, &sc).unwrap();
+                    (c.clone(), sw.render_cycle(true))
+                })
+            });
+        }
+        let pink = playing
+            .as_ref()
+            .is_some_and(|c| c.signal_type == super::preflight::SIG_PINK);
         let mut v = Vec::with_capacity(BLOCK);
         for _ in 0..BLOCK {
             self.phase += std::f64::consts::TAU * 1000.0 / f64::from(RATE);
-            let s = self.noise * self.rnd() + amp * self.phase.sin() as f32;
+            let sig = if playing.is_none() {
+                0.0
+            } else if let Some((_, sw)) = &self.sweep {
+                sw.get(self.played as usize).copied().unwrap_or(0.0) as f32
+            } else if pink {
+                self.rnd()
+            } else {
+                self.phase.sin() as f32
+            };
+            self.played += 1;
+            let s = self.noise * self.rnd() + amp * sig;
             v.push(s);
+        }
+        if playing.is_none() {
+            self.sweep = None;
         }
         if let Some((_, left)) = dev.playing.as_mut() {
             *left = left.saturating_sub(BLOCK as u64);
@@ -379,11 +424,13 @@ fn wp_p5ses_a_setup_past_the_capture_bound_is_refused_at_plan_time() {
 
 // ── The ramp (S3) ──────────────────────────────────────────────────────
 
-fn eval(level: f32, signal: f64, noise: f64) -> StepEval {
+/// A step at `level` heard with an in-band SNR of `snr` dB (its in-band
+/// level follows the SNR).
+fn eval(level: f32, snr: f64) -> StepEval {
     StepEval {
         level_db: level,
-        signal_db: signal,
-        noise_db: noise,
+        snr_db: snr,
+        in_band_db: Some(snr),
         clipped: false,
         spl_db: None,
     }
@@ -392,14 +439,15 @@ fn eval(level: f32, signal: f64, noise: f64) -> StepEval {
 #[test]
 fn wp_p5ses_the_ramp_rules() {
     // Enough SNR at once.
-    let mut r = Ramp::new(0, -50.0, -12.0, None);
-    assert_eq!(r.judge(eval(-50.0, -40.0, -90.0)), RampNext::Done(-50.0));
+    let mut r = Ramp::new(0, -50.0, -12.0, None, false);
+    assert_eq!(r.judge(eval(-50.0, 40.0)), RampNext::Done(-50.0));
     // Up in 6 dB steps, never past the ceiling.
-    let mut r = Ramp::new(0, -50.0, -12.0, None);
+    let mut r = Ramp::new(0, -50.0, -12.0, None, false);
     let mut l = r.first();
     let mut seen = vec![l];
     loop {
-        match r.judge(eval(l, f64::from(l) - 50.0, -95.0)) {
+        // Heard from -38 on, 6 dB a step, never 35 dB.
+        match r.judge(eval(l, f64::from(l) + 46.0)) {
             RampNext::Step(n) => {
                 l = n;
                 seen.push(n);
@@ -416,36 +464,83 @@ fn wp_p5ses_the_ramp_rules() {
         vec![-50.0, -44.0, -38.0, -32.0, -26.0, -20.0, -14.0, -12.0]
     );
     // A clip ends it 12 dB below the step.
-    let mut r = Ramp::new(0, -50.0, -12.0, None);
-    let mut e = eval(-38.0, -60.0, -90.0);
+    let mut r = Ramp::new(0, -50.0, -12.0, None, false);
+    let mut e = eval(-38.0, 20.0);
     e.clipped = true;
     assert_eq!(r.judge(e), RampNext::Done(-50.0));
     // The SPL cap: within a step of it stops here, past it one step down.
-    let mut r = Ramp::new(0, -50.0, -12.0, Some(95.0));
-    let mut e = eval(-30.0, -60.0, -80.0);
+    let mut r = Ramp::new(0, -50.0, -12.0, Some(95.0), false);
+    let mut e = eval(-30.0, 20.0);
     e.spl_db = Some(91.0);
     assert_eq!(r.judge(e), RampNext::Done(-30.0));
     e.spl_db = Some(96.0);
     assert_eq!(r.judge(e), RampNext::Done(-36.0));
     // Heard, then a step that does not raise the microphone: ask.
-    let mut r = Ramp::new(3, -50.0, -12.0, None);
-    assert_eq!(r.judge(eval(-50.0, -75.0, -90.0)), RampNext::Step(-44.0));
-    match r.judge(eval(-44.0, -74.0, -90.0)) {
+    let mut r = Ramp::new(3, -50.0, -12.0, None, false);
+    assert_eq!(r.judge(eval(-50.0, 15.0)), RampNext::Step(-44.0));
+    match r.judge(eval(-44.0, 16.0)) {
         RampNext::Ask(i) => {
             assert_eq!(i.key, "measure.mic_not_following");
             assert_eq!(i.output, Some(3));
         }
         o => panic!("{o:?}"),
     }
+    // The in-band level decides, not the SNR (a sweep's SNR may stop at its
+    // sidelobes while its level follows).
+    let mut r = Ramp::new(0, -50.0, -12.0, None, false);
+    let mut e = eval(-50.0, 30.0);
+    e.in_band_db = Some(100.0);
+    assert_eq!(r.judge(e), RampNext::Step(-44.0));
+    let mut e = eval(-44.0, 31.0);
+    e.in_band_db = Some(106.0);
+    assert_eq!(r.judge(e), RampNext::Step(-38.0));
     // Not heard by start + 18 dB: ask.
-    let mut r = Ramp::new(0, -50.0, -12.0, None);
+    let mut r = Ramp::new(0, -50.0, -12.0, None, false);
     for l in [-50.0, -44.0, -38.0] {
-        assert!(matches!(r.judge(eval(l, -92.0, -90.0)), RampNext::Step(_)));
+        assert!(matches!(r.judge(eval(l, -10.0)), RampNext::Step(_)));
     }
-    match r.judge(eval(-32.0, -91.0, -90.0)) {
+    match r.judge(eval(-32.0, 5.9)) {
+        RampNext::Ask(i) => {
+            assert_eq!(i.key, "measure.mic_not_hearing");
+            assert!(i.message.contains("-32 dBFS 5.9 dB"), "{}", i.message);
+        }
+        o => panic!("{o:?}"),
+    }
+}
+
+/// WP P5RAMPFIX: no ramp ends on a step the microphone does not hear.
+#[test]
+fn wp_p5rampfix_a_ramp_never_ends_unheard() {
+    // A ceiling below start + 18 dB, never heard: ask at the ceiling.
+    let mut r = Ramp::new(0, -50.0, -40.0, None, false);
+    assert_eq!(r.judge(eval(-50.0, 0.0)), RampNext::Step(-44.0));
+    assert_eq!(r.judge(eval(-44.0, 1.0)), RampNext::Step(-40.0));
+    match r.judge(eval(-40.0, 2.0)) {
         RampNext::Ask(i) => assert_eq!(i.key, "measure.mic_not_hearing"),
         o => panic!("{o:?}"),
     }
+    // The start level only: its one step must be heard.
+    let mut r = Ramp::new(1, -60.0, -60.0, None, true);
+    match r.judge(eval(-60.0, 3.0)) {
+        RampNext::Ask(i) => {
+            assert_eq!(i.key, "measure.start_level_quiet");
+            assert_eq!(i.output, Some(1));
+            assert!(i.message.contains("ramp"), "{}", i.message);
+        }
+        o => panic!("{o:?}"),
+    }
+    let mut r = Ramp::new(1, -60.0, -60.0, None, true);
+    assert_eq!(r.judge(eval(-60.0, 6.0)), RampNext::Done(-60.0));
+    // Near the SPL cap but not heard in band: ask, not a run.
+    let mut r = Ramp::new(0, -50.0, -12.0, Some(95.0), false);
+    let mut e = eval(-30.0, 2.0);
+    e.spl_db = Some(91.0);
+    assert!(matches!(r.judge(e), RampNext::Ask(_)));
+    // A step that could not be judged is not heard.
+    let mut r = Ramp::new(0, -50.0, -50.0, None, false);
+    let mut e = eval(-50.0, f64::NAN);
+    e.in_band_db = None;
+    assert!(matches!(r.judge(e), RampNext::Ask(_)));
 }
 
 /// A microphone that hears output `o` at `level - att(o)` dB (sine, peak).
@@ -458,7 +553,8 @@ fn wp_p5ses_a_ramp_stops_at_the_ceiling_without_a_calibrated_mic() {
     let st = setup(MeasureRunKind::Walked, &[0]);
     let mut s = session(&st, &[0]);
     let mut dev = Mock::new();
-    let mut room = Room::new(-90.0, hears(|_| 50.0));
+    // Heard from -32 dBFS on, never 35 dB in band below the ceiling.
+    let mut room = Room::new(-90.0, hears(|_| 70.0));
     drive(&mut s, &mut dev, &mut room, 30.0, |s, _| {
         !s.state().ramp_levels.is_empty()
     });
@@ -510,18 +606,19 @@ fn mic_doc(spl_offset_db: f64) -> String {
 #[test]
 fn wp_p5ses_a_ramp_stops_at_the_spl_cap_with_a_calibrated_mic() {
     let mut st = setup(MeasureRunKind::Walked, &[0]);
-    st.mic_document = mic_doc(120.0);
+    st.mic_document = mic_doc(143.0);
     let mut s = session(&st, &[0]);
     let mut dev = Mock::new();
-    // The tone at level - 10 dBFS: dB SPL = level + 110; noise high enough
-    // that the SNR never stops it first.
-    let mut room = Room::new(-60.0, hears(|_| 10.0));
+    // The sweep at level - 20 dBFS peak: dB SPL = level + 123 (with the
+    // noise's -57 dB beside it); noise high enough that the in-band SNR
+    // (about 33 dB at -32) does not stop it first.
+    let mut room = Room::new(-60.0, hears(|_| 20.0));
     drive(&mut s, &mut dev, &mut room, 30.0, |s, _| {
         !s.state().ramp_levels.is_empty()
     });
-    // -50 .. -20: at -20 the next step would pass 95 dB SPL.
-    assert_eq!(levels(&dev), vec![-50.0, -44.0, -38.0, -32.0, -26.0, -20.0]);
-    assert_eq!(s.state().ramp_levels[0].level_db, -20.0);
+    // -50 .. -32: at -32 the next step would pass 95 dB SPL.
+    assert_eq!(levels(&dev), vec![-50.0, -44.0, -38.0, -32.0]);
+    assert_eq!(s.state().ramp_levels[0].level_db, -32.0);
 }
 
 #[test]
@@ -531,7 +628,7 @@ fn wp_p5ses_a_ramp_whose_mic_does_not_follow_stops_and_asks() {
     let mut dev = Mock::new();
     // Heard at -50 and -44, then stuck.
     let mut room = Room::new(-70.0, move |_, l: f32| {
-        10f32.powf((l.min(-44.0) - 10.0) / 20.0)
+        10f32.powf((l.min(-44.0) - 36.0) / 20.0)
     });
     drive(&mut s, &mut dev, &mut room, 30.0, |_, _| false);
     assert_eq!(s.phase(), MeasurePhase::Failed);
@@ -555,9 +652,9 @@ fn wp_p5ses_a_walked_run_plays_at_the_minimum_of_its_ways_levels() {
     let mut room = Room::new(
         -90.0,
         hears(|o| match o {
-            1 => 5.0,
-            2 => 30.0,
-            _ => 20.0,
+            1 => 50.0,
+            2 => 70.0,
+            _ => 60.0,
         }),
     );
     drive(&mut s, &mut dev, &mut room, 60.0, |s, _| {
@@ -1065,8 +1162,8 @@ fn wp_p5ses_start_level_only_never_plays_above_the_start() {
         st.start_level_only = true;
         let mut s = session(&st, &[0, 1]);
         let mut dev = Mock::new();
-        // A quiet microphone: a normal ramp would climb.
-        let mut room = Room::new(-90.0, hears(|_| 60.0));
+        // Heard at the start level, but a normal ramp would climb.
+        let mut room = Room::new(-90.0, hears(|_| 40.0));
         drive(&mut s, &mut dev, &mut room, 60.0, |s, _| {
             s.phase() == MeasurePhase::Run
         });
@@ -1091,7 +1188,7 @@ fn wp_p5b_start_level_only_keeps_a_lower_ceiling() {
     st.ceiling_db = Some(-70.0);
     let mut s = session(&st, &[0, 1]);
     let mut dev = Mock::new();
-    let mut room = Room::new(-90.0, hears(|_| 60.0));
+    let mut room = Room::new(-90.0, hears(|_| 20.0));
     drive(&mut s, &mut dev, &mut room, 60.0, |s, _| {
         s.phase() == MeasurePhase::Run
     });

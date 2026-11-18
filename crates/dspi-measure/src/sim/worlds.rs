@@ -114,6 +114,7 @@ impl World {
             },
             faults: Vec::new(),
             seed: 0,
+            rumble: None,
         }
     }
 
@@ -210,6 +211,7 @@ impl World {
             },
             faults: Vec::new(),
             seed,
+            rumble: None,
         }
     }
 
@@ -255,6 +257,7 @@ impl World {
             },
             faults: Vec::new(),
             seed,
+            rumble: None,
         }
     }
 
@@ -301,6 +304,7 @@ impl World {
             },
             faults: Vec::new(),
             seed,
+            rumble: None,
         }
     }
 

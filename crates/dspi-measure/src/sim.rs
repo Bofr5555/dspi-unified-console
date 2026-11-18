@@ -468,6 +468,57 @@ pub struct World {
     pub faults: Vec<CaptureFault>,
     /// The noise's seed.
     pub seed: u64,
+    // -- WP P5RAMPFIX --
+    /// Low-frequency rumble at the capture (traffic, ventilation, the
+    /// building), as the first real microphone heard it; `None` for none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rumble: Option<Rumble>,
+}
+
+// -- WP P5RAMPFIX --
+/// The most partials of a [`Rumble`].
+pub const RUMBLE_PARTIALS: u32 = 24;
+
+/// Low-frequency rumble (WP P5RAMPFIX): [`RUMBLE_PARTIALS`] sines of equal
+/// level at seeded frequencies from 20 Hz to `top_hz` with seeded phases, so
+/// its beats wander like a real room's; nothing above `top_hz`. A function
+/// of the capture's frame index ([`rumble_at`]), so consecutive renders and
+/// a client's silence between them join without a seam.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Rumble {
+    /// Its level, dBFS RMS (-200 to 0).
+    pub dbfs: f64,
+    /// Its highest partial, Hz (25 to 400).
+    pub top_hz: f64,
+}
+
+/// The rumble of `world` at capture frame `frame` (the frame index a client
+/// reports, [`MicClock::first_frame`] included); 0 without rumble or for one
+/// out of range.
+pub fn rumble_at(world: &World, frame: u64) -> f64 {
+    let Some(r) = world.rumble else {
+        return 0.0;
+    };
+    if !(r.dbfs.is_finite() && (-200.0..=0.0).contains(&r.dbfs))
+        || !(r.top_hz.is_finite() && (25.0..=400.0).contains(&r.top_hz))
+    {
+        return 0.0;
+    }
+    let fs = f64::from(world.clock.rate_hz.max(1));
+    // Each partial's peak: the sum's RMS is the level.
+    let amp = 10f64.powf(r.dbfs / 20.0) * (2.0 / f64::from(RUMBLE_PARTIALS)).sqrt();
+    let t = frame as f64 / fs;
+    (0..RUMBLE_PARTIALS)
+        .map(|i| {
+            let u = dsp::uniform(world.seed ^ 0x5255_4D42, u64::from(i));
+            let v = dsp::uniform(world.seed ^ 0x5048_4153, u64::from(i));
+            let f = 20.0 + (r.top_hz - 20.0) * u;
+            // Whole turns dropped, the seeded start phase added.
+            let turns = (f * t).fract() + v;
+            amp * (std::f64::consts::TAU * turns).sin()
+        })
+        .sum()
 }
 
 /// Where a fault landed in a rendered capture.

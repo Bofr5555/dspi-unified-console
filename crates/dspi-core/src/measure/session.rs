@@ -21,6 +21,7 @@ use super::plan::{PINK_POST_MS, PREROLL_MS, Plan, RunSpec};
 use super::runs::{self, RAMP_PINK_MS, RAMP_SWEEP_MS, RunResult};
 use super::safety::{
     self, GenView, LIMITER_ACTS_DB, OUTPUT_PEAK_DBFS, Ramp, RampNext, SplMeter, StepEval,
+    StepRecord,
 };
 use super::{
     Chains, Device, MeasureIssue, MeasureLevel, MeasurePhase, MeasureRunKind, MeasureState,
@@ -28,6 +29,7 @@ use super::{
 };
 use crate::DspiError;
 use crate::records::{SiggenConfig, SiggenStatus};
+use dspi_measure::hearing::Listener;
 
 /// The device lock's lease (OD-P5n): renewed while the session is active.
 pub(crate) const LEASE: Duration = Duration::from_secs(30);
@@ -134,7 +136,11 @@ pub(crate) struct Session {
     /// The capture of the current stage and its first frame.
     buf: Vec<f32>,
     buf_first: u64,
-    noise_db: f64,
+    /// The pre-roll's listener of the ramp's steps (WP P5RAMPFIX); `None`
+    /// hears nothing (fail closed).
+    listener: Option<Listener>,
+    /// The ramp's steps of this run, judged.
+    ramp_steps: Vec<StepRecord>,
     spl: Option<SplMeter>,
     generator: GenView,
     playing: Option<Playing>,
@@ -185,7 +191,8 @@ impl Session {
             frames: 0,
             buf: Vec::new(),
             buf_first: 0,
-            noise_db: safety::db(0.0),
+            listener: None,
+            ramp_steps: Vec::new(),
             generator: GenView::default(),
             playing: None,
             schedule: None,
@@ -791,6 +798,7 @@ impl Session {
                     self.plan.start_db,
                     self.plan.ceiling_db,
                     self.plan.spl_cap_db,
+                    self.plan.start_level_only,
                 );
                 let first = ramp.first();
                 self.start_step(dev, ramp, first, now);
@@ -848,11 +856,22 @@ impl Session {
                 if self.buf.len() < want {
                     return;
                 }
-                self.noise_db = safety::noise_db(&self.buf, rate);
                 match after {
                     After::Ramp => {
+                        self.listener = match safety::ramp_listener(
+                            &self.plan,
+                            self.ctx.device_rate_hz,
+                            &self.buf,
+                        ) {
+                            Ok(l) => Some(l),
+                            Err(e) => {
+                                log::warn!("measure: the ramp hears nothing: {e}");
+                                None
+                            }
+                        };
                         self.ramp_idx = 0;
                         self.levels.clear();
+                        self.ramp_steps.clear();
                         self.next_ramp(dev, now);
                     }
                     After::Run => self.start_run(dev, now),
@@ -896,7 +915,6 @@ impl Session {
         if !p.ended || (!complete && !(*clipped || *loud)) {
             return;
         }
-        let rate = self.plan.capture_rate_hz;
         let spl = match (self.plan.spl_cap_db, *loud) {
             (Some(cap), true) => Some(f64::from(cap)),
             _ => self
@@ -906,13 +924,24 @@ impl Session {
                 .zip(self.plan.mic.as_ref().and_then(|m| m.spl_offset_db))
                 .map(|(db, off)| db + off),
         };
+        let (snr_db, in_band_db) = safety::step_hearing(self.listener.as_ref(), &self.buf);
+        log::info!(
+            "measure: ramp step output {} at {} dBFS: in-band SNR {snr_db:.1} dB",
+            ramp.output,
+            *level
+        );
         let eval = StepEval {
             level_db: *level,
-            signal_db: safety::signal_db(&self.buf, rate),
-            noise_db: self.noise_db,
+            snr_db,
+            in_band_db,
             clipped: *clipped,
             spl_db: spl,
         };
+        self.ramp_steps.push(StepRecord {
+            output: ramp.output,
+            level_db: *level,
+            snr_db,
+        });
         let mut ramp = ramp.clone();
         let next = ramp.judge(eval);
         self.playing = None;
@@ -1054,7 +1083,8 @@ impl Session {
         }
         match outcome {
             None => {}
-            Some(Ok(r)) => {
+            Some(Ok(mut r)) => {
+                r.ramp_steps.clone_from(&self.ramp_steps);
                 if self.run == 0 {
                     self.timing_reliable = Some(r.timing_reliable);
                 }
@@ -1078,6 +1108,7 @@ impl Session {
         self.run = self.run.saturating_add(1);
         self.ramp_idx = 0;
         self.levels.clear();
+        self.ramp_steps.clear();
         self.run_level = None;
         match self.current_run().map(|r| r.position) {
             None => self.finish(dev),

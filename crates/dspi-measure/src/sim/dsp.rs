@@ -395,6 +395,13 @@ pub(crate) fn normal(seed: u64, index: u64) -> f64 {
     (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
 }
 
+// -- WP P5RAMPFIX --
+/// A seeded uniform in [0, 1) for `index`.
+pub(crate) fn uniform(seed: u64, index: u64) -> f64 {
+    let a = splitmix64(seed ^ index.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+    (a >> 11) as f64 / (1u64 << 53) as f64
+}
+
 fn splitmix64(x: u64) -> u64 {
     let mut z = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
