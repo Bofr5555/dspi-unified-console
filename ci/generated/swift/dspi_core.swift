@@ -4163,6 +4163,19 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     func measureDocsMerged(kind: String, serial: String) throws  -> MeasureDocsMerged
     
     /**
+     * The layout the device's state suggests (PLAN-P5 section 1.4 step 1):
+     * each enabled output that plays an input, its way from its filters
+     * (only a low-pass: low, or sub at or below 120 Hz or by name; a
+     * high-pass and a low-pass: mid; only a high-pass: high; none: full
+     * range), its speaker from its programme source (input 1 `L`, input 2
+     * `R`), one alignment group per speaker, and its programme feed. Reads
+     * the mirror only.
+     *
+     * Errors: [`DspiError::Disconnected`].
+     */
+    func measureLayoutProposal() throws  -> MeasureLayout
+    
+    /**
      * Write the pending change `proposal_id` as **one undo group**
      * (unguarded, as a manual edit; S10): the run in flight is stopped, each
      * band through the typed setter (judged by read-only, the limits and the
@@ -4387,6 +4400,122 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Returns the state; never fails.
      */
     func measureTick()  -> MeasureState
+    
+    /**
+     * Start the A/B compare of a kept tune: the device now ("A", the tune)
+     * against the "before" snapshot ("B"). Toggle with `ab_toggle`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune was kept;
+     * `ab_start_documents`'s.
+     */
+    func measureTuneAb() throws  -> AbCompare
+    
+    /**
+     * Apply proposal `proposal_id` (PLAN-P5 section 1.4 step 9, S10): the
+     * preflight **again** with the chains it was computed for, the "before"
+     * snapshot filed, the guard begun (`guard_s` seconds; 0: 300), then
+     * every write through `write_param` in one undo group "Auto-tune". A
+     * refused write ends the group and the guard reverts. Returns the guard.
+     *
+     * Errors, with nothing written: [`DspiError::InvalidArgument`] for
+     * another proposal's id, a proposal with timing writes whose summed check
+     * has not passed (`measure.tune.sum_check_needed`), a measurement or a
+     * live view running, or a blocker of the preflight (programme audio, a
+     * chain changed since, ...); [`DspiError::ReadOnly`] (read-only mode or
+     * connection); [`DspiError::Denied`] (a Viewer through a hub); the
+     * guard's refusals. After the guard began: the refused write's error
+     * (the guard has reverted).
+     */
+    func measureTuneApply(proposalId: UInt32, guardS: UInt32) throws  -> GuardedApply
+    
+    /**
+     * Keep the applied tune (PLAN-P5 section 1.4 step 11): `apply_confirm`,
+     * the "after" snapshot filed with its `tune` block (the measurement, the
+     * algorithm, the options, the writes), and the tune's row added to the
+     * measurement. A verify still running is stopped first.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
+     * `apply_confirm`'s. Filing failures are notes, not errors.
+     */
+    func measureTuneKeep() throws  -> MeasureTuneKeep
+    
+    /**
+     * The current proposal (a new one after a summed check), if any. No
+     * I/O.
+     */
+    func measureTuneProposal()  -> MeasureTuneProposal?
+    
+    /**
+     * Propose a tune of `layout` from `measurement` (a filed measurement's
+     * id, the hub's first, or a `measurement` document's text) with
+     * `options` (PLAN-P5 section 1.4 steps 3 to 8). Nothing is written.
+     * Replaces any proposal not applied yet.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a measurement of another
+     * device (`measure.tune.other_device`), one without an output of the
+     * layout, a bad layout, options or target, or while a tune is applied
+     * (Keep or Revert it first); [`DspiError::Disconnected`]; as
+     * `measure_doc_get` for an id.
+     */
+    func measureTunePropose(measurement: String, layout: MeasureLayout, options: MeasureTuneOptions) throws  -> MeasureTuneProposal
+    
+    /**
+     * Revert the applied tune: the guard puts the "before" state back (a
+     * verify still running is stopped first). Returns the guard.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
+     * `apply_revert`'s.
+     */
+    func measureTuneRevert() throws  -> GuardedApply
+    
+    /**
+     * The tune's state, without I/O (safe from the measurement listener).
+     */
+    func measureTuneState()  -> MeasureTuneState
+    
+    /**
+     * Stop the tune's runs and forget it, unless it is applied (then only
+     * its runs stop: Keep or Revert it). Never fails.
+     */
+    func measureTuneStop()  -> MeasureTuneState
+    
+    /**
+     * Run the mandatory summed check of proposal `proposal_id` (RC5f): one
+     * summed run per transition with timing writes, with the chains and
+     * polarities **now**, each a measurement session under every S-rule
+     * (the preflight, the ramp, the aborts). Drive it with
+     * [`DspiCore::measure_tune_tick`]; the proposal is then made again
+     * ([`DspiCore::measure_tune_proposal`]): a speaker whose summed run
+     * differs from the prediction by more than 1.5 dB RMS gets its timing
+     * writes withdrawn, with the reason.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another proposal's id, a
+     * tune not waiting with a proposal, a measurement microphone that is not
+     * at hand, or `measure_start`'s refusals ([`DspiError::ReadOnly`],
+     * [`DspiError::Denied`], [`DspiError::Locked`]).
+     */
+    func measureTuneSumCheck(proposalId: UInt32) throws  -> MeasureTuneState
+    
+    /**
+     * Drive the tune: its summed or verify runs (`measure_tick`, then the
+     * next run or the verdict), and the guard's timer while applied. Call it
+     * about every 50 ms off the UI thread while `running` (and while a tune
+     * is applied), instead of `measure_tick`; push capture whenever the
+     * session wants it. Never fails.
+     */
+    func measureTuneTick()  -> MeasureTuneState
+    
+    /**
+     * Verify the applied tune inside its guard (PLAN-P5 section 1.4 step
+     * 10): a walked run of the tuned outputs and a summed run per transition
+     * with the new polarities, each measured against the prediction. Drive
+     * it with [`DspiCore::measure_tune_tick`]; the result is the state's
+     * `verify`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, the
+     * measurement's microphone is not at hand, or `measure_start` refuses.
+     */
+    func measureTuneVerify() throws  -> MeasureTuneState
     
     /**
      * Output `output`'s measured response as REW text ("Import frequency
@@ -10720,6 +10849,24 @@ open func measureDocsMerged(kind: String, serial: String)throws  -> MeasureDocsM
 }
     
     /**
+     * The layout the device's state suggests (PLAN-P5 section 1.4 step 1):
+     * each enabled output that plays an input, its way from its filters
+     * (only a low-pass: low, or sub at or below 120 Hz or by name; a
+     * high-pass and a low-pass: mid; only a high-pass: high; none: full
+     * range), its speaker from its programme source (input 1 `L`, input 2
+     * `R`), one alignment group per speaker, and its programme feed. Reads
+     * the mirror only.
+     *
+     * Errors: [`DspiError::Disconnected`].
+     */
+open func measureLayoutProposal()throws  -> MeasureLayout  {
+    return try  FfiConverterTypeMeasureLayout_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_layout_proposal(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * Write the pending change `proposal_id` as **one undo group**
      * (unguarded, as a manual edit; S10): the run in flight is stopped, each
      * band through the typed setter (judged by read-only, the limits and the
@@ -11071,6 +11218,183 @@ open func measureStop() -> MeasureState  {
 open func measureTick() -> MeasureState  {
     return try!  FfiConverterTypeMeasureState_lift(try! rustCall() {
     uniffi_dspi_core_fn_method_dspicore_measure_tick(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Start the A/B compare of a kept tune: the device now ("A", the tune)
+     * against the "before" snapshot ("B"). Toggle with `ab_toggle`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune was kept;
+     * `ab_start_documents`'s.
+     */
+open func measureTuneAb()throws  -> AbCompare  {
+    return try  FfiConverterTypeAbCompare_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_ab(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Apply proposal `proposal_id` (PLAN-P5 section 1.4 step 9, S10): the
+     * preflight **again** with the chains it was computed for, the "before"
+     * snapshot filed, the guard begun (`guard_s` seconds; 0: 300), then
+     * every write through `write_param` in one undo group "Auto-tune". A
+     * refused write ends the group and the guard reverts. Returns the guard.
+     *
+     * Errors, with nothing written: [`DspiError::InvalidArgument`] for
+     * another proposal's id, a proposal with timing writes whose summed check
+     * has not passed (`measure.tune.sum_check_needed`), a measurement or a
+     * live view running, or a blocker of the preflight (programme audio, a
+     * chain changed since, ...); [`DspiError::ReadOnly`] (read-only mode or
+     * connection); [`DspiError::Denied`] (a Viewer through a hub); the
+     * guard's refusals. After the guard began: the refused write's error
+     * (the guard has reverted).
+     */
+open func measureTuneApply(proposalId: UInt32, guardS: UInt32)throws  -> GuardedApply  {
+    return try  FfiConverterTypeGuardedApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_apply(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(proposalId),
+        FfiConverterUInt32.lower(guardS),$0
+    )
+})
+}
+    
+    /**
+     * Keep the applied tune (PLAN-P5 section 1.4 step 11): `apply_confirm`,
+     * the "after" snapshot filed with its `tune` block (the measurement, the
+     * algorithm, the options, the writes), and the tune's row added to the
+     * measurement. A verify still running is stopped first.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
+     * `apply_confirm`'s. Filing failures are notes, not errors.
+     */
+open func measureTuneKeep()throws  -> MeasureTuneKeep  {
+    return try  FfiConverterTypeMeasureTuneKeep_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_keep(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The current proposal (a new one after a summed check), if any. No
+     * I/O.
+     */
+open func measureTuneProposal() -> MeasureTuneProposal?  {
+    return try!  FfiConverterOptionTypeMeasureTuneProposal.lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_proposal(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Propose a tune of `layout` from `measurement` (a filed measurement's
+     * id, the hub's first, or a `measurement` document's text) with
+     * `options` (PLAN-P5 section 1.4 steps 3 to 8). Nothing is written.
+     * Replaces any proposal not applied yet.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a measurement of another
+     * device (`measure.tune.other_device`), one without an output of the
+     * layout, a bad layout, options or target, or while a tune is applied
+     * (Keep or Revert it first); [`DspiError::Disconnected`]; as
+     * `measure_doc_get` for an id.
+     */
+open func measureTunePropose(measurement: String, layout: MeasureLayout, options: MeasureTuneOptions)throws  -> MeasureTuneProposal  {
+    return try  FfiConverterTypeMeasureTuneProposal_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_propose(self.uniffiClonePointer(),
+        FfiConverterString.lower(measurement),
+        FfiConverterTypeMeasureLayout_lower(layout),
+        FfiConverterTypeMeasureTuneOptions_lower(options),$0
+    )
+})
+}
+    
+    /**
+     * Revert the applied tune: the guard puts the "before" state back (a
+     * verify still running is stopped first). Returns the guard.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
+     * `apply_revert`'s.
+     */
+open func measureTuneRevert()throws  -> GuardedApply  {
+    return try  FfiConverterTypeGuardedApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_revert(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * The tune's state, without I/O (safe from the measurement listener).
+     */
+open func measureTuneState() -> MeasureTuneState  {
+    return try!  FfiConverterTypeMeasureTuneState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_state(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Stop the tune's runs and forget it, unless it is applied (then only
+     * its runs stop: Keep or Revert it). Never fails.
+     */
+open func measureTuneStop() -> MeasureTuneState  {
+    return try!  FfiConverterTypeMeasureTuneState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_stop(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Run the mandatory summed check of proposal `proposal_id` (RC5f): one
+     * summed run per transition with timing writes, with the chains and
+     * polarities **now**, each a measurement session under every S-rule
+     * (the preflight, the ramp, the aborts). Drive it with
+     * [`DspiCore::measure_tune_tick`]; the proposal is then made again
+     * ([`DspiCore::measure_tune_proposal`]): a speaker whose summed run
+     * differs from the prediction by more than 1.5 dB RMS gets its timing
+     * writes withdrawn, with the reason.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another proposal's id, a
+     * tune not waiting with a proposal, a measurement microphone that is not
+     * at hand, or `measure_start`'s refusals ([`DspiError::ReadOnly`],
+     * [`DspiError::Denied`], [`DspiError::Locked`]).
+     */
+open func measureTuneSumCheck(proposalId: UInt32)throws  -> MeasureTuneState  {
+    return try  FfiConverterTypeMeasureTuneState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_sum_check(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(proposalId),$0
+    )
+})
+}
+    
+    /**
+     * Drive the tune: its summed or verify runs (`measure_tick`, then the
+     * next run or the verdict), and the guard's timer while applied. Call it
+     * about every 50 ms off the UI thread while `running` (and while a tune
+     * is applied), instead of `measure_tick`; push capture whenever the
+     * session wants it. Never fails.
+     */
+open func measureTuneTick() -> MeasureTuneState  {
+    return try!  FfiConverterTypeMeasureTuneState_lift(try! rustCall() {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_tick(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Verify the applied tune inside its guard (PLAN-P5 section 1.4 step
+     * 10): a walked run of the tuned outputs and a summed run per transition
+     * with the new polarities, each measured against the prediction. Drive
+     * it with [`DspiCore::measure_tune_tick`]; the result is the state's
+     * `verify`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, the
+     * measurement's microphone is not at hand, or `measure_start` refuses.
+     */
+open func measureTuneVerify()throws  -> MeasureTuneState  {
+    return try  FfiConverterTypeMeasureTuneState_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_measure_tune_verify(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -39805,6 +40129,279 @@ public func FfiConverterTypeMeasureIssue_lower(_ value: MeasureIssue) -> RustBuf
 
 
 /**
+ * The speakers and ways the tune works on (`measure_layout_proposal`;
+ * confirmed or edited by the user).
+ */
+public struct MeasureLayout {
+    /**
+     * The outputs, each once.
+     */
+    public var outputs: [MeasureLayoutOutput]
+    /**
+     * The layout recognised (`3way`, `2way`, `headphones`, `full range`),
+     * "" when none.
+     */
+    public var template: String
+    /**
+     * Remarks in words.
+     */
+    public var notes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The outputs, each once.
+         */outputs: [MeasureLayoutOutput], 
+        /**
+         * The layout recognised (`3way`, `2way`, `headphones`, `full range`),
+         * "" when none.
+         */template: String, 
+        /**
+         * Remarks in words.
+         */notes: [String]) {
+        self.outputs = outputs
+        self.template = template
+        self.notes = notes
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLayout: Sendable {}
+#endif
+
+
+extension MeasureLayout: Equatable, Hashable {
+    public static func ==(lhs: MeasureLayout, rhs: MeasureLayout) -> Bool {
+        if lhs.outputs != rhs.outputs {
+            return false
+        }
+        if lhs.template != rhs.template {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(outputs)
+        hasher.combine(template)
+        hasher.combine(notes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLayout: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLayout {
+        return
+            try MeasureLayout(
+                outputs: FfiConverterSequenceTypeMeasureLayoutOutput.read(from: &buf), 
+                template: FfiConverterString.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLayout, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeMeasureLayoutOutput.write(value.outputs, into: &buf)
+        FfiConverterString.write(value.template, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLayout_lift(_ buf: RustBuffer) throws -> MeasureLayout {
+    return try FfiConverterTypeMeasureLayout.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLayout_lower(_ value: MeasureLayout) -> RustBuffer {
+    return FfiConverterTypeMeasureLayout.lower(value)
+}
+
+
+/**
+ * One output of a layout (PLAN-P5 section 1.4 step 1).
+ */
+public struct MeasureLayoutOutput {
+    /**
+     * The output, 0-based.
+     */
+    public var output: UInt8
+    /**
+     * Its way.
+     */
+    public var role: MeasureRole
+    /**
+     * The speaker it belongs to (`L`, `R`, `Sub`, ...): the ways of one
+     * speaker are tuned together.
+     */
+    public var speaker: String
+    /**
+     * Its alignment group: one walked run measures a group.
+     */
+    public var group: UInt8
+    /**
+     * The output's user name, if it has one.
+     */
+    public var name: String
+    /**
+     * The input that feeds it most (its programme source), if one.
+     */
+    public var feedInput: UInt8?
+    /**
+     * The net crosspoint gain of that source, dB.
+     */
+    public var feedGainDb: Float
+    /**
+     * The net polarity of its feeding crosspoints is inverted.
+     */
+    public var feedInverted: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output, 0-based.
+         */output: UInt8, 
+        /**
+         * Its way.
+         */role: MeasureRole, 
+        /**
+         * The speaker it belongs to (`L`, `R`, `Sub`, ...): the ways of one
+         * speaker are tuned together.
+         */speaker: String, 
+        /**
+         * Its alignment group: one walked run measures a group.
+         */group: UInt8, 
+        /**
+         * The output's user name, if it has one.
+         */name: String, 
+        /**
+         * The input that feeds it most (its programme source), if one.
+         */feedInput: UInt8?, 
+        /**
+         * The net crosspoint gain of that source, dB.
+         */feedGainDb: Float, 
+        /**
+         * The net polarity of its feeding crosspoints is inverted.
+         */feedInverted: Bool) {
+        self.output = output
+        self.role = role
+        self.speaker = speaker
+        self.group = group
+        self.name = name
+        self.feedInput = feedInput
+        self.feedGainDb = feedGainDb
+        self.feedInverted = feedInverted
+    }
+}
+
+#if compiler(>=6)
+extension MeasureLayoutOutput: Sendable {}
+#endif
+
+
+extension MeasureLayoutOutput: Equatable, Hashable {
+    public static func ==(lhs: MeasureLayoutOutput, rhs: MeasureLayoutOutput) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.speaker != rhs.speaker {
+            return false
+        }
+        if lhs.group != rhs.group {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.feedInput != rhs.feedInput {
+            return false
+        }
+        if lhs.feedGainDb != rhs.feedGainDb {
+            return false
+        }
+        if lhs.feedInverted != rhs.feedInverted {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(role)
+        hasher.combine(speaker)
+        hasher.combine(group)
+        hasher.combine(name)
+        hasher.combine(feedInput)
+        hasher.combine(feedGainDb)
+        hasher.combine(feedInverted)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureLayoutOutput: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureLayoutOutput {
+        return
+            try MeasureLayoutOutput(
+                output: FfiConverterUInt8.read(from: &buf), 
+                role: FfiConverterTypeMeasureRole.read(from: &buf), 
+                speaker: FfiConverterString.read(from: &buf), 
+                group: FfiConverterUInt8.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                feedInput: FfiConverterOptionUInt8.read(from: &buf), 
+                feedGainDb: FfiConverterFloat.read(from: &buf), 
+                feedInverted: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureLayoutOutput, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterTypeMeasureRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.speaker, into: &buf)
+        FfiConverterUInt8.write(value.group, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterOptionUInt8.write(value.feedInput, into: &buf)
+        FfiConverterFloat.write(value.feedGainDb, into: &buf)
+        FfiConverterBool.write(value.feedInverted, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLayoutOutput_lift(_ buf: RustBuffer) throws -> MeasureLayoutOutput {
+    return try FfiConverterTypeMeasureLayoutOutput.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureLayoutOutput_lower(_ value: MeasureLayoutOutput) -> RustBuffer {
+    return FfiConverterTypeMeasureLayoutOutput.lower(value)
+}
+
+
+/**
  * One output's ramp result.
  */
 public struct MeasureLevel {
@@ -42523,6 +43120,1678 @@ public func FfiConverterTypeMeasureTiming_lift(_ buf: RustBuffer) throws -> Meas
 #endif
 public func FfiConverterTypeMeasureTiming_lower(_ value: MeasureTiming) -> RustBuffer {
     return FfiConverterTypeMeasureTiming.lower(value)
+}
+
+
+/**
+ * A speaker's curves: before, predicted, the target levelled to before.
+ */
+public struct MeasureTuneCurves {
+    /**
+     * The speaker.
+     */
+    public var speaker: String
+    /**
+     * The ways' sum with phase (a timing-reliable run); else their power sum.
+     */
+    public var coherent: Bool
+    /**
+     * The speaker as it is now (programme audio).
+     */
+    public var before: MeasureLiveCurve
+    /**
+     * The speaker with the proposal.
+     */
+    public var predicted: MeasureLiveCurve
+    /**
+     * The target, levelled to `before`.
+     */
+    public var target: MeasureLiveCurve
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The speaker.
+         */speaker: String, 
+        /**
+         * The ways' sum with phase (a timing-reliable run); else their power sum.
+         */coherent: Bool, 
+        /**
+         * The speaker as it is now (programme audio).
+         */before: MeasureLiveCurve, 
+        /**
+         * The speaker with the proposal.
+         */predicted: MeasureLiveCurve, 
+        /**
+         * The target, levelled to `before`.
+         */target: MeasureLiveCurve) {
+        self.speaker = speaker
+        self.coherent = coherent
+        self.before = before
+        self.predicted = predicted
+        self.target = target
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneCurves: Sendable {}
+#endif
+
+
+extension MeasureTuneCurves: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneCurves, rhs: MeasureTuneCurves) -> Bool {
+        if lhs.speaker != rhs.speaker {
+            return false
+        }
+        if lhs.coherent != rhs.coherent {
+            return false
+        }
+        if lhs.before != rhs.before {
+            return false
+        }
+        if lhs.predicted != rhs.predicted {
+            return false
+        }
+        if lhs.target != rhs.target {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(speaker)
+        hasher.combine(coherent)
+        hasher.combine(before)
+        hasher.combine(predicted)
+        hasher.combine(target)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneCurves: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneCurves {
+        return
+            try MeasureTuneCurves(
+                speaker: FfiConverterString.read(from: &buf), 
+                coherent: FfiConverterBool.read(from: &buf), 
+                before: FfiConverterTypeMeasureLiveCurve.read(from: &buf), 
+                predicted: FfiConverterTypeMeasureLiveCurve.read(from: &buf), 
+                target: FfiConverterTypeMeasureLiveCurve.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneCurves, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.speaker, into: &buf)
+        FfiConverterBool.write(value.coherent, into: &buf)
+        FfiConverterTypeMeasureLiveCurve.write(value.before, into: &buf)
+        FfiConverterTypeMeasureLiveCurve.write(value.predicted, into: &buf)
+        FfiConverterTypeMeasureLiveCurve.write(value.target, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneCurves_lift(_ buf: RustBuffer) throws -> MeasureTuneCurves {
+    return try FfiConverterTypeMeasureTuneCurves.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneCurves_lower(_ value: MeasureTuneCurves) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneCurves.lower(value)
+}
+
+
+/**
+ * What Keep did (`measure_tune_keep`).
+ */
+public struct MeasureTuneKeep {
+    /**
+     * The guard's end: `kept`, or the revert's when the timeout came first.
+     */
+    public var `guard`: GuardedApply
+    /**
+     * The "before" snapshot's id and text.
+     */
+    public var snapshotBeforeId: String
+    /**
+     * See `snapshot_before_id`.
+     */
+    public var snapshotBefore: String
+    /**
+     * The "after" snapshot's id ("" when not filed) and text (with its
+     * `tune` block).
+     */
+    public var snapshotAfterId: String
+    /**
+     * See `snapshot_after_id`.
+     */
+    public var snapshotAfter: String
+    /**
+     * The measurement's id with the tune's row: the same one in this
+     * console's store, a new copy's on the hub, "" for a measurement given
+     * as text.
+     */
+    public var measurementId: String
+    /**
+     * The measurement's text with the tune's row (file it when it was
+     * given as text).
+     */
+    public var measurement: String
+    /**
+     * What could not be filed, in words.
+     */
+    public var notes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The guard's end: `kept`, or the revert's when the timeout came first.
+         */`guard`: GuardedApply, 
+        /**
+         * The "before" snapshot's id and text.
+         */snapshotBeforeId: String, 
+        /**
+         * See `snapshot_before_id`.
+         */snapshotBefore: String, 
+        /**
+         * The "after" snapshot's id ("" when not filed) and text (with its
+         * `tune` block).
+         */snapshotAfterId: String, 
+        /**
+         * See `snapshot_after_id`.
+         */snapshotAfter: String, 
+        /**
+         * The measurement's id with the tune's row: the same one in this
+         * console's store, a new copy's on the hub, "" for a measurement given
+         * as text.
+         */measurementId: String, 
+        /**
+         * The measurement's text with the tune's row (file it when it was
+         * given as text).
+         */measurement: String, 
+        /**
+         * What could not be filed, in words.
+         */notes: [String]) {
+        self.`guard` = `guard`
+        self.snapshotBeforeId = snapshotBeforeId
+        self.snapshotBefore = snapshotBefore
+        self.snapshotAfterId = snapshotAfterId
+        self.snapshotAfter = snapshotAfter
+        self.measurementId = measurementId
+        self.measurement = measurement
+        self.notes = notes
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneKeep: Sendable {}
+#endif
+
+
+extension MeasureTuneKeep: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneKeep, rhs: MeasureTuneKeep) -> Bool {
+        if lhs.`guard` != rhs.`guard` {
+            return false
+        }
+        if lhs.snapshotBeforeId != rhs.snapshotBeforeId {
+            return false
+        }
+        if lhs.snapshotBefore != rhs.snapshotBefore {
+            return false
+        }
+        if lhs.snapshotAfterId != rhs.snapshotAfterId {
+            return false
+        }
+        if lhs.snapshotAfter != rhs.snapshotAfter {
+            return false
+        }
+        if lhs.measurementId != rhs.measurementId {
+            return false
+        }
+        if lhs.measurement != rhs.measurement {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(`guard`)
+        hasher.combine(snapshotBeforeId)
+        hasher.combine(snapshotBefore)
+        hasher.combine(snapshotAfterId)
+        hasher.combine(snapshotAfter)
+        hasher.combine(measurementId)
+        hasher.combine(measurement)
+        hasher.combine(notes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneKeep: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneKeep {
+        return
+            try MeasureTuneKeep(
+                guard: FfiConverterTypeGuardedApply.read(from: &buf), 
+                snapshotBeforeId: FfiConverterString.read(from: &buf), 
+                snapshotBefore: FfiConverterString.read(from: &buf), 
+                snapshotAfterId: FfiConverterString.read(from: &buf), 
+                snapshotAfter: FfiConverterString.read(from: &buf), 
+                measurementId: FfiConverterString.read(from: &buf), 
+                measurement: FfiConverterString.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneKeep, into buf: inout [UInt8]) {
+        FfiConverterTypeGuardedApply.write(value.`guard`, into: &buf)
+        FfiConverterString.write(value.snapshotBeforeId, into: &buf)
+        FfiConverterString.write(value.snapshotBefore, into: &buf)
+        FfiConverterString.write(value.snapshotAfterId, into: &buf)
+        FfiConverterString.write(value.snapshotAfter, into: &buf)
+        FfiConverterString.write(value.measurementId, into: &buf)
+        FfiConverterString.write(value.measurement, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneKeep_lift(_ buf: RustBuffer) throws -> MeasureTuneKeep {
+    return try FfiConverterTypeMeasureTuneKeep.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneKeep_lower(_ value: MeasureTuneKeep) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneKeep.lower(value)
+}
+
+
+/**
+ * What the tune may change (`measure_tune_propose`). Every number 0 is the
+ * default.
+ */
+public struct MeasureTuneOptions {
+    /**
+     * A `target` document's text; "" for the placement's default target.
+     */
+    public var targetDocument: String
+    /**
+     * The measurement's microphone's `mic` document; "" looks it up by the
+     * id the measurement names (needed for the summed and verify runs).
+     */
+    public var micDocument: String
+    /**
+     * "Keep the crossover, align only": no corner or level change.
+     */
+    public var keepCrossover: Bool
+    /**
+     * Keep the current delays (polarity is still judged).
+     */
+    public var keepDelays: Bool
+    /**
+     * Keep every output gain of the crossover.
+     */
+    public var keepLevels: Bool
+    /**
+     * No EQ fit.
+     */
+    public var keepEq: Bool
+    /**
+     * The corner search's window each side, octaves (0: 0.5; at most 2).
+     */
+    public var windowOctaves: Double
+    /**
+     * The fit's range, Hz (0: 20 Hz to 300 Hz for speakers, 20 Hz to 10 kHz
+     * for headphones).
+     */
+    public var fitMinHz: Double
+    /**
+     * See `fit_min_hz`.
+     */
+    public var fitMaxHz: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * A `target` document's text; "" for the placement's default target.
+         */targetDocument: String, 
+        /**
+         * The measurement's microphone's `mic` document; "" looks it up by the
+         * id the measurement names (needed for the summed and verify runs).
+         */micDocument: String, 
+        /**
+         * "Keep the crossover, align only": no corner or level change.
+         */keepCrossover: Bool, 
+        /**
+         * Keep the current delays (polarity is still judged).
+         */keepDelays: Bool, 
+        /**
+         * Keep every output gain of the crossover.
+         */keepLevels: Bool, 
+        /**
+         * No EQ fit.
+         */keepEq: Bool, 
+        /**
+         * The corner search's window each side, octaves (0: 0.5; at most 2).
+         */windowOctaves: Double, 
+        /**
+         * The fit's range, Hz (0: 20 Hz to 300 Hz for speakers, 20 Hz to 10 kHz
+         * for headphones).
+         */fitMinHz: Double, 
+        /**
+         * See `fit_min_hz`.
+         */fitMaxHz: Double) {
+        self.targetDocument = targetDocument
+        self.micDocument = micDocument
+        self.keepCrossover = keepCrossover
+        self.keepDelays = keepDelays
+        self.keepLevels = keepLevels
+        self.keepEq = keepEq
+        self.windowOctaves = windowOctaves
+        self.fitMinHz = fitMinHz
+        self.fitMaxHz = fitMaxHz
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneOptions: Sendable {}
+#endif
+
+
+extension MeasureTuneOptions: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneOptions, rhs: MeasureTuneOptions) -> Bool {
+        if lhs.targetDocument != rhs.targetDocument {
+            return false
+        }
+        if lhs.micDocument != rhs.micDocument {
+            return false
+        }
+        if lhs.keepCrossover != rhs.keepCrossover {
+            return false
+        }
+        if lhs.keepDelays != rhs.keepDelays {
+            return false
+        }
+        if lhs.keepLevels != rhs.keepLevels {
+            return false
+        }
+        if lhs.keepEq != rhs.keepEq {
+            return false
+        }
+        if lhs.windowOctaves != rhs.windowOctaves {
+            return false
+        }
+        if lhs.fitMinHz != rhs.fitMinHz {
+            return false
+        }
+        if lhs.fitMaxHz != rhs.fitMaxHz {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(targetDocument)
+        hasher.combine(micDocument)
+        hasher.combine(keepCrossover)
+        hasher.combine(keepDelays)
+        hasher.combine(keepLevels)
+        hasher.combine(keepEq)
+        hasher.combine(windowOctaves)
+        hasher.combine(fitMinHz)
+        hasher.combine(fitMaxHz)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneOptions: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneOptions {
+        return
+            try MeasureTuneOptions(
+                targetDocument: FfiConverterString.read(from: &buf), 
+                micDocument: FfiConverterString.read(from: &buf), 
+                keepCrossover: FfiConverterBool.read(from: &buf), 
+                keepDelays: FfiConverterBool.read(from: &buf), 
+                keepLevels: FfiConverterBool.read(from: &buf), 
+                keepEq: FfiConverterBool.read(from: &buf), 
+                windowOctaves: FfiConverterDouble.read(from: &buf), 
+                fitMinHz: FfiConverterDouble.read(from: &buf), 
+                fitMaxHz: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneOptions, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.targetDocument, into: &buf)
+        FfiConverterString.write(value.micDocument, into: &buf)
+        FfiConverterBool.write(value.keepCrossover, into: &buf)
+        FfiConverterBool.write(value.keepDelays, into: &buf)
+        FfiConverterBool.write(value.keepLevels, into: &buf)
+        FfiConverterBool.write(value.keepEq, into: &buf)
+        FfiConverterDouble.write(value.windowOctaves, into: &buf)
+        FfiConverterDouble.write(value.fitMinHz, into: &buf)
+        FfiConverterDouble.write(value.fitMaxHz, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneOptions_lift(_ buf: RustBuffer) throws -> MeasureTuneOptions {
+    return try FfiConverterTypeMeasureTuneOptions.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneOptions_lower(_ value: MeasureTuneOptions) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneOptions.lower(value)
+}
+
+
+/**
+ * One parameter of a write: what `write_param` gets.
+ */
+public struct MeasureTuneParam {
+    /**
+     * The registry path (`out.delay`, `eq.freq`, `mix`, ...).
+     */
+    public var path: String
+    /**
+     * Its indices.
+     */
+    public var indices: Data
+    /**
+     * The value written.
+     */
+    public var value: ParamValue
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The registry path (`out.delay`, `eq.freq`, `mix`, ...).
+         */path: String, 
+        /**
+         * Its indices.
+         */indices: Data, 
+        /**
+         * The value written.
+         */value: ParamValue) {
+        self.path = path
+        self.indices = indices
+        self.value = value
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneParam: Sendable {}
+#endif
+
+
+extension MeasureTuneParam: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneParam, rhs: MeasureTuneParam) -> Bool {
+        if lhs.path != rhs.path {
+            return false
+        }
+        if lhs.indices != rhs.indices {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(path)
+        hasher.combine(indices)
+        hasher.combine(value)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneParam: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneParam {
+        return
+            try MeasureTuneParam(
+                path: FfiConverterString.read(from: &buf), 
+                indices: FfiConverterData.read(from: &buf), 
+                value: FfiConverterTypeParamValue.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneParam, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterData.write(value.indices, into: &buf)
+        FfiConverterTypeParamValue.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneParam_lift(_ buf: RustBuffer) throws -> MeasureTuneParam {
+    return try FfiConverterTypeMeasureTuneParam.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneParam_lower(_ value: MeasureTuneParam) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneParam.lower(value)
+}
+
+
+/**
+ * A proposal: nothing is written until it is applied.
+ */
+public struct MeasureTuneProposal {
+    /**
+     * Its id, for `measure_tune_apply` (a new id after a summed check).
+     */
+    public var id: UInt32
+    /**
+     * The device it is for.
+     */
+    public var serial: String
+    /**
+     * The measurement's id ("" for one given as text).
+     */
+    public var measurementId: String
+    /**
+     * The measurement's name.
+     */
+    public var measurementName: String
+    /**
+     * Every write, in the order it is applied.
+     */
+    public var writes: [MeasureTuneWrite]
+    /**
+     * Each speaker's curves.
+     */
+    public var curves: [MeasureTuneCurves]
+    /**
+     * Each transition.
+     */
+    public var transitions: [MeasureTuneTransition]
+    /**
+     * The limits it was held to, in words.
+     */
+    public var held: [String]
+    /**
+     * What is not offered, and why.
+     */
+    public var withdrawn: [MeasureIssue]
+    /**
+     * What the user should know (an old measurement, another placement).
+     */
+    public var warnings: [MeasureIssue]
+    /**
+     * Remarks of the maths, in words.
+     */
+    public var notes: [String]
+    /**
+     * The measurement passed the timing quality gate.
+     */
+    public var timingReliable: Bool
+    /**
+     * The summed check.
+     */
+    public var sumCheck: MeasureTuneCheck
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Its id, for `measure_tune_apply` (a new id after a summed check).
+         */id: UInt32, 
+        /**
+         * The device it is for.
+         */serial: String, 
+        /**
+         * The measurement's id ("" for one given as text).
+         */measurementId: String, 
+        /**
+         * The measurement's name.
+         */measurementName: String, 
+        /**
+         * Every write, in the order it is applied.
+         */writes: [MeasureTuneWrite], 
+        /**
+         * Each speaker's curves.
+         */curves: [MeasureTuneCurves], 
+        /**
+         * Each transition.
+         */transitions: [MeasureTuneTransition], 
+        /**
+         * The limits it was held to, in words.
+         */held: [String], 
+        /**
+         * What is not offered, and why.
+         */withdrawn: [MeasureIssue], 
+        /**
+         * What the user should know (an old measurement, another placement).
+         */warnings: [MeasureIssue], 
+        /**
+         * Remarks of the maths, in words.
+         */notes: [String], 
+        /**
+         * The measurement passed the timing quality gate.
+         */timingReliable: Bool, 
+        /**
+         * The summed check.
+         */sumCheck: MeasureTuneCheck) {
+        self.id = id
+        self.serial = serial
+        self.measurementId = measurementId
+        self.measurementName = measurementName
+        self.writes = writes
+        self.curves = curves
+        self.transitions = transitions
+        self.held = held
+        self.withdrawn = withdrawn
+        self.warnings = warnings
+        self.notes = notes
+        self.timingReliable = timingReliable
+        self.sumCheck = sumCheck
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneProposal: Sendable {}
+#endif
+
+
+extension MeasureTuneProposal: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneProposal, rhs: MeasureTuneProposal) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.serial != rhs.serial {
+            return false
+        }
+        if lhs.measurementId != rhs.measurementId {
+            return false
+        }
+        if lhs.measurementName != rhs.measurementName {
+            return false
+        }
+        if lhs.writes != rhs.writes {
+            return false
+        }
+        if lhs.curves != rhs.curves {
+            return false
+        }
+        if lhs.transitions != rhs.transitions {
+            return false
+        }
+        if lhs.held != rhs.held {
+            return false
+        }
+        if lhs.withdrawn != rhs.withdrawn {
+            return false
+        }
+        if lhs.warnings != rhs.warnings {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        if lhs.timingReliable != rhs.timingReliable {
+            return false
+        }
+        if lhs.sumCheck != rhs.sumCheck {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(serial)
+        hasher.combine(measurementId)
+        hasher.combine(measurementName)
+        hasher.combine(writes)
+        hasher.combine(curves)
+        hasher.combine(transitions)
+        hasher.combine(held)
+        hasher.combine(withdrawn)
+        hasher.combine(warnings)
+        hasher.combine(notes)
+        hasher.combine(timingReliable)
+        hasher.combine(sumCheck)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneProposal: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneProposal {
+        return
+            try MeasureTuneProposal(
+                id: FfiConverterUInt32.read(from: &buf), 
+                serial: FfiConverterString.read(from: &buf), 
+                measurementId: FfiConverterString.read(from: &buf), 
+                measurementName: FfiConverterString.read(from: &buf), 
+                writes: FfiConverterSequenceTypeMeasureTuneWrite.read(from: &buf), 
+                curves: FfiConverterSequenceTypeMeasureTuneCurves.read(from: &buf), 
+                transitions: FfiConverterSequenceTypeMeasureTuneTransition.read(from: &buf), 
+                held: FfiConverterSequenceString.read(from: &buf), 
+                withdrawn: FfiConverterSequenceTypeMeasureIssue.read(from: &buf), 
+                warnings: FfiConverterSequenceTypeMeasureIssue.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf), 
+                timingReliable: FfiConverterBool.read(from: &buf), 
+                sumCheck: FfiConverterTypeMeasureTuneCheck.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneProposal, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.id, into: &buf)
+        FfiConverterString.write(value.serial, into: &buf)
+        FfiConverterString.write(value.measurementId, into: &buf)
+        FfiConverterString.write(value.measurementName, into: &buf)
+        FfiConverterSequenceTypeMeasureTuneWrite.write(value.writes, into: &buf)
+        FfiConverterSequenceTypeMeasureTuneCurves.write(value.curves, into: &buf)
+        FfiConverterSequenceTypeMeasureTuneTransition.write(value.transitions, into: &buf)
+        FfiConverterSequenceString.write(value.held, into: &buf)
+        FfiConverterSequenceTypeMeasureIssue.write(value.withdrawn, into: &buf)
+        FfiConverterSequenceTypeMeasureIssue.write(value.warnings, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+        FfiConverterBool.write(value.timingReliable, into: &buf)
+        FfiConverterTypeMeasureTuneCheck.write(value.sumCheck, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneProposal_lift(_ buf: RustBuffer) throws -> MeasureTuneProposal {
+    return try FfiConverterTypeMeasureTuneProposal.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneProposal_lower(_ value: MeasureTuneProposal) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneProposal.lower(value)
+}
+
+
+/**
+ * A tune's state (`measure_tune_tick`, `measure_tune_state`).
+ */
+public struct MeasureTuneState {
+    /**
+     * Where it stands.
+     */
+    public var stage: MeasureTuneStage
+    /**
+     * A summed or verify run is under way: tick and push capture.
+     */
+    public var running: Bool
+    /**
+     * The current proposal's id.
+     */
+    public var proposalId: UInt32?
+    /**
+     * The run under way, 1-based, and the runs of this step.
+     */
+    public var run: UInt16
+    /**
+     * See `run`.
+     */
+    public var runs: UInt16
+    /**
+     * The measurement session under the run.
+     */
+    public var session: MeasureState
+    /**
+     * The guard, once applied.
+     */
+    public var `guard`: GuardedApply
+    /**
+     * The verify's result.
+     */
+    public var verify: MeasureTuneVerify?
+    /**
+     * Why the last step stopped, if it did.
+     */
+    public var issue: MeasureIssue?
+    /**
+     * The "before" snapshot's id ("" when not filed: its text is kept).
+     */
+    public var snapshotBeforeId: String
+    /**
+     * The "after" snapshot's id, once kept.
+     */
+    public var snapshotAfterId: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Where it stands.
+         */stage: MeasureTuneStage, 
+        /**
+         * A summed or verify run is under way: tick and push capture.
+         */running: Bool, 
+        /**
+         * The current proposal's id.
+         */proposalId: UInt32?, 
+        /**
+         * The run under way, 1-based, and the runs of this step.
+         */run: UInt16, 
+        /**
+         * See `run`.
+         */runs: UInt16, 
+        /**
+         * The measurement session under the run.
+         */session: MeasureState, 
+        /**
+         * The guard, once applied.
+         */`guard`: GuardedApply, 
+        /**
+         * The verify's result.
+         */verify: MeasureTuneVerify?, 
+        /**
+         * Why the last step stopped, if it did.
+         */issue: MeasureIssue?, 
+        /**
+         * The "before" snapshot's id ("" when not filed: its text is kept).
+         */snapshotBeforeId: String, 
+        /**
+         * The "after" snapshot's id, once kept.
+         */snapshotAfterId: String) {
+        self.stage = stage
+        self.running = running
+        self.proposalId = proposalId
+        self.run = run
+        self.runs = runs
+        self.session = session
+        self.`guard` = `guard`
+        self.verify = verify
+        self.issue = issue
+        self.snapshotBeforeId = snapshotBeforeId
+        self.snapshotAfterId = snapshotAfterId
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneState: Sendable {}
+#endif
+
+
+extension MeasureTuneState: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneState, rhs: MeasureTuneState) -> Bool {
+        if lhs.stage != rhs.stage {
+            return false
+        }
+        if lhs.running != rhs.running {
+            return false
+        }
+        if lhs.proposalId != rhs.proposalId {
+            return false
+        }
+        if lhs.run != rhs.run {
+            return false
+        }
+        if lhs.runs != rhs.runs {
+            return false
+        }
+        if lhs.session != rhs.session {
+            return false
+        }
+        if lhs.`guard` != rhs.`guard` {
+            return false
+        }
+        if lhs.verify != rhs.verify {
+            return false
+        }
+        if lhs.issue != rhs.issue {
+            return false
+        }
+        if lhs.snapshotBeforeId != rhs.snapshotBeforeId {
+            return false
+        }
+        if lhs.snapshotAfterId != rhs.snapshotAfterId {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(stage)
+        hasher.combine(running)
+        hasher.combine(proposalId)
+        hasher.combine(run)
+        hasher.combine(runs)
+        hasher.combine(session)
+        hasher.combine(`guard`)
+        hasher.combine(verify)
+        hasher.combine(issue)
+        hasher.combine(snapshotBeforeId)
+        hasher.combine(snapshotAfterId)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneState {
+        return
+            try MeasureTuneState(
+                stage: FfiConverterTypeMeasureTuneStage.read(from: &buf), 
+                running: FfiConverterBool.read(from: &buf), 
+                proposalId: FfiConverterOptionUInt32.read(from: &buf), 
+                run: FfiConverterUInt16.read(from: &buf), 
+                runs: FfiConverterUInt16.read(from: &buf), 
+                session: FfiConverterTypeMeasureState.read(from: &buf), 
+                guard: FfiConverterTypeGuardedApply.read(from: &buf), 
+                verify: FfiConverterOptionTypeMeasureTuneVerify.read(from: &buf), 
+                issue: FfiConverterOptionTypeMeasureIssue.read(from: &buf), 
+                snapshotBeforeId: FfiConverterString.read(from: &buf), 
+                snapshotAfterId: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneState, into buf: inout [UInt8]) {
+        FfiConverterTypeMeasureTuneStage.write(value.stage, into: &buf)
+        FfiConverterBool.write(value.running, into: &buf)
+        FfiConverterOptionUInt32.write(value.proposalId, into: &buf)
+        FfiConverterUInt16.write(value.run, into: &buf)
+        FfiConverterUInt16.write(value.runs, into: &buf)
+        FfiConverterTypeMeasureState.write(value.session, into: &buf)
+        FfiConverterTypeGuardedApply.write(value.`guard`, into: &buf)
+        FfiConverterOptionTypeMeasureTuneVerify.write(value.verify, into: &buf)
+        FfiConverterOptionTypeMeasureIssue.write(value.issue, into: &buf)
+        FfiConverterString.write(value.snapshotBeforeId, into: &buf)
+        FfiConverterString.write(value.snapshotAfterId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneState_lift(_ buf: RustBuffer) throws -> MeasureTuneState {
+    return try FfiConverterTypeMeasureTuneState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneState_lower(_ value: MeasureTuneState) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneState.lower(value)
+}
+
+
+/**
+ * One transition of a proposal.
+ */
+public struct MeasureTuneTransition {
+    /**
+     * The speaker.
+     */
+    public var speaker: String
+    /**
+     * The lower way's output.
+     */
+    public var lowOutput: UInt8
+    /**
+     * The upper way's output.
+     */
+    public var highOutput: UInt8
+    /**
+     * The corner now, Hz.
+     */
+    public var cornerBeforeHz: Double
+    /**
+     * The proposed corner, Hz.
+     */
+    public var cornerHz: Double
+    /**
+     * The upper way's delay minus the lower way's, as proposed, ms.
+     */
+    public var relativeDelayMs: Double
+    /**
+     * The upper way's polarity is flipped relative to the lower way's.
+     */
+    public var flipped: Bool
+    /**
+     * The summed check's RMS difference, dB, once run.
+     */
+    public var sumCheckRmsDb: Double?
+    /**
+     * The verify's summed RMS difference, dB, once run.
+     */
+    public var verifyRmsDb: Double?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The speaker.
+         */speaker: String, 
+        /**
+         * The lower way's output.
+         */lowOutput: UInt8, 
+        /**
+         * The upper way's output.
+         */highOutput: UInt8, 
+        /**
+         * The corner now, Hz.
+         */cornerBeforeHz: Double, 
+        /**
+         * The proposed corner, Hz.
+         */cornerHz: Double, 
+        /**
+         * The upper way's delay minus the lower way's, as proposed, ms.
+         */relativeDelayMs: Double, 
+        /**
+         * The upper way's polarity is flipped relative to the lower way's.
+         */flipped: Bool, 
+        /**
+         * The summed check's RMS difference, dB, once run.
+         */sumCheckRmsDb: Double?, 
+        /**
+         * The verify's summed RMS difference, dB, once run.
+         */verifyRmsDb: Double?) {
+        self.speaker = speaker
+        self.lowOutput = lowOutput
+        self.highOutput = highOutput
+        self.cornerBeforeHz = cornerBeforeHz
+        self.cornerHz = cornerHz
+        self.relativeDelayMs = relativeDelayMs
+        self.flipped = flipped
+        self.sumCheckRmsDb = sumCheckRmsDb
+        self.verifyRmsDb = verifyRmsDb
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneTransition: Sendable {}
+#endif
+
+
+extension MeasureTuneTransition: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneTransition, rhs: MeasureTuneTransition) -> Bool {
+        if lhs.speaker != rhs.speaker {
+            return false
+        }
+        if lhs.lowOutput != rhs.lowOutput {
+            return false
+        }
+        if lhs.highOutput != rhs.highOutput {
+            return false
+        }
+        if lhs.cornerBeforeHz != rhs.cornerBeforeHz {
+            return false
+        }
+        if lhs.cornerHz != rhs.cornerHz {
+            return false
+        }
+        if lhs.relativeDelayMs != rhs.relativeDelayMs {
+            return false
+        }
+        if lhs.flipped != rhs.flipped {
+            return false
+        }
+        if lhs.sumCheckRmsDb != rhs.sumCheckRmsDb {
+            return false
+        }
+        if lhs.verifyRmsDb != rhs.verifyRmsDb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(speaker)
+        hasher.combine(lowOutput)
+        hasher.combine(highOutput)
+        hasher.combine(cornerBeforeHz)
+        hasher.combine(cornerHz)
+        hasher.combine(relativeDelayMs)
+        hasher.combine(flipped)
+        hasher.combine(sumCheckRmsDb)
+        hasher.combine(verifyRmsDb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneTransition: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneTransition {
+        return
+            try MeasureTuneTransition(
+                speaker: FfiConverterString.read(from: &buf), 
+                lowOutput: FfiConverterUInt8.read(from: &buf), 
+                highOutput: FfiConverterUInt8.read(from: &buf), 
+                cornerBeforeHz: FfiConverterDouble.read(from: &buf), 
+                cornerHz: FfiConverterDouble.read(from: &buf), 
+                relativeDelayMs: FfiConverterDouble.read(from: &buf), 
+                flipped: FfiConverterBool.read(from: &buf), 
+                sumCheckRmsDb: FfiConverterOptionDouble.read(from: &buf), 
+                verifyRmsDb: FfiConverterOptionDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneTransition, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.speaker, into: &buf)
+        FfiConverterUInt8.write(value.lowOutput, into: &buf)
+        FfiConverterUInt8.write(value.highOutput, into: &buf)
+        FfiConverterDouble.write(value.cornerBeforeHz, into: &buf)
+        FfiConverterDouble.write(value.cornerHz, into: &buf)
+        FfiConverterDouble.write(value.relativeDelayMs, into: &buf)
+        FfiConverterBool.write(value.flipped, into: &buf)
+        FfiConverterOptionDouble.write(value.sumCheckRmsDb, into: &buf)
+        FfiConverterOptionDouble.write(value.verifyRmsDb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneTransition_lift(_ buf: RustBuffer) throws -> MeasureTuneTransition {
+    return try FfiConverterTypeMeasureTuneTransition.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneTransition_lower(_ value: MeasureTuneTransition) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneTransition.lower(value)
+}
+
+
+/**
+ * What the verify runs found.
+ */
+public struct MeasureTuneVerify {
+    /**
+     * Each tuned output.
+     */
+    public var outputs: [MeasureTuneVerifyOutput]
+    /**
+     * Each speaker with timing.
+     */
+    public var sums: [MeasureTuneVerifySum]
+    /**
+     * Each transition with its summed run.
+     */
+    public var transitions: [MeasureTuneTransition]
+    /**
+     * The verify's walked run passed the timing quality gate.
+     */
+    public var timingReliable: Bool
+    /**
+     * Every summed run and verified sum within 1.5 dB RMS of the prediction.
+     */
+    public var passed: Bool
+    /**
+     * Remarks in words.
+     */
+    public var notes: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Each tuned output.
+         */outputs: [MeasureTuneVerifyOutput], 
+        /**
+         * Each speaker with timing.
+         */sums: [MeasureTuneVerifySum], 
+        /**
+         * Each transition with its summed run.
+         */transitions: [MeasureTuneTransition], 
+        /**
+         * The verify's walked run passed the timing quality gate.
+         */timingReliable: Bool, 
+        /**
+         * Every summed run and verified sum within 1.5 dB RMS of the prediction.
+         */passed: Bool, 
+        /**
+         * Remarks in words.
+         */notes: [String]) {
+        self.outputs = outputs
+        self.sums = sums
+        self.transitions = transitions
+        self.timingReliable = timingReliable
+        self.passed = passed
+        self.notes = notes
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneVerify: Sendable {}
+#endif
+
+
+extension MeasureTuneVerify: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneVerify, rhs: MeasureTuneVerify) -> Bool {
+        if lhs.outputs != rhs.outputs {
+            return false
+        }
+        if lhs.sums != rhs.sums {
+            return false
+        }
+        if lhs.transitions != rhs.transitions {
+            return false
+        }
+        if lhs.timingReliable != rhs.timingReliable {
+            return false
+        }
+        if lhs.passed != rhs.passed {
+            return false
+        }
+        if lhs.notes != rhs.notes {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(outputs)
+        hasher.combine(sums)
+        hasher.combine(transitions)
+        hasher.combine(timingReliable)
+        hasher.combine(passed)
+        hasher.combine(notes)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneVerify: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneVerify {
+        return
+            try MeasureTuneVerify(
+                outputs: FfiConverterSequenceTypeMeasureTuneVerifyOutput.read(from: &buf), 
+                sums: FfiConverterSequenceTypeMeasureTuneVerifySum.read(from: &buf), 
+                transitions: FfiConverterSequenceTypeMeasureTuneTransition.read(from: &buf), 
+                timingReliable: FfiConverterBool.read(from: &buf), 
+                passed: FfiConverterBool.read(from: &buf), 
+                notes: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneVerify, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeMeasureTuneVerifyOutput.write(value.outputs, into: &buf)
+        FfiConverterSequenceTypeMeasureTuneVerifySum.write(value.sums, into: &buf)
+        FfiConverterSequenceTypeMeasureTuneTransition.write(value.transitions, into: &buf)
+        FfiConverterBool.write(value.timingReliable, into: &buf)
+        FfiConverterBool.write(value.passed, into: &buf)
+        FfiConverterSequenceString.write(value.notes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneVerify_lift(_ buf: RustBuffer) throws -> MeasureTuneVerify {
+    return try FfiConverterTypeMeasureTuneVerify.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneVerify_lower(_ value: MeasureTuneVerify) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneVerify.lower(value)
+}
+
+
+/**
+ * One output's verify.
+ */
+public struct MeasureTuneVerifyOutput {
+    /**
+     * The output.
+     */
+    public var output: UInt8
+    /**
+     * RMS difference of the measured response from the predicted one, dB,
+     * over the points both trust within 30 dB of the loudest; `None` when
+     * too few.
+     */
+    public var rmsDb: Double?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output.
+         */output: UInt8, 
+        /**
+         * RMS difference of the measured response from the predicted one, dB,
+         * over the points both trust within 30 dB of the loudest; `None` when
+         * too few.
+         */rmsDb: Double?) {
+        self.output = output
+        self.rmsDb = rmsDb
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneVerifyOutput: Sendable {}
+#endif
+
+
+extension MeasureTuneVerifyOutput: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneVerifyOutput, rhs: MeasureTuneVerifyOutput) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.rmsDb != rhs.rmsDb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(rmsDb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneVerifyOutput: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneVerifyOutput {
+        return
+            try MeasureTuneVerifyOutput(
+                output: FfiConverterUInt8.read(from: &buf), 
+                rmsDb: FfiConverterOptionDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneVerifyOutput, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterOptionDouble.write(value.rmsDb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneVerifyOutput_lift(_ buf: RustBuffer) throws -> MeasureTuneVerifyOutput {
+    return try FfiConverterTypeMeasureTuneVerifyOutput.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneVerifyOutput_lower(_ value: MeasureTuneVerifyOutput) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneVerifyOutput.lower(value)
+}
+
+
+/**
+ * One speaker's verified sum.
+ */
+public struct MeasureTuneVerifySum {
+    /**
+     * The speaker.
+     */
+    public var speaker: String
+    /**
+     * RMS difference of the verified programme sum (the verify run's ways
+     * summed with their phase) from the predicted one, 200 Hz to 10 kHz,
+     * dB; `None` without timing.
+     */
+    public var rmsDb: Double?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The speaker.
+         */speaker: String, 
+        /**
+         * RMS difference of the verified programme sum (the verify run's ways
+         * summed with their phase) from the predicted one, 200 Hz to 10 kHz,
+         * dB; `None` without timing.
+         */rmsDb: Double?) {
+        self.speaker = speaker
+        self.rmsDb = rmsDb
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneVerifySum: Sendable {}
+#endif
+
+
+extension MeasureTuneVerifySum: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneVerifySum, rhs: MeasureTuneVerifySum) -> Bool {
+        if lhs.speaker != rhs.speaker {
+            return false
+        }
+        if lhs.rmsDb != rhs.rmsDb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(speaker)
+        hasher.combine(rmsDb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneVerifySum: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneVerifySum {
+        return
+            try MeasureTuneVerifySum(
+                speaker: FfiConverterString.read(from: &buf), 
+                rmsDb: FfiConverterOptionDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneVerifySum, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.speaker, into: &buf)
+        FfiConverterOptionDouble.write(value.rmsDb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneVerifySum_lift(_ buf: RustBuffer) throws -> MeasureTuneVerifySum {
+    return try FfiConverterTypeMeasureTuneVerifySum.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneVerifySum_lower(_ value: MeasureTuneVerifySum) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneVerifySum.lower(value)
+}
+
+
+/**
+ * One change of a proposal, in words, with the parameters it writes.
+ */
+public struct MeasureTuneWrite {
+    /**
+     * The output it changes.
+     */
+    public var output: UInt8
+    /**
+     * What it changes.
+     */
+    public var kind: MeasureTuneKind
+    /**
+     * A delay, polarity, crossover or level write: offered only from a
+     * timing-reliable run, applied only after the summed check passed.
+     */
+    public var timing: Bool
+    /**
+     * The change in words ("Output 3 (L high): delay 0.0000 → 0.2100 ms").
+     */
+    public var words: String
+    /**
+     * What is written, in order.
+     */
+    public var params: [MeasureTuneParam]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The output it changes.
+         */output: UInt8, 
+        /**
+         * What it changes.
+         */kind: MeasureTuneKind, 
+        /**
+         * A delay, polarity, crossover or level write: offered only from a
+         * timing-reliable run, applied only after the summed check passed.
+         */timing: Bool, 
+        /**
+         * The change in words ("Output 3 (L high): delay 0.0000 → 0.2100 ms").
+         */words: String, 
+        /**
+         * What is written, in order.
+         */params: [MeasureTuneParam]) {
+        self.output = output
+        self.kind = kind
+        self.timing = timing
+        self.words = words
+        self.params = params
+    }
+}
+
+#if compiler(>=6)
+extension MeasureTuneWrite: Sendable {}
+#endif
+
+
+extension MeasureTuneWrite: Equatable, Hashable {
+    public static func ==(lhs: MeasureTuneWrite, rhs: MeasureTuneWrite) -> Bool {
+        if lhs.output != rhs.output {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.timing != rhs.timing {
+            return false
+        }
+        if lhs.words != rhs.words {
+            return false
+        }
+        if lhs.params != rhs.params {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(output)
+        hasher.combine(kind)
+        hasher.combine(timing)
+        hasher.combine(words)
+        hasher.combine(params)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneWrite: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneWrite {
+        return
+            try MeasureTuneWrite(
+                output: FfiConverterUInt8.read(from: &buf), 
+                kind: FfiConverterTypeMeasureTuneKind.read(from: &buf), 
+                timing: FfiConverterBool.read(from: &buf), 
+                words: FfiConverterString.read(from: &buf), 
+                params: FfiConverterSequenceTypeMeasureTuneParam.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MeasureTuneWrite, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.output, into: &buf)
+        FfiConverterTypeMeasureTuneKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.timing, into: &buf)
+        FfiConverterString.write(value.words, into: &buf)
+        FfiConverterSequenceTypeMeasureTuneParam.write(value.params, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneWrite_lift(_ buf: RustBuffer) throws -> MeasureTuneWrite {
+    return try FfiConverterTypeMeasureTuneWrite.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneWrite_lower(_ value: MeasureTuneWrite) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneWrite.lower(value)
 }
 
 
@@ -53079,6 +55348,363 @@ extension MeasureRunKind: Equatable, Hashable {}
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Where the summed check stands.
+ */
+
+public enum MeasureTuneCheck {
+    
+    /**
+     * The proposal has no timing write: nothing to check.
+     */
+    case notNeeded
+    /**
+     * Not run yet: the timing writes cannot be applied.
+     */
+    case pending
+    /**
+     * Every checked transition passed.
+     */
+    case passed
+    /**
+     * A transition failed: its speaker's timing writes are withdrawn.
+     */
+    case failed
+}
+
+
+#if compiler(>=6)
+extension MeasureTuneCheck: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneCheck: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureTuneCheck
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneCheck {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .notNeeded
+        
+        case 2: return .pending
+        
+        case 3: return .passed
+        
+        case 4: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureTuneCheck, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .notNeeded:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .pending:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .passed:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneCheck_lift(_ buf: RustBuffer) throws -> MeasureTuneCheck {
+    return try FfiConverterTypeMeasureTuneCheck.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneCheck_lower(_ value: MeasureTuneCheck) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneCheck.lower(value)
+}
+
+
+extension MeasureTuneCheck: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * What a write changes.
+ */
+
+public enum MeasureTuneKind {
+    
+    /**
+     * A crossover corner.
+     */
+    case crossover
+    /**
+     * An output delay.
+     */
+    case delay
+    /**
+     * The net polarity of an output's feeding crosspoints.
+     */
+    case polarity
+    /**
+     * An output gain (a way's level, cut only).
+     */
+    case level
+    /**
+     * An output gain cut for the EQ's boost.
+     */
+    case headroom
+    /**
+     * A PEQ band.
+     */
+    case eq
+}
+
+
+#if compiler(>=6)
+extension MeasureTuneKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneKind: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureTuneKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .crossover
+        
+        case 2: return .delay
+        
+        case 3: return .polarity
+        
+        case 4: return .level
+        
+        case 5: return .headroom
+        
+        case 6: return .eq
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureTuneKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .crossover:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .delay:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .polarity:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .level:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .headroom:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .eq:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneKind_lift(_ buf: RustBuffer) throws -> MeasureTuneKind {
+    return try FfiConverterTypeMeasureTuneKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneKind_lower(_ value: MeasureTuneKind) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneKind.lower(value)
+}
+
+
+extension MeasureTuneKind: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Where a tune stands.
+ */
+
+public enum MeasureTuneStage {
+    
+    /**
+     * No tune on this core.
+     */
+    case idle
+    /**
+     * A proposal waits to be checked or applied.
+     */
+    case proposed
+    /**
+     * The summed runs play.
+     */
+    case sumCheck
+    /**
+     * Applied inside the guard: verify, Keep or Revert.
+     */
+    case applied
+    /**
+     * The verify runs play (inside the guard).
+     */
+    case verifying
+    /**
+     * Verified (inside the guard): Keep or Revert.
+     */
+    case verified
+    /**
+     * Kept: the A/B compare may be started.
+     */
+    case kept
+    /**
+     * Reverted (by the user, the timeout or a failed write).
+     */
+    case reverted
+}
+
+
+#if compiler(>=6)
+extension MeasureTuneStage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMeasureTuneStage: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureTuneStage
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MeasureTuneStage {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .idle
+        
+        case 2: return .proposed
+        
+        case 3: return .sumCheck
+        
+        case 4: return .applied
+        
+        case 5: return .verifying
+        
+        case 6: return .verified
+        
+        case 7: return .kept
+        
+        case 8: return .reverted
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MeasureTuneStage, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .idle:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .proposed:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .sumCheck:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .applied:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .verifying:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .verified:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .kept:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .reverted:
+            writeInt(&buf, Int32(8))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneStage_lift(_ buf: RustBuffer) throws -> MeasureTuneStage {
+    return try FfiConverterTypeMeasureTuneStage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMeasureTuneStage_lower(_ value: MeasureTuneStage) -> RustBuffer {
+    return FfiConverterTypeMeasureTuneStage.lower(value)
+}
+
+
+extension MeasureTuneStage: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * How a notice is shown.
  */
 
@@ -55115,6 +57741,54 @@ fileprivate struct FfiConverterOptionTypeMeasureTiming: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeMeasureTuneProposal: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureTuneProposal?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureTuneProposal.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureTuneProposal.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeMeasureTuneVerify: FfiConverterRustBuffer {
+    typealias SwiftType = MeasureTuneVerify?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeMeasureTuneVerify.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeMeasureTuneVerify.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypePinFunction: FfiConverterRustBuffer {
     typealias SwiftType = PinFunction?
 
@@ -56804,6 +59478,31 @@ fileprivate struct FfiConverterSequenceTypeMeasureIssue: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeMeasureLayoutOutput: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureLayoutOutput]
+
+    public static func write(_ value: [MeasureLayoutOutput], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureLayoutOutput.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureLayoutOutput] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureLayoutOutput]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureLayoutOutput.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMeasureLevel: FfiConverterRustBuffer {
     typealias SwiftType = [MeasureLevel]
 
@@ -56896,6 +59595,156 @@ fileprivate struct FfiConverterSequenceTypeMeasureOutput: FfiConverterRustBuffer
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeMeasureOutput.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureTuneCurves: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureTuneCurves]
+
+    public static func write(_ value: [MeasureTuneCurves], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureTuneCurves.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureTuneCurves] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureTuneCurves]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureTuneCurves.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureTuneParam: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureTuneParam]
+
+    public static func write(_ value: [MeasureTuneParam], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureTuneParam.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureTuneParam] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureTuneParam]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureTuneParam.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureTuneTransition: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureTuneTransition]
+
+    public static func write(_ value: [MeasureTuneTransition], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureTuneTransition.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureTuneTransition] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureTuneTransition]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureTuneTransition.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureTuneVerifyOutput: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureTuneVerifyOutput]
+
+    public static func write(_ value: [MeasureTuneVerifyOutput], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureTuneVerifyOutput.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureTuneVerifyOutput] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureTuneVerifyOutput]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureTuneVerifyOutput.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureTuneVerifySum: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureTuneVerifySum]
+
+    public static func write(_ value: [MeasureTuneVerifySum], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureTuneVerifySum.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureTuneVerifySum] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureTuneVerifySum]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureTuneVerifySum.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMeasureTuneWrite: FfiConverterRustBuffer {
+    typealias SwiftType = [MeasureTuneWrite]
+
+    public static func write(_ value: [MeasureTuneWrite], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMeasureTuneWrite.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MeasureTuneWrite] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MeasureTuneWrite]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMeasureTuneWrite.read(from: &buf))
         }
         return seq
     }
@@ -59488,6 +62337,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_docs_merged() != 53188) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_layout_proposal() != 26335) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_live_apply() != 20010) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -59555,6 +62407,39 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_tick() != 49262) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_ab() != 45367) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_apply() != 44140) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_keep() != 19847) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_proposal() != 54513) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_propose() != 61390) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_revert() != 17083) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_state() != 32546) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_stop() != 13069) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_sum_check() != 44103) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_tick() != 54319) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_verify() != 53106) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measurement_export_rew() != 45126) {

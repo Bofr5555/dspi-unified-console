@@ -100,6 +100,8 @@ mod measure_live;
 mod hub_server_measure;
 // -- WP P5DEMO -- the demo's simulated microphone
 mod measure_sim;
+// -- WP P5TUNE -- the auto-tune
+mod measure_tune;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

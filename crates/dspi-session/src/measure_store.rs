@@ -725,6 +725,37 @@ mod files {
             self.update(id, |d| d.set_note(note))
         }
 
+        // -- WP P5TUNE -- a tune's row on a filed measurement (the update path:
+        // `put` never replaces a document)
+        /// Add `record` to measurement `id`'s `tunes` (the oldest dropped past
+        /// [`dspi_measure::doc::MAX_TUNES`]) and write it back atomically, its
+        /// id unchanged.
+        ///
+        /// Errors: `InvalidInput` for a document that is not a measurement;
+        /// as [`MeasureStore::rename`].
+        pub fn add_tune(
+            &self,
+            id: &str,
+            record: dspi_measure::doc::TuneRecord,
+        ) -> io::Result<MeasureEntry> {
+            let (kind, _, _) = self.locate(id)?;
+            if kind != DocKind::Measurement {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "only a measurement keeps tunes",
+                ));
+            }
+            self.update(id, |d| {
+                if let AnyDoc::Measurement(m) = d {
+                    let t = &mut m.measurement.tunes;
+                    while t.len() >= dspi_measure::doc::MAX_TUNES {
+                        t.remove(0);
+                    }
+                    t.push(record);
+                }
+            })
+        }
+
         /// Delete document `id`: its file, then its entry.
         /// Errors: `NotFound`; `InvalidInput` (two folders); the removal's.
         pub fn delete(&self, id: &str) -> io::Result<()> {
