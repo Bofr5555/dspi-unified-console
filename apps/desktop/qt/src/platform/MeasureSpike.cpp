@@ -78,7 +78,11 @@ QJsonObject sessionSetup(const QString &json, int rateHz) {
     } else {
         setup = QJsonDocument::fromJson(json.toUtf8()).object();
     }
-    setup.insert(QStringLiteral("startLevelOnly"), true);
+    // -- WP SPIKEUP -- the start level only, unless an explicit setup file asks
+    // for the ramp (owner go 2026-11-18); the core still caps the level
+    // (ceilingDb at most -20 dBFS on headphones, -6 on speakers) and the SPL.
+    if (json.trimmed().isEmpty() || setup.value(QStringLiteral("startLevelOnly")).toBool(true))
+        setup.insert(QStringLiteral("startLevelOnly"), true);
     setup.insert(QStringLiteral("captureRateHz"), rateHz);
     return setup;
 }
