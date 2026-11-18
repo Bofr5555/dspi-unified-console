@@ -6869,6 +6869,435 @@ data class MeasureLiveState(
 )
 
 /**
+ * One output of a layout (PLAN-P5 section 1.4 step 1).
+ */
+data class MeasureLayoutOutput(
+    /**
+     * The output, 0-based.
+     */
+    val output: Int,
+    /**
+     * Its way.
+     */
+    val role: MeasureRole,
+    /**
+     * The speaker it belongs to (`L`, `R`, `Sub`, ...): the ways of one
+     * speaker are tuned together.
+     */
+    val speaker: String,
+    /**
+     * Its alignment group: one walked run measures a group.
+     */
+    val group: Int,
+    /**
+     * The output's user name, if it has one.
+     */
+    val name: String,
+    /**
+     * The input that feeds it most (its programme source), if one.
+     */
+    val feedInput: Int?,
+    /**
+     * The net crosspoint gain of that source, dB.
+     */
+    val feedGainDb: Float,
+    /**
+     * The net polarity of its feeding crosspoints is inverted.
+     */
+    val feedInverted: Boolean,
+)
+
+/**
+ * The speakers and ways the tune works on (`measure_layout_proposal`;
+ * confirmed or edited by the user).
+ */
+data class MeasureLayout(
+    /**
+     * The outputs, each once.
+     */
+    val outputs: List<MeasureLayoutOutput>,
+    /**
+     * The layout recognised (`3way`, `2way`, `headphones`, `full range`),
+     * "" when none.
+     */
+    val template: String,
+    /**
+     * Remarks in words.
+     */
+    val notes: List<String>,
+)
+
+/**
+ * What the tune may change (`measure_tune_propose`). Every number 0 is the
+ * default.
+ */
+data class MeasureTuneOptions(
+    /**
+     * A `target` document's text; "" for the placement's default target.
+     */
+    val targetDocument: String,
+    /**
+     * The measurement's microphone's `mic` document; "" looks it up by the
+     * id the measurement names (needed for the summed and verify runs).
+     */
+    val micDocument: String,
+    /**
+     * "Keep the crossover, align only": no corner or level change.
+     */
+    val keepCrossover: Boolean,
+    /**
+     * Keep the current delays (polarity is still judged).
+     */
+    val keepDelays: Boolean,
+    /**
+     * Keep every output gain of the crossover.
+     */
+    val keepLevels: Boolean,
+    /**
+     * No EQ fit.
+     */
+    val keepEq: Boolean,
+    /**
+     * The corner search's window each side, octaves (0: 0.5; at most 2).
+     */
+    val windowOctaves: Double,
+    /**
+     * The fit's range, Hz (0: 20 Hz to 300 Hz for speakers, 20 Hz to 10 kHz
+     * for headphones).
+     */
+    val fitMinHz: Double,
+    /**
+     * See `fit_min_hz`.
+     */
+    val fitMaxHz: Double,
+)
+
+/**
+ * One parameter of a write: what `write_param` gets.
+ */
+data class MeasureTuneParam(
+    /**
+     * The registry path (`out.delay`, `eq.freq`, `mix`, ...).
+     */
+    val path: String,
+    /**
+     * Its indices.
+     */
+    val indices: List<Int>,
+    /**
+     * The value written.
+     */
+    val value: ParamValue,
+)
+
+/**
+ * One change of a proposal, in words, with the parameters it writes.
+ */
+data class MeasureTuneWrite(
+    /**
+     * The output it changes.
+     */
+    val output: Int,
+    /**
+     * What it changes.
+     */
+    val kind: MeasureTuneKind,
+    /**
+     * A delay, polarity, crossover or level write: offered only from a
+     * timing-reliable run, applied only after the summed check passed.
+     */
+    val timing: Boolean,
+    /**
+     * The change in words ("Output 3 (L high): delay 0.0000 → 0.2100 ms").
+     */
+    val words: String,
+    /**
+     * What is written, in order.
+     */
+    val params: List<MeasureTuneParam>,
+)
+
+/**
+ * A speaker's curves: before, predicted, the target levelled to before.
+ */
+data class MeasureTuneCurves(
+    /**
+     * The speaker.
+     */
+    val speaker: String,
+    /**
+     * The ways' sum with phase (a timing-reliable run); else their power sum.
+     */
+    val coherent: Boolean,
+    /**
+     * The speaker as it is now (programme audio).
+     */
+    val before: MeasureLiveCurve,
+    /**
+     * The speaker with the proposal.
+     */
+    val predicted: MeasureLiveCurve,
+    /**
+     * The target, levelled to `before`.
+     */
+    val target: MeasureLiveCurve,
+)
+
+/**
+ * One transition of a proposal.
+ */
+data class MeasureTuneTransition(
+    /**
+     * The speaker.
+     */
+    val speaker: String,
+    /**
+     * The lower way's output.
+     */
+    val lowOutput: Int,
+    /**
+     * The upper way's output.
+     */
+    val highOutput: Int,
+    /**
+     * The corner now, Hz.
+     */
+    val cornerBeforeHz: Double,
+    /**
+     * The proposed corner, Hz.
+     */
+    val cornerHz: Double,
+    /**
+     * The upper way's delay minus the lower way's, as proposed, ms.
+     */
+    val relativeDelayMs: Double,
+    /**
+     * The upper way's polarity is flipped relative to the lower way's.
+     */
+    val flipped: Boolean,
+    /**
+     * The summed check's RMS difference, dB, once run.
+     */
+    val sumCheckRmsDb: Double?,
+    /**
+     * The verify's summed RMS difference, dB, once run.
+     */
+    val verifyRmsDb: Double?,
+)
+
+/**
+ * A proposal: nothing is written until it is applied.
+ */
+data class MeasureTuneProposal(
+    /**
+     * Its id, for `measure_tune_apply` (a new id after a summed check).
+     */
+    val id: Long,
+    /**
+     * The device it is for.
+     */
+    val serial: String,
+    /**
+     * The measurement's id ("" for one given as text).
+     */
+    val measurementId: String,
+    /**
+     * The measurement's name.
+     */
+    val measurementName: String,
+    /**
+     * Every write, in the order it is applied.
+     */
+    val writes: List<MeasureTuneWrite>,
+    /**
+     * Each speaker's curves.
+     */
+    val curves: List<MeasureTuneCurves>,
+    /**
+     * Each transition.
+     */
+    val transitions: List<MeasureTuneTransition>,
+    /**
+     * The limits it was held to, in words.
+     */
+    val held: List<String>,
+    /**
+     * What is not offered, and why.
+     */
+    val withdrawn: List<MeasureIssue>,
+    /**
+     * What the user should know (an old measurement, another placement).
+     */
+    val warnings: List<MeasureIssue>,
+    /**
+     * Remarks of the maths, in words.
+     */
+    val notes: List<String>,
+    /**
+     * The measurement passed the timing quality gate.
+     */
+    val timingReliable: Boolean,
+    /**
+     * The summed check.
+     */
+    val sumCheck: MeasureTuneCheck,
+)
+
+/**
+ * One output's verify.
+ */
+data class MeasureTuneVerifyOutput(
+    /**
+     * The output.
+     */
+    val output: Int,
+    /**
+     * RMS difference of the measured response from the predicted one, dB,
+     * over the points both trust within 30 dB of the loudest; `None` when
+     * too few.
+     */
+    val rmsDb: Double?,
+)
+
+/**
+ * One speaker's verified sum.
+ */
+data class MeasureTuneVerifySum(
+    /**
+     * The speaker.
+     */
+    val speaker: String,
+    /**
+     * RMS difference of the verified programme sum (the verify run's ways
+     * summed with their phase) from the predicted one, 200 Hz to 10 kHz,
+     * dB; `None` without timing.
+     */
+    val rmsDb: Double?,
+)
+
+/**
+ * What the verify runs found.
+ */
+data class MeasureTuneVerify(
+    /**
+     * Each tuned output.
+     */
+    val outputs: List<MeasureTuneVerifyOutput>,
+    /**
+     * Each speaker with timing.
+     */
+    val sums: List<MeasureTuneVerifySum>,
+    /**
+     * Each transition with its summed run.
+     */
+    val transitions: List<MeasureTuneTransition>,
+    /**
+     * The verify's walked run passed the timing quality gate.
+     */
+    val timingReliable: Boolean,
+    /**
+     * Every summed run and verified sum within 1.5 dB RMS of the prediction.
+     */
+    val passed: Boolean,
+    /**
+     * Remarks in words.
+     */
+    val notes: List<String>,
+)
+
+/**
+ * A tune's state (`measure_tune_tick`, `measure_tune_state`).
+ */
+data class MeasureTuneState(
+    /**
+     * Where it stands.
+     */
+    val stage: MeasureTuneStage,
+    /**
+     * A summed or verify run is under way: tick and push capture.
+     */
+    val running: Boolean,
+    /**
+     * The current proposal's id.
+     */
+    val proposalId: Long?,
+    /**
+     * The run under way, 1-based, and the runs of this step.
+     */
+    val run: Int,
+    /**
+     * See `run`.
+     */
+    val runs: Int,
+    /**
+     * The measurement session under the run.
+     */
+    val session: MeasureState,
+    /**
+     * The guard, once applied.
+     */
+    val guard: GuardedApply,
+    /**
+     * The verify's result.
+     */
+    val verify: MeasureTuneVerify?,
+    /**
+     * Why the last step stopped, if it did.
+     */
+    val issue: MeasureIssue?,
+    /**
+     * The "before" snapshot's id ("" when not filed: its text is kept).
+     */
+    val snapshotBeforeId: String,
+    /**
+     * The "after" snapshot's id, once kept.
+     */
+    val snapshotAfterId: String,
+)
+
+/**
+ * What Keep did (`measure_tune_keep`).
+ */
+data class MeasureTuneKeep(
+    /**
+     * The guard's end: `kept`, or the revert's when the timeout came first.
+     */
+    val guard: GuardedApply,
+    /**
+     * The "before" snapshot's id and text.
+     */
+    val snapshotBeforeId: String,
+    /**
+     * See `snapshot_before_id`.
+     */
+    val snapshotBefore: String,
+    /**
+     * The "after" snapshot's id ("" when not filed) and text (with its
+     * `tune` block).
+     */
+    val snapshotAfterId: String,
+    /**
+     * See `snapshot_after_id`.
+     */
+    val snapshotAfter: String,
+    /**
+     * The measurement's id with the tune's row: the same one in this
+     * console's store, a new copy's on the hub, "" for a measurement given
+     * as text.
+     */
+    val measurementId: String,
+    /**
+     * The measurement's text with the tune's row (file it when it was
+     * given as text).
+     */
+    val measurement: String,
+    /**
+     * What could not be filed, in words.
+     */
+    val notes: List<String>,
+)
+
+/**
  * One measurement, microphone or target document in a list
  * ([`DspiCore::measure_docs`]).
  */
@@ -8185,6 +8614,96 @@ enum class MeasureLiveAdjust {
      * An edit the client asked to preview.
      */
     EDIT,
+}
+
+/**
+ * What a write changes.
+ */
+enum class MeasureTuneKind {
+    /**
+     * A crossover corner.
+     */
+    CROSSOVER,
+    /**
+     * An output delay.
+     */
+    DELAY,
+    /**
+     * The net polarity of an output's feeding crosspoints.
+     */
+    POLARITY,
+    /**
+     * An output gain (a way's level, cut only).
+     */
+    LEVEL,
+    /**
+     * An output gain cut for the EQ's boost.
+     */
+    HEADROOM,
+    /**
+     * A PEQ band.
+     */
+    EQ,
+}
+
+/**
+ * Where the summed check stands.
+ */
+enum class MeasureTuneCheck {
+    /**
+     * The proposal has no timing write: nothing to check.
+     */
+    NOT_NEEDED,
+    /**
+     * Not run yet: the timing writes cannot be applied.
+     */
+    PENDING,
+    /**
+     * Every checked transition passed.
+     */
+    PASSED,
+    /**
+     * A transition failed: its speaker's timing writes are withdrawn.
+     */
+    FAILED,
+}
+
+/**
+ * Where a tune stands.
+ */
+enum class MeasureTuneStage {
+    /**
+     * No tune on this core.
+     */
+    IDLE,
+    /**
+     * A proposal waits to be checked or applied.
+     */
+    PROPOSED,
+    /**
+     * The summed runs play.
+     */
+    SUM_CHECK,
+    /**
+     * Applied inside the guard: verify, Keep or Revert.
+     */
+    APPLIED,
+    /**
+     * The verify runs play (inside the guard).
+     */
+    VERIFYING,
+    /**
+     * Verified (inside the guard): Keep or Revert.
+     */
+    VERIFIED,
+    /**
+     * Kept: the A/B compare may be started.
+     */
+    KEPT,
+    /**
+     * Reverted (by the user, the timeout or a failed write).
+     */
+    REVERTED,
 }
 
 /**

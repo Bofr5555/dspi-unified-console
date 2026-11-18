@@ -1,5 +1,6 @@
 //! WP P5TIME: the timing core against a small simulated world of its own
 //! (P5SIM's world arrives in the same wave; these tests do not depend on it).
+//! Its world and renderer are shared with WP P5ARRIVAL's tests (`pub(super)`).
 #![allow(clippy::arithmetic_side_effects)]
 
 use super::*;
@@ -12,15 +13,15 @@ use proptest::prelude::*;
 // ---------------------------------------------------------------------------
 
 #[derive(Clone)]
-struct Way {
-    output: u8,
-    fir: Vec<f64>,
-    delay_s: f64,
-    gain: f64,
+pub(super) struct Way {
+    pub(super) output: u8,
+    pub(super) fir: Vec<f64>,
+    pub(super) delay_s: f64,
+    pub(super) gain: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
-enum Fault {
+pub(super) enum Fault {
     /// The capture silently loses `frames` frames at a capture frame (its
     /// frame counter does not show it).
     StepSlip { at_frame: f64, frames: f64 },
@@ -31,19 +32,19 @@ enum Fault {
 }
 
 #[derive(Clone)]
-struct World {
-    ways: Vec<Way>,
-    capture_rate: u32,
-    latency_s: f64,
-    ppm: f64,
-    noise_rms: f64,
-    preroll_s: f64,
-    faults: Vec<Fault>,
-    seed: u64,
+pub(super) struct World {
+    pub(super) ways: Vec<Way>,
+    pub(super) capture_rate: u32,
+    pub(super) latency_s: f64,
+    pub(super) ppm: f64,
+    pub(super) noise_rms: f64,
+    pub(super) preroll_s: f64,
+    pub(super) faults: Vec<Fault>,
+    pub(super) seed: u64,
 }
 
 impl World {
-    fn new(ways: Vec<Way>) -> World {
+    pub(super) fn new(ways: Vec<Way>) -> World {
         World {
             ways,
             capture_rate: 48_000,
@@ -57,13 +58,13 @@ impl World {
     }
 }
 
-struct Rendered {
-    samples: Vec<f32>,
-    first_frame: u64,
-    start_frame: u64,
+pub(super) struct Rendered {
+    pub(super) samples: Vec<f32>,
+    pub(super) first_frame: u64,
+    pub(super) start_frame: u64,
     /// Capture frame (relative) at which device sample 0 is heard without
     /// acoustic delay.
-    zero_at: f64,
+    pub(super) zero_at: f64,
 }
 
 const KHALF: usize = 24;
@@ -138,7 +139,7 @@ impl Rng {
 /// (output, first cycle filtered, other cycles filtered, delay in samples, gain)
 type Filtered = (u8, Vec<f64>, Vec<f64>, f64, f64);
 
-fn render(world: &World, schedule: &WalkSchedule) -> Rendered {
+pub(super) fn render(world: &World, schedule: &WalkSchedule) -> Rendered {
     let sweep = &schedule.sweep;
     let fs_d = f64::from(sweep.rate_hz);
     let fc = f64::from(world.capture_rate);
@@ -229,7 +230,7 @@ fn sweep_cfg(ms: u32, gap: u16) -> SweepConfig {
     }
 }
 
-fn delta_way(output: u8, delay_s: f64) -> Way {
+pub(super) fn delta_way(output: u8, delay_s: f64) -> Way {
     Way {
         output,
         fir: vec![1.0],
@@ -238,7 +239,7 @@ fn delta_way(output: u8, delay_s: f64) -> Way {
     }
 }
 
-fn analyse(
+pub(super) fn analyse(
     world: &World,
     schedule: &WalkSchedule,
     opts: &AnalysisOptions,
@@ -258,7 +259,7 @@ fn analyse(
     )
 }
 
-fn schedule(rate: u32, ms: u32, gap: u16, mask: u16, repeat: u16) -> WalkSchedule {
+pub(super) fn schedule(rate: u32, ms: u32, gap: u16, mask: u16, repeat: u16) -> WalkSchedule {
     let s = LogSweep::new(rate, &sweep_cfg(ms, gap)).unwrap();
     WalkSchedule::new(s, mask, repeat).unwrap()
 }
@@ -1062,7 +1063,7 @@ proptest! {
 /// Runs a property test whose case is expensive: `PROPTEST_CASES` applies
 /// (as `ci/check.sh --step proptest` sets it) but at most `max` cases
 /// (PLAN.md section 1.9, as `cs_rules.rs`'s `walk_cases`).
-fn run_capped<S: Strategy>(
+pub(super) fn run_capped<S: Strategy>(
     name: &'static str,
     default: u32,
     max: u32,

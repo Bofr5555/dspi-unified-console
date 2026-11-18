@@ -570,6 +570,30 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState = throw NotImplementedError("measure_live_averaging")
 
+    override fun measureLayoutProposal(): MeasureLayout = throw NotImplementedError("measure_layout_proposal")
+
+    override fun measureTunePropose(measurement: String, layout: MeasureLayout, options: MeasureTuneOptions): MeasureTuneProposal = throw NotImplementedError("measure_tune_propose")
+
+    override fun measureTuneProposal(): MeasureTuneProposal? = throw NotImplementedError("measure_tune_proposal")
+
+    override fun measureTuneSumCheck(proposalId: Long): MeasureTuneState = throw NotImplementedError("measure_tune_sum_check")
+
+    override fun measureTuneTick(): MeasureTuneState = throw NotImplementedError("measure_tune_tick")
+
+    override fun measureTuneState(): MeasureTuneState = throw NotImplementedError("measure_tune_state")
+
+    override fun measureTuneApply(proposalId: Long, guardS: Long): GuardedApply = throw NotImplementedError("measure_tune_apply")
+
+    override fun measureTuneVerify(): MeasureTuneState = throw NotImplementedError("measure_tune_verify")
+
+    override fun measureTuneKeep(): MeasureTuneKeep = throw NotImplementedError("measure_tune_keep")
+
+    override fun measureTuneRevert(): GuardedApply = throw NotImplementedError("measure_tune_revert")
+
+    override fun measureTuneAb(): AbCompare = throw NotImplementedError("measure_tune_ab")
+
+    override fun measureTuneStop(): MeasureTuneState = throw NotImplementedError("measure_tune_stop")
+
     override fun measureSetDir(dir: String): Unit = throw NotImplementedError("measure_set_dir")
 
     override fun measureDocs(kind: String, serial: String): List<MeasureDocInfo> = throw NotImplementedError("measure_docs")
