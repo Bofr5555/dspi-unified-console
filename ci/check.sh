@@ -249,9 +249,10 @@ for s in "${steps[@]}"; do
       if [ "$s" = swift ]; then $RUN "python3 apps/desktop/packaging/licences/gen_rust_notices.py --swift --check"; fi
       # -- WP SW-M1 -- the core's raw USB pipe (no lock, no token) stays inside
       # Core/CoreUsb.swift, the hub's device; its test mock is the one other user
+      # -- WP PGSWHUB0 -- and the page guard test's counting mock
       if [ "$s" = swift ]; then
         stray=$(grep -rlE '\b(UsbPipe|UsbPipeProtocol)\b' --include='*.swift' apps/apple |
-          grep -vE '/Core/Generated/|/Core/CoreUsb\.swift$|/DSPi ConsoleTests/CoreUsbSWM1Tests\.swift$' || true)
+          grep -vE '/Core/Generated/|/Core/CoreUsb\.swift$|/DSPi ConsoleTests/CoreUsbSWM1Tests\.swift$|/DSPi ConsoleTests/PGSWHUB0PageGuardTests\.swift$' || true)
         if [ -n "$stray" ]; then echo "swift: the raw USB pipe is used outside Core/CoreUsb.swift:" >&2; echo "$stray" >&2; exit 1; fi
         # -- WP SW-M3 -- the bus listing and hot-plug wait (no transfers) also
         # in the core's own USB link (CoreBackedTransport's Link.usb)

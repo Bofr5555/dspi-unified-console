@@ -122,6 +122,16 @@ final class CommandRouter {
                 completion: @escaping (RoutedResult) -> Void) {
         let direction: LinkCommandDirection = request.direction == .set ? .set : .get
 
+        // -- WP PGSWHUB0 -- A page in wIndex's high byte (upstream's paged
+        // protocol, 1.1.7) is refused UNSUPPORTED before anything else: every
+        // device this hub attaches is legacy, and legacy firmware ignores the
+        // page and runs whichever 1.1.6 opcode shares the command number (some
+        // are factory reset and preset writes).  Classing by bRequest alone
+        // would judge the wrong command, so this comes before the policy.
+        if Self.carriesPage(request.wIndex) {
+            return completion(reject(request, .unsupported))
+        }
+
         // 1. Authorization: the role must permit this command.  Fails safe:
         // an unclassified command is config, admin-only.
         guard policy.isAllowed(role: session.role, code: request.bRequest, direction: direction) else {
@@ -312,6 +322,12 @@ final class CommandRouter {
         guard response.status == .ok else { return nil }
         return CoreVregStatus(response.payload)
     }
+
+    // -- WP PGSWHUB0 --
+    /// Whether a request's wIndex names a page of the paged protocol (a
+    /// non-zero high byte).  Legacy requests use 0 (the Mac's global index)
+    /// or 2 (the vendor interface), both page 0.
+    static func carriesPage(_ wIndex: UInt16) -> Bool { wIndex >> 8 != 0 }
 
     private func reject(_ request: LinkCmdRequest, _ status: LinkStatus) -> RoutedResult {
         RoutedResult(response: LinkCmdResponse(tag: request.tag, status: status), attributedTo: 0)

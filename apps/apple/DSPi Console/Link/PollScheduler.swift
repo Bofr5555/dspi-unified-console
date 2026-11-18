@@ -139,10 +139,20 @@ final class PollScheduler {
     /// `pollMaxHz` and then the whole session is scaled to fit `pollBudgetBps`.
     func subscribe(session: LinkSessionID, role: LinkRole,
                    requests: [(slot: Int, spec: PollSpec, hz: Double)]) -> [(slot: Int, grantedHz: Double)] {
+        // -- WP PGSWHUB0 -- Refused slots, reported UNSUPPORTED after the lock.
+        var refused: [(LinkSessionID, Int, UInt8, LinkStatus)] = []
+        defer { for r in refused { onPollError?(r.0, r.1, r.2, r.3) } }
         lock.lock(); defer { lock.unlock() }
         guard !stopped else { return requests.map { ($0.slot, 0) } }
 
         for req in requests {
+            // -- WP PGSWHUB0 -- A poll on a page (wIndex high byte non-zero)
+            // is refused: granted 0 hz, never started, and reported as
+            // UNSUPPORTED (0x86), as the router refuses such a command.
+            if CommandRouter.carriesPage(req.spec.wIndex) {
+                refused.append((session, req.slot, req.spec.handle, .unsupported))
+                continue
+            }
             // Polls always travel as GET transfers; a command the table does
             // not class `read` for that direction must not be pollable, and
             // the role must permit it (spec 7.6).
@@ -168,7 +178,10 @@ final class PollScheduler {
         rescale(session: session)
 
         return requests.map { req in
-            (req.slot, grantedLocked(session: session, slot: req.slot) ?? 0)
+            // -- WP PGSWHUB0 -- a refused page poll reads 0 even where the slot
+            // keeps an earlier subscription.
+            if CommandRouter.carriesPage(req.spec.wIndex) { return (req.slot, 0) }
+            return (req.slot, grantedLocked(session: session, slot: req.slot) ?? 0)
         }
     }
 
