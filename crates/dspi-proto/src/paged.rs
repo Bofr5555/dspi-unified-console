@@ -7,10 +7,12 @@
 //! the old opcode with the same number, so nothing paged is ever sent before
 //! [`SYS_PROTOCOL_INFO`] has answered with [`PROTOCOL_MAGIC`] (PLAN-PG section 1.1).
 //!
-//! Types only. WP PGPROTO adds the registry generated from the vendored
-//! `dspi_commands.json`, the planner generated from `legacy_map.json` and the
-//! discovery decoders, and replaces the literals below with generated constants
-//! (a test then holds them equal).
+//! WP PGPROTO adds the registry generated from the vendored `dspi_commands.json`
+//! ([`registry`], [`cmds`]), the old-to-new map generated from `legacy_map.json`
+//! ([`legacy`]), the discovery decoders and the page set ([`discovery`]), the
+//! planner ([`plan()`]) and the reverse view ([`legacy_equivalent`]). The seam's
+//! probe id and major now come from the registry; a test holds them equal to the
+//! migration guide's literals.
 //!
 //! Pure: no I/O.
 
@@ -71,7 +73,8 @@ pub const EXT_PAGE: u8 = 0xE0;
 pub const EXT_TUNNEL: CmdId = CmdId::new(EXT_PAGE, 0x10);
 
 /// `SYS.PROTOCOL_INFO`: the probe, sent before anything else (migration guide 4.2).
-pub const SYS_PROTOCOL_INFO: CmdId = CmdId::new(0x01, 0x10);
+// -- WP PGPROTO -- generated (was the literal 0x0110)
+pub const SYS_PROTOCOL_INFO: CmdId = cmds::SYS_PROTOCOL_INFO;
 
 /// `SYS.PROTOCOL_INFO`'s reply length.
 pub const PROTOCOL_INFO_LEN: u16 = 16;
@@ -80,7 +83,8 @@ pub const PROTOCOL_INFO_LEN: u16 = 16;
 pub const PROTOCOL_MAGIC: [u8; 4] = *b"DSPi";
 
 /// The protocol major this build speaks.
-pub const PROTOCOL_MAJOR: u8 = 1;
+// -- WP PGPROTO -- generated (was the literal 1)
+pub const PROTOCOL_MAJOR: u8 = registry::VENDORED_MAJOR;
 
 /// A decoded `SYS.PROTOCOL_INFO` (migration guide 4.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,6 +148,36 @@ pub enum Generation {
     /// Paged firmware (stock 1.1.7, or our dual-stack port): paged requests only,
     /// from this client, whatever else the firmware also answers.
     Paged(ProtocolInfo),
+}
+
+// -- WP PGPROTO --
+pub mod custom;
+pub mod discovery;
+pub mod legacy;
+pub mod plan;
+pub mod registry;
+pub mod reverse;
+
+pub use discovery::{
+    CommandInfo, LastResult, PAGE_COMMANDS_LEN, PageCommands, PageRev, PageSet, SysPlatform,
+    decode_page_list,
+};
+pub use legacy::result_name;
+pub use plan::{
+    Answer, LegacyBody, Next, Outcome, PagedBody, PagedRequest, Plan, PlanError, StepMachine,
+    UsbDir, WireAnswer, plan, reaches,
+};
+pub use registry::{AddrKind, Command, Flags, GetLen, PageInfo, cmds};
+pub use reverse::{LegacyEquivalent, legacy_equivalent};
+
+/// A paged request's direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub enum PagedDir {
+    /// `0xC1`: a read (every 1.1.7 GET only reads).
+    Get,
+    /// `0x41`: a write, with a payload or zero-length.
+    Set,
 }
 
 #[cfg(test)]
