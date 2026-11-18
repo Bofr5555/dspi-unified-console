@@ -18,6 +18,21 @@
 //! command by its own timeouts (10 s, 15 s for bulk) and answers NO_DEVICE
 //! once the session is closed, so a hub cannot block a caller forever.
 //!
+//! -- WP PGLINKC -- DSPi Link 1.2 and 1.3 (PLAN-PG section 1.4, section 1.1
+//! steps 5, 6 and 8). [`LinkRoute`] says what the device is, from the hub's
+//! minor and the device object: through a 1.2 hub page 0 only and no probe
+//! (a refused first `REQ_GET_PLATFORM` is [`LinkNotice::Needs13Hub`]); on a
+//! 1.3 hub a device with `protocol` gets paged requests only (`wIndex` =
+//! `(page << 8) | 2`, a non-zero GET length, the probe answered from the
+//! object), one without it nothing ([`LinkNotice::HubServesPagedOnly`]) unless
+//! the hub serves legacy devices (our hub's cap `legacy_devices`). Paged
+//! answers retry only 0x01, 0x04, 0x17 and 0x84; the firmware's result codes
+//! 0x10..=0x1A are refusals ([`firmware_refusal`]); a `0x86` from a device
+//! that answered before (or `0x10` to a page-0 request), or a changed
+//! `protocol` in the hub's list,
+//! makes the transport stale ([`LinkNotice::GenerationChanged`]): nothing more
+//! is sent, and the device is opened again.
+//!
 //! Owned by WP T5 (docs/core-merge/PLAN.md).
 #![warn(
     clippy::unwrap_used,
@@ -31,12 +46,20 @@ use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use dspi_link::frames::CmdResponse;
+use dspi_link::messages::{DeviceInfo, HelloHub, PollSpec, Proto};
 use dspi_link::{CmdSpec, Dir, LinkClient, LinkError, NotifyItem, status};
 use dspi_proto::generated::opcodes as op;
+// -- WP PGLINKC --
+use dspi_proto::paged::legacy::{VC_ERR_BUSY, VC_ERR_PIN_IN_USE as VC_ERR_LAST, VC_ERR_UNKNOWN};
+use dspi_proto::paged::{
+    LegacyBody, PROTOCOL_INFO_LEN, PROTOCOL_MAGIC, PageSet, PagedBody, PagedRequest,
+    SYS_PROTOCOL_INFO, cmds,
+};
 
+use crate::paged::PLATFORM_ASK;
 use crate::{
-    Attributed, BUSY_BACKOFF, BUSY_RETRIES, DeviceDescriptor, InRead, NotificationSource, Result,
-    Transport, TransportCaps, TransportError,
+    Attributed, BUSY_BACKOFF, BUSY_RETRIES, CmdId, DeviceDescriptor, InRead, NO_PAGES,
+    NotificationSource, PagedRead, Result, Transport, TransportCaps, TransportError,
 };
 
 /// The hub capability that offers `device.snapshot` (spec 7.5).
@@ -128,7 +151,8 @@ fn hub_refusal(payload: &[u8]) -> Option<(&'static str, Option<String>, String)>
     Some((key, limit, msg))
 }
 
-/// Whether a Link status is a busy window to retry (spec 8.1).
+/// Whether a Link status is a busy window to retry (spec 8.1) on a legacy
+/// device: BUSY, BULK_LOCKED and CRC_ERROR, as 1.2 says.
 fn is_busy(status: u8) -> bool {
     matches!(
         status,
@@ -136,23 +160,47 @@ fn is_busy(status: u8) -> bool {
     )
 }
 
+// -- WP PGLINKC --
+/// The codes spec 1.3 section 8.1 lets a client resend unchanged, on a paged
+/// device: BUSY, BULK_LOCKED, `VC_ERR_BUSY` and RATE_LIMITED. Nothing else.
+pub fn is_retryable_13(status: u8) -> bool {
+    matches!(
+        status,
+        status::BUSY | status::BULK_LOCKED | VC_ERR_BUSY | status::RATE_LIMITED
+    )
+}
+
 /// Run `attempt` through the busy window: retry BUSY, BULK_LOCKED and
 /// CRC_ERROR up to [`BUSY_RETRIES`] times, `backoff` apart; after that the
 /// request is `TimedOut { retries: BUSY_RETRIES }`. Any other status is
-/// mapped by [`map_status`]; OK yields the reply's payload.
+/// mapped by [`map_response`]; OK yields the reply's payload.
+#[cfg(test)]
 fn busy_window(
     opcode: u8,
     backoff: Duration,
-    mut attempt: impl FnMut() -> CmdResponse,
+    attempt: impl FnMut() -> CmdResponse,
 ) -> Result<Vec<u8>> {
+    let r = busy_window_with(opcode, backoff, is_busy, attempt)?;
+    match map_response(r.status, opcode, &r.payload) {
+        Some(e) => Err(e),
+        None => Ok(r.payload),
+    }
+}
+
+/// Run `attempt` through the busy window: retry what `busy` names up to
+/// [`BUSY_RETRIES`] times, `backoff` apart; after that the request is
+/// `TimedOut { retries: BUSY_RETRIES }`. Any other answer is returned as it
+/// came, for the caller to settle.
+fn busy_window_with(
+    opcode: u8,
+    backoff: Duration,
+    busy: fn(u8) -> bool,
+    mut attempt: impl FnMut() -> CmdResponse,
+) -> std::result::Result<CmdResponse, TransportError> {
     for i in 0..=BUSY_RETRIES {
         let r = attempt();
-        if !is_busy(r.status) {
-            // -- WP P1HL -- a hub's named refusal keeps its key
-            return match map_response(r.status, opcode, &r.payload) {
-                Some(e) => Err(e),
-                None => Ok(r.payload),
-            };
+        if !busy(r.status) {
+            return Ok(r);
         }
         if i < BUSY_RETRIES {
             crate::clock::sleep(backoff);
@@ -189,6 +237,196 @@ fn clamp_max_payload(max_payload: u32) -> usize {
     })
 }
 
+// -- WP PGLINKC --
+/// What a DSPi Link device is, for this client (PLAN-PG section 1.1 steps 5
+/// and 6), decided once in [`LinkTransport::new`] from the hub's `hello` and
+/// its device object. A change is never followed: it makes the transport
+/// stale ([`LinkNotice::GenerationChanged`]) and a new one is opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkRoute {
+    /// Page 0 only: through a 1.2 hub (`l12`: whatever the device is, and
+    /// nothing paged, not even the probe: OD-PGe, S1), or a legacy device on
+    /// a hub that forwards to one (our hub, cap `legacy_devices`).
+    Legacy { l12: bool },
+    /// A paged device on a 1.3 hub (`protocol` in its object): paged requests
+    /// only, `wIndex` = `(page << 8) | 2`. The probe is answered from the
+    /// object, with nothing sent.
+    Paged { major: u8, minor: u8 },
+    /// A device without `protocol` on a 1.3 hub that does not serve legacy
+    /// devices: nothing is sent ([`LinkNotice::HubServesPagedOnly`]).
+    Unserved,
+}
+
+impl LinkRoute {
+    /// The route for `device` (as the hub lists it) on the hub that said `hello`.
+    pub fn of(hello: &HelloHub, device: Option<&DeviceInfo>) -> Self {
+        if !hello.is_link_13() {
+            return LinkRoute::Legacy { l12: true };
+        }
+        match device.and_then(|d| d.protocol) {
+            Some(p) => LinkRoute::Paged {
+                major: u8::try_from(p.major).unwrap_or(u8::MAX),
+                minor: u8::try_from(p.minor).unwrap_or(u8::MAX),
+            },
+            None if hello.serves_legacy_devices() => LinkRoute::Legacy { l12: false },
+            None => LinkRoute::Unserved,
+        }
+    }
+
+    fn retryable(self) -> fn(u8) -> bool {
+        match self {
+            LinkRoute::Paged { .. } => is_retryable_13,
+            _ => is_busy,
+        }
+    }
+}
+
+// -- WP PGLINKC --
+/// The DSPi Link client's own notices (PLAN-PG section 1.1 steps 5, 6, 8). Each
+/// is a [`TransportError::Incompatible`] whose words are [`LinkNotice::text`];
+/// [`LinkNotice::of`] gives it back, and [`LinkNotice::code`] is the code of
+/// its notice (`transfer.<code>`; the notices and the core's mapping are
+/// added outside this WP, PGCORE).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkNotice {
+    /// A 1.2 hub, and the device refused the 1.1.6 platform read: it is
+    /// probably firmware 1.1.7, which needs a 1.3 hub (never "unrecognised").
+    Needs13Hub,
+    /// A 1.3 hub lists the device without `protocol`: it forwards nothing to a
+    /// 1.1.6-generation device.
+    HubServesPagedOnly,
+    /// The device behind the handle changed generation (a re-flash): the
+    /// transport sends nothing more; open the device again.
+    GenerationChanged,
+}
+
+impl LinkNotice {
+    /// Every notice.
+    pub const ALL: [LinkNotice; 3] = [
+        LinkNotice::Needs13Hub,
+        LinkNotice::HubServesPagedOnly,
+        LinkNotice::GenerationChanged,
+    ];
+
+    /// The notice's code: the key is `transfer.<code>`.
+    pub const fn code(self) -> &'static str {
+        match self {
+            LinkNotice::Needs13Hub => "link_needs_13_hub",
+            LinkNotice::HubServesPagedOnly => "link_hub_paged_only",
+            LinkNotice::GenerationChanged => "link_generation_changed",
+        }
+    }
+
+    /// The error's words.
+    pub const fn text(self) -> &'static str {
+        match self {
+            LinkNotice::Needs13Hub => {
+                "this device does not answer the 1.1.6 protocol; firmware 1.1.7 needs a DSPi Link 1.3 hub"
+            }
+            LinkNotice::HubServesPagedOnly => "this hub serves only firmware 1.1.7 and later",
+            LinkNotice::GenerationChanged => {
+                "the device's firmware generation changed: open it again"
+            }
+        }
+    }
+
+    /// The error a call fails with.
+    pub fn error(self) -> TransportError {
+        TransportError::Incompatible(self.text().to_owned())
+    }
+
+    /// The notice whose words are `text` exactly.
+    pub fn of_text(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|n| n.text() == text)
+    }
+
+    /// The notice `e` is, if it is one.
+    pub fn of(e: &TransportError) -> Option<Self> {
+        match e {
+            TransportError::Incompatible(text) => Self::of_text(text),
+            _ => None,
+        }
+    }
+}
+
+// -- WP PGLINKC --
+/// What a paged device's transport answers to a page-0 (1.1.6-shaped) call:
+/// this client never sends one to a paged device (PLAN-PG section 1.1).
+pub const PAGED_REFUSES_PAGE0: &str =
+    "this device speaks the paged protocol (firmware 1.1.7): no 1.1.6 request is sent to it";
+
+// -- WP PGLINKC --
+/// The page count the probe answered from a device object claims: the hub's
+/// object carries only the protocol's major and minor (spec 1.3 section 7.4),
+/// so this is an upper bound for sizing `SYS.PAGE_LIST` (256 bytes, a
+/// bridge's largest non-bulk GET); the device's own list says how many.
+pub const LISTED_PROBE_PAGES: u8 = 128;
+
+// -- WP PGLINKC --
+/// A firmware result code (`VC_ERR_*`, 0x10..=0x1A, spec 1.3 section 8.1) a hub
+/// forwarded for paged request `id`, as a transport error: the hub already
+/// explained it, so `PagedTransport` reads no `SYS.LAST_RESULT` after it.
+pub fn firmware_refusal(id: CmdId, result: u8) -> TransportError {
+    TransportError::Refused { id, result }
+}
+
+// -- WP PGLINKC --
+/// A poll could not be planned for a paged device (OD-PGo).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PollPlanError {
+    /// The 1.1.6 read needs several paged requests: a poll is one GET.
+    #[error("opcode 0x{opcode:02X} needs several paged requests; it cannot be polled")]
+    MultiRequest { opcode: u8 },
+    /// The planner refused the read (absent, wrong length, unknown opcode).
+    #[error("opcode 0x{opcode:02X} cannot be polled on this device: {why}")]
+    Refused { opcode: u8, why: String },
+    /// A poll's GET must ask for at least one byte (spec 1.3 section 8.2).
+    #[error("a poll of opcode 0x{opcode:02X} asks for 0 bytes")]
+    ZeroLength { opcode: u8 },
+}
+
+// -- WP PGLINKC --
+/// The poll for the 1.1.6 read `opcode`/`value`/`len` on a paged device whose
+/// discovery is `pages`: the paged GET of its single-request plan (PLAN-PG
+/// section 1.4, OD-PGo). A read whose plan is several requests, or a local
+/// answer, is refused here, before `poll.subscribe`. The POLL payload is the
+/// paged GET's verbatim reply: a caller whose plan re-shapes the reply feeds
+/// it through the same plan.
+pub fn paged_poll(
+    slot: u8,
+    opcode: u8,
+    value: u16,
+    len: u16,
+    hz: u32,
+    pages: &PageSet,
+) -> std::result::Result<PollSpec, PollPlanError> {
+    if len == 0 {
+        return Err(PollPlanError::ZeroLength { opcode });
+    }
+    let plan =
+        dspi_proto::paged::plan(opcode, value, LegacyBody::In { len }, pages).map_err(|e| {
+            PollPlanError::Refused {
+                opcode,
+                why: e.to_string(),
+            }
+        })?;
+    match plan.single() {
+        Some(PagedRequest {
+            id,
+            value,
+            body: PagedBody::Get { len },
+        }) if *len > 0 => Ok(PollSpec {
+            slot,
+            req: id.cmd(),
+            val: *value,
+            idx: id.w_index(),
+            len: *len,
+            hz,
+        }),
+        _ => Err(PollPlanError::MultiRequest { opcode }),
+    }
+}
+
 /// One device (a hub handle) on a DSPi Link session, as a [`Transport`].
 ///
 /// Dropping it releases a lock it holds and stops the handle's notification
@@ -202,6 +440,13 @@ fn clamp_max_payload(max_payload: u32) -> usize {
 /// The embedder must therefore take [`Transport::notifications`] exactly once
 /// per transport and drain it for as long as the transport lives; a transport
 /// dropped without that logs a warning.
+///
+/// -- WP PGLINKC -- What it sends depends on its [`LinkRoute`]: page-0
+/// requests to a legacy device, paged requests (the trait's `*_paged` calls,
+/// [`LinkTransport::paged_batch`]) to a paged one, nothing to an unserved one.
+/// It is a raw wire: `dspi_transport::paged::open` wraps it, and decides the
+/// generation from [`Transport::carries_pages`] and the probe this transport
+/// answers from the device object, with nothing sent (PLAN-PG S1).
 pub struct LinkTransport {
     client: LinkClient,
     handle: u8,
@@ -218,6 +463,20 @@ pub struct LinkTransport {
     snapshot_pending: Option<dspi_link::client::PendingSnapshot>,
     /// Whether this transport holds the hub's device lock.
     locked: bool,
+    // -- WP PGLINKC --
+    /// What the device is, decided at construction.
+    route: LinkRoute,
+    /// The `protocol` the hub listed at construction: a different one later
+    /// means the device changed under the handle.
+    listed_protocol: Option<Proto>,
+    /// The device has answered a request: a `0x86` (or, to a page-0 request,
+    /// `0x10`) from now on is a generation change, not a refusal (PLAN-PG
+    /// section 1.1 step 8).
+    answered: bool,
+    /// The device changed generation: nothing more is sent.
+    stale: bool,
+    /// The last firmware result code a hub forwarded, with its request.
+    last_refusal: Option<(CmdId, u8)>,
 }
 
 impl LinkTransport {
@@ -237,6 +496,10 @@ impl LinkTransport {
             bus_id: format!("link:{}", hello.hub.id),
             address: handle,
         };
+        // -- WP PGLINKC --
+        let device = client.device(u32::from(handle));
+        let route = LinkRoute::of(hello, device.as_ref());
+        let listed_protocol = device.and_then(|d| d.protocol);
         Self {
             client,
             handle,
@@ -245,6 +508,43 @@ impl LinkTransport {
             snapshot_unused,
             snapshot_pending: None,
             locked: false,
+            route,
+            listed_protocol,
+            answered: false,
+            stale: false,
+            last_refusal: None,
+        }
+    }
+
+    // -- WP PGLINKC --
+    /// What the device is to this transport.
+    pub fn route(&self) -> LinkRoute {
+        self.route
+    }
+
+    // -- WP PGLINKC --
+    /// The device changed generation under this transport: open it again
+    /// (`dspi_transport::paged::open` on a new [`LinkTransport`]).
+    pub fn needs_reattach(&self) -> bool {
+        self.stale
+    }
+
+    // -- WP PGLINKC --
+    /// The last firmware result code (0x10..=0x1A) a hub forwarded for a paged
+    /// request, with the request's id.
+    pub fn last_refusal(&self) -> Option<(CmdId, u8)> {
+        self.last_refusal
+    }
+
+    // -- WP PGLINKC --
+    /// The device's 8 platform bytes, read by this client rather than taken
+    /// from the hub's 7-byte `platform` (spec 7.4), so the board id in byte 7
+    /// is seen (PLAN-PG section 1.9, R7c): `REQ_GET_PLATFORM` on a legacy
+    /// device, `SYS.PLATFORM` on a paged one. Older firmware answers fewer.
+    pub fn read_platform(&mut self) -> Result<Vec<u8>> {
+        match self.route {
+            LinkRoute::Paged { .. } => self.control_in_paged(cmds::SYS_PLATFORM, 0, PLATFORM_ASK),
+            _ => self.control_in_upto(op::REQ_GET_PLATFORM, 0, PLATFORM_ASK),
         }
     }
 
@@ -279,28 +579,203 @@ impl LinkTransport {
         Some(blob)
     }
 
+    // -- WP PGLINKC --
+    /// Before anything is sent: refuse when the device changed generation
+    /// (seen now in the hub's list, or earlier), or when the route does not
+    /// carry this kind of request (`paged`: a paged one). Nothing goes out
+    /// when this fails.
+    fn admit(&mut self, paged: bool) -> Result<()> {
+        if !self.stale
+            && let Some(now) = self.client.device(u32::from(self.handle))
+            && now.protocol != self.listed_protocol
+        {
+            log::info!(
+                "DSPi Link handle {}: the device's protocol changed; re-attach",
+                self.handle
+            );
+            self.stale = true;
+        }
+        if self.stale {
+            return Err(LinkNotice::GenerationChanged.error());
+        }
+        match (self.route, paged) {
+            (LinkRoute::Unserved, _) => Err(LinkNotice::HubServesPagedOnly.error()),
+            (LinkRoute::Legacy { .. }, true) => Err(TransportError::Incompatible(NO_PAGES.into())),
+            (LinkRoute::Paged { .. }, false) => {
+                Err(TransportError::Incompatible(PAGED_REFUSES_PAGE0.into()))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    // -- WP PGLINKC --
+    /// A device's answer (after the busy window) as this transport reports
+    /// it: `opcode` is the `bRequest`, `id` the paged command (`None` for a
+    /// page-0 request). Notes a first answer, a generation change (`0x86` or
+    /// `0x10` from a device that answered before: PLAN-PG section 1.1 step 8),
+    /// a firmware result code, and, through a 1.2 hub, a refused first
+    /// platform read (step 6).
+    fn settle(&mut self, opcode: u8, id: Option<CmdId>, r: CmdResponse) -> Result<Vec<u8>> {
+        if r.status == status::OK {
+            self.answered = true;
+            return Ok(r.payload);
+        }
+        // On a paged device 0x10 is also an honest refusal (a command absent
+        // from this build, an unlisted page's bitmap), so there only 0x86 is
+        // a generation change; a page-0 request answered 0x10 is our hub's
+        // "the device is paged now" (PLAN-PG R5a)
+        let changed = match self.route {
+            LinkRoute::Paged { .. } => r.status == status::UNSUPPORTED,
+            _ => matches!(r.status, status::UNSUPPORTED | VC_ERR_UNKNOWN),
+        };
+        if self.answered && changed {
+            log::info!(
+                "DSPi Link handle {}: status 0x{:02X} from a device that answered before; re-attach",
+                self.handle,
+                r.status
+            );
+            self.stale = true;
+            return Err(LinkNotice::GenerationChanged.error());
+        }
+        let e = match id {
+            Some(id) if (VC_ERR_UNKNOWN..=VC_ERR_LAST).contains(&r.status) => {
+                self.last_refusal = Some((id, r.status));
+                firmware_refusal(id, r.status)
+            }
+            // -- WP P1HL -- a hub's named refusal keeps its key
+            _ => match map_response(r.status, opcode, &r.payload) {
+                Some(e) => e,
+                None => return Ok(r.payload),
+            },
+        };
+        Err(self.first_platform_refusal(opcode, id, e))
+    }
+
+    // -- WP PGLINKC --
+    /// Through a 1.2 hub, a refused first `REQ_GET_PLATFORM` (a STALL, 0x02,
+    /// DENIED) is [`LinkNotice::Needs13Hub`], never "unrecognised device"
+    /// (PLAN-PG section 1.1 step 6, R6e). A timeout stays a timeout: it says
+    /// nothing about the protocol (a slow link, a held hub), and the caller's
+    /// own retry rules apply to it.
+    fn first_platform_refusal(
+        &self,
+        opcode: u8,
+        id: Option<CmdId>,
+        e: TransportError,
+    ) -> TransportError {
+        let refused = matches!(
+            e,
+            TransportError::Stalled { .. } | TransportError::Denied(_)
+        );
+        if refused
+            && !self.answered
+            && id.is_none()
+            && opcode == op::REQ_GET_PLATFORM
+            && self.route == (LinkRoute::Legacy { l12: true })
+        {
+            return LinkNotice::Needs13Hub.error();
+        }
+        e
+    }
+
+    /// One request through the busy window, settled.
+    #[allow(clippy::too_many_arguments)]
+    fn exchange(
+        &mut self,
+        dir: Dir,
+        b_request: u8,
+        id: Option<CmdId>,
+        value: u16,
+        len: u16,
+        data: &[u8],
+    ) -> Result<Vec<u8>> {
+        let w_index = id.map_or(dspi_proto::VENDOR_INTERFACE, CmdId::w_index);
+        let (client, handle) = (&self.client, self.handle);
+        let r = busy_window_with(b_request, BUSY_BACKOFF, self.route.retryable(), || {
+            client.command(handle, dir, b_request, value, w_index, len, data)
+        });
+        match r {
+            Ok(r) => self.settle(b_request, id, r),
+            Err(e) => Err(self.first_platform_refusal(b_request, id, e)),
+        }
+    }
+
     /// One GET; the reply may be shorter than `len`, never longer. The first
     /// bulk read comes from the snapshot when it has at least `min_len` bytes.
     fn get(&mut self, opcode: u8, value: u16, len: u16, min_len: u16) -> Result<Vec<u8>> {
+        self.admit(false)?; // -- WP PGLINKC --
         if opcode == op::REQ_GET_ALL_PARAMS
             && std::mem::take(&mut self.snapshot_unused)
             && let Some(blob) = self.snapshot_bulk(len, min_len)
         {
             return Ok(blob);
         }
-        let mut payload = busy_window(opcode, BUSY_BACKOFF, || {
-            self.client.command(
-                self.handle,
-                Dir::Get,
-                opcode,
-                value,
-                dspi_proto::VENDOR_INTERFACE,
-                len,
-                &[],
-            )
-        })?;
+        let mut payload = self.exchange(Dir::Get, opcode, None, value, len, &[])?;
         payload.truncate(usize::from(len));
         Ok(payload)
+    }
+
+    // -- WP PGLINKC --
+    /// Up to the hub's `max_inflight` paged reads on the wire at once: one
+    /// round trip for each window instead of one each (PLAN-PG R3; what
+    /// [`Transport::control_in_batch_paged`] runs). Each answer is what
+    /// [`Transport::control_in_paged`] gives; a retryable one (spec 1.3
+    /// section 8.1) goes again on its own, and a `STORE.ALL_PARAMS` read goes
+    /// alone (it may come from the snapshot).
+    pub fn paged_batch(&mut self, reads: &[PagedRead]) -> Vec<Result<Vec<u8>>> {
+        let one = |t: &mut Self, r: &PagedRead| t.control_in_paged(r.id, r.value, r.len);
+        let pipelined = reads.len() >= 2
+            && self.client.max_inflight() >= 2
+            && !reads
+                .iter()
+                .any(|r| r.id == cmds::STORE_ALL_PARAMS || r.id == SYS_PROTOCOL_INFO || r.len == 0);
+        if !pipelined || self.admit(true).is_err() {
+            return reads.iter().map(|r| one(self, r)).collect();
+        }
+        let specs: Vec<CmdSpec> = reads
+            .iter()
+            .map(|r| CmdSpec {
+                handle: self.handle,
+                dir: Dir::Get,
+                b_request: r.id.cmd(),
+                w_value: r.value,
+                w_index: r.id.w_index(),
+                w_length: r.len,
+                payload: Vec::new(),
+            })
+            .collect();
+        let answers = self.client.commands(&specs);
+        reads
+            .iter()
+            .zip(answers)
+            .map(|(r, a)| {
+                if is_retryable_13(a.status) {
+                    return one(self, r);
+                }
+                self.settle(r.id.cmd(), Some(r.id), a).map(|mut p| {
+                    p.truncate(usize::from(r.len));
+                    p
+                })
+            })
+            .collect()
+    }
+
+    // -- WP PGLINKC --
+    /// The probe's reply, made from the device object (no request: PLAN-PG
+    /// section 1.1 step 5, S1): `SYS.PROTOCOL_INFO`'s 16 bytes with the
+    /// listed major and minor, [`LISTED_PROBE_PAGES`], and the hub's
+    /// `max_payload` as both payload limits (the hub's own bound; the
+    /// device's are smaller or equal and it refuses past them).
+    fn listed_probe(&self, major: u8, minor: u8, max_len: u16) -> Vec<u8> {
+        let limit = u16::try_from(self.max_transfer()).unwrap_or(u16::MAX);
+        let mut reply = Vec::with_capacity(usize::from(PROTOCOL_INFO_LEN));
+        reply.extend_from_slice(&PROTOCOL_MAGIC);
+        reply.extend_from_slice(&[major, minor, LISTED_PROBE_PAGES, 0]);
+        reply.extend_from_slice(&limit.to_le_bytes());
+        reply.extend_from_slice(&limit.to_le_bytes());
+        reply.resize(usize::from(PROTOCOL_INFO_LEN), 0);
+        reply.truncate(usize::from(max_len));
+        reply
     }
 }
 
@@ -309,18 +784,25 @@ impl LinkTransport {
 /// [`Transport::control_in_upto`] would give it. A busy status, or
 /// RATE_LIMITED (a slot the hub still counts for a request of ours that timed
 /// out), means the read did not run: it goes again on its own by `again`.
+#[cfg(test)]
 fn batch_answer(
     r: &InRead,
     a: CmdResponse,
     again: impl FnOnce() -> Result<Vec<u8>>,
 ) -> Result<Vec<u8>> {
+    let settle = |a: CmdResponse| match map_status(a.status, r.opcode) {
+        Some(e) => Err(e),
+        None => Ok(a.payload),
+    };
     if is_busy(a.status) || a.status == status::RATE_LIMITED {
         return again();
     }
-    if let Some(e) = map_status(a.status, r.opcode) {
-        return Err(e);
-    }
-    let mut payload = a.payload;
+    shape(r, settle(a)?)
+}
+
+/// A batch read's payload as [`Transport::control_in`] or
+/// [`Transport::control_in_upto`] would give it.
+fn shape(r: &InRead, mut payload: Vec<u8>) -> Result<Vec<u8>> {
     payload.truncate(usize::from(r.len));
     if r.exact {
         exact_reply(r.opcode, r.len, payload)
@@ -354,24 +836,15 @@ impl Transport for LinkTransport {
     }
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
+        self.admit(false)?; // -- WP PGLINKC --
         let Ok(len) = u16::try_from(data.len()) else {
             return Err(TransportError::Remote(format!(
                 "{} bytes for opcode 0x{opcode:02X} exceed a vendor request",
                 data.len()
             )));
         };
-        busy_window(opcode, BUSY_BACKOFF, || {
-            self.client.command(
-                self.handle,
-                Dir::Set,
-                opcode,
-                value,
-                dspi_proto::VENDOR_INTERFACE,
-                len,
-                data,
-            )
-        })
-        .map(drop)
+        self.exchange(Dir::Set, opcode, None, value, len, data)
+            .map(drop)
     }
 
     fn descriptor(&self) -> &DeviceDescriptor {
@@ -412,15 +885,72 @@ impl Transport for LinkTransport {
         self.client.session_id()
     }
 
-    // -- WP PGWIRE --
-    /// No page goes through a hub yet, and `paged::open` sends no probe over
-    /// DSPi Link (PLAN-PG section 1.1 steps 5 and 6): an upstream 1.2 hub
-    /// judges by `bRequest` and may forward or drop the page, and our hub
-    /// refuses one (PGHUB0). The paged calls keep the trait's refusal. WP
-    /// PGLINKC decides by the hub's version and the device object's
-    /// `protocol` instead.
+    // -- WP PGWIRE, PGLINKC --
+    /// A page goes only to a paged device on a 1.3 hub. `paged::open` probes
+    /// only where this is true, and the probe is answered here from the
+    /// device object with nothing sent (PLAN-PG section 1.1 step 5, S1): a
+    /// 1.2 hub judges by `bRequest` and may forward or drop the page, so
+    /// nothing paged goes through one (step 6). True also for a device a 1.3
+    /// hub does not serve, whose probe fails with
+    /// [`LinkNotice::HubServesPagedOnly`], so `open` sends nothing at all.
     fn carries_pages(&self) -> bool {
-        false
+        matches!(self.route, LinkRoute::Paged { .. } | LinkRoute::Unserved)
+    }
+
+    // -- WP PGLINKC --
+    /// A paged GET, `wIndex` = `(page << 8) | 2`, never with `wLength` 0
+    /// (spec 1.3 section 8.2). `SYS.PROTOCOL_INFO` is answered from the
+    /// device object, with nothing sent; the first `STORE.ALL_PARAMS` read
+    /// may come from the hub's snapshot.
+    fn control_in_paged(&mut self, id: CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        self.admit(true)?;
+        if id == SYS_PROTOCOL_INFO
+            && let LinkRoute::Paged { major, minor } = self.route
+        {
+            return Ok(self.listed_probe(major, minor, max_len));
+        }
+        if max_len == 0 {
+            return Err(TransportError::Remote(format!(
+                "a GET of 0x{:04X} with wLength 0 is never sent (spec 1.3 section 8.2)",
+                id.0
+            )));
+        }
+        if id == cmds::STORE_ALL_PARAMS
+            && std::mem::take(&mut self.snapshot_unused)
+            && let Some(blob) = self.snapshot_bulk(max_len, 1)
+        {
+            return Ok(blob);
+        }
+        let mut payload = self.exchange(Dir::Get, id.cmd(), Some(id), value, max_len, &[])?;
+        payload.truncate(usize::from(max_len));
+        Ok(payload)
+    }
+
+    // -- WP PGLINKC --
+    /// A paged SET, `wIndex` = `(page << 8) | 2`; a zero-length `data` is an
+    /// action. Bulk is single-shot `STORE.ALL_PARAMS` (never the chunk form
+    /// over Link, spec 1.3 section 8.2).
+    fn control_out_paged(&mut self, id: CmdId, value: u16, data: &[u8]) -> Result<()> {
+        self.admit(true)?;
+        if id == cmds::STORE_ALL_PARAMS_CHUNK {
+            return Err(TransportError::Stalled { opcode: id.cmd() });
+        }
+        let Ok(len) = u16::try_from(data.len()) else {
+            return Err(TransportError::Remote(format!(
+                "{} bytes for 0x{:04X} exceed a vendor request",
+                data.len(),
+                id.0
+            )));
+        };
+        self.exchange(Dir::Set, id.cmd(), Some(id), value, len, data)
+            .map(drop)
+    }
+
+    // -- WP PGLINKC --
+    /// [`LinkTransport::paged_batch`]: the discovery and the planned reads of
+    /// a paged connect keep the round trips of a legacy one (PLAN-PG R3).
+    fn control_in_batch_paged(&mut self, reads: &[PagedRead]) -> Vec<Result<Vec<u8>>> {
+        self.paged_batch(reads)
     }
 
     /// Spec 7.7: a hub without the `lock` capability serialises commands
@@ -453,6 +983,12 @@ impl Transport for LinkTransport {
     /// instead of one each. A busy answer (spec 8.1) is retried on its own
     /// through the busy window afterwards; a bulk read goes one at a time (it
     /// may come from the snapshot).
+    ///
+    /// -- WP PGLINKC -- Through a 1.2 hub, before the device has answered
+    /// anything, a batch that starts with `REQ_GET_PLATFORM` and holds other
+    /// reads sends that read alone first: a device that refuses it (firmware
+    /// 1.1.7) is sent nothing else (PLAN-PG section 1.1 step 6). It costs the
+    /// identity read of a full probe one round trip, once per transport.
     fn control_in_batch(&mut self, reads: &[InRead]) -> Vec<Result<Vec<u8>>> {
         let one = |t: &mut Self, r: &InRead| {
             if r.exact {
@@ -461,6 +997,25 @@ impl Transport for LinkTransport {
                 t.control_in_upto(r.opcode, r.value, r.len)
             }
         };
+        if let Err(e) = self.admit(false) {
+            return reads.iter().map(|_| Err(e.clone())).collect();
+        }
+        if let [first, rest @ ..] = reads
+            && rest.iter().any(|r| r.opcode != op::REQ_GET_PLATFORM)
+            && !self.answered
+            && first.opcode == op::REQ_GET_PLATFORM
+            && self.route == (LinkRoute::Legacy { l12: true })
+        {
+            let head = one(self, first);
+            if let Err(e) = &head
+                && LinkNotice::of(e) == Some(LinkNotice::Needs13Hub)
+            {
+                return reads.iter().map(|_| Err(e.clone())).collect();
+            }
+            let mut out = vec![head];
+            out.extend(self.control_in_batch(rest));
+            return out;
+        }
         if reads.len() < 2
             || self.client.max_inflight() < 2
             || reads.iter().any(|r| r.opcode == op::REQ_GET_ALL_PARAMS)
@@ -483,7 +1038,14 @@ impl Transport for LinkTransport {
         reads
             .iter()
             .zip(answers)
-            .map(|(r, a)| batch_answer(r, a, || one(self, r)))
+            .map(|(r, a)| {
+                // -- WP PGLINKC -- what did not run goes again; the rest is settled
+                if is_busy(a.status) || a.status == status::RATE_LIMITED {
+                    return one(self, r);
+                }
+                let payload = self.settle(r.opcode, None, a)?;
+                shape(r, payload)
+            })
             .collect()
     }
 }
@@ -549,6 +1111,16 @@ impl NotificationSource for LinkNotifications {
         }
     }
 }
+
+// -- WP PGLINKC --
+#[cfg(test)]
+#[path = "link/tests_wp_pglinkc.rs"]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+mod tests_wp_pglinkc;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

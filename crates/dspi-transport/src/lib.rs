@@ -44,6 +44,8 @@ pub use link::LinkTransport;
 // -- WP PGWIRE -- the generation wrapper every connection is opened through
 pub mod paged;
 pub use paged::LegacyGuard;
+// -- WP PGADAPT --
+pub use paged::PagedTransport;
 
 /// How long to wait on a single control transfer before treating it as timed out.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -111,6 +113,23 @@ pub enum TransportError {
     /// the link's or the system's own words.
     #[error("{0}")]
     Remote(String),
+
+    // -- WP PGADAPT --
+    /// A paged device refused paged command `id` with result `result` (a
+    /// `VC_ERR_*` code, migration guide 5.3): from `SYS.LAST_RESULT` when its
+    /// record matched the refused request (PLAN-PG S2), from a link's status
+    /// byte, or decided locally before anything was sent (a command the
+    /// device does not list, a wrong SET length, a NaN). Only paged calls
+    /// answer it; a 1.1.6-shaped call is refused as [`TransportError::Stalled`].
+    #[error("the device refused command 0x{:04X}: {}", id.0, refused_name(*result))]
+    Refused { id: CmdId, result: u8 },
+}
+
+// -- WP PGADAPT --
+/// A result code's name for [`TransportError::Refused`]'s message.
+fn refused_name(result: u8) -> String {
+    dspi_proto::paged::result_name(result)
+        .map_or_else(|| format!("result 0x{result:02X}"), str::to_owned)
 }
 
 // -- WP P1HL --
@@ -413,6 +432,36 @@ pub trait Transport: Send {
     /// `paged::PagedTransport`) answer `Some`.
     fn generation(&self) -> Option<Generation> {
         None
+    }
+
+    // -- WP PGADAPT --
+    /// Several paged GETs that do not depend on each other, answered in
+    /// order, each what [`Transport::control_in_paged`] would answer (PLAN-PG
+    /// R3). The default sends them one at a time; a link whose round trips
+    /// dominate (DSPi Link, WP PGLINKC) keeps several on the wire at once.
+    /// Every 1.1.7 GET only reads, so any batch of them is safe to reorder.
+    fn control_in_batch_paged(&mut self, reads: &[PagedRead]) -> Vec<Result<Vec<u8>>> {
+        reads
+            .iter()
+            .map(|r| self.control_in_paged(r.id, r.value, r.len))
+            .collect()
+    }
+}
+
+// -- WP PGADAPT --
+/// One read of [`Transport::control_in_batch_paged`]: a paged GET of up to
+/// `len` bytes (never 0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PagedRead {
+    pub id: CmdId,
+    pub value: u16,
+    pub len: u16,
+}
+
+impl PagedRead {
+    /// A GET of `id` at `value`, up to `len` bytes.
+    pub const fn new(id: CmdId, value: u16, len: u16) -> Self {
+        Self { id, value, len }
     }
 }
 

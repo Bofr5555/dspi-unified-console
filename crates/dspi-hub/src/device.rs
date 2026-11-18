@@ -577,6 +577,8 @@ pub(crate) fn status_of(e: &TransportError) -> u8 {
         | TransportError::Incompatible(_)
         | TransportError::Malformed(_)
         | TransportError::Remote(_) => status::ERROR,
+        // -- WP PGADAPT -- a typed paged refusal (PGHDEV forwards its code)
+        TransportError::Refused { .. } => status::ERROR,
     }
 }
 

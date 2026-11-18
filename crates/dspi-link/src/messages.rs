@@ -10,9 +10,29 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-/// The protocol this client speaks (spec 1.2; 1.1 hubs are compatible, 13.1).
+/// The protocol major of DSPi Link (spec 10).
 pub const PROTO_MAJOR: u32 = 1;
+/// The minor **our hub** sends in its `hello` (`dspi-hub` `server.rs`): 2 until
+/// WP PGHDEV raises it together with `protocol`, `ext`, `legacy_devices` and
+/// `denied_ids`, so the hub never claims 1.3 without behaving as one (PLAN-PG
+/// R4). The client sends [`CLIENT_PROTO_MINOR`].
 pub const PROTO_MINOR: u32 = 2;
+
+// -- WP PGLINKC --
+/// The minor this **client** sends in its `hello`: it speaks DSPi Link 1.3
+/// (paged devices, `denied_ids`, the firmware result codes) and 1.2 (spec 13.1;
+/// 1.1 hubs are compatible). PLAN-PG section 1.4, R4.
+pub const CLIENT_PROTO_MINOR: u32 = 3;
+
+// -- WP PGLINKC --
+/// The first hub minor that is DSPi Link 1.3: policy by command id, `protocol`
+/// in the device object, nothing forwarded to a legacy device (spec 13.1).
+pub const LINK_13_MINOR: u32 = 3;
+
+// -- WP PGLINKC --
+/// Our hub's capability: it lists and forwards to legacy (1.1.6-generation)
+/// devices, which an upstream 1.3 hub does not (PLAN-PG OD-PGg).
+pub const CAP_LEGACY_DEVICES: &str = "legacy_devices";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Proto {
@@ -151,6 +171,21 @@ impl HelloHub {
         self.pin_source_kind().as_str()
     }
 
+    // -- WP PGLINKC --
+    /// A DSPi Link 1.3 hub (minor 3 or later): policy by command id, `protocol`
+    /// in the device object. A 1.2 or older hub (`false`) classes by `bRequest`
+    /// and may forward or drop a page, so nothing paged goes through it
+    /// (PLAN-PG section 1.1 step 6, OD-PGe).
+    pub fn is_link_13(&self) -> bool {
+        self.proto.minor >= LINK_13_MINOR
+    }
+
+    // -- WP PGLINKC --
+    /// The hub forwards to legacy devices (our hub, cap `legacy_devices`).
+    pub fn serves_legacy_devices(&self) -> bool {
+        self.has_cap(CAP_LEGACY_DEVICES)
+    }
+
     /// [`Self::pin_source`], typed.
     pub fn pin_source_kind(&self) -> PinSource {
         match self.pin_source.as_deref() {
@@ -165,6 +200,12 @@ pub struct Policy {
     /// `[bRequest, dir]` pairs this session may not send (dir 0 = SET, 1 = GET).
     #[serde(default)]
     pub denied: Vec<[u16; 2]>,
+    // -- WP PGLINKC --
+    /// `[command id, dir]` pairs (spec 1.3 section 7.3), for paged devices. A
+    /// 1.3 upstream hub sends `denied` empty and fills only this; our hub fills
+    /// both (PLAN-PG section 1.5). Absent on 1.2 hubs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub denied_ids: Vec<[u32; 2]>,
 }
 
 /// The `ok` to `auth.token` / `auth.pair` (spec 7.3).
@@ -226,6 +267,26 @@ pub struct DeviceInfo {
     pub link: String,
     #[serde(default)]
     pub locked_by: Option<u32>,
+    // -- WP PGLINKC --
+    /// The device's vendor protocol version (spec 1.3 section 7.4, from
+    /// `SYS.PROTOCOL_INFO` bytes 4 and 5): present for a paged (1.1.7) device,
+    /// absent for a legacy one and on every 1.2 hub.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<Proto>,
+    // -- WP PGLINKC --
+    /// Our hub only (additive): whether the device has our extension channel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ext: Option<bool>,
+}
+
+// -- WP PGLINKC --
+impl DeviceInfo {
+    /// The device speaks the paged protocol whose major this client knows
+    /// (`protocol.major` 1): only then may paged commands and polls go to it
+    /// (spec 1.3 section 7.4).
+    pub fn is_paged(&self) -> bool {
+        self.protocol.is_some_and(|p| p.major == PROTO_MAJOR)
+    }
 }
 
 /// The `ok` to `device.snapshot` (spec 7.5).
@@ -411,7 +472,9 @@ pub mod out {
     use super::*;
 
     pub fn hello(client: &ClientInfo) -> String {
-        json!({"t": "hello", "proto": {"major": PROTO_MAJOR, "minor": PROTO_MINOR}, "client": client}).to_string()
+        // -- WP PGLINKC -- the client's own minor (R4), not the hub's
+        json!({"t": "hello", "proto": {"major": PROTO_MAJOR, "minor": CLIENT_PROTO_MINOR}, "client": client})
+            .to_string()
     }
 
     pub fn auth_token(id: u64, token: &str) -> String {
@@ -488,5 +551,58 @@ mod tests_wp_hubadmin {
         assert_eq!(body["serial"], "S1");
         let shown = format!("{:?}", Inbound::parse(text).unwrap());
         assert!(!shown.contains("rows"), "{shown}");
+    }
+}
+
+// -- WP PGLINKC --
+#[cfg(test)]
+mod tests_wp_pglinkc {
+    use super::*;
+
+    /// Spec 1.3 section 7.4: `protocol` for a paged device, absent for a legacy
+    /// one; our additive `ext`. A 1.2 object serialises as before.
+    #[test]
+    fn wp_pglinkc_the_device_object_carries_protocol_and_ext() {
+        let text =
+            r#"{"t":"device.added","device":{"handle":0,"serial":"S","protocol":{"major":1,"minor":0},"ext":true}}"#;
+        let Ok(Inbound::DeviceAdded(d)) = Inbound::parse(text) else { panic!("not DeviceAdded") };
+        assert_eq!(d.protocol, Some(Proto { major: 1, minor: 0 }));
+        assert_eq!(d.ext, Some(true));
+        assert!(d.is_paged());
+        let newer = DeviceInfo { protocol: Some(Proto { major: 2, minor: 0 }), ..d.clone() };
+        assert!(!newer.is_paged(), "a later major may change what a command means");
+        let legacy = DeviceInfo { protocol: None, ext: None, ..d };
+        assert!(!legacy.is_paged());
+        let v = serde_json::to_value(&legacy).unwrap();
+        assert!(v.get("protocol").is_none() && v.get("ext").is_none(), "{v}");
+    }
+
+    /// Spec 1.3 section 7.3: `denied_ids` next to `denied`, both optional.
+    #[test]
+    fn wp_pglinkc_policy_parses_denied_ids() {
+        let p: Policy = serde_json::from_str(r#"{"denied": [], "denied_ids": [[304,0],[560,0]]}"#).unwrap();
+        assert!(p.denied.is_empty());
+        assert_eq!(p.denied_ids, vec![[304, 0], [560, 0]]);
+        let old: Policy = serde_json::from_str(r#"{"denied": [[83,0]]}"#).unwrap();
+        assert!(old.denied_ids.is_empty());
+    }
+
+    /// R4: the client says 1.3, our hub's constant stays 1.2 until PGHDEV.
+    #[test]
+    fn wp_pglinkc_hello_minor_and_hub_kinds() {
+        let v: Value =
+            serde_json::from_str(&out::hello(&ClientInfo { name: "n".into(), app: "a".into(), version: "v".into() }))
+                .unwrap();
+        assert_eq!(v["proto"]["minor"], CLIENT_PROTO_MINOR);
+        assert_eq!(PROTO_MINOR, 2);
+        let hub = |minor, caps: &[&str]| HelloHub {
+            proto: Proto { major: 1, minor },
+            caps: caps.iter().map(|c| c.to_string()).collect(),
+            ..HelloHub::default()
+        };
+        assert!(!hub(2, &[]).is_link_13());
+        assert!(hub(3, &[]).is_link_13());
+        assert!(hub(3, &[CAP_LEGACY_DEVICES]).serves_legacy_devices());
+        assert!(!hub(3, &[]).serves_legacy_devices());
     }
 }

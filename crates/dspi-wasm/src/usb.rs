@@ -861,8 +861,11 @@ mod tests {
         calls::session_free(h).unwrap();
     }
 
-    /// A device that answers the probe as firmware 1.1.7 is refused with the
-    /// notice, and nothing follows the probe.
+    /// A device that answers every request with the probe's bytes is paged
+    /// for the probe, then fails the discovery (its page list names no
+    /// `SYS` page): refused as unrecognised, and no page-0 request reaches
+    /// it. -- WP PGADAPT -- (until the adapter: "paged_not_yet" after the
+    /// probe alone).
     #[test]
     fn wp_pgwire_a_paged_device_over_webusb_is_refused_after_the_probe() {
         struct Paged(Arc<Mutex<Vec<(u8, u16)>>>);
@@ -892,9 +895,14 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(e.code, "transfer");
-        assert_eq!(e.notice_key.as_deref(), Some("transfer.paged_not_yet"));
-        assert!(e.message.contains("firmware 1.1.7"), "{}", e.message);
-        assert_eq!(*seen.lock().unwrap(), vec![(0x10, 0x0102)]);
+        assert_eq!(
+            e.notice_key.as_deref(),
+            Some("transfer.unrecognised_device")
+        );
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen[0], (0x10, 0x0102), "the probe first");
+        assert!(seen.len() > 1, "the discovery follows: {seen:?}");
+        assert!(seen.iter().all(|(_, index)| index >> 8 != 0), "{seen:?}");
         assert_eq!(run(h, "state", Value::Null)["code"], "not_open");
         calls::session_free(h).unwrap();
     }

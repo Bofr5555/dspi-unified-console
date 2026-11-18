@@ -885,9 +885,10 @@ mod pgwire {
     ];
 
     /// The C ABI's MIDI open probes the generation before the connect: a
-    /// paged device is refused with its notice after the probe alone (no
-    /// page-0 request reaches it), and a 1.1.6 device is opened after exactly
-    /// one probe request.
+    /// device that answers the probe as paged gets the paged discovery and
+    /// no page-0 request (-- WP PGADAPT -- one that answers nothing else is
+    /// unrecognised; it was "paged_not_yet" until the adapter), and a 1.1.6
+    /// device is opened after exactly one probe request.
     #[test]
     fn wp_pgwire_the_c_abi_midi_open_probes_the_generation_first() {
         let paged = MockTransport::new()
@@ -899,10 +900,13 @@ mod pgwire {
         let e = open_probed(&core, Box::new(paged), "port".into()).unwrap_err();
         assert_eq!(
             e.notice_key(),
-            format!("transfer.{}", Refusal::PagedNotYet.code())
+            format!("transfer.{}", Refusal::Unrecognised.code())
         );
         let log = log.lock().unwrap().clone();
-        assert_eq!(log.len(), 1, "only the probe: {log:?}");
+        assert!(
+            log.iter().all(|x| x.page() != 0),
+            "no page-0 request: {log:?}"
+        );
         assert_eq!(
             log[0].setup(),
             [0xC1, 0x10, 0x00, 0x00, 0x02, 0x01, 0x10, 0x00]
