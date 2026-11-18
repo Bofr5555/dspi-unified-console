@@ -140,6 +140,9 @@ pub const SIGGEN_STOP_FADE: u8 = 0;
 pub const SIGGEN_STOP_NOW: u8 = 1;
 /// The highest valid apply op in a superframe (the line's and S/PDIF's).
 pub const APPLY_OP_MAX: u8 = OP_SIGGEN_STOP;
+/// Op 9 is never written in the bus-frame form ([`TB_USB_BUS_FRAME`]): the
+/// firmware refuses it there and the hub always writes S (review R5).
+pub const OP_SIGGEN_START_REFUSES_BUS_FRAME: bool = true;
 /// `EXT_ALINK_INFO.features` bit: the build has ops 9 and 10.
 pub const FEATURE_SIGGEN_SYNC: u32 = 1 << 6;
 
@@ -170,6 +173,9 @@ pub mod timeline_result {
     pub const CANCELLED_CONFIG: u8 = 5;
     /// Cancelled by the host (`CANCEL_ALL`, `STOP`, `STOP_NOW`).
     pub const CANCELLED_HOST: u8 = 6;
+    /// Started by op 9, then stopped (as `STOP_NOW`, with its fade) because its
+    /// time base left `LOCKED` (review R3).
+    pub const STOPPED_LOSS: u8 = 7;
 }
 
 // ------------------------------------------------------------ S/PDIF
@@ -190,6 +196,18 @@ pub const SPDIF_USER_BITS: usize = 384;
 pub const SPDIF_SUPERFRAME_LEN: usize = 48;
 /// The superframe's byte 5 on S/PDIF (the line's class is 1..3).
 pub const SPDIF_CARRIER_CLASS: u8 = 0x10;
+/// Blocks the source's superframe table covers (the 512-frame ring plus the
+/// erase-ahead); a block's superframe is a function of its index `F / 192`
+/// and is frozen once any of its frames is stamped (review R2).
+pub const SPDIF_TX_TABLE_BLOCKS: usize = 4;
+/// The transmit ring, frames (`pico_audio_spdif_multi`).
+pub const SPDIF_TX_RING_FRAMES: u64 = 512;
+/// The shortest lead of a broadcast op through `EXT_ALINK_SPDIF_CTRL`: the
+/// ring plus two blocks (896 frames, about 19 ms at 48 kHz).
+pub const SPDIF_CTRL_MIN_LEAD_FRAMES: u64 = SPDIF_TX_RING_FRAMES + 2 * SPDIF_BLOCK_FRAMES;
+/// Missing or invalid superframes a follower rides through on counter
+/// continuity (counted, no disturbance) before it enters `HOLDOVER`.
+pub const SPDIF_COAST_BLOCKS: u32 = 8;
 
 #[cfg(test)]
 mod tests_wp_planat {

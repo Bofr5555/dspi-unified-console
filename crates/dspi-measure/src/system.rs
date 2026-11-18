@@ -13,6 +13,10 @@
 use crate::stimulus::WalkSchedule;
 use crate::types::MeasureError;
 
+// -- WP PLANAT (review R9e) -- the hub family `system.measure.*`: the request,
+// reply and event types ATHUB serves and ATCORE sends.
+pub mod messages;
+
 /// The most units one schedule spans.
 pub const MAX_UNITS: usize = 16;
 /// The most segments one schedule holds (passes 1 to 8 over up to 16 units).
@@ -61,6 +65,9 @@ pub struct TimePin {
     pub capture_frame: u64,
     /// The domain sample the reply reported.
     pub t: u64,
+    /// The capture frames between sending the request and the reply's
+    /// arrival: the pin's uncertainty. The analyser uses the shortest.
+    pub round_trip_frames: u64,
 }
 
 /// An output repeated in every run of a chained measurement, so that runs
@@ -81,6 +88,7 @@ pub struct SystemSchedule {
     /// The domain's sample rate, Hz (every segment's sweep is at it).
     pub rate_hz: u32,
     segments: Vec<Segment>,
+    summed: bool,
 }
 
 impl SystemSchedule {
@@ -131,7 +139,61 @@ impl SystemSchedule {
             domain,
             rate_hz,
             segments,
+            summed: false,
         })
+    }
+
+    /// A summed run (RC5f across units): every segment starts at the same
+    /// `start`, each on a different unit, so their outputs play together.
+    ///
+    /// Errors: [`MeasureError::Invalid`] for fewer than two segments, more than
+    /// [`MAX_UNITS`], a unit twice or past [`MAX_UNITS`], or a sweep at another
+    /// rate than `rate_hz`.
+    pub fn summed(
+        domain: DomainId,
+        rate_hz: u32,
+        start: u64,
+        parts: Vec<(UnitIndex, WalkSchedule)>,
+    ) -> Result<SystemSchedule, MeasureError> {
+        if parts.len() < 2 || parts.len() > MAX_UNITS {
+            return Err(MeasureError::Invalid(format!(
+                "{} units in a summed run (2 to {MAX_UNITS})",
+                parts.len()
+            )));
+        }
+        let mut seen: Vec<UnitIndex> = Vec::with_capacity(parts.len());
+        let mut segments = Vec::with_capacity(parts.len());
+        for (unit, schedule) in parts {
+            if usize::from(unit.0) >= MAX_UNITS || seen.contains(&unit) {
+                return Err(MeasureError::Invalid(format!(
+                    "unit {} twice or out of range",
+                    unit.0
+                )));
+            }
+            if schedule.sweep.rate_hz != rate_hz {
+                return Err(MeasureError::Invalid(format!(
+                    "a segment at {} Hz in a {rate_hz} Hz domain",
+                    schedule.sweep.rate_hz
+                )));
+            }
+            seen.push(unit);
+            segments.push(Segment {
+                unit,
+                start,
+                schedule,
+            });
+        }
+        Ok(SystemSchedule {
+            domain,
+            rate_hz,
+            segments,
+            summed: true,
+        })
+    }
+
+    /// A summed run: every segment starts together.
+    pub fn is_summed(&self) -> bool {
+        self.summed
     }
 
     /// The one-segment schedule of a single unit (the existing single-unit
@@ -164,9 +226,9 @@ impl SystemSchedule {
         self.segments.first().map_or(0, |s| s.start)
     }
 
-    /// The last segment's end.
+    /// The latest segment end.
     pub fn end(&self) -> u64 {
-        self.segments.last().map_or(0, Segment::end)
+        self.segments.iter().map(Segment::end).max().unwrap_or(0)
     }
 
     /// The units that play, ascending, each once.
@@ -251,5 +313,29 @@ mod tests_wp_planat {
         );
         assert!(rate.is_err());
         assert!(SystemSchedule::new(D, 48_000, Vec::new()).is_err());
+    }
+
+    #[test]
+    fn wp_planat_summed_needs_distinct_units() {
+        let a = walk(48_000, 0b1);
+        let s = SystemSchedule::summed(
+            D,
+            48_000,
+            500,
+            vec![(UnitIndex(0), a.clone()), (UnitIndex(1), a.clone())],
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert!(s.is_summed());
+        assert!(s.segments().iter().all(|g| g.start == 500));
+        assert!(
+            SystemSchedule::summed(
+                D,
+                48_000,
+                0,
+                vec![(UnitIndex(0), a.clone()), (UnitIndex(0), a.clone())]
+            )
+            .is_err()
+        );
+        assert!(SystemSchedule::summed(D, 48_000, 0, vec![(UnitIndex(0), a)]).is_err());
     }
 }

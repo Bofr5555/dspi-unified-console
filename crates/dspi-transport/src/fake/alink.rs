@@ -639,6 +639,10 @@ impl State {
     /// cancels the queue. Refused: arguments out of range, a full queue, no
     /// lock.
     fn queue_op(&mut self, r: ApplyRequest) -> bool {
+        // -- WP PLANAT -- ops 9 and 10 are refused until ATFAKE models them.
+        if matches!(r.op, ApplyOp::SiggenStart | ApplyOp::SiggenStop) {
+            return false;
+        }
         if !r.args_valid() || self.alink.state != AlinkState::Locked {
             return false;
         }
@@ -772,7 +776,9 @@ impl State {
         }
         let lead_ok = alink::ctrl_msg_min_frame(now).is_some_and(|min| r.frame >= min);
         let rate_ok = r.op != ApplyOp::Rate || r.frame % alink::SUPERFRAME_FRAMES == 0;
-        if !r.args_valid() || !lead_ok || !rate_ok || self.alink.ctrl.is_some() {
+        // -- WP PLANAT -- the sender carries ops 9 and 10 once ATFAKE models them.
+        let op_ok = !matches!(r.op, ApplyOp::SiggenStart | ApplyOp::SiggenStop);
+        if !op_ok || !r.args_valid() || !lead_ok || !rate_ok || self.alink.ctrl.is_some() {
             return false;
         }
         self.alink.ctrl = Some(r);
