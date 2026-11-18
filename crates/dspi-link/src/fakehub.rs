@@ -75,7 +75,8 @@ pub use fake_tls::FakeTlsKey;
 pub const BULK_V32: &[u8] = include_bytes!("../../../tests/fixtures/link/device/bulk_v32.bin");
 pub const PLATFORM: &[u8] = include_bytes!("../../../tests/fixtures/link/device/platform.bin");
 pub const STATUS_WVALUE9: &[u8] = include_bytes!("../../../tests/fixtures/link/device/status_wvalue9.bin");
-const POLICY: &str = include_str!("../../../tests/fixtures/link/policy/commands.json");
+// -- WP PGHPOL -- the 1.2 table, renamed from `commands.json`.
+const POLICY: &str = include_str!("../../../tests/fixtures/link/policy/commands-1.2.json");
 
 /// Firmware request ids the fake device knows.
 pub mod req {
