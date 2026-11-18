@@ -30,7 +30,7 @@ use nusb::MaybeFuture;
 use nusb::transfer::{Bulk, ControlIn, ControlOut, ControlType, In, Recipient, TransferError};
 
 use crate::{
-    DEFAULT_TIMEOUT, DeviceDescriptor, NotificationSource, Result, Transport, TransportError,
+    CmdId, DEFAULT_TIMEOUT, DeviceDescriptor, NotificationSource, Result, Transport, TransportError,
 };
 
 /// `VENDOR_EP_IN` (config.h): the notification endpoint. It is a bulk
@@ -205,41 +205,27 @@ impl Transport for UsbTransport {
     }
 
     fn control_in_upto(&mut self, opcode: u8, value: u16, max_len: u16) -> Result<Vec<u8>> {
-        self.interface
-            .control_in(
-                ControlIn {
-                    control_type: ControlType::Vendor,
-                    recipient: Recipient::Interface,
-                    request: opcode,
-                    value,
-                    index: VENDOR_INTERFACE,
-                    length: max_len,
-                },
-                self.timeout,
-            )
-            .wait()
-            .map_err(|e| map_transfer_error(e, opcode))
+        self.transfer_in(opcode, value, VENDOR_INTERFACE, max_len)
     }
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
         debug_assert_eq!(REQ_TYPE_OUT, 0x41, "OUT is vendor|interface|host-to-device");
+        self.transfer_out(opcode, value, VENDOR_INTERFACE, data)
+    }
 
-        self.interface
-            .control_out(
-                ControlOut {
-                    control_type: ControlType::Vendor,
-                    recipient: Recipient::Interface,
-                    request: opcode,
-                    value,
-                    index: VENDOR_INTERFACE,
-                    data,
-                },
-                self.timeout,
-            )
-            .wait()
-            .map_err(|e| map_transfer_error(e, opcode))?;
+    // -- WP PGWIRE --
+    /// USB carries the page in `wIndex`'s high byte; the low byte stays the
+    /// claimed interface, as WinUSB requires.
+    fn carries_pages(&self) -> bool {
+        true
+    }
 
-        Ok(())
+    fn control_in_paged(&mut self, id: CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        self.transfer_in(id.cmd(), value, id.w_index(), max_len)
+    }
+
+    fn control_out_paged(&mut self, id: CmdId, value: u16, data: &[u8]) -> Result<()> {
+        self.transfer_out(id.cmd(), value, id.w_index(), data)
     }
 
     fn descriptor(&self) -> &DeviceDescriptor {
@@ -261,6 +247,50 @@ impl Transport for UsbTransport {
         // chunked path is used unconditionally rather than only on Windows.
         // One code path gets exercised on every platform, which is the point.
         4096
+    }
+}
+
+// -- WP PGWIRE --
+impl UsbTransport {
+    /// One IN transfer of up to `len` bytes to `index`: the vendor interface,
+    /// with a page in the high byte for a paged request ([`CmdId::w_index`]).
+    /// Its low byte is always the claimed interface.
+    fn transfer_in(&mut self, request: u8, value: u16, index: u16, len: u16) -> Result<Vec<u8>> {
+        debug_assert_eq!(index & 0xFF, VENDOR_INTERFACE);
+        self.interface
+            .control_in(
+                ControlIn {
+                    control_type: ControlType::Vendor,
+                    recipient: Recipient::Interface,
+                    request,
+                    value,
+                    index,
+                    length: len,
+                },
+                self.timeout,
+            )
+            .wait()
+            .map_err(|e| map_transfer_error(e, request))
+    }
+
+    /// One OUT transfer to `index`, as [`UsbTransport::transfer_in`].
+    fn transfer_out(&mut self, request: u8, value: u16, index: u16, data: &[u8]) -> Result<()> {
+        debug_assert_eq!(index & 0xFF, VENDOR_INTERFACE);
+        self.interface
+            .control_out(
+                ControlOut {
+                    control_type: ControlType::Vendor,
+                    recipient: Recipient::Interface,
+                    request,
+                    value,
+                    index,
+                    data,
+                },
+                self.timeout,
+            )
+            .wait()
+            .map_err(|e| map_transfer_error(e, request))?;
+        Ok(())
     }
 }
 

@@ -209,6 +209,10 @@ impl DspiError {
         let code = match self {
             Self::Link { code, .. } | Self::AutoEq { code, .. } => Some(code.as_str()),
             Self::InstallerLock { code, .. } => Some(code.as_str()), // -- WP P1LK --
+            // -- WP PGWIRE -- `paged::open`'s refusals keep their words
+            Self::Transfer { msg } => {
+                dspi_transport::paged::Refusal::of_text(msg).map(|r| r.code())
+            }
             _ => None,
         };
         code.map(|c| format!("{kind}.{c}"))
@@ -407,5 +411,35 @@ mod tests {
     fn status_bytes_map_to_refused() {
         assert_eq!(status(0), Ok(()));
         assert_eq!(status(2), Err(DspiError::Refused { status: 2 }));
+    }
+}
+
+// -- WP PGWIRE --
+#[cfg(test)]
+mod tests_wp_pgwire {
+    use super::*;
+    use dspi_transport::paged::Refusal;
+
+    /// Each refusal of `paged::open` has its own notice row, and its words
+    /// are the detail.
+    #[test]
+    fn wp_pgwire_generation_refusals_have_their_notices() {
+        for r in [
+            Refusal::PagedNotYet,
+            Refusal::NewerProtocol,
+            Refusal::Unrecognised,
+        ] {
+            let e = DspiError::from(r.error());
+            let key = format!("transfer.{}", r.code());
+            assert_eq!(e.notice_key(), key);
+            assert!(crate::notice_text::has_row(&key), "{key}");
+            assert_eq!(e.notice_detail(), r.text());
+            let n = crate::notice_text::notice_for(e);
+            assert_eq!(n.key, key);
+            assert!(!n.title.is_empty() && !n.action.is_empty());
+        }
+        // Another incompatibility keeps the plain key.
+        let other = DspiError::from(TransportError::Incompatible("wire V12".into()));
+        assert_eq!(other.notice_key(), "transfer");
     }
 }

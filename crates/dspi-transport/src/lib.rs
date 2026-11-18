@@ -39,6 +39,9 @@ pub use fake::{BulkDbDevice, BulkDbOptions, GainProbe};
 // -- WP T5 --
 #[cfg(feature = "link")]
 pub use link::LinkTransport;
+// -- WP PGWIRE -- the generation wrapper every connection is opened through
+pub mod paged;
+pub use paged::LegacyGuard;
 
 /// How long to wait on a single control transfer before treating it as timed out.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -399,10 +402,22 @@ pub trait Transport: Send {
         let _ = (id, value, data);
         Err(TransportError::Incompatible(NO_PAGES.into()))
     }
+
+    // -- WP PGWIRE --
+    /// Which protocol generation the device behind this transport speaks, as
+    /// the probe of [`paged::open`] decided it for this connection (PLAN-PG
+    /// section 1.1 step 7). `None` for a raw wire and for a wrapper that does
+    /// not say; the generation wrappers ([`LegacyGuard`] and
+    /// `paged::PagedTransport`) answer `Some`.
+    fn generation(&self) -> Option<Generation> {
+        None
+    }
 }
 
 // -- WP PLANPG --
 pub use dspi_proto::paged::CmdId;
+// -- WP PGWIRE --
+pub use dspi_proto::paged::Generation;
 
 /// What a link without paged requests answers to one.
 pub const NO_PAGES: &str = "this connection cannot carry firmware 1.1.7 (paged) requests";

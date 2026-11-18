@@ -69,8 +69,9 @@ export class UsbHost {
   /** The module's three USB imports (module `dspi`). */
   imports(S: Suspending): Record<string, unknown> {
     return {
-      dspi_usb_in: new S((id, request, value, len, out) => this.controlIn(id, request, value, len, out)),
-      dspi_usb_out: new S((id, request, value, ptr, len) => this.controlOut(id, request, value, ptr, len)),
+      // -- WP PGWIRE -- wIndex from the call: the interface, with a page in its high byte
+      dspi_usb_in: new S((id, request, value, index, len, out) => this.controlIn(id, request, value, index, len, out)),
+      dspi_usb_out: new S((id, request, value, index, ptr, len) => this.controlOut(id, request, value, index, ptr, len)),
       dspi_usb_error: (id: number, out: number, cap: number) => {
         const bytes = new TextEncoder().encode(this.claimed.get(id)?.lastError ?? "the DSPi is not open");
         const n = Math.min(bytes.length, cap);
@@ -163,11 +164,16 @@ export class UsbHost {
     c.onGone();
   }
 
-  private async controlIn(id: number, request: number, value: number, len: number, out: number): Promise<number> {
+  private async controlIn(id: number, request: number, value: number, index: number, len: number, out: number): Promise<number> {
     const c = this.claimed.get(id);
     if (!c || c.gone) return GONE;
+    const s = setup(request, value, index);
+    if (!s) {
+      c.lastError = `wIndex 0x${index.toString(16)} does not name interface ${USB_IDS.interface}`;
+      return OTHER;
+    }
     try {
-      const r = await withTimeout(c.device.controlTransferIn(setup(request, value), len));
+      const r = await withTimeout(c.device.controlTransferIn(s, len));
       if (r === null) return TIMEOUT;
       if (r.status === "stall") return STALL;
       if (r.status !== "ok" || !r.data) {
@@ -182,13 +188,18 @@ export class UsbHost {
     }
   }
 
-  private async controlOut(id: number, request: number, value: number, ptr: number, len: number): Promise<number> {
+  private async controlOut(id: number, request: number, value: number, index: number, ptr: number, len: number): Promise<number> {
     const c = this.claimed.get(id);
     if (!c || c.gone) return GONE;
+    const s = setup(request, value, index);
+    if (!s) {
+      c.lastError = `wIndex 0x${index.toString(16)} does not name interface ${USB_IDS.interface}`;
+      return OTHER;
+    }
     // A copy before the first await: the module's memory may move meanwhile.
     const data = new Uint8Array(this.memory().buffer, ptr, len).slice();
     try {
-      const r = await withTimeout(c.device.controlTransferOut(setup(request, value), data));
+      const r = await withTimeout(c.device.controlTransferOut(s, data));
       if (r === null) return TIMEOUT;
       return r.status === "stall" ? STALL : 0;
     } catch (e) {
@@ -206,9 +217,15 @@ export class UsbHost {
   }
 }
 
-/** Vendor request to interface 2; `wIndex` is never anything else (the protocol's rule). */
-function setup(request: number, value: number): UsbSetup {
-  return { requestType: "vendor", recipient: "interface", request, value, index: USB_IDS.interface };
+/**
+ * Vendor request to interface 2. WP PGWIRE: `wIndex` is the core's: its low byte is
+ * always the interface (the protocol's rule, which WinUSB enforces too), its high
+ * byte the page of a firmware 1.1.7 (paged) request, 0 otherwise. Anything else is
+ * refused here (null), never sent.
+ */
+export function setup(request: number, value: number, index: number): UsbSetup | null {
+  if (!Number.isInteger(index) || index < 0 || index > 0xffff || (index & 0xff) !== USB_IDS.interface) return null;
+  return { requestType: "vendor", recipient: "interface", request, value, index };
 }
 
 /**

@@ -154,9 +154,13 @@ fn usb_checks() -> Vec<Status> {
     // than inferring from enumeration.
     for d in &devices {
         match UsbTransport::open_serial(&d.serial) {
-            Ok(mut t) => {
+            Ok(t) => {
                 out.push(Status::Ok(format!("{}: interface claimed", d.short_name())));
-                out.push(probe_status(&d.short_name(), &mut t));
+                // -- WP PGWIRE -- the generation probe first, on the raw wire
+                out.push(match dspi_transport::paged::open(Box::new(t)) {
+                    Ok(mut t) => probe_status(&d.short_name(), &mut *t),
+                    Err(e) => probe_failed(&d.short_name(), e),
+                });
             }
             Err(TransportError::PermissionDenied) => {
                 out.push(Status::Fail(
@@ -207,12 +211,19 @@ fn device_status(name: &str, caps: &Capabilities) -> Status {
 fn probe_status(name: &str, t: &mut dyn Transport) -> Status {
     match probe_any(t) {
         Ok((caps, _)) => device_status(name, &caps),
+        Err(e) => probe_failed(name, e),
+    }
+}
+
+/// A probe that failed, the generation probe's included (WP PGWIRE).
+fn probe_failed(name: &str, e: TransportError) -> Status {
+    match e {
         // It answered, in a format this build cannot map: a replug will not help.
-        Err(TransportError::Incompatible(why)) => Status::Fail(
+        TransportError::Incompatible(why) => Status::Fail(
             format!("{name}: {why}"),
             "Update the firmware or this application, whichever is older.".into(),
         ),
-        Err(e) => Status::Fail(
+        e => Status::Fail(
             format!("{name}: opened but would not answer: {e}"),
             "The device enumerated but is not responding to vendor \
              commands. Try unplugging and replugging it."

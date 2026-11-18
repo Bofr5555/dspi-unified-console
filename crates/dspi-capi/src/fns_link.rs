@@ -847,6 +847,20 @@ pub(crate) mod midi {
         }
     }
 
+    // -- WP PGWIRE (review/pga) --
+    /// The connect on `raw`, a MIDI transport nothing has been sent on: the
+    /// generation probe first (`dspi_transport::paged::open`, PLAN-PG section
+    /// 1.2: no raw transport is built without it), then the core's connect
+    /// sequence on the wrapper it returns.
+    pub(crate) fn open_probed(
+        core: &dspi_core::DspiCore,
+        raw: Box<dyn dspi_transport::Transport>,
+        name: String,
+    ) -> Result<(), dspi_core::DspiError> {
+        let transport = dspi_transport::paged::open(raw)?;
+        core.open_transport(transport, name, 0)
+    }
+
     /// The DSPi control ports this host can see: JSON {ok, value: [name]}. Lists
     /// MIDI ports, so keep it off a UI thread and call it at most once a second.
     /// Returns the length needed; 0 for a panic.
@@ -887,7 +901,7 @@ pub(crate) mod midi {
             };
             let opened = midir_port::open(port)
                 .map_err(dspi_core::DspiError::from)
-                .and_then(|t| h.core.open_transport(Box::new(t), port.name.clone(), 0));
+                .and_then(|t| open_probed(&h.core, Box::new(t), port.name.clone()));
             opened
                 .inspect_err(|e| log::warn!("dspi-capi: MIDI open failed: {e}"))
                 .is_ok()

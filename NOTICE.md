@@ -93,7 +93,7 @@ offered under the same terms.
   - `feature-settings/src/test/kotlin/se/bofr/dspi/feature/settings/HardwareChangeOrderTest.kt`
 - **From DSPi Console for macOS** (`apps/apple/`, https://github.com/WeebLabs/DSPi-Console; its `LICENSE` says GPL-3.0),
   and the UI, behaviour and texts the Qt, Android, web and Terminal clients port from it.
-- **The DSPi firmware** (`crates/dspi-proto/firmware/` headers; the bundled `.uf2` images, below).
+- **The DSPi firmware** (`crates/dspi-proto/firmware/` headers and its `protocol/` registry and legacy map; the bundled `.uf2` images, below).
 
 ## Parts with their own words
 
@@ -105,6 +105,7 @@ offered under the same terms.
 | `crates/dspi-link/` | The owner's, from `dspi-android`; follows Weeb Labs' MIT DSPi-Link spec and policy | its `Cargo.toml` |
 | `apps/apple/`, and the UI, behaviour and texts the Qt, Android, web and Terminal clients port from it | Weeb Labs' DSPi Console for macOS: its `LICENSE` says GPL-3.0 (version 3, no "or later"); see the section above | `apps/apple/LICENSE`, https://github.com/WeebLabs/DSPi-Console |
 | `crates/dspi-proto/firmware/` | Vendored DSPi firmware headers, GPL-3.0 | `PROVENANCE.toml` there |
+| `crates/dspi-proto/firmware/protocol/` | <!-- WP PGPROTO --> Weeb Labs' `dspi_commands.json` and `legacy_map.json` from the DSPi firmware repository (`Documentation/protocol/`, `release/v1.1.7` at `103ba37`), copied unmodified: data, GPL-3.0 like that repository; `dspi-proto` generates its paged-protocol tables from them at build time. Our workspace's own code stays GPL-3.0-or-later; the binaries carrying the generated tables are distributed under the GPL version 3, as above | `PROVENANCE.toml` `[protocol]` there |
 | `apps/desktop/qt/firmware/*.uf2`, `apps/android/feature-firmware/src/main/assets/firmware/*.uf2`, `apps/apple/DSPi Console/Firmware/*.uf2` | Weeb Labs' DSPi firmware release v1.1.6, unmodified; GPL-3.0, with third-party parts (Raspberry Pi's pico-sdk and pico-extras, BSD-3-Clause; TinyUSB, MIT; LUFA, Dean Camera; Elehobica's S/PDIF receiver, BSD-2-Clause; Alex Stanoev's original code, BSD-3-Clause): their notices are in `assets/licences/firmware-THIRD-PARTY-NOTICES.txt`, which every package that bundles the images carries | https://github.com/WeebLabs/DSPi/tree/v1.1.6 (commit 9ffce34), mirrored as tag `v1.1.6` in https://github.com/Bofr5555/DSPi |
 | Icon glyphs (`make_graphics.py`'s app icon) | Outlines of Noto Sans Mono glyphs; the font is under the SIL Open Font License 1.1, Copyright 2022 The Noto Project Authors | https://github.com/notofonts/latin-greek-cyrillic |
 | `crates/dspi-session/autoeq/` | AutoEq data. AutoEq's `LICENSE` is MIT, Copyright (c) 2018-2022 Jaakko Pasanen; the measurement sources it credits are not covered by anything read so far | https://github.com/jaakkopasanen/AutoEq |

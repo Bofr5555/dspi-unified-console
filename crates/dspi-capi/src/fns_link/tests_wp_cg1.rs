@@ -869,3 +869,50 @@ mod midi {
         assert_eq!(short, [0x55, 0x55]);
     }
 }
+
+// -- WP PGWIRE (review/pga) --
+#[cfg(feature = "midir")]
+mod pgwire {
+    use dspi_core::DspiCore;
+    use dspi_transport::paged::Refusal;
+    use dspi_transport::{CmdId, FakeDevice, MockTransport, mock::Reply};
+
+    use crate::fns_link::midi::open_probed;
+
+    /// The migration guide's probe reply (section 4.2).
+    const GUIDE_REPLY: [u8; 16] = [
+        0x44, 0x53, 0x50, 0x69, 0x01, 0x00, 0x0C, 0x00, 0x40, 0x00, 0x00, 0x01, 0, 0, 0, 0,
+    ];
+
+    /// The C ABI's MIDI open probes the generation before the connect: a
+    /// paged device is refused with its notice after the probe alone (no
+    /// page-0 request reaches it), and a 1.1.6 device is opened after exactly
+    /// one probe request.
+    #[test]
+    fn wp_pgwire_the_c_abi_midi_open_probes_the_generation_first() {
+        let paged = MockTransport::new()
+            .carrying_pages()
+            .paged(CmdId(0x0110), Reply::Data(GUIDE_REPLY.to_vec()))
+            .answering_everything(vec![0; 64]);
+        let log = paged.log_handle();
+        let core = DspiCore::new();
+        let e = open_probed(&core, Box::new(paged), "port".into()).unwrap_err();
+        assert_eq!(
+            e.notice_key(),
+            format!("transfer.{}", Refusal::PagedNotYet.code())
+        );
+        let log = log.lock().unwrap().clone();
+        assert_eq!(log.len(), 1, "only the probe: {log:?}");
+        assert_eq!(
+            log[0].setup(),
+            [0xC1, 0x10, 0x00, 0x00, 0x02, 0x01, 0x10, 0x00]
+        );
+        assert!(!core.is_connected());
+
+        let legacy = FakeDevice::demo();
+        let remote = legacy.remote();
+        open_probed(&core, Box::new(legacy), "port".into()).unwrap();
+        assert!(core.is_connected());
+        assert_eq!(remote.paged_requests(), 1, "the probe and no other page");
+    }
+}

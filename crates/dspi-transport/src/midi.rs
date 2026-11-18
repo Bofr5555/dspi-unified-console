@@ -32,8 +32,17 @@ use dspi_proto::frame::{
 use dspi_proto::generated::opcodes as op;
 
 use crate::{
-    DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
+    CmdId, DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
 };
+
+// -- WP PGWIRE --
+/// `STORE.ALL_PARAMS`: the bulk image on paged firmware (PLAN-PG section 1.2).
+/// From the vendored registry (review/pga: generated, not transcribed).
+const PAGED_ALL_PARAMS: u16 = dspi_proto::paged::cmds::STORE_ALL_PARAMS.0;
+/// `STORE.ALL_PARAMS_CHUNK`.
+const PAGED_ALL_PARAMS_CHUNK: u16 = dspi_proto::paged::cmds::STORE_ALL_PARAMS_CHUNK.0;
+// The migration guide's ids (section 6.5): a re-vendoring that moves them fails the build.
+const _: () = assert!(PAGED_ALL_PARAMS == 0x0240 && PAGED_ALL_PARAMS_CHUNK == 0x0241);
 
 /// Why a [`MidiPipe`] could not send.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -325,6 +334,18 @@ impl MidiTransport {
         self
     }
 
+    // -- WP PGWIRE --
+    /// A paged request's timeout: the bulk one for the whole-image commands
+    /// (`STORE.ALL_PARAMS` 0x0240 and its chunk form 0x0241, which carry what
+    /// `0xA0`..`0xA3` do on page 0; PLAN-PG section 1.2), else the request one.
+    fn paged_timeout(&self, id: CmdId) -> Duration {
+        if matches!(id.0, PAGED_ALL_PARAMS | PAGED_ALL_PARAMS_CHUNK) {
+            self.bulk_timeout
+        } else {
+            self.timeout
+        }
+    }
+
     fn timeout_for(&self, opcode: u8) -> Duration {
         let bulk = matches!(
             opcode,
@@ -393,7 +414,18 @@ impl MidiTransport {
     /// One request with the spec's retry rule. Returns the GET payload (empty
     /// for a SET).
     fn transact(&self, opcode: u8, frame: &Frame, is_get: bool) -> Result<Vec<u8>> {
-        let timeout = self.timeout_for(opcode);
+        self.transact_within(opcode, frame, is_get, self.timeout_for(opcode))
+    }
+
+    /// [`MidiTransport::transact`] with the request's timeout given (WP
+    /// PGWIRE: a paged request's is chosen by its id, not its number).
+    fn transact_within(
+        &self,
+        opcode: u8,
+        frame: &Frame,
+        is_get: bool,
+        timeout: Duration,
+    ) -> Result<Vec<u8>> {
         let mut attempt: u32 = 0;
         loop {
             let (code, payload) = match self.round_trip(opcode, frame, timeout)? {
@@ -517,6 +549,42 @@ impl Transport for MidiTransport {
             ))
         })?;
         self.transact(opcode, &frame, false).map(|_| ())
+    }
+
+    // -- WP PGWIRE --
+    /// The frame carries `wIndex` (spec 3.2), so a page reaches the device as
+    /// on USB.
+    fn carries_pages(&self) -> bool {
+        true
+    }
+
+    fn control_in_paged(&mut self, id: CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        let frame = Frame::Get {
+            request: id.cmd(),
+            value,
+            index: id.w_index(),
+            length: max_len,
+        };
+        let mut data = self.transact_within(id.cmd(), &frame, true, self.paged_timeout(id))?;
+        data.truncate(usize::from(max_len));
+        Ok(data)
+    }
+
+    fn control_out_paged(&mut self, id: CmdId, value: u16, data: &[u8]) -> Result<()> {
+        let frame = Frame::Set {
+            request: id.cmd(),
+            value,
+            index: id.w_index(),
+            payload: data.to_vec(),
+        };
+        frame.check_len().map_err(|e| {
+            TransportError::Remote(format!(
+                "command 0x{:04X}: {e}; it does not fit one MIDI frame",
+                id.0
+            ))
+        })?;
+        self.transact_within(id.cmd(), &frame, false, self.paged_timeout(id))
+            .map(|_| ())
     }
 
     fn descriptor(&self) -> &DeviceDescriptor {
@@ -1564,6 +1632,57 @@ mod tests_wp_t2 {
         assert_eq!(t.caps().kind, TransportKind::Midi);
         assert!(!t.caps().chunked_bulk);
         assert_eq!(t.descriptor().serial, "MIDI-FAKE-0001");
+    }
+
+    // -- WP PGWIRE --
+    /// The probe goes out as a GET frame with the page in `wIndex` (0x0102,
+    /// 16 bytes); a 1.1.6 device answers status 0x02 (ERROR), which is a
+    /// STALL: the device is legacy after the probe and `GET_PLATFORM`.
+    #[test]
+    fn wp_pgwire_the_probe_carries_its_page_over_midi() {
+        let (t, dev, _input) = connect(FakeMidiDevice::new());
+        assert!(t.carries_pages());
+        let g = crate::paged::open(Box::new(t)).unwrap();
+        assert_eq!(g.generation(), Some(crate::Generation::Legacy));
+        let log = dev.dev().log.clone();
+        assert_eq!(log.len(), 2, "{log:?}");
+        assert!(matches!(
+            log[0],
+            Frame::Get {
+                request: 0x10,
+                value: 0,
+                index: 0x0102,
+                length: 16
+            }
+        ));
+        assert!(matches!(
+            log[1],
+            Frame::Get {
+                request: op::REQ_GET_PLATFORM,
+                index: 2,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn wp_pgwire_a_paged_set_carries_its_page_over_midi() {
+        let (mut t, dev, _input) = connect(FakeMidiDevice::new());
+        let id = CmdId(0x0844);
+        assert!(matches!(
+            t.control_out_paged(id, 3, &[1, 2]),
+            Err(TransportError::Stalled { opcode: 0x44 })
+        ));
+        let log = dev.dev().log.clone();
+        assert!(matches!(
+            &log[..],
+            [Frame::Set {
+                request: 0x44,
+                value: 3,
+                index: 0x0802,
+                ..
+            }]
+        ));
     }
 
     #[test]

@@ -252,7 +252,9 @@ impl UsbPipe {
         {
             let transport =
                 dspi_transport::UsbTransport::open_serial(&serial).map_err(pipe_error)?;
-            Ok(Arc::new(Self::over(Box::new(transport), serial)))
+            // -- WP PGWIRE -- the generation probe first, on the raw wire
+            let transport = dspi_transport::paged::open(Box::new(transport)).map_err(pipe_error)?;
+            Ok(Arc::new(Self::over(transport, serial)))
         }
         #[cfg(not(all(feature = "usb", not(target_os = "android"))))]
         {

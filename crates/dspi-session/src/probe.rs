@@ -263,6 +263,11 @@ struct ProbeKey {
     build: Option<BuildInfo>,
     header: WireHeader,
     device_version: u8,
+    // -- WP PGWIRE --
+    /// The connection's protocol generation ([`Transport::generation`]),
+    /// with a paged device's protocol version and page count: a probe made
+    /// on one generation never describes a device on the other (PLAN-PG R6a).
+    generation: Option<dspi_transport::Generation>,
 }
 
 /// A probe kept to describe the same device again without its feature reads
@@ -334,6 +339,9 @@ pub struct Quick {
     serial: String,
     /// An earlier probe described the device: its key and extension channel.
     reused: Option<(ProbeKey, ExtState)>,
+    // -- WP PGWIRE --
+    /// The generation of the transport the identity was read on.
+    generation: Option<dspi_transport::Generation>,
 }
 
 impl Quick {
@@ -354,6 +362,7 @@ impl Quick {
             build: self.caps.build_info.clone(),
             header: *self.image.packet.header(),
             device_version: self.image.device_version,
+            generation: self.generation, // -- WP PGWIRE --
         };
         let (key, ext) = self.reused.unwrap_or((key, ExtState::default()));
         Probed {
@@ -440,8 +449,12 @@ pub fn probe_quick(
         }
         None => identify_with(t, &extra)?,
     };
+    // -- WP PGWIRE -- the generation is part of the key
+    let generation = t.generation();
     let again = reuse
-        .filter(|r| r.key.platform == platform && r.key.serial == serial)
+        .filter(|r| {
+            r.key.platform == platform && r.key.serial == serial && r.key.generation == generation
+        })
         .and_then(|r| {
             let mut answers = extra.into_iter();
             let build = answers
@@ -473,6 +486,7 @@ pub fn probe_quick(
             info,
             serial,
             reused: Some((r.key.clone(), r.ext.clone())),
+            generation,
         });
     }
     let caps = Capabilities {
@@ -504,6 +518,7 @@ pub fn probe_quick(
         info,
         serial,
         reused: None,
+        generation,
     })
 }
 
@@ -525,6 +540,7 @@ pub fn probe_rest(t: &mut dyn Transport, quick: &Quick) -> Result<Completed> {
         build: caps.build_info.clone(),
         header: *quick.image.packet.header(),
         device_version: quick.image.device_version,
+        generation: quick.generation, // -- WP PGWIRE --
     };
     Ok(Completed {
         caps,
@@ -1988,5 +2004,127 @@ mod tests_wp_lk4 {
         s.answer(&[(3, false), (6, true), (9, false)]);
         assert_eq!((s.lo, s.hi), (6, 9));
         assert!(BandSearch::new(1).points().is_empty());
+    }
+}
+
+// -- WP PGWIRE --
+/// WP PGWIRE: the re-attach shortcut is keyed by the connection's generation
+/// (PLAN-PG section 1.1 step 7, R6a).
+#[cfg(test)]
+mod tests_wp_pgwire {
+    use super::*;
+    use dspi_proto::paged::ProtocolInfo;
+    use dspi_transport::fake::{Capture, FakeOptions};
+    use dspi_transport::{DeviceDescriptor, FakeDevice, Generation};
+
+    /// A legacy fake that says it is on `generation`, counting feature reads.
+    struct On {
+        inner: FakeDevice,
+        generation: Option<Generation>,
+        feature_reads: usize,
+    }
+
+    impl Transport for On {
+        fn control_in(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
+            self.count(o);
+            self.inner.control_in(o, v, l)
+        }
+        fn control_in_upto(&mut self, o: u8, v: u16, l: u16) -> Result<Vec<u8>> {
+            self.count(o);
+            self.inner.control_in_upto(o, v, l)
+        }
+        fn control_out(&mut self, o: u8, v: u16, d: &[u8]) -> Result<()> {
+            self.inner.control_out(o, v, d)
+        }
+        fn descriptor(&self) -> &DeviceDescriptor {
+            self.inner.descriptor()
+        }
+        fn generation(&self) -> Option<Generation> {
+            self.generation
+        }
+    }
+
+    impl On {
+        fn count(&mut self, opcode: u8) {
+            if opcode == op::REQ_GET_INPUT_SOURCE {
+                self.feature_reads = self.feature_reads.saturating_add(1);
+            }
+        }
+    }
+
+    fn on(generation: Option<Generation>) -> On {
+        let options = FakeOptions {
+            extensions: true,
+            ..FakeOptions::default()
+        };
+        On {
+            inner: FakeDevice::new(Capture::demo(), options),
+            generation,
+            feature_reads: 0,
+        }
+    }
+
+    const PAGED: Generation = Generation::Paged(ProtocolInfo {
+        major: 1,
+        minor: 0,
+        pages: 12,
+        max_set: 64,
+        max_get: 256,
+    });
+
+    #[test]
+    fn wp_pgwire_a_reusable_from_one_generation_is_refused_on_the_other() {
+        for (made, used) in [
+            (Some(Generation::Legacy), Some(PAGED)),
+            (Some(PAGED), Some(Generation::Legacy)),
+            (Some(Generation::Legacy), None),
+        ] {
+            let mut first = on(made);
+            let reuse = probe_connect(&mut first, &mut |_| {}, None)
+                .unwrap()
+                .reusable()
+                .unwrap();
+            let mut again = on(used);
+            let p = probe_connect(&mut again, &mut |_| {}, Some(&reuse)).unwrap();
+            assert!(!p.reused, "{made:?} -> {used:?}");
+            assert_eq!(
+                again.feature_reads, 1,
+                "probed in full: {made:?} -> {used:?}"
+            );
+            // And the new probe is keyed by the new generation.
+            let mut third = on(used);
+            let reused = probe_connect(&mut third, &mut |_| {}, p.reusable().as_ref()).unwrap();
+            assert!(reused.reused, "{used:?} -> {used:?}");
+        }
+    }
+
+    /// Through `paged::open`: a legacy fake is `Legacy`, and the shortcut
+    /// serves the same device on the same generation.
+    #[test]
+    fn wp_pgwire_the_same_generation_through_open_reuses() {
+        let opened = || {
+            let options = FakeOptions {
+                extensions: true,
+                ..FakeOptions::default()
+            };
+            dspi_transport::paged::open(Box::new(FakeDevice::new(Capture::demo(), options)))
+                .unwrap()
+        };
+        let mut first = opened();
+        assert_eq!(first.generation(), Some(Generation::Legacy));
+        let reuse = probe_connect(&mut *first, &mut |_| {}, None)
+            .unwrap()
+            .reusable()
+            .unwrap();
+        let mut again = opened();
+        let p = probe_connect(&mut *again, &mut |_| {}, Some(&reuse)).unwrap();
+        assert!(p.reused);
+        // A reusable keyed Legacy does not serve a transport that says nothing.
+        let mut raw = on(None);
+        assert!(
+            !probe_connect(&mut raw, &mut |_| {}, Some(&reuse))
+                .unwrap()
+                .reused
+        );
     }
 }

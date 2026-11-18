@@ -905,13 +905,16 @@ pub struct Listed {
 impl Target {
     /// Open the link. Nothing has been asked of the device yet.
     pub fn open(&self, pin: PinPrompt<'_>) -> Result<Box<dyn Transport>, OpenError> {
-        match self {
-            Self::Usb { serial: Some(s) } => Ok(Box::new(UsbTransport::open_serial(s)?)),
-            Self::Usb { serial: None } => Ok(Box::new(UsbTransport::open_only()?)),
-            Self::Demo => Ok(Box::new(FakeDevice::demo())),
-            Self::Midi { port } => open_midi(port.as_deref()),
-            Self::Link(l) => open_link(l, pin),
-        }
+        let raw: Box<dyn Transport> = match self {
+            Self::Usb { serial: Some(s) } => Box::new(UsbTransport::open_serial(s)?),
+            Self::Usb { serial: None } => Box::new(UsbTransport::open_only()?),
+            Self::Demo => Box::new(FakeDevice::demo()),
+            Self::Midi { port } => open_midi(port.as_deref())?,
+            Self::Link(l) => open_link(l, pin)?,
+        };
+        // -- WP PGWIRE -- the generation probe first, on the raw wire, for
+        // every link (no probe over DSPi Link)
+        Ok(dspi_transport::paged::open(raw)?)
     }
 
     /// Open and probe: enough for a one-shot command.
@@ -3863,5 +3866,37 @@ mod tests_wp_sectm {
         client.close();
         assert!(nobody.asked().is_empty(), "no PIN asked");
         assert_eq!(hub.tokens_seen().last(), Some(&v1));
+    }
+}
+
+// -- WP PGWIRE --
+#[cfg(test)]
+mod tests_wp_pgwire {
+    use super::*;
+    use dspi_link::fakehub::{FakeHub, HubConfig};
+
+    /// Every link the TUI opens goes through the generation wrapper: the demo
+    /// (a 1.1.6 device) is legacy after the probe, a DSPi Link device is
+    /// legacy without one, and neither carries a page afterwards.
+    #[test]
+    fn wp_pgwire_every_target_opens_through_the_generation_wrapper() {
+        let mut demo = Target::Demo.open(&no_prompt).unwrap();
+        assert_eq!(demo.generation(), Some(dspi_transport::Generation::Legacy));
+        assert!(!demo.carries_pages());
+        assert!(matches!(
+            demo.control_in_paged(dspi_transport::CmdId(0x0553), 0, 4),
+            Err(TransportError::Incompatible(_))
+        ));
+        drop(demo);
+
+        let hub = FakeHub::start(HubConfig::default()).unwrap();
+        let dir = test_dir().join(format!("pgwire-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut l = LinkTarget::parse(&hub.addr().to_string()).unwrap();
+        l.tokens = Some(dir.join("tokens.toml"));
+        let t = Target::Link(l).open(&no_prompt).unwrap();
+        assert_eq!(t.generation(), Some(dspi_transport::Generation::Legacy));
+        assert_eq!(t.caps().kind, dspi_transport::TransportKind::Link);
     }
 }
