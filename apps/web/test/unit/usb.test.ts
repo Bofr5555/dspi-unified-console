@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CoreCallError, type CoreEvent } from "../../src/core/protocol";
-import { UsbHost } from "../../src/core/usb";
+import { UsbHost, setup } from "../../src/core/usb";
 import { USB_IDS } from "../../src/core/usb-ids";
 import { WasmCore, loadWasmModule } from "../../src/core/wasm";
 import { pageEnv, usbAccess } from "../../src/fleet/env";
@@ -61,7 +61,11 @@ test("WB4a: two USB DSPis at once, each its own session: connect, write with rea
   const devA = usb.device("USBA0001")!;
   assert.ok(devA.opened);
   assert.ok(devA.log.length > 5, "the connect sequence went over WebUSB");
-  assert.ok(devA.log.every((s) => s.requestType === "vendor" && s.recipient === "interface" && s.index === 2));
+  assert.ok(devA.log.every((s) => s.requestType === "vendor" && s.recipient === "interface"));
+  // -- WP PGWIRE -- the generation probe first (SYS.PROTOCOL_INFO: page 1, 0x10, 16
+  // bytes), then page 0 only: the simulated DSPi is 1.1.6 and refuses the probe
+  assert.deepEqual(devA.log[0], { requestType: "vendor", recipient: "interface", request: 0x10, value: 0, index: 0x0102 });
+  assert.ok(devA.log.slice(1).every((s) => s.index === 2), "nothing paged after the probe");
 
   // A write, read back from the device, and the two devices apart.
   assert.deepEqual(await a.core.call("write", { path: "vol.user", value: { float: -13.5 } }), { float: -13.5 });
@@ -136,4 +140,14 @@ test("WB4a: page env offers USB on a secure Chromium page: the picker, the allow
   // Insecure pages and other browsers still say why (WB5's reasons).
   assert.equal(pageEnv({ isSecureContext: false, navigator: { usb } }).usb.ok, false);
   assert.equal(pageEnv({ isSecureContext: false, navigator: { usb } }).usbDevices, undefined);
+});
+
+// -- WP PGWIRE --
+test("PGWIRE: wIndex comes from the core's call: the interface, with a page in its high byte", () => {
+  assert.deepEqual(setup(0x7f, 0, 2), { requestType: "vendor", recipient: "interface", request: 0x7f, value: 0, index: 2 });
+  // The guide's probe SETUP C1 10 00 00 02 01 10 00: wIndex 0x0102.
+  assert.deepEqual(setup(0x10, 0, 0x0102), { requestType: "vendor", recipient: "interface", request: 0x10, value: 0, index: 0x0102 });
+  assert.equal(setup(0x10, 0xe0, 0xe002)?.index, 0xe002, "our extension tunnel on page 0xE0");
+  // Anything whose low byte is not interface 2 is never sent.
+  for (const bad of [0, 1, 3, 0x0100, 0x0103, 0x10002, -1, 2.5]) assert.equal(setup(0x10, 0, bad), null, `wIndex ${bad}`);
 });

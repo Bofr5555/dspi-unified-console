@@ -1380,8 +1380,16 @@ impl DspiCore {
         // lists, so the bind reads only the snapshot (the background
         // completion reads GET_PLATFORM and corrects the mirror if it differs)
         let listed = device.as_ref().and_then(listed_identity);
+        // -- WP PGWIRE -- the generation wrapper (no probe over DSPi Link)
+        let transport = match dspi_transport::paged::open(Box::new(transport)) {
+            Ok(t) => t,
+            Err(e) => {
+                self.drop_meter_path_of(&side);
+                return Err(e.into());
+            }
+        };
         let attached = self.attach_opened_with(
-            Box::new(transport),
+            transport,
             serial.clone(),
             0,
             &mut on_channels,

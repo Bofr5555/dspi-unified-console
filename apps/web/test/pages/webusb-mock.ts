@@ -6,7 +6,9 @@
 // a USB session on the page's own module: the core never opens its demo.
 //
 // What is checked as a browser would: the device must be opened and interface 2
-// claimed before a transfer; requests are vendor/interface with wIndex 2; an
+// claimed before a transfer; requests are vendor/interface with wIndex 2 (WP
+// PGWIRE: or a page in its high byte, which goes to the simulated DSPi's paged
+// call); an
 // unplugged device rejects with NotFoundError and fires `disconnect`; the
 // notification endpoint (3) answers a packet as it arrives, or the idle
 // keep-alive after 100 ms of quiet.
@@ -18,8 +20,8 @@ interface MockExports {
   dspi_alloc(len: number): number;
   dspi_free(ptr: number, len: number): void;
   dspi_mock_new(): number;
-  dspi_mock_in(id: number, op: number, value: number, len: number): number;
-  dspi_mock_out(id: number, op: number, value: number, ptr: number, len: number): number;
+  dspi_mock_in(id: number, op: number, value: number, index: number, len: number): number;
+  dspi_mock_out(id: number, op: number, value: number, index: number, ptr: number, len: number): number;
   dspi_mock_notify(id: number): number;
   dspi_mock_rename(id: number, ptr: number, len: number): number;
   dspi_mock_unplug(id: number): void;
@@ -66,13 +68,13 @@ export class MockBackend {
     return this.x.dspi_mock_new();
   }
 
-  in(id: number, op: number, value: number, len: number): Uint8Array | number {
-    const rc = this.x.dspi_mock_in(id, op, value, len);
+  in(id: number, op: number, value: number, index: number, len: number): Uint8Array | number {
+    const rc = this.x.dspi_mock_in(id, op, value, index, len);
     return rc < 0 ? rc : this.buf(rc);
   }
 
-  out(id: number, op: number, value: number, data: Uint8Array): number {
-    return this.withBytes(data, (ptr) => this.x.dspi_mock_out(id, op, value, ptr, data.length));
+  out(id: number, op: number, value: number, index: number, data: Uint8Array): number {
+    return this.withBytes(data, (ptr) => this.x.dspi_mock_out(id, op, value, index, ptr, data.length));
   }
 
   notify(id: number): Uint8Array | number {
@@ -152,7 +154,7 @@ export class MockDevice implements UsbDeviceLike {
 
   async controlTransferIn(setup: UsbSetup, length: number): Promise<UsbInResult> {
     const b = this.ready(setup);
-    const r = b.in(this.id, setup.request, setup.value, length);
+    const r = b.in(this.id, setup.request, setup.value, setup.index, length);
     if (r === GONE) throw dom("NotFoundError", "The device was disconnected.");
     if (typeof r === "number") return { status: "stall" };
     return { status: "ok", data: new DataView(r.buffer, r.byteOffset, r.byteLength) };
@@ -160,7 +162,7 @@ export class MockDevice implements UsbDeviceLike {
 
   async controlTransferOut(setup: UsbSetup, data: Uint8Array): Promise<{ status: "ok" | "stall"; bytesWritten: number }> {
     const b = this.ready(setup);
-    const rc = b.out(this.id, setup.request, setup.value, data);
+    const rc = b.out(this.id, setup.request, setup.value, setup.index, data);
     if (rc === GONE) throw dom("NotFoundError", "The device was disconnected.");
     return rc === STALL || rc < 0 ? { status: "stall", bytesWritten: 0 } : { status: "ok", bytesWritten: data.length };
   }
@@ -199,7 +201,8 @@ export class MockDevice implements UsbDeviceLike {
   private ready(setup: UsbSetup): MockBackend {
     this.alive();
     if (!this.opened || !this.claimed.has(USB_IDS.interface)) throw dom("InvalidStateError", "The interface is not claimed.");
-    if (setup.requestType !== "vendor" || setup.recipient !== "interface" || setup.index !== USB_IDS.interface) {
+    // -- WP PGWIRE -- the low byte is the interface; the high byte may carry a page
+    if (setup.requestType !== "vendor" || setup.recipient !== "interface" || (setup.index & 0xff) !== USB_IDS.interface || setup.index > 0xffff) {
       throw dom("SecurityError", `unexpected request ${JSON.stringify(setup)}`);
     }
     this.log.push(setup);
