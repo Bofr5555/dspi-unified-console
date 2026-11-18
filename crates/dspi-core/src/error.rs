@@ -424,11 +424,8 @@ mod tests_wp_pgwire {
     /// are the detail.
     #[test]
     fn wp_pgwire_generation_refusals_have_their_notices() {
-        for r in [
-            Refusal::PagedNotYet,
-            Refusal::NewerProtocol,
-            Refusal::Unrecognised,
-        ] {
+        // -- WP PGADAPT -- `PagedNotYet` is gone (a paged device is controlled)
+        for r in Refusal::ALL {
             let e = DspiError::from(r.error());
             let key = format!("transfer.{}", r.code());
             assert_eq!(e.notice_key(), key);

@@ -14,7 +14,7 @@ use proptest::prelude::*;
 
 use super::*;
 use crate::fake::{Capture, FakeOptions};
-use crate::paged::{Refusal, open};
+use crate::paged::open;
 use crate::{FakeDevice, Generation, Transport};
 
 const GUIDE_PROBE: [u8; 16] = [
@@ -596,23 +596,25 @@ fn wp_pgfake1_a_poisoned_fake_fails_in_drop() {
 // ------------------------------------------------------------ with `open`
 
 /// Every generation through `paged::open`: the 1.1.6 ones are legacy after
-/// one probe request; the paged ones are refused until WP PGADAPT, with
-/// nothing after the probe. No violation anywhere.
+/// one probe request; the paged ones are paged after the probe and the
+/// discovery (WP PGADAPT; until then they were refused). No violation
+/// anywhere.
 #[test]
 fn wp_pgfake1_open_decides_every_generation() {
     for g in FakeGeneration::ALL {
         let dev = FakeDevice::demo_generation(g);
         let remote = dev.remote();
-        let r = open(Box::new(dev));
+        let t = open(Box::new(dev)).unwrap();
         if g.is_paged() {
-            match r {
-                Err(e) => assert_eq!(Refusal::of(&e), Some(Refusal::PagedNotYet), "{g:?}"),
-                Ok(_) => panic!("{g:?} opened"),
-            }
+            assert!(
+                matches!(t.generation(), Some(Generation::Paged(_))),
+                "{g:?}"
+            );
+            assert!(remote.paged_requests() > 1, "{g:?}");
         } else {
-            assert_eq!(r.unwrap().generation(), Some(Generation::Legacy), "{g:?}");
+            assert_eq!(t.generation(), Some(Generation::Legacy), "{g:?}");
+            assert_eq!(remote.paged_requests(), 1, "{g:?}");
         }
-        assert_eq!(remote.paged_requests(), 1, "{g:?}");
         assert_eq!(remote.violations(), 0, "{g:?}");
     }
 }

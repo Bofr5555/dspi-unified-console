@@ -52,20 +52,22 @@ fn wp_pgwire_the_probe_goes_first_with_the_guides_setup_bytes() {
     assert_eq!(g.generation(), Some(Generation::Legacy));
 }
 
+// -- WP PGADAPT -- a paged device is no longer refused after the probe: it
+// gets the discovery, and only paged requests. One that answers the probe
+// and nothing else is unrecognised, with no page-0 request sent.
 #[test]
 fn wp_pgwire_a_paged_device_is_refused_with_nothing_after_the_probe() {
     let t = usb_mock()
         .paged(SYS_PROTOCOL_INFO, Reply::Data(GUIDE_REPLY.to_vec()))
         .answering_everything(vec![0; 64]);
     let log = t.log_handle();
-    assert_eq!(refusal_of(open(Box::new(t))), Refusal::PagedNotYet);
+    assert_eq!(refusal_of(open(Box::new(t))), Refusal::Unrecognised);
     let log = log.lock().unwrap().clone();
-    assert_eq!(log.len(), 1, "only the probe: {log:?}");
     assert_eq!(log[0].setup(), GUIDE_SETUP);
-    let e = Refusal::PagedNotYet.error();
-    assert_eq!(
-        e.to_string(),
-        "this device runs firmware 1.1.7, which this version cannot control yet"
+    assert!(log.len() > 1, "the discovery follows: {log:?}");
+    assert!(
+        log.iter().all(|e| e.page() != 0),
+        "no page-0 request: {log:?}"
     );
 }
 
