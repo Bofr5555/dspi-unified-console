@@ -163,7 +163,11 @@ fn sender_paged(id: CmdId, dir: PagedDir) -> bool {
         cmds::SYS_BUILD_INFO,
         EXT_TUNNEL,
     ];
-    let set = [cmds::SYS_ENTER_BOOTLOADER, cmds::STORE_OUTPUT_CONFIG_SAVE, EXT_TUNNEL];
+    let set = [
+        cmds::SYS_ENTER_BOOTLOADER,
+        cmds::STORE_OUTPUT_CONFIG_SAVE,
+        EXT_TUNNEL,
+    ];
     match dir {
         PagedDir::Get => get.contains(&id),
         PagedDir::Set => set.contains(&id),
@@ -173,8 +177,15 @@ fn sender_paged(id: CmdId, dir: PagedDir) -> bool {
 /// The dual-stack sender's pages, ascending: SYS, STORE, 0xE0.
 fn sender_pages() -> Vec<(u8, u8)> {
     let rev = |p: u8| registry::page(p).map_or(1, |i| i.revision);
-    let (sys, store) = (cmds::SYS_PLATFORM.page(), cmds::STORE_OUTPUT_CONFIG_SAVE.page());
-    vec![(sys, rev(sys)), (store, rev(store)), (EXT_PAGE, EXT_PAGE_REVISION)]
+    let (sys, store) = (
+        cmds::SYS_PLATFORM.page(),
+        cmds::STORE_OUTPUT_CONFIG_SAVE.page(),
+    );
+    vec![
+        (sys, rev(sys)),
+        (store, rev(store)),
+        (EXT_PAGE, EXT_PAGE_REVISION),
+    ]
 }
 
 fn sender_bitmap(page: u8) -> Option<PageCommands> {
@@ -265,7 +276,12 @@ impl FakeDevice {
     }
 
     /// A paged OUT request, as [`FakeDevice::board_paged_in`].
-    pub(in crate::fake) fn board_paged_out(&self, id: CmdId, value: u16, data: &[u8]) -> Option<Result<()>> {
+    pub(in crate::fake) fn board_paged_out(
+        &self,
+        id: CmdId,
+        value: u16,
+        data: &[u8],
+    ) -> Option<Result<()>> {
         let mut s = self.shared.lock();
         if s.options.board != (FakeBoard::Sender { dual_stack: true }) {
             return None;
@@ -290,7 +306,12 @@ impl FakeRemote {
 impl State {
     /// A page-0 IN request on a board other than a Pico: `Some` answers or
     /// refuses it, `None` lets the fake answer as it always does.
-    pub(in crate::fake) fn board_get(&mut self, opcode: u8, value: u16, want: usize) -> Option<Result<Vec<u8>>> {
+    pub(in crate::fake) fn board_get(
+        &mut self,
+        opcode: u8,
+        value: u16,
+        want: usize,
+    ) -> Option<Result<Vec<u8>>> {
         let stall = Some(Err(TransportError::Stalled { opcode }));
         match self.options.board {
             FakeBoard::Pico => None,
@@ -306,9 +327,10 @@ impl State {
             },
             FakeBoard::Sender { .. } => match opcode {
                 op::REQ_EXTENSION => match value {
-                    gext::EXT_LIST => {
-                        Some(Ok(sender_ext_ids().iter().flat_map(|id| id.to_le_bytes()).collect()))
-                    }
+                    gext::EXT_LIST => Some(Ok(sender_ext_ids()
+                        .iter()
+                        .flat_map(|id| id.to_le_bytes())
+                        .collect())),
                     // The sender sends no notifications.
                     gext::EXT_NOTIFY_FEATURES => Some(Ok(vec![0; 4])),
                     v if palink::SENDER_IDS.contains(&v) => None,
@@ -379,7 +401,12 @@ impl State {
     }
 
     /// The 1.1.7 rules a paged request meets before its handler.
-    fn sender_paged_check(id: CmdId, dir: PagedDir, value: u16, len: usize) -> std::result::Result<(), u8> {
+    fn sender_paged_check(
+        id: CmdId,
+        dir: PagedDir,
+        value: u16,
+        len: usize,
+    ) -> std::result::Result<(), u8> {
         if !(sender_paged(id, PagedDir::Get) || sender_paged(id, PagedDir::Set)) {
             return Err(VC_ERR_UNKNOWN);
         }
@@ -402,7 +429,12 @@ impl State {
         Ok(())
     }
 
-    fn sender_paged_get(&mut self, id: CmdId, value: u16, want: u16) -> std::result::Result<Vec<u8>, u8> {
+    fn sender_paged_get(
+        &mut self,
+        id: CmdId,
+        value: u16,
+        want: u16,
+    ) -> std::result::Result<Vec<u8>, u8> {
         if id.is_legacy() {
             // Page 0 through a paged call: the legacy stack, which keeps page 0.
             return self
@@ -430,7 +462,9 @@ impl State {
             cmds::SYS_COMMAND_INFO => {
                 let target = CmdId(value);
                 let c = registry::command(target)
-                    .filter(|_| sender_paged(target, PagedDir::Get) || sender_paged(target, PagedDir::Set))
+                    .filter(|_| {
+                        sender_paged(target, PagedDir::Get) || sender_paged(target, PagedDir::Set)
+                    })
                     .ok_or(VC_ERR_ADDRESS)?;
                 let get_len = match c.get_len {
                     GetLen::None => 0,
@@ -439,7 +473,12 @@ impl State {
                 };
                 let mut r = c.flags.0.to_le_bytes().to_vec();
                 r.extend(get_len.to_le_bytes());
-                r.extend([c.set_min, c.set_max, c.addr.code(), u8::from(c.get) | (u8::from(c.set) << 1)]);
+                r.extend([
+                    c.set_min,
+                    c.set_max,
+                    c.addr.code(),
+                    u8::from(c.get) | (u8::from(c.set) << 1),
+                ]);
                 Ok(r)
             }
             cmds::SYS_LAST_RESULT => Ok(self.board.last_result.to_vec()),
@@ -462,7 +501,12 @@ impl State {
         }
     }
 
-    fn sender_paged_set(&mut self, id: CmdId, value: u16, data: &[u8]) -> std::result::Result<(), u8> {
+    fn sender_paged_set(
+        &mut self,
+        id: CmdId,
+        value: u16,
+        data: &[u8],
+    ) -> std::result::Result<(), u8> {
         if id.is_legacy() {
             return self.set(id.cmd(), value, data).map_err(|_| VC_ERR_UNKNOWN);
         }
@@ -479,13 +523,16 @@ impl State {
             EXT_TUNNEL => {
                 if !palink::SENDER_IDS.contains(&value) {
                     // EXT_LIST and EXT_NOTIFY_FEATURES are GET only.
-                    return Err(if value == gext::EXT_LIST || sender_ext_ids().contains(&value) {
-                        VC_ERR_DIRECTION
-                    } else {
-                        VC_ERR_ADDRESS
-                    });
+                    return Err(
+                        if value == gext::EXT_LIST || sender_ext_ids().contains(&value) {
+                            VC_ERR_DIRECTION
+                        } else {
+                            VC_ERR_ADDRESS
+                        },
+                    );
                 }
-                self.set(op::REQ_EXTENSION, value, data).map_err(|_| VC_ERR_VALUE)
+                self.set(op::REQ_EXTENSION, value, data)
+                    .map_err(|_| VC_ERR_VALUE)
             }
             _ => Err(VC_ERR_UNKNOWN),
         }
@@ -503,7 +550,9 @@ mod tests_wp_pgfake2 {
     use super::*;
     use crate::Transport;
     use dspi_proto::packets::PlatformInfo;
-    use dspi_proto::paged::{LastResult, ProbeReply, ProtocolInfo, SYS_PROTOCOL_INFO, decode_page_list};
+    use dspi_proto::paged::{
+        LastResult, ProbeReply, ProtocolInfo, SYS_PROTOCOL_INFO, decode_page_list,
+    };
 
     // ------------------------------------------------------------ the Zero
 
@@ -515,15 +564,24 @@ mod tests_wp_pgfake2 {
         let seven = d.control_in_upto(op::REQ_GET_PLATFORM, 0, 7).unwrap();
         assert_eq!(seven.len(), 7);
         let p7 = PlatformInfo::decode(&seven).unwrap();
-        assert!(p7.has_bootsel(), "a 7-byte read cannot see the board: ask 8");
+        assert!(
+            p7.has_bootsel(),
+            "a 7-byte read cannot see the board: ask 8"
+        );
         let eight = d.control_in_upto(op::REQ_GET_PLATFORM, 0, 8).unwrap();
         assert_eq!(eight.len(), 8);
         assert_eq!(eight[..7], seven[..]);
-        assert_eq!(eight[0], 1, "platform RP2350, so an unpatched console connects");
+        assert_eq!(
+            eight[0], 1,
+            "platform RP2350, so an unpatched console connects"
+        );
         let p = PlatformInfo::decode(&eight).unwrap();
         assert_eq!((p.board(), p.has_bootsel()), (Board::PiZero2W, false));
         // A longer read still gets 8.
-        assert_eq!(d.control_in_upto(op::REQ_GET_PLATFORM, 0, 64).unwrap(), eight);
+        assert_eq!(
+            d.control_in_upto(op::REQ_GET_PLATFORM, 0, 64).unwrap(),
+            eight
+        );
         // A Pico fake answers its 7 bytes to the same 8-byte read: board 0.
         let mut pico = FakeDevice::demo();
         let r = pico.control_in_upto(op::REQ_GET_PLATFORM, 0, 8).unwrap();
@@ -556,7 +614,10 @@ mod tests_wp_pgfake2 {
         assert_eq!(d.control_in(op::REQ_ENTER_BOOTLOADER, 0, 1).unwrap(), [1]);
         assert_eq!(
             remote.rebooted_to(),
-            Some(RebootTarget::ForeignLoader { vid: 0xCAFE, pid: 0x5A4C })
+            Some(RebootTarget::ForeignLoader {
+                vid: 0xCAFE,
+                pid: 0x5A4C
+            })
         );
         assert_eq!(remote.violations(), 1);
         assert!(matches!(
@@ -602,6 +663,42 @@ mod tests_wp_pgfake2 {
         let _ = d.control_out_paged(cmds::SYS_ENTER_BOOTLOADER, 0, &[]);
     }
 
+    /// A Zero on a paged generation later (PLAN-PG 1.9: "nothing here assumes
+    /// either"): `SYS.ENTER_BOOTLOADER` 0x0130 is the same violation as 0xF0.
+    #[test]
+    #[should_panic(expected = "no BOOTSEL")]
+    fn wp_pgfake2_paged_zero_bootloader_0130_fails_by_default() {
+        let options = FakeOptions {
+            board: FakeBoard::Zero,
+            generation: Some(crate::fake::FakeGeneration::STOCK117),
+            ..FakeOptions::default()
+        };
+        let mut d = FakeDevice::new(Capture::demo(), options);
+        assert!(d.control_in_paged(SYS_PROTOCOL_INFO, 0, 16).is_ok());
+        let _ = d.control_out_paged(cmds::SYS_ENTER_BOOTLOADER, 0, &[]);
+    }
+
+    #[test]
+    fn wp_pgfake2_paged_zero_bootloader_allowed_goes_to_the_sd_loader() {
+        let options = FakeOptions {
+            board: FakeBoard::Zero,
+            generation: Some(crate::fake::FakeGeneration::STOCK117),
+            allow_violation: true,
+            ..FakeOptions::default()
+        };
+        let mut d = FakeDevice::new(Capture::demo(), options);
+        let remote = d.remote();
+        let _ = d.control_out_paged(cmds::SYS_ENTER_BOOTLOADER, 0, &[]);
+        assert_eq!(
+            remote.rebooted_to(),
+            Some(RebootTarget::ForeignLoader {
+                vid: ZERO_LOADER_VID,
+                pid: ZERO_LOADER_PID
+            })
+        );
+        assert_eq!(remote.violations(), 1);
+    }
+
     // ---------------------------------------------------------- the sender
 
     /// Today's sender (G1b, guarded): its vendor subset, the rest STALLs, every
@@ -616,22 +713,45 @@ mod tests_wp_pgfake2 {
         assert_eq!((info.platform_id, info.num_output_channels), (1, 0));
         assert!(info.has_bootsel());
         assert_eq!(d.control_in(op::REQ_GET_SERIAL, 0, 16).unwrap().len(), 16);
-        assert_eq!(d.control_in(op::REQ_GET_BUILD_INFO, 0, 64).unwrap().len(), 64);
+        assert_eq!(
+            d.control_in(op::REQ_GET_BUILD_INFO, 0, 64).unwrap().len(),
+            64
+        );
         assert_eq!(d.control_in(op::REQ_SAVE_OUTPUT_CONFIG, 0, 1).unwrap(), [0]);
         // EXT_LIST: EXT_NOTIFY_FEATURES and the eight sender ids, nothing else.
-        let list = d.control_in_upto(op::REQ_EXTENSION, gext::EXT_LIST, 64).unwrap();
-        let ids: Vec<u16> = list.chunks(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        let list = d
+            .control_in_upto(op::REQ_EXTENSION, gext::EXT_LIST, 64)
+            .unwrap();
+        let ids: Vec<u16> = list
+            .chunks(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
         assert_eq!(ids, sender_ext_ids());
         assert_eq!(ids.len(), 9);
-        assert_eq!(d.control_in(op::REQ_EXTENSION, gext::EXT_NOTIFY_FEATURES, 4).unwrap(), [0; 4]);
-        let info = d.control_in_upto(op::REQ_EXTENSION, palink::EXT_ALINK_INFO, 64).unwrap();
+        assert_eq!(
+            d.control_in(op::REQ_EXTENSION, gext::EXT_NOTIFY_FEATURES, 4)
+                .unwrap(),
+            [0; 4]
+        );
+        let info = d
+            .control_in_upto(op::REQ_EXTENSION, palink::EXT_ALINK_INFO, 64)
+            .unwrap();
         assert_eq!(info[0], 2, "role 2, a sender");
         // No DSP: the receiver's and the K340's ids, GET_STATUS, bulk all STALL.
-        assert!(d.control_in(op::REQ_EXTENSION, gext::EXT_CORE_VREG, 8).is_err());
+        assert!(
+            d.control_in(op::REQ_EXTENSION, gext::EXT_CORE_VREG, 8)
+                .is_err()
+        );
         assert!(d.control_in(op::REQ_GET_STATUS, 9, 41).is_err());
         assert!(d.control_in(op::REQ_GET_ALL_PARAMS, 0, 64).is_err());
-        assert!(d.control_out(op::REQ_SET_MASTER_VOLUME, 0, &[0; 4]).is_err());
-        assert!(d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[0; 2]).is_err());
+        assert!(
+            d.control_out(op::REQ_SET_MASTER_VOLUME, 0, &[0; 4])
+                .is_err()
+        );
+        assert!(
+            d.control_out(op::REQ_EXTENSION, gext::EXT_CORE_VREG, &[0; 2])
+                .is_err()
+        );
         // PAGEGUARD: the probe and any page STALL, nothing runs.
         assert!(matches!(
             d.control_in_paged(SYS_PROTOCOL_INFO, 0, 16),
@@ -643,7 +763,10 @@ mod tests_wp_pgfake2 {
         assert_eq!(d.control_in(op::REQ_ENTER_BOOTLOADER, 0, 1).unwrap(), [1]);
         assert_eq!(remote.rebooted_to(), Some(RebootTarget::Bootsel));
         assert_eq!(remote.violations(), 0);
-        assert_eq!(FakeBoard::Sender { dual_stack: false }.product(), "DSPi Audio Link Sender");
+        assert_eq!(
+            FakeBoard::Sender { dual_stack: false }.product(),
+            "DSPi Audio Link Sender"
+        );
         assert_eq!(FakeBoard::Sender { dual_stack: true }.bcd_device(), 0x0280);
     }
 
@@ -663,16 +786,21 @@ mod tests_wp_pgfake2 {
         let nums: Vec<u8> = pages.iter().map(|p| p.page).collect();
         assert_eq!(nums, [0x01, 0x02, EXT_PAGE]);
         let ext = PageCommands::decode(
-            &d.control_in_paged(cmds::SYS_PAGE_COMMANDS, u16::from(EXT_PAGE), 64).unwrap(),
+            &d.control_in_paged(cmds::SYS_PAGE_COMMANDS, u16::from(EXT_PAGE), 64)
+                .unwrap(),
         )
         .unwrap();
         assert!(ext.has(0x10, PagedDir::Get) && ext.has(0x10, PagedDir::Set));
-        let sys = PageCommands::decode(&d.control_in_paged(cmds::SYS_PAGE_COMMANDS, 1, 64).unwrap())
-            .unwrap();
+        let sys =
+            PageCommands::decode(&d.control_in_paged(cmds::SYS_PAGE_COMMANDS, 1, 64).unwrap())
+                .unwrap();
         assert!(sys.has(cmds::SYS_PLATFORM.cmd(), PagedDir::Get));
         assert!(sys.has(cmds::SYS_ENTER_BOOTLOADER.cmd(), PagedDir::Set));
         assert!(!sys.has(cmds::SYS_SYSTEM_STATUS.cmd(), PagedDir::Get));
-        assert!(d.control_in_paged(cmds::SYS_PAGE_COMMANDS, 0x05, 64).is_err());
+        assert!(
+            d.control_in_paged(cmds::SYS_PAGE_COMMANDS, 0x05, 64)
+                .is_err()
+        );
         let ci = d
             .control_in_paged(cmds::SYS_COMMAND_INFO, cmds::SYS_PLATFORM.0, 8)
             .unwrap();
@@ -680,24 +808,49 @@ mod tests_wp_pgfake2 {
         // The subset on the paged stack.
         let plat = d.control_in_paged(cmds::SYS_PLATFORM, 0, 7).unwrap();
         assert_eq!(plat[3], 0);
-        assert_eq!(d.control_in_paged(cmds::SYS_SERIAL, 0, 16).unwrap().len(), 16);
-        assert_eq!(d.control_in_paged(cmds::SYS_BUILD_INFO, 0, 64).unwrap().len(), 64);
-        d.control_out_paged(cmds::STORE_OUTPUT_CONFIG_SAVE, 0, &[]).unwrap();
+        assert_eq!(
+            d.control_in_paged(cmds::SYS_SERIAL, 0, 16).unwrap().len(),
+            16
+        );
+        assert_eq!(
+            d.control_in_paged(cmds::SYS_BUILD_INFO, 0, 64)
+                .unwrap()
+                .len(),
+            64
+        );
+        d.control_out_paged(cmds::STORE_OUTPUT_CONFIG_SAVE, 0, &[])
+            .unwrap();
         // The tunnel: EXT_LIST byte-identical to page 0's.
         let list = d.control_in_paged(EXT_TUNNEL, gext::EXT_LIST, 64).unwrap();
-        assert_eq!(list, d.control_in_upto(op::REQ_EXTENSION, gext::EXT_LIST, 64).unwrap());
-        let info = d.control_in_paged(EXT_TUNNEL, palink::EXT_ALINK_INFO, 64).unwrap();
-        assert_eq!(info, d.control_in_upto(op::REQ_EXTENSION, palink::EXT_ALINK_INFO, 64).unwrap());
+        assert_eq!(
+            list,
+            d.control_in_upto(op::REQ_EXTENSION, gext::EXT_LIST, 64)
+                .unwrap()
+        );
+        let info = d
+            .control_in_paged(EXT_TUNNEL, palink::EXT_ALINK_INFO, 64)
+            .unwrap();
+        assert_eq!(
+            info,
+            d.control_in_upto(op::REQ_EXTENSION, palink::EXT_ALINK_INFO, 64)
+                .unwrap()
+        );
         // Refusals are VC_ERR_*, with LAST_RESULT naming the request.
         let last = |d: &mut FakeDevice| {
             LastResult::decode(&d.control_in_paged(cmds::SYS_LAST_RESULT, 0, 8).unwrap()).unwrap()
         };
-        assert!(d.control_in_paged(EXT_TUNNEL, gext::EXT_CORE_VREG, 8).is_err());
+        assert!(
+            d.control_in_paged(EXT_TUNNEL, gext::EXT_CORE_VREG, 8)
+                .is_err()
+        );
         let r = last(&mut d);
         assert!(r.matches(EXT_TUNNEL, PagedDir::Get, gext::EXT_CORE_VREG));
         assert_eq!(r.result, VC_ERR_ADDRESS);
         assert_eq!(last(&mut d), r, "reading LAST_RESULT never overwrites it");
-        assert!(d.control_out_paged(EXT_TUNNEL, gext::EXT_LIST, &[0; 2]).is_err());
+        assert!(
+            d.control_out_paged(EXT_TUNNEL, gext::EXT_LIST, &[0; 2])
+                .is_err()
+        );
         assert_eq!(last(&mut d).result, VC_ERR_DIRECTION);
         assert!(d.control_in_paged(cmds::SYS_SYSTEM_STATUS, 0, 16).is_err());
         assert_eq!(last(&mut d).result, VC_ERR_UNKNOWN);
@@ -705,7 +858,10 @@ mod tests_wp_pgfake2 {
         assert_eq!(last(&mut d).result, VC_ERR_LENGTH);
         assert!(d.control_in_paged(cmds::SYS_PLATFORM, 3, 7).is_err());
         assert_eq!(last(&mut d).result, VC_ERR_ADDRESS);
-        assert!(d.control_out_paged(cmds::SYS_ENTER_BOOTLOADER, 0, &[1]).is_err());
+        assert!(
+            d.control_out_paged(cmds::SYS_ENTER_BOOTLOADER, 0, &[1])
+                .is_err()
+        );
         assert_eq!(last(&mut d).result, VC_ERR_LENGTH);
         // A success is recorded too.
         d.control_in_paged(cmds::SYS_SERIAL, 0, 16).unwrap();
@@ -716,7 +872,8 @@ mod tests_wp_pgfake2 {
         assert_eq!(d.control_in_upto(op::REQ_GET_PLATFORM, 0, 7).unwrap(), plat);
         // The paged bootloader entry: BOOTSEL, no violation.
         let remote = d.remote();
-        d.control_out_paged(cmds::SYS_ENTER_BOOTLOADER, 0, &[]).unwrap();
+        d.control_out_paged(cmds::SYS_ENTER_BOOTLOADER, 0, &[])
+            .unwrap();
         assert_eq!(remote.rebooted_to(), Some(RebootTarget::Bootsel));
         assert!(matches!(
             d.control_in_paged(cmds::SYS_PLATFORM, 0, 7),

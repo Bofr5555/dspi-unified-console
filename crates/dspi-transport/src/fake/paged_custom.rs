@@ -33,12 +33,14 @@
 //! write applies at once here), and live counters (they read as the fake's
 //! `GET_STATUS` does: quiet and plausible).
 //!
-//! For the PGFAKE1 merge: the paged front asks [`State::custom_paged_get`] and
-//! [`State::custom_paged_set`] for every id in [`CUSTOM_IDS`]; `None` means "not
-//! a custom-row command, use the registry inverse". Some of these commands are
-//! also the target of a `direct` or `act_*` row (`STORE.PRESET_ACTIVE`,
-//! `STORE.PRESET_SAVE`, `STORE.DIRECTORY`, `SYS.PLATFORM`, `ROUTE.PREAMP`); the
-//! answers here equal the same-meaning legacy opcode's, so either order works.
+//! Wiring: PGFAKE1's paged front calls [`State::custom_paged_get`] and
+//! [`State::custom_paged_set`] (from `pg_custom_get`/`pg_custom_set` in
+//! `fake/paged.rs`) after its own checks and before its registry inverse; `None`
+//! means "not a custom-row command". Some of these commands are also the target
+//! of a `direct` or `act_*` row (`STORE.PRESET_ACTIVE`, `STORE.PRESET_SAVE`,
+//! `STORE.DIRECTORY`, `SYS.PLATFORM`, `ROUTE.PREAMP`); the answers here equal the
+//! same-meaning legacy opcode's. A cross-test runs PGCUST's recipes on the paged
+//! fake against a 1.1.6 twin.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -220,7 +222,11 @@ impl State {
             // Guide 6.3, `SYS.SYSTEM_STATUS` (0x0140, 16 bytes).
             cmds::SYS_SYSTEM_STATUS => {
                 let mut r = words(&[self.sel(13), self.sel(15)]);
-                r.extend_from_slice(&u16::try_from(self.sel(14)).unwrap_or(u16::MAX).to_le_bytes());
+                r.extend_from_slice(
+                    &u16::try_from(self.sel(14))
+                        .unwrap_or(u16::MAX)
+                        .to_le_bytes(),
+                );
                 // Selector 16 is the temperature sign-extended to 32 bits.
                 let [t0, t1, ..] = self.sel(16).to_le_bytes();
                 r.extend([t0, t1]);
@@ -412,7 +418,9 @@ mod tests_wp_pgfake2 {
 
     fn get(d: &FakeDevice, id: CmdId, value: u16, want: usize) -> Result<Vec<u8>, Vc> {
         let mut s = d.shared.lock();
-        let mut r = s.custom_paged_get(id, value, want).expect("a custom-row command")?;
+        let mut r = s
+            .custom_paged_get(id, value, want)
+            .expect("a custom-row command")?;
         r.truncate(want);
         Ok(r)
     }
@@ -474,11 +482,21 @@ mod tests_wp_pgfake2 {
         let spdif = get(&d, cmds::SYS_SPDIF_TX_STATS, 0, 24).unwrap();
         let input = get(&d, cmds::INPUT_STATUS, 0, 12).unwrap();
         assert_eq!(
-            (sys.len(), usb.len(), pipe.len(), pdm.len(), spdif.len(), input.len()),
+            (
+                sys.len(),
+                usb.len(),
+                pipe.len(),
+                pdm.len(),
+                spdif.len(),
+                input.len()
+            ),
             (16, 16, 24, 16, 24, 12)
         );
         // Selector 24/25: a release build refuses the DIAG read; the row reads 0.
-        assert_eq!(get(&d, cmds::DIAG_LOOPBACK_STATS, 0, 8), Err(VC_ERR_UNKNOWN));
+        assert_eq!(
+            get(&d, cmds::DIAG_LOOPBACK_STATS, 0, 8),
+            Err(VC_ERR_UNKNOWN)
+        );
         let u16_at = |b: &[u8], at: usize| u32::from(u16::from_le_bytes([b[at], b[at + 1]]));
         // The guide's table, transcribed: (selector, rebuilt value).
         let rebuilt = |sel: u16| -> u32 {
@@ -529,7 +547,11 @@ mod tests_wp_pgfake2 {
         // A few known values, so the comparison is not all zeros.
         assert_eq!(u32_at(&sys, 4), 48_000, "sample rate at offset 4, not 0");
         assert_eq!(u32_at(&sys, 0), 307_200_000);
-        assert_eq!(u32_at(&pipe, 8), u32::MAX, "lowest fill before the first write");
+        assert_eq!(
+            u32_at(&pipe, 8),
+            u32::MAX,
+            "lowest fill before the first write"
+        );
         assert_eq!(input[1], meters[n - 1], "active input count");
         // Guide 6.3: "a 4-byte read of SYS.SYSTEM_STATUS returns clk_sys".
         assert_eq!(get(&d, cmds::SYS_SYSTEM_STATUS, 0, 4).unwrap(), sys[..4]);
@@ -580,7 +602,10 @@ mod tests_wp_pgfake2 {
 
         // The gap 10-19 and a crossover band on an input: VC_ERR_ADDRESS both ways.
         assert_eq!(get(&d, cmds::FILTER_BAND, 0x020C, 16), Err(VC_ERR_ADDRESS));
-        assert_eq!(set(&d, cmds::FILTER_BAND, 0x020C, &new), Err(VC_ERR_ADDRESS));
+        assert_eq!(
+            set(&d, cmds::FILTER_BAND, 0x020C, &new),
+            Err(VC_ERR_ADDRESS)
+        );
         assert_eq!(get(&d, cmds::FILTER_BAND, 0x0014, 16), Err(VC_ERR_ADDRESS));
         // A crossover band on an output: its Qp is ignored and reads 0.
         let out = u16::from(d.shared.lock().num_inputs()) << 8 | 20;
@@ -596,7 +621,10 @@ mod tests_wp_pgfake2 {
         assert_eq!(d.remote().image(), before);
         // The 1.1.6 lengths are refused: one layout, 16 bytes.
         assert_eq!(set(&d, cmds::FILTER_BAND, value, &p), Err(VC_ERR_LENGTH));
-        assert_eq!(set(&d, cmds::FILTER_BAND, value, &p[..15]), Err(VC_ERR_LENGTH));
+        assert_eq!(
+            set(&d, cmds::FILTER_BAND, value, &p[..15]),
+            Err(VC_ERR_LENGTH)
+        );
     }
 
     /// Guide 6.5 `SET_MATRIX_ROUTE`/`GET_MATRIX_ROUTE`: the address moved into
@@ -621,14 +649,29 @@ mod tests_wp_pgfake2 {
         let r = get(&d, cmds::ROUTE_MATRIX_ROUTE, value, 8).unwrap();
         let mut rebuilt = vec![1u8, 4, r[0], r[1]];
         rebuilt.extend_from_slice(&r[4..8]);
-        assert_eq!(d.control_in(op::REQ_GET_MATRIX_ROUTE, value, 8).unwrap(), rebuilt);
+        assert_eq!(
+            d.control_in(op::REQ_GET_MATRIX_ROUTE, value, 8).unwrap(),
+            rebuilt
+        );
         // Out of range, NaN, the old length.
-        assert_eq!(get(&d, cmds::ROUTE_MATRIX_ROUTE, 0x0900, 8), Err(VC_ERR_ADDRESS));
-        assert_eq!(get(&d, cmds::ROUTE_MATRIX_ROUTE, 0x0009, 8), Err(VC_ERR_ADDRESS));
+        assert_eq!(
+            get(&d, cmds::ROUTE_MATRIX_ROUTE, 0x0900, 8),
+            Err(VC_ERR_ADDRESS)
+        );
+        assert_eq!(
+            get(&d, cmds::ROUTE_MATRIX_ROUTE, 0x0009, 8),
+            Err(VC_ERR_ADDRESS)
+        );
         let mut nan = new.clone();
         nan[4..8].copy_from_slice(&f32::NAN.to_le_bytes());
-        assert_eq!(set(&d, cmds::ROUTE_MATRIX_ROUTE, value, &nan), Err(VC_ERR_VALUE));
-        assert_eq!(set(&d, cmds::ROUTE_MATRIX_ROUTE, value, &new[..7]), Err(VC_ERR_LENGTH));
+        assert_eq!(
+            set(&d, cmds::ROUTE_MATRIX_ROUTE, value, &nan),
+            Err(VC_ERR_VALUE)
+        );
+        assert_eq!(
+            set(&d, cmds::ROUTE_MATRIX_ROUTE, value, &new[..7]),
+            Err(VC_ERR_LENGTH)
+        );
     }
 
     /// Guide 6.5 `CLEAR_CLIPS`: a read that does not clear, then the action; the
@@ -643,8 +686,15 @@ mod tests_wp_pgfake2 {
         d.remote().set_status(meters.clone());
         let flags = get(&d, cmds::MEAS_CLIP_FLAGS, 0, 4).unwrap();
         assert_eq!(flags, 0x0001_0005u32.to_le_bytes());
-        assert_eq!(get(&d, cmds::MEAS_CLIP_FLAGS, 0, 4).unwrap(), flags, "reading does not clear");
-        assert_eq!(get(&d, cmds::MEAS_LEVELS, 0, 64).unwrap()[at..at + 4], flags);
+        assert_eq!(
+            get(&d, cmds::MEAS_CLIP_FLAGS, 0, 4).unwrap(),
+            flags,
+            "reading does not clear"
+        );
+        assert_eq!(
+            get(&d, cmds::MEAS_LEVELS, 0, 64).unwrap()[at..at + 4],
+            flags
+        );
         // The old write-as-read answered the same flags and cleared them.
         let mut twin = FakeDevice::demo();
         twin.remote().set_status(meters);
@@ -662,14 +712,16 @@ mod tests_wp_pgfake2 {
     fn wp_pgfake2_combined_replies_split() {
         let mut d = FakeDevice::demo();
         // GET_INPUT_RATE: SYS.SYSTEM_STATUS bytes 4-7, then INPUT.I2S_RX_RATE.
-        d.control_out(op::REQ_SET_INPUT_RATE, 0, &96_000u32.to_le_bytes()).unwrap();
+        d.control_out(op::REQ_SET_INPUT_RATE, 0, &96_000u32.to_le_bytes())
+            .unwrap();
         let old = d.control_in(op::REQ_GET_INPUT_RATE, 0, 8).unwrap();
         let mut joined = get(&d, cmds::SYS_SYSTEM_STATUS, 0, 16).unwrap()[4..8].to_vec();
         joined.extend(get(&d, cmds::INPUT_I2S_RX_RATE, 0, 4).unwrap());
         assert_eq!(old, joined);
         assert_eq!(u32_at(&joined, 4), 96_000);
         // PRESET_GET_STARTUP: STORE.STARTUP {mode, default}, then STORE.DIRECTORY byte 4.
-        d.control_out(op::REQ_PRESET_SET_STARTUP, 0, &[1, 3]).unwrap();
+        d.control_out(op::REQ_PRESET_SET_STARTUP, 0, &[1, 3])
+            .unwrap();
         d.control_in(op::REQ_PRESET_SAVE, 2, 1).unwrap();
         let old = d.control_in(op::REQ_PRESET_GET_STARTUP, 0, 3).unwrap();
         let mut joined = get(&d, cmds::STORE_STARTUP, 0, 2).unwrap();
@@ -687,11 +739,19 @@ mod tests_wp_pgfake2 {
         // Without control surfaces neither command exists.
         let bare = FakeDevice::demo_without_surfaces();
         assert_eq!(get(&bare, cmds::CS_DISPLAY_CAPS, 0, 4), Err(VC_ERR_UNKNOWN));
-        assert_eq!(get(&bare, cmds::CS_DISPLAY_CONFIG, 0, 12), Err(VC_ERR_UNKNOWN));
+        assert_eq!(
+            get(&bare, cmds::CS_DISPLAY_CONFIG, 0, 12),
+            Err(VC_ERR_UNKNOWN)
+        );
         // GET rules: wLength 0, a stray wValue, the wrong direction.
         assert_eq!(get(&d, cmds::STORE_STARTUP, 0, 0), Err(VC_ERR_LENGTH));
         assert_eq!(get(&d, cmds::STORE_STARTUP, 1, 2), Err(VC_ERR_ADDRESS));
-        assert_eq!(d.shared.lock().custom_paged_get(cmds::MEAS_CLIP_CLEAR, 0, 4), None);
+        assert_eq!(
+            d.shared
+                .lock()
+                .custom_paged_get(cmds::MEAS_CLIP_CLEAR, 0, 4),
+            None
+        );
         assert_eq!(
             State::custom_common(cmds::MEAS_CLIP_CLEAR, PagedDir::Get, 0, 4),
             Err(VC_ERR_DIRECTION)
@@ -703,19 +763,31 @@ mod tests_wp_pgfake2 {
     #[test]
     fn wp_pgfake2_all_params_length_is_strict() {
         let mut d = FakeDevice::demo();
-        let img = d.control_in(op::REQ_GET_ALL_PARAMS, 0, generated::BULK_SIZE as u16).unwrap();
+        let img = d
+            .control_in(op::REQ_GET_ALL_PARAMS, 0, generated::BULK_SIZE as u16)
+            .unwrap();
         assert_eq!(img.len(), 6136);
         set(&d, cmds::STORE_ALL_PARAMS, 0, &img).unwrap();
         for len in [0usize, 16, 64, 6135] {
-            assert_eq!(set(&d, cmds::STORE_ALL_PARAMS, 0, &img[..len]), Err(VC_ERR_LENGTH), "{len}");
+            assert_eq!(
+                set(&d, cmds::STORE_ALL_PARAMS, 0, &img[..len]),
+                Err(VC_ERR_LENGTH),
+                "{len}"
+            );
         }
         let mut longer = img.clone();
         longer.push(0);
-        assert_eq!(set(&d, cmds::STORE_ALL_PARAMS, 0, &longer), Err(VC_ERR_LENGTH));
+        assert_eq!(
+            set(&d, cmds::STORE_ALL_PARAMS, 0, &longer),
+            Err(VC_ERR_LENGTH)
+        );
         let mut bad = img.clone();
         bad[0] ^= 0xFF;
         assert_eq!(set(&d, cmds::STORE_ALL_PARAMS, 0, &bad), Err(VC_ERR_VALUE));
-        assert_eq!(set(&d, cmds::STORE_ALL_PARAMS, 1, &img), Err(VC_ERR_ADDRESS));
+        assert_eq!(
+            set(&d, cmds::STORE_ALL_PARAMS, 1, &img),
+            Err(VC_ERR_ADDRESS)
+        );
     }
 
     /// The retired rows: `SAVE_PARAMS` (the active slot, then a save to it),
@@ -734,7 +806,10 @@ mod tests_wp_pgfake2 {
             let s = d.shared.lock();
             assert_eq!(s.presets.slots[4].as_deref(), Some(&s.image[..]));
         }
-        assert_eq!(set(&d, cmds::STORE_PRESET_SAVE, 0x00FF, &[]), Err(VC_ERR_ADDRESS));
+        assert_eq!(
+            set(&d, cmds::STORE_PRESET_SAVE, 0x00FF, &[]),
+            Err(VC_ERR_ADDRESS)
+        );
         // SET_PREAMP: SYS.PLATFORM is the 1.1.6 layout; then ROUTE.PREAMP per input.
         let plat = get(&d, cmds::SYS_PLATFORM, 0, 7).unwrap();
         assert_eq!(plat, d.control_in_upto(op::REQ_GET_PLATFORM, 0, 7).unwrap());
@@ -748,7 +823,10 @@ mod tests_wp_pgfake2 {
                 (-4f32).to_le_bytes()
             );
         }
-        assert_eq!(d.control_in(op::REQ_GET_PREAMP, 0, 4).unwrap(), (-4f32).to_le_bytes());
+        assert_eq!(
+            d.control_in(op::REQ_GET_PREAMP, 0, 4).unwrap(),
+            (-4f32).to_le_bytes()
+        );
         assert_eq!(
             set(&d, cmds::ROUTE_PREAMP, u16::from(inputs), &[0; 4]),
             Err(VC_ERR_ADDRESS)
@@ -773,7 +851,10 @@ mod tests_wp_pgfake2 {
         let d = FakeDevice::demo();
         let mut s = d.shared.lock();
         assert_eq!(s.custom_paged_get(cmds::ROUTE_OUTPUT_GAIN, 1, 4), None);
-        assert_eq!(s.custom_paged_set(cmds::ROUTE_OUTPUT_GAIN, 1, &[0; 4]), None);
+        assert_eq!(
+            s.custom_paged_set(cmds::ROUTE_OUTPUT_GAIN, 1, &[0; 4]),
+            None
+        );
         assert_eq!(s.custom_paged_set(cmds::SYS_PLATFORM, 0, &[0; 7]), None);
     }
 
@@ -801,5 +882,325 @@ mod tests_wp_pgfake2 {
                 }
             }
         }
+    }
+}
+
+/// Through the real paged front (PGFAKE1's `Stock117`), and against PGCUST's
+/// recipes (`dspi_proto::paged::custom` through `plan`) as the independent
+/// oracle of PLAN-PG section 4: each custom row planned by PGCUST and run on the
+/// paged fake gives the answer, and leaves the image, that the same request gives
+/// on a 1.1.6 twin of the fake.
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+mod tests_wp_pgfake2_front {
+    use super::*;
+    use crate::fake::{FakeDevice, FakeGeneration};
+    use crate::{Transport, TransportError};
+    use dspi_proto::paged::{
+        LastResult, LegacyBody, Outcome, PageSet, PagedBody, PagedRequest, WireAnswer,
+        decode_page_list, plan,
+    };
+
+    /// The paged fake and its 1.1.6 twin, with the same quiet meter block.
+    fn pair() -> (FakeDevice, FakeDevice) {
+        let paged = FakeDevice::demo_generation(FakeGeneration::STOCK117);
+        let twin = FakeDevice::demo();
+        for d in [&paged, &twin] {
+            let n = d.shared.lock().status_len();
+            let mut m = vec![0u8; n];
+            m[n - 1] = 2;
+            d.remote().set_status(m);
+        }
+        (paged, twin)
+    }
+
+    /// The page set the paged fake's discovery reports.
+    fn pages(d: &mut FakeDevice) -> PageSet {
+        let list = decode_page_list(&d.control_in_paged(cmds::SYS_PAGE_LIST, 0, 64).unwrap());
+        let maps: Vec<(u8, Vec<u8>)> = list
+            .iter()
+            .map(|p| {
+                let b = d.control_in_paged(cmds::SYS_PAGE_COMMANDS, u16::from(p.page), 64);
+                (p.page, b.unwrap_or_default())
+            })
+            .collect();
+        PageSet::from_discovery(&list, |page| {
+            maps.iter().find(|(p, _)| *p == page).map(|(_, b)| &b[..])
+        })
+    }
+
+    /// One paged request on the wire, a STALL explained by `SYS.LAST_RESULT`.
+    fn wire(d: &mut FakeDevice, req: &PagedRequest) -> WireAnswer {
+        let r = match &req.body {
+            PagedBody::Get { len } => d
+                .control_in_paged(req.id, req.value, *len)
+                .map(WireAnswer::Data),
+            PagedBody::Set(data) => d
+                .control_out_paged(req.id, req.value, data)
+                .map(|()| WireAnswer::Ack),
+        };
+        match r {
+            Ok(a) => a,
+            Err(TransportError::Stalled { .. }) => {
+                let lr =
+                    LastResult::decode(&d.control_in_paged(cmds::SYS_LAST_RESULT, 0, 8).unwrap())
+                        .filter(|l| l.matches(req.id, req.dir(), req.value));
+                WireAnswer::Refused {
+                    result: lr.map(|l| l.result),
+                }
+            }
+            Err(e) => panic!("{e:?}"),
+        }
+    }
+
+    /// Run one 1.1.6 request both ways and compare.
+    fn same(
+        paged: &mut FakeDevice,
+        twin: &mut FakeDevice,
+        set: &PageSet,
+        opcode: u8,
+        value: u16,
+        body: LegacyBody<'_>,
+    ) {
+        let p = plan(opcode, value, body, set).unwrap_or_else(|e| panic!("0x{opcode:02X}: {e:?}"));
+        let got = p.run(32, |req| wire(paged, req));
+        let what = format!("opcode 0x{opcode:02X} wValue 0x{value:04X}");
+        match body {
+            LegacyBody::In { len } => {
+                let old = twin.control_in_upto(opcode, value, len);
+                match (got, old) {
+                    (Outcome::Reply(a), Ok(b)) => assert_eq!(a, b, "{what}"),
+                    (Outcome::Stall { .. }, Err(_)) => {}
+                    (a, b) => panic!("{what}: paged {a:?}, 1.1.6 {b:?}"),
+                }
+            }
+            LegacyBody::Out(data) => {
+                let old = twin.control_out(opcode, value, data);
+                match (got, old) {
+                    (Outcome::Ack | Outcome::Swallowed { .. }, Ok(())) => {}
+                    (Outcome::Stall { .. }, Err(_)) => {}
+                    (a, b) => panic!("{what}: paged {a:?}, 1.1.6 {b:?}"),
+                }
+            }
+        }
+        assert_eq!(
+            paged.remote().image(),
+            twin.remote().image(),
+            "{what}: the images"
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn eq_packet(
+        ch: u8,
+        band: u8,
+        ftype: u8,
+        bypass: u8,
+        f: f32,
+        q: f32,
+        g: f32,
+        qp: Option<u16>,
+    ) -> Vec<u8> {
+        let mut p = vec![ch, band, ftype, bypass];
+        p.extend(f.to_le_bytes());
+        p.extend(q.to_le_bytes());
+        p.extend(g.to_le_bytes());
+        if let Some(qp) = qp {
+            p.extend(qp.to_le_bytes());
+        }
+        p
+    }
+
+    #[test]
+    fn wp_pgfake2_custom_rows_match_pgcust_recipes() {
+        let (mut paged, mut twin) = pair();
+        let set = pages(&mut paged);
+        let (p, t) = (&mut paged, &mut twin);
+        // GET_STATUS: every selector (9 the meter packet).
+        for sel in 0..=40u16 {
+            let len = if sel == 9 { 41 } else { 4 };
+            same(p, t, &set, op::REQ_GET_STATUS, sel, LegacyBody::In { len });
+        }
+        // SET_EQ_PARAM (18 and 16 bytes, a crossover band, a gap band 1.1.6
+        // swallowed), then every GET_EQ_PARAM param.
+        let writes = [
+            eq_packet(2, 3, 3, 1, 1000.0, 0.7, -3.0, Some(0x0200)),
+            eq_packet(2, 3, 4, 0, 250.0, 1.5, 6.0, None),
+            eq_packet(5, 21, 1, 0, 80.0, 0.707, 0.0, Some(0x0300)),
+            eq_packet(1, 12, 3, 0, 500.0, 1.0, 1.0, None),
+        ];
+        for w in &writes {
+            same(p, t, &set, op::REQ_SET_EQ_PARAM, 0, LegacyBody::Out(w));
+        }
+        for (ch, band) in [(2u16, 3u16), (5, 21), (0, 0), (1, 12)] {
+            for param in 0..8 {
+                same(
+                    p,
+                    t,
+                    &set,
+                    op::REQ_GET_EQ_PARAM,
+                    (ch << 8) | (band << 3) | param,
+                    LegacyBody::In { len: 4 },
+                );
+            }
+        }
+        // SET/GET_MATRIX_ROUTE.
+        let mut mr = vec![1u8, 4, 1, 1];
+        mr.extend((-2.5f32).to_le_bytes());
+        same(
+            p,
+            t,
+            &set,
+            op::REQ_SET_MATRIX_ROUTE,
+            0,
+            LegacyBody::Out(&mr),
+        );
+        for v in [0x0104u16, 0x0000, 0x0900] {
+            same(
+                p,
+                t,
+                &set,
+                op::REQ_GET_MATRIX_ROUTE,
+                v,
+                LegacyBody::In { len: 8 },
+            );
+        }
+        // The combined reads.
+        same(
+            p,
+            t,
+            &set,
+            op::REQ_GET_INPUT_RATE,
+            0,
+            LegacyBody::In { len: 8 },
+        );
+        same(
+            p,
+            t,
+            &set,
+            op::REQ_PRESET_GET_STARTUP,
+            0,
+            LegacyBody::In { len: 3 },
+        );
+        same(
+            p,
+            t,
+            &set,
+            op::REQ_GET_CS_DISPLAY_CFG,
+            0,
+            LegacyBody::In { len: 16 },
+        );
+        // CLEAR_CLIPS with latched flags on both.
+        for d in [&*p, &*t] {
+            let n = d.shared.lock().status_len();
+            let mut m = vec![0u8; n];
+            m[n - 5] = 0x05;
+            d.remote().set_status(m);
+        }
+        same(
+            p,
+            t,
+            &set,
+            op::REQ_CLEAR_CLIPS,
+            0,
+            LegacyBody::In { len: 4 },
+        );
+        same(
+            p,
+            t,
+            &set,
+            op::REQ_CLEAR_CLIPS,
+            0,
+            LegacyBody::In { len: 4 },
+        );
+        // SAVE_PARAMS (retired), SET_PREAMP (retired, every input).
+        same(
+            p,
+            t,
+            &set,
+            op::REQ_SAVE_PARAMS,
+            0,
+            LegacyBody::In { len: 1 },
+        );
+        same(
+            p,
+            t,
+            &set,
+            op::REQ_SET_PREAMP,
+            0,
+            LegacyBody::Out(&(-5f32).to_le_bytes()),
+        );
+        // SET_ALL_PARAMS: the image, changed.
+        let mut img = t.control_in(op::REQ_GET_ALL_PARAMS, 0, 6136).unwrap();
+        img[100] ^= 0x01;
+        same(p, t, &set, op::REQ_SET_ALL_PARAMS, 0, LegacyBody::Out(&img));
+        // The USB error stats are answered locally: nothing on the wire.
+        let before = p.remote().paged_requests();
+        same(
+            p,
+            t,
+            &set,
+            op::REQ_GET_USB_ERROR_STATS,
+            0,
+            LegacyBody::In { len: 24 },
+        );
+        same(
+            p,
+            t,
+            &set,
+            op::REQ_RESET_USB_ERROR_STATS,
+            0,
+            LegacyBody::In { len: 1 },
+        );
+        assert_eq!(p.remote().paged_requests(), before);
+        // Nothing the custom rows sent was unmodelled, and no violation.
+        assert_eq!(p.remote().unmodelled(), 0);
+        assert_eq!(p.remote().violations(), 0);
+    }
+
+    /// Every custom-row command answers through the paged front: none is
+    /// unmodelled any more (PGFAKE1's `VC_ERR_UNSUPPORTED` until this WP).
+    #[test]
+    fn wp_pgfake2_front_answers_every_custom_command() {
+        let mut d = FakeDevice::demo_generation(FakeGeneration::STOCK117);
+        let img = d.control_in_paged(cmds::STORE_ALL_PARAMS, 0, 6136).unwrap();
+        for (id, dir) in CUSTOM_IDS {
+            let c = registry::command(*id).unwrap();
+            let value = match c.addr {
+                AddrKind::ChBand => 0x0001,
+                AddrKind::InOut => 0x0000,
+                _ => 0,
+            };
+            match dir {
+                PagedDir::Get => {
+                    let r = d.control_in_paged(*id, value, 256);
+                    if *id == cmds::DIAG_LOOPBACK_STATS {
+                        assert!(r.is_err(), "a release build has no DIAG page");
+                    } else {
+                        assert!(r.is_ok(), "{}: {r:?}", c.full_name());
+                    }
+                }
+                PagedDir::Set => {
+                    let data = match *id {
+                        cmds::STORE_ALL_PARAMS => img.clone(),
+                        cmds::FILTER_BAND => d.control_in_paged(*id, value, 16).unwrap(),
+                        cmds::ROUTE_MATRIX_ROUTE => d.control_in_paged(*id, value, 8).unwrap(),
+                        _ => vec![0; usize::from(c.set_min)],
+                    };
+                    let r = d.control_out_paged(*id, value, &data);
+                    assert!(r.is_ok(), "{}: {r:?}", c.full_name());
+                }
+            }
+        }
+        assert_eq!(d.remote().unmodelled(), 0);
+        // The bulk round trip PGADAPT needs: GET 0x0240, SET it back.
+        d.control_out_paged(cmds::STORE_ALL_PARAMS, 0, &img)
+            .unwrap();
+        assert_eq!(d.remote().image(), img);
     }
 }
