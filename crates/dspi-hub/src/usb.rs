@@ -73,7 +73,9 @@ impl DeviceBus for UsbBus {
     }
 
     fn open(&mut self, serial: &str) -> Result<Box<dyn Transport>, TransportError> {
-        Ok(Box::new(dspi_transport::UsbTransport::open_serial(serial)?))
+        let raw = dspi_transport::UsbTransport::open_serial(serial)?;
+        // -- WP PGWIRE -- the generation probe first, on the raw wire
+        dspi_transport::paged::open(Box::new(raw))
     }
 }
 

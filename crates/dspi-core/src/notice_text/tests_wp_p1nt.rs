@@ -235,6 +235,14 @@ fn wp_p1nt_codes_refine_the_key_where_the_table_has_a_row() {
                 continue;
             }
             let e = match family {
+                // -- WP PGWIRE -- `paged::open`'s refusals, by their words
+                "transfer" => DspiError::from(
+                    dspi_transport::paged::Refusal::ALL
+                        .into_iter()
+                        .find(|r| r.code() == code)
+                        .unwrap_or_else(|| panic!("{}: not a paged::open refusal", n.key))
+                        .error(),
+                ),
                 "dlink" => dlink(code),
                 "autoeq" => DspiError::AutoEq {
                     code: code.into(),

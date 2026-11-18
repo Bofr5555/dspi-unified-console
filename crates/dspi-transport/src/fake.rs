@@ -266,6 +266,17 @@ pub struct FakeOptions {
     /// discoverable with [`FakeOptions::extensions`] on.
     /// [`FakeDevice::demo_alink`] has it on.
     pub alink: bool,
+    // -- WP PGWIRE --
+    /// `bofr-main` with PAGEGUARD: any request that names a page (a non-zero
+    /// `wIndex` high byte) STALLs, the probe included. Off: firmware without
+    /// the guard (stock 1.1.6, older `bofr-main`), which ignores the page and
+    /// runs the old opcode with the same number.
+    pub page_guard: bool,
+    /// Let a paged request other than the probe (`SYS.PROTOCOL_INFO` GET)
+    /// through. Off, the fake panics on one: on a 1.1.6-generation device it
+    /// would run a different command, so a test that sends one fails
+    /// (PLAN-PG section 4). On, it runs as the firmware would.
+    pub allow_violation: bool,
 }
 
 /// `wLength` is 16 bits.
@@ -592,6 +603,44 @@ impl FakeRemote {
         self.shared.lock().notify_failures = reads;
         self.shared.wake.notify_all();
     }
+
+    // -- WP PGWIRE --
+    /// How many requests named a page so far (the probe included), whether
+    /// or not they ran.
+    pub fn paged_requests(&self) -> u32 {
+        self.shared.lock().paged_requests
+    }
+}
+
+// -- WP PGWIRE --
+impl FakeDevice {
+    /// The page rule for a paged request to this 1.1.6-generation fake:
+    /// counted; a panic unless it is the probe or
+    /// [`FakeOptions::allow_violation`] is on; a STALL with
+    /// [`FakeOptions::page_guard`]. `Ok` means the same-number opcode runs,
+    /// as 1.1.6 firmware ignores the page.
+    fn page_rule(&self, id: crate::CmdId, is_in: bool) -> Result<()> {
+        let (guard, allowed) = {
+            let mut s = self.shared.lock();
+            s.paged_requests = s.paged_requests.saturating_add(1);
+            (s.options.page_guard, s.options.allow_violation)
+        };
+        let probe = is_in && id == dspi_proto::paged::SYS_PROTOCOL_INFO;
+        if !probe && !allowed {
+            panic!(
+                "a paged request 0x{:04X} ({}) reached a 1.1.6-generation device, which runs \
+                 opcode 0x{:02X} for it: only the probe may be sent before it answers paged \
+                 (PLAN-PG section 1.1); set FakeOptions::allow_violation to let it through",
+                id.0,
+                if is_in { "GET" } else { "SET" },
+                id.cmd()
+            );
+        }
+        if guard {
+            return Err(TransportError::Stalled { opcode: id.cmd() });
+        }
+        Ok(())
+    }
 }
 
 // -- WP CG16 --
@@ -771,6 +820,27 @@ impl Transport for FakeDevice {
             chunked_bulk: true,
             remote: false,
         }
+    }
+
+    // -- WP PGWIRE --
+    /// The fake models a USB device: a page reaches it ([`FakeDevice`]'s
+    /// page rule then decides what it does with one).
+    fn carries_pages(&self) -> bool {
+        true
+    }
+
+    fn control_in_paged(&mut self, id: crate::CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        self.check_size(id.cmd(), usize::from(max_len))?;
+        self.page_rule(id, true)?;
+        let mut reply = self.run(|s| s.get(id.cmd(), value, usize::from(max_len)))?;
+        reply.truncate(usize::from(max_len));
+        Ok(reply)
+    }
+
+    fn control_out_paged(&mut self, id: crate::CmdId, value: u16, data: &[u8]) -> Result<()> {
+        self.check_size(id.cmd(), data.len())?;
+        self.page_rule(id, false)?;
+        self.run(|s| s.set(id.cmd(), value, data))
     }
 }
 
@@ -1228,6 +1298,9 @@ struct State {
     ignored: Vec<u8>,
     /// Notification reads [`FakeRemote::fail_notifications`] still fails.
     notify_failures: u32,
+    // -- WP PGWIRE --
+    /// Requests that named a page ([`FakeRemote::paged_requests`]).
+    paged_requests: u32,
     queue: VecDeque<Vec<u8>>,
     seq: u8,
     started: Instant,
@@ -1295,6 +1368,7 @@ impl State {
             stalled: Vec::new(),
             ignored: Vec::new(),
             notify_failures: 0,
+            paged_requests: 0, // -- WP PGWIRE --
             queue: VecDeque::new(),
             seq: 0,
             started: Instant::now(),

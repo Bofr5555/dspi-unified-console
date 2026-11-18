@@ -33,7 +33,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use dspi_core::{DspiCore, DspiError};
-use dspi_transport::{DeviceDescriptor, Result, Transport, TransportCaps, TransportError};
+use dspi_proto::VENDOR_INTERFACE;
+use dspi_transport::{CmdId, DeviceDescriptor, Result, Transport, TransportCaps, TransportError};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -56,11 +57,15 @@ const MAX_TRANSFER: usize = 4096;
 
 /// A host that carries the control transfers: the browser through the
 /// imports ([`JsHost`]), or a test's double.
+///
+/// WP PGWIRE: `index` is `wIndex`: the vendor interface (2) for a page-0
+/// request, with the page in the high byte for a paged one
+/// ([`CmdId::w_index`]). Its low byte is always the interface.
 pub trait UsbHost: Send {
     /// IN transfer of up to `len` bytes; the reply as the device sent it.
-    fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>>;
+    fn control_in(&mut self, opcode: u8, value: u16, index: u16, len: u16) -> Result<Vec<u8>>;
     /// OUT transfer carrying `data`.
-    fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()>;
+    fn control_out(&mut self, opcode: u8, value: u16, index: u16, data: &[u8]) -> Result<()>;
 }
 
 /// A DSPi on WebUSB, as a [`Transport`] for the core.
@@ -104,7 +109,7 @@ impl WebUsbTransport {
 impl Transport for WebUsbTransport {
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
         self.alive()?;
-        let r = self.host.control_in(opcode, value, len);
+        let r = self.host.control_in(opcode, value, VENDOR_INTERFACE, len);
         let data = self.seen(r)?;
         // As the native transport: a short reply answered another question.
         if data.len() < usize::from(len) {
@@ -119,13 +124,34 @@ impl Transport for WebUsbTransport {
 
     fn control_in_upto(&mut self, opcode: u8, value: u16, max_len: u16) -> Result<Vec<u8>> {
         self.alive()?;
-        let r = self.host.control_in(opcode, value, max_len);
+        let r = self
+            .host
+            .control_in(opcode, value, VENDOR_INTERFACE, max_len);
         self.seen(r)
     }
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
         self.alive()?;
-        let r = self.host.control_out(opcode, value, data);
+        let r = self.host.control_out(opcode, value, VENDOR_INTERFACE, data);
+        self.seen(r)
+    }
+
+    // -- WP PGWIRE --
+    /// WebUSB sends `wIndex` as given, so a page reaches the device as on
+    /// native USB.
+    fn carries_pages(&self) -> bool {
+        true
+    }
+
+    fn control_in_paged(&mut self, id: CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        self.alive()?;
+        let r = self.host.control_in(id.cmd(), value, id.w_index(), max_len);
+        self.seen(r)
+    }
+
+    fn control_out_paged(&mut self, id: CmdId, value: u16, data: &[u8]) -> Result<()> {
+        self.alive()?;
+        let r = self.host.control_out(id.cmd(), value, id.w_index(), data);
         self.seen(r)
     }
 
@@ -174,12 +200,27 @@ mod js {
 
     #[link(wasm_import_module = "dspi")]
     unsafe extern "C" {
-        /// `controlTransferIn` of up to `len` bytes into `out`: the length
-        /// read, or a [`code`]. Suspends.
-        fn dspi_usb_in(device: u32, opcode: u32, value: u32, len: u32, out: *mut u8) -> i32;
-        /// `controlTransferOut` of `len` bytes at `data`: 0, or a [`code`].
+        /// `controlTransferIn` of up to `len` bytes into `out`, with
+        /// `wIndex` = `index` (WP PGWIRE): the length read, or a [`code`].
         /// Suspends.
-        fn dspi_usb_out(device: u32, opcode: u32, value: u32, data: *const u8, len: u32) -> i32;
+        fn dspi_usb_in(
+            device: u32,
+            opcode: u32,
+            value: u32,
+            index: u32,
+            len: u32,
+            out: *mut u8,
+        ) -> i32;
+        /// `controlTransferOut` of `len` bytes at `data`, with `wIndex` =
+        /// `index`: 0, or a [`code`]. Suspends.
+        fn dspi_usb_out(
+            device: u32,
+            opcode: u32,
+            value: u32,
+            index: u32,
+            data: *const u8,
+            len: u32,
+        ) -> i32;
         /// The last failure's words for `device`, up to `cap` bytes into
         /// `out`; their length. Does not suspend.
         fn dspi_usb_error(device: u32, out: *mut u8, cap: u32) -> u32;
@@ -202,7 +243,7 @@ mod js {
     }
 
     impl UsbHost for JsHost {
-        fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
+        fn control_in(&mut self, opcode: u8, value: u16, index: u16, len: u16) -> Result<Vec<u8>> {
             let mut buf = vec![0u8; usize::from(len)];
             // SAFETY: `buf` is valid for `len` bytes and outlives the call; the
             // import writes at most `len`.
@@ -211,6 +252,7 @@ mod js {
                     self.device,
                     u32::from(opcode),
                     u32::from(value),
+                    u32::from(index),
                     u32::from(len),
                     buf.as_mut_ptr(),
                 )
@@ -222,7 +264,7 @@ mod js {
             Ok(buf)
         }
 
-        fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
+        fn control_out(&mut self, opcode: u8, value: u16, index: u16, data: &[u8]) -> Result<()> {
             let len =
                 u32::try_from(data.len()).map_err(|_| TransportError::Usb("too long".into()))?;
             // SAFETY: `data` is valid for `len` bytes for the whole call; the
@@ -232,6 +274,7 @@ mod js {
                     self.device,
                     u32::from(opcode),
                     u32::from(value),
+                    u32::from(index),
                     data.as_ptr(),
                     len,
                 )
@@ -341,7 +384,9 @@ pub fn open_with(
     let transport = WebUsbTransport::new(host, serial.clone(), Arc::clone(&gone));
     // Replaces any open device, as `open_transport` does; the old switch goes.
     forget(h);
-    core.open_transport(Box::new(transport), serial.clone(), vid)?;
+    // -- WP PGWIRE -- the generation probe first, on the raw wire
+    let transport = dspi_transport::paged::open(Box::new(transport)).map_err(DspiError::from)?;
+    core.open_transport(transport, serial.clone(), vid)?;
     remember(h, gone, serial);
     Ok(())
 }
@@ -404,7 +449,9 @@ pub fn ids() -> Value {
 mod mock {
     use std::cell::RefCell;
 
-    use dspi_transport::{FakeDevice, FakeRemote, NotificationSource, Transport, TransportError};
+    use dspi_transport::{
+        CmdId, FakeDevice, FakeRemote, NotificationSource, Transport, TransportError,
+    };
 
     use super::code;
 
@@ -459,21 +506,36 @@ mod mock {
         })
     }
 
-    /// An IN transfer: its length (the bytes at `dspi_mock_buf_ptr`), or a
-    /// [`code`].
+    /// The page a `wIndex` names (WP PGWIRE): `None` for page 0.
+    fn page_of(index: u16) -> Option<u8> {
+        let page = index.to_be_bytes()[0];
+        (page != 0).then_some(page)
+    }
+
+    /// An IN transfer with `wIndex` = `index`: its length (the bytes at
+    /// `dspi_mock_buf_ptr`), or a [`code`]. A page goes to the simulated
+    /// DSPi's paged call (WP PGWIRE), page 0 to its plain one.
     #[unsafe(no_mangle)]
-    pub extern "C" fn dspi_mock_in(id: u32, opcode: u32, value: u32, len: u32) -> i32 {
-        let (Ok(op), Ok(v), Ok(l)) = (
+    pub extern "C" fn dspi_mock_in(id: u32, opcode: u32, value: u32, index: u32, len: u32) -> i32 {
+        let (Ok(op), Ok(v), Ok(i), Ok(l)) = (
             u8::try_from(opcode),
             u16::try_from(value),
+            u16::try_from(index),
             u16::try_from(len),
         ) else {
             return code::OTHER;
         };
-        with(id, |m| answer(m.device.control_in_upto(op, v, l))).unwrap_or(code::GONE)
+        with(id, |m| {
+            answer(match page_of(i) {
+                Some(page) => m.device.control_in_paged(CmdId::new(page, op), v, l),
+                None => m.device.control_in_upto(op, v, l),
+            })
+        })
+        .unwrap_or(code::GONE)
     }
 
-    /// An OUT transfer of `len` bytes at `ptr`: 0, or a [`code`].
+    /// An OUT transfer of `len` bytes at `ptr`, with `wIndex` = `index`: 0,
+    /// or a [`code`].
     ///
     /// # Safety
     /// `ptr` is valid for `len` bytes.
@@ -482,10 +544,15 @@ mod mock {
         id: u32,
         opcode: u32,
         value: u32,
+        index: u32,
         ptr: *const u8,
         len: usize,
     ) -> i32 {
-        let (Ok(op), Ok(v)) = (u8::try_from(opcode), u16::try_from(value)) else {
+        let (Ok(op), Ok(v), Ok(i)) = (
+            u8::try_from(opcode),
+            u16::try_from(value),
+            u16::try_from(index),
+        ) else {
             return code::OTHER;
         };
         let data = if ptr.is_null() || len == 0 {
@@ -494,9 +561,15 @@ mod mock {
             // SAFETY: as the caller promises.
             unsafe { std::slice::from_raw_parts(ptr, len) }
         };
-        with(id, |m| match m.device.control_out(op, v, data) {
-            Ok(()) => 0,
-            Err(e) => rc_of(&e),
+        with(id, |m| {
+            let r = match page_of(i) {
+                Some(page) => m.device.control_out_paged(CmdId::new(page, op), v, data),
+                None => m.device.control_out(op, v, data),
+            };
+            match r {
+                Ok(()) => 0,
+                Err(e) => rc_of(&e),
+            }
         })
         .unwrap_or(code::GONE)
     }
@@ -568,20 +641,34 @@ mod tests {
     struct FakeHost {
         dev: FakeDevice,
         calls: Arc<Mutex<u32>>,
+        /// Every request's `wIndex`, in order (WP PGWIRE).
+        indexes: Arc<Mutex<Vec<u16>>>,
     }
 
     impl UsbHost for FakeHost {
-        fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
+        fn control_in(&mut self, opcode: u8, value: u16, index: u16, len: u16) -> Result<Vec<u8>> {
             let mut n = self.calls.lock().unwrap();
             *n = n.saturating_add(1);
             drop(n);
-            self.dev.control_in_upto(opcode, value, len)
+            self.indexes.lock().unwrap().push(index);
+            match index.to_be_bytes()[0] {
+                0 => self.dev.control_in_upto(opcode, value, len),
+                page => self
+                    .dev
+                    .control_in_paged(CmdId::new(page, opcode), value, len),
+            }
         }
-        fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
+        fn control_out(&mut self, opcode: u8, value: u16, index: u16, data: &[u8]) -> Result<()> {
             let mut n = self.calls.lock().unwrap();
             *n = n.saturating_add(1);
             drop(n);
-            self.dev.control_out(opcode, value, data)
+            self.indexes.lock().unwrap().push(index);
+            match index.to_be_bytes()[0] {
+                0 => self.dev.control_out(opcode, value, data),
+                page => self
+                    .dev
+                    .control_out_paged(CmdId::new(page, opcode), value, data),
+            }
         }
     }
 
@@ -593,6 +680,7 @@ mod tests {
             Box::new(FakeHost {
                 dev,
                 calls: Arc::clone(&calls),
+                indexes: Arc::default(),
             }),
             remote,
             calls,
@@ -714,10 +802,10 @@ mod tests {
     fn wb4a_a_short_reply_is_refused_unless_the_opcode_allows_it() {
         struct Short;
         impl UsbHost for Short {
-            fn control_in(&mut self, _: u8, _: u16, _: u16) -> Result<Vec<u8>> {
+            fn control_in(&mut self, _: u8, _: u16, _: u16, _: u16) -> Result<Vec<u8>> {
                 Ok(vec![1, 2])
             }
-            fn control_out(&mut self, _: u8, _: u16, _: &[u8]) -> Result<()> {
+            fn control_out(&mut self, _: u8, _: u16, _: u16, _: &[u8]) -> Result<()> {
                 Ok(())
             }
         }
@@ -751,6 +839,64 @@ mod tests {
             error_of(code::OTHER, 7, || "babble".into()).to_string(),
             "usb error: babble"
         );
+    }
+
+    // -- WP PGWIRE --
+    /// The probe is the first request over WebUSB, its `wIndex` the page
+    /// (0x0102, the guide's SETUP); every later one is on page 0 (2).
+    #[test]
+    fn wp_pgwire_the_probe_goes_first_over_webusb_with_its_page() {
+        guard::reset_for_test();
+        let h = calls::session_new().unwrap();
+        let (host, remote, _) = fake();
+        let indexes = Arc::clone(&host.indexes);
+        let core = calls::core_of(h).unwrap();
+        open_with(h, &core, host, "USBP0001".into(), dspi_proto::USB_VID).unwrap();
+        let seen = indexes.lock().unwrap().clone();
+        assert_eq!(seen.first(), Some(&0x0102), "{seen:04X?}");
+        assert!(seen.len() > 2);
+        assert!(seen[1..].iter().all(|&i| i == 2), "{seen:04X?}");
+        assert_eq!(remote.paged_requests(), 1);
+        assert_eq!(ok(h, "state", Value::Null)["device"]["serial"], "USBP0001");
+        calls::session_free(h).unwrap();
+    }
+
+    /// A device that answers the probe as firmware 1.1.7 is refused with the
+    /// notice, and nothing follows the probe.
+    #[test]
+    fn wp_pgwire_a_paged_device_over_webusb_is_refused_after_the_probe() {
+        struct Paged(Arc<Mutex<Vec<(u8, u16)>>>);
+        impl UsbHost for Paged {
+            fn control_in(&mut self, opcode: u8, _: u16, index: u16, _: u16) -> Result<Vec<u8>> {
+                self.0.lock().unwrap().push((opcode, index));
+                Ok(vec![
+                    0x44, 0x53, 0x50, 0x69, 0x01, 0x00, 0x0C, 0x00, 0x40, 0x00, 0x00, 0x01, 0, 0,
+                    0, 0,
+                ])
+            }
+            fn control_out(&mut self, opcode: u8, _: u16, index: u16, _: &[u8]) -> Result<()> {
+                self.0.lock().unwrap().push((opcode, index));
+                Ok(())
+            }
+        }
+        guard::reset_for_test();
+        let h = calls::session_new().unwrap();
+        let core = calls::core_of(h).unwrap();
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let e = open_with(
+            h,
+            &core,
+            Box::new(Paged(Arc::clone(&seen))),
+            "USBP0002".into(),
+            dspi_proto::USB_VID,
+        )
+        .unwrap_err();
+        assert_eq!(e.code, "transfer");
+        assert_eq!(e.notice_key.as_deref(), Some("transfer.paged_not_yet"));
+        assert!(e.message.contains("firmware 1.1.7"), "{}", e.message);
+        assert_eq!(*seen.lock().unwrap(), vec![(0x10, 0x0102)]);
+        assert_eq!(run(h, "state", Value::Null)["code"], "not_open");
+        calls::session_free(h).unwrap();
     }
 
     #[test]

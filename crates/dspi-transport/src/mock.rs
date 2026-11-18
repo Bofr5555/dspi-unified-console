@@ -10,7 +10,8 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::{DeviceDescriptor, NotificationSource, Result, Transport, TransportError};
+use crate::{CmdId, DeviceDescriptor, NotificationSource, Result, Transport, TransportError};
+use dspi_proto::VENDOR_INTERFACE;
 
 /// Packets a test has queued for the notification endpoint.
 pub type NotifyQueue = Arc<Mutex<VecDeque<Vec<u8>>>>;
@@ -100,6 +101,34 @@ pub struct Exchange {
     pub opcode: u8,
     pub value: u16,
     pub payload: Vec<u8>,
+    // -- WP PGWIRE --
+    /// `wIndex`: the vendor interface (2) for a page-0 request, the page in
+    /// the high byte for a paged one ([`CmdId::w_index`]).
+    pub index: u16,
+    /// `wLength`: the length asked for an IN transfer, the payload's for an OUT.
+    pub length: u16,
+}
+
+// -- WP PGWIRE --
+impl Exchange {
+    /// The page this request named: the high byte of `wIndex`.
+    pub fn page(&self) -> u8 {
+        self.index.to_be_bytes()[0]
+    }
+
+    /// The eight SETUP bytes this exchange went out as on USB
+    /// (`bmRequestType`, `bRequest`, `wValue`, `wIndex`, `wLength`, little
+    /// endian), for comparing with a protocol document's own.
+    pub fn setup(&self) -> [u8; 8] {
+        let request_type = match self.direction {
+            Direction::In => 0xC1,
+            Direction::Out => 0x41,
+        };
+        let [v0, v1] = self.value.to_le_bytes();
+        let [i0, i1] = self.index.to_le_bytes();
+        let [l0, l1] = self.length.to_le_bytes();
+        [request_type, self.opcode, v0, v1, i0, i1, l0, l1]
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,7 +146,8 @@ pub type LogHandle = Arc<Mutex<Vec<Exchange>>>;
 
 #[derive(Default)]
 pub struct MockTransport {
-    replies: HashMap<u8, Reply>,
+    /// Keyed by command id: a page-0 opcode is its own id (WP PGWIRE).
+    replies: HashMap<u16, Reply>,
     /// What an opcode with no script answers. `None` stalls, as the firmware
     /// does for an opcode it does not implement.
     fallback: Option<Reply>,
@@ -126,6 +156,10 @@ pub struct MockTransport {
     max_transfer: Option<usize>,
     notify: NotifyQueue,
     notify_pace: Option<Duration>,
+    // -- WP PGWIRE --
+    /// [`Transport::carries_pages`]: off by default, so a mock scripted for
+    /// 1.1.6 is never probed by `paged::open`.
+    pages: bool,
 }
 
 impl MockTransport {
@@ -134,7 +168,22 @@ impl MockTransport {
     }
 
     pub fn reply(mut self, opcode: u8, reply: Reply) -> Self {
-        self.replies.insert(opcode, reply);
+        self.replies.insert(u16::from(opcode), reply);
+        self
+    }
+
+    // -- WP PGWIRE --
+    /// A link that carries pages ([`Transport::carries_pages`]), as USB and
+    /// USB MIDI do: `paged::open` probes it.
+    pub fn carrying_pages(mut self) -> Self {
+        self.pages = true;
+        self
+    }
+
+    /// What a paged request for `id` answers. An unscripted paged id stalls;
+    /// [`MockTransport::answering_everything`] answers page 0 only.
+    pub fn paged(mut self, id: CmdId, reply: Reply) -> Self {
+        self.replies.insert(id.0, reply);
         self
     }
 
@@ -204,6 +253,18 @@ impl MockTransport {
         self.log.lock().unwrap().iter().map(|e| e.opcode).collect()
     }
 
+    /// What an OUT request for command id `key` answers (WP PGWIRE: shared by
+    /// the page-0 and the paged OUT).
+    fn out_reply(&self, key: u16) -> Result<()> {
+        let opcode = CmdId(key).cmd();
+        match self.replies.get(&key) {
+            Some(Reply::Stall) => Err(TransportError::Stalled { opcode }),
+            Some(Reply::Disconnect) => Err(TransportError::Disconnected),
+            Some(Reply::Error(e)) => Err(e.clone()),
+            _ => Ok(()),
+        }
+    }
+
     /// Resolve a reply that carries no state of its own.
     fn resolve_one(reply: &Reply, opcode: u8, value: u16) -> Result<Vec<u8>> {
         match reply {
@@ -221,12 +282,20 @@ impl MockTransport {
     }
 
     fn resolve(&mut self, opcode: u8, value: u16) -> Result<Vec<u8>> {
-        if !self.replies.contains_key(&opcode)
+        self.resolve_id(u16::from(opcode), value)
+    }
+
+    /// [`MockTransport::resolve`] by command id (WP PGWIRE); `opcode` in an
+    /// error is the id's command number.
+    fn resolve_id(&mut self, key: u16, value: u16) -> Result<Vec<u8>> {
+        let opcode = CmdId(key).cmd();
+        if !self.replies.contains_key(&key)
+            && CmdId(key).is_legacy()
             && let Some(fallback) = self.fallback.clone()
         {
             return Self::resolve_one(&fallback, opcode, value);
         }
-        match self.replies.get_mut(&opcode) {
+        match self.replies.get_mut(&key) {
             None => Err(TransportError::Stalled { opcode }),
             Some(Reply::Stall) => Err(TransportError::Stalled { opcode }),
             Some(Reply::Disconnect) => Err(TransportError::Disconnected),
@@ -252,8 +321,8 @@ impl MockTransport {
                     Err(TransportError::Stalled { opcode })
                 } else {
                     let inner = (**inner).clone();
-                    self.replies.insert(opcode, inner);
-                    self.resolve(opcode, value)
+                    self.replies.insert(key, inner);
+                    self.resolve_id(key, value)
                 }
             }
         }
@@ -267,6 +336,8 @@ impl Transport for MockTransport {
             opcode,
             value,
             payload: Vec::new(),
+            index: VENDOR_INTERFACE,
+            length: len,
         });
 
         let mut data = self.resolve(opcode, value)?;
@@ -289,6 +360,8 @@ impl Transport for MockTransport {
             opcode,
             value,
             payload: Vec::new(),
+            index: VENDOR_INTERFACE,
+            length: max_len,
         });
         let mut data = self.resolve(opcode, value)?;
         data.truncate(max_len as usize);
@@ -301,13 +374,41 @@ impl Transport for MockTransport {
             opcode,
             value,
             payload: data.to_vec(),
+            index: VENDOR_INTERFACE,
+            length: u16::try_from(data.len()).unwrap_or(u16::MAX),
         });
-        match self.replies.get(&opcode) {
-            Some(Reply::Stall) => Err(TransportError::Stalled { opcode }),
-            Some(Reply::Disconnect) => Err(TransportError::Disconnected),
-            Some(Reply::Error(e)) => Err(e.clone()),
-            _ => Ok(()),
-        }
+        self.out_reply(u16::from(opcode))
+    }
+
+    // -- WP PGWIRE --
+    fn carries_pages(&self) -> bool {
+        self.pages
+    }
+
+    fn control_in_paged(&mut self, id: CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
+        self.log.lock().unwrap().push(Exchange {
+            direction: Direction::In,
+            opcode: id.cmd(),
+            value,
+            payload: Vec::new(),
+            index: id.w_index(),
+            length: max_len,
+        });
+        let mut data = self.resolve_id(id.0, value)?;
+        data.truncate(usize::from(max_len));
+        Ok(data)
+    }
+
+    fn control_out_paged(&mut self, id: CmdId, value: u16, data: &[u8]) -> Result<()> {
+        self.log.lock().unwrap().push(Exchange {
+            direction: Direction::Out,
+            opcode: id.cmd(),
+            value,
+            payload: data.to_vec(),
+            index: id.w_index(),
+            length: u16::try_from(data.len()).unwrap_or(u16::MAX),
+        });
+        self.out_reply(id.0)
     }
 
     fn descriptor(&self) -> &DeviceDescriptor {
@@ -376,6 +477,8 @@ mod tests {
                 opcode: 0x42,
                 value: 0,
                 payload: vec![1, 2, 3],
+                index: 2,
+                length: 3,
             }
         );
     }

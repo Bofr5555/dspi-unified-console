@@ -155,7 +155,10 @@ impl DspiCore {
         let (adapter, feed) = Adapter::new(transport, serial.clone(), hang_limit);
         // Before the connect, so packets that come while it probes are read.
         *self.host_feed.lock() = Some(feed);
-        self.open_transport(Box::new(adapter), serial, 0)
+        // -- WP PGWIRE -- the generation wrapper; a host's adapter carries no
+        // page, so it is legacy without a probe (OD-PGk)
+        let adapter = dspi_transport::paged::open(Box::new(adapter))?;
+        self.open_transport(adapter, serial, 0)
     }
 }
 

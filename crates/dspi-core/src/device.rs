@@ -326,7 +326,9 @@ impl DspiCore {
             // claim of interface 2 would make this one fail.
             self.close_connection();
             let transport = dspi_transport::UsbTransport::from_fd(owned, &serial)?;
-            self.attach_probed(Box::new(transport), serial, vid)
+            // -- WP PGWIRE -- the generation probe first, on the raw wire
+            let transport = dspi_transport::paged::open(Box::new(transport))?;
+            self.attach_probed(transport, serial, vid)
         }
         #[cfg(not(all(feature = "usb", any(target_os = "linux", target_os = "android"))))]
         {
@@ -419,7 +421,9 @@ impl DspiCore {
             self.close_connection();
             let vid = usb::vendor_of(&serial).ok_or(DspiError::Disconnected)?;
             let transport = dspi_transport::UsbTransport::open_serial(&serial)?;
-            self.attach_probed(Box::new(transport), serial, vid)
+            // -- WP PGWIRE -- the generation probe first, on the raw wire
+            let transport = dspi_transport::paged::open(Box::new(transport))?;
+            self.attach_probed(transport, serial, vid)
         }
     }
 
@@ -482,7 +486,9 @@ impl DspiCore {
     pub fn open_midi(&self, input: Arc<MidiInputHandle>) -> Result<()> {
         let transport = input.connect();
         let serial = input.serial.clone();
-        self.attach_probed(Box::new(transport), serial, 0)
+        // -- WP PGWIRE -- the generation probe first, on the raw wire
+        let transport = dspi_transport::paged::open(Box::new(transport))?;
+        self.attach_probed(transport, serial, 0)
     }
 }
 

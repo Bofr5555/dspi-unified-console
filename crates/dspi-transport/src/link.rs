@@ -412,6 +412,17 @@ impl Transport for LinkTransport {
         self.client.session_id()
     }
 
+    // -- WP PGWIRE --
+    /// No page goes through a hub yet, and `paged::open` sends no probe over
+    /// DSPi Link (PLAN-PG section 1.1 steps 5 and 6): an upstream 1.2 hub
+    /// judges by `bRequest` and may forward or drop the page, and our hub
+    /// refuses one (PGHUB0). The paged calls keep the trait's refusal. WP
+    /// PGLINKC decides by the hub's version and the device object's
+    /// `protocol` instead.
+    fn carries_pages(&self) -> bool {
+        false
+    }
+
     /// Spec 7.7: a hub without the `lock` capability serialises commands
     /// itself, so this succeeds at once. Another session's lock is
     /// [`TransportError::Locked`], a viewer's request `Denied`.
