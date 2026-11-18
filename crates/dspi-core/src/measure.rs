@@ -53,6 +53,14 @@ mod safety;
 mod session;
 // -- WP P5LIVE -- the live view and direct adjustments (PLAN-P5 T9, T5)
 mod live;
+// -- WP P5TUNE -- the auto-tune (PLAN-P5 section 1.4, T10)
+mod tune;
+pub use tune::{
+    MeasureLayout, MeasureLayoutOutput, MeasureTuneCheck, MeasureTuneCurves, MeasureTuneKeep,
+    MeasureTuneKind, MeasureTuneOptions, MeasureTuneParam, MeasureTuneProposal, MeasureTuneStage,
+    MeasureTuneState, MeasureTuneTransition, MeasureTuneVerify, MeasureTuneVerifyOutput,
+    MeasureTuneVerifySum, MeasureTuneWrite,
+};
 pub use live::{
     MeasureLiveAdjust, MeasureLiveBand, MeasureLiveChange, MeasureLiveCurve, MeasureLiveFrame,
     MeasureLiveMode, MeasureLiveProposal, MeasureLiveRta, MeasureLiveSetup, MeasureLiveState,
@@ -569,6 +577,11 @@ pub(crate) struct MeasureSlot {
     /// The live view keeps the device lock between its sweeps: a session's
     /// end leaves it held.
     live_hold: std::sync::atomic::AtomicBool,
+    // -- WP P5TUNE --
+    /// The auto-tune's state: taken before the session's slot, never after.
+    tune: Mutex<tune::Tune>,
+    /// What the auto-tune shows (a leaf).
+    tune_view: Mutex<MeasureTuneState>,
 }
 
 impl MeasureSlot {

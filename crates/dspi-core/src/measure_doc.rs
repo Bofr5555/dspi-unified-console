@@ -594,6 +594,18 @@ impl DspiCore {
     fn measure_delete(&self, id: &str) -> Result<()> {
         self.measure_store()?.delete(id).map_err(io_error)
     }
+
+    // -- WP P5TUNE -- the tune's row on a filed measurement (updated in place)
+    pub(crate) fn measure_doc_add_tune(
+        &self,
+        id: &str,
+        record: dspi_measure::doc::TuneRecord,
+    ) -> Result<MeasureDocInfo> {
+        self.measure_store()?
+            .add_tune(id, record)
+            .map(MeasureDocInfo::from)
+            .map_err(io_error)
+    }
 }
 
 /// The web has no files: the document calls are its store.
@@ -620,6 +632,14 @@ impl DspiCore {
         Err(DspiError::Unsupported)
     }
     fn measure_delete(&self, _id: &str) -> Result<()> {
+        Err(DspiError::Unsupported)
+    }
+    // -- WP P5TUNE --
+    pub(crate) fn measure_doc_add_tune(
+        &self,
+        _id: &str,
+        _record: dspi_measure::doc::TuneRecord,
+    ) -> Result<MeasureDocInfo> {
         Err(DspiError::Unsupported)
     }
 }

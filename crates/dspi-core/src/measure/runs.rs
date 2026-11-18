@@ -21,6 +21,11 @@ use crate::consts::{SIGGEN_FLAG_RAW, SIGGEN_FLAG_WALK};
 use crate::records::SiggenConfig;
 use crate::{DspiError, Result};
 
+// -- WP P5TUNE --
+/// The key of an output's SNR curve in a measurement document (an unknown key
+/// to every reader, kept on write).
+pub(crate) const SNR_KEY: &str = "snr";
+
 /// A ramp step's sweep, ms ("short walked log sweeps, about 1 s", S3).
 pub(crate) const RAMP_SWEEP_MS: u32 = 1_000;
 /// A ramp step's pink noise, ms.
@@ -149,6 +154,9 @@ pub(crate) struct OutputResult {
     pub(crate) response: Response,
     /// The onset, ms, on the run's timing origin.
     pub(crate) arrival_ms: f64,
+    // -- WP P5TUNE -- the de-embedding's validity mask needs the SNR (RC12)
+    /// The SNR per point of the standard grid, dB (empty without a pre-roll).
+    pub(crate) snr_db: Vec<f64>,
 }
 
 /// One run's result.
@@ -213,6 +221,17 @@ pub(crate) fn output_response(
             *ok = *ok && *f >= band_hz.0 && *f <= band_hz.1;
         }
     }
+    // -- WP P5TUNE -- the SNR before any correction or level shift
+    let snr_db: Vec<f64> = noise.as_ref().map_or_else(Vec::new, |n| {
+        resp.mag_db
+            .iter()
+            .zip(&n.mag_db)
+            .map(|(s, n)| {
+                let v = s - n;
+                if v.is_finite() { v.clamp(-100.0, 300.0) } else { -100.0 }
+            })
+            .collect()
+    });
     let spread = (o.repeats > 1).then_some(o.spread_db.as_slice());
     resp.valid = Some(trust_mask(&resp, noise.as_ref(), spread, &TrustRule::DEFAULT).map_err(e)?);
     let mut resp = match mic_on(&grid, plan) {
@@ -228,6 +247,7 @@ pub(crate) fn output_response(
         output: o.output,
         response: resp,
         arrival_ms: (o.onset_index - o.ir.zero_index as f64) * 1000.0 / rate,
+        snr_db,
     })
 }
 
@@ -294,6 +314,7 @@ pub(crate) fn pink_result(spectrum: &Response, output: u8, level_db: f32) -> Res
             output,
             response: r,
             arrival_ms: 0.0,
+            snr_db: Vec::new(),
         }],
         level_db,
         timing_reliable: false,
@@ -359,6 +380,21 @@ pub(crate) fn document(plan: &Plan, runs: &[RunResult], ctx: &DocContext<'_>) ->
                     inverted: false,
                 },
             });
+        // -- WP P5TUNE -- position 1's SNR per point, for the de-embedding's
+        // validity mask (RC12): a curve of the response's grid under `snr`.
+        let mut extra = Map::new();
+        if o0.snr_db.len() == o0.response.mag_db.len() && !o0.snr_db.is_empty() {
+            let snr = Curve::from_response(&Response {
+                grid: o0.response.grid,
+                mag_db: o0.snr_db.clone(),
+                phase_deg: None,
+                valid: None,
+                spl: false,
+            });
+            if let Ok(v) = serde_json::to_value(&snr) {
+                extra.insert(SNR_KEY.into(), v);
+            }
+        }
         outputs.push(OutputMeasurement {
             output: spec.output,
             role: spec.role.way(),
@@ -366,7 +402,7 @@ pub(crate) fn document(plan: &Plan, runs: &[RunResult], ctx: &DocContext<'_>) ->
             chain: chain.into(),
             arrival_ms: r0.timing_reliable.then_some(o0.arrival_ms),
             response: curve,
-            extra: Map::new(),
+            extra,
         });
     }
     let kind = match plan.kind {
