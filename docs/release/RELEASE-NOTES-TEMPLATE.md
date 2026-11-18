@@ -34,7 +34,7 @@ is `uConsole-for-DSPi-VERSION-desktop-source.tar.gz`. Licence: see `NOTICE.md`.
 The public key that signs every release:
 
 ```
-PUBLIC_KEY_LINE
+RWTiNwy5h2MBuviJDs7LBs3wi2Bh/YdJyh5pXdS3XKo8wRt1igYdrGgY
 ```
 
 It is also in the repository as
@@ -48,7 +48,7 @@ Compare the two before you trust either.
    `brew install minisign`, `scoop install minisign`):
 
    ```sh
-   minisign -Vm SHA256SUMS -P PUBLIC_KEY_LINE
+   minisign -Vm SHA256SUMS -P RWTiNwy5h2MBuviJDs7LBs3wi2Bh/YdJyh5pXdS3XKo8wRt1igYdrGgY
    ```
 
    It must say `Signature and comment signature verified`.
