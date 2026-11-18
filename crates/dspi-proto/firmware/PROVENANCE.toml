@@ -37,3 +37,61 @@ files = [
   "rta_bass.h",          # analyser bass band count
   "notify.h",            # notification event ids and ParamSource tags
 ]
+
+# -- WP PGPROTO --
+# The paged protocol of firmware 1.1.7 (PLAN-PG section 1.2, R8, OD-PGj): upstream's
+# generated command registry and its old-to-new table, copied unmodified from the
+# firmware repository's Documentation/protocol/ (GPL-3.0 project files, data), never
+# from DSPi-Link's copy. build.rs generates dspi_proto::paged's tables from them;
+# tests/paged_coverage.rs compares what it read with the counts below, which were
+# recorded when the files were copied (never edit a count without re-vendoring).
+#
+# The legacy headers above stay pinned on the 1.1.6 line (after the port, tag
+# bofr-116-final): from then on config.h on bofr-main has no REQ_* defines, and the
+# legacy opcodes keep coming from those headers (docs/terminal/firmware-bump.md).
+[protocol]
+repository = "https://github.com/WeebLabs/DSPi"
+branch     = "release/v1.1.7"
+commit     = "103ba379aabc1ebbf09794734b074ad84278ce22"
+short      = "103ba37"
+committed  = "2026-11-18 08:07:06 +0000"
+vendored   = "2026-11-18"
+licence    = "GPL-3.0"
+files      = ["protocol/dspi_commands.json", "protocol/legacy_map.json"]
+# dspi_commands.json
+protocol_major = 1
+protocol_minor = 0
+pages          = 13
+commands       = 224
+get_commands   = 201
+set_commands   = 151
+# legacy_map.json
+legacy_format  = 1
+opcodes        = 246
+adapters       = 248   # by USB direction of the 1.1.6 request
+adapters_in    = 165
+adapters_out   = 83
+split_cases    = 87    # listed cases plus non-null defaults
+
+[protocol.commands_per_page]
+SYS    = 20
+STORE  = 12
+INPUT  = 20
+OUTPUT = 13
+ROUTE  = 15
+FILTER = 3
+DYN    = 17
+FX     = 57
+MEAS   = 20
+CS     = 26
+XPORT  = 5
+CLOCK  = 9
+DIAG   = 7
+
+[protocol.adapters_by_kind]
+direct     = 192
+act_value  = 11
+act_addr   = 10
+act_packed = 6
+split      = 15
+custom     = 14
