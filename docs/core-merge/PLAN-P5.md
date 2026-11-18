@@ -171,11 +171,42 @@ PRO1's T1 to T5 keep their ids; the owner's requirements add T7 to T12 (T6 is PR
    by the modelled sweep) and the repeats of an output averaged coherently. An output's intercept relative to its own
    cycle start is its delay; the common latency and the host's buffering cancel between outputs **of one run**. Nothing
    compares arrivals across runs (several positions use position 1's run only).
+   **The arrival** (P5ARRIVAL, after P5SPIKE 2026-11-18, RC5a): the peak of the **envelope** of the deconvolved
+   response, weighted by the pre-roll's noise (the matched filter's whitening of P5RAMPFIX) and limited to the sweep's
+   band, not the largest `|h|` of the full band (a tweeter's two opposite-sign lobes 45-50 µs apart traded heights
+   between passes and the peak jumped by 60 µs). It is refined against the **mean of the output's other repeats**
+   (leave one out), maximum likelihood (`|R|²/N` over the bins with SNR above 10 dB), the lag limited to **half a carrier
+   period around the envelope's**: the correlation of a band-limited response has peaks one carrier period apart
+   (0.4-0.8 of the main one on the K340's tweeter), and P5TIME's full-band correlation against the first cycle locked
+   one of them (-81.6 µs). Where another peak the envelope rules out reaches 0.9 of the chosen one, or the chosen one is
+   the window's edge, the arrival is **ambiguous**: a typed finding, the cycle out of the fit and of the gate's largest
+   residual, never a number the gate trusts. (A plain 0.5 against the first peak would refuse every flat speaker, whose
+   sidelobes sit at about 0.55, and the real tweeter, which the correlation decides correctly.) The onset is the band-
+   limited envelope's (30 % of its peak), so a window's centre no longer jumps with the lobes. The cycle-identity
+   search (step 5) judges "heard" the same way, whitened by the capture before the START's window: P5TIME's whole-band
+   peak missed a woofer behind its LR4 low-pass at the ramp's -50 dBFS start in P5SIM's -85/-90 dBFS noise (P5TUNE's
+   follow-up) and the run aborted; every identity check stays as strict.
 7. **The timing quality gate** (RC5d). A run is "timing reliable" only when every cycle's residual from the fit is at
    most **10 µs** and the repeats of each output agree in complex value (phase) through the transitions (spread at most
    10° where trusted). Otherwise the result keeps its magnitudes and is marked **"timing unreliable"**; delay, polarity
    and crossover proposals are refused with that reason. A single-output, single-pass run (the live view) is
    magnitude-only by definition.
+   **The phase check per band** (P5ARRIVAL): in third-octave bands, each loud enough at **20 dB summed over the band**
+   per repeat (not 30 dB per 1/96-octave point, which left 0 to 7 points for the K340's tweeter) and within 30 dB of its
+   output's loudest band; by default **the run's transitions** (every band where two outputs of the run are both loud
+   enough and within 12 dB of each other; an output in none, a run of one output, from 100 Hz to 10 kHz;
+   `phase_check_bands` replaces the default). A band's bound is the larger of **10°** and **5 µs as a phase** at its
+   centre: the plan's 10° through every usual crossover (below 5.6 kHz), no longer 2.8 µs at 10 kHz. The gate stays
+   fail-closed and RC5's strictness for delay, polarity and crossover proposals is unchanged; the summed run remains the
+   arbiter of delay and polarity (RC5f). **Findings are typed** (`TimingIssue`) as well as in words, so that an
+   analyser limit, a slip and the capture clock are told apart: an **ambiguous arrival**; a **capture slip** (a cycle
+   off the fit by more than the bound while its delay stays steady along its sweep); **clock wander** (each repeat's
+   delay along its sweep against the mean of the other repeats, its own residual taken out, per third-octave band,
+   unwrapped along frequency; a movement of four times its noise counts, more than the residual bound inside one sweep
+   is a reason: "the capture clock wandered X µs / Y ppm inside its sweep"); a **phase spread** per band. P5SPIKE's
+   iMM-6C: residuals 13.8 µs (only3, was 81.6) and 4.1 µs (ramp30) on the real samples, and wander of 20-80 µs at 30-95
+   ppm reported on every cycle: the remaining disagreement is the capture clock, which no estimator removes (the
+   owner's control experiment with an electrical loopback decides its source).
 8. **No loopback, no reference speaker, no firmware time stamp** (OD-P5b). The absolute latency from USB to air is not
    measured; nothing needs it. The one check that does not depend on the capture clock at all is the **summed run**
    (section 1.4 step 6), which is mandatory before any timing write is offered (RC5f).
@@ -616,6 +647,17 @@ through P5WCAP's spike page (via `uconsole web`), and in Qt through `--measure-s
 the clock ratio, every cycle's residual, frame gaps seen, the timing-quality verdict per client. **If any client's
 residuals exceed the gate, P5-C starts only after the coordinator and the owner decide** (a different capture path for
 that client, or magnitude-only there). **Owner action required** (section 7).
+
+**P5ARRIVAL: the analyser after P5SPIKE.** [IMPLEMENTED on wp/P5ARRIVAL, 2026-11-18] Size 1. After P5SPIKE's offline analysis
+(`work/p5spike-analysis/REPORT.md` section 6): the arrival from the noise-weighted band-limited envelope, the
+leave-one-out refinement within half a carrier period, the envelope onset, the phase check per third-octave band at
+the transitions with its bound as degrees or time, typed findings and the clock-wander diagnostic (section 1.1 steps
+6 and 7). **Owns:** `crates/dspi-measure/src/ir.rs` (and `ir/`), `testdata/p5/spike/` excerpts of two real runs.
+**Done when:** the real excerpts give residuals of 13.8 and 4.1 µs (the offline estimate 14.2 and 4.4; the old
+refinement 81.6); a two-lobe tweeter world with 75 ppm clock wander makes P5TIME's refinement hop a carrier period and
+this one not; P5SIM's ratio wander of 55 to 100 ppm is reported as wander, a slip between passes as a slip, the clean
+world with no finding; an LR4 woofer at -50 dBFS in P5SIM's noise is identified (P5TIME's search aborted it); every
+P5-A and P5-B timing test unchanged.
 
 ### Wave P5-C: tune, live, hub, demo
 

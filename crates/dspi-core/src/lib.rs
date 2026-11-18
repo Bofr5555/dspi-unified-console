@@ -344,6 +344,13 @@ pub use measure::{
 };
 // -- WP P5DEMO --
 pub use measure_sim::{MeasureSimInfo, SIM_MIC_LABEL, SIM_WORLD};
+// -- WP P5TUNE --
+pub use measure::{
+    MeasureLayout, MeasureLayoutOutput, MeasureTuneCheck, MeasureTuneCurves, MeasureTuneKeep,
+    MeasureTuneKind, MeasureTuneOptions, MeasureTuneParam, MeasureTuneProposal, MeasureTuneStage,
+    MeasureTuneState, MeasureTuneTransition, MeasureTuneVerify, MeasureTuneVerifyOutput,
+    MeasureTuneVerifySum, MeasureTuneWrite,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

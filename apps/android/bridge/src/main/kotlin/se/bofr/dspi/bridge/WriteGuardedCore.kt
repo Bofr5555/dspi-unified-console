@@ -37,6 +37,7 @@ import se.bofr.dspi.core.MeasureLiveSetup
 import se.bofr.dspi.core.MeasureLiveState
 import se.bofr.dspi.core.MeasureSetup
 import se.bofr.dspi.core.MeasureState
+import se.bofr.dspi.core.MeasureTuneState
 import se.bofr.dspi.core.ParamValue
 import se.bofr.dspi.core.SiggenConfig
 import se.bofr.dspi.core.SnapshotRecall
@@ -707,6 +708,28 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.measureLiveApply(proposalId)
     }
 
+    // -- WP P5TUNE -- the summed check and the verify play the generator, the
+    // apply writes the proposal, the A/B start recalls a snapshot
+    override fun measureTuneSumCheck(proposalId: Long): MeasureTuneState {
+        guard("measureTuneSumCheck")
+        return inner.measureTuneSumCheck(proposalId)
+    }
+
+    override fun measureTuneApply(proposalId: Long, guardS: Long): GuardedApply {
+        guard("measureTuneApply")
+        return inner.measureTuneApply(proposalId, guardS)
+    }
+
+    override fun measureTuneVerify(): MeasureTuneState {
+        guard("measureTuneVerify")
+        return inner.measureTuneVerify()
+    }
+
+    override fun measureTuneAb(): AbCompare {
+        guard("measureTuneAb")
+        return inner.measureTuneAb()
+    }
+
     // -- WP P1AB -- a start with A given, a toggle and a keep recall a snapshot
     override fun abStart(aId: String, bId: String): AbCompare {
         guard("abStart")
@@ -1071,7 +1094,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureStart",
             // -- WP P5LIVE --
             "measureLiveStart",
-            "measureLiveApply"
+            "measureLiveApply",
+            // -- WP P5TUNE --
+            "measureTuneSumCheck",
+            "measureTuneApply",
+            "measureTuneVerify",
+            "measureTuneAb"
         )
 
         /** Core methods that only read, compute locally, manage listeners or the connection, or reboot into the bootloader. */
@@ -1524,7 +1552,19 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP P5DEMO -- the demo's simulated microphone: a client-side
             // microphone on the demo device only; nothing is sent beyond reads
             "measureSimSet",
-            "measureSimInfo"
+            "measureSimInfo",
+            // -- WP P5TUNE -- the layout and the proposal compute locally (reads);
+            // the tick drives runs a guarded call started and the guard's timer
+            // (as measureLiveTick, applyPoll); Keep and Revert end the guard as
+            // applyConfirm and applyRevert do; the stop as measureStop
+            "measureLayoutProposal",
+            "measureTunePropose",
+            "measureTuneProposal",
+            "measureTuneTick",
+            "measureTuneState",
+            "measureTuneKeep",
+            "measureTuneRevert",
+            "measureTuneStop"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

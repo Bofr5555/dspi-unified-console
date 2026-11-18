@@ -378,6 +378,13 @@ pub enum ApplyOp {
     Click,
     /// Toggle the unit's sync GPIO.
     SyncPulse,
+    // -- WP PLANAT -- (seam; PLAN-AT 1.3) ops 9 and 10. Nothing sends them yet:
+    // `MAX` stays 8 (the core's typed calls refuse above it) and the fakes
+    // refuse them at the write until ATFAKE.
+    /// Start the staged generator config on the sample carried as T (op 9).
+    SiggenStart,
+    /// Stop the generator at T: `arg` 0 fade, 1 now (op 10).
+    SiggenStop,
     Other(u8),
 }
 
@@ -393,6 +400,9 @@ impl ApplyOp {
             6 => Self::Rate,
             7 => Self::Click,
             8 => Self::SyncPulse,
+            // -- WP PLANAT --
+            9 => Self::SiggenStart,
+            10 => Self::SiggenStop,
             o => Self::Other(o),
         }
     }
@@ -408,6 +418,9 @@ impl ApplyOp {
             Self::Rate => 6,
             Self::Click => 7,
             Self::SyncPulse => 8,
+            // -- WP PLANAT --
+            Self::SiggenStart => 9,
+            Self::SiggenStop => 10,
             Self::Other(o) => o,
         }
     }
@@ -423,6 +436,9 @@ impl ApplyOp {
             Self::Rate => "rate",
             Self::Click => "click",
             Self::SyncPulse => "sync_pulse",
+            // -- WP PLANAT --
+            Self::SiggenStart => "siggen_start",
+            Self::SiggenStop => "siggen_stop",
             Self::Other(_) => "unknown",
         }
     }
@@ -870,6 +886,9 @@ impl ApplyRequest {
             ApplyOp::OutDelay => a < APPLY_OUTPUTS && (0..=APPLY_DELAY_MAX).contains(&v),
             ApplyOp::Rate => a <= 2 && v == 0,
             ApplyOp::Click => a < APPLY_OUTPUTS && v == 0,
+            // -- WP PLANAT -- PLAN-AT 1.3
+            ApplyOp::SiggenStart => a == 0 && v == 0,
+            ApplyOp::SiggenStop => a <= 1 && v == 0,
             ApplyOp::Other(_) => false,
         }
     }

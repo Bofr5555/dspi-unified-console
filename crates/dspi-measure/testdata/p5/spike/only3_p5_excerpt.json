@@ -1,0 +1,81 @@
+{
+ "source": "raw-only3-p5.wav",
+ "sourceMd5": "3faef3d21d02cdb66c1bb3610ee45142",
+ "rateHz": 48000,
+ "captureOrigin": 613030,
+ "captureFrames": 1399472,
+ "startFrame": 14880,
+ "outputs": [
+  3
+ ],
+ "passes": 5,
+ "sweep": {
+  "f1Hz": 20.0,
+  "f2Hz": 20000.0,
+  "durationMs": 5500,
+  "gapMs": 300
+ },
+ "taperMs": 20,
+ "segments": [
+  {
+   "kind": "preroll",
+   "sourceFrame": 613030,
+   "frames": 14400
+  },
+  {
+   "kind": "cycle",
+   "cycle": 0,
+   "output": 3,
+   "bandHz": [
+    4200,
+    12500
+   ],
+   "sourceFrame": 836109,
+   "frames": 43603
+  },
+  {
+   "kind": "cycle",
+   "cycle": 1,
+   "output": 3,
+   "bandHz": [
+    4200,
+    12500
+   ],
+   "sourceFrame": 1114504,
+   "frames": 43603
+  },
+  {
+   "kind": "cycle",
+   "cycle": 2,
+   "output": 3,
+   "bandHz": [
+    4200,
+    12500
+   ],
+   "sourceFrame": 1392899,
+   "frames": 43603
+  },
+  {
+   "kind": "cycle",
+   "cycle": 3,
+   "output": 3,
+   "bandHz": [
+    4200,
+    12500
+   ],
+   "sourceFrame": 1671300,
+   "frames": 43603
+  },
+  {
+   "kind": "cycle",
+   "cycle": 4,
+   "output": 3,
+   "bandHz": [
+    4200,
+    12500
+   ],
+   "sourceFrame": 1949699,
+   "frames": 43603
+  }
+ ]
+}

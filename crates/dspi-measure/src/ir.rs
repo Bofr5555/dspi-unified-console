@@ -17,14 +17,27 @@
 //!    and every polled status ([`StatusObservation`]) must agree with the cycle
 //!    the capture is in. Any mismatch is [`TimingError::CycleIdentity`]: a
 //!    missed first cycle can never shift every response onto the wrong output.
+//!    "Heard" is judged like every arrival here, on the envelope of the
+//!    response in the sweep's band whitened by the noise before the window
+//!    (WP P5ARRIVAL, P5TUNE's follow-up: the whole-band peak missed a woofer
+//!    behind its LR4 low-pass at the ramp's -50 dBFS start).
 //!    [`crate::stimulus::WalkSchedule::status_consistent`] is the same check for
 //!    the session's polls during the run.
-//! 3. **The timing model** (RC5a): a coarse matched filter (deconvolution and
-//!    the impulse response's peak) gives one arrival per cycle, refined against
-//!    the same output's first cycle by an upsampled cross-correlation. The fit
-//!    is **one common slope** (capture frames per device sample: the clock
-//!    ratio) and **one intercept per output**, least squares over every cycle;
-//!    it needs at least two passes.
+//! 3. **The timing model** (RC5a): a coarse matched filter gives one arrival
+//!    per cycle: the peak of the **envelope** (analytic magnitude) of the
+//!    deconvolved response, weighted by the pre-roll's noise and limited to
+//!    the sweep's band (WP P5ARRIVAL; the whitening of
+//!    [`crate::hearing`]'s matched filter). It is refined against the **mean
+//!    of the output's other repeats** (leave one out), weighted by `|R|²/N`
+//!    over the bins with SNR above 10 dB, the lag limited to half a carrier
+//!    period around the envelope's: the correlation of a band-limited
+//!    response has peaks one carrier period apart, and the envelope decides
+//!    between them. A second peak above [`AMBIGUOUS_PEAK_RATIO`] of the first
+//!    in that window is reported as an ambiguous arrival
+//!    ([`TimingIssue::ArrivalAmbiguous`]), never as a number the gate
+//!    trusts. The fit is **one common slope** (capture frames per device
+//!    sample: the clock ratio) and **one intercept per output**, least
+//!    squares over every cycle; it needs at least two passes.
 //! 4. **Drift removal in the frequency domain** (S-e): each cycle is cut at its
 //!    fitted position, deconvolved by regularised spectral division by the
 //!    modelled sweep, and the ratio's error `e` is removed as the phase term of
@@ -36,11 +49,18 @@
 //!    (the earliest output's intercept), so relative delays and phases between
 //!    outputs of one run are kept. Nothing compares arrivals across runs.
 //! 6. **The timing quality gate** (RC5d): reliable only with every cycle's fit
-//!    residual at most [`MAX_RESIDUAL_US`], the repeats of every output agreeing
-//!    in phase within [`MAX_PHASE_SPREAD_DEG`] wherever they are loud enough to
-//!    tell, a noise floor from the pre-roll, and at least
-//!    [`AnalysisOptions::min_passes_reliable`] passes. Otherwise the result keeps
-//!    its magnitudes and says why it is "timing unreliable".
+//!    residual at most [`MAX_RESIDUAL_US`], no ambiguous arrival, the repeats
+//!    of every output agreeing in phase in every third-octave band of the
+//!    transitions that is loud enough to tell (20 dB summed over the band;
+//!    the bound per band is the larger of [`MAX_PHASE_SPREAD_DEG`] and
+//!    [`MAX_PHASE_SPREAD_US`] as a phase at the band's centre), no clock
+//!    wander inside a sweep ([`TimingIssue::ClockWander`]), a noise floor from
+//!    the pre-roll, and at least [`AnalysisOptions::min_passes_reliable`]
+//!    passes. Otherwise the result keeps its magnitudes and says why it is
+//!    "timing unreliable", in words ([`TimingQuality::reasons`]) and typed
+//!    ([`TimingQuality::issues`]): an ambiguous arrival (an analyser limit),
+//!    a capture slip between cycles and clock wander inside a sweep are told
+//!    apart (WP P5ARRIVAL, after the first real captures, P5SPIKE).
 //!
 //! Analysis runs in slices ([`WalkedAnalyser::step`], one cycle's FFT each), so
 //! the session can schedule it in the gaps or after the generator stopped; it
@@ -73,19 +93,81 @@ pub const ALIGNMENT_WINDOW_CYCLES: f64 = 5.0;
 pub const FIT_WINDOW_CYCLES: f64 = 15.0;
 /// The timing quality gate: the largest fit residual of any cycle, µs.
 pub const MAX_RESIDUAL_US: f64 = 10.0;
-/// The timing quality gate: the largest phase disagreement between repeats, °.
+/// The timing quality gate: the largest phase disagreement between repeats, °
+/// (a band's bound is the larger of this and [`MAX_PHASE_SPREAD_US`]).
 pub const MAX_PHASE_SPREAD_DEG: f64 = 10.0;
-/// A cycle is "heard" when its impulse response's peak is this many times the
+// -- WP P5ARRIVAL --
+/// The timing quality gate: the largest phase disagreement between repeats as
+/// a time, µs: at a band's centre `f` it allows `360·f·τ` degrees when that is
+/// more than [`MAX_PHASE_SPREAD_DEG`], so above 5.6 kHz. 10° is 28 µs at
+/// 1 kHz but 2.8 µs at 10 kHz, far tighter than the residual gate there (and
+/// decided by the highest loud point); half of [`MAX_RESIDUAL_US`] keeps the
+/// plan's 10° through every usual crossover (RC5d) and the two gates
+/// together as strict as before against a slip.
+pub const MAX_PHASE_SPREAD_US: f64 = 5.0;
+/// An arrival is ambiguous when the refining correlation has another peak,
+/// a quarter period or more from the one the envelope chose and within one
+/// carrier period of the envelope's half-period window, at least this high
+/// against the chosen one (or the chosen one is not a peak but the window's
+/// edge): the envelope and the correlation then disagree about the carrier
+/// peak, the lobe hop of P5SPIKE. Not 0.5 against the first peak: a
+/// band-limited response's correlation has its neighbouring carrier peaks at
+/// 0.4 to 0.8 (P5SPIKE's tweeter, correctly decided by the correlation) and
+/// a flat one its sidelobes at about 0.55, all of them right where the
+/// envelope's window excludes them.
+pub const AMBIGUOUS_PEAK_RATIO: f64 = 0.9;
+/// A cycle is "heard" when its response's envelope peak is this many times the
 /// median power of the response (30 dB).
 const FOUND_RATIO: f64 = 1000.0;
-/// A point is loud enough for the phase check at this SNR per repeat, dB. Above
-/// the 20 dB of the response's own trust mask so that noise alone cannot fail
-/// the gate (at 30 dB the noise moves a phase by about 1.3° rms).
-const PHASE_CHECK_SNR_DB: f64 = 30.0;
-/// The impulse-response excerpt around each cycle's peak used to refine its
-/// arrival, ms either side.
-const SNIPPET_MS: f64 = 10.0;
-/// Upsampling of the refining cross-correlation.
+/// A third-octave band is loud enough for the phase check at this SNR per
+/// repeat, summed over the band, dB (at 20 dB the noise moves a band's phase
+/// by about 4° rms). It replaces 30 dB per 1/96-octave point (P5SPIKE: 0 to 7
+/// such points for a tweeter at -30 dBFS).
+const PHASE_BAND_SNR_DB: f64 = 20.0;
+/// The bands of the phase check and the wander diagnostic, octaves.
+const CHECK_BAND_OCTAVES: f64 = 1.0 / 3.0;
+/// Two outputs of a run are in transition in a band where both are loud
+/// enough for the phase check and their levels are within this, dB: the
+/// default check bands ([`AnalysisOptions::phase_check_bands`] empty).
+const TRANSITION_DB: f64 = 12.0;
+/// Bins of the refining correlation count at this coherent SNR, dB.
+const REFINE_SNR_DB: f64 = 10.0;
+/// Rounds of the leave-one-out refinement at most (it stops once no lag
+/// moves by a thousandth of a sample).
+const REFINE_ROUNDS: usize = 16;
+/// Lags the refining correlation is evaluated at across its window (half a
+/// carrier period either side of the envelope); it is evaluated a period
+/// further either side for the ambiguity.
+const REFINE_LAGS: usize = 129;
+/// A band takes part in the phase check and the wander diagnostic only within
+/// this of its output's loudest band, dB: far below it (a mid-range at 30 Hz)
+/// the "signal" is the other outputs' and the room's leftovers, which differ
+/// between repeats without any clock at work.
+const IN_BAND_DB: f64 = 30.0;
+/// A third-octave band takes part in the wander diagnostic at this SNR per
+/// repeat, dB.
+const WANDER_SNR_DB: f64 = 10.0;
+/// A change of delay along a sweep counts as wander when it is this many
+/// times its noise.
+const WANDER_SIGMAS: f64 = 4.0;
+/// The wander's phases are unwrapped from the lowest band whose phase noise
+/// is at most this, rad (about 21 dB).
+const WANDER_ANCHOR_RAD: f64 = 0.1;
+/// The wander diagnostic's lowest band, Hz: below it the sweep's start (its
+/// fade) and the noise model's resolution move a band's phase more than its
+/// SNR says, and no µs is resolved there anyway.
+const WANDER_MIN_HZ: f64 = 100.0;
+/// A band takes part in the wander diagnostic only when its delay's noise is
+/// at most this, µs.
+const WANDER_MAX_SIGMA_US: f64 = 3.0;
+/// The local rate of the wander is taken over spans of at least this, s.
+const WANDER_MIN_SPAN_S: f64 = 0.1;
+/// The impulse-response excerpt around each cycle's envelope peak used to
+/// refine its arrival, ms either side (the lag itself is limited to half a
+/// carrier period, not to this).
+const SNIPPET_MS: f64 = 25.0;
+/// Upsampling of [`xcorr_lag`] (the P5TIME refinement, kept for tests).
+#[cfg(test)]
 const XCORR_UPSAMPLE: usize = 16;
 /// Half-width of the band-limited interpolator of [`ImpulseResponse::peak_index`].
 const INTERP_HALF: i64 = 16;
@@ -250,8 +332,16 @@ pub struct AnalysisOptions {
     pub max_residual_us: f64,
     /// The timing gate's phase bound, ° ([`MAX_PHASE_SPREAD_DEG`]).
     pub max_phase_spread_deg: f64,
-    /// Where the repeats' phases are compared (the transitions), Hz. Empty: 100
-    /// Hz to 10 kHz.
+    // -- WP P5ARRIVAL --
+    /// The timing gate's phase bound as a time, µs ([`MAX_PHASE_SPREAD_US`]):
+    /// a band's bound is the larger of the two at its centre.
+    pub max_phase_spread_us: f64,
+    /// Where the repeats' phases are compared, Hz: the third-octave bands
+    /// whose centre lies in one of these. Empty (the default): **the run's
+    /// transitions**, every band where an output and another output of the
+    /// run are both loud enough to check and within 12 dB of each other; an
+    /// output in no transition (a run of one output) is checked from 100 Hz to
+    /// 10 kHz.
     pub phase_check_bands: Vec<(f64, f64)>,
     /// The shortest pre-roll a noise floor is taken from, ms.
     pub min_preroll_ms: f64,
@@ -272,6 +362,7 @@ impl Default for AnalysisOptions {
             status_slack_ms: 250.0,
             max_residual_us: MAX_RESIDUAL_US,
             max_phase_spread_deg: MAX_PHASE_SPREAD_DEG,
+            max_phase_spread_us: MAX_PHASE_SPREAD_US,
             phase_check_bands: Vec::new(),
             min_preroll_ms: 250.0,
             min_passes_reliable: 3,
@@ -320,6 +411,83 @@ pub struct TimingQuality {
     pub passes: u16,
     /// Why not reliable, in words (empty when reliable).
     pub reasons: Vec<String>,
+    // -- WP P5ARRIVAL --
+    /// The findings behind the timing reasons, typed (a reason without a
+    /// finding here, such as too few passes, is in `reasons` only).
+    pub issues: Vec<TimingIssue>,
+}
+
+// -- WP P5ARRIVAL --
+/// One finding of the timing analysis, typed, so that an analyser limit, a
+/// capture slip and clock wander are told apart (P5SPIKE: the report said "a
+/// capture slip or clock wander" for an analyser's lobe hop).
+#[derive(Debug, Clone, PartialEq)]
+pub enum TimingIssue {
+    /// The cycle's arrival could not be decided: the refining correlation has
+    /// two peaks about a carrier period apart (a band-limited response, a
+    /// tweeter) and the envelope does not tell which. The cycle's residual is
+    /// a guess and is not in [`TimingQuality::max_residual_us`].
+    ArrivalAmbiguous {
+        /// The cycle's index in the run.
+        cycle: u32,
+        /// Its output.
+        output: u8,
+        /// The second peak against the first (1 when the first is the
+        /// window's edge).
+        second_peak: f64,
+    },
+    /// The capture's time base moved inside the cycle's sweep against the
+    /// output's other repeats: the microphone's clock (or a resampler
+    /// between it and the client) wandered, or slipped inside the sweep.
+    ClockWander {
+        /// The cycle's index in the run.
+        cycle: u32,
+        /// Its output.
+        output: u8,
+        /// How far its delay moved along the sweep, µs.
+        wander_us: f64,
+        /// The fastest rate of that movement, ppm (µs per s), over at least
+        /// 0.1 s of the sweep.
+        rate_ppm: f64,
+    },
+    /// The cycle is off the clock fit by more than the bound while its delay
+    /// stays steady along its sweep: samples were lost or repeated between
+    /// cycles (a capture or device slip).
+    CaptureSlip {
+        /// The cycle's index in the run.
+        cycle: u32,
+        /// Its output.
+        output: u8,
+        /// Its residual from the fit, µs.
+        residual_us: f64,
+    },
+    /// The repeats of an output disagree in phase in a band of the check.
+    PhaseSpread {
+        /// The output.
+        output: u8,
+        /// The band's centre, Hz.
+        freq_hz: f64,
+        /// The largest disagreement of a repeat with the mean, °.
+        spread_deg: f64,
+        /// The band's bound, °.
+        bound_deg: f64,
+    },
+}
+
+// -- WP P5ARRIVAL --
+/// One third-octave band of an output's phase check.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PhaseBand {
+    /// The band's centre, Hz.
+    pub freq_hz: f64,
+    /// Its SNR per repeat, summed over the band, dB.
+    pub snr_db: f64,
+    /// The largest disagreement of a repeat with the mean of the repeats, °.
+    pub spread_deg: f64,
+    /// The same as a time at the band's centre, µs.
+    pub spread_us: f64,
+    /// The band's bound, °.
+    pub bound_deg: f64,
 }
 
 /// One cycle's place in the fit.
@@ -329,11 +497,20 @@ pub struct CycleTiming {
     pub index: u32,
     /// Its output.
     pub output: u8,
-    /// Where it was heard: the capture frame (absolute index) of its impulse
-    /// response's peak.
+    /// Where it was heard: the capture frame (absolute index) of its arrival
+    /// (the envelope's peak, refined against the other repeats).
     pub arrival_frame: f64,
     /// Its distance from the fit, µs.
     pub residual_us: f64,
+    // -- WP P5ARRIVAL --
+    /// The arrival could not be decided ([`TimingIssue::ArrivalAmbiguous`]):
+    /// `residual_us` is a guess, left out of the gate's largest residual.
+    pub arrival_ambiguous: bool,
+    /// How far the cycle's delay moved along its sweep against the output's
+    /// other repeats, µs (0 where not measured or within the noise).
+    pub wander_us: f64,
+    /// The fastest rate of that movement, ppm.
+    pub wander_ppm: f64,
 }
 
 /// One output's result.
@@ -344,12 +521,17 @@ pub struct OutputIr {
     /// The coherent average of its repeats, drift removed, referenced to the
     /// run's timing origin: `search_ms` before it, the gap's rest after.
     pub ir: ImpulseResponse,
-    /// The response's peak, a fractional index into `ir.samples`.
+    /// The response's peak (largest `|h|`), a fractional index into
+    /// `ir.samples`.
     pub peak_index: f64,
-    /// The response's onset ([`ImpulseResponse::onset_index`]), a fractional
-    /// index into `ir.samples`: the centre for its windows.
+    /// The response's onset, a fractional index into `ir.samples`: the centre
+    /// for its windows. Taken from the envelope of the noise-weighted,
+    /// band-limited response where it first reaches [`ONSET_FRACTION`] of its
+    /// peak (WP P5ARRIVAL; 30 % of the raw `|h|` moved by 60 µs between passes
+    /// on a tweeter whose two lobes trade heights).
     pub onset_index: f64,
-    /// The peak's arrival after the run's earliest output, ms.
+    /// The arrival (the peak of that envelope) after the run's earliest
+    /// output's, ms.
     pub arrival_ms: f64,
     /// Repeats averaged.
     pub repeats: u16,
@@ -364,8 +546,14 @@ pub struct OutputIr {
     pub spread_db: Vec<f64>,
     /// The largest phase disagreement between its repeats where checked, °.
     pub phase_spread_deg: f64,
-    /// Points the phase check could use.
+    /// Third-octave bands the phase check could use (loud enough).
     pub phase_points_checked: usize,
+    // -- WP P5ARRIVAL --
+    /// The arrival: the peak of the envelope of the noise-weighted,
+    /// band-limited response, a fractional index into `ir.samples`.
+    pub envelope_index: f64,
+    /// The phase check, band by band (the bands loud enough to check).
+    pub phase_bands: Vec<PhaseBand>,
 }
 
 /// The result of a walked run.
@@ -665,7 +853,10 @@ fn bl_peak(h: &[f64]) -> Option<f64> {
 }
 
 /// How much later `b` is than `a`, samples (upsampled cross-correlation),
-/// within `max_lag`; `None` without a clear peak.
+/// within `max_lag`; `None` without a clear peak. P5TIME's refinement (the
+/// full-band correlation against the output's first cycle), kept for the
+/// tests that show what WP P5ARRIVAL's replaces.
+#[cfg(test)]
 fn xcorr_lag(a: &[f64], b: &[f64], max_lag: f64) -> Option<f64> {
     let m = fft_len(a.len().saturating_add(b.len()))?.next_power_of_two();
     let mu = m.checked_mul(XCORR_UPSAMPLE)?;
@@ -720,6 +911,451 @@ fn xcorr_lag(a: &[f64], b: &[f64], max_lag: f64) -> Option<f64> {
         circ(&r, l.saturating_add(1)),
     );
     Some((l as f64 + frac) / XCORR_UPSAMPLE as f64)
+}
+
+// ---------------------------------------------------------------------------
+// -- WP P5ARRIVAL -- envelopes, the matched filter's weights, the refinement
+// ---------------------------------------------------------------------------
+
+/// A band's taper: 0 outside `band`, a raised cosine over the inner sixth of
+/// an octave at each edge, 1 between.
+fn band_taper(f: f64, band: (f64, f64)) -> f64 {
+    let (lo, hi) = band;
+    if !(f > lo && f < hi && lo > 0.0) {
+        return 0.0;
+    }
+    let rise = |x: f64| 0.5 - 0.5 * (std::f64::consts::PI * x.clamp(0.0, 1.0)).cos();
+    rise((f / lo).log2() * 6.0) * rise((hi / f).log2() * 6.0)
+}
+
+/// The noise power per sample of a Welch spectrum at `f` (linear between
+/// bins).
+fn psd_at(psd: &(usize, Vec<f64>), rate: f64, f: f64) -> Option<f64> {
+    let (l, p) = psd;
+    let x = (f * *l as f64 / rate).max(0.0);
+    let i = x.floor() as usize;
+    let a = p.get(i).copied()?;
+    let b = p.get(i.saturating_add(1)).copied().unwrap_or(a);
+    Some(a + (b - a) * (x - i as f64))
+}
+
+/// The matched filter's weight on each bin `0..=n/2` of an `n`-point
+/// deconvolved spectrum: the sweep band's taper over the response's noise
+/// power `p(f)·|G(f)|²` there (the whitening of [`crate::hearing`]'s matched
+/// filter: rumble and a quiet band count for little), normalised to a largest
+/// weight of 1; the taper alone without a noise floor.
+fn detect_weights(
+    n: usize,
+    rate: f64,
+    band: (f64, f64),
+    g: &[C64],
+    psd: Option<&(usize, Vec<f64>)>,
+) -> Vec<f64> {
+    let half = n / 2;
+    let floor = psd.map_or(0.0, |(_, p)| {
+        p.iter()
+            .copied()
+            .filter(|v| v.is_finite())
+            .fold(0.0, f64::max)
+            * 1e-12
+    });
+    let mut w: Vec<f64> = (0..=half)
+        .map(|k| {
+            let f = bin_freq(k, n, rate);
+            let t = band_taper(f, band);
+            if t <= 0.0 {
+                return 0.0;
+            }
+            let Some(psd) = psd else {
+                return t;
+            };
+            let p = psd_at(psd, rate, f).unwrap_or(floor).max(floor);
+            let g2 = g.get(k).map_or(0.0, |c| c.norm_sqr());
+            let noise = p * g2;
+            if noise > 0.0 && noise.is_finite() {
+                t / noise
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    let top = w
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .fold(0.0, f64::max);
+    if top > 0.0 {
+        w.iter_mut()
+            .for_each(|v| *v = if v.is_finite() { *v / top } else { 0.0 });
+    }
+    w
+}
+
+/// The analytic signal of the real signal whose `n`-point spectrum is `spec`,
+/// bin `k` weighted by `weight[k]` (`0..=n/2`; positive frequencies doubled,
+/// negative ones dropped).
+fn analytic(four: &mut Fourier, spec: &[C64], weight: &[f64]) -> Vec<C64> {
+    let n = four.n;
+    let half = n / 2;
+    let mut a = vec![czero(); n];
+    for (k, (d, (x, w))) in a
+        .iter_mut()
+        .zip(spec.iter().zip(weight))
+        .enumerate()
+        .take(half.saturating_add(1))
+    {
+        let m = if k == 0 || (k == half && n & 1 == 0) {
+            1.0
+        } else {
+            2.0
+        };
+        *d = x.scale(w * m);
+    }
+    four.inverse(&mut a);
+    a
+}
+
+/// A Blackman-windowed sinc reconstruction of the complex `a` at `t`.
+fn interp_c(a: &[C64], t: f64) -> C64 {
+    let i0 = t.floor() as i64;
+    let half = INTERP_HALF as f64;
+    let mut acc = czero();
+    for j in i0.saturating_sub(INTERP_HALF - 1)..=i0.saturating_add(INTERP_HALF) {
+        let x = t - j as f64;
+        if x.abs() >= half || j < 0 {
+            continue;
+        }
+        let r = (x / half + 1.0) / 2.0;
+        let w = 0.42 - 0.5 * (std::f64::consts::TAU * r).cos()
+            + 0.08 * (2.0 * std::f64::consts::TAU * r).cos();
+        if let Some(v) = a.get(j as usize) {
+            acc = cadd(acc, v.scale(sinc(x) * w));
+        }
+    }
+    acc
+}
+
+/// The fractional index of the largest `|a|` at indices `lo..=hi` (complex
+/// band-limited interpolation in 1/32-sample steps, then a parabola) and the
+/// envelope's power there.
+fn env_peak(a: &[C64], lo: usize, hi: usize) -> Option<(f64, f64)> {
+    let (idx, _) = a
+        .iter()
+        .enumerate()
+        .take(hi.saturating_add(1))
+        .skip(lo)
+        .map(|(i, c)| (i, c.norm_sqr()))
+        .filter(|(_, p)| p.is_finite())
+        .max_by(|x, y| x.1.total_cmp(&y.1))?;
+    let base = idx as f64;
+    let steps: i64 = 32;
+    let at = |s: i64| interp_c(a, base + s as f64 / steps as f64).norm();
+    let mut best = (0i64, at(0));
+    for s in steps.saturating_neg()..=steps {
+        let v = at(s);
+        if v > best.1 {
+            best = (s, v);
+        }
+    }
+    let (s, y0) = best;
+    let frac = parabolic(at(s.saturating_sub(1)), y0, at(s.saturating_add(1)));
+    let pos = base + (s as f64 + frac) / steps as f64;
+    (pos.is_finite() && y0.is_finite()).then_some((pos, y0 * y0))
+}
+
+/// A cycle heard in the analytic, noise-weighted response `a`: its envelope's
+/// peak in `lo..=hi`, when that peak's power is at least [`FOUND_RATIO`]
+/// times the median power of the response (`(Re a)²`, the weighted response
+/// itself). `Some((position, power))`.
+fn heard_env(a: &[C64], lo: usize, hi: usize) -> Option<(f64, f64)> {
+    let med = median(a.iter().map(|c| c.re * c.re).collect());
+    let (pos, p) = env_peak(a, lo, hi)?;
+    (p > 0.0 && p.is_finite() && p >= FOUND_RATIO * med).then_some((pos, p))
+}
+
+/// The onset of an envelope: the fractional index at which `env` first
+/// reaches [`ONSET_FRACTION`] of its value at `peak` (linear between
+/// samples), at most `peak`.
+fn env_onset(env: &[f64], peak: f64) -> Option<f64> {
+    let pi = peak.floor().max(0.0) as usize;
+    let a = env.get(pi).copied()?;
+    let top = a.max(env.get(pi.saturating_add(1)).copied().unwrap_or(a));
+    if !(top > 0.0 && top.is_finite()) {
+        return None;
+    }
+    let threshold = ONSET_FRACTION * top;
+    let i = env
+        .iter()
+        .take(pi.saturating_add(1))
+        .position(|v| *v >= threshold)?;
+    let Some(before) = i.checked_sub(1).and_then(|j| env.get(j)) else {
+        return Some(0.0);
+    };
+    let b = env.get(i).copied().unwrap_or(threshold);
+    let frac = if b > *before {
+        ((threshold - before) / (b - before)).clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    Some((i as f64 - 1.0 + frac).min(peak))
+}
+
+/// One cycle's excerpt of its deconvolved response for the refinement.
+#[derive(Debug, Clone, Copy)]
+struct Excerpt<'a> {
+    /// The capture position of `samples[0]`.
+    start: i64,
+    samples: &'a [f64],
+    /// The cycle's envelope arrival, a capture position.
+    envelope: f64,
+}
+
+/// A refined arrival.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Refined {
+    /// A capture position.
+    arrival: f64,
+    /// The second correlation peak against the first when the arrival is
+    /// ambiguous (1 for a first peak on the window's edge).
+    ambiguity: Option<f64>,
+}
+
+/// Refines the arrivals of one output's repeats (WP P5ARRIVAL, after
+/// P5SPIKE's lobe hop of 81.6 µs): each repeat's lag against the **mean of
+/// the other repeats**, maximum likelihood (the cross-spectrum weighted by
+/// `1/N(f)`, so `|R|²/N` in effect, over the bins whose coherent SNR is
+/// above [`REFINE_SNR_DB`]), in rounds until it settles (at most
+/// [`REFINE_ROUNDS`]), the lag limited to
+/// **half a carrier period** (the weighted centre frequency's) either side of
+/// the envelope's. The mean arrival of the repeats stays the envelopes' mean.
+/// `noise(f)` is the response's noise power per sample at `f` (`None`
+/// without a noise floor: every bin within 30 dB of the loudest counts,
+/// unweighted). One repeat keeps its envelope arrival.
+fn refine_arrivals(
+    ex: &[Excerpt<'_>],
+    rate: f64,
+    band: (f64, f64),
+    noise: Option<&dyn Fn(f64) -> f64>,
+) -> Vec<Refined> {
+    let plain: Vec<Refined> = ex
+        .iter()
+        .map(|e| Refined {
+            arrival: e.envelope,
+            ambiguity: None,
+        })
+        .collect();
+    let m = ex.len();
+    let len = ex.iter().map(|e| e.samples.len()).min().unwrap_or(0);
+    if m < 2 || len < 16 || rate.is_nan() || rate <= 0.0 {
+        return plain;
+    }
+    let Some(nfft) = fft_len(len) else {
+        return plain;
+    };
+    // A Tukey window: 10 % cosine tails.
+    let tail = (len / 10).max(1);
+    let win: Vec<f64> = (0..len)
+        .map(|i| {
+            let d = i.min(len.saturating_sub(1).saturating_sub(i));
+            if d >= tail {
+                1.0
+            } else {
+                0.5 - 0.5 * (std::f64::consts::PI * d as f64 / tail as f64).cos()
+            }
+        })
+        .collect();
+    let sw2: f64 = win.iter().map(|w| w * w).sum();
+    let mut four = Fourier::new(nfft);
+    let half = nfft / 2;
+    let freqs: Vec<f64> = (1..half).map(|k| bin_freq(k, nfft, rate)).collect();
+    // Each repeat's spectrum, phase referred to its own envelope arrival.
+    let mut spectra: Vec<Vec<C64>> = Vec::with_capacity(m);
+    for e in ex {
+        let mut buf = vec![czero(); nfft];
+        for ((d, &v), &w) in buf.iter_mut().zip(e.samples).zip(&win) {
+            d.re = if v.is_finite() { v * w } else { 0.0 };
+        }
+        four.forward(&mut buf);
+        let shift = e.envelope - e.start as f64;
+        spectra.push(
+            freqs
+                .iter()
+                .zip(buf.iter().skip(1))
+                .map(|(&f, x)| {
+                    cmul(
+                        *x,
+                        C64::from_polar(1.0, std::f64::consts::TAU * f * shift / rate),
+                    )
+                })
+                .collect(),
+        );
+    }
+    let mean: Vec<C64> = (0..freqs.len())
+        .map(|b| {
+            spectra
+                .iter()
+                .filter_map(|s| s.get(b).copied())
+                .fold(czero(), cadd)
+                .unscale(m as f64)
+        })
+        .collect();
+    // The bins that count and their weights.
+    let top = mean.iter().map(|c| c.norm_sqr()).fold(0.0, f64::max);
+    let snr_min = 10f64.powf(REFINE_SNR_DB / 10.0);
+    let mut used: Vec<(usize, f64)> = Vec::new();
+    for (b, (&f, r)) in freqs.iter().zip(&mean).enumerate() {
+        if !(f >= band.0 && f <= band.1) {
+            continue;
+        }
+        let p = r.norm_sqr();
+        let w = match noise {
+            Some(nf) => {
+                let nz = nf(f) * sw2;
+                if !(nz > 0.0 && nz.is_finite()) || p < snr_min * nz {
+                    continue;
+                }
+                1.0 / nz
+            }
+            None => {
+                if !(p > 0.0 && p >= 1e-3 * top) {
+                    continue;
+                }
+                1.0
+            }
+        };
+        used.push((b, w));
+    }
+    let (num, den) = used.iter().fold((0.0, 0.0), |(a, c), &(b, w)| {
+        let p = mean.get(b).map_or(0.0, |r| r.norm_sqr()) * w;
+        (a + freqs.get(b).copied().unwrap_or(0.0) * p, c + p)
+    });
+    let fc = num / den;
+    if used.is_empty() || !(fc.is_finite() && fc > 0.0) {
+        return plain;
+    }
+    // Half a carrier period, samples; the lags: the window (half a period
+    // either side of the envelope) and a period beyond it either side.
+    let half_period = rate / (2.0 * fc);
+    let per_window = REFINE_LAGS.max(3).saturating_sub(1);
+    let step = 2.0 * half_period / per_window as f64;
+    let lags = per_window.saturating_mul(3).saturating_add(1);
+    let (w_lo, w_hi) = (per_window, per_window.saturating_mul(2));
+    let quarter = per_window / 4;
+    let from = -3.0 * half_period;
+    let mut d = vec![0.0f64; m];
+    let mut amb: Vec<Option<f64>> = vec![None; m];
+    let rot = |d: &[f64], k: usize, b: usize| -> C64 {
+        let f = freqs.get(b).copied().unwrap_or(0.0);
+        let dk = d.get(k).copied().unwrap_or(0.0);
+        let y = spectra
+            .get(k)
+            .and_then(|s| s.get(b))
+            .copied()
+            .unwrap_or_else(czero);
+        cmul(
+            y,
+            C64::from_polar(1.0, std::f64::consts::TAU * f * dk / rate),
+        )
+    };
+    let others_n = m.saturating_sub(1) as f64;
+    for _ in 0..REFINE_ROUNDS {
+        let before = d.clone();
+        // Gauss-Seidel: each repeat against the others as aligned so far,
+        // its own lag updated at once (the repeats start up to half a period
+        // apart, where the mean of the others is smeared: a round of all at
+        // once overshoots and swings).
+        let mut sum: Vec<C64> = used
+            .iter()
+            .map(|&(b, _)| (0..m).fold(czero(), |acc, k| cadd(acc, rot(&d, k, b))))
+            .collect();
+        for k in 0..m {
+            // The cross-spectrum against the mean of the others, weighted.
+            let cross: Vec<(f64, C64)> = used
+                .iter()
+                .zip(&sum)
+                .map(|(&(b, w), s)| {
+                    let own = rot(&d, k, b);
+                    let others = C64::new(s.re - own.re, s.im - own.im).unscale(others_n);
+                    let y = spectra
+                        .get(k)
+                        .and_then(|sp| sp.get(b))
+                        .copied()
+                        .unwrap_or_else(czero);
+                    (
+                        freqs.get(b).copied().unwrap_or(0.0),
+                        cmul(y, others.conj()).scale(w),
+                    )
+                })
+                .collect();
+            let mut j = vec![0.0f64; lags];
+            for &(f, c) in &cross {
+                let w0 = std::f64::consts::TAU * f / rate;
+                let mut ph = C64::from_polar(1.0, w0 * from);
+                let st = C64::from_polar(1.0, w0 * step);
+                for v in j.iter_mut() {
+                    *v += c.re * ph.re - c.im * ph.im;
+                    ph = cmul(ph, st);
+                }
+            }
+            let at = |i: usize| j.get(i).copied().unwrap_or(0.0);
+            let (best, jb) = (w_lo..=w_hi)
+                .map(|i| (i, at(i)))
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+                .unwrap_or((w_lo, 0.0));
+            let (ym, yp) = (at(best.saturating_sub(1)), at(best.saturating_add(1)));
+            let last = lags.saturating_sub(1);
+            let (lag, ambiguity) = if !(jb > 0.0 && jb.is_finite()) {
+                (0.0, Some(1.0))
+            } else if ym > jb || yp > jb {
+                // The window's edge, not a peak: the envelope is half a
+                // period or more off the correlation.
+                (from + best as f64 * step, Some(1.0))
+            } else {
+                let frac = parabolic(ym, jb, yp);
+                let second = (1..last)
+                    .filter(|&i| {
+                        i.abs_diff(best) >= quarter
+                            && at(i) > at(i.saturating_sub(1))
+                            && at(i) >= at(i.saturating_add(1))
+                    })
+                    .map(|i| at(i) / jb)
+                    .fold(0.0, f64::max);
+                (
+                    from + (best as f64 + frac) * step,
+                    (second >= AMBIGUOUS_PEAK_RATIO).then_some(second),
+                )
+            };
+            // The sum follows the new lag at once.
+            let old: Vec<C64> = used.iter().map(|&(b, _)| rot(&d, k, b)).collect();
+            if let Some(slot) = d.get_mut(k) {
+                *slot = lag;
+            }
+            for ((s, &(b, _)), o) in sum.iter_mut().zip(&used).zip(&old) {
+                let n = rot(&d, k, b);
+                *s = C64::new(s.re - o.re + n.re, s.im - o.im + n.im);
+            }
+            if let Some(slot) = amb.get_mut(k) {
+                *slot = ambiguity;
+            }
+        }
+        let mu = d.iter().sum::<f64>() / m as f64;
+        d.iter_mut().for_each(|v| *v -= mu);
+        let moved = d
+            .iter()
+            .zip(&before)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f64::max);
+        if moved < 1e-3 {
+            break;
+        }
+    }
+    ex.iter()
+        .zip(d.iter().zip(&amb))
+        .map(|(e, (&dk, &a))| Refined {
+            arrival: e.envelope + dk,
+            ambiguity: a,
+        })
+        .collect()
 }
 
 impl ImpulseResponse {
@@ -1037,8 +1673,8 @@ fn fit_common_slope(points: &[(usize, f64, f64)], outputs: usize) -> Option<Fit>
 
 #[derive(Debug, Clone)]
 struct Found {
-    /// Absolute capture position (relative to the slice's first sample) of
-    /// the impulse response's peak.
+    /// Capture position (relative to the slice's first sample) of the
+    /// cycle's arrival: its noise-weighted, band-limited envelope's peak.
     coarse: f64,
     snippet_start: i64,
     snippet: Vec<f64>,
@@ -1077,6 +1713,10 @@ pub struct WalkedAnalyser {
     four: Option<Fourier>,
     g_first: Vec<C64>,
     g_regular: Vec<C64>,
+    /// The matched filter's weights at `n` points (WP P5ARRIVAL).
+    env_weight: Vec<f64>,
+    /// Per cycle: the refinement's ambiguity (WP P5ARRIVAL).
+    ambiguity: Vec<Option<f64>>,
     outputs: Vec<u8>,
     stage: Stage,
     arrival0: f64,
@@ -1118,6 +1758,7 @@ impl WalkedAnalyser {
             o.status_slack_ms,
             o.max_residual_us,
             o.max_phase_spread_deg,
+            o.max_phase_spread_us,
             o.min_preroll_ms,
         ]
         .iter()
@@ -1172,6 +1813,8 @@ impl WalkedAnalyser {
             four: None,
             g_first: Vec::new(),
             g_regular: Vec::new(),
+            env_weight: Vec::new(),
+            ambiguity: Vec::new(),
             outputs,
             stage: Stage::Search,
             arrival0: 0.0,
@@ -1255,6 +1898,13 @@ impl WalkedAnalyser {
         let mut four = Fourier::new(self.n);
         self.g_first = inverse_filter(&mut four, first, self.rate, self.band)?;
         self.g_regular = inverse_filter(&mut four, regular, self.rate, self.band)?;
+        self.env_weight = detect_weights(
+            self.n,
+            self.rate,
+            self.band,
+            &self.g_regular,
+            self.noise_psd.as_ref(),
+        );
         self.grid_bins = self
             .grid
             .iter()
@@ -1302,48 +1952,41 @@ impl WalkedAnalyser {
         true
     }
 
-    /// Deconvolves `len` samples from `start` into a time-domain response of
-    /// FFT length `four.n`.
-    fn deconvolve_at(
+    // -- WP P5ARRIVAL --
+    /// Deconvolves `len` samples from `start` into the plain response and
+    /// the analytic, matched-filter-weighted one (`weight` per bin), both of
+    /// FFT length `four.n`; the segment's ends faded over `fade` samples (at
+    /// most a tenth of it).
+    fn deconvolve_pair(
         four: &mut Fourier,
         g: &[C64],
+        weight: &[f64],
         capture: &WalkedCapture<'_>,
         start: i64,
         len: usize,
-    ) -> Option<Vec<f64>> {
+        fade: usize,
+    ) -> Option<(Vec<f64>, Vec<C64>)> {
         let mut buf = vec![czero(); four.n];
         if !Self::fill(&mut buf, capture, start, len) {
             return None;
+        }
+        // Both ends faded (as hearing's matched filter): the capture is cut
+        // out of noise, and rumble's step at a cut is a click whose high
+        // frequencies the whitening would weigh as signal.
+        let fade = fade.clamp(1, (len / 10).max(1));
+        for (i, c) in buf.iter_mut().enumerate().take(len) {
+            let d = i.min(len.saturating_sub(1).saturating_sub(i));
+            if d < fade {
+                *c = c.scale(0.5 - 0.5 * (std::f64::consts::PI * d as f64 / fade as f64).cos());
+            }
         }
         four.forward(&mut buf);
         for (c, &gk) in buf.iter_mut().zip(g) {
             *c = cmul(*c, gk);
         }
+        let a = analytic(four, &buf, weight);
         four.inverse(&mut buf);
-        Some(buf.iter().map(|c| c.re).collect())
-    }
-
-    /// Finds the largest peak of `h` at indices `lo..=hi`; `Some((index,
-    /// fraction, power))` when it is at least [`FOUND_RATIO`] times the median.
-    fn heard(h: &[f64], lo: usize, hi: usize) -> Option<(usize, f64, f64)> {
-        let med = median(h.iter().map(|v| v * v).collect());
-        let (idx, p) = h
-            .iter()
-            .enumerate()
-            .take(hi.saturating_add(1))
-            .skip(lo)
-            .map(|(i, v)| (i, v * v))
-            .max_by(|a, b| a.1.total_cmp(&b.1))?;
-        if !(p > 0.0 && p.is_finite() && p >= FOUND_RATIO * med) {
-            return None;
-        }
-        let i = idx as i64;
-        let frac = parabolic(
-            circ(h, i.saturating_sub(1)).abs(),
-            circ(h, i).abs(),
-            circ(h, i.saturating_add(1)).abs(),
-        );
-        Some((idx, frac, p))
+        Some((buf.iter().map(|c| c.re).collect(), a))
     }
 
     fn search(&mut self, capture: &WalkedCapture<'_>) -> Result<bool, TimingError> {
@@ -1365,15 +2008,32 @@ impl WalkedAnalyser {
         let first = self.schedule.sweep.render_at_rate(cap_rate, true)?;
         let regular = self.schedule.sweep.render_at_rate(cap_rate, false)?;
         let g0 = inverse_filter(&mut four, &first, self.rate, self.band)?;
-        let Some(h) = Self::deconvolve_at(&mut four, &g0, capture, w0, len) else {
+        // The matched filter's whitening needs a noise floor before the
+        // window: the capture before it (the pre-roll), when long enough.
+        let quiet_end = (w0 as f64 - 0.01 * self.rate).floor();
+        let quiet = if quiet_end > 0.0 {
+            (quiet_end as usize).min(capture.samples.len())
+        } else {
+            0
+        };
+        let early_psd =
+            if (quiet as f64) >= self.options.min_preroll_ms * self.rate / 1000.0 && quiet >= 256 {
+                Self::welch(capture.samples.get(..quiet).unwrap_or(&[]))
+            } else {
+                None
+            };
+        let w_search = detect_weights(n0, self.rate, self.band, &g0, early_psd.as_ref());
+        let edge = (0.01 * self.rate) as usize;
+        let Some((_, a)) = Self::deconvolve_pair(&mut four, &g0, &w_search, capture, w0, len, edge)
+        else {
             return Ok(false);
         };
-        let Some((idx, frac, p0)) = Self::heard(&h, 0, window) else {
+        let Some((pos, p0)) = heard_env(&a, 0, window) else {
             return Err(TimingError::CycleIdentity(
                 "the first cycle was not heard in the window the START implies".into(),
             ));
         };
-        let arrival0 = w0 as f64 + idx as f64 + frac;
+        let arrival0 = w0 as f64 + pos;
         // Nothing sweep-like may come before it (a START noted a cycle late
         // would otherwise shift every response onto the next output).
         let before = w0.max(0) as usize;
@@ -1382,9 +2042,20 @@ impl WalkedAnalyser {
             if let Some(nb) = fft_len(lb.saturating_add(self.cycle_cap)) {
                 let mut fb = Fourier::new(nb);
                 let gb = inverse_filter(&mut fb, &regular, self.rate, self.band)?;
-                if let Some(hb) = Self::deconvolve_at(&mut fb, &gb, capture, 0, lb) {
-                    let last = hb.len().saturating_sub(1);
-                    if Self::heard(&hb, 0, last).is_some_and(|(_, _, pb)| pb >= p0 * 1e-3) {
+                let wb = detect_weights(nb, self.rate, self.band, &gb, early_psd.as_ref());
+                // This segment ends where an arrival is looked for: its fade
+                // is long enough (200 ms) that the cut's click lies below
+                // the sweep's band.
+                let long = (0.2 * self.rate) as usize;
+                if let Some((_, ab)) =
+                    Self::deconvolve_pair(&mut fb, &gb, &wb, capture, 0, lb, long)
+                {
+                    // An arrival before the window lies in the capture before
+                    // it: the deconvolution's wrap and zero padding are not
+                    // searched (with the whitening, rumble's end there would
+                    // read as a click).
+                    let last = lb.saturating_sub(1);
+                    if heard_env(&ab, 0, last).is_some_and(|(_, pb)| pb >= p0 * 1e-3) {
                         return Err(TimingError::CycleIdentity(
                             "a sweep was heard before the START's window".into(),
                         ));
@@ -1448,13 +2119,7 @@ impl WalkedAnalyser {
     }
 
     fn noise_at(&self, f: f64) -> Option<f64> {
-        let (l, psd) = self.noise_psd.as_ref()?;
-        let x = f * *l as f64 / self.rate;
-        let i = x.floor().max(0.0) as usize;
-        let a = psd.get(i).copied()?;
-        let b = psd.get(i.saturating_add(1)).copied().unwrap_or(a);
-        let t = x - i as f64;
-        Some(a + (b - a) * t)
+        psd_at(self.noise_psd.as_ref()?, self.rate, f)
     }
 
     fn slope_estimate(&self) -> f64 {
@@ -1520,22 +2185,25 @@ impl WalkedAnalyser {
         } else {
             &self.g_regular
         };
-        let Some(h) = Self::deconvolve_at(four, g, capture, start, len) else {
+        let edge = (0.01 * self.rate) as usize;
+        let Some((h, a)) =
+            Self::deconvolve_pair(four, g, &self.env_weight, capture, start, len, edge)
+        else {
             return Ok(false);
         };
-        let Some((idx, frac, _)) = Self::heard(&h, 0, self.pre.saturating_mul(2)) else {
+        let Some((pos, _)) = heard_env(&a, 0, self.pre.saturating_mul(2)) else {
             return Err(TimingError::CycleIdentity(format!(
                 "cycle {} (output {}) was not heard where the schedule puts it",
                 c.index, c.output
             )));
         };
         let sn = (SNIPPET_MS * self.rate / 1000.0).round() as i64;
-        let i = idx as i64;
-        let snippet: Vec<f64> = (i.saturating_sub(sn)..=i.saturating_add(sn))
+        let i = pos.round() as i64;
+        let snippet: Vec<f64> = (i.saturating_sub(sn)..i.saturating_add(sn))
             .map(|j| circ(&h, j))
             .collect();
         self.found.push(Found {
-            coarse: start as f64 + idx as f64 + frac,
+            coarse: start as f64 + pos,
             snippet_start: start.saturating_add(i).saturating_sub(sn),
             snippet,
         });
@@ -1549,27 +2217,80 @@ impl WalkedAnalyser {
 
     fn fit_and_check(&mut self, capture: &WalkedCapture<'_>) -> Result<(), TimingError> {
         let cycles = self.schedule.cycles().to_vec();
-        let sn = (SNIPPET_MS * self.rate / 1000.0).round();
-        // Refine each cycle against its output's first cycle.
-        let mut arrivals = Vec::with_capacity(cycles.len());
-        for (c, f) in cycles.iter().zip(&self.found) {
-            let first = cycles
+        // -- WP P5ARRIVAL -- refine each cycle against the mean of its
+        // output's other repeats, the lag within half a carrier period of
+        // its envelope's.
+        let mut arrivals: Vec<f64> = self.found.iter().map(|f| f.coarse).collect();
+        let mut ambiguity: Vec<Option<f64>> = vec![None; arrivals.len()];
+        let seg = self
+            .cycle_cap
+            .saturating_add(self.tail)
+            .saturating_add(self.pre.saturating_mul(2)) as f64;
+        let (n, rate) = (self.n, self.rate);
+        let psd = self.noise_psd.clone();
+        let g = &self.g_regular;
+        let noise_fn = move |f: f64| -> f64 {
+            let k = (f * n as f64 / rate).round().max(0.0) as usize;
+            let g2 = g.get(k).map_or(0.0, |c| c.norm_sqr());
+            psd.as_ref()
+                .and_then(|p| psd_at(p, rate, f))
+                .map_or(0.0, |p| seg * p * g2 / n as f64)
+        };
+        let noise: Option<&dyn Fn(f64) -> f64> = if self.noise_psd.is_some() {
+            Some(&noise_fn)
+        } else {
+            None
+        };
+        for &output in &self.outputs {
+            let ks: Vec<usize> = cycles
                 .iter()
-                .zip(&self.found)
-                .find(|(cc, _)| cc.output == c.output)
-                .map(|(_, ff)| ff);
-            let y = match first {
-                Some(r) if !std::ptr::eq(r, f) => {
-                    let base = r.coarse + (f.snippet_start as f64 - r.snippet_start as f64);
-                    xcorr_lag(&r.snippet, &f.snippet, sn).map_or(f.coarse, |lag| base + lag)
+                .enumerate()
+                .filter(|(_, c)| c.output == output)
+                .map(|(k, _)| k)
+                .collect();
+            let ex: Vec<Excerpt<'_>> = ks
+                .iter()
+                .filter_map(|&k| self.found.get(k))
+                .map(|f| Excerpt {
+                    start: f.snippet_start,
+                    samples: &f.snippet,
+                    envelope: f.coarse,
+                })
+                .collect();
+            if ex.len() != ks.len() {
+                continue;
+            }
+            for (&k, r) in ks
+                .iter()
+                .zip(refine_arrivals(&ex, self.rate, self.band, noise))
+            {
+                if let Some(slot) = arrivals.get_mut(k) {
+                    *slot = r.arrival;
                 }
-                _ => f.coarse,
-            };
-            arrivals.push(y);
+                if let Some(slot) = ambiguity.get_mut(k) {
+                    *slot = r.ambiguity;
+                }
+            }
         }
         self.arrivals = arrivals;
-        let pts = self.points(true);
-        let fit = fit_common_slope(&pts, self.outputs.len());
+        self.ambiguity = ambiguity;
+        // An ambiguous arrival is a guess: it stays out of the fit while its
+        // output keeps another cycle.
+        let all = self.points(true);
+        let clear: Vec<(usize, f64, f64)> = all
+            .iter()
+            .enumerate()
+            .filter(|&(k, &(o, _, _))| {
+                self.ambiguity.get(k).is_none_or(|a| a.is_none())
+                    || !all.iter().enumerate().any(|(j, &(oj, _, _))| {
+                        oj == o && self.ambiguity.get(j).is_none_or(|a| a.is_none())
+                    })
+            })
+            .map(|(_, p)| *p)
+            .collect();
+        let fit = fit_common_slope(&clear, self.outputs.len())
+            .or_else(|| fit_common_slope(&all, self.outputs.len()));
+        let pts = all;
         let (slope, fitted) = fit
             .as_ref()
             .map_or((self.nominal, false), |f| (f.slope, true));
@@ -1728,17 +2449,36 @@ impl WalkedAnalyser {
         let us = 1e6 / self.rate;
         let mut cycle_timing = Vec::with_capacity(cycles.len());
         let mut max_res: f64 = 0.0;
+        let mut issues: Vec<TimingIssue> = Vec::new();
         for (k, c) in cycles.iter().enumerate() {
             let oi = self.output_index(c.output);
             let y = self.arrivals.get(k).copied().unwrap_or(0.0);
             let a = fit.intercepts.get(oi).copied().flatten().unwrap_or(y);
             let res = (y - a - fit.slope * c.start as f64) * us;
-            max_res = max_res.max(res.abs());
+            // -- WP P5ARRIVAL -- an ambiguous arrival is reported as such,
+            // never as a residual the gate weighs.
+            let ambiguous = self.ambiguity.get(k).copied().flatten();
+            if let Some(second_peak) = ambiguous {
+                issues.push(TimingIssue::ArrivalAmbiguous {
+                    cycle: c.index,
+                    output: c.output,
+                    second_peak,
+                });
+                self.reasons.push(format!(
+                    "cycle {} (output {}): its arrival is ambiguous (a second correlation peak {second_peak:.2} of the first within half a carrier period of the envelope)",
+                    c.index, c.output
+                ));
+            } else {
+                max_res = max_res.max(res.abs());
+            }
             cycle_timing.push(CycleTiming {
                 index: c.index,
                 output: c.output,
                 arrival_frame: y + self.first_frame,
                 residual_us: res,
+                arrival_ambiguous: ambiguous.is_some(),
+                wander_us: 0.0,
+                wander_ppm: 0.0,
             });
         }
         let repeats = self.schedule.repeat;
@@ -1763,19 +2503,76 @@ impl WalkedAnalyser {
                 (s, (hi.saturating_sub(lo)).saturating_add(1) as f64)
             })
             .collect();
-        let bands = if self.options.phase_check_bands.is_empty() {
-            vec![(100.0, 10_000.0)]
-        } else {
-            self.options.phase_check_bands.clone()
-        };
-        let snr_min = 10f64.powf(PHASE_CHECK_SNR_DB / 10.0);
-        let mut outputs = Vec::with_capacity(self.outputs.len());
-        let mut max_phase: f64 = 0.0;
         let noise_measured = self.noise_psd.is_some();
         if !noise_measured {
             self.reasons
                 .push("no pre-roll: the noise floor is not known".to_string());
         }
+        // -- WP P5ARRIVAL -- per output and third-octave band: the SNR per
+        // repeat summed over the band, and the level.
+        let bands = self.check_bands();
+        let n_out = self.outputs.len();
+        let mut noise_z: Vec<Vec<f64>> = Vec::with_capacity(n_out);
+        let mut mean_z: Vec<Vec<C64>> = Vec::with_capacity(n_out);
+        let mut band_snr: Vec<Vec<f64>> = Vec::with_capacity(n_out);
+        let mut band_level: Vec<Vec<f64>> = Vec::with_capacity(n_out);
+        for oi in 0..n_out {
+            let stats = self.stats.get(oi).map_or(&[][..], |v| v.as_slice());
+            let m = stats.len().max(1) as f64;
+            let nz: Vec<f64> = self
+                .grid
+                .iter()
+                .zip(&g_sums)
+                .map(|(&f, &(s, _))| self.noise_at(f).unwrap_or(0.0) * seg * s)
+                .collect();
+            let zm: Vec<C64> = (0..self.grid.len())
+                .map(|g| {
+                    stats
+                        .iter()
+                        .filter_map(|st| st.z.get(g).copied())
+                        .fold(czero(), cadd)
+                        .unscale(m)
+                })
+                .collect();
+            let snr: Vec<f64> = bands
+                .iter()
+                .map(|&(_, lo, hi)| {
+                    (lo..hi)
+                        .map(|p| {
+                            let nzp = nz.get(p).copied().unwrap_or(0.0);
+                            let s = zm.get(p).map_or(0.0, |z| z.norm_sqr());
+                            if nzp > 0.0 && nzp.is_finite() {
+                                ((s - nzp / m) / nzp).max(0.0)
+                            } else {
+                                0.0
+                            }
+                        })
+                        .sum()
+                })
+                .collect();
+            let level: Vec<f64> = bands
+                .iter()
+                .map(|&(_, lo, hi)| {
+                    (lo..hi)
+                        .map(|p| {
+                            stats
+                                .iter()
+                                .filter_map(|st| st.power.get(p).copied())
+                                .sum::<f64>()
+                                / m
+                        })
+                        .sum()
+                })
+                .collect();
+            noise_z.push(nz);
+            mean_z.push(zm);
+            band_snr.push(snr);
+            band_level.push(level);
+        }
+        let thr = 10f64.powf(PHASE_BAND_SNR_DB / 10.0);
+        let mut outputs = Vec::with_capacity(n_out);
+        let mut max_phase: f64 = 0.0;
+        let mut wander_of_cycle: Vec<bool> = vec![false; cycles.len()];
         for (oi, &output) in self.outputs.iter().enumerate() {
             let acc = self.acc.get(oi).cloned().unwrap_or_default();
             let samples: Vec<f64> = acc.iter().map(|v| v / r).collect();
@@ -1814,79 +2611,206 @@ impl WalkedAnalyser {
                     }
                 })
                 .collect();
-            // The phase check: points in the check bands and the sweep's band,
-            // loud enough per repeat.
+            let empty_f: Vec<f64> = Vec::new();
+            let empty_z: Vec<C64> = Vec::new();
+            let nz = noise_z.get(oi).unwrap_or(&empty_f);
+            let zm = mean_z.get(oi).unwrap_or(&empty_z);
+            let snr = band_snr.get(oi).unwrap_or(&empty_f);
+            // -- WP P5ARRIVAL -- the phase check, band by band: the
+            // transitions by default, the bound per band as the larger of
+            // the degrees and the time.
             let mut spread: f64 = 0.0;
-            let mut checked = 0usize;
+            let mut phase_bands = Vec::new();
+            let mut worst: Option<(f64, PhaseBand)> = None;
             if stats.len() >= 2 && noise_measured {
-                for (g, &f) in self.grid.iter().enumerate() {
-                    let in_band = f >= self.band.0
-                        && f <= self.band.1
-                        && bands.iter().any(|&(a, b)| f >= a && f <= b);
-                    if !in_band {
-                        continue;
-                    }
-                    let zs: Vec<C64> = stats.iter().filter_map(|s| s.z.get(g).copied()).collect();
-                    let mean = zs
+                let in_options = |c: f64| {
+                    self.options
+                        .phase_check_bands
                         .iter()
-                        .fold(czero(), |a, z| cadd(a, *z))
-                        .unscale(zs.len() as f64);
-                    let (s, _) = g_sums.get(g).copied().unwrap_or((0.0, 1.0));
-                    let noise_z = self.noise_at(f).unwrap_or(f64::INFINITY) * seg * s;
-                    let loud = mean.norm_sqr() >= snr_min * noise_z;
-                    if !loud {
+                        .any(|&(a, b)| c >= a && c <= b)
+                };
+                let transition = |b: usize| -> bool {
+                    let (Some(&sa), Some(&la)) =
+                        (snr.get(b), band_level.get(oi).and_then(|l| l.get(b)))
+                    else {
+                        return false;
+                    };
+                    sa >= thr
+                        && la > 0.0
+                        && (0..n_out).any(|o2| {
+                            o2 != oi
+                                && band_snr
+                                    .get(o2)
+                                    .and_then(|v| v.get(b))
+                                    .is_some_and(|s| *s >= thr)
+                                && band_level.get(o2).and_then(|v| v.get(b)).is_some_and(|l| {
+                                    *l > 0.0 && (10.0 * (la / l).log10()).abs() <= TRANSITION_DB
+                                })
+                        })
+                };
+                let wanted: Vec<bool> = if self.options.phase_check_bands.is_empty() {
+                    let t: Vec<bool> = (0..bands.len()).map(transition).collect();
+                    if t.iter().any(|v| *v) {
+                        t
+                    } else {
+                        bands
+                            .iter()
+                            .map(|&(c, _, _)| (100.0..=10_000.0).contains(&c))
+                            .collect()
+                    }
+                } else {
+                    bands.iter().map(|&(c, _, _)| in_options(c)).collect()
+                };
+                let in_band =
+                    snr.iter().copied().fold(0.0, f64::max) * 10f64.powf(-IN_BAND_DB / 10.0);
+                for (b, &(centre, lo, hi)) in bands.iter().enumerate() {
+                    let sb = snr.get(b).copied().unwrap_or(0.0);
+                    if !wanted.get(b).copied().unwrap_or(false) || sb < thr || sb < in_band {
                         continue;
                     }
-                    checked = checked.saturating_add(1);
-                    for z in &zs {
-                        let d = cmul(*z, mean.conj()).arg().to_degrees().abs();
-                        spread = spread.max(d);
+                    let mut sp: f64 = 0.0;
+                    for st in &stats {
+                        let q = (lo..hi).fold(czero(), |acc, p| {
+                            let nzp = nz.get(p).copied().unwrap_or(0.0);
+                            match (st.z.get(p), zm.get(p)) {
+                                (Some(z), Some(m)) if nzp > 0.0 => {
+                                    cadd(acc, cmul(*z, m.conj()).unscale(nzp))
+                                }
+                                _ => acc,
+                            }
+                        });
+                        sp = sp.max(q.arg().to_degrees().abs());
                     }
+                    let bound = self
+                        .options
+                        .max_phase_spread_deg
+                        .max(360.0 * centre * self.options.max_phase_spread_us * 1e-6);
+                    let pb = PhaseBand {
+                        freq_hz: centre,
+                        snr_db: 10.0 * sb.log10(),
+                        spread_deg: sp,
+                        spread_us: sp / 360.0 / centre * 1e6,
+                        bound_deg: bound,
+                    };
+                    if sp > bound {
+                        issues.push(TimingIssue::PhaseSpread {
+                            output,
+                            freq_hz: centre,
+                            spread_deg: sp,
+                            bound_deg: bound,
+                        });
+                        if worst.is_none_or(|(x, _)| sp / bound > x) {
+                            worst = Some((sp / bound, pb));
+                        }
+                    }
+                    spread = spread.max(sp);
+                    phase_bands.push(pb);
+                }
+                if phase_bands.is_empty() {
+                    self.reasons.push(format!(
+                        "output {output}: too quiet where the phase is checked"
+                    ));
                 }
             }
-            if stats.len() >= 2 && noise_measured && checked == 0 {
+            if let Some((_, pb)) = worst {
                 self.reasons.push(format!(
-                    "output {output}: too quiet where the phase is checked"
-                ));
-            }
-            if spread > self.options.max_phase_spread_deg {
-                self.reasons.push(format!(
-                    "output {output}: its repeats disagree in phase by {spread:.1}°"
+                    "output {output}: its repeats disagree in phase by {:.1}° at {:.0} Hz ({:.1} µs), more than {:.1}°",
+                    pb.spread_deg, pb.freq_hz, pb.spread_us, pb.bound_deg
                 ));
             }
             max_phase = max_phase.max(spread);
+            // -- WP P5ARRIVAL -- the wander diagnostic: each repeat's delay
+            // along its sweep against the mean of the others.
+            if stats.len() >= 2 && noise_measured {
+                let ks: Vec<usize> = cycles
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| c.output == output)
+                    .map(|(k, _)| k)
+                    .collect();
+                // Each repeat's own delay (its residual) is taken out: what
+                // is left is the movement inside its sweep.
+                let own: Vec<f64> = ks
+                    .iter()
+                    .map(|&k| cycle_timing.get(k).map_or(0.0, |c| c.residual_us / us))
+                    .collect();
+                let w = self.wander(&stats, &own, nz, snr, &bands);
+                for (&k, (wus, ppm)) in ks.iter().zip(w) {
+                    if wus.is_nan() || wus <= 0.0 {
+                        continue;
+                    }
+                    if let Some(ct) = cycle_timing.get_mut(k) {
+                        ct.wander_us = wus;
+                        ct.wander_ppm = ppm;
+                    }
+                    if wus > self.options.max_residual_us {
+                        if let Some(flag) = wander_of_cycle.get_mut(k) {
+                            *flag = true;
+                        }
+                        let index = cycles.get(k).map_or(0, |c| c.index);
+                        issues.push(TimingIssue::ClockWander {
+                            cycle: index,
+                            output,
+                            wander_us: wus,
+                            rate_ppm: ppm,
+                        });
+                        self.reasons.push(format!(
+                            "cycle {index} (output {output}): the capture clock wandered {wus:.0} µs / {ppm:.0} ppm inside its sweep against the other repeats"
+                        ));
+                    }
+                }
+            }
+            // -- WP P5ARRIVAL -- arrival and onset from the envelope of the
+            // noise-weighted, band-limited response.
+            let snr_avg: Vec<(f64, f64)> = bands
+                .iter()
+                .zip(snr)
+                .map(|(&(c, _, _), &s)| (c, s * stats.len().max(1) as f64))
+                .collect();
+            let a = self.envelope(&ir.samples, noise_measured.then_some(snr_avg.as_slice()));
+            let last = ir.samples.len().saturating_sub(1);
+            let (env_idx, onset) = match a.as_ref().and_then(|a| env_peak(a, 0, last)) {
+                Some((pos, p)) if p > 0.0 => {
+                    let mag: Vec<f64> = a.iter().flatten().map(|c| c.norm()).collect();
+                    (pos, env_onset(&mag, pos).unwrap_or(pos))
+                }
+                _ => (peak, ir.onset_index().unwrap_or(peak)),
+            };
             outputs.push(OutputIr {
                 output,
                 ir,
                 peak_index: peak,
-                onset_index: 0.0,
+                onset_index: onset,
                 arrival_ms: 0.0,
                 repeats,
                 noise_db,
                 spread_db,
                 phase_spread_deg: spread,
-                phase_points_checked: checked,
+                phase_points_checked: phase_bands.len(),
+                envelope_index: env_idx,
+                phase_bands,
             });
         }
         let earliest = outputs
             .iter()
-            .map(|o| o.peak_index)
+            .map(|o| o.envelope_index)
             .fold(f64::INFINITY, f64::min);
-        // Put the timing origin on the earliest output's drift-corrected peak
-        // (the fit's intercepts come from the uncorrected first pass, whose
-        // peaks the drift smears by up to e·T). One common shift: relative
-        // timing between outputs is unchanged.
+        // Put the timing origin on the earliest output's drift-corrected
+        // arrival (the fit's intercepts come from the uncorrected first pass,
+        // whose responses the drift smears by up to e·T). One common shift:
+        // relative timing between outputs is unchanged.
         let delta = earliest - self.pre as f64;
         let shift_ok = delta.is_finite() && delta.abs() <= self.pre as f64 / 2.0;
         for o in &mut outputs {
             if earliest.is_finite() {
-                o.arrival_ms = (o.peak_index - earliest) * 1000.0 / self.rate;
+                o.arrival_ms = (o.envelope_index - earliest) * 1000.0 / self.rate;
             }
             if shift_ok {
                 o.ir.samples = shift_left(&o.ir.samples, delta);
                 o.peak_index -= delta;
+                o.envelope_index -= delta;
+                o.onset_index = (o.onset_index - delta).max(0.0);
             }
-            o.onset_index = o.ir.onset_index().unwrap_or(o.peak_index);
         }
         if repeats < self.options.min_passes_reliable {
             self.reasons.push(format!(
@@ -1901,8 +2825,30 @@ impl WalkedAnalyser {
             self.options.max_residual_us
         };
         if max_res > bound {
+            // -- WP P5ARRIVAL -- a slip between cycles (the delay steady along
+            // the sweep) is told from clock wander inside a sweep.
+            let mut wandered = false;
+            for (k, ct) in cycle_timing.iter().enumerate() {
+                if ct.arrival_ambiguous || ct.residual_us.abs() <= bound {
+                    continue;
+                }
+                if wander_of_cycle.get(k).copied().unwrap_or(false) {
+                    wandered = true;
+                } else {
+                    issues.push(TimingIssue::CaptureSlip {
+                        cycle: ct.index,
+                        output: ct.output,
+                        residual_us: ct.residual_us,
+                    });
+                }
+            }
+            let why = if wandered {
+                "the capture clock wandered inside a sweep"
+            } else {
+                "a capture slip between cycles: the delay is steady along the sweep"
+            };
             self.reasons.push(format!(
-                "a cycle is {max_res:.1} µs off the clock fit, more than {bound:.1} µs (a capture slip or clock wander)"
+                "a cycle is {max_res:.1} µs off the clock fit, more than {bound:.1} µs ({why})"
             ));
         }
         let fitted = self.fitted;
@@ -1913,6 +2859,7 @@ impl WalkedAnalyser {
             max_phase_spread_deg: max_phase,
             passes: repeats,
             reasons: self.reasons.clone(),
+            issues,
         };
         Ok(WalkedAnalysis {
             capture_rate_hz: self.rate as u32,
@@ -1926,6 +2873,229 @@ impl WalkedAnalyser {
             outputs,
             band_hz: self.band,
         })
+    }
+
+    // -- WP P5ARRIVAL --
+    /// The third-octave bands inside the sweep's band: `(centre, first grid
+    /// point, end grid point)`.
+    fn check_bands(&self) -> Vec<(f64, usize, usize)> {
+        let edge = 2f64.powf(CHECK_BAND_OCTAVES / 2.0);
+        let mut out = Vec::new();
+        for j in -30i32..=15 {
+            let c = 1000.0 * 2f64.powf(f64::from(j) * CHECK_BAND_OCTAVES);
+            let (lo_f, hi_f) = (c / edge, c * edge);
+            if lo_f < self.band.0 || hi_f > self.band.1 {
+                continue;
+            }
+            let lo = self.grid.iter().position(|&f| f >= lo_f);
+            let hi = self
+                .grid
+                .iter()
+                .position(|&f| f >= hi_f)
+                .unwrap_or(self.grid.len());
+            if let Some(lo) = lo.filter(|&lo| lo < hi) {
+                out.push((c, lo, hi));
+            }
+        }
+        out
+    }
+
+    // -- WP P5ARRIVAL --
+    /// Each repeat's movement along its sweep against the mean of the other
+    /// repeats: `(wander µs, rate ppm)`, zeros within the noise. Each
+    /// repeat's own delay (`own_delay`, frames: its residual from the fit) is
+    /// taken out first. Per
+    /// third-octave band loud enough ([`WANDER_SNR_DB`]) the delay of the
+    /// repeat's phase against the others', unwrapped along frequency; a
+    /// change between two bands counts when it is [`WANDER_SIGMAS`] times its
+    /// noise. The band's place in the sweep is the time the sweep passes its
+    /// centre.
+    fn wander(
+        &self,
+        stats: &[RepeatStats],
+        own_delay: &[f64],
+        nz: &[f64],
+        snr: &[f64],
+        bands: &[(f64, usize, usize)],
+    ) -> Vec<(f64, f64)> {
+        let m = stats.len();
+        if m < 2 {
+            return vec![(0.0, 0.0); m];
+        }
+        let others = m.saturating_sub(1) as f64;
+        let min_snr = 10f64.powf(WANDER_SNR_DB / 10.0);
+        let aligned: Vec<Vec<C64>> = stats
+            .iter()
+            .zip(own_delay.iter().chain(std::iter::repeat(&0.0)))
+            .map(|(st, &dk)| {
+                st.z.iter()
+                    .zip(&self.grid)
+                    .map(|(z, &f)| {
+                        cmul(
+                            *z,
+                            C64::from_polar(1.0, std::f64::consts::TAU * f * dk / self.rate),
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
+        let sum: Vec<C64> = (0..self.grid.len())
+            .map(|p| {
+                aligned
+                    .iter()
+                    .filter_map(|z| z.get(p).copied())
+                    .fold(czero(), cadd)
+            })
+            .collect();
+        let sweep = &self.schedule.sweep;
+        let loud = snr.iter().copied().fold(0.0, f64::max);
+        let min_snr = min_snr.max(loud * 10f64.powf(-IN_BAND_DB / 10.0));
+        aligned
+            .iter()
+            .map(|st| {
+                // Per band loud enough: (centre, the phase against the
+                // others, its noise).
+                let mut raw: Vec<(f64, f64, f64)> = Vec::new();
+                for (b, &(centre, lo, hi)) in bands.iter().enumerate() {
+                    let sb = snr.get(b).copied().unwrap_or(0.0);
+                    if !(sb >= min_snr && sb > 0.0) {
+                        continue;
+                    }
+                    // Only bands that measure a delay to a few µs: below,
+                    // the noise model of a band (a room's, rumble's) is not
+                    // good enough to call a change significant.
+                    let sigma_us = ((1.0 + 1.0 / others) / (2.0 * sb)).sqrt()
+                        / (std::f64::consts::TAU * centre)
+                        * 1e6;
+                    if sigma_us > WANDER_MAX_SIGMA_US || centre < WANDER_MIN_HZ {
+                        continue;
+                    }
+                    let q = (lo..hi).fold(czero(), |acc, p| {
+                        let nzp = nz.get(p).copied().unwrap_or(0.0);
+                        match (st.get(p), sum.get(p)) {
+                            (Some(z), Some(s)) if nzp > 0.0 => {
+                                let loo = C64::new(s.re - z.re, s.im - z.im).unscale(others);
+                                cadd(acc, cmul(*z, loo.conj()).unscale(nzp))
+                            }
+                            _ => acc,
+                        }
+                    });
+                    let sigma = ((1.0 + 1.0 / others) / (2.0 * sb)).sqrt();
+                    raw.push((centre, q.arg(), sigma));
+                }
+                // Unwrapped along frequency from the lowest band with little
+                // noise (its phase is the delay's for any delay under half
+                // its period), outwards, each phase taken as near the delay
+                // of its neighbour as a turn allows.
+                let anchor = raw
+                    .iter()
+                    .position(|r| r.2 <= WANDER_ANCHOR_RAD)
+                    .or_else(|| {
+                        raw.iter()
+                            .enumerate()
+                            .min_by(|a, b| a.1.2.total_cmp(&b.1.2))
+                            .map(|(i, _)| i)
+                    })
+                    .unwrap_or(0);
+                let mut phi: Vec<f64> = raw.iter().map(|r| r.1).collect();
+                let unwrap = |phi: &mut Vec<f64>, i: usize, from: usize| {
+                    let (Some(&(fi, _, _)), Some(&(ff, _, _))) = (raw.get(i), raw.get(from)) else {
+                        return;
+                    };
+                    let pf = phi.get(from).copied().unwrap_or(0.0);
+                    if let Some(v) = phi.get_mut(i) {
+                        let pred = pf * fi / ff;
+                        *v += std::f64::consts::TAU * ((pred - *v) / std::f64::consts::TAU).round();
+                    }
+                };
+                for i in anchor.saturating_add(1)..raw.len() {
+                    unwrap(&mut phi, i, i.saturating_sub(1));
+                }
+                for i in (0..anchor).rev() {
+                    unwrap(&mut phi, i, i.saturating_add(1));
+                }
+                // (t s, delay s, sigma s) per band.
+                let pts: Vec<(f64, f64, f64)> = raw
+                    .iter()
+                    .zip(&phi)
+                    .map(|(&(centre, _, sig), &ph)| {
+                        let w = std::f64::consts::TAU * centre;
+                        (sweep.time_of_freq(centre), -ph / w, sig / w)
+                    })
+                    .collect();
+                let mut wander: f64 = 0.0;
+                let mut rate: f64 = 0.0;
+                let mut rate_any: f64 = 0.0;
+                for (i, a) in pts.iter().enumerate() {
+                    for b in pts.iter().skip(i.saturating_add(1)) {
+                        let dd = (b.1 - a.1).abs();
+                        let sig = (a.2 * a.2 + b.2 * b.2).sqrt();
+                        if dd.is_nan() || dd <= WANDER_SIGMAS * sig {
+                            continue;
+                        }
+                        let dt = (b.0 - a.0).abs();
+                        if dd > wander {
+                            wander = dd;
+                            rate_any = if dt > 0.0 { dd / dt } else { 0.0 };
+                        }
+                        if dt >= WANDER_MIN_SPAN_S {
+                            rate = rate.max(dd / dt);
+                        }
+                    }
+                }
+                let ppm = if rate > 0.0 { rate } else { rate_any };
+                if wander > 0.0 && wander.is_finite() && ppm.is_finite() {
+                    (wander * 1e6, ppm * 1e6)
+                } else {
+                    (0.0, 0.0)
+                }
+            })
+            .collect()
+    }
+
+    // -- WP P5ARRIVAL --
+    /// The analytic signal of `h` band-limited to the sweep's band and, with
+    /// a noise floor, weighted by `s/(1+s)` where `s` is the response's SNR
+    /// per third-octave band (`(centre, snr)`, interpolated in log frequency):
+    /// its magnitude is the envelope of the noise-weighted, band-limited
+    /// response.
+    fn envelope(&self, h: &[f64], snr: Option<&[(f64, f64)]>) -> Option<Vec<C64>> {
+        let len = h.len();
+        let nfft = fft_len(len.saturating_add(len / 4).saturating_add(64))?;
+        let mut four = Fourier::new(nfft);
+        let mut buf = vec![czero(); nfft];
+        for (d, &v) in buf.iter_mut().zip(h) {
+            d.re = if v.is_finite() { v } else { 0.0 };
+        }
+        four.forward(&mut buf);
+        let wiener = |f: f64| -> f64 {
+            let Some(bands) = snr.filter(|b| !b.is_empty()) else {
+                return 1.0;
+            };
+            let s = match bands.iter().position(|&(c, _)| c >= f) {
+                Some(0) => bands.first().map_or(0.0, |b| b.1),
+                None => bands.last().map_or(0.0, |b| b.1),
+                Some(i) => {
+                    let (Some(a), Some(b)) = (bands.get(i.saturating_sub(1)), bands.get(i)) else {
+                        return 0.0;
+                    };
+                    let t = (f / a.0).ln() / (b.0 / a.0).ln();
+                    a.1 + (b.1 - a.1) * t.clamp(0.0, 1.0)
+                }
+            };
+            let s = s.max(0.0);
+            s / (1.0 + s)
+        };
+        let half = nfft / 2;
+        let weight: Vec<f64> = (0..=half)
+            .map(|k| {
+                let f = bin_freq(k, nfft, self.rate);
+                band_taper(f, self.band) * wiener(f)
+            })
+            .collect();
+        let mut a = analytic(&mut four, &buf, &weight);
+        a.truncate(len);
+        Some(a)
     }
 }
 
@@ -2031,3 +3201,6 @@ pub fn analyse_walked(
 
 #[cfg(test)]
 mod tests_wp_p5time;
+// -- WP P5ARRIVAL --
+#[cfg(test)]
+mod tests_wp_p5arrival;

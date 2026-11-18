@@ -2066,6 +2066,30 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2727,6 +2751,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_measure_docs(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_docs_merged(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_layout_proposal(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_live_apply(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_live_averaging(
@@ -2772,6 +2798,28 @@ fun uniffi_dspi_core_checksum_method_dspicore_measure_state(
 fun uniffi_dspi_core_checksum_method_dspicore_measure_stop(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_tick(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_ab(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_apply(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_keep(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_proposal(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_propose(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_revert(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_state(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_stop(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_sum_check(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_tick(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_tune_verify(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measurement_export_rew(
 ): Short
@@ -3750,6 +3798,8 @@ fun uniffi_dspi_core_fn_method_dspicore_measure_docs(`ptr`: Pointer,`kind`: Rust
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_docs_merged(`ptr`: Pointer,`kind`: RustBuffer.ByValue,`serial`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_layout_proposal(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_live_apply(`ptr`: Pointer,`proposalId`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_live_averaging(`ptr`: Pointer,`averaging`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3795,6 +3845,28 @@ fun uniffi_dspi_core_fn_method_dspicore_measure_state(`ptr`: Pointer,uniffi_out_
 fun uniffi_dspi_core_fn_method_dspicore_measure_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_tick(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_ab(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_apply(`ptr`: Pointer,`proposalId`: Int,`guardS`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_keep(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_proposal(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_propose(`ptr`: Pointer,`measurement`: RustBuffer.ByValue,`layout`: RustBuffer.ByValue,`options`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_revert(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_sum_check(`ptr`: Pointer,`proposalId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_tick(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_tune_verify(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measurement_export_rew(`ptr`: Pointer,`doc`: RustBuffer.ByValue,`output`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -5467,6 +5539,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_docs_merged() != 53188.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_layout_proposal() != 26335.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_live_apply() != 20010.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -5534,6 +5609,39 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tick() != 49262.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_ab() != 45367.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_apply() != 44140.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_keep() != 19847.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_proposal() != 54513.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_propose() != 61390.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_revert() != 17083.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_state() != 32546.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_stop() != 13069.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_sum_check() != 44103.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_tick() != 54319.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tune_verify() != 53106.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measurement_export_rew() != 45126.toShort()) {
@@ -10539,6 +10647,19 @@ public interface DspiCoreInterface {
     fun `measureDocsMerged`(`kind`: kotlin.String, `serial`: kotlin.String): MeasureDocsMerged
     
     /**
+     * The layout the device's state suggests (PLAN-P5 section 1.4 step 1):
+     * each enabled output that plays an input, its way from its filters
+     * (only a low-pass: low, or sub at or below 120 Hz or by name; a
+     * high-pass and a low-pass: mid; only a high-pass: high; none: full
+     * range), its speaker from its programme source (input 1 `L`, input 2
+     * `R`), one alignment group per speaker, and its programme feed. Reads
+     * the mirror only.
+     *
+     * Errors: [`DspiError::Disconnected`].
+     */
+    fun `measureLayoutProposal`(): MeasureLayout
+    
+    /**
      * Write the pending change `proposal_id` as **one undo group**
      * (unguarded, as a manual edit; S10): the run in flight is stopped, each
      * band through the typed setter (judged by read-only, the limits and the
@@ -10763,6 +10884,122 @@ public interface DspiCoreInterface {
      * Returns the state; never fails.
      */
     fun `measureTick`(): MeasureState
+    
+    /**
+     * Start the A/B compare of a kept tune: the device now ("A", the tune)
+     * against the "before" snapshot ("B"). Toggle with `ab_toggle`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune was kept;
+     * `ab_start_documents`'s.
+     */
+    fun `measureTuneAb`(): AbCompare
+    
+    /**
+     * Apply proposal `proposal_id` (PLAN-P5 section 1.4 step 9, S10): the
+     * preflight **again** with the chains it was computed for, the "before"
+     * snapshot filed, the guard begun (`guard_s` seconds; 0: 300), then
+     * every write through `write_param` in one undo group "Auto-tune". A
+     * refused write ends the group and the guard reverts. Returns the guard.
+     *
+     * Errors, with nothing written: [`DspiError::InvalidArgument`] for
+     * another proposal's id, a proposal with timing writes whose summed check
+     * has not passed (`measure.tune.sum_check_needed`), a measurement or a
+     * live view running, or a blocker of the preflight (programme audio, a
+     * chain changed since, ...); [`DspiError::ReadOnly`] (read-only mode or
+     * connection); [`DspiError::Denied`] (a Viewer through a hub); the
+     * guard's refusals. After the guard began: the refused write's error
+     * (the guard has reverted).
+     */
+    fun `measureTuneApply`(`proposalId`: kotlin.UInt, `guardS`: kotlin.UInt): GuardedApply
+    
+    /**
+     * Keep the applied tune (PLAN-P5 section 1.4 step 11): `apply_confirm`,
+     * the "after" snapshot filed with its `tune` block (the measurement, the
+     * algorithm, the options, the writes), and the tune's row added to the
+     * measurement. A verify still running is stopped first.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
+     * `apply_confirm`'s. Filing failures are notes, not errors.
+     */
+    fun `measureTuneKeep`(): MeasureTuneKeep
+    
+    /**
+     * The current proposal (a new one after a summed check), if any. No
+     * I/O.
+     */
+    fun `measureTuneProposal`(): MeasureTuneProposal?
+    
+    /**
+     * Propose a tune of `layout` from `measurement` (a filed measurement's
+     * id, the hub's first, or a `measurement` document's text) with
+     * `options` (PLAN-P5 section 1.4 steps 3 to 8). Nothing is written.
+     * Replaces any proposal not applied yet.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a measurement of another
+     * device (`measure.tune.other_device`), one without an output of the
+     * layout, a bad layout, options or target, or while a tune is applied
+     * (Keep or Revert it first); [`DspiError::Disconnected`]; as
+     * `measure_doc_get` for an id.
+     */
+    fun `measureTunePropose`(`measurement`: kotlin.String, `layout`: MeasureLayout, `options`: MeasureTuneOptions): MeasureTuneProposal
+    
+    /**
+     * Revert the applied tune: the guard puts the "before" state back (a
+     * verify still running is stopped first). Returns the guard.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
+     * `apply_revert`'s.
+     */
+    fun `measureTuneRevert`(): GuardedApply
+    
+    /**
+     * The tune's state, without I/O (safe from the measurement listener).
+     */
+    fun `measureTuneState`(): MeasureTuneState
+    
+    /**
+     * Stop the tune's runs and forget it, unless it is applied (then only
+     * its runs stop: Keep or Revert it). Never fails.
+     */
+    fun `measureTuneStop`(): MeasureTuneState
+    
+    /**
+     * Run the mandatory summed check of proposal `proposal_id` (RC5f): one
+     * summed run per transition with timing writes, with the chains and
+     * polarities **now**, each a measurement session under every S-rule
+     * (the preflight, the ramp, the aborts). Drive it with
+     * [`DspiCore::measure_tune_tick`]; the proposal is then made again
+     * ([`DspiCore::measure_tune_proposal`]): a speaker whose summed run
+     * differs from the prediction by more than 1.5 dB RMS gets its timing
+     * writes withdrawn, with the reason.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another proposal's id, a
+     * tune not waiting with a proposal, a measurement microphone that is not
+     * at hand, or `measure_start`'s refusals ([`DspiError::ReadOnly`],
+     * [`DspiError::Denied`], [`DspiError::Locked`]).
+     */
+    fun `measureTuneSumCheck`(`proposalId`: kotlin.UInt): MeasureTuneState
+    
+    /**
+     * Drive the tune: its summed or verify runs (`measure_tick`, then the
+     * next run or the verdict), and the guard's timer while applied. Call it
+     * about every 50 ms off the UI thread while `running` (and while a tune
+     * is applied), instead of `measure_tick`; push capture whenever the
+     * session wants it. Never fails.
+     */
+    fun `measureTuneTick`(): MeasureTuneState
+    
+    /**
+     * Verify the applied tune inside its guard (PLAN-P5 section 1.4 step
+     * 10): a walked run of the tuned outputs and a summed run per transition
+     * with the new polarities, each measured against the prediction. Drive
+     * it with [`DspiCore::measure_tune_tick`]; the result is the state's
+     * `verify`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, the
+     * measurement's microphone is not at hand, or `measure_start` refuses.
+     */
+    fun `measureTuneVerify`(): MeasureTuneState
     
     /**
      * Output `output`'s measured response as REW text ("Import frequency
@@ -18322,6 +18559,30 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The layout the device's state suggests (PLAN-P5 section 1.4 step 1):
+     * each enabled output that plays an input, its way from its filters
+     * (only a low-pass: low, or sub at or below 120 Hz or by name; a
+     * high-pass and a low-pass: mid; only a high-pass: high; none: full
+     * range), its speaker from its programme source (input 1 `L`, input 2
+     * `R`), one alignment group per speaker, and its programme feed. Reads
+     * the mirror only.
+     *
+     * Errors: [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)override fun `measureLayoutProposal`(): MeasureLayout {
+            return FfiConverterTypeMeasureLayout.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_layout_proposal(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Write the pending change `proposal_id` as **one undo group**
      * (unguarded, as a manual edit; S10): the run in flight is stopped, each
      * band through the typed setter (judged by read-only, the limits and the
@@ -18780,6 +19041,239 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tick(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Start the A/B compare of a kept tune: the device now ("A", the tune)
+     * against the "before" snapshot ("B"). Toggle with `ab_toggle`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune was kept;
+     * `ab_start_documents`'s.
+     */
+    @Throws(DspiException::class)override fun `measureTuneAb`(): AbCompare {
+            return FfiConverterTypeAbCompare.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_ab(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Apply proposal `proposal_id` (PLAN-P5 section 1.4 step 9, S10): the
+     * preflight **again** with the chains it was computed for, the "before"
+     * snapshot filed, the guard begun (`guard_s` seconds; 0: 300), then
+     * every write through `write_param` in one undo group "Auto-tune". A
+     * refused write ends the group and the guard reverts. Returns the guard.
+     *
+     * Errors, with nothing written: [`DspiError::InvalidArgument`] for
+     * another proposal's id, a proposal with timing writes whose summed check
+     * has not passed (`measure.tune.sum_check_needed`), a measurement or a
+     * live view running, or a blocker of the preflight (programme audio, a
+     * chain changed since, ...); [`DspiError::ReadOnly`] (read-only mode or
+     * connection); [`DspiError::Denied`] (a Viewer through a hub); the
+     * guard's refusals. After the guard began: the refused write's error
+     * (the guard has reverted).
+     */
+    @Throws(DspiException::class)override fun `measureTuneApply`(`proposalId`: kotlin.UInt, `guardS`: kotlin.UInt): GuardedApply {
+            return FfiConverterTypeGuardedApply.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_apply(
+        it, FfiConverterUInt.lower(`proposalId`),FfiConverterUInt.lower(`guardS`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Keep the applied tune (PLAN-P5 section 1.4 step 11): `apply_confirm`,
+     * the "after" snapshot filed with its `tune` block (the measurement, the
+     * algorithm, the options, the writes), and the tune's row added to the
+     * measurement. A verify still running is stopped first.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
+     * `apply_confirm`'s. Filing failures are notes, not errors.
+     */
+    @Throws(DspiException::class)override fun `measureTuneKeep`(): MeasureTuneKeep {
+            return FfiConverterTypeMeasureTuneKeep.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_keep(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The current proposal (a new one after a summed check), if any. No
+     * I/O.
+     */override fun `measureTuneProposal`(): MeasureTuneProposal? {
+            return FfiConverterOptionalTypeMeasureTuneProposal.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_proposal(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Propose a tune of `layout` from `measurement` (a filed measurement's
+     * id, the hub's first, or a `measurement` document's text) with
+     * `options` (PLAN-P5 section 1.4 steps 3 to 8). Nothing is written.
+     * Replaces any proposal not applied yet.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a measurement of another
+     * device (`measure.tune.other_device`), one without an output of the
+     * layout, a bad layout, options or target, or while a tune is applied
+     * (Keep or Revert it first); [`DspiError::Disconnected`]; as
+     * `measure_doc_get` for an id.
+     */
+    @Throws(DspiException::class)override fun `measureTunePropose`(`measurement`: kotlin.String, `layout`: MeasureLayout, `options`: MeasureTuneOptions): MeasureTuneProposal {
+            return FfiConverterTypeMeasureTuneProposal.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_propose(
+        it, FfiConverterString.lower(`measurement`),FfiConverterTypeMeasureLayout.lower(`layout`),FfiConverterTypeMeasureTuneOptions.lower(`options`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Revert the applied tune: the guard puts the "before" state back (a
+     * verify still running is stopped first). Returns the guard.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
+     * `apply_revert`'s.
+     */
+    @Throws(DspiException::class)override fun `measureTuneRevert`(): GuardedApply {
+            return FfiConverterTypeGuardedApply.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_revert(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The tune's state, without I/O (safe from the measurement listener).
+     */override fun `measureTuneState`(): MeasureTuneState {
+            return FfiConverterTypeMeasureTuneState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Stop the tune's runs and forget it, unless it is applied (then only
+     * its runs stop: Keep or Revert it). Never fails.
+     */override fun `measureTuneStop`(): MeasureTuneState {
+            return FfiConverterTypeMeasureTuneState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_stop(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Run the mandatory summed check of proposal `proposal_id` (RC5f): one
+     * summed run per transition with timing writes, with the chains and
+     * polarities **now**, each a measurement session under every S-rule
+     * (the preflight, the ramp, the aborts). Drive it with
+     * [`DspiCore::measure_tune_tick`]; the proposal is then made again
+     * ([`DspiCore::measure_tune_proposal`]): a speaker whose summed run
+     * differs from the prediction by more than 1.5 dB RMS gets its timing
+     * writes withdrawn, with the reason.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another proposal's id, a
+     * tune not waiting with a proposal, a measurement microphone that is not
+     * at hand, or `measure_start`'s refusals ([`DspiError::ReadOnly`],
+     * [`DspiError::Denied`], [`DspiError::Locked`]).
+     */
+    @Throws(DspiException::class)override fun `measureTuneSumCheck`(`proposalId`: kotlin.UInt): MeasureTuneState {
+            return FfiConverterTypeMeasureTuneState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_sum_check(
+        it, FfiConverterUInt.lower(`proposalId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Drive the tune: its summed or verify runs (`measure_tick`, then the
+     * next run or the verdict), and the guard's timer while applied. Call it
+     * about every 50 ms off the UI thread while `running` (and while a tune
+     * is applied), instead of `measure_tick`; push capture whenever the
+     * session wants it. Never fails.
+     */override fun `measureTuneTick`(): MeasureTuneState {
+            return FfiConverterTypeMeasureTuneState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_tick(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Verify the applied tune inside its guard (PLAN-P5 section 1.4 step
+     * 10): a walked run of the tuned outputs and a summed run per transition
+     * with the new polarities, each measured against the prediction. Drive
+     * it with [`DspiCore::measure_tune_tick`]; the result is the state's
+     * `verify`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, the
+     * measurement's microphone is not at hand, or `measure_start` refuses.
+     */
+    @Throws(DspiException::class)override fun `measureTuneVerify`(): MeasureTuneState {
+            return FfiConverterTypeMeasureTuneState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_tune_verify(
         it, _status)
 }
     }
@@ -37535,6 +38029,140 @@ public object FfiConverterTypeMeasureIssue: FfiConverterRustBuffer<MeasureIssue>
 
 
 /**
+ * The speakers and ways the tune works on (`measure_layout_proposal`;
+ * confirmed or edited by the user).
+ */
+data class MeasureLayout (
+    /**
+     * The outputs, each once.
+     */
+    var `outputs`: List<MeasureLayoutOutput>, 
+    /**
+     * The layout recognised (`3way`, `2way`, `headphones`, `full range`),
+     * "" when none.
+     */
+    var `template`: kotlin.String, 
+    /**
+     * Remarks in words.
+     */
+    var `notes`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLayout: FfiConverterRustBuffer<MeasureLayout> {
+    override fun read(buf: ByteBuffer): MeasureLayout {
+        return MeasureLayout(
+            FfiConverterSequenceTypeMeasureLayoutOutput.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLayout) = (
+            FfiConverterSequenceTypeMeasureLayoutOutput.allocationSize(value.`outputs`) +
+            FfiConverterString.allocationSize(value.`template`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`)
+    )
+
+    override fun write(value: MeasureLayout, buf: ByteBuffer) {
+            FfiConverterSequenceTypeMeasureLayoutOutput.write(value.`outputs`, buf)
+            FfiConverterString.write(value.`template`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+    }
+}
+
+
+
+/**
+ * One output of a layout (PLAN-P5 section 1.4 step 1).
+ */
+data class MeasureLayoutOutput (
+    /**
+     * The output, 0-based.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Its way.
+     */
+    var `role`: MeasureRole, 
+    /**
+     * The speaker it belongs to (`L`, `R`, `Sub`, ...): the ways of one
+     * speaker are tuned together.
+     */
+    var `speaker`: kotlin.String, 
+    /**
+     * Its alignment group: one walked run measures a group.
+     */
+    var `group`: kotlin.UByte, 
+    /**
+     * The output's user name, if it has one.
+     */
+    var `name`: kotlin.String, 
+    /**
+     * The input that feeds it most (its programme source), if one.
+     */
+    var `feedInput`: kotlin.UByte?, 
+    /**
+     * The net crosspoint gain of that source, dB.
+     */
+    var `feedGainDb`: kotlin.Float, 
+    /**
+     * The net polarity of its feeding crosspoints is inverted.
+     */
+    var `feedInverted`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureLayoutOutput: FfiConverterRustBuffer<MeasureLayoutOutput> {
+    override fun read(buf: ByteBuffer): MeasureLayoutOutput {
+        return MeasureLayoutOutput(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureRole.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureLayoutOutput) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`speaker`) +
+            FfiConverterUByte.allocationSize(value.`group`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterOptionalUByte.allocationSize(value.`feedInput`) +
+            FfiConverterFloat.allocationSize(value.`feedGainDb`) +
+            FfiConverterBoolean.allocationSize(value.`feedInverted`)
+    )
+
+    override fun write(value: MeasureLayoutOutput, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterTypeMeasureRole.write(value.`role`, buf)
+            FfiConverterString.write(value.`speaker`, buf)
+            FfiConverterUByte.write(value.`group`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterOptionalUByte.write(value.`feedInput`, buf)
+            FfiConverterFloat.write(value.`feedGainDb`, buf)
+            FfiConverterBoolean.write(value.`feedInverted`, buf)
+    }
+}
+
+
+
+/**
  * One output's ramp result.
  */
 data class MeasureLevel (
@@ -38870,6 +39498,826 @@ public object FfiConverterTypeMeasureTiming: FfiConverterRustBuffer<MeasureTimin
             FfiConverterSequenceString.write(value.`reasons`, buf)
             FfiConverterByteArray.write(value.`cycleOutputs`, buf)
             FfiConverterSequenceDouble.write(value.`cycleResidualsUs`, buf)
+    }
+}
+
+
+
+/**
+ * A speaker's curves: before, predicted, the target levelled to before.
+ */
+data class MeasureTuneCurves (
+    /**
+     * The speaker.
+     */
+    var `speaker`: kotlin.String, 
+    /**
+     * The ways' sum with phase (a timing-reliable run); else their power sum.
+     */
+    var `coherent`: kotlin.Boolean, 
+    /**
+     * The speaker as it is now (programme audio).
+     */
+    var `before`: MeasureLiveCurve, 
+    /**
+     * The speaker with the proposal.
+     */
+    var `predicted`: MeasureLiveCurve, 
+    /**
+     * The target, levelled to `before`.
+     */
+    var `target`: MeasureLiveCurve
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneCurves: FfiConverterRustBuffer<MeasureTuneCurves> {
+    override fun read(buf: ByteBuffer): MeasureTuneCurves {
+        return MeasureTuneCurves(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeMeasureLiveCurve.read(buf),
+            FfiConverterTypeMeasureLiveCurve.read(buf),
+            FfiConverterTypeMeasureLiveCurve.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneCurves) = (
+            FfiConverterString.allocationSize(value.`speaker`) +
+            FfiConverterBoolean.allocationSize(value.`coherent`) +
+            FfiConverterTypeMeasureLiveCurve.allocationSize(value.`before`) +
+            FfiConverterTypeMeasureLiveCurve.allocationSize(value.`predicted`) +
+            FfiConverterTypeMeasureLiveCurve.allocationSize(value.`target`)
+    )
+
+    override fun write(value: MeasureTuneCurves, buf: ByteBuffer) {
+            FfiConverterString.write(value.`speaker`, buf)
+            FfiConverterBoolean.write(value.`coherent`, buf)
+            FfiConverterTypeMeasureLiveCurve.write(value.`before`, buf)
+            FfiConverterTypeMeasureLiveCurve.write(value.`predicted`, buf)
+            FfiConverterTypeMeasureLiveCurve.write(value.`target`, buf)
+    }
+}
+
+
+
+/**
+ * What Keep did (`measure_tune_keep`).
+ */
+data class MeasureTuneKeep (
+    /**
+     * The guard's end: `kept`, or the revert's when the timeout came first.
+     */
+    var `guard`: GuardedApply, 
+    /**
+     * The "before" snapshot's id and text.
+     */
+    var `snapshotBeforeId`: kotlin.String, 
+    /**
+     * See `snapshot_before_id`.
+     */
+    var `snapshotBefore`: kotlin.String, 
+    /**
+     * The "after" snapshot's id ("" when not filed) and text (with its
+     * `tune` block).
+     */
+    var `snapshotAfterId`: kotlin.String, 
+    /**
+     * See `snapshot_after_id`.
+     */
+    var `snapshotAfter`: kotlin.String, 
+    /**
+     * The measurement's id with the tune's row: the same one in this
+     * console's store, a new copy's on the hub, "" for a measurement given
+     * as text.
+     */
+    var `measurementId`: kotlin.String, 
+    /**
+     * The measurement's text with the tune's row (file it when it was
+     * given as text).
+     */
+    var `measurement`: kotlin.String, 
+    /**
+     * What could not be filed, in words.
+     */
+    var `notes`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneKeep: FfiConverterRustBuffer<MeasureTuneKeep> {
+    override fun read(buf: ByteBuffer): MeasureTuneKeep {
+        return MeasureTuneKeep(
+            FfiConverterTypeGuardedApply.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneKeep) = (
+            FfiConverterTypeGuardedApply.allocationSize(value.`guard`) +
+            FfiConverterString.allocationSize(value.`snapshotBeforeId`) +
+            FfiConverterString.allocationSize(value.`snapshotBefore`) +
+            FfiConverterString.allocationSize(value.`snapshotAfterId`) +
+            FfiConverterString.allocationSize(value.`snapshotAfter`) +
+            FfiConverterString.allocationSize(value.`measurementId`) +
+            FfiConverterString.allocationSize(value.`measurement`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`)
+    )
+
+    override fun write(value: MeasureTuneKeep, buf: ByteBuffer) {
+            FfiConverterTypeGuardedApply.write(value.`guard`, buf)
+            FfiConverterString.write(value.`snapshotBeforeId`, buf)
+            FfiConverterString.write(value.`snapshotBefore`, buf)
+            FfiConverterString.write(value.`snapshotAfterId`, buf)
+            FfiConverterString.write(value.`snapshotAfter`, buf)
+            FfiConverterString.write(value.`measurementId`, buf)
+            FfiConverterString.write(value.`measurement`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+    }
+}
+
+
+
+/**
+ * What the tune may change (`measure_tune_propose`). Every number 0 is the
+ * default.
+ */
+data class MeasureTuneOptions (
+    /**
+     * A `target` document's text; "" for the placement's default target.
+     */
+    var `targetDocument`: kotlin.String, 
+    /**
+     * The measurement's microphone's `mic` document; "" looks it up by the
+     * id the measurement names (needed for the summed and verify runs).
+     */
+    var `micDocument`: kotlin.String, 
+    /**
+     * "Keep the crossover, align only": no corner or level change.
+     */
+    var `keepCrossover`: kotlin.Boolean, 
+    /**
+     * Keep the current delays (polarity is still judged).
+     */
+    var `keepDelays`: kotlin.Boolean, 
+    /**
+     * Keep every output gain of the crossover.
+     */
+    var `keepLevels`: kotlin.Boolean, 
+    /**
+     * No EQ fit.
+     */
+    var `keepEq`: kotlin.Boolean, 
+    /**
+     * The corner search's window each side, octaves (0: 0.5; at most 2).
+     */
+    var `windowOctaves`: kotlin.Double, 
+    /**
+     * The fit's range, Hz (0: 20 Hz to 300 Hz for speakers, 20 Hz to 10 kHz
+     * for headphones).
+     */
+    var `fitMinHz`: kotlin.Double, 
+    /**
+     * See `fit_min_hz`.
+     */
+    var `fitMaxHz`: kotlin.Double
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneOptions: FfiConverterRustBuffer<MeasureTuneOptions> {
+    override fun read(buf: ByteBuffer): MeasureTuneOptions {
+        return MeasureTuneOptions(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneOptions) = (
+            FfiConverterString.allocationSize(value.`targetDocument`) +
+            FfiConverterString.allocationSize(value.`micDocument`) +
+            FfiConverterBoolean.allocationSize(value.`keepCrossover`) +
+            FfiConverterBoolean.allocationSize(value.`keepDelays`) +
+            FfiConverterBoolean.allocationSize(value.`keepLevels`) +
+            FfiConverterBoolean.allocationSize(value.`keepEq`) +
+            FfiConverterDouble.allocationSize(value.`windowOctaves`) +
+            FfiConverterDouble.allocationSize(value.`fitMinHz`) +
+            FfiConverterDouble.allocationSize(value.`fitMaxHz`)
+    )
+
+    override fun write(value: MeasureTuneOptions, buf: ByteBuffer) {
+            FfiConverterString.write(value.`targetDocument`, buf)
+            FfiConverterString.write(value.`micDocument`, buf)
+            FfiConverterBoolean.write(value.`keepCrossover`, buf)
+            FfiConverterBoolean.write(value.`keepDelays`, buf)
+            FfiConverterBoolean.write(value.`keepLevels`, buf)
+            FfiConverterBoolean.write(value.`keepEq`, buf)
+            FfiConverterDouble.write(value.`windowOctaves`, buf)
+            FfiConverterDouble.write(value.`fitMinHz`, buf)
+            FfiConverterDouble.write(value.`fitMaxHz`, buf)
+    }
+}
+
+
+
+/**
+ * One parameter of a write: what `write_param` gets.
+ */
+data class MeasureTuneParam (
+    /**
+     * The registry path (`out.delay`, `eq.freq`, `mix`, ...).
+     */
+    var `path`: kotlin.String, 
+    /**
+     * Its indices.
+     */
+    var `indices`: kotlin.ByteArray, 
+    /**
+     * The value written.
+     */
+    var `value`: ParamValue
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneParam: FfiConverterRustBuffer<MeasureTuneParam> {
+    override fun read(buf: ByteBuffer): MeasureTuneParam {
+        return MeasureTuneParam(
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterTypeParamValue.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneParam) = (
+            FfiConverterString.allocationSize(value.`path`) +
+            FfiConverterByteArray.allocationSize(value.`indices`) +
+            FfiConverterTypeParamValue.allocationSize(value.`value`)
+    )
+
+    override fun write(value: MeasureTuneParam, buf: ByteBuffer) {
+            FfiConverterString.write(value.`path`, buf)
+            FfiConverterByteArray.write(value.`indices`, buf)
+            FfiConverterTypeParamValue.write(value.`value`, buf)
+    }
+}
+
+
+
+/**
+ * A proposal: nothing is written until it is applied.
+ */
+data class MeasureTuneProposal (
+    /**
+     * Its id, for `measure_tune_apply` (a new id after a summed check).
+     */
+    var `id`: kotlin.UInt, 
+    /**
+     * The device it is for.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * The measurement's id ("" for one given as text).
+     */
+    var `measurementId`: kotlin.String, 
+    /**
+     * The measurement's name.
+     */
+    var `measurementName`: kotlin.String, 
+    /**
+     * Every write, in the order it is applied.
+     */
+    var `writes`: List<MeasureTuneWrite>, 
+    /**
+     * Each speaker's curves.
+     */
+    var `curves`: List<MeasureTuneCurves>, 
+    /**
+     * Each transition.
+     */
+    var `transitions`: List<MeasureTuneTransition>, 
+    /**
+     * The limits it was held to, in words.
+     */
+    var `held`: List<kotlin.String>, 
+    /**
+     * What is not offered, and why.
+     */
+    var `withdrawn`: List<MeasureIssue>, 
+    /**
+     * What the user should know (an old measurement, another placement).
+     */
+    var `warnings`: List<MeasureIssue>, 
+    /**
+     * Remarks of the maths, in words.
+     */
+    var `notes`: List<kotlin.String>, 
+    /**
+     * The measurement passed the timing quality gate.
+     */
+    var `timingReliable`: kotlin.Boolean, 
+    /**
+     * The summed check.
+     */
+    var `sumCheck`: MeasureTuneCheck
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneProposal: FfiConverterRustBuffer<MeasureTuneProposal> {
+    override fun read(buf: ByteBuffer): MeasureTuneProposal {
+        return MeasureTuneProposal(
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeMeasureTuneWrite.read(buf),
+            FfiConverterSequenceTypeMeasureTuneCurves.read(buf),
+            FfiConverterSequenceTypeMeasureTuneTransition.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceTypeMeasureIssue.read(buf),
+            FfiConverterSequenceTypeMeasureIssue.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeMeasureTuneCheck.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneProposal) = (
+            FfiConverterUInt.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`measurementId`) +
+            FfiConverterString.allocationSize(value.`measurementName`) +
+            FfiConverterSequenceTypeMeasureTuneWrite.allocationSize(value.`writes`) +
+            FfiConverterSequenceTypeMeasureTuneCurves.allocationSize(value.`curves`) +
+            FfiConverterSequenceTypeMeasureTuneTransition.allocationSize(value.`transitions`) +
+            FfiConverterSequenceString.allocationSize(value.`held`) +
+            FfiConverterSequenceTypeMeasureIssue.allocationSize(value.`withdrawn`) +
+            FfiConverterSequenceTypeMeasureIssue.allocationSize(value.`warnings`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`) +
+            FfiConverterBoolean.allocationSize(value.`timingReliable`) +
+            FfiConverterTypeMeasureTuneCheck.allocationSize(value.`sumCheck`)
+    )
+
+    override fun write(value: MeasureTuneProposal, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`id`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`measurementId`, buf)
+            FfiConverterString.write(value.`measurementName`, buf)
+            FfiConverterSequenceTypeMeasureTuneWrite.write(value.`writes`, buf)
+            FfiConverterSequenceTypeMeasureTuneCurves.write(value.`curves`, buf)
+            FfiConverterSequenceTypeMeasureTuneTransition.write(value.`transitions`, buf)
+            FfiConverterSequenceString.write(value.`held`, buf)
+            FfiConverterSequenceTypeMeasureIssue.write(value.`withdrawn`, buf)
+            FfiConverterSequenceTypeMeasureIssue.write(value.`warnings`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+            FfiConverterBoolean.write(value.`timingReliable`, buf)
+            FfiConverterTypeMeasureTuneCheck.write(value.`sumCheck`, buf)
+    }
+}
+
+
+
+/**
+ * A tune's state (`measure_tune_tick`, `measure_tune_state`).
+ */
+data class MeasureTuneState (
+    /**
+     * Where it stands.
+     */
+    var `stage`: MeasureTuneStage, 
+    /**
+     * A summed or verify run is under way: tick and push capture.
+     */
+    var `running`: kotlin.Boolean, 
+    /**
+     * The current proposal's id.
+     */
+    var `proposalId`: kotlin.UInt?, 
+    /**
+     * The run under way, 1-based, and the runs of this step.
+     */
+    var `run`: kotlin.UShort, 
+    /**
+     * See `run`.
+     */
+    var `runs`: kotlin.UShort, 
+    /**
+     * The measurement session under the run.
+     */
+    var `session`: MeasureState, 
+    /**
+     * The guard, once applied.
+     */
+    var `guard`: GuardedApply, 
+    /**
+     * The verify's result.
+     */
+    var `verify`: MeasureTuneVerify?, 
+    /**
+     * Why the last step stopped, if it did.
+     */
+    var `issue`: MeasureIssue?, 
+    /**
+     * The "before" snapshot's id ("" when not filed: its text is kept).
+     */
+    var `snapshotBeforeId`: kotlin.String, 
+    /**
+     * The "after" snapshot's id, once kept.
+     */
+    var `snapshotAfterId`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneState: FfiConverterRustBuffer<MeasureTuneState> {
+    override fun read(buf: ByteBuffer): MeasureTuneState {
+        return MeasureTuneState(
+            FfiConverterTypeMeasureTuneStage.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterTypeMeasureState.read(buf),
+            FfiConverterTypeGuardedApply.read(buf),
+            FfiConverterOptionalTypeMeasureTuneVerify.read(buf),
+            FfiConverterOptionalTypeMeasureIssue.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneState) = (
+            FfiConverterTypeMeasureTuneStage.allocationSize(value.`stage`) +
+            FfiConverterBoolean.allocationSize(value.`running`) +
+            FfiConverterOptionalUInt.allocationSize(value.`proposalId`) +
+            FfiConverterUShort.allocationSize(value.`run`) +
+            FfiConverterUShort.allocationSize(value.`runs`) +
+            FfiConverterTypeMeasureState.allocationSize(value.`session`) +
+            FfiConverterTypeGuardedApply.allocationSize(value.`guard`) +
+            FfiConverterOptionalTypeMeasureTuneVerify.allocationSize(value.`verify`) +
+            FfiConverterOptionalTypeMeasureIssue.allocationSize(value.`issue`) +
+            FfiConverterString.allocationSize(value.`snapshotBeforeId`) +
+            FfiConverterString.allocationSize(value.`snapshotAfterId`)
+    )
+
+    override fun write(value: MeasureTuneState, buf: ByteBuffer) {
+            FfiConverterTypeMeasureTuneStage.write(value.`stage`, buf)
+            FfiConverterBoolean.write(value.`running`, buf)
+            FfiConverterOptionalUInt.write(value.`proposalId`, buf)
+            FfiConverterUShort.write(value.`run`, buf)
+            FfiConverterUShort.write(value.`runs`, buf)
+            FfiConverterTypeMeasureState.write(value.`session`, buf)
+            FfiConverterTypeGuardedApply.write(value.`guard`, buf)
+            FfiConverterOptionalTypeMeasureTuneVerify.write(value.`verify`, buf)
+            FfiConverterOptionalTypeMeasureIssue.write(value.`issue`, buf)
+            FfiConverterString.write(value.`snapshotBeforeId`, buf)
+            FfiConverterString.write(value.`snapshotAfterId`, buf)
+    }
+}
+
+
+
+/**
+ * One transition of a proposal.
+ */
+data class MeasureTuneTransition (
+    /**
+     * The speaker.
+     */
+    var `speaker`: kotlin.String, 
+    /**
+     * The lower way's output.
+     */
+    var `lowOutput`: kotlin.UByte, 
+    /**
+     * The upper way's output.
+     */
+    var `highOutput`: kotlin.UByte, 
+    /**
+     * The corner now, Hz.
+     */
+    var `cornerBeforeHz`: kotlin.Double, 
+    /**
+     * The proposed corner, Hz.
+     */
+    var `cornerHz`: kotlin.Double, 
+    /**
+     * The upper way's delay minus the lower way's, as proposed, ms.
+     */
+    var `relativeDelayMs`: kotlin.Double, 
+    /**
+     * The upper way's polarity is flipped relative to the lower way's.
+     */
+    var `flipped`: kotlin.Boolean, 
+    /**
+     * The summed check's RMS difference, dB, once run.
+     */
+    var `sumCheckRmsDb`: kotlin.Double?, 
+    /**
+     * The verify's summed RMS difference, dB, once run.
+     */
+    var `verifyRmsDb`: kotlin.Double?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneTransition: FfiConverterRustBuffer<MeasureTuneTransition> {
+    override fun read(buf: ByteBuffer): MeasureTuneTransition {
+        return MeasureTuneTransition(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneTransition) = (
+            FfiConverterString.allocationSize(value.`speaker`) +
+            FfiConverterUByte.allocationSize(value.`lowOutput`) +
+            FfiConverterUByte.allocationSize(value.`highOutput`) +
+            FfiConverterDouble.allocationSize(value.`cornerBeforeHz`) +
+            FfiConverterDouble.allocationSize(value.`cornerHz`) +
+            FfiConverterDouble.allocationSize(value.`relativeDelayMs`) +
+            FfiConverterBoolean.allocationSize(value.`flipped`) +
+            FfiConverterOptionalDouble.allocationSize(value.`sumCheckRmsDb`) +
+            FfiConverterOptionalDouble.allocationSize(value.`verifyRmsDb`)
+    )
+
+    override fun write(value: MeasureTuneTransition, buf: ByteBuffer) {
+            FfiConverterString.write(value.`speaker`, buf)
+            FfiConverterUByte.write(value.`lowOutput`, buf)
+            FfiConverterUByte.write(value.`highOutput`, buf)
+            FfiConverterDouble.write(value.`cornerBeforeHz`, buf)
+            FfiConverterDouble.write(value.`cornerHz`, buf)
+            FfiConverterDouble.write(value.`relativeDelayMs`, buf)
+            FfiConverterBoolean.write(value.`flipped`, buf)
+            FfiConverterOptionalDouble.write(value.`sumCheckRmsDb`, buf)
+            FfiConverterOptionalDouble.write(value.`verifyRmsDb`, buf)
+    }
+}
+
+
+
+/**
+ * What the verify runs found.
+ */
+data class MeasureTuneVerify (
+    /**
+     * Each tuned output.
+     */
+    var `outputs`: List<MeasureTuneVerifyOutput>, 
+    /**
+     * Each speaker with timing.
+     */
+    var `sums`: List<MeasureTuneVerifySum>, 
+    /**
+     * Each transition with its summed run.
+     */
+    var `transitions`: List<MeasureTuneTransition>, 
+    /**
+     * The verify's walked run passed the timing quality gate.
+     */
+    var `timingReliable`: kotlin.Boolean, 
+    /**
+     * Every summed run and verified sum within 1.5 dB RMS of the prediction.
+     */
+    var `passed`: kotlin.Boolean, 
+    /**
+     * Remarks in words.
+     */
+    var `notes`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneVerify: FfiConverterRustBuffer<MeasureTuneVerify> {
+    override fun read(buf: ByteBuffer): MeasureTuneVerify {
+        return MeasureTuneVerify(
+            FfiConverterSequenceTypeMeasureTuneVerifyOutput.read(buf),
+            FfiConverterSequenceTypeMeasureTuneVerifySum.read(buf),
+            FfiConverterSequenceTypeMeasureTuneTransition.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneVerify) = (
+            FfiConverterSequenceTypeMeasureTuneVerifyOutput.allocationSize(value.`outputs`) +
+            FfiConverterSequenceTypeMeasureTuneVerifySum.allocationSize(value.`sums`) +
+            FfiConverterSequenceTypeMeasureTuneTransition.allocationSize(value.`transitions`) +
+            FfiConverterBoolean.allocationSize(value.`timingReliable`) +
+            FfiConverterBoolean.allocationSize(value.`passed`) +
+            FfiConverterSequenceString.allocationSize(value.`notes`)
+    )
+
+    override fun write(value: MeasureTuneVerify, buf: ByteBuffer) {
+            FfiConverterSequenceTypeMeasureTuneVerifyOutput.write(value.`outputs`, buf)
+            FfiConverterSequenceTypeMeasureTuneVerifySum.write(value.`sums`, buf)
+            FfiConverterSequenceTypeMeasureTuneTransition.write(value.`transitions`, buf)
+            FfiConverterBoolean.write(value.`timingReliable`, buf)
+            FfiConverterBoolean.write(value.`passed`, buf)
+            FfiConverterSequenceString.write(value.`notes`, buf)
+    }
+}
+
+
+
+/**
+ * One output's verify.
+ */
+data class MeasureTuneVerifyOutput (
+    /**
+     * The output.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * RMS difference of the measured response from the predicted one, dB,
+     * over the points both trust within 30 dB of the loudest; `None` when
+     * too few.
+     */
+    var `rmsDb`: kotlin.Double?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneVerifyOutput: FfiConverterRustBuffer<MeasureTuneVerifyOutput> {
+    override fun read(buf: ByteBuffer): MeasureTuneVerifyOutput {
+        return MeasureTuneVerifyOutput(
+            FfiConverterUByte.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneVerifyOutput) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterOptionalDouble.allocationSize(value.`rmsDb`)
+    )
+
+    override fun write(value: MeasureTuneVerifyOutput, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterOptionalDouble.write(value.`rmsDb`, buf)
+    }
+}
+
+
+
+/**
+ * One speaker's verified sum.
+ */
+data class MeasureTuneVerifySum (
+    /**
+     * The speaker.
+     */
+    var `speaker`: kotlin.String, 
+    /**
+     * RMS difference of the verified programme sum (the verify run's ways
+     * summed with their phase) from the predicted one, 200 Hz to 10 kHz,
+     * dB; `None` without timing.
+     */
+    var `rmsDb`: kotlin.Double?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneVerifySum: FfiConverterRustBuffer<MeasureTuneVerifySum> {
+    override fun read(buf: ByteBuffer): MeasureTuneVerifySum {
+        return MeasureTuneVerifySum(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneVerifySum) = (
+            FfiConverterString.allocationSize(value.`speaker`) +
+            FfiConverterOptionalDouble.allocationSize(value.`rmsDb`)
+    )
+
+    override fun write(value: MeasureTuneVerifySum, buf: ByteBuffer) {
+            FfiConverterString.write(value.`speaker`, buf)
+            FfiConverterOptionalDouble.write(value.`rmsDb`, buf)
+    }
+}
+
+
+
+/**
+ * One change of a proposal, in words, with the parameters it writes.
+ */
+data class MeasureTuneWrite (
+    /**
+     * The output it changes.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * What it changes.
+     */
+    var `kind`: MeasureTuneKind, 
+    /**
+     * A delay, polarity, crossover or level write: offered only from a
+     * timing-reliable run, applied only after the summed check passed.
+     */
+    var `timing`: kotlin.Boolean, 
+    /**
+     * The change in words ("Output 3 (L high): delay 0.0000 → 0.2100 ms").
+     */
+    var `words`: kotlin.String, 
+    /**
+     * What is written, in order.
+     */
+    var `params`: List<MeasureTuneParam>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneWrite: FfiConverterRustBuffer<MeasureTuneWrite> {
+    override fun read(buf: ByteBuffer): MeasureTuneWrite {
+        return MeasureTuneWrite(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureTuneKind.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeMeasureTuneParam.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureTuneWrite) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterTypeMeasureTuneKind.allocationSize(value.`kind`) +
+            FfiConverterBoolean.allocationSize(value.`timing`) +
+            FfiConverterString.allocationSize(value.`words`) +
+            FfiConverterSequenceTypeMeasureTuneParam.allocationSize(value.`params`)
+    )
+
+    override fun write(value: MeasureTuneWrite, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterTypeMeasureTuneKind.write(value.`kind`, buf)
+            FfiConverterBoolean.write(value.`timing`, buf)
+            FfiConverterString.write(value.`words`, buf)
+            FfiConverterSequenceTypeMeasureTuneParam.write(value.`params`, buf)
     }
 }
 
@@ -44447,6 +45895,171 @@ public object FfiConverterTypeMeasureRunKind: FfiConverterRustBuffer<MeasureRunK
 
 
 /**
+ * Where the summed check stands.
+ */
+
+enum class MeasureTuneCheck {
+    
+    /**
+     * The proposal has no timing write: nothing to check.
+     */
+    NOT_NEEDED,
+    /**
+     * Not run yet: the timing writes cannot be applied.
+     */
+    PENDING,
+    /**
+     * Every checked transition passed.
+     */
+    PASSED,
+    /**
+     * A transition failed: its speaker's timing writes are withdrawn.
+     */
+    FAILED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneCheck: FfiConverterRustBuffer<MeasureTuneCheck> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureTuneCheck.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureTuneCheck) = 4UL
+
+    override fun write(value: MeasureTuneCheck, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * What a write changes.
+ */
+
+enum class MeasureTuneKind {
+    
+    /**
+     * A crossover corner.
+     */
+    CROSSOVER,
+    /**
+     * An output delay.
+     */
+    DELAY,
+    /**
+     * The net polarity of an output's feeding crosspoints.
+     */
+    POLARITY,
+    /**
+     * An output gain (a way's level, cut only).
+     */
+    LEVEL,
+    /**
+     * An output gain cut for the EQ's boost.
+     */
+    HEADROOM,
+    /**
+     * A PEQ band.
+     */
+    EQ;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneKind: FfiConverterRustBuffer<MeasureTuneKind> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureTuneKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureTuneKind) = 4UL
+
+    override fun write(value: MeasureTuneKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where a tune stands.
+ */
+
+enum class MeasureTuneStage {
+    
+    /**
+     * No tune on this core.
+     */
+    IDLE,
+    /**
+     * A proposal waits to be checked or applied.
+     */
+    PROPOSED,
+    /**
+     * The summed runs play.
+     */
+    SUM_CHECK,
+    /**
+     * Applied inside the guard: verify, Keep or Revert.
+     */
+    APPLIED,
+    /**
+     * The verify runs play (inside the guard).
+     */
+    VERIFYING,
+    /**
+     * Verified (inside the guard): Keep or Revert.
+     */
+    VERIFIED,
+    /**
+     * Kept: the A/B compare may be started.
+     */
+    KEPT,
+    /**
+     * Reverted (by the user, the timeout or a failed write).
+     */
+    REVERTED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureTuneStage: FfiConverterRustBuffer<MeasureTuneStage> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureTuneStage.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureTuneStage) = 4UL
+
+    override fun write(value: MeasureTuneStage, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * How a notice is shown.
  */
 
@@ -46425,6 +48038,70 @@ public object FfiConverterOptionalTypeMeasureTiming: FfiConverterRustBuffer<Meas
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeMeasureTuneProposal: FfiConverterRustBuffer<MeasureTuneProposal?> {
+    override fun read(buf: ByteBuffer): MeasureTuneProposal? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureTuneProposal.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureTuneProposal?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureTuneProposal.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureTuneProposal?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureTuneProposal.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeMeasureTuneVerify: FfiConverterRustBuffer<MeasureTuneVerify?> {
+    override fun read(buf: ByteBuffer): MeasureTuneVerify? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureTuneVerify.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureTuneVerify?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureTuneVerify.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureTuneVerify?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureTuneVerify.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypePinFunction: FfiConverterRustBuffer<PinFunction?> {
     override fun read(buf: ByteBuffer): PinFunction? {
         if (buf.get().toInt() == 0) {
@@ -48373,6 +50050,34 @@ public object FfiConverterSequenceTypeMeasureIssue: FfiConverterRustBuffer<List<
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeMeasureLayoutOutput: FfiConverterRustBuffer<List<MeasureLayoutOutput>> {
+    override fun read(buf: ByteBuffer): List<MeasureLayoutOutput> {
+        val len = buf.getInt()
+        return List<MeasureLayoutOutput>(len) {
+            FfiConverterTypeMeasureLayoutOutput.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureLayoutOutput>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureLayoutOutput.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureLayoutOutput>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureLayoutOutput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeMeasureLevel: FfiConverterRustBuffer<List<MeasureLevel>> {
     override fun read(buf: ByteBuffer): List<MeasureLevel> {
         val len = buf.getInt()
@@ -48475,6 +50180,174 @@ public object FfiConverterSequenceTypeMeasureOutput: FfiConverterRustBuffer<List
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeMeasureOutput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureTuneCurves: FfiConverterRustBuffer<List<MeasureTuneCurves>> {
+    override fun read(buf: ByteBuffer): List<MeasureTuneCurves> {
+        val len = buf.getInt()
+        return List<MeasureTuneCurves>(len) {
+            FfiConverterTypeMeasureTuneCurves.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureTuneCurves>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureTuneCurves.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureTuneCurves>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureTuneCurves.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureTuneParam: FfiConverterRustBuffer<List<MeasureTuneParam>> {
+    override fun read(buf: ByteBuffer): List<MeasureTuneParam> {
+        val len = buf.getInt()
+        return List<MeasureTuneParam>(len) {
+            FfiConverterTypeMeasureTuneParam.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureTuneParam>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureTuneParam.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureTuneParam>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureTuneParam.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureTuneTransition: FfiConverterRustBuffer<List<MeasureTuneTransition>> {
+    override fun read(buf: ByteBuffer): List<MeasureTuneTransition> {
+        val len = buf.getInt()
+        return List<MeasureTuneTransition>(len) {
+            FfiConverterTypeMeasureTuneTransition.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureTuneTransition>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureTuneTransition.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureTuneTransition>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureTuneTransition.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureTuneVerifyOutput: FfiConverterRustBuffer<List<MeasureTuneVerifyOutput>> {
+    override fun read(buf: ByteBuffer): List<MeasureTuneVerifyOutput> {
+        val len = buf.getInt()
+        return List<MeasureTuneVerifyOutput>(len) {
+            FfiConverterTypeMeasureTuneVerifyOutput.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureTuneVerifyOutput>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureTuneVerifyOutput.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureTuneVerifyOutput>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureTuneVerifyOutput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureTuneVerifySum: FfiConverterRustBuffer<List<MeasureTuneVerifySum>> {
+    override fun read(buf: ByteBuffer): List<MeasureTuneVerifySum> {
+        val len = buf.getInt()
+        return List<MeasureTuneVerifySum>(len) {
+            FfiConverterTypeMeasureTuneVerifySum.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureTuneVerifySum>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureTuneVerifySum.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureTuneVerifySum>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureTuneVerifySum.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureTuneWrite: FfiConverterRustBuffer<List<MeasureTuneWrite>> {
+    override fun read(buf: ByteBuffer): List<MeasureTuneWrite> {
+        val len = buf.getInt()
+        return List<MeasureTuneWrite>(len) {
+            FfiConverterTypeMeasureTuneWrite.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureTuneWrite>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureTuneWrite.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureTuneWrite>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureTuneWrite.write(it, buf)
         }
     }
 }

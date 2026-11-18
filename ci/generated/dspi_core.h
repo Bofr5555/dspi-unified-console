@@ -7349,6 +7349,84 @@ uint32_t dspi_measure_sim_set(struct FfiCore *core,
 uint32_t dspi_measure_sim_info(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * The layout the device's state suggests: the layout, or a failure.
+ */
+uint32_t dspi_measure_layout_proposal(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Propose a tune of `layout_json` from `measurement` (a filed
+ * measurement's id or a document's text) with `options_json` (null or ""
+ * for the defaults): the proposal, or a failure (`invalid` naming why).
+ */
+uint32_t dspi_measure_tune_propose(struct FfiCore *core,
+                                   const char *measurement,
+                                   const char *layout_json,
+                                   const char *options_json,
+                                   char *buf,
+                                   uint32_t len);
+
+/**
+ * The current proposal: `{ok, value: null}` with none.
+ */
+uint32_t dspi_measure_tune_proposal(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Start the summed check of proposal `proposal_id`: the tune's state, or a
+ * failure (`invalid`, `read_only`, `denied`, `locked`).
+ */
+uint32_t dspi_measure_tune_sum_check(struct FfiCore *core,
+                                     uint32_t proposal_id,
+                                     char *buf,
+                                     uint32_t len);
+
+/**
+ * Drive the tune (about every 50 ms, off the UI thread): its state (never a
+ * failure).
+ */
+uint32_t dspi_measure_tune_tick(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The tune's state, without I/O (safe from the measure callback).
+ */
+uint32_t dspi_measure_tune_state(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Apply proposal `proposal_id` guarded for `guard_s` seconds (0: 300): the
+ * guard, or a failure (`invalid` naming the blocker, `read_only`,
+ * `denied`, the setters' refusals).
+ */
+uint32_t dspi_measure_tune_apply(struct FfiCore *core,
+                                 uint32_t proposal_id,
+                                 uint32_t guard_s,
+                                 char *buf,
+                                 uint32_t len);
+
+/**
+ * Verify the applied tune inside its guard: the tune's state, or a failure.
+ */
+uint32_t dspi_measure_tune_verify(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Keep the applied tune: Keep's reply, or a failure.
+ */
+uint32_t dspi_measure_tune_keep(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Revert the applied tune: the guard, or a failure.
+ */
+uint32_t dspi_measure_tune_revert(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Start the A/B compare of the kept tune: the compare, or a failure.
+ */
+uint32_t dspi_measure_tune_ab(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Stop the tune's runs (and forget it unless applied): its state.
+ */
+uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

@@ -29,6 +29,7 @@
 //! | [`wav`] | a bounded WAV reader and writer (captures, replay golden files) | P5SIM |
 //! | [`doc`] | the `measurement`, `mic` and `target` documents | P5MDOC |
 //! | [`hearing`] | does the microphone hear a ramp step: the sweep's whitened matched filter, pink noise's band levels | P5RAMPFIX |
+//! | [`system`] | several units on one time base: segments, domains, time pins (PLAN-AT) | PLANAT, ATSYS |
 #![warn(
     missing_docs,
     clippy::unwrap_used,
@@ -65,6 +66,8 @@ pub mod wav;
 pub mod doc;
 // -- WP P5RAMPFIX --
 pub mod hearing;
+// -- WP PLANAT -- several units on one time base (PLAN-AT; ATSYS, ATSIM fill it)
+pub mod system;
 
 pub use types::*;
 

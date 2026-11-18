@@ -468,11 +468,15 @@ void captureSection(SmokeDriver &d) {
 
     // The spike end to end, in this process: the demo DSPi, the microphone a
     // WAV of room noise through the capture's seam at the pace of a real one
-    // (10 ms pushes every 10 ms). The noise holds no sweep, so the run ends
-    // without timing; what is shown is the whole path: preflight, a start at
-    // the start level only, every block pushed with its frame index, the
-    // ramp steps and the run played by the generator at -60 dBFS, the
-    // analysis, a verdict, the generator idle at the end.
+    // (10 ms pushes every 10 ms). The noise holds no sweep, and since WP
+    // P5RAMPFIX a run is never started at a level the microphone does not
+    // hear: the session stops after the start level's one step
+    // (measure.start_level_quiet). What is shown is the path to there:
+    // preflight, a start at the start level only, every block pushed with its
+    // frame index, the one ramp step played by the generator at -60 dBFS, a
+    // verdict, the generator idle at the end. (The run and its analysis on a
+    // microphone that answers the generator are the section p5demo-sim's;
+    // review P5-C2.)
     const int rateN = 48000;
     std::vector<float> noise(static_cast<size_t>(rateN) * 40);
     quint32 seed = 0x2545F491u;
@@ -522,39 +526,41 @@ void captureSection(SmokeDriver &d) {
             full.value(QStringLiteral("preflight")).toObject().value(QStringLiteral("clear")).toBool() &&
                 full.value(QStringLiteral("setup")).toObject().value(QStringLiteral("startLevelOnly")).toBool() &&
                 full.value(QStringLiteral("setup")).toObject().value(QStringLiteral("captureRateHz")).toInt() == rateN);
-    d.check(QStringLiteral("p5b: the session ran its stages on the pushed capture: pre-roll, ramp, run, analysis"),
-            phaseSeen(full, "preRoll") && phaseSeen(full, "ramp") && phaseSeen(full, "run") &&
-                phaseSeen(full, "analysing"));
-    d.check(QStringLiteral("p5b: the generator played a step per output and the run, never above -60 dBFS"),
-            stFull.value(QStringLiteral("generatorStarts")).toInt() == 3 &&
+    d.check(QStringLiteral("p5b: the session ran its stages on the pushed capture: pre-roll, the ramp's step, and no run of what was not heard"),
+            phaseSeen(full, "preRoll") && phaseSeen(full, "ramp") && !phaseSeen(full, "run") &&
+                !phaseSeen(full, "analysing"));
+    d.check(QStringLiteral("p5b: the generator played the start level's one step, never above -60 dBFS"),
+            stFull.value(QStringLiteral("generatorStarts")).toInt() == 1 &&
                 full.value(QStringLiteral("maxLevelDb")).toDouble() == -60.0);
     d.check(QStringLiteral("p5b: every block reached the session in order (no frame fault, no refusal)"),
             stFull.value(QStringLiteral("frameFaults")).toInt() == 0 &&
                 full.value(QStringLiteral("pushRefusals")).toInt() == 0 && full.value(QStringLiteral("gaps")).toArray().isEmpty() &&
-                stFull.value(QStringLiteral("frames")).toDouble() > 5.0 * rateN);
-    // Noise holds no sweep: the session says so (a simulated microphone that
-    // answers the generator is P5DEMO's; the timing fields with one are shown
-    // by the core's own test wp_p5b_device_a_start_level_only_run_...)
-    d.check(QStringLiteral("p5b: the run ends with a verdict in the report, the generator idle"),
-            (phaseFull == QLatin1String("failed") || phaseFull == QLatin1String("aborted")) &&
-                (keyFull == QLatin1String("measure.no_signal") || keyFull == QLatin1String("measure.abort.cycle_identity")) &&
+                stFull.value(QStringLiteral("frames")).toDouble() > 2.0 * rateN);
+    // Noise holds no sweep: the session says so at the start level (a
+    // simulated microphone that answers the generator is P5DEMO's; the timing
+    // fields with one are shown by the core's own test
+    // wp_p5b_device_a_start_level_only_run_...)
+    d.check(QStringLiteral("p5b: the session ends with a verdict in the report (not heard at the start level), the generator idle"),
+            phaseFull == QLatin1String("failed") && keyFull == QLatin1String("measure.start_level_quiet") &&
                 full.value(QStringLiteral("verdict")).toString().startsWith(QLatin1String("no timing")) &&
                 full.value(QStringLiteral("generatorAfter")).toObject().value(QStringLiteral("state")).toInt(-1) == 0 &&
                 full.value(QStringLiteral("exitCode")).toInt() == 1);
     if (phaseFull.isEmpty() || keyFull.isEmpty())
         qWarning("p5b: spike report: %s", QJsonDocument(full).toJson(QJsonDocument::Compact).constData());
 
-    // Stop while the run plays (the time limit, as Ctrl+C): one
-    // dspi_measure_stop; the generator was stopped by the host and is idle.
-    const QJsonObject cut = wavOk ? spikeRun(dir + QStringLiteral("/p5b-spike-stop.json"), 7) : QJsonObject();
+    // Stop while the session is at its ramp step (the time limit, as Ctrl+C;
+    // the step ends about 2.6 s in): one dspi_measure_stop; the generator is
+    // idle. (A stop while a run plays is the core's own test: this capture
+    // never gets to a run.)
+    const QJsonObject cut = wavOk ? spikeRun(dir + QStringLiteral("/p5b-spike-stop.json"), 2) : QJsonObject();
     const QJsonObject stCut = cut.value(QStringLiteral("state")).toObject();
     const QJsonObject genCut = cut.value(QStringLiteral("generatorAfter")).toObject();
-    d.check(QStringLiteral("p5b: a stop while the run plays: stopped, the generator idle by the host's stop"),
-            cut.value(QStringLiteral("stoppedBy")).toString() == QLatin1String("time-limit") && phaseSeen(cut, "run") &&
-                stCut.value(QStringLiteral("phase")).toString() == QLatin1String("aborted") &&
+    d.check(QStringLiteral("p5b: a stop during the ramp's step: stopped, nothing run, the generator idle"),
+            cut.value(QStringLiteral("stoppedBy")).toString() == QLatin1String("time-limit") && phaseSeen(cut, "ramp") &&
+                !phaseSeen(cut, "run") && stCut.value(QStringLiteral("phase")).toString() == QLatin1String("aborted") &&
                 stCut.value(QStringLiteral("issue")).toObject().value(QStringLiteral("key")).toString() ==
                     QLatin1String("measure.stopped") &&
-                genCut.value(QStringLiteral("state")).toInt(-1) == 0 && genCut.value(QStringLiteral("stopReason")).toInt() == 1);
+                genCut.value(QStringLiteral("state")).toInt(-1) == 0);
     if (stCut.isEmpty()) qWarning("p5b: stop report: %s", QJsonDocument(cut).toJson(QJsonDocument::Compact).constData());
 }
 

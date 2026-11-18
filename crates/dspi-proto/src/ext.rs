@@ -13,6 +13,9 @@ pub use diag::*;
 pub mod alink;
 // -- WP AUSB1 -- the alink's USB-direct block (2.9) and the USB time base
 pub mod alink_usb;
+// -- WP PLANAT -- the time-base contract: S/PDIF time base, EXT_TIME_BASE,
+// EXT_SIGGEN_TIMELINE, ops 9 and 10, event 0xE4 (constants only; PLAN-AT.md)
+pub mod timebase;
 
 /// A user-supplied value that does not parse (a pair map, a voltage).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

@@ -694,6 +694,10 @@ impl State {
     /// a bad bus form or bad arguments; late (run now) when its sample has
     /// passed. `CANCEL_ALL` cancels the queue in any state.
     fn queue_usb_op(&mut self, r: ApplyRequest, tb: TimeBase) -> bool {
+        // -- WP PLANAT -- ops 9 and 10 are refused until ATFAKE models them.
+        if matches!(r.op, ApplyOp::SiggenStart | ApplyOp::SiggenStop) {
+            return false;
+        }
         if r.op == ApplyOp::CancelAll {
             for q in std::mem::take(&mut self.alink_usb.queue) {
                 self.usb_op_done(q, ApplyResult::Cancelled);

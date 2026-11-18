@@ -337,6 +337,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::measure_sim::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP P5TUNE -- the auto-tune (src/measure_tune.rs)
+    if let Some(r) = crate::measure_tune::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {
