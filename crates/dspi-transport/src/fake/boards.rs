@@ -14,9 +14,12 @@
 //!   fake counts `REQ_ENTER_BOOTLOADER` as a **violation** (no component may send
 //!   it to a board without BOOTSEL, PLAN-PG R7) and panics unless
 //!   [`FakeOptions::allow_violation`]; allowed, it answers as the firmware does
-//!   and goes away to the foreign loader ([`FakeRemote::rebooted_to`]). A
-//!   violation swallowed by a worker thread still fails the test when the device
-//!   is dropped.
+//!   and goes away to the foreign loader ([`FakeRemote::rebooted_to`]). It is
+//!   PGFAKE1's violation (`State::violation`): a violation swallowed by a worker
+//!   thread still fails the test when the device is dropped. The same holds for
+//!   `SYS.ENTER_BOOTLOADER` on a Zero given a paged generation (the paged front
+//!   runs it as 0xF0); there `SYS.PLATFORM` stays the registry's 7 bytes, so a
+//!   paged Zero is known by its product string (PGZERO), not by byte 7.
 //! - **The alink sender** ([`FakeBoard::Sender`], `firmware/DSPi-Sender` on
 //!   `bofr-main` `8385455`, `sender_vendor.c`): its vendor subset only:
 //!   `REQ_EXTENSION` with the sender's alink block (`EXT_LIST`,
@@ -62,7 +65,7 @@ use dspi_proto::paged::{
     CmdId, EXT_PAGE, EXT_TUNNEL, PROTOCOL_MAGIC, PROTOCOL_MAJOR, PageCommands, PagedDir, cmds,
 };
 
-use super::{AlinkSetup, Capture, FakeDevice, FakeOptions, FakeRemote, State};
+use crate::fake::{AlinkSetup, Capture, FakeDevice, FakeOptions, FakeRemote, State};
 use crate::{Result, TransportError};
 
 /// The DSPi VID:PID every board here shares.
@@ -136,9 +139,8 @@ pub enum RebootTarget {
 
 /// A board's state on the fake.
 #[derive(Debug, Default)]
-pub(super) struct BoardState {
+pub(in crate::fake) struct BoardState {
     rebooted: Option<RebootTarget>,
-    violations: u32,
     /// The dual-stack sender's `SYS.LAST_RESULT` record.
     last_result: [u8; 8],
 }
@@ -235,7 +237,7 @@ impl FakeDevice {
 
     /// A paged IN request on a board with its own paged stack (the dual-stack
     /// sender); `None` for every other fake, whose generation decides.
-    pub(super) fn board_paged_in(
+    pub(in crate::fake) fn board_paged_in(
         &self,
         id: CmdId,
         value: u16,
@@ -251,7 +253,7 @@ impl FakeDevice {
         s.paged_requests = s.paged_requests.saturating_add(1);
         let r = s.sender_paged_get(id, value, max_len);
         if id != cmds::SYS_LAST_RESULT {
-            s.record(id, PagedDir::Get, value, r.as_ref().err().copied());
+            s.board_record(id, PagedDir::Get, value, r.as_ref().err().copied());
         }
         Some(match r {
             Ok(mut reply) => {
@@ -263,7 +265,7 @@ impl FakeDevice {
     }
 
     /// A paged OUT request, as [`FakeDevice::board_paged_in`].
-    pub(super) fn board_paged_out(&self, id: CmdId, value: u16, data: &[u8]) -> Option<Result<()>> {
+    pub(in crate::fake) fn board_paged_out(&self, id: CmdId, value: u16, data: &[u8]) -> Option<Result<()>> {
         let mut s = self.shared.lock();
         if s.options.board != (FakeBoard::Sender { dual_stack: true }) {
             return None;
@@ -273,23 +275,8 @@ impl FakeDevice {
         }
         s.paged_requests = s.paged_requests.saturating_add(1);
         let r = s.sender_paged_set(id, value, data);
-        s.record(id, PagedDir::Set, value, r.err());
+        s.board_record(id, PagedDir::Set, value, r.err());
         Some(r.map_err(|_| TransportError::Stalled { opcode: id.cmd() }))
-    }
-
-    /// On drop: a board violation that a worker thread swallowed still fails the
-    /// test (PLAN-PG R9a).
-    pub(super) fn board_check_on_drop(&self) {
-        let (violations, allowed) = {
-            let s = self.shared.lock();
-            (s.board.violations, s.options.allow_violation)
-        };
-        if violations > 0 && !allowed && !std::thread::panicking() {
-            panic!(
-                "a FakeDevice was dropped after {violations} board violation(s) (a bootloader \
-                 entry on a board without BOOTSEL, PLAN-PG section 1.9)"
-            );
-        }
     }
 }
 
@@ -298,17 +285,12 @@ impl FakeRemote {
     pub fn rebooted_to(&self) -> Option<RebootTarget> {
         self.shared.lock().board.rebooted
     }
-
-    /// How many board violations the device saw (allowed or not).
-    pub fn board_violations(&self) -> u32 {
-        self.shared.lock().board.violations
-    }
 }
 
 impl State {
     /// A page-0 IN request on a board other than a Pico: `Some` answers or
     /// refuses it, `None` lets the fake answer as it always does.
-    pub(super) fn board_get(&mut self, opcode: u8, value: u16, want: usize) -> Option<Result<Vec<u8>>> {
+    pub(in crate::fake) fn board_get(&mut self, opcode: u8, value: u16, want: usize) -> Option<Result<Vec<u8>>> {
         let stall = Some(Err(TransportError::Stalled { opcode }));
         match self.options.board {
             FakeBoard::Pico => None,
@@ -341,7 +323,7 @@ impl State {
     }
 
     /// A page-0 OUT request, as [`State::board_get`].
-    pub(super) fn board_set(&mut self, opcode: u8, value: u16) -> Option<Result<()>> {
+    pub(in crate::fake) fn board_set(&mut self, opcode: u8, value: u16) -> Option<Result<()>> {
         match self.options.board {
             FakeBoard::Pico | FakeBoard::Zero => None,
             // Only the alink block's OUT ids reach a handler; anything else
@@ -363,16 +345,14 @@ impl State {
         let board = self.options.board;
         let target = board.bootloader();
         if !board.board().has_bootsel() {
-            self.board.violations = self.board.violations.saturating_add(1);
-            if !self.options.allow_violation {
-                panic!(
-                    "a bootloader entry reached {} (board id {}), which has no BOOTSEL and would \
-                     reboot to {target:?}: no component may send one to it (PLAN-PG section \
-                     1.9, R7); set FakeOptions::allow_violation to let it through",
-                    board.product(),
-                    board.board().id(),
-                );
-            }
+            // PGFAKE1's rule: counted, a panic unless allowed, and a poisoned
+            // fake fails in Drop.
+            self.violation(format!(
+                "a bootloader entry reached {} (board id {}), which has no BOOTSEL and would \
+                 reboot to {target:?}: no component may send one to it (PLAN-PG section 1.9, R7)",
+                board.product(),
+                board.board().id(),
+            ));
         }
         self.board.rebooted = Some(target);
         self.gone = true;
@@ -391,7 +371,7 @@ impl State {
 
     /// `SYS.LAST_RESULT`'s record (guide 5.2): id, direction (1 GET, 0 SET),
     /// result, `wValue`, two reserved bytes.
-    fn record(&mut self, id: CmdId, dir: PagedDir, value: u16, refused: Option<u8>) {
+    fn board_record(&mut self, id: CmdId, dir: PagedDir, value: u16, refused: Option<u8>) {
         let [i0, i1] = id.0.to_le_bytes();
         let [v0, v1] = value.to_le_bytes();
         let d = u8::from(dir == PagedDir::Get);
@@ -578,7 +558,7 @@ mod tests_wp_pgfake2 {
             remote.rebooted_to(),
             Some(RebootTarget::ForeignLoader { vid: 0xCAFE, pid: 0x5A4C })
         );
-        assert_eq!(remote.board_violations(), 1);
+        assert_eq!(remote.violations(), 1);
         assert!(matches!(
             d.control_in(op::REQ_GET_PLATFORM, 0, 7),
             Err(TransportError::Disconnected)
@@ -662,7 +642,7 @@ mod tests_wp_pgfake2 {
         let remote = d.remote();
         assert_eq!(d.control_in(op::REQ_ENTER_BOOTLOADER, 0, 1).unwrap(), [1]);
         assert_eq!(remote.rebooted_to(), Some(RebootTarget::Bootsel));
-        assert_eq!(remote.board_violations(), 0);
+        assert_eq!(remote.violations(), 0);
         assert_eq!(FakeBoard::Sender { dual_stack: false }.product(), "DSPi Audio Link Sender");
         assert_eq!(FakeBoard::Sender { dual_stack: true }.bcd_device(), 0x0280);
     }

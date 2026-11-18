@@ -158,12 +158,12 @@ pub use document::DocumentSeed;
 mod pins;
 // -- WP P5SES -- the measurement session's test hooks
 mod measure_hooks;
-// -- WP PGFAKE2 -- the custom rows' paged commands; the Zero and the sender.
-// (PLAN-PG puts these two `mod` lines in PGFAKE1's `fake/paged.rs`; they live
-// here until that file exists.)
-mod boards;
-mod paged_custom;
-pub use boards::{
+// -- WP PGFAKE1 -- the firmware generations and the paged front
+mod generation;
+mod paged;
+pub use generation::FakeGeneration;
+// -- WP PGFAKE2 -- `mod boards; mod paged_custom;` are in fake/paged.rs
+pub use paged::boards::{
     DSPI_PID, DSPI_VID, FakeBoard, RebootTarget, ZERO_LOADER_PID, ZERO_LOADER_VID,
 };
 
@@ -285,6 +285,12 @@ pub struct FakeOptions {
     /// would run a different command, so a test that sends one fails
     /// (PLAN-PG section 4). On, it runs as the firmware would.
     pub allow_violation: bool,
+    // -- WP PGFAKE1 --
+    /// The firmware generation (`fake/generation.rs`). `None`: the 1.1.6
+    /// fake as configured by [`FakeOptions::extensions`] and
+    /// [`FakeOptions::page_guard`]; `Some` sets both, and a paged generation
+    /// answers through the paged front (`fake/paged.rs`).
+    pub generation: Option<FakeGeneration>,
     // -- WP PGFAKE2 --
     /// The board (`fake/boards.rs`): a Pico (the default), the DSPi-Zero (board
     /// id 1 in an 8-byte platform reply, no BOOTSEL: a bootloader entry is a
@@ -351,7 +357,11 @@ impl FakeDevice {
                 address: 0,
             },
             shared: Arc::new(Shared {
-                state: Mutex::new(State::new(capture, options)),
+                state: Mutex::new({
+                    let mut s = State::new(capture, options);
+                    generation::apply(&mut s); // -- WP PGFAKE1 --
+                    s
+                }),
                 wake: Condvar::new(),
             }),
         }
@@ -477,8 +487,8 @@ impl Drop for FakeDevice {
     fn drop(&mut self) {
         self.shared.lock().gone = true;
         self.shared.wake.notify_all();
-        // -- WP PGFAKE2 --
-        self.board_check_on_drop();
+        // -- WP PGFAKE1 -- a device poisoned by a violation fails here too
+        self.fail_if_poisoned();
     }
 }
 
@@ -635,22 +645,22 @@ impl FakeDevice {
     /// [`FakeOptions::page_guard`]. `Ok` means the same-number opcode runs,
     /// as 1.1.6 firmware ignores the page.
     fn page_rule(&self, id: crate::CmdId, is_in: bool) -> Result<()> {
-        let (guard, allowed) = {
-            let mut s = self.shared.lock();
-            s.paged_requests = s.paged_requests.saturating_add(1);
-            (s.options.page_guard, s.options.allow_violation)
-        };
+        let mut s = self.shared.lock();
+        s.paged_requests = s.paged_requests.saturating_add(1);
+        let guard = s.options.page_guard;
         let probe = is_in && id == dspi_proto::paged::SYS_PROTOCOL_INFO;
-        if !probe && !allowed {
-            panic!(
+        if !probe {
+            // -- WP PGFAKE1 -- counted, and a panic unless allowed
+            s.violation(format!(
                 "a paged request 0x{:04X} ({}) reached a 1.1.6-generation device, which runs \
                  opcode 0x{:02X} for it: only the probe may be sent before it answers paged \
-                 (PLAN-PG section 1.1); set FakeOptions::allow_violation to let it through",
+                 (PLAN-PG section 1.1)",
                 id.0,
                 if is_in { "GET" } else { "SET" },
                 id.cmd()
-            );
+            ));
         }
+        drop(s);
         if guard {
             return Err(TransportError::Stalled { opcode: id.cmd() });
         }
@@ -787,6 +797,7 @@ impl Transport for FakeDevice {
     fn control_in(&mut self, opcode: u8, value: u16, len: u16) -> Result<Vec<u8>> {
         let want = usize::from(len);
         self.check_size(opcode, want)?;
+        self.pg_page0(opcode, value, true)?; // -- WP PGFAKE1 --
         let mut reply = self.run(|s| s.get(opcode, value, want))?;
         if reply.len() < want {
             return Err(TransportError::ShortRead {
@@ -801,6 +812,7 @@ impl Transport for FakeDevice {
 
     fn control_in_upto(&mut self, opcode: u8, value: u16, max_len: u16) -> Result<Vec<u8>> {
         self.check_size(opcode, usize::from(max_len))?;
+        self.pg_page0(opcode, value, true)?; // -- WP PGFAKE1 --
         let mut reply = self.run(|s| s.get(opcode, value, usize::from(max_len)))?;
         reply.truncate(usize::from(max_len));
         Ok(reply)
@@ -808,6 +820,7 @@ impl Transport for FakeDevice {
 
     fn control_out(&mut self, opcode: u8, value: u16, data: &[u8]) -> Result<()> {
         self.check_size(opcode, data.len())?;
+        self.pg_page0(opcode, value, false)?; // -- WP PGFAKE1 --
         self.run(|s| s.set(opcode, value, data))
     }
 
@@ -846,6 +859,10 @@ impl Transport for FakeDevice {
 
     fn control_in_paged(&mut self, id: crate::CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
         self.check_size(id.cmd(), usize::from(max_len))?;
+        // -- WP PGFAKE1 -- a paged generation answers through its paged front
+        if let Some(r) = self.pg_in(id, value, max_len) {
+            return r;
+        }
         // -- WP PGFAKE2 -- a board with its own paged stack (the dual-stack sender)
         if let Some(r) = self.board_paged_in(id, value, max_len) {
             return r;
@@ -858,6 +875,10 @@ impl Transport for FakeDevice {
 
     fn control_out_paged(&mut self, id: crate::CmdId, value: u16, data: &[u8]) -> Result<()> {
         self.check_size(id.cmd(), data.len())?;
+        // -- WP PGFAKE1 --
+        if let Some(r) = self.pg_out(id, value, data) {
+            return r;
+        }
         // -- WP PGFAKE2 --
         if let Some(r) = self.board_paged_out(id, value, data) {
             return r;
@@ -1324,13 +1345,16 @@ struct State {
     // -- WP PGWIRE --
     /// Requests that named a page ([`FakeRemote::paged_requests`]).
     paged_requests: u32,
+    // -- WP PGFAKE1 --
+    /// The paged front's state and the violation counters (`fake/paged.rs`).
+    pg: paged::PagedState,
     queue: VecDeque<Vec<u8>>,
     seq: u8,
     started: Instant,
     /// Unplugged or closed.
     gone: bool,
     // -- WP PGFAKE2 --
-    board: boards::BoardState,
+    board: paged::boards::BoardState,
 }
 
 impl State {
@@ -1393,12 +1417,13 @@ impl State {
             stalled: Vec::new(),
             ignored: Vec::new(),
             notify_failures: 0,
-            paged_requests: 0, // -- WP PGWIRE --
+            paged_requests: 0,                // -- WP PGWIRE --
+            pg: paged::PagedState::default(), // -- WP PGFAKE1 --
             queue: VecDeque::new(),
             seq: 0,
             started: Instant::now(),
             gone: false,
-            board: boards::BoardState::default(), // -- WP PGFAKE2 --
+            board: paged::boards::BoardState::default(), // -- WP PGFAKE2 --
         };
         // A silent meter block of the right size, with two live inputs.
         let mut status = vec![0; s.status_len()];

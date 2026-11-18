@@ -53,15 +53,15 @@ use dspi_proto::paged::legacy::{
 use dspi_proto::paged::registry::{self, AddrKind};
 use dspi_proto::paged::{CmdId, PagedDir, cmds};
 
-use super::{B_BYPASS, B_QP, BAND_LEN, C_GAIN, CROSSPOINT_LEN, F32, State, field_of};
+use crate::fake::{B_BYPASS, B_QP, BAND_LEN, C_GAIN, CROSSPOINT_LEN, F32, State, field_of};
 
 /// A `VC_ERR_*` result code (migration guide 5.3).
-pub(super) type Vc = u8;
+pub(in crate::fake) type Vc = u8;
 
 /// Every paged command a `custom` row of `legacy_map.json` uses, with the
 /// direction it uses it in (the rows' `uses` lists, deduplicated). A test holds
 /// it equal to the generated table.
-pub(super) const CUSTOM_IDS: &[(CmdId, PagedDir)] = &[
+pub(in crate::fake) const CUSTOM_IDS: &[(CmdId, PagedDir)] = &[
     (cmds::CS_DISPLAY_CAPS, PagedDir::Get),
     (cmds::CS_DISPLAY_CONFIG, PagedDir::Get),
     (cmds::FILTER_BAND, PagedDir::Get),
@@ -89,7 +89,7 @@ pub(super) const CUSTOM_IDS: &[(CmdId, PagedDir)] = &[
 ];
 
 /// Whether `id` in `dir` is answered here.
-pub(super) fn is_custom(id: CmdId, dir: PagedDir) -> bool {
+pub(in crate::fake) fn is_custom(id: CmdId, dir: PagedDir) -> bool {
     CUSTOM_IDS.contains(&(id, dir))
 }
 
@@ -153,7 +153,7 @@ impl State {
     /// A paged GET of a command a custom row uses: `None` for any other command;
     /// `Some(Err(code))` refuses it. The reply is whole: the caller truncates to
     /// `wLength`.
-    pub(super) fn custom_paged_get(
+    pub(in crate::fake) fn custom_paged_get(
         &mut self,
         id: CmdId,
         value: u16,
@@ -295,7 +295,7 @@ impl State {
 
     /// A paged SET of a command a custom row uses: `None` for any other command;
     /// `Some(Err(code))` refuses it and changes nothing.
-    pub(super) fn custom_paged_set(
+    pub(in crate::fake) fn custom_paged_set(
         &mut self,
         id: CmdId,
         value: u16,
