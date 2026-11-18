@@ -37,9 +37,12 @@ use crate::{
 
 // -- WP PGWIRE --
 /// `STORE.ALL_PARAMS`: the bulk image on paged firmware (PLAN-PG section 1.2).
-const PAGED_ALL_PARAMS: u16 = 0x0240;
+/// From the vendored registry (review/pga: generated, not transcribed).
+const PAGED_ALL_PARAMS: u16 = dspi_proto::paged::cmds::STORE_ALL_PARAMS.0;
 /// `STORE.ALL_PARAMS_CHUNK`.
-const PAGED_ALL_PARAMS_CHUNK: u16 = 0x0241;
+const PAGED_ALL_PARAMS_CHUNK: u16 = dspi_proto::paged::cmds::STORE_ALL_PARAMS_CHUNK.0;
+// The migration guide's ids (section 6.5): a re-vendoring that moves them fails the build.
+const _: () = assert!(PAGED_ALL_PARAMS == 0x0240 && PAGED_ALL_PARAMS_CHUNK == 0x0241);
 
 /// Why a [`MidiPipe`] could not send.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
