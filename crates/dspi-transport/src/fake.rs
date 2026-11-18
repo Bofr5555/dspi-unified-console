@@ -158,6 +158,14 @@ pub use document::DocumentSeed;
 mod pins;
 // -- WP P5SES -- the measurement session's test hooks
 mod measure_hooks;
+// -- WP PGFAKE2 -- the custom rows' paged commands; the Zero and the sender.
+// (PLAN-PG puts these two `mod` lines in PGFAKE1's `fake/paged.rs`; they live
+// here until that file exists.)
+mod boards;
+mod paged_custom;
+pub use boards::{
+    DSPI_PID, DSPI_VID, FakeBoard, RebootTarget, ZERO_LOADER_PID, ZERO_LOADER_VID,
+};
 
 use crate::{
     DeviceDescriptor, NotificationSource, Result, Transport, TransportCaps, TransportError,
@@ -277,6 +285,11 @@ pub struct FakeOptions {
     /// would run a different command, so a test that sends one fails
     /// (PLAN-PG section 4). On, it runs as the firmware would.
     pub allow_violation: bool,
+    // -- WP PGFAKE2 --
+    /// The board (`fake/boards.rs`): a Pico (the default), the DSPi-Zero (board
+    /// id 1 in an 8-byte platform reply, no BOOTSEL: a bootloader entry is a
+    /// violation) or the alink sender (its vendor subset; guarded, or dual-stack).
+    pub board: FakeBoard,
 }
 
 /// `wLength` is 16 bits.
@@ -464,6 +477,8 @@ impl Drop for FakeDevice {
     fn drop(&mut self) {
         self.shared.lock().gone = true;
         self.shared.wake.notify_all();
+        // -- WP PGFAKE2 --
+        self.board_check_on_drop();
     }
 }
 
@@ -831,6 +846,10 @@ impl Transport for FakeDevice {
 
     fn control_in_paged(&mut self, id: crate::CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
         self.check_size(id.cmd(), usize::from(max_len))?;
+        // -- WP PGFAKE2 -- a board with its own paged stack (the dual-stack sender)
+        if let Some(r) = self.board_paged_in(id, value, max_len) {
+            return r;
+        }
         self.page_rule(id, true)?;
         let mut reply = self.run(|s| s.get(id.cmd(), value, usize::from(max_len)))?;
         reply.truncate(usize::from(max_len));
@@ -839,6 +858,10 @@ impl Transport for FakeDevice {
 
     fn control_out_paged(&mut self, id: crate::CmdId, value: u16, data: &[u8]) -> Result<()> {
         self.check_size(id.cmd(), data.len())?;
+        // -- WP PGFAKE2 --
+        if let Some(r) = self.board_paged_out(id, value, data) {
+            return r;
+        }
         self.page_rule(id, false)?;
         self.run(|s| s.set(id.cmd(), value, data))
     }
@@ -1306,6 +1329,8 @@ struct State {
     started: Instant,
     /// Unplugged or closed.
     gone: bool,
+    // -- WP PGFAKE2 --
+    board: boards::BoardState,
 }
 
 impl State {
@@ -1373,6 +1398,7 @@ impl State {
             seq: 0,
             started: Instant::now(),
             gone: false,
+            board: boards::BoardState::default(), // -- WP PGFAKE2 --
         };
         // A silent meter block of the right size, with two live inputs.
         let mut status = vec![0; s.status_len()];
@@ -1622,6 +1648,10 @@ impl State {
         // -- WP UPW2 --
         if self.stalled.contains(&opcode) {
             return Err(TransportError::Stalled { opcode });
+        }
+        // -- WP PGFAKE2 --
+        if let Some(r) = self.board_get(opcode, value, want) {
+            return r;
         }
         if opcode != op::REQ_GET_ALL_PARAMS_CHUNK {
             self.chunked = Chunked::None;
@@ -2070,6 +2100,10 @@ impl State {
         }
         if self.ignored.contains(&opcode) {
             return Ok(());
+        }
+        // -- WP PGFAKE2 --
+        if let Some(r) = self.board_set(opcode, value) {
+            return r;
         }
         if opcode != op::REQ_SET_ALL_PARAMS_CHUNK {
             self.chunked = Chunked::None;

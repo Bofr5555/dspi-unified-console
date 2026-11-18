@@ -2435,7 +2435,10 @@ impl std::fmt::Display for FirmwareVersion {
 ///
 /// `[0]` platform, `[1]` major, `[2]` legacy `(minor << 4) | patch`, `[3]`
 /// output count, `[4]` minor, `[5]` patch, `[6]` beta ordinal. Older firmware
-/// answers 4 or 6 bytes. The decode follows the host rule of
+/// answers 4 or 6 bytes. WP PGFAKE2 (PLAN-PG R7d): `[7]` is the board id, which
+/// a DSPi-Zero answers when asked for 8 or more bytes (upstream DSPi-Zero
+/// `main_z4.c:898-913`, board 1 = Raspberry Pi Zero 2 W); absent, it is board 0,
+/// a Pico. Asked for [`PlatformInfo::FULL_LEN`]. The decode follows the host rule of
 /// firmware_versioning_spec.md:109: minor and patch from bytes 4 and 5 when
 /// at least 6 arrive, else from the nibbles, never mixing the two; beta from
 /// byte 6 when 7 arrive. A short reply that claims 1.1.6 or later is an early
@@ -2445,8 +2448,57 @@ pub struct PlatformInfo {
     pub platform_id: u8,
     pub num_output_channels: u8,
     pub version: FirmwareVersion,
-    /// How many bytes the device answered: 4, 6 or 7.
+    /// How many bytes the device answered: 4, 6, 7 or 8.
     pub reply_len: usize,
+    // -- WP PGFAKE2 --
+    /// Byte 7, the board id: 0 when absent (every Pico firmware so far answers 4
+    /// to 7 bytes). See [`PlatformInfo::board`] and [`PlatformInfo::has_bootsel`].
+    pub board_id: u8,
+}
+
+// -- WP PGFAKE2 --
+/// The board a device runs on, from [`PlatformInfo::board_id`] (PLAN-PG section
+/// 1.9). Only [`Board::Pico`] has the RP2040/RP2350 BOOTSEL ROM: every other
+/// board, known or not, never enters the bootloader, is never offered an image
+/// and is never in a rollout, for `REQ_ENTER_BOOTLOADER` 0xF0 and
+/// `SYS.ENTER_BOOTLOADER` 0x0130 alike (R7a: unknown fails closed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Board {
+    /// Board id 0, or no byte 7: a Raspberry Pi Pico (2) or a board built on its
+    /// chip, with BOOTSEL.
+    Pico,
+    /// Board id 1: the DSPi-Zero, a Raspberry Pi Zero 2 W; its bootloader entry
+    /// reboots to the SD card's USB loader (`pico_shim.c:664`), never BOOTSEL.
+    PiZero2W,
+    /// A board id this build does not know.
+    Unknown(u8),
+}
+
+impl Board {
+    /// Board id 1 (upstream DSPi-Zero `BOARD_ID_PI_ZERO_2W`).
+    pub const PI_ZERO_2W_ID: u8 = 1;
+
+    pub fn from_id(id: u8) -> Self {
+        match id {
+            0 => Board::Pico,
+            Self::PI_ZERO_2W_ID => Board::PiZero2W,
+            other => Board::Unknown(other),
+        }
+    }
+
+    pub fn id(self) -> u8 {
+        match self {
+            Board::Pico => 0,
+            Board::PiZero2W => Self::PI_ZERO_2W_ID,
+            Board::Unknown(id) => id,
+        }
+    }
+
+    /// Whether the board has the BOOTSEL ROM a bootloader entry ends in: only a
+    /// Pico. Fails closed for every other id, known or not.
+    pub fn has_bootsel(self) -> bool {
+        self == Board::Pico
+    }
 }
 
 impl PlatformInfo {
@@ -2454,6 +2506,29 @@ impl PlatformInfo {
     pub const REQUEST_LEN: usize = 7;
     /// The oldest reply, and the least that identifies a device.
     pub const MIN_LEN: usize = 4;
+    // -- WP PGFAKE2 --
+    /// The longest reply this build reads: the 7 bytes plus the board id. Asking
+    /// for it is safe on every generation (a Pico answers its 4 to 7 bytes, a
+    /// DSPi-Zero 8); the core and the hub switch their reads to it (PLAN-PG
+    /// section 1.9, PGZERO, PGLINKC, PGHDEV).
+    pub const FULL_LEN: usize = 8;
+
+    /// The board, from byte 7 ([`Board::Pico`] when it is absent).
+    pub fn board(&self) -> Board {
+        Board::from_id(self.board_id)
+    }
+
+    /// Whether a bootloader entry may be sent to this device: only a board 0
+    /// (see [`Board::has_bootsel`]).
+    pub fn has_bootsel(&self) -> bool {
+        self.board().has_bootsel()
+    }
+
+    /// The 8-byte reply of a firmware that answers the board id.
+    pub fn encode_full(&self) -> [u8; Self::FULL_LEN] {
+        let [a, b, c, d, e, f, g] = self.encode();
+        [a, b, c, d, e, f, g, self.board_id]
+    }
 
     pub fn platform(&self) -> Platform {
         Platform::from_id(self.platform_id)
@@ -2502,7 +2577,9 @@ impl PlatformInfo {
             platform_id: b[0],
             num_output_channels: b[3],
             version,
-            reply_len: b.len().min(Self::REQUEST_LEN),
+            // -- WP PGFAKE2 -- up to 8 bytes: byte 7 is the board id.
+            reply_len: b.len().min(Self::FULL_LEN),
+            board_id: b.get(7).copied().unwrap_or(0),
         })
     }
 }
@@ -6571,5 +6648,84 @@ mod tests {
         };
         assert_eq!(lines("CS_NOUN_"), table(CS_NOUNS));
         assert_eq!(lines("CS_TYPE_"), table(CS_TYPES));
+    }
+}
+
+// -- WP PGFAKE2 --
+/// The platform reply up to 8 bytes and the board id (PLAN-PG R7d, section 1.9).
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests_wp_pgfake2 {
+    use super::*;
+
+    /// 4, 6 and 7 bytes are every Pico firmware so far: board 0, BOOTSEL.
+    #[test]
+    fn wp_pgfake2_short_platform_replies_are_board_zero() {
+        for reply in [
+            &[1u8, 1, 0x16, 9][..],
+            &[1, 1, 0x16, 9, 1, 6][..],
+            &[1, 1, 0x16, 9, 1, 6, 0][..],
+        ] {
+            let p = PlatformInfo::decode(reply).unwrap();
+            assert_eq!(p.reply_len, reply.len());
+            assert_eq!(p.board_id, 0);
+            assert_eq!(p.board(), Board::Pico);
+            assert!(p.has_bootsel(), "{reply:?}");
+        }
+    }
+
+    /// The DSPi-Zero's 8-byte reply (upstream DSPi-Zero `main_z4.c:901-913`): the
+    /// 7 DSPi bytes, platform RP2350, then board 1. No BOOTSEL.
+    #[test]
+    fn wp_pgfake2_eight_bytes_carry_the_board_id() {
+        let zero = [1u8, 1, 0x16, 9, 1, 6, 0, 1];
+        let p = PlatformInfo::decode(&zero).unwrap();
+        assert_eq!(p.reply_len, 8);
+        assert_eq!(p.platform(), Platform::Rp2350);
+        assert_eq!(p.firmware(), "1.1.6");
+        assert_eq!(p.board(), Board::PiZero2W);
+        assert!(!p.has_bootsel());
+        assert_eq!(p.encode_full(), zero);
+        // The 7-byte form a 1.1.6 host asks for drops the board, as the Zero does.
+        assert_eq!(p.encode(), [1, 1, 0x16, 9, 1, 6, 0]);
+
+        // Byte 7 present and 0: a Pico.
+        let pico = PlatformInfo::decode(&[1, 1, 0x17, 9, 1, 7, 1, 0]).unwrap();
+        assert_eq!((pico.board(), pico.has_bootsel()), (Board::Pico, true));
+
+        // Anything else fails closed, known or not.
+        for id in [2u8, 7, 0x80, 0xFF] {
+            let p = PlatformInfo::decode(&[1, 1, 0x16, 9, 1, 6, 0, id]).unwrap();
+            assert_eq!(p.board(), Board::Unknown(id));
+            assert!(!p.has_bootsel(), "board {id}");
+        }
+        // A longer answer: the first 8 bytes count.
+        let long = PlatformInfo::decode(&[1, 1, 0x16, 9, 1, 6, 0, 1, 0xAA, 0xBB]).unwrap();
+        assert_eq!((long.reply_len, long.board_id), (8, 1));
+    }
+
+    #[test]
+    fn wp_pgfake2_board_ids_round_trip() {
+        for id in 0..=u8::MAX {
+            assert_eq!(Board::from_id(id).id(), id);
+            assert_eq!(Board::from_id(id).has_bootsel(), id == 0);
+        }
+        assert_eq!(PlatformInfo::FULL_LEN, PlatformInfo::REQUEST_LEN + 1);
+    }
+
+    proptest::proptest! {
+        /// Any reply decodes without a panic; only a board 0 (or none) has BOOTSEL.
+        #[test]
+        fn proptest_wp_pgfake2_platform_decode(b in proptest::collection::vec(proptest::prelude::any::<u8>(), 0..16)) {
+            match PlatformInfo::decode(&b) {
+                Err(_) => proptest::prop_assert!(b.len() < PlatformInfo::MIN_LEN),
+                Ok(p) => {
+                    proptest::prop_assert!(p.reply_len <= PlatformInfo::FULL_LEN);
+                    let id = b.get(7).copied().unwrap_or(0);
+                    proptest::prop_assert_eq!(p.board_id, id);
+                    proptest::prop_assert_eq!(p.has_bootsel(), id == 0);
+                }
+            }
+        }
     }
 }
