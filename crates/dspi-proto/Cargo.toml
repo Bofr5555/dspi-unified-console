@@ -25,3 +25,8 @@ serde_json.workspace = true
 # The generator parses the vendored firmware headers. Deliberately dependency
 # free: it is a small, purpose-built scanner, not a general C parser, so it has
 # no build cost and nothing to keep up to date.
+# -- WP PGPROTO --
+# serde_json reads the vendored paged-protocol registry and legacy map
+# (firmware/protocol/*.json, PLAN-PG OD-PGj): JSON, not C, so a scanner would be
+# a parser of our own; serde_json is already in the workspace.
+serde_json.workspace = true

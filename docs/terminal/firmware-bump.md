@@ -5,6 +5,24 @@ The generator and the tests tell you exactly what is new; you add rows, not
 edits. If you find yourself rewriting something, that is a signal the
 architecture has sprung a leak, and it is worth fixing there instead.
 
+Two vendored sets, bumped separately (`crates/dspi-proto/firmware/PROVENANCE.toml`):
+
+- **The legacy headers** (steps 1 to 7): the 1.1.6-generation protocol, every
+  `REQ_*` opcode, the bulk wire format and the constants around them.
+- **The paged protocol** (step 8): upstream's `dspi_commands.json` and
+  `legacy_map.json` for firmware 1.1.7 and later (PLAN-PG, OD-PGj).
+
+<!-- -- WP PGPROTO -- -->
+**The legacy headers stay on the 1.1.6 line.** Once `bofr-main` has merged
+upstream 1.1.7 (FWPG1), its `config.h` has no `REQ_*` defines any more, yet
+`build.rs` generates every legacy opcode (`generated::opcodes`, `ALL_OPCODES`)
+from them, and the planner's coverage test holds `legacy_map.json` equal to
+them. So from then on the headers are pinned at the tag `bofr-116-final` (the
+last 1.1.6-generation commit of `bofr-main`, which contains PAGEGUARD) and are
+not re-copied from a 1.1.7-generation commit. A change to the bulk wire format
+on the 1.1.7 line is copied header by header with that in mind (only
+`bulk_params.h` and the headers it needs), never as the whole set.
+
 ## 1. Copy the headers
 
 The vendored set is the `files` list in `crates/dspi-proto/firmware/PROVENANCE.toml`,
@@ -142,3 +160,59 @@ interface is exclusive.
 
 Record it in `docs/firmware-notes.md`, **in this repository**. The firmware repo
 is not modified as part of this work.
+
+<!-- -- WP PGPROTO -- -->
+## 8. The paged protocol (`dspi_commands.json`, `legacy_map.json`)
+
+`dspi_proto::paged` is generated from two files of upstream's firmware repository,
+`Documentation/protocol/dspi_commands.json` (the command registry: ids,
+directions, address kinds, GET lengths, SET bounds, flags, build conditions,
+page revisions) and `Documentation/protocol/legacy_map.json` (every 1.1.6 opcode
+and how it is reproduced on paged commands). Both come from **one** commit of the
+release branch, from the firmware repository itself (GPL-3.0 project files),
+never from DSPi-Link's copy. They are data: nothing is transcribed from them by
+hand except the 14 `custom` rows (`paged/custom.rs`, from the migration guide).
+
+```sh
+FW=/path/to/DSPi                     # upstream, on the release branch you are targeting
+REV=<commit>
+DST=crates/dspi-proto/firmware
+
+for f in dspi_commands.json legacy_map.json; do
+  git -C "$FW" show "$REV:Documentation/protocol/$f" > "$DST/protocol/$f"
+done
+git -C "$FW" log -1 --format='%H %ci' "$REV"
+```
+
+Then, in `PROVENANCE.toml`'s `[protocol]` section:
+
+1. Set `branch`, `commit`, `short`, `committed` and `vendored`.
+2. Run the coverage test **before** touching a count:
+   `cargo test -p dspi-proto --test paged_coverage`. It compares what `build.rs`
+   read with the recorded counts (pages, commands per page, GET and SET commands,
+   protocol major and minor, opcodes, adapters per USB direction and per kind,
+   split cases) and fails on any row the generator could not read
+   (`legacy::UNREAD`; the build log names each one as `paged: not generated`).
+3. Read what moved (upstream's diff of the two files and of
+   `Documentation/Features/vendor_protocol_migration_guide.md`), then re-record
+   the counts. A new adapter kind, address kind, flag, status family or result
+   name is an unread row: teach `build.rs` (its `paged` module) and the types in
+   `src/paged/legacy.rs` or `registry.rs` about it first.
+4. Refresh the checksums: `( cd crates/dspi-proto/firmware && sha256sum *.h protocol/*.json > SHA256SUMS )`.
+
+Expect these to speak up as well:
+
+| Failing test | Means |
+|---|---|
+| `wp_pgproto_every_header_opcode_has_a_row` | `legacy_map.json` and the pinned legacy headers disagree on an opcode. Upstream's map is the 1.1.6 opcode set; our headers add only `REQ_EXTENSION`. |
+| `wp_pgproto_seam_literals_are_the_generated_ones` | The probe (`SYS.PROTOCOL_INFO` 0x0110, 16 bytes) or the protocol major moved: that is a new protocol generation, not a bump. |
+| `paged_guide_vectors` | A byte example transcribed from the migration guide no longer holds. Re-read the guide's section and fix the vector or the generator, never both at once. |
+| `proptest_wp_pgproto_planner_then_reverse`, `wp_pgproto_every_simple_row_plans_and_reverses` | A new row is not invertible by the reverse view; look at how its address or payload is built. |
+
+A device on a **higher page revision** than the vendored one still works: the
+planner then skips its local SET-length checks for that page and lets the device
+judge (PLAN-PG R8b). A bump is needed for new commands, not for the device to keep
+working.
+
+Re-vendoring at upstream's release tag, and our fork's regenerated
+`dspi_commands.json` with the extension page 0xE0 row, is PLAN-PG's PGREV.
