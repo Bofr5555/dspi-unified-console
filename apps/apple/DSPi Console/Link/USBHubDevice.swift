@@ -38,6 +38,13 @@ final class USBHubDevice: HubDevice {
     /// so the direction the client states is the transfer we make: the hub
     /// does not reinterpret it.
     func execute(_ request: LinkCmdRequest) -> LinkCmdResponse {
+        // -- WP PGSWHUB0 -- The last line before USB, for every path that
+        // reaches the device (the router, the poll scheduler, the hub's own
+        // reads): CoreUsb's pipe has no wIndex, so a paged request would run
+        // as the 1.1.6 opcode with the same number.  Refused, never sent.
+        if CommandRouter.carriesPage(request.wIndex) {
+            return LinkCmdResponse(tag: request.tag, status: .unsupported)
+        }
         switch request.direction {
         case .get:
             let result = usb.getControlResult(request: request.bRequest, value: request.wValue,
