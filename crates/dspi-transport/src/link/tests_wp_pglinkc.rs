@@ -428,10 +428,110 @@ fn wp_pglinkc_a_paged_device_gets_paged_cmds_only() {
     assert_eq!(remote.violations(), 0);
 }
 
-/// R3: the probe costs no round trip, and a discovery batch is one window of
-/// requests on the wire (all sent before the first answer).
+/// Run `f` with the hub's replies held: everything it sends before its first
+/// answer is one window. Returns `f`'s result and how many requests that
+/// window held; fails if `f` sends anything after the window (a second round
+/// trip).
+fn one_window<T: Send + 'static>(
+    hub: &FakeHub,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> (T, usize) {
+    let base = hub.requests().len();
+    hub.hold_replies();
+    let job = std::thread::spawn(f);
+    let mut seen = base;
+    let mut still = 0;
+    while still < 20 {
+        std::thread::sleep(Duration::from_millis(10));
+        let now = hub.requests().len();
+        if now == seen && now > base {
+            still += 1;
+        } else {
+            still = 0;
+            seen = now;
+        }
+    }
+    hub.release_replies();
+    let out = job.join().unwrap();
+    assert_eq!(
+        hub.requests().len(),
+        seen,
+        "nothing after the first window: {:?}",
+        hub.requests()
+    );
+    (out, seen - base)
+}
+
+/// R3, the done criterion: connecting to a paged device through the L13 fake
+/// hub costs no round trip for the probe and one for the discovery batch,
+/// and the planned 1.1.6-shaped reads after it go as one window, as the
+/// legacy connect's do.
 #[test]
 fn wp_pglinkc_a_paged_connect_is_the_probe_for_free_and_one_discovery_batch() {
+    for generation in [FakeGeneration::STOCK117, FakeGeneration::Bofr117] {
+        let (dev, remote) = fake(generation, false, true);
+        let hub = start(
+            HubConfig {
+                max_inflight: 32,
+                ..HubConfig::l13(Some(dev))
+            },
+            "control",
+        );
+        let c = session(&hub, "control");
+        let t = transport(&c);
+        let (opened, discovery) = one_window(&hub, move || crate::paged::open(Box::new(t)));
+        let mut t = opened.expect("a paged device opens through a 1.3 hub");
+        assert!(
+            matches!(t.generation(), Some(Generation::Paged(_))),
+            "{generation:?}"
+        );
+        assert!(discovery >= 3, "the discovery batch: {discovery}");
+        assert!(
+            hub.requests()
+                .iter()
+                .all(|r| r.b_request != SYS_PROTOCOL_INFO.cmd() || r.sent_page() != 0x01),
+            "no probe on the wire (S1)"
+        );
+        // The identity read of the legacy connect, through the planner
+        let (answers, identity) = one_window(&hub, move || {
+            let a = t.control_in_batch(&[
+                InRead::upto(op::REQ_GET_PLATFORM, 0, 7),
+                InRead::exact(op::REQ_GET_SERIAL, 0, 16),
+            ]);
+            (t, a)
+        });
+        let (_t, answers) = answers;
+        assert!(answers[0].is_ok(), "{answers:?}");
+        assert!(identity >= 1);
+        assert!(
+            hub.requests().iter().all(|r| r.sent_page() != 0),
+            "nothing page-0 to a paged device"
+        );
+        assert_eq!(remote.violations(), 0);
+    }
+    // The legacy connect's identity read through a 1.2 hub: one window too
+    let hub = start(
+        HubConfig {
+            max_inflight: 32,
+            ..HubConfig::l12_forward(None)
+        },
+        "control",
+    );
+    let c = session(&hub, "control");
+    let mut t = crate::paged::open(Box::new(transport(&c))).unwrap();
+    t.control_in_upto(op::REQ_GET_PLATFORM, 0, 7).unwrap(); // the device has answered
+    let (_, n) = one_window(&hub, move || {
+        t.control_in_batch(&[
+            InRead::upto(op::REQ_GET_PLATFORM, 0, 7),
+            InRead::exact(op::REQ_GET_SERIAL, 0, 16),
+        ])
+    });
+    assert_eq!(n, 2);
+}
+
+/// A paged batch answers as single reads do, in one window.
+#[test]
+fn wp_pglinkc_a_paged_batch_answers_as_single_reads_do() {
     let (dev, _remote) = fake(FakeGeneration::Bofr117, false, true);
     let hub = start(
         HubConfig {
@@ -441,47 +541,28 @@ fn wp_pglinkc_a_paged_connect_is_the_probe_for_free_and_one_discovery_batch() {
         "control",
     );
     let c = session(&hub, "control");
-    let mut t = transport(&c);
-    let r = crate::paged::open(Box::new(transport(&c)));
-    // Until WP PGADAPT the paged branch refuses after the probe; either way
-    // the probe itself put nothing on the wire
-    drop(r);
-    assert!(hub.requests().is_empty());
     let discovery = [
-        (cmds::SYS_PAGE_LIST, 0, 256),
-        (cmds::SYS_PLATFORM, 0, PLATFORM_ASK),
-        (cmds::SYS_PAGE_COMMANDS, 0x01, 64),
-        (cmds::SYS_PAGE_COMMANDS, 0x02, 64),
-        (cmds::SYS_PAGE_COMMANDS, 0x05, 64),
-        (cmds::SYS_PAGE_COMMANDS, 0xE0, 64),
+        PagedRead::new(cmds::SYS_PAGE_LIST, 0, 256),
+        PagedRead::new(cmds::SYS_PLATFORM, 0, PLATFORM_ASK),
+        PagedRead::new(cmds::SYS_PAGE_COMMANDS, 0x01, 64),
+        PagedRead::new(cmds::SYS_PAGE_COMMANDS, 0x05, 64),
+        PagedRead::new(cmds::SYS_PAGE_COMMANDS, 0xE0, 64),
+        PagedRead::new(cmds::SYS_PAGE_COMMANDS, 0x77, 64),
     ];
-    hub.hold_replies();
-    let batch = std::thread::spawn(move || {
-        let answers = t.paged_batch(&discovery);
-        (t, answers)
-    });
-    assert!(
-        wait(|| hub.requests().len() == discovery.len()),
-        "the whole batch before any answer: {:?}",
-        hub.requests()
-    );
-    hub.release_replies();
-    let (_t, answers) = batch.join().unwrap();
-    assert!(answers.iter().all(Result::is_ok), "{answers:?}");
-    assert_eq!(
-        hub.requests().len(),
-        discovery.len(),
-        "one window, no request twice"
-    );
-    let one_by_one: Vec<String> = {
-        let mut t = transport(&c);
-        discovery
-            .iter()
-            .map(|&(id, v, l)| format!("{:?}", t.control_in_paged(id, v, l)))
-            .collect()
-    };
+    let mut t = transport(&c);
+    let (answers, n) = one_window(&hub, move || t.control_in_batch_paged(&discovery));
+    assert_eq!(n, discovery.len());
+    let mut t = transport(&c);
+    let one_by_one: Vec<String> = discovery
+        .iter()
+        .map(|r| format!("{:?}", t.control_in_paged(r.id, r.value, r.len)))
+        .collect();
     let batched: Vec<String> = answers.iter().map(|a| format!("{a:?}")).collect();
-    assert_eq!(batched, one_by_one, "a batch answers as single reads do");
+    assert_eq!(batched, one_by_one);
+    assert!(
+        !t.needs_reattach(),
+        "a refused bitmap (an unknown page) is no generation change"
+    );
 }
 
 #[test]
@@ -528,7 +609,7 @@ fn wp_pglinkc_firmware_result_codes_are_typed_refusals() {
         let mut t = transport(&c);
         let r = t.control_in_paged(cmds::SYS_PLATFORM, 0, 8);
         assert!(
-            matches!(r, Err(TransportError::Stalled { opcode: 0x20 })),
+            matches!(r, Err(TransportError::Refused { id, result }) if id == cmds::SYS_PLATFORM && result == code),
             "0x{code:02X}: {r:?}"
         );
         assert_eq!(t.last_refusal(), Some((cmds::SYS_PLATFORM, code)));
@@ -701,15 +782,20 @@ fn wp_pglinkc_a_swapped_generation_makes_the_client_reattach() {
     assert_eq!(g2s_remote.violations(), 0);
 }
 
-/// Section 1.1 step 8, R6c: `0x86` or `0x10` from a device that answered a
-/// moment ago is a generation change: the transport goes stale, sends
-/// nothing more, and does not retry.
+/// Section 1.1 step 8, R6c: `0x86` (or `0x10` to a page-0 request) from a
+/// device that answered a moment ago is a generation change: the transport
+/// goes stale, sends nothing more, and does not retry. A `0x10` to a paged
+/// request stays a refusal.
 #[test]
 fn wp_pglinkc_0x86_or_0x10_after_an_answer_is_a_reattach() {
     for code in [status::UNSUPPORTED, VC_ERR_UNKNOWN] {
-        // A paged device
-        let hub =
-            FakeHub::start(HubConfig::l13(Some(scripted(true, &[status::OK, code])))).unwrap();
+        // A paged device: 0x86 only (0x10 is an honest refusal there)
+        let paged_code = status::UNSUPPORTED;
+        let hub = FakeHub::start(HubConfig::l13(Some(scripted(
+            true,
+            &[status::OK, paged_code],
+        ))))
+        .unwrap();
         let c = session(&hub, "admin");
         let mut t = transport(&c);
         t.control_in_paged(cmds::SYS_PLATFORM, 0, 8).unwrap();
@@ -748,6 +834,28 @@ fn wp_pglinkc_0x86_or_0x10_after_an_answer_is_a_reattach() {
         );
         assert_eq!(hub.requests().len(), 2);
     }
+}
+
+/// A `0x10` to a paged request after an answer: a refusal, not a re-attach.
+#[test]
+fn wp_pglinkc_0x10_to_a_paged_request_stays_a_refusal() {
+    let hub = FakeHub::start(HubConfig::l13(Some(scripted(
+        true,
+        &[status::OK, VC_ERR_UNKNOWN],
+    ))))
+    .unwrap();
+    let c = session(&hub, "admin");
+    let mut t = transport(&c);
+    t.control_in_paged(cmds::SYS_PLATFORM, 0, 8).unwrap();
+    assert!(matches!(
+        t.control_in_paged(cmds::SYS_PLATFORM, 0, 8),
+        Err(TransportError::Refused {
+            result: VC_ERR_UNKNOWN,
+            ..
+        })
+    ));
+    assert!(!t.needs_reattach());
+    assert!(t.control_in_paged(cmds::SYS_PLATFORM, 0, 8).is_ok());
 }
 
 /// R7c: the client reads 8 platform bytes itself, on both generations.

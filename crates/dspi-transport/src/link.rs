@@ -27,8 +27,9 @@
 //! object), one without it nothing ([`LinkNotice::HubServesPagedOnly`]) unless
 //! the hub serves legacy devices (our hub's cap `legacy_devices`). Paged
 //! answers retry only 0x01, 0x04, 0x17 and 0x84; the firmware's result codes
-//! 0x10..=0x1A are refusals ([`firmware_refusal`]); a `0x86` or `0x10` from a
-//! device that answered before, or a changed `protocol` in the hub's list,
+//! 0x10..=0x1A are refusals ([`firmware_refusal`]); a `0x86` from a device
+//! that answered before (or `0x10` to a page-0 request), or a changed
+//! `protocol` in the hub's list,
 //! makes the transport stale ([`LinkNotice::GenerationChanged`]): nothing more
 //! is sent, and the device is opened again.
 //!
@@ -58,7 +59,7 @@ use dspi_proto::paged::{
 use crate::paged::PLATFORM_ASK;
 use crate::{
     Attributed, BUSY_BACKOFF, BUSY_RETRIES, CmdId, DeviceDescriptor, InRead, NO_PAGES,
-    NotificationSource, Result, Transport, TransportCaps, TransportError,
+    NotificationSource, PagedRead, Result, Transport, TransportCaps, TransportError,
 };
 
 /// The hub capability that offers `device.snapshot` (spec 7.5).
@@ -363,14 +364,10 @@ pub const LISTED_PROBE_PAGES: u8 = 128;
 
 // -- WP PGLINKC --
 /// A firmware result code (`VC_ERR_*`, 0x10..=0x1A, spec 1.3 section 8.1) a hub
-/// forwarded for paged request `id`, as a transport error. **The one place a
-/// typed refusal is made**: until WP PGADAPT's `TransportError::Refused { id,
-/// result }` is merged it is the STALL the layers above already treat as
-/// "refused" (probe-and-cache), and [`LinkTransport::last_refusal`] keeps the
-/// code; the merge makes it `Refused { id, result }`.
+/// forwarded for paged request `id`, as a transport error: the hub already
+/// explained it, so `PagedTransport` reads no `SYS.LAST_RESULT` after it.
 pub fn firmware_refusal(id: CmdId, result: u8) -> TransportError {
-    let _ = result;
-    TransportError::Stalled { opcode: id.cmd() }
+    TransportError::Refused { id, result }
 }
 
 // -- WP PGLINKC --
@@ -472,8 +469,9 @@ pub struct LinkTransport {
     /// The `protocol` the hub listed at construction: a different one later
     /// means the device changed under the handle.
     listed_protocol: Option<Proto>,
-    /// The device has answered a request: a `0x86` or `0x10` from now on is
-    /// a generation change, not a refusal (PLAN-PG section 1.1 step 8).
+    /// The device has answered a request: a `0x86` (or, to a page-0 request,
+    /// `0x10`) from now on is a generation change, not a refusal (PLAN-PG
+    /// section 1.1 step 8).
     answered: bool,
     /// The device changed generation: nothing more is sent.
     stale: bool,
@@ -622,7 +620,15 @@ impl LinkTransport {
             self.answered = true;
             return Ok(r.payload);
         }
-        if self.answered && matches!(r.status, status::UNSUPPORTED | VC_ERR_UNKNOWN) {
+        // On a paged device 0x10 is also an honest refusal (a command absent
+        // from this build, an unlisted page's bitmap), so there only 0x86 is
+        // a generation change; a page-0 request answered 0x10 is our hub's
+        // "the device is paged now" (PLAN-PG R5a)
+        let changed = match self.route {
+            LinkRoute::Paged { .. } => r.status == status::UNSUPPORTED,
+            _ => matches!(r.status, status::UNSUPPORTED | VC_ERR_UNKNOWN),
+        };
+        if self.answered && changed {
             log::info!(
                 "DSPi Link handle {}: status 0x{:02X} from a device that answered before; re-attach",
                 self.handle,
@@ -710,33 +716,31 @@ impl LinkTransport {
     }
 
     // -- WP PGLINKC --
-    /// Up to the hub's `max_inflight` paged reads `(id, wValue, max_len)` on the
-    /// wire at once: one round trip for each window instead of one each
-    /// (PLAN-PG R3; `Transport::control_in_batch_paged` once WP PGADAPT has
-    /// merged it). Each answer is what [`Transport::control_in_paged`] gives;
-    /// a retryable one (spec 1.3 section 8.1) goes again on its own, and a
-    /// `STORE.ALL_PARAMS` read goes alone (it may come from the snapshot).
-    pub fn paged_batch(&mut self, reads: &[(CmdId, u16, u16)]) -> Vec<Result<Vec<u8>>> {
-        let one = |t: &mut Self, &(id, value, len): &(CmdId, u16, u16)| {
-            t.control_in_paged(id, value, len)
-        };
+    /// Up to the hub's `max_inflight` paged reads on the wire at once: one
+    /// round trip for each window instead of one each (PLAN-PG R3; what
+    /// [`Transport::control_in_batch_paged`] runs). Each answer is what
+    /// [`Transport::control_in_paged`] gives; a retryable one (spec 1.3
+    /// section 8.1) goes again on its own, and a `STORE.ALL_PARAMS` read goes
+    /// alone (it may come from the snapshot).
+    pub fn paged_batch(&mut self, reads: &[PagedRead]) -> Vec<Result<Vec<u8>>> {
+        let one = |t: &mut Self, r: &PagedRead| t.control_in_paged(r.id, r.value, r.len);
         let pipelined = reads.len() >= 2
             && self.client.max_inflight() >= 2
-            && !reads.iter().any(|&(id, _, len)| {
-                id == cmds::STORE_ALL_PARAMS || id == SYS_PROTOCOL_INFO || len == 0
-            });
+            && !reads
+                .iter()
+                .any(|r| r.id == cmds::STORE_ALL_PARAMS || r.id == SYS_PROTOCOL_INFO || r.len == 0);
         if !pipelined || self.admit(true).is_err() {
             return reads.iter().map(|r| one(self, r)).collect();
         }
         let specs: Vec<CmdSpec> = reads
             .iter()
-            .map(|&(id, value, len)| CmdSpec {
+            .map(|r| CmdSpec {
                 handle: self.handle,
                 dir: Dir::Get,
-                b_request: id.cmd(),
-                w_value: value,
-                w_index: id.w_index(),
-                w_length: len,
+                b_request: r.id.cmd(),
+                w_value: r.value,
+                w_index: r.id.w_index(),
+                w_length: r.len,
                 payload: Vec::new(),
             })
             .collect();
@@ -748,9 +752,8 @@ impl LinkTransport {
                 if is_retryable_13(a.status) {
                     return one(self, r);
                 }
-                let (id, _, len) = *r;
-                self.settle(id.cmd(), Some(id), a).map(|mut p| {
-                    p.truncate(usize::from(len));
+                self.settle(r.id.cmd(), Some(r.id), a).map(|mut p| {
+                    p.truncate(usize::from(r.len));
                     p
                 })
             })
@@ -941,6 +944,13 @@ impl Transport for LinkTransport {
         };
         self.exchange(Dir::Set, id.cmd(), Some(id), value, len, data)
             .map(drop)
+    }
+
+    // -- WP PGLINKC --
+    /// [`LinkTransport::paged_batch`]: the discovery and the planned reads of
+    /// a paged connect keep the round trips of a legacy one (PLAN-PG R3).
+    fn control_in_batch_paged(&mut self, reads: &[PagedRead]) -> Vec<Result<Vec<u8>>> {
+        self.paged_batch(reads)
     }
 
     /// Spec 7.7: a hub without the `lock` capability serialises commands
