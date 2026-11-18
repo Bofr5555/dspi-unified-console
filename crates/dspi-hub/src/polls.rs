@@ -76,6 +76,11 @@ pub enum PollRefused {
     /// The budget cannot fit these polls even at 1 Hz (`busy`).
     #[error("the poll budget cannot fit these polls even at 1 Hz")]
     Busy,
+    // -- WP PGHUB0 --
+    /// A poll names a page (`idx` high byte not 0) toward a 1.1.6-generation
+    /// device, which would run a different command (`unsupported`, spec 7.4).
+    #[error("this device does not take paged requests")]
+    Unsupported,
 }
 
 impl PollRefused {
@@ -86,6 +91,7 @@ impl PollRefused {
             PollRefused::BadRequest(_) => "bad_request",
             PollRefused::Denied => "denied",
             PollRefused::Busy => "busy",
+            PollRefused::Unsupported => "unsupported", // -- WP PGHUB0 --
         }
     }
 }
@@ -264,6 +270,10 @@ fn check(requests: &[PollSpec], policy: &Policy) -> Result<(), PollRefused> {
         seen |= bit;
         if r.len == 0 || r.len > MAX_LEN || r.hz == 0 {
             return bad("len or hz is out of range");
+        }
+        // -- WP PGHUB0 -- every attached device is legacy: a page is never polled
+        if crate::device::names_a_page(r.idx) {
+            return Err(PollRefused::Unsupported);
         }
         if policy.classify(r.req, Dir::Get) != Class::Read {
             return Err(PollRefused::Denied);

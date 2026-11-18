@@ -183,6 +183,11 @@ impl DeviceShared {
         done: Completion,
         deadline: Option<Instant>,
     ) {
+        // -- WP PGHUB0 -- a page never reaches a legacy device, before anything else
+        if names_a_page(req.w_index) {
+            done.answer(status::UNSUPPORTED, Vec::new());
+            return;
+        }
         // -- WP P1HL -- the device's limits profile and lock, before the queue
         if let Err((refused, why)) = crate::limits::admit(self, self.router.policy(), &ctx, &req) {
             done.answer(refused, why);
@@ -540,6 +545,22 @@ fn run_command(
     }
 }
 
+// -- WP PGHUB0 --
+/// Whether a request names a page: a non-zero `wIndex` high byte, where firmware
+/// 1.1.7 reads the page (migration guide 2). Every device this hub attaches is of
+/// the 1.1.6 generation, which ignores `wIndex` and would run the old opcode with
+/// the same number (guide 4.1: GET `0x0553` is `FACTORY_RESET`, SET `0x0844` is
+/// `SET_PREAMP`). So such a CMD is answered `0x86 UNSUPPORTED` and such a poll
+/// `unsupported`, as a Link 1.3 hub treats a legacy device (spec 7.4), and nothing
+/// reaches the device. The low byte (0 from the Mac, 2 elsewhere) is not a page.
+pub(crate) fn names_a_page(w_index: u16) -> bool {
+    w_index >> 8 != 0
+}
+
+// -- WP PGHUB0 --
+const PAGE_REFUSED: &str =
+    "a paged request (wIndex high byte not 0) toward a 1.1.6-generation device";
+
 /// A transport's failure as a Link status (spec 8.1, 9.1).
 pub(crate) fn status_of(e: &TransportError) -> u8 {
     match e {
@@ -570,11 +591,17 @@ pub(crate) fn status_of(e: &TransportError) -> u8 {
 ///
 /// `wIndex` is not passed on: the firmware ignores it and `Transport` has no such
 /// parameter (real clients send 0 for much of the surface, `NetworkTransport.swift`).
+/// -- WP PGHUB0 -- A request that names a page is refused here and sends nothing:
+/// [`names_a_page`]. `submit` answers it `0x86` before this runs; this is the backstop.
 pub(crate) fn execute(
     t: &mut dyn Transport,
     req: &CmdRequest,
     busy_retry: bool,
 ) -> Result<Vec<u8>, TransportError> {
+    // -- WP PGHUB0 --
+    if names_a_page(req.w_index) {
+        return Err(TransportError::Incompatible(PAGE_REFUSED.into()));
+    }
     let opcode = req.b_request;
     let caps = t.caps();
     match req.dir {
@@ -866,13 +893,43 @@ mod tests_wp_hb0 {
     }
 
     /// `NetworkTransport.swift:341-363` sends `WINDEX_GLOBAL = 0` for EQ, volume and
-    /// more, and the firmware ignores it.
+    /// more, and the firmware ignores it. -- WP PGHUB0 -- A non-zero high byte is a
+    /// page (firmware 1.1.7): refused with nothing sent, since the device is legacy.
     #[test]
     fn wp_hb0_windex_is_ignored() {
         let mut d = FakeDevice::demo();
         let remote = d.remote();
         let volume = (-17.5f32).to_le_bytes().to_vec();
-        for w_index in [0, 2, 0xFFFF] {
+        let before = remote.image();
+        for w_index in [0xFFFF, 0x0502, 0x0100] {
+            let write = CmdRequest {
+                w_index,
+                ..set(op::REQ_SET_MASTER_VOLUME, volume.clone())
+            };
+            let e = execute(&mut d, &write, false).unwrap_err();
+            assert!(matches!(e, TransportError::Incompatible(_)), "{e:?}");
+            let read = CmdRequest {
+                w_index,
+                ..get(op::REQ_GET_MASTER_VOLUME, 4)
+            };
+            assert!(execute(&mut d, &read, true).is_err());
+        }
+        assert_eq!(remote.image(), before, "a paged request changed the device");
+        let mut m = MockTransport::new();
+        for w_index in [0xFFFF, 0x0502] {
+            let read = CmdRequest {
+                w_index,
+                ..get(0x53, 4)
+            };
+            assert!(execute(&mut m, &read, false).is_err());
+            let write = CmdRequest {
+                w_index,
+                ..set(0x44, vec![0; 4])
+            };
+            assert!(execute(&mut m, &write, false).is_err());
+        }
+        assert!(m.log().is_empty(), "a paged request reached the transport");
+        for w_index in [0, 2] {
             let write = CmdRequest {
                 w_index,
                 ..set(op::REQ_SET_MASTER_VOLUME, volume.clone())
