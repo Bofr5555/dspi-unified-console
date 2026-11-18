@@ -114,6 +114,8 @@ pub mod measure_live;
 pub mod hub_server_measure;
 // -- WP P5DEMO -- the demo's simulated microphone
 pub mod measure_sim;
+// -- WP P5TUNE -- the auto-tune
+pub mod measure_tune;
 // -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
 pub mod settings;
 // -- WP WB4a --

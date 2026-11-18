@@ -3478,6 +3478,143 @@ interface DspiCoreApi : AutoCloseable {
     fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState
 
     /**
+     * The layout the device's state suggests (PLAN-P5 section 1.4 step 1):
+     * each enabled output that plays an input, its way from its filters
+     * (only a low-pass: low, or sub at or below 120 Hz or by name; a
+     * high-pass and a low-pass: mid; only a high-pass: high; none: full
+     * range), its speaker from its programme source (input 1 `L`, input 2
+     * `R`), one alignment group per speaker, and its programme feed. Reads
+     * the mirror only.
+     *
+     * Errors: [`DspiError::Disconnected`].
+     */
+    @Throws(DspiException::class)
+    fun measureLayoutProposal(): MeasureLayout
+
+    /**
+     * Propose a tune of `layout` from `measurement` (a filed measurement's
+     * id, the hub's first, or a `measurement` document's text) with
+     * `options` (PLAN-P5 section 1.4 steps 3 to 8). Nothing is written.
+     * Replaces any proposal not applied yet.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a measurement of another
+     * device (`measure.tune.other_device`), one without an output of the
+     * layout, a bad layout, options or target, or while a tune is applied
+     * (Keep or Revert it first); [`DspiError::Disconnected`]; as
+     * `measure_doc_get` for an id.
+     */
+    @Throws(DspiException::class)
+    fun measureTunePropose(measurement: String, layout: MeasureLayout, options: MeasureTuneOptions): MeasureTuneProposal
+
+    /**
+     * The current proposal (a new one after a summed check), if any. No
+     * I/O.
+     */
+    fun measureTuneProposal(): MeasureTuneProposal?
+
+    /**
+     * Run the mandatory summed check of proposal `proposal_id` (RC5f): one
+     * summed run per transition with timing writes, with the chains and
+     * polarities **now**, each a measurement session under every S-rule
+     * (the preflight, the ramp, the aborts). Drive it with
+     * [`DspiCore::measure_tune_tick`]; the proposal is then made again
+     * ([`DspiCore::measure_tune_proposal`]): a speaker whose summed run
+     * differs from the prediction by more than 1.5 dB RMS gets its timing
+     * writes withdrawn, with the reason.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for another proposal's id, a
+     * tune not waiting with a proposal, a measurement microphone that is not
+     * at hand, or `measure_start`'s refusals ([`DspiError::ReadOnly`],
+     * [`DspiError::Denied`], [`DspiError::Locked`]).
+     */
+    @Throws(DspiException::class)
+    fun measureTuneSumCheck(proposalId: Long): MeasureTuneState
+
+    /**
+     * Drive the tune: its summed or verify runs (`measure_tick`, then the
+     * next run or the verdict), and the guard's timer while applied. Call it
+     * about every 50 ms off the UI thread while `running` (and while a tune
+     * is applied), instead of `measure_tick`; push capture whenever the
+     * session wants it. Never fails.
+     */
+    fun measureTuneTick(): MeasureTuneState
+
+    /**
+     * The tune's state, without I/O (safe from the measurement listener).
+     */
+    fun measureTuneState(): MeasureTuneState
+
+    /**
+     * Apply proposal `proposal_id` (PLAN-P5 section 1.4 step 9, S10): the
+     * preflight **again** with the chains it was computed for, the "before"
+     * snapshot filed, the guard begun (`guard_s` seconds; 0: 300), then
+     * every write through `write_param` in one undo group "Auto-tune". A
+     * refused write ends the group and the guard reverts. Returns the guard.
+     *
+     * Errors, with nothing written: [`DspiError::InvalidArgument`] for
+     * another proposal's id, a proposal with timing writes whose summed check
+     * has not passed (`measure.tune.sum_check_needed`), a measurement or a
+     * live view running, or a blocker of the preflight (programme audio, a
+     * chain changed since, ...); [`DspiError::ReadOnly`] (read-only mode or
+     * connection); [`DspiError::Denied`] (a Viewer through a hub); the
+     * guard's refusals. After the guard began: the refused write's error
+     * (the guard has reverted).
+     */
+    @Throws(DspiException::class)
+    fun measureTuneApply(proposalId: Long, guardS: Long): GuardedApply
+
+    /**
+     * Verify the applied tune inside its guard (PLAN-P5 section 1.4 step
+     * 10): a walked run of the tuned outputs and a summed run per transition
+     * with the new polarities, each measured against the prediction. Drive
+     * it with [`DspiCore::measure_tune_tick`]; the result is the state's
+     * `verify`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, the
+     * measurement's microphone is not at hand, or `measure_start` refuses.
+     */
+    @Throws(DspiException::class)
+    fun measureTuneVerify(): MeasureTuneState
+
+    /**
+     * Keep the applied tune (PLAN-P5 section 1.4 step 11): `apply_confirm`,
+     * the "after" snapshot filed with its `tune` block (the measurement, the
+     * algorithm, the options, the writes), and the tune's row added to the
+     * measurement. A verify still running is stopped first.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
+     * `apply_confirm`'s. Filing failures are notes, not errors.
+     */
+    @Throws(DspiException::class)
+    fun measureTuneKeep(): MeasureTuneKeep
+
+    /**
+     * Revert the applied tune: the guard puts the "before" state back (a
+     * verify still running is stopped first). Returns the guard.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
+     * `apply_revert`'s.
+     */
+    @Throws(DspiException::class)
+    fun measureTuneRevert(): GuardedApply
+
+    /**
+     * Start the A/B compare of a kept tune: the device now ("A", the tune)
+     * against the "before" snapshot ("B"). Toggle with `ab_toggle`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune was kept;
+     * `ab_start_documents`'s.
+     */
+    @Throws(DspiException::class)
+    fun measureTuneAb(): AbCompare
+
+    /**
+     * Stop the tune's runs and forget it, unless it is applied (then only
+     * its runs stop: Keep or Revert it). Never fails.
+     */
+    fun measureTuneStop(): MeasureTuneState
+
+    /**
      * Keep measurement, microphone and target documents in files under
      * `dir`, the client's own data folder (created if missing): a folder per
      * device serial for measurements, `mic/` and `target/`, each with an

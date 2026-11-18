@@ -641,6 +641,30 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState = call { core.measureLiveAveraging(averaging.toFfi()).toDomain() }
 
+    override fun measureLayoutProposal(): MeasureLayout = call { core.measureLayoutProposal().toDomain() }
+
+    override fun measureTunePropose(measurement: String, layout: MeasureLayout, options: MeasureTuneOptions): MeasureTuneProposal = call { core.measureTunePropose(measurement, layout.toFfi(), options.toFfi()).toDomain() }
+
+    override fun measureTuneProposal(): MeasureTuneProposal? = core.measureTuneProposal()?.let { it.toDomain() }
+
+    override fun measureTuneSumCheck(proposalId: Long): MeasureTuneState = call { core.measureTuneSumCheck(proposalId.toUInt()).toDomain() }
+
+    override fun measureTuneTick(): MeasureTuneState = core.measureTuneTick().toDomain()
+
+    override fun measureTuneState(): MeasureTuneState = core.measureTuneState().toDomain()
+
+    override fun measureTuneApply(proposalId: Long, guardS: Long): GuardedApply = call { core.measureTuneApply(proposalId.toUInt(), guardS.toUInt()).toDomain() }
+
+    override fun measureTuneVerify(): MeasureTuneState = call { core.measureTuneVerify().toDomain() }
+
+    override fun measureTuneKeep(): MeasureTuneKeep = call { core.measureTuneKeep().toDomain() }
+
+    override fun measureTuneRevert(): GuardedApply = call { core.measureTuneRevert().toDomain() }
+
+    override fun measureTuneAb(): AbCompare = call { core.measureTuneAb().toDomain() }
+
+    override fun measureTuneStop(): MeasureTuneState = core.measureTuneStop().toDomain()
+
     override fun measureSetDir(dir: String) = call { core.measureSetDir(dir) }
 
     override fun measureDocs(kind: String, serial: String): List<MeasureDocInfo> = call { core.measureDocs(kind, serial).map { it.toDomain() } }
@@ -5390,6 +5414,278 @@ internal fun MeasureLiveState.toFfi() =
         session = session.toFfi(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLayoutOutput.toDomain() =
+    MeasureLayoutOutput(
+        output = output.toInt(),
+        role = role.toDomain(),
+        speaker = speaker,
+        group = group.toInt(),
+        name = name,
+        feedInput = feedInput?.let { it.toInt() },
+        feedGainDb = feedGainDb,
+        feedInverted = feedInverted,
+    )
+
+internal fun MeasureLayoutOutput.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLayoutOutput(
+        output = output.toUByte(),
+        role = role.toFfi(),
+        speaker = speaker,
+        group = group.toUByte(),
+        name = name,
+        feedInput = feedInput?.let { it.toUByte() },
+        feedGainDb = feedGainDb,
+        feedInverted = feedInverted,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureLayout.toDomain() =
+    MeasureLayout(
+        outputs = outputs.map { it.toDomain() },
+        template = template,
+        notes = notes,
+    )
+
+internal fun MeasureLayout.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureLayout(
+        outputs = outputs.map { it.toFfi() },
+        template = template,
+        notes = notes,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneOptions.toDomain() =
+    MeasureTuneOptions(
+        targetDocument = targetDocument,
+        micDocument = micDocument,
+        keepCrossover = keepCrossover,
+        keepDelays = keepDelays,
+        keepLevels = keepLevels,
+        keepEq = keepEq,
+        windowOctaves = windowOctaves,
+        fitMinHz = fitMinHz,
+        fitMaxHz = fitMaxHz,
+    )
+
+internal fun MeasureTuneOptions.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneOptions(
+        targetDocument = targetDocument,
+        micDocument = micDocument,
+        keepCrossover = keepCrossover,
+        keepDelays = keepDelays,
+        keepLevels = keepLevels,
+        keepEq = keepEq,
+        windowOctaves = windowOctaves,
+        fitMinHz = fitMinHz,
+        fitMaxHz = fitMaxHz,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneParam.toDomain() =
+    MeasureTuneParam(
+        path = path,
+        indices = indices.map { it.toInt() and 0xFF },
+        value = value.toDomain(),
+    )
+
+internal fun MeasureTuneParam.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneParam(
+        path = path,
+        indices = ByteArray(indices.size) { indices[it].toByte() },
+        value = value.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneWrite.toDomain() =
+    MeasureTuneWrite(
+        output = output.toInt(),
+        kind = kind.toDomain(),
+        timing = timing,
+        words = words,
+        params = params.map { it.toDomain() },
+    )
+
+internal fun MeasureTuneWrite.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneWrite(
+        output = output.toUByte(),
+        kind = kind.toFfi(),
+        timing = timing,
+        words = words,
+        params = params.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneCurves.toDomain() =
+    MeasureTuneCurves(
+        speaker = speaker,
+        coherent = coherent,
+        before = before.toDomain(),
+        predicted = predicted.toDomain(),
+        target = target.toDomain(),
+    )
+
+internal fun MeasureTuneCurves.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneCurves(
+        speaker = speaker,
+        coherent = coherent,
+        before = before.toFfi(),
+        predicted = predicted.toFfi(),
+        target = target.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneTransition.toDomain() =
+    MeasureTuneTransition(
+        speaker = speaker,
+        lowOutput = lowOutput.toInt(),
+        highOutput = highOutput.toInt(),
+        cornerBeforeHz = cornerBeforeHz,
+        cornerHz = cornerHz,
+        relativeDelayMs = relativeDelayMs,
+        flipped = flipped,
+        sumCheckRmsDb = sumCheckRmsDb,
+        verifyRmsDb = verifyRmsDb,
+    )
+
+internal fun MeasureTuneTransition.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneTransition(
+        speaker = speaker,
+        lowOutput = lowOutput.toUByte(),
+        highOutput = highOutput.toUByte(),
+        cornerBeforeHz = cornerBeforeHz,
+        cornerHz = cornerHz,
+        relativeDelayMs = relativeDelayMs,
+        flipped = flipped,
+        sumCheckRmsDb = sumCheckRmsDb,
+        verifyRmsDb = verifyRmsDb,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneProposal.toDomain() =
+    MeasureTuneProposal(
+        id = id.toLong(),
+        serial = serial,
+        measurementId = measurementId,
+        measurementName = measurementName,
+        writes = writes.map { it.toDomain() },
+        curves = curves.map { it.toDomain() },
+        transitions = transitions.map { it.toDomain() },
+        held = held,
+        withdrawn = withdrawn.map { it.toDomain() },
+        warnings = warnings.map { it.toDomain() },
+        notes = notes,
+        timingReliable = timingReliable,
+        sumCheck = sumCheck.toDomain(),
+    )
+
+internal fun MeasureTuneProposal.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneProposal(
+        id = id.toUInt(),
+        serial = serial,
+        measurementId = measurementId,
+        measurementName = measurementName,
+        writes = writes.map { it.toFfi() },
+        curves = curves.map { it.toFfi() },
+        transitions = transitions.map { it.toFfi() },
+        held = held,
+        withdrawn = withdrawn.map { it.toFfi() },
+        warnings = warnings.map { it.toFfi() },
+        notes = notes,
+        timingReliable = timingReliable,
+        sumCheck = sumCheck.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneVerifyOutput.toDomain() =
+    MeasureTuneVerifyOutput(
+        output = output.toInt(),
+        rmsDb = rmsDb,
+    )
+
+internal fun MeasureTuneVerifyOutput.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneVerifyOutput(
+        output = output.toUByte(),
+        rmsDb = rmsDb,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneVerifySum.toDomain() =
+    MeasureTuneVerifySum(
+        speaker = speaker,
+        rmsDb = rmsDb,
+    )
+
+internal fun MeasureTuneVerifySum.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneVerifySum(
+        speaker = speaker,
+        rmsDb = rmsDb,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneVerify.toDomain() =
+    MeasureTuneVerify(
+        outputs = outputs.map { it.toDomain() },
+        sums = sums.map { it.toDomain() },
+        transitions = transitions.map { it.toDomain() },
+        timingReliable = timingReliable,
+        passed = passed,
+        notes = notes,
+    )
+
+internal fun MeasureTuneVerify.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneVerify(
+        outputs = outputs.map { it.toFfi() },
+        sums = sums.map { it.toFfi() },
+        transitions = transitions.map { it.toFfi() },
+        timingReliable = timingReliable,
+        passed = passed,
+        notes = notes,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneState.toDomain() =
+    MeasureTuneState(
+        stage = stage.toDomain(),
+        running = running,
+        proposalId = proposalId?.let { it.toLong() },
+        run = run.toInt(),
+        runs = runs.toInt(),
+        session = session.toDomain(),
+        guard = guard.toDomain(),
+        verify = verify?.let { it.toDomain() },
+        issue = issue?.let { it.toDomain() },
+        snapshotBeforeId = snapshotBeforeId,
+        snapshotAfterId = snapshotAfterId,
+    )
+
+internal fun MeasureTuneState.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneState(
+        stage = stage.toFfi(),
+        running = running,
+        proposalId = proposalId?.let { it.toUInt() },
+        run = run.toUShort(),
+        runs = runs.toUShort(),
+        session = session.toFfi(),
+        guard = guard.toFfi(),
+        verify = verify?.let { it.toFfi() },
+        issue = issue?.let { it.toFfi() },
+        snapshotBeforeId = snapshotBeforeId,
+        snapshotAfterId = snapshotAfterId,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneKeep.toDomain() =
+    MeasureTuneKeep(
+        guard = guard.toDomain(),
+        snapshotBeforeId = snapshotBeforeId,
+        snapshotBefore = snapshotBefore,
+        snapshotAfterId = snapshotAfterId,
+        snapshotAfter = snapshotAfter,
+        measurementId = measurementId,
+        measurement = measurement,
+        notes = notes,
+    )
+
+internal fun MeasureTuneKeep.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureTuneKeep(
+        guard = guard.toFfi(),
+        snapshotBeforeId = snapshotBeforeId,
+        snapshotBefore = snapshotBefore,
+        snapshotAfterId = snapshotAfterId,
+        snapshotAfter = snapshotAfter,
+        measurementId = measurementId,
+        measurement = measurement,
+        notes = notes,
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.MeasureDocInfo.toDomain() =
     MeasureDocInfo(
         id = id,
@@ -6240,6 +6536,66 @@ internal fun MeasureLiveAdjust.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureLiveAdjus
         MeasureLiveAdjust.CUT_PEAK -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.CUT_PEAK
         MeasureLiveAdjust.FIT_RANGE -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.FIT_RANGE
         MeasureLiveAdjust.EDIT -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.EDIT
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneKind.toDomain(): MeasureTuneKind =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureTuneKind.CROSSOVER -> MeasureTuneKind.CROSSOVER
+        se.bofr.dspi.ffi.uniffi.MeasureTuneKind.DELAY -> MeasureTuneKind.DELAY
+        se.bofr.dspi.ffi.uniffi.MeasureTuneKind.POLARITY -> MeasureTuneKind.POLARITY
+        se.bofr.dspi.ffi.uniffi.MeasureTuneKind.LEVEL -> MeasureTuneKind.LEVEL
+        se.bofr.dspi.ffi.uniffi.MeasureTuneKind.HEADROOM -> MeasureTuneKind.HEADROOM
+        se.bofr.dspi.ffi.uniffi.MeasureTuneKind.EQ -> MeasureTuneKind.EQ
+    }
+
+internal fun MeasureTuneKind.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureTuneKind =
+    when (this) {
+        MeasureTuneKind.CROSSOVER -> se.bofr.dspi.ffi.uniffi.MeasureTuneKind.CROSSOVER
+        MeasureTuneKind.DELAY -> se.bofr.dspi.ffi.uniffi.MeasureTuneKind.DELAY
+        MeasureTuneKind.POLARITY -> se.bofr.dspi.ffi.uniffi.MeasureTuneKind.POLARITY
+        MeasureTuneKind.LEVEL -> se.bofr.dspi.ffi.uniffi.MeasureTuneKind.LEVEL
+        MeasureTuneKind.HEADROOM -> se.bofr.dspi.ffi.uniffi.MeasureTuneKind.HEADROOM
+        MeasureTuneKind.EQ -> se.bofr.dspi.ffi.uniffi.MeasureTuneKind.EQ
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneCheck.toDomain(): MeasureTuneCheck =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureTuneCheck.NOT_NEEDED -> MeasureTuneCheck.NOT_NEEDED
+        se.bofr.dspi.ffi.uniffi.MeasureTuneCheck.PENDING -> MeasureTuneCheck.PENDING
+        se.bofr.dspi.ffi.uniffi.MeasureTuneCheck.PASSED -> MeasureTuneCheck.PASSED
+        se.bofr.dspi.ffi.uniffi.MeasureTuneCheck.FAILED -> MeasureTuneCheck.FAILED
+    }
+
+internal fun MeasureTuneCheck.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureTuneCheck =
+    when (this) {
+        MeasureTuneCheck.NOT_NEEDED -> se.bofr.dspi.ffi.uniffi.MeasureTuneCheck.NOT_NEEDED
+        MeasureTuneCheck.PENDING -> se.bofr.dspi.ffi.uniffi.MeasureTuneCheck.PENDING
+        MeasureTuneCheck.PASSED -> se.bofr.dspi.ffi.uniffi.MeasureTuneCheck.PASSED
+        MeasureTuneCheck.FAILED -> se.bofr.dspi.ffi.uniffi.MeasureTuneCheck.FAILED
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneStage.toDomain(): MeasureTuneStage =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureTuneStage.IDLE -> MeasureTuneStage.IDLE
+        se.bofr.dspi.ffi.uniffi.MeasureTuneStage.PROPOSED -> MeasureTuneStage.PROPOSED
+        se.bofr.dspi.ffi.uniffi.MeasureTuneStage.SUM_CHECK -> MeasureTuneStage.SUM_CHECK
+        se.bofr.dspi.ffi.uniffi.MeasureTuneStage.APPLIED -> MeasureTuneStage.APPLIED
+        se.bofr.dspi.ffi.uniffi.MeasureTuneStage.VERIFYING -> MeasureTuneStage.VERIFYING
+        se.bofr.dspi.ffi.uniffi.MeasureTuneStage.VERIFIED -> MeasureTuneStage.VERIFIED
+        se.bofr.dspi.ffi.uniffi.MeasureTuneStage.KEPT -> MeasureTuneStage.KEPT
+        se.bofr.dspi.ffi.uniffi.MeasureTuneStage.REVERTED -> MeasureTuneStage.REVERTED
+    }
+
+internal fun MeasureTuneStage.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureTuneStage =
+    when (this) {
+        MeasureTuneStage.IDLE -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.IDLE
+        MeasureTuneStage.PROPOSED -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.PROPOSED
+        MeasureTuneStage.SUM_CHECK -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.SUM_CHECK
+        MeasureTuneStage.APPLIED -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.APPLIED
+        MeasureTuneStage.VERIFYING -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.VERIFYING
+        MeasureTuneStage.VERIFIED -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.VERIFIED
+        MeasureTuneStage.KEPT -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.KEPT
+        MeasureTuneStage.REVERTED -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.REVERTED
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.NoticeKind.toDomain(): NoticeKind =

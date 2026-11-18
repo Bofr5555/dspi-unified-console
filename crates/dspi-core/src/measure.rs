@@ -55,16 +55,16 @@ mod session;
 mod live;
 // -- WP P5TUNE -- the auto-tune (PLAN-P5 section 1.4, T10)
 mod tune;
+pub use live::{
+    MeasureLiveAdjust, MeasureLiveBand, MeasureLiveChange, MeasureLiveCurve, MeasureLiveFrame,
+    MeasureLiveMode, MeasureLiveProposal, MeasureLiveRta, MeasureLiveSetup, MeasureLiveState,
+    MeasureRtaAveraging,
+};
 pub use tune::{
     MeasureLayout, MeasureLayoutOutput, MeasureTuneCheck, MeasureTuneCurves, MeasureTuneKeep,
     MeasureTuneKind, MeasureTuneOptions, MeasureTuneParam, MeasureTuneProposal, MeasureTuneStage,
     MeasureTuneState, MeasureTuneTransition, MeasureTuneVerify, MeasureTuneVerifyOutput,
     MeasureTuneVerifySum, MeasureTuneWrite,
-};
-pub use live::{
-    MeasureLiveAdjust, MeasureLiveBand, MeasureLiveChange, MeasureLiveCurve, MeasureLiveFrame,
-    MeasureLiveMode, MeasureLiveProposal, MeasureLiveRta, MeasureLiveSetup, MeasureLiveState,
-    MeasureRtaAveraging,
 };
 
 #[cfg(test)]

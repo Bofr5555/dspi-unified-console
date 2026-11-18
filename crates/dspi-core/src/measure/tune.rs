@@ -60,7 +60,9 @@ use std::collections::BTreeSet;
 use std::sync::MutexGuard;
 
 use dspi_measure::doc::{MeasurementDoc, TargetDoc, TuneRecord};
-use dspi_measure::target::{DEFAULT_REFERENCE_BAND, Target, TargetDefinition, TargetUse, default_target};
+use dspi_measure::target::{
+    DEFAULT_REFERENCE_BAND, Target, TargetDefinition, TargetUse, default_target,
+};
 use dspi_measure::types::{ChannelChain, LogGrid, Placement, Response};
 use dspi_measure::xover::{
     Driver, HighpassOverride, HighpassRule, SumMode, predict_sum, summed_check,
@@ -612,9 +614,12 @@ fn rms_between(
 }
 
 fn invert_mask(outputs: &[(u8, bool)]) -> u32 {
-    outputs.iter().filter(|(_, inv)| *inv).fold(0u32, |m, (o, _)| {
-        m | 1u32.checked_shl(u32::from(*o)).unwrap_or(0)
-    })
+    outputs
+        .iter()
+        .filter(|(_, inv)| *inv)
+        .fold(0u32, |m, (o, _)| {
+            m | 1u32.checked_shl(u32::from(*o)).unwrap_or(0)
+        })
 }
 
 fn date_words() -> String {
@@ -640,7 +645,11 @@ impl Tune {
             guard: core.apply_status(),
             verify: self.verify.clone(),
             issue: self.issue.clone(),
-            snapshot_before_id: self.before.as_ref().map(|b| b.0.clone()).unwrap_or_default(),
+            snapshot_before_id: self
+                .before
+                .as_ref()
+                .map(|b| b.0.clone())
+                .unwrap_or_default(),
             snapshot_after_id: self.after.as_ref().map(|a| a.0.clone()).unwrap_or_default(),
         }
     }
@@ -683,8 +692,8 @@ impl DspiCore {
             return Ok((doc, Source::Hub(m.to_owned())));
         }
         let text = self.measure_doc_get(m.to_owned())?;
-        let doc =
-            MeasurementDoc::from_text(&text).map_err(|e| invalid(format!("the measurement: {e}")))?;
+        let doc = MeasurementDoc::from_text(&text)
+            .map_err(|e| invalid(format!("the measurement: {e}")))?;
         Ok((doc, Source::Local(m.to_owned())))
     }
 
@@ -858,9 +867,7 @@ impl DspiCore {
                         })
                         .err(),
                     "out.gain" => {
-                        let raised = v
-                            .as_f32()
-                            .is_none_or(|g| g > way.chain_now.gain_db + 0.049);
+                        let raised = v.as_f32().is_none_or(|g| g > way.chain_now.gain_db + 0.049);
                         if raised {
                             Some(invalid("an output gain would be raised"))
                         } else {
@@ -974,8 +981,11 @@ impl DspiCore {
                 };
                 let now = |w: &WayIn| maths::lowpass_corner(&w.chain_now).map(f64::from);
                 let fallback = now(lo).unwrap_or(0.0);
-                let (before_hz, after_hz, rel, flipped) =
-                    sp.xo.get(k).copied().unwrap_or((fallback, fallback, 0.0, false));
+                let (before_hz, after_hz, rel, flipped) = sp
+                    .xo
+                    .get(k)
+                    .copied()
+                    .unwrap_or((fallback, fallback, 0.0, false));
                 transitions.push(MeasureTuneTransition {
                     speaker: sp.name.clone(),
                     low_output: lo.output,
@@ -1150,9 +1160,10 @@ impl DspiCore {
             }
         }
         for (name, why) in &failed {
-            t.allow
-                .no_timing
-                .insert(name.clone(), (maths::KEY_SUM_FAILED.to_owned(), why.clone()));
+            t.allow.no_timing.insert(
+                name.clone(),
+                (maths::KEY_SUM_FAILED.to_owned(), why.clone()),
+            );
         }
         t.confirmed = checked
             .into_iter()
@@ -1167,7 +1178,9 @@ impl DspiCore {
         for tr in &mut p.transitions {
             tr.sum_check_rms_db = results
                 .iter()
-                .find(|(s, lo, hi, _)| *s == tr.speaker && *lo == tr.low_output && *hi == tr.high_output)
+                .find(|(s, lo, hi, _)| {
+                    *s == tr.speaker && *lo == tr.low_output && *hi == tr.high_output
+                })
                 .and_then(|r| r.3);
         }
         t.proposal = Some(p);
@@ -1196,31 +1209,39 @@ impl DspiCore {
             match item.purpose {
                 Purpose::VerifyWalked => {
                     let Ok(doc) = MeasurementDoc::from_text(text) else {
-                        v.notes.push("the verify's measurement could not be read".into());
+                        v.notes
+                            .push("the verify's measurement could not be read".into());
                         passed = false;
                         continue;
                     };
                     v.timing_reliable = doc.measurement.capture.timing_reliable;
                     for w in &input.ways {
-                        let Some(om) = doc.measurement.outputs.iter().find(|o| o.output == w.output)
+                        let Some(om) = doc
+                            .measurement
+                            .outputs
+                            .iter()
+                            .find(|o| o.output == w.output)
                         else {
                             continue;
                         };
                         let measured = om.response.to_response();
-                        let rms = repredict(&w.response, &w.measured_chain, &chain_after(w), &model)
-                            .ok()
-                            .and_then(|pred| {
-                                let top = pred
-                                    .mag_db
-                                    .iter()
-                                    .copied()
-                                    .filter(|m| m.is_finite())
-                                    .fold(f64::NEG_INFINITY, f64::max);
-                                let keep = |i: usize| {
-                                    pred.mag_db.get(i).is_some_and(|m| *m >= top - VERIFY_SPAN_DB)
-                                };
-                                rms_between(&measured, &pred, 100.0, 10_000.0, &keep)
-                            });
+                        let rms =
+                            repredict(&w.response, &w.measured_chain, &chain_after(w), &model)
+                                .ok()
+                                .and_then(|pred| {
+                                    let top = pred
+                                        .mag_db
+                                        .iter()
+                                        .copied()
+                                        .filter(|m| m.is_finite())
+                                        .fold(f64::NEG_INFINITY, f64::max);
+                                    let keep = |i: usize| {
+                                        pred.mag_db
+                                            .get(i)
+                                            .is_some_and(|m| *m >= top - VERIFY_SPAN_DB)
+                                    };
+                                    rms_between(&measured, &pred, 100.0, 10_000.0, &keep)
+                                });
                         v.outputs.push(MeasureTuneVerifyOutput {
                             output: w.output,
                             rms_db: rms,
@@ -1252,12 +1273,14 @@ impl DspiCore {
                         continue;
                     };
                     match sum_verdict(&input, sp, transition, text, &chain_after) {
-                        Ok((lo, hi, rms, ok, _)) => {
+                        Ok((lo, hi, rms, ok, corner)) => {
                             passed &= ok;
                             v.transitions.push(MeasureTuneTransition {
                                 speaker: sp.name.clone(),
                                 low_output: lo,
                                 high_output: hi,
+                                corner_before_hz: corner,
+                                corner_hz: corner,
                                 verify_rms_db: Some(rms),
                                 ..MeasureTuneTransition::default()
                             });
@@ -1357,10 +1380,7 @@ fn sum_verdict(
         .response
         .to_response();
     let (cl, ch) = (chain(lo), chain(hi));
-    let mask = invert_mask(&[
-        (lo.output, cl.feed.inverted),
-        (hi.output, ch.feed.inverted),
-    ]);
+    let mask = invert_mask(&[(lo.output, cl.feed.inverted), (hi.output, ch.feed.inverted)]);
     let predicted = predict_sum(
         &[dl.clone(), dh.clone()],
         &[cl.clone(), ch.clone()],
@@ -1380,9 +1400,7 @@ fn sum_verdict(
 fn highpass_corner(c: &ChannelChain) -> Option<f32> {
     c.crossover
         .iter()
-        .find(|b| {
-            !b.bypass && dspi_proto::xover::meta(b.filter_type).is_some_and(|m| m.high_pass)
-        })
+        .find(|b| !b.bypass && dspi_proto::xover::meta(b.filter_type).is_some_and(|m| m.high_pass))
         .map(|b| b.freq)
 }
 
@@ -1401,7 +1419,11 @@ fn verified_sum(
     let mut after = Vec::new();
     for i in &sp.ways {
         let w = input.ways.get(*i)?;
-        let om = doc.measurement.outputs.iter().find(|o| o.output == w.output)?;
+        let om = doc
+            .measurement
+            .outputs
+            .iter()
+            .find(|o| o.output == w.output)?;
         let c = chain(w);
         measured.push(Driver {
             output: w.output,
@@ -1441,7 +1463,12 @@ pub(crate) fn layout_of(s: &crate::records::DspState) -> MeasureLayout {
             if !r.get(oi).copied().unwrap_or(false) {
                 continue;
             }
-            let g = s.matrix_gain.get(i).and_then(|g| g.get(oi)).copied().unwrap_or(0.0);
+            let g = s
+                .matrix_gain
+                .get(i)
+                .and_then(|g| g.get(oi))
+                .copied()
+                .unwrap_or(0.0);
             if let Ok(input) = u8::try_from(i)
                 && feed.is_none_or(|(_, best)| g > best)
             {
@@ -1663,7 +1690,11 @@ impl DspiCore {
                     ),
                 ));
             }
-            if let Some(m) = doc.measurement.outputs.iter().find(|o| o.output == w.output)
+            if let Some(m) = doc
+                .measurement
+                .outputs
+                .iter()
+                .find(|o| o.output == w.output)
                 && role_of(m.role) != w.role
             {
                 warnings.push(MeasureIssue::new(
@@ -1754,7 +1785,9 @@ impl DspiCore {
         if t.stage != MeasureTuneStage::Proposed
             || t.proposal.as_ref().map(|p| p.id) != Some(proposal_id)
         {
-            return Err(invalid(format!("no proposal {proposal_id} waits to be checked")));
+            return Err(invalid(format!(
+                "no proposal {proposal_id} waits to be checked"
+            )));
         }
         let (Some(input), Some(c)) = (t.input.clone(), t.computed.clone()) else {
             return Err(invalid("no proposal waits to be checked"));
@@ -1808,7 +1841,11 @@ impl DspiCore {
         t.issue = None;
         self.tune_next(&mut t);
         if t.runs.is_none() {
-            let why = t.issue.as_ref().map(|i| i.message.clone()).unwrap_or_default();
+            let why = t
+                .issue
+                .as_ref()
+                .map(|i| i.message.clone())
+                .unwrap_or_default();
             self.tune_publish(&t);
             return Err(invalid(why));
         }
@@ -1966,7 +2003,10 @@ impl DspiCore {
         let mut notes = Vec::new();
         let before_text = self.snapshot_capture_document(
             format!("Before auto-tune {}", date_words()),
-            format!("Before applying the auto-tune of \"{}\"", input.doc.meta.name),
+            format!(
+                "Before applying the auto-tune of \"{}\"",
+                input.doc.meta.name
+            ),
         )?;
         let before_id = self.tune_file_snapshot(&before_text, &mut notes);
         let guard = self.apply_guard_begin(
@@ -1983,11 +2023,12 @@ impl DspiCore {
             for q in &w.params {
                 if let Err(e) = self.write_param(q.path.clone(), q.indices.clone(), q.value.clone())
                 {
-                    failed = Some(DspiError::InvalidArgument {
-                        msg: format!("{}: {e}", w.words),
-                    })
-                    .filter(|_| !matches!(e, DspiError::ReadOnly | DspiError::Denied))
-                    .or(Some(e));
+                    failed = Some(match e {
+                        DspiError::ReadOnly | DspiError::Denied => e,
+                        e => DspiError::InvalidArgument {
+                            msg: format!("{}: {e}", w.words),
+                        },
+                    });
                     break 'all;
                 }
             }
@@ -2117,7 +2158,11 @@ impl DspiCore {
         t.verify = None;
         self.tune_next(&mut t);
         if t.runs.is_none() {
-            let why = t.issue.as_ref().map(|i| i.message.clone()).unwrap_or_default();
+            let why = t
+                .issue
+                .as_ref()
+                .map(|i| i.message.clone())
+                .unwrap_or_default();
             self.tune_publish(&t);
             return Err(invalid(why));
         }
@@ -2300,7 +2345,9 @@ impl DspiCore {
         }
         let _ = self.measure_clear();
         match t.stage {
-            MeasureTuneStage::Applied | MeasureTuneStage::Verifying | MeasureTuneStage::Verified => {
+            MeasureTuneStage::Applied
+            | MeasureTuneStage::Verifying
+            | MeasureTuneStage::Verified => {
                 t.stage = MeasureTuneStage::Applied;
             }
             _ => t.forget(),

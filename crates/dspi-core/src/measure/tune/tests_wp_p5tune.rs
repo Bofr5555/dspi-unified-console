@@ -318,12 +318,20 @@ fn wp_p5tune_the_measurement_holds_its_snr() {
     }
     // A document read and written again keeps it (an unknown key).
     let again = MeasurementDoc::from_text(&doc.to_text().unwrap()).unwrap();
-    assert!(again.measurement.outputs[0].extra.contains_key(runs::SNR_KEY));
+    assert!(
+        again.measurement.outputs[0]
+            .extra
+            .contains_key(runs::SNR_KEY)
+    );
 }
 
 #[test]
 fn wp_p5tune_the_proposal_aligns_flips_the_mid_and_keeps_the_common_delay() {
-    let c = compute(left_doc(), &MeasureTuneOptions::default(), &Allow::default());
+    let c = compute(
+        left_doc(),
+        &MeasureTuneOptions::default(),
+        &Allow::default(),
+    );
     for w in &c.writes {
         println!("{}", w.words);
     }
@@ -350,7 +358,10 @@ fn wp_p5tune_the_proposal_aligns_flips_the_mid_and_keeps_the_common_delay() {
         (hi.crossover[0].freq, start[2].crossover[0].freq, F2),
     ] {
         let off = |f: f32| (f64::from(f) / design).log2().abs();
-        assert!(off(now) < off(was) && off(now) <= 0.25 + 1e-6, "{now} from {was}");
+        assert!(
+            off(now) < off(was) && off(now) <= 0.25 + 1e-6,
+            "{now} from {was}"
+        );
     }
     // Nothing raised; timing writes flagged; the EQ within its caps.
     for (w, b) in c.chains.iter().zip(&start_chains()) {
@@ -401,15 +412,20 @@ fn wp_p5tune_a_0_3_ms_tweeter_offset_is_corrected() {
     );
     assert!((d - 0.3).abs() <= 0.010, "{d}");
     // Align only: no corner or level write.
-    assert!(b.writes.iter().all(|w| !matches!(
-        w.kind,
-        MeasureTuneKind::Crossover | MeasureTuneKind::Level
-    )));
+    assert!(
+        b.writes
+            .iter()
+            .all(|w| !matches!(w.kind, MeasureTuneKind::Crossover | MeasureTuneKind::Level))
+    );
 }
 
 #[test]
 fn wp_p5tune_the_bass_modes_are_reduced_within_2_db() {
-    let c = compute(left_doc(), &MeasureTuneOptions::default(), &Allow::default());
+    let c = compute(
+        left_doc(),
+        &MeasureTuneOptions::default(),
+        &Allow::default(),
+    );
     let sp = &c.speakers[0];
     let target = speakers_target();
     let (modes_before, peak_before) = bass_held(sp.before.as_ref().unwrap(), &target);
@@ -425,7 +441,11 @@ fn wp_p5tune_the_bass_modes_are_reduced_within_2_db() {
     // The fit starts above the lowest trusted point, never at 20 Hz, and
     // uses no broad band (speakers: Q 2 or more).
     assert!(fit.bands.iter().all(|b| f64::from(b.band.freq) > 20.0));
-    assert!(fit.bands.iter().all(|b| f64::from(b.band.q) >= maths::SPEAKERS_Q_MIN - 1e-3));
+    assert!(
+        fit.bands
+            .iter()
+            .all(|b| f64::from(b.band.q) >= maths::SPEAKERS_Q_MIN - 1e-3)
+    );
     // Every band of the fit is written, on each way that plays there.
     let eq: Vec<_> = c
         .writes
@@ -433,7 +453,10 @@ fn wp_p5tune_the_bass_modes_are_reduced_within_2_db() {
         .filter(|w| w.kind == MeasureTuneKind::Eq)
         .collect();
     assert!(eq.len() >= fit.bands.len());
-    assert!(eq.iter().all(|w| w.output != 2), "no bass band on the tweeter");
+    assert!(
+        eq.iter().all(|w| w.output != 2),
+        "no bass band on the tweeter"
+    );
 }
 
 #[test]
@@ -468,7 +491,10 @@ fn wp_p5tune_a_failed_summed_check_withdraws_the_timing_and_keeps_the_eq() {
     let mut allow = Allow::default();
     allow.no_timing.insert(
         "L".into(),
-        (maths::KEY_SUM_FAILED.into(), "the summed run differs".into()),
+        (
+            maths::KEY_SUM_FAILED.into(),
+            "the summed run differs".into(),
+        ),
     );
     let c = compute(left_doc(), &MeasureTuneOptions::default(), &allow);
     assert!(c.writes.iter().all(|w| !w.timing));
@@ -478,9 +504,20 @@ fn wp_p5tune_a_failed_summed_check_withdraws_the_timing_and_keeps_the_eq() {
 
 #[test]
 fn wp_p5tune_the_proposal_is_deterministic_and_matches_its_golden() {
-    let a = compute(left_doc(), &MeasureTuneOptions::default(), &Allow::default());
-    let b = compute(left_doc(), &MeasureTuneOptions::default(), &Allow::default());
-    assert_eq!(a.writes, b.writes, "identical input, identical writes (RC10)");
+    let a = compute(
+        left_doc(),
+        &MeasureTuneOptions::default(),
+        &Allow::default(),
+    );
+    let b = compute(
+        left_doc(),
+        &MeasureTuneOptions::default(),
+        &Allow::default(),
+    );
+    assert_eq!(
+        a.writes, b.writes,
+        "identical input, identical writes (RC10)"
+    );
     // The golden is of a document filed once (testdata), so a rendering of
     // the world on another machine does not move it.
     let path = concat!(
@@ -494,7 +531,11 @@ fn wp_p5tune_the_proposal_is_deterministic_and_matches_its_golden() {
     if std::env::var_os("DSPI_P5TUNE_WRITE_GOLDEN").is_some() {
         std::fs::create_dir_all(std::path::Path::new(path).parent().unwrap()).unwrap();
         std::fs::write(path, left_doc()).unwrap();
-        let c = compute(left_doc(), &MeasureTuneOptions::default(), &Allow::default());
+        let c = compute(
+            left_doc(),
+            &MeasureTuneOptions::default(),
+            &Allow::default(),
+        );
         std::fs::write(
             golden,
             serde_json::to_string_pretty(&c.writes).unwrap() + "\n",

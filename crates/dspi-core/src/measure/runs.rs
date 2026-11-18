@@ -228,7 +228,11 @@ pub(crate) fn output_response(
             .zip(&n.mag_db)
             .map(|(s, n)| {
                 let v = s - n;
-                if v.is_finite() { v.clamp(-100.0, 300.0) } else { -100.0 }
+                if v.is_finite() {
+                    v.clamp(-100.0, 300.0)
+                } else {
+                    -100.0
+                }
             })
             .collect()
     });

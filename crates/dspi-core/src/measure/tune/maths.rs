@@ -301,18 +301,14 @@ fn way_of(w: &WayIn) -> Option<Way> {
         Some(s) if s.len() == n => s.clone(),
         // Filed without its SNR: only the trusted points count, and as
         // barely trusted (the de-embedding then trusts only the passband).
-        _ => w
-            .response
-            .valid
-            .as_ref()
-            .map_or_else(
-                || vec![DEEMBED_MIN_SNR_DB; n],
-                |v| {
-                    v.iter()
-                        .map(|ok| if *ok { DEEMBED_MIN_SNR_DB } else { 0.0 })
-                        .collect()
-                },
-            ),
+        _ => w.response.valid.as_ref().map_or_else(
+            || vec![DEEMBED_MIN_SNR_DB; n],
+            |v| {
+                v.iter()
+                    .map(|ok| if *ok { DEEMBED_MIN_SNR_DB } else { 0.0 })
+                    .collect()
+            },
+        ),
     };
     Some(Way {
         output: w.output,
@@ -416,10 +412,7 @@ fn plays_in(c: &ChannelChain, lo: f64, hi: f64, model: &dyn SectionModel) -> boo
     let Ok(freqs) = LogGrid::STANDARD.freqs() else {
         return false;
     };
-    let f: Vec<f64> = freqs
-        .into_iter()
-        .filter(|f| *f >= lo && *f <= hi)
-        .collect();
+    let f: Vec<f64> = freqs.into_iter().filter(|f| *f >= lo && *f <= hi).collect();
     chain_db(&xover_only(c), model, &f)
         .iter()
         .any(|d| *d >= PLAYS_DB)
@@ -562,7 +555,11 @@ fn writes_of(
                     phase_invert: !inv,
                     gain_db: *gain,
                 };
-                param("mix", vec![*input, o], ParamValue::Bytes(p.encode().to_vec()))
+                param(
+                    "mix",
+                    vec![*input, o],
+                    ParamValue::Bytes(p.encode().to_vec()),
+                )
             })
             .collect();
         out.push(MeasureTuneWrite {
@@ -584,7 +581,11 @@ fn writes_of(
         let mut params = Vec::new();
         let idx = vec![ch, band];
         if a.filter_type != b.filter_type {
-            params.push(param("eq.type", idx.clone(), ParamValue::Choice(a.filter_type)));
+            params.push(param(
+                "eq.type",
+                idx.clone(),
+                ParamValue::Choice(a.filter_type),
+            ));
         }
         if a.filter_type != 0 {
             params.push(param("eq.freq", idx.clone(), ParamValue::Float(a.freq)));
@@ -675,11 +676,7 @@ pub(crate) fn compute(
             continue;
         }
         let mut withdraw = |key: &str, why: String| {
-            withdrawn.push(MeasureIssue::new(
-                key,
-                None,
-                format!("{}: {why}", sp.name),
-            ));
+            withdrawn.push(MeasureIssue::new(key, None, format!("{}: {why}", sp.name)));
         };
         let way_list: Vec<&WayIn> = sp.ways.iter().filter_map(|i| ways.get(*i)).collect();
         let drivers: Option<Vec<Driver>> = way_list
