@@ -569,6 +569,10 @@ fn wp_p5tune_every_notice_key_has_a_row() {
     assert_eq!(keys.len(), NOTICE_KEYS.len(), "{keys:?}");
     for k in NOTICE_KEYS {
         assert!(keys.contains(&(*k).to_owned()), "{k}");
+        assert!(
+            crate::measure::NOTICE_KEYS.contains(k),
+            "{k} in measure.rs's list"
+        );
         assert!(crate::notice_text::has_row(k), "no notice row for {k}");
         assert_eq!(
             crate::notice_for_key((*k).to_owned(), String::new()).key,

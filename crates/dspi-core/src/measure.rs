@@ -138,6 +138,19 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.live.no_frame",
     "measure.live.nothing_to_change",
     "measure.live.chain_changed",
+    // -- WP P5TUNE --
+    "measure.tune.timing_unreliable",
+    "measure.tune.sum_check_failed",
+    "measure.tune.no_timing",
+    "measure.tune.limit",
+    "measure.tune.no_fit",
+    "measure.tune.other_device",
+    "measure.tune.old",
+    "measure.tune.placement",
+    "measure.tune.chains_changed",
+    "measure.tune.sum_check_needed",
+    "measure.tune.mic",
+    "measure.tune.not_kept",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────
