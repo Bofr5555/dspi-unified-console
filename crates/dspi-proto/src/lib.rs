@@ -22,6 +22,8 @@ pub mod enums;
 pub mod ext;
 pub mod frame;
 pub mod packets;
+// -- WP PLANPG -- the paged protocol's seam (PLAN-PG)
+pub mod paged;
 pub mod registry;
 pub mod value;
 pub mod wire;
