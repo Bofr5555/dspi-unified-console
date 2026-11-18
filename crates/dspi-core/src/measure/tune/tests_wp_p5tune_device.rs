@@ -398,11 +398,12 @@ impl Mic {
 
 /// The world as the device hears it: the test world 10 dB louder at the
 /// microphone, in a quiet room (-110 dBFS). The ramp settles every way at its
-/// start level (-50 dBFS: heard at once), and there, in P5SIM's own -85
-/// dBFS, P5TIME's whole-band cycle-identity search does not find the woofer
-/// behind its LR4 low-pass, and the drivers' de-embedded responses are not
-/// trusted one octave past their corners (RC12 needs 20 dB plus the LR4's
-/// 24 dB there): P5SES/P5TIME follow-ups, in the report.
+/// start level (-50 dBFS: heard at once). In P5SIM's own -85 dBFS the run
+/// itself is fine since P5ARRIVAL (`review_p5c2_the_ramps_level_in_p5sims_noise`
+/// below), but the drivers' de-embedded responses are then not trusted one
+/// octave past their corners (RC12's mask and the trust mask's repeat
+/// spread there: review P5-C2's follow-up), so the transitions are kept;
+/// this world shows the whole flow.
 fn heard() -> World {
     let mut w = world(11, 0.3);
     w.noise_dbfs = Some(-110.0);
@@ -905,12 +906,12 @@ fn wp_p5tune_device_a_viewer_through_the_hub_is_denied() {
 fn wp_p5tune_device_the_demo_simulated_microphone_measures_and_checks() {
     // P5DEMO's simulated microphone: the demo device's own room (P5SIM's
     // three-way room), heard without a client pushing anything.
-    // The midrange and the tweeter (the woofer at the ramp's level is not
-    // found by the cycle-identity search in the demo room's noise: see
-    // `heard`).
+    // The whole left speaker: since P5ARRIVAL the woofer behind its LR4
+    // low-pass is identified at the ramp's level in the demo room's noise
+    // (review P5-C2; P5TIME's whole-band search aborted this run).
     let r = rig("demo-sim");
     r.core.measure_sim_set(true, 5).unwrap();
-    r.core.measure_start(walked(&[1, 2])).unwrap();
+    r.core.measure_start(walked(&[0, 1, 2])).unwrap();
     let end = std::time::Instant::now() + Duration::from_secs(150);
     let st = loop {
         let st = r.core.measure_tick();
@@ -925,10 +926,10 @@ fn wp_p5tune_device_the_demo_simulated_microphone_measures_and_checks() {
     r.core.measure_clear().unwrap();
     let p = r
         .core
-        .measure_tune_propose(text, layout(&[1, 2]), MeasureTuneOptions::default())
+        .measure_tune_propose(text, layout(&[0, 1, 2]), MeasureTuneOptions::default())
         .unwrap();
     assert!(p.timing_reliable, "{p:#?}");
-    assert_eq!(p.transitions.len(), 1);
+    assert_eq!(p.transitions.len(), 2);
     if !p.writes.iter().any(|w| w.timing) {
         // At the ramp's level in the demo room the drivers are not trusted
         // one octave past the corner (see `heard`): the transition is kept,
@@ -956,4 +957,195 @@ fn wp_p5tune_device_the_demo_simulated_microphone_measures_and_checks() {
     let q = r.core.measure_tune_proposal().unwrap();
     assert_eq!(q.sum_check, MeasureTuneCheck::Passed, "{:#?}", q.withdrawn);
     r.core.measure_sim_set(false, 0).unwrap();
+}
+
+// ── Review P5-C2 ────────────────────────────────────────────────────────
+
+/// P5TUNE's follow-up 1, on its own rig: P5SIM's three-way room as it is
+/// (-85 dBFS of noise, nothing made louder), the ramp stopping where it hears
+/// 35 dB. The woofer behind its LR4 low-pass is identified at -50 dBFS (the
+/// run aborted on "not heard in the window" before P5ARRIVAL) and the run is
+/// timing reliable.
+#[test]
+fn review_p5c2_the_ramps_level_in_p5sims_noise_identifies_every_way() {
+    let r = rig("p5c2-noise");
+    let w = world(11, 0.3);
+    assert_eq!(w.noise_dbfs, Some(-85.0), "P5SIM's own noise");
+    let mut mic = Mic::new(&r, w);
+    let text = mic.measure(walked(&[0, 1, 2]), 300.0);
+    let doc = MeasurementDoc::from_text(&text).unwrap();
+    let c = &doc.measurement.capture;
+    assert!(c.timing_reliable, "{text}");
+    assert!(
+        doc.measurement.stimulus.level_db <= -44.0,
+        "the ramp's level"
+    );
+    assert_eq!(doc.measurement.outputs.len(), 3);
+    let p = r
+        .core
+        .measure_tune_propose(text, layout(&[0, 1, 2]), MeasureTuneOptions::default())
+        .unwrap();
+    assert!(p.timing_reliable && p.withdrawn.is_empty(), "{p:#?}");
+    // Whatever is offered at this level, nothing of the timing is applied
+    // before its summed check.
+    if p.writes.iter().any(|w| w.timing) {
+        let e = r.core.measure_tune_apply(p.id, 0).unwrap_err();
+        assert!(e.to_string().contains("measure.tune.sum_check_needed"));
+    }
+}
+
+/// S9: a refusal that withdrawing the refused speaker's own writes does not
+/// remove (the common headroom cut on an output already at the registry's
+/// lowest gain, for another speaker's boost) is never offered: before the
+/// review the proposal kept the write `out.gain` -61.3 dB after its eight
+/// rounds.
+#[test]
+fn review_p5c2_a_refusal_no_withdrawal_removes_is_never_offered() {
+    let r = rig("p5c2-stall");
+    let outs = [0, 1, 2, 3, 4, 5];
+    let text = offline_doc(&world(7, 0.3), &r.chains(), &outs, SERIAL);
+    // Since the measurement: the right tweeter turned down to the lowest
+    // gain there is (the proposal is made for the chains now, OD-P5o).
+    r.core.set_output_gain(5, -60.0).unwrap();
+    settle(&r.core);
+    let mut doc = MeasurementDoc::from_text(&text).unwrap();
+    doc.measurement.capture.timing_reliable = false;
+    let p = r
+        .core
+        .measure_tune_propose(
+            doc.to_text().unwrap(),
+            layout(&outs),
+            MeasureTuneOptions::default(),
+        )
+        .unwrap();
+    for w in &p.writes {
+        for q in &w.params {
+            if q.path == "out.gain"
+                && let ParamValue::Float(g) = q.value
+            {
+                assert!(g >= -60.0, "{}", w.words);
+            }
+        }
+    }
+    assert!(
+        p.withdrawn
+            .iter()
+            .any(|i| i.message.contains("a write the core would refuse")),
+        "{:#?}",
+        p.withdrawn
+    );
+    // What is offered can be applied.
+    if !p.writes.is_empty() {
+        r.core.measure_tune_apply(p.id, 0).unwrap();
+        r.core.measure_tune_revert().unwrap();
+    }
+}
+
+/// RC5f, fail closed: a summed check whose runs did not all give a result
+/// confirms nothing (before the review a speaker with one of its two
+/// transitions checked was confirmed, and a check with no result at all read
+/// "passed").
+#[test]
+fn review_p5c2_an_incomplete_summed_check_confirms_nothing() {
+    use std::collections::BTreeMap;
+    let need = vec![("L".to_owned(), 2), ("R".to_owned(), 2)];
+    let passes: BTreeMap<String, usize> = [("L".to_owned(), 1), ("R".to_owned(), 2)].into();
+    let ok = super::fully_checked(&need, &passes, &[]);
+    assert!(!ok.contains("L") && ok.contains("R"), "{ok:?}");
+    assert!(super::fully_checked(&need, &passes, &["R".to_owned()]).is_empty());
+    assert!(super::fully_checked(&need, &BTreeMap::new(), &[]).is_empty());
+    // On the device: the check's runs ended without a result.
+    let r = rig("p5c2-partial");
+    let text = offline_doc(&world(7, 0.3), &r.chains(), &[0, 1, 2], SERIAL);
+    let p = r
+        .core
+        .measure_tune_propose(text, layout(&[0, 1, 2]), MeasureTuneOptions::default())
+        .unwrap();
+    assert!(p.writes.iter().any(|w| w.timing), "{p:#?}");
+    {
+        let mut t = r.core.measure.tune_lock();
+        t.stage = MeasureTuneStage::SumCheck;
+        r.core.tune_sum_done(&mut t, &[]);
+        assert!(t.confirmed.is_empty());
+        assert_eq!(t.stage, MeasureTuneStage::Proposed);
+    }
+    let q = r.core.measure_tune_proposal().unwrap();
+    assert_eq!(q.sum_check, MeasureTuneCheck::Pending, "not passed");
+    let n = r.log_len();
+    let e = r.core.measure_tune_apply(q.id, 0).unwrap_err();
+    assert!(
+        e.to_string().contains("measure.tune.sum_check_needed"),
+        "{e}"
+    );
+    assert!(r.writes_since(n).is_empty(), "nothing written");
+}
+
+/// S10: a crosspoint that feeds a tuned output but is not its loudest (the
+/// preflight's chain holds the loudest only) changed since the proposal: the
+/// apply is refused with nothing written (a polarity write would have put
+/// the crosspoint's old gain back).
+#[test]
+fn review_p5c2_a_changed_secondary_crosspoint_refuses_the_apply() {
+    let r = rig("p5c2-feeds");
+    let p = eq_only(&r);
+    let s = r.core.get_state();
+    let fed = (0..s.num_input_channels)
+        .find(|i| s.matrix_routing[usize::from(*i)][0])
+        .expect("output 1 is fed");
+    let other = (0..s.num_input_channels)
+        .find(|i| *i != fed && !s.matrix_routing[usize::from(*i)][0])
+        .expect("an input that does not feed output 1");
+    r.core
+        .set_matrix_route(other, 0, true, -30.0, false)
+        .unwrap();
+    settle(&r.core);
+    let n = r.log_len();
+    let e = r.core.measure_tune_apply(p.id, 0).unwrap_err();
+    assert!(e.to_string().contains("crosspoint"), "{e}");
+    assert!(r.writes_since(n).is_empty(), "nothing written");
+    assert_eq!(r.core.apply_status().id, 0, "no guard begun");
+}
+
+/// S3: the tune's own runs (the summed check, the verify) never play louder
+/// than the measurement was made: its level is their ceiling. Before the
+/// review they ramped to the default ceiling (-12 dBFS for speakers) whatever
+/// ceiling the user had measured with.
+#[test]
+fn review_p5c2_the_tunes_runs_never_play_louder_than_the_measurement() {
+    let r = rig("p5c2-ceiling");
+    let text = offline_doc(&world(7, 0.3), &r.chains(), &[0, 1, 2], SERIAL);
+    let mut doc = MeasurementDoc::from_text(&text).unwrap();
+    assert_eq!(super::run_ceiling(&doc), -20.0, "the document's level");
+    doc.measurement.stimulus.level_db = -3.0;
+    assert_eq!(
+        super::run_ceiling(&doc),
+        crate::measure::plan::CEILING_SPEAKERS_DB,
+        "never above the default ceiling"
+    );
+    doc.measurement.stimulus.level_db = -36.0;
+    assert_eq!(super::run_ceiling(&doc), -36.0);
+    let p = r
+        .core
+        .measure_tune_propose(
+            doc.to_text().unwrap(),
+            layout(&[0, 1, 2]),
+            MeasureTuneOptions::default(),
+        )
+        .unwrap();
+    assert!(p.writes.iter().any(|w| w.timing), "{p:#?}");
+    // The summed check's runs carry it.
+    r.core.measure_tune_sum_check(p.id).unwrap();
+    {
+        let t = r.core.measure.tune_lock();
+        let runs = t.runs.as_ref().expect("the check runs");
+        let all = runs.current.iter().chain(&runs.queue);
+        assert!(all.clone().count() >= 2);
+        for item in all {
+            assert_eq!(item.setup.ceiling_db, Some(-36.0), "{:?}", item.setup.name);
+        }
+    }
+    let st = r.core.measure_state();
+    assert!(st.active, "{st:#?}");
+    r.core.measure_tune_stop();
+    assert!(!r.core.measure_state().active);
 }

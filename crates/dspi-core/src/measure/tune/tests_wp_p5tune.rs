@@ -545,6 +545,15 @@ fn wp_p5tune_the_proposal_is_deterministic_and_matches_its_golden() {
     let doc =
         std::fs::read_to_string(path).expect("the filed measurement (DSPI_P5TUNE_WRITE_GOLDEN=1)");
     let c = compute(&doc, &MeasureTuneOptions::default(), &Allow::default());
+    // -- review P5-C2 -- the proposal alone, from the filed document (after
+    // a change of the maths; the document stays as filed).
+    if std::env::var_os("DSPI_P5TUNE_WRITE_PROPOSAL").is_some() {
+        std::fs::write(
+            golden,
+            serde_json::to_string_pretty(&c.writes).unwrap() + "\n",
+        )
+        .unwrap();
+    }
     let want = std::fs::read_to_string(golden).unwrap();
     assert_eq!(
         serde_json::to_string_pretty(&c.writes).unwrap() + "\n",

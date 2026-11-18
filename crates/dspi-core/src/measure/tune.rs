@@ -28,10 +28,14 @@
 //!    measurement session's own run kind (every S-rule holds); the measured
 //!    sum against the sum predicted from the walked run, at most 1.5 dB RMS
 //!    one octave each side. A speaker that fails gets its timing writes
-//!    withdrawn and is proposed again without them (the EQ stays).
+//!    withdrawn and is proposed again without them (the EQ stays). A speaker
+//!    is confirmed only when every one of its transitions' runs passed; these
+//!    runs, and the verify's, never play louder than the measurement was made
+//!    (its level is their ceiling; review P5-C2).
 //! 4. **Apply** ([`DspiCore::measure_tune_apply`], S10): the preflight
 //!    **again** with the chains the proposal was computed for (silence, locks,
-//!    roles, read-only, the role through a hub), the "before" snapshot filed
+//!    roles, read-only, the role through a hub; every crosspoint that feeds a
+//!    tuned output as it was, review P5-C2), the "before" snapshot filed
 //!    (the hub's store through the hub, else this console's; on the web it is
 //!    kept as text), `apply_guard_begin("Auto-tune")`, then every write through
 //!    `write_param` in **one undo group**. A refused write ends the group and
@@ -569,6 +573,26 @@ fn placement_setup(p: &Placement) -> (MeasurePlacement, Option<MeasureCoupler>, 
     }
 }
 
+/// -- review P5-C2 -- The ceiling of the tune's own runs (the summed check,
+/// the verify), peak dBFS: the level the measurement was made at, at most the
+/// placement's default ceiling. The user's lowered ceiling or an SPL stop is
+/// in that level, and the setup of a document does not say them: a tune
+/// never plays louder than its measurement did (S3; before the review these
+/// runs ramped to the default -12 dBFS whatever the measurement's ceiling).
+fn run_ceiling(doc: &MeasurementDoc) -> f32 {
+    let default = match doc.measurement.placement {
+        Placement::Headphones { .. } => super::plan::CEILING_HEADPHONES_DB,
+        _ => super::plan::CEILING_SPEAKERS_DB,
+    };
+    let level = doc.measurement.stimulus.level_db;
+    if level.is_finite() {
+        (level as f32).clamp(-120.0, default)
+    } else {
+        // No level in the document: the quietest start level there is.
+        super::plan::START_HEADPHONES_DB
+    }
+}
+
 fn role_of(r: dspi_measure::types::WayRole) -> MeasureRole {
     use dspi_measure::types::WayRole as W;
     match r {
@@ -900,6 +924,23 @@ impl DspiCore {
         None
     }
 
+    /// -- review P5-C2 -- Withdraw the timing and the fit of every speaker
+    /// (a refusal no single speaker's withdrawal removes).
+    fn tune_withdraw_all(input: &Input, allow: &mut Allow, why: &str) {
+        for w in &input.ways {
+            allow.no_timing.entry(w.speaker.clone()).or_insert_with(|| {
+                (
+                    maths::KEY_LIMIT.to_owned(),
+                    format!("a write the core would refuse: {why}"),
+                )
+            });
+            allow
+                .no_fit
+                .entry(w.speaker.clone())
+                .or_insert_with(|| format!("a write the core would refuse: {why}"));
+        }
+    }
+
     /// The proposal of `input` with `allow`, judged (a refused write
     /// withdraws its kind for that speaker and the proposal is made again).
     fn tune_make(
@@ -918,8 +959,16 @@ impl DspiCore {
             &allow,
             &CoreSectionModel,
         );
-        for _ in 0..8 {
+        // -- review P5-C2 -- S9: a proposal with a write the core would refuse
+        // is never offered. Each round withdraws the refused write's kind for
+        // its speaker; a refusal that withdrawing does not remove (the common
+        // headroom cut on an output of another speaker), or one left when the
+        // rounds are spent, withdraws everything.
+        let rounds = input.ways.len().saturating_mul(2).saturating_add(2);
+        let mut settled = false;
+        for _ in 0..rounds {
             let Some((output, timing, why)) = self.tune_judge(input, &c) else {
+                settled = true;
                 break;
             };
             let speaker = input
@@ -928,18 +977,22 @@ impl DspiCore {
                 .find(|w| w.output == output)
                 .map(|w| w.speaker.clone())
                 .unwrap_or_default();
+            let before = allow.clone();
             if timing {
-                allow.no_timing.insert(
-                    speaker,
+                allow.no_timing.entry(speaker).or_insert_with(|| {
                     (
                         maths::KEY_LIMIT.to_owned(),
                         format!("a write the core would refuse: {why}"),
-                    ),
-                );
+                    )
+                });
             } else {
                 allow
                     .no_fit
-                    .insert(speaker, format!("a write the core would refuse: {why}"));
+                    .entry(speaker)
+                    .or_insert_with(|| format!("a write the core would refuse: {why}"));
+            }
+            if allow == before {
+                Self::tune_withdraw_all(input, &mut allow, &why);
             }
             c = maths::compute(
                 &input.doc,
@@ -950,6 +1003,21 @@ impl DspiCore {
                 &allow,
                 &CoreSectionModel,
             );
+        }
+        if !settled && let Some((_, _, why)) = self.tune_judge(input, &c) {
+            Self::tune_withdraw_all(input, &mut allow, &why);
+            c = maths::compute(
+                &input.doc,
+                &input.ways,
+                &input.options,
+                &input.bounds,
+                &input.target,
+                &allow,
+                &CoreSectionModel,
+            );
+            if self.tune_judge(input, &c).is_some() {
+                c.writes.clear();
+            }
         }
         t.allow = allow;
         t.next_id = t.next_id.wrapping_add(1).max(1);
@@ -1052,6 +1120,7 @@ impl DspiCore {
             sweep_ms: st.duration_ms,
             gap_ms: st.gap_ms,
             capture_rate_hz: input.doc.measurement.capture.rate_hz,
+            ceiling_db: Some(run_ceiling(&input.doc)),
             name: name.to_owned(),
             ..MeasureSetup::default()
         }
@@ -1123,7 +1192,11 @@ impl DspiCore {
         };
         let mut failed: Vec<(String, String)> = Vec::new();
         let mut results: Vec<(String, u8, u8, Option<f64>)> = Vec::new();
-        let mut checked: BTreeSet<String> = BTreeSet::new();
+        // -- review P5-C2 -- a speaker is confirmed only when every one of
+        // its transitions' runs passed (a run whose result could not be read
+        // leaves the check incomplete: fail closed).
+        let mut passes: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
         for (item, text) in done {
             let Purpose::SumCheck {
                 speaker,
@@ -1135,14 +1208,16 @@ impl DspiCore {
             let Some(sp) = c.speakers.get(speaker) else {
                 continue;
             };
-            checked.insert(sp.name.clone());
             let verdict = sum_verdict(&input, sp, transition, text, &|w: &WayIn| {
                 w.chain_now.clone()
             });
             match verdict {
                 Ok((lo, hi, rms, passed, corner)) => {
                     results.push((sp.name.clone(), lo, hi, Some(rms)));
-                    if !passed {
+                    if passed {
+                        let n = passes.entry(sp.name.clone()).or_insert(0);
+                        *n = n.saturating_add(1);
+                    } else {
                         failed.push((
                             sp.name.clone(),
                             format!(
@@ -1165,14 +1240,25 @@ impl DspiCore {
                 (maths::KEY_SUM_FAILED.to_owned(), why.clone()),
             );
         }
-        t.confirmed = checked
-            .into_iter()
-            .filter(|n| !failed.iter().any(|(f, _)| f == n))
+        let need: Vec<(String, usize)> = c
+            .speakers
+            .iter()
+            .filter(|sp| sp.timing && !sp.transitions.is_empty())
+            .map(|sp| (sp.name.clone(), sp.transitions.len()))
             .collect();
-        let check = if failed.is_empty() {
+        let failed_names: Vec<String> = failed.iter().map(|(n, _)| n.clone()).collect();
+        t.confirmed = fully_checked(&need, &passes, &failed_names);
+        let check = if !failed.is_empty() {
+            MeasureTuneCheck::Failed
+        } else if need.iter().all(|(n, _)| t.confirmed.contains(n)) {
             MeasureTuneCheck::Passed
         } else {
-            MeasureTuneCheck::Failed
+            t.issue = Some(MeasureIssue::new(
+                "measure.stopped",
+                None,
+                "the summed check is not complete: run it again",
+            ));
+            MeasureTuneCheck::Pending
         };
         let mut p = self.tune_make(t, &input, check);
         for tr in &mut p.transitions {
@@ -1347,6 +1433,22 @@ impl DspiCore {
             }
         }
     }
+}
+
+/// -- review P5-C2 -- The speakers whose summed check is complete: every one
+/// of their transitions (`need`: speaker, transitions) has a run that passed
+/// (`passes`), and none failed.
+fn fully_checked(
+    need: &[(String, usize)],
+    passes: &std::collections::BTreeMap<String, usize>,
+    failed: &[String],
+) -> BTreeSet<String> {
+    need.iter()
+        .filter(|(name, n)| {
+            *n > 0 && passes.get(name).copied().unwrap_or(0) >= *n && !failed.contains(name)
+        })
+        .map(|(name, _)| name.clone())
+        .collect()
 }
 
 /// The summed check (or the verify's summed run) of `sp`'s transition `k`:
@@ -1998,6 +2100,23 @@ impl DspiCore {
         if let Some(e) = preflight::refusal(&pre) {
             return Err(e);
         }
+        // -- review P5-C2 -- a polarity write carries every feeding
+        // crosspoint as it was read for the proposal (its gain too), and the
+        // preflight's chain holds only the loudest one: all of them must
+        // still be what the proposal was computed for, or a stale crosspoint
+        // gain would be written back.
+        let ways_now = self.tune_ways(&input.doc, &input.layout)?;
+        if ways_now.len() != input.ways.len()
+            || ways_now
+                .iter()
+                .zip(&input.ways)
+                .any(|(a, b)| a.output != b.output || a.feeds != b.feeds)
+        {
+            return Err(invalid(format!(
+                "{KEY_CHAINS}: a crosspoint that feeds a tuned output changed since the \
+                 proposal: propose again"
+            )));
+        }
         self.lock().writable_conn()?;
         // The "before" snapshot, then the guard, then one undo group.
         let mut notes = Vec::new();
@@ -2108,6 +2227,7 @@ impl DspiCore {
             gap_ms: st.gap_ms,
             passes: st.repeat.max(3),
             capture_rate_hz: input.doc.measurement.capture.rate_hz,
+            ceiling_db: Some(run_ceiling(&input.doc)),
             name: "Auto-tune verify".into(),
             ..MeasureSetup::default()
         };
