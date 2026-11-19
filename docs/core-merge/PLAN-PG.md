@@ -726,6 +726,13 @@ length locally. **Deps:** PG-B2; P5SES and P5LIVE merged (else PGMEAS waits; it 
 - **PGDOC:** the manual: on our hub the extension channel (audio link status, reset info, core voltage) is for admin
   sessions (section 1.11); `uconsole raw` refuses an opcode above 0xFF and a wValue or length above 16 bits.
 
+**Carried over from the PG-D part 2 review (`work/review-pgd2/REPORT.md`):**
+- **PGSWIFT:** if the Swift installer writes the image itself (not through `flash_confirmed` on the core that read the
+  target), its last check before the write is `DspiCore::firmware_write_check`, never a target kept in Swift. Do not
+  offer the bundled DSP image to the alink sender (Qt and Android do not).
+- **Open (owner):** Qt's menus still open the DSP tool windows on the alink sender (the core answers `Unsupported`;
+  nothing of the DSP model is written). A dual-stack sender (FWPG4) is not recognised: its open fails at the bulk read.
+
 **PGFWX: The update check over the bindings.** [DONE] Size 1. Wave PG-D, before the client WPs. **Owns:** the
 bindings of the update check (UniFFI derives and exports in `crates/dspi-core/src/firmware_guard.rs`, new
 `crates/dspi-capi/src/fns_misc/firmware_update.rs`, new `crates/dspi-wasm/src/firmware.rs`), `WriteGuardedCore`,
@@ -821,9 +828,18 @@ page list, as on the hub's `LocalTransport`/`PrincipalTransport`, gets a note sa
 `--accept-core-voltage-risk` (never typed for the person), says the generation change, and offers no image (nor a
 bootloader reboot) to a board without BOOTSEL.
 
-**PGAND: Android.** [TODO] Size 0.5. Wave PG-D. **Owns:** the device-info row in the Android settings feature,
+**PGAND: Android.** [DONE] Size 0.5. Wave PG-D. **Owns:** the device-info row in the Android settings feature,
 `WriteGuardedCore` entries (if not done by PGCORE's contract step). **Done when:** the module's unit tests through the
-Gradle slot wrapper. **Deps:** PGCORE.
+Gradle slot wrapper. **Deps:** PGCORE. **Did (WP PGAND, with the PG-D part 2 review's fixes):** Settings > About ends
+with a "Device" section from `device_protocol()`, read once per connection on the FFI dispatcher
+(`DspiBridge.deviceProtocol`); the Update button runs `firmware_target` + `firmware_update_check` before the bootloader
+entry (`FirmwareInstaller.checkBeforeEntry`), asks the phrase in a field that starts empty, shows the generation change,
+and reboots only on a clear check; a board without BOOTSEL is offered no image, no reboot and no bootloader-only link;
+on `AlinkSender` a sender page stands in for Home and the DSP routes are closed. **Review:** the write is Kotlin's
+(PICOBOOT or the drive), so its last check now asks the core's write gate through the new UniFFI export
+`DspiCore::firmware_write_check` (the gate's verdict on the core's own kept target, nothing written) instead of
+judging on a target kept in Kotlin, which did not know when the core had opened another board; a dismissed check keeps
+no board; the bundled DSP image is not offered to the sender (as Qt).
 
 **PGSWIFT: Swift (coordinator, Mac VM).** [TODO] Size 1. Wave PG-D. **Owns:** the Swift device-info row; the
 core-backed paths' tests against the paged fakes. Its `CoreBackedTransport` needs no code (its opcodes go through the
@@ -844,8 +860,9 @@ the stricter class, judges by the 1.1.6 equivalent, `DENIED` bootloader entry to
 `PARITY.md` new section K; `wire-format.md` new section 8; new `docs/manual/notices.md` (S5, the paged Zero behind an
 upstream hub, the admin-only extension channel, the update questions, the sender, `uconsole raw`'s refusals and
 `raw --id`'s FLASH/RESTART/BULK rule); new `docs/integrator/protocol-generations.md` (`device_protocol`'s one platform
-read, `raw_set_id`, `device_kind` `AlinkSender`, PGFLASH's write gate and its fallback). PGWEB and PGQT described as
-"in review".
+read, `raw_set_id`, `device_kind` `AlinkSender`, PGFLASH's write gate and its fallback). PGWEB and PGQT were described
+as "in review"; the PG-D part 2 review revised the manual page, `protocol-generations.md` and PARITY K to the merged
+state (PGWEB, PGQT, PGAND built; `firmware_write_check`).
 
 ### HIL
 

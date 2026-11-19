@@ -1,8 +1,8 @@
 # Both protocol generations: what a client of the core needs to know
 
 *WP PGDOC, 2026-11-19. The design is [`docs/core-merge/PLAN-PG.md`](../core-merge/PLAN-PG.md) (sections 1.1 to 1.11);
-this page is what a program calling the core (C ABI, UniFFI, wasm, `uconsole`) has to know about it, as built on `main`
-after wave PG-D part 1. The user's page is [docs/manual/notices.md](../manual/notices.md); the hub's surface is
+this page is what a program calling the core (C ABI, UniFFI, wasm, `uconsole`) has to know about it, as built after
+wave PG-D (revised at the PG-D part 2 review). The user's page is [docs/manual/notices.md](../manual/notices.md); the hub's surface is
 [hub-api.md](hub-api.md) (sections 3.1, 17 and 21). Where this page and the code disagree, the code is right.*
 
 ## 1. The two generations
@@ -36,8 +36,10 @@ firmware's result code (`VC_ERR_*`, 0x10 to 0x1A) as `DspiError::Refused { statu
 | `device_kind` | `Dsp`, or `AlinkSender` (section 4) |
 
 **It costs one platform read** (the board; the rest sends nothing). Call it **once per connection**, off the UI thread,
-and keep the answer: the Terminal, the web console and the Qt console (both in review) do. A demo device opened without
-the generation wrapper says `Unknown`.
+and keep the answer: the Terminal, the web console, the Qt console and the Android app do. A demo device opened without
+the generation wrapper says `Unknown`. For smoke runs the C ABI opens the demo as each fake generation
+(`dspi_demo_open_generation`, with `dspi_demo_generation_violations` counting requests the generation must not get):
+fakes only, never a device.
 
 ## 3. Raw requests
 
@@ -90,6 +92,10 @@ connection**:
   the bootloader entry reads it when it was not read on this connection. A caller's target JSON is never used; a
   caller's voltage record only adds doubt (a record that differs from the core's makes the voltage unknown). The kept
   target is dropped when another device is opened and after a write.
+- **A client that writes itself** (Android: PICOBOOT or the drive, in Kotlin) never reaches that gate through a write,
+  so it asks it: `DspiCore::firmware_write_check(image, board, typed)` (UniFFI only) answers what `flash_confirmed`
+  would decide now, on the core's own kept target, and writes nothing. A target the client kept is not a substitute:
+  the core drops its own when another device is opened, the client's copy does not know.
 - **The fallback:** when this core read no target (a board already in BOOTSEL before this core saw it, a fresh core such
   as the hub rollout's writer), the gate is the voltage rule alone, as before PG. So **write on the core that read the
   target** (or entered the bootloader), and never pass a voltage record kept from another board.
@@ -101,9 +107,10 @@ connection**:
 | Client | Update screen on the update check |
 |---|---|
 | Terminal `uconsole flash` | built (PGTM): asks `LINEAGE_PHRASE` on the terminal, `--force` does not answer it; the generation change is said; no image and no reboot for a board without BOOTSEL |
-| Qt | in review (PGQT) |
-| Web | no firmware write; the check is shown (Check an Image, the rollout dialog), in review (PGWEB) |
-| Android, Swift | not yet (PGAND, PGSWIFT) |
+| Qt | built (PGQT): the check before the entry, the phrase in an empty field, the write through `dspi_flash_confirmed` on the same core; no bundled image for the alink sender |
+| Web | no firmware write; the check is shown (Check an Image, the rollout dialog) (PGWEB) |
+| Android | built (PGAND): the check before the entry, the phrase in an empty field; the write is Kotlin's, and its last check is `firmware_write_check` (PG-D part 2 review); no bundled image for the alink sender |
+| Swift | not yet (PGSWIFT) |
 
 ## 6. Known limits
 

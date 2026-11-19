@@ -2,9 +2,9 @@
 
 *User manual, WP PGDOC, 2026-11-19. For the owner and for everyone who uses the consoles. The technical side is
 [docs/integrator/protocol-generations.md](../integrator/protocol-generations.md) and, for the hub,
-[docs/integrator/hub-api.md](../integrator/hub-api.md). This page describes the consoles as they are on `main` after
-wave PG-D part 1. The web console's and the Qt console's screens for this are finished and **in review** (not merged
-yet); they are marked that way below.*
+[docs/integrator/hub-api.md](../integrator/hub-api.md). This page describes the consoles as they are after wave PG-D
+(the Terminal, the web console, the Qt console and the Android app; revised at the PG-D part 2 review). The Apple apps
+have not been changed yet; that is said where it matters.*
 
 DSPi firmware now comes in two versions that talk to the consoles in different ways: **firmware 1.1.6** (and older)
 and **firmware 1.1.7**. Our consoles work with both. This page lists what you may see because of that, what each
@@ -20,8 +20,9 @@ Where you can see it:
 | Console | Where | What it shows |
 |---|---|---|
 | Terminal | `uconsole info`, and **Settings > About** in the interface | board, firmware version (1.1.6 or 1.1.7 with its protocol version), the list of command pages, and how the extensions are reached |
-| Web console (in review) | the **Device** screen, just before Settings | the same |
-| Qt console (in review) | **Settings > About**, under "Connected Device" | the same |
+| Web console | the **Device** screen, just before Settings | the same |
+| Qt console | **Settings > About**, under "Connected Device" | the same |
+| Android app | **Settings > About**, the section "Device" at the end | board, which of the two firmware versions (1.1.7 with its protocol version), the command pages, and how the extensions are reached |
 
 "Extensions" are this fork's own additions: the audio link, the reset reason, the core voltage setting and a few more.
 Stock firmware has none of them; the console simply does not offer those parts then.
@@ -46,8 +47,7 @@ session sees no audio link status, no reset reason and no core voltage. An **adm
 access (no PIN) every session is an admin, so everyone sees it.
 
 Why: the same channel carries the core voltage and other settings that change the hardware itself, so the hub treats
-all of it as a setting for admins. The Qt console (in review) says so on the alink sender's page when the hub refuses
-it.
+all of it as a setting for admins. The Qt console says so on the alink sender's page when the hub refuses it.
 
 ## 4. A K340 must not get stock firmware from an upstream console or hub
 
@@ -100,13 +100,15 @@ Which consoles ask this before the restart into the bootloader:
 | Console | State |
 |---|---|
 | Terminal (`uconsole flash`) | asks; `--force` does not answer the phrase for you, and nothing types it |
-| Qt console | in review |
-| Web console | has no firmware install of its own; its **Check an Image…** and the hub's rollout dialog (both in review) show the same verdict |
-| Android and the Apple apps | not yet |
+| Qt console | asks; the field for the phrase starts empty |
+| Web console | has no firmware install of its own; its **Check an Image…** and the hub's rollout dialog show the same verdict |
+| Android app | asks; the field for the phrase starts empty |
+| The Apple apps | not yet |
 
 The last check is in the core itself, at the moment of writing: even a console that did not ask first cannot write such
-an image without the phrase, as long as it read the board before restarting it. But a console that has not been changed
-yet may already have restarted the board into its bootloader before it is refused. Nothing is written then; the board
+an image without the phrase, as long as it read the board before restarting it. The Android app writes the image
+itself, so it asks the core for that same last check just before it writes. But a console that has not been changed
+yet (the Apple apps) may already have restarted the board into its bootloader before it is refused. Nothing is written then; the board
 waits in its bootloader until you unplug it and plug it in again.
 
 A board that you put into its bootloader by hand (holding BOOTSEL) cannot be asked which firmware it ran. Then only the
@@ -117,9 +119,11 @@ core voltage rule applies, and the console asks its phrase whenever it cannot te
 The alink sender (the board that sends audio over the audio link) is not a DSP, so a console offers only what it has:
 its device info, the audio link block and the firmware update. Every DSP screen is left out.
 
-- Web console (in review): a page of its own with exactly those.
-- Qt console (in review): a page of its own; the menus still open DSP windows, which then say the device does not
-  support them.
+- Web console: a page of its own with exactly those (its update part is **Check an Image…**).
+- Qt console: a page of its own; the menus still open DSP windows, which then say the device does not support them.
+- Android app: a page of its own in place of the main screen, with Firmware Update and Settings.
+- The Qt console and the Android app do not offer the sender their bundled firmware, which is for the DSP: choose the
+  sender's own image file.
 - Terminal: `uconsole info` and **Settings > About** say it is the alink sender. The interface itself cannot open it
   yet, since it needs a DSP.
 

@@ -3,7 +3,8 @@
 For people who build DSPi processors into an installation, a product or another
 program: running the hub on a machine that stays on, reading and writing the
 document format, following the event log, and controlling the device from a
-microcontroller. The user-facing manual is separate (PRO1 E6, not written yet).
+microcontroller. The user-facing manual is separate (PRO1 E6): its first pages are in
+[`docs/manual/`](../manual/) (measurement, and the notices about firmware versions, hubs and updates).
 
 This is a skeleton (WP P0E, PRO1 E7). Each page says what exists today, with the
 source that is the reference, and marks what is planned. Where a page and the
