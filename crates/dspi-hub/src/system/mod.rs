@@ -14,6 +14,8 @@
 
 pub mod alarms;
 pub mod align;
+// -- WP ATHUB -- the `system.measure.*` family
+pub mod measure;
 pub mod model;
 mod run;
 pub mod scene;
@@ -548,7 +550,70 @@ impl SystemShared {
     pub(crate) fn wants(packet: &[u8]) -> bool {
         matches!(
             packet.get(1),
-            Some(&dspi_proto::ext::alink::NOTIFY_EVT_ALINK_STATE | &usb::NOTIFY_EVT_ALINK_USB)
+            Some(
+                &dspi_proto::ext::alink::NOTIFY_EVT_ALINK_STATE
+                    | &usb::NOTIFY_EVT_ALINK_USB
+                    | &dspi_proto::ext::timebase::NOTIFY_EVT_TIME_BASE // -- WP ATHUBM --
+            )
+        )
+    }
+
+    // -- WP ATHUBM --
+    /// An 0xE4 from unit `serial` of the model that announces it (its last
+    /// read saw `EXT_NOTIFY_FEATURES` bit 5): the alarms of its transport
+    /// ([`AlarmBook::time_base_event`]). The changes.
+    fn on_time_base_event(&self, serial: &str, id: u8, payload: &[u8]) -> Vec<Alarm> {
+        use dspi_proto::ext::timebase as tb;
+        let mut s = self.lock();
+        let announces = s.observed.get(serial).is_some_and(|o| o.time_base_events);
+        let features = announces.then_some(tb::NOTIFY_FEAT_TIME_BASE);
+        let Some(e) = tb::time_base_event(features, id, payload) else {
+            return Vec::new();
+        };
+        let Some(u) = s.model.units.iter().find(|u| u.serial == serial) else {
+            return Vec::new();
+        };
+        let transport = match e.time_base {
+            tb::TB_ALINK_LINE => "alink",
+            tb::TB_USB_SAMPLE => "usb",
+            tb::TB_SPDIF => "spdif",
+            _ => return Vec::new(),
+        };
+        let (unit, follower) = (u.id.clone(), u.spdif_follower());
+        let name = if u.name.is_empty() {
+            u.id.clone()
+        } else {
+            u.name.clone()
+        };
+        let action = s
+            .observed
+            .get(serial)
+            .and_then(|o| o.spdif.as_ref())
+            .map_or_else(
+                || u.on_lock_error.as_str().to_owned(),
+                |o| o.on_lock_error.clone(),
+            );
+        let expected = s
+            .reanchoring
+            .get(serial)
+            .is_some_and(|until| Instant::now() <= *until);
+        let reason = match e.reason.as_str() {
+            // The hub's own write re-anchored it: no alarm.
+            "reanchor" if expected => "none",
+            r => r,
+        };
+        let lock_error = Some((
+            align::spdif_lock_error_message(&name, &action, false),
+            action != "play_unaligned",
+        ));
+        s.alarms.time_base_event(
+            &unit,
+            transport,
+            e.state.as_str(),
+            reason,
+            follower,
+            lock_error,
+            now(),
         )
     }
 
@@ -612,6 +677,13 @@ impl SystemShared {
             return;
         };
         if !Self::wants(packet) {
+            return;
+        }
+        // -- WP ATHUBM --
+        if id == dspi_proto::ext::timebase::NOTIFY_EVT_TIME_BASE {
+            for a in &self.on_time_base_event(serial, id, payload) {
+                relay.broadcast_event(&alarm_event(a));
+            }
             return;
         }
         // -- WP AUSB2 --

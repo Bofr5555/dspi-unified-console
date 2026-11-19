@@ -42,6 +42,8 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 20 | [Group writes and bulk apply](#20-group-writes-and-bulk-apply) | `group.param.*`, `group.preset.load`, `group.apply*` | `group_params`, `group_apply` | P3GP (20.2), P3BA (20.3); text P3DOC | built (P3GP, P3BA; text P3DOC) |
 | 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | built (P3RO; the writer P3PB) |
 | 22 | [Measurement documents](#22-measurement-documents) | `measure.doc.*` | `hub_measure` | P5HUB; text P5MDOC | built (P5HUB) |
+<!-- WP ATHUB -->
+| 23 | [Measuring several units](#23-measuring-several-units) | `system.measure.*` | `system_measure` | ATHUB | built (ATHUB) |
 
 <!-- WP P3FRZ: slot for P3WGR's and P3WRO's own marks on rows 19 to 21 (their web screens), added by them or at merge -->
 The web console's screens for rows 19 and 20 (groups, the action bar, bulk apply, fleet history) are P3WGR's, and row 21's
@@ -98,6 +100,7 @@ hub without it answers `unknown_type` (an older hub) or `unsupported`. Caps of t
 | `group_apply` | section 20.3 | with `groups` and the hub's snapshots |
 | `rollout` | section 21 | only with `uconsole hub --rollout`, on a hub that serves TLS (21.1) |
 | `hub_measure` | section 22 | on a hub with a data folder (`ServiceConfig::measure`, on by default; P5HUB) |
+| `system_measure` | section 23 (WP ATHUB) | always, to a Link 1.3 client (a 1.2-style client neither sees it nor is served) |
 
 <!-- WP P3FRZ -->
 **v1 frozen 2026-11-16** (OD-P2a, OD-P3l; WP P3FRZ, after PRO phase 3's hub and core families merged): **additive
@@ -1419,6 +1422,14 @@ message's meaning, `fw.install` (`unsupported`), and the binary frames.
 | `measure.doc.note` | request | control | `hub_measure` | 22.2 (built: P5HUB) |
 | `measure.doc.delete` | request | admin | `hub_measure` | 22.2 (built: P5HUB) |
 | `measure.doc.changed` | event | | `hub_measure` | 22.2 (built: P5HUB) |
+<!-- WP ATHUB: PLAN-AT's rows -->
+| `system.measure.open` | request | control | `system_measure` | 23.2 (built: ATHUB) |
+| `system.measure.stage` | request | control, the session's owner | `system_measure` | 23.2 (built: ATHUB) |
+| `system.measure.run` | request | control, the session's owner | `system_measure` | 23.2 (built: ATHUB) |
+| `system.measure.status` | request | control, the session's owner | `system_measure` | 23.2 (built: ATHUB) |
+| `system.measure.abort` | request | control (any principal of control or admin) | `system_measure` | 23.2 (built: ATHUB) |
+| `system.measure.close` | request | control, the session's owner | `system_measure` | 23.2 (built: ATHUB) |
+| `system.measure.aborted` | event, to the session's owner | | `system_measure` | 23.3 (built: ATHUB) |
 
 ## 19. Groups
 
@@ -1912,3 +1923,109 @@ store id, `serial` empty for a `mic` or `target`, `bytes` the filed size).
   `measure.doc.get` only.
 - **Diagnostics:** the bundle carries the store's index only, as `hub/measurements.json` (each document's kind, name,
   serial and size), never a document, a note or a curve.
+
+<!-- WP ATHUB -->
+## 23. Measuring several units
+
+*State: built (ATHUB, `crates/dspi-hub/src/system/measure.rs`). PLAN-AT ([`docs/core-merge/PLAN-AT.md`](../core-merge/PLAN-AT.md)
+section 1.5): one microphone, several DSPi units, one time base. The client's core owns the microphone, the plan, the
+analysis, the per-unit safety judgement and the documents (`dspi_core::measure::system`, WP ATCORE); the hub owns the
+units' side: it reads their time bases, stages their generator configs, schedules each unit's start on the shared sample
+counter, watches every unit and aborts on its own. The bodies are one set of serde types,
+`dspi_measure::system::messages`, which the hub serves and the core sends; device replies travel raw, as the unit sent
+them, and the client decodes them with `dspi_proto::ext::timebase`.*
+
+### 23.1 What the hub does
+
+- **A unit with a time base.** The family never names a transport: a unit takes part when its `EXT_LIST` names
+  `EXT_TIME_BASE` (0x8030), `EXT_SIGGEN_TIMELINE` (0x8031) and `EXT_APPLY_AT_FRAME` (firmware with FWTB1; the line, USB-direct
+  mode 2 and S/PDIF between DSPi units), on either envelope (`REQ_EXTENSION` on 1.1.6, the tunnel on 1.1.7: the hub's own
+  requests reach a 1.1.7 unit through its translation).
+- **One domain (gate G1, OD-ATg).** At `open` the hub reads every unit's `EXT_TIME_BASE` twice. The group's time base and
+  domain id are the one pair every unit lists; each unit must list it exactly once, `LOCKED` (a USB-direct follower that is
+  also an S/PDIF source takes part by the entry the others share, R7b). The units' `t`, each corrected by the hub's own
+  timestamps of its read, must agree within the reads' round trips plus two samples (R7a), so two colliding domain ids
+  whose counters disagree are refused; USB-direct units count from origins `2048 * spf` apart, which the hub resolves here
+  (`origin_offset`), and must share one host bus where the platform says (`nusb`'s `bus_id`). The rate is read from the
+  two reads (44.1, 48 or 96 kHz, one for all), and nothing may move between them.
+- **The device locks.** `open` takes each unit's device lock for the session (a viewer never; another console's lock is
+  `locked`; a unit under its installer lock is `installer_lock` for a control client, section 1.6); the hub renews them
+  every 2 s while the session lives and releases them at `abort` and `close`. A lock lost aborts all (S-AT5). While the
+  lease is live, these locks (the session's own, none other) are exempt from the per-device lock budget (spec 7.7,
+  `lock.rs`: 120 s at a stretch, then 30 s cooling): the dead-man bounds them instead. Once the session is aborted or
+  closed (a lapsed lease included) they are released, and every later lock is budgeted as before. While the locks are
+  held the hub itself cannot read these units: `system.status` then reports an alignment computed without their limits
+  (`limits_unknown`), so a client takes a unit's play-out delay from `open`'s `d` (the unit's own `EXT_TIME_BASE.d`),
+  never from that alignment's `effective`. The settling clock also runs from the system model's status poll: a unit the
+  hub has watched `LOCKED` for the settling time starts at once.
+- **Every transfer is the session's** (its id, so its lock lets it through and every write is attributed to it); the
+  family is judged by its own roles, as `system.scene.apply` is, so a control client measures without raw extension
+  access. Nothing else is written: the generator's config, its stop, the apply queue's op 9 and `CANCEL_ALL`, and the
+  broadcast stop.
+- **The schedule (R5, R6a, OD-ATn).** `run`'s `t0` is the newest T read in that call plus the lead: the client's
+  `lead_ms`, or at least the largest arm lead (`EXT_SIGGEN_TIMELINE.arm_lead_ms`) plus 100 ms plus the hub's measured
+  write time (250 ms with a K340's 150 ms arm lead); and never before every unit has settled: `t0` is at least 40 s after
+  the hub first saw each unit locked with its current disturbance count (the phase servos' settling, FW-B/FW-C review; a
+  hub that has watched its units for longer adds nothing). Each segment starts at `t0 + offset` (domain samples), written to
+  its unit in its own numbering (`t_unit`; USB-direct: S, time base 1, never the bus-frame form). **At most one op 9 is
+  pending per unit**: the first is written in `run`, each next one once the unit's previous segment has started, and
+  never more than 110 s before its T (the firmware refuses beyond 120 s) or less than its arm lead plus 25 ms (then the run
+  is aborted `timeline`: a late start never plays). One config per unit per run, staged once (`SET_CONFIG` restarts a
+  running generator, OD-ATj).
+- **The gate on the hub's side.** Every 250 ms (every 50 ms during a run) the hub reads each unit's `EXT_TIME_BASE`: the
+  group's entry must stay `LOCKED` with the `disturbances` counter it had at `open` and `t - output_frames` within one
+  sample (G2; the counter is the proof, never a count of events, OD-ATi), its meters below -0.5 dBFS on every output, and
+  during a run its `EXT_SIGGEN_TIMELINE` must show each written start pending, then started on its `t_unit` with no
+  discontinuity (G3's facts; a refused, cancelled or broken start aborts).
+- **The dead-man (fail closed, S-AT1).** The hub aborts by itself, and tells the owner (`system.measure.aborted`), when:
+  no `status` came within the lease (`lease`); a unit's time base left `LOCKED`, its counter or `t - output_frames`
+  moved, or it sent a disturbing `0xE4` (or `0xE1`/`0xE3` loss) on the group's time base (`disturbance`); a clip event
+  (`0xE0`) or an output peak at -0.5 dBFS or above (`clip`); a generator stopped by someone else, a preset load, or a
+  parameter or volume change not the session's own (`foreign`); a start refused, late or broken (`timeline`); a unit
+  offline (`offline`); its lock lost (`lock`); the session's connection closing (`closed`: nothing can be told then).
+  Abort is `SIGGEN_CTL_STOP_NOW` and `CANCEL_ALL` on every queue of every unit (each time base it lists), then the
+  broadcast `SIGGEN_STOP` now where there is a path and **every unit has the ops** (`EXT_ALINK_INFO.features` bit 6 on
+  the line, a listed `EXT_SIGGEN_TIMELINE` on S/PDIF): through the model's sender whose superframes carry the domain's
+  sender id (`EXT_ALINK_CTRL_MSG`, the system mute kept) or the group's S/PDIF source (`EXT_ALINK_SPDIF_CTRL`); USB has
+  none. After an abort nothing staged can start (the firmware's R4), and the session answers `aborted`.
+- **Configs (S7, S3, S-AT6).** `stage` judges the 36-byte `SiggenConfig` with `dspi_measure::stimulus::check_timed_config`
+  (a log sweep of 1 to 15 s, 1 to 8 repeats, never `RAW`, a level from -120 dBFS to the speakers' hard cap -6 dBFS; pink
+  noise never starts on the time base), only the unit's outputs, and never an output of an S/PDIF source's time-base slot
+  (`EXT_ALINK_SPDIF.tx_mask`, slot n = outputs 2n and 2n + 1; with `tx_mask` 0 every S/PDIF-type slot, a slot whose type it
+  cannot read included; a unit that lists `EXT_ALINK_SPDIF` and does not answer it has every output refused). A session's
+  own ceiling, the ramp and the summed-run rule (S-AT4's -6 dB per doubling) are the
+  client's.
+- **Served to Link 1.3 clients only.** A client whose `hello` said a 1.2 minor (upstream 1.1.6 consoles, our older apps)
+  is not offered `system_measure` and is answered `unsupported`; so is the REST mirror.
+
+### 23.2 Messages
+
+Every answer and event carries `"v": 1`; `session` is the id `open` answered; a unit in a body is its index in `open`'s
+list. Bodies are `dspi_measure::system::messages`' types at the top level of the answer, except `status`'s, which comes as
+`status` (its own `t`, the time pin, is not the answer's `t`).
+
+| `t` | Who | Request | Answer |
+|---|---|---|---|
+| `system.measure.open` | control | `units`: serials (1 to 16, each once); `lease_ms` (clamped to 500..5000, default 2000) | `OpenReply`: `session`, `time_base`, `domain`, `lease_ms`, `units`: `{serial, time_base, role, state, d, arm_lead_ms, outputs, t, origin_offset, t_minus_output, disturbances}` |
+| `system.measure.stage` | the owner | `session`, `serial`, `config`: the 36 bytes as an array | `serial`, `samples`: the segment's length at the domain's rate |
+| `system.measure.run` | the owner | `session`, `segments`: `{unit, offset}` in time order (a summed run: one offset, distinct units), `lead_ms` (at most 10 000) | `RunReply`: `t0`, `segments`: `{unit, t, t_unit}` |
+| `system.measure.status` | the owner | `session` (renews the lease) | `status`: `StatusReply` `{t, hub_us, units}`, each unit `{unit, siggen, timeline, time_base_entry, output_frames, output_peaks_dbfs, clipped, limiter_gr_db, events}` (raw bytes as arrays; `events` every watched packet since the last `status`, at most 64) |
+| `system.measure.abort` | any control or admin principal (stopping test audio is never a privilege) | `session`, `reason` (logged) | `AbortReply`: `units`: `{unit, stopped, error?}`; `broadcast`: `sender`, `spdif_source` or `none` |
+| `system.measure.close` | the owner | `session` | `{}`; `CANCEL_ALL` (and `STOP_NOW` during a run) on every unit, the locks released |
+
+`hub_us` is the hub's clock in microseconds at the middle of the read that gave `t` (the first unit's). `clipped` says a
+sticky clip flag is set; the hub never clears them (health's clip counts are the device's, section 5).
+
+### 23.3 Event and errors
+
+- **`system.measure.aborted {v, hub, session, unit?, reason}`** to the session's owner only, when the hub aborted by
+  itself; `reason` one of `lease`, `disturbance`, `clip`, `foreign`, `timeline`, `offline`, `lock` (`closed` is never
+  told). A client's own `abort` sends no event.
+- **Codes:** section 1.6's (`bad_request`, `denied`, `locked`, `installer_lock`, `offline`, `unsupported`, `internal`;
+  `device` with the unit's refusal in `msg`), and the family's own: `not_one_domain` (G1: no common or no single time
+  base, a `t` disagreement, two buses, two rates), `not_locked` (a unit's group entry not `LOCKED`, or moving while
+  read), `no_timeline` (a unit without the ops), `bad_config`, `bad_schedule`, and `aborted` (the session was aborted;
+  `msg` says why). A refusal about one unit names it in `serial`.
+- **A run that cannot start** (a unit refuses its first op 9, or it would be late) answers `device`, stops every unit
+  (`STOP_NOW`: an earlier unit's start may already have come) and cancels every unit's queue: what was staged is spent,
+  stage again.

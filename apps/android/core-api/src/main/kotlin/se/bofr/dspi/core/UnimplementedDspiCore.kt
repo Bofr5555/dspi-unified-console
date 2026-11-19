@@ -586,6 +586,36 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun measureRtaPassiveStop(): MeasureRtaPassiveState = throw NotImplementedError("measure_rta_passive_stop")
 
+    override fun measureSystemUnitCheck(setup: MeasureSystemSetup, unit: MeasureSystemUnit): MeasureSystemUnitCheck = throw NotImplementedError("measure_system_unit_check")
+
+    override fun measureSystemPreflight(setup: MeasureSystemSetup, checks: List<MeasureSystemUnitCheck>): MeasureSystemPreflight = throw NotImplementedError("measure_system_preflight")
+
+    override fun measureSystemStart(setup: MeasureSystemSetup, checks: List<MeasureSystemUnitCheck>): MeasureSystemState = throw NotImplementedError("measure_system_start")
+
+    override fun measureSystemCapturePush(firstFrame: Long, samples: List<Float>, rateHz: Long, clipped: Boolean): MeasureSystemState = throw NotImplementedError("measure_system_capture_push")
+
+    override fun measureSystemTick(): MeasureSystemState = throw NotImplementedError("measure_system_tick")
+
+    override fun measureSystemState(): MeasureSystemState = throw NotImplementedError("measure_system_state")
+
+    override fun measureSystemStop(): MeasureSystemState = throw NotImplementedError("measure_system_stop")
+
+    override fun measureSystemResult(): MeasureSystemResult = throw NotImplementedError("measure_system_result")
+
+    override fun measureSystemProposal(): MeasureSystemProposal = throw NotImplementedError("measure_system_proposal")
+
+    override fun measureSystemSumCheck(checks: List<MeasureSystemUnitCheck>): MeasureSystemState = throw NotImplementedError("measure_system_sum_check")
+
+    override fun measureSystemApply(proposalId: Long): MeasureSystemApplied = throw NotImplementedError("measure_system_apply")
+
+    override fun measureSystemVerify(checks: List<MeasureSystemUnitCheck>): MeasureSystemState = throw NotImplementedError("measure_system_verify")
+
+    override fun measureSystemApplied(): MeasureSystemApplied = throw NotImplementedError("measure_system_applied")
+
+    override fun measureSystemKeep(): MeasureSystemApplied = throw NotImplementedError("measure_system_keep")
+
+    override fun measureSystemRevert(): MeasureSystemApplied = throw NotImplementedError("measure_system_revert")
+
     override fun measureLayoutProposal(): MeasureLayout = throw NotImplementedError("measure_layout_proposal")
 
     override fun measureTunePropose(measurement: String, layout: MeasureLayout, options: MeasureTuneOptions): MeasureTuneProposal = throw NotImplementedError("measure_tune_propose")

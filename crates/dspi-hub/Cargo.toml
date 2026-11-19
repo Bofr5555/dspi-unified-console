@@ -211,6 +211,12 @@ required-features = ["rollout"]
 name = "wp_p3cc_core_calls"
 required-features = ["rollout"]
 
+# -- review AT-C -- ATCORE's session (a `DspiCore` on a Link session) against the
+# real hub's `system.measure.*` with ATFAKE units; `param.get_many` needs the API.
+[[test]]
+name = "review_atc_core_on_real_hub"
+required-features = ["api"]
+
 # -- WP HB7 --
 # tests/conformance/: three Link clients against the hub (README.md there).
 [[test]]

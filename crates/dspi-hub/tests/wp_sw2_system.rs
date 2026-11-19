@@ -208,6 +208,10 @@ fn unit(id: &str, upstream: &str) -> Unit {
         slots: None,
         latency_us: 0,
         measured_latency_us: None,
+        // -- WP ATHUBM --
+        spdif_source: false,
+        spdif_tx_mask: 0,
+        spdif_d: None,
         speakers: Vec::new(),
     }
 }
@@ -220,10 +224,12 @@ fn model() -> SystemModel {
         Speaker {
             output: 0,
             distance_m: 3.43,
+            ..Speaker::default() // -- WP ATHUBM --
         },
         Speaker {
             output: 1,
             distance_m: 2.0,
+            ..Speaker::default() // -- WP ATHUBM --
         },
     ];
     let mut b = unit("B", "fan");
@@ -1033,10 +1039,12 @@ fn wp_sw2x_a_cut_distance_delay_is_never_ok() {
         Speaker {
             output: 0,
             distance_m: 16.0,
+            ..Speaker::default() // -- WP ATHUBM --
         },
         Speaker {
             output: 1,
             distance_m: 1.0,
+            ..Speaker::default() // -- WP ATHUBM --
         },
     ];
     hub.system_set_model(m).unwrap();

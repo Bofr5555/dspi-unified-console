@@ -118,6 +118,8 @@ pub mod measure_sim;
 pub mod measure_tune;
 // -- WP P5CURV -- the passive microphone RTA and a measurement document's curves
 pub mod measure_curv;
+// -- WP ATCORE -- the system measurement across units
+pub mod measure_system;
 // -- WP WB6I -- the Settings page: names, latency, the core-voltage flow
 pub mod settings;
 // -- WP WB4a --

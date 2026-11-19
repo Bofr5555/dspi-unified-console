@@ -1271,3 +1271,48 @@ fn band_finite(b: &BandSpec) -> bool {
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p5mdoc;
+
+// -- WP ATCORE -- the additive `system` block of a system measurement (PLAN-AT 1.4)
+/// The key of a measurement's `system` block (an unknown key to earlier
+/// readers, kept on write).
+pub const SYSTEM_KEY: &str = "system";
+
+/// What a system measurement adds to each unit's document (PLAN-AT 1.4):
+/// the group, the domain, the anchor, the generator runs, and per output its
+/// arrival relative to the group's latest output with its uncertainty.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemBlock {
+    /// The group's units by serial.
+    pub group: Vec<String>,
+    /// The time base the run was on.
+    pub time_base: u8,
+    /// Its domain id (C5).
+    pub domain: u32,
+    /// The anchor output's unit.
+    pub anchor_serial: String,
+    /// The anchor output.
+    pub anchor_output: u8,
+    /// The generator runs (`EXT_SIGGEN_TIMELINE.run_id`) of the measurement.
+    pub run_ids: Vec<u32>,
+    /// Per output: `output`, `arrivalUs`, `uncertaintyUs`, `offered`.
+    #[serde(default)]
+    pub outputs: Value,
+}
+
+impl Measurement {
+    /// The `system` block, if the measurement is one unit of a system
+    /// measurement (and the block reads).
+    pub fn system(&self) -> Option<SystemBlock> {
+        self.extra
+            .get(SYSTEM_KEY)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+    }
+
+    /// Set the `system` block.
+    pub fn set_system(&mut self, block: &SystemBlock) {
+        if let Ok(v) = serde_json::to_value(block) {
+            self.extra.insert(SYSTEM_KEY.into(), v);
+        }
+    }
+}

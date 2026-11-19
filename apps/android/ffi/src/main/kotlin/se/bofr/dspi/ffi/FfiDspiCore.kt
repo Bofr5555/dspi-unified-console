@@ -657,6 +657,36 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun measureRtaPassiveStop(): MeasureRtaPassiveState = core.measureRtaPassiveStop().toDomain()
 
+    override fun measureSystemUnitCheck(setup: MeasureSystemSetup, unit: MeasureSystemUnit): MeasureSystemUnitCheck = call { core.measureSystemUnitCheck(setup.toFfi(), unit.toFfi()).toDomain() }
+
+    override fun measureSystemPreflight(setup: MeasureSystemSetup, checks: List<MeasureSystemUnitCheck>): MeasureSystemPreflight = call { core.measureSystemPreflight(setup.toFfi(), checks.map { it.toFfi() }).toDomain() }
+
+    override fun measureSystemStart(setup: MeasureSystemSetup, checks: List<MeasureSystemUnitCheck>): MeasureSystemState = call { core.measureSystemStart(setup.toFfi(), checks.map { it.toFfi() }).toDomain() }
+
+    override fun measureSystemCapturePush(firstFrame: Long, samples: List<Float>, rateHz: Long, clipped: Boolean): MeasureSystemState = call { core.measureSystemCapturePush(firstFrame.toULong(), samples, rateHz.toUInt(), clipped).toDomain() }
+
+    override fun measureSystemTick(): MeasureSystemState = core.measureSystemTick().toDomain()
+
+    override fun measureSystemState(): MeasureSystemState = core.measureSystemState().toDomain()
+
+    override fun measureSystemStop(): MeasureSystemState = core.measureSystemStop().toDomain()
+
+    override fun measureSystemResult(): MeasureSystemResult = call { core.measureSystemResult().toDomain() }
+
+    override fun measureSystemProposal(): MeasureSystemProposal = call { core.measureSystemProposal().toDomain() }
+
+    override fun measureSystemSumCheck(checks: List<MeasureSystemUnitCheck>): MeasureSystemState = call { core.measureSystemSumCheck(checks.map { it.toFfi() }).toDomain() }
+
+    override fun measureSystemApply(proposalId: Long): MeasureSystemApplied = call { core.measureSystemApply(proposalId.toUInt()).toDomain() }
+
+    override fun measureSystemVerify(checks: List<MeasureSystemUnitCheck>): MeasureSystemState = call { core.measureSystemVerify(checks.map { it.toFfi() }).toDomain() }
+
+    override fun measureSystemApplied(): MeasureSystemApplied = core.measureSystemApplied().toDomain()
+
+    override fun measureSystemKeep(): MeasureSystemApplied = call { core.measureSystemKeep().toDomain() }
+
+    override fun measureSystemRevert(): MeasureSystemApplied = call { core.measureSystemRevert().toDomain() }
+
     override fun measureLayoutProposal(): MeasureLayout = call { core.measureLayoutProposal().toDomain() }
 
     override fun measureTunePropose(measurement: String, layout: MeasureLayout, options: MeasureTuneOptions): MeasureTuneProposal = call { core.measureTunePropose(measurement, layout.toFfi(), options.toFfi()).toDomain() }
@@ -5570,6 +5600,336 @@ internal fun MeasureRtaPassiveFrame.toFfi() =
         rta = rta?.let { it.toFfi() },
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemUnit.toDomain() =
+    MeasureSystemUnit(
+        serial = serial,
+        outputs = outputs.map { it.toDomain() },
+    )
+
+internal fun MeasureSystemUnit.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemUnit(
+        serial = serial,
+        outputs = outputs.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemSetup.toDomain() =
+    MeasureSystemSetup(
+        units = units.map { it.toDomain() },
+        passes = passes.toInt(),
+        anchorSerial = anchorSerial,
+        anchorOutput = anchorOutput?.let { it.toInt() },
+        micDocument = micDocument,
+        sweepMs = sweepMs.toLong(),
+        gapMs = gapMs.toLong(),
+        ceilingDb = ceilingDb,
+        splCapDb = splCapDb,
+        captureRateHz = captureRateHz.toLong(),
+        leadMs = leadMs.toLong(),
+        leaseMs = leaseMs.toLong(),
+        name = name,
+    )
+
+internal fun MeasureSystemSetup.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemSetup(
+        units = units.map { it.toFfi() },
+        passes = passes.toUByte(),
+        anchorSerial = anchorSerial,
+        anchorOutput = anchorOutput?.let { it.toUByte() },
+        micDocument = micDocument,
+        sweepMs = sweepMs.toUInt(),
+        gapMs = gapMs.toUInt(),
+        ceilingDb = ceilingDb,
+        splCapDb = splCapDb,
+        captureRateHz = captureRateHz.toUInt(),
+        leadMs = leadMs.toUInt(),
+        leaseMs = leaseMs.toUInt(),
+        name = name,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemUnitCheck.toDomain() =
+    MeasureSystemUnitCheck(
+        serial = serial,
+        preflight = preflight.toDomain(),
+        context = context,
+    )
+
+internal fun MeasureSystemUnitCheck.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemUnitCheck(
+        serial = serial,
+        preflight = preflight.toFfi(),
+        context = context,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemIssue.toDomain() =
+    MeasureSystemIssue(
+        serial = serial,
+        key = key,
+        output = output?.let { it.toInt() },
+        message = message,
+    )
+
+internal fun MeasureSystemIssue.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemIssue(
+        serial = serial,
+        key = key,
+        output = output?.let { it.toUByte() },
+        message = message,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemPreflight.toDomain() =
+    MeasureSystemPreflight(
+        clear = clear,
+        blockers = blockers.map { it.toDomain() },
+        warnings = warnings.map { it.toDomain() },
+    )
+
+internal fun MeasureSystemPreflight.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemPreflight(
+        clear = clear,
+        blockers = blockers.map { it.toFfi() },
+        warnings = warnings.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemLevel.toDomain() =
+    MeasureSystemLevel(
+        serial = serial,
+        output = output.toInt(),
+        levelDb = levelDb,
+    )
+
+internal fun MeasureSystemLevel.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemLevel(
+        serial = serial,
+        output = output.toUByte(),
+        levelDb = levelDb,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemState.toDomain() =
+    MeasureSystemState(
+        phase = phase.toDomain(),
+        purpose = purpose.toDomain(),
+        active = active,
+        wantsCapture = wantsCapture,
+        captureRateHz = captureRateHz.toLong(),
+        serial = serial,
+        output = output?.let { it.toInt() },
+        levelDb = levelDb,
+        rampLevels = rampLevels.map { it.toDomain() },
+        run = run.toInt(),
+        runs = runs.toInt(),
+        frames = frames.toLong(),
+        progress = progress,
+        issue = issue?.let { it.toDomain() },
+        resultReady = resultReady,
+        timingReliable = timingReliable,
+        words = words,
+    )
+
+internal fun MeasureSystemState.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemState(
+        phase = phase.toFfi(),
+        purpose = purpose.toFfi(),
+        active = active,
+        wantsCapture = wantsCapture,
+        captureRateHz = captureRateHz.toUInt(),
+        serial = serial,
+        output = output?.let { it.toUByte() },
+        levelDb = levelDb,
+        rampLevels = rampLevels.map { it.toFfi() },
+        run = run.toUShort(),
+        runs = runs.toUShort(),
+        frames = frames.toULong(),
+        progress = progress,
+        issue = issue?.let { it.toFfi() },
+        resultReady = resultReady,
+        timingReliable = timingReliable,
+        words = words,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemArrival.toDomain() =
+    MeasureSystemArrival(
+        serial = serial,
+        output = output.toInt(),
+        arrivalUs = arrivalUs,
+        measuredUs = measuredUs,
+        uncertaintyUs = uncertaintyUs,
+        offered = offered,
+        reason = reason,
+    )
+
+internal fun MeasureSystemArrival.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemArrival(
+        serial = serial,
+        output = output.toUByte(),
+        arrivalUs = arrivalUs,
+        measuredUs = measuredUs,
+        uncertaintyUs = uncertaintyUs,
+        offered = offered,
+        reason = reason,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemDelay.toDomain() =
+    MeasureSystemDelay(
+        fromSerial = fromSerial,
+        fromOutput = fromOutput.toInt(),
+        toSerial = toSerial,
+        toOutput = toOutput.toInt(),
+        delayUs = delayUs,
+        uncertaintyUs = uncertaintyUs,
+        offered = offered,
+        reason = reason,
+    )
+
+internal fun MeasureSystemDelay.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemDelay(
+        fromSerial = fromSerial,
+        fromOutput = fromOutput.toUByte(),
+        toSerial = toSerial,
+        toOutput = toOutput.toUByte(),
+        delayUs = delayUs,
+        uncertaintyUs = uncertaintyUs,
+        offered = offered,
+        reason = reason,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemTransition.toDomain() =
+    MeasureSystemTransition(
+        aSerial = aSerial,
+        aOutput = aOutput.toInt(),
+        bSerial = bSerial,
+        bOutput = bOutput.toInt(),
+        bandLoHz = bandLoHz,
+        bandHiHz = bandHiHz,
+        checked = checked,
+        passed = passed,
+        rmsDb = rmsDb,
+        message = message,
+    )
+
+internal fun MeasureSystemTransition.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemTransition(
+        aSerial = aSerial,
+        aOutput = aOutput.toUByte(),
+        bSerial = bSerial,
+        bOutput = bOutput.toUByte(),
+        bandLoHz = bandLoHz,
+        bandHiHz = bandHiHz,
+        checked = checked,
+        passed = passed,
+        rmsDb = rmsDb,
+        message = message,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemDocument.toDomain() =
+    MeasureSystemDocument(
+        serial = serial,
+        document = document,
+    )
+
+internal fun MeasureSystemDocument.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemDocument(
+        serial = serial,
+        document = document,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemResult.toDomain() =
+    MeasureSystemResult(
+        documents = documents.map { it.toDomain() },
+        arrivals = arrivals.map { it.toDomain() },
+        delays = delays.map { it.toDomain() },
+        transitions = transitions.map { it.toDomain() },
+        timingReliable = timingReliable,
+        reasons = reasons,
+        runIds = runIds.map { it.toLong() },
+        runs = runs.toInt(),
+    )
+
+internal fun MeasureSystemResult.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemResult(
+        documents = documents.map { it.toFfi() },
+        arrivals = arrivals.map { it.toFfi() },
+        delays = delays.map { it.toFfi() },
+        transitions = transitions.map { it.toFfi() },
+        timingReliable = timingReliable,
+        reasons = reasons,
+        runIds = runIds.map { it.toUInt() },
+        runs = runs.toUShort(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemProposal.toDomain() =
+    MeasureSystemProposal(
+        id = id.toLong(),
+        arrivals = arrivals.map { it.toDomain() },
+        withheld = withheld.map { it.toDomain() },
+        transitions = transitions.map { it.toDomain() },
+        sumCheckNeeded = sumCheckNeeded,
+        withdrawn = withdrawn,
+        offered = offered,
+        mayApply = mayApply,
+        notice = notice?.let { it.toDomain() },
+    )
+
+internal fun MeasureSystemProposal.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemProposal(
+        id = id.toUInt(),
+        arrivals = arrivals.map { it.toFfi() },
+        withheld = withheld.map { it.toFfi() },
+        transitions = transitions.map { it.toFfi() },
+        sumCheckNeeded = sumCheckNeeded,
+        withdrawn = withdrawn,
+        offered = offered,
+        mayApply = mayApply,
+        notice = notice?.let { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemSnapshot.toDomain() =
+    MeasureSystemSnapshot(
+        serial = serial,
+        outDelaysMs = outDelaysMs.map { it.toDomain() },
+    )
+
+internal fun MeasureSystemSnapshot.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemSnapshot(
+        serial = serial,
+        outDelaysMs = outDelaysMs.map { it.toFfi() },
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemOutDelay.toDomain() =
+    MeasureSystemOutDelay(
+        output = output.toInt(),
+        delayMs = delayMs,
+    )
+
+internal fun MeasureSystemOutDelay.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemOutDelay(
+        output = output.toUByte(),
+        delayMs = delayMs,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemApplied.toDomain() =
+    MeasureSystemApplied(
+        stage = stage.toDomain(),
+        revisionBefore = revisionBefore.toLong(),
+        revisionAfter = revisionAfter.toLong(),
+        snapshots = snapshots.map { it.toDomain() },
+        writesOk = writesOk.toLong(),
+        writeFailures = writeFailures,
+        verified = verified,
+        message = message,
+    )
+
+internal fun MeasureSystemApplied.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureSystemApplied(
+        stage = stage.toFfi(),
+        revisionBefore = revisionBefore.toULong(),
+        revisionAfter = revisionAfter.toULong(),
+        snapshots = snapshots.map { it.toFfi() },
+        writesOk = writesOk.toUInt(),
+        writeFailures = writeFailures,
+        verified = verified,
+        message = message,
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.MeasureLayoutOutput.toDomain() =
     MeasureLayoutOutput(
         output = output.toInt(),
@@ -6720,6 +7080,62 @@ internal fun MeasureLiveAdjust.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureLiveAdjus
         MeasureLiveAdjust.CUT_PEAK -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.CUT_PEAK
         MeasureLiveAdjust.FIT_RANGE -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.FIT_RANGE
         MeasureLiveAdjust.EDIT -> se.bofr.dspi.ffi.uniffi.MeasureLiveAdjust.EDIT
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.toDomain(): MeasureSystemPhase =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.IDLE -> MeasureSystemPhase.IDLE
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.PRE_ROLL -> MeasureSystemPhase.PRE_ROLL
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.RAMP -> MeasureSystemPhase.RAMP
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.RUN -> MeasureSystemPhase.RUN
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.ANALYSING -> MeasureSystemPhase.ANALYSING
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.DONE -> MeasureSystemPhase.DONE
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.ABORTED -> MeasureSystemPhase.ABORTED
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.FAILED -> MeasureSystemPhase.FAILED
+    }
+
+internal fun MeasureSystemPhase.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureSystemPhase =
+    when (this) {
+        MeasureSystemPhase.IDLE -> se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.IDLE
+        MeasureSystemPhase.PRE_ROLL -> se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.PRE_ROLL
+        MeasureSystemPhase.RAMP -> se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.RAMP
+        MeasureSystemPhase.RUN -> se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.RUN
+        MeasureSystemPhase.ANALYSING -> se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.ANALYSING
+        MeasureSystemPhase.DONE -> se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.DONE
+        MeasureSystemPhase.ABORTED -> se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.ABORTED
+        MeasureSystemPhase.FAILED -> se.bofr.dspi.ffi.uniffi.MeasureSystemPhase.FAILED
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemPurpose.toDomain(): MeasureSystemPurpose =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPurpose.MEASURE -> MeasureSystemPurpose.MEASURE
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPurpose.SUM_CHECK -> MeasureSystemPurpose.SUM_CHECK
+        se.bofr.dspi.ffi.uniffi.MeasureSystemPurpose.VERIFY -> MeasureSystemPurpose.VERIFY
+    }
+
+internal fun MeasureSystemPurpose.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureSystemPurpose =
+    when (this) {
+        MeasureSystemPurpose.MEASURE -> se.bofr.dspi.ffi.uniffi.MeasureSystemPurpose.MEASURE
+        MeasureSystemPurpose.SUM_CHECK -> se.bofr.dspi.ffi.uniffi.MeasureSystemPurpose.SUM_CHECK
+        MeasureSystemPurpose.VERIFY -> se.bofr.dspi.ffi.uniffi.MeasureSystemPurpose.VERIFY
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.toDomain(): MeasureSystemApplyStage =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.NONE -> MeasureSystemApplyStage.NONE
+        se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.APPLIED -> MeasureSystemApplyStage.APPLIED
+        se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.VERIFIED -> MeasureSystemApplyStage.VERIFIED
+        se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.KEPT -> MeasureSystemApplyStage.KEPT
+        se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.REVERTED -> MeasureSystemApplyStage.REVERTED
+    }
+
+internal fun MeasureSystemApplyStage.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage =
+    when (this) {
+        MeasureSystemApplyStage.NONE -> se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.NONE
+        MeasureSystemApplyStage.APPLIED -> se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.APPLIED
+        MeasureSystemApplyStage.VERIFIED -> se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.VERIFIED
+        MeasureSystemApplyStage.KEPT -> se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.KEPT
+        MeasureSystemApplyStage.REVERTED -> se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.REVERTED
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneKind.toDomain(): MeasureTuneKind =

@@ -341,6 +341,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::measure_tune::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP ATCORE -- the system measurement across units (src/measure_system.rs)
+    if let Some(r) = crate::measure_system::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     // -- WP PGCORE -- the protocol generation and raw paged requests (src/protocol.rs)
     if let Some(r) = crate::protocol::dispatch(&core, &req.method, req.params.clone()) {
         return r;

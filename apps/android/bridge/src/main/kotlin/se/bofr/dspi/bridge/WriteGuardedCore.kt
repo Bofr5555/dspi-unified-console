@@ -37,6 +37,10 @@ import se.bofr.dspi.core.MeasureLiveSetup
 import se.bofr.dspi.core.MeasureLiveState
 import se.bofr.dspi.core.MeasureSetup
 import se.bofr.dspi.core.MeasureState
+import se.bofr.dspi.core.MeasureSystemApplied
+import se.bofr.dspi.core.MeasureSystemSetup
+import se.bofr.dspi.core.MeasureSystemState
+import se.bofr.dspi.core.MeasureSystemUnitCheck
 import se.bofr.dspi.core.MeasureTuneState
 import se.bofr.dspi.core.ParamValue
 import se.bofr.dspi.core.SiggenConfig
@@ -736,6 +740,29 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.measureTuneAb()
     }
 
+    // -- WP ATCORE -- the system measurement's start, summed check and verify
+    // play the units' generators through the hub; its apply writes the hub's
+    // model and every unit's output delays
+    override fun measureSystemStart(setup: MeasureSystemSetup, checks: List<MeasureSystemUnitCheck>): MeasureSystemState {
+        guard("measureSystemStart")
+        return inner.measureSystemStart(setup, checks)
+    }
+
+    override fun measureSystemSumCheck(checks: List<MeasureSystemUnitCheck>): MeasureSystemState {
+        guard("measureSystemSumCheck")
+        return inner.measureSystemSumCheck(checks)
+    }
+
+    override fun measureSystemVerify(checks: List<MeasureSystemUnitCheck>): MeasureSystemState {
+        guard("measureSystemVerify")
+        return inner.measureSystemVerify(checks)
+    }
+
+    override fun measureSystemApply(proposalId: Long): MeasureSystemApplied {
+        guard("measureSystemApply")
+        return inner.measureSystemApply(proposalId)
+    }
+
     // -- WP P1AB -- a start with A given, a toggle and a keep recall a snapshot
     override fun abStart(aId: String, bId: String): AbCompare {
         guard("abStart")
@@ -1106,6 +1133,11 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureTuneApply",
             "measureTuneVerify",
             "measureTuneAb",
+            // -- WP ATCORE --
+            "measureSystemStart",
+            "measureSystemSumCheck",
+            "measureSystemVerify",
+            "measureSystemApply",
             // -- WP PGCORE -- a raw paged SET
             "rawSetId"
         )
@@ -1573,6 +1605,21 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "measureTuneKeep",
             "measureTuneRevert",
             "measureTuneStop",
+            // -- WP ATCORE -- the system measurement's unit check and preflight
+            // (reads), its capture, its tick (the started session's own steps),
+            // its state, stop, result and proposal; Keep and Revert end an apply
+            // as measureTuneKeep and measureTuneRevert do
+            "measureSystemUnitCheck",
+            "measureSystemPreflight",
+            "measureSystemCapturePush",
+            "measureSystemTick",
+            "measureSystemState",
+            "measureSystemStop",
+            "measureSystemResult",
+            "measureSystemProposal",
+            "measureSystemApplied",
+            "measureSystemKeep",
+            "measureSystemRevert",
             // -- WP PGCORE -- a raw paged GET (every paged GET reads) and the
             // connection's protocol generation (no traffic)
             "rawGetId",

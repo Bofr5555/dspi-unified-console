@@ -576,6 +576,19 @@ impl Router {
         st.lock.acquire(session, timeout, now)
     }
 
+    // -- WP ATHUB --
+    /// Exempt `session`'s live lock from the budget ([`LockTable::exempt_holder`]):
+    /// a `system.measure` session's own locks, while its lease is live.
+    pub(crate) fn lock_exempt(&self, session: SessionId, now: Instant) -> bool {
+        self.lock().lock.exempt_holder(session, now)
+    }
+
+    // -- WP ATHUB --
+    /// Whether the live lock is exempt from the budget.
+    pub(crate) fn lock_holder_exempt(&self, now: Instant) -> bool {
+        self.lock().lock.holder_exempt(now)
+    }
+
     // -- WP P2PA --
     /// `child` acts for `parent` on this device: `parent`'s device lock lets `child`'s
     /// commands through, until either session closes.

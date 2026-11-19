@@ -2112,6 +2112,36 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2836,6 +2866,36 @@ fun uniffi_dspi_core_checksum_method_dspicore_measure_start(
 fun uniffi_dspi_core_checksum_method_dspicore_measure_state(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_stop(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_applied(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_apply(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_capture_push(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_keep(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_preflight(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_proposal(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_result(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_revert(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_start(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_state(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_stop(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_sum_check(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_tick(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_unit_check(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_system_verify(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_tick(
 ): Short
@@ -3903,6 +3963,36 @@ fun uniffi_dspi_core_fn_method_dspicore_measure_start(`ptr`: Pointer,`setup`: Ru
 fun uniffi_dspi_core_fn_method_dspicore_measure_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_applied(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_apply(`ptr`: Pointer,`proposalId`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_capture_push(`ptr`: Pointer,`firstFrame`: Long,`samples`: RustBuffer.ByValue,`rateHz`: Int,`clipped`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_keep(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_preflight(`ptr`: Pointer,`setup`: RustBuffer.ByValue,`checks`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_proposal(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_result(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_revert(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_start(`ptr`: Pointer,`setup`: RustBuffer.ByValue,`checks`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_sum_check(`ptr`: Pointer,`checks`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_tick(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_unit_check(`ptr`: Pointer,`setup`: RustBuffer.ByValue,`unit`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_system_verify(`ptr`: Pointer,`checks`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_tick(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -5699,6 +5789,51 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_stop() != 2867.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_applied() != 12184.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_apply() != 53350.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_capture_push() != 35486.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_keep() != 44096.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_preflight() != 38600.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_proposal() != 22475.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_result() != 38290.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_revert() != 35695.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_start() != 61644.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_state() != 26745.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_stop() != 33996.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_sum_check() != 21511.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_tick() != 37419.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_unit_check() != 61995.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_verify() != 27297.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_tick() != 49262.toShort()) {
@@ -11052,6 +11187,163 @@ public interface DspiCoreInterface {
      * It ends the live view too (`measure_live_stop`).
      */
     fun `measureStop`(): MeasureState
+    
+    /**
+     * Where the applied alignment stands.
+     */
+    fun `measureSystemApplied`(): MeasureSystemApplied
+    
+    /**
+     * Apply proposal `proposal_id` (Admin): the hub's model revision and
+     * every measured unit's output delays are filed, the offered arrivals
+     * are written into the model (`system.set`, guarded by the revision),
+     * then `system.align` writes the units. Repeat the summed runs next
+     * (`measure_system_verify`), then Keep or Revert.
+     *
+     * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
+     * [`DspiError::InvalidArgument`] for another id, a summed check not
+     * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
+     * (`conflict` when the model changed meanwhile).
+     */
+    fun `measureSystemApply`(`proposalId`: kotlin.UInt): MeasureSystemApplied
+    
+    /**
+     * Push one block of the microphone's capture (as
+     * `measure_capture_push`): the frame index, a clip and the SPL cap are
+     * checked at once (S4, S5); nothing is analysed here. Ignored with no
+     * session.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for more than 1 Mi samples.
+     */
+    fun `measureSystemCapturePush`(`firstFrame`: kotlin.ULong, `samples`: List<kotlin.Float>, `rateHz`: kotlin.UInt, `clipped`: kotlin.Boolean): MeasureSystemState
+    
+    /**
+     * Keep the applied alignment.
+     *
+     * **After a verify that did not pass** the first Keep is refused
+     * (nothing changes; the applied record's `message` says why): the
+     * client shows it and asks the user again, and only a second Keep, at
+     * least a second later, keeps it (as `measure_tune_keep`). A new
+     * verify asks again.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
+     * first Keep after a failed verify.
+     */
+    fun `measureSystemKeep`(): MeasureSystemApplied
+    
+    /**
+     * What stands between `setup` and a system measurement, each item
+     * naming its unit: the hub (`system_measure`, a role above Viewer),
+     * every unit's own check (`checks`, one per unit), one rate, a plan
+     * that fits. Talks to no unit.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a setup that is not one.
+     */
+    fun `measureSystemPreflight`(`setup`: MeasureSystemSetup, `checks`: List<MeasureSystemUnitCheck>): MeasureSystemPreflight
+    
+    /**
+     * The alignment the last result proposes: the offered arrivals (the
+     * gate G1 to G4 passed and each one's delay to the group's latest
+     * output within 10 us), what is withheld and why, whether the summed
+     * check is still needed. No I/O but the role.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    fun `measureSystemProposal`(): MeasureSystemProposal
+    
+    /**
+     * The finished measurement: per unit its document, every arrival and
+     * cross-unit delay with its uncertainty, the transitions.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    fun `measureSystemResult`(): MeasureSystemResult
+    
+    /**
+     * Revert the applied alignment (Admin): the filed model is set again
+     * (`system.set`) and `system.align` writes the units back; every unit's
+     * output delays are read back against the filed ones.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied;
+     * [`DspiError::Denied`] below Admin; the hub's refusals.
+     */
+    fun `measureSystemRevert`(): MeasureSystemApplied
+    
+    /**
+     * Start a system measurement: the preflight, then `system.measure.open`
+     * (the hub takes every unit's device lock and checks one domain), then
+     * the pre-roll. Nothing plays before the client has pushed the pre-roll
+     * (`measure_system_capture_push`) and ticked. Tick about every 50 ms
+     * (`measure_system_tick`) until the phase is `done`, `aborted` or
+     * `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
+     * (named with its unit) or a session already running;
+     * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
+     * several units together needs the DSPi hub"); [`DspiError::Denied`]
+     * for a Viewer; [`DspiError::Link`] with the hub's refusal
+     * (`not_one_domain`, `not_locked`, `no_timeline`, `locked`, ...).
+     */
+    fun `measureSystemStart`(`setup`: MeasureSystemSetup, `checks`: List<MeasureSystemUnitCheck>): MeasureSystemState
+    
+    /**
+     * The system session's state, without I/O.
+     */
+    fun `measureSystemState`(): MeasureSystemState
+    
+    /**
+     * The user's Stop: `system.measure.abort` (every unit stopped, every
+     * START cancelled), the hub's session closed, the run discarded.
+     * Idempotent; never fails.
+     */
+    fun `measureSystemStop`(): MeasureSystemState
+    
+    /**
+     * Start the summed check of every inter-unit transition (RC5f): one
+     * summed run per transition, the two units started at one T, compared
+     * with the sum the walked run predicts. **A session under every S-rule
+     * of its own** (review AT-C, as P5's summed check): `checks` are each
+     * unit's fresh [`DspiCore::measure_system_unit_check`] (the preflight
+     * S2, S6, S8, S11, S13 is judged again, a blocker names its unit and
+     * nothing plays), and each output of a transition is ramped again (S3)
+     * before the summed run plays 6 dB below the lower of the two levels
+     * (S-AT4), never above the measurement's.
+     *
+     * Errors: as [`DspiCore::measure_system_start`]; [`DspiError::
+     * InvalidArgument`] with no result or no transition.
+     */
+    fun `measureSystemSumCheck`(`checks`: List<MeasureSystemUnitCheck>): MeasureSystemState
+    
+    /**
+     * Drive the system session: the hub's status (about 4 Hz, which renews
+     * its lease), the per-unit judgements, the next step, one analysis
+     * slice. Call it about every 50 ms while active, off the UI thread.
+     */
+    fun `measureSystemTick`(): MeasureSystemState
+    
+    /**
+     * Judge this core's own device as one unit of a system measurement:
+     * P5's preflight of `unit`'s outputs on this device's mirror (S2, S6,
+     * S8, S11, S13, S7's bounds) and what the system session needs of it.
+     * Call it on each unit's own core and hand the checks to the core on
+     * the hub session. Reads the device; writes nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a unit that is not this
+     * device, or a setup that is not one; [`DspiError::Disconnected`]; a
+     * transfer failure of the reads.
+     */
+    fun `measureSystemUnitCheck`(`setup`: MeasureSystemSetup, `unit`: MeasureSystemUnit): MeasureSystemUnitCheck
+    
+    /**
+     * Repeat the summed runs after an apply (P5's verify step), predicted
+     * with each output's applied change. A session under every S-rule of
+     * its own, as [`DspiCore::measure_system_sum_check`]: `checks` are each
+     * unit's fresh check, and each output is ramped again.
+     *
+     * Errors: as [`DspiCore::measure_system_sum_check`]; [`DspiError::
+     * InvalidArgument`] with nothing applied.
+     */
+    fun `measureSystemVerify`(`checks`: List<MeasureSystemUnitCheck>): MeasureSystemState
     
     /**
      * Drive the session: apply queued notifications, judge them (S5), renew
@@ -19418,6 +19710,324 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_stop(
         it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Where the applied alignment stands.
+     */override fun `measureSystemApplied`(): MeasureSystemApplied {
+            return FfiConverterTypeMeasureSystemApplied.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_applied(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Apply proposal `proposal_id` (Admin): the hub's model revision and
+     * every measured unit's output delays are filed, the offered arrivals
+     * are written into the model (`system.set`, guarded by the revision),
+     * then `system.align` writes the units. Repeat the summed runs next
+     * (`measure_system_verify`), then Keep or Revert.
+     *
+     * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
+     * [`DspiError::InvalidArgument`] for another id, a summed check not
+     * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
+     * (`conflict` when the model changed meanwhile).
+     */
+    @Throws(DspiException::class)override fun `measureSystemApply`(`proposalId`: kotlin.UInt): MeasureSystemApplied {
+            return FfiConverterTypeMeasureSystemApplied.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_apply(
+        it, FfiConverterUInt.lower(`proposalId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Push one block of the microphone's capture (as
+     * `measure_capture_push`): the frame index, a clip and the SPL cap are
+     * checked at once (S4, S5); nothing is analysed here. Ignored with no
+     * session.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for more than 1 Mi samples.
+     */
+    @Throws(DspiException::class)override fun `measureSystemCapturePush`(`firstFrame`: kotlin.ULong, `samples`: List<kotlin.Float>, `rateHz`: kotlin.UInt, `clipped`: kotlin.Boolean): MeasureSystemState {
+            return FfiConverterTypeMeasureSystemState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_capture_push(
+        it, FfiConverterULong.lower(`firstFrame`),FfiConverterSequenceFloat.lower(`samples`),FfiConverterUInt.lower(`rateHz`),FfiConverterBoolean.lower(`clipped`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Keep the applied alignment.
+     *
+     * **After a verify that did not pass** the first Keep is refused
+     * (nothing changes; the applied record's `message` says why): the
+     * client shows it and asks the user again, and only a second Keep, at
+     * least a second later, keeps it (as `measure_tune_keep`). A new
+     * verify asks again.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
+     * first Keep after a failed verify.
+     */
+    @Throws(DspiException::class)override fun `measureSystemKeep`(): MeasureSystemApplied {
+            return FfiConverterTypeMeasureSystemApplied.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_keep(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * What stands between `setup` and a system measurement, each item
+     * naming its unit: the hub (`system_measure`, a role above Viewer),
+     * every unit's own check (`checks`, one per unit), one rate, a plan
+     * that fits. Talks to no unit.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a setup that is not one.
+     */
+    @Throws(DspiException::class)override fun `measureSystemPreflight`(`setup`: MeasureSystemSetup, `checks`: List<MeasureSystemUnitCheck>): MeasureSystemPreflight {
+            return FfiConverterTypeMeasureSystemPreflight.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_preflight(
+        it, FfiConverterTypeMeasureSystemSetup.lower(`setup`),FfiConverterSequenceTypeMeasureSystemUnitCheck.lower(`checks`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The alignment the last result proposes: the offered arrivals (the
+     * gate G1 to G4 passed and each one's delay to the group's latest
+     * output within 10 us), what is withheld and why, whether the summed
+     * check is still needed. No I/O but the role.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    @Throws(DspiException::class)override fun `measureSystemProposal`(): MeasureSystemProposal {
+            return FfiConverterTypeMeasureSystemProposal.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_proposal(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The finished measurement: per unit its document, every arrival and
+     * cross-unit delay with its uncertainty, the transitions.
+     *
+     * Errors: [`DspiError::InvalidArgument`] while no result is ready.
+     */
+    @Throws(DspiException::class)override fun `measureSystemResult`(): MeasureSystemResult {
+            return FfiConverterTypeMeasureSystemResult.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_result(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Revert the applied alignment (Admin): the filed model is set again
+     * (`system.set`) and `system.align` writes the units back; every unit's
+     * output delays are read back against the filed ones.
+     *
+     * Errors: [`DspiError::InvalidArgument`] with nothing applied;
+     * [`DspiError::Denied`] below Admin; the hub's refusals.
+     */
+    @Throws(DspiException::class)override fun `measureSystemRevert`(): MeasureSystemApplied {
+            return FfiConverterTypeMeasureSystemApplied.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_revert(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Start a system measurement: the preflight, then `system.measure.open`
+     * (the hub takes every unit's device lock and checks one domain), then
+     * the pre-roll. Nothing plays before the client has pushed the pre-roll
+     * (`measure_system_capture_push`) and ticked. Tick about every 50 ms
+     * (`measure_system_tick`) until the phase is `done`, `aborted` or
+     * `failed`.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
+     * (named with its unit) or a session already running;
+     * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
+     * several units together needs the DSPi hub"); [`DspiError::Denied`]
+     * for a Viewer; [`DspiError::Link`] with the hub's refusal
+     * (`not_one_domain`, `not_locked`, `no_timeline`, `locked`, ...).
+     */
+    @Throws(DspiException::class)override fun `measureSystemStart`(`setup`: MeasureSystemSetup, `checks`: List<MeasureSystemUnitCheck>): MeasureSystemState {
+            return FfiConverterTypeMeasureSystemState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_start(
+        it, FfiConverterTypeMeasureSystemSetup.lower(`setup`),FfiConverterSequenceTypeMeasureSystemUnitCheck.lower(`checks`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The system session's state, without I/O.
+     */override fun `measureSystemState`(): MeasureSystemState {
+            return FfiConverterTypeMeasureSystemState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The user's Stop: `system.measure.abort` (every unit stopped, every
+     * START cancelled), the hub's session closed, the run discarded.
+     * Idempotent; never fails.
+     */override fun `measureSystemStop`(): MeasureSystemState {
+            return FfiConverterTypeMeasureSystemState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_stop(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Start the summed check of every inter-unit transition (RC5f): one
+     * summed run per transition, the two units started at one T, compared
+     * with the sum the walked run predicts. **A session under every S-rule
+     * of its own** (review AT-C, as P5's summed check): `checks` are each
+     * unit's fresh [`DspiCore::measure_system_unit_check`] (the preflight
+     * S2, S6, S8, S11, S13 is judged again, a blocker names its unit and
+     * nothing plays), and each output of a transition is ramped again (S3)
+     * before the summed run plays 6 dB below the lower of the two levels
+     * (S-AT4), never above the measurement's.
+     *
+     * Errors: as [`DspiCore::measure_system_start`]; [`DspiError::
+     * InvalidArgument`] with no result or no transition.
+     */
+    @Throws(DspiException::class)override fun `measureSystemSumCheck`(`checks`: List<MeasureSystemUnitCheck>): MeasureSystemState {
+            return FfiConverterTypeMeasureSystemState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_sum_check(
+        it, FfiConverterSequenceTypeMeasureSystemUnitCheck.lower(`checks`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Drive the system session: the hub's status (about 4 Hz, which renews
+     * its lease), the per-unit judgements, the next step, one analysis
+     * slice. Call it about every 50 ms while active, off the UI thread.
+     */override fun `measureSystemTick`(): MeasureSystemState {
+            return FfiConverterTypeMeasureSystemState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_tick(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Judge this core's own device as one unit of a system measurement:
+     * P5's preflight of `unit`'s outputs on this device's mirror (S2, S6,
+     * S8, S11, S13, S7's bounds) and what the system session needs of it.
+     * Call it on each unit's own core and hand the checks to the core on
+     * the hub session. Reads the device; writes nothing.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a unit that is not this
+     * device, or a setup that is not one; [`DspiError::Disconnected`]; a
+     * transfer failure of the reads.
+     */
+    @Throws(DspiException::class)override fun `measureSystemUnitCheck`(`setup`: MeasureSystemSetup, `unit`: MeasureSystemUnit): MeasureSystemUnitCheck {
+            return FfiConverterTypeMeasureSystemUnitCheck.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_unit_check(
+        it, FfiConverterTypeMeasureSystemSetup.lower(`setup`),FfiConverterTypeMeasureSystemUnit.lower(`unit`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Repeat the summed runs after an apply (P5's verify step), predicted
+     * with each output's applied change. A session under every S-rule of
+     * its own, as [`DspiCore::measure_system_sum_check`]: `checks` are each
+     * unit's fresh check, and each output is ramped again.
+     *
+     * Errors: as [`DspiCore::measure_system_sum_check`]; [`DspiError::
+     * InvalidArgument`] with nothing applied.
+     */
+    @Throws(DspiException::class)override fun `measureSystemVerify`(`checks`: List<MeasureSystemUnitCheck>): MeasureSystemState {
+            return FfiConverterTypeMeasureSystemState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_system_verify(
+        it, FfiConverterSequenceTypeMeasureSystemUnitCheck.lower(`checks`),_status)
 }
     }
     )
@@ -40349,6 +40959,1160 @@ public object FfiConverterTypeMeasureState: FfiConverterRustBuffer<MeasureState>
 
 
 /**
+ * What an apply, a verify, a Keep or a Revert did.
+ */
+data class MeasureSystemApplied (
+    /**
+     * Where it stands.
+     */
+    var `stage`: MeasureSystemApplyStage, 
+    /**
+     * The hub model's revision filed before the apply.
+     */
+    var `revisionBefore`: kotlin.ULong, 
+    /**
+     * Its revision after the apply (or the revert).
+     */
+    var `revisionAfter`: kotlin.ULong, 
+    /**
+     * Every unit's output delays filed before the apply.
+     */
+    var `snapshots`: List<MeasureSystemSnapshot>, 
+    /**
+     * `system.align`'s writes that were `ok`.
+     */
+    var `writesOk`: kotlin.UInt, 
+    /**
+     * Writes that failed, in words.
+     */
+    var `writeFailures`: List<kotlin.String>, 
+    /**
+     * The verify's summed runs agreed with the new delays (`None` before).
+     */
+    var `verified`: kotlin.Boolean?, 
+    /**
+     * What to know, in words.
+     */
+    var `message`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer<MeasureSystemApplied> {
+    override fun read(buf: ByteBuffer): MeasureSystemApplied {
+        return MeasureSystemApplied(
+            FfiConverterTypeMeasureSystemApplyStage.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterSequenceTypeMeasureSystemSnapshot.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemApplied) = (
+            FfiConverterTypeMeasureSystemApplyStage.allocationSize(value.`stage`) +
+            FfiConverterULong.allocationSize(value.`revisionBefore`) +
+            FfiConverterULong.allocationSize(value.`revisionAfter`) +
+            FfiConverterSequenceTypeMeasureSystemSnapshot.allocationSize(value.`snapshots`) +
+            FfiConverterUInt.allocationSize(value.`writesOk`) +
+            FfiConverterSequenceString.allocationSize(value.`writeFailures`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`verified`) +
+            FfiConverterString.allocationSize(value.`message`)
+    )
+
+    override fun write(value: MeasureSystemApplied, buf: ByteBuffer) {
+            FfiConverterTypeMeasureSystemApplyStage.write(value.`stage`, buf)
+            FfiConverterULong.write(value.`revisionBefore`, buf)
+            FfiConverterULong.write(value.`revisionAfter`, buf)
+            FfiConverterSequenceTypeMeasureSystemSnapshot.write(value.`snapshots`, buf)
+            FfiConverterUInt.write(value.`writesOk`, buf)
+            FfiConverterSequenceString.write(value.`writeFailures`, buf)
+            FfiConverterOptionalBoolean.write(value.`verified`, buf)
+            FfiConverterString.write(value.`message`, buf)
+    }
+}
+
+
+
+/**
+ * A measured output's arrival, as the proposal would write it.
+ */
+data class MeasureSystemArrival (
+    /**
+     * The unit.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * The output.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Its acoustic arrival relative to the group's latest output, us (0 for
+     * that one, negative for an earlier one): WP ATHUBM's
+     * `measuredArrivalUs`.
+     */
+    var `arrivalUs`: kotlin.Double, 
+    /**
+     * The arrival as measured on the timeline, before the engine's terms
+     * were taken out, relative to the same reference, us.
+     */
+    var `measuredUs`: kotlin.Double, 
+    /**
+     * The uncertainty of the arrival against the latest output, us (one
+     * standard error; `None` without two clear passes).
+     */
+    var `uncertaintyUs`: kotlin.Double?, 
+    /**
+     * May be proposed: the gate passed and the delay to the latest output
+     * is offered (within 10 us).
+     */
+    var `offered`: kotlin.Boolean, 
+    /**
+     * Why not (empty when offered).
+     */
+    var `reason`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemArrival: FfiConverterRustBuffer<MeasureSystemArrival> {
+    override fun read(buf: ByteBuffer): MeasureSystemArrival {
+        return MeasureSystemArrival(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemArrival) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterDouble.allocationSize(value.`arrivalUs`) +
+            FfiConverterDouble.allocationSize(value.`measuredUs`) +
+            FfiConverterOptionalDouble.allocationSize(value.`uncertaintyUs`) +
+            FfiConverterBoolean.allocationSize(value.`offered`) +
+            FfiConverterString.allocationSize(value.`reason`)
+    )
+
+    override fun write(value: MeasureSystemArrival, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterDouble.write(value.`arrivalUs`, buf)
+            FfiConverterDouble.write(value.`measuredUs`, buf)
+            FfiConverterOptionalDouble.write(value.`uncertaintyUs`, buf)
+            FfiConverterBoolean.write(value.`offered`, buf)
+            FfiConverterString.write(value.`reason`, buf)
+    }
+}
+
+
+
+/**
+ * A delay between two outputs on different units of one run.
+ */
+data class MeasureSystemDelay (
+    /**
+     * The earlier output's unit.
+     */
+    var `fromSerial`: kotlin.String, 
+    /**
+     * Its output.
+     */
+    var `fromOutput`: kotlin.UByte, 
+    /**
+     * The other output's unit.
+     */
+    var `toSerial`: kotlin.String, 
+    /**
+     * Its output.
+     */
+    var `toOutput`: kotlin.UByte, 
+    /**
+     * `to`'s arrival minus `from`'s, us.
+     */
+    var `delayUs`: kotlin.Double, 
+    /**
+     * Its uncertainty, us.
+     */
+    var `uncertaintyUs`: kotlin.Double?, 
+    /**
+     * The analyser offers it.
+     */
+    var `offered`: kotlin.Boolean, 
+    /**
+     * Why not ("timing unreliable: ..." with the wander).
+     */
+    var `reason`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemDelay: FfiConverterRustBuffer<MeasureSystemDelay> {
+    override fun read(buf: ByteBuffer): MeasureSystemDelay {
+        return MeasureSystemDelay(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemDelay) = (
+            FfiConverterString.allocationSize(value.`fromSerial`) +
+            FfiConverterUByte.allocationSize(value.`fromOutput`) +
+            FfiConverterString.allocationSize(value.`toSerial`) +
+            FfiConverterUByte.allocationSize(value.`toOutput`) +
+            FfiConverterDouble.allocationSize(value.`delayUs`) +
+            FfiConverterOptionalDouble.allocationSize(value.`uncertaintyUs`) +
+            FfiConverterBoolean.allocationSize(value.`offered`) +
+            FfiConverterString.allocationSize(value.`reason`)
+    )
+
+    override fun write(value: MeasureSystemDelay, buf: ByteBuffer) {
+            FfiConverterString.write(value.`fromSerial`, buf)
+            FfiConverterUByte.write(value.`fromOutput`, buf)
+            FfiConverterString.write(value.`toSerial`, buf)
+            FfiConverterUByte.write(value.`toOutput`, buf)
+            FfiConverterDouble.write(value.`delayUs`, buf)
+            FfiConverterOptionalDouble.write(value.`uncertaintyUs`, buf)
+            FfiConverterBoolean.write(value.`offered`, buf)
+            FfiConverterString.write(value.`reason`, buf)
+    }
+}
+
+
+
+/**
+ * One unit's `measurement` document.
+ */
+data class MeasureSystemDocument (
+    /**
+     * The unit.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * The document's text (schema 1 with a `system` block). File it with
+     * `measure_doc_put` (or the hub's).
+     */
+    var `document`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemDocument: FfiConverterRustBuffer<MeasureSystemDocument> {
+    override fun read(buf: ByteBuffer): MeasureSystemDocument {
+        return MeasureSystemDocument(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemDocument) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`document`)
+    )
+
+    override fun write(value: MeasureSystemDocument, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`document`, buf)
+    }
+}
+
+
+
+/**
+ * An issue of a system measurement, naming its unit.
+ */
+data class MeasureSystemIssue (
+    /**
+     * The unit's serial; "" when it concerns no one unit.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * The notice key (`measure.*`, `measure.system.*`).
+     */
+    var `key`: kotlin.String, 
+    /**
+     * The output it concerns, if one.
+     */
+    var `output`: kotlin.UByte?, 
+    /**
+     * What happened, in words (the unit named).
+     */
+    var `message`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemIssue: FfiConverterRustBuffer<MeasureSystemIssue> {
+    override fun read(buf: ByteBuffer): MeasureSystemIssue {
+        return MeasureSystemIssue(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemIssue) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterString.allocationSize(value.`key`) +
+            FfiConverterOptionalUByte.allocationSize(value.`output`) +
+            FfiConverterString.allocationSize(value.`message`)
+    )
+
+    override fun write(value: MeasureSystemIssue, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterString.write(value.`key`, buf)
+            FfiConverterOptionalUByte.write(value.`output`, buf)
+            FfiConverterString.write(value.`message`, buf)
+    }
+}
+
+
+
+/**
+ * One output's level after its ramp.
+ */
+data class MeasureSystemLevel (
+    /**
+     * The unit.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * The output.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Its level, peak dBFS.
+     */
+    var `levelDb`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemLevel: FfiConverterRustBuffer<MeasureSystemLevel> {
+    override fun read(buf: ByteBuffer): MeasureSystemLevel {
+        return MeasureSystemLevel(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemLevel) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterFloat.allocationSize(value.`levelDb`)
+    )
+
+    override fun write(value: MeasureSystemLevel, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterFloat.write(value.`levelDb`, buf)
+    }
+}
+
+
+
+/**
+ * One output's delay.
+ */
+data class MeasureSystemOutDelay (
+    /**
+     * The output.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Its delay, ms.
+     */
+    var `delayMs`: kotlin.Float
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemOutDelay: FfiConverterRustBuffer<MeasureSystemOutDelay> {
+    override fun read(buf: ByteBuffer): MeasureSystemOutDelay {
+        return MeasureSystemOutDelay(
+            FfiConverterUByte.read(buf),
+            FfiConverterFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemOutDelay) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterFloat.allocationSize(value.`delayMs`)
+    )
+
+    override fun write(value: MeasureSystemOutDelay, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterFloat.write(value.`delayMs`, buf)
+    }
+}
+
+
+
+/**
+ * What stands between a setup and a system measurement.
+ */
+data class MeasureSystemPreflight (
+    /**
+     * Nothing blocks.
+     */
+    var `clear`: kotlin.Boolean, 
+    /**
+     * What must change first, each naming its unit.
+     */
+    var `blockers`: List<MeasureSystemIssue>, 
+    /**
+     * What to know.
+     */
+    var `warnings`: List<MeasureSystemIssue>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemPreflight: FfiConverterRustBuffer<MeasureSystemPreflight> {
+    override fun read(buf: ByteBuffer): MeasureSystemPreflight {
+        return MeasureSystemPreflight(
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceTypeMeasureSystemIssue.read(buf),
+            FfiConverterSequenceTypeMeasureSystemIssue.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemPreflight) = (
+            FfiConverterBoolean.allocationSize(value.`clear`) +
+            FfiConverterSequenceTypeMeasureSystemIssue.allocationSize(value.`blockers`) +
+            FfiConverterSequenceTypeMeasureSystemIssue.allocationSize(value.`warnings`)
+    )
+
+    override fun write(value: MeasureSystemPreflight, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`clear`, buf)
+            FfiConverterSequenceTypeMeasureSystemIssue.write(value.`blockers`, buf)
+            FfiConverterSequenceTypeMeasureSystemIssue.write(value.`warnings`, buf)
+    }
+}
+
+
+
+/**
+ * The alignment a system measurement proposes (OD-ATl): measured arrivals
+ * into the hub's model, applied by `system.align`.
+ */
+data class MeasureSystemProposal (
+    /**
+     * Its id (the apply names it).
+     */
+    var `id`: kotlin.UInt, 
+    /**
+     * The arrivals to write: offered ones only.
+     */
+    var `arrivals`: List<MeasureSystemArrival>, 
+    /**
+     * Arrivals not offered, with why.
+     */
+    var `withheld`: List<MeasureSystemArrival>, 
+    /**
+     * The transitions and their summed checks.
+     */
+    var `transitions`: List<MeasureSystemTransition>, 
+    /**
+     * A summed check is still to run before anything may be applied.
+     */
+    var `sumCheckNeeded`: kotlin.Boolean, 
+    /**
+     * Every cross-unit delay was withdrawn (a summed check failed).
+     */
+    var `withdrawn`: kotlin.Boolean, 
+    /**
+     * Something can be applied (after the summed check).
+     */
+    var `offered`: kotlin.Boolean, 
+    /**
+     * This session's role may apply it (Admin).
+     */
+    var `mayApply`: kotlin.Boolean, 
+    /**
+     * What stands in the way, if anything.
+     */
+    var `notice`: MeasureSystemIssue?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemProposal: FfiConverterRustBuffer<MeasureSystemProposal> {
+    override fun read(buf: ByteBuffer): MeasureSystemProposal {
+        return MeasureSystemProposal(
+            FfiConverterUInt.read(buf),
+            FfiConverterSequenceTypeMeasureSystemArrival.read(buf),
+            FfiConverterSequenceTypeMeasureSystemArrival.read(buf),
+            FfiConverterSequenceTypeMeasureSystemTransition.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalTypeMeasureSystemIssue.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemProposal) = (
+            FfiConverterUInt.allocationSize(value.`id`) +
+            FfiConverterSequenceTypeMeasureSystemArrival.allocationSize(value.`arrivals`) +
+            FfiConverterSequenceTypeMeasureSystemArrival.allocationSize(value.`withheld`) +
+            FfiConverterSequenceTypeMeasureSystemTransition.allocationSize(value.`transitions`) +
+            FfiConverterBoolean.allocationSize(value.`sumCheckNeeded`) +
+            FfiConverterBoolean.allocationSize(value.`withdrawn`) +
+            FfiConverterBoolean.allocationSize(value.`offered`) +
+            FfiConverterBoolean.allocationSize(value.`mayApply`) +
+            FfiConverterOptionalTypeMeasureSystemIssue.allocationSize(value.`notice`)
+    )
+
+    override fun write(value: MeasureSystemProposal, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`id`, buf)
+            FfiConverterSequenceTypeMeasureSystemArrival.write(value.`arrivals`, buf)
+            FfiConverterSequenceTypeMeasureSystemArrival.write(value.`withheld`, buf)
+            FfiConverterSequenceTypeMeasureSystemTransition.write(value.`transitions`, buf)
+            FfiConverterBoolean.write(value.`sumCheckNeeded`, buf)
+            FfiConverterBoolean.write(value.`withdrawn`, buf)
+            FfiConverterBoolean.write(value.`offered`, buf)
+            FfiConverterBoolean.write(value.`mayApply`, buf)
+            FfiConverterOptionalTypeMeasureSystemIssue.write(value.`notice`, buf)
+    }
+}
+
+
+
+/**
+ * A finished system measurement.
+ */
+data class MeasureSystemResult (
+    /**
+     * One document per unit.
+     */
+    var `documents`: List<MeasureSystemDocument>, 
+    /**
+     * Every measured output's arrival.
+     */
+    var `arrivals`: List<MeasureSystemArrival>, 
+    /**
+     * Every cross-unit delay of every run.
+     */
+    var `delays`: List<MeasureSystemDelay>, 
+    /**
+     * The inter-unit transitions.
+     */
+    var `transitions`: List<MeasureSystemTransition>, 
+    /**
+     * G5 for every run.
+     */
+    var `timingReliable`: kotlin.Boolean, 
+    /**
+     * Why not reliable, what was not offered, a refused chain.
+     */
+    var `reasons`: List<kotlin.String>, 
+    /**
+     * The generator runs (`EXT_SIGGEN_TIMELINE.run_id`) the arrivals came
+     * from.
+     */
+    var `runIds`: List<kotlin.UInt>, 
+    /**
+     * Timed runs chained through the anchor (1: none).
+     */
+    var `runs`: kotlin.UShort
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer<MeasureSystemResult> {
+    override fun read(buf: ByteBuffer): MeasureSystemResult {
+        return MeasureSystemResult(
+            FfiConverterSequenceTypeMeasureSystemDocument.read(buf),
+            FfiConverterSequenceTypeMeasureSystemArrival.read(buf),
+            FfiConverterSequenceTypeMeasureSystemDelay.read(buf),
+            FfiConverterSequenceTypeMeasureSystemTransition.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceUInt.read(buf),
+            FfiConverterUShort.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemResult) = (
+            FfiConverterSequenceTypeMeasureSystemDocument.allocationSize(value.`documents`) +
+            FfiConverterSequenceTypeMeasureSystemArrival.allocationSize(value.`arrivals`) +
+            FfiConverterSequenceTypeMeasureSystemDelay.allocationSize(value.`delays`) +
+            FfiConverterSequenceTypeMeasureSystemTransition.allocationSize(value.`transitions`) +
+            FfiConverterBoolean.allocationSize(value.`timingReliable`) +
+            FfiConverterSequenceString.allocationSize(value.`reasons`) +
+            FfiConverterSequenceUInt.allocationSize(value.`runIds`) +
+            FfiConverterUShort.allocationSize(value.`runs`)
+    )
+
+    override fun write(value: MeasureSystemResult, buf: ByteBuffer) {
+            FfiConverterSequenceTypeMeasureSystemDocument.write(value.`documents`, buf)
+            FfiConverterSequenceTypeMeasureSystemArrival.write(value.`arrivals`, buf)
+            FfiConverterSequenceTypeMeasureSystemDelay.write(value.`delays`, buf)
+            FfiConverterSequenceTypeMeasureSystemTransition.write(value.`transitions`, buf)
+            FfiConverterBoolean.write(value.`timingReliable`, buf)
+            FfiConverterSequenceString.write(value.`reasons`, buf)
+            FfiConverterSequenceUInt.write(value.`runIds`, buf)
+            FfiConverterUShort.write(value.`runs`, buf)
+    }
+}
+
+
+
+/**
+ * What to measure across units and how (PLAN-AT 1.4). Every number 0 (or
+ * absent) is the plan's default.
+ */
+data class MeasureSystemSetup (
+    /**
+     * The group's units, 2 to 16, in the order the hub opens them.
+     */
+    var `units`: List<MeasureSystemUnit>, 
+    /**
+     * Passes, 2 to 8; 0: 5 where the run fits one capture, else 3.
+     */
+    var `passes`: kotlin.UByte, 
+    /**
+     * The anchor output's unit for runs chained through it; "": the first
+     * unit.
+     */
+    var `anchorSerial`: kotlin.String, 
+    /**
+     * The anchor output; `None`: the anchor unit's first output.
+     */
+    var `anchorOutput`: kotlin.UByte?, 
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated one.
+     */
+    var `micDocument`: kotlin.String, 
+    /**
+     * One sweep, ms (1000 to 15000; 0: 5500).
+     */
+    var `sweepMs`: kotlin.UInt, 
+    /**
+     * The gap after each cycle, ms (300 to 2000; 0: 1000).
+     */
+    var `gapMs`: kotlin.UInt, 
+    /**
+     * The generator's ceiling, peak dBFS (as P5's).
+     */
+    var `ceilingDb`: kotlin.Float?, 
+    /**
+     * The SPL cap with a calibrated microphone, dB SPL (as P5's).
+     */
+    var `splCapDb`: kotlin.Float?, 
+    /**
+     * The capture's rate, Hz (0: 48000).
+     */
+    var `captureRateHz`: kotlin.UInt, 
+    /**
+     * The lead of every START, ms; 0 or less than the units' arm lead plus
+     * 100 ms: that (S-AT3).
+     */
+    var `leadMs`: kotlin.UInt, 
+    /**
+     * The hub's lease, ms (0: the hub's default, 2000; clamped 500..5000).
+     */
+    var `leaseMs`: kotlin.UInt, 
+    /**
+     * The documents' name ("" names them by the date).
+     */
+    var `name`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemSetup: FfiConverterRustBuffer<MeasureSystemSetup> {
+    override fun read(buf: ByteBuffer): MeasureSystemSetup {
+        return MeasureSystemSetup(
+            FfiConverterSequenceTypeMeasureSystemUnit.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemSetup) = (
+            FfiConverterSequenceTypeMeasureSystemUnit.allocationSize(value.`units`) +
+            FfiConverterUByte.allocationSize(value.`passes`) +
+            FfiConverterString.allocationSize(value.`anchorSerial`) +
+            FfiConverterOptionalUByte.allocationSize(value.`anchorOutput`) +
+            FfiConverterString.allocationSize(value.`micDocument`) +
+            FfiConverterUInt.allocationSize(value.`sweepMs`) +
+            FfiConverterUInt.allocationSize(value.`gapMs`) +
+            FfiConverterOptionalFloat.allocationSize(value.`ceilingDb`) +
+            FfiConverterOptionalFloat.allocationSize(value.`splCapDb`) +
+            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
+            FfiConverterUInt.allocationSize(value.`leadMs`) +
+            FfiConverterUInt.allocationSize(value.`leaseMs`) +
+            FfiConverterString.allocationSize(value.`name`)
+    )
+
+    override fun write(value: MeasureSystemSetup, buf: ByteBuffer) {
+            FfiConverterSequenceTypeMeasureSystemUnit.write(value.`units`, buf)
+            FfiConverterUByte.write(value.`passes`, buf)
+            FfiConverterString.write(value.`anchorSerial`, buf)
+            FfiConverterOptionalUByte.write(value.`anchorOutput`, buf)
+            FfiConverterString.write(value.`micDocument`, buf)
+            FfiConverterUInt.write(value.`sweepMs`, buf)
+            FfiConverterUInt.write(value.`gapMs`, buf)
+            FfiConverterOptionalFloat.write(value.`ceilingDb`, buf)
+            FfiConverterOptionalFloat.write(value.`splCapDb`, buf)
+            FfiConverterUInt.write(value.`captureRateHz`, buf)
+            FfiConverterUInt.write(value.`leadMs`, buf)
+            FfiConverterUInt.write(value.`leaseMs`, buf)
+            FfiConverterString.write(value.`name`, buf)
+    }
+}
+
+
+
+/**
+ * One unit's output delays as filed before an apply.
+ */
+data class MeasureSystemSnapshot (
+    /**
+     * The unit.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * `(output, out.delay ms)` read before the apply.
+     */
+    var `outDelaysMs`: List<MeasureSystemOutDelay>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemSnapshot: FfiConverterRustBuffer<MeasureSystemSnapshot> {
+    override fun read(buf: ByteBuffer): MeasureSystemSnapshot {
+        return MeasureSystemSnapshot(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeMeasureSystemOutDelay.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemSnapshot) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterSequenceTypeMeasureSystemOutDelay.allocationSize(value.`outDelaysMs`)
+    )
+
+    override fun write(value: MeasureSystemSnapshot, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterSequenceTypeMeasureSystemOutDelay.write(value.`outDelaysMs`, buf)
+    }
+}
+
+
+
+/**
+ * A system session's state (no I/O to read it).
+ */
+data class MeasureSystemState (
+    /**
+     * The phase.
+     */
+    var `phase`: MeasureSystemPhase, 
+    /**
+     * What the runs are for.
+     */
+    var `purpose`: MeasureSystemPurpose, 
+    /**
+     * Holds the hub's session or a stage in progress.
+     */
+    var `active`: kotlin.Boolean, 
+    /**
+     * Push the microphone's capture now.
+     */
+    var `wantsCapture`: kotlin.Boolean, 
+    /**
+     * The capture's rate, Hz.
+     */
+    var `captureRateHz`: kotlin.UInt, 
+    /**
+     * The unit playing (a ramp step), or "".
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * The output playing (a ramp step).
+     */
+    var `output`: kotlin.UByte?, 
+    /**
+     * Its level, peak dBFS.
+     */
+    var `levelDb`: kotlin.Float?, 
+    /**
+     * Every level the ramps found so far.
+     */
+    var `rampLevels`: List<MeasureSystemLevel>, 
+    /**
+     * The timed run in progress, 1-based (0 before the first).
+     */
+    var `run`: kotlin.UShort, 
+    /**
+     * Timed runs in all.
+     */
+    var `runs`: kotlin.UShort, 
+    /**
+     * Capture frames pushed.
+     */
+    var `frames`: kotlin.ULong, 
+    /**
+     * Progress of the stage, 0 to 1.
+     */
+    var `progress`: kotlin.Float, 
+    /**
+     * Why it stopped or what it asks.
+     */
+    var `issue`: MeasureSystemIssue?, 
+    /**
+     * A result is ready (`measure_system_result`).
+     */
+    var `resultReady`: kotlin.Boolean, 
+    /**
+     * G5: the timing of every run was reliable.
+     */
+    var `timingReliable`: kotlin.Boolean?, 
+    /**
+     * What the session waits for, in words ("waiting for the units' clocks
+     * to settle"), or "".
+     */
+    var `words`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemState: FfiConverterRustBuffer<MeasureSystemState> {
+    override fun read(buf: ByteBuffer): MeasureSystemState {
+        return MeasureSystemState(
+            FfiConverterTypeMeasureSystemPhase.read(buf),
+            FfiConverterTypeMeasureSystemPurpose.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterOptionalFloat.read(buf),
+            FfiConverterSequenceTypeMeasureSystemLevel.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterFloat.read(buf),
+            FfiConverterOptionalTypeMeasureSystemIssue.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemState) = (
+            FfiConverterTypeMeasureSystemPhase.allocationSize(value.`phase`) +
+            FfiConverterTypeMeasureSystemPurpose.allocationSize(value.`purpose`) +
+            FfiConverterBoolean.allocationSize(value.`active`) +
+            FfiConverterBoolean.allocationSize(value.`wantsCapture`) +
+            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterOptionalUByte.allocationSize(value.`output`) +
+            FfiConverterOptionalFloat.allocationSize(value.`levelDb`) +
+            FfiConverterSequenceTypeMeasureSystemLevel.allocationSize(value.`rampLevels`) +
+            FfiConverterUShort.allocationSize(value.`run`) +
+            FfiConverterUShort.allocationSize(value.`runs`) +
+            FfiConverterULong.allocationSize(value.`frames`) +
+            FfiConverterFloat.allocationSize(value.`progress`) +
+            FfiConverterOptionalTypeMeasureSystemIssue.allocationSize(value.`issue`) +
+            FfiConverterBoolean.allocationSize(value.`resultReady`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`timingReliable`) +
+            FfiConverterString.allocationSize(value.`words`)
+    )
+
+    override fun write(value: MeasureSystemState, buf: ByteBuffer) {
+            FfiConverterTypeMeasureSystemPhase.write(value.`phase`, buf)
+            FfiConverterTypeMeasureSystemPurpose.write(value.`purpose`, buf)
+            FfiConverterBoolean.write(value.`active`, buf)
+            FfiConverterBoolean.write(value.`wantsCapture`, buf)
+            FfiConverterUInt.write(value.`captureRateHz`, buf)
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterOptionalUByte.write(value.`output`, buf)
+            FfiConverterOptionalFloat.write(value.`levelDb`, buf)
+            FfiConverterSequenceTypeMeasureSystemLevel.write(value.`rampLevels`, buf)
+            FfiConverterUShort.write(value.`run`, buf)
+            FfiConverterUShort.write(value.`runs`, buf)
+            FfiConverterULong.write(value.`frames`, buf)
+            FfiConverterFloat.write(value.`progress`, buf)
+            FfiConverterOptionalTypeMeasureSystemIssue.write(value.`issue`, buf)
+            FfiConverterBoolean.write(value.`resultReady`, buf)
+            FfiConverterOptionalBoolean.write(value.`timingReliable`, buf)
+            FfiConverterString.write(value.`words`, buf)
+    }
+}
+
+
+
+/**
+ * An inter-unit transition and its summed check (RC5f, R8d).
+ */
+data class MeasureSystemTransition (
+    /**
+     * One output's unit.
+     */
+    var `aSerial`: kotlin.String, 
+    /**
+     * Its output.
+     */
+    var `aOutput`: kotlin.UByte, 
+    /**
+     * The other output's unit.
+     */
+    var `bSerial`: kotlin.String, 
+    /**
+     * Its output.
+     */
+    var `bOutput`: kotlin.UByte, 
+    /**
+     * The check band, Hz.
+     */
+    var `bandLoHz`: kotlin.Double, 
+    /**
+     * The check band's top, Hz.
+     */
+    var `bandHiHz`: kotlin.Double, 
+    /**
+     * The summed run was measured and judged.
+     */
+    var `checked`: kotlin.Boolean, 
+    /**
+     * Within 1.5 dB RMS of the prediction.
+     */
+    var `passed`: kotlin.Boolean, 
+    /**
+     * The RMS difference, dB.
+     */
+    var `rmsDb`: kotlin.Double?, 
+    /**
+     * What happened, in words.
+     */
+    var `message`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemTransition: FfiConverterRustBuffer<MeasureSystemTransition> {
+    override fun read(buf: ByteBuffer): MeasureSystemTransition {
+        return MeasureSystemTransition(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemTransition) = (
+            FfiConverterString.allocationSize(value.`aSerial`) +
+            FfiConverterUByte.allocationSize(value.`aOutput`) +
+            FfiConverterString.allocationSize(value.`bSerial`) +
+            FfiConverterUByte.allocationSize(value.`bOutput`) +
+            FfiConverterDouble.allocationSize(value.`bandLoHz`) +
+            FfiConverterDouble.allocationSize(value.`bandHiHz`) +
+            FfiConverterBoolean.allocationSize(value.`checked`) +
+            FfiConverterBoolean.allocationSize(value.`passed`) +
+            FfiConverterOptionalDouble.allocationSize(value.`rmsDb`) +
+            FfiConverterString.allocationSize(value.`message`)
+    )
+
+    override fun write(value: MeasureSystemTransition, buf: ByteBuffer) {
+            FfiConverterString.write(value.`aSerial`, buf)
+            FfiConverterUByte.write(value.`aOutput`, buf)
+            FfiConverterString.write(value.`bSerial`, buf)
+            FfiConverterUByte.write(value.`bOutput`, buf)
+            FfiConverterDouble.write(value.`bandLoHz`, buf)
+            FfiConverterDouble.write(value.`bandHiHz`, buf)
+            FfiConverterBoolean.write(value.`checked`, buf)
+            FfiConverterBoolean.write(value.`passed`, buf)
+            FfiConverterOptionalDouble.write(value.`rmsDb`, buf)
+            FfiConverterString.write(value.`message`, buf)
+    }
+}
+
+
+
+/**
+ * One unit of a system measurement and the outputs measured on it.
+ */
+data class MeasureSystemUnit (
+    /**
+     * Its USB serial (as the hub knows it).
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * Its outputs to measure, 1 to 16, each once (`group` is ignored: the
+     * group is the whole setup).
+     */
+    var `outputs`: List<MeasureOutput>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemUnit: FfiConverterRustBuffer<MeasureSystemUnit> {
+    override fun read(buf: ByteBuffer): MeasureSystemUnit {
+        return MeasureSystemUnit(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeMeasureOutput.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemUnit) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterSequenceTypeMeasureOutput.allocationSize(value.`outputs`)
+    )
+
+    override fun write(value: MeasureSystemUnit, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterSequenceTypeMeasureOutput.write(value.`outputs`, buf)
+    }
+}
+
+
+
+/**
+ * One unit judged by its own core (P5's preflight on that unit's mirror),
+ * for the core on the hub session.
+ */
+data class MeasureSystemUnitCheck (
+    /**
+     * The unit's serial.
+     */
+    var `serial`: kotlin.String, 
+    /**
+     * P5's preflight of its outputs.
+     */
+    var `preflight`: MeasurePreflight, 
+    /**
+     * What the session needs of the unit (its platform, rate, inputs,
+     * limiters, the measured chains), as JSON. Opaque to clients.
+     */
+    var `context`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemUnitCheck: FfiConverterRustBuffer<MeasureSystemUnitCheck> {
+    override fun read(buf: ByteBuffer): MeasureSystemUnitCheck {
+        return MeasureSystemUnitCheck(
+            FfiConverterString.read(buf),
+            FfiConverterTypeMeasurePreflight.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureSystemUnitCheck) = (
+            FfiConverterString.allocationSize(value.`serial`) +
+            FfiConverterTypeMeasurePreflight.allocationSize(value.`preflight`) +
+            FfiConverterString.allocationSize(value.`context`)
+    )
+
+    override fun write(value: MeasureSystemUnitCheck, buf: ByteBuffer) {
+            FfiConverterString.write(value.`serial`, buf)
+            FfiConverterTypeMeasurePreflight.write(value.`preflight`, buf)
+            FfiConverterString.write(value.`context`, buf)
+    }
+}
+
+
+
+/**
  * A walked run's timing (PLAN-P5 section 1.1 steps 6 and 7): the clock fit,
  * every cycle's residual and the quality gate's verdict. Non-finite numbers
  * read 0.
@@ -46883,6 +48647,163 @@ public object FfiConverterTypeMeasureRunKind: FfiConverterRustBuffer<MeasureRunK
 
 
 /**
+ * Where an applied system alignment stands.
+ */
+
+enum class MeasureSystemApplyStage {
+    
+    /**
+     * Nothing applied.
+     */
+    NONE,
+    /**
+     * Applied; the summed runs are to be repeated (`measure_system_verify`).
+     */
+    APPLIED,
+    /**
+     * Verified (or not): Keep or Revert.
+     */
+    VERIFIED,
+    /**
+     * Kept.
+     */
+    KEPT,
+    /**
+     * Reverted: the model and the units are as filed.
+     */
+    REVERTED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemApplyStage: FfiConverterRustBuffer<MeasureSystemApplyStage> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureSystemApplyStage.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureSystemApplyStage) = 4UL
+
+    override fun write(value: MeasureSystemApplyStage, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where a system measurement is.
+ */
+
+enum class MeasureSystemPhase {
+    
+    /**
+     * No session.
+     */
+    IDLE,
+    /**
+     * The noise floor is captured (nothing plays).
+     */
+    PRE_ROLL,
+    /**
+     * One output's ramp step plays (S3).
+     */
+    RAMP,
+    /**
+     * The timed run plays.
+     */
+    RUN,
+    /**
+     * The capture is analysed.
+     */
+    ANALYSING,
+    /**
+     * Finished: a result (or a summed check's verdicts) is ready.
+     */
+    DONE,
+    /**
+     * Stopped: by the user, a safety rule or the hub; nothing kept.
+     */
+    ABORTED,
+    /**
+     * Could not finish (no signal, the gate, the ramp); nothing kept.
+     */
+    FAILED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemPhase: FfiConverterRustBuffer<MeasureSystemPhase> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureSystemPhase.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureSystemPhase) = 4UL
+
+    override fun write(value: MeasureSystemPhase, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * What a session's runs are for.
+ */
+
+enum class MeasureSystemPurpose {
+    
+    /**
+     * The walked measurement.
+     */
+    MEASURE,
+    /**
+     * The summed check of every inter-unit transition (RC5f).
+     */
+    SUM_CHECK,
+    /**
+     * The summed runs repeated after an apply (P5's verify).
+     */
+    VERIFY;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureSystemPurpose: FfiConverterRustBuffer<MeasureSystemPurpose> {
+    override fun read(buf: ByteBuffer) = try {
+        MeasureSystemPurpose.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: MeasureSystemPurpose) = 4UL
+
+    override fun write(value: MeasureSystemPurpose, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Where the summed check stands.
  */
 
@@ -49028,6 +50949,38 @@ public object FfiConverterOptionalTypeMeasureLiveRta: FfiConverterRustBuffer<Mea
         } else {
             buf.put(1)
             FfiConverterTypeMeasureLiveRta.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeMeasureSystemIssue: FfiConverterRustBuffer<MeasureSystemIssue?> {
+    override fun read(buf: ByteBuffer): MeasureSystemIssue? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeMeasureSystemIssue.read(buf)
+    }
+
+    override fun allocationSize(value: MeasureSystemIssue?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeMeasureSystemIssue.allocationSize(value)
+        }
+    }
+
+    override fun write(value: MeasureSystemIssue?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeMeasureSystemIssue.write(value, buf)
         }
     }
 }
@@ -51268,6 +53221,286 @@ public object FfiConverterSequenceTypeMeasureOutput: FfiConverterRustBuffer<List
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeMeasureOutput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureSystemArrival: FfiConverterRustBuffer<List<MeasureSystemArrival>> {
+    override fun read(buf: ByteBuffer): List<MeasureSystemArrival> {
+        val len = buf.getInt()
+        return List<MeasureSystemArrival>(len) {
+            FfiConverterTypeMeasureSystemArrival.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureSystemArrival>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureSystemArrival.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureSystemArrival>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureSystemArrival.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureSystemDelay: FfiConverterRustBuffer<List<MeasureSystemDelay>> {
+    override fun read(buf: ByteBuffer): List<MeasureSystemDelay> {
+        val len = buf.getInt()
+        return List<MeasureSystemDelay>(len) {
+            FfiConverterTypeMeasureSystemDelay.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureSystemDelay>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureSystemDelay.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureSystemDelay>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureSystemDelay.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureSystemDocument: FfiConverterRustBuffer<List<MeasureSystemDocument>> {
+    override fun read(buf: ByteBuffer): List<MeasureSystemDocument> {
+        val len = buf.getInt()
+        return List<MeasureSystemDocument>(len) {
+            FfiConverterTypeMeasureSystemDocument.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureSystemDocument>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureSystemDocument.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureSystemDocument>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureSystemDocument.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureSystemIssue: FfiConverterRustBuffer<List<MeasureSystemIssue>> {
+    override fun read(buf: ByteBuffer): List<MeasureSystemIssue> {
+        val len = buf.getInt()
+        return List<MeasureSystemIssue>(len) {
+            FfiConverterTypeMeasureSystemIssue.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureSystemIssue>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureSystemIssue.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureSystemIssue>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureSystemIssue.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureSystemLevel: FfiConverterRustBuffer<List<MeasureSystemLevel>> {
+    override fun read(buf: ByteBuffer): List<MeasureSystemLevel> {
+        val len = buf.getInt()
+        return List<MeasureSystemLevel>(len) {
+            FfiConverterTypeMeasureSystemLevel.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureSystemLevel>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureSystemLevel.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureSystemLevel>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureSystemLevel.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureSystemOutDelay: FfiConverterRustBuffer<List<MeasureSystemOutDelay>> {
+    override fun read(buf: ByteBuffer): List<MeasureSystemOutDelay> {
+        val len = buf.getInt()
+        return List<MeasureSystemOutDelay>(len) {
+            FfiConverterTypeMeasureSystemOutDelay.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureSystemOutDelay>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureSystemOutDelay.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureSystemOutDelay>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureSystemOutDelay.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureSystemSnapshot: FfiConverterRustBuffer<List<MeasureSystemSnapshot>> {
+    override fun read(buf: ByteBuffer): List<MeasureSystemSnapshot> {
+        val len = buf.getInt()
+        return List<MeasureSystemSnapshot>(len) {
+            FfiConverterTypeMeasureSystemSnapshot.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureSystemSnapshot>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureSystemSnapshot.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureSystemSnapshot>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureSystemSnapshot.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureSystemTransition: FfiConverterRustBuffer<List<MeasureSystemTransition>> {
+    override fun read(buf: ByteBuffer): List<MeasureSystemTransition> {
+        val len = buf.getInt()
+        return List<MeasureSystemTransition>(len) {
+            FfiConverterTypeMeasureSystemTransition.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureSystemTransition>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureSystemTransition.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureSystemTransition>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureSystemTransition.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureSystemUnit: FfiConverterRustBuffer<List<MeasureSystemUnit>> {
+    override fun read(buf: ByteBuffer): List<MeasureSystemUnit> {
+        val len = buf.getInt()
+        return List<MeasureSystemUnit>(len) {
+            FfiConverterTypeMeasureSystemUnit.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureSystemUnit>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureSystemUnit.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureSystemUnit>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureSystemUnit.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMeasureSystemUnitCheck: FfiConverterRustBuffer<List<MeasureSystemUnitCheck>> {
+    override fun read(buf: ByteBuffer): List<MeasureSystemUnitCheck> {
+        val len = buf.getInt()
+        return List<MeasureSystemUnitCheck>(len) {
+            FfiConverterTypeMeasureSystemUnitCheck.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureSystemUnitCheck>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureSystemUnitCheck.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureSystemUnitCheck>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureSystemUnitCheck.write(it, buf)
         }
     }
 }

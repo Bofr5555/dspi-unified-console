@@ -182,6 +182,9 @@ nothing is written and the answer is `denied`, naming the op.
 | `usb_lock_error` | critical when the unit mutes, a warning when it plays | a USB-direct unit in phase lock that cannot be in step (*lock error*, below: STATUS flags bit 6 at a read, or an `0xE3` `LOCK_ERROR`): "USB-direct unit Rear L/R can't lock — muted (the host's rate is out of range)" | the flag gone at a read, an `0xE3` `LOCK_OK`, or the unit gone (`unit_offline` then) |
 | `usb_setting_restored` | warning | the hub's poll put a USB-direct unit's lock-error action back to the installation's (it had been changed on the unit, e.g. with `set_alink_usb_on_lock_error`): "The hub restored the installation's lock-error action on Rear L/R (mute): the unit had play unaligned" | acknowledged, or the next restore of that unit (kept with the cleared ones) |
 | `usb_realign_failed` | warning | "Keep USB-direct units aligned" could not write a unit's speaker delays (offline, not writable, a refused write), naming the units and why; tried again at most once a minute, each try counted | a later re-align of every moved unit, or no offset moved any more |
+| `spdif_lost` | critical | an S/PDIF follower's time base, or the one a source sends, is not running: `EXT_ALINK_SPDIF_STATUS.state` none, acquiring or holdover at a read, or an `0xE4` to one of them (WP ATHUBM, below) | locked again, at a read or an `0xE4` |
+| `spdif_lock_error` | critical when the unit mutes, a warning when it plays | an S/PDIF follower in lock error (STATUS flags bit 3 at a read, or an `0xE4` to `LOCK_ERROR`): "S/PDIF unit Rear can't lock — muted (this S/PDIF source does not carry a DSPi time base)" | locked again, an `0xE4` `LOCK_OK`, or the flag gone at a read |
+| `time_base_lost` | critical | a USB-direct unit's time base leaves `LOCKED` (an `0xE4` to none, acquiring or holdover). Lock error stays `usb_lock_error` (`0xE3`); the line's `0xE4` raises and clears `alink_lost` as its `0xE1` does | an `0xE4` back to `LOCKED` |
 
 Events are decoded only from devices that announce them (`EXT_NOTIFY_FEATURES`
 bit 2). The hub asks each device of the model when it attaches or the model
@@ -444,6 +447,93 @@ for the hub): [usb-direct-home-theater.md](usb-direct-home-theater.md).
   does not tell them apart yet. -- WP AUSB2 -- Qt and Android now set the mode,
   the lock-error action and "Keep USB-direct units aligned" too (Admin).
 
+## S/PDIF units and measured arrivals (WP ATHUBM)
+
+Between DSPi units, S/PDIF carries the same time base as the audio link: a
+**source** stamps its own frame counter F in the S/PDIF user bits, and every
+**follower** plays the sample carried as F exactly its D samples after it
+arrived (DSPi-bofr `extension_channel_spec.md` 2.10, `alink_protocol_spec.md`
+11-12; PLAN-AT 1.2). Foreign S/PDIF (a TV, an AVR, a DSP that rewrites the user
+bits) carries none: a follower then reports lock error.
+
+- **The model.** A follower has `"transport": "spdif"` and names its source as
+  `upstream`. A source has `"spdifSource": true` and `"spdifTxMask"`, the output
+  slots that carry the time base (bit n = output slot n = outputs 2n and 2n + 1;
+  never 0); its own transport is the audio link, USB-direct, or `"spdif"` with no
+  `upstream` when it is fed by anything the model does not hold (its own S/PDIF
+  or analog input). `"spdifD"` on a source sets its domain's D, absent: the
+  engine picks it. A follower's `"onLockError"` (`mute`, the default, or
+  `play_unaligned`) is written with it, as on USB-direct. One role per unit:
+  a follower is never a source (a relay is not supported), so no feed loops.
+  Refused by `system.set`: a follower whose `upstream` is not a source, a
+  follower of itself or of another follower, a source that follows, a source
+  without `spdifTxMask`, **a speaker on one of the source's time-base slots**
+  (it would never be a measured output: the stimulus would reach every
+  follower as programme, PLAN-AT S-AT6), audio link slots, a hop delay or a USB
+  mode on an S/PDIF unit.
+- **What the hub reads** on S/PDIF units and sources: `EXT_LIST`,
+  `EXT_ALINK_SPDIF` and `_STATUS` in `observed[serial].spdif` (mode, D, the
+  lock-error action, `txMask`, the contract state, phase state, rate, superframe,
+  holdover, lock error, foreign stream, the source id and epoch, F, the phase
+  error, VCXO ppm, `dMin..dMax`, and the lock, loss, superframe-error and
+  re-anchor counts); `observed[serial].spdifBlock` `present`/`none` (issue
+  `no_spdif`, a warning on `system.set`). **On every unit** whose firmware lists
+  it, `EXT_TIME_BASE` in `observed[serial].timeBase` (`outputFrames`, and per
+  entry the transport, role, contract state, last reason, domain, T,
+  `tMinusOutput`, disturbances, D and phase error) and whether it announces
+  `0xE4` (`timeBaseEvents`).
+- **The domain's D.** In samples at the stream's rate, against a reference
+  `(L_ref, S_ref)`, `(L_max, 0)` for a source fed by nothing the model holds,
+  the source's own latency and lip-sync offset for a source on the audio link or
+  USB-direct: a follower gets `D + (L_ref − L_f) + (S_f − S_ref)`, inside its
+  `dMin..dMax` (129..399 at 48 kHz on the firmware), and the source's speakers
+  wait `D + (L_ref − L_s) + (S_s − S_ref)` more (`alignment.units[].spdif.lagSamples`),
+  so a room of a source and its followers is heard at once. An automatic D is the
+  smallest every follower takes (`alignment.spdifDomains`); while no follower
+  reports limits, 192. A configured D below that gets `spdif_d_too_small`, a
+  follower outside its limits `delay_out_of_range`, and neither is written.
+- **The writes.** `system.align` writes `EXT_ALINK_SPDIF` (`what: "spdif"`): on a
+  follower mode 1, its D and action, the flags as read and **`tx_mask` 0** (a
+  unit that was a source and becomes a follower has its mask zeroed: the firmware
+  and the core's codec refuse a mask off the source); on a source mode 2 and its
+  slots, its D and action as read. A value the unit has is not written again
+  (`unchanged`), so a second alignment re-anchors nothing; the follower's
+  re-anchor after a write is the hub's own and raises no alarm. A unit not yet a
+  follower reports no limits: it is switched with the domain's D, its limits are
+  read right after, and what differs is written again in the same alignment.
+  Nothing is persisted (`REQ_SAVE_OUTPUT_CONFIG` is the installer's, as for
+  USB-direct).
+- **Issues:** `no_spdif`, `limits_unknown` (its S/PDIF state could not be read),
+  `spdif_lock_error`, `spdif_source_mismatch` (a follower hears another source id
+  than its source reports), `spdif_d_too_small`, `delay_out_of_range`,
+  `spdif_source_epochs` (a source on USB-direct without phase lock restarts its
+  outputs at every stream start, so its followers re-anchor each time: use phase
+  lock or a non-USB input).
+- **Scenes** reach S/PDIF units at once (`direct`), not at F: the S/PDIF time
+  base is not a scene path yet.
+
+**Measured arrivals.** A speaker may carry `"measuredArrivalUs"` (with
+`"measuredRuns"`, the measurement's run ids, and `"measuredAt"`, Unix seconds),
+written by a client after a system measurement (PLAN-AT 1.5; applying it needs
+Admin, as every `system.set`). It is the arrival at the listening position
+relative to the latest output measured with it (0 for that one, negative for an
+earlier one), **acoustic only**: the client takes out what the engine adds
+itself (the unit's play-out, its latency and lip-sync terms and the output delay
+in effect while it measured). A unit's play-out of a time-base sample is the
+path's delay to it, the play-out delay D the unit itself reports
+(`EXT_TIME_BASE.d`; 0 for the source of that time base, whose lag is in its
+output delays) and its latency after the link; while a measurement holds the
+units, the D of `system.status`'s alignment is not it (the hub cannot read
+them then). Where present it replaces the distance: each
+speaker's acoustic time is `r / c`, or for a measured one `r_latest / c + (m −
+m_latest)` through the latest speaker of the same room and runs, and its
+`out.delay` is the room's latest time minus its own; a room measured whole gets
+exactly `m_latest − m`, a room without a measurement its distance delays as
+before. The latency, lip-sync and USB start-offset terms are unchanged.
+`alignment.units[].measuredOutputs` lists the outputs whose delay came from a
+measurement; a room that mixes measured and distance-only speakers, or two
+measurements, gets `measured_mixed` (measure the room together).
+
 ## Where it is kept
 
 In the hub's store, `hub-store.json`, under `system`, beside the paired clients
@@ -454,7 +544,12 @@ ignored with a log line and left in the file until a new one is set.
 ## Not done yet
 
 - Measuring latencies (SYS2 3.5's click and scope or cross-correlation): enter
-  `measuredLatencyUs` by hand for now.
+  `measuredLatencyUs` by hand for now. Measured arrivals per speaker
+  (`measuredArrivalUs`, WP ATHUBM) come from the system measurement (PLAN-AT,
+  WP ATCORE).
+- S/PDIF (WP ATHUBM): no relay (a follower re-emitting on S/PDIF), no scenes at
+  F on the S/PDIF time base, and the clients' system editors do not offer the
+  S/PDIF transport yet (WP ATWEB, ATQT).
 - Several senders in one model work for alignment and per-unit scenes; the
   superframe path is taken only when every unit is behind the one sender. The
   engine converts microseconds at the rate most units report, so a minority

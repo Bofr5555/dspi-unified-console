@@ -860,7 +860,9 @@ export interface AlinkMethods {
   /** `mode` 0 fill servo, 1 phase lock; `dLocal` in audio link frames; `hopsOffset` -64..64. */
   setAlinkPhase: { params: { mode: number; dLocal: number; hopsOffset?: number }; result: null };
   alinkFrameCounter: { params: undefined; result: { frame: number; timeUs: number; outputFrames: number } };
-  /** `op` 0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master volume, 5 output delay, 6 rate, 7 click, 8 sync pulse. */
+  /** `op` 0 cancel all, 1 mute, 2 unmute, 3 preset load, 4 master volume, 5 output delay, 6 rate, 7 click, 8 sync pulse,
+   * 9 generator start (the staged finite config's sample 0 at `frame`; `arg` 0, `value` 0; never the bus-frame time base),
+   * 10 generator stop (`arg` 0 fade, 1 now). -- WP ATCORE -- */
   applyAtFrame: { params: { frame: number; op: number; arg?: number; value?: number }; result: null };
   applyAtFrameStatus: { params: undefined; result: ApplyAtFrameStatus };
   resetAlinkStats: { params: undefined; result: null };

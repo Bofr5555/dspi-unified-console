@@ -33,7 +33,8 @@ fn setup(p: *const c_char) -> Result<MeasureSetup> {
 
 /// `count` floats at `p`, copied; `None` for a null or misaligned pointer
 /// with a count.
-fn c_floats(p: *const f32, count: u32) -> Option<Vec<f32>> {
+// -- WP ATCORE -- shared with measure_system.rs
+pub(super) fn c_floats(p: *const f32, count: u32) -> Option<Vec<f32>> {
     if count == 0 {
         return Some(Vec::new());
     }

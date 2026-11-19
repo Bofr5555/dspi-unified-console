@@ -31,6 +31,40 @@ pub trait DeviceBus: Send {
     fn open(&mut self, serial: &str) -> Result<Box<dyn Transport>, TransportError>;
 }
 
+// -- WP ATHUB --
+/// The host bus of each USB device seen at enumeration (`nusb`'s
+/// `DeviceInfo::bus_id`), by serial: `system.measure.open`'s gate G1 asks
+/// whether USB-direct units share one host bus (PLAN-AT R7a).
+static BUSES: std::sync::Mutex<std::collections::BTreeMap<String, String>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+// -- WP ATHUB --
+#[cfg_attr(
+    not(all(feature = "usb", not(target_os = "android"))),
+    allow(dead_code)
+)]
+fn keep_bus(serial: &str, bus: &str) {
+    let mut b = BUSES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // At most a few hundred devices: the map stays small.
+    if b.len() < 1024 || b.contains_key(serial) {
+        b.insert(serial.to_owned(), bus.to_owned());
+    }
+}
+
+// -- WP ATHUB --
+/// The host bus the device `serial` was last enumerated on, where the
+/// platform gives one; `None` for a device not on USB or a platform without.
+pub(crate) fn bus_of(serial: &str) -> Option<String> {
+    BUSES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(serial)
+        .filter(|b| !b.is_empty())
+        .cloned()
+}
+
 /// The USB bus, through nusb.
 #[cfg(all(feature = "usb", not(target_os = "android")))]
 #[derive(Debug, Default)]
@@ -61,6 +95,10 @@ impl DeviceBus for UsbBus {
                     && (d.vendor_id() == dspi_proto::USB_VID || d.vendor_id() == LEGACY_USB_VID)
             })
             .filter_map(|d| {
+                // -- WP ATHUB -- the host bus, kept for G1's USB check
+                if let Some(serial) = d.serial_number().filter(|s| !s.is_empty()) {
+                    keep_bus(serial, d.bus_id());
+                }
                 Some(BusDevice {
                     serial: d.serial_number().filter(|s| !s.is_empty())?.to_owned(),
                     vid: d.vendor_id(),
