@@ -831,13 +831,20 @@ fn search(
         // 1.78 kHz for a 3 kHz design). The corner is then kept, its timing
         // still proposed, and the edge is said.
         let raw_k = allowed.get(bi).map_or(0, |c| c.5);
-        // Near-ties with the lowest cost: the one nearest the current corner.
+        // Near-ties with the lowest cost: the one nearest the current corner;
+        // of two equally near, the higher one (review P5TRUST: the candidates
+        // are in the order 0, -1, +1, ..., so the lower one won, and a tie
+        // must not be what lowers a tweeter's high-pass).
         let tie = fit.cost * (1.0 + CORNER_TIE_FRACTION) + TIE_DB;
         if let Some((i, f)) = fits
             .iter()
             .enumerate()
             .filter(|(_, f)| f.cost <= tie)
-            .min_by_key(|(i, _)| allowed.get(*i).map_or(i32::MAX, |c| c.5.saturating_abs()))
+            .min_by_key(|(i, _)| {
+                allowed
+                    .get(*i)
+                    .map_or((i32::MAX, true), |c| (c.5.saturating_abs(), c.5 < 0))
+            })
             .map(|(i, f)| (i, *f))
         {
             bi = i;

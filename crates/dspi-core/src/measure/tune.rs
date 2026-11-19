@@ -113,6 +113,11 @@ pub(crate) const TUNE_GUARD_MARGIN_S: u32 = 120;
 /// The planned verify's length is taken this much longer (the analysis
 /// between runs, a slow client's ticks), percent.
 pub(crate) const TUNE_GUARD_SLACK_PCT: u64 = 25;
+// -- review P5TRUST --
+/// The second Keep after a failed verify counts only this long after the
+/// first was refused, ms: a double click, or a client that sends a refused
+/// call again, is not the user's second confirmation.
+pub(crate) const TUNE_KEEP_CONFIRM_MIN_MS: u64 = 1_000;
 /// Each ramp step of a planned run, ms: the pre-roll, the short sweep and
 /// its analysis.
 const RAMP_STEP_MS: u64 = 2_600;
@@ -568,6 +573,16 @@ pub(crate) struct Tune {
     /// Keep after a verify that did not pass was refused once: the next Keep
     /// is the user's second, explicit confirmation.
     keep_armed: bool,
+    // -- review P5TRUST --
+    /// The last verify of the applied tune did not pass. It stays through a
+    /// Stop, and through a new verify that ends without a verdict, until a
+    /// verify passes or another apply: Keep asks for the second confirmation
+    /// in every stage, not only while the failed verdict is on show.
+    verify_failed: bool,
+    /// When the first Keep was refused (the guard's clock): the second one
+    /// counts from [`TUNE_KEEP_CONFIRM_MIN_MS`] later, so a double click is
+    /// one press.
+    keep_refused_at: Option<dspi_transport::clock::Instant>,
 }
 
 impl MeasureSlot {
@@ -1515,8 +1530,61 @@ impl DspiCore {
             }
         }
         v.passed = passed;
+        t.verify_failed = !passed;
         t.verify = Some(v);
         t.stage = MeasureTuneStage::Verified;
+    }
+
+    // -- WP P5TRUST, review P5TRUST --
+    /// Coordinator decision (b): after a verify that did not pass, the first
+    /// Keep is refused (`measure.tune.keep_unverified`, the state's `issue`
+    /// says it, nothing changes), and so is any Keep within
+    /// [`TUNE_KEEP_CONFIRM_MIN_MS`] of that refusal; a later one is the
+    /// user's second confirmation. The failed verdict holds in every stage of
+    /// the applied tune (after a Stop, during a new verify, after one that
+    /// ended without a verdict).
+    fn tune_keep_gate(&self, t: &mut Tune) -> Result<()> {
+        if !t.verify_failed {
+            return Ok(());
+        }
+        let now = crate::guarded::now();
+        let confirmed = t.keep_armed
+            && t.keep_refused_at.is_some_and(|at| {
+                now.saturating_duration_since(at)
+                    >= std::time::Duration::from_millis(TUNE_KEEP_CONFIRM_MIN_MS)
+            });
+        if confirmed {
+            return Ok(());
+        }
+        if !t.keep_armed {
+            t.keep_armed = true;
+            t.keep_refused_at = Some(now);
+        }
+        let why = format!(
+            "{KEY_KEEP_UNVERIFIED}: the verify did not confirm the tune; Keep it only if \
+             you are sure (call Keep again to keep it anyway, or Revert)"
+        );
+        t.issue = Some(MeasureIssue::new(KEY_KEEP_UNVERIFIED, None, why.clone()));
+        self.tune_publish(t);
+        Err(invalid(why))
+    }
+
+    /// The gate of [`DspiCore::apply_confirm`]: when the waiting guard is an
+    /// applied tune's, its Keep rule ([`Self::tune_keep_gate`]) holds for the
+    /// generic Keep too.
+    pub(crate) fn tune_confirm_gate(&self) -> Result<()> {
+        let mut t = self.measure.tune_lock();
+        if !matches!(
+            t.stage,
+            MeasureTuneStage::Applied | MeasureTuneStage::Verifying | MeasureTuneStage::Verified
+        ) {
+            return Ok(());
+        }
+        let g = self.apply_status();
+        if g.id != t.guard_id || g.phase != GuardPhase::Waiting {
+            return Ok(());
+        }
+        self.tune_keep_gate(&mut t)
     }
 
     /// The guard of an applied tune ended other than kept: the tune is
@@ -2304,6 +2372,8 @@ impl DspiCore {
         t.issue = None;
         t.verify = None;
         t.keep_armed = false;
+        t.verify_failed = false;
+        t.keep_refused_at = None;
         if !notes.is_empty() {
             t.issue = Some(MeasureIssue::new(KEY_NOT_KEPT, None, notes.join("; ")));
         }
@@ -2347,6 +2417,7 @@ impl DspiCore {
         t.issue = None;
         t.verify = None;
         t.keep_armed = false;
+        t.keep_refused_at = None;
         self.tune_next(&mut t);
         if t.runs.is_none() {
             let why = t
@@ -2385,23 +2456,12 @@ impl DspiCore {
         }
         // -- WP P5TRUST -- coordinator decision (b): a failed verify needs a
         // second, explicit Keep.
-        let failed_verify =
-            t.stage == MeasureTuneStage::Verified && t.verify.as_ref().is_some_and(|v| !v.passed);
-        if failed_verify && !t.keep_armed {
-            t.keep_armed = true;
-            let why = format!(
-                "{KEY_KEEP_UNVERIFIED}: the verify did not confirm the tune; Keep it only if \
-                 you are sure (call Keep again to keep it anyway, or Revert)"
-            );
-            t.issue = Some(MeasureIssue::new(KEY_KEEP_UNVERIFIED, None, why.clone()));
-            self.tune_publish(&t);
-            return Err(invalid(why));
-        }
+        self.tune_keep_gate(&mut t)?;
         if t.runs.take().is_some() && self.measure_state().active {
             self.measure_stop_session();
         }
         let _ = self.measure_clear();
-        let guard = self.apply_confirm()?;
+        let guard = self.apply_confirm_ungated()?;
         let (before_id, before_text) = t.before.clone().unwrap_or_default();
         let mut keep = MeasureTuneKeep {
             guard: guard.clone(),

@@ -1293,16 +1293,30 @@ fn wp_p5trust_keep_after_a_failed_verify_needs_a_second_confirmation() {
     assert_eq!(st.stage, MeasureTuneStage::Verified, "{st:#?}");
     let v = st.verify.clone().unwrap();
     assert!(!v.passed, "{v:#?}");
+    // -- review P5TRUST -- the failed verdict holds after a Stop (the stage
+    // goes back to Applied): Keep still asks.
+    let st = r.core.measure_tune_stop();
+    assert_eq!(st.stage, MeasureTuneStage::Applied, "{st:#?}");
     // (b) The first Keep is refused, typed; nothing changes.
     let image = r.remote.image();
     let e = r.core.measure_tune_keep().unwrap_err();
     assert!(e.to_string().contains(KEY_KEEP_UNVERIFIED), "{e}");
     let st = r.core.measure_tune_state();
-    assert_eq!(st.stage, MeasureTuneStage::Verified);
+    assert_eq!(st.stage, MeasureTuneStage::Applied);
     assert_eq!(st.issue.as_ref().unwrap().key, KEY_KEEP_UNVERIFIED);
     assert_eq!(st.guard.phase, GuardPhase::Waiting, "the guard runs on");
     assert_eq!(r.remote.image(), image);
+    // -- review P5TRUST -- a double click is one press: a Keep right after
+    // the refusal is refused too, through the tune's Keep and through the
+    // guard's own (the generic Keep of a client's guard banner).
+    let e = r.core.measure_tune_keep().unwrap_err();
+    assert!(e.to_string().contains(KEY_KEEP_UNVERIFIED), "{e}");
+    let e = r.core.apply_confirm().unwrap_err();
+    assert!(e.to_string().contains(KEY_KEEP_UNVERIFIED), "{e}");
+    assert_eq!(r.core.apply_status().phase, GuardPhase::Waiting);
+    assert_eq!(r.remote.image(), image);
     // The second, explicit Keep keeps it.
+    crate::guarded::skew::advance(std::time::Duration::from_millis(TUNE_KEEP_CONFIRM_MIN_MS));
     let k = r.core.measure_tune_keep().unwrap();
     assert_eq!(k.guard.phase, GuardPhase::Kept, "{k:#?}");
     assert_eq!(r.core.measure_tune_state().stage, MeasureTuneStage::Kept);

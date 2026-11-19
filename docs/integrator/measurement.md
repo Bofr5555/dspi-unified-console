@@ -146,7 +146,9 @@ nothing written.
 10. **Verify** inside the guard: a walked run and a summed run per transition.
 11. **Keep or revert:** Keep confirms the guard, files "After auto-tune" with a `tune` block and offers the A/B compare of
     the two snapshots; Revert or the timeout reverts. After a verify that did not pass, the first Keep is refused with
-    `measure.tune.keep_unverified`; show it and keep only on a second Keep the user confirms. The measurement document
+    `measure.tune.keep_unverified`; show it and keep only on a second Keep the user confirms. `apply_confirm` on the
+    tune's guard is refused the same way (a guard banner's Keep is no way round it), a Keep within 1 s of the refusal is
+    refused again (a double click is one press), and stopping the verify does not clear it. The measurement document
     records the tune (section 7.3, `tunes`).
 
 ## 5. The live view and direct adjustments

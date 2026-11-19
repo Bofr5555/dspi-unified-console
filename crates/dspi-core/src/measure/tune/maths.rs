@@ -946,6 +946,9 @@ pub(crate) fn compute(
             let mut f = free_fo.clone();
             f.level = fo.level;
             f.bands = Some(allowed);
+            // -- review P5TRUST -- the repeats' spread holds for this fit
+            // too (it was set after `free_fo` was taken).
+            f.spread_db = fo.spread_db.clone();
             result = fit(&base, target, &chain0, model, &f);
         }
         match result {

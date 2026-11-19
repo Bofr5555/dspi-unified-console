@@ -6275,7 +6275,8 @@ uint32_t dspi_apply_guard_begin(struct FfiCore *core,
 /**
  * Keep the change. JSON: the state (`kept`; past the timeout the revert's
  * end; `lost` when the hub could not be told), or `invalid` when nothing
- * waits.
+ * waits, or for the first Keep of an auto-tune whose verify did not pass
+ * (`measure.tune.keep_unverified`, as `dspi_measure_tune_keep`).
  */
 uint32_t dspi_apply_confirm(struct FfiCore *core, char *buf, uint32_t len);
 

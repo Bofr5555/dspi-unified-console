@@ -4831,7 +4831,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base() != 14078.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 1016.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 17097.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_apply_guard_begin() != 27268.toShort()) {
@@ -7926,7 +7926,11 @@ public interface DspiCoreInterface {
      * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
      * could not reach the hub (it is not sent again: the hub reverts).
      *
-     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting, or
+     * (review P5TRUST) for the first Keep of an auto-tune whose verify did
+     * not pass (`measure.tune.keep_unverified`, as
+     * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
+     * call keeps it).
      */
     fun `applyConfirm`(): GuardedApply
     
@@ -13359,7 +13363,11 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
      * could not reach the hub (it is not sent again: the hub reverts).
      *
-     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting, or
+     * (review P5TRUST) for the first Keep of an auto-tune whose verify did
+     * not pass (`measure.tune.keep_unverified`, as
+     * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
+     * call keeps it).
      */
     @Throws(DspiException::class)override fun `applyConfirm`(): GuardedApply {
             return FfiConverterTypeGuardedApply.lift(

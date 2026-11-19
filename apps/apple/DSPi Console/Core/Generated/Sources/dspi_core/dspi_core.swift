@@ -1442,7 +1442,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
      * could not reach the hub (it is not sent again: the hub reverts).
      *
-     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting, or
+     * (review P5TRUST) for the first Keep of an auto-tune whose verify did
+     * not pass (`measure.tune.keep_unverified`, as
+     * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
+     * call keeps it).
      */
     func applyConfirm() throws  -> GuardedApply
     
@@ -6772,7 +6776,11 @@ open func applyAtTimeBase(timeBase: UInt8, frame: UInt64, op: UInt8, arg: UInt8,
      * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
      * could not reach the hub (it is not sent again: the hub reverts).
      *
-     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting, or
+     * (review P5TRUST) for the first Keep of an auto-tune whose verify did
+     * not pass (`measure.tune.keep_unverified`, as
+     * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
+     * call keeps it).
      */
 open func applyConfirm()throws  -> GuardedApply  {
     return try  FfiConverterTypeGuardedApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -61645,7 +61653,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base() != 14078) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 1016) {
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 17097) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_apply_guard_begin() != 27268) {

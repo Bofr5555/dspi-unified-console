@@ -373,6 +373,9 @@ before the next, and the user may stop after any step with nothing written.
     the algorithm version, the options), and the A/B compare of the two snapshots offered (`ab_start`). Revert or the
     timeout: the guard's revert; nothing else changes. After a verify that did not pass, the first Keep is refused with
     `measure.tune.keep_unverified` and only a second Keep, the user's explicit confirmation, keeps it (WP P5TRUST).
+    Review P5TRUST: the rule is the guard's, so the generic `apply_confirm` of the tune's guard is held to it as the
+    tune's own Keep is; the second Keep counts from 1 s after the refusal (a double click is one press); and the failed
+    verdict holds through a Stop and a new verify without a verdict, until a verify passes or another apply.
 
 ### 1.5 Locks, read-only, other clients, the hub
 
