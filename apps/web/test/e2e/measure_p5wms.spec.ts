@@ -205,7 +205,7 @@ test.describe("the browsers' fake microphone", () => {
 /** The passive RTA listens (Chromium: the fake microphone's file; Firefox in the image cannot start audio). */
 async function passiveListens(page: Page, screen: Locator, browserName: string) {
   const tabs = screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab");
-  await expect(tabs).toHaveText(["Passive RTA", "Results"]);
+  await expect(tabs).toHaveText(["Passive RTA", "Results", "Documents"]); // -- WP P5WAT -- its documents tab (a Viewer reads documents)
   await expect(screen.getByRole("button", { name: "Start measuring" })).toHaveCount(0);
   await expect(screen.getByRole("button", { name: "Start live" })).toHaveCount(0);
   const passive = screen.getByRole("region", { name: "Passive microphone RTA" });

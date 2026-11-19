@@ -365,6 +365,24 @@ export interface CaptureOpenRecord {
 /** The events the Worker pushes about a run. */
 export type MeasureEvent = { event: "measure"; state: MeasureStateRecord } | { event: "measureLive"; state: MeasureLiveStateRecord };
 
+// -- WP P5WAT -- the auto-tune's state as the Worker pushes it (`MeasureTuneState`, typed in
+// screens/measure/tune-model.ts); `isMeasureEvent` is not true of it.
+export type TuneEvent = { event: "measureTune"; state: TuneTickState };
+/** What the Worker reads of `measureTuneTick`'s state (the rest is the screen's). */
+export interface TuneTickState {
+  stage: string;
+  running: boolean;
+}
+/** The tune's stages while a guard waits: the Worker turns the tune for its timer too. */
+const TUNE_APPLIED = new Set(["applied", "verifying", "verified"]);
+/** The calls after which the Worker turns the auto-tune (`measureTuneTick`): its runs and its guard. */
+const TUNE_STARTS = new Set(["measureTuneSumCheck", "measureTuneVerify", "measureTuneApply"]);
+/** The tune needs turning: a run plays, or a guard waits. */
+export function tuneActive(s: TuneTickState | null | undefined): boolean {
+  return !!s && (!!s.running || TUNE_APPLIED.has(s.stage));
+}
+// -- end WP P5WAT --
+
 export function isMeasureEvent(e: unknown): e is MeasureEvent {
   const x = e as { event?: unknown; state?: unknown } | null;
   return !!x && (x.event === "measure" || x.event === "measureLive") && typeof x.state === "object" && x.state !== null;
@@ -406,6 +424,10 @@ export class MeasureWorkerRoute {
   private tick: "measureTick" | "measureLiveTick" | null = null;
   /** When the page last turned the session itself, ms. */
   private pageTicked = -Infinity;
+  // -- WP P5WAT -- the auto-tune's own turns, beside the session's (a guard keeps its timer
+  // whatever else the page starts).
+  private tuneTimer: ReturnType<typeof setTimeout> | undefined;
+  private tuneOn = false;
   /** Blocks pushed and refused since the port opened (the core's refusals are its answers). */
   pushed = 0;
   refused = 0;
@@ -472,6 +494,13 @@ export class MeasureWorkerRoute {
   after(method: string, ok: boolean, value: unknown): void {
     // A page that turns the session itself (the P5SPIKE page) keeps it: the Worker then waits.
     if (method === "measureTick" || method === "measureLiveTick") this.pageTicked = this.env.now?.() ?? Date.now();
+    // -- WP P5WAT -- the summed check, the verify, an applied tune's guard: turned until it ends.
+    if (ok && TUNE_STARTS.has(method)) {
+      const v = value as { phase?: string } & Partial<TuneTickState>;
+      const on = method === "measureTuneApply" ? v?.phase === "waiting" : tuneActive(v as TuneTickState);
+      if (on) this.startTune();
+    }
+    if (method === "close" || method === "open" || method === "documentOpen") this.stopTune();
     if (ok && method in TICKS) {
       const active = method === "measureLiveStart" ? (value as MeasureLiveStateRecord)?.active : (value as MeasureStateRecord)?.active;
       if (active !== false) this.start(TICKS[method]!);
@@ -484,6 +513,41 @@ export class MeasureWorkerRoute {
   get ticking(): boolean {
     return this.tick !== null;
   }
+
+  // -- WP P5WAT --
+  /** The auto-tune is being turned. */
+  get tuneTicking(): boolean {
+    return this.tuneOn;
+  }
+
+  private startTune(): void {
+    clearTimer(this.env, this.tuneTimer);
+    this.tuneOn = true;
+    this.tuneTimer = setTimer(this.env, () => void this.turnTune());
+  }
+
+  private stopTune(): void {
+    clearTimer(this.env, this.tuneTimer);
+    this.tuneTimer = undefined;
+    this.tuneOn = false;
+  }
+
+  private async turnTune(): Promise<void> {
+    if (!this.tuneOn) return;
+    let active = false;
+    try {
+      const s = (await this.call("measureTuneTick", undefined)) as TuneTickState;
+      // The Worker's post takes any event (worker.ts); the page's listeners tell them apart.
+      (this.post as unknown as (e: TuneEvent) => void)({ event: "measureTune", state: s });
+      active = tuneActive(s);
+    } catch {
+      active = false;
+    }
+    if (!this.tuneOn) return;
+    if (active) this.tuneTimer = setTimer(this.env, () => void this.turnTune());
+    else this.stopTune();
+  }
+  // -- end WP P5WAT --
 
   private start(tick: "measureTick" | "measureLiveTick"): void {
     clearTimer(this.env, this.timer);

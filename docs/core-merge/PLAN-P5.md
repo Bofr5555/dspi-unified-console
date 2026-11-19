@@ -459,7 +459,7 @@ Sizes are this project's units (about one hour of agent time with review); estim
 
 ### Wave P5-A: the maths, the simulator, the document model (pure, parallel)
 
-**P5TIME: Stimulus model and the timing core.** [TODO] Size 3.5. Wave P5-A. **Owns:**
+**P5TIME: Stimulus model and the timing core.** [DONE 2026-11-16: main `0821510d`, review/p5a] Size 3.5. Wave P5-A. **Owns:**
 `crates/dspi-measure/src/{stimulus,ir}.rs` (and `stimulus/`, `ir/` for tests). **Implements:** section 1.1 steps 4 to 7:
 `stimulus` (the log sweep sample-faithful to `siggen.c`'s integer recurrence, fades and windows, the walk order and cycle
 schedule incl. no gap after the last cycle, at 44.1/48/96 kHz); `ir` (the coarse matched filter, cycle identity from a
@@ -478,7 +478,7 @@ frame one cycle off is a cycle-identity failure; the sweep model matches an inde
 and last 4096 samples at each rate; `proptest_*` over random captures and parameters; wasm32 build. **Deps:** the seam.
 **Clients:** P5RESP, P5SES, P5TUNE.
 
-**P5RESP: Responses, smoothing, the microphone RTA, export.** [TODO] Size 2. Wave P5-A. **Owns:**
+**P5RESP: Responses, smoothing, the microphone RTA, export.** [DONE 2026-11-16: main `0821510d`, review/p5a] Size 2. Wave P5-A. **Owns:**
 `crates/dspi-measure/src/{response,rta,export}.rs` (and folders). **Implements:** `response` (an impulse response or a
 spectrum to the `LogGrid`, unwrapped phase, smoothing 1/1 to 1/48 octave, the `valid` mask from SNR and spread);
 `rta` (Welch with Hann, 50 % overlap, fractional-octave bands, pink-referenced so pink noise reads flat, calibrated
@@ -488,7 +488,7 @@ phase` with a header). It takes spectra or impulse responses as input, so it nee
 within 0.5 dB; pink noise through `rta` reads flat within 0.5 dB per 1/3 octave 100 Hz to 10 kHz; an export parses back
 in REW's column format; `proptest_*`. **Deps:** the seam. **Clients:** P5SES, P5LIVE, P5DOCK (export).
 
-**P5CAL: Microphone calibration, targets, positions.** [TODO] Size 2.5. Wave P5-A. **Owns:**
+**P5CAL: Microphone calibration, targets, positions.** [DONE 2026-11-16: main `0821510d`, review/p5a] Size 2.5. Wave P5-A. **Owns:**
 `crates/dspi-measure/src/{cal,target,position}.rs` (and test folders), `crates/dspi-measure/testdata/p5/cal/` (fixtures
 **written by hand in each format**, never a vendor's file). **Implements:** T7's parsers (UMIK-1/2, REW, CSV) and the
 sensitivity to dB SPL (the vendor's published convention cited in a comment with where it was read; `approximate`
@@ -502,7 +502,7 @@ UMIK-style 90° file is recognised as 90°; a file with phase keeps it; garbage,
 and non-UTF-8 text are typed errors; built-ins are exact at their defining points; `proptest_*` fuzz every parser.
 **Deps:** the seam. **Clients:** P5MDOC, P5SES, P5TUNE, P5LIVE.
 
-**P5FIT: The bounded EQ fit.** [TODO] Size 4. Wave P5-A. **Owns:** `crates/dspi-measure/src/fit.rs` (and `fit/`).
+**P5FIT: The bounded EQ fit.** [DONE 2026-11-16: main `0821510d`, review/p5a] Size 4. Wave P5-A. **Owns:** `crates/dspi-measure/src/fit.rs` (and `fit/`).
 **Implements:** T4: `fit(measured: &Response, target: &Response, chain: &ChannelChain, model: &dyn SectionModel,
 options: &FitOptions) -> Result<FitResult>`; options: range, smoothing, max boost and cut, Q range, minimum |gain|, the
 band indices it may use (free bands by default: flat or bypassed), shelves allowed, dip policy (no fill of points the
@@ -517,7 +517,7 @@ bounds or uses a band index not allowed; the error after is never above the erro
 identical input gives identical quantised bands; 10 bands on the standard grid fit in under 200 ms native release
 (iteration cap); `proptest_*`. **Deps:** the seam. **Clients:** P5TUNE, P5LIVE.
 
-**P5XO: Alignment and the crossover corner.** [TODO] Size 3.5. Wave P5-A. **Owns:**
+**P5XO: Alignment and the crossover corner.** [DONE 2026-11-16: main `0821510d`, review/p5a] Size 3.5. Wave P5-A. **Owns:**
 `crates/dspi-measure/src/{align,xover}.rs` (and folders). **Implements:** T2: `align(ways, group, options) ->
 AlignResult` (refused unless every way's measurement is "timing reliable"; coarse onset, fine delay and polarity by the
 flattest summed magnitude through each transition including the programme feed, delays normalised so the group's
@@ -534,7 +534,7 @@ whose transition leaves either driver's trusted range is never evaluated; no pro
 is lowered, no output gain raised; identical input gives identical quantised proposals; under 2 s native release for a
 three-way pair; `proptest_*`. **Deps:** the seam. **Clients:** P5TUNE.
 
-**P5SIM: The simulated world and WAV files.** [TODO] Size 2.5. Wave P5-A. **Owns:** `crates/dspi-measure/src/{sim,wav}.rs`
+**P5SIM: The simulated world and WAV files.** [DONE 2026-11-16: main `0821510d`, review/p5a] Size 2.5. Wave P5-A. **Owns:** `crates/dspi-measure/src/{sim,wav}.rs`
 (and `sim/`), `crates/dspi-measure/testdata/p5/` (goldens other than `cal/`). **Implements:** behind feature `sim`:
 drivers (sensitivity, mechanical high-pass, roll-off, breakup peak, acoustic offset), a speaker as ways per output, a
 room (modes with decay, one or two reflections), a headphone on each `Coupler` type with a seal-leak parameter per
@@ -548,7 +548,7 @@ worlds (three-way speaker in a room, two-way near-field, headphones on the 711 c
 round trips and `proptest_*` fuzz of the reader. **Deps:** the seam (a test stimulus of its own; P5TIME's model is used
 from P5-B on). **Clients:** every later test; P5DEMO; the web e2e's fake microphone WAVs.
 
-**P5MDOC: The document model and the contract.** [TODO] Size 2.5. Wave P5-A. **Owns:** `crates/dspi-measure/src/doc.rs`
+**P5MDOC: The document model and the contract.** [DONE 2026-11-16: main `0821510d`, review/p5a] Size 2.5. Wave P5-A. **Owns:** `crates/dspi-measure/src/doc.rs`
 (and `doc/`), new `docs/integrator/measurement.md`; rows in `docs/terminal/preset-format.md` (the three kinds),
 `docs/GLOSSARY.md` (Measurement, Generator, Sweep, Impulse response, Target, Microphone calibration, Placement, Coupler,
 Way, Alignment group, Auto-tune, Live response, Microphone RTA, Device analyser, Timing quality), `docs/integrator/hub-api.md`
@@ -586,7 +586,7 @@ seam. **Clients:** P5DOCK, P5SES, P5HUB, P5TUNE.
 
 ### Wave P5-B: the core session, the core documents, the clients' capture
 
-**P5DOCK: Documents in the core.** [TODO] Size 2.5. Wave P5-B. **Owns:** new `crates/dspi-core/src/measure_doc.rs` (and
+**P5DOCK: Documents in the core.** [DONE 2026-11-17: main `9f3c2fc4`, review/p5b] Size 2.5. Wave P5-B. **Owns:** new `crates/dspi-core/src/measure_doc.rs` (and
 `measure_doc/`), new `crates/dspi-session/src/measure_store.rs` (and `measure_store/`), the three kind words in
 `files.rs`'s `doc_kind` and the refusal in `config_import` under a marker, the `pub mod` lines under markers, the
 `dspi-measure` dependency line in `crates/dspi-core/Cargo.toml` and `crates/dspi-session/Cargo.toml` under markers (the
@@ -604,7 +604,7 @@ measurement is refused with nothing sent; the `SectionModel` agrees with `comput
 UniFFI and wasm; `ci/drift.sh` clean; the notices checks pass. **Deps:** P5CAL, P5MDOC, P5RESP (P5-A). **Clients:**
 P5SES, P5HUB, P5TUNE, P5TM, the screens.
 
-**P5SES: The measurement session.** [TODO] Size 6. Wave P5-B. **Owns:** new `crates/dspi-core/src/measure.rs` and
+**P5SES: The measurement session.** [DONE 2026-11-17: main `9f3c2fc4`, review/p5b] Size 6. Wave P5-B. **Owns:** new `crates/dspi-core/src/measure.rs` and
 `crates/dspi-core/src/measure/` (`session.rs`, `safety.rs`, `preflight.rs`, `plan.rs`, `runs.rs`, tests), its `pub mod`
 line, the `MeasureListener` in `callbacks.rs` under a marker, the `measure` screen row in `assets/modes/modes.json`, its
 notice rows, binding wiring (C, UniFFI, wasm: `crates/dspi-wasm/src/measure.rs`), and **the fake-device hooks its tests
@@ -636,7 +636,7 @@ into `DspiCore` does not deadlock; the wasm build runs a whole session caller-dr
 P5RESP, P5CAL, P5SIM, P5MDOC (P5-A); P5DOCK's `SectionModel` (same wave: P5SES uses a test `SectionModel` until P5DOCK
 merges; the merge swaps one line). **Clients:** P5LIVE, P5TUNE, P5DEMO, P5SPIKE, the screens.
 
-**P5WCAP: Web: the microphone.** [TODO] Size 2. Wave P5-B. **Owns:** new `apps/web/src/core/capture.ts`,
+**P5WCAP: Web: the microphone.** [DONE 2026-11-17: main `9f3c2fc4`, review/p5b] Size 2. Wave P5-B. **Owns:** new `apps/web/src/core/capture.ts`,
 `apps/web/src/core/capture-worklet.ts`, a development-only spike page `apps/web/tools/spike/measure-spike.html` (and its
 script; never in the built app), `test/unit/capture_p5wcap.test.ts`, `test/e2e/capture_p5wcap.spec.ts`, the Playwright
 launch flags for a fake microphone in the web CI config under a marker. **Implements:** input device list and choice
@@ -651,7 +651,7 @@ in Chromium with a P5SIM WAV (content and frame indices) and Firefox (flow): a d
 ends the track, no node is connected to a destination and `sinkId` is "none" where supported (asserted). **Deps:** none
 (the spike page needs P5SES's calls at run time, merged in the same wave). **Clients:** P5WMS, P5SPIKE.
 
-**P5QCAP: Qt: the microphone, and the image.** [TODO] Size 3. Wave P5-B. **Owns:** `ci/container/Containerfile.qtport`
+**P5QCAP: Qt: the microphone, and the image.** [DONE 2026-11-17: main `9f3c2fc4`, review/p5b] Size 3. Wave P5-B. **Owns:** `ci/container/Containerfile.qtport`
 (Qt Multimedia for Linux and MinGW), `ci/container/images.conf` (QTPORT and COREMERGE tags bumped), new
 `apps/desktop/qt/src/platform/AudioCapture.{h,cpp}`, its cmake wp file, the Windows packaging lines for the Multimedia
 module and its native audio backend (no FFmpeg plugin bundled), `apps/desktop/qt/smoke/` one capture smoke test, a
@@ -664,7 +664,8 @@ Windows build with the bundled native backend (an offscreen check under Wine is 
 else the coordinator's check in P5SPIKE); `--step qt`, `qt-offscreen` (the reader fed from a WAV through a test seam)
 and `qt-windows` pass; the licence inventory lists Qt Multimedia. **Deps:** none. **Clients:** P5QUI, P5SPIKE.
 
-**P5SPIKE (the coordinator with the owner, not an agent WP).** Size 0.75. **Right after P5-B** (RC5g): the timing
+**P5SPIKE (the coordinator with the owner, not an agent WP).** [DONE 2026-11-18: `work/p5spike/`, the offline analysis
+`work/p5spike-analysis/REPORT.md`; P5RAMPFIX (main `468caede`) and P5ARRIVAL followed] Size 0.75. **Right after P5-B** (RC5g): the timing
 approach's one real risk is tested before the tune is built on it. The owner's microphone and the K340 PCB unit, the
 generator at the **start level only** (-60 dBFS, the owner present), walked runs of two outputs: in Chromium and Firefox
 through P5WCAP's spike page (via `uconsole web`), and in Qt through `--measure-spike`. Recorded in `work/p5spike/REPORT.md`:
@@ -672,7 +673,7 @@ the clock ratio, every cycle's residual, frame gaps seen, the timing-quality ver
 residuals exceed the gate, P5-C starts only after the coordinator and the owner decide** (a different capture path for
 that client, or magnitude-only there). **Owner action required** (section 7).
 
-**P5ARRIVAL: the analyser after P5SPIKE.** [IMPLEMENTED on wp/P5ARRIVAL, 2026-11-18] Size 1. After P5SPIKE's offline analysis
+**P5ARRIVAL: the analyser after P5SPIKE.** [DONE 2026-11-19: main `42737854`, review/p5c2; implemented 2026-11-18] Size 1. After P5SPIKE's offline analysis
 (`work/p5spike-analysis/REPORT.md` section 6): the arrival from the noise-weighted band-limited envelope, the
 leave-one-out refinement within half a carrier period, the envelope onset, the phase check per third-octave band at
 the transitions with its bound as degrees or time, typed findings and the clock-wander diagnostic (section 1.1 steps
@@ -685,7 +686,7 @@ P5-A and P5-B timing test unchanged.
 
 ### Wave P5-C: tune, live, hub, demo
 
-**P5TUNE: Auto-tune.** [TODO] Size 5. Wave P5-C. **Owns:** new `crates/dspi-core/src/measure/tune.rs` (and
+**P5TUNE: Auto-tune.** [DONE 2026-11-19: main `42737854`, review/p5c2] Size 5. Wave P5-C. **Owns:** new `crates/dspi-core/src/measure/tune.rs` (and
 `measure/tune/`), its `mod` line in `measure.rs` under a marker, its notice rows, binding wiring. **Implements:** section
 1.4: `measure_layout_proposal() -> Layout` (with each output's programme feed), `measure_tune_propose(measurement id or
 text, layout, options) -> TuneProposal {id, writes (path, indices, value, words), curves (before, predicted), held,
@@ -708,7 +709,7 @@ what it held; a read-only client and a Viewer get no proposal applied (`ReadOnly
 toggles; a deterministic proposal golden. **Deps:** P5SES, P5DOCK (P5-B); P5FIT, P5XO (P5-A); P5SPIKE's go.
 **Clients:** P5WAT, P5QUI, P5TM.
 
-**P5LIVE: Live response and direct adjustments.** [TODO] Size 2. Wave P5-C. **Owns:** new
+**P5LIVE: Live response and direct adjustments.** [DONE 2026-11-17: main `ccff455e`, review/p5c1] Size 2. Wave P5-C. **Owns:** new
 `crates/dspi-core/src/measure/live.rs` (and `measure/live/`), its `mod` line under a marker, its notice rows, binding
 wiring. **Implements:** T9 and T5: `measure_live_start(output, mode: sweep | pink_rta, smoothing)` (P5SES's single live
 sweep and finite pink run kinds, the session's safety and lock; magnitude-only), `measure_live_frame() -> LiveFrame
@@ -721,7 +722,7 @@ one undo step; pink-noise RTA reads the world's response within 1 dB (1/3 octave
 than 60 s; stopping stops the generator; the lock is held while live and released after; no write without preview.
 **Deps:** P5SES (P5-B), P5FIT (P5-A). **Clients:** P5WMS, P5QUI.
 
-**P5HUB: Measurement documents on the hub.** [TODO] Size 2.5. Wave P5-C. **Owns:** new `crates/dspi-hub/src/measurements.rs`
+**P5HUB: Measurement documents on the hub.** [DONE 2026-11-17: main `ccff455e`, review/p5c1] Size 2.5. Wave P5-C. **Owns:** new `crates/dspi-hub/src/measurements.rs`
 (and `measurements/`), its registration line in `service.rs` and `ServiceConfig::measure` under markers, the
 `measurements/` block in `diag.rs` (the store's index only: names, kinds, serials and sizes), new
 `crates/dspi-core/src/hub_server/measure.rs` (core calls) with its `pub mod` line, binding wiring. **Implements:** cap
@@ -738,7 +739,7 @@ event, the corrupt-file rule, with and without TLS (`DSPI_HUB_TEST_TLS=on` and `
 without the cap are `Unsupported`; the merge prefers the hub's copy. **Deps:** P5DOCK (P5-B), P5MDOC. **Clients:** the
 web and Qt document lists.
 
-**P5DEMO: The simulated room in the demo.** [TODO] Size 1. Wave P5-C. **Owns:** new `crates/dspi-core/src/measure_sim.rs`
+**P5DEMO: The simulated room in the demo.** [DONE 2026-11-17: main `ccff455e`, review/p5c1] Size 1. Wave P5-C. **Owns:** new `crates/dspi-core/src/measure_sim.rs`
 (feature `measure-sim`, its line in `crates/dspi-core/Cargo.toml` under a marker), the feature in the demo builds of
 `crates/dspi-wasm/Cargo.toml` and the Terminal's and Qt's demo mode under markers. **Implements:** on a demo connection
 only, a `SimCapture` that renders P5SIM's "three-way speaker in a room" world from the generator configuration the
@@ -769,7 +770,7 @@ nearest (the higher of two equally near), an edge minimum is no minimum; the anc
 - (c) **The guard's length is the planned verify × 1.25 + 120 s, at most 590 s** (`guard_s` = 0; 300 s when a run
   cannot be planned; an explicit `guard_s` is the caller's, capped at 590 s).
 
-**P5TRUST2: The review's follow-ups.** [IMPLEMENTED on wp/P5TRUST2, 2026-11-19] Size 1. From main 9602b62c. Nits N1,
+**P5TRUST2: The review's follow-ups.** [DONE 2026-11-19: main `67fa8fff`, review/p5d] Size 1. From main 9602b62c. Nits N1,
 N2, N3, N6, N7 of the P5TRUST review (N4, the anchored bass boosts, waits for the owner). **Owns:** `xover.rs`'s corner
 choice and timing, `align.rs`'s pair search (additive), `ir.rs`'s spread allowance, the tune's guard note, this entry.
 **Implemented:**
@@ -795,7 +796,7 @@ choice and timing, `align.rs`'s pair search (additive), `ir.rs`'s spread allowan
 
 ### Wave P5-D: screens and the Terminal
 
-**P5WMS: Web: measure, results, live.** [TODO] Size 3. Wave P5-D. **Owns:** new `apps/web/src/screens/measure/`
+**P5WMS: Web: measure, results, live.** [DONE 2026-11-19: main `67fa8fff`, review/p5d] Size 3. Wave P5-D. **Owns:** new `apps/web/src/screens/measure/`
 (`MeasureScreen.tsx` with a tab slot for P5WAT, `setup.tsx`, `run.tsx`, `results.tsx`, `live.tsx`, `graph.tsx`,
 `model.ts`), the Worker's routing of capture blocks to `measure_capture_push` in `apps/web/src/core/worker.ts` under a
 marker, the TypeScript records in `apps/web/src/core/measure-protocol.ts` (new), one marked line in
@@ -808,7 +809,7 @@ on the demo device with the simulated microphone (P5DEMO) and with the fake medi
 end, the curves drawn, a "cut this peak" undoable, Stop stops the generator, a Viewer through the hub sees the passive
 RTA only, 375 px. **Deps:** P5SES, P5LIVE, P5DEMO, P5WCAP. **Clients:** P5WAT.
 
-**P5QUI: Qt: measurement, live, auto-tune, documents.** [TODO] Size 4.5. Wave P5-D. **Owns:** new
+**P5QUI: Qt: measurement, live, auto-tune, documents.** [DONE 2026-11-19: main `67fa8fff`, review/p5d] Size 4.5. Wave P5-D. **Owns:** new
 `apps/desktop/qt/src/controllers/MeasureController.{h,cpp}`, `TuneController.{h,cpp}`, `apps/desktop/qt/qml/measure/`,
 the registrar lines under markers, `apps/desktop/qt/smoke/SmokeMeasure.cpp`, its cmake wp file. **Implements:** P5WMS's
 and P5WAT's screens on Qt over the C ABI, capture through P5QCAP's `AudioCapture`, the tick from a timer on a worker
@@ -816,7 +817,7 @@ thread, the graph on the existing graph renderer (target dashed, predicted dotte
 demo device with the simulated microphone: measure, live adjust and undo, tune applied and reverted; `qt-windows`
 builds; translations extracted (`--step qt-ts`). **Deps:** P5QCAP (P5-B), P5TUNE, P5LIVE, P5HUB, P5DEMO (P5-C).
 
-**P5TM: Terminal.** [TODO] Size 1. Wave P5-D. **Owns:** new `apps/terminal/src/measure.rs` (its `mod` line below TM15's
+**P5TM: Terminal.** [DONE 2026-11-19: main `67fa8fff`, review/p5d] Size 1. Wave P5-D. **Owns:** new `apps/terminal/src/measure.rs` (its `mod` line below TM15's
 macro block), help text. **Implements:** `uconsole measure mic import FILE`, `measure target import FILE`, `measure
 docs [--kind]`, `measure show ID`, `measure export ID --output N` (REW text), `measure tune ID [--dry-run] [--guard S]`
 (the proposal printed in words, withdrawn writes with reasons; applied guarded with a Keep prompt), `--demo` with the
@@ -824,7 +825,7 @@ simulated microphone. No live capture in the Terminal (OD-P5m). **Done when:** c
 mic imported and listed, a demo measurement shown and exported, a tune printed, applied and reverted, exit codes for
 `ReadOnly`, `Denied` and `LimitExceeded`. **Deps:** P5DOCK, P5SES, P5TUNE, P5DEMO.
 
-**P5CURV: Core calls for the screens: the passive microphone RTA and a document's curves.** [TODO] Size 0.5. Wave P5-D
+**P5CURV: Core calls for the screens: the passive microphone RTA and a document's curves.** [DONE 2026-11-19: main `67fa8fff`, review/p5d] Size 0.5. Wave P5-D
 (asked for by P5WMS, R1: no maths in a client). **Owns:** new `crates/dspi-core/src/measure/passive.rs` (and
 `measure/passive/`), `crates/dspi-core/src/measure/doc_curves.rs`, their `mod`, `pub use` and slot lines under markers,
 `crates/dspi-capi/src/fns_misc/measure_curv.rs`, `crates/dspi-wasm/src/measure_curv.rs`, binding wiring and the
@@ -911,7 +912,7 @@ noisy).
 
 ### Wave P5-E: the web tune, close-out
 
-**P5WAT: Web: auto-tune and documents.** [TODO] Size 2.5. Wave P5-E (after P5WMS has merged: it fills P5WMS's tab slot
+**P5WAT: Web: auto-tune and documents.** [DONE 2026-11-19, in review: `wp/P5WAT` `d6275600`, batch P5-E; not merged] Size 2.5. Wave P5-E (after P5WMS has merged: it fills P5WMS's tab slot
 and uses its `graph.tsx`). **Owns:** new `apps/web/src/screens/measure/{tune.tsx,docs.tsx,tune-model.ts}`,
 `test/unit/measure_p5wat.test.ts`, `test/e2e/measure_p5wat.spec.ts`, one marked line in `MeasureScreen.tsx`'s tab slot.
 **Implements:** the tune wizard of section 1.4 (layout with alignment groups and programme feeds, preflight, measure,
@@ -921,11 +922,17 @@ countdown, verify (started by itself right after the apply: P5HOLD), keep or rev
 tune proposed, applied, verified and kept; another reverted; a withdrawn timing write shown with its reason; the A/B
 toggles; Control cannot delete a hub document; 375 px. **Deps:** P5WMS (P5-D), P5TUNE, P5HUB.
 
-**P5FIN: Docs built and the manual.** [TODO] Size 0.75. Wave P5-E, after P5WAT (same review batch). **Owns:** the built
+**P5FIN: Docs built and the manual.** [DONE 2026-11-19, in review: `wp/P5FIN`, batch P5-E; not merged] Size 0.75. Wave P5-E, after P5WAT (same review batch). **Owns:** the built
 marks in `docs/integrator/measurement.md` and `hub-api.md` section 22, a user manual page `docs/manual/measurement.md`
 (placing the microphone, the couplers, what the safety rules mean, what auto-tune changes and how to go back),
 `docs/PARITY.md` marks, this plan's `[DONE]` marks. **Done when:** links resolve; the no-host-noun check passes.
 **Deps:** P5WAT.
+
+**The P5-E review batch** (P5FIN, 2026-11-19; none merged yet): P5WAT and P5FIN above, and the P5-D follow-ups
+P5HOLD (the timing hold's anchor, `measure.tune.keep_during_verify`; its entry is on `wp/P5HOLD`), P5QUI2 (Qt's
+passive RTA tab, Results through `measure_doc_curves`, the client read-only mode in `playBlocker`; no entry, its
+report `work/wp-P5QUI2/REPORT.md`) and P5DAYTON (Dayton calibration files; section 8's row on `wp/P5DAYTON`). The
+manual and the integrator page describe all five, marked "in review". P5HIL stays owed (owner action).
 
 **P5HIL (the coordinator with the owner, not an agent WP).** Size 1. After P5-E. One real session on the K340 PCB unit
 (`BB66A44F2AC1E7B6`) with the owner's measurement microphone and its calibration file, in the web console through
