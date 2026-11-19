@@ -175,7 +175,10 @@ fn review_p5d_the_hold_never_flips_a_correctly_wired_lr8_pair() {
     assert!(!tf, "the truth flips nothing");
     let p = &lr8.pairs[0];
     assert!(!p.flipped, "{lr8:?}");
-    assert!((p.relative_delay_ms - td).abs() < 0.1 * 1000.0 / 300.0, "{lr8:?} truth {td}");
+    assert!(
+        (p.relative_delay_ms - td).abs() < 0.1 * 1000.0 / 300.0,
+        "{lr8:?} truth {td}"
+    );
     assert!(
         lr8.ways[..2]
             .iter()
@@ -343,7 +346,6 @@ fn family_chains(lp: u8, hp: u8, f1: f32) -> Vec<ChannelChain> {
     chains
 }
 
-
 /// The chains of a proposal's corners with the polarities and delays the
 /// speaker was measured with: what the truth of its transitions is judged on.
 fn proposal_corners(xo: &XoProposal, before: &[ChannelChain]) -> Vec<ChannelChain> {
@@ -383,9 +385,9 @@ fn wp_p5hold_family(name: &str, lp: u8, hp: u8) {
         let (_, aligned, xo) = tuned(lp, hp, f1).unwrap();
         let free = (f1 < 200.0).then(|| tuned_in(lp, hp, f1, true).unwrap());
         let held_note = |notes: &[String], low: u8, high: u8| {
-            notes.iter().any(|n| {
-                n.contains(&format!("outputs {low} and {high}")) && n.contains("are kept")
-            })
+            notes
+                .iter()
+                .any(|n| n.contains(&format!("outputs {low} and {high}")) && n.contains("are kept"))
         };
         // Per transition: alignment alone gave the window's own answer (the
         // free field's), at its corner.

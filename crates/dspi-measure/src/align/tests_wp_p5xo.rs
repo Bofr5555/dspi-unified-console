@@ -356,7 +356,15 @@ fn wp_p5xo_malformed_input_is_refused() {
     assert!(align(&[], &pair_group(), &AlignOptions::default(), &ProtoModel).is_err());
     let mut no_phase = ways.clone();
     no_phase[0].response.phase_deg = None;
-    assert!(align(&no_phase, &pair_group(), &AlignOptions::default(), &ProtoModel).is_err());
+    assert!(
+        align(
+            &no_phase,
+            &pair_group(),
+            &AlignOptions::default(),
+            &ProtoModel
+        )
+        .is_err()
+    );
     let mut nan = ways.clone();
     nan[0].chain.delay_ms = f32::NAN;
     assert!(align(&nan, &pair_group(), &AlignOptions::default(), &ProtoModel).is_err());
@@ -496,7 +504,13 @@ fn wp_p5trust2_alignment_alone_never_takes_a_timing_far_from_the_arrivals() {
         ]
     };
     // As measured: the timing is the arrivals' and nothing is held.
-    let r = align(&ways(), &pair_group(), &AlignOptions::default(), &ProtoModel).unwrap();
+    let r = align(
+        &ways(),
+        &pair_group(),
+        &AlignOptions::default(),
+        &ProtoModel,
+    )
+    .unwrap();
     assert!(
         !r.notes.iter().any(|n| n.contains("measured arrivals")),
         "{r:?}"
