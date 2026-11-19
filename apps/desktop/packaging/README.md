@@ -77,7 +77,9 @@ tray), with Retry; a silent run exits 2.
 `2e8a:feaa` for older firmware) through logind's `uaccess` tag. The `.deb`, the `.rpm` and the AUR package
 install it in `/usr/lib/udev/rules.d/` and reload udev (`linux/postinst`, `postrm`,
 `arch/uconsole-for-dspi.install`); the archive's `install.sh --udev` installs it in `/etc/udev/rules.d/`. The
-app itself offers its own rule (`70-dspi.rules`) when a DSPi cannot be opened.
+app offers the same rule when a DSPi cannot be opened: the file is built into it as a resource
+(`qt/cmake/wp/qtcli.cmake`) and its dialog installs it as `/etc/udev/rules.d/70-dspi.rules`; the smoke driver checks
+that the two are the same text.
 
 ## Licence texts in the packages
 

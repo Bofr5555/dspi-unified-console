@@ -10,6 +10,7 @@
 # 25.04, Debian 13, Fedora 44. In each, with only the system libraries the
 # AppImage leaves to the system (make-appimage.sh's EXCLUDED):
 #   - no libQt6 on the system; `--version` prints "uConsole for DSPi <version>"
+#     and `--help` exits 0, both with no display (-- WP QTCLI --)
 #   - AppRun sources its hooks, the update feed is built in, the licence files
 #     (test-lib.sh lic_check)
 #   - ldd over every ELF file in the extracted AppImage, as is (no
@@ -94,10 +95,14 @@ else dnf -y -q install xorg-x11-server-Xvfb mesa-libGL mesa-libEGL fontconfig al
 ! ldconfig -p | grep -q libQt6 || { echo "qt: this system has Qt installed"; exit 1; }'
 
 check='
-# (offscreen: the app makes its QApplication before it reads its arguments)
-v=$(QT_QPA_PLATFORM=offscreen APPIMAGE_EXTRACT_AND_RUN=1 /root/app.AppImage --version 2>/dev/null) || true
-[ "$v" = "uConsole for DSPi $VERSION" ] || { echo "version: --version printed \"$v\""; exit 1; }
-echo "version: $v"
+# -- WP QTCLI -- with no display (no DISPLAY, WAYLAND_DISPLAY or
+# QT_QPA_PLATFORM): the app reads --version and --help before its GUI
+v=$(env -u DISPLAY -u WAYLAND_DISPLAY -u QT_QPA_PLATFORM APPIMAGE_EXTRACT_AND_RUN=1 /root/app.AppImage --version 2>/dev/null); c=$?
+[ "$c:$v" = "0:uConsole for DSPi $VERSION" ] || { echo "version: --version exited $c, printed \"$v\""; exit 1; }
+echo "version: $v (no display)"
+h=$(env -u DISPLAY -u WAYLAND_DISPLAY -u QT_QPA_PLATFORM APPIMAGE_EXTRACT_AND_RUN=1 /root/app.AppImage --help 2>&1); c=$?
+case "$c:$h" in 0:*--version*--demo*) echo "help: --help exits 0 (no display)" ;;
+    *) echo "help: --help exited $c without a display: $h"; exit 1 ;; esac
 cd /root && ./app.AppImage --appimage-extract >/dev/null
 grep -q apprun-hooks squashfs-root/AppRun || { echo "AppRun does not source apprun-hooks"; exit 1; }
 grep -aqP "$FEED" squashfs-root/usr/bin/uconsole-for-dspi || { echo "feed: the AppImage has no update feed"; exit 1; }

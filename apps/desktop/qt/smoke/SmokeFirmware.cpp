@@ -515,6 +515,15 @@ void accessSection(SmokeDriver &d) {
             DeviceAccess::ruleText().contains(QLatin1String("ATTR{idVendor}==\"2e8b\"")) &&
                 DeviceAccess::ruleText().contains(QLatin1String("TAG+=\"uaccess\"")) &&
                 DeviceAccess::rulePath() == QLatin1String("/etc/udev/rules.d/70-dspi.rules"));
+    // -- WP QTCLI -- the packages' rule file, byte for byte, older firmware included
+    {
+        QFile source(QStringLiteral(DSPI_UDEV_RULE_SOURCE));
+        const QString packaged = source.open(QIODevice::ReadOnly) ? QString::fromUtf8(source.readAll()) : QString();
+        d.check(QStringLiteral("qtcli: the dialog's rule is packaging/linux/70-uconsole-for-dspi.rules"),
+                !packaged.isEmpty() && DeviceAccess::ruleText() == packaged);
+        d.check(QStringLiteral("qtcli: the rule covers older firmware (2e8a:feaa)"),
+                DeviceAccess::ruleText().contains(QLatin1String("ATTR{idVendor}==\"2e8a\", ATTR{idProduct}==\"feaa\", TAG+=\"uaccess\"")));
+    }
     QList<QString> installs;
     int nextExit = 126;
     access->setInstallerForTest([&](const QString &path, std::function<void(int, const QString &)> done) {
