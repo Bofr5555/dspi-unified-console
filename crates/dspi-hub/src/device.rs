@@ -112,6 +112,19 @@ pub(crate) struct DeviceShared {
     /// decided it (`dspi_transport::paged::open`): it belongs to the live handle,
     /// never to the registry or inventory record, and a re-attach decides it again.
     pub(crate) protocol: Generation,
+    // -- WP LINKFIX --
+    /// What the attach probe read from a paged device (`Transport::paged_discovery`
+    /// of the attachment's transport), `None` for a legacy one. The app's
+    /// in-process transports pass it on, so a core on top plans with it as over
+    /// USB or DSPi Link and tells the dual-stack alink sender apart.
+    pub(crate) discovery: Option<dspi_transport::paged::Discovery>,
+    /// The device is the dual-stack alink sender on its paged stack
+    /// (`dspi_transport::board::is_paged_alink_sender` on [`Self::discovery`] and
+    /// the USB product string; PLAN-PG section 1.9). Fail closed: a paged device
+    /// without a discovery, or one failing any condition, is not. The hub then
+    /// asks it nothing of the DSP model: no image read, no poll of what it does
+    /// not list.
+    pub(crate) paged_sender: bool,
 }
 
 // -- WP P2HS --
@@ -334,6 +347,10 @@ impl DeviceShared {
     /// queued, more asks add nothing, and an ask after it has started gets a new one,
     /// so the last image read is never older than the last ask. Never blocks.
     pub(crate) fn queue_snapshot_read(&self) {
+        // -- WP LINKFIX -- the paged sender has no image
+        if self.paged_sender {
+            return;
+        }
         if !self.snapshot_read_queued.swap(true, Ordering::SeqCst) {
             let _ = self.tx.send(Job::SnapshotRead);
         }
@@ -348,6 +365,10 @@ impl DeviceShared {
         policy: &Policy,
         specs: &[PollSpec],
     ) -> Result<Vec<PollGrant>, PollRefused> {
+        // -- WP LINKFIX -- the paged sender: only what it lists, by page
+        if self.paged_sender {
+            sender_polls_listed(self.discovery.as_ref(), specs)?;
+        }
         // -- WP PGHDEV -- by the device's generation and the client's minor
         let granted = self.polls.subscribe_routed(
             crate::polls::PollRoute {
@@ -369,6 +390,10 @@ impl DeviceShared {
 
     /// Read the image now, so the first `device.snapshot` finds it.
     pub(crate) fn warm_snapshot(&self) {
+        // -- WP LINKFIX -- the paged sender has no image
+        if self.paged_sender {
+            return;
+        }
         if self.snapshot.ask() {
             self.queue_snapshot_read();
         }
@@ -377,6 +402,10 @@ impl DeviceShared {
     /// The image for `device.snapshot`, read first if need be. Blocks for that, at most
     /// `timeout`: on a connection's reader, never a device thread.
     pub(crate) fn snapshot_wait(&self, timeout: Duration) -> Option<Snapshot> {
+        // -- WP LINKFIX -- the paged sender has no image: none, without waiting
+        if self.paged_sender {
+            return None;
+        }
         self.warm_snapshot();
         self.snapshot.wait(self.handle, timeout)
     }
@@ -415,6 +444,20 @@ impl Attachment {
         let kind = transport.caps().kind;
         // -- WP PGHDEV -- a transport that does not say is never sent a page
         let protocol = transport.generation().unwrap_or(Generation::Legacy);
+        // -- WP LINKFIX -- the core's sender rule, on what the probe read
+        let discovery = match protocol {
+            Generation::Paged(_) => transport.paged_discovery(),
+            Generation::Legacy => None,
+        };
+        let paged_sender = discovery.as_ref().is_some_and(|d| {
+            dspi_transport::board::is_paged_alink_sender(
+                d,
+                transport.descriptor().product.as_deref(),
+            )
+        });
+        if paged_sender {
+            log::info!("hub: handle {handle} is the dual-stack alink sender (paged)");
+        }
         let (tx, rx) = mpsc::channel();
         let shared = Arc::new(DeviceShared {
             handle,
@@ -430,6 +473,9 @@ impl Attachment {
             counters: DeviceCounters::new(relay.notify_dropped(handle)),
             // -- WP PGHDEV --
             protocol,
+            // -- WP LINKFIX --
+            discovery,
+            paged_sender,
         });
         // -- WP HB3 --
         if source.is_none() {
@@ -979,6 +1025,29 @@ fn read_ext(t: &mut dyn Transport) -> Result<Option<bool>, TransportError> {
     }
 }
 
+// -- WP LINKFIX --
+/// Polls toward the paged alink sender: by page, and only of what its discovery
+/// lists as a GET. A page-0 poll (a 1.2
+/// client's) and a poll of anything else, a DSP command above all, is
+/// `unsupported` before it is granted; the adapter would refuse each read locally
+/// anyway, so this only spares the client a grant that never answers.
+fn sender_polls_listed(
+    disc: Option<&dspi_transport::paged::Discovery>,
+    specs: &[PollSpec],
+) -> Result<(), PollRefused> {
+    use dspi_proto::paged::PagedDir;
+    let Some(disc) = disc else {
+        return Err(PollRefused::Unsupported);
+    };
+    for r in specs {
+        let id = CmdId::from_request(r.req, r.idx);
+        if id.is_legacy() || !disc.pages.contains(id, PagedDir::Get) {
+            return Err(PollRefused::Unsupported);
+        }
+    }
+    Ok(())
+}
+
 // -- review PG-C --
 /// Whether a paged write would pass both judges unjudged: the limits judge skips
 /// what the role may not send by the view's 1.2 class (`view_allowed` false),
@@ -1308,6 +1377,8 @@ mod tests_wp_hb0 {
             snapshot_read_queued: AtomicBool::new(false),
             counters: DeviceCounters::default(),
             protocol: Generation::Legacy,
+            discovery: None,
+            paged_sender: false,
         };
         for _ in 0..1000 {
             shared.queue_snapshot_read();
@@ -1376,6 +1447,8 @@ mod tests_wp_hb0 {
             snapshot_read_queued: AtomicBool::new(false),
             counters: DeviceCounters::default(),
             protocol: Generation::Legacy,
+            discovery: None,
+            paged_sender: false,
         };
         let ctx = SessionCtx {
             id: 9,
@@ -1732,5 +1805,99 @@ mod tests_wp_pghdev {
         )));
         // 0x0541 is not 0xA... nor 0x0241.
         assert!(!is_chunk(&req(Dir::Set, CmdId::new(0x05, 0x41))));
+    }
+}
+
+// -- WP LINKFIX --
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests_wp_linkfix {
+    use dspi_transport::FakeDevice;
+    use dspi_transport::fake::FakeGeneration;
+
+    use super::*;
+    use crate::policy::Policy;
+
+    fn shared(dev: FakeDevice) -> (DeviceShared, Receiver<Job>) {
+        let mut t = dspi_transport::paged::open(Box::new(dev)).unwrap();
+        let discovery = t.paged_discovery();
+        let paged_sender = discovery.as_ref().is_some_and(|d| {
+            dspi_transport::board::is_paged_alink_sender(d, t.descriptor().product.as_deref())
+        });
+        let (tx, rx) = mpsc::channel();
+        let shared = DeviceShared {
+            handle: 0,
+            generation: 1,
+            identity: RwLock::new(read_identity(&mut *t, 0, 0).unwrap()),
+            router: Router::new(Arc::new(Policy::embedded()), 8),
+            snapshot: SnapshotCache::default(),
+            polls: Polls::default(),
+            tx,
+            stopping: AtomicBool::new(false),
+            snapshot_read_queued: AtomicBool::new(false),
+            counters: DeviceCounters::default(),
+            protocol: t.generation().unwrap(),
+            discovery,
+            paged_sender,
+        };
+        (shared, rx)
+    }
+
+    fn poll(id: CmdId) -> PollSpec {
+        PollSpec {
+            slot: 0,
+            req: id.cmd(),
+            val: 0,
+            idx: id.w_index(),
+            len: 4,
+            hz: 10,
+        }
+    }
+
+    /// The paged sender gets no image read, however it is asked for, and
+    /// `device.snapshot` answers at once; a paged DSP's is queued as before.
+    #[test]
+    fn wp_linkfix_the_paged_sender_is_never_queued_an_image_read() {
+        let (sender, rx) = shared(FakeDevice::sender(true));
+        assert!(sender.paged_sender);
+        sender.queue_snapshot_read();
+        sender.warm_snapshot();
+        let start = Instant::now();
+        assert!(sender.snapshot_wait(Duration::from_secs(5)).is_none());
+        assert!(start.elapsed() < Duration::from_secs(1));
+        assert!(rx.try_recv().is_err(), "nothing queued");
+
+        let (dsp, rx) = shared(FakeDevice::demo_generation(FakeGeneration::Bofr117));
+        assert!(!dsp.paged_sender);
+        assert!(dsp.discovery.is_some());
+        dsp.warm_snapshot();
+        assert!(matches!(rx.try_recv(), Ok(Job::SnapshotRead)));
+    }
+
+    /// Polls toward the paged sender: only what it lists, by page.
+    #[test]
+    fn wp_linkfix_sender_polls_only_of_what_it_lists() {
+        let (sender, _rx) = shared(FakeDevice::sender(true));
+        let disc = sender.discovery.as_ref();
+        assert!(sender_polls_listed(disc, &[poll(cmds::SYS_PLATFORM)]).is_ok());
+        for refused in [
+            poll(cmds::ROUTE_MASTER_VOLUME),
+            poll(cmds::STORE_ALL_PARAMS),
+            PollSpec {
+                req: op::REQ_GET_STATUS,
+                idx: dspi_proto::VENDOR_INTERFACE,
+                ..poll(cmds::SYS_PLATFORM)
+            },
+        ] {
+            assert!(
+                matches!(
+                    sender_polls_listed(disc, &[refused]),
+                    Err(PollRefused::Unsupported)
+                ),
+                "{refused:?}"
+            );
+        }
+        // No discovery: nothing (fail closed).
+        assert!(sender_polls_listed(None, &[poll(cmds::SYS_PLATFORM)]).is_err());
     }
 }

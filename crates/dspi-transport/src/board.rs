@@ -180,6 +180,66 @@ mod tests_wp_pgzero {
 }
 
 // -- review PG-C --
+// -- WP LINKFIX -- the alink sender rule (PGFIX, PGSENDER), moved here from
+// `dspi_core::device` so the hub's headless build (no `dspi-core`) applies the
+// same rule; the core re-exports these.
+
+/// The product strings of the alink sender build (`firmware/DSPi/
+/// usb_descriptors.c` with `DSPI_ROLE_SENDER`; its first name too).
+pub const SENDER_PRODUCTS: [&str; 2] = ["DSPi Audio Link Sender", "DSPi Link Sender"];
+
+/// Whether a device is the alink sender (`firmware/DSPi-Sender`), from its
+/// `REQ_GET_PLATFORM` reply and, where the descriptor is at hand, its USB
+/// product string, as PGZERO tells boards apart: the product string decides
+/// when there is one; without it (MIDI, behind a hub) a platform that names
+/// no output channels is the sender's (`sender_vendor.c`: byte 3 is 0, "no
+/// output channels: a sender"; every DSPi has outputs). A reply that does not
+/// decode is not the sender's.
+pub fn is_alink_sender_platform(platform: &[u8], product: Option<&str>) -> bool {
+    let Ok(info) = PlatformInfo::decode(platform) else {
+        return false;
+    };
+    match product.map(str::trim).filter(|p| !p.is_empty()) {
+        Some(p) => SENDER_PRODUCTS.contains(&p),
+        None => info.num_output_channels == 0,
+    }
+}
+
+/// The pages the dual-stack alink sender lists (FWPG4, extension channel spec
+/// 1.3: `SYS.PROTOCOL_INFO`, `SYS.PLATFORM`, its vendor subset on the paged
+/// stack and the tunnel): SYS (identity, discovery, bootloader), STORE (its
+/// output-config save) and our private page 0xE0.
+pub const SENDER_PAGES: [u8; 3] = [
+    dspi_proto::paged::cmds::SYS_PLATFORM.page(),
+    dspi_proto::paged::cmds::STORE_ALL_PARAMS.page(),
+    dspi_proto::paged::EXT_PAGE,
+];
+
+/// Whether a paged device is the dual-stack alink sender, from what
+/// [`crate::paged::open`] read at connect (PLAN-PG section 1.9). Every
+/// condition must hold; anything else is a DSP or an unrecognised device,
+/// never a sender (fail closed):
+/// 1. it identifies as the sender as on the legacy stack: `SYS.PLATFORM` has
+///    the 1.1.6 `GET_PLATFORM` layout, so [`is_alink_sender_platform`] (the
+///    product string where there is one, else no outputs);
+/// 2. it is our firmware: page 0xE0 with the tunnel `0xE010` (the sender's
+///    alink block lives on the extension channel);
+/// 3. it has no bulk image: `STORE.ALL_PARAMS` GET is not in its bitmaps;
+/// 4. it lists no page but SYS, STORE and 0xE0 ([`SENDER_PAGES`]): a device
+///    with any DSP page is not the sender.
+///
+/// The core applies it on its connection's discovery (`dspi_core`'s
+/// `device::sender_mirror`, over USB, MIDI and DSPi Link, and over our hub's
+/// in-process transports, which pass the attachment's discovery on), our hub
+/// at attach on its own transport's.
+pub fn is_paged_alink_sender(disc: &crate::paged::Discovery, product: Option<&str>) -> bool {
+    use dspi_proto::paged::{PagedDir, cmds};
+    is_alink_sender_platform(&disc.platform, product)
+        && disc.has_extensions()
+        && !disc.pages.contains(cmds::STORE_ALL_PARAMS, PagedDir::Get)
+        && disc.pages.pages().all(|p| SENDER_PAGES.contains(&p.page))
+}
+
 #[cfg(test)]
 mod tests_review_pgc {
     use super::*;

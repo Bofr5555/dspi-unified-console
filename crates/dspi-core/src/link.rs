@@ -681,8 +681,12 @@ impl DspiCore {
     /// previous one. `token` = the token stored for this hub's id ("" =
     /// none). `expected_hub_id` = that id. With it, a token goes out only after
     /// the hello has named that hub, and another hub at the address fails the
-    /// call with `wrong_hub`, having seen no token. "" = not known: the token
-    /// goes to whichever hub answers (a hub added by address, no stored id).
+    /// call with `wrong_hub`, having seen no token. "" = not known (a hub
+    /// added by address, no stored id): dial with no token, read the hub's id
+    /// from the hello, and dial again with that hub's token and id. -- WP
+    /// LINKFIX -- A bare (`v1`) token with no expected id is never sent: the
+    /// call fails with `token_without_hub_id` before anything is dialled
+    /// (pair again). A `v2` credential's key pin still guards it.
     /// Blocks for the hello and authentication (up to ~15 s). When
     /// `needs_pairing`, ask for the PIN and call `link_pair`; otherwise the
     /// device list is ready (`link_devices`).
@@ -694,7 +698,7 @@ impl DspiCore {
     /// `hub_busy` (all the hub's sessions are in use; try again in a few
     /// seconds), `handshake_refused` (trying again will not help),
     /// `rate_limited` (the token stays good; wait a minute), `protocol`,
-    /// `timeout`, `closed`, or the hub's own.
+    /// `timeout`, `closed`, `token_without_hub_id` (above), or the hub's own.
     ///
     /// -- WP SECCORE -- `token` is the stored **credential** (PLAN-SEC 4.3): a
     /// bare token (`v1`) or a `v2` string with the hub's key pin, as
@@ -1129,9 +1133,15 @@ impl DspiCore {
         advert: Advert,
         tuning: Tuning,
     ) -> Result<LinkHello> {
+        let credential = Credential::parse(&credential);
+        // -- WP LINKFIX -- fail closed: a bare token goes only to the hub it
+        // was issued by, so never without that hub's id (nothing else checks
+        // who answers before it goes out in plaintext)
+        if bare_token_without_hub_id(&credential, &expected_hub_id) {
+            return Err(token_without_hub_id());
+        }
         self.close_session(REPLACE_WAIT);
         let (tx, rx) = mpsc::channel();
-        let credential = Credential::parse(&credential);
         let mut target = Target {
             url,
             client_name,
@@ -2396,6 +2406,27 @@ fn dial(
         LinkError::HubKeyChanged if target.token.is_empty() => LinkError::HubKeyUnverified,
         e => e,
     })
+}
+
+// -- WP LINKFIX --
+/// Whether `credential` is a bare (`v1`) token, no key pin, with no expected
+/// hub id: [`DspiCore::link_connect`] refuses to send it to whoever answers.
+fn bare_token_without_hub_id(credential: &Credential, expected_hub_id: &str) -> bool {
+    !credential.token.trim().is_empty()
+        && credential.pin.is_none()
+        && expected_hub_id.trim().is_empty()
+}
+
+// -- WP LINKFIX --
+/// The error for [`bare_token_without_hub_id`]: nothing was dialled; the
+/// client pairs again (or dials with the hub's id).
+fn token_without_hub_id() -> DspiError {
+    DspiError::Link {
+        code: "token_without_hub_id".into(),
+        msg: "This pairing has no hub id to check the hub against, so its token was not sent. \
+              Pair with the hub again."
+            .into(),
+    }
 }
 
 // -- WP SECCORE --
@@ -4394,3 +4425,8 @@ mod tests_wp_pgfix;
 #[allow(clippy::indexing_slicing)]
 #[path = "link/tests_wp_pgsender.rs"]
 mod tests_wp_pgsender;
+
+// -- WP LINKFIX --
+#[cfg(test)]
+#[path = "link/tests_wp_linkfix.rs"]
+mod tests_wp_linkfix;

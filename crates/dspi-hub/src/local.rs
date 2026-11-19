@@ -287,6 +287,13 @@ impl Transport for LocalTransport {
         Some(self.device.protocol)
     }
 
+    // -- WP LINKFIX -- the attachment's discovery, so the core on top plans with
+    // it and tells the paged alink sender apart by the same rule as over USB or
+    // DSPi Link (PLAN-PG 1.9; without it the sender failed closed here)
+    fn paged_discovery(&self) -> Option<dspi_transport::paged::Discovery> {
+        self.device.discovery.clone()
+    }
+
     fn control_in_paged(&mut self, id: CmdId, value: u16, max_len: u16) -> Result<Vec<u8>> {
         if max_len == 0 {
             return Err(TransportError::Stalled { opcode: id.cmd() });

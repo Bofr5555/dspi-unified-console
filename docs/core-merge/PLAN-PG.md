@@ -353,11 +353,13 @@ the compat matrix (section 4).
 
 **How the core tells the sender apart (PGFIX, PGSENDER).** Only after the connect's bulk read failed, and never on
 `Disconnected`. Legacy: its USB product string ("DSPi Audio Link Sender", "DSPi Link Sender"), or without one (MIDI,
-behind a hub) a `REQ_GET_PLATFORM` naming 0 output channels. Paged (`device::is_paged_alink_sender`, on the
+behind a hub) a `REQ_GET_PLATFORM` naming 0 output channels. Paged (`dspi_transport::board::is_paged_alink_sender`, re-exported by `dspi_core::device`, on the
 connection's `paged::Discovery`), all of: (1) the same identity rule on `SYS.PLATFORM` (the 1.1.6 layout); (2) the
 tunnel `0xE010` on page 0xE0, i.e. our firmware; (3) no `STORE.ALL_PARAMS` GET in the bitmaps (no bulk image); (4) no
-page but SYS 0x01, STORE 0x02 and 0xE0. **Fail closed:** anything else, and a paged connection without a discovery
-(the hub's `LocalTransport`/`PrincipalTransport`), is not the sender; a paged DSP stays a DSP. Since the sender's
+page but SYS 0x01, STORE 0x02 and 0xE0. **Fail closed:** anything else, and a paged connection without a discovery,
+is not the sender; a paged DSP stays a DSP. Our hub's `LocalTransport`/`PrincipalTransport` pass the attachment's
+discovery on (LINKFIX), and the hub applies the rule at attach itself: no image read, no poll of what the sender does
+not list. Since the sender's
 bitmaps hold nothing of the DSP model, `PagedTransport` refuses every DSP request locally, and the core's
 `AlinkSender` connection refuses them before the adapter. **FWPG4 must present exactly this:** the product string,
 `SYS.PLATFORM` byte 3 = 0, pages SYS, STORE (the output-config save) and 0xE0 only, the tunnel listed in 0xE0's
@@ -869,9 +871,19 @@ when its bulk read failed and its discovery meets section 1.9's four conditions 
 page but SYS, STORE, 0xE0); fail closed otherwise. Over DSPi Link behind a 1.3 hub it binds as the paged sender with no
 meter poll; behind a 1.2 hub as the legacy sender. Web, Qt, Android and the Terminal key on `device_kind` and needed no
 change (checked); the web e2e runs the sender page on `sender-dual` too. **Not done:** our hub's in-process paths carry
-no discovery, so a paged sender reached through them still fails to open (fail closed, as PGTM's note); the firmware
-(FWPG4) is not written: its fake (`FakeDevice::sender(true)`, PGFAKE2) is the contract; our hub (`crates/dspi-hub`)
-does not tell the paged sender apart.
+no discovery, so a paged sender reached through them still fails to open (fail closed, as PGTM's note; **fixed by
+LINKFIX**); the firmware
+(FWPG4) is not written: its fake (`FakeDevice::sender(true)`, PGFAKE2) is the contract.
+
+**LINKFIX: The paged sender behind our hub; no bare token without a hub id.** [DONE] Size 0.5. Round R1. **Owns:**
+the sender rule's move to `crates/dspi-transport/src/board.rs` (the hub's headless build has no `dspi-core`),
+`DeviceShared::{discovery, paged_sender}` in `crates/dspi-hub/src/device.rs`, `paged_discovery` on `LocalTransport`
+and `PrincipalTransport`, the bare-token refusal in `link.rs` (`link_connect_hinted`), new
+`crates/dspi-hub/tests/wp_linkfix_paged_sender.rs`, `device.rs`'s `tests_wp_linkfix`, `link/tests_wp_linkfix.rs`,
+`docs/integrator/security.md`. **Did:** our hub decides the paged sender at attach by section 1.9's rule (with the USB
+product string), reads it no image and grants no poll of what it does not list; its in-process transports pass the
+attachment's discovery on, so a core on top opens the sender as `AlinkSender` (and a paged DSP lists its pages);
+`link_connect` with a bare `v1` token and no expected hub id fails `token_without_hub_id` before any dial.
 
 **PGSWIFT: Swift (coordinator, Mac VM).** [TODO] Size 1. Wave PG-D. **Owns:** the Swift device-info row; the
 core-backed paths' tests against the paged fakes. Its `CoreBackedTransport` needs no code (its opcodes go through the

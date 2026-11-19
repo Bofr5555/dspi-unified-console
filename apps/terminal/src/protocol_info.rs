@@ -14,11 +14,12 @@
 //!   `SYS.COMMAND_INFO` per call (PG-C merge note), which is one more
 //!   transfer per SET.
 //!
-//! A paged device behind a hub's in-process `LocalTransport` or a principal's
-//! `PrincipalTransport` shows an empty page list: those paths say the
-//! generation but carry no page discovery, and the extension envelope is the
+//! A paged device on a connection that says the generation but carries no page
+//! discovery shows an empty page list, and the extension envelope is the
 //! 1.1.6-shaped probe's (PG-C review carry-over; the note
-//! [`dspi_tui::settings::about::NO_PAGE_LIST_NOTE`] says so).
+//! [`dspi_tui::settings::about::NO_PAGE_LIST_NOTE`] says so). -- WP LINKFIX --
+//! Our hub's in-process `LocalTransport` and a principal's `PrincipalTransport`
+//! pass the attachment's discovery on, so they list the pages.
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
