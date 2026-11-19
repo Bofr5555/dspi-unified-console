@@ -3700,6 +3700,7 @@ internal fun se.bofr.dspi.ffi.uniffi.FirmwareTarget.toDomain() =
         boardId = boardId?.let { it.toInt() },
         lineage = lineage.toDomain(),
         generation = generation.toDomain(),
+        deviceKind = deviceKind?.let { it.toDomain() },
     )
 
 internal fun FirmwareTarget.toFfi() =
@@ -3708,6 +3709,7 @@ internal fun FirmwareTarget.toFfi() =
         boardId = boardId?.let { it.toUByte() },
         lineage = lineage.toFfi(),
         generation = generation.toFfi(),
+        deviceKind = deviceKind?.let { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.FirmwareUpdateVerdict.toDomain() =
@@ -6967,6 +6969,8 @@ internal fun se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.toDomain(): FirmwareUpda
         se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.NONE -> FirmwareUpdateRule.NONE
         se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.NO_BOOTSEL -> FirmwareUpdateRule.NO_BOOTSEL
         se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.LINEAGE_LOSS -> FirmwareUpdateRule.LINEAGE_LOSS
+        se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.KIND_MISMATCH -> FirmwareUpdateRule.KIND_MISMATCH
+        se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.KIND_UNKNOWN -> FirmwareUpdateRule.KIND_UNKNOWN
     }
 
 internal fun FirmwareUpdateRule.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule =
@@ -6974,6 +6978,8 @@ internal fun FirmwareUpdateRule.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareUpdateR
         FirmwareUpdateRule.NONE -> se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.NONE
         FirmwareUpdateRule.NO_BOOTSEL -> se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.NO_BOOTSEL
         FirmwareUpdateRule.LINEAGE_LOSS -> se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.LINEAGE_LOSS
+        FirmwareUpdateRule.KIND_MISMATCH -> se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.KIND_MISMATCH
+        FirmwareUpdateRule.KIND_UNKNOWN -> se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.KIND_UNKNOWN
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.BundledFirmware.toDomain(): BundledFirmware =

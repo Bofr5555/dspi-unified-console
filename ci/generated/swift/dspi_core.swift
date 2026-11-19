@@ -28873,6 +28873,12 @@ public struct FirmwareTarget {
      * The protocol generation of the live connection.
      */
     public var generation: FirmwareGeneration
+    /**
+     * What the open device is (`DeviceProtocol::device_kind`); `None` when
+     * it is not known (no device, a board in BOOTSEL). An image stamped for
+     * another kind is refused; with `None` the kind rule does not apply.
+     */
+    public var deviceKind: DeviceKind?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -28889,11 +28895,17 @@ public struct FirmwareTarget {
          */lineage: FirmwareLineage, 
         /**
          * The protocol generation of the live connection.
-         */generation: FirmwareGeneration) {
+         */generation: FirmwareGeneration, 
+        /**
+         * What the open device is (`DeviceProtocol::device_kind`); `None` when
+         * it is not known (no device, a board in BOOTSEL). An image stamped for
+         * another kind is refused; with `None` the kind rule does not apply.
+         */deviceKind: DeviceKind?) {
         self.voltage = voltage
         self.boardId = boardId
         self.lineage = lineage
         self.generation = generation
+        self.deviceKind = deviceKind
     }
 }
 
@@ -28916,6 +28928,9 @@ extension FirmwareTarget: Equatable, Hashable {
         if lhs.generation != rhs.generation {
             return false
         }
+        if lhs.deviceKind != rhs.deviceKind {
+            return false
+        }
         return true
     }
 
@@ -28924,6 +28939,7 @@ extension FirmwareTarget: Equatable, Hashable {
         hasher.combine(boardId)
         hasher.combine(lineage)
         hasher.combine(generation)
+        hasher.combine(deviceKind)
     }
 }
 
@@ -28939,7 +28955,8 @@ public struct FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer {
                 voltage: FfiConverterTypeFirmwareGuardBoard.read(from: &buf), 
                 boardId: FfiConverterOptionUInt8.read(from: &buf), 
                 lineage: FfiConverterTypeFirmwareLineage.read(from: &buf), 
-                generation: FfiConverterTypeFirmwareGeneration.read(from: &buf)
+                generation: FfiConverterTypeFirmwareGeneration.read(from: &buf), 
+                deviceKind: FfiConverterOptionTypeDeviceKind.read(from: &buf)
         )
     }
 
@@ -28948,6 +28965,7 @@ public struct FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer {
         FfiConverterOptionUInt8.write(value.boardId, into: &buf)
         FfiConverterTypeFirmwareLineage.write(value.lineage, into: &buf)
         FfiConverterTypeFirmwareGeneration.write(value.generation, into: &buf)
+        FfiConverterOptionTypeDeviceKind.write(value.deviceKind, into: &buf)
     }
 }
 
@@ -58983,6 +59001,17 @@ public enum FirmwareUpdateRule {
      * Our firmware would give way to an image that may be upstream's.
      */
     case lineageLoss
+    /**
+     * The image is stamped for another kind of device than the target (a
+     * DSP image on an alink sender, a sender image on a DSP), or its kind
+     * stamp cannot be read: refused, whatever is typed.
+     */
+    case kindMismatch
+    /**
+     * The target is an alink sender and the image does not say what it is
+     * for, so it may be a DSP image: asks the typed confirmation.
+     */
+    case kindUnknown
 }
 
 
@@ -59006,6 +59035,10 @@ public struct FfiConverterTypeFirmwareUpdateRule: FfiConverterRustBuffer {
         
         case 3: return .lineageLoss
         
+        case 4: return .kindMismatch
+        
+        case 5: return .kindUnknown
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -59024,6 +59057,14 @@ public struct FfiConverterTypeFirmwareUpdateRule: FfiConverterRustBuffer {
         
         case .lineageLoss:
             writeInt(&buf, Int32(3))
+        
+        
+        case .kindMismatch:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .kindUnknown:
+            writeInt(&buf, Int32(5))
         
         }
     }
@@ -63368,6 +63409,30 @@ fileprivate struct FfiConverterOptionTypeAbSide: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeDeviceKind: FfiConverterRustBuffer {
+    typealias SwiftType = DeviceKind?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDeviceKind.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDeviceKind.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeMeasureCoupler: FfiConverterRustBuffer {
     typealias SwiftType = MeasureCoupler?
 
@@ -66538,7 +66603,10 @@ public func firmwareGuardCheck(image: Data, board: FirmwareGuardBoard, typedConf
  * whatever is typed; the typed confirmation when firmware that may be ours
  * would give way to an image that may be upstream's (a lineage that could
  * not be read on an open board counts as ours); the generation change, with
- * what works afterwards. Pure apart from parsing the image; never panics.
+ * what works afterwards; and (WP IMGKIND) the device kind: an image stamped
+ * for another kind than the target's, or with an unreadable kind stamp, is
+ * refused whatever is typed, and one without a kind stamp asks on a sender
+ * (module docs). Pure apart from parsing the image; never panics.
  */
 public func firmwareUpdateCheck(image: Data, target: FirmwareTarget, typedConfirmation: String) -> FirmwareUpdateVerdict  {
     return try!  FfiConverterTypeFirmwareUpdateVerdict_lift(try! rustCall() {
@@ -67222,7 +67290,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_func_firmware_update_check() != 5569) {
+    if (uniffi_dspi_core_checksum_func_firmware_update_check() != 57230) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350) {

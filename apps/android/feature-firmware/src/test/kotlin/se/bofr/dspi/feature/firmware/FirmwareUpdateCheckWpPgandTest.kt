@@ -14,6 +14,7 @@ import org.junit.Test
 import se.bofr.dspi.bridge.CoreTools
 import se.bofr.dspi.core.AutoEqDatabaseInfo
 import se.bofr.dspi.core.AutoEqFetch
+import se.bofr.dspi.core.DeviceKind
 import se.bofr.dspi.core.FirmwareGeneration
 import se.bofr.dspi.core.FirmwareGuardBoard
 import se.bofr.dspi.core.FirmwareGuardBoardSource
@@ -211,7 +212,8 @@ class FirmwareUpdateCheckWpPgandTest {
             FirmwareGuardBoard(1200, FirmwareGuardBoardSource.EXT_CORE_VREG),
             boardId = 0,
             lineage = FirmwareLineage.BOFR,
-            generation = FirmwareGeneration.LEGACY
+            generation = FirmwareGeneration.LEGACY,
+            deviceKind = DeviceKind.DSP // -- WP IMGKIND --
         )
         val tools = TargetTools(read)
         val g = CoreFirmwareGuard(tools)

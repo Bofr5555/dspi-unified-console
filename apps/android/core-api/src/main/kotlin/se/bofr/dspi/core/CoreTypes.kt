@@ -4059,6 +4059,12 @@ data class FirmwareTarget(
      * The protocol generation of the live connection.
      */
     val generation: FirmwareGeneration,
+    /**
+     * What the open device is (`DeviceProtocol::device_kind`); `None` when
+     * it is not known (no device, a board in BOOTSEL). An image stamped for
+     * another kind is refused; with `None` the kind rule does not apply.
+     */
+    val deviceKind: DeviceKind?,
 )
 
 /**
@@ -9227,6 +9233,17 @@ enum class FirmwareUpdateRule {
      * Our firmware would give way to an image that may be upstream's.
      */
     LINEAGE_LOSS,
+    /**
+     * The image is stamped for another kind of device than the target (a
+     * DSP image on an alink sender, a sender image on a DSP), or its kind
+     * stamp cannot be read: refused, whatever is typed.
+     */
+    KIND_MISMATCH,
+    /**
+     * The target is an alink sender and the image does not say what it is
+     * for, so it may be a DSP image: asks the typed confirmation.
+     */
+    KIND_UNKNOWN,
 }
 
 /**

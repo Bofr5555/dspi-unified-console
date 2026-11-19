@@ -6082,7 +6082,10 @@ interface DspiCoreApi : AutoCloseable {
      * whatever is typed; the typed confirmation when firmware that may be ours
      * would give way to an image that may be upstream's (a lineage that could
      * not be read on an open board counts as ours); the generation change, with
-     * what works afterwards. Pure apart from parsing the image; never panics.
+     * what works afterwards; and (WP IMGKIND) the device kind: an image stamped
+     * for another kind than the target's, or with an unreadable kind stamp, is
+     * refused whatever is typed, and one without a kind stamp asks on a sender
+     * (module docs). Pure apart from parsing the image; never panics.
      *
      * Stateless (a free function in dspi-core); needs no device.
      */

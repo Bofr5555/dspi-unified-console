@@ -87,25 +87,45 @@ STORE) and the tunnel on page 0xE0, and page 0 kept for legacy hosts. The core c
   screens**: the device info, the audio link block and the update.
 - `device_protocol` says the generation and the envelope (`Legacy`, or `Tunnel` on the paged stack); the clients' sender
   pages (web, Qt, Android, Terminal) key on `device_kind` only and need no change per generation.
-- **Updates.** The update check and the write gate know no sender image from a DSP image: the sender is judged as a
-  Pico running this fork's firmware, the same on both generations (its core voltage is not known, so the voltage
-  phrase is asked, and an image not proven ours also names the lineage loss). **Do not offer the sender the bundled
-  DSP images** (Qt and Android do not); a file the user picks is theirs to get right.
+- **Updates.** The sender is judged as a Pico running this fork's firmware, the same on both generations (its core
+  voltage is not known, so the voltage phrase is asked, and an image not proven ours also names the lineage loss).
+  From IMGKIND the update check and the write gate also tell a sender image from a DSP image by the image's
+  **device-kind stamp** (section 5): a DSP image (`dsp`) is refused on a sender, and the sender's image
+  (`alink_sender`) on a DSP, whatever is typed. An image with no kind stamp (upstream's, and this fork's from before
+  IMGKIND) may be a DSP image: on a sender it asks the typed confirmation and the message says so. **Still do not
+  offer the sender the bundled DSP images** (Qt and Android do not): they carry no stamp.
 - **Not yet:** the dual-stack sender firmware (FWPG4) is not written, so the paged rule is tested against its fake
   only; a sender build that lists any page beyond the three (a debug build's diagnostics page 0xF0 too) is not
-  recognised; our hub (`crates/dspi-hub`) does not tell the paged sender apart.
+  recognised (the firmware spec states this page set in `extension_channel_spec.md` 1.3.5 from IMGKIND); our hub
+  (`crates/dspi-hub`) does not tell the paged sender apart.
 
 ## 5. Updates: the update check and the write gate
 
 - `DspiCore::firmware_target()` (C `dspi_firmware_target`, wasm `firmwareTarget`) reads the board as an update target:
   the voltage record, the board (8 platform bytes and the USB descriptor), its lineage (`EXT_LIST`, read once) and the
-  generation. Up to five control transfers; call it before the bootloader entry, off the UI thread.
+  generation, and (IMGKIND) `device_kind`, the open connection's `DeviceKind` (`None` when not known: no device, a
+  board in BOOTSEL; JSON `deviceKind`, left out when not known). Up to five control transfers; call it before the
+  bootloader entry, off the UI thread.
 - `firmware_update_check(image, target, typed)` (C `dspi_firmware_update_check`, wasm `firmwareUpdateCheck`) folds
   three rules into the voltage rule's verdict: `rule` `NoBootsel` (no image, whatever is typed), `LineageLoss` (this
   fork's firmware, or a lineage that could not be read on an open board, giving way to an image not proven ours asks
   `LINEAGE_PHRASE` "I ACCEPT LOSING THE EXTENSIONS"; when the voltage rule asks too, its phrase covers both and the
   message names both), and `generation_change` (a sentence with what works afterwards, `""` when none). **Flash only on
   `verdict.allowed`.**
+- **The device kind** (IMGKIND). Every DSPi image of this fork carries a binary-info stamp (`ID_AND_STRING`, tag `DS`,
+  id `0x0B7A4B1D`, firmware `image_kind.h`) with the text `dsp`; the alink sender's image carries `alink_sender`.
+  Against the target's `device_kind`:
+
+  | Image | Target `DSP` | Target `AlinkSender` | Target kind not known |
+  |---|---|---|---|
+  | stamped for the target's kind | the rules above | the rules above | the rules above |
+  | stamped for the other kind | `rule` `KindMismatch`: refused, whatever is typed | `KindMismatch`: refused | the rules above |
+  | kind stamp unreadable (another text, two that disagree) | `KindMismatch`: refused | `KindMismatch`: refused | `KindMismatch`: refused |
+  | no kind stamp (upstream, ours before IMGKIND) | the rules above, unchanged | asks: the message says the image may be a DSP image; `rule` `KindUnknown` with `KIND_PHRASE` "I ACCEPT THAT THIS MAY BE A DSP IMAGE" when nothing else asks; when the voltage or lineage rule asks, its phrase covers it (and `LineageLoss` keeps its name) | the rules above |
+
+  A refusal has `decision` `Refused`, `reason` `ImageInvalid`, no phrase, and the write returns `InvalidArgument`. A
+  kind stamp also proves the image ours (`image_lineage` `Bofr`), as the voltage stamp does: the sender's image has no
+  voltage stamp (no `core_vreg.c`). The write gate's fallback (below) has no target, so it applies no kind rule.
 - **The write gate** (PGFLASH): `flash_confirmed` (C `dspi_flash_confirmed`) and `picoboot_flash_confirmed` judge by the
   update check's rules on the target **the core read itself** from the device: `firmware_target` keeps what it read, and
   the bootloader entry reads it when it was not read on this connection. A caller's target JSON is never used; a

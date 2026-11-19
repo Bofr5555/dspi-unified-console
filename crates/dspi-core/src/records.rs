@@ -1608,10 +1608,11 @@ pub struct DeviceProtocol {
 }
 
 // -- WP PGFIX --
+// -- WP IMGKIND -- Deserialize: read back inside a FirmwareTarget (C, wasm)
 /// What kind of device the open connection is (PLAN-PG section 1.9, PGMAT F1).
 /// A client shows the screens of the kind only.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DeviceKind {
     /// A DSPi: the bulk image, the DSP model, the generator, the meters.

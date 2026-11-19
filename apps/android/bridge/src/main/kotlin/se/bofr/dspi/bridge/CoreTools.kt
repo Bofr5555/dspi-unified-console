@@ -90,7 +90,8 @@ interface CoreTools {
             voltage = FirmwareGuardBoard(requiredMv = 0, source = FirmwareGuardBoardSource.NO_DEVICE),
             boardId = null,
             lineage = FirmwareLineage.UNKNOWN,
-            generation = FirmwareGeneration.UNKNOWN
+            generation = FirmwareGeneration.UNKNOWN,
+            deviceKind = null // -- WP IMGKIND -- not known
         )
 
         /**
@@ -101,7 +102,8 @@ interface CoreTools {
             voltage = board,
             boardId = 0,
             lineage = FirmwareLineage.UNKNOWN,
-            generation = FirmwareGeneration.UNKNOWN
+            generation = FirmwareGeneration.UNKNOWN,
+            deviceKind = null // -- WP IMGKIND -- not known
         )
 
         /** The update verdict when the check could not be asked: nothing may be written. */
