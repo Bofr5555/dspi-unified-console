@@ -323,6 +323,26 @@ impl HubHandle {
             .is_some_and(|d| d.router.lock_holder_exempt(Instant::now()))
     }
 
+    // -- WP ATGUARD --
+    /// Abort and close every measuring session `owner` holds (`aborted` with
+    /// `reason` sent to it): a system apply's guard reverting stops a verify
+    /// still playing first, so nothing plays and the session's locks do not
+    /// refuse the alignment's writes. How many there were.
+    pub(crate) fn system_measure_end_sessions_of(&self, owner: SessionId, reason: &str) -> usize {
+        let family = self.system_measure();
+        let mine: Vec<Arc<MSession>> = guard(&family.sessions)
+            .values()
+            .filter(|s| s.owner.id() == owner)
+            .cloned()
+            .collect();
+        for s in &mine {
+            let _io = guard(&s.io);
+            family.abort_session(self, s, None, reason, true);
+            family.close_session(self, s);
+        }
+        mine.len()
+    }
+
     /// Note a read of unit `serial`'s `EXT_TIME_BASE` entry made elsewhere in
     /// the hub (the system model's poll, WP ATHUBM, at the batch merge): a
     /// locked one starts or keeps its settling clock, so a run need not

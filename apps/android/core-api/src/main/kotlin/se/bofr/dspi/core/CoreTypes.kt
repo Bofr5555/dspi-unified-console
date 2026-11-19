@@ -7575,6 +7575,16 @@ data class MeasureSystemProposal(
      * What stands in the way, if anything.
      */
     val notice: MeasureSystemIssue?,
+    /**
+     * The hub's guard the apply begins, s: the hub reverts the apply by
+     * itself unless it is kept within this long (and when this console's
+     * connection is lost). 0: the hub has no guard for a system apply.
+     */
+    val guardS: Long,
+    /**
+     * The guard in words: how long, or that nothing reverts by itself.
+     */
+    val guardNote: String,
 )
 
 /**
@@ -7641,6 +7651,12 @@ data class MeasureSystemApplied(
      * What to know, in words.
      */
     val message: String,
+    /**
+     * The hub's guard of this apply, s (0: none, nothing reverts by
+     * itself): the hub sets the filed model back and aligns at the
+     * deadline unless Keep confirms it, and when the connection is lost.
+     */
+    val guardS: Long,
 )
 
 /**

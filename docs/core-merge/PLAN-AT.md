@@ -853,6 +853,32 @@ runs and the anchor), the user manual's measurement chapter section, `docs/PARIT
 **Done when:** links resolve; every notice key of ATWEB and ATQT appears; the topology table matches section 1.1.
 **Deps:** AT-C (writes alongside ATWEB and ATQT; disjoint files).
 
+**ATGUARD: The hub guards a system apply.** [DONE] Size 0.75. Wave AT-D (follow-up to ATDOC's finding "a system apply
+has no guard countdown"). **Owns:** new `crates/dspi-hub/src/system/guard.rs` (one `mod` line in `system/mod.rs`), the
+hooks in `hub.rs` (the field, the `hub-system` thread's timer, session close, stop), `server.rs` (the dispatch line and
+the cap), `system/measure.rs` (`system_measure_end_sessions_of`), the seam's `system::messages::guard` (additive), the
+apply, Keep, Revert and verify in `crates/dspi-core/src/measure/system{.rs,/proposal.rs}` with `guard_s`/`guard_note` on
+`MeasureSystemProposal` and `guard_s` on `MeasureSystemApplied` (additive record fields), tests in
+`tests_wp_atcore.rs`, `crates/dspi-hub/tests/wp_atguard_system_guard.rs` and `review_atc_core_on_real_hub.rs`
+(markers), hub-api section 23.4, the integrator README row and the link from `measurement.md` (ATDOC's request).
+**Problem:** ATCORE filed the model revision and every unit's `out.delay` in the console's own session and wrote
+`system.set` and `system.align` through the hub; a console that closed, crashed or lost its connection after the apply
+left the alignment applied with nothing to revert it (a single-unit apply has the hub's `apply.*` guard). **Decision:**
+the hub's own guard of a system apply, as `apply_guard.rs`'s design and timer (the `hub-system` thread): `system.guard.begin`
+(Admin) files the model and its revision and starts a countdown; `confirm` keeps (Keep); `cancel` reverts now (Revert);
+at the deadline, when the owner's session ends and when the hub stops the hub reverts by itself: the owner's measuring
+sessions are aborted first, then `system.set` of the filed model **at the revision the owner's last `system.set` left**
+(a model changed meanwhile is `not_written`, never overwritten), then `system.align`. One guard at a time (`busy`);
+while it is pending another session's `system.set` is `conflict` (the owner's goes through, its revision noted). The
+core begins it before filing, sized as P5TRUST's (c): the planned verify (each transition output's ramp again, the summed
+runs) x 1.25 + 120 s, at most 590 s; the verify runs inside it (refused once the hub has ended it, the stage then
+`Reverted` with the hub's words); Keep confirms; Revert cancels and reads the delays back. Cap `system_apply_guard`; a hub
+without it: today's apply, and the proposal's `guard_note` says nothing reverts by itself. **Done when:** an Admin
+apply then a dropped console is reverted with the delays back (real hub, raw and through the core's
+`measure_system_apply`); Keep before the deadline keeps; no Keep reverts at the deadline; Revert ends it; another
+session's `system.set` is refused `conflict` while pending; a model changed meanwhile is `not_written`; the old-hub path
+says so; checks for dspi-hub, dspi-core, dspi-ffi, dspi-measure; drift. **Deps:** ATSUMOFF.
+
 One Fable review for AT-D (0.75).
 
 ### HIL

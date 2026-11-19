@@ -4536,6 +4536,13 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * then `system.align` writes the units. Repeat the summed runs next
      * (`measure_system_verify`), then Keep or Revert.
      *
+     * WP ATGUARD: on a hub with the cap `system_apply_guard` the hub's
+     * guard is begun first (`system.guard.begin`, the proposal's
+     * `guard_s`: the planned verify, 25 % longer, plus 120 s, at most
+     * 590 s): the hub reverts by itself at the deadline unless Keep
+     * confirms it, and when this console's connection is lost. Without the
+     * cap nothing reverts by itself (the proposal says so).
+     *
      * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
      * [`DspiError::InvalidArgument`] for another id, a summed check not
      * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
@@ -4564,6 +4571,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
      * first Keep after a failed verify.
+     *
+     * WP ATGUARD: a guarded apply is confirmed on the hub
+     * (`system.guard.confirm`); one the hub has reverted already (its
+     * deadline passed) is shown as reverted, with the hub's words.
      */
     func measureSystemKeep() throws  -> MeasureSystemApplied
     
@@ -4599,6 +4610,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Revert the applied alignment (Admin): the filed model is set again
      * (`system.set`) and `system.align` writes the units back; every unit's
      * output delays are read back against the filed ones.
+     *
+     * WP ATGUARD: a guarded apply is reverted by the hub
+     * (`system.guard.cancel`: the same set and alignment), which ends the
+     * guard.
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied;
      * [`DspiError::Denied`] below Admin; the hub's refusals.
@@ -11767,6 +11782,13 @@ open func measureSystemApplied() -> MeasureSystemApplied  {
      * then `system.align` writes the units. Repeat the summed runs next
      * (`measure_system_verify`), then Keep or Revert.
      *
+     * WP ATGUARD: on a hub with the cap `system_apply_guard` the hub's
+     * guard is begun first (`system.guard.begin`, the proposal's
+     * `guard_s`: the planned verify, 25 % longer, plus 120 s, at most
+     * 590 s): the hub reverts by itself at the deadline unless Keep
+     * confirms it, and when this console's connection is lost. Without the
+     * cap nothing reverts by itself (the proposal says so).
+     *
      * Errors: [`DspiError::Denied`] for a role below Admin, nothing sent;
      * [`DspiError::InvalidArgument`] for another id, a summed check not
      * passed, nothing offered; [`DspiError::Link`] with the hub's refusal
@@ -11810,6 +11832,10 @@ open func measureSystemCapturePush(firstFrame: UInt64, samples: [Float], rateHz:
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied, or the
      * first Keep after a failed verify.
+     *
+     * WP ATGUARD: a guarded apply is confirmed on the hub
+     * (`system.guard.confirm`); one the hub has reverted already (its
+     * deadline passed) is shown as reverted, with the hub's words.
      */
 open func measureSystemKeep()throws  -> MeasureSystemApplied  {
     return try  FfiConverterTypeMeasureSystemApplied_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -11867,6 +11893,10 @@ open func measureSystemResult()throws  -> MeasureSystemResult  {
      * Revert the applied alignment (Admin): the filed model is set again
      * (`system.set`) and `system.align` writes the units back; every unit's
      * output delays are read back against the filed ones.
+     *
+     * WP ATGUARD: a guarded apply is reverted by the hub
+     * (`system.guard.cancel`: the same set and alignment), which ends the
+     * guard.
      *
      * Errors: [`DspiError::InvalidArgument`] with nothing applied;
      * [`DspiError::Denied`] below Admin; the hub's refusals.
@@ -45057,6 +45087,12 @@ public struct MeasureSystemApplied {
      * What to know, in words.
      */
     public var message: String
+    /**
+     * The hub's guard of this apply, s (0: none, nothing reverts by
+     * itself): the hub sets the filed model back and aligns at the
+     * deadline unless Keep confirms it, and when the connection is lost.
+     */
+    public var guardS: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -45084,7 +45120,12 @@ public struct MeasureSystemApplied {
          */verified: Bool?, 
         /**
          * What to know, in words.
-         */message: String) {
+         */message: String, 
+        /**
+         * The hub's guard of this apply, s (0: none, nothing reverts by
+         * itself): the hub sets the filed model back and aligns at the
+         * deadline unless Keep confirms it, and when the connection is lost.
+         */guardS: UInt32) {
         self.stage = stage
         self.revisionBefore = revisionBefore
         self.revisionAfter = revisionAfter
@@ -45093,6 +45134,7 @@ public struct MeasureSystemApplied {
         self.writeFailures = writeFailures
         self.verified = verified
         self.message = message
+        self.guardS = guardS
     }
 }
 
@@ -45127,6 +45169,9 @@ extension MeasureSystemApplied: Equatable, Hashable {
         if lhs.message != rhs.message {
             return false
         }
+        if lhs.guardS != rhs.guardS {
+            return false
+        }
         return true
     }
 
@@ -45139,6 +45184,7 @@ extension MeasureSystemApplied: Equatable, Hashable {
         hasher.combine(writeFailures)
         hasher.combine(verified)
         hasher.combine(message)
+        hasher.combine(guardS)
     }
 }
 
@@ -45158,7 +45204,8 @@ public struct FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer {
                 writesOk: FfiConverterUInt32.read(from: &buf), 
                 writeFailures: FfiConverterSequenceString.read(from: &buf), 
                 verified: FfiConverterOptionBool.read(from: &buf), 
-                message: FfiConverterString.read(from: &buf)
+                message: FfiConverterString.read(from: &buf), 
+                guardS: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -45171,6 +45218,7 @@ public struct FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer {
         FfiConverterSequenceString.write(value.writeFailures, into: &buf)
         FfiConverterOptionBool.write(value.verified, into: &buf)
         FfiConverterString.write(value.message, into: &buf)
+        FfiConverterUInt32.write(value.guardS, into: &buf)
     }
 }
 
@@ -46048,6 +46096,16 @@ public struct MeasureSystemProposal {
      * What stands in the way, if anything.
      */
     public var notice: MeasureSystemIssue?
+    /**
+     * The hub's guard the apply begins, s: the hub reverts the apply by
+     * itself unless it is kept within this long (and when this console's
+     * connection is lost). 0: the hub has no guard for a system apply.
+     */
+    public var guardS: UInt32
+    /**
+     * The guard in words: how long, or that nothing reverts by itself.
+     */
+    public var guardNote: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -46078,7 +46136,15 @@ public struct MeasureSystemProposal {
          */mayApply: Bool, 
         /**
          * What stands in the way, if anything.
-         */notice: MeasureSystemIssue?) {
+         */notice: MeasureSystemIssue?, 
+        /**
+         * The hub's guard the apply begins, s: the hub reverts the apply by
+         * itself unless it is kept within this long (and when this console's
+         * connection is lost). 0: the hub has no guard for a system apply.
+         */guardS: UInt32, 
+        /**
+         * The guard in words: how long, or that nothing reverts by itself.
+         */guardNote: String) {
         self.id = id
         self.arrivals = arrivals
         self.withheld = withheld
@@ -46088,6 +46154,8 @@ public struct MeasureSystemProposal {
         self.offered = offered
         self.mayApply = mayApply
         self.notice = notice
+        self.guardS = guardS
+        self.guardNote = guardNote
     }
 }
 
@@ -46125,6 +46193,12 @@ extension MeasureSystemProposal: Equatable, Hashable {
         if lhs.notice != rhs.notice {
             return false
         }
+        if lhs.guardS != rhs.guardS {
+            return false
+        }
+        if lhs.guardNote != rhs.guardNote {
+            return false
+        }
         return true
     }
 
@@ -46138,6 +46212,8 @@ extension MeasureSystemProposal: Equatable, Hashable {
         hasher.combine(offered)
         hasher.combine(mayApply)
         hasher.combine(notice)
+        hasher.combine(guardS)
+        hasher.combine(guardNote)
     }
 }
 
@@ -46158,7 +46234,9 @@ public struct FfiConverterTypeMeasureSystemProposal: FfiConverterRustBuffer {
                 withdrawn: FfiConverterBool.read(from: &buf), 
                 offered: FfiConverterBool.read(from: &buf), 
                 mayApply: FfiConverterBool.read(from: &buf), 
-                notice: FfiConverterOptionTypeMeasureSystemIssue.read(from: &buf)
+                notice: FfiConverterOptionTypeMeasureSystemIssue.read(from: &buf), 
+                guardS: FfiConverterUInt32.read(from: &buf), 
+                guardNote: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -46172,6 +46250,8 @@ public struct FfiConverterTypeMeasureSystemProposal: FfiConverterRustBuffer {
         FfiConverterBool.write(value.offered, into: &buf)
         FfiConverterBool.write(value.mayApply, into: &buf)
         FfiConverterOptionTypeMeasureSystemIssue.write(value.notice, into: &buf)
+        FfiConverterUInt32.write(value.guardS, into: &buf)
+        FfiConverterString.write(value.guardNote, into: &buf)
     }
 }
 
@@ -68130,13 +68210,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_applied() != 12184) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_apply() != 53350) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_apply() != 39876) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_capture_push() != 35486) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_keep() != 44096) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_keep() != 28143) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_preflight() != 38600) {
@@ -68148,7 +68228,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_result() != 38290) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_revert() != 35695) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_revert() != 21534) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_start() != 61644) {
