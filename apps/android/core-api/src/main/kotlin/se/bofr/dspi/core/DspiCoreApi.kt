@@ -6272,7 +6272,8 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * A `mic` document from a microphone's calibration file (miniDSP UMIK-1 or
-     * UMIK-2 text with its `Sens Factor` line, REW calibration text, or CSV),
+     * UMIK-2 text with its `Sens Factor` line, Dayton Audio iMM-6C or UMM-6
+     * text with its `*1000Hz` sensitivity line, REW calibration text, or CSV),
      * on the standard grid: the file's format, serial, sensitivity and gain,
      * its angle (90° when the file name or a comment says so), the dB SPL scale
      * its sensitivity implies (labelled approximate until a calibrator step),
