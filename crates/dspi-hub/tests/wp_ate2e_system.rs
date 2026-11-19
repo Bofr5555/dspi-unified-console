@@ -1470,10 +1470,7 @@ fn wp_ate2e_a_p5spike_microphone_is_timing_unreliable_and_nothing_is_offered() {
 #[test]
 #[ignore = "WP ATLATE: the noise draws of the 17-output run, minutes in a release build"]
 fn wp_atlate_seventeen_outputs_noise_draws() {
-    use dspi_measure::ir::AnalysisOptions;
-    use dspi_measure::system::{
-        InterleaveOptions, SystemCapture, TimePin, UnitWalk, analyse_system, interleave,
-    };
+    use dspi_measure::system::{InterleaveOptions, UnitWalk, interleave};
     fn env<T: std::str::FromStr>(k: &str) -> Option<T> {
         std::env::var(k).ok().and_then(|v| v.parse().ok())
     }
@@ -1532,50 +1529,8 @@ fn wp_atlate_seventeen_outputs_noise_draws() {
     let mut unreliable = 0;
     let mut worst_all = 0.0f64;
     for draw in 0..draws {
-        room.air.clear();
-        room.air_base = 0;
-        room.pushed = 0;
-        let shift = fixed.unwrap_or(96_000 + draw.wrapping_mul(7_919_123) % 4_800_000);
-        let t_start = room.t0 + shift;
-        let sched = base.offset_by(t_start).unwrap();
-        for s in sched.segments() {
-            let c = dspi_proto::packets::SiggenConfig {
-                signal_type: 1,
-                channel_mask: s.schedule.channel_mask,
-                level_db: level,
-                duration_ms: 1_000,
-                repeat_count: 1,
-                gap_ms: 300,
-                p1: 20.0,
-                p2: 20_000.0,
-                ..Default::default()
-            };
-            room.render(usize::from(s.unit.0), s.start, &c);
-        }
-        let end = room.capture_of((sched.end() - room.t0) as f64 + 96_000.0) as usize;
-        let mut seed = spec.seed ^ 0xA7E2 ^ draw;
-        let samples: Vec<f32> = (0..end)
-            .map(|i| room.air.get(i).copied().unwrap_or(0.0) + noise(&mut seed) * scale)
-            .collect();
-        let tp = t_start - 48_000;
-        let pin = TimePin {
-            capture_frame: (room.capture_of((tp - room.t0) as f64) as u64).saturating_sub(MIC_LAG),
-            t: tp,
-            round_trip_frames: 0,
-        };
-        let a = analyse_system(
-            &SystemCapture {
-                samples: &samples,
-                first_frame: 0,
-                rate_hz: RATE,
-                schedule: &sched,
-                pins: &[pin],
-                status: &[],
-                complete: true,
-            },
-            &AnalysisOptions::default(),
-        )
-        .unwrap();
+        let shift = fixed.unwrap_or_else(|| draw_shift(draw));
+        let a = analyse_draw(&mut room, &base, spec.seed, draw, shift, level, scale);
         let worst = a
             .walked
             .cycles
@@ -1594,5 +1549,172 @@ fn wp_atlate_seventeen_outputs_noise_draws() {
     eprintln!(
         "{unreliable} of {draws} draws unreliable, the worst wander {worst_all:.2} µs \
          (level {level} dBFS, noise x{times_old} the old)"
+    );
+}
+
+// -- review AT-E --
+/// Where draw `draw` of [`wp_atlate_seventeen_outputs_noise_draws`] lands,
+/// samples after the room's t0.
+fn draw_shift(draw: u64) -> u64 {
+    96_000 + draw.wrapping_mul(7_919_123) % 4_800_000
+}
+
+/// One offline draw of the 17-output test's first run (no hub, no wall
+/// clock): `base` placed `shift` samples after the room's t0, played at
+/// `level` dBFS, the capture's noise (draw `draw`'s) `scale` times [`NOISE`].
+fn analyse_draw(
+    room: &mut Room,
+    base: &SystemSchedule,
+    seed: u64,
+    draw: u64,
+    shift: u64,
+    level: f32,
+    scale: f32,
+) -> dspi_measure::system::SystemAnalysis {
+    use dspi_measure::ir::AnalysisOptions;
+    use dspi_measure::system::{SystemCapture, TimePin, analyse_system};
+    room.air.clear();
+    room.air_base = 0;
+    room.pushed = 0;
+    let t_start = room.t0 + shift;
+    let sched = base.offset_by(t_start).unwrap();
+    for s in sched.segments() {
+        let c = dspi_proto::packets::SiggenConfig {
+            signal_type: 1,
+            channel_mask: s.schedule.channel_mask,
+            level_db: level,
+            duration_ms: 1_000,
+            repeat_count: 1,
+            gap_ms: 300,
+            p1: 20.0,
+            p2: 20_000.0,
+            ..Default::default()
+        };
+        room.render(usize::from(s.unit.0), s.start, &c);
+    }
+    let end = room.capture_of((sched.end() - room.t0) as f64 + 96_000.0) as usize;
+    let mut seed = seed ^ 0xA7E2 ^ draw;
+    let samples: Vec<f32> = (0..end)
+        .map(|i| room.air.get(i).copied().unwrap_or(0.0) + noise(&mut seed) * scale)
+        .collect();
+    let tp = t_start - 48_000;
+    let pin = TimePin {
+        capture_frame: (room.capture_of((tp - room.t0) as f64) as u64).saturating_sub(MIC_LAG),
+        t: tp,
+        round_trip_frames: 0,
+    };
+    analyse_system(
+        &SystemCapture {
+            samples: &samples,
+            first_frame: 0,
+            rate_hz: RATE,
+            schedule: &sched,
+            pins: &[pin],
+            status: &[],
+            complete: true,
+        },
+        &AnalysisOptions::default(),
+    )
+    .unwrap()
+}
+
+/// The room's noise as it was before WP ATLATE lowered it for the tests that
+/// run through the hub (-85 dBFS RMS under sweeps at the ramps' start level,
+/// -50 dBFS: 35 dB between them, a quiet living room), kept in the suite on
+/// two fixed draws of the 17-output run, offline and so the same every time:
+/// - draw 0 passes the product's wander bound: every cross-unit delay is
+///   offered and within its own bound (10 us) of the same draw at today's
+///   20 dB less noise;
+/// - draw 34 is the AT-D2 review's failure ("cycle 19 (unit 1 output 1) ...
+///   wandered 11 us"): the guard reads the noise as wander, the run is
+///   timing unreliable and **no** cross-unit delay is offered. The guard is
+///   as it was; in such a room about one 17-output run in fifteen is refused
+///   like this (4 of 60 draws) and is to be measured again.
+#[test]
+fn review_ate_the_old_room_noise_is_measured_right_or_refused_never_wrong() {
+    use dspi_measure::system::{
+        InterleaveOptions, MAX_OFFERED_UNCERTAINTY_US, UnitWalk, interleave,
+    };
+    let _slot = slot();
+    let mut units = Vec::new();
+    for i in 0..9u8 {
+        let outs: Vec<(u8, f64)> = (0..if i == 8 { 1 } else { 2 })
+            .map(|o| (o, 2.5 + 0.21 * f64::from(i) + 0.37 * f64::from(o)))
+            .collect();
+        units.push(unit_spec(100 * u32::from(i), &outs));
+    }
+    let spec = Spec {
+        seed: 5,
+        ..Spec::new(Kind::Line, G1B, units)
+    };
+    let Rig { room, .. } = rig(&spec);
+    let mut room = room;
+    let sweep = LogSweep::new(
+        RATE,
+        &SweepConfig {
+            f1_hz: 20.0,
+            f2_hz: 20_000.0,
+            duration_ms: 1_000,
+            gap_ms: 300,
+        },
+    )
+    .unwrap();
+    let walks: Vec<UnitWalk> = (0..8u8)
+        .map(|u| UnitWalk {
+            unit: UnitIndex(u),
+            domain: DomainId {
+                time_base: 0,
+                id: 0,
+            },
+            walk: WalkSchedule::new(sweep, 0b11, 1).unwrap(),
+        })
+        .collect();
+    let base = interleave(
+        &walks,
+        &InterleaveOptions {
+            passes: Some(3),
+            gap_samples: u64::from(sweep.gap_samples),
+            lead_samples: 250 * 48,
+            capture_rate_hz: RATE,
+            pre_roll_ms: 1_000,
+        },
+    )
+    .unwrap();
+    let old = NOISE_WAS / NOISE;
+    // Draw 0: measured, and right.
+    let quiet = analyse_draw(&mut room, &base, spec.seed, 0, draw_shift(0), -50.0, 1.0);
+    let noisy = analyse_draw(&mut room, &base, spec.seed, 0, draw_shift(0), -50.0, old);
+    assert!(quiet.timing_reliable, "{:?}", quiet.reasons);
+    assert!(noisy.timing_reliable, "{:?}", noisy.reasons);
+    assert_eq!(noisy.delays.len(), quiet.delays.len());
+    assert!(!noisy.delays.is_empty());
+    let mut worst = 0.0f64;
+    for (n, q) in noisy.delays.iter().zip(&quiet.delays) {
+        assert!(n.offered && q.offered, "{n:?} {q:?}");
+        let d = (n.delay_ms - q.delay_ms).abs() * 1000.0;
+        worst = worst.max(d);
+        assert!(d <= MAX_OFFERED_UNCERTAINTY_US, "{d} us: {n:?} {q:?}");
+    }
+    eprintln!(
+        "draw 0: {} delays offered, the worst {worst:.2} us from the quiet draw",
+        noisy.delays.len()
+    );
+    // Draw 34: refused, nothing offered.
+    let flagged = analyse_draw(&mut room, &base, spec.seed, 34, draw_shift(34), -50.0, old);
+    eprintln!("draw 34: {:?}", flagged.reasons);
+    assert!(!flagged.timing_reliable);
+    assert!(
+        flagged.reasons.iter().any(|r| r.contains("wandered")),
+        "{:?}",
+        flagged.reasons
+    );
+    assert!(!flagged.delays.is_empty());
+    assert!(
+        flagged
+            .delays
+            .iter()
+            .all(|d| !d.offered && d.reason.contains("timing unreliable")),
+        "{:?}",
+        flagged.delays.iter().find(|d| d.offered)
     );
 }
