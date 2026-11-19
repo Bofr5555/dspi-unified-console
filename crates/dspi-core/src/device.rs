@@ -571,7 +571,8 @@ impl DspiCore {
     /// (stock 1.1.6), 1 G1b with PAGEGUARD, 2 G1b without it, 3 G2s (stock
     /// 1.1.7), 4 G2b (our dual-stack 1.1.7), 5 the DSPi-Zero, 6 the alink
     /// sender, 7 G1b with PAGEGUARD on a board at the stock 1.15 V core (a
-    /// Pico on our firmware, which the voltage rule alone clears). The demo's
+    /// Pico on our firmware, which the voltage rule alone clears), 8 the
+    /// dual-stack alink sender (paged 1.1.7 and 1.1.6; WP QTSENDER). The demo's
     /// own core voltage is 1.20 V. Opened through the generation probe as a USB device is
     /// (`dspi_transport::paged::open`). A request the generation must not get
     /// is counted ([`DspiCore::demo_generation_violations`]), never a panic.
@@ -586,6 +587,7 @@ impl DspiCore {
             4 => FakeDevice::demo_generation(G::Bofr117),
             5 => FakeDevice::zero(),
             6 => FakeDevice::sender(false),
+            8 => FakeDevice::sender(true), // -- WP QTSENDER --
             _ => return Err(DspiError::Unsupported),
         };
         let remote = dev.remote();

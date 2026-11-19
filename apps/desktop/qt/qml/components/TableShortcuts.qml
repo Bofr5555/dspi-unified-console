@@ -15,7 +15,8 @@ Item {
             required property var modelData
             sequences: [modelData.shortcut]
             context: Qt.WindowShortcut
-            enabled: modelData.enabled ? modelData.enabled() : true   // -- WP QP18 --
+            // -- WP QP18 -- -- WP QTSENDER -- and greyed where the row does nothing (the alink sender)
+            enabled: MenuTable.available(modelData.id) && (modelData.enabled ? modelData.enabled() : true)
             onActivated: MenuTable.trigger(shortcuts.window, modelData.id)
         }
     }

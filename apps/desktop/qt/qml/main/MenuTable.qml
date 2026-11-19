@@ -179,6 +179,14 @@ QtObject {
         "edit.selectAll": "selectAll",
         "edit.delete": "delete"
     })
+    // -- WP QTSENDER -- Whether row `id` does something on the open device: on
+    // the alink sender only DeviceInfoController.senderKeeps' rows and the
+    // Edit rows that act on a focused text field. Menus and TableShortcuts
+    // bind a row's enabled to it (greyed, not hidden); Shell refuses the rest.
+    function available(id) {
+        return !DeviceInfoController.sender || textEdits[id] !== undefined || DeviceInfoController.senderKeeps(id)
+    }
+
     function trigger(window, id) {
         const target = window ? window.activeFocusItem : null
         // -- WP QP18 -- Undo and Redo: the focused field's own typing first

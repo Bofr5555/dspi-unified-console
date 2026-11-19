@@ -4,6 +4,7 @@
 
 #include "Core.h"
 #include "DeviceModel.h"
+#include "Shell.h"
 #include "Snapshot.h"
 
 #include "CoreApi.h"
@@ -16,6 +17,7 @@
 #include <memory>
 
 static const Registrar::Controller<DeviceInfoController> deviceInfoController;
+static const Registrar::Banner senderBanner("SenderBanner", 9);   // -- WP QTSENDER --
 
 namespace {
 
@@ -119,6 +121,21 @@ const AlinkField kAlinkFields[] = {
 
 DeviceInfoController::DeviceInfoController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &DeviceInfoController::onSnapshot);
+    // -- WP QTSENDER -- nothing that needs a DSP runs on the sender
+    if (ctx.shell)
+        ctx.shell->setActionGate(this, [this](const QString &action) { return !sender() || senderKeeps(action); });
+}
+
+// -- WP QTSENDER --
+bool DeviceInfoController::senderKeeps(const QString &action) const {
+    static const QStringList kept{
+        QStringLiteral("file.openFile"),        QStringLiteral("file.newFromTemplate"),  QStringLiteral("file.quit"),
+        QStringLiteral("edit.settings"),        QStringLiteral("device.events"),         QStringLiteral("device.identify"),
+        QStringLiteral("device.firmwareUpdate"), QStringLiteral("device.reconnect"),     QStringLiteral("device.devices"),
+        QStringLiteral("autoeq.clearFavorites"), QStringLiteral("autoeq.updateDatabase"), QStringLiteral("window.minimiseToTray"),
+        QStringLiteral("window.system"),
+    };
+    return action.startsWith(QLatin1String("help.")) || kept.contains(action);
 }
 
 DeviceInfoController *DeviceInfoController::create(QQmlEngine *, QJSEngine *) {

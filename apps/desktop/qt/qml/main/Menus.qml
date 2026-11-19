@@ -43,15 +43,21 @@ AppMenuBar {
                 const action = actionComponent.createObject(bar, { text: row.text, shortcut: row.shortcut || "" })
                 action.triggered.connect(() => bar.triggerRow(id))
                 action.text = Qt.binding(() => MenuTable.textOf(id, false))   // -- WP QP18 --
-                if (row.enabled) action.enabled = Qt.binding(row.enabled)   // -- WP QP18 --
+                // -- WP QTSENDER -- every row also greys where it does nothing (the alink sender)
+                const rowEnabled = row.enabled
+                if (rowEnabled) action.enabled = Qt.binding(() => MenuTable.available(id) && rowEnabled())   // -- WP QP18 --
+                else action.enabled = Qt.binding(() => MenuTable.available(id))
                 if (row.platformHidden) {
                     const hidden = row.platformHidden
-                    action.enabled = Qt.binding(() => DeviceModel.platformName !== hidden)
+                    action.enabled = Qt.binding(() => DeviceModel.platformName !== hidden && MenuTable.available(id))
                 }
                 const item = itemComponent.createObject(bar, { action: action, objectName: "Menu." + id })
                 item.Accessible.name = row.text
                 if (!shown) item.visible = false
-                else if (row.platformHidden) item.visible = Qt.binding(() => action.enabled)
+                else if (row.platformHidden) {
+                    const hiddenOn = row.platformHidden
+                    item.visible = Qt.binding(() => DeviceModel.platformName !== hiddenOn)
+                }
                 // A hidden row takes no room
                 item.height = Qt.binding(() => item.visible ? item.implicitHeight : 0)
                 menu.addItem(item)
@@ -103,7 +109,7 @@ AppMenuBar {
         favourites.forEach((f, i) => {
             const item = itemComponent.createObject(bar, { text: f.title, objectName: "Menu.autoeq.favorite." + i })
             item.Accessible.name = f.title
-            item.enabled = Qt.binding(() => AutoEqController.canApply)
+            item.enabled = Qt.binding(() => AutoEqController.canApply && MenuTable.available("autoeq.browse"))   // -- WP QTSENDER --
             const id = f.id
             item.triggered.connect(() => AutoEqController.apply(id))
             rows.push(item)

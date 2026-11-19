@@ -885,6 +885,21 @@ product string), reads it no image and grants no poll of what it does not list; 
 attachment's discovery on, so a core on top opens the sender as `AlinkSender` (and a paged DSP lists its pages);
 `link_connect` with a bare `v1` token and no expected hub id fails `token_without_hub_id` before any dial.
 
+**QTSENDER: Qt greys what does nothing on the alink sender.** [DONE] Size 0.5. Wave R1 (owner 2026-11-19: "do the
+controls actually do anything useful with a sender connected? If no, grey them out and put up a banner"). **Owns:**
+`DeviceInfoController::senderKeeps` and the gate it gives `Shell::trigger` (`Shell::setActionGate`, `allows`),
+`MenuTable.available`, the menu, shortcut, Settings sidebar, tool window, tray and update-window greying, new
+`qml/banners/SenderBanner.qml`, `smoke/SmokeQtSender.cpp` (section `qtsender`), demo generation code 8
+(`FakeDevice::sender(true)`) in `open_demo_generation`. **Did:** checked every menu row on the legacy and the dual-stack
+sender: only device info (Settings, Help > About), the audio link (the sender page, Window > System...), Firmware
+Update, the connection rows (Devices..., Reconnect, Open File..., New from Template...), Events, Identify (when the
+sender answers it), AutoEQ's local rows, the text-field Edit rows, Quit and Help do anything. Every other row, its
+shortcut and its tool window (already open or not) is greyed, not hidden, and `Shell::trigger` refuses it whoever
+asks; Settings greys its System and Control pages; the update window greys Export Configuration; the tray greys the
+volume. One banner in the main window says why. Web needed nothing (the sender screen replaces the DSP screens and
+their keys). Android: its route gate already held; its write keys (presets, Commit, Mute, ...) now do nothing on the
+sender.
+
 **PGSWIFT: Swift (coordinator, Mac VM).** [TODO] Size 1. Wave PG-D. **Owns:** the Swift device-info row; the
 core-backed paths' tests against the paged fakes. Its `CoreBackedTransport` needs no code (its opcodes go through the
 adapter). **Done when:** `ci/macvm.sh macos` builds and the core-backed tests pass with a G2s and a G2b fake.
