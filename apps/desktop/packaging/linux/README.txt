@@ -19,8 +19,9 @@ Or install it for yourself, with a menu entry:
 Opening a DSPi needs permission to use its USB interface. Your distribution
 may already give it to the person at the seat; if not, the app says so and
 offers to install a udev rule (it asks for an administrator's password once).
-./install.sh --udev installs the same rule now. The rule is
-70-uconsole-for-dspi.rules in this folder.
+Or install this folder's rule now, which also covers boards with older
+firmware: ./install.sh --udev puts 70-uconsole-for-dspi.rules in
+/etc/udev/rules.d/ and reloads udev's rules.
 
 Updating the firmware puts the board in BOOTSEL mode, where it shows as a USB
 drive; your desktop mounts it as it does any drive.

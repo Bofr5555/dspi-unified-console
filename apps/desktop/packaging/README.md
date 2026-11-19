@@ -13,7 +13,8 @@ From a clean commit, on the host (podman, the network for cargo's crates; nothin
 apps/desktop/packaging/build-release.sh [--key MINISIGN_SECRET_KEY] [output dir]
 ```
 
-It builds each file in its own image from the Containerfiles here and gathers them, under the names below,
+It builds each file in its own image from the Containerfiles here (an image is built again when its
+Containerfile changes: `image.sh` tags it by the Containerfile's hash) and gathers them, under the names below,
 in one flat folder (default `~/.cache/dspi-build/work/release-<version>`):
 
 | File | Built by, in | Installs |
@@ -47,9 +48,15 @@ no `SHA256SUMS`; the folder is complete otherwise, and `ci/release-sums.sh --key
 later. The release also carries the library sources (below).
 
 **Tests.** `linux/test-packages.sh <folder>` installs each Linux file in a clean container of its
-distributions (Debian 13; Fedora 43, 44; the AppImage on Ubuntu 24.04, Debian 13, Fedora 44) and runs the
+distributions (Debian 13; Fedora 43, 44) and runs the
 app on the demo device; it checks names, the udev rule, the notices, the feed rule and the archive's
-`install.sh`. `windows/test-installer.sh <setup.exe>` runs the installer under Wine:
+`install.sh`. <!-- WP APPIMG --> For the AppImage it runs `linux/test-appimage.sh`: on Ubuntu 24.04 and 25.04,
+Debian 13 and Fedora 44 with no Qt installed, `--version`, `ldd` over every ELF file in the AppImage, 15 s on the
+demo device on X11 and offscreen, and Help > About read from the running release binary (a test-only probe,
+`linux/appimage-probe.cpp`, preloaded): the version, the licence and the notice files, with every Qt library,
+plugin and QML module loaded from the AppImage itself; and that the udev instructions in `README.md` and the
+archive's `README.txt` match its rule and `install.sh`. `linux/test-appimage.sh --build` first builds the
+AppImage alone as the release does (`build-release.sh --appimage-only`). `windows/test-installer.sh <setup.exe>` runs the installer under Wine:
 `ci/check.sh --step qt-windows` builds the zip and the setup and runs it (also in `ci/matrix.sh`, row
 `windows-qt`).
 
