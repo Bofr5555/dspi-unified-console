@@ -209,7 +209,7 @@ async function passiveListens(page: Page, screen: Locator, browserName: string) 
   await expect(screen.getByRole("button", { name: "Start measuring" })).toHaveCount(0);
   await expect(screen.getByRole("button", { name: "Start live" })).toHaveCount(0);
   const passive = screen.getByRole("region", { name: "Passive microphone RTA" });
-  await expect(passive).toContainText("only the passive microphone RTA and the documents");
+  await expect(passive).toContainText(/only the passive microphone RTA and the documents/i);
   await passive.getByRole("button", { name: "Listen" }).click();
   const refused = screen.getByRole("alert").filter({ hasText: "Microphone capture did not start" });
   await expect(passive.getByRole("button", { name: "Stop listening" }).or(refused)).toBeVisible({ timeout: 15_000 });
@@ -223,7 +223,7 @@ async function passiveListens(page: Page, screen: Locator, browserName: string) 
   const graph = passive.getByRole("img", { name: "Passive microphone RTA" });
   await expect(graph).toHaveAttribute("data-series", "measured:Microphone RTA");
   expect(await graph.locator('path[data-kind="measured"]').count()).toBeGreaterThan(0);
-  await passive.getByRole("button", { name: "Hold" }).click();
+  await passive.getByRole("button", { name: "Hold", exact: true }).click();
   await expect(graph).toHaveAttribute("data-series", "measured:Microphone RTA|held:Held");
   await expect(passive.getByRole("img", { name: "Compared with the held spectrum" })).toBeVisible();
   await passive.getByRole("button", { name: "Stop listening" }).click();

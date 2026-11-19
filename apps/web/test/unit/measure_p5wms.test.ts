@@ -308,8 +308,14 @@ test("P5WMS: a passive capture port pushes its blocks into measureRtaPassivePush
   a.value!.port.postMessage({ kind: "block", firstFrame: 0, samples: new Float32Array([0.5, -0.25]), rateHz: 48000, clipped: false });
   for (let i = 0; i < 50 && rig.calls.length < 1; i++) await new Promise((r) => setTimeout(r, 5));
   assert.deepEqual(rig.calls, [{ method: "measureRtaPassivePush", params: { samples: [0.5, -0.25], rateHz: 48000 } }]);
+  // A port asked for ahead does not close the one in use.
+  const b = rig.route.answer(CAPTURE_OPEN, { to: "measure" });
+  a.value!.port.postMessage({ kind: "block", firstFrame: 2, samples: new Float32Array([0.125]), rateHz: 48000, clipped: false });
+  for (let i = 0; i < 50 && rig.calls.length < 2; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(rig.calls[1]?.method, "measureRtaPassivePush");
   rig.route.answer("measureCaptureClose");
   a.value!.port.close();
+  b.value!.port.close();
 });
 
 // ------------------------------------------------------------------ on the real core (demo device)

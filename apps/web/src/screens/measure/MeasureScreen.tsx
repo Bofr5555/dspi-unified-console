@@ -133,10 +133,12 @@ export class MeasureDesk {
   /** The Worker's capture port, asked for ahead of a run (see `openMic`), and where it sends. */
   private port: CaptureOpenRecord | null = null;
   private portTo: CaptureTarget = "measure";
+  private opening = false;
 
   private async preparePort(): Promise<void> {
     const to: CaptureTarget = this.passiveOnly ? "passive" : "measure";
-    if ((this.port && this.portTo === to) || (this.mic.kind === "sim" && to === "measure")) return;
+    // A new port closes the Worker's earlier one: never while a capture is open or opening.
+    if (this.opening || this.capture || (this.port && this.portTo === to) || (this.mic.kind === "sim" && to === "measure")) return;
     try {
       this.port = await measureCall(this.core, "measureCaptureOpen", { to });
       this.portTo = to;
@@ -232,6 +234,15 @@ export class MeasureDesk {
     // Firefox starts an audio context only close to the user's click: nothing slow comes first
     // (the Worker's port is asked for ahead, the simulated microphone switched off after).
     if (this.capture) await this.closeMic();
+    this.opening = true;
+    try {
+      return await this.openBrowserMic(to);
+    } finally {
+      this.opening = false;
+    }
+  }
+
+  private async openBrowserMic(to: CaptureTarget): Promise<number> {
     const open = this.port && this.portTo === to ? this.port : await measureCall(this.core, "measureCaptureOpen", { to });
     this.port = null;
     const env = this.env();

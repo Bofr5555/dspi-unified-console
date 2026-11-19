@@ -370,6 +370,9 @@ export function isMeasureEvent(e: unknown): e is MeasureEvent {
   return !!x && (x.event === "measure" || x.event === "measureLive") && typeof x.state === "object" && x.state !== null;
 }
 
+/** Capture ports the Worker keeps open at once. */
+export const MAX_PORTS = 4;
+
 /** How often the Worker turns a running session, ms (the core asks for about 50 ms). */
 export const TICK_MS = 50;
 
@@ -394,7 +397,8 @@ function clearTimer(env: { clearTimeout: typeof clearTimeout }, t: ReturnType<ty
 
 /** The Worker's part of a measurement: the capture port and the ticks (worker.ts). */
 export class MeasureWorkerRoute {
-  private unbind: (() => void) | null = null;
+  /** The open capture ports' bindings, oldest first (a page may ask for one ahead of a run). */
+  private readonly bound: (() => void)[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
   private tick: "measureTick" | "measureLiveTick" | null = null;
   /** Blocks pushed and refused since the port opened (the core's refusals are its answers). */
@@ -418,12 +422,17 @@ export class MeasureWorkerRoute {
   }
 
   /**
-   * `measureCaptureOpen {to}`: a new port (any earlier one is closed), its blocks to
-   * `measureCapturePush` or, `to: "passive"`, to `measureRtaPassivePush`; `measureCaptureClose`: closed.
+   * `measureCaptureOpen {to}`: a new port, its blocks to `measureCapturePush` or, `to: "passive"`,
+   * to `measureRtaPassivePush`; each port ends with its capture's end mark. Earlier ports stay
+   * (one may be in use while the page asks for the next), at most `MAX_PORTS`, the oldest
+   * closed first. `measureCaptureClose`: every port closed.
    */
   answer(method: string, params?: unknown): { value: CaptureOpenRecord | null; transfer: MessagePort[] } {
-    this.closeCapture();
-    if (method !== CAPTURE_OPEN) return { value: null, transfer: [] };
+    if (method !== CAPTURE_OPEN) {
+      this.closeCapture();
+      return { value: null, transfer: [] };
+    }
+    while (this.bound.length >= MAX_PORTS) this.bound.shift()?.();
     const ch = new this.env.MessageChannel();
     this.pushed = 0;
     this.refused = 0;
@@ -435,20 +444,21 @@ export class MeasureWorkerRoute {
         else await this.call("measureCapturePush", measurePushParams(b));
       },
       end: () => {
-        this.unbind = null;
+        const at = this.bound.indexOf(unbind);
+        if (at >= 0) this.bound.splice(at, 1);
       },
       issue: (i) => {
         if (i.kind === "push_failed") this.refused++;
         // A gap or a repeat is the core's to judge (S5): it sees the frame indices itself.
       },
     });
-    this.unbind = () => bound.unbind();
+    const unbind = () => bound.unbind();
+    this.bound.push(unbind);
     return { value: { port: ch.port2, workletUrl: this.env.workletUrl }, transfer: [ch.port2] };
   }
 
   closeCapture(): void {
-    this.unbind?.();
-    this.unbind = null;
+    for (const u of this.bound.splice(0)) u();
   }
 
   /** After a core call answered: start, keep or end the ticks. */
