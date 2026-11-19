@@ -187,6 +187,28 @@ microphone.*
 | **Device analyser** | The device's own spectrum of its inputs and outputs (the firmware's analyser). Not the Microphone RTA | | `rta.*` |
 | **Timing quality** | Whether a measurement's timing can be trusted for delay, polarity and crossover changes: "Timing reliable" or "Timing unreliable" (then only its magnitudes are used) | at most 10 µs per cycle | |
 
+### 3.5 Several units, the guard, and the firmware generations
+
+*WP DOCSYNC, 2026-11-19. Measuring several units together (PLAN-AT,
+[`docs/integrator/multi-unit-measurement.md`](integrator/multi-unit-measurement.md)), the hub's guard of a system apply
+([`docs/integrator/hub-api.md`](integrator/hub-api.md) section 23.4) and both firmware generations (PLAN-PG,
+[`docs/integrator/protocol-generations.md`](integrator/protocol-generations.md)). The words as the notices
+(`assets/notices/notices.json`) and the manual use them.*
+
+| Term | Meaning | Unit and range | Registry |
+|---|---|---|---|
+| **alink**, **dlink** | Short names in code, plans and file names only: **alink** is the audio link (section 3.1), **dlink** is DSPi Link, the network connection to a hub. Text a user reads says "Audio link" and "DSPi Link" in full. Never "link" alone for the audio link | | |
+| **Time base** | The sample counter several units share and play by: the audio link's frame counter, the USB time base of USB-direct units on one USB controller, or the one a DSPi set as an S/PDIF source carries to the units that follow it. Units on one time base can be measured and aligned together; "These units do not share a clock" otherwise | samples | |
+| **S/PDIF source**, **S/PDIF follower** | A DSPi that sends a DSPi time base on its S/PDIF output, and a DSPi that follows it on its S/PDIF input. A follower fed by other equipment (a TV, a receiver) finds no DSPi time base | | |
+| **Settle wait** | The hub's wait, up to 40 s, before a run starts: right after the units lock, or after anything disturbed their clock, it waits until it has seen them locked for 40 s. Said in words ("waiting for the units' clocks to settle"), never as an error | up to 40 s | |
+| **Anchor output** | The output every run of a large group repeats, so the runs can be joined through it; by default the first unit's first output | | |
+| **Lateness** | How much later than the others a unit plays what it is sent (its output delays, a USB-direct stream's start offset). The planner spaces the sweeps and the listening for it; a unit more than a second later is refused before anything plays | ms, up to 1000 | |
+| **Summed check** | Playing together the outputs where two drivers or two units meet, and comparing the sum with the prediction, before anything is applied and again in the verify. A disagreement of more than 1.5 dB withdraws the timing and crossover changes (between units: every delay between them) | dB | |
+| **Guard** | The way back of a guarded apply: a countdown after the change, during which Keep keeps it; when it runs out, or the console goes away, the settings from before are put back by themselves (by the hub, for a system apply or a guarded recall over DSPi Link). The feature is called Safe apply; the hub's side of a system apply is `docs/integrator/hub-api.md` section 23.4 | s | |
+| **Generation** | Which protocol a device's firmware speaks: **legacy** (1.1.6 and older, page 0, with or without this fork's extension channel) or **paged** (upstream 1.1.7 and later, commands by page and id). Shown in the device info; decided once per connection | | |
+| **Extension channel** | This fork's own requests (`REQ_EXTENSION` 0x00 on legacy firmware, the tunnel on page 0xE0 on paged firmware): the crossfeed pair map, core voltage, the audio link and its time base. Absent on stock firmware, where its features are hidden | | |
+| **alink sender** | The device that feeds the audio link from USB (section 3.1's Sender); it connects as its own device kind with its device info, its audio link block and the firmware update, and has no DSP screens | | |
+
 ## 4. Units
 
 | Unit | Meaning | Used for |

@@ -43,6 +43,28 @@ Release notes of earlier versions: `CHANGELOG-0.13.0.md`.
 - Each release's `SHA256SUMS` is signed with minisign; the release notes give the public
   key and how to check a download.
 
+### New features on `main` (summary, WP DOCSYNC, 2026-11-19)
+The root `README.md` (Status) describes each one; the plans in `docs/core-merge/` have the detail.
+- **A device you can trust** (PRO phase 1): snapshots, A/B compare, safe apply with a way
+  back, limits profiles, the installer lock and PIN, offline documents and templates,
+  document diff and partial import, undo groups and the AutoEQ preview, in every client.
+- **DSPi Link is encrypted.** The hub serves TLS 1.3 on its port and requires it by default;
+  clients pin the hub's key when they pair and refuse a hub whose key changed. Webhooks use
+  HTTPS and MQTT can use TLS. Upstream DSPi Link clients, which cannot encrypt, need the
+  hub's `--upstream-compat`.
+- **The hub works on its own** (PRO phase 2): inventory, health, Identify, a shared history,
+  alarms, notifications, parameters and snapshots by name, schedules, MQTT and Home
+  Assistant, and a REST mirror with API keys.
+- **The fleet in the web console** (PRO phase 3): groups, group writes and bulk apply, the
+  health board, the Overview, and the firmware rollout of the hub's USB devices. The hub
+  API v1 is frozen.
+- **Measurement and auto-tune** (PRO phase 5) in the web and desktop consoles, with a
+  calibrated microphone (UMIK, Dayton, REW, CSV files), speakers or headphones on a
+  coupler, and a guarded, verified apply; several units on one time base through the hub;
+  `uconsole measure` for documents and an EQ-only tune.
+- **Firmware 1.1.7** (upstream's paged protocol) is supported beside 1.1.6, with an update
+  check before every firmware write.
+
 ### Terminal
 - The command is now `uconsole`. `dspi` and `dspi-term` are no longer built or installed,
   and nothing is kept for the old name: scripts, shell completions and service files that

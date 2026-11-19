@@ -8,6 +8,11 @@ written before the core merge. For Qt and the Terminal, `docs/PORTABILITY.md` se
 **The Qt column of sections 1 to 3 and 5 is current (WP POSTSWAP, 2026-11-13):** after the rebuilt Qt app replaced the old
 one on `main`, every Qt cell was re-read against `apps/desktop` there (QP21's corrections, then QPI5, SWAPFIX and QP23).
 **Section 5 is the macOS floor, audited on this tree: where it disagrees with sections 1 to 4, section 5 wins.**
+**Status, 2026-11-19 (WP DOCSYNC, `main` at `11625ba5`):** sections H to K, the rows beyond the macOS floor, are
+current (I: the audio link system, J: measurement and auto-tune with several units, K: both firmware generations). The
+Swift app reaches its devices through the core by default (USB and USB MIDI, DSPi Link, firmware updates and the Mac's hub:
+SW-M1, SW5, SW6, SW-M2, SW-M3; section 4's notes), so its "whenever a core is attached" cells hold for a plain launch; only the opt-out paths (`-CoreTransport NO`,
+`-CoreHub NO`) lack them. A stale copy of the first J table, left below J11 by a merge, was removed.
 
 The reference is the **macOS Swift DSPi Console**: upstream Weeb Labs v1.1.6 (`51fd1bb`) plus our stack, branch `ext-channel-116` (`48cf7c5`). Our stack adds FakeTransport, USB MIDI, the iOS target, the iOS Link client UI and the extension channel. iOS builds from the same sources.
 
@@ -253,19 +258,6 @@ P5SPIKE's start-level runs; P5HIL is owed.*
 | J11 | -- WP ATDOC -- The system measurement's notices (`measure.system.*`, every key in words) | ✓ (ATWEB) | ✓ (ATQT) | later | later | later |
 
 The document model, the stores, the core's calls and the hub's family are built (P5MDOC, P5DOCK, P5HUB).
-
----|---|---|---|---|---|---|
-| J1 | A measurement run: walked sweeps through the generator, the safety ramp and aborts (S1 to S13), the device lock, the timing quality | P5WCAP, P5WMS | P5QCAP, P5QUI | ✗ (no microphone capture) | later batch | later batch |
-| J2 | Microphone calibration and targets: import of UMIK, REW and CSV files to `mic` and `target` documents; dB SPL, marked approximate until a calibrator check | P5WMS | P5QUI | P5TM (`measure mic import`, `measure target import`) | later batch | later batch |
-| J3 | Placements and couplers: listening position, several positions, near-field, headphones on a coupler with reseats | P5WMS | P5QUI | n.a. (no capture) | later batch | later batch |
-| J4 | Live response with the target and the predicted curve; "cut this peak", "fit this range" as one undo group | P5WMS | P5QUI | ✗ | later batch | later batch |
-| J5 | Microphone RTA (pink-referenced, 1/1 to 1/48 octave, hold and compare); the passive RTA for a Viewer | P5WMS | P5QUI | ✗ | later batch | later batch |
-| J6 | Auto-tune: delay and polarity, crossover corner and levels, the mandatory summed check, the target fit, one proposal applied guarded between two snapshots, A/B | P5WAT | P5QUI | P5TM (`measure tune ID`, from a document) | later batch | later batch |
-| J7 | The `measurement`, `mic` and `target` documents: local store and the hub's (`measure.doc.*`), merged with the hub's winning; rename, note, delete by role | P5WAT | P5QUI | P5TM (`measure docs`, `show`) | later batch | later batch |
-| J8 | REW text export of a measured output | the core call `measurement_export_rew` (P5DOCK); no screen WP names it yet | as Web | P5TM (`measure export`) | later batch | later batch |
-
-The document model under J7 is built (P5MDOC, `crates/dspi-measure/src/doc.rs`); the stores and calls are P5DOCK and
-P5HUB.
 
 <!-- WP PGDOC -->
 ### K. Both firmware generations (PLAN-PG)

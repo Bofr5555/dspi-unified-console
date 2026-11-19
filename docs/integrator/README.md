@@ -2,11 +2,12 @@
 
 For people who build DSPi processors into an installation, a product or another
 program: running the hub on a machine that stays on, reading and writing the
-document format, following the event log, and controlling the device from a
-microcontroller. The user-facing manual is separate (PRO1 E6): its first pages are in
+document format, following the event log, measuring and tuning, both firmware
+generations, and controlling the device from a microcontroller. The user-facing manual is separate (PRO1 E6): its first pages are in
 [`docs/manual/`](../manual/) (measurement, and the notices about firmware versions, hubs and updates).
 
-This is a skeleton (WP P0E, PRO1 E7). Each page says what exists today, with the
+This began as a skeleton (WP P0E, PRO1 E7); most pages are now built (the State
+column, brought current by WP DOCSYNC on 2026-11-19 at `main` `11625ba5`). Each page says what exists today, with the
 source that is the reference, and marks what is planned. Where a page and the
 code disagree, the code is right and the page is the bug.
 
@@ -23,7 +24,7 @@ Licensing of the software described here: see [`NOTICE.md`](../../NOTICE.md).
 | [event-log.md](event-log.md) | The per-device event log: file names, record fields, kinds, rotation, several writers | exists |
 | [diagnostics.md](diagnostics.md) | The diagnostics bundle: what is in it, what is left out | exists |
 | [firmware-control.md](firmware-control.md) | Controlling the device over its UART and I2C, without a computer | exists in the firmware; page is an outline |
-| [audio-link.md](audio-link.md) | The audio link's system model on the hub: topology, alignment, scenes at a frame, alarms, `system.*` messages | exists (host side; firmware partial) |
+| [audio-link.md](audio-link.md) | The audio link's system model on the hub: topology, alignment, scenes at a frame, alarms, `system.*` messages; USB-direct units and S/PDIF units on a DSPi time base (`spdif_lost`, `spdif_lock_error`, `time_base_lost`) | exists (host side; firmware partial) |
 | [usb-direct-home-theater.md](usb-direct-home-theater.md) | A home theatre fed over USB from one computer: cables, multi-TT hubs, isolators, power, capacity, PipeWire (`uconsole usb-direct generate`), D, lock and lock error (WP AUSB3) | guide; bench not run yet |
 | [hub-api.md](hub-api.md) | The hub API of PRO phases 2 and 3: encryption and pairing (`auth.rotate`, `key_next`, `tls_required`), inventory, Identify, health (with the health board's counters, clip rate and last change), the shared history, alarms, notifications out, parameters, presets and snapshots by name, schedules, MQTT and Home Assistant, the REST mirror and API keys, statistics; groups, group writes and bulk apply, and the firmware rollout (TLS only); the deviations from the DSPi Link spec (WP P2DOC; phase 3: WP P3DOC) | **v1 frozen 2026-11-16** (WP P3FRZ): additive only, a breaking change is `/api/v2/` and new message types; every section built |
 | [parameter-api.md](parameter-api.md) | The parameter API for other programs (PRO1 I1): a summary of hub-api.md's parameter sections | draft (P2PA) |
@@ -31,10 +32,10 @@ Licensing of the software described here: see [`NOTICE.md`](../../NOTICE.md).
 | [limits-profiles.md](limits-profiles.md) | Limits profiles: ranges an installation locks down (PRO1 S1) | built (P1LM) |
 | [installer-lock.md](installer-lock.md) | The installer's PIN, the locked-user state and the mode manifest (PRO1 S4, U7) | built (P1LK) |
 | [read-only-mode.md](read-only-mode.md) | The client read-only mode: a diagnostic that refuses every write in the core, not a security boundary (WP ROMODE) | built |
-| [measurement.md](measurement.md) | Measurement and auto-tune (PRO phase 5): the signal path through the device's generator, the safety rules, placements and couplers, the auto-tune's steps, the `measurement`, `mic` and `target` documents and their compact curves, the hub's store (WP P5MDOC) | draft; the documents (section 7) built |
+| [measurement.md](measurement.md) | Measurement and auto-tune (PRO phase 5): the signal path through the device's generator, the safety rules, placements and couplers, the auto-tune's steps, the `measurement`, `mic` and `target` documents and their compact curves, the hub's store, which client offers what (WP P5MDOC) | built, every section (WP P5FIN, 2026-11-19); the user's page is [the manual's measurement page](../manual/measurement.md) |
 <!-- WP PGDOC -->
 | [protocol-generations.md](protocol-generations.md) | Firmware 1.1.6 and 1.1.7 (PLAN-PG) for a client of the core: the generation and `device_protocol`, raw requests by id and what they refuse, the alink sender's limited connection, the update check and the core's write gate, known limits; the user's side is [the manual's notices page](../manual/notices.md) | built (WP PGDOC) |
-| [multi-unit-measurement.md](multi-unit-measurement.md) | Measuring several units together with one microphone (PLAN-AT): topologies that align (the line, USB-direct mode 2 on one controller, S/PDIF between DSPi units) and those that do not, the hub requirement and roles, leads, runs and the anchor, the summed check, apply, verify, Keep and Revert inside the hub's guard (WP ATDOC; the guard: WP ATGUARD, [hub-api.md section 23.4](hub-api.md#234-the-guard-of-a-system-apply)) | built |
+| [multi-unit-measurement.md](multi-unit-measurement.md) | Measuring several units together with one microphone (PLAN-AT): topologies that align (the line, USB-direct mode 2 on one controller, S/PDIF between DSPi units) and those that do not, the hub requirement and roles, leads, runs and the anchor, each unit's expected lateness (WP ATLATE), the summed check, apply, verify, Keep and Revert inside the hub's guard (WP ATDOC; the guard: WP ATGUARD, [hub-api.md section 23.4](hub-api.md#234-the-guard-of-a-system-apply)), trying it on the demo hub (`uconsole --demo hub --alink --with-measure-units`) | built; not run on real boards yet (ATHIL) |
 
 ## Ways in, today
 
