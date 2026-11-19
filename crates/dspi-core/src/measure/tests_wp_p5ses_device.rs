@@ -1439,7 +1439,12 @@ fn own_user_volume_echo(r: &Rig, db: f32) {
     ];
     p.extend_from_slice(&off.to_le_bytes());
     p.extend_from_slice(&4u16.to_le_bytes());
-    p.extend_from_slice(&[dspi_proto::generated::notify::PARAM_SRC_HOST_SET as u8, 0, 0, 0]);
+    p.extend_from_slice(&[
+        dspi_proto::generated::notify::PARAM_SRC_HOST_SET as u8,
+        0,
+        0,
+        0,
+    ]);
     p.extend_from_slice(&db.to_le_bytes());
     r.remote.push(p);
 }
@@ -1450,9 +1455,7 @@ fn stop_nows(r: &Rig, from: usize) -> usize {
         .unwrap()
         .iter()
         .skip(from)
-        .filter(|q| {
-            q.op == op::REQ_SIGGEN_CONTROL && q.value == crate::consts::SIGGEN_CTL_STOP_NOW
-        })
+        .filter(|q| q.op == op::REQ_SIGGEN_CONTROL && q.value == crate::consts::SIGGEN_CTL_STOP_NOW)
         .count()
 }
 
