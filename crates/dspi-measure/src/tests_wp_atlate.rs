@@ -365,8 +365,7 @@ fn analyse_polled(
             let Some(seg) = schedule
                 .segments()
                 .iter()
-                .filter(|s| s.unit == u && s.start <= t)
-                .next_back()
+                .rfind(|s| s.unit == u && s.start <= t)
             else {
                 continue;
             };
