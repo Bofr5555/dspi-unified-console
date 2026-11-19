@@ -40,7 +40,10 @@ else
     # and 386 s loaded after QD22 (review c6d), so twice quiet is 710 s; 900 s
     # leaves room for the next section. A hang is still caught first by the
     # section watchdog, and by this total at worst.
-    timeout 900 "$app" "${args[@]}" > "$out/log.txt" 2>&1
+    # -- review AT-E -- Rule kept, total raised again: the main run is 592 s
+    # quiet after WP ATQTSIM (atqtsim-units 77 s, p5demo-sim 83 s), so twice
+    # quiet is 1184 s; 900 s left a loaded host a third of the run as margin.
+    timeout 1200 "$app" "${args[@]}" > "$out/log.txt" 2>&1
     code=$?
     grep -E '^(smoke:|FAIL)' "$out/log.txt"
 fi
