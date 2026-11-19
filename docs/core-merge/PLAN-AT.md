@@ -724,6 +724,13 @@ One Fable review for AT-A and AT-B together (0.75).
   chained runs (else the 20 us arrival check never runs) and judge output pairs across chained runs (two outputs offered
   against the anchor may differ by up to 14 us); update the op list (0-10) in `dspi_apply_at_frame`'s C doc and
   `apps/web/src/core/protocol.ts`; wire `time_base_event` (0xE4) into `dspi_session::events`.
+- **From the FW-B/FW-C review (`work/review-fwbc/REPORT.md`):** ATHUB writes a unit's op 9 at most 120 s before its T,
+  gates on `EXT_SIGGEN_TIMELINE` and `disturbances`, and waits for the servo to settle (about 40 s after first lock)
+  before a run: the S/PDIF follower skew is 0.1-0.2 frame at 10 s with realistic feed-forward errors (N1) and the line
+  pairs reach 0.068 frame at 6 s (N2). The done lines "under 0.05 frame / 0.1" read as settled skew, each unit against
+  the domain, pairs under 0.1 (LK6). ATHIL Part A names the outputs for `siggen_sync_bench.py` (never a tweeter at
+  -20 dBFS by default, N4) and checks first: an idle S/PDIF source's op 9 starts on T, a follower in lock error stays
+  silent, a queued op is cancelled across a source restart (fixes F1-F5 are host-tested only in part).
 - **ATHUBM:** zero `tx_mask` when a source becomes a follower (ATPROTO refuses it locally on a non-source).
 - **Plan risk (section 1.4):** with a P5SPIKE-class USB microphone (55-100 ppm wander bursts) every system run is
   refused "timing unreliable" (0 of 30 seeds pass P5's gate). Safe, but "overlapped starts" (Later) is probably needed
