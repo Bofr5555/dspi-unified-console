@@ -192,6 +192,11 @@ struct RunOptions {
     /// USB-direct unit Rear L/R's host is out of range from the start, so it
     /// is in lock error (muted, or unaligned as set).
     with_usb_lock_error: bool,
+    // -- WP ATWEB --
+    /// `--with-measure-units` (a test option, with `--demo --alink`): units on
+    /// the time-base contract for measuring several units together
+    /// ([`demo_measure_units`]).
+    with_measure_units: bool,
     // -- WP P2TM --
     /// `--rest`: the REST mirror under `/api/v1/`.
     rest: bool,
@@ -546,6 +551,9 @@ OPTIONS:
                               simulated DSPi without the audio link (unit P)
     --with-usb-lock-error     test option, with --demo --alink: the USB-direct
                               unit Rear L/R can't lock (its host out of range)
+    --with-measure-units      test option, with --demo --alink: units on one
+                              time base to measure together (one re-anchors
+                              every 15 s), one on another, and S/PDIF units
     --with-rollout-bench      test option, with --demo --rollout: one more
                               simulated DSPi as if on this machine's USB, and a
                               simulated bootloader and writer (nothing is written)
@@ -657,6 +665,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
     // -- WP HWLK1F --
     let (mut with_usb, mut with_plain_unit) = (false, false);
     let mut with_usb_lock_error = false; // -- WP AUSB2 --
+    let mut with_measure_units = false; // -- WP ATWEB --
     // -- WP P2TM --
     let (mut rest_api, mut data, mut services) = (false, None, Services::default());
     // -- WP SECSRV --
@@ -721,6 +730,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
             "--with-usb" => with_usb = true,
             "--with-plain-unit" => with_plain_unit = true,
             "--with-usb-lock-error" => with_usb_lock_error = true,
+            "--with-measure-units" => with_measure_units = true, // -- WP ATWEB --
             // -- WP P2TM --
             "--rest" => rest_api = true,
             "--data" => {
@@ -791,6 +801,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 | "--with-usb"
                 | "--with-plain-unit"
                 | "--with-usb-lock-error"
+                | "--with-measure-units" // -- WP ATWEB --
                 // -- WP P2TM --
                 | "--rest"
                 | "--no-health"
@@ -850,6 +861,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 (with_usb, "--with-usb"),
                 (with_plain_unit, "--with-plain-unit"),
                 (with_usb_lock_error, "--with-usb-lock-error"),
+                (with_measure_units, "--with-measure-units"), // -- WP ATWEB --
             ] {
                 if given && !alink {
                     return Err(usage(format!(
@@ -923,6 +935,7 @@ fn parse(args: &[&str], demo: bool, default_store: Option<PathBuf>) -> Result<Hu
                 with_usb,
                 with_plain_unit,
                 with_usb_lock_error,
+                with_measure_units, // -- WP ATWEB --
                 // -- WP P2TM --
                 rest: rest_api,
                 data,
@@ -1287,6 +1300,7 @@ fn start_with(
             &running.handle,
             opts.with_plain_unit,
             opts.with_usb_lock_error,
+            opts.with_measure_units, // -- WP ATWEB --
         )?;
         // -- WP HWLK1F --
         if opts.with_usb {
@@ -1430,7 +1444,12 @@ fn plain_unit_model() -> Value {
 // -- WP SW3 --
 /// Attach `--demo --alink`'s devices and give the hub their model, unless
 /// its store keeps one already (an installer's edits survive a restart).
-fn demo_alink(handle: &HubHandle, plain_unit: bool, usb_lock_error: bool) -> Result<(), Failure> {
+fn demo_alink(
+    handle: &HubHandle,
+    plain_unit: bool,
+    usb_lock_error: bool,
+    measure_units: bool, // -- WP ATWEB --
+) -> Result<(), Failure> {
     for (serial, setup) in alink_rig() {
         handle
             .attach(
@@ -1457,10 +1476,18 @@ fn demo_alink(handle: &HubHandle, plain_unit: bool, usb_lock_error: bool) -> Res
             .attach(Box::new(FakeDevice::demo().with_serial(PLAIN_SERIAL)), 0)
             .map_err(|e| Failure::Failed(format!("{PLAIN_SERIAL} did not attach: {e}")))?;
     }
+    // -- WP ATWEB --
+    if measure_units {
+        demo_measure_units(handle)?;
+    }
     if handle.system_model().0.units.is_empty() {
         let mut value = alink_model();
         if plain_unit && let Some(units) = value.get_mut("units").and_then(Value::as_array_mut) {
             units.push(plain_unit_model());
+        }
+        // -- WP ATWEB --
+        if measure_units && let Some(units) = value.get_mut("units").and_then(Value::as_array_mut) {
+            units.extend(measure_units_model());
         }
         let model = serde_json::from_value(value)
             .map_err(|e| Failure::Failed(format!("the demo's system model: {e}")))?;
@@ -1469,6 +1496,108 @@ fn demo_alink(handle: &HubHandle, plain_unit: bool, usb_lock_error: bool) -> Res
             .map_err(|e| Failure::Failed(format!("the demo's system model: {e}")))?;
     }
     Ok(())
+}
+
+// -- WP ATWEB --
+/// `--with-measure-units`' units on the audio link's time base (one domain,
+/// sender id 0x21): the web's and Qt's "several units" step measures them.
+pub(crate) const MEASURE_UNITS: [&str; 3] = ["DEMO-TB-A", "DEMO-TB-B", "DEMO-TB-C"];
+// -- WP ATWEB --
+/// The unit of [`MEASURE_UNITS`] that re-anchors every [`MEASURE_REANCHOR`]
+/// (a unit losing its lock, which aborts any measurement it is in).
+pub(crate) const MEASURE_REANCHORS: &str = "DEMO-TB-C";
+// -- WP ATWEB --
+/// A unit on another sender's time base (not one clock with the others).
+pub(crate) const MEASURE_OTHER: &str = "DEMO-TB-X";
+// -- WP ATWEB --
+/// The S/PDIF source and its follower (in lock error: what it hears carries
+/// no DSPi time base).
+pub(crate) const MEASURE_SPDIF: [&str; 2] = ["DEMO-SPDIF-SRC", "DEMO-SPDIF-REAR"];
+// -- WP ATWEB --
+const MEASURE_REANCHOR: Duration = Duration::from_secs(15);
+// -- WP ATWEB --
+/// How long after the hub first saw a unit locked a run may start: shorter
+/// than the hub's 40 s for a demo, long enough that the wait shows in words.
+const MEASURE_SETTLE: Duration = Duration::from_secs(8);
+
+// -- WP ATWEB --
+/// Attach `--with-measure-units`' fakes (WP ATFAKE: firmware with the
+/// time-base contract and generator starts on it). Nothing plays anywhere:
+/// the fakes' generators are arithmetic.
+fn demo_measure_units(handle: &HubHandle) -> Result<(), Failure> {
+    use dspi_transport::fake::{FakeTimeBase, FakeTimeBaseUnit, SpdifSetup, TimeBaseFault};
+    handle.set_system_measure_settle(MEASURE_SETTLE);
+    let attach = |dev: FakeDevice, serial: &str| {
+        handle
+            .attach(Box::new(dev), 0)
+            .map(|_| ())
+            .map_err(|e| Failure::Failed(format!("{serial} did not attach: {e}")))
+    };
+    let line = FakeTimeBase::line(0x21);
+    let mut reanchors = None;
+    for serial in MEASURE_UNITS {
+        let dev =
+            FakeDevice::demo_on_time_base(&line, FakeTimeBaseUnit::Line(AlinkSetup::default()))
+                .with_serial(serial);
+        if serial == MEASURE_REANCHORS {
+            reanchors = Some(dev.remote());
+        }
+        attach(dev, serial)?;
+    }
+    let other = FakeTimeBase::line(0x22);
+    attach(
+        FakeDevice::demo_on_time_base(&other, FakeTimeBaseUnit::Line(AlinkSetup::default()))
+            .with_serial(MEASURE_OTHER),
+        MEASURE_OTHER,
+    )?;
+    let spdif = FakeTimeBase::spdif(0x5d1f);
+    let [src, rear] = MEASURE_SPDIF;
+    attach(
+        FakeDevice::demo_on_time_base(
+            &spdif,
+            FakeTimeBaseUnit::Spdif(SpdifSetup {
+                tx_mask: 0b1000,
+                ..SpdifSetup::source()
+            }),
+        )
+        .with_serial(src),
+        src,
+    )?;
+    let follower =
+        FakeDevice::demo_on_time_base(&spdif, FakeTimeBaseUnit::Spdif(SpdifSetup::follower(192)))
+            .with_serial(rear);
+    follower
+        .remote()
+        .time_base_fault(TimeBaseFault::LockError(true));
+    attach(follower, rear)?;
+    if let Some(remote) = reanchors {
+        std::thread::Builder::new()
+            .name("demo-reanchor".into())
+            .spawn(move || {
+                loop {
+                    std::thread::sleep(MEASURE_REANCHOR);
+                    remote.time_base_fault(TimeBaseFault::Reanchor);
+                }
+            })
+            .map_err(|e| Failure::Failed(format!("the demo's re-anchor timer: {e}")))?;
+    }
+    Ok(())
+}
+
+// -- WP ATWEB --
+/// `--with-measure-units`' S/PDIF units in the demo model: the source (fed by
+/// nothing the model holds, its time base on outputs 7 and 8) and its
+/// follower, both in the bar. The time-base units are measured, not modelled.
+fn measure_units_model() -> Vec<Value> {
+    let [src, rear] = MEASURE_SPDIF;
+    vec![
+        json!({"id": "S", "name": "S/PDIF source", "serial": src, "room": "bar",
+               "upstream": "", "transport": "spdif", "spdifSource": true, "spdifTxMask": 8,
+               "speakers": [{"output": 0, "distanceM": 2.0}]}),
+        json!({"id": "SR", "name": "S/PDIF rear", "serial": rear, "room": "bar",
+               "upstream": "S", "transport": "spdif",
+               "speakers": [{"output": 0, "distanceM": 2.4}]}),
+    ]
 }
 
 // -- WP WB7 --
@@ -2748,6 +2877,7 @@ mod tests_wp_tm11 {
             with_usb: false,
             with_plain_unit: false,
             with_usb_lock_error: false,
+            with_measure_units: false, // -- WP ATWEB --
             // -- WP P2TM --
             rest: false,
             data: None,
@@ -3724,6 +3854,7 @@ mod tests_wp_sw3 {
             with_usb: false,
             with_plain_unit: false,
             with_usb_lock_error: false,
+            with_measure_units: false, // -- WP ATWEB --
             // -- WP P2TM --
             rest: false,
             data: None,
@@ -3830,6 +3961,7 @@ mod tests_wp_hwlk1f {
             with_usb: false,
             with_plain_unit: false,
             with_usb_lock_error: false,
+            with_measure_units: false, // -- WP ATWEB --
             // -- WP P2TM --
             rest: false,
             data: None,
@@ -3904,6 +4036,56 @@ mod tests_wp_hwlk1f {
             r.writes
         );
         assert!(!r.on_time);
+        drop(running);
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    // -- WP ATWEB --
+    /// `--with-measure-units`: a test option of `--demo --alink` only; its
+    /// units attach (three on one time base, one on another, the S/PDIF pair
+    /// in the model, the follower in lock error) and the hub serves
+    /// `system_measure`.
+    #[test]
+    fn wp_atweb_the_measure_units_join_the_demo_installation() {
+        let o = run(&["--alink", "--with-measure-units"], true).unwrap();
+        assert!(o.alink && o.with_measure_units);
+        assert!(matches!(
+            run(&["--with-measure-units"], true),
+            Err(Failure::Usage(_))
+        ));
+        assert!(!run(&["--alink"], true).unwrap().with_measure_units);
+        let store = scratch("measure-units");
+        let mut opts = options(&store);
+        opts.alink = true;
+        opts.with_measure_units = true;
+        let running = start(&opts, false).unwrap();
+        let online: Vec<String> = running
+            .handle
+            .devices()
+            .into_iter()
+            .map(|d| d.identity.serial)
+            .collect();
+        for s in MEASURE_UNITS
+            .iter()
+            .chain([&MEASURE_OTHER])
+            .chain(MEASURE_SPDIF.iter())
+        {
+            assert!(online.iter().any(|x| x == s), "{s} in {online:?}");
+        }
+        let (model, _) = running.handle.system_model();
+        let spdif: Vec<&str> = model
+            .units
+            .iter()
+            .filter(|u| u.spdif() || u.spdif_source)
+            .map(|u| u.serial.as_str())
+            .collect();
+        assert_eq!(spdif, MEASURE_SPDIF.to_vec());
+        let status = running.handle.system_status();
+        let rear = status.observed[MEASURE_SPDIF[1]]
+            .spdif
+            .as_ref()
+            .expect("the follower's S/PDIF read");
+        assert!(rear.lock_error, "{rear:?}");
         drop(running);
         let _ = std::fs::remove_dir_all(&store);
     }

@@ -432,7 +432,7 @@ export type CoreEvent =
   | { event: "hubServer"; events: HubServerEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */, ClipboardMethods /* -- WP WBCLIP -- */, MeasureMethods /* -- WP P5WMS -- */ {
+export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */, ClipboardMethods /* -- WP WBCLIP -- */, MeasureMethods /* -- WP P5WMS -- */, MeasureSystemMethods /* -- WP ATWEB -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -1835,3 +1835,182 @@ export interface ClipboardMethods {
    */
   pasteChannel: { params: { clip: ChannelClip | string; ch: number; mirror?: number }; result: null };
 }
+
+// -- WP ATWEB -- the system measurement across units (crates/dspi-wasm/src/measure_system.rs over
+// dspi_core::measure::system, PLAN-AT 1.4 and 1.5). The Worker on the hub session runs the
+// session; each unit's own Worker answers `measureSystemUnitCheck` for its unit. Shapes are the
+// core's records in camelCase; a field the core may leave out is optional here.
+
+/** One measured output of a unit (P5's `MeasureOutput`; `group` is ignored here). */
+export interface MeasureSystemOutputRecord {
+  output: number;
+  role: "full" | "sub" | "low" | "mid" | "high";
+  speaker?: string;
+  inverted?: boolean;
+}
+
+/** `dspi_core::MeasureSystemUnit`: a unit by its serial and the outputs measured on it. */
+export interface MeasureSystemUnitRecord {
+  serial: string;
+  outputs: MeasureSystemOutputRecord[];
+}
+
+/** `dspi_core::MeasureSystemSetup`: every number 0 (or absent) is the plan's default. */
+export interface MeasureSystemSetupRecord {
+  units: MeasureSystemUnitRecord[];
+  passes?: number;
+  anchorSerial?: string;
+  anchorOutput?: number | null;
+  micDocument?: string;
+  sweepMs?: number;
+  gapMs?: number;
+  ceilingDb?: number | null;
+  splCapDb?: number | null;
+  captureRateHz?: number;
+  leadMs?: number;
+  leaseMs?: number;
+  name?: string;
+}
+
+/** An issue naming its unit ("" when it concerns no one unit). */
+export interface MeasureSystemIssueRecord {
+  serial: string;
+  key: string;
+  output?: number | null;
+  message: string;
+}
+
+/** One unit judged by its own core; `context` is opaque to the page. */
+export interface MeasureSystemUnitCheckRecord {
+  serial: string;
+  preflight: { clear: boolean; blockers: { key: string; output?: number | null; message: string }[]; warnings: { key: string; output?: number | null; message: string }[] };
+  context: string;
+}
+
+export interface MeasureSystemPreflightRecord {
+  clear: boolean;
+  blockers: MeasureSystemIssueRecord[];
+  warnings: MeasureSystemIssueRecord[];
+}
+
+export type MeasureSystemPhase = "idle" | "pre_roll" | "ramp" | "run" | "analysing" | "done" | "aborted" | "failed";
+export type MeasureSystemPurpose = "measure" | "sum_check" | "verify";
+
+export interface MeasureSystemStateRecord {
+  phase: MeasureSystemPhase;
+  purpose: MeasureSystemPurpose;
+  active: boolean;
+  wantsCapture: boolean;
+  captureRateHz: number;
+  serial: string;
+  output?: number | null;
+  levelDb?: number | null;
+  rampLevels: { serial: string; output: number; levelDb: number }[];
+  run: number;
+  runs: number;
+  frames: number;
+  progress: number;
+  issue?: MeasureSystemIssueRecord | null;
+  resultReady: boolean;
+  timingReliable?: boolean | null;
+  /** What the session waits for, in words ("waiting for the units' clocks to settle"), or "". */
+  words: string;
+}
+
+export interface MeasureSystemArrivalRecord {
+  serial: string;
+  output: number;
+  arrivalUs: number;
+  measuredUs: number;
+  uncertaintyUs?: number | null;
+  offered: boolean;
+  reason: string;
+}
+
+export interface MeasureSystemDelayRecord {
+  fromSerial: string;
+  fromOutput: number;
+  toSerial: string;
+  toOutput: number;
+  delayUs: number;
+  uncertaintyUs?: number | null;
+  offered: boolean;
+  reason: string;
+}
+
+export interface MeasureSystemTransitionRecord {
+  aSerial: string;
+  aOutput: number;
+  bSerial: string;
+  bOutput: number;
+  bandLoHz: number;
+  bandHiHz: number;
+  checked: boolean;
+  passed: boolean;
+  rmsDb?: number | null;
+  message: string;
+}
+
+export interface MeasureSystemResultRecord {
+  documents: { serial: string; document: string }[];
+  arrivals: MeasureSystemArrivalRecord[];
+  delays: MeasureSystemDelayRecord[];
+  transitions: MeasureSystemTransitionRecord[];
+  timingReliable: boolean;
+  reasons: string[];
+  runIds: number[];
+  runs: number;
+}
+
+export interface MeasureSystemProposalRecord {
+  id: number;
+  arrivals: MeasureSystemArrivalRecord[];
+  withheld: MeasureSystemArrivalRecord[];
+  transitions: MeasureSystemTransitionRecord[];
+  sumCheckNeeded: boolean;
+  withdrawn: boolean;
+  offered: boolean;
+  mayApply: boolean;
+  notice?: MeasureSystemIssueRecord | null;
+}
+
+export type MeasureSystemApplyStage = "none" | "applied" | "verified" | "kept" | "reverted";
+
+export interface MeasureSystemAppliedRecord {
+  stage: MeasureSystemApplyStage;
+  revisionBefore: number;
+  revisionAfter: number;
+  snapshots: { serial: string; outDelaysMs: { output: number; delayMs: number }[] }[];
+  writesOk: number;
+  writeFailures: string[];
+  verified?: boolean | null;
+  message: string;
+}
+
+export interface MeasureSystemMethods {
+  /** On a unit's own core: P5's preflight of `unit` on this device's mirror. `invalid` for another unit. */
+  measureSystemUnitCheck: { params: { setup: MeasureSystemSetupRecord; unit: MeasureSystemUnitRecord }; result: MeasureSystemUnitCheckRecord };
+  measureSystemPreflight: { params: { setup: MeasureSystemSetupRecord; checks: MeasureSystemUnitCheckRecord[] }; result: MeasureSystemPreflightRecord };
+  measureSystemStart: { params: { setup: MeasureSystemSetupRecord; checks: MeasureSystemUnitCheckRecord[] }; result: MeasureSystemStateRecord };
+  measureSystemCapturePush: { params: { firstFrame: number; samples: number[]; rateHz: number; clipped: boolean }; result: MeasureSystemStateRecord };
+  measureSystemTick: { params: undefined; result: MeasureSystemStateRecord };
+  measureSystemState: { params: undefined; result: MeasureSystemStateRecord };
+  measureSystemStop: { params: undefined; result: MeasureSystemStateRecord };
+  measureSystemResult: { params: undefined; result: MeasureSystemResultRecord };
+  measureSystemProposal: { params: undefined; result: MeasureSystemProposalRecord };
+  /** Each unit's fresh check, got from its own core right before this call. */
+  measureSystemSumCheck: { params: { checks: MeasureSystemUnitCheckRecord[] }; result: MeasureSystemStateRecord };
+  /** Admin: `denied` below it, nothing sent. */
+  measureSystemApply: { params: { proposalId: number }; result: MeasureSystemAppliedRecord };
+  /** Each unit's fresh check, as `measureSystemSumCheck`. */
+  measureSystemVerify: { params: { checks: MeasureSystemUnitCheckRecord[] }; result: MeasureSystemStateRecord };
+  measureSystemApplied: { params: undefined; result: MeasureSystemAppliedRecord };
+  /** After a failed verify the first Keep is refused (`invalid`; `measureSystemApplied().message` says why). */
+  measureSystemKeep: { params: undefined; result: MeasureSystemAppliedRecord };
+  /** Admin. */
+  measureSystemRevert: { params: undefined; result: MeasureSystemAppliedRecord };
+  /** The Worker's own (never the core's): a capture port whose blocks go to `measureSystemCapturePush`. */
+  measureSystemCaptureOpen: { params: undefined; result: { port: MessagePort; workletUrl: string } };
+  measureSystemCaptureClose: { params: undefined; result: null };
+}
+// -- end WP ATWEB --

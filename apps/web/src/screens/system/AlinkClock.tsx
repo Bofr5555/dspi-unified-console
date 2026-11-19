@@ -52,7 +52,9 @@ import {
   type OnLockError,
   type SystemModel,
   type WriteResult,
+  isSpdifFed, // -- WP ATWEB --
 } from "./model";
+import { SpdifUnitsTable } from "./SpdifUnits"; // -- WP ATWEB --
 
 export function AlinkClock(props: { feed: SystemFeed; ask: Ask }) {
   const st = useFeed(props.feed);
@@ -93,6 +95,8 @@ export function AlinkClock(props: { feed: SystemFeed; ask: Ask }) {
       <UnitsTable feed={props.feed} model={shown} admin={admin} onEdit={edit} />
       {/* -- WP AUSB1 -- */}
       <UsbUnitsTable feed={props.feed} model={shown} admin={admin} onEdit={edit} />
+      {/* -- WP ATWEB -- */}
+      <SpdifUnitsTable feed={props.feed} model={shown} admin={admin} onEdit={edit} />
       <SlotMatrix model={shown} admin={admin} onEdit={edit} />
       {draft && stale ? (
         <div class="sys-save sys-stale" role="alert" aria-label="Installation changed on the hub">
@@ -206,7 +210,7 @@ function UnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boolea
             </tr>
           </thead>
           <tbody>
-            {model.units.filter((u) => !isUsbDirect(u)).map((u) => {
+            {model.units.filter((u) => !isUsbDirect(u) && !isSpdifFed(u) /* -- WP ATWEB -- */).map((u) => {
               const plan = a?.units.find((p) => p.unit === u.id);
               const o = st.status?.observed[u.serial];
               const read = o?.phase;
@@ -445,7 +449,7 @@ function UsbUnitsTable(props: { feed: SystemFeed; model: SystemModel; admin: boo
 function SlotMatrix(props: { model: SystemModel; admin: boolean; onEdit: (m: SystemModel) => void }) {
   const { model: full } = props;
   // -- WP AUSB1 -- a USB-direct unit takes no audio link channels
-  const model = { ...full, units: full.units.filter((u) => !isUsbDirect(u)) };
+  const model = { ...full, units: full.units.filter((u) => !isUsbDirect(u) && !isSpdifFed(u) /* -- WP ATWEB -- */) };
   const channels = senderChannels(model);
   return (
     <>
