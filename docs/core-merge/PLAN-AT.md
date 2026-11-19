@@ -837,7 +837,7 @@ dspi-measure. **Deps:** ATE2E. *Limit (review AT-D1 F2; ATDOC):* the walked anal
 the run's first arrival, so the usable timeline spread is about 85 ms, far less than `MAX_SUM_SPREAD_MS`; an output heard
 later is not offered (fail closed).
 
-**ATWEB: Web: measuring several units.** [DONE 2026-11-19: review/atd2 (review AT-D2)] Size 1.5. Wave AT-D. **Owns:** new
+**ATWEB: Web: measuring several units.** [DONE 2026-11-19: review/atd2 (review AT-D2), main `06b5ce63`] Size 1.5. Wave AT-D. **Owns:** new
 `apps/web/src/screens/measure/system/` (an "alignment group across units" step in P5WMS's measure screen through its
 tab slot), the S/PDIF transport in the web's system editor (unit fed by S/PDIF from a source), web typings in
 `apps/web/src/core/protocol.ts` (marker). **Done when:** web e2e on the demo hub with fake units: plan, run, abort,
@@ -845,7 +845,7 @@ result, proposal shown, apply refused for Control and done for Admin; notices fo
 not share a clock", "unit lost lock", "needs N runs", "this S/PDIF source does not carry a DSPi time base". **Deps:**
 AT-C; P5WMS merged.
 
-**ATDEMO: The demo hub's simulated microphone across units; the hub's abort in words.** [DONE] Size 1. Wave AT-D
+**ATDEMO: The demo hub's simulated microphone across units; the hub's abort in words.** [DONE 2026-11-19: review/atd2, main `06b5ce63`] Size 1. Wave AT-D
 (follow-up to ATWEB's two requests). **Owns:** new `crates/dspi-hub/src/system/measure/demo_room.rs` (feature
 `demo-room`, ATSIM's world), new `crates/dspi-core/src/measure/system/sim.rs`, new `crates/dspi-hub/tests/wp_atdemo_room.rs`;
 under markers: the `demo` block of the seam's `system/messages.rs`, the family's `demo_mic` branch and room slot
@@ -878,17 +878,17 @@ fails the verify with Keep refused once; `wp_atdemo_room` shows every refusal; t
 the feed, the refusals); the web e2e (Chromium) shows the result, the proposal, the summed check, Apply absent for
 Control (the Admin notice) and done for Admin, the verify, Revert and the two-step Keep. ATQT can use the same option.
 
-**ATQT: Qt: measuring several units.** [DONE 2026-11-19: review/atd2 (review AT-D2)] Size 1.5. Wave AT-D. **Owns:** a new Qt controller and view for the group
+**ATQT: Qt: measuring several units.** [DONE 2026-11-19: review/atd2 (review AT-D2), main `06b5ce63`] Size 1.5. Wave AT-D. **Owns:** a new Qt controller and view for the group
 step beside P5QUI's measurement pages (registrar line, marker), the S/PDIF transport in Qt's system editor. **Done when:**
 Qt tests on the demo hub as ATWEB's; the same notices. **Deps:** AT-C; P5QUI merged.
 
-**ATDOC: Docs.** [DONE 2026-11-19: review/atd2 (review AT-D2)] Size 1. Wave AT-D. **Owns:** new `docs/integrator/multi-unit-measurement.md` (topologies that
+**ATDOC: Docs.** [DONE 2026-11-19: review/atd2 (review AT-D2), main `06b5ce63`] Size 1. Wave AT-D. **Owns:** new `docs/integrator/multi-unit-measurement.md` (topologies that
 align: line, USB-direct mode 2 on one controller, S/PDIF between DSPi units; what does not; the hub requirement; leads;
 runs and the anchor), the user manual's measurement chapter section, `docs/PARITY.md` rows, this plan's `[DONE]` marks.
 **Done when:** links resolve; every notice key of ATWEB and ATQT appears; the topology table matches section 1.1.
 **Deps:** AT-C (writes alongside ATWEB and ATQT; disjoint files).
 
-**ATGUARD: The hub guards a system apply.** [DONE] Size 0.75. Wave AT-D (follow-up to ATDOC's finding "a system apply
+**ATGUARD: The hub guards a system apply.** [DONE 2026-11-19: review/atd2, main `06b5ce63`] Size 0.75. Wave AT-D (follow-up to ATDOC's finding "a system apply
 has no guard countdown"). **Owns:** new `crates/dspi-hub/src/system/guard.rs` (one `mod` line in `system/mod.rs`), the
 hooks in `hub.rs` (the field, the `hub-system` thread's timer, session close, stop), `server.rs` (the dispatch line and
 the cap), `system/measure.rs` (`system_measure_end_sessions_of`), the seam's `system::messages::guard` (additive), the
@@ -915,6 +915,12 @@ session's `system.set` is refused `conflict` while pending; a model changed mean
 says so; checks for dspi-hub, dspi-core, dspi-ffi, dspi-measure; drift. **Deps:** ATSUMOFF.
 
 One Fable review for AT-D (0.75).
+
+**Added after the plan (wave AT-E, review/ate, main `11625ba5`; recorded by WP DOCSYNC, 2026-11-19):** **ATLATE**, the planning of each
+unit's expected lateness (`interleave_late`, `SystemSchedule::with_lateness`, `MAX_LATENESS_MS`;
+[multi-unit-measurement.md section 7](../integrator/multi-unit-measurement.md#7-what-the-timing-can-deliver)), with the
+guard role wire test; **ATQTSIM**, the Qt smoke run on the simulated microphone. The review's fixes F1 to F3 are in the
+merge.
 
 ### HIL
 

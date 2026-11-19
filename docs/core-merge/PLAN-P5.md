@@ -874,7 +874,7 @@ results' smoothing/target), P5QUI.
   after an apply** (its Keep is then offered against a verdict), and P5QUI's Verify button and the Terminal stay as
   they are (the refusal is shown in words through its notice row).
 
-**P5HOLD: The timing hold's anchor; Keep during a verify.** [DONE 2026-11-19: review/p5e] Size 1. From main
+**P5HOLD: The timing hold's anchor; Keep during a verify.** [DONE 2026-11-19: review/p5e, main `f9088707`] Size 1. From main
 67fa8fff (P5-D merged). Review P5-D D1 and D3, and the "more repeats" nit. **Owns:** `align.rs`'s and `xover.rs`'s
 hold anchor, `tests/review_p5d_hold.rs`, the tune's Keep gate, its notice row, this entry.
 **Implemented:**
@@ -912,7 +912,7 @@ noisy).
 
 ### Wave P5-E: the web tune, close-out
 
-**P5WAT: Web: auto-tune and documents.** [DONE 2026-11-19: review/p5e] Size 2.5. Wave P5-E (after P5WMS has merged: it fills P5WMS's tab slot
+**P5WAT: Web: auto-tune and documents.** [DONE 2026-11-19: review/p5e, main `f9088707`] Size 2.5. Wave P5-E (after P5WMS has merged: it fills P5WMS's tab slot
 and uses its `graph.tsx`). **Owns:** new `apps/web/src/screens/measure/{tune.tsx,docs.tsx,tune-model.ts}`,
 `test/unit/measure_p5wat.test.ts`, `test/e2e/measure_p5wat.spec.ts`, one marked line in `MeasureScreen.tsx`'s tab slot.
 **Implements:** the tune wizard of section 1.4 (layout with alignment groups and programme feeds, preflight, measure,
@@ -922,7 +922,7 @@ countdown, verify (started by itself right after the apply: P5HOLD), keep or rev
 tune proposed, applied, verified and kept; another reverted; a withdrawn timing write shown with its reason; the A/B
 toggles; Control cannot delete a hub document; 375 px. **Deps:** P5WMS (P5-D), P5TUNE, P5HUB.
 
-**P5FIN: Docs built and the manual.** [DONE 2026-11-19: review/p5e] Size 0.75. Wave P5-E, after P5WAT (same review batch). **Owns:** the built
+**P5FIN: Docs built and the manual.** [DONE 2026-11-19: review/p5e, main `f9088707`] Size 0.75. Wave P5-E, after P5WAT (same review batch). **Owns:** the built
 marks in `docs/integrator/measurement.md` and `hub-api.md` section 22, a user manual page `docs/manual/measurement.md`
 (placing the microphone, the couplers, what the safety rules mean, what auto-tune changes and how to go back),
 `docs/PARITY.md` marks, this plan's `[DONE]` marks. **Done when:** links resolve; the no-host-noun check passes.

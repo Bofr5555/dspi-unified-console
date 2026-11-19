@@ -8,7 +8,7 @@ only: no code, no edits to `PLAN-CLIENTS.md`.*
 
 *Status (WP P3FRZ, 2026-11-16, checked against `git log --first-parent main` at `462fcde1`): 24 of the 25 planned WPs
 are merged and marked DONE with the merge into their review branch and that branch's merge into `main`; **P2SW is
-open**. Three WPs that were not planned are added where they belong: MQWIRE, P2CC3, P2WB3. Section 3 is built by
+open**. *(WP DOCSYNC, 2026-11-19: P2SW is merged too, main `49cd5370`, so all 25 planned WPs are done.)* Three WPs that were not planned are added where they belong: MQWIRE, P2CC3, P2WB3. Section 3 is built by
 PLAN-P3 and marked so.*
 
 **Goal.** A hub that keeps running with no console open and is useful on its own: it knows every DSPi it has ever seen, can
@@ -488,7 +488,7 @@ screen's additions in `apps/web/src/screens/hub/` and `test/e2e/hub_p2wb3.spec.t
 (location, note, tags), Forget, Rename and Identify on every row, live snapshots and history, recall on the hub with
 the guard, open a device in the console; on P2CC3's calls. **Deps:** P2WB1, P2WB2, P2CC3.
 
-**P2SW: Swift: the same, and the Mac hub's services.** [OPEN 2026-11-16: `wp/P2SW` merged into `review/swsec` (`8ab3698f`, with SECSW) and under review, not into main; owns the Mac `HubStartOptions` TLS default too (PLAN-SEC SECDEF)] Size 2.75. Wave P2-F (VM). **Owns:** the hub section of the
+**P2SW: Swift: the same, and the Mac hub's services.** [DONE 2026-11-16: `wp/P2SW` merged into `review/swsec` (`8ab3698f`, with SECSW), main `49cd5370`; owns the Mac `HubStartOptions` TLS default too (PLAN-SEC SECDEF), `require`, asserted by `wp_p2sw_default_options`; marked by WP DOCSYNC, 2026-11-19] Size 2.75. Wave P2-F (VM). **Owns:** the hub section of the
 `Snapshots*.swift` views and `CoreSnapshots`, a new `Events*.swift` view, alarm notices in the notice host (P1SW3's),
 Identify; `ServiceConfig` into `crates/dspi-hub/src/ffi.rs`'s `HubStartOptions` (SW-M3's file; every service off by
 default, review S8). **Done when:** macOS and iOS test bundles on the VM; a hub started from the Mac app with default options
