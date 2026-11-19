@@ -4,8 +4,9 @@
 "the alink time-base contract and multi-unit measurement". State: the firmware side is on the fork's `bofr-main`
 (`4f7114c`: waves FW-A to FW-C, reviewed); the maths, the simulated world, the codecs, the fakes, the hub family, the
 hub's model and the client's session are on `main` (waves AT-A to AT-D part 1, reviewed: `11362bb3`, `915d1a65`,
-`1c5ac8ec`). **The web and Qt screens are in progress** (WP ATWEB, WP ATQT). **Nothing of it has run on real boards
-yet** (ATHIL, [section 11](#11-what-the-hardware-must-still-confirm)). The single-unit measurement this builds on is
+`1c5ac8ec`). The web and Qt screens (WP ATWEB, WP ATQT), the hub's guard of a system apply (WP ATGUARD) and the demo
+hub's simulated microphone (WP ATDEMO) are built too (wave AT-D part 2, review AT-D2). **Nothing of it has run on real
+boards yet** (ATHIL, [section 11](#11-what-the-hardware-must-still-confirm)). The single-unit measurement this builds on is
 [measurement.md](measurement.md); the user's page is [docs/manual/measurement.md section 10](../manual/measurement.md#10-measuring-several-units-together).*
 
 Where this page and the code disagree, the code is right and the page is the bug.
@@ -281,7 +282,21 @@ refused.
 
 **Apply (Admin only).** The core files the hub model's revision and every measured unit's output delays, writes the
 offered arrivals into the model (`system.set`, guarded by the revision: a model changed meanwhile is `conflict`), then
-`system.align` writes the units. There is **no countdown**: the alignment stays until Keep or Revert.
+`system.align` writes the units.
+
+**The hub guards the apply** (WP ATGUARD, [hub-api.md section 23.4](hub-api.md#23-measuring-several-units), cap
+`system_apply_guard`). Before it files anything the core begins the hub's guard (`system.guard.begin`); the hub files
+the model itself and starts a countdown. Its length is the proposal's `guard_s`: the planned verify, 25 % longer, plus
+120 s, at most 590 s. Unless Keep confirms it in time, the hub sets the filed model back and aligns the units **by
+itself**: at the deadline, when the applying console's session ends (a crash, a closed page, a lost connection), and
+when the hub stops. A measuring session of that console (a verify still playing) is stopped first. While the guard is
+pending, a `system.set` from another session is refused `conflict`, and a model someone changed through the hub's own
+API is not overwritten (the outcome is `not_written`, said in words). A client shows the proposal's `guard_note` before
+the apply and counts `applied.guard_s` down after it.
+
+**A hub without the cap** (an older hub) has no guard: nothing reverts by itself, not at a deadline and not when the
+connection is lost. The proposal's `guard_note` and the apply's message say so, `guard_s` is 0, and the alignment stays
+until Keep or Revert.
 
 **Verify.** The summed runs again, with the applied delays predicted, judged up to a quarter of the rate. It needs fresh
 unit checks again. A wrong delay of more than a few tens of microseconds does not survive it. A failed verify says
@@ -290,10 +305,15 @@ unit checks again. A wrong delay of more than a few tens of microseconds does no
 **Keep takes two steps after a failed verify.** The first `measure_system_keep` is refused with the reason in
 `applied.message` ("the verify did not confirm the alignment; ..."); the client shows it and asks again, and only the
 person's **second press, at least 1 s later**, keeps it. Nothing presses it for them. A new verify asks again. After a
-verify that passed, or before any verify, one Keep keeps.
+verify that passed, or before any verify, one Keep keeps. Keep confirms the hub's guard (`system.guard.confirm`). A Keep
+that comes after the hub has ended the guard by itself is answered with what the hub did, in its words
+(`applied.stage` is then `reverted`; the message says so when the hub could not put everything back). A verify is
+refused the same way once the guard has ended.
 
 **Revert (Admin)** sets the filed model again at the revision the apply left, aligns, and reads every unit's output delays
-back against the filed ones.
+back against the filed ones. Under the hub's guard the hub does the set and the alignment (`system.guard.cancel`), which
+ends the guard. The alignment the hub writes back is the filed model's: units that did not hold that model's alignment
+before the measurement end up aligned to it, and the read-back then names the outputs that differ from the filed delays.
 
 Not proposed across units in this plan: polarity, crossover corners, EQ (each unit's own auto-tune does those within the
 unit).
@@ -331,31 +351,47 @@ Every notice key the system measurement uses. Rows are in `assets/notices/notice
 | `measure.system.nothing_offered` | Nothing to apply |
 | `measure.system.verify_failed` | The verify did not confirm the alignment |
 
-**In progress** (WP ATWEB, on its branch, not on `main` yet; ATQT will use the same rows; the coordinator reconciles
-this table at their merge):
+The screens' own rows (WP ATWEB; Qt uses the same) and the demo's (WP ATDEMO):
 
 | Key | Title |
 |---|---|
-| `measure.system.runs` | The group needs several runs |
-| `measure.system.placement` | Choose where the microphone is |
-| `dlink.not_one_domain` | These units do not share a clock (the hub's refusal) |
-| `dlink.not_locked` | A unit's time base is not locked (the hub's refusal) |
-| `dlink.no_timeline` | A unit cannot start on the time base (the hub's refusal) |
-| `system.spdif.no_time_base` | This S/PDIF source does not carry a DSPi time base |
+| `measure_system_runs` | The group needs several runs |
+| `measure_system_placement` | Choose where the microphone is |
+| `dlink.not_one_domain` | These units do not share a clock (the hub's refusal; the screens show it as `measure.system.not_one_domain`) |
+| `dlink.not_locked` | A unit's time base is not locked (the hub's refusal; shown as `measure.system.not_locked`) |
+| `dlink.no_timeline` | A unit cannot start on the time base (the hub's refusal; shown as `measure.system.no_timeline`) |
+| `spdif_no_time_base` | This S/PDIF source does not carry a DSPi time base |
+| `measure.system.sim_refused` | The simulated microphone cannot hear these units (the demo hub only) |
+
+**When the hub stops a run itself**, the core says why from the hub's words and names the unit: a time base that was
+disturbed or whose timeline moved is `measure.system.abort.disturbance`, one no longer locked
+`measure.system.abort.time_base`, anything else `measure.system.abort.hub`. `measure.system.abort.disconnected` is
+only a hub that no longer answers.
 
 Two refusals come as plain errors with words and no key of their own: the summed check's "would cancel" refusal
 (section 9) and `open`'s `device` refusal for a unit the hub could not time (section 4).
 
 **The core's calls** (`dspi_core`, UniFFI, the C ABI `dspi_measure_system_*`, wasm): `measure_system_unit_check`,
 `_preflight`, `_start`, `_capture_push`, `_tick`, `_state`, `_stop`, `_result`, `_proposal`, `_sum_check`, `_apply`,
-`_verify`, `_applied`, `_keep`, `_revert`. One measurement document per unit, with an additive `system` block (group,
+`_verify`, `_applied`, `_keep`, `_revert`; and, in the C ABI and wasm only, `_sim_set` and `_sim_info` (the demo hub's
+simulated microphone, below). One measurement document per unit, with an additive `system` block (group,
 time base, domain, anchor, run ids, per output the arrival relative to the anchor, its uncertainty, whether offered).
 
 | Client | State |
 |---|---|
-| Web | **in progress** (WP ATWEB): a "group across units" step in the Measure screen, the S/PDIF transport in the system editor |
-| Qt | **in progress** (WP ATQT, after ATWEB): the same beside the measurement pages |
-| Terminal, Android, Swift | later (PLAN-AT "Later": web and Qt first) |
+| Web | built (WP ATWEB): the Measure screen's "Several units" tab; the S/PDIF transport in the Installer's clock panel |
+| Qt | built (WP ATQT): Tools > Measure…, the "Several units" tab; the S/PDIF card in Window > System, "Clock and audio links" |
+| Terminal, Android, Swift | later (PLAN-AT "Later": web and Qt first). Android's System screen shows a unit fed by S/PDIF with its S/PDIF state and does not count it as an audio link unit; it has no S/PDIF editor |
+
+**Trying it without hardware** (WP ATDEMO). `uconsole --demo hub --alink --with-measure-units` attaches simulated units
+on one time base (DEMO-TB-A, -B, -C, with C re-anchoring every 15 s), one on another (DEMO-TB-X) and an S/PDIF source
+with a follower in lock error, and gives the hub a simulated room. That hub alone offers the cap
+`system_measure_demo_mic`; with the simulated microphone on (`measure_system_sim_set`), the core reads what the room
+heard from the hub on every tick and the client opens no microphone and pushes nothing. Nothing plays and nothing is
+captured anywhere. It fails closed: the hub answers only for a session whose every unit is one of the room's own
+attachments (the same device object, not just the serial), the core asks before every session and starts nothing on a
+refusal, a refusal during a session aborts it (`measure.system.sim_refused`), and the core turns the simulated
+microphone off on any hub without the cap. A real DSPi is never measured with it.
 
 ## 11. What the hardware must still confirm
 
@@ -379,7 +415,8 @@ Everything above is proven on fakes, simulations and the firmware's unit tests o
 
 ## 12. Not done yet
 
-- The web and Qt screens (in progress); Terminal, Android and Swift screens (later).
+- Terminal, Android and Swift screens (later); an S/PDIF editor for Android and Swift.
+- A verify's curve is not drawn (its result is in words).
 - Overlapped starts (section 7), several domains in one group, an S/PDIF relay (mode 3), ADAT, I2S/TDM and PTP time bases,
   cross-unit polarity, crossover and EQ proposals, the ops on RP2040 (PLAN-AT "Later").
 - Scenes at F on the S/PDIF time base (the hub applies S/PDIF units' scenes at once).

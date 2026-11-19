@@ -837,7 +837,7 @@ dspi-measure. **Deps:** ATE2E. *Limit (review AT-D1 F2; ATDOC):* the walked anal
 the run's first arrival, so the usable timeline spread is about 85 ms, far less than `MAX_SUM_SPREAD_MS`; an output heard
 later is not offered (fail closed).
 
-**ATWEB: Web: measuring several units.** [TODO] Size 1.5. Wave AT-D. **Owns:** new
+**ATWEB: Web: measuring several units.** [DONE 2026-11-19: review/atd2 (review AT-D2)] Size 1.5. Wave AT-D. **Owns:** new
 `apps/web/src/screens/measure/system/` (an "alignment group across units" step in P5WMS's measure screen through its
 tab slot), the S/PDIF transport in the web's system editor (unit fed by S/PDIF from a source), web typings in
 `apps/web/src/core/protocol.ts` (marker). **Done when:** web e2e on the demo hub with fake units: plan, run, abort,
@@ -878,11 +878,11 @@ fails the verify with Keep refused once; `wp_atdemo_room` shows every refusal; t
 the feed, the refusals); the web e2e (Chromium) shows the result, the proposal, the summed check, Apply absent for
 Control (the Admin notice) and done for Admin, the verify, Revert and the two-step Keep. ATQT can use the same option.
 
-**ATQT: Qt: measuring several units.** [TODO] Size 1.5. Wave AT-D. **Owns:** a new Qt controller and view for the group
+**ATQT: Qt: measuring several units.** [DONE 2026-11-19: review/atd2 (review AT-D2)] Size 1.5. Wave AT-D. **Owns:** a new Qt controller and view for the group
 step beside P5QUI's measurement pages (registrar line, marker), the S/PDIF transport in Qt's system editor. **Done when:**
 Qt tests on the demo hub as ATWEB's; the same notices. **Deps:** AT-C; P5QUI merged.
 
-**ATDOC: Docs.** [TODO] Size 1. Wave AT-D. **Owns:** new `docs/integrator/multi-unit-measurement.md` (topologies that
+**ATDOC: Docs.** [DONE 2026-11-19: review/atd2 (review AT-D2)] Size 1. Wave AT-D. **Owns:** new `docs/integrator/multi-unit-measurement.md` (topologies that
 align: line, USB-direct mode 2 on one controller, S/PDIF between DSPi units; what does not; the hub requirement; leads;
 runs and the anchor), the user manual's measurement chapter section, `docs/PARITY.md` rows, this plan's `[DONE]` marks.
 **Done when:** links resolve; every notice key of ATWEB and ATQT appears; the topology table matches section 1.1.

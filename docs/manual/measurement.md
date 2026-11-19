@@ -291,9 +291,8 @@ if it were your music.
 <!-- WP ATDOC -->
 ## 10. Measuring several units together
 
-*The screens for this are **in progress**: the web console's group step (WP ATWEB) and the Qt console's (WP ATQT, after
-it). The measurement itself, in the consoles' shared core and in the DSPi hub, is built, but it has not been tried on
-real units yet. The technical page is [docs/integrator/multi-unit-measurement.md](../integrator/multi-unit-measurement.md).*
+*This is in the web console (Measure, the "Several units" tab) and in the Qt console (Tools > Measure…, the
+"Several units" tab). It has not been tried on real units yet. The technical page is [docs/integrator/multi-unit-measurement.md](../integrator/multi-unit-measurement.md).*
 
 When one room is played by several DSPi units (a subwoofer unit and a mains unit, or one unit per speaker), one
 microphone can measure them all and line them up in time. Each unit plays its own test signal, and every start is set
@@ -363,14 +362,20 @@ The result gives each output's curve, as for one unit, and the **delay between t
    1.5 dB, every delay between the units is withdrawn: "The summed check failed". A pair that would cancel out is not
    played at all, and the console says which outputs and why.
 2. **Apply needs Admin.** A Control user sees the proposal and can save the measurement, but "Applying needs Admin". The
-   delays go into the hub's installation, and the hub writes the units.
+   delays go into the hub's installation, and the hub writes the units. **A countdown starts**: the console shows how
+   long you have (a few minutes, enough for the verify and some margin). If you do not press Keep in that time, the
+   hub puts the installation and the units' delays back by itself. It does the same at once if this console closes or
+   loses its connection. Leaving it alone is always safe.
 3. **Verify.** The summed check runs again with the new delays, each unit checked again first. If it does not agree:
    "The verify did not confirm the alignment".
 4. **Keep.** After a verify that passed, one press keeps the alignment. **After a verify that failed, Keep takes two
    steps**: the first press is refused with the reason, and only your second press, at least a second later, keeps it.
    Nothing presses Keep for you.
-5. **Revert** puts the installation and every unit's delays back as they were. There is no countdown here: the new
-   delays stay until you Keep or Revert.
+5. **Revert** puts the installation and every unit's delays back as they were, and ends the countdown. If the hub has
+   already put things back when you press Keep or Verify, the console says what the hub did.
+
+An older hub has no countdown for this. The console then says before the apply that nothing reverts by itself: the
+new delays stay until you Keep or Revert.
 
 Only the delays between units are proposed. Polarity, crossovers and EQ are tuned within each unit by its own
 auto-tune (section 7).
