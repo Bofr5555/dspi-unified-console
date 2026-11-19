@@ -607,11 +607,18 @@ impl MeasureHub {
                 };
                 {
                     let mut sessions = guard(&self.sessions);
+                    // Review AT-C: no session without its dead-man.
+                    if !self.running.swap(true, Ordering::SeqCst) && !self.spawn(hub) {
+                        drop(sessions);
+                        return release(err(
+                            id,
+                            "internal",
+                            "the hub could not start the measurement's watch",
+                            None,
+                        ));
+                    }
                     sessions.insert(sid, session);
                     self.active.store(true, Ordering::SeqCst);
-                    if !self.running.swap(true, Ordering::SeqCst) {
-                        self.spawn(hub);
-                    }
                 }
                 ok_of(id, &reply)
             }
@@ -1115,11 +1122,15 @@ impl MeasureHub {
         }
         if let Some((u, why)) = failure {
             // Nothing of this run may start; what was staged is spent (R4).
+            // Review AT-C: an earlier unit's op 9 may have started already
+            // (a slow write on a later unit): it is stopped, not only the
+            // queues cancelled.
             for r in &refs {
                 let io = Io {
                     dev: &r.dev,
                     session: who.id(),
                 };
+                let _ = io.stop_now();
                 for t in &r.tbs {
                     let _ = io.cancel_all(*t);
                 }
@@ -1482,16 +1493,18 @@ impl MeasureHub {
 
     // ── the family's thread ───────────────────────────────────────────
 
-    fn spawn(self: &Arc<Self>, hub: &HubHandle) {
+    /// Start the family's thread (the dead-man). False when it could not be.
+    fn spawn(self: &Arc<Self>, hub: &HubHandle) -> bool {
         let me = Arc::clone(self);
         let hub = hub.clone();
         let spawned = std::thread::Builder::new()
             .name("hub-measure".into())
             .spawn(move || me.thread(&hub));
-        if let Err(e) = spawned {
+        if let Err(e) = &spawned {
             log::warn!("hub: no thread for system.measure: {e}");
             self.running.store(false, Ordering::SeqCst);
         }
+        spawned.is_ok()
     }
 
     fn thread(&self, hub: &HubHandle) {
@@ -1931,9 +1944,11 @@ fn outputs_of(hub: &HubHandle, serial: &str) -> u8 {
 /// An S/PDIF source's outputs that carry the time base (S-AT6): the slots of
 /// `tx_mask` (slot n = outputs 2n and 2n + 1), or with `tx_mask` 0 every
 /// S/PDIF-type slot (`REQ_GET_OUTPUT_TYPE`; a slot it cannot read counts).
+/// A unit that lists `EXT_ALINK_SPDIF` and does not answer it (review AT-C)
+/// has every output forbidden: whether it is a source is not known.
 fn spdif_forbidden(io: &Io<'_>, outputs: u8) -> u16 {
     let Some(cfg) = io.alink_spdif() else {
-        return 0;
+        return u16::MAX;
     };
     if cfg.mode != tbc::SpdifMode::Source {
         return 0;

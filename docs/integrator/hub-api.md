@@ -1953,7 +1953,11 @@ them, and the client decodes them with `dspi_proto::ext::timebase`.*
   every 2 s while the session lives and releases them at `abort` and `close`. A lock lost aborts all (S-AT5). While the
   lease is live, these locks (the session's own, none other) are exempt from the per-device lock budget (spec 7.7,
   `lock.rs`: 120 s at a stretch, then 30 s cooling): the dead-man bounds them instead. Once the session is aborted or
-  closed (a lapsed lease included) they are released, and every later lock is budgeted as before.
+  closed (a lapsed lease included) they are released, and every later lock is budgeted as before. While the locks are
+  held the hub itself cannot read these units: `system.status` then reports an alignment computed without their limits
+  (`limits_unknown`), so a client takes a unit's play-out delay from `open`'s `d` (the unit's own `EXT_TIME_BASE.d`),
+  never from that alignment's `effective`. The settling clock also runs from the system model's status poll: a unit the
+  hub has watched `LOCKED` for the settling time starts at once.
 - **Every transfer is the session's** (its id, so its lock lets it through and every write is attributed to it); the
   family is judged by its own roles, as `system.scene.apply` is, so a control client measures without raw extension
   access. Nothing else is written: the generator's config, its stop, the apply queue's op 9 and `CANCEL_ALL`, and the
@@ -1988,7 +1992,8 @@ them, and the client decodes them with `dspi_proto::ext::timebase`.*
   (a log sweep of 1 to 15 s, 1 to 8 repeats, never `RAW`, a level from -120 dBFS to the speakers' hard cap -6 dBFS; pink
   noise never starts on the time base), only the unit's outputs, and never an output of an S/PDIF source's time-base slot
   (`EXT_ALINK_SPDIF.tx_mask`, slot n = outputs 2n and 2n + 1; with `tx_mask` 0 every S/PDIF-type slot, a slot whose type it
-  cannot read included). A session's own ceiling, the ramp and the summed-run rule (S-AT4's -6 dB per doubling) are the
+  cannot read included; a unit that lists `EXT_ALINK_SPDIF` and does not answer it has every output refused). A session's
+  own ceiling, the ramp and the summed-run rule (S-AT4's -6 dB per doubling) are the
   client's.
 - **Served to Link 1.3 clients only.** A client whose `hello` said a 1.2 minor (upstream 1.1.6 consoles, our older apps)
   is not offered `system_measure` and is answered `unsupported`; so is the REST mirror.
@@ -2021,5 +2026,6 @@ sticky clip flag is set; the hub never clears them (health's clip counts are the
   base, a `t` disagreement, two buses, two rates), `not_locked` (a unit's group entry not `LOCKED`, or moving while
   read), `no_timeline` (a unit without the ops), `bad_config`, `bad_schedule`, and `aborted` (the session was aborted;
   `msg` says why). A refusal about one unit names it in `serial`.
-- **A run that cannot start** (a unit refuses its first op 9, or it would be late) answers `device` and cancels every
-  unit's queue: what was staged is spent, stage again.
+- **A run that cannot start** (a unit refuses its first op 9, or it would be late) answers `device`, stops every unit
+  (`STOP_NOW`: an earlier unit's start may already have come) and cancels every unit's queue: what was staged is spent,
+  stage again.
