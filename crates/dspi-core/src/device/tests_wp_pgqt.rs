@@ -64,6 +64,14 @@ fn wp_pgqt_every_demo_generation_opens_as_itself_without_violations() {
             0,
             DeviceKind::Dsp,
         ),
+        // -- WP QTSENDER -- (INT-R1: added here too) the dual-stack sender
+        (
+            8,
+            ProtocolGeneration::Paged,
+            ExtEnvelope::Tunnel,
+            0,
+            DeviceKind::AlinkSender,
+        ),
     ];
     let core = DspiCore::new();
     assert!(matches!(
@@ -94,7 +102,7 @@ fn wp_pgqt_every_demo_generation_opens_as_itself_without_violations() {
         assert_eq!(target.voltage.required_mv, want_mv, "code {code}");
     }
     assert!(matches!(
-        core.open_demo_generation(8),
+        core.open_demo_generation(9),
         Err(DspiError::Unsupported)
     ));
     // Another device opened: the count is that fake's no longer
