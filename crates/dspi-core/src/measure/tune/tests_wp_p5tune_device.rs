@@ -1428,3 +1428,59 @@ fn wp_p5trust2_a_verify_without_transitions_fails_on_one_bad_output() {
     let k = r.core.measure_tune_keep().unwrap();
     assert_eq!(k.guard.phase, GuardPhase::Kept, "{k:#?}");
 }
+
+// -- WP P5HOLD -- (review P5-D D3) Keep is refused while a verify runs; Keep
+// before any verify keeps its one press.
+#[test]
+fn wp_p5hold_keep_is_refused_while_the_verify_runs() {
+    // Before any verify has started: one Keep keeps (the proposal is "Not
+    // verified" in every client's words).
+    let r = rig("p5hold-keep-unverified");
+    let p = eq_only(&r);
+    let g = r.core.measure_tune_apply(p.id, 0).unwrap();
+    assert_eq!(g.phase, GuardPhase::Waiting);
+    let k = r.core.measure_tune_keep().unwrap();
+    assert_eq!(k.guard.phase, GuardPhase::Kept, "{k:#?}");
+    assert_eq!(r.core.measure_tune_state().stage, MeasureTuneStage::Kept);
+
+    // While the verify runs: refused, typed, through the tune's Keep and the
+    // guard's own; nothing changes, the verify and the guard run on.
+    let r = rig("p5hold-keep-verifying");
+    let mut mic = Mic::new(&r, heard());
+    let text = mic.measure(walked(&[0]), 150.0);
+    let p = r
+        .core
+        .measure_tune_propose(text, layout(&[0]), MeasureTuneOptions::default())
+        .unwrap();
+    let g = r.core.measure_tune_apply(p.id, 0).unwrap();
+    assert_eq!(g.phase, GuardPhase::Waiting);
+    r.core.measure_tune_verify().unwrap();
+    assert_eq!(
+        r.core.measure_tune_state().stage,
+        MeasureTuneStage::Verifying
+    );
+    let image = r.remote.image();
+    let e = r.core.measure_tune_keep().unwrap_err();
+    assert!(e.to_string().contains(KEY_KEEP_DURING_VERIFY), "{e}");
+    let st = r.core.measure_tune_state();
+    assert_eq!(st.stage, MeasureTuneStage::Verifying, "{st:#?}");
+    assert!(st.running, "the verify runs on");
+    assert_eq!(st.issue.as_ref().unwrap().key, KEY_KEEP_DURING_VERIFY);
+    let e = r.core.apply_confirm().unwrap_err();
+    assert!(e.to_string().contains(KEY_KEEP_DURING_VERIFY), "{e}");
+    assert_eq!(r.core.apply_status().phase, GuardPhase::Waiting);
+    assert_eq!(r.remote.image(), image);
+    // The verdict answers it: the issue goes, and one Keep keeps a verify
+    // that passed.
+    let st = mic.tune(120.0);
+    assert_eq!(st.stage, MeasureTuneStage::Verified, "{st:#?}");
+    assert!(st.verify.as_ref().unwrap().passed, "{:#?}", st.verify);
+    assert!(
+        st.issue
+            .as_ref()
+            .is_none_or(|i| i.key != KEY_KEEP_DURING_VERIFY),
+        "{st:#?}"
+    );
+    let k = r.core.measure_tune_keep().unwrap();
+    assert_eq!(k.guard.phase, GuardPhase::Kept, "{k:#?}");
+}

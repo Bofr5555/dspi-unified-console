@@ -1201,6 +1201,10 @@ fn keep_unverified(e: &DspiError, st: &MeasureTuneState) -> bool {
         || st.issue.as_ref().is_some_and(|i| i.key == KEEP_UNVERIFIED)
 }
 
+// -- WP P5HOLD -- (review P5-D D3)
+/// The notice key of a Keep refused while the verify runs.
+const KEEP_DURING_VERIFY: &str = "measure.tune.keep_during_verify";
+
 /// The countdown's sentence (the `guard.waiting` row).
 fn countdown(remaining_ms: u32) -> String {
     let n = dspi_core::notice_for_key(dspi_core::NOTICE_GUARD_WAITING.into(), String::new());
@@ -1339,6 +1343,13 @@ pub(crate) fn keep_or_revert(
                         eprintln!("      {}", n.reason);
                         eprintln!("      Type keep again to keep it anyway, or revert.");
                         // What was typed before this question is not its answer.
+                        while answers.try_recv().is_ok() {}
+                    } else if e.to_string().contains(KEEP_DURING_VERIFY) {
+                        // -- WP P5HOLD -- the verdict first; a keep typed
+                        // before it is not the answer.
+                        let n = dspi_core::notice_for_key(KEEP_DURING_VERIFY.into(), String::new());
+                        eprintln!("{COMMAND}: not kept yet: {}", n.title);
+                        eprintln!("      {}", n.action);
                         while answers.try_recv().is_ok() {}
                     } else {
                         eprintln!("{COMMAND}: not kept: {e}");

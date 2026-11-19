@@ -160,6 +160,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     KEY_KEEP_UNVERIFIED,
     // -- WP P5TRUST2 --
     KEY_GUARD_CAPPED,
+    // -- WP P5HOLD --
+    KEY_KEEP_DURING_VERIFY,
 ];
 const KEY_OTHER_DEVICE: &str = "measure.tune.other_device";
 const KEY_OLD: &str = "measure.tune.old";
@@ -172,6 +174,8 @@ const KEY_NOT_KEPT: &str = "measure.tune.not_kept";
 const KEY_KEEP_UNVERIFIED: &str = "measure.tune.keep_unverified";
 // -- WP P5TRUST2 -- (review P5TRUST N7)
 const KEY_GUARD_CAPPED: &str = "measure.tune.guard_capped";
+// -- WP P5HOLD -- (review P5-D D3)
+const KEY_KEEP_DURING_VERIFY: &str = "measure.tune.keep_during_verify";
 
 fn invalid(msg: impl Into<String>) -> DspiError {
     DspiError::InvalidArgument { msg: msg.into() }
@@ -1408,6 +1412,15 @@ impl DspiCore {
         let Some(runs) = t.runs.take() else {
             return;
         };
+        // -- WP P5HOLD -- a Keep refused during the verify is answered by
+        // its verdict.
+        if t.stage == MeasureTuneStage::Verifying
+            && t.issue
+                .as_ref()
+                .is_some_and(|i| i.key == KEY_KEEP_DURING_VERIFY)
+        {
+            t.issue = None;
+        }
         match t.stage {
             MeasureTuneStage::SumCheck => self.tune_sum_done(t, &runs.done),
             MeasureTuneStage::Verifying => self.tune_verify_done(t, &runs.done),
@@ -1643,7 +1656,23 @@ impl DspiCore {
     /// user's second confirmation. The failed verdict holds in every stage of
     /// the applied tune (after a Stop, during a new verify, after one that
     /// ended without a verdict).
+    ///
+    /// WP P5HOLD (review P5-D D3): **no Keep while a verify runs**
+    /// (`measure.tune.keep_during_verify`, nothing changes, the guard and the
+    /// verify run on): a Keep then would keep before the verdict, in one
+    /// press. Keep before any verify has started keeps its rule (one press;
+    /// the proposal said "Not verified").
     fn tune_keep_gate(&self, t: &mut Tune) -> Result<()> {
+        if t.stage == MeasureTuneStage::Verifying {
+            // The issue's words follow its notice's title ("The verify is
+            // still running"); the error carries the key.
+            let what = "wait for its verdict, then Keep or Revert";
+            t.issue = Some(MeasureIssue::new(KEY_KEEP_DURING_VERIFY, None, what));
+            self.tune_publish(t);
+            return Err(invalid(format!(
+                "{KEY_KEEP_DURING_VERIFY}: the verify is still running; {what}"
+            )));
+        }
         if !t.verify_failed {
             return Ok(());
         }
@@ -2534,7 +2563,13 @@ impl DspiCore {
     /// Keep the applied tune (PLAN-P5 section 1.4 step 11): `apply_confirm`,
     /// the "after" snapshot filed with its `tune` block (the measurement, the
     /// algorithm, the options, the writes), and the tune's row added to the
-    /// measurement. A verify still running is stopped first.
+    /// measurement.
+    ///
+    /// **While a verify runs** Keep is refused with
+    /// `measure.tune.keep_during_verify` (WP P5HOLD, review P5-D D3; nothing
+    /// changes, the verify and the guard run on): wait for the verdict.
+    /// Before any verify has started one Keep keeps (the proposal is "Not
+    /// verified").
     ///
     /// **After a verify that did not pass** the first Keep is refused with
     /// `measure.tune.keep_unverified` (nothing changes, the guard runs on;
@@ -2542,9 +2577,9 @@ impl DspiCore {
     /// again, and only a second Keep, on the user's explicit confirmation,
     /// keeps it. A new verify, Revert or another apply ask again.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] when no tune is applied, or the
-    /// first Keep after a failed verify; `apply_confirm`'s. Filing failures
-    /// are notes, not errors.
+    /// Errors: [`DspiError::InvalidArgument`] when no tune is applied, while
+    /// a verify runs, or the first Keep after a failed verify;
+    /// `apply_confirm`'s. Filing failures are notes, not errors.
     pub fn measure_tune_keep(&self) -> Result<MeasureTuneKeep> {
         let mut t = self.measure.tune_lock();
         self.tune_guard_ended(&mut t);
