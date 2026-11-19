@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.core.DeviceKind
 import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.LocalUiMode
 import se.bofr.dspi.ui.MacColors
@@ -79,7 +80,9 @@ fun SettingsView(
     // Pending edits belong to one device (macOS noteSelectedDevice)
     LaunchedEffect(devices.selectedSerial) { coordinator.noteSelectedDevice(devices.selectedSerial) }
     // Control-surface pages and the Overview read the CS model
-    LaunchedEffect(connected, csLoaded) { if (connected && !csLoaded) bridge.cs.refresh() }
+    // -- WP PGAND -- not on the alink sender, which has no control surfaces
+    val senderNow = bridge.deviceProtocol.collectAsState().value?.deviceKind == DeviceKind.ALINK_SENDER
+    LaunchedEffect(connected, csLoaded, senderNow) { if (connected && !csLoaded && !senderNow) bridge.cs.refresh() }
 
     val availability = SettingsAvailability(
         connected = connected,
@@ -93,7 +96,9 @@ fun SettingsView(
         networkingAvailable = LocalNetworking.current != null,
         // -- WP P1AN2 --
         installerMode = LocalUiMode.current == UiModes.INSTALLER,
-        lockedUser = LocalUiMode.current == UiModes.LOCKED_USER
+        lockedUser = LocalUiMode.current == UiModes.LOCKED_USER,
+        // -- WP PGAND --
+        alinkSender = bridge.deviceProtocol.collectAsState().value?.deviceKind == DeviceKind.ALINK_SENDER
     )
 
     var openPage by rememberSaveable { mutableStateOf(initialPage?.id) }
@@ -220,7 +225,12 @@ private fun SettingsDetail(
     val canWrite = writesAllowed()
     when (page) {
         SettingsCategory.OVERVIEW -> PinOverviewTab(bridge, coordinator, onOpen)
-        SettingsCategory.GENERAL -> WritesExempt { GeneralSettingsTab(onNavigate) } // -- WP AN19 -- Help rows
+        // -- WP AN19 -- Help rows; -- WP PGAND -- the device-info row
+        SettingsCategory.GENERAL -> {
+            val protocol by bridge.deviceProtocol.collectAsState()
+            val connected = bridge.status.collectAsState().value.connected
+            WritesExempt { GeneralSettingsTab(onNavigate, protocol, connected) }
+        }
         SettingsCategory.ADVANCED -> WritesExempt { AdvancedSettingsTab(bridge, appSettings, canWrite) }
         SettingsCategory.GRAPHING -> WritesExempt { GraphingSettingsTab(appSettings) }
         SettingsCategory.SPECTRUM -> WritesExempt { SpectrumSettingsTab(bridge, appSettings) }

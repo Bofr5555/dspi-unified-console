@@ -73,6 +73,7 @@ import androidx.navigation.navArgument
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import se.bofr.dspi.bridge.DspiBridge
+import se.bofr.dspi.core.DeviceKind
 import se.bofr.dspi.feature.analysis.AnalysisScreen
 import se.bofr.dspi.feature.analysis.TestSignalsUiState
 import se.bofr.dspi.feature.analysis.isRunning
@@ -91,7 +92,9 @@ import se.bofr.dspi.feature.presets.ToolsMenuActions
 import se.bofr.dspi.feature.presets.snapshots.SafeApplyBar
 import se.bofr.dspi.feature.presets.snapshots.SnapshotsMode
 import se.bofr.dspi.feature.presets.snapshots.SnapshotsScreen
+import se.bofr.dspi.feature.settings.AlinkSenderScreen
 import se.bofr.dspi.feature.settings.SettingsScreen
+import se.bofr.dspi.feature.settings.allowedForAlinkSender
 import se.bofr.dspi.feature.tools.OutputLimiterView
 import se.bofr.dspi.feature.tools.ToolsScreen
 import se.bofr.dspi.ui.DragMarker
@@ -320,7 +323,19 @@ private fun DspiRoutesHost(
     // -- WP P1AN2 -- the locked-user state shows Home (and Settings' About and note) only
     val uiMode = LocalUiMode.current
     val lockedNow = rememberUpdatedState(uiMode == UiModes.LOCKED_USER)
-    val allow: (String) -> Boolean = remember { { r -> !lockedNow.value || UiModeModel.allowedWhenLocked(r) } }
+    // -- WP PGAND -- the alink sender: no DSP screen (its page stands in for Home)
+    val protocol by bridge.deviceProtocol.collectAsStateWithLifecycle()
+    val sender = protocol?.deviceKind == DeviceKind.ALINK_SENDER
+    val senderNow = rememberUpdatedState(sender)
+    val allow: (String) -> Boolean = remember {
+        { r -> (!lockedNow.value || UiModeModel.allowedWhenLocked(r)) && (!senderNow.value || allowedForAlinkSender(r)) }
+    }
+    LaunchedEffect(sender) {
+        if (sender) {
+            val r = nav.currentBackStackEntry?.destination?.route
+            if (r != null && !allowedForAlinkSender(r)) nav.popBackStack(DspiRoutes.HOME, inclusive = false)
+        }
+    }
     LaunchedEffect(uiMode) {
         if (uiMode == UiModes.LOCKED_USER) {
             val r = nav.currentBackStackEntry?.destination?.route
@@ -333,7 +348,9 @@ private fun DspiRoutesHost(
     }
     NavHost(navController = nav, startDestination = DspiRoutes.HOME) {
         // Each screen's back/navigate act only while its own entry is current (EntryNavigator)
-        screen(nav, allow, DspiRoutes.HOME) { _, go, back -> HomeScreen(bridge, go, back) }
+        screen(nav, allow, DspiRoutes.HOME) { _, go, back ->
+            if (sender) AlinkSenderScreen(bridge, go) else HomeScreen(bridge, go, back) // -- WP PGAND --
+        }
         screen(nav, allow, DspiRoutes.CHANNEL, listOf(navArgument("ch") { type = NavType.IntType })) { entry, go, back ->
             ChannelScreen(bridge, entry.arguments?.getInt("ch") ?: 0, go, back)
         }

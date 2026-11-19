@@ -8,11 +8,16 @@ import se.bofr.dspi.core.AutoEqDatabaseInfo
 import se.bofr.dspi.core.AutoEqFetch
 import se.bofr.dspi.core.BundledFirmware
 import se.bofr.dspi.core.DspiException
+import se.bofr.dspi.core.FirmwareGeneration
 import se.bofr.dspi.core.FirmwareGuardBoard
 import se.bofr.dspi.core.FirmwareGuardBoardSource
 import se.bofr.dspi.core.FirmwareGuardDecision
 import se.bofr.dspi.core.FirmwareGuardReason
 import se.bofr.dspi.core.FirmwareGuardVerdict
+import se.bofr.dspi.core.FirmwareLineage
+import se.bofr.dspi.core.FirmwareTarget
+import se.bofr.dspi.core.FirmwareUpdateRule
+import se.bofr.dspi.core.FirmwareUpdateVerdict
 
 /** [DspiBridge.coreTools]. */
 interface CoreTools {
@@ -48,7 +53,53 @@ interface CoreTools {
      */
     fun firmwareLabel(image: ByteArray, name: String): FirmwareLabel? = FirmwareLabel.FALLBACK
 
+    // -- WP PGAND -- the update check (PLAN-PG section 1.8): the target, then the verdict on it
+    /**
+     * `firmware_target`: the open board as an update target, read now on the core's
+     * thread (up to five control transfers; the core keeps it too). Call before
+     * `enterBootloader` and keep it for [firmwareUpdateCheck]. Never fails: no device,
+     * or a failed call, gives a target with no board, which is offered no image.
+     */
+    suspend fun firmwareTarget(): FirmwareTarget = NO_TARGET
+
+    /**
+     * `firmware_update_check`: the voltage rule on [target]'s record, no image for a board
+     * without BOOTSEL, the lineage phrase, the generation change. Parses the whole image:
+     * call off the main thread. Never throws; a failed call is a verdict that blocks.
+     */
+    fun firmwareUpdateCheck(image: ByteArray, target: FirmwareTarget, typedConfirmation: String): FirmwareUpdateVerdict =
+        blockedUpdate("The firmware update check is not available.")
+
     companion object {
+        // -- WP PGAND --
+        /** No board known (no device, or the read failed): offered no image. */
+        val NO_TARGET = FirmwareTarget(
+            voltage = FirmwareGuardBoard(requiredMv = 0, source = FirmwareGuardBoardSource.NO_DEVICE),
+            boardId = null,
+            lineage = FirmwareLineage.UNKNOWN,
+            generation = FirmwareGeneration.UNKNOWN
+        )
+
+        /**
+         * `FirmwareTarget::in_bootloader` (not exported): a board already in BOOTSEL has
+         * BOOTSEL by being there (board 0); nothing else is known, so the voltage rule asks.
+         */
+        fun targetInBootloader(board: FirmwareGuardBoard = UNKNOWN_BOARD) = FirmwareTarget(
+            voltage = board,
+            boardId = 0,
+            lineage = FirmwareLineage.UNKNOWN,
+            generation = FirmwareGeneration.UNKNOWN
+        )
+
+        /** The update verdict when the check could not be asked: nothing may be written. */
+        fun blockedUpdate(message: String) = FirmwareUpdateVerdict(
+            verdict = blocked(message),
+            rule = FirmwareUpdateRule.NONE,
+            imageLineage = FirmwareLineage.UNKNOWN,
+            imageGeneration = FirmwareGeneration.UNKNOWN,
+            generationChange = ""
+        )
+
         /** An unknown board: what the guard is given when nothing better is known. */
         val UNKNOWN_BOARD = FirmwareGuardBoard(requiredMv = 0, source = FirmwareGuardBoardSource.BOOTLOADER)
 
@@ -116,6 +167,17 @@ internal class CoreToolsImpl(private val bridge: DspiBridgeImpl) : CoreTools {
             if (n.key == FirmwareLabel.NOTICE_KEY) FirmwareLabel(n.title, "${n.reason} ${n.action}") else FirmwareLabel.FALLBACK
         }
     }.getOrDefault(FirmwareLabel.FALLBACK)
+
+    // -- WP PGAND --
+    override suspend fun firmwareTarget(): FirmwareTarget =
+        bridge.onFfi { runCatching { bridge.core.firmwareTarget() }.getOrDefault(CoreTools.NO_TARGET) }
+
+    // A failure of the call is no permission
+    override fun firmwareUpdateCheck(image: ByteArray, target: FirmwareTarget, typedConfirmation: String): FirmwareUpdateVerdict = try {
+        bridge.core.firmwareUpdateCheck(image.toWire(), target, typedConfirmation)
+    } catch (e: Exception) {
+        CoreTools.blockedUpdate("The firmware update check could not judge this image: ${e.message ?: e.javaClass.simpleName}.")
+    }
 
     private fun ByteArray.toWire(): List<Int> = List(size) { this[it].toInt() and 0xFF }
 }

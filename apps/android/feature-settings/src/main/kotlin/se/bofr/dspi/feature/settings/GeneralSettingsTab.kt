@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.unit.dp
+import se.bofr.dspi.core.DeviceProtocol
 import se.bofr.dspi.ui.DspiRoutes
 
 /** Brand colours of the links in the About table, by stable id, as on macOS. Words and URLs are the table's. */
@@ -42,16 +43,19 @@ private fun UriHandler.opener(url: String?): (() -> Unit)? {
 /** The About page's own sub-pages: null = About, [LICENSES] = overview, else a bundled text's asset name. */
 private const val LICENSES = "licenses"
 
-/** [onNavigate] opens a top-level route (WP AN19: the Help rows). */
+/**
+ * [onNavigate] opens a top-level route (WP AN19: the Help rows). -- WP PGAND -- [protocol]: the
+ * open connection's protocol for the device-info row (the bridge's one read per connection).
+ */
 @Composable
-fun GeneralSettingsTab(onNavigate: (String) -> Unit = {}) {
+fun GeneralSettingsTab(onNavigate: (String) -> Unit = {}, protocol: DeviceProtocol? = null, connected: Boolean = false) {
     var page by rememberSaveable { mutableStateOf<String?>(null) }
     // -- WP LIC1 -- the Licences screen shows the table's licence notice and terms
     val readAbout = LocalAboutJson.current
     val licence = remember(readAbout) { runCatching { parseAbout(readAbout()).licence }.getOrDefault(AboutLicence()) }
     BackHandler(enabled = page != null) { page = if (page == LICENSES) null else LICENSES }
     when (val p = page) {
-        null -> AboutPage(onOpenLicenses = { page = LICENSES }, onNavigate = onNavigate)
+        null -> AboutPage(onOpenLicenses = { page = LICENSES }, onNavigate = onNavigate, protocol = protocol, connected = connected)
         LICENSES -> LicensesView(licence, onOpenText = { page = it.asset })
         else -> {
             val text = (THIRD_PARTY.mapNotNull { it.text } + GPL3).firstOrNull { it.asset == p }
@@ -61,7 +65,7 @@ fun GeneralSettingsTab(onNavigate: (String) -> Unit = {}) {
 }
 
 @Composable
-private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit) {
+private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit, protocol: DeviceProtocol?, connected: Boolean) {
     val context = LocalContext.current
     val uri = LocalUriHandler.current
     val version = remember {
@@ -154,5 +158,7 @@ private fun AboutPage(onOpenLicenses: () -> Unit, onNavigate: (String) -> Unit) 
                 )
             }
         }
+        // -- WP PGAND -- the device-info row, last: the app's own sections stay where they were
+        item { DeviceInfoSection(protocol, connected) }
     }
 }
