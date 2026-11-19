@@ -7,6 +7,8 @@
 import { CoreCallError, type CoreEvent, type CoreImpl, type FromWorker, type Request } from "./protocol";
 import { SerialCore } from "./serial";
 import { WasmCore, loadWasmModule } from "./wasm";
+// -- WP P5WMS -- the measurement's capture port and ticks (measure-protocol.ts)
+import { MeasureWorkerRoute } from "./measure-protocol";
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -36,11 +38,29 @@ const deferred: CoreImpl = {
 
 const serial = new SerialCore(deferred);
 
+// -- WP P5WMS -- the capture worklet's blocks go straight from its port into `measureCapturePush`,
+// and a running measurement is turned here; its states are pushed as `measure` events.
+const measure = new MeasureWorkerRoute(
+  (m, p) => serial.call(m as never, p as never),
+  (e) => self.postMessage({ push: e }),
+  { MessageChannel, workletUrl: new URL("./capture-worklet.js", self.location.href).href, setTimeout, clearTimeout },
+);
+
 self.onmessage = (ev: MessageEvent<Request>) => {
   const { id, method, params } = ev.data;
+  // -- WP P5WMS -- the Worker's own methods: a port (transferred), never a core call
+  if (measure.handles(method)) {
+    const a = measure.answer(method);
+    self.postMessage({ reply: { id, ok: true, value: a.value } }, a.transfer);
+    return;
+  }
   serial.call(method, params).then(
-    (value) => post({ reply: { id, ok: true, value } }),
+    (value) => {
+      measure.after(method, true, value); // -- WP P5WMS --
+      post({ reply: { id, ok: true, value } });
+    },
     (err: unknown) => {
+      measure.after(method, false, null); // -- WP P5WMS --
       const e =
         err instanceof CoreCallError
           ? { code: err.code, message: err.message, ...(err.noticeKey ? { noticeKey: err.noticeKey } : {}) }

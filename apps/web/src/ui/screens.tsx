@@ -70,6 +70,7 @@ import { HubFeed, hubScreenShown } from "../screens/hub/feed";
 import { HUB_SCREEN, HUB_SCREEN_ID, HubAlarmBanner, useHubView } from "../screens/hub/HubScreen";
 // -- WP P3OV -- the Overview: every output in one table, every channel's meter (every mode)
 import { OverviewScreen } from "../screens/overview/OverviewScreen";
+import { MeasureScreen } from "../screens/measure/MeasureScreen"; // -- WP P5WMS --
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -140,6 +141,7 @@ export const SCREENS: ScreenDef[] = [
   { id: "analyser", label: "Analyser", View: AnalyserScreen },
   { id: "stats", label: "Stats for nerbs", View: StatsScreen },
   { id: "monitor", label: "Interrupt Monitor", View: MonitorScreen },
+  { id: "measure", label: "Measure", View: MeasureScreen }, // -- WP P5WMS -- (modes.json: Advanced and Installer, with the tools)
   // -- WP WB6I -- (every mode, last: the Console's Settings window; Core Voltage inside, the Installer mode's)
   { id: "settings", label: "Settings", View: SettingsScreen },
 ];
@@ -149,7 +151,7 @@ export const SCREENS: ScreenDef[] = [
 const SETUP = new Set(["files", "surfaces" /* -- WP WB6L -- */]);
 
 // -- WP WB6J -- the tool screens, in Advanced and Installer
-const TOOLS = new Set(["generator", "analyser", "stats", "monitor"]);
+const TOOLS = new Set(["generator", "analyser", "stats", "monitor", "measure" /* -- WP P5WMS -- */]);
 
 // -- WP SW3 --
 /**
