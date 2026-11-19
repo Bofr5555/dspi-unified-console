@@ -14,6 +14,11 @@
 // answers of the core (the demo hub has no microphone that hears the fakes:
 // WP ATDEMO's is not merged), the units' fresh checks always the real ones.
 //
+// -- WP ATQTSIM -- The demo hub's microphone that hears the fakes is merged now:
+// `atqtsim-units` (218, at the end of this file) runs that whole path on the
+// real core; the stand-ins above stay for what the demo cannot make happen (an
+// old hub without the guard, a Keep after the guard ran out).
+//
 // Sections: `atqt-units` (216), `atqt-spdif` (217). Screenshots in <out>/atqt/.
 #include "SmokeDriver.h"
 
@@ -45,6 +50,7 @@
 #include <QThread>
 #include <QTimer>
 #include <algorithm>
+#include <cmath>   // -- WP ATQTSIM --
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -902,3 +908,353 @@ static void spdifSection(SmokeDriver &d) {
 
 static const SmokeDriver::Section atqtUnits("atqt-units", 216, &unitsSection);
 static const SmokeDriver::Section atqtSpdif("atqt-spdif", 217, &spdifSection);
+
+// -- WP ATQTSIM -- A whole measurement across units on the demo hub's simulated
+// microphone (WP ATDEMO: the hub's room hears its demo units' generators; nothing
+// plays anywhere, no microphone is opened here), as the web's ATDEMO e2e:
+// DEMO-TB-A and DEMO-TB-B measured to a result (the room has DEMO-TB-A's first
+// speaker 2.37 ms nearer), the summed check, Control offered no Apply, Admin's
+// apply with the hub's guard counted down, a verify that passes, Revert as
+// filed; then applied again, DEMO-TB-B's delay moved by 5 samples behind the
+// session's back, the verify fails and Keep asks twice. Every core call is the
+// real one. Section `atqtsim-units` (218); screenshots in <out>/atqtsim/.
+namespace {
+
+// What `f` reads or writes on unit `serial`, through a Link client of the
+// smoke's own (another person's console on the same hub)
+bool onUnit(const QString &url, const QString &serial, const std::function<bool(FfiCore *)> &f) {
+    FfiCore *c = dspi_core_new();
+    if (!c) return false;
+    const QByteArray u = url.toUtf8(), s = serial.toUtf8();
+    bool ok = isOkJson(cjson([&](char *b, uint32_t l) { return dspi_link_connect(c, u.constData(), "atqtsim-smoke", "0", "", "", b, l); }));
+    int handle = -1;
+    for (int i = 0; ok && handle < 0 && i < 50; ++i) {
+        for (const QJsonValue &d : cjson([&](char *b, uint32_t l) { return dspi_link_devices(c, b, l); }).value(QLatin1String("value")).toArray())
+            if (d.toObject().value(QLatin1String("serial")).toString() == serial) handle = d.toObject().value(QLatin1String("handle")).toInt(-1);
+        if (handle < 0) QThread::msleep(100);
+    }
+    ok = ok && handle >= 0
+         && isOkJson(cjson([&](char *b, uint32_t l) { return dspi_link_select_device(c, uint32_t(handle), s.constData(), b, l); }))
+         && dspi_fetch_all(c) && f(c);
+    dspi_link_close(c);
+    dspi_core_free(c);
+    return ok;
+}
+
+// Output 1's delay on `serial`, in ms (NaN when it cannot be read)
+double firstDelayMs(const QString &url, const QString &serial) {
+    double ms = std::nan("");
+    onUnit(url, serial, [&](FfiCore *c) {
+        const DspState *st = dspi_get_state(c);
+        if (st) ms = double(st->output_delay_ms[0]);
+        return st != nullptr;
+    });
+    return ms;
+}
+
+} // namespace
+
+static void simSection(SmokeDriver &d) {
+    // Four runs on the simulated microphone (77 s on a quiet host): a loaded host may need more than the run's 120 s
+    d.allowSectionTime(300);
+    auto *link = Registrar::instance<LinkController>();
+    auto *mc = Registrar::instance<MeasureController>();
+    auto *uc = Registrar::instance<UnitsMeasureController>();
+    auto *modes = Registrar::instance<ModeController>();
+    DeviceModel *device = d.app().device;
+    d.check("atqtsim: the controllers", link && mc && uc && modes);
+    if (!link || !mc || !uc || !modes) return;
+    const QString out = d.outDir() + QStringLiteral("/atqtsim");
+    QDir().mkpath(out);
+    const bool demoBefore = device->demo() && device->connected();
+    const QString modeBefore = modes->mode();
+    modes->choose(QStringLiteral("advanced"), false);
+    QStringList steps;
+    QHash<QString, bool> results;
+    const QMetaObject::Connection conn = QObject::connect(uc, &UnitsMeasureController::stepDone, uc, [&](const QString &s, bool ok) {
+        steps << s;
+        results.insert(s, ok);
+    });
+    // Every core call is the real one; recorded to see what was sent
+    Record rec;
+    uc->setCallsForTest([&rec](FfiCore *c, const QString &op, const QByteArray &a, const QByteArray &b) {
+        if (op == QLatin1String("unitCheck")) rec.add(QStringLiteral("unitCheck ") + QJsonDocument::fromJson(b).object().value(QLatin1String("serial")).toString());
+        else rec.add(op);
+        return UnitsMeasureController::coreCall(c, op, a, b);
+    });
+    const ScopeExit cleanup{ [uc, conn] {
+        QObject::disconnect(conn);
+        uc->setCallsForTest(nullptr);
+        uc->setRoleForTest(QString());
+    } };
+    const auto step = [&](const QString &s, int ms) { return d.waitFor(ms, [&] { return steps.contains(s); }); };
+    QQuickWindow *w = nullptr;
+    const auto in = [&](const QString &name) { return w ? d.item(name, w->contentItem()) : nullptr; };
+    const auto visible = [&](const QString &name) {
+        QQuickItem *i = in(name);
+        return i && i->isVisible();
+    };
+    const auto toEnd = [&] {
+        QQuickItem *sv = in(QStringLiteral("MeasureUnits.scroll"));
+        auto *flick = sv ? sv->property("contentItem").value<QQuickItem *>() : nullptr;
+        if (!flick) return;
+        d.spin(100);
+        flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble() - flick->height()));
+        d.spin(150);
+    };
+
+    MeasureHub hub;
+    const bool up = hub.start(out + QStringLiteral("/hub"));
+    d.check("atqtsim: uconsole --demo hub --alink --with-measure-units runs (DSPI_SMOKE_UCONSOLE)", up);
+    if (!up) return;
+    bool lowered = true;
+    for (const QString &s : { A, B }) lowered = lowerVolume(hub.url, s) && lowered;
+    d.check("atqtsim: DEMO-TB-A's and DEMO-TB-B's volume lowered through a Link client of the smoke's own (S2)", lowered);
+    const auto settled = [&] { return d.waitFor(30000, [link] { return !link->busy(); }); };
+    link->connectToHub(hub.url);
+    const bool listed = settled() && d.waitFor(15000, [&] {
+        int n = 0;
+        for (const QVariant &v : link->devices()) n += QStringList{ A, B }.contains(v.toMap().value(QStringLiteral("serial")).toString());
+        return link->phase() == QLatin1String("choose_device") && n == 2;
+    });
+    for (const QVariant &v : link->devices())
+        if (v.toMap().value(QStringLiteral("serial")).toString() == A) link->bindDevice(v.toMap().value(QStringLiteral("handle")).toInt(), A);
+    const bool bound = listed && settled()
+                       && d.waitFor(15000, [&] { return link->phase() == QLatin1String("bound") && device->remote() && device->connected(); })
+                       && d.waitIdle(20000);
+    d.check("atqtsim: on the hub, DEMO-TB-A bound", bound && device->serial() == A);
+    // A quiet source in the Measure window's place: should anything open "the
+    // microphone" it is this, never a device (and the checks below say none is)
+    mc->setCaptureSource([]() -> std::unique_ptr<dspi_capture::Source> { return std::make_unique<QuietSource>(); });
+    const auto finish = [&] {
+        if (uc->running()) uc->stop();
+        d.waitFor(15000, [&] { return !uc->running(); });
+        uc->setCallsForTest(nullptr);
+        uc->setRoleForTest(QString());
+        if (w) w->close();
+        mc->setCaptureSource(nullptr);
+        link->closeSession();
+        d.waitFor(10000, [&] { return !link->busy() && !link->inSession(); });
+        hub.stop();
+        if (demoBefore && !device->connected()) device->openDemo();
+        d.waitFor(10000, [&] { return !demoBefore || device->connected(); });
+        modes->choose(modeBefore, false);
+    };
+    bool shown = false;
+    if (bound) {
+        w = qobject_cast<QQuickWindow *>(d.app().shell->openWindow(QStringLiteral("tools.measure")));
+        if (w) {
+            d.waitFor(2000, [&] { return w->isVisible(); });
+            if (QQuickItem *tabs = in(QStringLiteral("Measure.tabs"))) {
+                tabs->setProperty("currentIndex", 1);
+                d.spin(100);
+                steps.clear();
+                tabs->setProperty("currentIndex", 6);
+                shown = step(QStringLiteral("enter"), 10000);
+            }
+        }
+    }
+    d.check("atqtsim: the Several units tab on the hub", shown && uc->unavailable().isEmpty());
+    if (!shown) {
+        finish();
+        return;
+    }
+
+    // ---- The group: the listening position, A and B (each its first output), the simulated microphone
+    uc->setPlacement(QStringLiteral("listeningPosition"));
+    steps.clear();
+    uc->setUnitChosen(A, true);
+    uc->setUnitChosen(B, true);
+    const bool opened = step(QStringLiteral("unit"), 20000) && d.waitFor(20000, [&] { return uc->unitOpen(B) && uc->blocker().isEmpty(); });
+    uc->setSweepMs(1000);
+    uc->setPasses(3);
+    d.check("atqtsim: DEMO-TB-A and DEMO-TB-B chosen, each with its own connection; nothing blocks", opened);
+    // Chosen again: the choice stays with the controller, and atqt-units turns it off
+    uc->setUseSim(true);
+    d.check("atqtsim: the demo hub's simulated microphone is offered and chosen", uc->simAvailable() && uc->useSim());
+
+    // ---- Measure to a result
+    rec.clear();
+    steps.clear();
+    click(in(QStringLiteral("MeasureUnits.start")));
+    const bool started = step(QStringLiteral("start"), 30000) && results.value(QStringLiteral("start"));
+    std::printf("smoke: atqtsim: start: %s %s\n", qPrintable(uc->error()), qPrintable(uc->phaseText()));
+    d.check("atqtsim: the run starts on the simulated microphone, no microphone opened here; its bar and Stop in view",
+            started && uc->simOn() && visible(QStringLiteral("MeasureUnits.simOn")) && visible(QStringLiteral("MeasureUnits.stop")) && !mc->micOpen());
+    bool micEver = false;
+    QElapsedTimer runT;
+    runT.start();
+    const bool measured = started && d.waitFor(150000, [&] {
+        micEver = micEver || mc->micOpen();
+        return steps.contains(QStringLiteral("run"));
+    });
+    std::printf("smoke: atqtsim: measured in %.1f s: %s; %s (%s); %s\n", runT.elapsed() / 1000.0, qPrintable(uc->timingText()),
+                qPrintable(uc->issueText()), qPrintable(uc->issueKey()), qPrintable(uc->error()));
+    const bool haveResult = measured && results.value(QStringLiteral("run")) && uc->hasResult();
+    d.check("atqtsim: the measurement ran to its result; no microphone was opened", haveResult && !micEver);
+    if (!haveResult) {
+        // Nothing after it can run
+        finish();
+        return;
+    }
+    d.check("atqtsim: the result: the timing of every run was reliable", uc->timingText() == QLatin1String("The timing of every run was reliable."));
+    bool bothOffered = uc->arrivals().size() == 2;
+    for (const QVariant &v : uc->arrivals()) {
+        std::printf("smoke: atqtsim: arrival %s: %s (%s)\n", qPrintable(v.toMap().value(QStringLiteral("label")).toString()),
+                    qPrintable(v.toMap().value(QStringLiteral("arrival")).toString()), qPrintable(v.toMap().value(QStringLiteral("offered")).toString()));
+        bothOffered = bothOffered && v.toMap().value(QStringLiteral("offered")).toString() == QLatin1String("Yes");
+    }
+    d.check("atqtsim: both arrivals offered", bothOffered);
+    double delayUs = std::nan("");
+    if (!uc->delays().isEmpty()) {
+        const QString t = uc->delays().at(0).toMap().value(QStringLiteral("delay")).toString();
+        std::printf("smoke: atqtsim: delay %s\n", qPrintable(t));
+        const QRegularExpressionMatch m = QRegularExpression(QStringLiteral("^(-?[\\d.]+) µs")).match(t);
+        if (m.hasMatch()) delayUs = m.captured(1).toDouble();
+    }
+    d.check("atqtsim: the delay across units is the room's, 2.37 ms within 10 µs", std::isfinite(delayUs) && std::abs(std::abs(delayUs) - 2370.0) < 10.0);
+    d.check("atqtsim: the proposal: the arrivals to write, the summed check still to run",
+            uc->hasProposal() && uc->proposalArrivals().join(QLatin1Char('\n')).contains(A) && uc->sumCheckNeeded()
+                && visible(QStringLiteral("MeasureUnits.sumCheck")));
+    d.grab(w, QStringLiteral("atqtsim/result.png"));
+
+    // ---- The summed check
+    rec.clear();
+    steps.clear();
+    click(in(QStringLiteral("MeasureUnits.sumCheck")));
+    runT.restart();
+    const bool summed = d.waitFor(150000, [&] {
+        micEver = micEver || mc->micOpen();
+        return steps.contains(QStringLiteral("sumCheck"));
+    });
+    bool agreed = !uc->transitions().isEmpty();
+    for (const QVariant &v : uc->transitions()) {
+        std::printf("smoke: atqtsim: transition: %s\n", qPrintable(v.toMap().value(QStringLiteral("text")).toString()));
+        agreed = agreed && !v.toMap().value(QStringLiteral("failed")).toBool() && !v.toMap().value(QStringLiteral("text")).toString().contains(QLatin1String("not checked"));
+    }
+    std::printf("smoke: atqtsim: summed check in %.1f s: %s\n", runT.elapsed() / 1000.0, qPrintable(uc->error()));
+    d.check("atqtsim: the summed check ran on the simulated microphone, each unit's fresh check first; every transition agrees",
+            summed && results.value(QStringLiteral("sumCheck")) && agreed && !uc->sumCheckNeeded() && rec.count(QStringLiteral("unitCheck ") + A) == 1
+                && rec.count(QStringLiteral("unitCheck ") + B) == 1 && rec.count(QStringLiteral("sumCheck")) == 1 && !micEver);
+
+    // ---- Control: no Apply, no Revert, nothing sent
+    uc->setRoleForTest(QStringLiteral("control"));
+    d.spin(200);
+    rec.clear();
+    steps.clear();
+    uc->apply();
+    QQuickItem *why = in(QStringLiteral("MeasureUnits.applyWhy"));
+    d.check("atqtsim: Control: no Apply and no Revert, why in words (measure.system.admin); an apply sends nothing",
+            !visible(QStringLiteral("MeasureUnits.apply")) && !visible(QStringLiteral("MeasureUnits.revert")) && why && why->isVisible()
+                && why->property("key").toString() == QLatin1String("measure.system.admin") && step(QStringLiteral("apply"), 2000)
+                && !results.value(QStringLiteral("apply")) && rec.count(QStringLiteral("apply")) == 0);
+    d.grab(w, QStringLiteral("atqtsim/control.png"));
+    // The hub's own role for this console (it is --open: Admin)
+    uc->setRoleForTest(QString());
+    d.spin(200);
+    QQuickItem *note = in(QStringLiteral("MeasureUnits.guardNote"));
+    std::printf("smoke: atqtsim: guard note: %s\n", note ? qPrintable(note->property("text").toString()) : "-");
+    d.check("atqtsim: Admin (the hub's role): Apply offered; the guard said before it",
+            uc->admin() && visible(QStringLiteral("MeasureUnits.apply")) && note && note->isVisible()
+                && QRegularExpression(QStringLiteral("^The hub reverts the alignment by itself unless it is kept within \\d+ s")).match(note->property("text").toString()).hasMatch());
+
+    // ---- Apply, the guard counted down, the units' delays
+    const double filedA = firstDelayMs(hub.url, A), filedB = firstDelayMs(hub.url, B);
+    steps.clear();
+    click(in(QStringLiteral("MeasureUnits.apply")));
+    const bool appliedOk = step(QStringLiteral("apply"), 30000) && results.value(QStringLiteral("apply")) && uc->stage() == QLatin1String("applied");
+    std::printf("smoke: atqtsim: applied: %s | %s | %s\n", qPrintable(uc->appliedText()), qPrintable(uc->said()), qPrintable(uc->error()));
+    const int left0 = uc->guardRemainingS();
+    d.spin(2200);
+    QQuickItem *guard = in(QStringLiteral("MeasureUnits.guard"));
+    std::printf("smoke: atqtsim: guard: %s\n", qPrintable(uc->guardText()));
+    d.check("atqtsim: Admin's apply: applied, the hub's guard counting down in words",
+            appliedOk && uc->appliedText().startsWith(QLatin1String("Applied: the summed runs are measured again")) && uc->said().startsWith(QLatin1String("Applied: "))
+                && left0 > 0 && guard
+                && guard->isVisible() && uc->guardRemainingS() <= left0 - 2
+                && QRegularExpression(QStringLiteral("Keep or Revert within \\d+ s: without Keep the hub puts everything back by itself")).match(uc->guardText()).hasMatch());
+    const double a1 = firstDelayMs(hub.url, A), b1 = firstDelayMs(hub.url, B);
+    std::printf("smoke: atqtsim: delays filed %.4f %.4f, applied %.4f %.4f ms\n", filedA, filedB, a1, b1);
+    d.check("atqtsim: on the units: DEMO-TB-A delayed 2.37 ms against DEMO-TB-B", std::abs(a1 - b1 - 2.37) < 0.02);
+    toEnd();
+    d.grab(w, QStringLiteral("atqtsim/applied.png"));
+
+    // ---- The verify passes
+    rec.clear();
+    steps.clear();
+    click(in(QStringLiteral("MeasureUnits.verify")));
+    runT.restart();
+    const bool verified = d.waitFor(150000, [&] {
+        micEver = micEver || mc->micOpen();
+        return steps.contains(QStringLiteral("verify"));
+    });
+    std::printf("smoke: atqtsim: verify in %.1f s: %s | %s\n", runT.elapsed() / 1000.0, qPrintable(uc->appliedText()), qPrintable(uc->error()));
+    d.check("atqtsim: the verify ran, each unit's fresh check first, and passed",
+            verified && results.value(QStringLiteral("verify")) && uc->stage() == QLatin1String("verified") && !uc->verifyFailed()
+                && uc->appliedText() == QLatin1String("Verified: the summed runs agree with the new delays.") && rec.count(QStringLiteral("unitCheck ") + A) == 1
+                && rec.count(QStringLiteral("unitCheck ") + B) == 1 && rec.count(QStringLiteral("verify")) == 1 && !micEver);
+    toEnd();
+    d.grab(w, QStringLiteral("atqtsim/verified.png"));
+
+    // ---- Revert: as filed
+    steps.clear();
+    click(in(QStringLiteral("MeasureUnits.revert")));
+    const bool reverted = step(QStringLiteral("revert"), 30000) && results.value(QStringLiteral("revert"));
+    QQuickItem *outcome = in(QStringLiteral("MeasureUnits.outcome"));
+    const double a2 = firstDelayMs(hub.url, A), b2 = firstDelayMs(hub.url, B);
+    std::printf("smoke: atqtsim: reverted: %s; delays %.4f %.4f ms\n", outcome ? qPrintable(outcome->property("text").toString()) : "-", a2, b2);
+    d.check("atqtsim: Revert: reverted, said in words, the guard gone",
+            reverted && uc->stage() == QLatin1String("reverted") && outcome && outcome->isVisible()
+                && outcome->property("text").toString().startsWith(QLatin1String("Reverted")) && uc->guardText().isEmpty() && !visible(QStringLiteral("MeasureUnits.guard")));
+    d.check("atqtsim: Revert: every unit's delay as filed", std::abs(a2 - filedA) < 0.0015 && std::abs(b2 - filedB) < 0.0015);
+
+    // ---- Applied again; DEMO-TB-B's delay moved by 5 samples behind the session's back: the verify fails
+    steps.clear();
+    click(in(QStringLiteral("MeasureUnits.apply")));
+    const bool again = step(QStringLiteral("apply"), 30000) && results.value(QStringLiteral("apply")) && uc->stage() == QLatin1String("applied");
+    d.check("atqtsim: applied again after the Revert", again);
+    const double b3 = firstDelayMs(hub.url, B);
+    const bool moved = std::isfinite(b3) && onUnit(hub.url, B, [b3](FfiCore *c) { return dspi_set_output_delay(c, 0, float(b3 + 5.0 / 48.0)); });
+    d.check("atqtsim: DEMO-TB-B's delay moved by 5 samples through another console", moved && std::abs(firstDelayMs(hub.url, B) - b3 - 5.0 / 48.0) < 0.005);
+    steps.clear();
+    click(in(QStringLiteral("MeasureUnits.verify")));
+    runT.restart();
+    const bool verified2 = d.waitFor(150000, [&] {
+        micEver = micEver || mc->micOpen();
+        return steps.contains(QStringLiteral("verify"));
+    });
+    std::printf("smoke: atqtsim: verify after the move in %.1f s: %s | %s\n", runT.elapsed() / 1000.0, qPrintable(uc->appliedText()), qPrintable(uc->error()));
+    d.check("atqtsim: the verify after the move did not confirm the alignment, said in words",
+            verified2 && uc->verifyFailed() && uc->appliedText().contains(QLatin1String("did not confirm")) && !micEver);
+    // The core's words already say it: the notice's title is not put before them again
+    d.check("atqtsim: the failed verify's words say \"did not confirm\" once", uc->appliedText().count(QLatin1String("did not confirm"), Qt::CaseInsensitive) == 1);
+
+    // ---- Keep asks twice: refused once with the core's words; only a press a second later keeps
+    rec.clear();
+    steps.clear();
+    click(in(QStringLiteral("MeasureUnits.keep")));
+    step(QStringLiteral("keep"), 15000);
+    QQuickItem *question = in(QStringLiteral("MeasureUnits.keepQuestion"));
+    QQuickItem *anyway = in(QStringLiteral("MeasureUnits.keepAnyway"));
+    std::printf("smoke: atqtsim: keep question: %s\n", qPrintable(uc->keepQuestionText()));
+    d.check("atqtsim: the first Keep is refused by the core: the second question opens, with its words",
+            !results.value(QStringLiteral("keep")) && uc->keepQuestion() && uc->keepRefusals() >= 1 && question
+                && d.waitFor(1000, [&] { return question->isVisible(); }) && uc->keepQuestionText().startsWith(QLatin1String("The summed run differs")) && uc->stage() == QLatin1String("verified")
+                && rec.count(QStringLiteral("keep")) == 1);
+    d.check("atqtsim: \"Keep anyway\" is not yet enabled", anyway && !anyway->isEnabled() && anyway->property("text").toString().contains(QLatin1String("(in ")));
+    toEnd();
+    d.grab(w, QStringLiteral("atqtsim/keep-question.png"));
+    const bool ready = anyway && d.waitFor(5000, [&] { return anyway->isEnabled(); });
+    steps.clear();
+    click(anyway);
+    const bool kept = ready && step(QStringLiteral("keep"), 15000) && results.value(QStringLiteral("keep"));
+    std::printf("smoke: atqtsim: kept: %s\n", outcome ? qPrintable(outcome->property("text").toString()) : "-");
+    d.check("atqtsim: the person's second press, a second later, keeps it: Kept",
+            kept && uc->stage() == QLatin1String("kept") && rec.count(QStringLiteral("keep")) == 2 && outcome && outcome->isVisible()
+                && outcome->property("text").toString() == QLatin1String("Kept.") && uc->guardText().isEmpty());
+    toEnd();
+    d.grab(w, QStringLiteral("atqtsim/kept.png"));
+    finish();
+}
+
+static const SmokeDriver::Section atqtsimUnits("atqtsim-units", 218, &simSection);

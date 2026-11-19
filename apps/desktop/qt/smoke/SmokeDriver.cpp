@@ -95,6 +95,7 @@ Clock::time_point g_sectionSince = Clock::now();
 Clock::time_point g_runSince = Clock::now();
 std::vector<std::pair<double, std::string>> g_sectionTimes;
 std::atomic<int> g_sectionLimitS{0};
+std::atomic<int> g_sectionOwnS{0};   // -- WP ATQTSIM -- this section's own, 0 none
 
 double secondsSince(Clock::time_point t) {
     return std::chrono::duration<double>(Clock::now() - t).count();
@@ -115,9 +116,10 @@ void startWatchdog(int limitS) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
             std::lock_guard<std::mutex> lock(g_sectionMutex);
             const double s = secondsSince(g_sectionSince);
-            if (s > g_sectionLimitS) {
+            const int limit = std::max(g_sectionLimitS.load(), g_sectionOwnS.load());   // -- WP ATQTSIM --
+            if (s > limit) {
                 printf("FAIL watchdog: section \"%s\" still running after %.0f s (limit %d s, run %.0f s): a hang\n",
-                       g_section.c_str(), s, g_sectionLimitS.load(), secondsSince(g_runSince));
+                       g_section.c_str(), s, limit, secondsSince(g_runSince));
                 fflush(stdout);
                 std::_Exit(4);
             }
@@ -278,7 +280,16 @@ void SmokeDriver::section(const char *name) {
     closeSection();
     g_section = name;
     g_sectionSince = Clock::now();
+    g_sectionOwnS = 0;   // -- WP ATQTSIM --
     printf("smoke: == %s\n", name);
+    fflush(stdout);
+}
+
+// -- WP ATQTSIM --
+void SmokeDriver::allowSectionTime(int seconds) {
+    std::lock_guard<std::mutex> lock(g_sectionMutex);
+    g_sectionOwnS = seconds;
+    printf("smoke: %s may run up to %d s\n", g_section.c_str(), seconds);
     fflush(stdout);
 }
 
