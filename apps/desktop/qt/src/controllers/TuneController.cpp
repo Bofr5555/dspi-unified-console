@@ -424,7 +424,7 @@ void TuneController::startRuns(const QString &step, std::function<QByteArray(Ffi
         emit stepDone(step, false);
         return;
     }
-    if (m->measuring() || m->liveActive()) {
+    if (m->measuring() || m->liveActive() || m->passiveActive()) {   // -- WP P5QUI2 -- the passive RTA too
         fail(tr("Stop the measurement or the live view first."));
         emit stepDone(step, false);
         return;
