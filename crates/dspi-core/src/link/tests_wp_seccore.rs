@@ -53,12 +53,17 @@ impl LinkListener for Events {
 }
 
 fn connect(core: &DspiCore, hub: &FakeHub, credential: &str) -> Result<LinkHello> {
+    connect_to(core, hub, credential, "")
+}
+
+// -- WP LINKFIX -- a bare (v1) token goes out only with the hub's id
+fn connect_to(core: &DspiCore, hub: &FakeHub, credential: &str, id: &str) -> Result<LinkHello> {
     core.link_connect(
         hub.url(),
         "wp-seccore".into(),
         "test".into(),
         credential.into(),
-        String::new(),
+        id.into(),
     )
 }
 
@@ -71,12 +76,18 @@ fn code(r: Result<LinkHello>) -> String {
 
 /// Pair over whatever the hub serves now; returns the credential.
 fn pair(hub: &FakeHub) -> String {
+    pair_with_id(hub).0
+}
+
+// -- WP LINKFIX --
+/// [`pair`], with the hub's id from its hello.
+fn pair_with_id(hub: &FakeHub) -> (String, String) {
     let core = DspiCore::new();
     let hello = connect(&core, hub, "").unwrap();
     assert!(hello.needs_pairing);
     let credential = core.link_pair(PIN.into()).unwrap();
     core.link_close();
-    credential
+    (credential, hello.hub_id)
 }
 
 // ── Upstream hubs: plaintext keeps working ────────────────────────────
@@ -85,7 +96,8 @@ fn pair(hub: &FakeHub) -> String {
 fn wp_seccore_a_plaintext_hub_still_connects_unencrypted_with_v1() {
     let hub = pin_hub();
     let core = DspiCore::new();
-    assert!(connect(&core, &hub, "").unwrap().needs_pairing);
+    let first = connect(&core, &hub, "").unwrap();
+    assert!(first.needs_pairing);
     assert!(hub.tls_refused() >= 1, "TLS was tried first");
     let sec = core.link_security();
     assert!(!sec.encrypted, "unencrypted badge");
@@ -98,7 +110,7 @@ fn wp_seccore_a_plaintext_hub_still_connects_unencrypted_with_v1() {
     assert_eq!(core.link_security().credential, token);
     core.link_close();
 
-    let hello = connect(&core, &hub, &token).unwrap();
+    let hello = connect_to(&core, &hub, &token, &first.hub_id).unwrap();
     assert!(!hello.needs_pairing && !hello.token_refused);
     assert!(!core.link_security().encrypted);
     assert_eq!(core.link_security().credential, token);
@@ -219,12 +231,12 @@ fn wp_seccore_a_pinned_connect() {
 #[test]
 fn wp_seccore_a_v1_token_is_upgraded_to_v2_on_first_tls() {
     let hub = pin_hub();
-    let v1 = pair(&hub);
+    let (v1, id) = pair_with_id(&hub);
     assert!(!v1.starts_with("v2."));
     let key = FakeTlsKey::generate();
     hub.set_tls(Some(&key));
     let core = DspiCore::new();
-    assert!(!connect(&core, &hub, &v1).unwrap().needs_pairing);
+    assert!(!connect_to(&core, &hub, &v1, &id).unwrap().needs_pairing);
     let sec = core.link_security();
     assert!(sec.encrypted && sec.hub_key_new);
     let v2 = Credential::parse(&sec.credential);
@@ -262,11 +274,10 @@ fn wp_seccore_a_changed_key_gets_no_token_and_no_plaintext_try() {
 #[test]
 fn wp_seccore_advertised_tls_refused_is_not_retried_in_plaintext() {
     let hub = pin_hub();
-    let v1 = pair(&hub);
+    let (v1, id) = pair_with_id(&hub);
     let plain_before = hub.upgrades().0;
     let core = DspiCore::new();
-    let r =
-        core.link_connect_advertised(hub.url(), "t".into(), "1".into(), v1, String::new(), true);
+    let r = core.link_connect_advertised(hub.url(), "t".into(), "1".into(), v1, id, true);
     let Err(DspiError::Link { code, msg }) = r else {
         panic!("{r:?}")
     };
@@ -560,18 +571,18 @@ fn wp_secbfixa_a_damaged_v2_credential_is_never_sent_as_a_token() {
 #[test]
 fn wp_secbfixa_a_tls_required_close_stops_with_a_typed_reason() {
     let hub = pin_hub();
-    let token = pair(&hub);
+    let (token, id) = pair_with_id(&hub);
     hub.set_require_tls(true);
     let core = DspiCore::new();
     let started = Instant::now();
-    assert_eq!(code(connect(&core, &hub, &token)), "tls_required");
+    assert_eq!(code(connect_to(&core, &hub, &token, &id)), "tls_required");
     assert!(started.elapsed() < Duration::from_secs(5), "not retried");
 
     // A live plaintext session the hub closes with 4003 tls_required: no reconnect
     hub.set_require_tls(false);
     let events = Arc::new(Events::default());
     core.set_link_listener(Some(events.clone()));
-    connect(&core, &hub, &token).unwrap();
+    connect_to(&core, &hub, &token, &id).unwrap();
     let before = hub.upgrades().0;
     hub.close_all_with(4003, "tls_required");
     wait_until("the end", || core.link_status().closed);

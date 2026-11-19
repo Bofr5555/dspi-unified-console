@@ -136,6 +136,11 @@ impl Client {
     }
 
     fn connect(&self, port: u16, token: &str) -> Value {
+        self.connect_to(port, token, "")
+    }
+
+    // -- WP LINKFIX -- a bare token goes out only with the hub's id
+    fn connect_to(&self, port: u16, token: &str, hub_id: &str) -> Value {
         let host = c("127.0.0.1");
         let url = {
             let mut buf = vec![0u8; 256];
@@ -148,7 +153,7 @@ impl Client {
             );
             String::from_utf8(buf[..n as usize - 1].to_vec()).unwrap()
         };
-        let (url, name, ver, token, none) = (c(&url), c("phone"), c("1"), c(token), c(""));
+        let (url, name, ver, token, none) = (c(&url), c("phone"), c("1"), c(token), c(hub_id));
         json(|b, l| {
             dspi_link_connect(
                 self.0,
@@ -534,7 +539,7 @@ fn wp_hb6_a_change_of_access_mode_is_warned_of_and_reported() {
     assert_eq!(back["tokensRevoked"], 0);
     let port = back["port"].as_u64().unwrap() as u16;
     let client = Client::new();
-    let hello = client.connect(port, &token);
+    let hello = client.connect_to(port, &token, back["hubId"].as_str().unwrap());
     assert_eq!(hello["tokenRefused"], true, "{hello}");
 }
 
@@ -625,7 +630,8 @@ fn wp_hb6_a_client_pairs_is_listed_changes_role_and_is_revoked() {
     }
 
     let again = Client::new();
-    assert_eq!(again.connect(port, &token)["tokenRefused"], true);
+    let id = hub.status()["hubId"].as_str().unwrap().to_owned();
+    assert_eq!(again.connect_to(port, &token, &id)["tokenRefused"], true);
 
     // Nothing the ABI hands the app holds the token.
     for (_, _, text) in seen.events() {
@@ -1099,7 +1105,8 @@ fn wp_hb6_no_token_or_pin_reaches_a_log() {
         dspi_link_close(client.0);
 
         let again = Client::new();
-        assert_eq!(again.connect(port, &token)["needsPairing"], false);
+        let id = hub.status()["hubId"].as_str().unwrap().to_owned();
+        assert_eq!(again.connect_to(port, &token, &id)["needsPairing"], false);
         let cid = hub.clients()["value"][0]["cid"].as_u64().unwrap() as u32;
         let role = c("viewer");
         assert!(dspi_hub_set_role(hub.0, cid, role.as_ptr()));

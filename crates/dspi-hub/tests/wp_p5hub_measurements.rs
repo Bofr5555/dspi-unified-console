@@ -224,7 +224,8 @@ impl Rig {
             name.into(),
             "0".into(),
             authed.token.unwrap(),
-            String::new(),
+            // -- WP LINKFIX -- a bare token goes out only with the hub's id
+            self.hub.hub_id().to_owned(),
         )
         .unwrap();
         wait_until("the device list", || !core.link_devices().is_empty());

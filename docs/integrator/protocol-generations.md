@@ -30,7 +30,7 @@ firmware's result code (`VC_ERR_*`, 0x10 to 0x1A) as `DspiError::Refused { statu
 |---|---|
 | `generation` | `Unknown`, `Legacy` or `Paged` |
 | `protocol_major`, `protocol_minor` | the paged protocol's version; 0 and 0 on a legacy device |
-| `pages` | `[{page, revision}]`, ascending; empty on a legacy device, and on a paged device reached through the hub's in-process paths (`LocalTransport`, `PrincipalTransport`), which carry no page discovery |
+| `pages` | `[{page, revision}]`, ascending; empty on a legacy device. A paged device reached through the hub's in-process paths (`LocalTransport`, `PrincipalTransport`) lists them too: they pass the attachment's discovery on (WP LINKFIX) |
 | `ext_envelope` | `NoChannel`, `Legacy` (0x00) or `Tunnel` (0xE010) |
 | `board_id`, `board_name` | 0 "DSPi" (a Pico), 1 "DSPi Zero", anything else "Unknown board" (0xFF: a USB product string this build does not know, or a board that could not be read) |
 | `device_kind` | `Dsp`, or `AlinkSender` (section 4) |
@@ -75,8 +75,11 @@ STORE) and the tunnel on page 0xE0, and page 0 kept for legacy hosts. The core c
   1.1.6 layout), (2) the tunnel `0xE010` on page 0xE0 (this fork's firmware), (3) no `STORE.ALL_PARAMS` GET in its
   command bitmaps (no bulk image), (4) no page listed but SYS (0x01), STORE (0x02) and 0xE0. Anything else is not the
   sender (fail closed): a paged DSP stays a DSP, a paged device without the tunnel or with any other page fails to open
-  as before, and so does a paged connection that carries no discovery (the hub's in-process and principal
-  connections). Since its command bitmaps hold nothing of the DSP model, the adapter refuses every DSP request
+  as before, and so does a paged connection that carries no discovery. Our hub's in-process and principal
+  connections pass the attachment's discovery on (WP LINKFIX), so the sender opens through them too; there the rule
+  has no product string, so the platform's 0 outputs decide, as over DSPi Link. Our hub applies the same rule at
+  attach (with the USB product string) and asks the sender nothing of the DSP model: no image read (`device.snapshot`
+  answers `busy` at once), no poll of what its bitmaps do not list (`unsupported`, page-0 polls included). Since its command bitmaps hold nothing of the DSP model, the adapter refuses every DSP request
   locally, so nothing DSP-only reaches the sender's wire even before its kind is settled;
 - behind a 1.2 hub the core speaks legacy only, and a dual-stack sender is the legacy sender (its page-0 stack);
 - works: `device_protocol`, `fetch_all` (re-reads the platform only), `ext_status`, `alink_info`, `fetch_alink_*`,

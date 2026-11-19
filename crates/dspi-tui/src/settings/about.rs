@@ -391,12 +391,13 @@ pub const SENDER_NOTE: &str = "This device is the audio link sender, not a DSP: 
 
 // -- WP PGTM --
 /// Said when a paged device's page list is empty (PG-C review carry-over):
-/// the hub's in-process `LocalTransport` and a principal's
-/// `PrincipalTransport` say the generation but carry no page discovery.
+/// a transport that says the generation but carries no page discovery.
+/// -- WP LINKFIX -- our hub's in-process `LocalTransport` and a principal's
+/// `PrincipalTransport` pass the attachment's discovery on now, so this is
+/// left for a relay or host transport that does not.
 pub const NO_PAGE_LIST_NOTE: &str = "This connection says the device is paged but carries no page \
-     list: a hub's in-process or principal connection does not pass the page discovery on. The \
-     page list is therefore empty here, and the extension channel is as the 1.1.6-shaped probe \
-     found it.";
+     list: the connection to it does not pass the page discovery on. The page list is therefore \
+     empty here, and the extension channel is as the 1.1.6-shaped probe found it.";
 
 impl DeviceProtocolView {
     /// One page as `0x05 ROUTE r1`: its number, its name when this build

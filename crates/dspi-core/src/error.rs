@@ -47,7 +47,8 @@ pub enum DspiError {
     Denied,
     /// DSPi Link session failure. `code`: `wrong_pin`, `rate_limited`,
     /// `hub_busy`, `handshake_refused`, `io`, `handshake`, `protocol`,
-    /// `timeout`, `closed`, or another spec 7.1 error code. `msg` can be shown.
+    /// `timeout`, `closed`, `token_without_hub_id` (-- WP LINKFIX --), or another
+    /// spec 7.1 error code. `msg` can be shown.
     #[error("DSPi Link: {msg}")]
     Link {
         /// The error code, as above.
