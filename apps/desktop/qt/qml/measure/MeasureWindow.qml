@@ -107,6 +107,8 @@ ToolWindow {
             AppTabButton { objectName: "Measure.tab.documents"; text: qsTr("Documents") }
             // -- WP P5QUI2 -- only for a connection that may not play
             AppTabButton { objectName: "Measure.tab.passive"; text: qsTr("Passive RTA"); visible: window.blocked; width: visible ? implicitWidth : 0 }
+            // -- WP ATQT -- several units of the hub, on one time base (not for a connection that may not play)
+            AppTabButton { objectName: "Measure.tab.units"; text: qsTr("Several units"); visible: !window.blocked; width: visible ? implicitWidth : 0 }
             Component.onCompleted: if (window.blocked) currentIndex = 5
             // Leaving the passive RTA's tab stops it (it gives the microphone back)
             onCurrentIndexChanged: if (currentIndex !== 5 && MeasureController.passiveActive) MeasureController.passiveStop()
@@ -121,6 +123,7 @@ ToolWindow {
             MeasureTuneTab {}
             MeasureDocsTab { onShowResults: tabs.currentIndex = 1 }
             MeasurePassiveTab {}
+            MeasureUnitsTab {}   // -- WP ATQT --
         }
     }
 }

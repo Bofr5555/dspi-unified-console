@@ -154,6 +154,12 @@ public:
     static bool offersRePair(const QString &code);
     // A session is open (any phase but idle, closed, refused)
     bool inSession() const;
+    // -- WP ATQT -- the session's address, credential and TLS as dialled: the
+    // Measure window's "Several units" step opens a connection of its own to
+    // the same hub for each unit of the group (each judged by its own core)
+    QString sessionUrl() const { return m_lastUrl; }
+    QString sessionCredential() const { return m_credential; }
+    bool sessionTls() const { return m_lastTls; }
 
     // Open a session to `url`, replacing any other. `expectedHubId` is the hub
     // the address should be ("" if not known): its stored token goes out only

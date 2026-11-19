@@ -19760,7 +19760,9 @@ public struct AlinkSystemUnit {
     public var alarms: UInt32
     /**
      * How the programme reaches it: `alink` (senders and fan-outs too) or
-     * `usb_direct`.
+     * `usb_direct`; -- WP ATQT -- or `spdif` (fed by S/PDIF: its `state` is
+     * then the S/PDIF time base's, `locked`, `acquiring`, `anchoring`,
+     * `holdover`, `lock_error`, `none` or `not_read`).
      */
     public var transport: String
     /**
@@ -19946,7 +19948,9 @@ public struct AlinkSystemUnit {
          */alarms: UInt32, 
         /**
          * How the programme reaches it: `alink` (senders and fan-outs too) or
-         * `usb_direct`.
+         * `usb_direct`; -- WP ATQT -- or `spdif` (fed by S/PDIF: its `state` is
+         * then the S/PDIF time base's, `locked`, `acquiring`, `anchoring`,
+         * `holdover`, `lock_error`, `none` or `not_read`).
          */transport: String, 
         /**
          * A USB-direct unit's mode as the unit runs it: `off`, `rate_lock`,

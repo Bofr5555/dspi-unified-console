@@ -2776,7 +2776,9 @@ data class AlinkSystemUnit(
     val alarms: Long,
     /**
      * How the programme reaches it: `alink` (senders and fan-outs too) or
-     * `usb_direct`.
+     * `usb_direct`; -- WP ATQT -- or `spdif` (fed by S/PDIF: its `state` is
+     * then the S/PDIF time base's, `locked`, `acquiring`, `anchoring`,
+     * `holdover`, `lock_error`, `none` or `not_read`).
      */
     val transport: String,
     /**

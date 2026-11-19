@@ -94,6 +94,17 @@ class SystemController : public QObject {
     // "Keep USB-direct units aligned" as drafted, else as the hub has it
     Q_PROPERTY(QVariantList usbUnits READ usbUnits NOTIFY editUnitsChanged)
     Q_PROPERTY(bool keepUsbAligned READ keepUsbAligned NOTIFY draftChanged)
+    // -- WP ATQT -- the S/PDIF transport (PLAN-AT 1.2; the web's SpdifUnits):
+    // the S/PDIF units as the core read them ({ id, name, serial, role
+    // ("source", "follower"), source, sourceName, txMask, slotsWord, d, unitD,
+    // dMin, dMax, connected, state, stateWord, lockError, noTimeBase }), the
+    // sources ({ id, name }), the units an Installer may put on S/PDIF (not
+    // on it, not USB-direct: { id, name }), and the S/PDIF changes drafted, in
+    // words (the rows show the hub's model until Save)
+    Q_PROPERTY(QVariantList spdifUnits READ spdifUnits NOTIFY spdifChanged)
+    Q_PROPERTY(QVariantList spdifSources READ spdifSources NOTIFY spdifChanged)
+    Q_PROPERTY(QVariantList spdifCandidates READ spdifCandidates NOTIFY spdifChanged)
+    Q_PROPERTY(QStringList spdifDrafted READ spdifDrafted NOTIFY draftChanged)
 public:
     SystemController(const AppContext &ctx, QObject *parent = nullptr);
     ~SystemController() override;
@@ -137,6 +148,11 @@ public:
     int draftDelayFrames() const { return m_draftFrames; }
     QVariantList usbUnits() const { return m_usbUnits; }
     bool keepUsbAligned() const;
+    // -- WP ATQT --
+    QVariantList spdifUnits() const { return m_spdifUnits; }
+    QVariantList spdifSources() const;
+    QVariantList spdifCandidates() const;
+    QStringList spdifDrafted() const;
 
     // Reads the view now (the poll does every 3 s)
     Q_INVOKABLE void refresh();
@@ -163,6 +179,23 @@ public:
     // The draft's value for QML: as drafted, else as the installation asks
     Q_INVOKABLE QString usbModeOf(const QString &unitId) const;
     Q_INVOKABLE QString onLockErrorOf(const QString &unitId) const;
+    // -- WP ATQT -- the S/PDIF edits (Admin), staged in the draft and saved
+    // with it in one system.set: a follower's source, a source's time-base
+    // slot (`slot` 0 to 3: outputs 2n + 1 and 2n + 2) and its D ("" the
+    // hub's; 0 to 65535, the hub holds it to the range), a unit put on
+    // S/PDIF `as` "source" or as a follower of source `as`, a unit taken off
+    // S/PDIF (back on the audio link). False when not taken.
+    Q_INVOKABLE bool setSpdifSource(const QString &unitId, const QString &sourceId);
+    Q_INVOKABLE bool setSpdifSlot(const QString &unitId, int slot, bool on);
+    Q_INVOKABLE bool setSpdifD(const QString &unitId, const QString &samples);
+    Q_INVOKABLE bool addSpdif(const QString &unitId, const QString &as);
+    Q_INVOKABLE bool removeSpdif(const QString &unitId);
+    // The draft's value for QML: as drafted, else as the model has it
+    Q_INVOKABLE int spdifMaskOf(const QString &unitId) const;
+    Q_INVOKABLE QString spdifDText(const QString &unitId) const;
+    Q_INVOKABLE QString spdifSourceOf(const QString &unitId) const;
+    // A unit fed by S/PDIF (a follower): not on the audio link's tables
+    Q_INVOKABLE bool spdifFed(const QString &unitId) const;
     // Sends the draft (only while dirty and not stale)
     Q_INVOKABLE void save();
     // Throws the draft away and reads the view again
@@ -188,6 +221,7 @@ signals:
     void recallChanged();
     void actionChanged();
     void draftChanged();
+    void spdifChanged();   // -- WP ATQT --
 
 private:
     QString text(const char *key) const { return m_view.value(QLatin1String(key)).toString(); }
@@ -232,6 +266,11 @@ private:
     // -- WP AUSB2 -- id -> { mode: "" for the unit's own, onLockError: "" unchanged }
     QHash<QString, QVariantMap> m_draftUsb;
     QVariant m_draftKeep;   // invalid: unchanged
+    // -- WP ATQT -- id -> { role, source, txMask, setD, d } (absent: unchanged)
+    QHash<QString, QVariantMap> m_draftSpdif;
+    QVariantList m_spdifUnits;
+    QVariantMap spdifRow(const QString &unitId) const;
+    bool spdifEdit(const QString &unitId, const QVariantMap &change);
 };
 
 #endif // SYSTEMCONTROLLER_H

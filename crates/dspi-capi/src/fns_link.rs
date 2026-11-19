@@ -752,6 +752,10 @@ pub(crate) mod link {
     /// unitCount, summary, health, issues, stale}. Asks the hub (at most once
     /// a second; sooner gives the last view with `stale`): keep it off a UI
     /// thread, and give a buffer of 64 KiB, as a short one means asking again.
+    /// -- WP ATQT -- Also `spdifUnits`: [{id, name, serial, role (`source`,
+    /// `follower`), source, sourceName, txMask, slotsWord, d, unitD, dMin,
+    /// dMax, connected, state, stateWord, lockError, noTimeBase}], the S/PDIF
+    /// units of the same reading (`dspi_core::link::AlinkSpdifUnit`).
     /// Returns the length needed; 0 for a panic.
     #[unsafe(no_mangle)]
     pub extern "C" fn dspi_alink_system_view(
@@ -759,13 +763,26 @@ pub(crate) mod link {
         buf: *mut c_char,
         len: u32,
     ) -> u32 {
-        read(core, buf, len, |c| reply(record(c.alink_system_view())))
+        read(core, buf, len, |c| {
+            // -- WP ATQT -- the S/PDIF rows of the reading the view was built from
+            let view = record(c.alink_system_view()).and_then(|mut v| {
+                let rows = record(Ok(c.alink_system_spdif()))?;
+                if let Value::Object(m) = &mut v {
+                    m.insert("spdifUnits".into(), rows);
+                }
+                Ok(v)
+            });
+            reply(view)
+        })
     }
 
     /// Save the Clock-and-audio-links edits made on the view of `revision`:
     /// `edits_json` is {setSystemDelay, systemDelayFrames (null: automatic),
     /// rooms: [{roomId, lipSyncUs}], units: [{unitId, measuredLatencyUs}],
-    /// usbModes: [{unitId, mode}], keepUsbAligned (null: unchanged)}.
+    /// usbModes: [{unitId, mode}], keepUsbAligned (null: unchanged)}, and
+    /// -- WP ATQT -- spdif: [{unitId, role (`source`, `follower`, `off`,
+    /// null: unchanged), source, txMask, setD, d}] (the S/PDIF units,
+    /// `dspi_core::link::AlinkSpdifEdit`), all in one `system.set`.
     /// Replies JSON {ok, revision, warnings} (the new revision; the hub's
     /// warnings about the model it kept, one sentence each, `[]` for none),
     /// or code `conflict` when the
@@ -786,9 +803,25 @@ pub(crate) mod link {
                     msg: format!("edits_json: {e}"),
                 }
             })?;
+            // -- WP ATQT -- the S/PDIF edits beside them, when there are any
+            let spdif: Vec<dspi_core::link::AlinkSpdifEdit> =
+                serde_json::from_str::<Value>(arg(edits_json, "edits_json")?)
+                    .ok()
+                    .and_then(|v| v.get("spdif").cloned())
+                    .filter(|v| !v.is_null())
+                    .map(serde_json::from_value)
+                    .transpose()
+                    .map_err(|e| DspiError::InvalidArgument {
+                        msg: format!("edits_json spdif: {e}"),
+                    })?
+                    .unwrap_or_default();
             // -- WP P1QT1 -- the hub's warnings too (HWLK1F's note)
-            c.alink_system_save_report(revision, edits)
-                .map(|r| json!({ "revision": r.revision, "warnings": r.warnings }))
+            let saved = if spdif.is_empty() {
+                c.alink_system_save_report(revision, edits)
+            } else {
+                c.alink_system_save_spdif(revision, edits, spdif)
+            };
+            saved.map(|r| json!({ "revision": r.revision, "warnings": r.warnings }))
         })
     }
 
