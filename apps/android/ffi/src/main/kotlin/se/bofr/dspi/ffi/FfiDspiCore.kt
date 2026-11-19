@@ -5888,6 +5888,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemResult.toDomain() =
         reasons = reasons,
         runIds = runIds.map { it.toLong() },
         runs = runs.toInt(),
+        plan = plan,
     )
 
 internal fun MeasureSystemResult.toFfi() =
@@ -5900,6 +5901,7 @@ internal fun MeasureSystemResult.toFfi() =
         reasons = reasons,
         runIds = runIds.map { it.toUInt() },
         runs = runs.toUShort(),
+        plan = plan,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemProposal.toDomain() =

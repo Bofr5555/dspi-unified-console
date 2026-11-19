@@ -46380,6 +46380,13 @@ public struct MeasureSystemResult {
      * Timed runs chained through the anchor (1: none).
      */
     public var runs: UInt16
+    /**
+     * Which plan each run used: "overlapped starts, 50 ms apart" (the
+     * default where it is safe) or "interleaved passes" with why
+     * overlapped starts were not used; "run 1: ...; run 2: ..." for
+     * chained runs.
+     */
+    public var plan: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -46408,7 +46415,13 @@ public struct MeasureSystemResult {
          */runIds: [UInt32], 
         /**
          * Timed runs chained through the anchor (1: none).
-         */runs: UInt16) {
+         */runs: UInt16, 
+        /**
+         * Which plan each run used: "overlapped starts, 50 ms apart" (the
+         * default where it is safe) or "interleaved passes" with why
+         * overlapped starts were not used; "run 1: ...; run 2: ..." for
+         * chained runs.
+         */plan: String) {
         self.documents = documents
         self.arrivals = arrivals
         self.delays = delays
@@ -46417,6 +46430,7 @@ public struct MeasureSystemResult {
         self.reasons = reasons
         self.runIds = runIds
         self.runs = runs
+        self.plan = plan
     }
 }
 
@@ -46451,6 +46465,9 @@ extension MeasureSystemResult: Equatable, Hashable {
         if lhs.runs != rhs.runs {
             return false
         }
+        if lhs.plan != rhs.plan {
+            return false
+        }
         return true
     }
 
@@ -46463,6 +46480,7 @@ extension MeasureSystemResult: Equatable, Hashable {
         hasher.combine(reasons)
         hasher.combine(runIds)
         hasher.combine(runs)
+        hasher.combine(plan)
     }
 }
 
@@ -46482,7 +46500,8 @@ public struct FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer {
                 timingReliable: FfiConverterBool.read(from: &buf), 
                 reasons: FfiConverterSequenceString.read(from: &buf), 
                 runIds: FfiConverterSequenceUInt32.read(from: &buf), 
-                runs: FfiConverterUInt16.read(from: &buf)
+                runs: FfiConverterUInt16.read(from: &buf), 
+                plan: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -46495,6 +46514,7 @@ public struct FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer {
         FfiConverterSequenceString.write(value.reasons, into: &buf)
         FfiConverterSequenceUInt32.write(value.runIds, into: &buf)
         FfiConverterUInt16.write(value.runs, into: &buf)
+        FfiConverterString.write(value.plan, into: &buf)
     }
 }
 

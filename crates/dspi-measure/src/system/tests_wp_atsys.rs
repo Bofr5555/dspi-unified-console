@@ -438,7 +438,8 @@ fn sys_output(key: u8, unit: u8, output: u8) -> SystemOutput {
         onset_ms: 0.0,
         passes: 3,
         uncertainty_us: None,
-        lateness_ms: 0.0, // -- WP ATLATE --
+        lateness_ms: 0.0,              // -- WP ATLATE --
+        absolute_uncertainty_us: None, // -- WP ATOVL --
     }
 }
 

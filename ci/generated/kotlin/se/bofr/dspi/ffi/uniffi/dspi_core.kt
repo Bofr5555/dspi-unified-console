@@ -41965,7 +41965,14 @@ data class MeasureSystemResult (
     /**
      * Timed runs chained through the anchor (1: none).
      */
-    var `runs`: kotlin.UShort
+    var `runs`: kotlin.UShort, 
+    /**
+     * Which plan each run used: "overlapped starts, 50 ms apart" (the
+     * default where it is safe) or "interleaved passes" with why
+     * overlapped starts were not used; "run 1: ...; run 2: ..." for
+     * chained runs.
+     */
+    var `plan`: kotlin.String
 ) {
     
     companion object
@@ -41985,6 +41992,7 @@ public object FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer<Measur
             FfiConverterSequenceString.read(buf),
             FfiConverterSequenceUInt.read(buf),
             FfiConverterUShort.read(buf),
+            FfiConverterString.read(buf),
         )
     }
 
@@ -41996,7 +42004,8 @@ public object FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer<Measur
             FfiConverterBoolean.allocationSize(value.`timingReliable`) +
             FfiConverterSequenceString.allocationSize(value.`reasons`) +
             FfiConverterSequenceUInt.allocationSize(value.`runIds`) +
-            FfiConverterUShort.allocationSize(value.`runs`)
+            FfiConverterUShort.allocationSize(value.`runs`) +
+            FfiConverterString.allocationSize(value.`plan`)
     )
 
     override fun write(value: MeasureSystemResult, buf: ByteBuffer) {
@@ -42008,6 +42017,7 @@ public object FfiConverterTypeMeasureSystemResult: FfiConverterRustBuffer<Measur
             FfiConverterSequenceString.write(value.`reasons`, buf)
             FfiConverterSequenceUInt.write(value.`runIds`, buf)
             FfiConverterUShort.write(value.`runs`, buf)
+            FfiConverterString.write(value.`plan`, buf)
     }
 }
 

@@ -1411,21 +1411,40 @@ fn wp_ate2e_a_hub_that_dies_mid_run_leaves_at_most_one_segment_per_unit() {
 
 // ── The microphone ──────────────────────────────────────────────────────
 
-/// P5SPIKE's microphone (55-100 ppm bursts of 0.25-1.5 s within ±50 µs):
-/// the run is "timing unreliable" and nothing is offered.
+/// P5SPIKE's microphone (55-100 ppm bursts of 0.25-1.5 s within ±50 µs)
+/// with interleaved passes (WP ATOVL: three units of the 1 s sweep cannot
+/// start overlapped, the second harmonic's image of the third would fall on
+/// the first's arrival, so the plan interleaves and says why): the run is
+/// "timing unreliable" and nothing is offered.
 #[test]
 fn wp_ate2e_a_p5spike_microphone_is_timing_unreliable_and_nothing_is_offered() {
     let _slot = slot();
     let spec = Spec {
         wander: Some(WanderBursts::p5spike(7)),
         seed: 7,
-        ..two_line(G2B)
+        ..Spec::new(
+            Kind::Line,
+            G2B,
+            vec![
+                unit_spec(0, &[(0, 3.0)]),
+                unit_spec(0, &[(0, 4.0)]),
+                unit_spec(0, &[(0, 3.6)]),
+            ],
+        )
     };
     let mut rig = rig(&spec);
     let st = measure(&mut rig);
     assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
     assert_eq!(st.timing_reliable, Some(false), "{st:?}");
     let result = rig.core().measure_system_result().unwrap();
+    // -- WP ATOVL --
+    assert!(
+        result
+            .plan
+            .starts_with("interleaved passes (overlapped starts do not fit"),
+        "{}",
+        result.plan
+    );
     eprintln!("reasons {:?}", result.reasons);
     eprintln!("arrivals {:?}", result.arrivals);
     assert!(!result.timing_reliable);
@@ -1717,4 +1736,131 @@ fn review_ate_the_old_room_noise_is_measured_right_or_refused_never_wrong() {
         "{:?}",
         flagged.delays.iter().find(|d| d.offered)
     );
+}
+
+// ── WP ATOVL: overlapped starts ─────────────────────────────────────────
+
+/// Two units of one group start overlapped: the result says so, and the
+/// hub played them together (some start of one unit less than a sweep after
+/// the other's).
+fn assert_overlapped(rig: &Rig) {
+    let result = rig.core().measure_system_result().unwrap();
+    eprintln!("plan: {}", result.plan);
+    assert_eq!(result.plan, "overlapped starts, 50 ms apart", "{result:?}");
+    let walked: Vec<&(usize, u64, f32, u16)> = rig.room.heard.iter().collect();
+    let together = walked
+        .windows(2)
+        .any(|w| w[0].0 != w[1].0 && w[1].1.abs_diff(w[0].1) < u64::from(RATE));
+    assert!(together, "no two units started within a sweep: {walked:?}");
+}
+
+/// Two receivers on the line, a steady microphone: overlapped starts by
+/// default, every arrival within 2 µs of the world's, the summed check
+/// passes.
+#[test]
+fn wp_atovl_line_two_units_overlapped() {
+    let _slot = slot();
+    let spec = Spec {
+        seed: 12,
+        ..Spec::new(
+            Kind::Line,
+            G1B,
+            vec![unit_spec(0, &[(0, 3.0)]), unit_spec(700, &[(0, 4.6)])],
+        )
+    };
+    let mut rig = rig(&spec);
+    let st = measure(&mut rig);
+    assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+    check_arrivals(&rig);
+    assert_overlapped(&rig);
+    let p = sum_check(&mut rig);
+    assert!(p.transitions.iter().all(|t| t.checked && t.passed), "{p:?}");
+    assert!(p.offered && p.may_apply, "{p:?}");
+}
+
+/// An S/PDIF source and a follower with its own D (G2b): overlapped, every
+/// arrival within 2 µs.
+#[test]
+fn wp_atovl_spdif_source_and_follower_overlapped() {
+    let _slot = slot();
+    let spec = Spec {
+        seed: 13,
+        ppm: 12.5,
+        ..two_spdif(G2B)
+    };
+    let mut rig = rig(&spec);
+    let st = measure(&mut rig);
+    assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+    check_arrivals(&rig);
+    assert_overlapped(&rig);
+}
+
+/// Two USB-direct units (G1b), their streams' start offsets in `out.delay`
+/// (planned for as lateness, so they are heard the offset apart):
+/// overlapped, every arrival within 2 µs.
+#[test]
+fn wp_atovl_usb_direct_two_units_overlapped() {
+    let _slot = slot();
+    let spec = Spec {
+        seed: 14,
+        ppm: -18.0,
+        ..Spec::new(
+            Kind::Usb,
+            G1B,
+            vec![unit_spec(0, &[(0, 4.1)]), unit_spec(500, &[(0, 2.6)])],
+        )
+    };
+    let mut rig = rig(&spec);
+    let st = measure(&mut rig);
+    assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+    check_arrivals(&rig);
+    assert_overlapped(&rig);
+}
+
+/// P5SPIKE's microphone on two line units, overlapped: the wander is common
+/// to what plays together, so the run is normally timing reliable (WP
+/// ATOVL's study: most seeds). Through the hub the wander lands where the
+/// wall clock puts the run, so either way it must hold: reliable, and every
+/// arrival offered within three of its uncertainties and 10 µs of the
+/// world's; or unreliable and nothing offered, saying why.
+#[test]
+fn wp_atovl_a_p5spike_microphone_overlapped_offers_only_what_holds() {
+    let _slot = slot();
+    let spec = Spec {
+        wander: Some(WanderBursts::p5spike(7)),
+        seed: 7,
+        ..two_line(G2B)
+    };
+    let mut rig = rig(&spec);
+    let st = measure(&mut rig);
+    assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+    assert_overlapped(&rig);
+    let result = rig.core().measure_system_result().unwrap();
+    eprintln!(
+        "reliable {} reasons {:?}",
+        result.timing_reliable, result.reasons
+    );
+    let truths: Vec<f64> = result
+        .arrivals
+        .iter()
+        .map(|a| rig.room.truth_us(&a.serial, a.output))
+        .collect();
+    let latest = truths.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    for (a, t) in result.arrivals.iter().zip(&truths) {
+        let err = a.arrival_us - (t - latest);
+        eprintln!("{a:?}: error {err:.3} µs");
+        if result.timing_reliable {
+            let u = a.uncertainty_us.unwrap_or(0.0);
+            assert!(a.offered, "{a:?}");
+            assert!(
+                err.abs() <= 10.0 && err.abs() <= 3.0 * u.max(0.25),
+                "{a:?}: {err}"
+            );
+        } else {
+            assert!(
+                !a.offered && a.reason.starts_with("timing unreliable"),
+                "{a:?}"
+            );
+        }
+    }
 }

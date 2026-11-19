@@ -214,6 +214,8 @@ pub(crate) struct RunDone {
     /// `(unit, staged level)`.
     pub(crate) levels: Vec<(usize, f32)>,
     pub(crate) run_ids: Vec<u32>,
+    // -- WP ATOVL -- how it was laid out, in words.
+    pub(crate) plan: String,
 }
 
 /// One measured output.
@@ -823,6 +825,8 @@ impl Outcome {
                 reasons,
                 run_ids,
                 runs: u16::try_from(runs_done.len()).unwrap_or(u16::MAX),
+                // -- WP ATOVL -- which plan each run used.
+                plan: plan_words(&runs_done),
             },
             setup,
             measured,
@@ -1669,6 +1673,33 @@ fn writes_of(report: &Value) -> (u32, Vec<String>) {
     (ok, bad)
 }
 
+// -- WP ATOVL --
+/// Which plan each run used, in words ("run 2: ..." when more than one).
+fn plan_words(runs: &[RunDone]) -> String {
+    let words: Vec<String> = runs
+        .iter()
+        .map(|r| {
+            if r.plan.is_empty() {
+                r.analysis.overlap_ms.map_or_else(
+                    || "interleaved passes".to_string(),
+                    |ms| format!("overlapped starts, {ms:.0} ms apart"),
+                )
+            } else {
+                r.plan.clone()
+            }
+        })
+        .collect();
+    match words.as_slice() {
+        [one] => one.clone(),
+        _ => words
+            .iter()
+            .enumerate()
+            .map(|(i, w)| format!("run {}: {w}", i.saturating_add(1)))
+            .collect::<Vec<_>>()
+            .join("; "),
+    }
+}
+
 fn unit_output(m: &Measured) -> UnitOutput {
     UnitOutput {
         unit: UnitIndex(u8::try_from(m.unit).unwrap_or(u8::MAX)),
@@ -1698,14 +1729,17 @@ fn pair_uncertainty(
     if a.run == b.run {
         let r = runs.get(a.run)?;
         if a.unit == b.unit {
+            // -- WP ATOVL -- two outputs of one unit never play together:
+            // the absolute uncertainties (equal to the plain ones for
+            // interleaved passes).
             let ua = r
                 .analysis
                 .output(unit_output(a).unit, a.output)?
-                .uncertainty_us?;
+                .absolute_uncertainty_us?;
             let ub = r
                 .analysis
                 .output(unit_output(b).unit, b.output)?
-                .uncertainty_us?;
+                .absolute_uncertainty_us?;
             return Some((ua * ua + ub * ub).sqrt());
         }
         return delay_of(r, a, b)?.uncertainty_us;
@@ -1738,7 +1772,7 @@ fn pair_offer(
         let Some(r) = runs.get(m.run) else {
             return (false, u, "no run".into());
         };
-        if same || m.unit == l.unit {
+        if same {
             let ok = r.analysis.timing_reliable;
             let why = if ok {
                 String::new()
@@ -1748,6 +1782,13 @@ fn pair_offer(
                     r.analysis.reasons.first().cloned().unwrap_or_default()
                 )
             };
+            return (ok, u, why);
+        }
+        if m.unit == l.unit {
+            // -- WP ATOVL -- the absolute gate (the run's own for
+            // interleaved passes): an overlapped run never plays two
+            // outputs of one unit together.
+            let (ok, why) = r.analysis.same_unit_offer();
             return (ok, u, why);
         }
         return match delay_of(r, m, l) {
