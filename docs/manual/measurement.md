@@ -39,7 +39,8 @@ input is playing, and stops if audio starts.
 
 ### 2.1 Speakers
 
-Pick the placement in the setup:
+Pick the placement in the setup. Nothing is chosen for you: **Measure** stays off until you have picked one, because
+headphones are measured much more quietly than speakers.
 
 | Placement | Where the microphone goes | What it is good for |
 |---|---|---|
@@ -54,7 +55,7 @@ Point the microphone the way its calibration file expects:
   position. The console notices a 90° file from its name (`_90deg`) or its header.
 
 Use **3 passes or more** when you want auto-tune to touch timing. A run of 2 passes is always marked "timing
-unreliable" (section 6).
+unreliable" (section 6); the setup says so under **Passes** when it is 2.
 
 ### 2.2 Headphones and couplers
 
@@ -191,10 +192,11 @@ EQ toward the target. Each step shows its result before the next, and you can st
 1. **Layout.** The console proposes your speakers and their ways (low, mid, high, sub) from the DSPi's settings, and
    which outputs belong together. Check and correct it. You can leave outputs out.
 2. **Checks.** Everything that would stop a run (section 4) is listed in words.
-3. **Measure.** One walked run of each speaker's ways at the listening position, three passes. For headphones choose
-   the headphone placement first (in the web console's Auto-tune tab: **Measured: Headphones on a coupler**; it follows
-   the setup's placement until you choose): the run then uses the lower headphone levels of section 4. In the Qt
-   console the tune uses the measurement you made on the Measure tab, with the placement you chose there.
+3. **Measure.** One walked run of each speaker's ways at the listening position, three passes. Choose where it is
+   measured first: in the web console's Auto-tune tab **Measured: Speakers, at the listening position** or
+   **Headphones on a coupler** (it takes the setup's choice when that is one of the two; nothing is assumed). For
+   headphones the run then uses the lower headphone levels of section 4. In the Qt console the tune uses the
+   measurement you made on the Measure tab, with the placement you chose there.
 4. **Options.** You can keep the crossover (align only), keep the delays, keep the levels, or leave the EQ out (**No EQ
    fit**).
 5. **Summed check, always.** The ways of each crossover play together, and the measured sum is compared with what the

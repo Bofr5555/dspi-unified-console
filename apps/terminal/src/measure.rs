@@ -210,8 +210,8 @@ fn help() -> String {
 
     {COMMAND} measure mic import FILE [--name NAME]
         a measurement microphone's calibration file (miniDSP UMIK-1/UMIK-2
-        text, REW calibration text or CSV) made into a microphone document
-        and filed (over --link: on the hub)
+        text, Dayton Audio iMM-6C/UMM-6 text, REW calibration text or CSV)
+        made into a microphone document and filed (over --link: on the hub)
     {COMMAND} measure target import FILE [--name NAME] [--use speakers|headphones]
         [--coupler iec60318_4|flatPlate|hats]
         a target curve (REW or CSV text) made into a target document and filed
@@ -230,6 +230,8 @@ fn help() -> String {
         --dry-run prints the proposal and writes nothing
     {COMMAND} --demo measure run [--outputs 1,2,...] [--name NAME]
         measure the demo device with its simulated microphone, and file it
+        (speakers at the listening position in the demo's room: nothing
+        plays, and no other device is measured here)
 
 The Terminal opens no microphone. Delay, polarity and crossover changes need
 the summed check, and a tune is verified by measuring again: here only the
