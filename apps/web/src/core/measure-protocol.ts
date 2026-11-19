@@ -19,6 +19,7 @@
 // Neither method reaches the core; nothing here plays anything.
 
 import { bindCapturePort, measurePushParams } from "./capture";
+import type { CoreMethods, Method } from "./protocol";
 
 // ---- the session (P5SES) ----
 
@@ -233,7 +234,57 @@ export interface MeasureSimInfoRecord {
   issue?: string | null;
 }
 
-/** The measurement calls, method by method. */
+// ---- the passive microphone RTA and a document's curves (P5CURV) ----
+
+export interface MeasureRtaPassiveSetupRecord {
+  micDocument?: string;
+  captureRateHz?: number;
+  averaging?: MeasureRtaAveraging;
+  bandsPerOctave?: number;
+}
+
+export interface MeasureRtaPassiveStateRecord {
+  active: boolean;
+  captureRateHz: number;
+  bandsPerOctave: number;
+  averaging: MeasureRtaAveraging;
+  frames: number;
+  nonfiniteSamples: number;
+  held: boolean;
+  spl: boolean;
+}
+
+export interface MeasureRtaPassiveFrameRecord {
+  state: MeasureRtaPassiveStateRecord;
+  rta?: MeasureLiveRtaRecord | null;
+}
+
+export interface MeasureDocCurvesOptionsRecord {
+  /** 1/N octave (1 to 48); 0 none. */
+  smoothing?: number;
+  /** The target too, levelled to each output's curve. */
+  target?: boolean;
+  /** A `target` document's text; "" for the placement's default. */
+  targetDocument?: string;
+}
+
+export interface MeasureDocCurveRecord {
+  output: number;
+  role: MeasureRole;
+  speaker: string;
+  measured: MeasureCurveRecord;
+  target?: MeasureCurveRecord | null;
+  /** Empty when the document has no spread. */
+  spreadDb: number[];
+}
+
+export interface MeasureDocCurvesRecord {
+  smoothing: number;
+  timingReliable: boolean;
+  outputs: MeasureDocCurveRecord[];
+}
+
+/** The measurement calls, method by method (part of the console's `CoreMethods`). */
 export interface MeasureMethods {
   measurePreflight: { params: { setup: MeasureSetupRecord }; result: MeasurePreflightRecord };
   measureStart: { params: { setup: MeasureSetupRecord }; result: MeasureStateRecord };
@@ -269,17 +320,31 @@ export interface MeasureMethods {
 
   measureSimSet: { params: { on: boolean; seed?: number }; result: MeasureSimInfoRecord };
   measureSimInfo: { params: undefined; result: MeasureSimInfoRecord };
+
+  // P5CURV
+  measureRtaPassiveStart: { params: { setup: MeasureRtaPassiveSetupRecord }; result: MeasureRtaPassiveStateRecord };
+  measureRtaPassivePush: { params: { samples: number[]; rateHz: number }; result: MeasureRtaPassiveStateRecord };
+  measureRtaPassiveFrame: { params: undefined; result: MeasureRtaPassiveFrameRecord };
+  measureRtaPassiveState: { params: undefined; result: MeasureRtaPassiveStateRecord };
+  measureRtaPassiveHold: { params: { on: boolean }; result: MeasureRtaPassiveStateRecord };
+  measureRtaPassiveAveraging: { params: { averaging: MeasureRtaAveraging }; result: MeasureRtaPassiveStateRecord };
+  measureRtaPassiveStop: { params: undefined; result: MeasureRtaPassiveStateRecord };
+  measureDocCurves: { params: { text: string; options?: MeasureDocCurvesOptionsRecord }; result: MeasureDocCurvesRecord };
+
+  /** The Worker's own (never the core's): a capture port, its blocks to the session or to the passive RTA. */
+  measureCaptureOpen: { params: { to?: CaptureTarget } | undefined; result: CaptureOpenRecord };
+  measureCaptureClose: { params: undefined; result: null };
 }
 export type MeasureMethod = keyof MeasureMethods;
 
 /** What a measurement screen needs of a core: a session's `CoreClient` is one. */
 export interface MeasureCaller {
-  call(method: never, params: never): Promise<unknown>;
+  call<M extends Method>(method: M, params: CoreMethods[M]["params"]): Promise<CoreMethods[M]["result"]>;
 }
 
-/** A measurement call, typed (the console's `CoreMethods` does not list them: they are this file's). */
-export function measureCall<M extends MeasureMethod>(core: MeasureCaller, method: M, params: MeasureMethods[M]["params"]): Promise<MeasureMethods[M]["result"]> {
-  return core.call(method as never, params as never) as Promise<MeasureMethods[M]["result"]>;
+/** A measurement call (kept as the screens' one name for them). */
+export function measureCall<M extends MeasureMethod>(core: MeasureCaller, method: M, params: CoreMethods[M]["params"]): Promise<CoreMethods[M]["result"]> {
+  return core.call(method, params);
 }
 
 // ---- the Worker's part ----
@@ -287,6 +352,9 @@ export function measureCall<M extends MeasureMethod>(core: MeasureCaller, method
 /** The Worker's own methods (they never reach the core). */
 export const CAPTURE_OPEN = "measureCaptureOpen";
 export const CAPTURE_CLOSE = "measureCaptureClose";
+
+/** Where a capture port's blocks go: the measurement session, or the passive RTA. */
+export type CaptureTarget = "measure" | "passive";
 
 /** `measureCaptureOpen`'s answer: the port for the capture worklet, and where the worklet's script is. */
 export interface CaptureOpenRecord {
@@ -349,17 +417,22 @@ export class MeasureWorkerRoute {
     return method === CAPTURE_OPEN || method === CAPTURE_CLOSE;
   }
 
-  /** `measureCaptureOpen`: a new port (any earlier one is closed); `measureCaptureClose`: closed. */
-  answer(method: string): { value: CaptureOpenRecord | null; transfer: MessagePort[] } {
+  /**
+   * `measureCaptureOpen {to}`: a new port (any earlier one is closed), its blocks to
+   * `measureCapturePush` or, `to: "passive"`, to `measureRtaPassivePush`; `measureCaptureClose`: closed.
+   */
+  answer(method: string, params?: unknown): { value: CaptureOpenRecord | null; transfer: MessagePort[] } {
     this.closeCapture();
     if (method !== CAPTURE_OPEN) return { value: null, transfer: [] };
     const ch = new this.env.MessageChannel();
     this.pushed = 0;
     this.refused = 0;
+    const passive = (params as { to?: unknown } | null | undefined)?.to === "passive";
     const bound = bindCapturePort(ch.port1, {
       push: async (b) => {
         this.pushed++;
-        await this.call("measureCapturePush", measurePushParams(b));
+        if (passive) await this.call("measureRtaPassivePush", { samples: Array.from(b.samples), rateHz: b.rateHz });
+        else await this.call("measureCapturePush", measurePushParams(b));
       },
       end: () => {
         this.unbind = null;

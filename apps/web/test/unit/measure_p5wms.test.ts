@@ -302,6 +302,16 @@ test("P5WMS: after measureStart the Worker turns the session and pushes each sta
   );
 });
 
+test("P5WMS: a passive capture port pushes its blocks into measureRtaPassivePush, never into the session", async () => {
+  const rig = routeRig([]);
+  const a = rig.route.answer(CAPTURE_OPEN, { to: "passive" });
+  a.value!.port.postMessage({ kind: "block", firstFrame: 0, samples: new Float32Array([0.5, -0.25]), rateHz: 48000, clipped: false });
+  for (let i = 0; i < 50 && rig.calls.length < 1; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.deepEqual(rig.calls, [{ method: "measureRtaPassivePush", params: { samples: [0.5, -0.25], rateHz: 48000 } }]);
+  rig.route.answer("measureCaptureClose");
+  a.value!.port.close();
+});
+
 // ------------------------------------------------------------------ on the real core (demo device)
 
 const dir = process.env.DSPI_WASM_DIR ?? "";
@@ -386,6 +396,20 @@ test("P5WMS: on the demo with the simulated microphone: preflight in words, a me
     assert.ok(o.curve!.valid.filter((x) => x).length > 300, "trusted points");
     assert.ok(o.curve!.valid.some((x) => !x), "and untrusted ones (drawn faint)");
   }
+  // The results' curves are the core's: smoothed, each with its levelled target, on the standard grid.
+  const curves = await measureCall(session.core, "measureDocCurves", { text: desk.result!, options: { smoothing: 6, target: true } });
+  assert.equal(curves.smoothing, 6);
+  assert.equal(curves.timingReliable, true);
+  assert.deepEqual(
+    curves.outputs.map((o) => [o.output, o.measured.freqsHz.length, o.target?.freqsHz.length]),
+    [
+      [0, 1066, 1066],
+      [1, 1066, 1066],
+    ],
+  );
+  const plain = await measureCall(session.core, "measureDocCurves", { text: desk.result!, options: { smoothing: 0 } });
+  assert.equal(plain.outputs[0]!.target ?? null, null, "no target unless asked");
+  assert.notDeepEqual(plain.outputs[0]!.measured.magDb, curves.outputs[0]!.measured.magDb, "smoothing changes the curve");
   // REW text of an output, from the document.
   const rew = await measureCall(session.core, "measurementExportRew", { text: desk.result!, output: 1 });
   assert.match(rew.text, /\d/);
@@ -432,5 +456,29 @@ test("P5WMS: a view-only session is refused a run with nothing played", { skip, 
   assert.ok(desk.error !== "" || (desk.preflight && !desk.preflight.clear), `${desk.error} ${JSON.stringify(desk.preflight)}`);
   if (desk.preflight) console.log("view-only preflight:", desk.preflight.blockers.map((b) => b.key).join(", "));
   assert.equal((await session.core.call("siggenStatus", undefined)).state, 0);
+  // The passive RTA: the core's, from pushed blocks, with nothing sent to the DSPi.
+  assert.equal(desk.passiveBlocker, "");
+  const st = await measureCall(session.core, "measureRtaPassiveStart", { setup: { captureRateHz: 48000, averaging: "fast" } });
+  assert.equal(st.active, true);
+  let x = 1;
+  const noise = () => Array.from({ length: 4800 }, () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648 - 0.5) * 0.1);
+  for (let i = 0; i < 10; i++) await measureCall(session.core, "measureRtaPassivePush", { samples: noise(), rateHz: 48000 });
+  const f = await measureCall(session.core, "measureRtaPassiveFrame", undefined);
+  assert.ok(f.state.frames > 0, "frames averaged");
+  assert.ok(f.rta?.current && f.rta.current.freqsHz.length > 10, "a spectrum to draw");
+  await measureCall(session.core, "measureRtaPassiveHold", { on: true });
+  assert.ok((await measureCall(session.core, "measureRtaPassiveFrame", undefined)).rta?.held, "held");
+  assert.equal((await measureCall(session.core, "measureRtaPassiveStop", undefined)).active, false);
+  assert.equal((await session.core.call("siggenStatus", undefined)).state, 0);
   await desk.stop();
+});
+
+test("P5WMS: the passive RTA is not offered while a run plays the generator", () => {
+  const desk = new MeasureDesk({ core: {}, readOnlyReason: "" } as unknown as Session);
+  assert.equal(desk.passiveBlocker, "");
+  desk.state = { ...STATE, active: true };
+  assert.match(desk.passiveBlocker, /would show the test signal/);
+  desk.state = null;
+  desk.live = { active: true, mode: "sweep", output: 0, seq: 0, runs: 0, session: STATE };
+  assert.notEqual(desk.passiveBlocker, "");
 });

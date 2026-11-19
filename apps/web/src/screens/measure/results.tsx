@@ -2,13 +2,15 @@
 // the document holds it, untrusted points faint, the spread across positions or reseats as a
 // band, the timing verdict in words ("timing unreliable" with its reasons), the placement and
 // the microphone; the document saved to the hub (or downloaded as text without one), a file
-// opened, and REW text exported per output.
+// opened, and REW text exported per output. The curves drawn are the core's (`measureDocCurves`):
+// smoothed as chosen, with the target levelled to each output when asked; no maths here (R1).
+// The document's own curves (decoded) are drawn only while the core's answer is not in.
 
-import { useState } from "preact/hooks";
-import { measureCall } from "../../core/measure-protocol";
+import { useEffect, useState } from "preact/hooks";
+import { measureCall, type MeasureDocCurvesRecord } from "../../core/measure-protocol";
 import type { MeasureTabProps } from "./MeasureScreen";
 import { MeasureGraph, type Series } from "./graph";
-import { fileNameOf, resultView } from "./model";
+import { SMOOTHING, fileNameOf, resultView, smoothingLabel } from "./model";
 import { download, readTextFile } from "./setup";
 
 export function ResultsTab(props: MeasureTabProps) {
@@ -16,7 +18,24 @@ export function ResultsTab(props: MeasureTabProps) {
   const [hidden, setHidden] = useState<Set<number>>(new Set());
   const [said, setSaid] = useState("");
   const [rewOut, setRewOut] = useState<number | null>(null);
+  const [smoothing, setSmoothing] = useState(6);
+  const [withTarget, setWithTarget] = useState(true);
+  /** The core's curves, with what they were asked for. */
+  const [curves, setCurves] = useState<{ text: string; targetDocument: string; smoothing: number; withTarget: boolean; c: MeasureDocCurvesRecord } | null>(null);
   const view = desk.result ? resultView(desk.result) : null;
+  const targetDocument = desk.targetDocument;
+  useEffect(() => {
+    const text = desk.result;
+    if (!text || !view) return;
+    let alive = true;
+    void measureCall(desk.core, "measureDocCurves", { text, options: { smoothing, target: withTarget, targetDocument } }).then(
+      (c) => alive && setCurves({ text, targetDocument, smoothing, withTarget, c }),
+      (e) => alive && (setCurves(null), desk.fail(e)),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [desk.result, smoothing, withTarget, targetDocument]);
   const open = async (input: HTMLInputElement) => {
     try {
       const f = await readTextFile(input);
@@ -60,10 +79,19 @@ export function ResultsTab(props: MeasureTabProps) {
       desk.fail(e);
     }
   };
-  const series: Series[] = view.outputs
-    .filter((o) => o.curve && !hidden.has(o.output))
-    .map((o) => ({ label: outputName(o.output), kind: "measured", curve: o.curve!, spreadDb: o.curve!.spreadDb, colour: view.outputs.indexOf(o) }));
-  const spl = view.outputs.some((o) => o.curve?.spl);
+  const core =
+    curves && curves.text === text && curves.targetDocument === targetDocument && curves.smoothing === smoothing && curves.withTarget === withTarget ? curves.c : null;
+  const series: Series[] = [];
+  if (core) {
+    core.outputs.forEach((o, i) => {
+      if (hidden.has(o.output)) return;
+      series.push({ label: outputName(o.output), kind: "measured", curve: o.measured, spreadDb: o.spreadDb.length ? o.spreadDb : undefined, colour: i });
+      if (o.target) series.push({ label: `Target for ${outputName(o.output)}`, kind: "target", curve: o.target });
+    });
+  } else
+    for (const o of view.outputs)
+      if (o.curve && !hidden.has(o.output)) series.push({ label: outputName(o.output), kind: "measured", curve: o.curve, spreadDb: o.curve.spreadDb, colour: view.outputs.indexOf(o) });
+  const spl = core ? core.outputs.some((o) => o.measured.spl) : view.outputs.some((o) => o.curve?.spl);
   return (
     <section class="card" aria-label="Measurement results" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
       <div class="card-head">
@@ -106,8 +134,26 @@ export function ResultsTab(props: MeasureTabProps) {
           </label>
         ))}
       </div>
+      <div role="group" aria-label="Graph" style={{ display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "center" }}>
+        <label>
+          Smoothing{" "}
+          <select aria-label="Results smoothing" value={String(smoothing)} onChange={(e) => setSmoothing(Number((e.currentTarget as HTMLSelectElement).value))}>
+            {SMOOTHING.map((n) => (
+              <option key={n} value={n}>
+                {smoothingLabel(n)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <input type="checkbox" aria-label="Show the target" checked={withTarget} onChange={(e) => setWithTarget((e.currentTarget as HTMLInputElement).checked)} />{" "}
+          Target {desk.targetName ? `(${desk.targetName})` : "(the placement's default, our own curve)"}, levelled to each output
+        </label>
+      </div>
       <MeasureGraph label="Measured responses" series={series} unit={spl ? "dB SPL" : "dB (relative)"} />
-      <p class="muted">The curves as measured (1/96 octave); the live view shows them smoothed, with the target and a change's predicted curve.</p>
+      <p class="muted" aria-label="Curves drawn" data-smoothing={core ? String(core.smoothing) : "none"}>
+        {core ? `Smoothed by the core: ${smoothingLabel(core.smoothing)}.` : "The curves as stored (1/96 octave)."} The live view adds a change's predicted curve.
+      </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
         {mayFile ? (
           <button type="button" class="primary" onClick={() => void save()}>

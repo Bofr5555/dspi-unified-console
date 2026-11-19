@@ -17,6 +17,7 @@
 // -- WP WB6J -- the analyser view, the signal generator, Stats for nerbs, the Interrupt Monitor
 import type { HubSettingsMethods } from "./hub-settings-protocol"; // -- WP P2WB2 --
 import type { ToolsMethods } from "./tools-protocol";
+import type { MeasureMethods } from "./measure-protocol"; // -- WP P5WMS --
 
 /** Where a session's device is. A fleet server may add its own kinds later. */
 export type DeviceTarget =
@@ -431,7 +432,7 @@ export type CoreEvent =
   | { event: "hubServer"; events: HubServerEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */, ClipboardMethods /* -- WP WBCLIP -- */ {
+export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */, ClipboardMethods /* -- WP WBCLIP -- */, MeasureMethods /* -- WP P5WMS -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**

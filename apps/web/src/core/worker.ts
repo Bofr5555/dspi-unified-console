@@ -48,7 +48,7 @@ const route = new MeasureWorkerRoute(
 );
 const measure = {
   handles: (m: string) => route.handles(m),
-  answer: (m: string) => route.answer(m),
+  answer: (m: string, p: unknown) => route.answer(m, p),
   after(m: string, ok: boolean, v: unknown) {
     try {
       route.after(m, ok, v);
@@ -62,7 +62,7 @@ self.onmessage = (ev: MessageEvent<Request>) => {
   const { id, method, params } = ev.data;
   // -- WP P5WMS -- the Worker's own methods: a port (transferred), never a core call
   if (measure.handles(method)) {
-    const a = measure.answer(method);
+    const a = measure.answer(method, params);
     self.postMessage({ reply: { id, ok: true, value: a.value } }, a.transfer);
     return;
   }

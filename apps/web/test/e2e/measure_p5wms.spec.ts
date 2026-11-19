@@ -4,9 +4,13 @@
 // the generator, the live view's "cut this peak" applied and undone. With the browsers' fake
 // microphone (P5WCAP; Chromium plays a P5SIM rendering, Firefox a tone): the capture's blocks
 // reach the core through the Worker's port (they cannot answer the generator, so the run stops
-// with its reason in words). A view-only session gets the passive RTA and the results only. And
-// 375 px with no sideways scroll. What the page did is read back from the core (a direct call).
+// with its reason in words, or ends). The results are the core's curves (`measureDocCurves`),
+// smoothed, with the target. A view-only session and a Viewer through a real hub (`uconsole --demo
+// hub`) get the passive microphone RTA, computed by the core from the fake microphone, and
+// nothing that plays. And 375 px with no sideways scroll. What the page did is read back from the core (a direct call).
 
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
@@ -83,7 +87,14 @@ test("P5WMS: a measurement end to end on the simulated microphone: preflight in 
   const results = screen.getByRole("region", { name: "Measurement results" });
   await expect(results.getByLabel("Timing")).toContainText("Timing reliable");
   const graph = results.getByRole("img", { name: "Measured responses" });
-  await expect(graph).toHaveAttribute("data-series", /^measured:OUT1 .*\|measured:OUT2 /);
+  // The core's curves: smoothed (1/6 octave by default), each output with its levelled target.
+  await expect(results.getByLabel("Curves drawn")).toHaveAttribute("data-smoothing", "6");
+  await expect(graph).toHaveAttribute("data-series", /^measured:OUT1 [^|]*\|target:Target for OUT1 [^|]*\|measured:OUT2 [^|]*\|target:Target for OUT2 /);
+  expect(await graph.locator('path[data-kind="target"]').count()).toBeGreaterThan(1);
+  await results.getByLabel("Results smoothing").selectOption("24");
+  await expect(results.getByLabel("Curves drawn")).toHaveAttribute("data-smoothing", "24");
+  await results.getByLabel("Show the target").uncheck();
+  await expect(graph).toHaveAttribute("data-series", /^measured:OUT1 [^|]*\|measured:OUT2 /);
   // The curves drawn, the untrusted points faint.
   expect(await graph.locator("path.trusted").count()).toBeGreaterThan(1);
   expect(await graph.locator("path.untrusted").count()).toBeGreaterThan(0);
@@ -191,19 +202,130 @@ test.describe("the browsers' fake microphone", () => {
   });
 });
 
-test("P5WMS: a view-only session gets the passive RTA and the results only: nothing that plays", async ({ page }) => {
-  const errors = errorsOf(page);
-  const screen = await measureScreen(page, "Venue B", false);
+/** The passive RTA listens (Chromium: the fake microphone's file; Firefox in the image cannot start audio). */
+async function passiveListens(page: Page, screen: Locator, browserName: string) {
   const tabs = screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab");
   await expect(tabs).toHaveText(["Passive RTA", "Results"]);
-  await expect(screen.getByRole("region", { name: "Passive microphone RTA" })).toContainText("only the passive microphone RTA and the documents");
   await expect(screen.getByRole("button", { name: "Start measuring" })).toHaveCount(0);
   await expect(screen.getByRole("button", { name: "Start live" })).toHaveCount(0);
-  await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Results" }).click();
-  await expect(screen.getByRole("region", { name: "Measurement results" })).toContainText("No measurement yet");
-  expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
-  expect(errors).toEqual([]);
+  const passive = screen.getByRole("region", { name: "Passive microphone RTA" });
+  await expect(passive).toContainText("only the passive microphone RTA and the documents");
+  await passive.getByRole("button", { name: "Listen" }).click();
+  const refused = screen.getByRole("alert").filter({ hasText: "Microphone capture did not start" });
+  await expect(passive.getByRole("button", { name: "Stop listening" }).or(refused)).toBeVisible({ timeout: 15_000 });
+  if (await refused.isVisible()) {
+    expect(browserName).toBe("firefox");
+    return;
+  }
+  await expect(screen.getByRole("status", { name: "Measuring" })).toContainText("nothing is played");
+  // The core computes it: frames are averaged and its spectrum is drawn.
+  await expect.poll(async () => Number(await passive.getByLabel("Frames averaged").getAttribute("data-frames")), { timeout: 20_000 }).toBeGreaterThan(0);
+  const graph = passive.getByRole("img", { name: "Passive microphone RTA" });
+  await expect(graph).toHaveAttribute("data-series", "measured:Microphone RTA");
+  expect(await graph.locator('path[data-kind="measured"]').count()).toBeGreaterThan(0);
+  await passive.getByRole("button", { name: "Hold" }).click();
+  await expect(graph).toHaveAttribute("data-series", "measured:Microphone RTA|held:Held");
+  await expect(passive.getByRole("img", { name: "Compared with the held spectrum" })).toBeVisible();
+  await passive.getByRole("button", { name: "Stop listening" }).click();
+  await expect(passive.getByRole("button", { name: "Listen" })).toBeVisible();
+  await expect(screen.getByRole("status", { name: "Measuring" })).toHaveCount(0);
+}
+
+test.describe("passive", () => {
+  test.use({ permissions: async ({ browserName }, use) => use(browserName === "firefox" ? [] : ["microphone"]) });
+
+  test("P5WMS: a view-only session gets the passive RTA, computed from the microphone, and the results only: nothing plays", async ({ page, browserName }) => {
+    test.setTimeout(60_000);
+    const errors = errorsOf(page);
+    const screen = await measureScreen(page, "Venue B", false);
+    await passiveListens(page, screen, browserName);
+    expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
+    expect((await call<{ active: boolean }>(page, "measureState")).active).toBe(false);
+    await screen.getByRole("tablist", { name: "Measurement" }).getByRole("tab", { name: "Results" }).click();
+    await expect(screen.getByRole("region", { name: "Measurement results" })).toContainText("No measurement yet");
+    expect(errors).toEqual([]);
+  });
+
+  // A real hub (`uconsole --demo hub`), paired as Control, then made a Viewer with the hub stopped
+  // (`uconsole hub role`, as system.spec's SW3 does); the kept token reconnects as the Viewer.
+  test("P5WMS: a Viewer through the hub gets the passive RTA computed and nothing that plays", async ({ page, browserName, viewport }) => {
+    test.skip(!desktop(viewport?.width) || !process.env.DSPI_TERM, "desktop width, with uconsole");
+    test.setTimeout(120_000);
+    const errors = errorsOf(page);
+    let hub = await demoHub(true);
+    try {
+      await hubSession(page, hub, true);
+      const { port, store } = hub;
+      await stopHub(hub);
+      const listed = JSON.parse(execFileSync(process.env.DSPI_TERM!, ["hub", "clients", "--store", store, "--json"], { encoding: "utf8" }).trim().split("\n").pop()!) as { clients: { cid: number }[] };
+      execFileSync(process.env.DSPI_TERM!, ["hub", "role", String(listed.clients[0]!.cid), "viewer", "--store", store]);
+      hub = await demoHub(false, store, port);
+      const session = await hubSession(page, hub, false);
+      await session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name: "Measure" }).click();
+      const screen = session.getByRole("region", { name: "Measure" });
+      await expect(screen.getByRole("region", { name: "Passive microphone RTA" })).toContainText("hub's Viewer role");
+      await passiveListens(page, screen, browserName);
+      // Nothing plays: the generator stays idle (its own screen, which a Viewer may read).
+      await session.getByRole("tablist", { name: "Screens" }).getByRole("tab", { name: "Signal Generator" }).click();
+      const gen = session.getByRole("region", { name: "Signal Generator" });
+      await expect(gen.getByRole("group", { name: "Transport" }).getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await stopHub(hub);
+    }
+  });
 });
+
+type OwnHub = { port: number; pin: string; child: ChildProcess; store: string };
+const DEMO = "DEMO0000DSPI0001";
+
+/** `uconsole --demo hub --web --loopback`, serving this console, on a free port (or `port`); with `pairing`, its PIN. */
+async function demoHub(pairing: boolean, store?: string, port0 = 0): Promise<OwnHub> {
+  store ??= `${process.env.TMPDIR ?? "test-results"}/p5wms-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  const child = spawn(
+    process.env.DSPI_TERM!,
+    ["--demo", "hub", "--web", "--loopback", "--console", "dist", ...(pairing ? ["--pair"] : []), "--port", String(port0), "--json", "--no-keep-awake", "--store", store],
+    { stdio: ["ignore", "pipe", "inherit"] },
+  );
+  const lines = createInterface({ input: child.stdout! });
+  let port = 0;
+  const pin = await new Promise<string>((ok, fail) => {
+    child.on("exit", (code) => fail(new Error(`uconsole hub exited ${code}`)));
+    lines.on("line", (line) => {
+      const e = JSON.parse(line) as { event?: string; port?: number; pin?: string };
+      if (e.event === "status") {
+        port = e.port ?? 0;
+        if (!pairing) ok("");
+      }
+      if (e.event === "pairing" && e.pin) ok(e.pin);
+    });
+  });
+  return { port, pin, child, store };
+}
+
+async function stopHub(h: OwnHub): Promise<void> {
+  if (h.child.exitCode !== null) return;
+  const exited = new Promise<void>((r) => h.child.once("exit", () => r()));
+  h.child.kill();
+  await exited;
+}
+
+/** The hub's page, its entry connected (paired when asked), the demo DSPi opened. */
+async function hubSession(page: Page, hub: OwnHub, pair: boolean): Promise<Locator> {
+  await page.goto(`http://127.0.0.1:${hub.port}/console/`);
+  const row = page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
+  await row.getByRole("button", { name: "Connect" }).click();
+  const session = page.getByRole("article").last();
+  if (pair) {
+    await session.getByLabel("PIN").fill(hub.pin);
+    await session.getByRole("button", { name: "Pair" }).click();
+  }
+  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) });
+  await entry.getByRole("button", { name: "Open" }).click();
+  await expect(session.locator(".device-meta")).toContainText(DEMO);
+  await expect(session.locator(".banner")).toHaveCount(0, { timeout: 10_000 });
+  return session;
+}
 
 test("P5WMS: 375 px: every tab of the Measure screen without sideways scroll", async ({ page, viewport }) => {
   test.skip(desktop(viewport?.width), "the narrow project");

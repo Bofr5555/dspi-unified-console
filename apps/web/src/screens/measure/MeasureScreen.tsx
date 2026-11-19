@@ -14,10 +14,12 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import { CoreCallError } from "../../core/protocol";
 import { browserCaptureEnv, listMicrophones, startCapture, type Capture, type CaptureEnv, type MicrophoneInfo } from "../../core/capture";
 import {
-  CAPTURE_OPEN,
   isMeasureEvent,
   measureCall,
   type CaptureOpenRecord,
+  type CaptureTarget,
+  type MeasureRtaAveraging,
+  type MeasureRtaPassiveFrameRecord,
   type MeasureLiveSetupRecord,
   type MeasureLiveStateRecord,
   type MeasurePreflightRecord,
@@ -31,6 +33,7 @@ import type { Session } from "../../ui/session";
 import { noticeOf, noticeRow } from "../../ui/texts";
 import { outputRows } from "../main/model";
 import { LiveTab } from "./live";
+import { PassiveTab } from "./passive";
 import { playBlocker, type MeasureDraft } from "./model";
 import { ResultsTab } from "./results";
 import { RunPanel } from "./run";
@@ -91,6 +94,8 @@ export class MeasureDesk {
       // The Worker's events beside the console's own (`CoreEvent` does not list them).
       const e: unknown = ev;
       if (!isMeasureEvent(e)) return;
+      // The passive RTA never runs beside the generator: it would show the stimulus.
+      if (e.state.active && this.passive) void this.stopPassive();
       if (e.event === "measure") void this.onState(e.state);
       else {
         const was = this.live?.active;
@@ -109,9 +114,10 @@ export class MeasureDesk {
     ]);
     if (!this.alive) return;
     this.sim = sim;
-    if (sim?.available) this.mic = { kind: "sim" };
     this.hubMeasure = !!(caps as { hubMeasure?: boolean } | null)?.hubMeasure;
     this.hubRole = role.role;
+    // The simulated microphone answers the generator only: a passive view needs a real one.
+    if (sim?.available && !this.passiveOnly) this.mic = { kind: "sim" };
     this.state = st;
     this.live = live;
     this.changed();
@@ -119,13 +125,21 @@ export class MeasureDesk {
     await this.preparePort();
   }
 
-  /** The Worker's capture port, asked for ahead of a run (see `openMic`). */
+  /** This connection may not play the generator: the passive RTA and the results only. */
+  get passiveOnly(): boolean {
+    return !!playBlocker(this.session.readOnlyReason, this.hubRole);
+  }
+
+  /** The Worker's capture port, asked for ahead of a run (see `openMic`), and where it sends. */
   private port: CaptureOpenRecord | null = null;
+  private portTo: CaptureTarget = "measure";
 
   private async preparePort(): Promise<void> {
-    if (this.port || this.mic.kind === "sim") return;
+    const to: CaptureTarget = this.passiveOnly ? "passive" : "measure";
+    if ((this.port && this.portTo === to) || (this.mic.kind === "sim" && to === "measure")) return;
     try {
-      this.port = (await this.core.call(CAPTURE_OPEN as never, undefined as never)) as CaptureOpenRecord;
+      this.port = await measureCall(this.core, "measureCaptureOpen", { to });
+      this.portTo = to;
     } catch {
       this.port = null;
     }
@@ -138,6 +152,8 @@ export class MeasureDesk {
     this.stopEvents = null;
     if (this.live?.active) await measureCall(this.core, "measureLiveStop", undefined).catch(() => null);
     if (this.state?.active) await measureCall(this.core, "measureStop", undefined).catch(() => null);
+    if (this.passive) await measureCall(this.core, "measureRtaPassiveStop", undefined).catch(() => null);
+    this.passive = null;
     await this.closeMic();
   }
 
@@ -199,7 +215,7 @@ export class MeasureDesk {
 
   /** Something runs: the Stop bar shows. */
   get running(): boolean {
-    return !!(this.state?.active || this.live?.active || (this.capture && !this.capture.stopped));
+    return !!(this.state?.active || this.live?.active || this.passive || (this.capture && !this.capture.stopped));
   }
 
   /**
@@ -207,8 +223,8 @@ export class MeasureDesk {
    * (the simulated one off, then the permission, the capture straight to the Worker). The rate
    * the session should expect.
    */
-  async openMic(): Promise<number> {
-    if (this.mic.kind === "sim") {
+  async openMic(to: CaptureTarget = "measure"): Promise<number> {
+    if (this.mic.kind === "sim" && to === "measure") {
       await this.closeMic();
       this.sim = await measureCall(this.core, "measureSimSet", { on: true, seed: 1 });
       return 48_000;
@@ -216,7 +232,7 @@ export class MeasureDesk {
     // Firefox starts an audio context only close to the user's click: nothing slow comes first
     // (the Worker's port is asked for ahead, the simulated microphone switched off after).
     if (this.capture) await this.closeMic();
-    const open = this.port ?? ((await this.core.call(CAPTURE_OPEN as never, undefined as never)) as CaptureOpenRecord);
+    const open = this.port && this.portTo === to ? this.port : await measureCall(this.core, "measureCaptureOpen", { to });
     this.port = null;
     const env = this.env();
     // The worklet posts on the Worker's port: the blocks never pass through the page.
@@ -227,7 +243,8 @@ export class MeasureDesk {
         readonly port2 = new env.MessageChannel().port2;
       } as unknown as CaptureEnv["MessageChannel"],
     };
-    this.capture = await startCapture({ deviceId: this.mic.deviceId || undefined, workletUrl: open.workletUrl, env: routed });
+    const deviceId = this.mic.kind === "browser" ? this.mic.deviceId : "";
+    this.capture = await startCapture({ deviceId: deviceId || undefined, workletUrl: open.workletUrl, env: routed });
     this.capture.onEvent((e) => {
       if (e.kind === "lost") this.error = noticeRow(e.noticeKey)?.title ?? "The microphone went away";
       this.changed();
@@ -244,6 +261,81 @@ export class MeasureDesk {
     if (c && !c.stopped) await c.stop().catch(() => undefined);
     if (this.alive) void this.preparePort();
     this.changed();
+  }
+
+  // ---- the passive microphone RTA (P5CURV): programme audio, nothing played ----
+
+  /** The passive RTA's last frame while it runs, else null. */
+  passive: MeasureRtaPassiveFrameRecord | null = null;
+  private passiveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Why the passive RTA may not start now, or "": never beside a run or the live view. */
+  get passiveBlocker(): string {
+    if (this.state?.active || this.live?.active) return "A measurement or the live view plays the generator now: the passive RTA would show the test signal.";
+    return "";
+  }
+
+  /** The microphone to the passive RTA (the Worker pushes its blocks), then its frames, twice a second. */
+  async startPassive(averaging: MeasureRtaAveraging): Promise<boolean> {
+    this.clearError();
+    if (this.passiveBlocker) {
+      this.error = this.passiveBlocker;
+      this.changed();
+      return false;
+    }
+    try {
+      const rate = await this.openMic("passive");
+      const st = await measureCall(this.core, "measureRtaPassiveStart", { setup: { micDocument: this.draft?.micDocument ?? this.micDocument, captureRateHz: rate, averaging } });
+      this.passive = { state: st, rta: null };
+      this.changed();
+      this.pollPassive();
+      return true;
+    } catch (e) {
+      await this.closeMic();
+      this.fail(e);
+      return false;
+    }
+  }
+
+  private pollPassive(): void {
+    clearTimeout(this.passiveTimer);
+    this.passiveTimer = setTimeout(async () => {
+      if (!this.passive) return;
+      try {
+        const f = await measureCall(this.core, "measureRtaPassiveFrame", undefined);
+        if (!this.passive) return;
+        this.passive = f;
+        this.changed();
+      } catch {
+        // The next turn tries again.
+      }
+      if (this.passive && this.alive) this.pollPassive();
+    }, 500);
+  }
+
+  async stopPassive(): Promise<void> {
+    clearTimeout(this.passiveTimer);
+    const was = this.passive;
+    this.passive = null;
+    if (was) await measureCall(this.core, "measureRtaPassiveStop", undefined).catch(() => null);
+    await this.closeMic();
+  }
+
+  async passiveHold(on: boolean): Promise<void> {
+    try {
+      await measureCall(this.core, "measureRtaPassiveHold", { on });
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  async passiveAveraging(averaging: MeasureRtaAveraging): Promise<void> {
+    if (!this.passive) return;
+    try {
+      await measureCall(this.core, "measureRtaPassiveAveraging", { averaging });
+    } catch (e) {
+      this.fail(e);
+    }
   }
 
   /** Preflight, the microphone, then the run (the Worker turns it). False when it did not start. */
@@ -281,9 +373,11 @@ export class MeasureDesk {
 
   /** Stop: the run and the live view (one STOP_NOW each in the core), the microphone. */
   async stopAll(): Promise<void> {
+    if (this.passive) await this.stopPassive();
     try {
       if (this.live?.active) this.live = await measureCall(this.core, "measureLiveStop", undefined);
-      this.state = await measureCall(this.core, "measureStop", undefined);
+      // A passive-only connection has no run to stop (and sends nothing).
+      if (!this.passiveOnly || this.state?.active) this.state = await measureCall(this.core, "measureStop", undefined);
     } catch (e) {
       this.fail(e);
     }
@@ -373,22 +467,6 @@ function MeasureTabView(props: MeasureTabProps) {
   );
 }
 
-/** The passive microphone RTA a Viewer or a read-only connection gets (PLAN-P5 section 1.5). */
-function PassiveTab(props: MeasureTabProps) {
-  return (
-    <section class="card" aria-label="Passive microphone RTA">
-      <div class="card-head">
-        <strong>Passive microphone RTA</strong>
-      </div>
-      <p class="note">{props.blocked}</p>
-      <p class="muted">
-        The passive RTA listens to programme audio with the microphone and plays nothing. This console's core has no passive RTA call yet, so it is not offered here;
-        saved measurements can be read on the Results tab.
-      </p>
-    </section>
-  );
-}
-
 /** The screen's tabs. P5WAT adds its auto-tune and documents tabs in the slot below. */
 export const MEASURE_TABS: MeasureTab[] = [
   { id: "measure", label: "Measure", View: MeasureTabView },
@@ -425,7 +503,7 @@ export function MeasureScreen(props: ScreenProps) {
       {desk.running ? (
         <div class="banner" role="status" aria-label="Measuring" style={{ position: "sticky", top: 0, zIndex: 2, display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
           <span style={{ flex: "1 1 12em" }}>
-            {desk.live?.active ? "The live view is playing the DSPi's generator." : desk.state?.active ? "Measuring with the DSPi's generator." : "The microphone is open."}
+            {desk.passive ? "The microphone is open for the passive RTA; nothing is played." : desk.live?.active ? "The live view is playing the DSPi's generator." : desk.state?.active ? "Measuring with the DSPi's generator." : "The microphone is open."}
           </span>
           <button type="button" class="danger" onClick={() => void desk.stopAll()}>
             Stop
