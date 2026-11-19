@@ -11,12 +11,21 @@
 // validated against the board before anything is written.
 // WP AN18: every write passes CG8's firmware guard first ([FirmwareGuarding]);
 // a writer takes only an image the guard cleared ([GuardClearance]).
+// WP PGAND: the guard is the core's update check (`firmware_target` +
+// `firmware_update_check`, PLAN-PG section 1.8), judged BEFORE the bootloader
+// entry ([FirmwareInstaller.checkBeforeEntry]): a board without BOOTSEL is
+// offered no image, the typed phrase (the lineage's or the voltage's) is asked
+// while the board still runs, and the generation change is shown. The write
+// itself is Kotlin's (PICOBOOT or the drive), so the core's write never sees
+// it: the last check before it asks the core's write gate all the same
+// (`firmware_write_check`, review PG-D2), which judges by the target the
+// bridge's core read itself and drops when another device is opened, with the
+// answer given to the entry check. A target kept here is never the judge.
 package se.bofr.dspi.feature.firmware
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -28,9 +37,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import se.bofr.dspi.bridge.CoreTools
 import se.bofr.dspi.bridge.DspiBridge
-import se.bofr.dspi.core.FirmwareGuardBoard
 import se.bofr.dspi.core.FirmwareGuardDecision
 import se.bofr.dspi.core.FirmwareGuardVerdict
+import se.bofr.dspi.core.FirmwareTarget
+import se.bofr.dspi.core.FirmwareUpdateRule
+import se.bofr.dspi.core.FirmwareUpdateVerdict
 
 // MARK: - Images
 
@@ -151,38 +162,68 @@ class BridgeFirmwareVerifier(private val deviceVersion: () -> FirmwareVersion?) 
     }
 }
 
-// MARK: - Guard (WP AN18)
+// MARK: - Guard (WP AN18; WP PGAND: the update check)
 
 /**
- * CG8's firmware guard as the installer asks it. The board record is taken
- * from the running device before it reboots into BOOTSEL; a board already in
- * BOOTSEL cannot be asked, so its record is unknown and the guard asks the user.
+ * The core's update check as the installer asks it. The target is read from
+ * the running device before it reboots into BOOTSEL and kept; a board already
+ * in BOOTSEL cannot be asked, so it is a board in BOOTSEL nobody knows and the
+ * check asks the user.
  */
 interface FirmwareGuarding {
-    /** Reads the running board's record (before `enterBootloader`). Main thread; suspends for the read. */
-    suspend fun recordRunningBoard()
+    /** Reads the running board as an update target (before `enterBootloader`) and keeps it. Main thread; suspends for the read. */
+    suspend fun recordRunningBoard(): FirmwareTarget
 
-    /** Drops the record: the next board is one nobody asked. */
+    /** Drops the target: the next board is one nobody asked. */
     fun forgetBoard()
 
-    /** The verdict on writing [image]; [typed] is the user's answer, "" if none. Called on the IO dispatcher. */
-    fun check(image: ByteArray, typed: String): FirmwareGuardVerdict
+    /**
+     * The update verdict on [image] for the target just read ([recordRunningBoard]), before the
+     * bootloader entry; [typed] is the user's answer, "" if none. Called on the IO dispatcher.
+     */
+    fun check(image: ByteArray, typed: String): FirmwareUpdateVerdict
+
+    /**
+     * -- review PG-D2 -- The verdict at the write, the last check before the first byte: the
+     * core's write gate (`firmware_write_check`), which judges by the target the core itself
+     * read and still keeps, never by one kept here. [typed] as for [check].
+     */
+    suspend fun checkWrite(image: ByteArray, typed: String): FirmwareUpdateVerdict
 }
 
-/** [FirmwareGuarding] over the core ([DspiBridge.coreTools]). */
+/** [FirmwareGuarding] over the core ([DspiBridge.coreTools]): `firmware_target` + `firmware_update_check`. */
 class CoreFirmwareGuard(private val tools: CoreTools) : FirmwareGuarding {
-    @Volatile private var board: FirmwareGuardBoard? = null
+    @Volatile private var target: FirmwareTarget? = null
 
-    override suspend fun recordRunningBoard() {
-        board = tools.firmwareGuardBoard()
-    }
+    override suspend fun recordRunningBoard(): FirmwareTarget = tools.firmwareTarget().also { target = it }
 
     override fun forgetBoard() {
-        board = null
+        target = null
     }
 
-    override fun check(image: ByteArray, typed: String): FirmwareGuardVerdict =
-        tools.firmwareGuardCheck(image, board ?: tools.firmwareGuardBoardInBootloader(), typed)
+    override fun check(image: ByteArray, typed: String): FirmwareUpdateVerdict =
+        tools.firmwareUpdateCheck(image, target ?: CoreTools.targetInBootloader(tools.firmwareGuardBoardInBootloader()), typed)
+
+    // -- review PG-D2 -- The record kept here only adds doubt at the core's gate: one that is
+    // not the core's own makes the voltage unknown; none is a board in BOOTSEL nobody asked.
+    override suspend fun checkWrite(image: ByteArray, typed: String): FirmwareUpdateVerdict =
+        tools.firmwareWriteCheck(image, target?.voltage ?: tools.firmwareGuardBoardInBootloader(), typed)
+}
+
+// -- WP PGAND --
+/** Where the check before the bootloader entry stands ([FirmwareInstaller.entryCheck]). */
+sealed class EntryCheck {
+    /** Reading the board and judging the image. */
+    data object Checking : EntryCheck()
+
+    /** The image may go: [generationChange] ("" for none) is shown before the entry. */
+    data class Clear(val generationChange: String) : EntryCheck()
+
+    /** [phrase] must be typed first ([message] says why); [wrongAnswer]: what was typed did not match. */
+    data class Ask(val message: String, val phrase: String, val generationChange: String, val wrongAnswer: Boolean) : EntryCheck()
+
+    /** No image for this board ([noBootsel]: it has no BOOTSEL), whatever is typed; nothing is sent. */
+    data class Refused(val message: String, val noBootsel: Boolean) : EntryCheck()
 }
 
 /**
@@ -245,8 +286,14 @@ sealed class FirmwareInstallState {
      * WP AN18: the firmware guard needs [phrase] typed before it allows the
      * write ([message] says why). [wrongAnswer]: what was typed did not match.
      */
-    data class NeedsConfirmation(val chip: BootloaderBoard.Chip, val message: String, val phrase: String, val wrongAnswer: Boolean) :
-        FirmwareInstallState()
+    data class NeedsConfirmation(
+        val chip: BootloaderBoard.Chip,
+        val message: String,
+        val phrase: String,
+        val wrongAnswer: Boolean,
+        // -- WP PGAND -- shown with the question
+        val generationChange: String = ""
+    ) : FirmwareInstallState()
 
     /** Writing, with the fraction of the image sent so far. */
     data class Writing(val fraction: Double) : FirmwareInstallState()
@@ -288,6 +335,21 @@ class FirmwareInstaller(
     private class Pending(val board: BootloaderBoard, val image: FirmwareImage, val uf2: Uf2Image, val writer: FirmwareWriter)
 
     private var pending: Pending? = null
+
+    // -- WP PGAND --
+    private val _entryCheck = MutableStateFlow<EntryCheck?>(null)
+
+    /** The check before the bootloader entry ([checkBeforeEntry]); null when none was begun. */
+    val entryCheck: StateFlow<EntryCheck?> = _entryCheck.asStateFlow()
+
+    /** The image the entry check judged, and the answer it took: the write is judged with the same. */
+    private var entryImage: ByteArray? = null
+    private var entryTyped: String = ""
+    private var entryJob: Job? = null
+
+    /** The update verdict the write went out on (its generation change is shown while writing). */
+    var lastVerdict: FirmwareUpdateVerdict? = null
+        private set
 
     /** Where writes go; changeable only while nothing is installing. */
     var writer: FirmwareWriter = writer
@@ -344,6 +406,8 @@ class FirmwareInstaller(
         installing = false
         armed = false
         pending = null
+        dropEntry() // -- WP PGAND --
+        lastVerdict = null
         guard.forgetBoard()
         applyBoards(locator.currentBoards())
     }
@@ -374,15 +438,112 @@ class FirmwareInstaller(
         (_state.value as? FirmwareInstallState.Ready)?.let { install(it.board) }
     }
 
+    // -- WP PGAND -- the update check before the bootloader entry
+
     /**
-     * Reads the running board's record for the guard, then [then] (the reboot
-     * into BOOTSEL): the board must be asked while it can still answer.
+     * Reads the running board as an update target, then judges the image that
+     * would be written to a [chip] board (the connected device's chip) for it,
+     * all before anything is sent: [entryCheck] says how it came out. Only
+     * [EntryCheck.Clear] lets [enterWhenClear] reboot the board.
      */
-    fun recordBoardThen(then: () -> Unit) {
-        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+    fun checkBeforeEntry(chip: BootloaderBoard.Chip) {
+        if (installing) return
+        entryJob?.cancel()
+        entryImage = null
+        entryTyped = ""
+        _entryCheck.value = EntryCheck.Checking
+        entryJob = scope.launch {
             guard.recordRunningBoard()
-            then()
+            val image = try {
+                imageProvider(chip)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: FirmwareInstallError) {
+                return@launch refuseEntry(e.message)
+            } catch (e: Exception) {
+                return@launch refuseEntry(FirmwareInstallError.WriteFailed(e.message ?: e.toString()).message)
+            }
+            val uf2Error = try {
+                Uf2Image.parse(image.bytes).targetError(chip)
+            } catch (e: Uf2FormatException) {
+                FirmwareInstallError.InvalidImage(e.message ?: "unreadable")
+            }
+            if (uf2Error != null) return@launch refuseEntry(uf2Error.message)
+            entryImage = image.bytes
+            judgeEntry(image.bytes, typed = "")
         }
+    }
+
+    /** The user typed [typed] in answer to [EntryCheck.Ask]: judged again on the same target. */
+    fun answerEntry(typed: String) {
+        if (_entryCheck.value !is EntryCheck.Ask) return
+        val image = entryImage ?: return
+        entryJob = scope.launch { judgeEntry(image, typed) }
+    }
+
+    /**
+     * Commits to the update the entry check cleared and calls [enter] (the
+     * reboot into BOOTSEL). Does nothing unless it is [EntryCheck.Clear]: a
+     * board without BOOTSEL, or one whose phrase was not typed, is never sent
+     * into its bootloader from here. Returns whether [enter] was called.
+     */
+    fun enterWhenClear(enter: () -> Unit): Boolean {
+        if (_entryCheck.value !is EntryCheck.Clear || installing) return false
+        installWhenReady()
+        enter()
+        return true
+    }
+
+    /**
+     * Drops the entry check (the dialog was dismissed) and the board it read: nothing was
+     * sent, so a board that shows up in BOOTSEL later is one nobody asked (review PG-D2).
+     */
+    fun cancelEntry() {
+        dropEntry()
+        if (!installing && !armed) guard.forgetBoard()
+    }
+
+    private fun dropEntry() {
+        entryJob?.cancel()
+        entryJob = null
+        entryImage = null
+        entryTyped = ""
+        _entryCheck.value = null
+    }
+
+    private suspend fun judgeEntry(image: ByteArray, typed: String) {
+        val update = try {
+            withContext(io) { guard.check(image, typed) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return refuseEntry("The firmware update check could not judge this image.")
+        }
+        val v = update.verdict
+        _entryCheck.value = when {
+            update.rule == FirmwareUpdateRule.NO_BOOTSEL -> EntryCheck.Refused(v.message, noBootsel = true)
+            v.allowed -> {
+                entryTyped = typed
+                EntryCheck.Clear(update.generationChange)
+            }
+            v.decision == FirmwareGuardDecision.NEEDS_CONFIRMATION && v.confirmationPhrase.isNotEmpty() ->
+                EntryCheck.Ask(v.message, v.confirmationPhrase, update.generationChange, wrongAnswer = typed.isNotEmpty())
+            else -> EntryCheck.Refused(v.message.ifEmpty { "The firmware guard refused this image." }, noBootsel = false)
+        }
+    }
+
+    private fun refuseEntry(message: String) {
+        _entryCheck.value = EntryCheck.Refused(message, noBootsel = false)
+    }
+
+    /**
+     * -- review PG-D2 -- The entry is refused before anything is read or sent, with [message]
+     * (the bundled DSP image for the alink sender): shown as [EntryCheck.Refused].
+     */
+    fun refuseBeforeEntry(message: String) {
+        if (installing) return
+        cancelEntry()
+        refuseEntry(message)
     }
 
     /** The user typed [typed] in answer to [FirmwareInstallState.NeedsConfirmation]: ask the guard again. */
@@ -424,27 +585,40 @@ class FirmwareInstaller(
         uf2.targetError(board.chip)?.let { return fail(it) }
 
         val writer = this.writer
-        job = scope.launch { guardThenWrite(board, image, uf2, writer, typed = "") }
+        // -- WP PGAND -- the answer given before the entry, for the image it was given for
+        val typed = if (entryImage?.contentEquals(image.bytes) == true) entryTyped else ""
+        job = scope.launch { guardThenWrite(board, image, uf2, writer, typed) }
     }
 
     /** The guard, then the permission, the write and the verification. Nothing is written unless the guard allows it. */
     private suspend fun guardThenWrite(board: BootloaderBoard, image: FirmwareImage, uf2: Uf2Image, writer: FirmwareWriter, typed: String) {
-        val verdict = try {
-            withContext(io) { guard.check(image.bytes, typed) }
+        // -- review PG-D2 -- the core's write gate, on the target the core itself read
+        val update = try {
+            withContext(io) { guard.checkWrite(image.bytes, typed) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             return fail(FirmwareInstallError.GuardBlocked("The firmware guard could not check this image."))
         }
+        val verdict = update.verdict
+        // -- WP PGAND -- no image for a board without BOOTSEL, whatever is typed
+        if (update.rule == FirmwareUpdateRule.NO_BOOTSEL) return fail(FirmwareInstallError.GuardBlocked(verdict.message))
         if (!verdict.allowed) {
             if (verdict.decision == FirmwareGuardDecision.NEEDS_CONFIRMATION && verdict.confirmationPhrase.isNotEmpty()) {
                 pending = Pending(board, image, uf2, writer)
                 return publish(
-                    FirmwareInstallState.NeedsConfirmation(board.chip, verdict.message, verdict.confirmationPhrase, typed.isNotEmpty())
+                    FirmwareInstallState.NeedsConfirmation(
+                        board.chip,
+                        verdict.message,
+                        verdict.confirmationPhrase,
+                        typed.isNotEmpty(),
+                        update.generationChange
+                    )
                 )
             }
             return fail(FirmwareInstallError.GuardBlocked(verdict.message))
         }
+        lastVerdict = update
         val clearance = GuardClearance(image.bytes, verdict)
         if (!writer.hasAccess(board)) {
             publish(FirmwareInstallState.WaitingForPermission(board.chip))

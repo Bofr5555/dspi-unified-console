@@ -1637,7 +1637,10 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP PGFWX -- the update target (reads, before the bootloader
             // entry) and the update check (stateless, on the image)
             "firmwareTarget",
-            "firmwareUpdateCheck"
+            "firmwareUpdateCheck",
+            // -- review PG-D2 -- the write gate's verdict: reads the core's
+            // memory (the target it kept), sends nothing
+            "firmwareWriteCheck"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

@@ -71,6 +71,7 @@ import { HUB_SCREEN, HUB_SCREEN_ID, HubAlarmBanner, useHubView } from "../screen
 // -- WP P3OV -- the Overview: every output in one table, every channel's meter (every mode)
 import { OverviewScreen } from "../screens/overview/OverviewScreen";
 import { MeasureScreen } from "../screens/measure/MeasureScreen"; // -- WP P5WMS --
+import { DeviceScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
 
 /** A question in a modal dialog; the answer is the chosen button's value, or "cancel". */
 export interface Question {
@@ -192,6 +193,19 @@ export function withHubScreen(shown: ScreenDef[], mode: Mode, hubOn: boolean): S
   return out;
 }
 
+// -- WP PGWEB --
+/** The device-info screen (generation, pages, raw by id, the update check): every mode, just before Settings. */
+export const DEVICE_SCREEN: ScreenDef = { id: "device", label: "Device", View: DeviceScreen };
+
+/** `shown` with the device-info screen before Settings (last when there is no Settings). */
+export function withDeviceScreen(shown: ScreenDef[]): ScreenDef[] {
+  if (shown.some((x) => x.id === DEVICE_SCREEN.id)) return shown;
+  const at = shown.findIndex((x) => x.id === "settings");
+  const out = [...shown];
+  out.splice(at < 0 ? out.length : at, 0, DEVICE_SCREEN);
+  return out;
+}
+
 function isMode(m: string): m is Mode {
   return m === "simple" || m === "advanced" || m === "installer";
 }
@@ -243,7 +257,7 @@ export function Screens(props: { session: Session }) {
   const modes = (manifest?.modes ?? []).filter((m) => isMode(m.id)).map((m) => ({ id: m.id as Mode, label: m.label }));
   const [unlocking, setUnlocking] = useState(false);
   const hubCaps = useHubCaps(session, st.link?.phase ?? "").caps; // -- WP P2WB2 --
-  const shown = lockedUser ? lockedScreens() : withHubSettings(withHubScreen(screensFor(mode, feed.kind === "hub"), mode, hubScreenShown(hubView?.caps ?? null)), mode, hubSettingsShown(hubCaps), HUB_SETTINGS_DEF); // -- WP P2WB1 -- the hub screen; -- WP P2WB2 -- withHubSettings
+  const shown = lockedUser ? lockedScreens() : withDeviceScreen(withHubSettings(withHubScreen(screensFor(mode, feed.kind === "hub"), mode, hubScreenShown(hubView?.caps ?? null)), mode, hubSettingsShown(hubCaps), HUB_SETTINGS_DEF)); // -- WP P2WB1 -- the hub screen; -- WP P2WB2 -- withHubSettings; -- WP PGWEB -- withDeviceScreen
   const [chosen, setChosen] = useState<string | null>(null);
   const current = chosen ?? shown[0]!.id;
   const screen = shown.find((x) => x.id === current) ?? shown[0]!;

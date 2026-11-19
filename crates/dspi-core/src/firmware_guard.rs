@@ -676,6 +676,39 @@ impl DspiCore {
     }
 }
 
+// -- review PG-D2 -- the write gate's verdict, for a client that writes itself
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+impl DspiCore {
+    /// The write gate's verdict on `image`, without writing: what
+    /// [`DspiCore::flash_confirmed`] would decide now. For a client whose
+    /// write is its own (Android: PICOBOOT or the drive, in Kotlin), as its
+    /// last check before the first byte; a client that writes through the
+    /// core needs no call, the write asks the gate itself.
+    ///
+    /// The gate judges by the target this core read itself from the device
+    /// ([`DspiCore::firmware_target`], or the bootloader entry), which is
+    /// dropped when another device is opened: a caller cannot hand in a
+    /// target, and a target the caller kept from another board is not used.
+    /// `board` only adds doubt: one that is not the core's own record makes
+    /// the voltage unknown, so the voltage phrase is asked. With no target
+    /// read by this core (the board was in BOOTSEL before this core saw it)
+    /// the voltage rule alone decides on `board`: pass
+    /// [`firmware_guard_board_in_bootloader`] unless this run sent this very
+    /// board to its bootloader. Write only on `verdict.allowed`. Reads the
+    /// core's memory only: nothing is sent, and the kept target stays (it is
+    /// dropped when a device is opened again). Parses the whole image: call
+    /// off the UI thread. Never fails, never panics.
+    pub fn firmware_write_check(
+        &self,
+        image: Vec<u8>,
+        board: FirmwareGuardBoard,
+        typed_confirmation: String,
+    ) -> FirmwareUpdateVerdict {
+        let read = self.lock().flash_target.clone();
+        write_gate(&image, read.as_ref(), board, &typed_confirmation)
+    }
+}
+
 // -- WP PGFLASH -- the body of `firmware_target`, for the bootloader entry too
 /// The open board as an update target, read now through `inner`'s connection
 /// ([`DspiCore::firmware_target`]).
@@ -991,6 +1024,9 @@ mod tests_wp_pgflash;
 // -- review PG-D1 --
 #[cfg(test)]
 mod tests_review_pgd1;
+
+#[cfg(test)]
+mod tests_review_pgd2;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

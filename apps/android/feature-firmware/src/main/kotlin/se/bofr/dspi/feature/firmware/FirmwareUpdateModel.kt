@@ -11,6 +11,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import se.bofr.dspi.bridge.FirmwareLabel
 
+/** -- review PG-D2 -- Why the bundled release is not offered to the alink sender. */
+const val SENDER_BUNDLED_TEXT =
+    "This is the audio link sender. The bundled firmware is for the DSP only: choose the sender's own image (.uf2)."
+
 /** What will be written. */
 sealed class FirmwareSource {
     /** The official release bundled with the app. */
@@ -126,17 +130,49 @@ class FirmwareUpdateModel(
     }
 
     /**
+     * -- WP PGAND -- The Update button: with a device connected, the update
+     * check runs first, on the board as it runs now ([chip] is its chip), and
+     * the confirmation shows its answer ([FirmwareInstaller.entryCheck]).
+     */
+    fun requestUpdate(deviceConnected: Boolean, chip: BootloaderBoard.Chip?, alinkSender: Boolean = false) {
+        if (!canChangeSetup) return
+        if (deviceConnected && !rebootRequested && chip != null) {
+            // -- review PG-D2 -- the bundled images are the DSP's: none is offered to the
+            // alink sender (as the Qt console); its own image is a local .uf2
+            if (alinkSender && source == FirmwareSource.Bundled) {
+                installer.refuseBeforeEntry(SENDER_BUNDLED_TEXT)
+            } else {
+                installer.checkBeforeEntry(chip)
+            }
+        }
+        confirmingUpdate = true
+    }
+
+    /** -- WP PGAND -- The confirmation was dismissed: nothing is kept of its check. */
+    fun dismissUpdate() {
+        confirmingUpdate = false
+        if (!confirmed) installer.cancelEntry()
+    }
+
+    /**
      * macOS `start()`: commits to the update. The installer writes as soon as a
      * board is ready; [enterBootloader] restarts a connected device into
-     * BOOTSEL (called once, with the user's ENTER_BOOTLOADER confirmation),
-     * after the firmware guard has read what the running board needs (WP AN18).
+     * BOOTSEL (called once, with the user's ENTER_BOOTLOADER confirmation).
+     * WP PGAND: with a device connected, only once the update check before the
+     * entry cleared the image ([FirmwareInstaller.enterWhenClear]): a board
+     * without BOOTSEL, or one whose phrase was not typed, is not rebooted and
+     * nothing is committed. Returns whether the update was committed.
      */
-    fun start(deviceConnected: Boolean, enterBootloader: () -> Unit) {
+    fun start(deviceConnected: Boolean, enterBootloader: () -> Unit): Boolean {
+        if (!deviceConnected || rebootRequested) {
+            confirmed = true
+            installer.installWhenReady()
+            return true
+        }
+        if (!installer.enterWhenClear(enterBootloader)) return false
         confirmed = true
-        installer.installWhenReady()
-        if (!deviceConnected || rebootRequested) return
         rebootRequested = true
-        installer.recordBoardThen(enterBootloader)
+        return true
     }
 
     /** macOS `resetRun()`: Try Again and Update Another Board. */

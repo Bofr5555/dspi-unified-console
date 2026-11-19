@@ -156,6 +156,8 @@ class FirmwareGuardWpAn18Test {
             FirmwareUpdateModel(installer(guard, FakeWriter(), boards = emptyList()), bundled = { image }, picobootWriter = FakeWriter())
         m.installer.beginWatching()
         var readsAtReboot = -1
+        m.requestUpdate(deviceConnected = true, chip = board.chip) // -- WP PGAND -- the check first
+        advanceUntilIdle()
         m.start(deviceConnected = true) { readsAtReboot = guard.boardReads }
         advanceUntilIdle()
         assertEquals(1, readsAtReboot)
@@ -174,17 +176,19 @@ class FirmwareGuardWpAn18Test {
     }
 
     @Test fun wpAn18CoreGuardUsesTheRecordItTook() = runTest {
+        // -- WP PGAND -- the record is now the update target the core read
         val running = FirmwareGuardBoard(1200, FirmwareGuardBoardSource.EXT_CORE_VREG)
         val tools = RecordingTools(running)
         val g = CoreFirmwareGuard(tools)
         g.check(byteArrayOf(1), "")
-        assertEquals(CoreTools.UNKNOWN_BOARD, tools.boards.last())
+        assertEquals(CoreTools.targetInBootloader(), tools.targets.last())
         g.recordRunningBoard()
         g.check(byteArrayOf(1), "x")
-        assertEquals(running, tools.boards.last())
+        assertEquals(running, tools.targets.last().voltage)
+        assertEquals(0, tools.targets.last().boardId)
         g.forgetBoard()
         g.check(byteArrayOf(1), "")
-        assertEquals(CoreTools.UNKNOWN_BOARD, tools.boards.last())
+        assertEquals(CoreTools.targetInBootloader(), tools.targets.last())
     }
 
     @Test fun wpAn18UnavailableToolsBlock() {
@@ -202,16 +206,19 @@ class FirmwareGuardWpAn18Test {
     }
 
     private class RecordingTools(private val running: FirmwareGuardBoard) : CoreTools {
-        val boards = mutableListOf<FirmwareGuardBoard>()
+        val targets = mutableListOf<se.bofr.dspi.core.FirmwareTarget>()
 
         override suspend fun firmwareGuardBoard() = running
 
         override fun firmwareGuardBoardInBootloader() = CoreTools.UNKNOWN_BOARD
 
-        override fun firmwareGuardCheck(image: ByteArray, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict {
-            boards += board
-            return guardVerdict()
-        }
+        override fun firmwareGuardCheck(image: ByteArray, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict =
+            throw AssertionError("WP PGAND: the installer asks the update check, not the voltage rule alone")
+
+        override suspend fun firmwareTarget() = CoreTools.targetInBootloader(running)
+
+        override fun firmwareUpdateCheck(image: ByteArray, target: se.bofr.dspi.core.FirmwareTarget, typedConfirmation: String) =
+            updateVerdict().also { targets += target }
 
         override fun autoeqUpdate(dbPath: String, url: String, fetch: AutoEqFetch): AutoEqDatabaseInfo =
             throw UnsupportedOperationException()

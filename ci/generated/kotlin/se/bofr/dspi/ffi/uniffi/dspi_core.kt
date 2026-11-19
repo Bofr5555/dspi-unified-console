@@ -2146,6 +2146,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2584,6 +2586,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_firmware_guard_board(
 fun uniffi_dspi_core_checksum_method_dspicore_firmware_target(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_firmware_write_check(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_flash_confirmed(
 ): Short
@@ -3684,6 +3688,8 @@ fun uniffi_dspi_core_fn_method_dspicore_firmware_target(`ptr`: Pointer,uniffi_ou
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(`ptr`: Pointer,`version`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+fun uniffi_dspi_core_fn_method_dspicore_firmware_write_check(`ptr`: Pointer,`image`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_flash_confirmed(`ptr`: Pointer,`image`: RustBuffer.ByValue,`drive`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_get_channel_name(`ptr`: Pointer,`ch`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -5372,6 +5378,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_firmware_write_check() != 52397.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 4538.toShort()) {
@@ -9612,6 +9621,29 @@ public interface DspiCoreInterface {
      * Errors: [`DspiError::Disconnected`] with no device open.
      */
     fun `firmwareVersionMatches`(`version`: kotlin.String): kotlin.Boolean
+    
+    /**
+     * The write gate's verdict on `image`, without writing: what
+     * [`DspiCore::flash_confirmed`] would decide now. For a client whose
+     * write is its own (Android: PICOBOOT or the drive, in Kotlin), as its
+     * last check before the first byte; a client that writes through the
+     * core needs no call, the write asks the gate itself.
+     *
+     * The gate judges by the target this core read itself from the device
+     * ([`DspiCore::firmware_target`], or the bootloader entry), which is
+     * dropped when another device is opened: a caller cannot hand in a
+     * target, and a target the caller kept from another board is not used.
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown, so the voltage phrase is asked. With no target
+     * read by this core (the board was in BOOTSEL before this core saw it)
+     * the voltage rule alone decides on `board`: pass
+     * [`firmware_guard_board_in_bootloader`] unless this run sent this very
+     * board to its bootloader. Write only on `verdict.allowed`. Reads the
+     * core's memory only: nothing is sent, and the kept target stays (it is
+     * dropped when a device is opened again). Parses the whole image: call
+     * off the UI thread. Never fails, never panics.
+     */
+    fun `firmwareWriteCheck`(`image`: kotlin.ByteArray, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String): FirmwareUpdateVerdict
     
     /**
      * Write `image` to the bootloader drive behind the firmware guard
@@ -16643,6 +16675,39 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(
         it, FfiConverterString.lower(`version`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The write gate's verdict on `image`, without writing: what
+     * [`DspiCore::flash_confirmed`] would decide now. For a client whose
+     * write is its own (Android: PICOBOOT or the drive, in Kotlin), as its
+     * last check before the first byte; a client that writes through the
+     * core needs no call, the write asks the gate itself.
+     *
+     * The gate judges by the target this core read itself from the device
+     * ([`DspiCore::firmware_target`], or the bootloader entry), which is
+     * dropped when another device is opened: a caller cannot hand in a
+     * target, and a target the caller kept from another board is not used.
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown, so the voltage phrase is asked. With no target
+     * read by this core (the board was in BOOTSEL before this core saw it)
+     * the voltage rule alone decides on `board`: pass
+     * [`firmware_guard_board_in_bootloader`] unless this run sent this very
+     * board to its bootloader. Write only on `verdict.allowed`. Reads the
+     * core's memory only: nothing is sent, and the kept target stays (it is
+     * dropped when a device is opened again). Parses the whole image: call
+     * off the UI thread. Never fails, never panics.
+     */override fun `firmwareWriteCheck`(`image`: kotlin.ByteArray, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String): FirmwareUpdateVerdict {
+            return FfiConverterTypeFirmwareUpdateVerdict.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_firmware_write_check(
+        it, FfiConverterByteArray.lower(`image`),FfiConverterTypeFirmwareGuardBoard.lower(`board`),FfiConverterString.lower(`typedConfirmation`),_status)
 }
     }
     )

@@ -533,7 +533,47 @@ mod mock {
     /// A new simulated DSPi; its number.
     #[unsafe(no_mangle)]
     pub extern "C" fn dspi_mock_new() -> u32 {
-        let device = FakeDevice::demo();
+        push(FakeDevice::demo())
+    }
+
+    // -- WP PGWEB --
+    /// A new simulated DSPi of firmware generation or board `kind` (PLAN-PG's
+    /// table): 1 G1s (stock 1.1.6), 2 G1b with PAGEGUARD, 3 G1b without it,
+    /// 4 G2s (stock 1.1.7), 5 G2b (our dual-stack port), 6 the DSPi-Zero on
+    /// 1.1.6, 7 the DSPi-Zero on 1.1.7, 8 the alink sender (guarded), 9 the
+    /// dual-stack sender; any other `kind` is [`dspi_mock_new`]'s demo. Its
+    /// number. A request that breaks PLAN-PG section 1.1's hard rules fails
+    /// the fake (a trap), as in the core's own tests.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn dspi_mock_new_as(kind: u32) -> u32 {
+        use dspi_transport::fake::{Capture, FakeBoard, FakeGeneration, FakeOptions};
+        let zero = |generation| {
+            FakeDevice::new(
+                Capture::demo(),
+                FakeOptions {
+                    board: FakeBoard::Zero,
+                    generation,
+                    surfaces: true,
+                    analysis: true,
+                    ..FakeOptions::default()
+                },
+            )
+        };
+        push(match kind {
+            1 => FakeDevice::demo_generation(FakeGeneration::Stock116),
+            2 => FakeDevice::demo_generation(FakeGeneration::Bofr116 { page_guard: true }),
+            3 => FakeDevice::demo_generation(FakeGeneration::Bofr116 { page_guard: false }),
+            4 => FakeDevice::demo_generation(FakeGeneration::STOCK117),
+            5 => FakeDevice::demo_generation(FakeGeneration::Bofr117),
+            6 => zero(None),
+            7 => zero(Some(FakeGeneration::STOCK117)),
+            8 => FakeDevice::sender(false),
+            9 => FakeDevice::sender(true),
+            _ => FakeDevice::demo(),
+        })
+    }
+
+    fn push(device: FakeDevice) -> u32 {
         let remote = device.remote();
         let notes = device.notifications();
         MOCKS.with_borrow_mut(|m| {

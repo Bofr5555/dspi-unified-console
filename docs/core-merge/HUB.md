@@ -336,7 +336,7 @@ another handle.
 | Thread per device call | helper queue, abandons a late reply | | none; transports are bounded | R3 |
 | RESYNC handle after drops | last published | per device | per device | Swift's is wrong with two devices |
 | Attribution | one queue | one queue | scalar and bulk apart; own path only | Section 4 |
-| `wIndex` | forwarded | "the hub forwards it" | **ignored**, always 2 on the wire | `Transport` has no `wIndex` by design and the firmware ignores it. Clients do send others: `NetworkTransport.swift:341-363` sends 0 for EQ, volume and more |
+| `wIndex` | forwarded (since PGSWHUB0: a page toward a device refused) | 1.2: "the hub forwards it"; 1.3: the page is the command id's high byte | **by its high byte, the page** (section 8.1; PGHUB0, PGHDEV). The low byte is not looked at: a page-0 request goes out with `wIndex` 2 as before | Firmware 1.1.7 takes the page from `wIndex`; 1.1.6 ignores it, so a page reaching a 1.1.6 device would run the old opcode with the same number. Clients do send other low bytes: `NetworkTransport.swift:341-363` sends 0 for EQ, volume and more |
 | Stall on a read | `ERROR`, as its USB layer reports it | `ERROR` | retried only for a parameter read just after a write | Section 4 |
 | USB TIMEOUT wait | 2 s, bulk 5 s | at least 2 s, bulk 5 s | one transfer's 1 s outside the busy window; the window's retries inside it | One transport timeout; the queue is not held for a device that has stopped answering |
 | Timed-out app write | still runs later | | **skipped while queued; never retried** | Section 4 |
@@ -718,6 +718,34 @@ the web graph, and no session or core code depends on it. Its pure parts (`Regis
 
 ## 12. For the reviewer
 
+<!-- WP PGDOC -->
+### 8.1 `wIndex` and the two firmware generations (PLAN-PG)
+
+*Built: PGHUB0 (the refusal, first), PGHPOL (the tables), PGHDEV (both generations); `crates/dspi-hub/src/device.rs`
+`route`, `policy.rs`, `polls.rs`, `registry.rs`. The client-facing rules are
+[hub-api.md section 17.1](../integrator/hub-api.md#171-both-firmware-generations-both-dspi-link-versions-plan-pg).*
+
+Until PGHUB0 this hub dropped `wIndex` (the row above, before), so a client's paged request reached a 1.1.6 device as
+the same-number old opcode (a `ROUTE.MASTER_VOLUME_SAVED` GET 0x0553 ran `FACTORY_RESET` 0x53). Now every device is
+opened through `dspi_transport::paged::open` at attach, its generation lives on the live `DeviceShared::protocol`
+(never in the registry or the inventory), and each request is routed by its page, the session's `hello` minor
+(`Session::link_minor`, missing = 2) and the device's generation:
+
+| Request | Legacy device | Paged device |
+|---|---|---|
+| page 0, session minor <= 2, or the hub's own requests | forwarded, judged by the 1.2 table | translated by the device's adapter (`Route::Translated`), judged by the stricter of the 1.2 class and the 1.3 classes the plan reaches |
+| page 0, session minor >= 3 | forwarded, judged by the 1.2 table | `0x10` (`VC_ERR_UNKNOWN`), nothing sent |
+| page != 0 | `0x86 UNSUPPORTED`, nothing sent | forwarded verbatim (`control_*_paged`), judged by the 1.3 table plus `policy/private.json`; firmware statuses 0x08 to 0x7F forwarded; never repeated by the busy window (the adapter retries `VC_ERR_BUSY`) |
+| a bootloader entry toward a board id not 0 | `DENIED` | `DENIED` |
+
+- Polls are keyed by `(page, req, val, len)` and judged as their CMD (`PollRoute`); `PollRefused::PageZero`
+  (`unsupported`) is a minor-3 session's page-0 poll of a paged device.
+- The gain guard and the paged path share one generation wrapper per device (`Wire`, an uncontended mutex).
+- The hub says minor 3 (`HUB_PROTO_MINOR`), the cap `legacy_devices`, `ok.policy.denied_ids` beside `denied`, and the
+  device object's `protocol`, `ext` and `board`.
+- The Swift opt-out hub (`-CoreHub NO`) got only PGHUB0's rule (PGSWHUB0): a client's page toward any device is
+  refused. It stays legacy-only until it retires.
+
 Things worth attacking, as the author sees them:
 
 1. R1: sharing off means no hub. If reviewers want the Swift shape, `AppLink` becomes
@@ -730,7 +758,7 @@ Things worth attacking, as the author sees them:
 4. Attribution is still a hint. Section 4's narrowing is a deviation in client-visible
    `origin`: HB7 should confirm the TypeScript and Swift clients do not mind.
 5. `wIndex` is ignored, not forwarded (section 8). `Transport` cannot carry it, and the
-   firmware does not look at it.
+   firmware does not look at it. *(Superseded by PLAN-PG: the page is honoured since PGHUB0 and PGHDEV, section 8.1.)*
 6. Section 4's busy window is narrower than "the opcodes the direct path wraps": those opcodes
    alone made a connect take 4.2 s, so a write must also have just run.
 

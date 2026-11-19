@@ -14,7 +14,8 @@ ToolWindow {
     defaultWidth: 460
     defaultHeight: 470
     minimumWidth: 460
-    minimumHeight: 470
+    // -- WP PGQT -- room for the image note or the generation change when one shows
+    minimumHeight: 470 + (fw.generationChange.length > 0 || fw.imageNote.length > 0 ? 64 : 0)
     title: qsTr("Firmware Update")
 
     readonly property var fw: FirmwareController
@@ -199,6 +200,27 @@ ToolWindow {
                         wrapMode: Text.Wrap
                     }
                 }
+                // -- WP PGQT -- no image for this board (no BOOTSEL), or the
+                // sender's own image to choose; and the protocol generation the
+                // image brings, as the core's update check says it
+                Text {
+                    objectName: "FirmwareWindow.imageNote"
+                    Layout.fillWidth: true
+                    visible: text.length > 0
+                    text: window.fw.imageNote
+                    font: Theme.fontSmall
+                    color: Theme.warning
+                    wrapMode: Text.Wrap
+                }
+                Text {
+                    objectName: "FirmwareWindow.generationChange"
+                    Layout.fillWidth: true
+                    visible: text.length > 0
+                    text: window.fw.generationChange
+                    font: Theme.fontSmall
+                    color: Theme.text
+                    wrapMode: Text.Wrap
+                }
             }
 
             // ---- The four steps (the Mac's StepDotStrip) ----
@@ -363,7 +385,7 @@ ToolWindow {
             RowLayout {
                 objectName: "FirmwareWindow.manualHint"
                 Layout.fillWidth: true
-                visible: !window.fw.showBootselHint && window.fw.showManualHint
+                visible: !window.fw.showBootselHint && window.fw.showManualHint && !window.fw.noUpdate   // -- WP PGQT --
                 spacing: 4
                 Text {
                     text: qsTr("Flashing a UF2 of your own?")
@@ -435,7 +457,8 @@ ToolWindow {
                 primary: true
                 text: window.fw.primaryText
                 enabled: window.fw.failed || (!window.fw.confirmed && !window.fw.guardAsking
-                                              && (!window.fw.custom || window.fw.imageProblem.length === 0))
+                                              && (!window.fw.custom || window.fw.imageProblem.length === 0)
+                                              && window.fw.imageNote.length === 0)   // -- WP PGQT --
                 onClicked: window.fw.failed ? FirmwareController.resetRun() : FirmwareController.start()
             }
         }
@@ -503,6 +526,16 @@ ToolWindow {
                 color: Theme.text
                 wrapMode: Text.Wrap
             }
+            // -- WP PGQT -- the generation change, beside the question it is part of
+            Text {
+                objectName: "FirmwareWindow.guardGeneration"
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: FirmwareController.generationChange
+                font: Theme.fontSmall
+                color: Theme.text
+                wrapMode: Text.Wrap
+            }
             Text {
                 Layout.fillWidth: true
                 text: qsTr("To go ahead, type: %1").arg(FirmwareController.guardPhrase)
@@ -515,7 +548,8 @@ ToolWindow {
                 objectName: "FirmwareWindow.guardTyped"
                 Layout.fillWidth: true
                 label: qsTr("Confirmation")
-                placeholderText: FirmwareController.guardPhrase
+                // -- WP PGQT -- the field starts empty and hints, never holding the words
+                placeholderText: qsTr("Type the words above")
                 onAccepted: if (text === FirmwareController.guardPhrase) FirmwareController.answerGuard(text)
             }
         }

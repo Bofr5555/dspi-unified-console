@@ -1236,6 +1236,11 @@ RustBuffer uniffi_dspi_core_fn_method_dspicore_firmware_target(void*_Nonnull ptr
 int8_t uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(void*_Nonnull ptr, RustBuffer version, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FIRMWARE_WRITE_CHECK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FIRMWARE_WRITE_CHECK
+RustBuffer uniffi_dspi_core_fn_method_dspicore_firmware_write_check(void*_Nonnull ptr, RustBuffer image, RustBuffer board, RustBuffer typed_confirmation, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FLASH_CONFIRMED
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_FLASH_CONFIRMED
 void uniffi_dspi_core_fn_method_dspicore_flash_confirmed(void*_Nonnull ptr, RustBuffer image, RustBuffer drive, RustBuffer board, RustBuffer typed_confirmation, RustBuffer token, RustCallStatus *_Nonnull out_status
@@ -5121,6 +5126,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_firmware_target(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FIRMWARE_VERSION_MATCHES
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FIRMWARE_VERSION_MATCHES
 uint16_t uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FIRMWARE_WRITE_CHECK
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_FIRMWARE_WRITE_CHECK
+uint16_t uniffi_dspi_core_checksum_method_dspicore_firmware_write_check(void
     
 );
 #endif

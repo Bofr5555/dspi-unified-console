@@ -402,6 +402,8 @@ class ReadOnlyTest {
             setOf(
                 // -- WP LKUI1 --
                 "alinkSystemView",
+                // -- WP PGAND -- the alink sender page's reads
+                "fetchAlinkSender",
                 "attachDevice", "detachDevice", "attachRemote", "setRemoteReadOnly", "setRemoteInterrupted",
                 "scanDevices", "selectDevice", "disconnectDevice", "reconnect", "rescan",
                 "setUiVisible", "beginOutputEdit", "canPaste", "canSetAllBypass", "copyChannel", "channelBands", "channelColor",

@@ -206,6 +206,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun firmwareTarget(): FirmwareTarget = throw NotImplementedError("firmware_target")
 
+    override fun firmwareWriteCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareUpdateVerdict = throw NotImplementedError("firmware_write_check")
+
     override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply = throw NotImplementedError("apply_guarded_import")
 
     override fun applyGuardedSnapshot(id: String, timeoutS: Long): GuardedApply = throw NotImplementedError("apply_guarded_snapshot")

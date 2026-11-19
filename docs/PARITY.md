@@ -263,6 +263,30 @@ The document model, the stores, the core's calls and the hub's family are built 
 The document model under J7 is built (P5MDOC, `crates/dspi-measure/src/doc.rs`); the stores and calls are P5DOCK and
 P5HUB.
 
+<!-- WP PGDOC -->
+### K. Both firmware generations (PLAN-PG)
+
+*WP PGDOC, 2026-11-19. Firmware 1.1.6 (legacy) and 1.1.7 (paged), with and without this fork's extensions
+([`docs/core-merge/PLAN-PG.md`](core-merge/PLAN-PG.md), the client side:
+[`docs/integrator/protocol-generations.md`](integrator/protocol-generations.md), the user's page:
+[`docs/manual/notices.md`](manual/notices.md)). The detection, the adapter, the hub and the update rules are the core's
+and the hub's, so every client on the core connects to both generations (PGMAT's matrix: 72 cells as planned,
+`work/review-pgd1/matrix.md`). A cell says what the client shows of it. Revised at the PG-D part 2 review (PGWEB, PGQT
+and PGAND merged).*
+
+| # | Feature | Web | Qt desktop | Terminal | Android | Swift (macOS, iOS) |
+|---|---|---|---|---|---|---|
+| K1 | Connect to a 1.1.7 device (adapter), the notices of a refused open and of a hub that cannot serve it | ✓ the core; the refused open's notice PGWEB | ✓ the core | ✓ the core | ✓ the core | ✓ on the core paths (their tests on the paged fakes: PGSWIFT); the opt-out paths (`-CoreTransport NO`, `-CoreHub NO`) are 1.1.6 only (retire, owner decision P2) |
+| K2 | Device info: board, generation, protocol version, pages, extension envelope (`device_protocol`, once per connection) | ✓ PGWEB: the Device screen | ✓ PGQT: Settings > About | ✓ PGTM: `uconsole info` (`--json`), Settings > About | ✓ PGAND: Settings > About, "Device" | ✗ (PGSWIFT) |
+| K3 | Raw request by command id (`raw_get_id`, `raw_set_id`) | ✓ PGWEB (numbers only) | ✓ PGQT (numbers only, no `PAGE.NAME`) | ✓ PGTM: `uconsole raw --id`, `raw out --id` | ✗ | ✗ |
+| K4 | The update check before the bootloader entry: no image without BOOTSEL, the lineage phrase, the generation change | ✓ PGWEB: Check an Image, the rollout dialog; no firmware write on the web | ✓ PGQT | ✓ PGTM: `uconsole flash` | ✓ PGAND; the Kotlin write's last check is the core's gate (`firmware_write_check`) | ✗ (PGSWIFT, before its next release) |
+| K5 | The alink sender's own page (`device_kind` `AlinkSender`: device info, audio link, update) | ✓ PGWEB | ✓ PGQT (the menus still open DSP windows, which answer unsupported) | ◐ `uconsole info` and About say it; the interface cannot open it | ✓ PGAND | ✗ (PGSWIFT) |
+| K6 | The DSPi-Zero named, and offered no update | ✓ PGWEB | ✓ PGQT | ✓ PGTM | ✓ PGAND | ✗ (the core refuses it; the opt-out path still sends 0xF0, PGSWIFT) |
+
+Since PGFLASH the core's write gate asks the lineage phrase itself. A client that is not switched yet (K4 ✗) asks
+nothing, sends the board into BOOTSEL and is then refused the write: nothing is flashed, and the board waits in BOOTSEL
+until it is power-cycled.
+
 ---
 
 ## 3. Gap list per app

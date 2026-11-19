@@ -10,7 +10,8 @@
 // it: the TLS notice says so.
 
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { HubFleetTarget, HubRolloutDeviceRecord, HubRolloutRecord } from "../../core/protocol";
+import type { FirmwareUpdateVerdictRecord, HubFleetTarget, HubRolloutDeviceRecord, HubRolloutRecord } from "../../core/protocol";
+import { ruleWords, verdictWords } from "../device/model"; // -- WP PGWEB --
 import type { Ask } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { noticeRow } from "../../ui/texts";
@@ -29,6 +30,7 @@ import {
   type Said,
   sizeText,
   stateWord,
+  updateReasonWords, // -- WP PGWEB --
   stepRows,
   STEPS,
   targetName,
@@ -61,6 +63,8 @@ export function Rollout(props: { session: Session; hub: HubFeed; view: HubView; 
   const [target, setTarget] = useState("");
   const [image, setImage] = useState("");
   const file = useRef<HTMLInputElement>(null);
+  // -- WP PGWEB -- the images uploaded from this page, by name: the update check judges them for this session's DSPi
+  const uploaded = useRef(new Map<string, Uint8Array>());
   const images = imageRows(view.images ?? []);
   const online = hubView.devices.filter((d) => d.online);
   const running = view.rollouts.find((r) => r.state === "running") ?? null;
@@ -89,8 +93,12 @@ export function Rollout(props: { session: Session; hub: HubFeed; view: HubView; 
       // 8 MiB and the name are checked before the file is even read: nothing is sent then.
       const problem = fileProblem(f.name, f.size);
       if (problem) return { text: problem, bad: true, notice: null };
-      const r = await feed.upload(f.name, new Uint8Array(await f.arrayBuffer()));
-      if (!r.bad) setImage(f.name);
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      const r = await feed.upload(f.name, bytes);
+      if (!r.bad) {
+        setImage(f.name);
+        uploaded.current.set(f.name, bytes); // -- WP PGWEB --
+      }
       return r;
     });
   };
@@ -101,11 +109,13 @@ export function Rollout(props: { session: Session; hub: HubFeed; view: HubView; 
     const group = "group" in t && !!t.group;
     const who = targetName(group ? `group:${t.group}` : chosenTarget.slice(7), names);
     const muted = hubView.caps?.groupParams ? await feed.muted(t) : null;
+    const verdict = group ? null : await judge(chosenTarget.slice(7)); // -- WP PGWEB --
     const a = await props.ask({
       title: "Update the Firmware",
-      body: <StartPlan who={who} group={group} image={chosenImage} muted={muted} />,
-      buttons:
-        muted === true
+      body: <StartPlan who={who} group={group} image={chosenImage} muted={muted} verdict={verdict} />,
+      buttons: verdict && !verdict.verdict.allowed
+        ? [{ label: "Cancel", value: "cancel" }] // -- WP PGWEB -- the hub refuses it too
+        : muted === true
           ? [
               { label: "Start", value: "start" },
               { label: "Cancel", value: "cancel" },
@@ -124,6 +134,24 @@ export function Rollout(props: { session: Session; hub: HubFeed; view: HubView; 
       }
       return go(t, a === "live");
     });
+  };
+
+  // -- WP PGWEB --
+  /**
+   * The update check for `serial` with the chosen image, when the image was uploaded from this
+   * page and `serial` is this session's own DSPi (the core reads its target); null otherwise
+   * (the hub judges each DSPi before its bootloader entry all the same).
+   */
+  const judge = async (serial: string): Promise<FirmwareUpdateVerdictRecord | null> => {
+    const bytes = uploaded.current.get(chosenImage);
+    const mine = session.state.snapshot?.device.serial || session.deviceId;
+    if (!bytes || !serial || serial !== mine) return null;
+    try {
+      const target = await session.core.call("firmwareTarget", undefined);
+      return await session.core.call("firmwareUpdateCheck", { image: Array.from(bytes), target });
+    } catch {
+      return null;
+    }
   };
 
   const go = async (t: HubFleetTarget, whileLive: boolean): Promise<Said> => {
@@ -252,9 +280,27 @@ export function Rollout(props: { session: Session; hub: HubFeed; view: HubView; 
 }
 
 /** The start dialog's body: the steps in words, what the DSPi will do, and the mute. */
-function StartPlan(props: { who: string; group: boolean; image: string; muted: boolean | null }) {
+function StartPlan(props: { who: string; group: boolean; image: string; muted: boolean | null; verdict?: FirmwareUpdateVerdictRecord | null }) {
+  const v = props.verdict ?? null; // -- WP PGWEB --
   return (
     <div class="hub-rollout-plan">
+      {/* -- WP PGWEB -- the update check's verdict for this DSPi, or what the hub checks */}
+      {v ? (
+        <div class={`update-verdict ${v.verdict.allowed ? "ok" : "bad"}`} role="status" aria-label="Update verdict" data-rule={v.rule} data-decision={v.verdict.decision}>
+          <p>
+            <strong>{verdictWords(v)}</strong>
+            {v.verdict.allowed ? "" : ": the hub would refuse it, so it is not started."}
+          </p>
+          {ruleWords(v) ? <p class="update-rule">{ruleWords(v)}</p> : null}
+          <p class="update-message">{v.verdict.message}</p>
+          {v.generationChange ? <p class="update-generation">Generation change: {v.generationChange}</p> : null}
+        </div>
+      ) : (
+        <p class="note update-hub-checks">
+          The hub checks each DSPi before its bootloader entry: a board without BOOTSEL is excluded, and an image that may be upstream's is never written over this fork's
+          firmware.
+        </p>
+      )}
       <p>
         Update {props.who} to <strong>{props.image}</strong>
         {props.group ? ", one DSPi after another, stopping at the first failure" : ""}. The hub:
@@ -361,6 +407,8 @@ function DeviceEntry(props: {
       {d.failed ? (
         <p class="error" role="alert" aria-label="Where it stopped" data-key={d.failed.noticeKey || `rollout.${d.failed.step}`}>
           Stopped at “{stepTitle(d.failed.step)}”: {d.failed.text} {noticeRow(`rollout.${d.failed.step}`)?.action ?? ""}
+          {/* -- WP PGWEB -- */}
+          {updateReasonWords(d.failed.code) ? <span class="hub-rollout-reason"> {updateReasonWords(d.failed.code)}</span> : null}
         </p>
       ) : null}
       {lines.length ? (

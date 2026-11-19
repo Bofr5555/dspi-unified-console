@@ -277,6 +277,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun firmwareTarget(): FirmwareTarget = core.firmwareTarget().toDomain()
 
+    override fun firmwareWriteCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareUpdateVerdict = core.firmwareWriteCheck(ByteArray(image.size) { image[it].toByte() }, board.toFfi(), typedConfirmation).toDomain()
+
     override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply = call { core.applyGuardedImport(text, options.toUInt(), eqChannels.toUInt(), timeoutS.toUInt()).toDomain() }
 
     override fun applyGuardedSnapshot(id: String, timeoutS: Long): GuardedApply = call { core.applyGuardedSnapshot(id, timeoutS.toUInt()).toDomain() }

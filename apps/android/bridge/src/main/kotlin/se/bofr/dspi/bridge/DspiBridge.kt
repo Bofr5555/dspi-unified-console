@@ -141,6 +141,25 @@ interface DspiBridge {
      */
     val deviceGeneration: StateFlow<Long> get() = NO_DEVICE_GENERATION
 
+    // -- WP PGAND --
+    /**
+     * The open connection's protocol (`device_protocol`: generation, protocol version,
+     * pages, extension envelope, board, device kind), read ONCE per connection on the
+     * core's thread (it costs a platform read) and published on the main thread with
+     * the connection; null with no device or when it could not be read. Its
+     * `deviceKind` [se.bofr.dspi.core.DeviceKind.ALINK_SENDER] means the alink sender:
+     * no DSP screens, only its device info, its audio link and the update.
+     * Test doubles: null.
+     */
+    val deviceProtocol: StateFlow<se.bofr.dspi.core.DeviceProtocol?> get() = NO_DEVICE_PROTOCOL
+
+    /**
+     * -- WP PGAND -- The alink sender page's reads: `alink_info` and `fetch_alink_status`,
+     * on the core's thread. Reads only; a failed status read leaves `status` null with
+     * the reason in `error`. Test doubles: nothing known.
+     */
+    suspend fun fetchAlinkSender(): AlinkSenderView = AlinkSenderView()
+
     /**
      * G1 (owner decision, deliberate deviation from the official clients):
      * true exactly while a device is connected AND its firmware speaks this
@@ -1101,6 +1120,17 @@ interface DspiBridge {
 
 // -- WP AN42 -- the default for bridges without a journal (test doubles)
 private val NO_UNDO: StateFlow<UndoAvailability> = MutableStateFlow(UndoAvailability()).asStateFlow()
+
+// -- WP PGAND -- the default for bridges without a device (test doubles)
+private val NO_DEVICE_PROTOCOL: StateFlow<se.bofr.dspi.core.DeviceProtocol?> =
+    MutableStateFlow<se.bofr.dspi.core.DeviceProtocol?>(null).asStateFlow()
+
+/** -- WP PGAND -- [DspiBridge.fetchAlinkSender]: the sender's audio link as read now. */
+data class AlinkSenderView(
+    val info: se.bofr.dspi.core.AlinkInfo? = null,
+    val status: se.bofr.dspi.core.AlinkStatus? = null,
+    val error: String = ""
+)
 
 /** Default [DspiBridge.deviceGeneration] for implementations without a device (test doubles). */
 private val NO_DEVICE_GENERATION: StateFlow<Long> = MutableStateFlow(0L).asStateFlow()

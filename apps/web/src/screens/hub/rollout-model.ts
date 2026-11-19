@@ -201,8 +201,27 @@ export function stateWord(state: string): string {
       return "Waiting";
     case "not_tried":
       return "Not tried";
+    // -- WP PGWEB -- a group member without BOOTSEL (PLAN-PG 1.9): never tried
+    case "excluded":
+      return "Excluded";
     default:
       return state;
+  }
+}
+
+// -- WP PGWEB --
+/**
+ * The update check's reasons the hub names (`failed.code`, PLAN-PG sections 1.8 and 1.9) in
+ * words; "" for another code (its own text says it).
+ */
+export function updateReasonWords(code: string): string {
+  switch (code) {
+    case "no_bootsel":
+      return "No BOOTSEL: this board (a DSPi-Zero, or one that could not be identified) has no BOOTSEL bootloader, so no rollout flashes it.";
+    case "lineage_loss":
+      return "Lineage: this DSPi runs this fork's firmware and the image may be upstream's; a rollout never gives that firmware away (no one types the confirmation there).";
+    default:
+      return "";
   }
 }
 

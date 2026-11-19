@@ -7,11 +7,14 @@
 import type { UsbLike } from "../../src/core/usb-ids";
 import { MOCK_CHANNEL, MockBackend, MockUsb, type MockMessage } from "./webusb-mock";
 
-const serials = (new URLSearchParams(location.search).get("usb") ?? "").split(",").filter(Boolean);
+const q = new URLSearchParams(location.search);
+const serials = (q.get("usb") ?? "").split(",").filter(Boolean);
+// -- WP PGWEB -- `?gen=SERIAL:kind,...`: each DSPi's firmware generation or board (webusb-mock.ts MOCK_KINDS)
+const kinds = Object.fromEntries((q.get("gen") ?? "").split(",").filter(Boolean).map((x) => x.split(":") as [string, string]));
 const mock: Promise<MockUsb> = fetch(new URL("./dspi_wasm_test.wasm", location.href))
   .then((r) => r.arrayBuffer())
   .then((b) => MockBackend.load(b))
-  .then((backend) => new MockUsb(serials, { backend, permitted: "all" }));
+  .then((backend) => new MockUsb(serials, { backend, permitted: "all", kinds }));
 
 const lazy: UsbLike = {
   getDevices: async () => (await mock).getDevices(),
@@ -28,5 +31,9 @@ channel.onmessage = async (ev: MessageEvent<MockMessage>) => {
   const m = await mock;
   const d = ev.data;
   if ("unplug" in d) m.unplug(d.unplug);
-  else m.device(d.rename)?.renameElsewhere(d.name);
+  // -- WP PGWEB -- only the Worker whose device has been opened answers with its log
+  else if ("logOf" in d) {
+    const dev = m.device(d.logOf);
+    if (dev?.log.length) channel.postMessage({ logReply: d.ask, log: dev.log } satisfies MockMessage);
+  } else if ("rename" in d) m.device(d.rename)?.renameElsewhere(d.name);
 };

@@ -20,6 +20,7 @@ interface MockExports {
   dspi_alloc(len: number): number;
   dspi_free(ptr: number, len: number): void;
   dspi_mock_new(): number;
+  dspi_mock_new_as(kind: number): number; // -- WP PGWEB --
   dspi_mock_in(id: number, op: number, value: number, index: number, len: number): number;
   dspi_mock_out(id: number, op: number, value: number, index: number, ptr: number, len: number): number;
   dspi_mock_notify(id: number): number;
@@ -68,6 +69,12 @@ export class MockBackend {
     return this.x.dspi_mock_new();
   }
 
+  // -- WP PGWEB --
+  /** A simulated DSPi of firmware generation or board `kind` (MOCK_KINDS). */
+  newDeviceAs(kind: number): number {
+    return this.x.dspi_mock_new_as(kind);
+  }
+
   in(id: number, op: number, value: number, index: number, len: number): Uint8Array | number {
     const rc = this.x.dspi_mock_in(id, op, value, index, len);
     return rc < 0 ? rc : this.buf(rc);
@@ -114,7 +121,11 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class MockDevice implements UsbDeviceLike {
   readonly vendorId = USB_IDS.vendorId;
   readonly productId = USB_IDS.productId;
-  readonly productName = "DSPi";
+  readonly productName: string = "DSPi";
+  // -- WP PGWEB -- the descriptor's bcdDevice, as WebUSB splits it (none for the plain demo)
+  readonly deviceVersionMajor?: number;
+  readonly deviceVersionMinor?: number;
+  readonly deviceVersionSubminor?: number;
   opened = false;
   configuration: { configurationValue: number } | null = null;
   gone = false;
@@ -126,7 +137,17 @@ export class MockDevice implements UsbDeviceLike {
     readonly serialNumber: string,
     private readonly backend: MockBackend | null,
     private readonly id: number,
-  ) {}
+    // -- WP PGWEB -- a probe answer of the mock's own instead of the engine's (MOCK_SCRIPTS)
+    private readonly script: MockScript | null = null,
+    descriptor: { product: string; bcd: number } | null = null,
+  ) {
+    if (descriptor) {
+      this.productName = descriptor.product;
+      this.deviceVersionMajor = descriptor.bcd >> 8;
+      this.deviceVersionMinor = (descriptor.bcd >> 4) & 0x0f;
+      this.deviceVersionSubminor = descriptor.bcd & 0x0f;
+    }
+  }
 
   async open() {
     this.alive();
@@ -154,6 +175,8 @@ export class MockDevice implements UsbDeviceLike {
 
   async controlTransferIn(setup: UsbSetup, length: number): Promise<UsbInResult> {
     const b = this.ready(setup);
+    // -- WP PGWEB --
+    if (this.script) return scripted(this.script, setup, length);
     const r = b.in(this.id, setup.request, setup.value, setup.index, length);
     if (r === GONE) throw dom("NotFoundError", "The device was disconnected.");
     if (typeof r === "number") return { status: "stall" };
@@ -162,6 +185,7 @@ export class MockDevice implements UsbDeviceLike {
 
   async controlTransferOut(setup: UsbSetup, data: Uint8Array): Promise<{ status: "ok" | "stall"; bytesWritten: number }> {
     const b = this.ready(setup);
+    if (this.script) return { status: "stall", bytesWritten: 0 }; // -- WP PGWEB --
     const rc = b.out(this.id, setup.request, setup.value, setup.index, data);
     if (rc === GONE) throw dom("NotFoundError", "The device was disconnected.");
     return rc === STALL || rc < 0 ? { status: "stall", bytesWritten: 0 } : { status: "ok", bytesWritten: data.length };
@@ -224,11 +248,15 @@ export class MockUsb implements UsbLike {
 
   constructor(
     serials: string[],
-    opts: { backend?: MockBackend | null; permitted?: string[] | "all" } = {},
+    // -- WP PGWEB -- `kinds`: a serial's firmware generation, board or scripted probe answer (MOCK_KINDS, MOCK_SCRIPTS); the demo otherwise
+    opts: { backend?: MockBackend | null; permitted?: string[] | "all"; kinds?: Record<string, string> } = {},
   ) {
     for (const s of serials) {
       const b = opts.backend ?? null;
-      this.devices.push(new MockDevice(s, b, b ? b.newDevice() : -1));
+      const kind = opts.kinds?.[s] ?? "";
+      const script = isScript(kind) ? kind : null;
+      const engine = MOCK_KINDS[kind];
+      this.devices.push(new MockDevice(s, b, b ? (engine ? b.newDeviceAs(engine) : b.newDevice()) : -1, script, kind ? descriptorOf(kind) : null));
     }
     for (const s of opts.permitted === "all" ? serials : (opts.permitted ?? [])) this.permitted.add(s);
   }
@@ -272,4 +300,57 @@ export function installMockUsb(usb: MockUsb): void {
 
 /** What the page and its Workers tell each other in the e2e (unplug, a change at the device). */
 export const MOCK_CHANNEL = "dspi-webusb-mock";
-export type MockMessage = { unplug: string } | { rename: string; name: string };
+export type MockMessage =
+  | { unplug: string }
+  | { rename: string; name: string }
+  // -- WP PGWEB -- the page asks a Worker for a device's request log; the Worker that has the device answers
+  | { logOf: string; ask: number }
+  | { logReply: number; log: UsbSetup[] };
+
+// -- WP PGWEB --
+/**
+ * The firmware a mock DSPi runs (`?gen=SERIAL:kind`), as the engine's
+ * `dspi_mock_new_as` numbers them (crates/dspi-wasm/src/usb.rs): PLAN-PG's
+ * generations G1s, G1b (with PAGEGUARD; `g1b-noguard` without), G2s, G2b, the
+ * DSPi-Zero on 1.1.6 and 1.1.7, the alink sender (guarded, and dual-stack).
+ */
+export const MOCK_KINDS: Record<string, number> = {
+  g1s: 1,
+  g1b: 2,
+  "g1b-noguard": 3,
+  g2s: 4,
+  g2b: 5,
+  zero: 6,
+  "zero-paged": 7,
+  sender: 8,
+  "sender-dual": 9,
+};
+
+/** The USB product string and bcdDevice of a kind's board (dspi-transport's `FakeBoard`). */
+function descriptorOf(kind: string): { product: string; bcd: number } {
+  if (kind.startsWith("zero")) return { product: "Weeb Labs DSPi Zero", bcd: 0x0300 };
+  if (kind.startsWith("sender")) return { product: "DSPi Audio Link Sender", bcd: 0x0280 };
+  return { product: "Weeb Labs DSPi", bcd: 0x0204 };
+}
+
+/**
+ * Devices whose probe answer the mock gives itself, for the core's refusals
+ * (PLAN-PG section 1.1 step 3 and 4): `newer` answers `SYS.PROTOCOL_INFO` with
+ * a later protocol major, `garbled` with a block that is not one, `silent`
+ * STALLs everything (the probe and `GET_PLATFORM`). Every other request
+ * STALLs; the log shows whether any was sent.
+ */
+export const MOCK_SCRIPTS = ["newer", "garbled", "silent"] as const;
+export type MockScript = (typeof MOCK_SCRIPTS)[number];
+const isScript = (k: string): k is MockScript => (MOCK_SCRIPTS as readonly string[]).includes(k);
+
+/** `SYS.PROTOCOL_INFO`: GET, `bRequest` 0x10 on page 1 (`wIndex` 0x0102). */
+export const isProbe = (s: UsbSetup) => s.request === 0x10 && s.index >> 8 === 0x01;
+
+function scripted(script: MockScript, setup: UsbSetup, length: number): UsbInResult {
+  if (script === "silent" || !isProbe(setup)) return { status: "stall" };
+  // "DSPi", major, minor, pages, flags, max SET and GET (LE), reserved
+  const block = script === "newer" ? [0x44, 0x53, 0x50, 0x69, 2, 0, 3, 0, 0, 1, 0, 1, 0, 0, 0, 0] : [0x4e, 0x4f, 0x50, 0x45, 1, 0, 3, 0, 0, 1, 0, 1, 0, 0, 0, 0];
+  const b = new Uint8Array(block.slice(0, length));
+  return { status: "ok", data: new DataView(b.buffer) };
+}

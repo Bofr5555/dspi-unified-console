@@ -25,9 +25,16 @@ class FirmwareUpdateModelTest {
             picobootWriter = picoboot
         )
 
+    /** -- WP PGAND -- the Update button: the check before the entry, settled. */
+    private fun TestScope.requested(m: FirmwareUpdateModel) {
+        m.requestUpdate(deviceConnected = true, chip = BootloaderBoard.Chip.RP2350)
+        advanceUntilIdle()
+    }
+
     @Test fun startRestartsAConnectedDeviceOnceAndArms() = runTest {
         val m = model()
         m.installer.beginWatching()
+        requested(m)
         var reboots = 0
         m.start(deviceConnected = true) { reboots++ }
         m.start(deviceConnected = true) { reboots++ }
@@ -50,6 +57,7 @@ class FirmwareUpdateModelTest {
     @Test fun resetRunClearsBothSides() = runTest {
         val m = model(FakeBootloaderLocator(listOf(board)))
         m.installer.beginWatching()
+        requested(m)
         m.start(deviceConnected = true) {}
         advanceUntilIdle()
         m.resetRun()
@@ -92,6 +100,7 @@ class FirmwareUpdateModelTest {
     @Test fun setupIsFrozenOnceCommitted() = runTest {
         val m = model()
         m.installer.beginWatching()
+        requested(m)
         m.start(deviceConnected = true) {}
         m.chooseLocal(FirmwareImage(null, "x.uf2", null, TestUf2.image(1), false))
         assertEquals(FirmwareSource.Bundled, m.source)
@@ -183,6 +192,7 @@ class FirmwareUpdateModelTest {
         assertTrue(showManualBootloaderHint(m, FirmwareInstallState.WaitingForBoard, connected))
         assertTrue(showBootselHint(m, FirmwareInstallState.Failed(FirmwareInstallError.NoBoardFound), connected))
         m.installer.beginWatching()
+        requested(m)
         m.start(true) {}
         assertTrue(showBootselHint(m, FirmwareInstallState.WaitingForBoard, connected))
         assertFalse(showManualBootloaderHint(m, FirmwareInstallState.WaitingForBoard, connected))

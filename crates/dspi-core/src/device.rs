@@ -333,6 +333,7 @@ impl DspiCore {
             let worker = rta::take_worker(&mut inner);
             inner.confirm.connected(conn.generation); // -- WP P1BFIX -- F5
             inner.flash_target = None; // -- WP PGFLASH -- another device's story
+            inner.demo_generation = None; // -- WP PGQT -- the fake of another opening
             (inner.conn.replace(conn), worker)
         };
         drop(self.set_meter_path(None)); // -- WP LK2 --
@@ -566,6 +567,52 @@ impl DspiCore {
         let demo = FakeDevice::demo_as_wire(wire).ok_or(DspiError::Unsupported)?;
         let serial = demo.descriptor().serial.clone();
         self.attach_probed(Box::new(demo), serial, 0)
+    }
+
+    // -- WP PGQT --
+    /// Open the demo device as firmware of protocol generation `code`, for
+    /// clients' smoke runs (the Qt driver's sections per generation): 0 G1s
+    /// (stock 1.1.6), 1 G1b with PAGEGUARD, 2 G1b without it, 3 G2s (stock
+    /// 1.1.7), 4 G2b (our dual-stack 1.1.7), 5 the DSPi-Zero, 6 the alink
+    /// sender, 7 G1b with PAGEGUARD on a board at the stock 1.15 V core (a
+    /// Pico on our firmware, which the voltage rule alone clears). The demo's
+    /// own core voltage is 1.20 V. Opened through the generation probe as a USB device is
+    /// (`dspi_transport::paged::open`). A request the generation must not get
+    /// is counted ([`DspiCore::demo_generation_violations`]), never a panic.
+    /// Replaces any open device. [`DspiError::Unsupported`] for another code.
+    pub fn open_demo_generation(&self, code: u8) -> Result<()> {
+        use dspi_transport::fake::FakeGeneration as G;
+        let dev = match code {
+            0 => FakeDevice::demo_generation(G::Stock116),
+            1 | 7 => FakeDevice::demo_generation(G::Bofr116 { page_guard: true }),
+            2 => FakeDevice::demo_generation(G::Bofr116 { page_guard: false }),
+            3 => FakeDevice::demo_generation(G::STOCK117),
+            4 => FakeDevice::demo_generation(G::Bofr117),
+            5 => FakeDevice::zero(),
+            6 => FakeDevice::sender(false),
+            _ => return Err(DspiError::Unsupported),
+        };
+        let remote = dev.remote();
+        remote.allow_violations();
+        if code == 7 {
+            remote.vreg_set_build_default(0x0C); // 1.15 V
+        }
+        let serial = dev.descriptor().serial.clone();
+        let transport = dspi_transport::paged::open(Box::new(dev))?;
+        self.attach_probed(transport, serial, 0)?;
+        self.lock().demo_generation = Some(remote);
+        Ok(())
+    }
+
+    /// How many requests the fake of [`DspiCore::open_demo_generation`] got
+    /// that its generation must not get (PLAN-PG section 1.1).
+    /// [`DspiError::Unsupported`] when no such fake was opened on this core.
+    pub fn demo_generation_violations(&self) -> Result<u32> {
+        self.lock()
+            .demo_generation
+            .as_ref()
+            .map(dspi_transport::FakeRemote::violations)
+            .ok_or(DspiError::Unsupported)
     }
 
     /// How many writes this core has refused because the connection is read-only.
@@ -1617,3 +1664,8 @@ mod tests_wp_cgswsa;
 #[cfg(test)]
 #[path = "device/tests_wp_pgfix.rs"]
 mod tests_wp_pgfix;
+
+// -- WP PGQT --
+#[cfg(test)]
+#[path = "device/tests_wp_pgqt.rs"]
+mod tests_wp_pgqt;

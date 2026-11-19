@@ -1302,6 +1302,29 @@ interface DspiCoreApi : AutoCloseable {
     fun firmwareTarget(): FirmwareTarget
 
     /**
+     * The write gate's verdict on `image`, without writing: what
+     * [`DspiCore::flash_confirmed`] would decide now. For a client whose
+     * write is its own (Android: PICOBOOT or the drive, in Kotlin), as its
+     * last check before the first byte; a client that writes through the
+     * core needs no call, the write asks the gate itself.
+     *
+     * The gate judges by the target this core read itself from the device
+     * ([`DspiCore::firmware_target`], or the bootloader entry), which is
+     * dropped when another device is opened: a caller cannot hand in a
+     * target, and a target the caller kept from another board is not used.
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown, so the voltage phrase is asked. With no target
+     * read by this core (the board was in BOOTSEL before this core saw it)
+     * the voltage rule alone decides on `board`: pass
+     * [`firmware_guard_board_in_bootloader`] unless this run sent this very
+     * board to its bootloader. Write only on `verdict.allowed`. Reads the
+     * core's memory only: nothing is sent, and the kept target stays (it is
+     * dropped when a device is opened again). Parses the whole image: call
+     * off the UI thread. Never fails, never panics.
+     */
+    fun firmwareWriteCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareUpdateVerdict
+
+    /**
      * Import `text` (a `.dspipreset` document) with a way back: capture a
      * snapshot, apply the blocks `options` and `eq_channels` choose (as
      * [`DspiCore::config_import_confirmed`] takes them), then wait

@@ -726,6 +726,13 @@ length locally. **Deps:** PG-B2; P5SES and P5LIVE merged (else PGMEAS waits; it 
 - **PGDOC:** the manual: on our hub the extension channel (audio link status, reset info, core voltage) is for admin
   sessions (section 1.11); `uconsole raw` refuses an opcode above 0xFF and a wValue or length above 16 bits.
 
+**Carried over from the PG-D part 2 review (`work/review-pgd2/REPORT.md`):**
+- **PGSWIFT:** if the Swift installer writes the image itself (not through `flash_confirmed` on the core that read the
+  target), its last check before the write is `DspiCore::firmware_write_check`, never a target kept in Swift. Do not
+  offer the bundled DSP image to the alink sender (Qt and Android do not).
+- **Open (owner):** Qt's menus still open the DSP tool windows on the alink sender (the core answers `Unsupported`;
+  nothing of the DSP model is written). A dual-stack sender (FWPG4) is not recognised: its open fails at the bulk read.
+
 **PGFWX: The update check over the bindings.** [DONE] Size 1. Wave PG-D, before the client WPs. **Owns:** the
 bindings of the update check (UniFFI derives and exports in `crates/dspi-core/src/firmware_guard.rs`, new
 `crates/dspi-capi/src/fns_misc/firmware_update.rs`, new `crates/dspi-wasm/src/firmware.rs`), `WriteGuardedCore`,
@@ -774,13 +781,40 @@ connects the sender as `DeviceKind::AlinkSender`: device info, extension channel
 `Unsupported`) and F2 (nothing but `REQ_GET_PLATFORM` on the legacy route until it answered), and changed section
 1.11's wording for F3 ("full + ext (admin)"). The table of the merged batch: `work/review-pgd1/matrix.md`.
 
-**PGWEB: Web.** [TODO] Size 1. Wave PG-D. **Owns:** the device-info and raw screens in `apps/web/src/screens/`
+**PGWEB: Web.** [DONE] Size 1. Wave PG-D. **Owns:** the device-info and raw screens in `apps/web/src/screens/`
 (generation row, raw by id on paged devices), Playwright e2e with the WebUSB mock answering the probe as each
 generation. **Done when:** `ci/check.sh --step web` (Chromium and Firefox, 375 px) shows each generation and each
-notice; no paged request in the G1 mock's log. **Deps:** PGCORE.
+notice; no paged request in the G1 mock's log. **Deps:** PGCORE. **Did (WP PGWEB):** a Device screen
+(`apps/web/src/screens/device/`, every mode, before Settings): board, kind, generation, protocol version, pages and
+the ext envelope from `deviceProtocol`, read once per connection in `Session.load` (and again after a Link
+reconnect) and kept in the session's state; raw GET/SET by id on paged devices with input that would truncate
+refused before anything is sent and the core's refusals in words (`VC_ERR_*` by name); a firmware update check
+(`firmwareTarget` + `firmwareUpdateCheck`, the target read once and kept; the web writes no firmware) with the
+verdict, the no-BOOTSEL and lineage rules and the generation change; the hub rollout's start dialog judges an image
+uploaded from the page for the session's own DSPi and offers only Cancel on a refusal, and names `excluded`,
+`no_bootsel` and `lineage_loss`; the alink sender gets its own page (device info, audio link, update check) and no
+DSP screen or meters; a refused open shows its notice (`transfer.newer_protocol`, `transfer.unrecognised_device`).
+E2E over the WebUSB mock, whose engine (`dspi_mock_new_as`) is each fake generation and board: G1s, G1b with and
+without PAGEGUARD, G2s, G2b, Zero on 1.1.6 and 1.1.7, the sender, and probe answers for both notices. Not covered:
+the dual-stack sender (FWPG4) on its paged stack opens as a DSP and fails at the bulk read (the core's
+`DeviceKind::AlinkSender` is legacy-only).
 
-**PGQT: Qt.** [TODO] Size 0.75. Wave PG-D. **Owns:** the Qt About/device-info controller and view, the raw dialog.
-**Done when:** `ci/check.sh --step qt`, `--step qt-offscreen` with the fake generations. **Deps:** PGCORE.
+**PGQT: Qt.** [DONE] Size 0.75. Wave PG-D. **Owns:** the Qt About/device-info controller and view, the raw dialog.
+**Done when:** `ci/check.sh --step qt`, `--step qt-offscreen` with the fake generations. **Deps:** PGCORE. **Did (WP
+PGQT):** new `DeviceInfoController` (`apps/desktop/qt/src/controllers/`, QML in `qml/deviceinfo/`): Settings > About's
+"Connected Device" rows from `dspi_device_protocol` (board, generation, protocol, pages, extensions), read once per
+connection on the worker (keyed by `dspi_connection_generation`), with the Terminal's notes (empty page list on a
+paged device; the sender; no BOOTSEL); the raw request dialog by id (`dspi_raw_get_id`/`dspi_raw_set_id`, the SET
+through `DeviceModel::write`), the core's refusals in words (`VC_ERR_*` by name), an id, wValue or length above 16
+bits, a byte above 0xFF or a payload past 65535 bytes refused before the core is asked; on `AlinkSender` the main
+window shows `SenderPage` (device info, the audio link status with the admin-only refusal in words, the update) in
+place of the DSP screens. `FirmwareController` judges with `dspi_firmware_target` + `dspi_firmware_update_check`
+before the bootloader entry, asks the phrase the verdict names in the dialog (field empty, never typed for the
+person), shows the generation change, offers no image (nor the bootloader entry) to a board without BOOTSEL and no
+bundled image to the sender, re-checks at the write with the same target and passes its voltage record only for the
+board this run sent to BOOTSEL on the same connection (else unknown, as the gate). For the smoke runs the core gained
+`open_demo_generation` / `dspi_demo_open_generation` (G1s, G1b with and without PAGEGUARD, G2s, G2b, Zero, sender,
+G1b at 1.15 V) and `demo_generation_violations` (C ABI only, `NOT_EXPORTED`).
 
 **PGTM: Terminal and TUI.** [DONE] Size 0.75. Wave PG-D. **Owns:** `apps/terminal/src/main.rs` (`uconsole info`
 generation, `uconsole raw --id 0x0550`), the TUI's About screen. **Done when:** scoped `cargo test -p uconsole` and
@@ -794,21 +828,41 @@ page list, as on the hub's `LocalTransport`/`PrincipalTransport`, gets a note sa
 `--accept-core-voltage-risk` (never typed for the person), says the generation change, and offers no image (nor a
 bootloader reboot) to a board without BOOTSEL.
 
-**PGAND: Android.** [TODO] Size 0.5. Wave PG-D. **Owns:** the device-info row in the Android settings feature,
+**PGAND: Android.** [DONE] Size 0.5. Wave PG-D. **Owns:** the device-info row in the Android settings feature,
 `WriteGuardedCore` entries (if not done by PGCORE's contract step). **Done when:** the module's unit tests through the
-Gradle slot wrapper. **Deps:** PGCORE.
+Gradle slot wrapper. **Deps:** PGCORE. **Did (WP PGAND, with the PG-D part 2 review's fixes):** Settings > About ends
+with a "Device" section from `device_protocol()`, read once per connection on the FFI dispatcher
+(`DspiBridge.deviceProtocol`); the Update button runs `firmware_target` + `firmware_update_check` before the bootloader
+entry (`FirmwareInstaller.checkBeforeEntry`), asks the phrase in a field that starts empty, shows the generation change,
+and reboots only on a clear check; a board without BOOTSEL is offered no image, no reboot and no bootloader-only link;
+on `AlinkSender` a sender page stands in for Home and the DSP routes are closed. **Review:** the write is Kotlin's
+(PICOBOOT or the drive), so its last check now asks the core's write gate through the new UniFFI export
+`DspiCore::firmware_write_check` (the gate's verdict on the core's own kept target, nothing written) instead of
+judging on a target kept in Kotlin, which did not know when the core had opened another board; a dismissed check keeps
+no board; the bundled DSP image is not offered to the sender (as Qt).
 
 **PGSWIFT: Swift (coordinator, Mac VM).** [TODO] Size 1. Wave PG-D. **Owns:** the Swift device-info row; the
 core-backed paths' tests against the paged fakes. Its `CoreBackedTransport` needs no code (its opcodes go through the
 adapter). **Done when:** `ci/macvm.sh macos` builds and the core-backed tests pass with a G2s and a G2b fake.
 **Deps:** PGCORE, PGSWHUB0.
 
-**PGDOC: Docs.** [TODO] Size 1.25. Wave PG-D. **Owns:** `docs/integrator/hub-api.md` (section 3 device fields,
+**PGDOC: Docs.** [DONE] Size 1.25. Wave PG-D. **Owns:** `docs/integrator/hub-api.md` (section 3 device fields,
 section 17 deviations: legacy forwarding, translation for minor-2 sessions only, both denial lists, minor 3),
 `docs/core-merge/HUB.md` (wIndex section), `docs/PARITY.md` (rows), `docs/terminal/wire-format.md` (paged section),
 the user manual's notices page incl. S5 (an upstream console or hub can still offer stock firmware to a K340: it sees
 "legacy, update available"; our components cannot prevent that). **Done when:** every new field, cap and deviation in
-PGHDEV is documented and the docs build step passes. **Deps:** PGHDEV.
+PGHDEV is documented and the docs build step passes. **Deps:** PGHDEV. **Did (WP PGDOC):** `hub-api.md` 1.2 (cap `legacy_devices`, minor
+3), 3 (inventory `board_id`/`model`) and new 3.1 (the device object's `protocol`, `ext`, `board`; nothing listed or
+forwarded before the attach probe), new 17.1 (the departures from spec 1.3: legacy devices listed and forwarded, page-0
+translation for minor-2 sessions only, `0x10` for minor 3, `0x86` for a page on a legacy device, both denial lists,
+the stricter class, judges by the 1.1.6 equivalent, `DENIED` bootloader entry toward a board without BOOTSEL), 21
+(`excluded`, `no_bootsel`, `lineage_loss`, the verify through the tunnel, the writer's gate); `HUB.md` 8 and new 8.1;
+`PARITY.md` new section K; `wire-format.md` new section 8; new `docs/manual/notices.md` (S5, the paged Zero behind an
+upstream hub, the admin-only extension channel, the update questions, the sender, `uconsole raw`'s refusals and
+`raw --id`'s FLASH/RESTART/BULK rule); new `docs/integrator/protocol-generations.md` (`device_protocol`'s one platform
+read, `raw_set_id`, `device_kind` `AlinkSender`, PGFLASH's write gate and its fallback). PGWEB and PGQT were described
+as "in review"; the PG-D part 2 review revised the manual page, `protocol-generations.md` and PARITY K to the merged
+state (PGWEB, PGQT, PGAND built; `firmware_write_check`).
 
 ### HIL
 
