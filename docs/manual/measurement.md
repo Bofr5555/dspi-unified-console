@@ -286,8 +286,104 @@ never plays anything and never writes to the DSPi. You can still open Results an
 It does not run while this console is measuring, in the live view or in auto-tune, so it never shows the test signal as
 if it were your music.
 
+<!-- WP ATDOC -->
+## 10. Measuring several units together
+
+*The screens for this are **in progress**: the web console's group step (WP ATWEB) and the Qt console's (WP ATQT, after
+it). The measurement itself, in the consoles' shared core and in the DSPi hub, is built, but it has not been tried on
+real units yet. The technical page is [docs/integrator/multi-unit-measurement.md](../integrator/multi-unit-measurement.md).*
+
+When one room is played by several DSPi units (a subwoofer unit and a mains unit, or one unit per speaker), one
+microphone can measure them all and line them up in time. Each unit plays its own test signal, and every start is set
+on a sample counter the units share, so each unit starts exactly when it was told to.
+
+### 10.1 What you need
+
+- **The DSPi hub.** Measuring several units together runs through our hub. Without it, the console offers one unit at a
+  time and says "Measuring several units needs the DSPi hub".
+- **Units that share one clock.** These can be measured together:
+
+  | Units | Measured together |
+  |---|---|
+  | the units behind one audio link sender (fan-outs and repeaters included) | yes |
+  | the units fed over USB-direct from one USB controller, in phase lock at 48 or 96 kHz, with the hub running where they are plugged in | yes |
+  | one DSPi set as an S/PDIF source and the DSPi units that follow it over S/PDIF | yes |
+  | units on two senders, two USB controllers or two S/PDIF sources, or a mix of them | no: "These units do not share a clock" |
+  | units fed over S/PDIF by a TV or a receiver, over USB at 44.1 kHz or without phase lock, over ADAT or I2S | no: one unit at a time |
+
+  A unit set to follow S/PDIF that is fed by other equipment says "This S/PDIF source does not carry a DSPi time base".
+  An S/PDIF source should not be fed over USB without phase lock: each time playback starts, its followers have to lock
+  again. The outputs that carry the source's S/PDIF are never measured.
+- **The same sample rate on every unit**, and every unit locked to the shared clock.
+- **The Control role** to measure, and **the Admin role** to apply what it finds.
+
+### 10.2 How a run goes
+
+1. **Choose the units and their outputs**, with the microphone at the listening position.
+2. **Each unit is checked on its own**: its volume, its tweeter protection, silent inputs, no processing the measurement
+   cannot model (the rules of section 4, for every unit). The console names the unit that stops it.
+3. **The clocks settle.** Right after the units lock, or after anything disturbed their clock, the hub waits until it
+   has seen them locked for 40 seconds. The console says "waiting for the units' clocks to settle". This can take up to
+   40 seconds; it is normal.
+4. **The run.** Each unit plays its outputs in turn, then the next unit, and the whole round repeats (5 passes when they
+   fit, else 3). The hub schedules every start a little ahead (about a quarter of a second with a K340), so each unit is
+   ready on time.
+5. **A large group is measured in several runs.** One run takes at most 16 outputs and 2 minutes. Each run then repeats
+   one **anchor output** (the first unit's first output unless you choose another), and the runs are joined through it.
+   The console says "The group needs several runs". If the anchor sounds different between runs, the runs do not join
+   and nothing is proposed: "The runs do not chain". **Do not move the microphone, or anything near it, until every run
+   has finished.**
+
+Any of these stops the run at once, on every unit, and names the unit: a unit clips or reaches full scale, a limiter
+acts, a unit loses its clock lock, a unit's start did not happen exactly as scheduled, someone else changes a setting,
+the hub loses a unit, or you press **Stop**. The hub also stops every unit by itself if the console stops answering.
+
+### 10.3 What you get, and its limits
+
+The result gives each output's curve, as for one unit, and the **delay between the units** with how sure it is.
+
+- **A delay between units is offered only when it is known to within 10 µs.** Otherwise the result says **"timing
+  unreliable"** with how far the microphone's clock wandered, and nothing is proposed for those units. The curves are
+  still good.
+- **With a USB microphone whose clock wanders like the one in our own test (section 6), every run reads "timing
+  unreliable".** In simulation, runs passed only when the wander was about a tenth of what we measured on that
+  microphone. Use a capture path with a steadier clock, such as an analogue measurement microphone on an audio
+  interface.
+- **The outputs must be heard within about 85 ms of each other.** An output heard more than that after the run's first
+  output cannot be measured in the same run, and nothing of that group is offered. This can happen with five or more
+  USB-direct units, or with a large output delay already set.
+
+### 10.4 Apply, verify, Keep and Revert
+
+1. **Summed check, always.** Before anything is applied, the outputs where two units meet play together and the sum is
+   compared with the prediction. Each unit is checked on its own again first, and each output is ramped again. Units
+   that play together play quieter: 6 dB less each time their number doubles. If the sum disagrees by more than
+   1.5 dB, every delay between the units is withdrawn: "The summed check failed". A pair that would cancel out is not
+   played at all, and the console says which outputs and why.
+2. **Apply needs Admin.** A Control user sees the proposal and can save the measurement, but "Applying needs Admin". The
+   delays go into the hub's installation, and the hub writes the units.
+3. **Verify.** The summed check runs again with the new delays, each unit checked again first. If it does not agree:
+   "The verify did not confirm the alignment".
+4. **Keep.** After a verify that passed, one press keeps the alignment. **After a verify that failed, Keep takes two
+   steps**: the first press is refused with the reason, and only your second press, at least a second later, keeps it.
+   Nothing presses Keep for you.
+5. **Revert** puts the installation and every unit's delays back as they were. There is no countdown here: the new
+   delays stay until you Keep or Revert.
+
+Only the delays between units are proposed. Polarity, crossovers and EQ are tuned within each unit by its own
+auto-tune (section 7).
+
+### 10.5 Not tried on real units yet
+
+Everything in this section has run on simulated units in a simulated room only. It still has to be shown on real
+boards: that each unit plays exactly by the delay it reports, that real units can be opened together, and the S/PDIF
+clock between real units.
+<!-- /WP ATDOC -->
+
 ## See also
 
 - [docs/integrator/measurement.md](../integrator/measurement.md): the technical contract (signal path, rules, documents)
 - [docs/integrator/hub-api.md section 22](../integrator/hub-api.md#22-measurement-documents): documents on the hub
+- [docs/integrator/multi-unit-measurement.md](../integrator/multi-unit-measurement.md): measuring several units
+  together, the technical page (WP ATDOC)
 - [docs/GLOSSARY.md](../GLOSSARY.md): the words the consoles use
