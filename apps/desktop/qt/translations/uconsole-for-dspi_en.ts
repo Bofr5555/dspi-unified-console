@@ -7229,6 +7229,209 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>MeasureUnitsTab</name>
+    <message>
+        <source>Choose…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Listening position (speakers)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several positions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Near-field</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headphones on a coupler</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Full range</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Subwoofer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Low (woofer)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mid</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>High (tweeter)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measuring across units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Every unit plays its own generator, each start on its sample of the units&apos; shared clock, and one microphone hears them all. The hub stops every unit if anything changes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Where is the microphone?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Placement across units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Units of the group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub shares no DSPi with this console.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (this DSPi)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (offline)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measure %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opening %1…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 output %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Role of %1 output %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The runs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sweep length across units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Passes across units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The plan&apos;s (5, or 3 for a long group)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Anchor output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name of the measurements</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Name (optional)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check every unit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measure the units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Why it stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Result</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measured responses across units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: arrives %2; offered: %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 to %2: %3; offered: %4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Proposal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The measured arrivals go into the hub&apos;s installation; the hub&apos;s alignment then sets every unit&apos;s delays. Nothing else changes.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Run the summed check</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply the alignment</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verify</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Revert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep anyway?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep anyway</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep anyway (in %1 s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not now</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>MeasureWindow</name>
     <message>
         <source>Measure</source>
@@ -7260,6 +7463,10 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Passive RTA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Several units</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -11155,6 +11362,101 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>SpdifUnitsCard</name>
+    <message>
+        <source>S/PDIF units</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No unit is on S/PDIF.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Follows %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A source stamps its frame counter in the S/PDIF user bits; a follower plays each sample its D after it arrived</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF source of %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1-%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 sends the time base on outputs %2-%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF D of %1 in samples</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub&apos;s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The domain&apos;s D, samples (129 to 399 at 48 kHz); empty: the hub&apos;s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>D %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the hub&apos;s</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Off S/PDIF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Back on the audio link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2 %3 %4</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This S/PDIF source does not carry a DSPi time base</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unit to put on S/PDIF</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>As</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>S/PDIF time-base source</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Fed by S/PDIF from %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>To save: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SpectrumPage</name>
     <message>
         <source>Display</source>
@@ -12334,6 +12636,30 @@ This wiring is a board-level setting: it is stored on the device, survives prese
         <source>Saved on the hub, with warnings:</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>%1 becomes an S/PDIF time-base source.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 is fed by S/PDIF from %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 goes back on the audio link.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 sends the time base on: %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1&apos;s D becomes %2 samples.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1&apos;s D becomes the hub&apos;s.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SystemIntegration</name>
@@ -13501,6 +13827,325 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     </message>
     <message>
         <source>Try Again</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>UnitsMeasureController</name>
+    <message>
+        <source>%1 µs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The measurement is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The core did not answer.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2</source>
+        <extracomment>A refusal: %1 its notice&apos;s title, %2 the core&apos;s or the hub&apos;s words</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 output %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> ± %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measuring several units together needs the DSPi hub: it starts every unit&apos;s generator on one shared sample counter.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose where the microphone is first: nothing plays before you have.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Headphones are never measured across units: measure them one unit at a time on the Measure tab, at headphone levels.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Units are measured together at the listening position only: put the microphone there, or measure one unit at a time on the Measure tab.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The first unit&apos;s first output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: its own connection is opening.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: its own connection is not open (choose it again).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose at least one output of %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose at least two units: one unit is measured on the Measure tab.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: this console is not connected through a hub.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: no connection could be made.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: the hub asks this console to pair again: open the unit in the console once, then choose it here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: the hub does not list it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: its state could not be read.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: its own connection is not open yet (choose it again).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking every unit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ready: nothing blocks the measurement across units.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>A measurement across units is already running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop the measurement, the live view or the passive RTA first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Starting</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The microphone could not be opened.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Something blocks the measurement across units: see the check.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measuring across units.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measure the group first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Stop what plays first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Starting the summed check</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Starting the verify</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The summed check</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verifying</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Measuring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (run %1 of %2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: listening to the room first, nothing plays%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>a unit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: finding the level of %2 output %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (%1 dBFS)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: every unit&apos;s generator plays on the shared time base%2%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: analysing%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: finished.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: stopped.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: could not finish.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: this group needs %2 runs, chained through the anchor output. %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The group needs several runs</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Keep the microphone and the room still until every run has finished.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Yes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The timing of every run was reliable.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the capture clock wandered between the units&apos; sweeps</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> %1 runs, chained through the anchor output.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB SPL</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>dB (relative)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>not offered</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the summed check agreed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the summed check did not agree</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>not checked yet</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 with %2, %3 to %4 Hz: %5</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Nothing can be applied from this measurement.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>run the summed check first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applying an alignment across units needs the Admin role.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applying</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applied: measure the summed runs again to verify it, then Keep or Revert.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applied: the summed runs are measured again with the new delays to verify it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verified: the summed runs agree with the new delays.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>the summed runs did not agree with the new delays</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Kept.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reverted: the installation and every unit are as they were filed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reverted: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The hub&apos;s guard has run out: it has put the installation and every unit back by itself. Keep shows what it did.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message numerus="yes">
+        <source>Keep or Revert within %n s: without Keep the hub puts everything back by itself (also if this console&apos;s connection is lost).</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Keeping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reverting an alignment across units needs the Admin role.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reverting</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
