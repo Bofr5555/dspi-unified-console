@@ -7196,7 +7196,8 @@ data class MeasureTuneVerify(
      */
     val timingReliable: Boolean,
     /**
-     * Every summed run and verified sum within 1.5 dB RMS of the prediction.
+     * Every summed run, verified sum and verified output within 1.5 dB RMS
+     * of the prediction.
      */
     val passed: Boolean,
     /**

@@ -128,6 +128,15 @@ pub(crate) const ALGORITHM: &str = "dspi-core p5tune 1";
 /// The verify's per-way comparison: points within this of the way's loudest
 /// predicted level, dB.
 const VERIFY_SPAN_DB: f64 = 30.0;
+// -- WP P5TRUST2 -- (P5TM's finding) each verified output is judged too.
+/// A verified output whose measured response is further than this from its
+/// prediction (RMS, dB, 100 Hz to 10 kHz within 30 dB of its loudest) fails
+/// the verify. RC5f's bound for a summed run against its prediction: the same
+/// question (does the run confirm what the maths predicted?) for one way.
+/// Before, a layout without transitions (no summed run, no verified sum)
+/// always passed, even 6.4 dB off (P5TM). The simulated rooms' verifies read
+/// 0.003 to 0.18 dB per output.
+pub(crate) const VERIFY_OUTPUT_MAX_RMS_DB: f64 = dspi_measure::xover::SUMMED_CHECK_MAX_RMS_DB;
 /// The verify's whole-speaker comparison band, Hz.
 const VERIFY_SUM_HZ: (f64, f64) = (200.0, 10_000.0);
 /// The graph's smoothing of the proposal's curves, 1/N octave.
@@ -149,6 +158,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     KEY_MIC,
     KEY_NOT_KEPT,
     KEY_KEEP_UNVERIFIED,
+    // -- WP P5TRUST2 --
+    KEY_GUARD_CAPPED,
 ];
 const KEY_OTHER_DEVICE: &str = "measure.tune.other_device";
 const KEY_OLD: &str = "measure.tune.old";
@@ -159,6 +170,8 @@ const KEY_MIC: &str = "measure.tune.mic";
 const KEY_NOT_KEPT: &str = "measure.tune.not_kept";
 // -- WP P5TRUST -- coordinator decision (b)
 const KEY_KEEP_UNVERIFIED: &str = "measure.tune.keep_unverified";
+// -- WP P5TRUST2 -- (review P5TRUST N7)
+const KEY_GUARD_CAPPED: &str = "measure.tune.guard_capped";
 
 fn invalid(msg: impl Into<String>) -> DspiError {
     DspiError::InvalidArgument { msg: msg.into() }
@@ -438,7 +451,8 @@ pub struct MeasureTuneVerify {
     pub transitions: Vec<MeasureTuneTransition>,
     /// The verify's walked run passed the timing quality gate.
     pub timing_reliable: bool,
-    /// Every summed run and verified sum within 1.5 dB RMS of the prediction.
+    /// Every summed run, verified sum and verified output within 1.5 dB RMS
+    /// of the prediction.
     pub passed: bool,
     /// Remarks in words.
     pub notes: Vec<String>,
@@ -1116,7 +1130,13 @@ impl DspiCore {
             transitions,
             held: c.held.clone(),
             withdrawn: c.withdrawn.clone(),
-            warnings: input.warnings.clone(),
+            // -- WP P5TRUST2 -- the guard's cap said (review P5TRUST N7).
+            warnings: input
+                .warnings
+                .iter()
+                .cloned()
+                .chain(Self::tune_guard_warning(input, &c))
+                .collect(),
             notes: c.notes.clone(),
             timing_reliable: input.doc.measurement.capture.timing_reliable,
             sum_check: if has_timing {
@@ -1245,6 +1265,19 @@ impl DspiCore {
     /// level to the ceiling. [`TUNE_GUARD_DEFAULT_S`] when a run cannot be
     /// planned.
     fn tune_guard_s(input: &Input, c: &Computed) -> u32 {
+        match Self::tune_guard_planned_s(input, c) {
+            Some(s) => u32::try_from(s)
+                .unwrap_or(u32::MAX)
+                .min(crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S),
+            None => TUNE_GUARD_DEFAULT_S,
+        }
+    }
+
+    // -- WP P5TRUST2 -- (review P5TRUST N7) the planned length before the
+    // guard's cap, so a proposal can say when the cap cuts it.
+    /// The guard's planned length before the guard's longest is applied, s;
+    /// `None` when a run cannot be planned.
+    fn tune_guard_planned_s(input: &Input, c: &Computed) -> Option<u64> {
         let rate = match input.doc.measurement.stimulus.device_rate_hz {
             r @ (44_100 | 48_000 | 96_000) => r,
             _ => 48_000,
@@ -1252,13 +1285,13 @@ impl DspiCore {
         let mut ms: u64 = 0;
         for item in Self::tune_verify_queue(input, c, &c.chains) {
             let Ok(plan) = Plan::new(&item.setup) else {
-                return TUNE_GUARD_DEFAULT_S;
+                return None;
             };
             let span = f64::from(plan.ceiling_db - plan.start_db).max(0.0);
             let steps = ((span / f64::from(safety::RAMP_STEP_DB)).ceil() as u64).saturating_add(1);
             for run in &plan.runs {
                 let Ok(run_ms) = plan.run_ms(run, rate) else {
-                    return TUNE_GUARD_DEFAULT_S;
+                    return None;
                 };
                 let ramps = (run.outputs.len() as u64).saturating_mul(steps);
                 ms = ms
@@ -1266,13 +1299,31 @@ impl DspiCore {
                     .saturating_add(ramps.saturating_mul(RAMP_STEP_MS));
             }
         }
-        let s = ms
-            .saturating_mul(100 + TUNE_GUARD_SLACK_PCT)
-            .div_ceil(100_000)
-            .saturating_add(u64::from(TUNE_GUARD_MARGIN_S));
-        u32::try_from(s)
-            .unwrap_or(u32::MAX)
-            .min(crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S)
+        Some(
+            ms.saturating_mul(100 + TUNE_GUARD_SLACK_PCT)
+                .div_ceil(100_000)
+                .saturating_add(u64::from(TUNE_GUARD_MARGIN_S)),
+        )
+    }
+
+    // -- WP P5TRUST2 -- (review P5TRUST N7)
+    /// The proposal's warning when the planned verify needs a longer guard
+    /// than the guard's longest: the guard is still capped, and would revert
+    /// the tune during or right after the verify.
+    fn tune_guard_warning(input: &Input, c: &Computed) -> Option<MeasureIssue> {
+        let planned = Self::tune_guard_planned_s(input, c)?;
+        let cap = crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S;
+        (planned > u64::from(cap)).then(|| {
+            MeasureIssue::new(
+                KEY_GUARD_CAPPED,
+                None,
+                format!(
+                    "the verify needs a guard of about {planned} s with its margin, longer \
+                     than the guard's longest ({cap} s): the guard reverts the tune after {cap} s, \
+                     perhaps before the verify ends"
+                ),
+            )
+        })
     }
 
     /// Start the next run of `t`, or end the step (`finish`).
@@ -1477,6 +1528,17 @@ impl DspiCore {
                                     };
                                     rms_between(&measured, &pred, 100.0, 10_000.0, &keep)
                                 });
+                        // -- WP P5TRUST2 --
+                        if let Some(r) = rms
+                            && r > VERIFY_OUTPUT_MAX_RMS_DB
+                        {
+                            passed = false;
+                            v.notes.push(format!(
+                                "{} is {r:.2} dB RMS off its prediction (at most \
+                                 {VERIFY_OUTPUT_MAX_RMS_DB:.1} dB)",
+                                maths::who(w)
+                            ));
+                        }
                         v.outputs.push(MeasureTuneVerifyOutput {
                             output: w.output,
                             rms_db: rms,
@@ -1528,6 +1590,15 @@ impl DspiCore {
                 }
                 Purpose::SumCheck { .. } => {}
             }
+        }
+        // -- WP P5TRUST2 -- a verify that judged nothing confirms nothing.
+        if v.sums.is_empty()
+            && v.transitions.is_empty()
+            && v.outputs.iter().all(|o| o.rms_db.is_none())
+        {
+            passed = false;
+            v.notes
+                .push("the verify could compare nothing with its prediction".into());
         }
         v.passed = passed;
         t.verify_failed = !passed;

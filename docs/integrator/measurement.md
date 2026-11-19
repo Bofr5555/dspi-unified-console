@@ -83,7 +83,8 @@ Where this page and the code disagree, the code is right and the page is the bug
 8. **No loopback, no reference speaker, no firmware time stamp.** The one check that does not depend on the capture clock
    is the summed run, mandatory before any timing write is offered.
 9. **Noise and trust:** a 1 s pre-roll gives the noise floor; a point is trusted (`valid`) when its SNR is above 20 dB and
-   its repeat-to-repeat spread under 1 dB (the repeats' windowed responses, beyond the spread their noise explains).
+   its repeat-to-repeat spread under 1 dB (the repeats' windowed responses, beyond the spread their noise explains, which
+   is taken as at most 2 dB).
    Untrusted points are drawn faint and never fitted.
 10. **Memory:** a capture holds at most 8 Mi frames (`MAX_CAPTURE_SAMPLES`); a run that would exceed it is refused at the
     plan step. Responses are held on a 1/96-octave grid from 10 Hz to 22 kHz (1066 points).
@@ -142,8 +143,10 @@ nothing written.
 7. **Target fit:** the free PEQ bands toward the target, within the range and caps of S9.
 8. **Proposal:** every write in words, the curves before and predicted, the limits held to. Nothing is written yet.
 9. **Apply:** the preflight again, "Before auto-tune" snapshot filed, `apply_guard_begin("Auto-tune", <the planned verify plus a margin>)`, one undo
-   group of typed writes, each judged as any write.
-10. **Verify** inside the guard: a walked run and a summed run per transition.
+   group of typed writes, each judged as any write. When the planned verify needs a guard longer than 590 s the guard
+   is still 590 s and the proposal carries the warning `measure.tune.guard_capped`.
+10. **Verify** inside the guard: a walked run and a summed run per transition. It passes when every summed run, verified
+    sum and tuned output is within 1.5 dB RMS of its prediction.
 11. **Keep or revert:** Keep confirms the guard, files "After auto-tune" with a `tune` block and offers the A/B compare of
     the two snapshots; Revert or the timeout reverts. After a verify that did not pass, the first Keep is refused with
     `measure.tune.keep_unverified`; show it and keep only on a second Keep the user confirms. `apply_confirm` on the

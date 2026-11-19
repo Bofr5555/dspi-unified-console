@@ -40150,7 +40150,8 @@ data class MeasureTuneVerify (
      */
     var `timingReliable`: kotlin.Boolean, 
     /**
-     * Every summed run and verified sum within 1.5 dB RMS of the prediction.
+     * Every summed run, verified sum and verified output within 1.5 dB RMS
+     * of the prediction.
      */
     var `passed`: kotlin.Boolean, 
     /**

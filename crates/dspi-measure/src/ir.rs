@@ -210,6 +210,24 @@ fn noise_spread_db(noise: f64, signal: f64) -> f64 {
     }
 }
 
+// -- WP P5TRUST2 -- (review P5TRUST N3) the allowance is capped.
+/// The most of the repeats' spread their noise may explain, dB (on top of the
+/// trust rule's 1 dB). Uncapped, the allowance at the 20 dB trust floor was
+/// about 3.2 dB with three repeats and 5.4 dB with eight, so a real change of
+/// the room between repeats of 4 to 6 dB passed there; with the cap a change
+/// of more than 3 dB is seen at every SNR. The cost: noise alone reaches it
+/// only below about 24 dB of averaged SNR with three repeats (28 dB with
+/// eight), near the floor, where a point is then left untrusted, the safe
+/// side. More repeats never narrow the allowance below their own noise's
+/// (coordinator, P5TRUST2: more repeats must not leave points untrusted on
+/// noise alone); a change in one of many repeats is diluted the same.
+pub const MAX_NOISE_SPREAD_DB: f64 = 2.0;
+/// The spread, dB, that one repeat's noise power `rep_noise` on a mean
+/// windowed power `signal` explains, capped at [`MAX_NOISE_SPREAD_DB`].
+fn spread_allowance_db(rep_noise: f64, signal: f64) -> f64 {
+    noise_spread_db(rep_noise, signal).min(MAX_NOISE_SPREAD_DB)
+}
+
 // ---------------------------------------------------------------------------
 // Frame continuity (S5, RC5c)
 // ---------------------------------------------------------------------------
@@ -577,7 +595,8 @@ pub struct OutputIr {
     /// for one repeat. Each repeat's own impulse response under the fit's
     /// window ([`FIT_WINDOW_CYCLES`] about the output's arrival), so a
     /// point's spread carries the noise its windowed response has, less the
-    /// spread that noise gives ([`NOISE_SPREAD_SIGMAS`]): the trust mask's
+    /// spread that noise gives ([`NOISE_SPREAD_SIGMAS`], at most
+    /// [`MAX_NOISE_SPREAD_DB`], WP P5TRUST2): the trust mask's
     /// SNR rule already judges the noise (WP P5TRUST; before, the whole
     /// segment's per-cycle power in 1/96-octave bands, with that much more
     /// noise, and the noise's own spread counted as disagreement).
@@ -2718,7 +2737,8 @@ impl WalkedAnalyser {
                                 .filter_map(|s| s.windowed.get(g).copied())
                                 .sum::<f64>()
                                 / stats.len().max(1) as f64;
-                            noise_spread_db(nz.get(g).copied().unwrap_or(0.0), mean)
+                            // -- WP P5TRUST2 -- capped.
+                            spread_allowance_db(nz.get(g).copied().unwrap_or(0.0), mean)
                         }
                         None => 0.0,
                     };

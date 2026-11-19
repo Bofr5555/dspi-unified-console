@@ -917,3 +917,75 @@ fn wp_p5trust_a_tweeters_high_pass_is_not_lowered_with_the_delays_kept() {
     assert!(hp(&p.outputs[2]) >= hp(&free.outputs[2]));
     assert!(hp(&p.outputs[2]) >= drivers[2].chain.crossover[0].freq);
 }
+
+// -- WP P5TRUST2 -- (review P5TRUST N2) a timing held near the arrivals.
+
+/// A narrow band about 238 Hz whose best alignment is -1.8 ms with a flip:
+/// about 0.43 of a period off a start of 0, where the same band also sums
+/// almost as well unflipped half a period later (+0.3 ms).
+fn wrong_cycle_ctx() -> PairCtx {
+    let points = (0..16)
+        .map(|i| {
+            let f = 230.0 + f64::from(i);
+            let w_ms = 2.0 * std::f64::consts::PI * f / 1000.0;
+            // b's phase undoes a delay of -1.8 ms, inverted.
+            let b = Cx::polar(1.0, w_ms * -1.8).scale(-1.0);
+            Point::new(f, Cx::ONE, b, 0.0)
+        })
+        .collect();
+    PairCtx {
+        points,
+        kind: CostKind::Phase,
+    }
+}
+
+#[test]
+fn wp_p5trust2_a_timing_a_half_cycle_off_the_arrivals_is_not_taken() {
+    let ctx = wrong_cycle_ctx();
+    let half = half_window_ms(238.0);
+    let free = ctx.search(0.0, half, 48, 24);
+    assert!(free.flip && (free.delta_ms + 1.8).abs() < 0.01, "{free:?}");
+    assert!(!free.held);
+    let hold = timing_hold_ms(238.0);
+    assert!((hold - 0.25 * 1000.0 / 238.0).abs() < 1e-12);
+    let held = ctx.search_held(0.0, half, 48, 24, hold);
+    assert!(held.held, "{held:?}");
+    assert!(!held.flip, "{held:?}");
+    assert!(held.delta_ms.abs() <= hold + 1e-12, "{held:?}");
+    assert!(
+        (held.delta_ms - (-1.8 + 500.0 / 238.0)).abs() < 0.1,
+        "{held:?}"
+    );
+    // The same evaluations as the free search.
+    assert_eq!(held.evals, free.evals);
+}
+
+#[test]
+fn wp_p5trust2_a_timing_within_the_hold_is_exactly_the_free_search() {
+    let ctx = wrong_cycle_ctx();
+    let half = half_window_ms(238.0);
+    for start in [-2.0, -1.7, -1.0] {
+        let free = ctx.search(start, half, 48, 24);
+        let held = ctx.search_held(start, half, 48, 24, timing_hold_ms(238.0));
+        if (free.delta_ms - start).abs() <= timing_hold_ms(238.0) {
+            assert_eq!(free, held, "start {start}");
+        }
+    }
+    // No hold (0, NaN, infinite) holds nothing.
+    for hold in [0.0, f64::NAN, f64::INFINITY, -1.0] {
+        assert_eq!(
+            ctx.search(0.0, half, 48, 24),
+            ctx.search_held(0.0, half, 48, 24, hold)
+        );
+    }
+}
+
+#[test]
+fn wp_p5trust2_the_hold_is_a_quarter_period_and_at_least_0_25_ms() {
+    assert!((timing_hold_ms(250.0) - 1.0).abs() < 1e-12);
+    assert!((timing_hold_ms(1000.0) - 0.25).abs() < 1e-12);
+    assert!((timing_hold_ms(2500.0) - TIMING_HOLD_MIN_MS).abs() < 1e-12);
+    for f in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        assert_eq!(timing_hold_ms(f), TIMING_HOLD_MIN_MS);
+    }
+}

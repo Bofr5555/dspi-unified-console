@@ -236,6 +236,8 @@ struct Mic {
     seen: (u32, Option<u64>),
     seed: u64,
     summed_extra: Option<(usize, f64)>,
+    // -- WP P5TRUST2 -- an output louder in the walked runs, dB.
+    walked_extra_db: Option<(usize, f64)>,
 }
 
 impl Mic {
@@ -251,6 +253,7 @@ impl Mic {
             seen: (0, None),
             seed: 0x2545_F491_4F6C_DD1D,
             summed_extra: None,
+            walked_extra_db: None,
         }
     }
 
@@ -296,6 +299,9 @@ impl Mic {
         let (first, regular) = (scaled(true), scaled(false));
         let tail = u64::from(sweep.gap_samples) + 4800;
         let capture = if walk {
+            if let Some((o, db)) = self.walked_extra_db {
+                w.outputs[o].gain_db += db;
+            }
             let schedule = WalkSchedule::new(sweep, cfg.channel_mask, cfg.repeat_count).unwrap();
             let bursts = schedule
                 .cycles()
@@ -1344,8 +1350,32 @@ fn wp_p5trust_the_guard_scales_with_the_planned_verify() {
     long.doc.measurement.stimulus.duration_ms = 15_000;
     long.doc.measurement.stimulus.repeat = 8;
     assert!(DspiCore::tune_guard_s(&long, &computed) <= crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S);
+    // -- WP P5TRUST2 -- (review P5TRUST N7) a verify longer than the guard's
+    // longest: the guard is still capped, and the proposal says so.
+    let planned = DspiCore::tune_guard_planned_s(&long, &computed).unwrap();
+    assert!(
+        planned > u64::from(crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S),
+        "{planned}"
+    );
+    assert_eq!(
+        DspiCore::tune_guard_s(&long, &computed),
+        crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S
+    );
+    let w = DspiCore::tune_guard_warning(&long, &computed).unwrap();
+    assert_eq!(w.key, KEY_GUARD_CAPPED);
+    assert!(w.message.contains(&planned.to_string()), "{w:?}");
+    assert!(DspiCore::tune_guard_warning(&input, &computed).is_none());
+    assert_eq!(
+        DspiCore::tune_guard_planned_s(&input, &computed),
+        Some(u64::from(short))
+    );
     // The apply with 0 takes it; an explicit length is the caller's.
     let p = eq_only(&r);
+    assert!(
+        p.warnings.iter().all(|w| w.key != KEY_GUARD_CAPPED),
+        "{:?}",
+        p.warnings
+    );
     let g = r.core.measure_tune_apply(p.id, 0).unwrap();
     assert_eq!(g.timeout_ms, short * 1000);
     r.core.measure_tune_revert().unwrap();
@@ -1353,4 +1383,48 @@ fn wp_p5trust_the_guard_scales_with_the_planned_verify() {
     let g = r.core.measure_tune_apply(p.id, 45).unwrap();
     assert_eq!(g.timeout_ms, 45_000);
     r.core.measure_tune_revert().unwrap();
+}
+
+// -- WP P5TRUST2 -- (P5TM's finding) a layout without transitions: the
+// verify judges each output against its prediction too.
+#[test]
+fn wp_p5trust2_a_verify_without_transitions_fails_on_one_bad_output() {
+    let r = rig("p5trust2-verify");
+    let mut mic = Mic::new(&r, heard());
+    let text = mic.measure(walked(&[0]), 150.0);
+    let p = r
+        .core
+        .measure_tune_propose(text, layout(&[0]), MeasureTuneOptions::default())
+        .unwrap();
+    assert!(p.transitions.is_empty(), "{p:#?}");
+    assert!(!p.writes.is_empty(), "{p:#?}");
+    let g = r.core.measure_tune_apply(p.id, 0).unwrap();
+    assert_eq!(g.phase, GuardPhase::Waiting);
+    // As measured: the verify passes, each output near its prediction.
+    r.core.measure_tune_verify().unwrap();
+    let st = mic.tune(120.0);
+    let v = st.verify.clone().unwrap();
+    println!("verify as measured: {:?}", v.outputs);
+    assert!(v.sums.is_empty() && v.transitions.is_empty(), "{v:#?}");
+    assert!(v.passed, "{v:#?}");
+    // The output plays 4 dB louder than predicted: the verify fails on it.
+    mic.walked_extra_db = Some((0, 4.0));
+    r.core.measure_tune_verify().unwrap();
+    let st = mic.tune(120.0);
+    let v = st.verify.clone().unwrap();
+    println!("verify 4 dB off: {:?}", v.outputs);
+    assert!(!v.passed, "{v:#?}");
+    let o = v.outputs.iter().find(|o| o.output == 0).unwrap();
+    assert!(o.rms_db.unwrap() > VERIFY_OUTPUT_MAX_RMS_DB, "{o:?}");
+    assert!(
+        v.notes.iter().any(|n| n.contains("its prediction")),
+        "{v:#?}"
+    );
+    // The two-step Keep is armed.
+    let e = r.core.measure_tune_keep().unwrap_err();
+    assert!(e.to_string().contains(KEY_KEEP_UNVERIFIED), "{e}");
+    assert_eq!(r.core.apply_status().phase, GuardPhase::Waiting);
+    crate::guarded::skew::advance(std::time::Duration::from_millis(TUNE_KEEP_CONFIRM_MIN_MS));
+    let k = r.core.measure_tune_keep().unwrap();
+    assert_eq!(k.guard.phase, GuardPhase::Kept, "{k:#?}");
 }
