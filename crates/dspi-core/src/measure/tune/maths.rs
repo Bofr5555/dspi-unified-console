@@ -26,12 +26,20 @@
 //!    (review P5-A N11), free bands only (OD-P5l), every band of
 //!    `FitResult.bands` written. The fits' headroom is one common output-gain
 //!    cut on every output of the layout, so no balance moves.
+//!    On a whole speaker (or a single way) the fit's level is **anchored**:
+//!    the target levelled to the speaker in the reference band (500 Hz to
+//!    2 kHz), and the dips deeper than the boost cap plus 1 dB are left out of
+//!    the fit and its level (P5FIT's level option, WP P5TRUST), so a broad
+//!    bass excess is fitted as one and broad bands and low shelves are
+//!    allowed; their spill into the reference band is held to
+//!    [`MAX_REFERENCE_SPILL_DB`]. The low way's own fit (no timing) keeps its
+//!    free level, and with it peaks of Q 2 or more and no shelves.
 
 use std::collections::BTreeMap;
 
 use dspi_measure::align::{AlignOptions, Transition, Way};
 use dspi_measure::doc::{Curve, MeasurementDoc};
-use dspi_measure::fit::{FitOptions, FitResult, fit};
+use dspi_measure::fit::{FitLevel, FitOptions, FitResult, fit, reference_offset_db};
 use dspi_measure::types::{BandSpec, ChannelChain, LogGrid, ProgrammeFeed, Response, SectionModel};
 use dspi_measure::xover::{
     DEEMBED_MIN_SNR_DB, Driver, HighpassOverride, SumMode, XoConstraints, crossover_corner,
@@ -39,7 +47,7 @@ use dspi_measure::xover::{
 };
 
 use super::{MeasureTuneKind, MeasureTuneOptions, MeasureTuneParam, MeasureTuneWrite};
-use crate::measure::live::{band_words, chain_db, fit_span, levelled_target, repredict};
+use crate::measure::live::{band_words, chain_db, fit_span, repredict};
 use crate::measure::runs::SNR_KEY;
 use crate::measure::{MeasureIssue, MeasureRole};
 use crate::records::FilterParams;
@@ -58,12 +66,16 @@ pub(crate) const FIT_HEADPHONES_HZ: (f64, f64) = (20.0, 10_000.0);
 /// A way "plays" in the fit's range when its crossover passes this much of
 /// its level somewhere in it, dB: its bands are written there too.
 const PLAYS_DB: f64 = -30.0;
-/// The lowest Q of a speaker's fitted band (see the fit's note in
-/// `compute`).
+/// The lowest Q of a speaker's fitted band where the fit's level is free
+/// (see the fit's note in `compute`).
 pub(crate) const SPEAKERS_Q_MIN: f64 = 2.0;
-/// A dip this far below the boost cap is not the fit's (see
-/// [`mask_dips`]), dB.
-const DIP_MARGIN_DB: f64 = 1.0;
+// -- WP P5TRUST --
+/// The lowest Q of a speaker's fitted band where the level is anchored.
+pub(crate) const SPEAKERS_ANCHORED_Q_MIN: f64 = 0.7;
+/// The anchored fit's bands may move the reference band by at most this,
+/// dB: else the fit is made again with narrow bands only (Q 2 or more, no
+/// shelves).
+pub(crate) const MAX_REFERENCE_SPILL_DB: f64 = 0.5;
 /// A level a write must change by to be written, dB, ms, Hz.
 const GAIN_EPS: f32 = 0.05;
 const DELAY_EPS: f32 = 0.000_05;
@@ -299,8 +311,8 @@ fn way_of(w: &WayIn) -> Option<Way> {
     w.response.phase_deg.as_ref()?;
     let snr = match &w.snr_db {
         Some(s) if s.len() == n => s.clone(),
-        // Filed without its SNR: only the trusted points count, and as
-        // barely trusted (the de-embedding then trusts only the passband).
+        // Filed without its SNR: the measurement's trusted points count, as
+        // barely trusted (a point is trusted at 20 dB of SNR there).
         _ => w.response.valid.as_ref().map_or_else(
             || vec![DEEMBED_MIN_SNR_DB; n],
             |v| {
@@ -611,31 +623,31 @@ fn writes_of(
     out
 }
 
-/// Mark the points of `base` that lie more than `max_boost_db` (and a
-/// margin) below `target` levelled to it in the reference band, smoothed to
-/// 1/12 octave, as untrusted: a fit never pulls its level down to meet a dip
-/// it may not fill. Returns how many points were marked.
-fn mask_dips(base: &mut Response, target: &Response, max_boost_db: f64) -> usize {
-    let level = levelled_target(target, base);
-    let Ok(level) = dspi_measure::response::resample(&level, &base.grid) else {
-        return 0;
+// -- WP P5TRUST --
+/// The largest |dB| the fitted bands of `r` put into the reference band.
+fn reference_spill_db(r: &FitResult, model: &dyn SectionModel) -> f64 {
+    let band = dspi_measure::target::DEFAULT_REFERENCE_BAND;
+    let Ok(freqs) = LogGrid::STANDARD.freqs() else {
+        return f64::INFINITY;
     };
-    let Ok(sm) = dspi_measure::response::smooth(base, 12) else {
-        return 0;
+    let f: Vec<f64> = freqs
+        .into_iter()
+        .filter(|f| *f >= band.low_hz && *f <= band.high_hz)
+        .collect();
+    let c = ChannelChain {
+        peq: r.bands.iter().map(|b| b.band).collect(),
+        crossover: Vec::new(),
+        gain_db: 0.0,
+        delay_ms: 0.0,
+        feed: ProgrammeFeed {
+            gain_db: 0.0,
+            inverted: false,
+        },
     };
-    let n = base.mag_db.len();
-    let valid = base.valid.get_or_insert_with(|| vec![true; n]);
-    let mut marked = 0usize;
-    for (i, ok) in valid.iter_mut().enumerate() {
-        let (Some(m), Some(t)) = (sm.mag_db.get(i), level.mag_db.get(i)) else {
-            continue;
-        };
-        if *ok && *m < t - max_boost_db - DIP_MARGIN_DB {
-            *ok = false;
-            marked = marked.saturating_add(1);
-        }
-    }
-    marked
+    chain_db(&c, model, &f)
+        .iter()
+        .map(|d| d.abs())
+        .fold(0.0, f64::max)
 }
 
 /// The proposal (see the module docs). `target` on the standard grid;
@@ -708,8 +720,8 @@ pub(crate) fn compute(
         };
         if way_list.iter().any(|w| w.snr_db.is_none()) {
             notes.push(format!(
-                "{}: the measurement holds no per-point SNR; only each driver's passband is \
-                 trusted",
+                "{}: the measurement holds no per-point SNR; its trusted points are taken \
+                 as the drivers'",
                 sp.name
             ));
         }
@@ -836,24 +848,19 @@ pub(crate) fn compute(
             };
             (base, vec![first], top)
         };
-        let Some(mut base) = base else {
+        let Some(base) = base else {
             notes.push(format!("{}: no response to fit", sp.name));
             continue;
         };
-        // The whole speaker (or a single way) holds the reference band: a dip
-        // the boost cap cannot fill there is left alone, so the fit's free
-        // level is not pulled down to meet it (which would move the bass
-        // against the rest of the speaker).
+        // The whole speaker (or a single way) holds the reference band: the
+        // fit's level is anchored there (WP P5TRUST, P5FIT's level option).
         let whole = sp.ways.len() == 1 || (sp.drivers.is_some() && sp.timing);
-        if whole {
-            let left = mask_dips(&mut base, target, bounds.max_boost_db);
-            if left > 0 {
-                notes.push(format!(
-                    "{}: {left} points of dips deeper than the boost cap are left alone",
-                    sp.name
-                ));
-            }
-        }
+        let anchor = if whole && !bounds.headphones {
+            let band = dspi_measure::target::DEFAULT_REFERENCE_BAND;
+            reference_offset_db(&base, target, band.low_hz, band.high_hz)
+        } else {
+            None
+        };
         let Some((f1, f2)) = fit_span(&base, lo, top) else {
             notes.push(format!(
                 "{}: the measurement is not trusted in the fit's range",
@@ -892,16 +899,33 @@ pub(crate) fn compute(
         fo.min_hz = f1;
         fo.max_hz = f2;
         fo.max_boost_db = bounds.max_boost_db.clamp(0.0, fo.max_boost_db.max(0.0));
-        // The fit's level is free within its range, so a broad band there
-        // would move the bass against the rest of the speaker (a level the
-        // fit does not see), and a shelf at the top of the range would tilt
+        // -- WP P5TRUST -- a dip the boost cap cannot fill is left out of the
+        // fit and of its level (P5FIT's option; before, P5TUNE masked them).
+        fo.leave_out_dips = true;
+        // Where the level is free within the range, a broad band there would
+        // move the bass against the rest of the speaker (a level the fit
+        // does not see), and a shelf at the top of the range would tilt
         // every way above it: for speakers, peaks of Q 2 or more only (room
-        // modes are resonances); the bass level is the crossover's.
-        fo.shelves = bounds.headphones;
-        if !bounds.headphones {
-            fo.q_min = fo.q_min.max(SPEAKERS_Q_MIN);
+        // modes are resonances). Anchored in the reference band, the bass
+        // level is seen: broad bands and low shelves (never a high shelf,
+        // which would tilt everything above the range) are allowed.
+        let free_fo = {
+            let mut f = fo.clone();
+            f.shelves = bounds.headphones;
+            if !bounds.headphones {
+                f.q_min = f.q_min.max(SPEAKERS_Q_MIN);
+            }
+            f
+        };
+        if let Some(offset_db) = anchor {
+            fo.level = FitLevel::Anchored { offset_db };
+            fo.shelves = true;
+            fo.no_high_shelf = true;
+            fo.q_min = fo.q_min.max(SPEAKERS_ANCHORED_Q_MIN);
+        } else {
+            fo = free_fo.clone();
         }
-        fo.bands = Some(allowed);
+        fo.bands = Some(allowed.clone());
         fo.spread_db = ways
             .get(first)
             .and_then(|w| w.spread_db.clone())
@@ -909,7 +933,25 @@ pub(crate) fn compute(
         let Some(chain0) = targets.first().and_then(|i| chains.get(*i)).cloned() else {
             continue;
         };
-        match fit(&base, target, &chain0, model, &fo) {
+        let mut result = fit(&base, target, &chain0, model, &fo);
+        if anchor.is_some()
+            && let Ok(r) = &result
+            && reference_spill_db(r, model) > MAX_REFERENCE_SPILL_DB
+        {
+            notes.push(format!(
+                "{}: the bass fit's bands would move the reference band; fitted again with \
+                 narrow bands only",
+                sp.name
+            ));
+            let mut f = free_fo.clone();
+            f.level = fo.level;
+            f.bands = Some(allowed);
+            // -- review P5TRUST -- the repeats' spread holds for this fit
+            // too (it was set after `free_fo` was taken).
+            f.spread_db = fo.spread_db.clone();
+            result = fit(&base, target, &chain0, model, &f);
+        }
+        match result {
             Ok(r) => {
                 for b in &r.bands {
                     for i in &targets {

@@ -192,9 +192,11 @@ fn wp_p5xo_align_only_keeps_every_corner() {
 
 #[test]
 fn wp_p5xo_a_candidate_outside_either_drivers_trusted_range_is_never_evaluated() {
-    // The tweeter is trusted only from 2.2 kHz: a candidate at c needs it
-    // trusted down to c/2, so only corners of 4.4 kHz and above qualify; the
-    // window around 3 kHz reaches 3 * 2^(1/2) = 4.24 kHz: none does.
+    // The tweeter is trusted only from 3 kHz: a candidate at c needs it
+    // trusted down to c/2, or (WP P5TRUST) to where its candidate high-pass
+    // is 20 dB down (about 0.55 c), but for a gap of at most 1/12 octave: so
+    // only corners of about 5.1 kHz and above qualify; the window around
+    // 3 kHz reaches 3 * 2^(1/2) = 4.24 kHz: none does.
     let mut d = Drv::flat(50.0);
     d.shape = Vec::new();
     let mut tw = way(
@@ -206,7 +208,7 @@ fn wp_p5xo_a_candidate_outside_either_drivers_trusted_range_is_never_evaluated()
     );
     let f = LogGrid::STANDARD.freqs().unwrap();
     for (i, fr) in f.iter().enumerate() {
-        if *fr < 2200.0 {
+        if *fr < 3000.0 {
             tw.snr_db[i] = 0.0;
         }
     }
@@ -233,7 +235,9 @@ fn wp_p5xo_a_candidate_outside_either_drivers_trusted_range_is_never_evaluated()
     assert!(p.transitions[0].kept_reason.is_some());
     assert_eq!(p.outputs[1].chain, drivers[1].chain);
     // A wider window reaches qualifying corners: every one evaluated keeps
-    // both drivers trusted one octave each side.
+    // both drivers trusted one octave each side, but for the tweeter's
+    // stopband 20 dB down (below 0.58 c for an LR4) and a gap of at most
+    // 1/12 octave (WP P5TRUST).
     let c = XoConstraints {
         window_octaves: 1.5,
         ..XoConstraints::default()
@@ -244,7 +248,7 @@ fn wp_p5xo_a_candidate_outside_either_drivers_trusted_range_is_never_evaluated()
     let tv = drivers[1].response.valid.as_ref().unwrap();
     for c in &t.candidates_hz {
         for (i, fr) in f.iter().enumerate() {
-            if *fr >= c / 2.0 && *fr <= c * 2.0 {
+            if *fr >= c * 0.62 * SPAN_MAX_GAP_OCTAVES.exp2() && *fr <= c * 2.0 {
                 assert!(tv[i], "candidate {c} Hz uses an untrusted {fr} Hz");
             }
         }
@@ -629,4 +633,287 @@ proptest! {
             }
         }
     }
+}
+
+// -- WP P5TRUST (review P5-C2, cause 1) -- RC12 reads the SNR per point as it is: a measurement's
+// SNR an octave past an LR4 corner already is 24 dB below the passband's.
+#[test]
+fn wp_p5trust_de_embedding_trusts_a_point_by_its_own_snr() {
+    let d = Drv::flat(50.0);
+    let f = LogGrid::STANDARD.freqs().unwrap();
+    let at = |hz: f64| f.iter().position(|x| *x >= hz).unwrap();
+    // 50 dB in the passband: 25 dB an octave above the corner, trusted (the
+    // attenuation taken off a second time left it at 1 dB, untrusted).
+    let w = way(3, WayRole::Low, chain(vec![band(LR4_LP, 1000.0)]), &d, 50.0);
+    let i = at(2000.0);
+    assert!((w.snr_db[i] - 25.4).abs() < 0.5, "{}", w.snr_db[i]);
+    let drv = de_embed(&w, &ProtoModel).unwrap();
+    let valid = drv.response.valid.as_ref().unwrap();
+    assert!(valid[at(1000.0)] && valid[i]);
+    // Two octaves above it the point's own SNR is under 20 dB: untrusted.
+    assert!(!valid[at(4000.0)]);
+    // A point the measurement does not trust stays untrusted at any SNR.
+    let mut w2 = w.clone();
+    w2.response.valid.as_mut().unwrap()[i] = false;
+    let drv2 = de_embed(&w2, &ProtoModel).unwrap();
+    assert!(!drv2.response.valid.as_ref().unwrap()[i]);
+}
+
+// -- WP P5TRUST -- the coverage of a span, the stopband, the window's edge,
+// a flat cost, and a tweeter's high-pass with the delays kept (review P5-C2,
+// causes 3 and 4; coordinator decision (a)).
+
+/// The three-way of [`three_way_drivers`] with its current corners at
+/// `f1c` and `f2c` and each way's SNR in its passband `snr`.
+fn three_way_at(f1c: f64, f2c: f64, snr: f64) -> Vec<Driver> {
+    let mut w = Drv::flat(50.6);
+    w.shape = vec![peak(F1 * 0.75f64.exp2(), 4.0, 8.0)];
+    let mut m = Drv::flat(50.3);
+    m.shape = vec![
+        peak(F1 * (-0.75f64).exp2(), 4.0, 8.0),
+        peak(F2 * 0.75f64.exp2(), 4.0, 8.0),
+    ];
+    let mut t = Drv::flat(50.2);
+    t.shape = vec![peak(F2 * (-0.75f64).exp2(), 4.0, 8.0)];
+    t.inverted = true;
+    [
+        way(0, WayRole::Low, chain(vec![band(LR4_LP, f1c)]), &w, snr),
+        way(
+            1,
+            WayRole::Mid,
+            chain(vec![band(LR4_HP, f1c), band(LR4_LP, f2c)]),
+            &m,
+            snr,
+        ),
+        way(2, WayRole::High, chain(vec![band(LR4_HP, f2c)]), &t, snr),
+    ]
+    .iter()
+    .map(|w| de_embed(w, &ProtoModel).unwrap())
+    .collect()
+}
+
+#[test]
+fn wp_p5trust_a_span_is_covered_by_most_of_its_points_and_no_wide_hole() {
+    let f = LogGrid::STANDARD.freqs().unwrap();
+    let n = f.len();
+    let (lo, hi) = (500.0, 4000.0);
+    let all = vec![true; n];
+    assert!(span_covered(&f, lo, hi, &all, &all));
+    // One point missing failed a candidate before; no longer.
+    let mut one = all.clone();
+    let i = f.iter().position(|x| *x >= 1000.0).unwrap();
+    one[i] = false;
+    assert!(span_covered(&f, lo, hi, &one, &all));
+    assert!(span_covered(&f, lo, hi, &all, &one));
+    // A hole of 1/24 octave is covered, one of 1/6 octave is not.
+    let hole = |octaves: f64| -> Vec<bool> {
+        f.iter()
+            .map(|x| !(*x >= 1200.0 && *x < 1200.0 * octaves.exp2()))
+            .collect()
+    };
+    assert!(span_covered(&f, lo, hi, &hole(1.0 / 24.0), &all));
+    assert!(!span_covered(&f, lo, hi, &hole(1.0 / 6.0), &all));
+    // Every other point (no hole wider than a step): too few in all.
+    let half: Vec<bool> = (0..n).map(|i| i % 2 == 0).collect();
+    assert!(!span_covered(&f, lo, hi, &half, &all));
+    // Every eighth point missing: 87.5 % trusted, covered.
+    let most: Vec<bool> = (0..n).map(|i| i % 8 != 0).collect();
+    assert!(span_covered(&f, lo, hi, &most, &all));
+    // ... unless the corner's own third of an octave is thin: there, two of
+    // every three points missing.
+    let thin: Vec<bool> = f
+        .iter()
+        .enumerate()
+        .map(|(i, x)| !((900.0..1200.0).contains(x) && i % 3 != 0))
+        .collect();
+    assert!(!span_covered(&f, lo, hi, &thin, &all));
+    // Off the grid, or too short: never.
+    assert!(!span_covered(&f, 2.0, 100.0, &all, &all));
+    assert!(!span_covered(&f, 1000.0, 1050.0, &all, &all));
+}
+
+#[test]
+fn wp_p5trust_a_driver_deep_in_its_stopband_need_not_be_trusted_there() {
+    // 40 dB of SNR in the passband: an octave past a corner each driver is
+    // 24.6 dB down (LR4), 15 dB of SNR, untrusted. Before, no candidate
+    // qualified; now a driver at least 20 dB down in its candidate's
+    // stopband needs no trust of its own where its partner is trusted.
+    let drivers = three_way_at(F1, F2, 40.0);
+    let f = LogGrid::STANDARD.freqs().unwrap();
+    let v = drivers[2].response.valid.as_ref().unwrap();
+    let at = |hz: f64| v[f.iter().position(|x| *x >= hz).unwrap()];
+    assert!(
+        !at(F2 / 2.0) && at(F2),
+        "the tweeter is untrusted an octave below"
+    );
+    let p = crossover_corner(
+        &drivers,
+        &three_way_transitions(0),
+        &flat_target(),
+        &XoConstraints::default(),
+        &ProtoModel,
+    )
+    .unwrap();
+    for t in &p.transitions {
+        assert!(t.kept_reason.is_none(), "{t:?}");
+        assert!(!t.candidates_hz.is_empty(), "{t:?}");
+    }
+    // At 25 dB the drivers are untrusted closer to the corner than any
+    // waiver reaches: kept, with the reason.
+    let drivers = three_way_at(F1, F2, 25.0);
+    let p = crossover_corner(
+        &drivers,
+        &three_way_transitions(0),
+        &flat_target(),
+        &XoConstraints::default(),
+        &ProtoModel,
+    )
+    .unwrap();
+    assert!(
+        p.transitions.iter().all(|t| t.kept_reason.is_some()),
+        "{p:?}"
+    );
+}
+
+#[test]
+fn wp_p5trust_the_best_corner_on_the_windows_edge_is_not_taken() {
+    // The upper transition's current corner is an octave below its designed
+    // optimum: within half an octave the cost falls to the window's upper
+    // edge, so the minimum is outside the search. The corner is kept, the
+    // edge said, and the pair's timing still proposed.
+    let drivers = three_way_at(F1, F2 / 2.0, 60.0);
+    let p = crossover_corner(
+        &drivers,
+        &three_way_transitions(0),
+        &flat_target(),
+        &XoConstraints::default(),
+        &ProtoModel,
+    )
+    .unwrap();
+    let t = &p.transitions[1];
+    println!("{t:?}");
+    assert!(t.best_at_edge, "{t:?}");
+    assert_eq!(t.corner_hz, t.corner_before_hz);
+    assert!(t.kept_reason.is_none(), "the timing is proposed: {t:?}");
+    assert!(t.flipped, "the inverted tweeter is still flipped: {t:?}");
+    assert_eq!(t.candidate_costs_db.len(), t.candidates_hz.len());
+    let edge = t.candidates_hz.iter().copied().fold(f64::MIN, f64::max);
+    let costs: Vec<(f64, f64)> = t
+        .candidates_hz
+        .iter()
+        .copied()
+        .zip(t.candidate_costs_db.iter().copied())
+        .collect();
+    let best = costs.iter().min_by(|a, b| a.1.total_cmp(&b.1)).unwrap().0;
+    assert_eq!(best, edge, "{costs:?}");
+    assert!(
+        p.notes.iter().any(|n| n.contains("edge of the search")),
+        "{:#?}",
+        p.notes
+    );
+    assert_eq!(p.outputs[2].chain.crossover, drivers[2].chain.crossover);
+    // A window wide enough to hold the optimum finds it (with an SNR that
+    // trusts the midrange two octaves past its corner now, where the
+    // optimum's span reaches).
+    let drivers = three_way_at(F1, F2 / 2.0, 90.0);
+    let wide = XoConstraints {
+        window_octaves: 1.5,
+        ..XoConstraints::default()
+    };
+    let p = crossover_corner(
+        &drivers,
+        &three_way_transitions(0),
+        &flat_target(),
+        &wide,
+        &ProtoModel,
+    )
+    .unwrap();
+    let t = &p.transitions[1];
+    assert!(!t.best_at_edge, "{t:?}");
+    assert!(octaves(t.corner_hz, F2) <= 1.0 / 6.0 + 1e-9, "{t:?}");
+}
+
+#[test]
+fn wp_p5trust_a_corner_no_clearer_than_the_current_one_stays() {
+    // Flat drivers: every corner sums alike, to rounding. The current
+    // corner stays (before, the search took whichever ripple was lowest).
+    let d = Drv::flat(50.0);
+    let ways = [
+        way(0, WayRole::Low, chain(vec![band(LR4_LP, 2500.0)]), &d, 70.0),
+        way(
+            1,
+            WayRole::High,
+            chain(vec![band(LR4_HP, 2500.0)]),
+            &d,
+            70.0,
+        ),
+    ];
+    let drivers: Vec<Driver> = ways
+        .iter()
+        .map(|w| de_embed(w, &ProtoModel).unwrap())
+        .collect();
+    let p = crossover_corner(
+        &drivers,
+        &[Transition {
+            low: 0,
+            high: 1,
+            corner_hz: None,
+        }],
+        &flat_target(),
+        &XoConstraints::default(),
+        &ProtoModel,
+    )
+    .unwrap();
+    let t = &p.transitions[0];
+    assert!(t.candidates_hz.len() > 1, "{t:?}");
+    assert_eq!(t.corner_hz, t.corner_before_hz, "{t:?}");
+    assert!(!t.best_at_edge);
+    assert_eq!(p.outputs[1].chain.crossover, drivers[1].chain.crossover);
+}
+
+#[test]
+fn wp_p5trust_a_tweeters_high_pass_is_not_lowered_with_the_delays_kept() {
+    // The upper corner a third of an octave above its optimum: the search
+    // lowers it, with the timing searched alongside. With the delays kept
+    // the timing is not searched, and no lower corner is a candidate for
+    // the tweeter (coordinator decision (a)); the woofer-mid corner may
+    // still move either way.
+    let f2c = F2 * (4.0f64 / 12.0).exp2();
+    let drivers = three_way_at(F1, f2c, 60.0);
+    let free = crossover_corner(
+        &drivers,
+        &three_way_transitions(0),
+        &flat_target(),
+        &XoConstraints::default(),
+        &ProtoModel,
+    )
+    .unwrap();
+    let t = &free.transitions[1];
+    assert!(t.corner_hz < t.corner_before_hz, "{t:?}");
+    let kept = XoConstraints {
+        align: AlignOptions {
+            keep_delays: true,
+            ..AlignOptions::default()
+        },
+        ..XoConstraints::default()
+    };
+    let p = crossover_corner(
+        &drivers,
+        &three_way_transitions(0),
+        &flat_target(),
+        &kept,
+        &ProtoModel,
+    )
+    .unwrap();
+    let t = &p.transitions[1];
+    assert!(
+        t.candidates_hz
+            .iter()
+            .all(|c| *c >= t.corner_before_hz - 0.5),
+        "{t:?}"
+    );
+    assert!(t.corner_hz >= t.corner_before_hz - 0.5, "{t:?}");
+    let hp = |o: &XoOutput| o.chain.crossover[0].freq;
+    assert!(hp(&p.outputs[2]) >= hp(&free.outputs[2]));
+    assert!(hp(&p.outputs[2]) >= drivers[2].chain.crossover[0].freq);
 }

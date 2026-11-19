@@ -805,3 +805,124 @@ proptest! {
         prop_assert_eq!(a, b);
     }
 }
+
+// -- WP P5TRUST -- the level option (review P5-C2, follow-up 3).
+
+/// A room 4 dB too loud below about 150 Hz (a broad excess, no mode): the
+/// free level does not see it, the level anchored in the reference band
+/// does, and cuts it.
+#[test]
+fn wp_p5trust_an_anchored_level_sees_a_broad_bass_excess() {
+    let m = response(
+        freqs()
+            .iter()
+            .map(|&f| 75.0 + 4.0 / (1.0 + (f / 150.0).powi(4)))
+            .collect(),
+    );
+    let t = flat_target();
+    let fs = freqs();
+    let free = fit(&m, &t, &chain(), &PlainModel, &FitOptions::speakers()).unwrap();
+    let off = reference_offset_db(&m, &t, 500.0, 2000.0).unwrap();
+    assert!((off - 75.0).abs() < 0.1, "{off}");
+    let opts = FitOptions {
+        level: FitLevel::Anchored { offset_db: off },
+        leave_out_dips: true,
+        ..FitOptions::speakers()
+    };
+    let anchored = fit(&m, &t, &chain(), &PlainModel, &opts).unwrap();
+    let (c_free, c_anch) = (change(&free, &m), change(&anchored, &m));
+    println!("free {:#?}\nanchored {:#?}", free.bands, anchored.bands);
+    assert!(at(&fs, &c_free, 50.0) > -1.5, "{}", at(&fs, &c_free, 50.0));
+    assert!(at(&fs, &c_anch, 50.0) < -3.0, "{}", at(&fs, &c_anch, 50.0));
+    assert!(anchored.rms_after_db < 1.0, "{}", anchored.rms_after_db);
+    // Anchored, the error is the error: before, it is the excess itself.
+    assert!(anchored.rms_before_db > free.rms_before_db);
+    assert!((anchored.target_offset_db - off).abs() < 1e-9);
+    // The boost cap still holds everywhere.
+    for f in &fs {
+        assert!(bands_db(&anchored, *f) <= opts.max_boost_db + 1e-6);
+    }
+}
+
+/// A 12 dB dip no band may fill: left out of the cost and the level, so it
+/// is not boosted and does not pull the level down; the mode beside it is
+/// still cut.
+#[test]
+fn wp_p5trust_a_dip_past_the_boost_cap_is_left_out_of_the_fit_and_its_level() {
+    let m = room(75.0, &[(45.0, 5.0, 6.0), (110.0, 1.2, -12.0)]);
+    let t = flat_target();
+    let fs = freqs();
+    let with = FitOptions {
+        leave_out_dips: true,
+        ..FitOptions::speakers()
+    };
+    let plain = fit(&m, &t, &chain(), &PlainModel, &FitOptions::speakers()).unwrap();
+    let left = fit(&m, &t, &chain(), &PlainModel, &with).unwrap();
+    println!("plain {:#?}\nleft {:#?}", plain.bands, left.bands);
+    assert!(
+        left.notes.iter().any(|n| n.contains("left out of the fit")),
+        "{:#?}",
+        left.notes
+    );
+    let c = change(&left, &m);
+    assert!(at(&fs, &c, 110.0) <= 0.5, "{}", at(&fs, &c, 110.0));
+    assert!(at(&fs, &c, 45.0) < -3.0, "{}", at(&fs, &c, 45.0));
+    // The level the fit settles on is the room's, not pulled into the dip.
+    assert!(
+        (left.target_offset_db - 75.0).abs() < (plain.target_offset_db - 75.0).abs(),
+        "{} {}",
+        left.target_offset_db,
+        plain.target_offset_db
+    );
+    // Anchored at the room's level, the same.
+    let anch = FitOptions {
+        level: FitLevel::Anchored { offset_db: 75.0 },
+        ..with
+    };
+    let a = fit(&m, &t, &chain(), &PlainModel, &anch).unwrap();
+    let c = change(&a, &m);
+    assert!(at(&fs, &c, 110.0) <= 0.5, "{}", at(&fs, &c, 110.0));
+    assert!(at(&fs, &c, 45.0) < -3.0, "{}", at(&fs, &c, 45.0));
+}
+
+#[test]
+fn wp_p5trust_a_bad_anchor_is_refused_and_no_reference_gives_none() {
+    let m = three_modes();
+    for off in [f64::NAN, f64::INFINITY, 201.0] {
+        let o = FitOptions {
+            level: FitLevel::Anchored { offset_db: off },
+            ..FitOptions::speakers()
+        };
+        assert!(fit(&m, &flat_target(), &chain(), &PlainModel, &o).is_err());
+    }
+    let mut untrusted = m.clone();
+    untrusted.valid = Some(vec![false; m.mag_db.len()]);
+    assert!(reference_offset_db(&untrusted, &flat_target(), 500.0, 2000.0).is_none());
+    assert!(reference_offset_db(&m, &flat_target(), 3.0, 4.0).is_none());
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(48))]
+    /// Anchored or free, dips left out or not: never a panic, never worse.
+    #[test]
+    fn proptest_wp_p5trust_the_level_options_never_panic_or_worsen(
+        modes in arb_room(),
+        off in -30.0f64..30.0,
+        anchored in any::<bool>(),
+        leave in any::<bool>(),
+    ) {
+        let m = room(70.0, &modes);
+        let o = FitOptions {
+            level: if anchored { FitLevel::Anchored { offset_db: 70.0 + off } } else { FitLevel::Free },
+            leave_out_dips: leave,
+            max_evaluations: 300,
+            ..FitOptions::speakers()
+        };
+        if let Ok(r) = fit(&m, &flat_target(), &chain(), &PlainModel, &o) {
+            prop_assert!(r.rms_after_db <= r.rms_before_db);
+            prop_assert!(r.predicted.mag_db.iter().all(|x| x.is_finite()));
+            let again = fit(&m, &flat_target(), &chain(), &PlainModel, &o).unwrap();
+            prop_assert_eq!(r, again);
+        }
+    }
+}

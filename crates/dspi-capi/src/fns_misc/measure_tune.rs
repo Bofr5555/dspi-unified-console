@@ -118,7 +118,8 @@ pub extern "C" fn dspi_measure_tune_state(core: *mut FfiCore, buf: *mut c_char, 
     text(core, buf, len, |c| json_reply(Ok(c.measure_tune_state())))
 }
 
-/// Apply proposal `proposal_id` guarded for `guard_s` seconds (0: 300): the
+/// Apply proposal `proposal_id` guarded for `guard_s` seconds (0: the planned
+/// verify plus a margin, at most 590 s): the
 /// guard, or a failure (`invalid` naming the blocker, `read_only`,
 /// `denied`, the setters' refusals).
 #[unsafe(no_mangle)]
@@ -140,7 +141,9 @@ pub extern "C" fn dspi_measure_tune_verify(core: *mut FfiCore, buf: *mut c_char,
     text(core, buf, len, |c| json_reply(c.measure_tune_verify()))
 }
 
-/// Keep the applied tune: Keep's reply, or a failure.
+/// Keep the applied tune: Keep's reply, or a failure. After a verify that did
+/// not pass the first Keep fails (`invalid`, `measure.tune.keep_unverified`):
+/// show it, and keep only with a second Keep the user confirms.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_measure_tune_keep(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.measure_tune_keep()))

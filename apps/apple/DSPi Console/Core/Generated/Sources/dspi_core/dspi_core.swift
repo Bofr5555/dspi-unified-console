@@ -1442,7 +1442,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
      * could not reach the hub (it is not sent again: the hub reverts).
      *
-     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting, or
+     * (review P5TRUST) for the first Keep of an auto-tune whose verify did
+     * not pass (`measure.tune.keep_unverified`, as
+     * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
+     * call keeps it).
      */
     func applyConfirm() throws  -> GuardedApply
     
@@ -4413,9 +4417,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     /**
      * Apply proposal `proposal_id` (PLAN-P5 section 1.4 step 9, S10): the
      * preflight **again** with the chains it was computed for, the "before"
-     * snapshot filed, the guard begun (`guard_s` seconds; 0: 300), then
-     * every write through `write_param` in one undo group "Auto-tune". A
-     * refused write ends the group and the guard reverts. Returns the guard.
+     * snapshot filed, the guard begun (`guard_s` seconds; 0: the planned
+     * verify plus a margin, at most 590 s), then every write through
+     * `write_param` in one undo group "Auto-tune". A refused write ends the
+     * group and the guard reverts. Returns the guard.
      *
      * Errors, with nothing written: [`DspiError::InvalidArgument`] for
      * another proposal's id, a proposal with timing writes whose summed check
@@ -4434,8 +4439,15 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * algorithm, the options, the writes), and the tune's row added to the
      * measurement. A verify still running is stopped first.
      *
-     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
-     * `apply_confirm`'s. Filing failures are notes, not errors.
+     * **After a verify that did not pass** the first Keep is refused with
+     * `measure.tune.keep_unverified` (nothing changes, the guard runs on;
+     * the state's `issue` says it): the client shows why and asks the user
+     * again, and only a second Keep, on the user's explicit confirmation,
+     * keeps it. A new verify, Revert or another apply ask again.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, or the
+     * first Keep after a failed verify; `apply_confirm`'s. Filing failures
+     * are notes, not errors.
      */
     func measureTuneKeep() throws  -> MeasureTuneKeep
     
@@ -6764,7 +6776,11 @@ open func applyAtTimeBase(timeBase: UInt8, frame: UInt64, op: UInt8, arg: UInt8,
      * the timeout, the revert's end; or [`GuardPhase::Lost`] when the Keep
      * could not reach the hub (it is not sent again: the hub reverts).
      *
-     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting.
+     * Errors: [`DspiError::InvalidArgument`] when nothing is waiting, or
+     * (review P5TRUST) for the first Keep of an auto-tune whose verify did
+     * not pass (`measure.tune.keep_unverified`, as
+     * [`DspiCore::measure_tune_keep`]'s: the guard is the tune's whichever
+     * call keeps it).
      */
 open func applyConfirm()throws  -> GuardedApply  {
     return try  FfiConverterTypeGuardedApply_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -11239,9 +11255,10 @@ open func measureTuneAb()throws  -> AbCompare  {
     /**
      * Apply proposal `proposal_id` (PLAN-P5 section 1.4 step 9, S10): the
      * preflight **again** with the chains it was computed for, the "before"
-     * snapshot filed, the guard begun (`guard_s` seconds; 0: 300), then
-     * every write through `write_param` in one undo group "Auto-tune". A
-     * refused write ends the group and the guard reverts. Returns the guard.
+     * snapshot filed, the guard begun (`guard_s` seconds; 0: the planned
+     * verify plus a margin, at most 590 s), then every write through
+     * `write_param` in one undo group "Auto-tune". A refused write ends the
+     * group and the guard reverts. Returns the guard.
      *
      * Errors, with nothing written: [`DspiError::InvalidArgument`] for
      * another proposal's id, a proposal with timing writes whose summed check
@@ -11267,8 +11284,15 @@ open func measureTuneApply(proposalId: UInt32, guardS: UInt32)throws  -> Guarded
      * algorithm, the options, the writes), and the tune's row added to the
      * measurement. A verify still running is stopped first.
      *
-     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
-     * `apply_confirm`'s. Filing failures are notes, not errors.
+     * **After a verify that did not pass** the first Keep is refused with
+     * `measure.tune.keep_unverified` (nothing changes, the guard runs on;
+     * the state's `issue` says it): the client shows why and asks the user
+     * again, and only a second Keep, on the user's explicit confirmation,
+     * keeps it. A new verify, Revert or another apply ask again.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, or the
+     * first Keep after a failed verify; `apply_confirm`'s. Filing failures
+     * are notes, not errors.
      */
 open func measureTuneKeep()throws  -> MeasureTuneKeep  {
     return try  FfiConverterTypeMeasureTuneKeep_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -61629,7 +61653,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_apply_at_time_base() != 14078) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 1016) {
+    if (uniffi_dspi_core_checksum_method_dspicore_apply_confirm() != 17097) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_apply_guard_begin() != 27268) {
@@ -62412,10 +62436,10 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_ab() != 45367) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_apply() != 44140) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_apply() != 43151) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_keep() != 19847) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_keep() != 22440) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_tune_proposal() != 54513) {
