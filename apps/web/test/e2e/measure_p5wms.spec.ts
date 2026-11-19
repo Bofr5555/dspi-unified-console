@@ -49,6 +49,17 @@ async function measureScreen(page: Page, venue = "Venue A", lowerVolume = true):
   return screen;
 }
 
+// -- WP P5FOLLOW --
+/** No placement is assumed: Check and Start wait for the person, said in words; then speakers at the listening position. */
+async function choosePlacement(setup: Locator): Promise<void> {
+  await expect(setup.getByRole("radiogroup", { name: "Placement" }).getByRole("radio", { checked: true })).toHaveCount(0);
+  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeDisabled();
+  await expect(setup.getByRole("button", { name: "Check" })).toBeDisabled();
+  await expect(setup).toContainText("Choose the placement first: speakers or headphones on a coupler.");
+  await setup.getByRole("radio", { name: "Listening position" }).check();
+  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
+}
+
 async function noSidewaysScroll(page: Page) {
   const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(over).toBeLessThanOrEqual(0);
@@ -67,6 +78,7 @@ test("P5WMS: a measurement end to end on the simulated microphone: preflight in 
   const setup = screen.getByRole("region", { name: "Measurement setup" });
   await expect(setup.getByLabel("Microphone")).toHaveValue("sim");
   await expect(setup.getByLabel("Microphone").locator("option:checked")).toHaveText(/Simulated microphone/);
+  await choosePlacement(setup); // -- WP P5FOLLOW --
   // The demo's volume is too high (S2): the preflight says so in words and nothing plays.
   await setup.getByRole("button", { name: "Check" }).click();
   const preflight = setup.getByRole("list", { name: "Preflight" });
@@ -108,12 +120,39 @@ test("P5WMS: a measurement end to end on the simulated microphone: preflight in 
   expect(errors).toEqual([]);
 });
 
+// -- WP P5FOLLOW --
+test("P5FOLLOW: nothing is measured before the placement is chosen; headphones show the coupler; two passes show the timing hint", async ({ page, viewport }) => {
+  test.skip(!desktop(viewport?.width), "desktop width");
+  const errors = errorsOf(page);
+  const screen = await measureScreen(page);
+  const setup = screen.getByRole("region", { name: "Measurement setup" });
+  await expect(setup.getByLabel("Placement detail")).toContainText("Where is the microphone?");
+  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeDisabled();
+  await expect(setup.getByRole("button", { name: "Check" })).toBeDisabled();
+  await expect(setup).toContainText("Choose the placement first");
+  expect((await call<{ active: boolean }>(page, "measureState")).active).toBe(false);
+  expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
+  await setup.getByRole("radio", { name: "Headphones on a coupler" }).check();
+  await expect(setup.getByLabel("Placement detail")).toContainText("On the coupler, not on a head");
+  await expect(setup.getByText("Coupler", { exact: true })).toBeVisible();
+  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
+  await expect(setup.getByLabel("Passes hint")).toHaveCount(0);
+  await setup.getByLabel("Passes").fill("2");
+  await expect(setup.getByLabel("Passes hint")).toHaveText("Two passes cannot judge timing; use three or more for auto-tune.");
+  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
+  await setup.getByLabel("Passes").fill("3");
+  await expect(setup.getByLabel("Passes hint")).toHaveCount(0);
+  expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test("P5WMS: Stop stops the generator at once, and the run says nothing was kept", async ({ page, viewport }) => {
   test.skip(!desktop(viewport?.width), "desktop width");
   test.setTimeout(60_000);
   const errors = errorsOf(page);
   const screen = await measureScreen(page);
   const setup = screen.getByRole("region", { name: "Measurement setup" });
+  await choosePlacement(setup); // -- WP P5FOLLOW --
   await setup.getByRole("button", { name: "Start measuring" }).click();
   const run = screen.getByRole("region", { name: "Measurement run" });
   // Once the generator plays (the ramp), Stop.
@@ -169,6 +208,7 @@ test.describe("the browsers' fake microphone", () => {
     const screen = await measureScreen(page);
     const setup = screen.getByRole("region", { name: "Measurement setup" });
     await setup.getByLabel("Microphone").selectOption("mic:");
+    await choosePlacement(setup); // -- WP P5FOLLOW --
     await setup.getByRole("button", { name: "Start measuring" }).click();
     const refused = screen.getByRole("alert").filter({ hasText: "Microphone capture did not start" });
     await expect(screen.getByRole("status", { name: "Measuring" }).or(refused)).toBeVisible({ timeout: 15_000 });
@@ -332,6 +372,7 @@ test("P5WMS: 375 px: every tab of the Measure screen without sideways scroll", a
   const errors = errorsOf(page);
   const screen = await measureScreen(page);
   await expect(screen.getByRole("region", { name: "Measurement setup" })).toBeVisible();
+  await choosePlacement(screen.getByRole("region", { name: "Measurement setup" })); // -- WP P5FOLLOW --
   await screen.getByRole("region", { name: "Measurement setup" }).getByRole("button", { name: "Check" }).click();
   await expect(screen.getByRole("list", { name: "Preflight" })).toBeVisible();
   await noSidewaysScroll(page);

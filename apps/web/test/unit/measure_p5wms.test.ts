@@ -62,7 +62,9 @@ const STATE: MeasureStateRecord = {
 const name = (o: number) => `OUT${o + 1}`;
 
 test("P5WMS: a draft's setup is a walked run of the chosen outputs; its problems in words", () => {
-  const d = initialDraft([0, 1, 2]);
+  // WP P5FOLLOW: no placement until the person chooses one.
+  assert.equal(initialDraft([0, 1, 2]).placement, null);
+  const d = { ...initialDraft([0, 1, 2]), placement: "listeningPosition" as const };
   assert.deepEqual(
     d.outputs.map((o) => o.on),
     [true, true, false],
@@ -375,7 +377,7 @@ test("P5WMS: on the demo with the simulated microphone: preflight in words, a me
   await desk.start();
   assert.deepEqual(desk.mic, { kind: "sim" }, "the demo offers its simulated microphone first");
   assert.equal(desk.sim?.label, "Simulated microphone");
-  const d = { ...initialDraft([0, 1]), sweepMs: 1000 };
+  const d = { ...initialDraft([0, 1]), placement: "listeningPosition" as const, sweepMs: 1000 };
   const setup = setupOf(d, 48000);
   // The demo's volume is above what a measurement allows (S2): the preflight says so.
   const p = await desk.runPreflight(setup);
@@ -482,7 +484,7 @@ test("review P5-D: a live view that starts after the screen was left is stopped 
   const desk2 = new MeasureDesk(session);
   await desk2.start();
   sent.length = 0;
-  const run = desk2.startRun(setupOf(initialDraft([0]), 48000));
+  const run = desk2.startRun(setupOf({ ...initialDraft([0]), placement: "listeningPosition" }, 48000));
   await desk2.stop();
   assert.equal(await run, false);
   assert.equal(desk2.error, "", "the run itself was not refused");
@@ -498,7 +500,7 @@ test("P5WMS: a view-only session is refused a run with nothing played", { skip, 
   const desk = new MeasureDesk(session);
   await desk.start();
   assert.match(playBlocker(session.readOnlyReason, desk.hubRole), /only the passive microphone RTA/);
-  assert.equal(await desk.startRun(setupOf(initialDraft([0]), 48000)), false);
+  assert.equal(await desk.startRun(setupOf({ ...initialDraft([0]), placement: "listeningPosition" }, 48000)), false);
   // Refused before anything plays: by the preflight's blocker, or the call's refusal.
   assert.ok(desk.error !== "" || (desk.preflight && !desk.preflight.clear), `${desk.error} ${JSON.stringify(desk.preflight)}`);
   if (desk.preflight) console.log("view-only preflight:", desk.preflight.blockers.map((b) => b.key).join(", "));

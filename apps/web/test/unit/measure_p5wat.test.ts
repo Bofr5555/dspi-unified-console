@@ -88,7 +88,7 @@ test("P5WAT: the layout in words; only the outputs left on are measured and tune
     on.outputs.map((o) => o.output),
     [0, 1],
   );
-  const s = layoutSetup(on, 1000, "", "Auto-tune layout");
+  const s = layoutSetup(on, 1000, "", "Auto-tune layout", { placement: "listeningPosition" });
   assert.equal(s.kind, "walked");
   assert.deepEqual(
     s.outputs.map((o) => [o.output, o.role, o.speaker, o.group]),
@@ -526,17 +526,20 @@ test("P5WAT: leaving the tab withdraws a start still on its way: an apply is rev
 // ---- review P5-E ----
 
 test("review P5-E: the tune's own measurement takes the person's placement (headphone levels on a coupler) and the core's gap", () => {
-  const speakers = layoutSetup(LAYOUT, 1500, "", "x");
+  const speakers = layoutSetup(LAYOUT, 1500, "", "x", { placement: "listeningPosition" });
   assert.equal(speakers.placement, "listeningPosition");
   assert.equal(speakers.gapMs, undefined, "the gap is the core's for the placement, not a short one of the screen's");
   assert.equal(speakers.passes, 3);
   assert.equal(speakers.coupler, null);
-  // The Setup tab's placement decides until the person chooses on the tune tab.
-  assert.deepEqual(tunePlaceOf(null), { placement: "listeningPosition" });
-  assert.deepEqual(tunePlaceOf({ placement: "multiPosition", count: 5 }), { placement: "listeningPosition" });
+  // The Setup tab's placement decides until the person chooses on the tune tab; WP P5FOLLOW:
+  // none is assumed (no Setup choice, or one that is not the tune's: nothing).
+  assert.equal(tunePlaceOf(null), null);
+  assert.equal(tunePlaceOf({ placement: null }), null);
+  assert.equal(tunePlaceOf({ placement: "multiPosition", count: 5 }), null);
+  assert.deepEqual(tunePlaceOf({ placement: "listeningPosition" }), { placement: "listeningPosition" });
   const place = tunePlaceOf({ placement: "headphones", coupler: "flatPlate", count: 2 });
   assert.deepEqual(place, { placement: "headphones", coupler: "flatPlate", count: 2 });
-  const phones = layoutSetup(LAYOUT, 1500, "", "x", place);
+  const phones = layoutSetup(LAYOUT, 1500, "", "x", place!);
   assert.equal(phones.placement, "headphones", "the core then starts at -60 dBFS and stops at -30 dBFS (S3)");
   assert.equal(phones.coupler, "flatPlate");
   assert.equal(phones.count, 2);
@@ -757,7 +760,7 @@ test("P5WAT: on the demo's three-way room: measured, proposed, summed-checked, a
   for (const o of l.outputs) if (o.speaker !== l.outputs[0]!.speaker) t.setOn(o.output, false);
   const on = chosenLayout(l, t.off);
   assert.equal(on.outputs.length, 3);
-  assert.equal(await desk.startRun(layoutSetup(on, 1000, "", "P5WAT")), true, `${desk.error} ${JSON.stringify(desk.preflight)}`);
+  assert.equal(await desk.startRun(layoutSetup(on, 1000, "", "P5WAT", { placement: "listeningPosition" })), true, `${desk.error} ${JSON.stringify(desk.preflight)}`);
   await until(() => !!desk.result || desk.state?.phase === "aborted" || desk.state?.phase === "failed", 300_000);
   assert.ok(desk.result, `measured: ${JSON.stringify(desk.state?.issue)}`);
   const measurement = desk.result!;
