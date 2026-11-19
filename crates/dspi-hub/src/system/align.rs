@@ -105,6 +105,125 @@ pub struct Observed {
     /// The USB-direct block as read.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usb: Option<UsbSeen>,
+    // -- WP ATHUBM --
+    /// For a unit the model has on S/PDIF (a follower or a source): whether
+    /// its firmware has the S/PDIF time-base block (`EXT_LIST` names 0x8020),
+    /// as [`Self::alink`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spdif_block: Option<AlinkFirmware>,
+    /// `EXT_ALINK_SPDIF` and `_STATUS` as read.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spdif: Option<SpdifSeen>,
+    /// `EXT_TIME_BASE` as read, on every transport whose firmware lists it
+    /// (the time-base contract, `alink_protocol_spec.md` 11).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_base: Option<TimeBaseSeen>,
+    /// The device announces 0xE4 (`EXT_NOTIFY_FEATURES` bit 5).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub time_base_events: bool,
+}
+
+// -- WP ATHUBM --
+/// An S/PDIF unit's `EXT_ALINK_SPDIF` and `EXT_ALINK_SPDIF_STATUS` as the hub
+/// read them (`extension_channel_spec.md` 2.10).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpdifSeen {
+    /// `off`, `follower` or `source`: the mode written.
+    pub mode: String,
+    /// A follower's phase error beyond 2 frames re-anchors.
+    pub auto_reanchor: bool,
+    /// The follower's D, samples (kept but unused on a source).
+    pub d: u16,
+    /// `mute` or `play_unaligned`.
+    pub on_lock_error: String,
+    /// The source's stamped slots (0: every S/PDIF slot).
+    pub tx_mask: u8,
+    /// The contract state: `none`, `acquiring`, `anchoring`, `locked`,
+    /// `holdover`, `lock_error`.
+    pub state: String,
+    /// 0 free, 1 anchoring, 2 locked, 3 re-anchor pending.
+    pub phase_state: u8,
+    /// 0 = 44.1, 1 = 48, 2 = 96 kHz, 255 unknown.
+    pub rate_code: u8,
+    /// A valid superframe within the last 8 blocks.
+    pub superframe: bool,
+    /// In holdover.
+    pub holdover: bool,
+    /// In lock error now (STATUS flags bit 3).
+    pub lock_error: bool,
+    /// The receiver is locked to a stream without a DSPi time base.
+    pub foreign: bool,
+    /// The source's serial bytes 0-1 (a source: its own); 0 unknown.
+    pub source_id: u16,
+    /// The source's epoch.
+    pub epoch: u8,
+    /// F now.
+    pub frame: u64,
+    /// Samples.
+    pub phase_error: f32,
+    /// The soft VCXO's correction, ppm.
+    pub vcxo_ppm: f32,
+    /// The D range a follower takes now (0 on a source).
+    pub d_min: u16,
+    /// Its top.
+    pub d_max: u16,
+    /// Entries into locked (a source: its epochs' starts).
+    pub lock_count: u32,
+    /// Exits from locked.
+    pub loss_count: u32,
+    /// Blocks without a valid superframe while locked or in holdover.
+    pub sf_errors: u32,
+    /// Re-anchors.
+    pub reanchors: u32,
+}
+
+impl SpdifSeen {
+    /// Locked on the time base (a follower phase-locked, a source running).
+    pub fn locked(&self) -> bool {
+        self.state == "locked"
+    }
+}
+
+// -- WP ATHUBM --
+/// `EXT_TIME_BASE` as the hub read it (2.11.1): one atomic read of every time
+/// base the unit has.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeBaseSeen {
+    /// Output frames since the outputs started in sync, low 32 bits.
+    pub output_frames: u32,
+    /// Followers first, then the source.
+    pub entries: Vec<TimeBaseEntrySeen>,
+}
+
+// -- WP ATHUBM --
+/// One `EXT_TIME_BASE` entry.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeBaseEntrySeen {
+    /// 0 the line's F, 1 the USB sample S, 3 the S/PDIF F.
+    pub time_base: u8,
+    /// `alink`, `usb`, `spdif` (`dspi_proto::ext::timebase::time_base_name`).
+    pub transport: String,
+    /// `follower` or `source`.
+    pub role: String,
+    /// The contract state.
+    pub state: String,
+    /// The last 0xE4 reason.
+    pub last_reason: String,
+    /// The domain identity (C5).
+    pub domain: u32,
+    /// T at the read.
+    pub t: u64,
+    /// `t - output_frames` modulo 2^32: constant while locked and undisturbed.
+    pub t_minus_output: u32,
+    /// Every loss, holdover, resume, re-anchor, correction and epoch, wrapping.
+    pub disturbances: u16,
+    /// D, samples (0 for a source).
+    pub d: u16,
+    /// Samples.
+    pub phase_error: f32,
 }
 
 // -- WP AUSB1 --
@@ -376,6 +495,53 @@ pub struct UnitPlan {
     /// USB-direct unit's (2.9.3, U6): added to its outputs' delays.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_offset_samples: Option<i64>,
+    // -- WP ATHUBM --
+    /// Its S/PDIF role's settings, for a follower or a source.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spdif: Option<SpdifPlan>,
+    /// Outputs whose delay comes from a measured arrival, not the distance.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub measured_outputs: Vec<u8>,
+}
+
+// -- WP ATHUBM --
+/// What the engine writes to a unit's `EXT_ALINK_SPDIF`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpdifPlan {
+    /// `follower` (mode 1) or `source` (mode 2).
+    pub mode: String,
+    /// The source unit of its domain (itself for a source).
+    pub source: String,
+    /// A follower: its D to write, samples (the domain's D plus its latency
+    /// and lip-sync terms). A source: the domain's D (its own D is kept).
+    pub d: u16,
+    /// A follower's lock-error action: `mute` or `play_unaligned`.
+    pub on_lock_error: String,
+    /// A source: the slots it stamps; 0 on a follower (the firmware and the
+    /// core's codec refuse a mask on any other mode).
+    pub tx_mask: u8,
+    /// A source: samples its own speakers are delayed by, so they are heard
+    /// with its followers (they play D after the source's outputs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lag_samples: Option<i64>,
+    /// Whether this part may be written (read, in range).
+    pub writable: bool,
+}
+
+// -- WP ATHUBM --
+/// One S/PDIF domain: a source and the followers that name it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpdifDomain {
+    /// The source unit's id.
+    pub source: String,
+    /// The domain's D, samples.
+    pub d: u16,
+    /// Whether D was picked by the engine (the source's `spdifD` absent).
+    pub d_auto: bool,
+    /// Its followers' ids.
+    pub followers: Vec<String>,
 }
 
 /// A finding: something the installer should look at.
@@ -390,7 +556,9 @@ pub struct Issue {
     /// `usb_no_stream`, `usb_start_offsets`, `start_offset_no_outputs`,
     /// `usb_rate_differs`, `usb_start_offsets_changed`; WP AUSB2:
     /// `usb_lock_error`, `usb_lock_error_unsupported`; fixup ausb2:
-    /// `usb_settings_differ`, `usb_settings_refused`.
+    /// `usb_settings_differ`, `usb_settings_refused`; WP ATHUBM: `no_spdif`,
+    /// `spdif_lock_error`, `spdif_source_mismatch`, `spdif_d_too_small`,
+    /// `spdif_source_epochs`, `measured_mixed`.
     pub code: String,
     /// For people.
     pub message: String,
@@ -412,6 +580,10 @@ pub struct Alignment {
     pub units: Vec<UnitPlan>,
     /// Findings.
     pub issues: Vec<Issue>,
+    // -- WP ATHUBM --
+    /// The S/PDIF domains, one per source, in model order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub spdif_domains: Vec<SpdifDomain>,
 }
 
 fn issue(subject: Option<&str>, code: &str, message: String) -> Issue {
@@ -446,7 +618,12 @@ fn stream_rate(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> u32 {
     for u in &model.units {
         if let Some(r) = obs
             .get(&u.serial)
-            .and_then(|o| o.rate_code.or_else(|| o.usb.as_ref().map(|s| s.rate_code)))
+            .and_then(|o| {
+                o.rate_code
+                    .or_else(|| o.usb.as_ref().map(|s| s.rate_code))
+                    // -- WP ATHUBM --
+                    .or_else(|| o.spdif.as_ref().map(|s| s.rate_code))
+            })
             .and_then(rate_of)
         {
             let n = counts.entry(r).or_default();
@@ -493,42 +670,94 @@ fn hop_delay(
     1
 }
 
-/// Speakers' distance delays, by unit id.
 /// Distance delays by unit id, each cut to what a unit holds at `rate`; the
-/// cut ones are listed with their unit.
+/// cut ones are listed with their unit. -- WP ATHUBM -- and the outputs whose
+/// delay came from a measured arrival.
+///
+/// Each speaker gets an acoustic time at the listening position: `r / c`
+/// from its distance, or, measured, its measured arrival placed on the
+/// distance scale through the latest speaker measured with it (same room
+/// and same runs): `r_latest / c + (m - m_latest)`. Its delay is then the
+/// room's latest time minus its own, so a room measured whole gets exactly
+/// `m_latest - m`, and one without a measurement the distance delays.
 #[allow(clippy::type_complexity)]
 fn out_delays<'a>(
     model: &'a SystemModel,
     rate: u32,
     offsets: &BTreeMap<String, i64>,
-) -> BTreeMap<&'a str, (Vec<(u8, f32)>, Vec<u8>)> {
+) -> BTreeMap<&'a str, (Vec<(u8, f32)>, Vec<u8>, Vec<u8>)> {
     let max_ms = f64::from(MAX_OUT_DELAY_SAMPLES) * 1000.0 / f64::from(rate.max(1));
-    let mut furthest: BTreeMap<String, f32> = BTreeMap::new();
     let key = |u: &Unit| match &u.room {
         Some(r) => format!("room:{r}"),
         None => format!("unit:{}", u.id),
     };
+    // -- WP ATHUBM -- the latest measured speaker of each (room, runs): its
+    // distance time and its measured arrival, both in seconds
+    let mut anchors: BTreeMap<(String, Vec<u32>), (f64, f64)> = BTreeMap::new();
     for u in &model.units {
         for s in &u.speakers {
+            if let Some(m) = s.measured_arrival_us {
+                let m = f64::from(m) / 1e6;
+                let at = f64::from(s.distance_m) / SPEED_OF_SOUND;
+                let e = anchors
+                    .entry((key(u), s.measured_runs.clone()))
+                    .or_insert((at, m));
+                if m > e.1 {
+                    *e = (at, m);
+                }
+            }
+        }
+    }
+    let time_of = |u: &Unit, s: &super::model::Speaker| match s.measured_arrival_us {
+        Some(m) => anchors
+            .get(&(key(u), s.measured_runs.clone()))
+            .map_or(f64::from(s.distance_m) / SPEED_OF_SOUND, |(at, m0)| {
+                at + (f64::from(m) / 1e6 - m0)
+            }),
+        None => f64::from(s.distance_m) / SPEED_OF_SOUND,
+    };
+    let mut latest: BTreeMap<String, f64> = BTreeMap::new();
+    // The furthest distance of each room, as before measured arrivals: a room
+    // without one computes its delays exactly as it always did.
+    let mut furthest: BTreeMap<String, f32> = BTreeMap::new();
+    for u in &model.units {
+        for s in &u.speakers {
+            let f = latest.entry(key(u)).or_insert(f64::MIN);
+            *f = f.max(time_of(u, s));
             let f = furthest.entry(key(u)).or_insert(0.0);
             *f = f.max(s.distance_m);
         }
     }
+    let measured_rooms: std::collections::BTreeSet<&String> =
+        anchors.keys().map(|(k, _)| k).collect();
     model
         .units
         .iter()
         .map(|u| {
+            let last = latest.get(&key(u)).copied().unwrap_or(0.0);
             let far = furthest.get(&key(u)).copied().unwrap_or(0.0);
+            let room_measured = measured_rooms.contains(&key(u));
             // -- WP AUSB1 -- a USB-direct stream that plays early waits this long more
             let early_ms = offsets
                 .get(&u.id)
                 .map_or(0.0, |o| *o as f64 * 1000.0 / f64::from(rate.max(1)));
             let mut clamped = Vec::new();
+            let measured = u
+                .speakers
+                .iter()
+                .filter(|s| s.measured_arrival_us.is_some())
+                .map(|s| s.output)
+                .collect();
             let delays = u
                 .speakers
                 .iter()
                 .map(|s| {
-                    let mut ms = f64::from(far - s.distance_m) / SPEED_OF_SOUND * 1000.0 + early_ms;
+                    let acoustic_ms = if room_measured {
+                        ((last - time_of(u, s)) * 1000.0).max(0.0)
+                    } else {
+                        f64::from(far - s.distance_m) / SPEED_OF_SOUND * 1000.0
+                    };
+                    let mut ms = acoustic_ms + early_ms;
                     if ms > max_ms {
                         clamped.push(s.output);
                         // Rounded down, so the unit's cap is never reached.
@@ -538,7 +767,7 @@ fn out_delays<'a>(
                     (s.output, ((ms * 1000.0).round() / 1000.0) as f32)
                 })
                 .collect();
-            (u.id.as_str(), (delays, clamped))
+            (u.id.as_str(), (delays, clamped, measured))
         })
         .collect()
 }
@@ -576,10 +805,34 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
         usb: Option<String>,
         /// Its firmware has the block and it was read.
         usb_seen: bool,
+        // -- WP ATHUBM --
+        /// On S/PDIF (a follower, or a source fed by nothing the model holds).
+        spdif: bool,
     }
     let mut rows = Vec::new();
     for u in &model.units {
         let o = obs.get(&u.serial);
+        // -- WP ATHUBM --
+        if u.spdif() {
+            let seen = o.and_then(|o| o.spdif.as_ref());
+            let limits = seen
+                .filter(|s| u.spdif_follower() && s.d_max > 0)
+                .map(|s| (s.d_min, s.d_max));
+            spdif_unit_issues(u, o, &mut issues);
+            rows.push(Row {
+                unit: u,
+                hops: 0,
+                path: 0,
+                latency: us_to_frames(i64::from(u.latency()), rate),
+                lip: us_to_frames(i64::from(lip_us(u)), rate),
+                limits,
+                online: o.is_some_and(|o| o.online),
+                usb: None,
+                usb_seen: false,
+                spdif: true,
+            });
+            continue;
+        }
         // -- WP AUSB1 --
         if u.usb_direct() {
             let seen = o.and_then(|o| o.usb.as_ref());
@@ -658,6 +911,7 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                 online: o.is_some_and(|o| o.online),
                 usb: Some(mode),
                 usb_seen: seen.is_some(),
+                spdif: false,
             });
             continue;
         }
@@ -732,10 +986,11 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
             online: o.is_some_and(|o| o.online),
             usb: None,
             usb_seen: false,
+            spdif: false,
         });
     }
     // -- WP AUSB1 -- one system delay for both transports: said, with what it leaves out
-    if rows.iter().any(|r| r.usb.is_some()) && rows.iter().any(|r| r.usb.is_none()) {
+    if rows.iter().any(|r| r.usb.is_some()) && rows.iter().any(|r| r.usb.is_none() && !r.spdif) {
         issues.push(issue(
             None,
             "mixed_time_bases",
@@ -755,6 +1010,8 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
     };
     let needed = rows
         .iter()
+        // -- WP ATHUBM -- an S/PDIF follower's limits are its domain's D's
+        .filter(|r| !r.spdif)
         .filter_map(|r| {
             let (min, _) = r.limits?;
             // d_local = D - hops must not go below 0 either.
@@ -779,9 +1036,21 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
             format!("D = {d} frames is below what the units need ({n})"),
         ));
     }
-    let delays = out_delays(model, rate, &offsets);
+    // -- WP ATHUBM -- the S/PDIF domains; a source's speakers wait for its followers
+    let terms: BTreeMap<&str, (i64, i64)> = rows
+        .iter()
+        .map(|r| (r.unit.id.as_str(), (r.latency, r.lip)))
+        .collect();
+    let spdif = spdif_domains(model, obs, &terms, l_max, &mut issues);
+    let mut delay_offsets = offsets.clone();
+    for (id, lag) in &spdif.lags {
+        let o = delay_offsets.entry(id.clone()).or_insert(0);
+        *o = o.saturating_add(*lag);
+    }
+    let delays = out_delays(model, rate, &delay_offsets);
+    measured_issues(model, &mut issues);
     for u in &model.units {
-        if let Some((_, clamped)) = delays.get(u.id.as_str()).filter(|(_, c)| !c.is_empty()) {
+        if let Some((_, clamped, _)) = delays.get(u.id.as_str()).filter(|(_, c, _)| !c.is_empty()) {
             issues.push(issue(
                 Some(&u.id),
                 "delay_over_max",
@@ -802,12 +1071,46 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                 .is_some_and(|(min, max)| (i64::from(min)..=i64::from(max)).contains(&effective));
             let out_delays = delays
                 .get(r.unit.id.as_str())
-                .map(|(d, _)| d.clone())
+                .map(|(d, _, _)| d.clone())
                 .unwrap_or_default();
             let clamped_outputs = delays
                 .get(r.unit.id.as_str())
-                .map(|(_, c)| c.clone())
+                .map(|(_, c, _)| c.clone())
                 .unwrap_or_default();
+            // -- WP ATHUBM --
+            let measured_outputs = delays
+                .get(r.unit.id.as_str())
+                .map(|(_, _, m)| m.clone())
+                .unwrap_or_default();
+            let spdif_plan = spdif.plans.get(&r.unit.id).cloned();
+            if r.spdif {
+                let plan = spdif_plan.clone();
+                let effective = match &plan {
+                    Some(p) if p.mode == "follower" => i64::from(p.d),
+                    Some(p) => p.lag_samples.unwrap_or(0),
+                    None => 0,
+                };
+                return UnitPlan {
+                    unit: r.unit.id.clone(),
+                    serial: r.unit.serial.clone(),
+                    hops: 0,
+                    path_delay_frames: 0,
+                    latency_frames: r.latency,
+                    lip_sync_frames: r.lip,
+                    effective,
+                    d_local: 0,
+                    hops_offset: 0,
+                    out_delays,
+                    clamped_outputs,
+                    writable: r.online && plan.as_ref().is_some_and(|p| p.writable),
+                    transport: "spdif".into(),
+                    usb_d: None,
+                    usb_mode: None,
+                    start_offset_samples: None,
+                    spdif: plan,
+                    measured_outputs,
+                };
+            }
             // -- WP AUSB1 --
             if let Some(mode) = &r.usb {
                 let phase = mode == "phase_lock";
@@ -881,6 +1184,8 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                     },
                     usb_mode: Some(mode.clone()),
                     start_offset_samples: offset,
+                    spdif: spdif_plan, // -- WP ATHUBM --
+                    measured_outputs,
                 };
             }
             let mut d_local = d.saturating_sub(i64::from(r.hops));
@@ -921,6 +1226,8 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
                 usb_d: None,
                 usb_mode: None,
                 start_offset_samples: None,
+                spdif: spdif_plan, // -- WP ATHUBM --
+                measured_outputs,
             }
         })
         .collect();
@@ -931,6 +1238,288 @@ pub fn align(model: &SystemModel, obs: &BTreeMap<String, Observed>) -> Alignment
         latency_max_frames: l_max,
         units,
         issues,
+        spdif_domains: spdif.domains, // -- WP ATHUBM --
+    }
+}
+
+// -- WP ATHUBM --
+/// The issue raised for an S/PDIF follower in lock error.
+pub const SPDIF_LOCK_ERROR: &str = "spdif_lock_error";
+/// The issue raised for a unit on S/PDIF whose firmware has no S/PDIF time base.
+pub const NO_SPDIF: &str = "no_spdif";
+
+// -- WP ATHUBM --
+/// The alarm's and the issue's sentence for S/PDIF follower `name` in lock
+/// error, doing `on_lock_error` (`mute` or `play_unaligned`); `foreign`: the
+/// stream it receives carries no DSPi time base.
+pub fn spdif_lock_error_message(name: &str, on_lock_error: &str, foreign: bool) -> String {
+    let doing = if on_lock_error == "play_unaligned" {
+        "playing unaligned"
+    } else {
+        "muted"
+    };
+    let why = if foreign {
+        "this S/PDIF source does not carry a DSPi time base"
+    } else {
+        "no valid time base on its S/PDIF input, or its D or rate cannot lock"
+    };
+    format!("S/PDIF unit {name} can't lock \u{2014} {doing} ({why})")
+}
+
+// -- WP ATHUBM --
+/// What one unit on S/PDIF (a follower, or a source with that transport)
+/// says before the domains are worked out.
+fn spdif_unit_issues(u: &Unit, o: Option<&Observed>, issues: &mut Vec<Issue>) {
+    let name = if u.name.is_empty() { &u.id } else { &u.name };
+    let Some(o) = o.filter(|o| o.online) else {
+        issues.push(issue(
+            Some(&u.id),
+            "offline",
+            format!("{}: not attached to the hub", u.id),
+        ));
+        return;
+    };
+    if o.spdif_block == Some(AlinkFirmware::Absent) {
+        issues.push(issue(
+            Some(&u.id),
+            NO_SPDIF,
+            format!(
+                "{}: its firmware has no S/PDIF time base (extension 0x8020); it is not aligned",
+                u.id
+            ),
+        ));
+        return;
+    }
+    let Some(seen) = o.spdif.as_ref() else {
+        issues.push(issue(
+            Some(&u.id),
+            "limits_unknown",
+            format!("{}: its S/PDIF state could not be read", u.id),
+        ));
+        return;
+    };
+    if u.spdif_follower() && seen.lock_error {
+        issues.push(issue(
+            Some(&u.id),
+            SPDIF_LOCK_ERROR,
+            spdif_lock_error_message(name, &seen.on_lock_error, seen.foreign),
+        ));
+    }
+}
+
+// -- WP ATHUBM --
+/// The S/PDIF part of an alignment.
+struct SpdifResult {
+    domains: Vec<SpdifDomain>,
+    /// By unit id: followers and sources.
+    plans: BTreeMap<String, SpdifPlan>,
+    /// By source id: samples its speakers wait for its followers.
+    lags: BTreeMap<String, i64>,
+}
+
+// -- WP ATHUBM --
+/// The S/PDIF domains (`extension_channel_spec.md` 2.10): one per source,
+/// with the followers that name it. `terms` holds each unit's latency and
+/// lip-sync offset in frames, `l_max` the model's longest latency.
+///
+/// A follower plays the sample carried as F exactly its D after it arrived,
+/// and the source plays F as it emits it (D = 0), so in samples at the
+/// stream's rate, with the domain's D and each follower's latency `L_f` and
+/// lip-sync `S_f`:
+///
+/// - against a reference `(L_ref, S_ref)`: for a source fed by nothing the
+///   model holds `(L_max, 0)`, as the audio link's units; for a source on the
+///   audio link or USB-direct (already aligned as such) its own `(L_s, S_s)`;
+/// - a follower's D is `D + (L_ref - L_f) + (S_f - S_ref)`, inside its
+///   `d_min..=d_max`; an automatic D is the smallest every follower takes
+///   (192, the firmware's default, while none reports its limits);
+/// - the source's speakers wait `D + (L_ref - L_s) + (S_s - S_ref)` more
+///   (its lag), so it is heard with its followers.
+fn spdif_domains(
+    model: &SystemModel,
+    obs: &BTreeMap<String, Observed>,
+    terms: &BTreeMap<&str, (i64, i64)>,
+    l_max: i64,
+    issues: &mut Vec<Issue>,
+) -> SpdifResult {
+    let mut out = SpdifResult {
+        domains: Vec::new(),
+        plans: BTreeMap::new(),
+        lags: BTreeMap::new(),
+    };
+    let online = |u: &Unit| obs.get(&u.serial).filter(|o| o.online);
+    let seen = |u: &Unit| online(u).and_then(|o| o.spdif.as_ref());
+    let absent = |u: &Unit| online(u).is_some_and(|o| o.spdif_block == Some(AlinkFirmware::Absent));
+    for src in model.units.iter().filter(|u| u.spdif_source) {
+        let root = src.spdif();
+        let (l_src, s_src) = terms.get(src.id.as_str()).copied().unwrap_or((0, 0));
+        let (l_ref, s_ref) = if root { (l_max, 0) } else { (l_src, s_src) };
+        let followers: Vec<&Unit> = model.spdif_followers(&src.id).collect();
+        let adj = |f: &Unit| {
+            let (l_f, s_f) = terms.get(f.id.as_str()).copied().unwrap_or((0, 0));
+            l_ref
+                .saturating_sub(l_f)
+                .saturating_add(s_f.saturating_sub(s_ref))
+        };
+        let limits = |f: &Unit| {
+            seen(f)
+                .filter(|s| s.d_max > 0)
+                .map(|s| (i64::from(s.d_min), i64::from(s.d_max)))
+        };
+        let needed = followers
+            .iter()
+            .filter_map(|f| Some(limits(f)?.0.saturating_sub(adj(f)).max(0)))
+            .max();
+        let (d, d_auto) = match src.spdif_d {
+            Some(d) => (i64::from(d), false),
+            None => (
+                needed.unwrap_or(i64::from(dspi_proto::ext::timebase::SPDIF_DEFAULT_D)),
+                true,
+            ),
+        };
+        let d = d.clamp(0, i64::from(u16::MAX));
+        if let (false, Some(n)) = (d_auto, needed)
+            && n > d
+        {
+            issues.push(issue(
+                Some(&src.id),
+                "spdif_d_too_small",
+                format!(
+                    "{}: its S/PDIF D = {d} samples is below what its followers need ({n})",
+                    src.id
+                ),
+            ));
+        }
+        // A source on USB-direct off or rate lock restarts its outputs at every
+        // stream start: a new epoch, and every follower re-anchors (PLAN-AT 1.2).
+        if src.usb_direct() && src.usb_mode.as_deref() != Some("phase_lock") {
+            issues.push(issue(
+                Some(&src.id),
+                "spdif_source_epochs",
+                format!(
+                    "{}: an S/PDIF source on USB-direct without phase lock restarts its outputs at \
+                     every stream start, and its followers re-anchor each time: use phase lock or \
+                     a non-USB input",
+                    src.id
+                ),
+            ));
+        }
+        let src_seen = seen(src);
+        let src_id = src_seen.map(|s| s.source_id).filter(|i| *i != 0);
+        for f in &followers {
+            let e = d.saturating_add(adj(f));
+            let lim = limits(f);
+            let in_range = lim.is_some_and(|(lo, hi)| (lo..=hi).contains(&e));
+            if lim.is_some() && !in_range {
+                issues.push(issue(
+                    Some(&f.id),
+                    "delay_out_of_range",
+                    format!(
+                        "{}: needs an S/PDIF delay of {e} samples, outside {:?}",
+                        f.id,
+                        lim.unwrap_or_default()
+                    ),
+                ));
+            }
+            if let (Some(want), Some(heard)) = (
+                src_id,
+                seen(f)
+                    .filter(|s| s.superframe && s.source_id != 0)
+                    .map(|s| s.source_id),
+            ) && want != heard
+            {
+                issues.push(issue(
+                    Some(&f.id),
+                    "spdif_source_mismatch",
+                    format!(
+                        "{}: hears S/PDIF source {heard:#06x}, the model says {} ({want:#06x})",
+                        f.id, src.id
+                    ),
+                ));
+            }
+            let d_f = u16::try_from(e).ok();
+            out.plans.insert(
+                f.id.clone(),
+                SpdifPlan {
+                    mode: "follower".into(),
+                    source: src.id.clone(),
+                    d: d_f.unwrap_or(0),
+                    on_lock_error: f.on_lock_error.as_str().into(),
+                    // -- review atab carry-over -- never a mask on a follower
+                    tx_mask: 0,
+                    lag_samples: None,
+                    // A unit not yet a follower reports no limits (a source's
+                    // read 0): it is switched with this D, and the alignment
+                    // writes it again from the limits it then reports.
+                    writable: seen(f).is_some()
+                        && !absent(f)
+                        && d_f.is_some()
+                        && (in_range
+                            || (lim.is_none() && seen(f).is_some_and(|s| s.mode != "follower"))),
+                },
+            );
+        }
+        let lag = d
+            .saturating_add(l_ref.saturating_sub(l_src))
+            .saturating_add(s_src.saturating_sub(s_ref));
+        out.lags.insert(src.id.clone(), lag);
+        out.plans.insert(
+            src.id.clone(),
+            SpdifPlan {
+                mode: "source".into(),
+                source: src.id.clone(),
+                d: u16::try_from(d).unwrap_or(u16::MAX),
+                on_lock_error: src_seen.map_or_else(|| "mute".into(), |s| s.on_lock_error.clone()),
+                tx_mask: src.spdif_tx_mask,
+                lag_samples: Some(lag),
+                writable: src_seen.is_some() && !absent(src),
+            },
+        );
+        out.domains.push(SpdifDomain {
+            source: src.id.clone(),
+            d: u16::try_from(d).unwrap_or(u16::MAX),
+            d_auto,
+            followers: followers.iter().map(|f| f.id.clone()).collect(),
+        });
+    }
+    out
+}
+
+// -- WP ATHUBM --
+/// Rooms where measured arrivals meet distances, or several measurements:
+/// said, since only the latest speaker of each measurement ties it to the
+/// distances.
+fn measured_issues(model: &SystemModel, issues: &mut Vec<Issue>) {
+    let mut rooms: BTreeMap<String, (bool, std::collections::BTreeSet<Vec<u32>>)> = BTreeMap::new();
+    for u in &model.units {
+        let key = u.room.clone().unwrap_or_else(|| u.id.clone());
+        for s in &u.speakers {
+            let e = rooms.entry(key.clone()).or_default();
+            match s.measured_arrival_us {
+                Some(_) => {
+                    e.1.insert(s.measured_runs.clone());
+                }
+                None => e.0 = true,
+            }
+        }
+    }
+    for (room, (distances, runs)) in rooms {
+        if runs.is_empty() || (!distances && runs.len() == 1) {
+            continue;
+        }
+        issues.push(issue(
+            Some(&room),
+            "measured_mixed",
+            format!(
+                "{room}: some speakers have a measured arrival and others {}: each measurement \
+                 is tied to the distances through its latest speaker; measure the room together",
+                if distances {
+                    "only a distance"
+                } else {
+                    "another measurement"
+                }
+            ),
+        ));
     }
 }
 
@@ -1111,6 +1700,10 @@ pub(crate) mod tests_wp_sw2 {
             slots: None,
             latency_us: 0,
             measured_latency_us: None,
+            // -- WP ATHUBM --
+            spdif_source: false,
+            spdif_tx_mask: 0,
+            spdif_d: None,
             speakers: Vec::new(),
         }
     }
@@ -1270,15 +1863,18 @@ pub(crate) mod tests_wp_sw2 {
             Speaker {
                 output: 0,
                 distance_m: 3.43,
+                ..Speaker::default() // -- WP ATHUBM --
             },
             Speaker {
                 output: 1,
                 distance_m: 2.0,
+                ..Speaker::default() // -- WP ATHUBM --
             },
         ];
         m.units[1].speakers = vec![Speaker {
             output: 2,
             distance_m: 1.715,
+            ..Speaker::default() // -- WP ATHUBM --
         }];
         let a = align(&m, &obs());
         assert_eq!(a.units[0].out_delays[0], (0, 0.0));
@@ -1297,10 +1893,12 @@ pub(crate) mod tests_wp_sw2 {
             Speaker {
                 output: 0,
                 distance_m: 16.0,
+                ..Speaker::default() // -- WP ATHUBM --
             },
             Speaker {
                 output: 1,
                 distance_m: 1.0,
+                ..Speaker::default() // -- WP ATHUBM --
             },
         ];
         let a = align(&m, &obs());
@@ -1380,9 +1978,14 @@ mod tests_wp_fixm1 {
             slots: None,
             latency_us: 0,
             measured_latency_us: None,
+            // -- WP ATHUBM --
+            spdif_source: false,
+            spdif_tx_mask: 0,
+            spdif_d: None,
             speakers: vec![Speaker {
                 output: 0,
                 distance_m: 3.0,
+                ..Speaker::default() // -- WP ATHUBM --
             }],
         }
     }
@@ -1466,5 +2069,330 @@ mod tests_wp_fixm1 {
                 "USB-direct start offsets changed \u{2014} Align again (Rear L/R moved"
             )
         );
+    }
+}
+
+// -- WP ATHUBM --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing, clippy::arithmetic_side_effects)]
+mod tests_wp_athubm {
+    use super::super::model::*;
+    use super::*;
+    use serde_json::json;
+
+    fn model(v: serde_json::Value) -> SystemModel {
+        let m: SystemModel = serde_json::from_value(v).unwrap();
+        m.validate().unwrap();
+        m
+    }
+
+    /// A source fed by nothing the model holds (slot 0 stamped, a speaker on
+    /// output 2) and two followers, B with 250 µs (12 frames) more latency.
+    fn domain() -> SystemModel {
+        model(json!({
+            "rooms": [{"id": "main"}],
+            "units": [
+                {"id": "SRC", "serial": "S-SRC", "room": "main", "transport": "spdif",
+                 "spdifSource": true, "spdifTxMask": 1,
+                 "speakers": [{"output": 2, "distanceM": 3.0}]},
+                {"id": "A", "serial": "S-A", "room": "main", "transport": "spdif",
+                 "upstream": "SRC", "speakers": [{"output": 0, "distanceM": 3.0}]},
+                {"id": "B", "serial": "S-B", "room": "main", "transport": "spdif",
+                 "upstream": "SRC", "onLockError": "play_unaligned", "latencyUs": 250,
+                 "speakers": [{"output": 0, "distanceM": 3.0}]}
+            ]
+        }))
+    }
+
+    fn spdif(mode: &str, d_min: u16, d_max: u16) -> Observed {
+        Observed {
+            online: true,
+            spdif_block: Some(AlinkFirmware::Present),
+            spdif: Some(SpdifSeen {
+                mode: mode.into(),
+                auto_reanchor: true,
+                d: 192,
+                on_lock_error: "mute".into(),
+                state: "locked".into(),
+                rate_code: 1,
+                superframe: true,
+                source_id: 0x3742,
+                d_min,
+                d_max,
+                ..SpdifSeen::default()
+            }),
+            ..Observed::default()
+        }
+    }
+
+    fn obs() -> BTreeMap<String, Observed> {
+        BTreeMap::from([
+            ("S-SRC".into(), spdif("source", 0, 0)),
+            ("S-A".into(), spdif("follower", 150, 399)),
+            ("S-B".into(), spdif("follower", 129, 399)),
+        ])
+    }
+
+    fn plan<'a>(a: &'a Alignment, id: &str) -> &'a UnitPlan {
+        a.units.iter().find(|p| p.unit == id).unwrap()
+    }
+
+    /// D is the smallest every follower takes. B is the slowest unit (12
+    /// frames), so A waits 12 frames more than B; the source's speakers wait
+    /// the domain's D plus their latency term, so the room is heard at once.
+    #[test]
+    fn wp_athubm_the_spdif_writes_and_d_within_every_followers_limits() {
+        let a = align(&domain(), &obs());
+        assert!(a.issues.is_empty(), "{:?}", a.issues);
+        let dom = &a.spdif_domains[0];
+        assert_eq!((dom.source.as_str(), dom.d_auto), ("SRC", true));
+        assert_eq!(dom.followers, ["A", "B"]);
+        // A: D + (L_max - 0) = D + 12 >= 150; B: D + 0 >= 129. So D = 138.
+        assert_eq!(dom.d, 138);
+        let pa = plan(&a, "A");
+        let sa = pa.spdif.as_ref().unwrap();
+        assert_eq!((sa.mode.as_str(), sa.d, sa.tx_mask), ("follower", 150, 0));
+        assert_eq!(sa.on_lock_error, "mute");
+        assert!(pa.writable && sa.writable && pa.transport == "spdif");
+        let pb = plan(&a, "B");
+        let sb = pb.spdif.as_ref().unwrap();
+        assert_eq!((sb.d, sb.on_lock_error.as_str()), (138, "play_unaligned"));
+        // Heard together: arrival + D_f + L_f, for both followers.
+        assert_eq!(
+            i64::from(sa.d) + pa.latency_frames,
+            i64::from(sb.d) + pb.latency_frames
+        );
+        let ps = plan(&a, "SRC");
+        let ss = ps.spdif.as_ref().unwrap();
+        assert_eq!((ss.mode.as_str(), ss.tx_mask), ("source", 1));
+        // The source: D + (L_max - 0) = 150 samples on its speakers.
+        assert_eq!(ss.lag_samples, Some(150));
+        assert_eq!(
+            ss.lag_samples.unwrap() + ps.latency_frames,
+            i64::from(sa.d) + pa.latency_frames
+        );
+        assert!(
+            (ps.out_delays[0].1 - 150.0 / 48.0).abs() < 0.001,
+            "{:?}",
+            ps.out_delays
+        );
+        assert_eq!(pa.out_delays[0], (0, 0.0));
+    }
+
+    #[test]
+    fn wp_athubm_a_configured_d_too_small_and_out_of_range() {
+        let mut m = domain();
+        m.units[0].spdif_d = Some(100);
+        let a = align(&m, &obs());
+        let codes: Vec<&str> = a.issues.iter().map(|i| i.code.as_str()).collect();
+        assert!(codes.contains(&"spdif_d_too_small"), "{codes:?}");
+        assert!(codes.contains(&"delay_out_of_range"), "{codes:?}");
+        assert!(!plan(&a, "A").writable && !plan(&a, "B").writable);
+        assert!(!a.spdif_domains[0].d_auto && a.spdif_domains[0].d == 100);
+        // No limits read: the firmware's default D, nothing written.
+        let a = align(&domain(), &BTreeMap::new());
+        assert_eq!(a.spdif_domains[0].d, 192);
+        assert!(a.units.iter().all(|p| !p.writable));
+        assert!(a.issues.iter().any(|i| i.code == "offline"));
+    }
+
+    /// A source on the audio link: its own alignment stands, its speakers
+    /// wait D, and its follower is set against the source's own latency.
+    #[test]
+    fn wp_athubm_a_source_on_the_audio_link() {
+        let m = model(json!({
+            "rooms": [{"id": "main"}],
+            "senders": [{"id": "tx", "serial": "S-tx", "senderId": 66}],
+            "units": [
+                {"id": "S", "serial": "S-S", "room": "main", "upstream": "tx", "latencyUs": 500,
+                 "spdifSource": true, "spdifTxMask": 2,
+                 "speakers": [{"output": 0, "distanceM": 3.0}]},
+                {"id": "F", "serial": "S-F", "room": "main", "transport": "spdif",
+                 "upstream": "S", "speakers": [{"output": 0, "distanceM": 3.0}]}
+            ]
+        }));
+        let mut o = BTreeMap::from([
+            ("S-S".to_owned(), spdif("source", 0, 0)),
+            ("S-F".to_owned(), spdif("follower", 150, 399)),
+        ]);
+        let s = o.get_mut("S-S").unwrap();
+        s.d_local_min = Some(112);
+        s.d_local_max = Some(1024);
+        s.rate_code = Some(1);
+        s.state = Some("locked".into());
+        let a = align(&m, &o);
+        let ps = plan(&a, "S");
+        assert_eq!(ps.transport, "alink");
+        let ss = ps.spdif.as_ref().unwrap();
+        // F: D + (L_S - L_F) = D + 24 >= 150 -> D = 126; S's speakers wait D.
+        assert_eq!(a.spdif_domains[0].d, 126);
+        assert_eq!(ss.lag_samples, Some(126));
+        let sf = plan(&a, "F").spdif.as_ref().unwrap().clone();
+        assert_eq!(sf.d, 150);
+        // F heard at S's play + D_F + L_F; S at its play + lag + L_S.
+        assert_eq!(i64::from(sf.d), ss.lag_samples.unwrap() + 24);
+        // The audio link part of S is computed as before.
+        assert!(ps.writable && ps.d_local >= 112);
+    }
+
+    #[test]
+    fn wp_athubm_lock_error_firmware_and_source_issues() {
+        let mut o = obs();
+        {
+            let a = o.get_mut("S-A").unwrap().spdif.as_mut().unwrap();
+            a.lock_error = true;
+            a.foreign = true;
+            a.state = "lock_error".into();
+        }
+        o.get_mut("S-B").unwrap().spdif.as_mut().unwrap().source_id = 0x1111;
+        let mut m = domain();
+        m.units[1].name = "Rear".into();
+        let a = align(&m, &o);
+        let msg = a
+            .issues
+            .iter()
+            .find(|i| i.code == SPDIF_LOCK_ERROR)
+            .map(|i| i.message.clone())
+            .unwrap();
+        assert_eq!(
+            msg,
+            "S/PDIF unit Rear can't lock \u{2014} muted (this S/PDIF source does not carry a DSPi time base)"
+        );
+        assert!(
+            a.issues
+                .iter()
+                .any(|i| i.code == "spdif_source_mismatch" && i.subject.as_deref() == Some("B"))
+        );
+        // Firmware without the block: said, not written.
+        let mut o = obs();
+        o.insert(
+            "S-B".into(),
+            Observed {
+                online: true,
+                spdif_block: Some(AlinkFirmware::Absent),
+                ..Observed::default()
+            },
+        );
+        let a = align(&domain(), &o);
+        assert!(a.issues.iter().any(|i| i.code == NO_SPDIF));
+        assert!(!plan(&a, "B").writable);
+    }
+
+    /// Measured arrivals replace the distances; the latency and lip-sync
+    /// terms are untouched; a room without a measurement is as before.
+    #[test]
+    fn wp_athubm_measured_arrivals_give_the_output_delays() {
+        let base = json!({
+            "lipSyncUs": 10000,
+            "rooms": [{"id": "main"}, {"id": "den"}],
+            "senders": [{"id": "tx", "serial": "S-tx"}],
+            "units": [
+                {"id": "A", "serial": "S-A", "room": "main", "upstream": "tx",
+                 "speakers": [
+                    {"output": 0, "distanceM": 3.43, "measuredArrivalUs": -1000.0, "measuredRuns": [5]},
+                    {"output": 1, "distanceM": 2.0, "measuredArrivalUs": 0.0, "measuredRuns": [5]}]},
+                {"id": "B", "serial": "S-B", "room": "main", "upstream": "tx", "latencyUs": 250,
+                 "speakers": [{"output": 0, "distanceM": 1.0, "measuredArrivalUs": -2500.0,
+                               "measuredRuns": [5], "measuredAt": 1763500000u64}]},
+                {"id": "C", "serial": "S-C", "room": "den", "upstream": "tx",
+                 "speakers": [{"output": 0, "distanceM": 3.43}, {"output": 1, "distanceM": 1.715}]}
+            ]
+        });
+        let seen = |min| Observed {
+            online: true,
+            d_local_min: Some(min),
+            d_local_max: Some(1024),
+            hops: Some(0),
+            rate_code: Some(1),
+            state: Some("locked".into()),
+            ..Observed::default()
+        };
+        let o = BTreeMap::from([
+            ("S-A".to_owned(), seen(112)),
+            ("S-B".to_owned(), seen(112)),
+            ("S-C".to_owned(), seen(112)),
+        ]);
+        let m = model(base.clone());
+        let a = align(&m, &o);
+        assert!(a.issues.is_empty(), "{:?}", a.issues);
+        let pa = plan(&a, "A");
+        // The latest (A out 1, 0 µs) gets none; A out 0 1 ms; B 2.5 ms.
+        assert_eq!(pa.out_delays, vec![(0, 1.0), (1, 0.0)]);
+        assert_eq!(pa.measured_outputs, vec![0, 1]);
+        assert_eq!(plan(&a, "B").out_delays, vec![(0, 2.5)]);
+        // The den: distances as always.
+        assert!((plan(&a, "C").out_delays[1].1 - 5.0).abs() < 0.001);
+        assert!(plan(&a, "C").measured_outputs.is_empty());
+        // The effective delays (latency, lip sync) are those of the model
+        // without any measurement.
+        let mut plain = base;
+        for u in plain["units"].as_array_mut().unwrap() {
+            for s in u["speakers"].as_array_mut().unwrap() {
+                let s = s.as_object_mut().unwrap();
+                s.remove("measuredArrivalUs");
+                s.remove("measuredRuns");
+                s.remove("measuredAt");
+            }
+        }
+        let b = align(&model(plain), &o);
+        for (x, y) in a.units.iter().zip(&b.units) {
+            assert_eq!(
+                (x.effective, x.d_local, x.hops_offset),
+                (y.effective, y.d_local, y.hops_offset)
+            );
+        }
+        // Distances alone: the furthest is A out 0, A out 1 waits 4.169 ms.
+        assert!((b.units[0].out_delays[1].1 - 4.169).abs() < 0.001);
+
+        // A room that mixes a measurement and a distance: tied through the
+        // latest measured speaker, and said.
+        let mut m2 = m.clone();
+        m2.units[1].speakers[0].measured_arrival_us = None;
+        m2.units[1].speakers[0].measured_runs.clear();
+        m2.units[1].speakers[0].measured_at = None;
+        let a = align(&m2, &o);
+        assert!(a.issues.iter().any(|i| i.code == "measured_mixed"));
+        // A out 1 is placed at its 2.0 m (5.831 ms); A out 0 1 ms before it;
+        // B at 1.0 m (2.915 ms): the latest is A out 1.
+        let pa = plan(&a, "A");
+        assert_eq!(pa.out_delays[1], (1, 0.0));
+        assert!((pa.out_delays[0].1 - 1.0).abs() < 0.001);
+        assert!((plan(&a, "B").out_delays[0].1 - 2.915).abs() < 0.001);
+    }
+
+    proptest::proptest! {
+        /// Whatever the followers' limits and latencies: an automatic D puts
+        /// every follower at or above its d_min, and when one D fits them all
+        /// every follower is written; no follower is ever written outside its
+        /// limits.
+        #[test]
+        fn proptest_wp_athubm_auto_d_fits_every_follower(
+            fs in proptest::collection::vec((1u16..500, 1u16..300, 0i32..20_000), 1..6)
+        ) {
+            let mut units = vec![json!({"id": "SRC", "serial": "S-SRC", "transport": "spdif",
+                                        "spdifSource": true, "spdifTxMask": 1})];
+            let mut o = BTreeMap::from([("S-SRC".to_owned(), spdif("source", 0, 0))]);
+            for (i, (lo, span, lat)) in fs.iter().enumerate() {
+                units.push(json!({"id": format!("F{i}"), "serial": format!("S-F{i}"),
+                                  "transport": "spdif", "upstream": "SRC", "latencyUs": lat}));
+                o.insert(format!("S-F{i}"), spdif("follower", *lo, lo.saturating_add(*span)));
+            }
+            let m = model(json!({"units": units}));
+            let a = align(&m, &o);
+            let l: Vec<i64> = fs.iter().map(|f| us_to_frames(i64::from(f.2), 48_000)).collect();
+            let l_max = l.iter().copied().max().unwrap_or(0);
+            let lo = fs.iter().zip(&l).map(|(f, l)| i64::from(f.0) - (l_max - l)).max().unwrap();
+            let hi = fs.iter().zip(&l).map(|(f, l)| i64::from(f.0) + i64::from(f.1) - (l_max - l)).min().unwrap();
+            for (i, f) in fs.iter().enumerate() {
+                let p = plan(&a, &format!("F{i}")).spdif.clone().unwrap();
+                proptest::prop_assert!(p.d >= f.0);
+                if p.writable {
+                    proptest::prop_assert!(p.d <= f.0.saturating_add(f.1));
+                }
+                if lo.max(0) <= hi {
+                    proptest::prop_assert!(p.writable, "{:?} {:?}", fs, p);
+                }
+            }
+        }
     }
 }
