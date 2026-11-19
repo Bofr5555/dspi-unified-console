@@ -4629,7 +4629,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * `failed`.
      *
      * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
-     * (named with its unit) or a session already running;
+     * (named with its unit), a session already running, or an applied
+     * alignment still waiting for Keep or Revert (nothing sent);
      * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
      * several units together needs the DSPi hub"); [`DspiError::Denied`]
      * for a Viewer; [`DspiError::Link`] with the hub's refusal
@@ -11917,7 +11918,8 @@ open func measureSystemRevert()throws  -> MeasureSystemApplied  {
      * `failed`.
      *
      * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
-     * (named with its unit) or a session already running;
+     * (named with its unit), a session already running, or an applied
+     * alignment still waiting for Keep or Revert (nothing sent);
      * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
      * several units together needs the DSPi hub"); [`DspiError::Denied`]
      * for a Viewer; [`DspiError::Link`] with the hub's refusal
@@ -68236,7 +68238,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_revert() != 21534) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_start() != 61644) {
+    if (uniffi_dspi_core_checksum_method_dspicore_measure_system_start() != 19918) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_measure_system_state() != 26745) {

@@ -3648,7 +3648,8 @@ interface DspiCoreApi : AutoCloseable {
      * `failed`.
      *
      * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
-     * (named with its unit) or a session already running;
+     * (named with its unit), a session already running, or an applied
+     * alignment still waiting for Keep or Revert (nothing sent);
      * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
      * several units together needs the DSPi hub"); [`DspiError::Denied`]
      * for a Viewer; [`DspiError::Link`] with the hub's refusal

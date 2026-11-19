@@ -1194,6 +1194,15 @@ impl Outcome {
         p
     }
 
+    // -- review AT-D2 --
+    /// An applied alignment waits for Keep or Revert.
+    pub(crate) fn awaits_keep(&self) -> bool {
+        matches!(
+            self.applied.stage,
+            MeasureSystemApplyStage::Applied | MeasureSystemApplyStage::Verified
+        )
+    }
+
     /// Whether the hub's guard of what is applied still runs (a verify
     /// runs inside it). Without a guard: yes. One the hub has ended is
     /// taken as its outcome says (reverted at its deadline: the stage is

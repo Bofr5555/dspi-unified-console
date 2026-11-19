@@ -294,6 +294,9 @@ pending, a `system.set` from another session is refused `conflict`, and a model 
 API is not overwritten (the outcome is `not_written`, said in words). A client shows the proposal's `guard_note` before
 the apply and counts `applied.guard_s` down after it.
 
+While an applied alignment waits for Keep or Revert, `measure_system_start` is refused (review AT-D2): a new
+measurement would replace what was filed, and the alignment could then be neither kept nor reverted from that console.
+
 **A hub without the cap** (an older hub) has no guard: nothing reverts by itself, not at a deadline and not when the
 connection is lost. The proposal's `guard_note` and the apply's message say so, `guard_s` is 0, and the alignment stays
 until Keep or Revert.

@@ -5842,7 +5842,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_revert() != 21534.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_start() != 61644.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_start() != 19918.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_system_state() != 26745.toShort()) {
@@ -11374,7 +11374,8 @@ public interface DspiCoreInterface {
      * `failed`.
      *
      * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
-     * (named with its unit) or a session already running;
+     * (named with its unit), a session already running, or an applied
+     * alignment still waiting for Keep or Revert (nothing sent);
      * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
      * several units together needs the DSPi hub"); [`DspiError::Denied`]
      * for a Viewer; [`DspiError::Link`] with the hub's refusal
@@ -20087,7 +20088,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * `failed`.
      *
      * Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
-     * (named with its unit) or a session already running;
+     * (named with its unit), a session already running, or an applied
+     * alignment still waiting for Keep or Revert (nothing sent);
      * [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
      * several units together needs the DSPi hub"); [`DspiError::Denied`]
      * for a Viewer; [`DspiError::Link`] with the hub's refusal

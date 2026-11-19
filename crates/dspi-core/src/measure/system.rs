@@ -705,7 +705,8 @@ impl DspiCore {
     /// `failed`.
     ///
     /// Errors: [`DspiError::InvalidArgument`] for a bad setup, a blocker
-    /// (named with its unit) or a session already running;
+    /// (named with its unit), a session already running, or an applied
+    /// alignment still waiting for Keep or Revert (nothing sent);
     /// [`DspiError::Unsupported`] for a hub without `system_measure` ("measuring
     /// several units together needs the DSPi hub"); [`DspiError::Denied`]
     /// for a Viewer; [`DspiError::Link`] with the hub's refusal
@@ -720,6 +721,20 @@ impl DspiCore {
             if slot.session.as_ref().is_some_and(SysSession::active) {
                 return Err(invalid(
                     "busy: a system measurement is already running on this console",
+                ));
+            }
+            // -- review AT-D2 -- a new measurement would replace the outcome
+            // that holds what was filed (and the hub's guard): the applied
+            // alignment could then be neither kept nor reverted from here,
+            // and the hub would put it back at its deadline unseen
+            if slot
+                .outcome
+                .as_ref()
+                .is_some_and(proposal::Outcome::awaits_keep)
+            {
+                return Err(invalid(
+                    "an applied alignment across units waits for Keep or Revert: keep or revert \
+                     it before measuring again",
                 ));
             }
             let (pre, units) =

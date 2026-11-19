@@ -2228,6 +2228,79 @@ fn wp_atguard_an_old_hub_offers_no_guard_and_says_so() {
     let _ = &mut hub;
 }
 
+// ── review AT-D2 ────────────────────────────────────────────────────────
+
+/// While an applied alignment waits for Keep or Revert no new measurement
+/// starts (it would replace what was filed and the guard's id): nothing is
+/// sent. After the Revert a start is judged as before.
+#[test]
+fn review_atd2_no_new_measurement_while_an_applied_alignment_waits() {
+    let (hub, o, setup) = atguard_checked(true);
+    let core = crate::DspiCore::new();
+    core.measure_system_set_hub(Box::new(hub.clone()));
+    core.system_slot().outcome = Some(o);
+    let p = core.measure_system_proposal().unwrap();
+    core.measure_system_apply(p.id).unwrap();
+    let from = hub.0.lock().unwrap().requests.len();
+    let e = core
+        .measure_system_start(setup.clone(), Vec::new())
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("waits for Keep or Revert"), "{e}");
+    assert!(requests_since(&hub, from).is_empty(), "nothing sent");
+    assert_eq!(
+        core.measure_system_applied().stage,
+        MeasureSystemApplyStage::Applied
+    );
+    assert!(
+        hub.0.lock().unwrap().guard.is_some(),
+        "the guard still runs"
+    );
+    core.measure_system_revert().unwrap();
+    let e = core
+        .measure_system_start(setup, Vec::new())
+        .map(|_| String::new())
+        .unwrap_or_else(|e| e.to_string());
+    assert!(!e.contains("waits for Keep or Revert"), "{e}");
+}
+
+/// A guard the hub ended without putting everything back is never shown as
+/// a clean revert: the words say so first. Keep leaves its own message.
+#[test]
+fn review_atd2_a_guard_ended_not_written_says_so_and_keep_has_its_own_words() {
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    {
+        let mut st = hub.0.lock().unwrap();
+        let (id, _, filed, _) = st.guard.take().unwrap();
+        st.guard_last = Some(msg::guard::Outcome {
+            guard: id,
+            reason: "timeout".into(),
+            result: "not_written".into(),
+            revision_filed: filed,
+            message: "nothing was set back: the model changed".into(),
+            ..msg::guard::Outcome::default()
+        });
+    }
+    let e = o.keep(&mut hub).unwrap_err().to_string();
+    assert!(
+        e.contains("NOT wholly put back (not_written)") && e.contains("the model changed"),
+        "{e}"
+    );
+    assert_eq!(
+        o.applied.message,
+        e.trim_start_matches("invalid argument: ")
+    );
+    // Keep's own words replace the apply's "... unless it is kept within N s".
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    let k = o.keep(&mut hub).unwrap();
+    assert_eq!(k.stage, MeasureSystemApplyStage::Kept);
+    assert_eq!(k.message, "kept: the alignment stays");
+}
+
 // ── WP ATDEMO ───────────────────────────────────────────────────────────
 
 /// The hub answered `status` with `aborted` (it stopped the session
