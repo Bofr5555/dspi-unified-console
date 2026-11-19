@@ -660,9 +660,8 @@ fn wp_revertw_a_failed_revert_carries_its_notice_and_a_clean_one_none() {
     assert!(end.revert_notice.is_empty());
 }
 
-/// Every phase's notice, and the hub's revert that names a part it could
-/// not put back (an older hub, or one that could not read it) is
-/// incomplete.
+/// Every phase's notice, and a hub revert that reports a write not done
+/// is incomplete (one that only did not capture a part is not).
 #[test]
 fn wp_revertw_phases_and_hub_reverts_map_to_their_notices() {
     assert_eq!(revert_notice_of(GuardPhase::Reverted), "");
@@ -680,21 +679,23 @@ fn wp_revertw_phases_and_hub_reverts_map_to_their_notices() {
         revert_notice_of(GuardPhase::NotWritten),
         NOTICE_REVERT_NOT_WRITTEN
     );
-    let whole =
-        json!({"captured": ["device_name", "source_names", "output_latency", "control_surfaces"]});
-    assert_eq!(
-        reverted_or_incomplete(&hub_revert_notes(&whole, false)),
-        GuardPhase::Reverted
-    );
+    // The hub's revert: a write it reports as not done is incomplete; parts
+    // it does not capture (an older hub's image-only revert) stay notes.
     let part = json!({"captured": ["device_name"]});
     assert_eq!(
-        reverted_or_incomplete(&hub_revert_notes(&part, false)),
-        GuardPhase::RevertIncomplete
+        reverted_or_incomplete(&hub_failed_notes(&part)),
+        GuardPhase::Reverted
     );
     assert_eq!(
-        reverted_or_incomplete(&hub_revert_notes(&json!({}), false)),
-        GuardPhase::RevertIncomplete,
-        "an older hub puts back the image only"
+        reverted_or_incomplete(&hub_failed_notes(&json!({}))),
+        GuardPhase::Reverted,
+        "an older hub puts back the image only: a note, not a failure"
+    );
+    let failed =
+        json!({"captured": ["device_name"], "notes": ["device name: not written (refused)"]});
+    assert_eq!(
+        reverted_or_incomplete(&hub_failed_notes(&failed)),
+        GuardPhase::RevertIncomplete
     );
     assert_eq!(
         serde_json::to_value(GuardPhase::RevertIncomplete).unwrap(),

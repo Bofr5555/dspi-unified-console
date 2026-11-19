@@ -1246,8 +1246,11 @@ impl DspiCore {
             // -- WP P1CFIX -- F6: what the hub put back besides the image.
             let separate = self.lock().state.output_config_mode == 0;
             notes.extend(hub_revert_notes(o, separate));
-            // -- WP REVERTW -- what it did not put back makes it incomplete
-            phase = reverted_or_incomplete(&notes);
+            // -- WP REVERTW -- a write the hub itself reports as not done
+            // (its `notes`) makes it incomplete; the caveats above (parts an
+            // older hub, or this one, does not capture) stay notes: the
+            // apply may not have changed them
+            phase = reverted_or_incomplete(&hub_failed_notes(o));
             if phase == GuardPhase::RevertIncomplete {
                 message = format!(
                     "{why}: the hub put the settings from before back, but not all of them (see \
@@ -1263,6 +1266,20 @@ impl DspiCore {
         }
         self.finish(r, phase, reason, &message, notes)
     }
+}
+
+// -- WP REVERTW --
+/// What the hub's revert reports it did not write back (`notes`).
+fn hub_failed_notes(o: &Value) -> Vec<String> {
+    o.get("notes")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 // -- WP P1CFIX -- F6
