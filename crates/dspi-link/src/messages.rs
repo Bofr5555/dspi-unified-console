@@ -277,6 +277,14 @@ pub struct DeviceInfo {
     /// Our hub only (additive): whether the device has our extension channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ext: Option<bool>,
+    // -- PG-C merge --
+    /// Our hub only (additive): the board id (PLAN-PG section 1.9: 1 the
+    /// DSPi-Zero) when it is not 0, from the platform's byte 7 or, for a paged
+    /// Zero, the USB descriptor the hub sees and its clients do not. Absent
+    /// for a Pico and on every other hub. A `u32` as the other numbers here:
+    /// a value past a byte is no board this client knows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board: Option<u32>,
 }
 
 // -- WP PGLINKC --

@@ -13,8 +13,9 @@ use crate::{FfiCore, fns_device::text};
 
 /// The open device's protocol in JSON: `{ok, generation ("unknown",
 /// "legacy" or "paged"), protocolMajor, protocolMinor, pages: [{page,
-/// revision}], extEnvelope ("noChannel", "legacy" or "tunnel")}`. No
-/// traffic. Returns the bytes needed including the NUL.
+/// revision}], extEnvelope ("noChannel", "legacy" or "tunnel"), boardId,
+/// boardName ("DSPi", "DSPi Zero" or "Unknown board")}`. One platform read
+/// (the board). Returns the bytes needed including the NUL.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_device_protocol(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
     text(core, buf, len, |c| json_reply(c.device_protocol()))

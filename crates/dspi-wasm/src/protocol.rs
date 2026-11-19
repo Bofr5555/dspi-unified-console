@@ -4,8 +4,9 @@
 //!
 //! - `deviceProtocol`: `{generation ("unknown", "legacy" or "paged"),
 //!   protocolMajor, protocolMinor, pages: [{page, revision}], extEnvelope
-//!   ("noChannel", "legacy" or "tunnel")}`. No traffic; code `not_open`
-//!   with nothing open.
+//!   ("noChannel", "legacy" or "tunnel"), boardId, boardName ("DSPi",
+//!   "DSPi Zero" or "Unknown board")}`. One platform read (the board); code
+//!   `not_open` with nothing open.
 //! - `rawGetId {id, value, len}`: `{data: [bytes]}`, a paged GET of command
 //!   `id` (`page << 8 | command`).
 //! - `rawSetId {id, value, data}`: `{}`, a paged SET. Refused with code

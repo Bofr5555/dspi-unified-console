@@ -1592,4 +1592,13 @@ pub struct DeviceProtocol {
     pub pages: Vec<DevicePage>,
     /// How the extension channel is reached.
     pub ext_envelope: ExtEnvelope,
+    // -- PG-C merge -- the board (PLAN-PG section 1.9, S6)
+    /// The board id: 0 a Pico, 1 the DSPi-Zero, other values unknown boards
+    /// (0xFF a product string this build does not know, or a board that
+    /// could not be read). From the platform's byte 7 and, on board 0, the
+    /// USB descriptor (`DspiCore::board`).
+    pub board_id: u8,
+    /// The name clients show for the board in caps and About: "DSPi",
+    /// "DSPi Zero" or "Unknown board" (`board_name`).
+    pub board_name: String,
 }

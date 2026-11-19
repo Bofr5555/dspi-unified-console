@@ -769,12 +769,27 @@ impl DspiCore {
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 impl DspiCore {
     /// The open device's protocol: its generation, the paged protocol's
-    /// version and pages, and how the extension channel is reached. No
-    /// traffic. Errors: [`DspiError::Disconnected`] with nothing open.
+    /// version and pages, how the extension channel is reached, and the
+    /// board with its name. The board costs one platform read (the rest
+    /// sends nothing); a board that cannot be read is an unknown board.
+    /// Errors: [`DspiError::Disconnected`] with nothing open or when the
+    /// device went.
     pub fn device_protocol(&self) -> Result<DeviceProtocol> {
         let mut inner = self.lock();
         let conn = inner.conn()?;
-        Ok(protocol_of(conn))
+        let mut p = protocol_of(conn);
+        // -- PG-C merge -- the board name from hardware.rs (PGZERO line 5)
+        let board = match crate::hardware::read_board(conn) {
+            Ok(board) => board,
+            Err(DspiError::Disconnected) => return Err(DspiError::Disconnected),
+            Err(e) => {
+                log::debug!("the board could not be read: {e}");
+                dspi_proto::packets::Board::Unknown(crate::UNKNOWN_PRODUCT_BOARD)
+            }
+        };
+        p.board_id = board.id();
+        p.board_name = crate::board_name(board).into();
+        Ok(p)
     }
 }
 
@@ -834,5 +849,7 @@ pub(crate) fn protocol_of(conn: &mut Connection) -> DeviceProtocol {
         protocol_minor,
         pages,
         ext_envelope,
+        // -- PG-C merge -- filled by `device_protocol` (one platform read)
+        ..DeviceProtocol::default()
     }
 }

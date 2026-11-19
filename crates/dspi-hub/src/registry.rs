@@ -191,6 +191,12 @@ impl RegisteredDevice {
             if let Some(ext) = id.ext {
                 map.insert("ext".into(), ext.into());
             }
+            // -- PG-C merge -- PGZERO line 5: our additive `board` (PLAN-PG 1.9),
+            // when not 0: a paged Zero is known only by its USB descriptor, which
+            // a client behind the hub cannot see
+            if id.board != 0 {
+                map.insert("board".into(), id.board.into());
+            }
         }
         device
     }
@@ -851,5 +857,22 @@ mod tests_wp_pghdev {
         assert_eq!(info.ext, Some(true));
         let info: dspi_link::messages::DeviceInfo = serde_json::from_value(legacy).unwrap();
         assert!(!info.is_paged());
+    }
+
+    // -- PG-C merge --
+    /// PGZERO line 5: the board id is listed when not 0 (a Pico lists none), and
+    /// our client's parser reads it.
+    #[test]
+    fn pgc_merge_the_device_object_says_a_board_that_is_not_0() {
+        let pico = device(Some((1, 0)), None).to_json();
+        assert!(pico.get("board").is_none(), "{pico}");
+        let info: dspi_link::messages::DeviceInfo = serde_json::from_value(pico).unwrap();
+        assert_eq!(info.board, None);
+        let mut zero = device(Some((1, 0)), None);
+        zero.identity.board = 1;
+        let zero = zero.to_json();
+        assert_eq!(zero["board"], json!(1));
+        let info: dspi_link::messages::DeviceInfo = serde_json::from_value(zero).unwrap();
+        assert_eq!(info.board, Some(1u32));
     }
 }
