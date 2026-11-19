@@ -5764,13 +5764,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_get() != 27846.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_get_id() != 13665.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_get_id() != 24225.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_set() != 34786.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_set_id() != 59020.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_raw_set_id() != 19464.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_redo() != 52269.toShort()) {
@@ -11475,8 +11475,8 @@ public interface DspiCoreInterface {
      * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
      * [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
      * (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
-     * on a 1.1.6-generation device, whose firmware has no pages (nothing is
-     * sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+     * on a 1.1.6-generation device, whose firmware has no pages, and on a
+     * connection that does not say it is paged (the demo; nothing is sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
      * client read-only mode for a command outside the registry;
      * [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
      * or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -11519,7 +11519,7 @@ public interface DspiCoreInterface {
      * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
      * [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
      * bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
-     * device; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+     * device or a connection that does not say it is paged; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
      * read-only connection or in the client read-only mode;
      * [`DspiError::Refused`] with the firmware's result code;
      * [`DspiError::Denied`], [`DspiError::Locked`] or
@@ -20165,8 +20165,8 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
      * [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
      * (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
-     * on a 1.1.6-generation device, whose firmware has no pages (nothing is
-     * sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+     * on a 1.1.6-generation device, whose firmware has no pages, and on a
+     * connection that does not say it is paged (the demo; nothing is sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
      * client read-only mode for a command outside the registry;
      * [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
      * or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -20230,7 +20230,7 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
      * [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
      * bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
-     * device; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+     * device or a connection that does not say it is paged; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
      * read-only connection or in the client read-only mode;
      * [`DspiError::Refused`] with the firmware's result code;
      * [`DspiError::Denied`], [`DspiError::Locked`] or

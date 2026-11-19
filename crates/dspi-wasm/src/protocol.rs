@@ -84,13 +84,16 @@ mod tests_wp_pgcore {
     }
 
     #[test]
-    fn wp_pgcore_the_demo_is_legacy_and_the_raw_id_calls_are_gated() {
+    fn wp_pgcore_the_demo_has_no_pages_and_the_raw_id_calls_are_gated() {
         guard::reset_for_test();
         let h = session_new().unwrap();
         assert_eq!(run(h, "deviceProtocol", Value::Null)["code"], "not_open");
         assert_eq!(run(h, "open", json!({ "kind": "demo" }))["ok"], true);
+        // The demo is the core's own simulation, not opened through
+        // `paged::open`: no generation is said; its extensions are 1.1.6's
         let r = run(h, "deviceProtocol", Value::Null);
-        assert_eq!(r["value"]["generation"], "legacy", "{r}");
+        assert_eq!(r["value"]["generation"], "unknown", "{r}");
+        assert_eq!(r["value"]["extEnvelope"], "legacy", "{r}");
         assert_eq!(r["value"]["pages"], json!([]));
         // A 1.1.6-generation device has no pages: nothing is sent
         let r = run(h, "rawGetId", json!({ "id": 0x0550, "len": 4 }));

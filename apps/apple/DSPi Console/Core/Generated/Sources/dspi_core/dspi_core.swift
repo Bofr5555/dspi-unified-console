@@ -4964,8 +4964,8 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
      * [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
      * (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
-     * on a 1.1.6-generation device, whose firmware has no pages (nothing is
-     * sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+     * on a 1.1.6-generation device, whose firmware has no pages, and on a
+     * connection that does not say it is paged (the demo; nothing is sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
      * client read-only mode for a command outside the registry;
      * [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
      * or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -5008,7 +5008,7 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
      * [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
      * bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
-     * device; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+     * device or a connection that does not say it is paged; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
      * read-only connection or in the client read-only mode;
      * [`DspiError::Refused`] with the firmware's result code;
      * [`DspiError::Denied`], [`DspiError::Locked`] or
@@ -12102,8 +12102,8 @@ open func rawGet(opcode: UInt8, value: UInt16, len: UInt16)throws  -> Data  {
      * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
      * [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
      * (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
-     * on a 1.1.6-generation device, whose firmware has no pages (nothing is
-     * sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+     * on a 1.1.6-generation device, whose firmware has no pages, and on a
+     * connection that does not say it is paged (the demo; nothing is sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
      * client read-only mode for a command outside the registry;
      * [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
      * or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -12161,7 +12161,7 @@ open func rawSet(opcode: UInt8, value: UInt16, data: Data)throws   {try rustCall
      * Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
      * [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
      * bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
-     * device; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+     * device or a connection that does not say it is paged; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
      * read-only connection or in the client read-only mode;
      * [`DspiError::Refused`] with the firmware's result code;
      * [`DspiError::Denied`], [`DspiError::Locked`] or
@@ -63118,13 +63118,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_raw_get() != 27846) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_raw_get_id() != 13665) {
+    if (uniffi_dspi_core_checksum_method_dspicore_raw_get_id() != 24225) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_raw_set() != 34786) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_raw_set_id() != 59020) {
+    if (uniffi_dspi_core_checksum_method_dspicore_raw_set_id() != 19464) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_redo() != 52269) {

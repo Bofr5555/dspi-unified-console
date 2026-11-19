@@ -194,8 +194,8 @@ impl DspiCore {
     /// Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
     /// [`raw_get`](Self::raw_get)), a `len` of 0, and the bulk chunk read
     /// (`STORE.ALL_PARAMS_CHUNK`; nothing is sent); [`DspiError::Unsupported`]
-    /// on a 1.1.6-generation device, whose firmware has no pages (nothing is
-    /// sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
+    /// on a 1.1.6-generation device, whose firmware has no pages, and on a
+    /// connection that does not say it is paged (the demo; nothing is sent); [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] in the
     /// client read-only mode for a command outside the registry;
     /// [`DspiError::Refused`] with the firmware's result code (`VC_ERR_*`),
     /// or 0 when it is not known; [`DspiError::Denied`], [`DspiError::Locked`]
@@ -215,11 +215,9 @@ impl DspiCore {
         if guard.conn.is_some() {
             crate::read_only::check_raw_get_id(&mut guard, id)?;
         }
-        guard
-            .conn()?
-            .transport()
-            .control_in_paged(id, value, len)
-            .map_err(paged_refusal)
+        let t = guard.conn()?.transport();
+        check_paged_connection(t)?;
+        t.control_in_paged(id, value, len).map_err(paged_refusal)
     }
 
     /// One paged SET of command `id`, `value` as `wValue`, `data` as the
@@ -237,7 +235,7 @@ impl DspiCore {
     /// Errors: [`DspiError::InvalidArgument`] for a page-0 id (use
     /// [`raw_set`](Self::raw_set)), each refusal above, or more than 65535
     /// bytes of `data`; [`DspiError::Unsupported`] on a 1.1.6-generation
-    /// device; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
+    /// device or a connection that does not say it is paged; [`DspiError::Disconnected`]; [`DspiError::ReadOnly`] on a
     /// read-only connection or in the client read-only mode;
     /// [`DspiError::Refused`] with the firmware's result code;
     /// [`DspiError::Denied`], [`DspiError::Locked`] or
@@ -265,6 +263,7 @@ impl DspiCore {
             crate::read_only::check_raw_set(&mut guard)?;
         }
         let mut w = guard.writable_conn()?;
+        check_paged_connection(w.conn().transport())?;
         // The device's own word on what the command does (guide 4.7): a
         // newer revision may flag what the vendored registry does not
         let info = w
@@ -312,6 +311,18 @@ fn check_paged_id(id: CmdId) -> Result<()> {
         });
     }
     Ok(())
+}
+
+// -- WP PGCORE --
+/// [`DspiError::Unsupported`], with nothing sent, unless the connection's
+/// generation wrapper says the device is paged: a 1.1.6-generation device
+/// (and a path opened without `paged::open`, such as the built-in demo) gets
+/// no paged request (PLAN-PG section 1.1).
+fn check_paged_connection(t: &dyn dspi_transport::Transport) -> Result<()> {
+    match t.generation() {
+        Some(dspi_transport::Generation::Paged(_)) => Ok(()),
+        _ => Err(DspiError::Unsupported),
+    }
 }
 
 // -- WP PGCORE --
