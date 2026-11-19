@@ -57,6 +57,9 @@ public:
     std::atomic<bool> session{ false };   // dspi_measure_tick while active
     std::atomic<bool> live{ false };      // dspi_measure_live_tick instead
     std::atomic<bool> tune{ false };      // dspi_measure_tune_tick (runs and the guard)
+    // -- WP P5QUI2 -- the passive microphone RTA: the blocks to
+    // dspi_measure_rta_passive_push, its frame read about 4 times a second
+    std::atomic<bool> passive{ false };
 
     explicit MeasureLoop(FfiCore *core) : m_core(core) {}
     FfiCore *core() const { return m_core; }
@@ -80,6 +83,8 @@ signals:
     void tuneState(const QByteArray &json);
     // A push the core refused (a null pointer, a block over its bound)
     void pushRefused(const QByteArray &json);
+    // -- WP P5QUI2 -- the passive RTA's frame ({ok, state, rta})
+    void passiveFrame(const QByteArray &json);
 
 private:
     void tick();
@@ -91,6 +96,7 @@ private:
     qint64 m_sessionAt = 0, m_liveAt = 0, m_tuneAt = 0;
     QByteArray m_liveKey;   // seq, pending, active, runs of the last frame read
     bool m_frameWanted = false;
+    int m_passiveTicks = 0;   // -- WP P5QUI2 --
 };
 
 class MeasureController : public QObject {
@@ -100,8 +106,9 @@ class MeasureController : public QObject {
 
     // ---- The device and who may play the generator ----
     Q_PROPERTY(bool connected READ connected NOTIFY deviceChanged)
-    // Why this connection may not play the generator (read-only), or "":
-    // the passive views and the documents only (PLAN-P5 section 1.5)
+    // Why this connection may not play the generator (read-only, the client
+    // read-only mode, a hub's Viewer), or "": the passive microphone RTA, the
+    // results and the documents only (PLAN-P5 section 1.5)
     Q_PROPERTY(QString playBlocker READ playBlocker NOTIFY deviceChanged)
     // The device's outputs: [{ output, label }]
     Q_PROPERTY(QVariantList outputs READ outputs NOTIFY deviceChanged)
@@ -169,6 +176,13 @@ class MeasureController : public QObject {
     Q_PROPERTY(QVariantMap resultGraph READ resultGraph NOTIFY resultChanged)
     // Where it came from ("run", a file's name, "store", "hub")
     Q_PROPERTY(QString resultFrom READ resultFrom NOTIFY resultChanged)
+    // -- WP P5QUI2 -- the curves are the core's (dspi_measure_doc_curves, R1):
+    // the smoothing asked for (1/N octave, 0 none; 1/6 by default), the
+    // target levelled to each output (on by default), and the smoothing the
+    // core's last answer has (-1 before it answered)
+    Q_PROPERTY(int resultSmoothing READ resultSmoothing WRITE setResultSmoothing NOTIFY resultChanged)
+    Q_PROPERTY(bool resultTarget READ resultTarget WRITE setResultTarget NOTIFY resultChanged)
+    Q_PROPERTY(int resultCurvesSmoothing READ resultCurvesSmoothing NOTIFY resultChanged)
 
     // ---- The live view ----
     Q_PROPERTY(bool liveActive READ liveActive NOTIFY liveChanged)
@@ -193,6 +207,20 @@ class MeasureController : public QObject {
     Q_PROPERTY(QString liveSaid READ liveSaid NOTIFY proposalChanged)
     // The imported target in use ("" the placement's default, our own curve)
     Q_PROPERTY(QString targetName READ targetName NOTIFY targetChanged)
+
+    // ---- The passive microphone RTA (-- WP P5QUI2 --; PLAN-P5 section 1.5) ----
+    // Programme audio through the microphone, nothing played or written: what
+    // a connection that may not play gets. It runs, or why it may not start
+    // now ("" when it may: never beside a measurement, the live view or the
+    // tune's runs)
+    Q_PROPERTY(bool passiveActive READ passiveActive NOTIFY passiveChanged)
+    Q_PROPERTY(QString passiveBlocker READ passiveBlocker NOTIFY runningChanged)
+    Q_PROPERTY(QVariantMap passiveGraph READ passiveGraph NOTIFY passiveChanged)
+    Q_PROPERTY(QVariantMap passiveCompareGraph READ passiveCompareGraph NOTIFY passiveChanged)
+    Q_PROPERTY(bool passiveHeld READ passiveHeld NOTIFY passiveChanged)
+    Q_PROPERTY(bool passiveReady READ passiveReady NOTIFY passiveChanged)
+    Q_PROPERTY(int passiveFrames READ passiveFrames NOTIFY passiveChanged)
+    Q_PROPERTY(QString passiveAveraging READ passiveAveraging NOTIFY passiveChanged)
 
     // ---- The documents ----
     // [{ id, kind, name, note, serial, saved, where ("local", "hub", "both") }]
@@ -262,6 +290,20 @@ public:
     QVariantList resultOutputs() const { return m_resultView.value(QStringLiteral("outputs")).toList(); }
     QVariantMap resultGraph() const { return m_resultGraph; }
     QString resultFrom() const { return m_resultFrom; }
+    int resultSmoothing() const { return m_resultSmoothing; }
+    void setResultSmoothing(int n);
+    bool resultTarget() const { return m_resultTarget; }
+    void setResultTarget(bool on);
+    int resultCurvesSmoothing() const;
+
+    bool passiveActive() const { return m_passiveOn; }
+    QString passiveBlocker() const;
+    QVariantMap passiveGraph() const { return m_passiveGraph; }
+    QVariantMap passiveCompareGraph() const { return m_passiveCompareGraph; }
+    bool passiveHeld() const { return m_passiveHeld; }
+    bool passiveReady() const { return m_passiveReady; }
+    int passiveFrames() const { return m_passiveFrames; }
+    QString passiveAveraging() const { return m_passiveAveraging; }
 
     bool liveActive() const;
     QString liveText() const;
@@ -345,6 +387,16 @@ public:
     Q_INVOKABLE void importTargetFile(const QString &path, const QString &use, const QString &coupler);
     Q_INVOKABLE void clearTarget();
 
+    // ---- The passive microphone RTA (-- WP P5QUI2 --) ----
+    // The chosen input (never the simulated microphone: it hears only the
+    // generator), then the core's passive RTA; Stop (or stop()) ends it
+    Q_INVOKABLE void passiveStart(const QString &averaging);
+    Q_INVOKABLE void passiveStop();
+    Q_INVOKABLE void passiveHold(bool on);
+    Q_INVOKABLE void setPassiveAveraging(const QString &averaging);
+    // Reads the client read-only mode again (playBlocker); also on every snapshot
+    Q_INVOKABLE void refreshAccess();
+
     // ---- The documents ----
     Q_INVOKABLE void reloadDocuments();
     // Opens document `id` (a measurement as the result, a mic as the
@@ -380,14 +432,14 @@ public:
     static QJsonObject object(const QByteArray &text);
     // A curve record ({freqsHz, magDb, valid, spl}) as a graph series
     static QVariantMap series(const QJsonObject &curve, const QString &kind, const QString &label, int colour = 0);
-    // A stored curve ({grid, mag, valid, spl, spread?}, docs/integrator/measurement.md 7.2)
-    // decoded to a curve record; empty when it does not read
-    static QJsonObject decodeCurve(const QJsonObject &stored);
     // The graph of `series`: { series, yMin, yMax, unit }
     static QVariantMap graph(const QVariantList &series, const QString &unit);
 
     // The smoke driver's view of the capture
     AudioCapture *capture() const { return m_capture; }
+    // -- WP P5QUI2 -- the smoke driver's seam: the capture reads from this
+    // source instead of an input (null: the inputs again)
+    void setCaptureSource(dspi_capture::SourceFactory factory) { m_captureSource = std::move(factory); }
 
 signals:
     void deviceChanged();
@@ -403,6 +455,7 @@ signals:
     void documentsChanged();
     void errorChanged();
     void busyChanged();
+    void passiveChanged();   // -- WP P5QUI2 --
     // A store or document call finished (the smoke driver): what and whether it went through
     void stored(const QString &op, bool ok);
 
@@ -423,6 +476,12 @@ private:
     void showProposal(const QJsonObject &proposal);
     void setRunning();
     void shutdown();
+    // -- WP P5QUI2 --
+    void openCapture(std::function<void(bool ok, int rateHz)> done);
+    void requestCurves();
+    void buildResultGraph();
+    void onPassiveFrame(const QByteArray &json);
+    void passiveEnded();
 
     AppContext m_ctx;
     QThread *m_thread = nullptr;
@@ -466,6 +525,22 @@ private:
     QVariantMap m_resultView;
     QVariantMap m_resultGraph;
     QList<int> m_hidden;
+    // -- WP P5QUI2 -- the core's curves of the result, and which ask is the last
+    QJsonObject m_curves;
+    quint64 m_curvesAsk = 0;
+    int m_resultSmoothing = 6;
+    bool m_resultTarget = true;
+    // -- WP P5QUI2 -- the passive RTA, and the client read-only mode
+    bool m_passiveOn = false;
+    bool m_passiveStarting = false;
+    QVariantMap m_passiveGraph;
+    QVariantMap m_passiveCompareGraph;
+    bool m_passiveHeld = false;
+    bool m_passiveReady = false;
+    int m_passiveFrames = 0;
+    QString m_passiveAveraging = QStringLiteral("slow");
+    bool m_clientReadOnly = false;
+    dspi_capture::SourceFactory m_captureSource;
 
     QJsonObject m_live;
     QJsonObject m_frame;

@@ -9,6 +9,9 @@ import UConsole
 // ("timing unreliable" with its reasons), the placement and the microphone;
 // saved in this console's store or on the hub, exported as the document or
 // as REW text per output, or a file opened.
+// -- WP P5QUI2 -- the curves are the core's (dspi_measure_doc_curves, R1): the
+// smoothing chosen here (1/6 octave by default) and the target levelled to
+// each output (dashed), which can be switched off. Nothing is computed here.
 ScrollView {
     id: tab
     signal showTune()
@@ -16,6 +19,7 @@ ScrollView {
     contentWidth: availableWidth
 
     readonly property var mc: MeasureController
+    readonly property var smoothings: [0, 1, 2, 3, 6, 12, 24, 48]
 
     ColumnLayout {
         width: tab.availableWidth
@@ -52,6 +56,37 @@ ScrollView {
             text: mc.resultTiming.length ? mc.resultTiming : qsTr("No timing: a single sweep is magnitude only.")
             font: Theme.fontBody
             color: reliable === true ? Theme.success : reliable === false ? Theme.warning : Theme.textMuted
+            wrapMode: Text.WordWrap
+        }
+        RowLayout {
+            visible: mc.hasResult
+            spacing: Theme.spacingSmall
+            AppComboBox {
+                objectName: "MeasureResults.smoothing"
+                label: qsTr("Results smoothing")
+                Layout.preferredWidth: 150
+                model: tab.smoothings.map(n => n ? qsTr("1/%1 octave").arg(n) : qsTr("None"))
+                currentIndex: Math.max(0, tab.smoothings.indexOf(mc.resultSmoothing))
+                onActivated: index => mc.resultSmoothing = tab.smoothings[index]
+            }
+            AppCheckBox {
+                objectName: "MeasureResults.target"
+                text: mc.targetName.length ? qsTr("Target (%1), levelled to each output").arg(mc.targetName)
+                                           : qsTr("Target (the placement's default), levelled to each output")
+                checked: mc.resultTarget
+                onToggled: mc.resultTarget = checked
+            }
+            Item { Layout.fillWidth: true }
+        }
+        Text {
+            objectName: "MeasureResults.curvesNote"
+            visible: mc.hasResult
+            Layout.fillWidth: true
+            text: mc.resultCurvesSmoothing < 0 ? qsTr("Asking the core for the curves…")
+                  : mc.resultCurvesSmoothing === 0 ? qsTr("The curves as stored (1/96 octave), from the core.")
+                  : qsTr("Smoothed by the core: 1/%1 octave.").arg(mc.resultCurvesSmoothing)
+            font: Theme.fontSmall
+            color: Theme.textMuted
             wrapMode: Text.WordWrap
         }
         MeasureGraph {
