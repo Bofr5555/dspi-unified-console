@@ -204,6 +204,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun firmwareGuardBoard(): FirmwareGuardBoard = throw NotImplementedError("firmware_guard_board")
 
+    override fun firmwareTarget(): FirmwareTarget = throw NotImplementedError("firmware_target")
+
     override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply = throw NotImplementedError("apply_guarded_import")
 
     override fun applyGuardedSnapshot(id: String, timeoutS: Long): GuardedApply = throw NotImplementedError("apply_guarded_snapshot")
@@ -975,6 +977,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun firmwareGuardBoardInBootloader(): FirmwareGuardBoard = throw NotImplementedError("firmware_guard_board_in_bootloader")
 
     override fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict = throw NotImplementedError("firmware_guard_check")
+
+    override fun firmwareUpdateCheck(image: List<Int>, target: FirmwareTarget, typedConfirmation: String): FirmwareUpdateVerdict = throw NotImplementedError("firmware_update_check")
 
     override fun verifyBundled(image: List<Int>, name: String): BundledFirmware = throw NotImplementedError("verify_bundled")
 

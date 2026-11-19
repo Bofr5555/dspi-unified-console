@@ -2100,18 +2100,6 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2181,6 +2169,8 @@ fun uniffi_dspi_core_checksum_func_firmware_guard_board_in_bootloader(
 ): Short
 fun uniffi_dspi_core_checksum_func_firmware_guard_check(
 ): Short
+fun uniffi_dspi_core_checksum_func_firmware_update_check(
+): Short
 fun uniffi_dspi_core_checksum_func_hub_alarm_notice(
 ): Short
 fun uniffi_dspi_core_checksum_func_hub_rollout_step_notice(
@@ -2210,8 +2200,6 @@ fun uniffi_dspi_core_checksum_func_link_phase_text(
 fun uniffi_dspi_core_checksum_func_link_phase_texts(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_ws_url(
-): Short
-fun uniffi_dspi_core_checksum_func_measure_doc_curves(
 ): Short
 fun uniffi_dspi_core_checksum_func_measure_doc_info(
 ): Short
@@ -2545,6 +2533,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_filters_inspect(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_firmware_guard_board(
 ): Short
+fun uniffi_dspi_core_checksum_method_dspicore_firmware_target(
+): Short
 fun uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_flash_confirmed(
@@ -2808,20 +2798,6 @@ fun uniffi_dspi_core_checksum_method_dspicore_measure_next_position(
 fun uniffi_dspi_core_checksum_method_dspicore_measure_preflight(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_result(
-): Short
-fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_averaging(
-): Short
-fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_frame(
-): Short
-fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_hold(
-): Short
-fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_push(
-): Short
-fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_start(
-): Short
-fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_state(
-): Short
-fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_stop(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_set_dir(
 ): Short
@@ -3612,6 +3588,8 @@ fun uniffi_dspi_core_fn_method_dspicore_filters_inspect(`ptr`: Pointer,`text`: R
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_firmware_guard_board(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_firmware_target(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_firmware_version_matches(`ptr`: Pointer,`version`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun uniffi_dspi_core_fn_method_dspicore_flash_confirmed(`ptr`: Pointer,`image`: RustBuffer.ByValue,`drive`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,`token`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -3875,20 +3853,6 @@ fun uniffi_dspi_core_fn_method_dspicore_measure_next_position(`ptr`: Pointer,uni
 fun uniffi_dspi_core_fn_method_dspicore_measure_preflight(`ptr`: Pointer,`setup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_result(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_averaging(`ptr`: Pointer,`averaging`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_frame(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_hold(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_push(`ptr`: Pointer,`samples`: RustBuffer.ByValue,`rateHz`: Int,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_start(`ptr`: Pointer,`setup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -4428,6 +4392,8 @@ fun uniffi_dspi_core_fn_func_firmware_guard_board_in_bootloader(uniffi_out_err: 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_firmware_guard_check(`image`: RustBuffer.ByValue,`board`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_firmware_update_check(`image`: RustBuffer.ByValue,`target`: RustBuffer.ByValue,`typedConfirmation`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_hub_alarm_notice(`alarm`: RustBuffer.ByValue,`time`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_hub_rollout_step_notice(`step`: RustBuffer.ByValue,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4457,8 +4423,6 @@ fun uniffi_dspi_core_fn_func_link_phase_text(`phase`: RustBuffer.ByValue,`pinSou
 fun uniffi_dspi_core_fn_func_link_phase_texts(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_ws_url(`host`: RustBuffer.ByValue,`port`: Short,`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_dspi_core_fn_func_measure_doc_curves(`text`: RustBuffer.ByValue,`options`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_measure_doc_info(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -4717,6 +4681,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_func_firmware_guard_check() != 22496.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_func_firmware_update_check() != 5569.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_func_hub_alarm_notice() != 51350.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4760,9 +4727,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_ws_url() != 18495.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_func_measure_doc_curves() != 12290.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_measure_doc_info() != 31814.toShort()) {
@@ -5107,7 +5071,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 20465.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 156.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922.toShort()) {
@@ -5263,10 +5227,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_firmware_guard_board() != 9275.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_firmware_target() != 6598.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 19319.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 4538.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_get_channel_name() != 25587.toShort()) {
@@ -5659,27 +5626,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_result() != 7126.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_averaging() != 35925.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_frame() != 24406.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_hold() != 28388.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_push() != 56865.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_start() != 19944.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_state() != 11846.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_stop() != 20846.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_set_dir() != 18664.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -5803,7 +5749,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_paste_channel() != 43676.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed() != 50736.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed() != 31389.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_pin_check() != 43599.toShort()) {
@@ -8833,6 +8779,11 @@ public interface DspiCoreInterface {
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
      * failure.
      *
+     * WP PGFLASH: unless [`DspiCore::firmware_target`] already read the
+     * board on this connection, the board is read as an update target here
+     * (a few more control transfers) and kept for `flash_confirmed`'s write
+     * gate.
+     *
      * The device lock is taken first and held across the restart (WP CG24),
      * so no other DSPi Link session writes to a device about to vanish; the
      * hub drops it when the device leaves, and the connection's close gives
@@ -9431,6 +9382,17 @@ public interface DspiCoreInterface {
     fun `firmwareGuardBoard`(): FirmwareGuardBoard
     
     /**
+     * The open board as an update target, read now: the voltage record, the
+     * board (8 platform bytes and the descriptor), its lineage and the live
+     * connection's generation. Never fails: what cannot be read is unknown,
+     * and an unknown board is offered no image. Call before the bootloader
+     * entry, off the UI thread (up to five control transfers), and keep it
+     * for [`firmware_update_check`]. `EXT_LIST` is read once, for the
+     * lineage and the voltage record alike.
+     */
+    fun `firmwareTarget`(): FirmwareTarget
+    
+    /**
      * Whether the open device runs firmware `version`: the leading
      * `major.minor.patch[-betaN]` of a UF2's `Uf2Info::firmware_version`
      * (`1.1.6-beta3-16-g557bce7` compares as 1.1.6 beta 3), against the
@@ -9445,7 +9407,9 @@ public interface DspiCoreInterface {
     
     /**
      * Write `image` to the bootloader drive behind the firmware guard
-     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`;
+     * WP PGFLASH: [`crate::firmware_update_check`]'s rules on the target this
+     * core read itself, see below),
      * with a confirmation token ([`crate::confirm`],
      * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
      * does the writing. Mint the token once the bootloader drive is there
@@ -9467,8 +9431,20 @@ public interface DspiCoreInterface {
      * by waiting for the DSPi to re-enumerate and report the image's version
      * (`Uf2Info::firmware_version`); a timeout there is the failure.
      *
+     * WP PGFLASH, the write gate: when this core read the board as an
+     * update target ([`DspiCore::firmware_target`], or on its own in
+     * [`DspiCore::enter_bootloader_confirmed`]), the gate is the update check
+     * on that target, never on one a caller passes: a board without BOOTSEL
+     * is refused, and an image that may be upstream's on our firmware needs
+     * `LINEAGE_PHRASE` (or the voltage phrase, when the voltage rule asks).
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown. With no target read (the board was in BOOTSEL
+     * before this core saw it) the voltage rule alone decides. The target is
+     * forgotten after a write and when another device is opened.
+     *
      * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
-     * message when the image needs confirmation; then the write's.
+     * message when the image needs confirmation or the board has no BOOTSEL;
+     * then the write's.
      */
     fun `flashConfirmed`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String, `token`: kotlin.String?)
     
@@ -10921,70 +10897,6 @@ public interface DspiCoreInterface {
     fun `measureResult`(): kotlin.String
     
     /**
-     * The averaging preset; the average starts again (the held copy is
-     * kept).
-     *
-     * Errors: [`DspiError::InvalidArgument`] when it does not run.
-     */
-    fun `measureRtaPassiveAveraging`(`averaging`: MeasureRtaAveraging): MeasureRtaPassiveState
-    
-    /**
-     * What the passive RTA shows: the averaged spectrum in fractional-octave
-     * bands (dBFS, or dB SPL), the held copy and their difference. No I/O.
-     */
-    fun `measureRtaPassiveFrame`(): MeasureRtaPassiveFrame
-    
-    /**
-     * Hold (`true`) the spectrum for comparison, or drop the held copy
-     * (`false`).
-     *
-     * Errors: [`DspiError::InvalidArgument`] when it does not run, or there
-     * is no spectrum to hold yet.
-     */
-    fun `measureRtaPassiveHold`(`on`: kotlin.Boolean): MeasureRtaPassiveState
-    
-    /**
-     * Push one block of the microphone's capture (mono, full scale ±1, at
-     * `rate_hz`) into the passive RTA, analysed at once (no session, no
-     * safety check waits on it). A push while it does not run is ignored.
-     *
-     * Errors: [`DspiError::InvalidArgument`] for a rate other than the
-     * started one, or more than 1 Mi samples in one block (nothing is
-     * analysed).
-     */
-    fun `measureRtaPassivePush`(`samples`: List<kotlin.Float>, `rateHz`: kotlin.UInt): MeasureRtaPassiveState
-    
-    /**
-     * Start the passive microphone RTA (programme audio, no generator): it
-     * never touches the device, so it is allowed in the client read-only
-     * mode, on a read-only connection, for a Viewer through a hub and with
-     * no device at all. A running one starts again with `setup` (its held
-     * copy dropped). Then push the microphone's blocks with
-     * `measure_rta_passive_push` and read `measure_rta_passive_frame`.
-     *
-     * It never runs beside this core's own generator runs (review P5-D): it
-     * is refused while a measurement, the live view or the auto-tune's runs
-     * are active here, and a run that starts ends it, so it can never show
-     * this console's stimulus as programme audio.
-     *
-     * Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
-     * band count, a microphone document that does not read), and `busy`
-     * while a measurement or the live view runs on this core.
-     */
-    fun `measureRtaPassiveStart`(`setup`: MeasureRtaPassiveSetup): MeasureRtaPassiveState
-    
-    /**
-     * The passive RTA's state. No I/O.
-     */
-    fun `measureRtaPassiveState`(): MeasureRtaPassiveState
-    
-    /**
-     * Stop the passive RTA and drop its average and held copy: the state
-     * (inactive; never a failure).
-     */
-    fun `measureRtaPassiveStop`(): MeasureRtaPassiveState
-    
-    /**
      * Keep measurement, microphone and target documents in files under
      * `dir`, the client's own data folder (created if missing): a folder per
      * device serial for measurements, `mic/` and `target/`, each with an
@@ -11407,7 +11319,9 @@ public interface DspiCoreInterface {
      * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
      * before the board entered BOOTSEL; the guard must say clear for it with
      * nothing typed, so an image that would ask a person anything is
-     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * refused. WP PGFLASH: on a core that read the board as an update target
+     * itself, the update check's rules on that target decide instead (module
+     * docs). Takes a [`ConfirmOp::FirmwareFlash`] token as
      * [`DspiCore::flash_confirmed`] does (mint it once the board is in
      * BOOTSEL; it works with no device open), and the installer lock holds.
      * Blocks for up to 60 s.
@@ -15094,6 +15008,11 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
      * failure.
      *
+     * WP PGFLASH: unless [`DspiCore::firmware_target`] already read the
+     * board on this connection, the board is read as an update target here
+     * (a few more control transfers) and kept for `flash_confirmed`'s write
+     * gate.
+     *
      * The device lock is taken first and held across the restart (WP CG24),
      * so no other DSPi Link session writes to a device about to vanish; the
      * hub drops it when the device leaves, and the connection's close gives
@@ -16251,6 +16170,27 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
+     * The open board as an update target, read now: the voltage record, the
+     * board (8 platform bytes and the descriptor), its lineage and the live
+     * connection's generation. Never fails: what cannot be read is unknown,
+     * and an unknown board is offered no image. Call before the bootloader
+     * entry, off the UI thread (up to five control transfers), and keep it
+     * for [`firmware_update_check`]. `EXT_LIST` is read once, for the
+     * lineage and the voltage record alike.
+     */override fun `firmwareTarget`(): FirmwareTarget {
+            return FfiConverterTypeFirmwareTarget.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_firmware_target(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Whether the open device runs firmware `version`: the leading
      * `major.minor.patch[-betaN]` of a UF2's `Uf2Info::firmware_version`
      * (`1.1.6-beta3-16-g557bce7` compares as 1.1.6 beta 3), against the
@@ -16276,7 +16216,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     
     /**
      * Write `image` to the bootloader drive behind the firmware guard
-     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`;
+     * WP PGFLASH: [`crate::firmware_update_check`]'s rules on the target this
+     * core read itself, see below),
      * with a confirmation token ([`crate::confirm`],
      * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
      * does the writing. Mint the token once the bootloader drive is there
@@ -16298,8 +16240,20 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * by waiting for the DSPi to re-enumerate and report the image's version
      * (`Uf2Info::firmware_version`); a timeout there is the failure.
      *
+     * WP PGFLASH, the write gate: when this core read the board as an
+     * update target ([`DspiCore::firmware_target`], or on its own in
+     * [`DspiCore::enter_bootloader_confirmed`]), the gate is the update check
+     * on that target, never on one a caller passes: a board without BOOTSEL
+     * is refused, and an image that may be upstream's on our firmware needs
+     * `LINEAGE_PHRASE` (or the voltage phrase, when the voltage rule asks).
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown. With no target read (the board was in BOOTSEL
+     * before this core saw it) the voltage rule alone decides. The target is
+     * forgotten after a write and when another device is opened.
+     *
      * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
-     * message when the image needs confirmation; then the write's.
+     * message when the image needs confirmation or the board has no BOOTSEL;
+     * then the write's.
      */
     @Throws(DspiException::class)override fun `flashConfirmed`(`image`: kotlin.ByteArray, `drive`: BootloaderDrive, `board`: FirmwareGuardBoard, `typedConfirmation`: kotlin.String, `token`: kotlin.String?)
         = 
@@ -19148,144 +19102,6 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
 
     
     /**
-     * The averaging preset; the average starts again (the held copy is
-     * kept).
-     *
-     * Errors: [`DspiError::InvalidArgument`] when it does not run.
-     */
-    @Throws(DspiException::class)override fun `measureRtaPassiveAveraging`(`averaging`: MeasureRtaAveraging): MeasureRtaPassiveState {
-            return FfiConverterTypeMeasureRtaPassiveState.lift(
-    callWithPointer {
-    uniffiRustCallWithError(DspiException) { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_averaging(
-        it, FfiConverterTypeMeasureRtaAveraging.lower(`averaging`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * What the passive RTA shows: the averaged spectrum in fractional-octave
-     * bands (dBFS, or dB SPL), the held copy and their difference. No I/O.
-     */override fun `measureRtaPassiveFrame`(): MeasureRtaPassiveFrame {
-            return FfiConverterTypeMeasureRtaPassiveFrame.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_frame(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Hold (`true`) the spectrum for comparison, or drop the held copy
-     * (`false`).
-     *
-     * Errors: [`DspiError::InvalidArgument`] when it does not run, or there
-     * is no spectrum to hold yet.
-     */
-    @Throws(DspiException::class)override fun `measureRtaPassiveHold`(`on`: kotlin.Boolean): MeasureRtaPassiveState {
-            return FfiConverterTypeMeasureRtaPassiveState.lift(
-    callWithPointer {
-    uniffiRustCallWithError(DspiException) { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_hold(
-        it, FfiConverterBoolean.lower(`on`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Push one block of the microphone's capture (mono, full scale ±1, at
-     * `rate_hz`) into the passive RTA, analysed at once (no session, no
-     * safety check waits on it). A push while it does not run is ignored.
-     *
-     * Errors: [`DspiError::InvalidArgument`] for a rate other than the
-     * started one, or more than 1 Mi samples in one block (nothing is
-     * analysed).
-     */
-    @Throws(DspiException::class)override fun `measureRtaPassivePush`(`samples`: List<kotlin.Float>, `rateHz`: kotlin.UInt): MeasureRtaPassiveState {
-            return FfiConverterTypeMeasureRtaPassiveState.lift(
-    callWithPointer {
-    uniffiRustCallWithError(DspiException) { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_push(
-        it, FfiConverterSequenceFloat.lower(`samples`),FfiConverterUInt.lower(`rateHz`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Start the passive microphone RTA (programme audio, no generator): it
-     * never touches the device, so it is allowed in the client read-only
-     * mode, on a read-only connection, for a Viewer through a hub and with
-     * no device at all. A running one starts again with `setup` (its held
-     * copy dropped). Then push the microphone's blocks with
-     * `measure_rta_passive_push` and read `measure_rta_passive_frame`.
-     *
-     * It never runs beside this core's own generator runs (review P5-D): it
-     * is refused while a measurement, the live view or the auto-tune's runs
-     * are active here, and a run that starts ends it, so it can never show
-     * this console's stimulus as programme audio.
-     *
-     * Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
-     * band count, a microphone document that does not read), and `busy`
-     * while a measurement or the live view runs on this core.
-     */
-    @Throws(DspiException::class)override fun `measureRtaPassiveStart`(`setup`: MeasureRtaPassiveSetup): MeasureRtaPassiveState {
-            return FfiConverterTypeMeasureRtaPassiveState.lift(
-    callWithPointer {
-    uniffiRustCallWithError(DspiException) { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_start(
-        it, FfiConverterTypeMeasureRtaPassiveSetup.lower(`setup`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * The passive RTA's state. No I/O.
-     */override fun `measureRtaPassiveState`(): MeasureRtaPassiveState {
-            return FfiConverterTypeMeasureRtaPassiveState.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_state(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Stop the passive RTA and drop its average and held copy: the state
-     * (inactive; never a failure).
-     */override fun `measureRtaPassiveStop`(): MeasureRtaPassiveState {
-            return FfiConverterTypeMeasureRtaPassiveState.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_stop(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
      * Keep measurement, microphone and target documents in files under
      * `dir`, the client's own data folder (created if missing): a folder per
      * device serial for measurements, `mic/` and `target/`, each with an
@@ -20127,7 +19943,9 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
      * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
      * before the board entered BOOTSEL; the guard must say clear for it with
      * nothing typed, so an image that would ask a person anything is
-     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * refused. WP PGFLASH: on a core that read the board as an update target
+     * itself, the update check's rules on that target decide instead (module
+     * docs). Takes a [`ConfirmOp::FirmwareFlash`] token as
      * [`DspiCore::flash_confirmed`] does (mint it once the board is in
      * BOOTSEL; it works with no device open), and the installer lock holds.
      * Blocks for up to 60 s.
@@ -32453,6 +32271,130 @@ public object FfiConverterTypeFirmwareGuardVerdict: FfiConverterRustBuffer<Firmw
 
 
 /**
+ * The board an update is for, read before it enters the bootloader. The
+ * default fails closed: no board known, so no image.
+ *
+ * WP PGFWX: exported (UniFFI record; JSON in the C ABI and wasm, where a
+ * missing field is its default: unknown, so it fails closed). Keep the one
+ * [`DspiCore::firmware_target`] read and hand it back unchanged.
+ */
+data class FirmwareTarget (
+    /**
+     * The voltage rule's record ([`DspiCore::firmware_guard_board`]).
+     */
+    var `voltage`: FirmwareGuardBoard, 
+    /**
+     * The board id (platform byte 7, PLAN-PG section 1.9; 0 is a Pico, see
+     * [`FirmwareTarget::board`]); `None` when it could not be read.
+     */
+    var `boardId`: kotlin.UByte?, 
+    /**
+     * Whose firmware runs on it: ours when the extension channel answers.
+     */
+    var `lineage`: FirmwareLineage, 
+    /**
+     * The protocol generation of the live connection.
+     */
+    var `generation`: FirmwareGeneration
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFirmwareTarget: FfiConverterRustBuffer<FirmwareTarget> {
+    override fun read(buf: ByteBuffer): FirmwareTarget {
+        return FirmwareTarget(
+            FfiConverterTypeFirmwareGuardBoard.read(buf),
+            FfiConverterOptionalUByte.read(buf),
+            FfiConverterTypeFirmwareLineage.read(buf),
+            FfiConverterTypeFirmwareGeneration.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FirmwareTarget) = (
+            FfiConverterTypeFirmwareGuardBoard.allocationSize(value.`voltage`) +
+            FfiConverterOptionalUByte.allocationSize(value.`boardId`) +
+            FfiConverterTypeFirmwareLineage.allocationSize(value.`lineage`) +
+            FfiConverterTypeFirmwareGeneration.allocationSize(value.`generation`)
+    )
+
+    override fun write(value: FirmwareTarget, buf: ByteBuffer) {
+            FfiConverterTypeFirmwareGuardBoard.write(value.`voltage`, buf)
+            FfiConverterOptionalUByte.write(value.`boardId`, buf)
+            FfiConverterTypeFirmwareLineage.write(value.`lineage`, buf)
+            FfiConverterTypeFirmwareGeneration.write(value.`generation`, buf)
+    }
+}
+
+
+
+/**
+ * [`firmware_update_check`]'s answer. Flash only on `verdict.allowed`.
+ */
+data class FirmwareUpdateVerdict (
+    /**
+     * The verdict, as [`firmware_guard_check`]'s with the rules above folded
+     * in (`message` names every risk; `confirmation_phrase` is what to type).
+     */
+    var `verdict`: FirmwareGuardVerdict, 
+    /**
+     * The rule beyond the voltage rule that decided, if any.
+     */
+    var `rule`: FirmwareUpdateRule, 
+    /**
+     * The image's lineage (the manifest, or our stamp; else unknown).
+     */
+    var `imageLineage`: FirmwareLineage, 
+    /**
+     * The image's generation (the manifest, or its version).
+     */
+    var `imageGeneration`: FirmwareGeneration, 
+    /**
+     * A generation change, shown with what works afterwards; "" when none.
+     */
+    var `generationChange`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFirmwareUpdateVerdict: FfiConverterRustBuffer<FirmwareUpdateVerdict> {
+    override fun read(buf: ByteBuffer): FirmwareUpdateVerdict {
+        return FirmwareUpdateVerdict(
+            FfiConverterTypeFirmwareGuardVerdict.read(buf),
+            FfiConverterTypeFirmwareUpdateRule.read(buf),
+            FfiConverterTypeFirmwareLineage.read(buf),
+            FfiConverterTypeFirmwareGeneration.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FirmwareUpdateVerdict) = (
+            FfiConverterTypeFirmwareGuardVerdict.allocationSize(value.`verdict`) +
+            FfiConverterTypeFirmwareUpdateRule.allocationSize(value.`rule`) +
+            FfiConverterTypeFirmwareLineage.allocationSize(value.`imageLineage`) +
+            FfiConverterTypeFirmwareGeneration.allocationSize(value.`imageGeneration`) +
+            FfiConverterString.allocationSize(value.`generationChange`)
+    )
+
+    override fun write(value: FirmwareUpdateVerdict, buf: ByteBuffer) {
+            FfiConverterTypeFirmwareGuardVerdict.write(value.`verdict`, buf)
+            FfiConverterTypeFirmwareUpdateRule.write(value.`rule`, buf)
+            FfiConverterTypeFirmwareLineage.write(value.`imageLineage`, buf)
+            FfiConverterTypeFirmwareGeneration.write(value.`imageGeneration`, buf)
+            FfiConverterString.write(value.`generationChange`, buf)
+    }
+}
+
+
+
+/**
  * What a PICOBOOT flash did.
  */
 data class FlashReport (
@@ -38448,172 +38390,6 @@ public object FfiConverterTypeLockState: FfiConverterRustBuffer<LockState> {
 
 
 /**
- * One output's curves.
- */
-data class MeasureDocCurve (
-    /**
-     * The output, 0-based.
-     */
-    var `output`: kotlin.UByte, 
-    /**
-     * Its way.
-     */
-    var `role`: MeasureRole, 
-    /**
-     * The speaker it belongs to ("" when the layout named none).
-     */
-    var `speaker`: kotlin.String, 
-    /**
-     * The measured response, smoothed (untrusted points flagged).
-     */
-    var `measured`: MeasureLiveCurve, 
-    /**
-     * The target levelled to the measured response, when asked for.
-     */
-    var `target`: MeasureLiveCurve?, 
-    /**
-     * Per point, the spread across positions or reseats, dB; empty when
-     * the document has none.
-     */
-    var `spreadDb`: List<kotlin.Double>
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeMeasureDocCurve: FfiConverterRustBuffer<MeasureDocCurve> {
-    override fun read(buf: ByteBuffer): MeasureDocCurve {
-        return MeasureDocCurve(
-            FfiConverterUByte.read(buf),
-            FfiConverterTypeMeasureRole.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterTypeMeasureLiveCurve.read(buf),
-            FfiConverterOptionalTypeMeasureLiveCurve.read(buf),
-            FfiConverterSequenceDouble.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: MeasureDocCurve) = (
-            FfiConverterUByte.allocationSize(value.`output`) +
-            FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
-            FfiConverterString.allocationSize(value.`speaker`) +
-            FfiConverterTypeMeasureLiveCurve.allocationSize(value.`measured`) +
-            FfiConverterOptionalTypeMeasureLiveCurve.allocationSize(value.`target`) +
-            FfiConverterSequenceDouble.allocationSize(value.`spreadDb`)
-    )
-
-    override fun write(value: MeasureDocCurve, buf: ByteBuffer) {
-            FfiConverterUByte.write(value.`output`, buf)
-            FfiConverterTypeMeasureRole.write(value.`role`, buf)
-            FfiConverterString.write(value.`speaker`, buf)
-            FfiConverterTypeMeasureLiveCurve.write(value.`measured`, buf)
-            FfiConverterOptionalTypeMeasureLiveCurve.write(value.`target`, buf)
-            FfiConverterSequenceDouble.write(value.`spreadDb`, buf)
-    }
-}
-
-
-
-/**
- * A measurement document's curves (`measure_doc_curves`).
- */
-data class MeasureDocCurves (
-    /**
-     * The smoothing applied, 1/N octave; 0 none.
-     */
-    var `smoothing`: kotlin.UByte, 
-    /**
-     * The run's timing was reliable.
-     */
-    var `timingReliable`: kotlin.Boolean, 
-    /**
-     * One per measured output, in the document's order.
-     */
-    var `outputs`: List<MeasureDocCurve>
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeMeasureDocCurves: FfiConverterRustBuffer<MeasureDocCurves> {
-    override fun read(buf: ByteBuffer): MeasureDocCurves {
-        return MeasureDocCurves(
-            FfiConverterUByte.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterSequenceTypeMeasureDocCurve.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: MeasureDocCurves) = (
-            FfiConverterUByte.allocationSize(value.`smoothing`) +
-            FfiConverterBoolean.allocationSize(value.`timingReliable`) +
-            FfiConverterSequenceTypeMeasureDocCurve.allocationSize(value.`outputs`)
-    )
-
-    override fun write(value: MeasureDocCurves, buf: ByteBuffer) {
-            FfiConverterUByte.write(value.`smoothing`, buf)
-            FfiConverterBoolean.write(value.`timingReliable`, buf)
-            FfiConverterSequenceTypeMeasureDocCurve.write(value.`outputs`, buf)
-    }
-}
-
-
-
-/**
- * How to give a measurement's curves (`measure_doc_curves`).
- */
-data class MeasureDocCurvesOptions (
-    /**
-     * The smoothing, 1/N octave (1 to 48); 0 for none.
-     */
-    var `smoothing`: kotlin.UByte, 
-    /**
-     * Give the target too, levelled to each output's curve.
-     */
-    var `target`: kotlin.Boolean, 
-    /**
-     * A `target` document's text; "" for the placement's default target.
-     */
-    var `targetDocument`: kotlin.String
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeMeasureDocCurvesOptions: FfiConverterRustBuffer<MeasureDocCurvesOptions> {
-    override fun read(buf: ByteBuffer): MeasureDocCurvesOptions {
-        return MeasureDocCurvesOptions(
-            FfiConverterUByte.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterString.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: MeasureDocCurvesOptions) = (
-            FfiConverterUByte.allocationSize(value.`smoothing`) +
-            FfiConverterBoolean.allocationSize(value.`target`) +
-            FfiConverterString.allocationSize(value.`targetDocument`)
-    )
-
-    override fun write(value: MeasureDocCurvesOptions, buf: ByteBuffer) {
-            FfiConverterUByte.write(value.`smoothing`, buf)
-            FfiConverterBoolean.write(value.`target`, buf)
-            FfiConverterString.write(value.`targetDocument`, buf)
-    }
-}
-
-
-
-/**
  * One measurement, microphone or target document in a list
  * ([`DspiCore::measure_docs`]).
  */
@@ -39775,188 +39551,6 @@ public object FfiConverterTypeMeasurePreflight: FfiConverterRustBuffer<MeasurePr
 
 
 /**
- * What the passive RTA shows (`measure_rta_passive_frame`).
- */
-data class MeasureRtaPassiveFrame (
-    /**
-     * Its state.
-     */
-    var `state`: MeasureRtaPassiveState, 
-    /**
-     * The spectrum, the held copy and their difference, as the live view's
-     * RTA gives them; `None` when it does not run.
-     */
-    var `rta`: MeasureLiveRta?
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeMeasureRtaPassiveFrame: FfiConverterRustBuffer<MeasureRtaPassiveFrame> {
-    override fun read(buf: ByteBuffer): MeasureRtaPassiveFrame {
-        return MeasureRtaPassiveFrame(
-            FfiConverterTypeMeasureRtaPassiveState.read(buf),
-            FfiConverterOptionalTypeMeasureLiveRta.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: MeasureRtaPassiveFrame) = (
-            FfiConverterTypeMeasureRtaPassiveState.allocationSize(value.`state`) +
-            FfiConverterOptionalTypeMeasureLiveRta.allocationSize(value.`rta`)
-    )
-
-    override fun write(value: MeasureRtaPassiveFrame, buf: ByteBuffer) {
-            FfiConverterTypeMeasureRtaPassiveState.write(value.`state`, buf)
-            FfiConverterOptionalTypeMeasureLiveRta.write(value.`rta`, buf)
-    }
-}
-
-
-
-/**
- * What the passive RTA analyses (`measure_rta_passive_start`). Every number
- * 0 (or absent) is the default.
- */
-data class MeasureRtaPassiveSetup (
-    /**
-     * The microphone's `mic` document's text; "" for an uncalibrated one
-     * (dBFS). A calibrated one gives dB SPL when its scale is known.
-     */
-    var `micDocument`: kotlin.String, 
-    /**
-     * The capture's rate, Hz (8000 to 192000; 0: 48000).
-     */
-    var `captureRateHz`: kotlin.UInt, 
-    /**
-     * The averaging preset.
-     */
-    var `averaging`: MeasureRtaAveraging, 
-    /**
-     * Bands per octave (1 to 48; 0: 3).
-     */
-    var `bandsPerOctave`: kotlin.UByte
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeMeasureRtaPassiveSetup: FfiConverterRustBuffer<MeasureRtaPassiveSetup> {
-    override fun read(buf: ByteBuffer): MeasureRtaPassiveSetup {
-        return MeasureRtaPassiveSetup(
-            FfiConverterString.read(buf),
-            FfiConverterUInt.read(buf),
-            FfiConverterTypeMeasureRtaAveraging.read(buf),
-            FfiConverterUByte.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: MeasureRtaPassiveSetup) = (
-            FfiConverterString.allocationSize(value.`micDocument`) +
-            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
-            FfiConverterTypeMeasureRtaAveraging.allocationSize(value.`averaging`) +
-            FfiConverterUByte.allocationSize(value.`bandsPerOctave`)
-    )
-
-    override fun write(value: MeasureRtaPassiveSetup, buf: ByteBuffer) {
-            FfiConverterString.write(value.`micDocument`, buf)
-            FfiConverterUInt.write(value.`captureRateHz`, buf)
-            FfiConverterTypeMeasureRtaAveraging.write(value.`averaging`, buf)
-            FfiConverterUByte.write(value.`bandsPerOctave`, buf)
-    }
-}
-
-
-
-/**
- * Where the passive RTA stands.
- */
-data class MeasureRtaPassiveState (
-    /**
-     * It runs.
-     */
-    var `active`: kotlin.Boolean, 
-    /**
-     * The capture's rate, Hz.
-     */
-    var `captureRateHz`: kotlin.UInt, 
-    /**
-     * Bands per octave.
-     */
-    var `bandsPerOctave`: kotlin.UByte, 
-    /**
-     * The averaging preset.
-     */
-    var `averaging`: MeasureRtaAveraging, 
-    /**
-     * FFT frames averaged since the start (or the last change of averaging).
-     */
-    var `frames`: kotlin.ULong, 
-    /**
-     * Non-finite samples seen (analysed as silence).
-     */
-    var `nonfiniteSamples`: kotlin.ULong, 
-    /**
-     * A spectrum is held for comparison.
-     */
-    var `held`: kotlin.Boolean, 
-    /**
-     * The spectrum is dB SPL (a calibrated microphone), else dBFS.
-     */
-    var `spl`: kotlin.Boolean
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeMeasureRtaPassiveState: FfiConverterRustBuffer<MeasureRtaPassiveState> {
-    override fun read(buf: ByteBuffer): MeasureRtaPassiveState {
-        return MeasureRtaPassiveState(
-            FfiConverterBoolean.read(buf),
-            FfiConverterUInt.read(buf),
-            FfiConverterUByte.read(buf),
-            FfiConverterTypeMeasureRtaAveraging.read(buf),
-            FfiConverterULong.read(buf),
-            FfiConverterULong.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterBoolean.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: MeasureRtaPassiveState) = (
-            FfiConverterBoolean.allocationSize(value.`active`) +
-            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
-            FfiConverterUByte.allocationSize(value.`bandsPerOctave`) +
-            FfiConverterTypeMeasureRtaAveraging.allocationSize(value.`averaging`) +
-            FfiConverterULong.allocationSize(value.`frames`) +
-            FfiConverterULong.allocationSize(value.`nonfiniteSamples`) +
-            FfiConverterBoolean.allocationSize(value.`held`) +
-            FfiConverterBoolean.allocationSize(value.`spl`)
-    )
-
-    override fun write(value: MeasureRtaPassiveState, buf: ByteBuffer) {
-            FfiConverterBoolean.write(value.`active`, buf)
-            FfiConverterUInt.write(value.`captureRateHz`, buf)
-            FfiConverterUByte.write(value.`bandsPerOctave`, buf)
-            FfiConverterTypeMeasureRtaAveraging.write(value.`averaging`, buf)
-            FfiConverterULong.write(value.`frames`, buf)
-            FfiConverterULong.write(value.`nonfiniteSamples`, buf)
-            FfiConverterBoolean.write(value.`held`, buf)
-            FfiConverterBoolean.write(value.`spl`, buf)
-    }
-}
-
-
-
-/**
  * What to measure and how (`measure_preflight`, `measure_start`). Every
  * number 0 (or absent) is the plan's default.
  */
@@ -41070,8 +40664,7 @@ data class MeasureTuneVerify (
      */
     var `timingReliable`: kotlin.Boolean, 
     /**
-     * Every summed run, verified sum and verified output within 1.5 dB RMS
-     * of the prediction.
+     * Every summed run and verified sum within 1.5 dB RMS of the prediction.
      */
     var `passed`: kotlin.Boolean, 
     /**
@@ -46061,6 +45654,49 @@ public object FfiConverterTypeFillBand: FfiConverterRustBuffer<FillBand> {
 
 
 /**
+ * Which protocol generation a firmware speaks (PLAN-PG section 1.1).
+ */
+
+enum class FirmwareGeneration {
+    
+    /**
+     * Not known.
+     */
+    UNKNOWN,
+    /**
+     * 1.1.6 and older: page 0 only.
+     */
+    LEGACY,
+    /**
+     * 1.1.7 and later: paged.
+     */
+    PAGED;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFirmwareGeneration: FfiConverterRustBuffer<FirmwareGeneration> {
+    override fun read(buf: ByteBuffer) = try {
+        FirmwareGeneration.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FirmwareGeneration) = 4UL
+
+    override fun write(value: FirmwareGeneration, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Where a [`FirmwareGuardBoard`]'s voltage came from.
  */
 
@@ -46206,6 +45842,94 @@ public object FfiConverterTypeFirmwareGuardReason: FfiConverterRustBuffer<Firmwa
     override fun allocationSize(value: FirmwareGuardReason) = 4UL
 
     override fun write(value: FirmwareGuardReason, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Where a firmware comes from (PLAN-PG section 1.8): upstream Weeb Labs, or
+ * this fork's `bofr-main` (extensions, alink, the 1.20 V core setting, our
+ * preset directory).
+ */
+
+enum class FirmwareLineage {
+    
+    /**
+     * Not known: every doubt resolves to "asks".
+     */
+    UNKNOWN,
+    /**
+     * Weeb Labs' firmware (stock).
+     */
+    UPSTREAM,
+    /**
+     * This fork's `bofr-main`.
+     */
+    BOFR;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFirmwareLineage: FfiConverterRustBuffer<FirmwareLineage> {
+    override fun read(buf: ByteBuffer) = try {
+        FirmwareLineage.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FirmwareLineage) = 4UL
+
+    override fun write(value: FirmwareLineage, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Which rule beyond the voltage rule decided an update verdict.
+ */
+
+enum class FirmwareUpdateRule {
+    
+    /**
+     * None: the voltage rule's verdict stands.
+     */
+    NONE,
+    /**
+     * The board has no BOOTSEL: refused, whatever is typed.
+     */
+    NO_BOOTSEL,
+    /**
+     * Our firmware would give way to an image that may be upstream's.
+     */
+    LINEAGE_LOSS;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFirmwareUpdateRule: FfiConverterRustBuffer<FirmwareUpdateRule> {
+    override fun read(buf: ByteBuffer) = try {
+        FirmwareUpdateRule.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FirmwareUpdateRule) = 4UL
+
+    override fun write(value: FirmwareUpdateRule, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
@@ -51054,34 +50778,6 @@ public object FfiConverterSequenceTypeLinkTxtEntry: FfiConverterRustBuffer<List<
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeMeasureDocCurve: FfiConverterRustBuffer<List<MeasureDocCurve>> {
-    override fun read(buf: ByteBuffer): List<MeasureDocCurve> {
-        val len = buf.getInt()
-        return List<MeasureDocCurve>(len) {
-            FfiConverterTypeMeasureDocCurve.read(buf)
-        }
-    }
-
-    override fun allocationSize(value: List<MeasureDocCurve>): ULong {
-        val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeMeasureDocCurve.allocationSize(it) }.sum()
-        return sizeForLength + sizeForItems
-    }
-
-    override fun write(value: List<MeasureDocCurve>, buf: ByteBuffer) {
-        buf.putInt(value.size)
-        value.iterator().forEach {
-            FfiConverterTypeMeasureDocCurve.write(it, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
 public object FfiConverterSequenceTypeMeasureDocInfo: FfiConverterRustBuffer<List<MeasureDocInfo>> {
     override fun read(buf: ByteBuffer): List<MeasureDocInfo> {
         val len = buf.getInt()
@@ -52622,6 +52318,23 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     
 
         /**
+         * The update check (PLAN-PG section 1.8): [`firmware_guard_check`]'s voltage
+         * rule on the target's record, plus: no image for a board without BOOTSEL,
+         * whatever is typed; the typed confirmation when firmware that may be ours
+         * would give way to an image that may be upstream's (a lineage that could
+         * not be read on an open board counts as ours); the generation change, with
+         * what works afterwards. Pure apart from parsing the image; never panics.
+         */ fun `firmwareUpdateCheck`(`image`: kotlin.ByteArray, `target`: FirmwareTarget, `typedConfirmation`: kotlin.String): FirmwareUpdateVerdict {
+            return FfiConverterTypeFirmwareUpdateVerdict.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_firmware_update_check(
+        FfiConverterByteArray.lower(`image`),FfiConverterTypeFirmwareTarget.lower(`target`),FfiConverterString.lower(`typedConfirmation`),_status)
+}
+    )
+    }
+    
+
+        /**
          * What to tell the user about `alarm`: its row `alarm.<code>`, with
          * `{time}` the client's own rendering of [`HubAlarm::raised_at`] (`time`;
          * "" leaves the hub's ISO time) and `{reason}` the reset's cause in words.
@@ -52853,28 +52566,6 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_ws_url(
         FfiConverterString.lower(`host`),FfiConverterUShort.lower(`port`),FfiConverterString.lower(`path`),_status)
-}
-    )
-    }
-    
-
-        /**
-         * A measurement document's curves for a graph: each output's response
-         * smoothed by `options.smoothing` (1/N octave, 0 none) and, with
-         * `options.target`, the target (the placement's default, or
-         * `options.target_document`) levelled to it as the live view levels it. On
-         * the standard grid (1/96 octave), with the trusted mask and the spread
-         * carried through. No device, no files.
-         *
-         * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
-         * measurement document, a smoothing past 1/48 octave, or a target document
-         * that does not read.
-         */
-    @Throws(DspiException::class) fun `measureDocCurves`(`text`: kotlin.String, `options`: MeasureDocCurvesOptions): MeasureDocCurves {
-            return FfiConverterTypeMeasureDocCurves.lift(
-    uniffiRustCallWithError(DspiException) { _status ->
-    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_measure_doc_curves(
-        FfiConverterString.lower(`text`),FfiConverterTypeMeasureDocCurvesOptions.lower(`options`),_status)
 }
     )
     }

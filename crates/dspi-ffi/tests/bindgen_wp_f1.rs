@@ -75,11 +75,9 @@ const NOT_EXPORTED: &[&str] = &[
     // the bindings have `device_protocol`.
     "connection_protocol_generation",
     "connection_paged_discovery",
-    // -- review PG-C -- (WP PGFWUP) Rust-only until the update check is exported
-    // (PLAN-PG, the PG-D carry-over PGFWX): the hub rollout's, and
-    // `device_protocol` carries the board to the bindings.
+    // -- review PG-C -- (WP PGFWUP) Rust-only: `device_protocol` carries the
+    // board to the bindings. -- WP PGFWX -- `firmware_target` is exported now.
     "board",
-    "firmware_target",
 ];
 
 /// `crates/dspi-core/src/link.rs`, exported by WP C15.

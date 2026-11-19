@@ -269,6 +269,7 @@ impl DspiCore {
             inner.cs = crate::cs::CsState::default();
             let worker = rta::take_worker(&mut inner);
             inner.confirm.connected(conn.generation); // -- WP P1BFIX -- F5
+            inner.flash_target = None; // -- WP PGFLASH -- another device's story
             (inner.conn.replace(conn), worker)
         };
         drop(self.set_meter_path(None)); // -- WP LK2 --

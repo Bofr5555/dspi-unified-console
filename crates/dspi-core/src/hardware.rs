@@ -304,6 +304,14 @@ impl DspiCore {
             {
                 refused = Some(e);
             }
+            // -- WP PGFLASH -- the target the write gate judges by, read by
+            // this core before the board leaves (unless already read on this
+            // connection): a client that skipped the update check is judged
+            // by its rules all the same
+            if current && refused.is_none() && guard.flash_target.is_none() {
+                let target = crate::firmware_guard::target_of(&mut guard);
+                guard.flash_target = Some(target);
+            }
             if current && refused.is_none() {
                 // -- WP P0W -- before the request: the device leaves with it
                 journal(&mut guard, "dev.bootloader", &[], Value::Trigger);
@@ -1173,6 +1181,11 @@ impl DspiCore {
     /// confirms success: open it again and check the new version with
     /// [`DspiCore::firmware_version_matches`]; a timeout there is the
     /// failure.
+    ///
+    /// WP PGFLASH: unless [`DspiCore::firmware_target`] already read the
+    /// board on this connection, the board is read as an update target here
+    /// (a few more control transfers) and kept for `flash_confirmed`'s write
+    /// gate.
     ///
     /// The device lock is taken first and held across the restart (WP CG24),
     /// so no other DSPi Link session writes to a device about to vanish; the
@@ -2077,6 +2090,10 @@ mod tests_wp_c6 {
                 "lock Installing firmware".into(),
                 // -- WP PGFWUP -- the board read first (PLAN-PG section 1.9)
                 format!("in {:02X} 0", op::REQ_GET_PLATFORM),
+                // -- WP PGFLASH -- the update target, for the write gate
+                format!("in {:02X} 0", op::REQ_GET_PLATFORM),
+                format!("in {:02X} 0", op::REQ_EXTENSION),
+                format!("in {:02X} 2", op::REQ_EXTENSION),
                 format!("in {:02X} 0", op::REQ_ENTER_BOOTLOADER)
             ]
         );
@@ -2112,6 +2129,10 @@ mod tests_wp_c6 {
                 "lock Installing firmware".into(),
                 // -- WP PGFWUP -- the board read first (PLAN-PG section 1.9)
                 format!("in {:02X} 0", op::REQ_GET_PLATFORM),
+                // -- WP PGFLASH -- the update target, for the write gate
+                format!("in {:02X} 0", op::REQ_GET_PLATFORM),
+                format!("in {:02X} 0", op::REQ_EXTENSION),
+                format!("in {:02X} 2", op::REQ_EXTENSION),
                 format!("in {:02X} 0", op::REQ_ENTER_BOOTLOADER)
             ]
         );

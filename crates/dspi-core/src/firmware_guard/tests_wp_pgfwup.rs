@@ -25,7 +25,7 @@ use crate::{FirmwareGeneration, FirmwareLineage};
 const XIP: u32 = 0x1000_0000;
 
 /// An RP2350 DSPi image of `version`, stamped `stamp` mV (`None`: unstamped).
-fn image(version: &str, stamp: Option<&str>) -> Vec<u8> {
+pub(super) fn image(version: &str, stamp: Option<&str>) -> Vec<u8> {
     let mut entries: Vec<(u16, u32, String)> = vec![
         (BI_TAG_RP, BI_ID_PROGRAM_NAME, "DSPi".into()),
         (BI_TAG_RP, 0x11A9_BC3A, version.into()),
@@ -81,7 +81,7 @@ fn target(mv: u16, lineage: FirmwareLineage, generation: FirmwareGeneration) -> 
             required_mv: mv,
             source: FirmwareGuardBoardSource::ExtCoreVreg,
         },
-        board: Some(Board::Pico),
+        board_id: Some(Board::Pico.id()),
         lineage,
         generation,
     }
@@ -112,7 +112,7 @@ fn wp_pgfwup_the_target_is_read_on_every_generation() {
         }
         let core = core_on(dev);
         let t = core.firmware_target();
-        assert_eq!(t.board, Some(Board::Pico), "{g:?}");
+        assert_eq!(t.board(), Some(Board::Pico), "{g:?}");
         assert!(t.has_bootsel(), "{g:?}");
         let lineage = if g.has_extensions() {
             FirmwareLineage::Bofr
@@ -144,12 +144,12 @@ fn wp_pgfwup_the_zero_is_a_target_without_bootsel() {
     let remote = dev.remote();
     let core = core_on(dev);
     let t = core.firmware_target();
-    assert_eq!(t.board, Some(Board::PiZero2W));
+    assert_eq!(t.board(), Some(Board::PiZero2W));
     assert!(!t.has_bootsel());
     assert_eq!(remote.violations(), 0);
     // No device: nothing known, nothing offered.
     let t = DspiCore::new().firmware_target();
-    assert_eq!(t.board, None);
+    assert_eq!(t.board(), None);
     assert_eq!(t.voltage.source, FirmwareGuardBoardSource::NoDevice);
     assert!(!t.has_bootsel());
 }
@@ -160,17 +160,17 @@ fn wp_pgfwup_the_zero_is_a_target_without_bootsel() {
 fn wp_pgfwup_a_board_without_bootsel_is_offered_no_image() {
     let img = image("1.1.6-3-gabc", Some("1200"));
     let zero = FirmwareTarget {
-        board: Some(Board::PiZero2W),
+        board_id: Some(Board::PiZero2W.id()),
         ..bofr(1200)
     };
     for t in [
         zero.clone(),
         FirmwareTarget {
-            board: Some(Board::Unknown(7)),
+            board_id: Some(Board::Unknown(7).id()),
             ..bofr(1150)
         },
         FirmwareTarget {
-            board: None,
+            board_id: None,
             ..bofr(1150)
         },
         FirmwareTarget::default(),
@@ -249,10 +249,12 @@ fn wp_pgfwup_bofr_to_upstream_asks_the_typed_confirmation() {
             FirmwareLineage::Bofr
         )
     );
-    // An unknown lineage on the board is the voltage rule's to judge.
+    // -- WP PGFWX -- (review PG-C finding 8) an unknown lineage on an open
+    // board may be ours: it asks (was: the voltage rule's to judge).
     let unknown_board = target(1150, FirmwareLineage::Unknown, FirmwareGeneration::Unknown);
     let v = firmware_update_check(image("1.1.6", None), &unknown_board, "");
-    assert_eq!(v.rule, FirmwareUpdateRule::None);
+    assert_eq!(v.rule, FirmwareUpdateRule::LineageLoss);
+    assert_eq!(v.verdict.confirmation_phrase, LINEAGE_PHRASE);
     // A file that is not firmware stays refused.
     let v = firmware_update_check(vec![0; 64], &bofr(1150), LINEAGE_PHRASE);
     assert_eq!(v.verdict.decision, FirmwareGuardDecision::Refused);

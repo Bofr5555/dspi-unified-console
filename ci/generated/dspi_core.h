@@ -6006,6 +6006,13 @@ uint32_t dspi_core_vreg_manual_set_confirmed(struct FfiCore *core,
  * retired `dspi_flash_to_drive` and `dspi_flash_to_drive_guarded`, WP P1TZF
  * the unguarded `dspi_flash_to_drive_confirmed`. A board in BOOTSEL: pass
  * `board_required_mv` 0 (unknown) and the phrase the guard's verdict asks for.
+ * -- WP PGFLASH -- When this `core` read the board itself
+ * (`dspi_firmware_target`, or its bootloader entry), the gate is
+ * `dspi_firmware_update_check`'s rules on that target, whatever target JSON
+ * the caller checked with: no BOOTSEL is `firmware_guard`, and an image that
+ * may be upstream's on this fork's firmware needs the lineage phrase in
+ * `typed`. A `board_required_mv` that is not the core's own reading makes the
+ * voltage unknown. With no target read by this core, the voltage rule alone.
  */
 uint32_t dspi_flash_confirmed(struct FfiCore *core,
                               const uint8_t *image,
@@ -7470,66 +7477,31 @@ uint32_t dspi_raw_set_id(struct FfiCore *core,
                          uint32_t len);
 
 /**
- * Start the passive RTA of `setup_json`: the state, or a failure
- * (`invalid`).
+ * The open board as an update target, in JSON: `{ok, voltage: {requiredMv,
+ * source}, boardId (null: not read), lineage ("unknown", "upstream" or
+ * "bofr"), generation ("unknown", "legacy" or "paged")}`. Never a failure
+ * for the device: what cannot be read is unknown, and an unknown board is
+ * offered no image. Blocks for up to five control transfers: call it off
+ * the UI thread. Returns the bytes needed including the NUL.
  */
-uint32_t dspi_measure_rta_passive_start(struct FfiCore *core,
-                                        const char *setup_json,
-                                        char *buf,
-                                        uint32_t len);
+uint32_t dspi_firmware_target(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Push `count` mono samples (full scale ±1) at `rate_hz` into the passive
- * RTA; `samples` points at `count` floats (null with `count` 0). The state,
- * or a failure (`invalid` for another rate than the started one, a block
- * over 1 Mi samples, a null or misaligned pointer with a count).
+ * The update check on `image_len` bytes of `image` for `target` (the JSON
+ * `dspi_firmware_target` gave; null: nothing known, so no image), with what
+ * the user `typed` (null: nothing), in JSON: `{ok, verdict: {allowed,
+ * decision, reason, message, confirmationPhrase, imageMv, requiredMv}, rule
+ * ("none", "noBootsel" or "lineageLoss"), imageLineage, imageGeneration,
+ * generationChange ("" when none)}`. Flash only when `verdict.allowed`. A
+ * target that is not that JSON is `invalid`. Pure apart from parsing the
+ * image.
  */
-uint32_t dspi_measure_rta_passive_push(struct FfiCore *core,
-                                       const float *samples,
-                                       uint32_t count,
-                                       uint32_t rate_hz,
-                                       char *buf,
-                                       uint32_t len);
-
-/**
- * The passive RTA's frame, without I/O.
- */
-uint32_t dspi_measure_rta_passive_frame(struct FfiCore *core, char *buf, uint32_t len);
-
-/**
- * The passive RTA's state, without I/O.
- */
-uint32_t dspi_measure_rta_passive_state(struct FfiCore *core, char *buf, uint32_t len);
-
-/**
- * Hold (`on` nonzero) the spectrum for comparison, or drop the held copy:
- * the state, or a failure (`invalid`).
- */
-uint32_t dspi_measure_rta_passive_hold(struct FfiCore *core, uint8_t on, char *buf, uint32_t len);
-
-/**
- * The averaging preset (`averaging` a JSON string: `"fast"`, `"slow"`,
- * `"infinite"`): the state, or a failure (`invalid`).
- */
-uint32_t dspi_measure_rta_passive_averaging(struct FfiCore *core,
-                                            const char *averaging,
-                                            char *buf,
-                                            uint32_t len);
-
-/**
- * Stop the passive RTA: the state (never a failure).
- */
-uint32_t dspi_measure_rta_passive_stop(struct FfiCore *core, char *buf, uint32_t len);
-
-/**
- * A measurement document's curves (`options_json` null: none smoothed, no
- * target), or a failure. No handle needed. Returns the bytes needed
- * including the NUL, 0 for a panic.
- */
-uint32_t dspi_measure_doc_curves(const char *doc,
-                                 const char *options_json,
-                                 char *buf,
-                                 uint32_t len);
+uint32_t dspi_firmware_update_check(const uint8_t *image,
+                                    uint32_t image_len,
+                                    const char *target,
+                                    const char *typed,
+                                    char *buf,
+                                    uint32_t len);
 
 /**
  * Start looking for hubs on the local network, replacing any browse running.

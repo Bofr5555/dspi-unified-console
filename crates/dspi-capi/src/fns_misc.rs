@@ -106,6 +106,8 @@ mod measure_tune;
 mod protocol;
 // -- WP P5CURV -- the passive microphone RTA and a measurement document's curves
 mod measure_curv;
+// -- WP PGFWX -- the update target and the update check
+mod firmware_update;
 
 // ── Replies ──────────────────────────────────────────────────────────
 

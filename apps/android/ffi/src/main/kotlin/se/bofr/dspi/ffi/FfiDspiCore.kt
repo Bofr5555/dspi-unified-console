@@ -275,6 +275,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun firmwareGuardBoard(): FirmwareGuardBoard = core.firmwareGuardBoard().toDomain()
 
+    override fun firmwareTarget(): FirmwareTarget = core.firmwareTarget().toDomain()
+
     override fun applyGuardedImport(text: String, options: Long, eqChannels: Long, timeoutS: Long): GuardedApply = call { core.applyGuardedImport(text, options.toUInt(), eqChannels.toUInt(), timeoutS.toUInt()).toDomain() }
 
     override fun applyGuardedSnapshot(id: String, timeoutS: Long): GuardedApply = call { core.applyGuardedSnapshot(id, timeoutS.toUInt()).toDomain() }
@@ -1046,6 +1048,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun firmwareGuardBoardInBootloader(): FirmwareGuardBoard = se.bofr.dspi.ffi.uniffi.firmwareGuardBoardInBootloader().toDomain()
 
     override fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict = se.bofr.dspi.ffi.uniffi.firmwareGuardCheck(ByteArray(image.size) { image[it].toByte() }, board.toFfi(), typedConfirmation).toDomain()
+
+    override fun firmwareUpdateCheck(image: List<Int>, target: FirmwareTarget, typedConfirmation: String): FirmwareUpdateVerdict = se.bofr.dspi.ffi.uniffi.firmwareUpdateCheck(ByteArray(image.size) { image[it].toByte() }, target.toFfi(), typedConfirmation).toDomain()
 
     override fun verifyBundled(image: List<Int>, name: String): BundledFirmware = se.bofr.dspi.ffi.uniffi.verifyBundled(ByteArray(image.size) { image[it].toByte() }, name).toDomain()
 
@@ -3654,6 +3658,40 @@ internal fun FirmwareGuardVerdict.toFfi() =
         confirmationPhrase = confirmationPhrase,
         imageMv = imageMv.toUShort(),
         requiredMv = requiredMv.toUShort(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.FirmwareTarget.toDomain() =
+    FirmwareTarget(
+        voltage = voltage.toDomain(),
+        boardId = boardId?.let { it.toInt() },
+        lineage = lineage.toDomain(),
+        generation = generation.toDomain(),
+    )
+
+internal fun FirmwareTarget.toFfi() =
+    se.bofr.dspi.ffi.uniffi.FirmwareTarget(
+        voltage = voltage.toFfi(),
+        boardId = boardId?.let { it.toUByte() },
+        lineage = lineage.toFfi(),
+        generation = generation.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.FirmwareUpdateVerdict.toDomain() =
+    FirmwareUpdateVerdict(
+        verdict = verdict.toDomain(),
+        rule = rule.toDomain(),
+        imageLineage = imageLineage.toDomain(),
+        imageGeneration = imageGeneration.toDomain(),
+        generationChange = generationChange,
+    )
+
+internal fun FirmwareUpdateVerdict.toFfi() =
+    se.bofr.dspi.ffi.uniffi.FirmwareUpdateVerdict(
+        verdict = verdict.toFfi(),
+        rule = rule.toFfi(),
+        imageLineage = imageLineage.toFfi(),
+        imageGeneration = imageGeneration.toFfi(),
+        generationChange = generationChange,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.GuardedApply.toDomain() =
@@ -6542,6 +6580,20 @@ internal fun FirmwareGuardReason.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareGuardR
         FirmwareGuardReason.OVERVOLT -> se.bofr.dspi.ffi.uniffi.FirmwareGuardReason.OVERVOLT
     }
 
+internal fun se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.toDomain(): FirmwareUpdateRule =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.NONE -> FirmwareUpdateRule.NONE
+        se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.NO_BOOTSEL -> FirmwareUpdateRule.NO_BOOTSEL
+        se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.LINEAGE_LOSS -> FirmwareUpdateRule.LINEAGE_LOSS
+    }
+
+internal fun FirmwareUpdateRule.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule =
+    when (this) {
+        FirmwareUpdateRule.NONE -> se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.NONE
+        FirmwareUpdateRule.NO_BOOTSEL -> se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.NO_BOOTSEL
+        FirmwareUpdateRule.LINEAGE_LOSS -> se.bofr.dspi.ffi.uniffi.FirmwareUpdateRule.LINEAGE_LOSS
+    }
+
 internal fun se.bofr.dspi.ffi.uniffi.BundledFirmware.toDomain(): BundledFirmware =
     when (this) {
         se.bofr.dspi.ffi.uniffi.BundledFirmware.VERIFIED -> BundledFirmware.VERIFIED
@@ -6554,6 +6606,34 @@ internal fun BundledFirmware.toFfi(): se.bofr.dspi.ffi.uniffi.BundledFirmware =
         BundledFirmware.VERIFIED -> se.bofr.dspi.ffi.uniffi.BundledFirmware.VERIFIED
         BundledFirmware.NOT_BUNDLED -> se.bofr.dspi.ffi.uniffi.BundledFirmware.NOT_BUNDLED
         BundledFirmware.MISMATCH -> se.bofr.dspi.ffi.uniffi.BundledFirmware.MISMATCH
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.FirmwareLineage.toDomain(): FirmwareLineage =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.FirmwareLineage.UNKNOWN -> FirmwareLineage.UNKNOWN
+        se.bofr.dspi.ffi.uniffi.FirmwareLineage.UPSTREAM -> FirmwareLineage.UPSTREAM
+        se.bofr.dspi.ffi.uniffi.FirmwareLineage.BOFR -> FirmwareLineage.BOFR
+    }
+
+internal fun FirmwareLineage.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareLineage =
+    when (this) {
+        FirmwareLineage.UNKNOWN -> se.bofr.dspi.ffi.uniffi.FirmwareLineage.UNKNOWN
+        FirmwareLineage.UPSTREAM -> se.bofr.dspi.ffi.uniffi.FirmwareLineage.UPSTREAM
+        FirmwareLineage.BOFR -> se.bofr.dspi.ffi.uniffi.FirmwareLineage.BOFR
+    }
+
+internal fun se.bofr.dspi.ffi.uniffi.FirmwareGeneration.toDomain(): FirmwareGeneration =
+    when (this) {
+        se.bofr.dspi.ffi.uniffi.FirmwareGeneration.UNKNOWN -> FirmwareGeneration.UNKNOWN
+        se.bofr.dspi.ffi.uniffi.FirmwareGeneration.LEGACY -> FirmwareGeneration.LEGACY
+        se.bofr.dspi.ffi.uniffi.FirmwareGeneration.PAGED -> FirmwareGeneration.PAGED
+    }
+
+internal fun FirmwareGeneration.toFfi(): se.bofr.dspi.ffi.uniffi.FirmwareGeneration =
+    when (this) {
+        FirmwareGeneration.UNKNOWN -> se.bofr.dspi.ffi.uniffi.FirmwareGeneration.UNKNOWN
+        FirmwareGeneration.LEGACY -> se.bofr.dspi.ffi.uniffi.FirmwareGeneration.LEGACY
+        FirmwareGeneration.PAGED -> se.bofr.dspi.ffi.uniffi.FirmwareGeneration.PAGED
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.GuardPhase.toDomain(): GuardPhase =

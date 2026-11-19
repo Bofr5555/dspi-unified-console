@@ -1238,7 +1238,9 @@ interface DspiCoreApi : AutoCloseable {
 
     /**
      * Write `image` to the bootloader drive behind the firmware guard
-     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`;
+     * WP PGFLASH: [`crate::firmware_update_check`]'s rules on the target this
+     * core read itself, see below),
      * with a confirmation token ([`crate::confirm`],
      * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
      * does the writing. Mint the token once the bootloader drive is there
@@ -1260,8 +1262,20 @@ interface DspiCoreApi : AutoCloseable {
      * by waiting for the DSPi to re-enumerate and report the image's version
      * (`Uf2Info::firmware_version`); a timeout there is the failure.
      *
+     * WP PGFLASH, the write gate: when this core read the board as an
+     * update target ([`DspiCore::firmware_target`], or on its own in
+     * [`DspiCore::enter_bootloader_confirmed`]), the gate is the update check
+     * on that target, never on one a caller passes: a board without BOOTSEL
+     * is refused, and an image that may be upstream's on our firmware needs
+     * `LINEAGE_PHRASE` (or the voltage phrase, when the voltage rule asks).
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown. With no target read (the board was in BOOTSEL
+     * before this core saw it) the voltage rule alone decides. The target is
+     * forgotten after a write and when another device is opened.
+     *
      * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
-     * message when the image needs confirmation; then the write's.
+     * message when the image needs confirmation or the board has no BOOTSEL;
+     * then the write's.
      */
     @Throws(DspiException::class)
     fun flashConfirmed(image: List<Int>, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?)
@@ -1275,6 +1289,17 @@ interface DspiCoreApi : AutoCloseable {
      * control transfers.
      */
     fun firmwareGuardBoard(): FirmwareGuardBoard
+
+    /**
+     * The open board as an update target, read now: the voltage record, the
+     * board (8 platform bytes and the descriptor), its lineage and the live
+     * connection's generation. Never fails: what cannot be read is unknown,
+     * and an unknown board is offered no image. Call before the bootloader
+     * entry, off the UI thread (up to five control transfers), and keep it
+     * for [`firmware_update_check`]. `EXT_LIST` is read once, for the
+     * lineage and the voltage record alike.
+     */
+    fun firmwareTarget(): FirmwareTarget
 
     /**
      * Import `text` (a `.dspipreset` document) with a way back: capture a
@@ -1790,6 +1815,11 @@ interface DspiCoreApi : AutoCloseable {
      * confirms success: open it again and check the new version with
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
      * failure.
+     *
+     * WP PGFLASH: unless [`DspiCore::firmware_target`] already read the
+     * board on this connection, the board is read as an update target here
+     * (a few more control transfers) and kept for `flash_confirmed`'s write
+     * gate.
      *
      * The device lock is taken first and held across the restart (WP CG24),
      * so no other DSPi Link session writes to a device about to vanish; the
@@ -4608,7 +4638,9 @@ interface DspiCoreApi : AutoCloseable {
      * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
      * before the board entered BOOTSEL; the guard must say clear for it with
      * nothing typed, so an image that would ask a person anything is
-     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * refused. WP PGFLASH: on a core that read the board as an update target
+     * itself, the update check's rules on that target decide instead (module
+     * docs). Takes a [`ConfirmOp::FirmwareFlash`] token as
      * [`DspiCore::flash_confirmed`] does (mint it once the board is in
      * BOOTSEL; it works with no device open), and the installer lock holds.
      * Blocks for up to 60 s.
@@ -5829,6 +5861,18 @@ interface DspiCoreApi : AutoCloseable {
      * Stateless (a free function in dspi-core); needs no device.
      */
     fun firmwareGuardCheck(image: List<Int>, board: FirmwareGuardBoard, typedConfirmation: String): FirmwareGuardVerdict
+
+    /**
+     * The update check (PLAN-PG section 1.8): [`firmware_guard_check`]'s voltage
+     * rule on the target's record, plus: no image for a board without BOOTSEL,
+     * whatever is typed; the typed confirmation when firmware that may be ours
+     * would give way to an image that may be upstream's (a lineage that could
+     * not be read on an open board counts as ours); the generation change, with
+     * what works afterwards. Pure apart from parsing the image; never panics.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    fun firmwareUpdateCheck(image: List<Int>, target: FirmwareTarget, typedConfirmation: String): FirmwareUpdateVerdict
 
     /**
      * Whether `image` is the bundled file `name` (a file name; a leading path

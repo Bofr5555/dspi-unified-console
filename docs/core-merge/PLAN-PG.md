@@ -705,6 +705,38 @@ length locally. **Deps:** PG-B2; P5SES and P5LIVE merged (else PGMEAS waits; it 
 - **PGTM:** `PrincipalTransport` and `LocalTransport` say the generation but no `paged_discovery()`: a core on them
   shows a paged device with an empty page list and the ext envelope from the 1.1.6-shaped probe.
 
+**PGFWX: The update check over the bindings.** [DONE] Size 1. Wave PG-D, before the client WPs. **Owns:** the
+bindings of the update check (UniFFI derives and exports in `crates/dspi-core/src/firmware_guard.rs`, new
+`crates/dspi-capi/src/fns_misc/firmware_update.rs`, new `crates/dspi-wasm/src/firmware.rs`), `WriteGuardedCore`,
+`dspi-ffi`'s `NOT_EXPORTED`. **Did:** exported `FirmwareTarget` (a record; its board is now `board_id: Option<u8>`,
+platform byte 7, with `FirmwareTarget::board()` for Rust, so no remote type is needed), `FirmwareUpdateVerdict`,
+`FirmwareUpdateRule`, `FirmwareLineage`, `FirmwareGeneration`, `DspiCore::firmware_target` and
+`firmware_update_check` over UniFFI; `dspi_firmware_target` and `dspi_firmware_update_check` (the target as the JSON
+`dspi_firmware_target` gave; null or missing fields are unknown, so no image) in the C ABI; `firmwareTarget` and
+`firmwareUpdateCheck {image, target, typed}` in wasm. Both classified as reads (`PASS_THROUGH`). The Android contract
+generator types a record taken by reference (`&FirmwareTarget`) as the record. Review PG-C finding 8:
+`firmware_target` reads `EXT_LIST` once for the lineage and the voltage record, and `FirmwareTarget::may_be_ours`
+treats a lineage that could not be read on an open board (not BOOTSEL, not "no device") as ours, so the typed
+confirmation is asked. **Not done (by scope):** no client's update screen switched (PGQT, PGAND, PGWEB, PGTM,
+PGSWIFT); `dspi_firmware_flash_confirmed` and `flash_confirmed` still gate the drive write on the voltage record
+alone, so a client that switches its screen must flash only on the update check's `allowed`.
+
+**PGFLASH: The core's write gate knows the target.** [DONE] Size 0.5. Wave PG-D, after PGFWX and PGTM (PGFWX's and
+PGTM's follow-up). **Owns:** the write gate in `crates/dspi-core/src/firmware_guard.rs` (`write_gate`,
+`flash_to_drive_gated`), its use in `flash_confirmed` (`firmware.rs`) and `picoboot_flash_confirmed` (`picoboot.rs`,
+`prepare_gated`), the core's kept target (`Inner::flash_target`), the bootloader entry's target read (`hardware.rs`),
+the Terminal's write on the reading core (`apps/terminal/src/flash.rs`), docs of `dspi_flash_confirmed`, the hub's
+`CoreWriter` and the wasm firmware module. **Scope:** the last gate before a write judges by the update check's rules
+(no BOOTSEL refused; the lineage rule and the voltage rule each need their typed phrase) on the target **the core read
+itself** from the device: `firmware_target` keeps what it read, and the bootloader entry reads it when it was not read
+on this connection, so a client that skips the update check, or forges the target JSON over C/wasm, is judged all the
+same. A caller's voltage record only adds doubt (one that is not the core's own makes the voltage unknown). The kept
+target is dropped when another device is opened and after a write. No target read (a board already in BOOTSEL before
+this core saw it, a fresh core such as the hub rollout's `CoreWriter`): the voltage rule alone, as before. API shape
+unchanged (no parameter added); wasm has no write. **Done when:** a forged C/wasm target cannot make a write pass; an
+unstamped image on a G1b board without the phrase is refused at the write gate with the update check skipped; a Zero is
+refused at the write gate; TM3, P3RO and PGFWX tests pass.
+
 **PGMAT: The compat matrix.** [TODO] Size 3. Wave PG-D. **Owns:** new `crates/dspi-core/tests/wp_pgmat_matrix.rs`,
 new `crates/dspi-hub/tests/wp_pgmat_hub.rs`, vendored DSPi-Link fixtures under `tests/fixtures/link/upstream-1.3/`
 (MIT). **Implements:** section 4's matrix, every cell of section 1.11: our core over USB (mock wire), MIDI (pipe fake),
@@ -723,9 +755,17 @@ notice; no paged request in the G1 mock's log. **Deps:** PGCORE.
 **PGQT: Qt.** [TODO] Size 0.75. Wave PG-D. **Owns:** the Qt About/device-info controller and view, the raw dialog.
 **Done when:** `ci/check.sh --step qt`, `--step qt-offscreen` with the fake generations. **Deps:** PGCORE.
 
-**PGTM: Terminal and TUI.** [TODO] Size 0.75. Wave PG-D. **Owns:** `apps/terminal/src/main.rs` (`uconsole info`
+**PGTM: Terminal and TUI.** [DONE] Size 0.75. Wave PG-D. **Owns:** `apps/terminal/src/main.rs` (`uconsole info`
 generation, `uconsole raw --id 0x0550`), the TUI's About screen. **Done when:** scoped `cargo test -p uconsole` and
-`-p dspi-tui` with each fake. **Deps:** PGCORE.
+`-p dspi-tui` with each fake. **Deps:** PGCORE. **Did (WP PGTM):** new `apps/terminal/src/protocol_info.rs`:
+`uconsole info` (rows and `--json` from `device_protocol()`, one call per connection; a paged device with an empty
+page list, as on the hub's `LocalTransport`/`PrincipalTransport`, gets a note saying why), `uconsole raw [out] --id
+<0xPPCC|PAGE.NAME>` through `raw_get_id`/`raw_set_id` with the core's refusals in words (`VC_ERR_*` by name); `raw
+<op>` above 0xFF is refused instead of truncated. Settings > About shows the same rows (`DeviceProtocolView` in
+`dspi-tui`, filled by the Terminal's `connected_on`). `uconsole flash` judges with `firmware_target` +
+`firmware_update_check`, flashes only on `verdict.allowed`, asks `LINEAGE_PHRASE` on the terminal without
+`--accept-core-voltage-risk` (never typed for the person), says the generation change, and offers no image (nor a
+bootloader reboot) to a board without BOOTSEL.
 
 **PGAND: Android.** [TODO] Size 0.5. Wave PG-D. **Owns:** the device-info row in the Android settings feature,
 `WriteGuardedCore` entries (if not done by PGCORE's contract step). **Done when:** the module's unit tests through the
