@@ -432,7 +432,7 @@ export type CoreEvent =
   | { event: "hubServer"; events: HubServerEventRecord[] };
 
 /** Every call a core Worker answers. `params` and the result per method. */
-export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */, ClipboardMethods /* -- WP WBCLIP -- */, MeasureMethods /* -- WP P5WMS -- */ {
+export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkMethods, DocumentMethods, InstallerMethods, HubAdminMethods /* -- WP HUBADMIN -- */, ToolsMethods /* -- WP WB6J -- */, FilesMethods /* -- WP WB6K -- */, SurfaceMethods /* -- WP WB6L -- */, SettingsMethods /* -- WP WB6I -- */, HubSettingsMethods /* -- WP P2WB2 -- */, HubServerMethods /* -- WP P2WB1 -- */, ClipboardMethods /* -- WP WBCLIP -- */, MeasureMethods /* -- WP P5WMS -- */, DeviceProtocolMethods /* -- WP PGWEB -- */ {
   open: { params: DeviceTarget; result: DeviceSnapshot };
   state: { params: undefined; result: DeviceSnapshot };
   /**
@@ -1834,4 +1834,69 @@ export interface ClipboardMethods {
    * `read_only`, `installer_lock`, `limit_exceeded`, ...) writes nothing.
    */
   pasteChannel: { params: { clip: ChannelClip | string; ch: number; mirror?: number }; result: null };
+}
+
+// -- WP PGWEB -- the protocol generation, raw requests by id, the update check
+// (crates/dspi-wasm/src/protocol.rs, PGCORE; crates/dspi-wasm/src/firmware.rs, PGFWX)
+/** One page of a paged device (`SYS.PAGE_LIST`). */
+export interface DevicePageRecord {
+  page: number;
+  revision: number;
+}
+
+/** The open connection's protocol (`deviceProtocol`): read once per connection. */
+export interface DeviceProtocolRecord {
+  generation: "unknown" | "legacy" | "paged";
+  /** 0 and 0 on a legacy device. */
+  protocolMajor: number;
+  protocolMinor: number;
+  /** Ascending; empty on a legacy device. */
+  pages: DevicePageRecord[];
+  extEnvelope: "noChannel" | "legacy" | "tunnel";
+  /** 0 a Pico, 1 the DSPi-Zero, others unknown boards. */
+  boardId: number;
+  /** "DSPi", "DSPi Zero" or "Unknown board". */
+  boardName: string;
+  /** A DSPi, or the alink sender (device info, the audio link and the update only). */
+  deviceKind: "dsp" | "alinkSender";
+}
+
+/** The board as an update target (`firmwareTarget`); handed back unchanged to `firmwareUpdateCheck`. */
+export interface FirmwareTargetRecord {
+  voltage: { requiredMv: number; source: string } & Record<string, unknown>;
+  /** null: not read. */
+  boardId: number | null;
+  lineage: "unknown" | "upstream" | "bofr";
+  generation: "unknown" | "legacy" | "paged";
+}
+
+/** `firmwareUpdateCheck`'s answer: flash only when `verdict.allowed`. */
+export interface FirmwareUpdateVerdictRecord {
+  verdict: {
+    allowed: boolean;
+    decision: "refused" | "needsConfirmation" | "confirmed" | "clear";
+    reason: string;
+    message: string;
+    confirmationPhrase: string;
+    imageMv: number;
+    requiredMv: number;
+  };
+  rule: "none" | "noBootsel" | "lineageLoss";
+  imageLineage: "unknown" | "upstream" | "bofr";
+  imageGeneration: "unknown" | "legacy" | "paged";
+  /** "" when none. */
+  generationChange: string;
+}
+
+export interface DeviceProtocolMethods {
+  /** One platform read; `not_open` with nothing open. */
+  deviceProtocol: { params: undefined; result: DeviceProtocolRecord };
+  /** A paged GET of `id` (`page << 8 | command`); `unsupported` on a 1.1.6-generation device, nothing sent. */
+  rawGetId: { params: { id: number; value?: number; len: number }; result: { data: number[] } };
+  /** A paged SET; `invalid` with nothing sent for what the core gates, `refused` for the firmware's refusal. */
+  rawSetId: { params: { id: number; value?: number; data?: number[] }; result: Record<string, never> };
+  /** Never a failure for the device: what cannot be read is unknown. */
+  firmwareTarget: { params: undefined; result: FirmwareTargetRecord };
+  /** Needs no device; the web has no firmware write, so this only ever judges. */
+  firmwareUpdateCheck: { params: { image: number[]; target: FirmwareTargetRecord; typed?: string }; result: FirmwareUpdateVerdictRecord };
 }

@@ -774,10 +774,23 @@ connects the sender as `DeviceKind::AlinkSender`: device info, extension channel
 `Unsupported`) and F2 (nothing but `REQ_GET_PLATFORM` on the legacy route until it answered), and changed section
 1.11's wording for F3 ("full + ext (admin)"). The table of the merged batch: `work/review-pgd1/matrix.md`.
 
-**PGWEB: Web.** [TODO] Size 1. Wave PG-D. **Owns:** the device-info and raw screens in `apps/web/src/screens/`
+**PGWEB: Web.** [DONE] Size 1. Wave PG-D. **Owns:** the device-info and raw screens in `apps/web/src/screens/`
 (generation row, raw by id on paged devices), Playwright e2e with the WebUSB mock answering the probe as each
 generation. **Done when:** `ci/check.sh --step web` (Chromium and Firefox, 375 px) shows each generation and each
-notice; no paged request in the G1 mock's log. **Deps:** PGCORE.
+notice; no paged request in the G1 mock's log. **Deps:** PGCORE. **Did (WP PGWEB):** a Device screen
+(`apps/web/src/screens/device/`, every mode, before Settings): board, kind, generation, protocol version, pages and
+the ext envelope from `deviceProtocol`, read once per connection in `Session.load` (and again after a Link
+reconnect) and kept in the session's state; raw GET/SET by id on paged devices with input that would truncate
+refused before anything is sent and the core's refusals in words (`VC_ERR_*` by name); a firmware update check
+(`firmwareTarget` + `firmwareUpdateCheck`, the target read once and kept; the web writes no firmware) with the
+verdict, the no-BOOTSEL and lineage rules and the generation change; the hub rollout's start dialog judges an image
+uploaded from the page for the session's own DSPi and offers only Cancel on a refusal, and names `excluded`,
+`no_bootsel` and `lineage_loss`; the alink sender gets its own page (device info, audio link, update check) and no
+DSP screen or meters; a refused open shows its notice (`transfer.newer_protocol`, `transfer.unrecognised_device`).
+E2E over the WebUSB mock, whose engine (`dspi_mock_new_as`) is each fake generation and board: G1s, G1b with and
+without PAGEGUARD, G2s, G2b, Zero on 1.1.6 and 1.1.7, the sender, and probe answers for both notices. Not covered:
+the dual-stack sender (FWPG4) on its paged stack opens as a DSP and fails at the bulk read (the core's
+`DeviceKind::AlinkSender` is legacy-only).
 
 **PGQT: Qt.** [TODO] Size 0.75. Wave PG-D. **Owns:** the Qt About/device-info controller and view, the raw dialog.
 **Done when:** `ci/check.sh --step qt`, `--step qt-offscreen` with the fake generations. **Deps:** PGCORE.
