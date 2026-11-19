@@ -210,3 +210,38 @@ fn wp_ausb1_the_demo_unit_opens() {
     core.open_demo().unwrap();
     assert!(!core.usb_direct_supported().unwrap());
 }
+
+// -- WP ATPROTO --
+/// Op 9 is never written in the bus-frame form (review R5): refused before
+/// the wire, while op 10 and op 9 by S pass the core's checks.
+#[test]
+fn wp_atproto_op_9_never_in_the_bus_frame_form() {
+    let (c, _remote) = usb_unit();
+    c.set_alink_usb(2, true, 192).unwrap();
+    std::thread::sleep(dspi_transport::fake::USB_DIRECT_ANCHOR + Duration::from_millis(10));
+    let f = c.fetch_frame_counter_time_base().unwrap();
+    let bus = u64::from((f.bus_frame + 40) % 2048);
+    assert!(matches!(
+        c.apply_at_time_base(TIME_BASE_BUS_FRAME, bus, 9, 0, 0),
+        Err(DspiError::InvalidArgument { .. })
+    ));
+    let not_invalid = |r: Result<()>| !matches!(r, Err(DspiError::InvalidArgument { .. }));
+    assert!(not_invalid(c.apply_at_time_base(
+        TIME_BASE_BUS_FRAME,
+        bus,
+        10,
+        1,
+        0
+    )));
+    assert!(not_invalid(c.apply_at_time_base(
+        TIME_BASE_USB_SAMPLE,
+        f.frame + 48_000,
+        9,
+        0,
+        0
+    )));
+    assert!(matches!(
+        c.apply_at_time_base(TIME_BASE_USB_SAMPLE, f.frame, 11, 0, 0),
+        Err(DspiError::InvalidArgument { .. })
+    ));
+}

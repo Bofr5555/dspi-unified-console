@@ -157,7 +157,11 @@ fn wp_sw1_bad_arguments_send_nothing() {
     assert!(invalid(c.set_alink_phase(2, 128, 0)));
     assert!(invalid(c.set_alink_phase(1, 128, 65)));
     assert!(invalid(c.set_alink_phase(1, 128, i16::MIN)));
-    assert!(invalid(c.apply_at_frame(1, 9, 0, 0)));
+    // -- WP ATPROTO -- ops 9 and 10 are known now (2.8.7.1): 11 is the
+    // first unknown op, and their arguments are judged.
+    assert!(invalid(c.apply_at_frame(1, 11, 0, 0)));
+    assert!(invalid(c.apply_at_frame(1, 9, 1, 0)));
+    assert!(invalid(c.apply_at_frame(1, 10, 2, 0)));
     assert!(invalid(c.apply_at_frame(1, 3, 10, 0)));
     assert!(invalid(c.apply_at_frame(1, 4, 0, 1)));
     assert!(invalid(c.apply_at_frame(1, 1, 1, 0)));

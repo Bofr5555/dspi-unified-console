@@ -458,7 +458,11 @@ impl DspiCore {
         };
         let form_ok = match tb {
             TimeBase::Alink | TimeBase::UsbSample => true,
-            TimeBase::BusFrame => usb::decode_bus_target(frame).is_some(),
+            // -- WP ATPROTO -- op 9 never in the bus-frame form (review R5:
+            // an old bus frame would wrap to 2.048 s later); write it as S.
+            TimeBase::BusFrame => {
+                usb::decode_bus_target(frame).is_some() && req.op != ApplyOp::SiggenStart
+            }
             _ => false,
         };
         if op > ApplyOp::MAX || !req.args_valid() || !form_ok {
