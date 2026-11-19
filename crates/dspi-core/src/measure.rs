@@ -583,6 +583,9 @@ impl Tap {
 
 /// The notification path's hook (`notify.rs`, under `inner`): note what a
 /// running session must judge. `own` is the echo filter's verdict.
+/// WP P5FOLLOW: the notification path calls [`note_notification_echo`];
+/// this is its form without the mirror's verdict, for the tests.
+#[cfg(test)]
 pub(crate) fn note_notification(tap: &mut Tap, note: &Notification, own: bool) {
     note_notification_echo(tap, note, own, false);
 }
