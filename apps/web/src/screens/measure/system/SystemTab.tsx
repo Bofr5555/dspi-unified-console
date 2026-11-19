@@ -407,12 +407,12 @@ function ProposalView(props: { d: SystemDesk; busy: boolean }) {
         </p>
       ) : null}
       {/* -- review AT-D2 -- WP ATGUARD: what the hub does by itself after the apply, before it is pressed */}
-      {p.guardNote && p.offered && admin && (stage === "none" || stage === "reverted" || stage === "kept") ? (
+      {p.guardNote && p.offered && admin && (stage === "none" || stage === "reverted" || stage === "revert_incomplete" || stage === "kept") ? (
         <p class={(p.guardS ?? 0) > 0 ? "muted" : "error"} role="note" aria-label="Guard of the apply">
           {p.guardNote.charAt(0).toUpperCase() + p.guardNote.slice(1)}.
         </p>
       ) : null}
-      {stage === "none" || stage === "reverted" || stage === "kept" ? (
+      {stage === "none" || stage === "reverted" || stage === "revert_incomplete" || stage === "kept" ? (
         <div style={row}>
           {/* -- WP ATDEMO -- the core offers nothing before the summed check passed: the check is
               offered while there are arrivals to write */}
@@ -477,8 +477,14 @@ function ProposalView(props: { d: SystemDesk; busy: boolean }) {
         </div>
       ) : null}
       {/* -- review AT-D2 -- the core's words: the hub's own when its guard ended it (it may not have put everything back) */}
-      {a && (stage === "kept" || stage === "reverted") ? (
-        <p role="status" aria-label="How the apply ended" class={stage === "reverted" && (a.writeFailures.length > 0 || /NOT wholly|but /.test(a.message)) ? "error" : undefined}>
+      {/* -- WP REVERTW -- a revert not fully successful has its own stage: an alert in the notice's words */}
+      {a && (stage === "kept" || stage === "reverted" || stage === "revert_incomplete") ? (
+        <p
+          role={stage === "revert_incomplete" ? "alert" : "status"}
+          aria-label="How the apply ended"
+          data-key={stage === "revert_incomplete" ? a.revertNotice || "revert.unknown" : undefined}
+          class={stage === "revert_incomplete" || (stage === "reverted" && a.writeFailures.length > 0) ? "error" : undefined}
+        >
           {endedWords(a)}
         </p>
       ) : null}

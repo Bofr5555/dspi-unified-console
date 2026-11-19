@@ -29286,6 +29286,13 @@ public struct GuardedApply {
      * What the apply or the revert did not do, and why.
      */
     public var notes: [String]
+    /**
+     * The notice key when the revert was not fully successful
+     * (`revert.incomplete`, `revert.failed`, `revert.not_written`,
+     * `revert.unknown`; "" otherwise): show its title and action, with
+     * `message` and `notes` as the detail.
+     */
+    public var revertNotice: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -29324,7 +29331,13 @@ public struct GuardedApply {
          */changes: [String], 
         /**
          * What the apply or the revert did not do, and why.
-         */notes: [String]) {
+         */notes: [String], 
+        /**
+         * The notice key when the revert was not fully successful
+         * (`revert.incomplete`, `revert.failed`, `revert.not_written`,
+         * `revert.unknown`; "" otherwise): show its title and action, with
+         * `message` and `notes` as the detail.
+         */revertNotice: String) {
         self.id = id
         self.phase = phase
         self.label = label
@@ -29335,6 +29348,7 @@ public struct GuardedApply {
         self.message = message
         self.changes = changes
         self.notes = notes
+        self.revertNotice = revertNotice
     }
 }
 
@@ -29375,6 +29389,9 @@ extension GuardedApply: Equatable, Hashable {
         if lhs.notes != rhs.notes {
             return false
         }
+        if lhs.revertNotice != rhs.revertNotice {
+            return false
+        }
         return true
     }
 
@@ -29389,6 +29406,7 @@ extension GuardedApply: Equatable, Hashable {
         hasher.combine(message)
         hasher.combine(changes)
         hasher.combine(notes)
+        hasher.combine(revertNotice)
     }
 }
 
@@ -29410,7 +29428,8 @@ public struct FfiConverterTypeGuardedApply: FfiConverterRustBuffer {
                 reason: FfiConverterString.read(from: &buf), 
                 message: FfiConverterString.read(from: &buf), 
                 changes: FfiConverterSequenceString.read(from: &buf), 
-                notes: FfiConverterSequenceString.read(from: &buf)
+                notes: FfiConverterSequenceString.read(from: &buf), 
+                revertNotice: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -29425,6 +29444,7 @@ public struct FfiConverterTypeGuardedApply: FfiConverterRustBuffer {
         FfiConverterString.write(value.message, into: &buf)
         FfiConverterSequenceString.write(value.changes, into: &buf)
         FfiConverterSequenceString.write(value.notes, into: &buf)
+        FfiConverterString.write(value.revertNotice, into: &buf)
     }
 }
 
@@ -45099,6 +45119,13 @@ public struct MeasureSystemApplied {
      * deadline unless Keep confirms it, and when the connection is lost.
      */
     public var guardS: UInt32
+    /**
+     * The notice key when the revert was not fully successful (stage
+     * `RevertIncomplete`): `revert.incomplete`, `revert.failed`,
+     * `revert.not_written` or `revert.unknown`; "" otherwise. `message`
+     * names what was not put back.
+     */
+    public var revertNotice: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -45131,7 +45158,13 @@ public struct MeasureSystemApplied {
          * The hub's guard of this apply, s (0: none, nothing reverts by
          * itself): the hub sets the filed model back and aligns at the
          * deadline unless Keep confirms it, and when the connection is lost.
-         */guardS: UInt32) {
+         */guardS: UInt32, 
+        /**
+         * The notice key when the revert was not fully successful (stage
+         * `RevertIncomplete`): `revert.incomplete`, `revert.failed`,
+         * `revert.not_written` or `revert.unknown`; "" otherwise. `message`
+         * names what was not put back.
+         */revertNotice: String) {
         self.stage = stage
         self.revisionBefore = revisionBefore
         self.revisionAfter = revisionAfter
@@ -45141,6 +45174,7 @@ public struct MeasureSystemApplied {
         self.verified = verified
         self.message = message
         self.guardS = guardS
+        self.revertNotice = revertNotice
     }
 }
 
@@ -45178,6 +45212,9 @@ extension MeasureSystemApplied: Equatable, Hashable {
         if lhs.guardS != rhs.guardS {
             return false
         }
+        if lhs.revertNotice != rhs.revertNotice {
+            return false
+        }
         return true
     }
 
@@ -45191,6 +45228,7 @@ extension MeasureSystemApplied: Equatable, Hashable {
         hasher.combine(verified)
         hasher.combine(message)
         hasher.combine(guardS)
+        hasher.combine(revertNotice)
     }
 }
 
@@ -45211,7 +45249,8 @@ public struct FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer {
                 writeFailures: FfiConverterSequenceString.read(from: &buf), 
                 verified: FfiConverterOptionBool.read(from: &buf), 
                 message: FfiConverterString.read(from: &buf), 
-                guardS: FfiConverterUInt32.read(from: &buf)
+                guardS: FfiConverterUInt32.read(from: &buf), 
+                revertNotice: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -45225,6 +45264,7 @@ public struct FfiConverterTypeMeasureSystemApplied: FfiConverterRustBuffer {
         FfiConverterOptionBool.write(value.verified, into: &buf)
         FfiConverterString.write(value.message, into: &buf)
         FfiConverterUInt32.write(value.guardS, into: &buf)
+        FfiConverterString.write(value.revertNotice, into: &buf)
     }
 }
 
@@ -59076,6 +59116,12 @@ public enum GuardPhase {
      */
     case reverted
     /**
+     * Reverted, but not wholly: some of the settings from before were not
+     * put back ([`GuardedApply::notes`] names them). The user must check the
+     * settings or restore a backup (a snapshot).
+     */
+    case revertIncomplete
+    /**
      * Putting them back failed; it is not tried again.
      */
     case revertFailed
@@ -59115,11 +59161,13 @@ public struct FfiConverterTypeGuardPhase: FfiConverterRustBuffer {
         
         case 4: return .reverted
         
-        case 5: return .revertFailed
+        case 5: return .revertIncomplete
         
-        case 6: return .notWritten
+        case 6: return .revertFailed
         
-        case 7: return .lost
+        case 7: return .notWritten
+        
+        case 8: return .lost
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -59145,16 +59193,20 @@ public struct FfiConverterTypeGuardPhase: FfiConverterRustBuffer {
             writeInt(&buf, Int32(4))
         
         
-        case .revertFailed:
+        case .revertIncomplete:
             writeInt(&buf, Int32(5))
         
         
-        case .notWritten:
+        case .revertFailed:
             writeInt(&buf, Int32(6))
         
         
-        case .lost:
+        case .notWritten:
             writeInt(&buf, Int32(7))
+        
+        
+        case .lost:
+            writeInt(&buf, Int32(8))
         
         }
     }
@@ -60356,6 +60408,14 @@ public enum MeasureSystemApplyStage {
      * Reverted: the model and the units are as filed.
      */
     case reverted
+    /**
+     * The revert (the user's, or the hub's guard's) did not put everything
+     * back: the model was not set back, a unit's write failed, a delay
+     * reads back other than filed, or what the hub did is not known.
+     * `revert_notice` is the `revert.*` notice and `message` names what;
+     * the user must check the settings or restore a backup (a snapshot).
+     */
+    case revertIncomplete
 }
 
 
@@ -60383,6 +60443,8 @@ public struct FfiConverterTypeMeasureSystemApplyStage: FfiConverterRustBuffer {
         
         case 5: return .reverted
         
+        case 6: return .revertIncomplete
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -60409,6 +60471,10 @@ public struct FfiConverterTypeMeasureSystemApplyStage: FfiConverterRustBuffer {
         
         case .reverted:
             writeInt(&buf, Int32(5))
+        
+        
+        case .revertIncomplete:
+            writeInt(&buf, Int32(6))
         
         }
     }
@@ -60923,6 +60989,13 @@ public enum MeasureTuneStage {
      * Reverted (by the user, the timeout or a failed write).
      */
     case reverted
+    /**
+     * The guard ended without putting everything back (part of it, nothing,
+     * or it is not known): `issue` holds the `revert.*` notice and what was
+     * not put back. The user must check the settings or restore a backup
+     * (a snapshot): the "before" snapshot is `snapshot_before_id`.
+     */
+    case revertIncomplete
 }
 
 
@@ -60955,6 +61028,8 @@ public struct FfiConverterTypeMeasureTuneStage: FfiConverterRustBuffer {
         case 7: return .kept
         
         case 8: return .reverted
+        
+        case 9: return .revertIncomplete
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -60994,6 +61069,10 @@ public struct FfiConverterTypeMeasureTuneStage: FfiConverterRustBuffer {
         
         case .reverted:
             writeInt(&buf, Int32(8))
+        
+        
+        case .revertIncomplete:
+            writeInt(&buf, Int32(9))
         
         }
     }

@@ -47,7 +47,8 @@ ScrollView {
             Layout.fillWidth: true
             text: tc.stageText
             font: Theme.fontTitle
-            color: Theme.text
+            // -- WP REVERTW -- a revert not fully successful is an error
+            color: tc.stage === "revertIncomplete" ? Theme.dangerText : Theme.text
             wrapMode: Text.WordWrap
         }
         Text {
@@ -297,7 +298,7 @@ ScrollView {
         Card {
             title: qsTr("3. Applied")
             Layout.fillWidth: true
-            visible: tc.applied || tc.stage === "kept" || tc.stage === "reverted"
+            visible: tc.applied || tc.stage === "kept" || tc.stage === "reverted" || tc.stage === "revertIncomplete" // -- WP REVERTW --
             Text {
                 objectName: "MeasureTune.guard"
                 visible: tc.applied

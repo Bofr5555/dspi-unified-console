@@ -86,6 +86,23 @@ pub const NOTICE_GUARD_WAITING: &str = "guard.waiting";
 /// goes away. Its reason is the sentence to show.
 pub const NOTICE_GUARD_HUB_BACKSTOP: &str = "guard.hub_backstop";
 
+// -- WP REVERTW --
+/// The notices (P1NT's table) for a revert that was not fully successful
+/// (owner 2026-11-19): every one is titled "The revert was not fully
+/// successful" and says to check the settings or restore a backup (a
+/// snapshot). One key per meaning; [`GuardedApply::revert_notice`],
+/// `MeasureTuneState::issue` and `MeasureSystemApplied::warnings` carry
+/// them, with the words naming what was not put back.
+/// Some of the settings from before were not put back.
+pub const NOTICE_REVERT_INCOMPLETE: &str = "revert.incomplete";
+/// Putting the settings from before back failed.
+pub const NOTICE_REVERT_FAILED: &str = "revert.failed";
+/// Nothing was written back (the device was not there, or the settings had
+/// changed meanwhile).
+pub const NOTICE_REVERT_NOT_WRITTEN: &str = "revert.not_written";
+/// How the revert ended could not be read.
+pub const NOTICE_REVERT_UNKNOWN: &str = "revert.unknown";
+
 /// The longest timeout granted, in seconds; a longer one is shortened to it.
 /// The hub's deadline is [`HUB_MARGIN`] later, inside its 600 s.
 pub const APPLY_GUARD_MAX_TIMEOUT_S: u32 = 590;
@@ -129,6 +146,11 @@ pub enum GuardPhase {
     Kept,
     /// The settings from before are back.
     Reverted,
+    // -- WP REVERTW --
+    /// Reverted, but not wholly: some of the settings from before were not
+    /// put back ([`GuardedApply::notes`] names them). The user must check the
+    /// settings or restore a backup (a snapshot).
+    RevertIncomplete,
     /// Putting them back failed; it is not tried again.
     RevertFailed,
     /// The hub went to put them back and the device was not there: nothing
@@ -170,6 +192,49 @@ pub struct GuardedApply {
     pub changes: Vec<String>,
     /// What the apply or the revert did not do, and why.
     pub notes: Vec<String>,
+    // -- WP REVERTW --
+    /// The notice key when the revert was not fully successful
+    /// (`revert.incomplete`, `revert.failed`, `revert.not_written`,
+    /// `revert.unknown`; "" otherwise): show its title and action, with
+    /// `message` and `notes` as the detail.
+    #[serde(default)]
+    pub revert_notice: String,
+}
+
+// -- WP REVERTW --
+/// The revert notice of a guard's end in `phase` ("" for none). `Lost` has
+/// none by itself: the hub may still put it back, or Revert works once the
+/// device is open again; a lost guard whose end the hub no longer knows
+/// carries [`NOTICE_REVERT_UNKNOWN`] (set where that is known).
+#[must_use]
+pub fn revert_notice_of(phase: GuardPhase) -> &'static str {
+    match phase {
+        GuardPhase::RevertIncomplete => NOTICE_REVERT_INCOMPLETE,
+        GuardPhase::RevertFailed => NOTICE_REVERT_FAILED,
+        GuardPhase::NotWritten => NOTICE_REVERT_NOT_WRITTEN,
+        _ => "",
+    }
+}
+
+/// A revert that wrote: `Reverted` when nothing was left out, else
+/// `RevertIncomplete` (`left` names what was not put back).
+fn reverted_or_incomplete(left: &[String]) -> GuardPhase {
+    if left.is_empty() {
+        GuardPhase::Reverted
+    } else {
+        GuardPhase::RevertIncomplete
+    }
+}
+
+/// The sentence for a revert that left a part out (the notes name it; the
+/// `revert.incomplete` notice says what to do).
+fn incomplete_words(reason: &str, timeout_s: u64) -> String {
+    let why = match reason {
+        "timeout" => format!("No Keep within {timeout_s} s: the"),
+        "failed" => "The apply failed part way: the".into(),
+        _ => "The".into(),
+    };
+    format!("{why} settings from before were put back, but not all of them (see the notes).")
 }
 
 /// The hub's side of a running guard.
@@ -580,6 +645,7 @@ impl DspiCore {
                 },
                 changes: r.changes.clone(),
                 notes: r.notes.clone(),
+                revert_notice: String::new(),
             },
             None => st.last.clone(),
         }
@@ -839,12 +905,23 @@ impl DspiCore {
             message: message.to_owned(),
             changes: r.changes,
             notes: all,
+            revert_notice: revert_notice_of(phase).to_owned(),
         };
         let mut st = lock(&self.guarded.state);
         if st.running.as_ref().is_some_and(|x| x.id == end.id) {
             st.running = None;
         }
         st.last = end.clone();
+        end
+    }
+
+    // -- WP REVERTW --
+    /// End a guard whose end the hub no longer knows: lost, with the
+    /// `revert.unknown` notice (the settings from before may not be back).
+    fn finish_unknown(&self, r: Running, message: &str) -> GuardedApply {
+        let mut end = self.finish(r, GuardPhase::Lost, "connection_lost", message, Vec::new());
+        end.revert_notice = NOTICE_REVERT_UNKNOWN.to_owned();
+        lock(&self.guarded.state).last.revert_notice = end.revert_notice.clone();
         end
     }
 
@@ -889,12 +966,9 @@ impl DspiCore {
                 HubView::Ended(o) => return self.finish_from_hub(r, &o),
                 HubView::Unreachable | HubView::Ending => return self.on_lost(r),
                 HubView::Unknown => {
-                    return self.finish(
+                    return self.finish_unknown(
                         r,
-                        GuardPhase::Lost,
-                        "connection_lost",
                         "The hub no longer knows how this apply ended; check the settings.",
-                        Vec::new(),
                     );
                 }
             }
@@ -912,6 +986,11 @@ impl DspiCore {
             _ => "Reverted: the settings from before are back.".into(),
         };
         match recall {
+            // -- WP REVERTW -- a part not written back is not a clean revert
+            Ok(rec) if !rec.notes.is_empty() => {
+                let message = incomplete_words(reason, r.timeout.as_secs());
+                self.finish(r, GuardPhase::RevertIncomplete, reason, &message, rec.notes)
+            }
             Ok(rec) => self.finish(r, GuardPhase::Reverted, reason, &message, rec.notes),
             Err(e) => {
                 let hub_reverted = matches!(
@@ -923,7 +1002,15 @@ impl DspiCore {
                         "Only the settings in the device's image were put back (by the hub); \
                          the rest could not be ({e})"
                     );
-                    return self.finish(r, GuardPhase::Reverted, reason, &message, vec![note]);
+                    // -- WP REVERTW --
+                    let message = incomplete_words(reason, r.timeout.as_secs());
+                    return self.finish(
+                        r,
+                        GuardPhase::RevertIncomplete,
+                        reason,
+                        &message,
+                        vec![note],
+                    );
                 }
                 // An unplugged device keeps its connection until it is closed:
                 // its transfers fail as `Disconnected`.
@@ -977,12 +1064,9 @@ impl DspiCore {
             // The hub is putting it back (its deadline): ask again next time.
             HubView::Ending => self.apply_status(),
             HubView::Unreachable => self.on_lost(r),
-            HubView::Unknown => self.finish(
+            HubView::Unknown => self.finish_unknown(
                 r,
-                GuardPhase::Lost,
-                "connection_lost",
                 "The hub no longer knows how this apply ended; check the settings.",
-                Vec::new(),
             ),
         }
     }
@@ -1014,23 +1098,38 @@ impl DspiCore {
             }
         };
         let end = match self.recall_before(before) {
+            // -- WP REVERTW -- a part not written back is not a clean revert
+            Ok(rec) if !rec.notes.is_empty() => GuardedApply {
+                phase: GuardPhase::RevertIncomplete,
+                reason: "reverted".into(),
+                message: incomplete_words("reverted", 0),
+                notes: rec.notes,
+                revert_notice: NOTICE_REVERT_INCOMPLETE.into(),
+                ..last
+            },
             Ok(rec) => GuardedApply {
                 phase: GuardPhase::Reverted,
                 reason: "reverted".into(),
                 message: "Reverted: the settings from before are back.".into(),
                 notes: rec.notes,
+                revert_notice: String::new(),
                 ..last
             },
             Err(e) => GuardedApply {
                 phase: GuardPhase::RevertFailed,
                 reason: "reverted".into(),
                 message: format!("The settings from before could not be put back: {e}."),
+                revert_notice: NOTICE_REVERT_FAILED.into(),
                 ..last
             },
         };
         self.ab_end(); // -- WP P1CFIX -- F4
         let mut st = lock(&self.guarded.state);
-        if end.phase == GuardPhase::Reverted {
+        // -- WP REVERTW -- what was written stays written: no second try
+        if matches!(
+            end.phase,
+            GuardPhase::Reverted | GuardPhase::RevertIncomplete
+        ) {
             st.orphan = None;
         }
         st.last = end.clone();
@@ -1068,13 +1167,10 @@ impl DspiCore {
                 }
                 self.apply_status()
             }
-            HubView::Unknown => self.finish(
+            HubView::Unknown => self.finish_unknown(
                 r,
-                GuardPhase::Lost,
-                "connection_lost",
                 "The connection was lost, and the hub no longer knows how this apply ended; \
                  check the settings.",
-                Vec::new(),
             ),
         }
     }
@@ -1144,10 +1240,20 @@ impl DspiCore {
             }
         };
         let mut notes = Vec::new();
+        let mut phase = phase;
+        let mut message = message;
         if phase == GuardPhase::Reverted {
             // -- WP P1CFIX -- F6: what the hub put back besides the image.
             let separate = self.lock().state.output_config_mode == 0;
             notes.extend(hub_revert_notes(o, separate));
+            // -- WP REVERTW -- what it did not put back makes it incomplete
+            phase = reverted_or_incomplete(&notes);
+            if phase == GuardPhase::RevertIncomplete {
+                message = format!(
+                    "{why}: the hub put the settings from before back, but not all of them (see \
+                     the notes)."
+                );
+            }
             self.events.applied(
                 EventKind::Recall,
                 None,

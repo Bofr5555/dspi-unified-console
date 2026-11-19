@@ -469,6 +469,13 @@ pub enum MeasureSystemApplyStage {
     Kept,
     /// Reverted: the model and the units are as filed.
     Reverted,
+    // -- WP REVERTW --
+    /// The revert (the user's, or the hub's guard's) did not put everything
+    /// back: the model was not set back, a unit's write failed, a delay
+    /// reads back other than filed, or what the hub did is not known.
+    /// `revert_notice` is the `revert.*` notice and `message` names what;
+    /// the user must check the settings or restore a backup (a snapshot).
+    RevertIncomplete,
 }
 
 /// What an apply, a verify, a Keep or a Revert did.
@@ -498,6 +505,13 @@ pub struct MeasureSystemApplied {
     /// deadline unless Keep confirms it, and when the connection is lost.
     #[serde(default)]
     pub guard_s: u32,
+    // -- WP REVERTW --
+    /// The notice key when the revert was not fully successful (stage
+    /// `RevertIncomplete`): `revert.incomplete`, `revert.failed`,
+    /// `revert.not_written` or `revert.unknown`; "" otherwise. `message`
+    /// names what was not put back.
+    #[serde(default)]
+    pub revert_notice: String,
 }
 
 // ── The hub, as the session sees it ────────────────────────────────────

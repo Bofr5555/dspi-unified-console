@@ -2780,3 +2780,112 @@ fn review_ate_the_runs_last_unit_late_is_captured_whole() {
         assert!(!pass && rms.is_some(), "{gap} ms, 50 us wrong: {rms:?}");
     }
 }
+
+// ── WP REVERTW ──────────────────────────────────────────────────────────
+
+/// The hub ended the guard and put nothing back (`not_written`) or not all
+/// (`revert_failed`): the stage is `RevertIncomplete` with its notice, never
+/// `Reverted`; a clean one has none.
+#[test]
+fn wp_revertw_a_guard_the_hub_ended_not_wholly_has_its_own_stage() {
+    for (result, failures, key) in [
+        (
+            "not_written",
+            vec![],
+            crate::guarded::NOTICE_REVERT_NOT_WRITTEN,
+        ),
+        (
+            "revert_failed",
+            vec!["UNIT-2 delays: refused".to_owned()],
+            crate::guarded::NOTICE_REVERT_FAILED,
+        ),
+    ] {
+        let (mut hub, mut o, _) = atguard_checked(true);
+        let p = o.proposal_for("admin", true);
+        o.apply(&mut hub, p.id).unwrap();
+        {
+            let mut st = hub.0.lock().unwrap();
+            let (id, _, filed, _) = st.guard.take().unwrap();
+            st.guard_last = Some(msg::guard::Outcome {
+                guard: id,
+                reason: "timeout".into(),
+                result: result.into(),
+                revision_filed: filed,
+                write_failures: failures,
+                message: "not all set back".into(),
+                ..msg::guard::Outcome::default()
+            });
+        }
+        assert!(o.guard_alive(&mut hub).is_err());
+        assert_eq!(
+            o.applied.stage,
+            MeasureSystemApplyStage::RevertIncomplete,
+            "{result}"
+        );
+        assert_eq!(o.applied.revert_notice, key, "{result}");
+        assert!(o.keep(&mut hub).is_err(), "nothing waits any more");
+    }
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    hub.0.lock().unwrap().guard_revert("timeout");
+    assert!(o.guard_alive(&mut hub).is_err());
+    assert_eq!(o.applied.stage, MeasureSystemApplyStage::Reverted);
+    assert!(o.applied.revert_notice.is_empty());
+    assert_eq!(
+        serde_json::to_value(MeasureSystemApplyStage::RevertIncomplete).unwrap(),
+        json!("revert_incomplete")
+    );
+}
+
+/// The user's Revert: a guard the hub ended with nothing set back is
+/// refused and says so (`revert.not_written`); one whose writes failed is
+/// `RevertIncomplete` (`revert.incomplete`) with the failed writes named.
+#[test]
+fn wp_revertw_a_revert_whose_writes_fail_is_incomplete() {
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    {
+        let mut st = hub.0.lock().unwrap();
+        let (id, _, filed, _) = st.guard.take().unwrap();
+        st.guard_last = Some(msg::guard::Outcome {
+            guard: id,
+            reason: "session_closed".into(),
+            result: "not_written".into(),
+            revision_filed: filed,
+            message: "nothing was set back: the model changed".into(),
+            ..msg::guard::Outcome::default()
+        });
+    }
+    let e = o.revert(&mut hub).unwrap_err().to_string();
+    assert!(
+        e.contains("not reverted") && e.contains("the model changed"),
+        "{e}"
+    );
+    assert_eq!(o.applied.stage, MeasureSystemApplyStage::RevertIncomplete);
+    assert_eq!(
+        o.applied.revert_notice,
+        crate::guarded::NOTICE_REVERT_NOT_WRITTEN
+    );
+    // The hub ended it with a unit's write failed: the revert reads the
+    // rest back and names the failure.
+    let (mut hub, mut o, _) = atguard_checked(true);
+    let p = o.proposal_for("admin", true);
+    o.apply(&mut hub, p.id).unwrap();
+    {
+        let mut st = hub.0.lock().unwrap();
+        let mut out = st.guard_revert("timeout");
+        out.result = "revert_failed".into();
+        out.write_failures = vec!["UNIT-2 out.delay: refused".into()];
+        st.guard_last = Some(out);
+    }
+    let r = o.revert(&mut hub).unwrap();
+    assert_eq!(r.stage, MeasureSystemApplyStage::RevertIncomplete, "{r:?}");
+    assert_eq!(r.revert_notice, crate::guarded::NOTICE_REVERT_INCOMPLETE);
+    assert!(
+        r.message.contains("UNIT-2 out.delay: refused") && r.message.contains("not wholly"),
+        "{}",
+        r.message
+    );
+}

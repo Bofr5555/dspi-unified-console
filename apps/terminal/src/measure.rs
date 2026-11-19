@@ -1130,8 +1130,17 @@ pub(crate) fn apply_and_keep(
     let g = match core.measure_tune_apply(p.id, guard_s) {
         Ok(g) => g,
         Err(e) => {
-            if !json && core.measure_tune_state().stage == MeasureTuneStage::Reverted {
+            let st = core.measure_tune_state();
+            if !json && st.stage == MeasureTuneStage::Reverted {
                 eprintln!("{COMMAND}: a change was refused, so the tune was put back:");
+            }
+            // -- WP REVERTW -- and when it was not wholly put back, say so
+            if !json && st.stage == MeasureTuneStage::RevertIncomplete {
+                eprintln!("{COMMAND}: a change was refused, and the tune was not wholly put back:");
+                if let Some(i) = &st.issue {
+                    eprintln!("      {}", printable(&i.message));
+                    pro::revert_notice_lines(&i.key);
+                }
             }
             let _ = core.measure_tune_stop();
             return refused(&e, json);
@@ -1377,6 +1386,8 @@ pub(crate) fn keep_or_revert(
 fn report(st: &MeasureTuneState, keep: Option<&MeasureTuneKeep>, json: bool) -> u8 {
     let guard = keep.map(|k| &k.guard).unwrap_or(&st.guard);
     let code = match guard.phase {
+        // -- WP REVERTW -- a revert not fully successful is never 0
+        _ if st.stage == MeasureTuneStage::RevertIncomplete => exit::TRANSPORT,
         GuardPhase::Kept => exit::OK,
         GuardPhase::Reverted => exit::REJECTED,
         _ => exit::TRANSPORT,
@@ -1417,6 +1428,15 @@ fn report(st: &MeasureTuneState, keep: Option<&MeasureTuneKeep>, json: bool) -> 
         }
         _ => {
             let _ = pro::report_guard(guard, false);
+            // -- WP REVERTW -- the tune's own word when the guard has none
+            // (a Revert another console's takeover left kept)
+            if st.stage == MeasureTuneStage::RevertIncomplete
+                && guard.revert_notice.is_empty()
+                && let Some(i) = &st.issue
+            {
+                println!("  {}", printable(&i.message));
+                pro::revert_notice_lines(&i.key);
+            }
         }
     }
     code

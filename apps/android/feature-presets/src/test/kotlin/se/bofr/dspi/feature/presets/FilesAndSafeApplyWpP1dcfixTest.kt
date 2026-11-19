@@ -21,7 +21,7 @@ import se.bofr.dspi.ui.alert.AlertHost
 import se.bofr.dspi.ui.alert.AlertResponse
 
 private fun p1dcfixGuard(phase: GuardPhase, id: Long = 1, message: String = "") =
-    GuardedApply(id, phase, "Room", false, 30_000, 12_400, "", message, emptyList(), emptyList())
+    GuardedApply(id, phase, "Room", false, 30_000, 12_400, "", message, emptyList(), emptyList(), "")
 
 /**
  * WP P1DCFIX: the review's Android fixups on the Presets side. F2 a lost

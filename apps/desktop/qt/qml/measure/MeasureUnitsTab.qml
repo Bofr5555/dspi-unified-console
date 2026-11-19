@@ -497,7 +497,7 @@ Item {
                     // The hub's guard of the apply (or, on an older hub, that nothing reverts by itself)
                     Text {
                         objectName: "MeasureUnits.guardNote"
-                        visible: text.length > 0 && (tab.uc.stage === "none" || tab.uc.stage === "kept" || tab.uc.stage === "reverted")
+                        visible: text.length > 0 && (tab.uc.stage === "none" || tab.uc.stage === "kept" || tab.uc.stage === "reverted" || tab.uc.stage === "revert_incomplete")
                         Layout.fillWidth: true
                         text: tab.uc.guardNote
                         font: Theme.fontSmall
@@ -505,7 +505,7 @@ Item {
                         wrapMode: Text.WordWrap
                     }
                     RowLayout {
-                        visible: tab.uc.stage === "none" || tab.uc.stage === "kept" || tab.uc.stage === "reverted"
+                        visible: tab.uc.stage === "none" || tab.uc.stage === "kept" || tab.uc.stage === "reverted" || tab.uc.stage === "revert_incomplete"
                         spacing: Theme.spacingSmall
                         AppButton {
                             objectName: "MeasureUnits.sumCheck"
@@ -626,11 +626,12 @@ Item {
                     }
                     Text {
                         objectName: "MeasureUnits.outcome"
-                        visible: tab.uc.stage === "kept" || tab.uc.stage === "reverted"
+                        // -- WP REVERTW -- a revert not fully successful: its own stage, in the danger colour
+                        visible: tab.uc.stage === "kept" || tab.uc.stage === "reverted" || tab.uc.stage === "revert_incomplete"
                         Layout.fillWidth: true
                         text: tab.uc.appliedText
                         font: Theme.fontBody
-                        color: Theme.text
+                        color: tab.uc.stage === "revert_incomplete" ? Theme.dangerText : Theme.text
                         wrapMode: Text.WordWrap
                     }
                 }

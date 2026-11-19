@@ -112,6 +112,23 @@ void NoticeCenter::postKey(const QString &key, const QString &detail) {
     post(line(key, detail), kind.isEmpty() ? QStringLiteral("error") : kind);
 }
 
+// -- WP REVERTW --
+QString NoticeCenter::revertText(const QString &key, const QString &detail) const {
+    if (key.isEmpty()) return {};
+    const QVariantMap r = row(key);
+    QString title = r.value(QStringLiteral("title")).toString();
+    if (title.isEmpty()) title = tr("The revert was not fully successful");
+    QString action = r.value(QStringLiteral("action")).toString();
+    if (action.isEmpty()) action = tr("Check the settings, or restore a backup (a snapshot).");
+    QString what = detail.trimmed();
+    if (what.isEmpty()) what = r.value(QStringLiteral("reason")).toString();
+    if (!what.isEmpty()) what[0] = what[0].toUpper();
+    if (!what.isEmpty() && !what.endsWith(QLatin1Char('.'))) what += QLatin1Char('.');
+    //: A revert that was not fully successful: %1 the title, %2 what was not put back, %3 what to do
+    if (what.isEmpty()) return tr("%1. %2").arg(title, action);
+    return tr("%1. %2 %3").arg(title, what, action);
+}
+
 bool NoticeCenter::gateKey(const QString &key) {
     for (const char *family : { "limit_exceeded", "installer_lock", "confirmation_required", "image_refused", "limits_unknown" }) {
         const QLatin1String f(family);

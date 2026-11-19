@@ -3740,6 +3740,7 @@ internal fun se.bofr.dspi.ffi.uniffi.GuardedApply.toDomain() =
         message = message,
         changes = changes,
         notes = notes,
+        revertNotice = revertNotice,
     )
 
 internal fun GuardedApply.toFfi() =
@@ -3754,6 +3755,7 @@ internal fun GuardedApply.toFfi() =
         message = message,
         changes = changes,
         notes = notes,
+        revertNotice = revertNotice,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.InstallerTarget.toDomain() =
@@ -5963,6 +5965,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemApplied.toDomain() =
         verified = verified,
         message = message,
         guardS = guardS.toLong(),
+        revertNotice = revertNotice,
     )
 
 internal fun MeasureSystemApplied.toFfi() =
@@ -5976,6 +5979,7 @@ internal fun MeasureSystemApplied.toFfi() =
         verified = verified,
         message = message,
         guardS = guardS.toUInt(),
+        revertNotice = revertNotice,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureLayoutOutput.toDomain() =
@@ -7024,6 +7028,7 @@ internal fun se.bofr.dspi.ffi.uniffi.GuardPhase.toDomain(): GuardPhase =
         se.bofr.dspi.ffi.uniffi.GuardPhase.WAITING -> GuardPhase.WAITING
         se.bofr.dspi.ffi.uniffi.GuardPhase.KEPT -> GuardPhase.KEPT
         se.bofr.dspi.ffi.uniffi.GuardPhase.REVERTED -> GuardPhase.REVERTED
+        se.bofr.dspi.ffi.uniffi.GuardPhase.REVERT_INCOMPLETE -> GuardPhase.REVERT_INCOMPLETE
         se.bofr.dspi.ffi.uniffi.GuardPhase.REVERT_FAILED -> GuardPhase.REVERT_FAILED
         se.bofr.dspi.ffi.uniffi.GuardPhase.NOT_WRITTEN -> GuardPhase.NOT_WRITTEN
         se.bofr.dspi.ffi.uniffi.GuardPhase.LOST -> GuardPhase.LOST
@@ -7035,6 +7040,7 @@ internal fun GuardPhase.toFfi(): se.bofr.dspi.ffi.uniffi.GuardPhase =
         GuardPhase.WAITING -> se.bofr.dspi.ffi.uniffi.GuardPhase.WAITING
         GuardPhase.KEPT -> se.bofr.dspi.ffi.uniffi.GuardPhase.KEPT
         GuardPhase.REVERTED -> se.bofr.dspi.ffi.uniffi.GuardPhase.REVERTED
+        GuardPhase.REVERT_INCOMPLETE -> se.bofr.dspi.ffi.uniffi.GuardPhase.REVERT_INCOMPLETE
         GuardPhase.REVERT_FAILED -> se.bofr.dspi.ffi.uniffi.GuardPhase.REVERT_FAILED
         GuardPhase.NOT_WRITTEN -> se.bofr.dspi.ffi.uniffi.GuardPhase.NOT_WRITTEN
         GuardPhase.LOST -> se.bofr.dspi.ffi.uniffi.GuardPhase.LOST
@@ -7229,6 +7235,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.toDomain(): Measure
         se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.VERIFIED -> MeasureSystemApplyStage.VERIFIED
         se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.KEPT -> MeasureSystemApplyStage.KEPT
         se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.REVERTED -> MeasureSystemApplyStage.REVERTED
+        se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.REVERT_INCOMPLETE -> MeasureSystemApplyStage.REVERT_INCOMPLETE
     }
 
 internal fun MeasureSystemApplyStage.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage =
@@ -7238,6 +7245,7 @@ internal fun MeasureSystemApplyStage.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureSys
         MeasureSystemApplyStage.VERIFIED -> se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.VERIFIED
         MeasureSystemApplyStage.KEPT -> se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.KEPT
         MeasureSystemApplyStage.REVERTED -> se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.REVERTED
+        MeasureSystemApplyStage.REVERT_INCOMPLETE -> se.bofr.dspi.ffi.uniffi.MeasureSystemApplyStage.REVERT_INCOMPLETE
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneKind.toDomain(): MeasureTuneKind =
@@ -7286,6 +7294,7 @@ internal fun se.bofr.dspi.ffi.uniffi.MeasureTuneStage.toDomain(): MeasureTuneSta
         se.bofr.dspi.ffi.uniffi.MeasureTuneStage.VERIFIED -> MeasureTuneStage.VERIFIED
         se.bofr.dspi.ffi.uniffi.MeasureTuneStage.KEPT -> MeasureTuneStage.KEPT
         se.bofr.dspi.ffi.uniffi.MeasureTuneStage.REVERTED -> MeasureTuneStage.REVERTED
+        se.bofr.dspi.ffi.uniffi.MeasureTuneStage.REVERT_INCOMPLETE -> MeasureTuneStage.REVERT_INCOMPLETE
     }
 
 internal fun MeasureTuneStage.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureTuneStage =
@@ -7298,6 +7307,7 @@ internal fun MeasureTuneStage.toFfi(): se.bofr.dspi.ffi.uniffi.MeasureTuneStage 
         MeasureTuneStage.VERIFIED -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.VERIFIED
         MeasureTuneStage.KEPT -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.KEPT
         MeasureTuneStage.REVERTED -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.REVERTED
+        MeasureTuneStage.REVERT_INCOMPLETE -> se.bofr.dspi.ffi.uniffi.MeasureTuneStage.REVERT_INCOMPLETE
     }
 
 internal fun se.bofr.dspi.ffi.uniffi.NoticeKind.toDomain(): NoticeKind =

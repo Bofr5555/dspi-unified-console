@@ -56,8 +56,12 @@ class SnapshotsController : public QObject {
     // The toggle works now: a compare runs, no guard waits, nothing is under way
     Q_PROPERTY(bool canToggle READ canToggle NOTIFY abChanged)
     // ---- The safe apply ----
-    // "idle", "waiting", "kept", "reverted", "revert_failed", "not_written", "lost"
+    // "idle", "waiting", "kept", "reverted", "revert_incomplete", "revert_failed", "not_written", "lost"
     Q_PROPERTY(QString guardPhase READ guardPhase NOTIFY guardChanged)
+    // -- WP REVERTW -- the `revert.*` notice key when the revert was not fully
+    // successful ("" otherwise), and its words with what was not put back
+    Q_PROPERTY(QString guardRevertNotice READ guardRevertNotice NOTIFY guardChanged)
+    Q_PROPERTY(QString guardRevertText READ guardRevertText NOTIFY guardChanged)
     Q_PROPERTY(bool guardWaiting READ guardWaiting NOTIFY guardChanged)
     Q_PROPERTY(QString guardLabel READ guardLabel NOTIFY guardChanged)
     Q_PROPERTY(QString guardMessage READ guardMessage NOTIFY guardChanged)
@@ -113,6 +117,9 @@ public:
     bool guardWaiting() const { return guardPhase() == QLatin1String("waiting"); }
     QString guardLabel() const { return m_guard.value(QLatin1String("label")).toString(); }
     QString guardMessage() const { return m_guard.value(QLatin1String("message")).toString(); }
+    // -- WP REVERTW --
+    QString guardRevertNotice() const { return m_guard.value(QLatin1String("revertNotice")).toString(); }
+    QString guardRevertText() const;
     bool guardHub() const { return m_guard.value(QLatin1String("hub")).toBool(); }
     int guardTimeoutMs() const { return m_guard.value(QLatin1String("timeoutMs")).toInt(); }
     int guardRemainingMs() const { return m_guard.value(QLatin1String("remainingMs")).toInt(); }

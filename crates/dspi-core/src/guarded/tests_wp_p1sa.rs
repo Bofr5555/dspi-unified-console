@@ -592,3 +592,126 @@ fn wp_p1sa_default_off_the_hub() {
     assert_eq!(timeout_of(0), Duration::from_secs(30));
     assert_eq!(timeout_of(10_000), Duration::from_secs(590));
 }
+
+// -- WP REVERTW -- a revert that is not fully successful says so (owner
+// 2026-11-19): its own phase and the `revert.*` notice, never a clean
+// `Reverted`.
+
+/// A Revert whose write of the device name (outside the image, written
+/// first) is refused puts the rest back but ends `RevertIncomplete`, with
+/// the `revert.incomplete` notice and the part named in the notes.
+#[test]
+fn wp_revertw_a_revert_that_leaves_a_part_out_is_incomplete() {
+    let r = rig();
+    let core = &r.core;
+    let name = core.get_device_name().unwrap();
+    core.apply_guard_begin("Rename".into(), 30).unwrap();
+    core.set_device_name("Changed".into()).unwrap();
+    core.set_output_gain(1, -3.0).unwrap();
+    r.refuse_next(1);
+    let end = core.apply_revert().unwrap();
+    assert_eq!(end.phase, GuardPhase::RevertIncomplete, "{end:?}");
+    assert_eq!(end.revert_notice, NOTICE_REVERT_INCOMPLETE);
+    assert!(
+        end.notes.iter().any(|n| n.contains("not written")),
+        "{:?}",
+        end.notes
+    );
+    assert!(
+        end.message.contains("but not all of them"),
+        "{}",
+        end.message
+    );
+    assert_eq!(core.apply_status().revert_notice, NOTICE_REVERT_INCOMPLETE);
+    // The image went back; the name did not.
+    core.fetch_all().unwrap();
+    assert_ne!(core.get_state().output_gain_db[1], -3.0);
+    assert_ne!(core.get_device_name().unwrap(), name);
+    // Its notice is a row of the table, in the owner's words.
+    let n = crate::notice_for_key(end.revert_notice.clone(), String::new());
+    assert_eq!(n.key, NOTICE_REVERT_INCOMPLETE);
+    assert_eq!(n.title, "The revert was not fully successful");
+    assert_eq!(
+        n.action,
+        "Check the settings, or restore a backup (a snapshot)."
+    );
+}
+
+/// A Revert whose writes all fail ends `RevertFailed` with `revert.failed`;
+/// a clean one has no notice.
+#[test]
+fn wp_revertw_a_failed_revert_carries_its_notice_and_a_clean_one_none() {
+    let r = rig();
+    let core = &r.core;
+    core.apply_guard_begin("Gain".into(), 30).unwrap();
+    core.set_output_gain(1, -3.0).unwrap();
+    r.allow(0);
+    let end = core.apply_revert().unwrap();
+    r.lift();
+    assert_eq!(end.phase, GuardPhase::RevertFailed, "{end:?}");
+    assert_eq!(end.revert_notice, NOTICE_REVERT_FAILED);
+    let n = crate::notice_for_key(end.revert_notice, String::new());
+    assert_eq!(n.title, "The revert was not fully successful");
+    // A clean revert.
+    core.apply_guard_begin("Gain".into(), 30).unwrap();
+    core.set_output_gain(1, -2.0).unwrap();
+    let end = core.apply_revert().unwrap();
+    assert_eq!(end.phase, GuardPhase::Reverted, "{end:?}");
+    assert!(end.revert_notice.is_empty());
+}
+
+/// Every phase's notice, and the hub's revert that names a part it could
+/// not put back (an older hub, or one that could not read it) is
+/// incomplete.
+#[test]
+fn wp_revertw_phases_and_hub_reverts_map_to_their_notices() {
+    assert_eq!(revert_notice_of(GuardPhase::Reverted), "");
+    assert_eq!(revert_notice_of(GuardPhase::Kept), "");
+    assert_eq!(revert_notice_of(GuardPhase::Lost), "");
+    assert_eq!(
+        revert_notice_of(GuardPhase::RevertIncomplete),
+        NOTICE_REVERT_INCOMPLETE
+    );
+    assert_eq!(
+        revert_notice_of(GuardPhase::RevertFailed),
+        NOTICE_REVERT_FAILED
+    );
+    assert_eq!(
+        revert_notice_of(GuardPhase::NotWritten),
+        NOTICE_REVERT_NOT_WRITTEN
+    );
+    let whole =
+        json!({"captured": ["device_name", "source_names", "output_latency", "control_surfaces"]});
+    assert_eq!(
+        reverted_or_incomplete(&hub_revert_notes(&whole, false)),
+        GuardPhase::Reverted
+    );
+    let part = json!({"captured": ["device_name"]});
+    assert_eq!(
+        reverted_or_incomplete(&hub_revert_notes(&part, false)),
+        GuardPhase::RevertIncomplete
+    );
+    assert_eq!(
+        reverted_or_incomplete(&hub_revert_notes(&json!({}), false)),
+        GuardPhase::RevertIncomplete,
+        "an older hub puts back the image only"
+    );
+    assert_eq!(
+        serde_json::to_value(GuardPhase::RevertIncomplete).unwrap(),
+        json!("revert_incomplete")
+    );
+    for key in [
+        NOTICE_REVERT_INCOMPLETE,
+        NOTICE_REVERT_FAILED,
+        NOTICE_REVERT_NOT_WRITTEN,
+        NOTICE_REVERT_UNKNOWN,
+    ] {
+        let n = crate::notice_for_key(key.into(), String::new());
+        assert_eq!(n.key, key);
+        assert_eq!(n.title, "The revert was not fully successful");
+        assert_eq!(
+            n.action,
+            "Check the settings, or restore a backup (a snapshot)."
+        );
+    }
+}

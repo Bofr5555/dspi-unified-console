@@ -5,7 +5,7 @@
 
 import { CoreCallError, type MeasureSystemArrivalRecord, type MeasureSystemIssueRecord, type MeasureSystemProposalRecord, type MeasureSystemSetupRecord, type MeasureSystemStateRecord, type NoticeRecord } from "../../../core/protocol";
 import type { MeasurePlacement, MeasureRole } from "../../../core/measure-protocol";
-import { noticeRow } from "../../../ui/texts";
+import { noticeRow, revertNotice } from "../../../ui/texts"; // -- WP REVERTW -- revertNotice
 
 /** The second Keep after a failed verify counts from this long after the core's refusal, ms. */
 export const CONFIRM_MS = 1000;
@@ -240,9 +240,15 @@ export function guardWords(guardS: number, left: number | null): string {
 }
 
 /** What ended an applied alignment, in words: the core's (the hub's own when its guard ended it). */
-export function endedWords(a: { stage: string; message: string }): string {
+export function endedWords(a: { stage: string; message: string; revertNotice?: string }): string {
   const m = a.message.trim();
   if (a.stage === "kept") return "Kept.";
+  // -- WP REVERTW -- not fully put back: the notice's title, what was not, and what to do
+  if (a.stage === "revert_incomplete") {
+    const n = revertNotice(a.revertNotice || "revert.unknown")!;
+    const what = m ? ` ${m.charAt(0).toUpperCase() + m.slice(1)}.` : n.reason ? ` ${n.reason}` : "";
+    return `${n.title}.${what} ${n.action}`;
+  }
   if (a.stage !== "reverted") return "";
   if (!m) return "Reverted: the installation and every unit are as they were filed.";
   return m.charAt(0).toUpperCase() + m.slice(1);

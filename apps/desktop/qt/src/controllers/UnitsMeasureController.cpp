@@ -1362,7 +1362,8 @@ void UnitsMeasureController::setApplied(const QJsonObject &a) {
     m_applied = a;
     const QString s = stage();
     // The guard ends with a Keep or a Revert (or the hub's own revert)
-    if (s == QLatin1String("kept") || s == QLatin1String("reverted") || s == QLatin1String("none")) {
+    if (s == QLatin1String("kept") || s == QLatin1String("reverted") || s == QLatin1String("revert_incomplete") // -- WP REVERTW --
+        || s == QLatin1String("none")) {
         m_guardS = 0;
         m_guardTimer.stop();
         emit guardChanged();
@@ -1394,6 +1395,13 @@ QString UnitsMeasureController::appliedText() const {
         // when it could NOT put everything back, which "Reverted:" before them would deny)
         if (msg.isEmpty()) return tr("Reverted: the installation and every unit are as they were filed.");
         return msg.at(0).toUpper() + msg.mid(1);
+    }
+    // -- WP REVERTW -- not fully put back: the notice's title, what was not (the core's words), what to do
+    if (s == QLatin1String("revert_incomplete")) {
+        QString key = str(m_applied, "revertNotice");
+        if (key.isEmpty()) key = QStringLiteral("revert.unknown");
+        if (auto *notices = Registrar::instance<NoticeCenter>()) return notices->revertText(key, str(m_applied, "message"));
+        return tr("The revert was not fully successful. %1 Check the settings, or restore a backup (a snapshot).").arg(str(m_applied, "message"));
     }
     return {};
 }
@@ -1508,11 +1516,18 @@ void UnitsMeasureController::revert() {
     }
     setBusy(tr("Reverting"));
     Calls calls = m_calls;
-    onLoop([calls](FfiCore *c) { return calls(c, QStringLiteral("revert"), {}, {}); },
+    // -- WP REVERTW -- and where it stands after: a refused revert may have ended the guard with
+    // nothing set back (its own stage)
+    onLoop([calls](FfiCore *c) {
+        QJsonArray both{ object(calls(c, QStringLiteral("revert"), {}, {})), object(calls(c, QStringLiteral("applied"), {}, {})) };
+        return compact(both);
+    },
            [this](const QByteArray &r) {
                setBusy(QString());
-               const QJsonObject a = object(r);
+               const QJsonArray both = QJsonDocument::fromJson(r).array();
+               const QJsonObject a = both.at(0).toObject();
                if (!isOk(a)) {
+                   if (isOk(both.at(1).toObject())) setApplied(both.at(1).toObject());
                    fail(a, QStringLiteral("revert"));
                    return;
                }
