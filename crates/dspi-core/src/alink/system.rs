@@ -39,6 +39,10 @@ pub(crate) struct Cache {
     model: Option<(u64, Value)>,
     /// The last view built, given again while `system.status` is rate limited.
     view: Option<AlinkSystemView>,
+    // -- WP ATQT --
+    /// The S/PDIF rows of the reading the last view was built from (given
+    /// again with it while `system.status` is rate limited).
+    spdif: Vec<super::alink_system_spdif::AlinkSpdifUnit>,
     /// The frame of this session's own last scene taken through the sender.
     last_superframe: Option<u64>,
 }
@@ -103,7 +107,9 @@ pub struct AlinkSystemUnit {
     pub alarms: u32,
     // -- WP AUSB1 -- USB-direct units (`extension_channel_spec.md` 2.9)
     /// How the programme reaches it: `alink` (senders and fan-outs too) or
-    /// `usb_direct`.
+    /// `usb_direct`; -- WP ATQT -- or `spdif` (fed by S/PDIF: its `state` is
+    /// then the S/PDIF time base's, `locked`, `acquiring`, `anchoring`,
+    /// `holdover`, `lock_error`, `none` or `not_read`).
     pub transport: String,
     /// A USB-direct unit's mode as the unit runs it: `off`, `rate_lock`,
     /// `phase_lock`.
@@ -442,9 +448,11 @@ impl DspiCore {
             .and_then(Value::as_str)
             .map_or_else(|| client.role(), str::to_owned);
         let view = build_view(&model, revision, &status, &role);
+        let spdif = super::alink_system_spdif::spdif_rows(&model, &status); // -- WP ATQT --
         self.system_cache(|c| {
             c.model = Some((revision, model));
             c.view = Some(view.clone());
+            c.spdif = spdif; // -- WP ATQT --
         });
         Ok(view)
     }
@@ -870,6 +878,25 @@ pub(crate) fn build_view(
     let (mut usb_count, mut usb_locked, mut usb_trouble) = (0u32, 0u32, 0u32);
     for u in list(model, "units") {
         let mut row = base(u, "unit");
+        // -- WP ATQT -- a unit fed by S/PDIF (a follower, or a source fed by
+        // nothing the model holds): not on the audio link, so neither counted
+        // among its units nor pending its delays; its state is the S/PDIF
+        // time base's (the S/PDIF rows, `alink_system_spdif`, have the rest)
+        if str_at(u, &["transport"]) == "spdif" {
+            row.transport = "spdif".into();
+            row.pending = false;
+            if row.connected {
+                let seen = observed(str_at(u, &["serial"]))
+                    .and_then(|o| o.get("spdif"))
+                    .map(|s| str_at(s, &["state"]))
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("not_read");
+                row.state = seen.to_owned();
+                row.state_word = super::alink_system_spdif::spdif_state_word(seen).to_owned();
+            }
+            units.push(row);
+            continue;
+        }
         // -- WP AUSB1 -- a USB-direct unit: its own state, delay and statistics
         if str_at(u, &["transport"]) == "usb_direct" {
             let plan = plan_of(&row.id);
@@ -1903,6 +1930,25 @@ impl DspiCore {
         revision: u64,
         edits: AlinkSystemEdits,
     ) -> Result<AlinkSystemSaved> {
+        // -- WP ATQT -- the body is alink_system_save_with's (the S/PDIF edits use it too)
+        self.alink_system_save_with(revision, |model| apply_edits(model, &edits))
+    }
+}
+
+// -- WP ATQT --
+impl DspiCore {
+    /// The S/PDIF rows of the reading the last view was built from.
+    pub(crate) fn alink_system_spdif_rows(&self) -> Vec<super::alink_system_spdif::AlinkSpdifUnit> {
+        self.system_cache(|c| c.spdif.clone())
+    }
+
+    /// One `system.set` of the model at `revision` with `edit` made on it
+    /// (what [`DspiCore::alink_system_save_report`] sends). Errors as there.
+    pub(crate) fn alink_system_save_with(
+        &self,
+        revision: u64,
+        edit: impl FnOnce(&mut Value) -> Result<()>,
+    ) -> Result<AlinkSystemSaved> {
         let client = self.hub_client()?;
         // -- WP ROMODEF -- a save is a `system.set`: refused before its read
         crate::read_only::check_hub_request(&mut self.lock(), "system.set")?;
@@ -1920,7 +1966,7 @@ impl DspiCore {
                 got.get("model").cloned().unwrap_or(Value::Null)
             }
         };
-        apply_edits(&mut model, &edits)?;
+        edit(&mut model)?;
         let mut fields = Map::new();
         fields.insert("model".into(), model);
         fields.insert("revision".into(), revision.into());
