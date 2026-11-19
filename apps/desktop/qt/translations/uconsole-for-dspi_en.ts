@@ -78,6 +78,14 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Connected Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Raw Request…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Made By</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1620,6 +1628,256 @@ Switching an output is instant and never writes to flash. The pin, name and powe
     </message>
 </context>
 <context>
+    <name>DeviceInfoController</name>
+    <message>
+        <source>%1 is missing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 &quot;%2&quot; is not a number: give 0x hexadecimal or decimal.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %2 is more than %3 bits: it would go out cut, so nothing is sent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>State</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Class</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rate code</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Channels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Hops</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sender id</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Frame</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Locks</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Losses</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CRC-8 errors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CRC-16 errors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bit slips</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Superframe errors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>VCXO (ppm)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Board</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>board %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 (board %2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Generation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>legacy: firmware 1.1.6 and older</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>paged: firmware 1.1.7 and later</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>not known on this connection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Protocol</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>paged %1.%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1.1.6 opcodes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>not known</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>none listed on this connection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>none: page 0 only</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pages</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extensions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>REQ_EXTENSION 0x00 on page 0</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>tunnel 0xE010 on page 0xE0</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>none (no extension channel)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This connection says the device is paged but carries no page list: a hub&apos;s in-process or principal connection does not pass the page discovery on. The page list is therefore empty here, and the extension channel is as the 1.1.6-shaped probe found it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device is the audio link sender, not a DSP: it has its device information, its extension channel with the audio link settings, and firmware updates. It has no DSP settings, no meters and no signal generator.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This board has no BOOTSEL bootloader that this app can write: it is offered no firmware image.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The command id</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>wValue</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The length</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; is not hex bytes: give the payload as hex, e.g. 01 ff.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The byte %1 is more than 8 bits: it would go out cut, so nothing is sent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The payload is %1 bytes; a control transfer carries at most 65535, so nothing is sent.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 was not sent: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 was not sent: this device speaks the 1.1.6 protocol, which has no pages (or this connection does not say it is paged). A request by command id needs firmware 1.1.7 or later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device refused %1; it gave no result code.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The device refused %1: %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>result code %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>no reply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>1 byte from %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 bytes from %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sent 1 byte to %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sent %1 bytes to %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 was not sent: no device is open, or it is read-only.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The audio link status is for admin sessions on this hub: its extension channel carries settings that change the hardware.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device has no audio link block.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device is open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The audio link status could not be read: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DeviceInfoRows</name>
+    <message>
+        <source>Reading the device…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No device is connected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DeviceModel</name>
     <message>
         <source>Demo DSPi</source>
@@ -2391,6 +2649,10 @@ Do you wish to proceed?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>audio link sender</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Try Again</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2514,6 +2776,14 @@ Do you wish to proceed?</source>
         <source>Another console is applying changes. Try again when it has finished.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>This board (%1) has no BOOTSEL bootloader that this Console can write, so it is offered no firmware image.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This is the audio link sender. %1 bundles firmware for the DSP only: choose the sender&apos;s own image (.uf2).</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>FirmwareWindow</name>
@@ -2627,6 +2897,10 @@ Do you wish to proceed?</source>
     </message>
     <message>
         <source>Confirmation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Type the words above</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8775,6 +9049,57 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
 </context>
 <context>
+    <name>RawRequestDialog</name>
+    <message>
+        <source>Raw Request by Command Id</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>One GET or SET of a paged command, sent as typed. Numbers are 0x hexadecimal or decimal.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This device speaks the 1.1.6 protocol, which has no command ids: the core will refuse a request here and send nothing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GET</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>SET</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Command id</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>wValue</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Payload (hex)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Length</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Result</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Send</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>RePairDialog</name>
     <message>
         <source>This hub was paired with encryption</source>
@@ -8990,6 +9315,45 @@ Macros are stored on the device alongside the controls and share their Save and 
     </message>
     <message>
         <source>Keep</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SenderPage</name>
+    <message>
+        <source>Audio Link Sender</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Serial %1 · firmware %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>unknown</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Device</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Audio Link</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update the sender&apos;s firmware with its own image.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Firmware Update…</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
