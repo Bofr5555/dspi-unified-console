@@ -42,7 +42,10 @@
 //!   `--accept-core-voltage-risk` (it is not a voltage risk), and is never typed
 //!   for the person; a voltage phrase still needs the flag. A change of
 //!   protocol generation (1.1.6 to 1.1.7 or back) is said before any question.
-//!   Only `verdict.allowed` flashes.
+//!   Only `verdict.allowed` flashes. -- WP PGFLASH -- The write goes out on
+//!   the core that read the target, so the core's own write gate applies the
+//!   same rules to the target it read; a board already in BOOTSEL is written
+//!   from a fresh core, where the voltage rule alone decides.
 //!
 //! The device side goes through [`DspiCore`], the one owner of the guard's board
 //! read; the core is otherwise for `firmware.rs`, and the rest of the terminal
@@ -758,7 +761,7 @@ fn onto_mounted(
     })?;
     // Anything on the bus already is not the board that is about to arrive.
     let back = Back::New(world.serials().into_iter().collect());
-    write(req, image, drive, &passed)?;
+    write(req, None, image, drive, &passed)?; // -- WP PGFLASH -- already in BOOTSEL
     if matches!(target, Target::Demo) {
         // A real path may just have been written, and no board can say it took.
         req.result(
@@ -812,7 +815,8 @@ fn onto_device(
     let back = Back::Known(target.pinned(&device.serial));
     enter_bootloader(req, &device)?;
     let drive = wait_for_drive(req, world)?;
-    write(req, image, &drive, &passed)?;
+    // -- WP PGFLASH -- on the core that read the target: its write gate judges
+    write(req, Some(&device.core), image, &drive, &passed)?;
     confirm(target, req, image, &drive, &passed, &back, world)
 }
 
@@ -923,13 +927,28 @@ fn wait_for_drive(req: &Request, world: &mut dyn World) -> Result<BootloaderDriv
 }
 
 /// Through the guard, with the board record the answers were given against.
-fn write(req: &Request, image: &Image, drive: &BootloaderDrive, passed: &Passed) -> Result<(), u8> {
+/// WP PGFLASH: `core` is the one that read the board (its write gate judges by
+/// the target it read itself), or `None` for a board already in BOOTSEL, which
+/// gets a fresh core (the voltage rule alone, as before).
+fn write(
+    req: &Request,
+    core: Option<&Arc<DspiCore>>,
+    image: &Image,
+    drive: &BootloaderDrive,
+    passed: &Passed,
+) -> Result<(), u8> {
     req.note(&format!("Writing to {}...", printable(&drive.path)));
     // -- WP P1TM -- the write is a gated call (P1TK): the person has said yes
     // (or --force), so its token is minted here, with the drive there and no
     // device open on this core.
-    let core = DspiCore::new();
-    crate::core_route::apply_read_only(&core); // -- WP ROMODE --
+    let core = core.map_or_else(
+        || {
+            let core = DspiCore::new();
+            crate::core_route::apply_read_only(&core); // -- WP ROMODE --
+            core
+        },
+        Arc::clone,
+    );
     let token = core.confirm_token(dspi_core::ConfirmOp::FirmwareFlash);
     let written = core.flash_confirmed(
         image.bytes.clone(),

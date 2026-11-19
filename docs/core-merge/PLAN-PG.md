@@ -721,6 +721,22 @@ confirmation is asked. **Not done (by scope):** no client's update screen switch
 PGSWIFT); `dspi_firmware_flash_confirmed` and `flash_confirmed` still gate the drive write on the voltage record
 alone, so a client that switches its screen must flash only on the update check's `allowed`.
 
+**PGFLASH: The core's write gate knows the target.** [DONE] Size 0.5. Wave PG-D, after PGFWX and PGTM (PGFWX's and
+PGTM's follow-up). **Owns:** the write gate in `crates/dspi-core/src/firmware_guard.rs` (`write_gate`,
+`flash_to_drive_gated`), its use in `flash_confirmed` (`firmware.rs`) and `picoboot_flash_confirmed` (`picoboot.rs`,
+`prepare_gated`), the core's kept target (`Inner::flash_target`), the bootloader entry's target read (`hardware.rs`),
+the Terminal's write on the reading core (`apps/terminal/src/flash.rs`), docs of `dspi_flash_confirmed`, the hub's
+`CoreWriter` and the wasm firmware module. **Scope:** the last gate before a write judges by the update check's rules
+(no BOOTSEL refused; the lineage rule and the voltage rule each need their typed phrase) on the target **the core read
+itself** from the device: `firmware_target` keeps what it read, and the bootloader entry reads it when it was not read
+on this connection, so a client that skips the update check, or forges the target JSON over C/wasm, is judged all the
+same. A caller's voltage record only adds doubt (one that is not the core's own makes the voltage unknown). The kept
+target is dropped when another device is opened and after a write. No target read (a board already in BOOTSEL before
+this core saw it, a fresh core such as the hub rollout's `CoreWriter`): the voltage rule alone, as before. API shape
+unchanged (no parameter added); wasm has no write. **Done when:** a forged C/wasm target cannot make a write pass; an
+unstamped image on a G1b board without the phrase is refused at the write gate with the update check skipped; a Zero is
+refused at the write gate; TM3, P3RO and PGFWX tests pass.
+
 **PGMAT: The compat matrix.** [TODO] Size 3. Wave PG-D. **Owns:** new `crates/dspi-core/tests/wp_pgmat_matrix.rs`,
 new `crates/dspi-hub/tests/wp_pgmat_hub.rs`, vendored DSPi-Link fixtures under `tests/fixtures/link/upstream-1.3/`
 (MIT). **Implements:** section 4's matrix, every cell of section 1.11: our core over USB (mock wire), MIDI (pipe fake),

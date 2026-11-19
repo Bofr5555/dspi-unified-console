@@ -524,6 +524,13 @@ pub(crate) struct Inner {
     // -- WP P5SES --
     /// What the notification path saw that a running measurement judges.
     pub(crate) measure_tap: measure::Tap,
+    // -- WP PGFLASH --
+    /// The update target this core last read from the open device
+    /// ([`DspiCore::firmware_target`], or the bootloader entry's own read):
+    /// what the write gate (`flash_confirmed`, `picoboot_flash_confirmed`)
+    /// judges by, never a caller's. Cleared when another device is opened
+    /// and after a write; kept when the device leaves for its bootloader.
+    pub(crate) flash_target: Option<crate::FirmwareTarget>,
 }
 
 /// An open device.
@@ -920,6 +927,7 @@ impl Inner {
             limits: limits::Limits::default(),                      // -- WP P1LM --
             client_read_only: read_only::ClientReadOnly::default(), // -- WP ROMODE --
             measure_tap: measure::Tap::default(),                   // -- WP P5SES --
+            flash_target: None,                                     // -- WP PGFLASH --
         }
     }
 
@@ -1053,6 +1061,7 @@ impl DspiCore {
         let mut inner = self.lock();
         let conn = Connection::new(transport, serial.clone(), vid);
         inner.confirm.connected(conn.generation); // -- WP P1BFIX -- F5
+        inner.flash_target = None; // -- WP PGFLASH -- another device's story
         inner.conn = Some(conn);
         inner.selected = Some(serial);
     }

@@ -2250,6 +2250,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
      * failure.
      *
+     * WP PGFLASH: unless [`DspiCore::firmware_target`] already read the
+     * board on this connection, the board is read as an update target here
+     * (a few more control transfers) and kept for `flash_confirmed`'s write
+     * gate.
+     *
      * The device lock is taken first and held across the restart (WP CG24),
      * so no other DSPi Link session writes to a device about to vanish; the
      * hub drops it when the device leaves, and the connection's close gives
@@ -2873,7 +2878,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     
     /**
      * Write `image` to the bootloader drive behind the firmware guard
-     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`;
+     * WP PGFLASH: [`crate::firmware_update_check`]'s rules on the target this
+     * core read itself, see below),
      * with a confirmation token ([`crate::confirm`],
      * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
      * does the writing. Mint the token once the bootloader drive is there
@@ -2895,8 +2902,20 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * by waiting for the DSPi to re-enumerate and report the image's version
      * (`Uf2Info::firmware_version`); a timeout there is the failure.
      *
+     * WP PGFLASH, the write gate: when this core read the board as an
+     * update target ([`DspiCore::firmware_target`], or on its own in
+     * [`DspiCore::enter_bootloader_confirmed`]), the gate is the update check
+     * on that target, never on one a caller passes: a board without BOOTSEL
+     * is refused, and an image that may be upstream's on our firmware needs
+     * `LINEAGE_PHRASE` (or the voltage phrase, when the voltage rule asks).
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown. With no target read (the board was in BOOTSEL
+     * before this core saw it) the voltage rule alone decides. The target is
+     * forgotten after a write and when another device is opened.
+     *
      * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
-     * message when the image needs confirmation; then the write's.
+     * message when the image needs confirmation or the board has no BOOTSEL;
+     * then the write's.
      */
     func flashConfirmed(image: Data, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?) throws 
     
@@ -4771,7 +4790,9 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
      * before the board entered BOOTSEL; the guard must say clear for it with
      * nothing typed, so an image that would ask a person anything is
-     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * refused. WP PGFLASH: on a core that read the board as an update target
+     * itself, the update check's rules on that target decide instead (module
+     * docs). Takes a [`ConfirmOp::FirmwareFlash`] token as
      * [`DspiCore::flash_confirmed`] does (mint it once the board is in
      * BOOTSEL; it works with no device open), and the installer lock holds.
      * Blocks for up to 60 s.
@@ -8051,6 +8072,11 @@ open func endGroup()  {try! rustCall() {
      * [`DspiCore::firmware_version_matches`]; a timeout there is the
      * failure.
      *
+     * WP PGFLASH: unless [`DspiCore::firmware_target`] already read the
+     * board on this connection, the board is read as an update target here
+     * (a few more control transfers) and kept for `flash_confirmed`'s write
+     * gate.
+     *
      * The device lock is taken first and held across the restart (WP CG24),
      * so no other DSPi Link session writes to a device about to vanish; the
      * hub drops it when the device leaves, and the connection's close gives
@@ -8956,7 +8982,9 @@ open func firmwareVersionMatches(version: String)throws  -> Bool  {
     
     /**
      * Write `image` to the bootloader drive behind the firmware guard
-     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`),
+     * ([`crate::firmware_guard_check`] for `board` and `typed_confirmation`;
+     * WP PGFLASH: [`crate::firmware_update_check`]'s rules on the target this
+     * core read itself, see below),
      * with a confirmation token ([`crate::confirm`],
      * [`crate::ConfirmOp::FirmwareFlash`]): the one to use wherever the core
      * does the writing. Mint the token once the bootloader drive is there
@@ -8978,8 +9006,20 @@ open func firmwareVersionMatches(version: String)throws  -> Bool  {
      * by waiting for the DSPi to re-enumerate and report the image's version
      * (`Uf2Info::firmware_version`); a timeout there is the failure.
      *
+     * WP PGFLASH, the write gate: when this core read the board as an
+     * update target ([`DspiCore::firmware_target`], or on its own in
+     * [`DspiCore::enter_bootloader_confirmed`]), the gate is the update check
+     * on that target, never on one a caller passes: a board without BOOTSEL
+     * is refused, and an image that may be upstream's on our firmware needs
+     * `LINEAGE_PHRASE` (or the voltage phrase, when the voltage rule asks).
+     * `board` only adds doubt: one that is not the core's own record makes
+     * the voltage unknown. With no target read (the board was in BOOTSEL
+     * before this core saw it) the voltage rule alone decides. The target is
+     * forgotten after a write and when another device is opened.
+     *
      * Errors: that; [`DspiError::FirmwareGuardBlocked`] with the guard's
-     * message when the image needs confirmation; then the write's.
+     * message when the image needs confirmation or the board has no BOOTSEL;
+     * then the write's.
      */
 open func flashConfirmed(image: Data, drive: BootloaderDrive, board: FirmwareGuardBoard, typedConfirmation: String, token: String?)throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_flash_confirmed(self.uniffiClonePointer(),
@@ -11863,7 +11903,9 @@ open func pasteChannel(clip: ChannelClip, ch: UInt8, options: ChannelPasteOption
      * docs). `board` is the record [`DspiCore::firmware_guard_board`] read
      * before the board entered BOOTSEL; the guard must say clear for it with
      * nothing typed, so an image that would ask a person anything is
-     * refused. Takes a [`ConfirmOp::FirmwareFlash`] token as
+     * refused. WP PGFLASH: on a core that read the board as an update target
+     * itself, the update check's rules on that target decide instead (module
+     * docs). Takes a [`ConfirmOp::FirmwareFlash`] token as
      * [`DspiCore::flash_confirmed`] does (mint it once the board is in
      * BOOTSEL; it works with no device open), and the installer lock holds.
      * Blocks for up to 60 s.
@@ -63017,7 +63059,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_end_group() != 28189) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 20465) {
+    if (uniffi_dspi_core_checksum_method_dspicore_enter_bootloader_confirmed() != 156) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_event_log_devices() != 55922) {
@@ -63179,7 +63221,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_firmware_version_matches() != 52277) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 19319) {
+    if (uniffi_dspi_core_checksum_method_dspicore_flash_confirmed() != 4538) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_get_channel_name() != 25587) {
@@ -63695,7 +63737,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_paste_channel() != 43676) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed() != 50736) {
+    if (uniffi_dspi_core_checksum_method_dspicore_picoboot_flash_confirmed() != 31389) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_pin_check() != 43599) {

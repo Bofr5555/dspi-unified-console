@@ -15,6 +15,11 @@
 //!   no image; a target that is not one is code `invalid`. Needs no device.
 //!
 //! Both are reads: nothing is sent but the target's reads.
+//!
+//! -- WP PGFLASH -- The web has no firmware write (no `flashConfirmed`, no
+//! `picobootFlashConfirmed`): a `target` given here only ever feeds the check.
+//! Every write elsewhere goes through the core's write gate, which judges by
+//! the target the core read itself.
 
 use dspi_core::{DspiCore, FirmwareTarget};
 use serde::Deserialize;
@@ -123,5 +128,60 @@ mod tests_wp_pgfwx {
             json!({ "image": [1, 2], "target": { "boardId": "x" } }),
         );
         assert_eq!(r["code"], "invalid", "{r}");
+    }
+}
+
+// -- WP PGFLASH --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests_wp_pgflash {
+    use crate::calls::{call, session_new};
+    use crate::guard;
+    use serde_json::{Value, json};
+
+    fn run(h: u32, method: &str, params: Value) -> Value {
+        let out = call(
+            h,
+            json!({ "method": method, "params": params })
+                .to_string()
+                .as_bytes(),
+        );
+        serde_json::from_slice(&out).unwrap()
+    }
+
+    #[test]
+    fn wp_pgflash_a_forged_target_on_the_web_reaches_no_write() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        assert_eq!(run(h, "open", json!({ "kind": "demo" }))["ok"], true);
+        let image: Vec<u8> = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../apps/desktop/qt/firmware/DSPi-RP2350-v1.1.6.uf2"),
+        )
+        .unwrap();
+        // A forged target makes the check say yes; that is all it can do.
+        let forged = json!({
+            "voltage": { "requiredMv": 1150, "source": "statusBlock" },
+            "boardId": 0, "lineage": "upstream", "generation": "legacy",
+        });
+        let r = run(
+            h,
+            "firmwareUpdateCheck",
+            json!({ "image": image, "target": forged }),
+        );
+        assert_eq!(r["value"]["verdict"]["allowed"], true, "{r}");
+        // The web has no firmware write to take it to.
+        for method in ["flashConfirmed", "picobootFlashConfirmed", "flashToDrive"] {
+            let r = run(
+                h,
+                method,
+                json!({ "image": image, "target": forged, "typed": "" }),
+            );
+            assert_eq!(
+                (r["ok"].clone(), r["code"].clone()),
+                (Value::Bool(false), "unknown_method".into()),
+                "{method}: {r}"
+            );
+        }
     }
 }

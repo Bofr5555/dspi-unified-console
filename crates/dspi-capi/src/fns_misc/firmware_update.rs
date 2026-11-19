@@ -150,3 +150,133 @@ mod tests_wp_pgfwx {
         dspi_core_free(h);
     }
 }
+
+// -- WP PGFLASH --
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects
+)]
+mod tests_wp_pgflash {
+    use std::ffi::CString;
+    use std::ptr::{null, null_mut};
+
+    use serde_json::Value;
+
+    use super::*;
+    use crate::fns_device::{dspi_core_free, dspi_core_new, dspi_disconnect};
+    use crate::fns_misc::confirm::dspi_flash_confirmed;
+    use crate::fns_misc::{dspi_confirm_token, dspi_open_demo};
+
+    fn reply(f: impl Fn(*mut c_char, u32) -> u32) -> Value {
+        let needed = f(null_mut(), 0);
+        assert!(needed > 0);
+        let mut buf = vec![0u8; needed as usize];
+        assert_eq!(f(buf.as_mut_ptr().cast(), needed), needed);
+        serde_json::from_slice(&buf[..needed as usize - 1]).unwrap()
+    }
+
+    /// One call into a big buffer: the call acts, so it is not asked twice.
+    fn once(f: impl FnOnce(*mut c_char, u32) -> u32) -> Value {
+        let mut buf = vec![0u8; 1 << 16];
+        let n = f(buf.as_mut_ptr().cast(), buf.len() as u32) as usize;
+        assert!(n > 0 && n <= buf.len(), "{n}");
+        serde_json::from_slice(&buf[..n - 1]).unwrap()
+    }
+
+    fn stock_image() -> Vec<u8> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/desktop/qt/firmware/DSPi-RP2350-v1.1.6.uf2");
+        std::fs::read(path).unwrap()
+    }
+
+    #[test]
+    fn wp_pgflash_a_forged_target_cannot_make_a_write_pass_over_the_c_abi() {
+        let h = dspi_core_new();
+        assert!(dspi_open_demo(h));
+        // The core reads the demo (our firmware, a Pico) and keeps it.
+        let read = reply(|b, l| dspi_firmware_target(h, b, l));
+        assert_eq!(read["lineage"], "bofr", "{read}");
+        assert_eq!(read["boardId"], 0, "{read}");
+        let mv = read["voltage"]["requiredMv"].as_u64().unwrap() as u16;
+        let image = stock_image();
+        // The caller forges the target: upstream firmware at the stock voltage.
+        let forged = CString::new(
+            r#"{"voltage":{"requiredMv":1150,"source":"statusBlock"},"boardId":0,
+                "lineage":"upstream","generation":"legacy"}"#,
+        )
+        .unwrap();
+        let check = reply(|b, l| {
+            dspi_firmware_update_check(
+                image.as_ptr(),
+                image.len() as u32,
+                forged.as_ptr(),
+                null(),
+                b,
+                l,
+            )
+        });
+        assert_eq!(
+            check["verdict"]["allowed"], true,
+            "the forged check passes: {check}"
+        );
+        // The board leaves for its bootloader; its drive is there.
+        dspi_disconnect(h);
+        let dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join(format!("wp-pgflash-capi-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("INFO_UF2.TXT"),
+            "UF2 Bootloader v1.0\nModel: Raspberry Pi RP2350\nBoard-ID: RP2350\n",
+        )
+        .unwrap();
+        let path = CString::new(dir.to_string_lossy().into_owned()).unwrap();
+        let flash = |required_mv: u16, typed: *const c_char| {
+            let op = CString::new("firmware_flash").unwrap();
+            let t = once(|b, l| dspi_confirm_token(h, op.as_ptr(), b, l));
+            let t = CString::new(t["value"].as_str().unwrap()).unwrap();
+            once(|b, l| {
+                dspi_flash_confirmed(
+                    h,
+                    image.as_ptr(),
+                    image.len() as u32,
+                    path.as_ptr(),
+                    1,
+                    required_mv,
+                    typed,
+                    t.as_ptr(),
+                    b,
+                    l,
+                )
+            })
+        };
+        // The write gate judges by the target the core read, not the forged one:
+        // with the core's own voltage or the forged one, nothing typed is refused.
+        for required_mv in [mv, 1150] {
+            let r = flash(required_mv, null());
+            assert_eq!(
+                (r["ok"].clone(), r["code"].clone()),
+                (Value::Bool(false), "firmware_guard".into()),
+                "{r}"
+            );
+            assert!(!dir.join("firmware.uf2").exists());
+        }
+        // The phrase the gate asks for on the core's own record lets it through.
+        let phrase = CString::new(if mv == 1150 {
+            dspi_core::LINEAGE_PHRASE
+        } else {
+            "I ACCEPT THE CORE VOLTAGE RISK"
+        })
+        .unwrap();
+        let r = flash(mv, phrase.as_ptr());
+        assert_eq!(r["ok"], true, "{r}");
+        assert_eq!(std::fs::read(dir.join("firmware.uf2")).unwrap(), image);
+        std::fs::remove_dir_all(dir).unwrap();
+        dspi_core_free(h);
+    }
+}
