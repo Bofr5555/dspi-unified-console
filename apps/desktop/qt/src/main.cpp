@@ -30,6 +30,54 @@ static Qt::ColorScheme colorSchemeOverride() {
     return Qt::ColorScheme::Unknown;
 }
 
+// -- WP QTCLI -- The command line, the same for both passes in main()
+struct CommandLine {
+    QCommandLineParser parser;
+    // Not addVersionOption(): that prints the application name, which is the
+    // settings name (AppIdentity.h), not the name people see
+    const QCommandLineOption version{ { QStringLiteral("v"), QStringLiteral("version") },
+                                      QApplication::translate("main", "Displays version information.") };
+    const QCommandLineOption demo{ QStringLiteral("demo"), QApplication::translate("main", "Open the demo device.") };
+    CommandLine() {
+        parser.setApplicationDescription(AppIdentity::displayName());
+        parser.addHelpOption();
+        parser.addOption(version);
+        parser.addOption(demo);
+        MeasureSpike::addOptions(parser);   // -- WP P5QCAP -- hidden development switches
+    }
+};
+
+// -- WP QTCLI -- --version and --help (-h, -?, --help-all) need no display:
+// they are read before the QApplication is made, so they answer in a terminal
+// with no X11 or Wayland. Returns the exit code, or -1 to go on. Qt's own
+// options (-platform, -style, ...) are not taken out yet, so each word after
+// one dash is one option name here and anything unknown is left to the parse
+// after the QApplication.
+static int answerInformational(int argc, char *argv[]) {
+    QStringList arguments;
+    for (int i = 0; i < argc; ++i) arguments.append(QString::fromLocal8Bit(argv[i]));
+    CommandLine cl;
+    cl.parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
+    cl.parser.parse(arguments);
+#ifndef Q_OS_WIN
+    // (On Windows a GUI app's help is a message box, which wants the
+    // QApplication; there is always a display there.)
+    const bool helpAll = cl.parser.isSet(QStringLiteral("help-all"));
+    if (helpAll || cl.parser.isSet(QStringLiteral("help"))) {
+        // The help text names the program from the application's arguments;
+        // a QCoreApplication needs no display. process() prints it and exits 0.
+        QCoreApplication core(argc, argv);
+        cl.parser.process(QStringList{ arguments.value(0), helpAll ? QStringLiteral("--help-all") : QStringLiteral("--help") });
+        return 0;
+    }
+#endif
+    if (cl.parser.isSet(cl.version)) {
+        std::printf("%s %s\n", qPrintable(AppIdentity::displayName()), qPrintable(AppIdentity::version()));
+        return 0;
+    }
+    return -1;
+}
+
 int main(int argc, char *argv[]) {
     // -- WP SWAPFIX -- The settings are an INI file on every system (owner,
     // 2026-11-13): on Windows %APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini,
@@ -42,28 +90,17 @@ int main(int argc, char *argv[]) {
     QApplication::setOrganizationName(QString::fromUtf8(AppIdentityNames::settingsOrganisation));
     QApplication::setApplicationName(QString::fromUtf8(AppIdentityNames::settingsApplication));
     QApplication::setApplicationVersion(AppIdentity::version());
+    // -- WP QTCLI -- --help and --version answer before the GUI exists
+    if (const int answered = answerInformational(argc, argv); answered >= 0) return answered;
     QApplication app(argc, argv);
     QApplication::setApplicationDisplayName(AppIdentity::displayName());
     // The desktop entry (packaging/linux/uconsole-for-dspi.desktop): Wayland's app id
     QGuiApplication::setDesktopFileName(QString::fromUtf8(AppIdentityNames::desktopFileName));
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
-    QCommandLineParser args;
-    args.setApplicationDescription(AppIdentity::displayName());
-    args.addHelpOption();
-    // Not addVersionOption(): that prints the application name, which is the
-    // settings name (AppIdentity.h), not the name people see
-    const QCommandLineOption version({ QStringLiteral("v"), QStringLiteral("version") },
-                                     QApplication::translate("main", "Displays version information."));
-    args.addOption(version);
-    const QCommandLineOption demo(QStringLiteral("demo"), QApplication::translate("main", "Open the demo device."));
-    args.addOption(demo);
-    MeasureSpike::addOptions(args);   // -- WP P5QCAP -- hidden development switches
+    CommandLine cl;
+    QCommandLineParser &args = cl.parser;
     args.process(app);
-    if (args.isSet(version)) {
-        std::printf("%s %s\n", qPrintable(AppIdentity::displayName()), qPrintable(AppIdentity::version()));
-        return 0;
-    }
     // -- WP P5QCAP -- --audio-inputs, --measure-spike: no window, no core
     if (const int spike = MeasureSpike::runIfAsked(args, app); spike >= 0) return spike;
 
@@ -90,7 +127,7 @@ int main(int argc, char *argv[]) {
         core.shutdown();
         return 1;
     }
-    device.start(args.isSet(demo));
+    device.start(args.isSet(cl.demo));
 
 #ifdef DSPI_SMOKE
     SmokeDriver driver({ engine.get(), &core, &device, &shell });

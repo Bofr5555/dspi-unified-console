@@ -3,8 +3,10 @@
 # own image, from a clean commit, and gathers them in one flat folder:
 #
 #   apps/desktop/packaging/build-release.sh [--key MINISIGN_SECRET_KEY] [output dir]
+#   apps/desktop/packaging/build-release.sh --appimage-only [output dir]
 #
-# Output dir: default $DSPI_BUILD_CACHE/work/release-<version> (never tmpfs),
+# Output dir: default $DSPI_BUILD_CACHE/work/release-<version> (never tmpfs;
+# release-<version>-appimage with --appimage-only),
 # emptied first since it is this script's own; a dir you name must be empty
 # or not exist yet, so nothing of yours is ever deleted.
 # In it (the names packaging/README.md lists; the app's update checker relies
@@ -20,9 +22,13 @@
 # SHA256SUMS.minisig by ci/release-sums.sh. Without one nothing is signed and
 # no SHA256SUMS is written: sign the folder later with ci/release-sums.sh.
 # The release's library sources come from release-sources.sh (README.md).
+# -- WP APPIMG -- --appimage-only makes the AppImage and the linux-x86_64.tar.gz
+# alone, exactly as the release does, for linux/test-appimage.sh --build; it
+# signs nothing.
 #
-# Runs on the host: podman builds the images from their Containerfiles (once;
-# tags uconsole-for-dspi-*) and runs each build as this user, with the network
+# Runs on the host: podman builds the images from their Containerfiles (once
+# per Containerfile: tags uconsole-for-dspi-*:<hash>, image.sh -- WP APPIMG --)
+# and runs each build as this user, with the network
 # (cargo's crates) and without USB. Scratch under $DSPI_BUILD_CACHE/work/release-build.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -30,10 +36,12 @@ repo=$(cd "$here/../../.." && pwd)
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 FEDORAS=${FEDORAS:-43 44}
 key=${DSPI_MINISIGN_KEY:-}
+only=
 if [ "${1:-}" = --key ]; then key=${2:?--key needs a file}; shift 2; fi
+if [ "${1:-}" = --appimage-only ]; then only=appimage; key=; shift; fi
 version=$(sed -n 's/^project(uconsole-for-dspi VERSION \([0-9.]*\).*/\1/p' "$here/../qt/CMakeLists.txt")
 [ -n "$version" ] || { echo "build-release: no version in qt/CMakeLists.txt" >&2; exit 1; }
-own=$B/work/release-$version
+own=$B/work/release-$version${only:+-appimage}
 out=${1:-$own}
 if [ "$out" != "$own" ] && [ -d "$out" ] && [ -n "$(ls -A "$out")" ]; then
     echo "build-release: $out is not empty; name an empty or new folder" >&2; exit 2
@@ -46,9 +54,7 @@ mkdir -p "$scratch/empty" "$scratch/dist" "$B/cargo-home" "$out"
 dist=$scratch/dist
 rm -f "$dist"/*
 
-image() {  # <tag> <Containerfile> <context> [build args...]
-    podman image exists "$1" || podman build -t "$1" -f "$2" "${@:4}" "$3"
-}
+. "$here/image.sh"
 run() {  # <image> <name> <command>: the tree at /src, scratch at /work, files to /dist
     mkdir -p "$scratch/$2"
     podman run --rm --userns=keep-id --user "$(id -u):$(id -g)" --security-opt label=disable \
@@ -61,23 +67,27 @@ run() {  # <image> <name> <command>: the tree at /src, scratch at /work, files t
 
 L=$here/linux
 image uconsole-for-dspi-ubuntu "$L/Containerfile.ubuntu" "$L"
-run uconsole-for-dspi-ubuntu ubuntu 'apps/desktop/packaging/linux/build-ubuntu.sh && apps/desktop/packaging/linux/make-appimage.sh /work/build/AppDir /dist'
+run "$tag" ubuntu 'apps/desktop/packaging/linux/build-ubuntu.sh && apps/desktop/packaging/linux/make-appimage.sh /work/build/AppDir /dist'
+if [ -z "$only" ]; then
 image uconsole-for-dspi-debian "$L/Containerfile.debian" "$L"
-run uconsole-for-dspi-debian debian 'apps/desktop/packaging/linux/build-debian.sh /dist'
+run "$tag" debian 'apps/desktop/packaging/linux/build-debian.sh /dist'
 for fc in $FEDORAS; do
-    image "uconsole-for-dspi-fedora:$fc" "$L/Containerfile.fedora" "$L" --build-arg "FEDORA=$fc"
-    run "uconsole-for-dspi-fedora:$fc" "fedora$fc" 'apps/desktop/packaging/linux/build-fedora.sh /dist'
+    image uconsole-for-dspi-fedora "$L/Containerfile.fedora" "$L" --build-arg "FEDORA=$fc"
+    run "$tag" "fedora$fc" 'apps/desktop/packaging/linux/build-fedora.sh /dist'
 done
 image uconsole-for-dspi-windows "$here/windows/Containerfile" "$here/windows"
-run uconsole-for-dspi-windows windows 'apps/desktop/packaging/windows/build-windows.sh /work/dist && cp /work/dist/uConsole-for-DSPi-*-windows-x86_64.zip /work/dist/uConsole-for-DSPi-*-windows-x86_64-setup.exe /dist/'
+run "$tag" windows 'apps/desktop/packaging/windows/build-windows.sh /work/dist && cp /work/dist/uConsole-for-DSPi-*-windows-x86_64.zip /work/dist/uConsole-for-DSPi-*-windows-x86_64-setup.exe /dist/'
 "$repo/ci/release-source.sh" --with-desktop "$version" "$dist" >/dev/null
+fi
 
 # The release folder: exactly the files above, nothing else (release-sums.sh
 # sums every file in it)
-want=("uConsole-for-DSPi-$version-windows-x86_64.zip" "uConsole-for-DSPi-$version-windows-x86_64-setup.exe"
-      "uConsole-for-DSPi-$version-x86_64.AppImage" "uConsole-for-DSPi-$version-linux-x86_64.tar.gz"
-      "uconsole-for-dspi_${version}_amd64.deb" "uConsole-for-DSPi-$version-desktop-source.tar.gz")
+want=("uConsole-for-DSPi-$version-x86_64.AppImage" "uConsole-for-DSPi-$version-linux-x86_64.tar.gz")
+if [ -z "$only" ]; then
+want+=("uConsole-for-DSPi-$version-windows-x86_64.zip" "uConsole-for-DSPi-$version-windows-x86_64-setup.exe"
+       "uconsole-for-dspi_${version}_amd64.deb" "uConsole-for-DSPi-$version-desktop-source.tar.gz")
 for fc in $FEDORAS; do want+=("uconsole-for-dspi-$version-1.fc$fc.x86_64.rpm"); done
+fi
 [ "$out" != "$own" ] || rm -rf "$own"
 mkdir -p "$out"
 for f in "${want[@]}"; do
@@ -86,7 +96,7 @@ for f in "${want[@]}"; do
 done
 if [ -n "$key" ]; then
     "$repo/ci/release-sums.sh" --key "$key" --comment "uConsole for DSPi $version" "$out"
-else
+elif [ -z "$only" ]; then
     echo "build-release: unsigned: no SHA256SUMS written. Sign with: ci/release-sums.sh --key <key> $out"
 fi
 ls -la "$out"

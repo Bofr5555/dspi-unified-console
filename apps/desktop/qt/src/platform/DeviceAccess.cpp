@@ -5,6 +5,7 @@
 #include "DeviceModel.h"
 
 #include <QDir>
+#include <QFile>
 #include <QJSEngine>
 #include <QProcess>
 #include <QQmlApplicationEngine>
@@ -61,10 +62,12 @@ QString DeviceAccess::system() {
 #endif
 }
 
+// -- WP QTCLI -- The packages' rule, built in (cmake/wp/qtcli.cmake): vendor
+// 2e8b, and 2e8a:feaa for older firmware. Empty if the resource is missing.
 QString DeviceAccess::ruleText() {
-    return QStringLiteral("# uConsole for DSPi: the person signed in at this seat may open a DSPi\n"
-                          "# (USB vendor 2e8b), without root\n"
-                          "SUBSYSTEM==\"usb\", ATTR{idVendor}==\"2e8b\", TAG+=\"uaccess\"\n");
+    QFile file(QStringLiteral(":/udev/70-uconsole-for-dspi.rules"));
+    if (!file.open(QIODevice::ReadOnly)) return QString();
+    return QString::fromUtf8(file.readAll());
 }
 
 // The dialog lives in the main window, made once the window exists
@@ -155,8 +158,9 @@ void DeviceAccess::installRule() {
     const QDir cache(QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
     cache.mkpath(QStringLiteral("."));
     const QString path = cache.filePath(QStringLiteral("70-dspi.rules"));
+    const QString rule = ruleText();
     QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly) || file.write(ruleText().toUtf8()) < 0 || !file.commit()) {
+    if (rule.isEmpty() || !file.open(QIODevice::WriteOnly) || file.write(rule.toUtf8()) < 0 || !file.commit()) {
         m_error = tr("The rule was not installed: its file could not be written (%1).").arg(file.errorString());
         emit changed();
         return;
