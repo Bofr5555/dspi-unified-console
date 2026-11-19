@@ -44,6 +44,16 @@ pub(crate) const SUM_DOUBLING_DB: f32 = 6.0;
 /// part a later arrival must fall in to be judged: the first half of the
 /// window's fall.
 const SUM_WINDOW_REACH: f64 = 0.375;
+// -- review AT-D1 --
+/// The least an output's analysed response must hold after its onset, ms. A
+/// run's responses are kept from `search_ms` before its first arrival to the
+/// gap's rest after (100 ms each side with the 300 ms gap): an output heard
+/// later than that after the run's first (a unit whose play-out and output
+/// delay put it some 100 ms later on the timeline) has its arrival clamped
+/// to the end of that span and its response cut, and was offered all the
+/// same (measured: 100 ms apart read as 99.98 ms with an uncertainty of
+/// 0.35 us; 80 ms apart is still exact to 0.01 us).
+const MIN_ROOM_AFTER_ONSET_MS: f64 = 15.0;
 /// A predicted sum this far below its loudest part is a cancellation, dB.
 const CANCELLATION_DB: f64 = 6.0;
 /// The most run ids written with a speaker (the hub's `MAX_MEASURED_RUNS`).
@@ -355,6 +365,39 @@ impl SumJob {
     }
 }
 
+// -- review AT-D1 --
+/// Whether `sum` is a cancellation of `a` and `b` over most of `band`: more
+/// than half of the band's points lie [`CANCELLATION_DB`] or more under the
+/// louder part. With the parts of a summed run started so that they arrive
+/// together (WP ATSUMOFF), two outputs of opposite polarity cancel over
+/// their common band: the run is nearly silent at the microphone, its first
+/// cycle is not found and the session fails on "cycle identity" (measured on
+/// the stub; at one T their distance left a comb to judge, and the verify
+/// after the apply met the same silence).
+fn cancels(sum: &Response, a: &Response, b: &Response, band: (f64, f64)) -> bool {
+    let Ok(freqs) = sum.grid.freqs() else {
+        return false;
+    };
+    let (mut all, mut low) = (0usize, 0usize);
+    for (i, f) in freqs.iter().enumerate() {
+        if *f < band.0 || *f > band.1 {
+            continue;
+        }
+        let (Some(s), Some(x), Some(y)) = (sum.mag_db.get(i), a.mag_db.get(i), b.mag_db.get(i))
+        else {
+            continue;
+        };
+        if !(x.is_finite() && y.is_finite()) {
+            continue;
+        }
+        all = all.saturating_add(1);
+        if !s.is_finite() || *s < x.max(*y) - CANCELLATION_DB {
+            low = low.saturating_add(1);
+        }
+    }
+    all > 0 && low.saturating_mul(2) > all
+}
+
 /// What the apply filed and did.
 #[derive(Debug, Clone, Default)]
 struct Filed {
@@ -483,6 +526,7 @@ impl Outcome {
         };
         // Every single-member key's response, on its run's reference.
         let mut measured: Vec<Measured> = Vec::new();
+        let mut cut: Vec<String> = Vec::new();
         for (ri, r) in runs_done.iter().enumerate() {
             for o in &r.analysis.outputs {
                 let [m] = o.members.as_slice() else {
@@ -502,6 +546,17 @@ impl Outcome {
                 let Some(ir) = r.analysis.output_ir(o.key) else {
                     continue;
                 };
+                // Review AT-D1: an arrival at the end of what the analysis
+                // kept is not a measurement.
+                let room_ms = (ir.ir.samples.len() as f64 - ir.onset_index) * 1000.0
+                    / f64::from(ir.ir.rate_hz.max(1));
+                if room_ms.is_nan() || room_ms < MIN_ROOM_AFTER_ONSET_MS {
+                    cut.push(format!(
+                        "{} output {} is heard too long after the run's first output for the gap \
+                         between sweeps: its arrival cannot be measured in this run",
+                        pu.serial, m.output
+                    ));
+                }
                 let level = r
                     .levels
                     .iter()
@@ -529,6 +584,7 @@ impl Outcome {
             }
             reasons.extend(r.analysis.reasons.iter().cloned());
         }
+        reasons.extend(cut.iter().cloned());
         // Chained runs: every arrival through the anchor.
         let mut chained: Option<Vec<ChainedOutput>> = None;
         let mut chain_refused: Option<String> = None;
@@ -627,6 +683,12 @@ impl Outcome {
                 .and_then(|(li, _)| measured.get(li))
                 .map_or(f64::NAN, |l| l.arrival_ms * 1000.0);
             let fin = |v: f64| if v.is_finite() { v } else { 0.0 };
+            // Review AT-D1: the reference may be the output that was cut,
+            // so nothing of the group is offered then.
+            let (offered, reason) = match cut.first() {
+                Some(why) => (false, why.clone()),
+                None => (offered, reason),
+            };
             let offered = may_propose(&gate, offered) && (a - r).is_finite();
             arrivals.push(MeasureSystemArrival {
                 serial: s,
@@ -793,6 +855,25 @@ impl Outcome {
             let sign = |m: &Measured| if m.inverted { -1.0 } else { 1.0 };
             let predicted = complex_sum(&[(&ra, sign(a)), (&rb, sign(b))])
                 .ok_or_else(|| invalid("the transition's responses are on different grids"))?;
+            // Review AT-D1: a sum that cancels is not played (there would be
+            // nothing to hear and nothing to judge): it is the polarity.
+            if cancels(&predicted, &ra, &rb, band) {
+                let name = |m: &Measured| {
+                    let serial = self
+                        .setup
+                        .units
+                        .get(m.unit)
+                        .map_or("", |u| u.serial.as_str());
+                    format!("{serial} output {}", m.output)
+                };
+                return Err(invalid(format!(
+                    "{} and {} cancel over their common band when they arrive together (opposite \
+                     polarity): the summed run cannot be judged and no cross-unit delay is \
+                     offered; correct the polarity and measure again",
+                    name(a),
+                    name(b)
+                )));
+            }
             jobs.push(SumJob {
                 a: (a.unit, a.output, a.inverted),
                 b: (b.unit, b.output, b.inverted),
