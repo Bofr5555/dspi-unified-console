@@ -15,6 +15,9 @@
 //! | `usb_realign_failed` | "Keep USB-direct units aligned" could not write a unit's output delays (WP AUSB2); retried at most every [`REALIGN_RETRY_S`] | a later re-align of it, or its offset no longer moved |
 //! | `usb_setting_restored` | the hub's poll put a USB-direct unit's lock-error action back to the installation's (fixup ausb2 F5): the record of it | acknowledged, or the next restore of that unit (kept in the cleared list) |
 //! | `usb_realigned` | the hub wrote the USB-direct units' output delays again by itself ("Keep USB-direct units aligned", WP FIXM1): the record of it, one alarm per re-align | acknowledged, or the next re-align (kept in the cleared list) |
+//! | `spdif_lost` | an S/PDIF follower or source whose time base is not running (`EXT_ALINK_SPDIF_STATUS.state` none, acquiring or holdover at a read, or an 0xE4 to one of them; WP ATHUBM) | locked again (a read or an 0xE4) |
+//! | `spdif_lock_error` | an S/PDIF follower in lock error (STATUS flags bit 3 at a read, or an 0xE4 to `LOCK_ERROR`): "S/PDIF unit X can't lock — muted / playing unaligned (why)"; critical when it mutes, a warning when it plays (WP ATHUBM) | locked, an 0xE4 `LOCK_OK`, or the flag gone at a read |
+//! | `time_base_lost` | a USB-direct unit's time base leaves `LOCKED` (an 0xE4 to none, acquiring or holdover; WP ATHUBM). The line's 0xE4 raises and clears `alink_lost` as its 0xE1 does; USB lock error stays `usb_lock_error` (0xE3) | an 0xE4 back to `LOCKED` |
 
 use std::collections::BTreeMap;
 
@@ -33,6 +36,13 @@ pub const USB_REALIGN_FAILED: &str = "usb_realign_failed";
 // -- fixup ausb2 (F5) --
 /// The hub put a USB-direct unit's setting back to the installation's.
 pub const USB_SETTING_RESTORED: &str = "usb_setting_restored";
+// -- WP ATHUBM --
+/// An S/PDIF unit whose time base is not running.
+pub const SPDIF_LOST: &str = "spdif_lost";
+/// An S/PDIF follower in lock error.
+pub const SPDIF_LOCK_ERROR: &str = "spdif_lock_error";
+/// A USB-direct unit's time base out of `LOCKED` (from 0xE4).
+pub const TIME_BASE_LOST: &str = "time_base_lost";
 /// How long the hub waits before it tries a failed automatic write again
 /// (a re-align, the lock-error action), seconds: no retry storm.
 pub const REALIGN_RETRY_S: u64 = 60;
@@ -195,6 +205,8 @@ impl CrcRate {
 fn severity(code: &str) -> &'static str {
     match code {
         "alink_lost" | "unit_offline" | "delay_below_min" => "critical",
+        // -- WP ATHUBM --
+        SPDIF_LOST | TIME_BASE_LOST => "critical",
         _ => "warning",
     }
 }
@@ -460,7 +472,150 @@ impl AlarmBook {
                 &mut out,
             );
         }
+        // -- WP ATHUBM --
+        if let Some(sp) = &o.spdif {
+            out.extend(self.spdif_seen(subject, sp, now));
+        }
         out
+    }
+
+    // -- WP ATHUBM --
+    /// An S/PDIF unit's block as read: `spdif_lost` and, on a follower,
+    /// `spdif_lock_error`. A unit in mode 0 (not set up yet) or anchoring
+    /// leaves them as they are.
+    fn spdif_seen(&mut self, subject: &str, sp: &super::align::SpdifSeen, now: u64) -> Changes {
+        let mut out = Vec::new();
+        if sp.mode == "off" {
+            return out;
+        }
+        let follower = sp.mode == "follower";
+        if follower {
+            let error = sp.lock_error.then(|| {
+                (
+                    super::align::spdif_lock_error_message(subject, &sp.on_lock_error, sp.foreign),
+                    sp.on_lock_error != "play_unaligned",
+                )
+            });
+            if sp.lock_error || sp.locked() {
+                out.extend(self.spdif_lock_error(subject, error, now));
+            }
+        }
+        match sp.state.as_str() {
+            "locked" => out.extend(self.clear(SPDIF_LOST, subject, now)),
+            "none" | "acquiring" | "holdover" => self.set(
+                true,
+                SPDIF_LOST,
+                subject,
+                spdif_lost_words(subject, follower, &sp.state, None),
+                now,
+                &mut out,
+            ),
+            _ => {}
+        }
+        out
+    }
+
+    // -- WP ATHUBM --
+    /// S/PDIF follower `subject`'s lock error: `Some((message, muted))` in
+    /// it, `None` out of it; as [`Self::usb_lock_error`].
+    pub fn spdif_lock_error(
+        &mut self,
+        subject: &str,
+        error: Option<(String, bool)>,
+        now: u64,
+    ) -> Changes {
+        let Some((message, muted)) = error else {
+            return self
+                .clear(SPDIF_LOCK_ERROR, subject, now)
+                .into_iter()
+                .collect();
+        };
+        let severity = if muted { "critical" } else { "warning" };
+        let raised = self.raise_counted(SPDIF_LOCK_ERROR, subject, message, now, false);
+        let key = (SPDIF_LOCK_ERROR.to_owned(), subject.to_owned());
+        let Some(a) = self.active.get_mut(&key) else {
+            return Vec::new();
+        };
+        let changed = a.severity != severity;
+        a.severity = severity.into();
+        if raised.is_some() || changed {
+            vec![a.clone()]
+        } else {
+            Vec::new()
+        }
+    }
+
+    // -- WP ATHUBM --
+    /// An 0xE4 from unit `subject` (the time-base contract, 2.11.3), on
+    /// `transport` (`alink`, `usb` or `spdif`, from the event's time base),
+    /// with the contract `state` and `reason` by name. `lock_error`: the
+    /// sentence and whether it mutes, for an S/PDIF follower entering lock
+    /// error; `follower`: the unit follows (else it is an S/PDIF source).
+    /// The line's goes to `alink_lost` and `reanchor` as its 0xE1 does.
+    #[allow(clippy::too_many_arguments)]
+    pub fn time_base_event(
+        &mut self,
+        subject: &str,
+        transport: &str,
+        state: &str,
+        reason: &str,
+        follower: bool,
+        lock_error: Option<(String, bool)>,
+        now: u64,
+    ) -> Changes {
+        let lost = matches!(state, "none" | "acquiring" | "holdover");
+        match transport {
+            "alink" => {
+                let line = match state {
+                    "locked" => "locked",
+                    "holdover" => "holdover",
+                    "anchoring" => "anchoring",
+                    _ => "searching",
+                };
+                self.event(subject, line, reason, lost || state == "lock_error", now)
+            }
+            "spdif" | "usb" => {
+                let mut out = Vec::new();
+                let code = if transport == "spdif" {
+                    SPDIF_LOST
+                } else {
+                    TIME_BASE_LOST
+                };
+                if state == "locked" {
+                    out.extend(self.clear(code, subject, now));
+                    if transport == "spdif" {
+                        out.extend(self.spdif_lock_error(subject, None, now));
+                    }
+                } else if lost {
+                    let msg = if transport == "spdif" {
+                        spdif_lost_words(subject, follower, state, Some(reason))
+                    } else {
+                        format!(
+                            "{subject}: its USB-direct time base {} ({})",
+                            state_words(state),
+                            reason
+                        )
+                    };
+                    let raised = self.raise_counted(code, subject, msg, now, false);
+                    out.extend(raised);
+                } else if state == "lock_error" && transport == "spdif" && follower {
+                    out.extend(self.spdif_lock_error(subject, lock_error, now));
+                }
+                if transport == "spdif" && reason == "lock_ok" {
+                    out.extend(self.spdif_lock_error(subject, None, now));
+                }
+                if matches!(reason, "reanchor" | "epoch") {
+                    out.extend(self.raise(
+                        "reanchor",
+                        subject,
+                        format!("{subject}: re-anchored (a few ms of silence)"),
+                        now,
+                    ));
+                }
+                out
+            }
+            _ => Vec::new(),
+        }
     }
 
     // -- fixup sw2x (F1) --
@@ -530,6 +685,18 @@ fn state_words(state: &str) -> String {
         "unknown" => "is in an unknown state".into(),
         s => format!("is {s}"),
     }
+}
+
+// -- WP ATHUBM --
+/// `spdif_lost`'s sentence.
+fn spdif_lost_words(subject: &str, follower: bool, state: &str, reason: Option<&str>) -> String {
+    let what = if follower {
+        "its S/PDIF time base"
+    } else {
+        "the S/PDIF time base it sends"
+    };
+    let why = reason.map_or_else(String::new, |r| format!(" ({r})"));
+    format!("{subject}: {what} {}{why}", state_words(state))
 }
 
 /// Why an alink was lost, for people (an 0xE1 reason's name).
@@ -915,5 +1082,120 @@ mod tests_wp_ausb2 {
         assert_eq!(b.list()[0].count, 2);
         assert_eq!(b.usb_realign_failed(None, 3).len(), 1);
         assert_eq!(b.active(), 0);
+    }
+}
+
+// -- WP ATHUBM --
+#[cfg(test)]
+#[allow(clippy::indexing_slicing)]
+mod tests_wp_athubm {
+    use super::super::align::SpdifSeen;
+    use super::*;
+
+    fn follower(state: &str, lock_error: bool) -> Observed {
+        Observed {
+            online: true,
+            spdif: Some(SpdifSeen {
+                mode: "follower".into(),
+                on_lock_error: "mute".into(),
+                state: state.into(),
+                lock_error,
+                ..SpdifSeen::default()
+            }),
+            ..Observed::default()
+        }
+    }
+
+    fn on(book: &AlarmBook, code: &str) -> Option<Alarm> {
+        book.list()
+            .into_iter()
+            .find(|a| a.code == code && a.state != AlarmState::Cleared)
+    }
+
+    #[test]
+    fn wp_athubm_spdif_loss_and_lock_error_from_reads() {
+        let mut b = AlarmBook::default();
+        assert!(
+            b.observe("F", Some(&follower("locked", false)), 1)
+                .is_empty()
+        );
+        let c = b.observe("F", Some(&follower("holdover", false)), 2);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].code, SPDIF_LOST);
+        assert_eq!(c[0].severity, "critical");
+        assert_eq!(c[0].message, "F: its S/PDIF time base is in holdover");
+        // Seen again: the same alarm, not another.
+        assert!(
+            b.observe("F", Some(&follower("holdover", false)), 3)
+                .is_empty()
+        );
+        let c = b.observe("F", Some(&follower("lock_error", true)), 4);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].code, SPDIF_LOCK_ERROR);
+        assert_eq!(c[0].severity, "critical");
+        // Locked again: both cleared.
+        let c = b.observe("F", Some(&follower("locked", false)), 5);
+        assert_eq!(c.len(), 2, "{c:?}");
+        assert!(on(&b, SPDIF_LOST).is_none() && on(&b, SPDIF_LOCK_ERROR).is_none());
+        // Mode 0 (not set up yet) alarms nothing.
+        let mut off = follower("none", false);
+        off.spdif.as_mut().unwrap().mode = "off".into();
+        assert!(b.observe("F", Some(&off), 6).is_empty());
+    }
+
+    #[test]
+    fn wp_athubm_time_base_events_for_every_transport() {
+        let mut b = AlarmBook::default();
+        // S/PDIF: holdover, then lock error (a warning when it plays), then locked.
+        let c = b.time_base_event("F", "spdif", "holdover", "holdover", true, None, 1);
+        assert_eq!(c[0].code, SPDIF_LOST);
+        assert!(
+            c[0].message.ends_with("is in holdover (holdover)"),
+            "{}",
+            c[0].message
+        );
+        let c = b.time_base_event(
+            "F",
+            "spdif",
+            "lock_error",
+            "lock_error",
+            true,
+            Some(("F can't lock".into(), false)),
+            2,
+        );
+        assert_eq!(
+            (c[0].code.as_str(), c[0].severity.as_str()),
+            (SPDIF_LOCK_ERROR, "warning")
+        );
+        let c = b.time_base_event("F", "spdif", "locked", "lock_ok", true, None, 3);
+        assert_eq!(c.len(), 2, "{c:?}");
+        // A re-anchor or an epoch change is the reanchor alarm.
+        let c = b.time_base_event("F", "spdif", "anchoring", "epoch", true, None, 4);
+        assert_eq!(c[0].code, "reanchor");
+        // A source losing its outputs.
+        let c = b.time_base_event("S", "spdif", "none", "lost", false, None, 5);
+        assert!(
+            c[0].message.contains("the S/PDIF time base it sends"),
+            "{}",
+            c[0].message
+        );
+        // USB-direct: its own loss alarm; lock error stays 0xE3's.
+        let c = b.time_base_event("U", "usb", "holdover", "holdover", true, None, 6);
+        assert_eq!(c[0].code, TIME_BASE_LOST);
+        assert!(
+            b.time_base_event("U", "usb", "lock_error", "lock_error", true, None, 7)
+                .is_empty()
+        );
+        let c = b.time_base_event("U", "usb", "locked", "resumed", true, None, 8);
+        assert_eq!(c[0].state, AlarmState::Cleared);
+        // The line: the same alarm its 0xE1 raises.
+        let c = b.time_base_event("A", "alink", "holdover", "lost", true, None, 9);
+        assert_eq!(c[0].code, "alink_lost");
+        assert!(
+            b.event("A", "holdover", "los", true, 10).is_empty(),
+            "one loss, one alarm"
+        );
+        let c = b.time_base_event("A", "alink", "locked", "locked", true, None, 11);
+        assert_eq!(c[0].state, AlarmState::Cleared);
     }
 }

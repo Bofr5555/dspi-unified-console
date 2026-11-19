@@ -674,6 +674,184 @@ fn usb_seen(c: &AlinkUsbConfig, s: &AlinkUsbStatus, d: Option<&AlinkUsbDiag>) ->
     }
 }
 
+// -- WP ATHUBM --
+/// Read what the time-base contract adds to unit `o`'s record, from one
+/// `EXT_LIST`: `EXT_TIME_BASE` and the 0xE4 feature bit when listed, and, for a
+/// unit the model has on S/PDIF (`spdif`: a follower or a source), whether
+/// its firmware has the S/PDIF block and `EXT_ALINK_SPDIF` and `_STATUS`.
+/// Nothing is written.
+fn observe_contract(dev: &DeviceShared, o: &mut Observed, spdif: bool) {
+    use dspi_proto::ext::timebase as tb;
+    let list = match exec(
+        dev,
+        Dir::Get,
+        op::REQ_EXTENSION,
+        g::EXT_LIST,
+        Vec::new(),
+        EXT_LIST_LEN,
+    ) {
+        Ok(b) => dspi_proto::ext::decode_list(&b),
+        Err(_) => return,
+    };
+    if spdif {
+        o.spdif_block = Some(if list.contains(&tb::EXT_ALINK_SPDIF) {
+            AlinkFirmware::Present
+        } else {
+            AlinkFirmware::Absent
+        });
+        if list.contains(&tb::EXT_ALINK_SPDIF) {
+            let config = get_ext(
+                dev,
+                tb::EXT_ALINK_SPDIF,
+                tb::ALINK_SPDIF_LEN,
+                tb::AlinkSpdif::decode,
+            );
+            let status = list
+                .contains(&tb::EXT_ALINK_SPDIF_STATUS)
+                .then(|| {
+                    get_ext(
+                        dev,
+                        tb::EXT_ALINK_SPDIF_STATUS,
+                        tb::ALINK_SPDIF_STATUS_LEN,
+                        tb::AlinkSpdifStatus::decode,
+                    )
+                })
+                .flatten();
+            if let (Some(c), Some(st)) = (config, status) {
+                o.spdif = Some(spdif_seen(&c, &st));
+            }
+        }
+    }
+    if list.contains(&tb::EXT_TIME_BASE) {
+        o.time_base = get_ext(
+            dev,
+            tb::EXT_TIME_BASE,
+            tb::TIME_BASE_LEN,
+            tb::TimeBaseRead::decode,
+        )
+        .map(|r| align::TimeBaseSeen {
+            output_frames: r.output_frames,
+            entries: r
+                .entries
+                .iter()
+                .map(|e| align::TimeBaseEntrySeen {
+                    time_base: e.time_base,
+                    transport: tb::time_base_name(e.time_base).into(),
+                    role: e.role.as_str().into(),
+                    state: e.state.as_str().into(),
+                    last_reason: e.last_reason.as_str().into(),
+                    domain: e.domain,
+                    t: e.t,
+                    t_minus_output: r.t_minus_output(e),
+                    disturbances: e.disturbances,
+                    d: e.d,
+                    phase_error: e.phase_error,
+                })
+                .collect(),
+        });
+        o.time_base_events = get_ext(dev, g::EXT_NOTIFY_FEATURES, 4, |b| {
+            b.get(..4)?.try_into().ok().map(u32::from_le_bytes)
+        })
+        .is_some_and(|f| f & tb::NOTIFY_FEAT_TIME_BASE != 0);
+    }
+}
+
+// -- WP ATHUBM --
+/// The hub's record of an S/PDIF unit's reads.
+fn spdif_seen(
+    c: &dspi_proto::ext::timebase::AlinkSpdif,
+    s: &dspi_proto::ext::timebase::AlinkSpdifStatus,
+) -> align::SpdifSeen {
+    use dspi_proto::ext::timebase::{self as tb, spdif_flag};
+    align::SpdifSeen {
+        mode: c.mode.as_str().into(),
+        auto_reanchor: c.flags & tb::SPDIF_FLAG_AUTO_REANCHOR != 0,
+        d: c.d,
+        on_lock_error: match c.on_lock_error {
+            tb::SPDIF_ON_LOCK_ERROR_PLAY => "play_unaligned",
+            tb::SPDIF_ON_LOCK_ERROR_MUTE => "mute",
+            _ => "unknown",
+        }
+        .into(),
+        tx_mask: c.tx_mask,
+        state: s.state.as_str().into(),
+        phase_state: s.phase_state,
+        rate_code: s.rate_code,
+        superframe: s.has(spdif_flag::SUPERFRAME),
+        holdover: s.has(spdif_flag::HOLDOVER),
+        lock_error: s.has(spdif_flag::LOCK_ERROR),
+        foreign: s.has(spdif_flag::FOREIGN),
+        source_id: s.source_id,
+        epoch: s.epoch,
+        frame: s.frame,
+        phase_error: s.phase_error,
+        vcxo_ppm: s.vcxo_ppm,
+        d_min: s.d_min,
+        d_max: s.d_max,
+        lock_count: s.lock_count,
+        loss_count: s.loss_count,
+        sf_errors: s.sf_errors,
+        reanchors: s.reanchors,
+    }
+}
+
+// -- WP ATHUBM --
+/// The `EXT_ALINK_SPDIF` the engine asks of a unit (`p`), built on what it
+/// has (`seen`): a follower's D and lock-error action, a source's slots; the
+/// flags as read, a source's D and lock-error action as read. A follower
+/// never carries a `tx_mask` (review atab: a source turned follower has its
+/// mask zeroed, or the write would be refused).
+fn spdif_wanted(
+    p: &align::SpdifPlan,
+    seen: &align::SpdifSeen,
+) -> dspi_proto::ext::timebase::AlinkSpdif {
+    use dspi_proto::ext::timebase::{self as tb, AlinkSpdif, ContractState, SpdifMode};
+    let source = p.mode == "source";
+    let code = |s: &str| {
+        if s == "play_unaligned" {
+            tb::SPDIF_ON_LOCK_ERROR_PLAY
+        } else {
+            tb::SPDIF_ON_LOCK_ERROR_MUTE
+        }
+    };
+    AlinkSpdif {
+        mode: if source {
+            SpdifMode::Source
+        } else {
+            SpdifMode::Follower
+        },
+        flags: if seen.auto_reanchor {
+            tb::SPDIF_FLAG_AUTO_REANCHOR
+        } else {
+            0
+        },
+        d: if source { seen.d } else { p.d },
+        on_lock_error: code(if source {
+            &seen.on_lock_error
+        } else {
+            &p.on_lock_error
+        }),
+        tx_mask: if source { p.tx_mask } else { 0 },
+        state: ContractState::None,
+    }
+}
+
+// -- WP ATHUBM --
+/// Whether `want` is what the unit has (`seen`): nothing to write, nothing
+/// re-anchors.
+fn spdif_same(want: &dspi_proto::ext::timebase::AlinkSpdif, seen: &align::SpdifSeen) -> bool {
+    use dspi_proto::ext::timebase as tb;
+    let lock = if seen.on_lock_error == "play_unaligned" {
+        tb::SPDIF_ON_LOCK_ERROR_PLAY
+    } else {
+        tb::SPDIF_ON_LOCK_ERROR_MUTE
+    };
+    seen.mode == want.mode.as_str()
+        && seen.d == want.d
+        && lock == want.on_lock_error
+        && seen.tx_mask == want.tx_mask
+}
+
 // -- fixup sw2x (F3), factored by WP FIXM1 --
 /// Write `plan`'s distance delays (`out_delay:<n>`) to `dev`, each only when
 /// the unit holds another value; a delay cut to the unit's longest is said
@@ -1022,7 +1200,7 @@ impl HubHandle {
         model
             .units
             .iter()
-            .filter(|u| !u.usb_direct())
+            .filter(|u| u.on_alink()) // -- WP ATHUBM -- (was: not USB-direct)
             .filter(|u| match self.device_by_serial(&u.serial) {
                 Some(dev) => probe_alink(&dev) == Some(AlinkFirmware::Absent),
                 None => self.system().last_seen_without_alink(&u.serial),
@@ -1037,6 +1215,42 @@ impl HubHandle {
                 )
             })
             .chain(usb)
+            .chain(self.system_spdif_warnings(&model))
+            .collect()
+    }
+
+    // -- WP ATHUBM --
+    /// [`Self::system_alink_warnings`]' part for units on S/PDIF and S/PDIF
+    /// sources whose firmware has no S/PDIF time base (`EXT_LIST` without
+    /// 0x8020), read now when attached, else as last seen.
+    fn system_spdif_warnings(&self, model: &super::model::SystemModel) -> Vec<String> {
+        model
+            .units
+            .iter()
+            .filter(|u| u.spdif() || u.spdif_source)
+            .filter(|u| {
+                let absent = match self.device_by_serial(&u.serial) {
+                    Some(dev) => {
+                        let mut o = Observed::default();
+                        observe_contract(&dev, &mut o, true);
+                        o.spdif_block
+                    }
+                    None => self
+                        .system()
+                        .last_observed(&u.serial)
+                        .and_then(|o| o.spdif_block),
+                };
+                absent == Some(AlinkFirmware::Absent)
+            })
+            .map(|u| {
+                let name = if u.name.is_empty() { &u.id } else { &u.name };
+                format!(
+                    "{name} ({}): its firmware has no S/PDIF time base (extension 0x8020), so it \
+                     cannot be an S/PDIF {}. It is not aligned.",
+                    u.serial,
+                    if u.spdif_source { "source" } else { "follower" }
+                )
+            })
             .collect()
     }
 
@@ -1119,7 +1333,11 @@ impl HubHandle {
         let (model, _) = self.system().model();
         (
             self.system().poll_interval(),
-            model.units.iter().any(super::model::Unit::usb_direct),
+            // -- WP ATHUBM -- and S/PDIF units, for their alarms
+            model
+                .units
+                .iter()
+                .any(|u| u.usb_direct() || u.spdif() || u.spdif_source),
         )
     }
 
@@ -1359,14 +1577,33 @@ impl HubHandle {
             .filter(|u| u.usb_direct())
             .map(|u| u.serial.clone())
             .collect();
+        // -- WP ATHUBM -- units on S/PDIF are read as such; sources' S/PDIF too
+        let spdif_units: BTreeSet<String> = model
+            .units
+            .iter()
+            .filter(|u| u.spdif())
+            .map(|u| u.serial.clone())
+            .collect();
+        let spdif_roles: BTreeSet<String> = model
+            .units
+            .iter()
+            .filter(|u| u.spdif() || u.spdif_source)
+            .map(|u| u.serial.clone())
+            .collect();
+        let unit_serials: BTreeSet<&str> = model.units.iter().map(|u| u.serial.as_str()).collect();
         for (serial, dev) in self.system_devices(&model) {
             let last = self.system().last_observed(&serial);
-            let o = match &dev {
+            let mut o = match &dev {
+                // -- WP ATHUBM -- nothing of the audio link or USB-direct is read
+                Some(_) if spdif_units.contains(&serial) => Observed {
+                    online: true,
+                    ..Observed::default()
+                },
                 // -- WP AUSB1 --
                 Some(d) if usb_units.contains(&serial) => {
                     let mut o = observe_usb(d);
                     if o.usb_direct.is_none() {
-                        o.usb_direct = last.and_then(|l| l.usb_direct);
+                        o.usb_direct = last.as_ref().and_then(|l| l.usb_direct);
                     }
                     o
                 }
@@ -1374,16 +1611,25 @@ impl HubHandle {
                 Some(d) => {
                     let mut o = observe(d);
                     if o.alink.is_none() {
-                        o.alink = last.and_then(|l| l.alink);
+                        o.alink = last.as_ref().and_then(|l| l.alink);
                     }
                     o
                 }
                 // -- fixup hwlk1f (F4) -- offline: what it reported last, as last seen
                 None => Observed {
                     online: false,
-                    ..last.unwrap_or_default()
+                    ..last.clone().unwrap_or_default()
                 },
             };
+            // -- WP ATHUBM -- the time-base contract, on every unit's transport
+            if let Some(d) = &dev
+                && unit_serials.contains(serial.as_str())
+            {
+                observe_contract(d, &mut o, spdif_roles.contains(&serial));
+                if o.spdif_block.is_none() && spdif_roles.contains(&serial) {
+                    o.spdif_block = last.as_ref().and_then(|l| l.spdif_block);
+                }
+            }
             observed.insert(serial, o);
         }
         // -- WP AUSB2 -- what the hub learned when it wrote "play unaligned"
@@ -1466,6 +1712,9 @@ impl HubHandle {
             let _held: Vec<_> = unit_locks.iter().map(|l| super::guard(l)).collect();
             // A poll that read before this now leaves these units alone.
             self.system().bump_align_generation();
+            // -- WP ATHUBM -- units just made S/PDIF followers: their limits
+            // are read after the switch and their D written again
+            let mut spdif_switched: Vec<String> = Vec::new();
             for plan in &alignment.units {
                 let dev = self.device_by_serial(&plan.serial);
                 let result = |what: &str, result: String| WriteResult {
@@ -1479,8 +1728,18 @@ impl HubHandle {
                     // -- WP HWLK1F -- and why, so a client can say what was not written
                     let seen = status.observed.get(&plan.serial);
                     let usb_unit = plan.transport == "usb_direct";
+                    // -- WP ATHUBM --
+                    let spdif_unit = plan.transport == "spdif";
                     let reason = if dev.is_none() || !seen.is_some_and(|o| o.online) {
                         "not connected"
+                    } else if spdif_unit
+                        && seen.is_some_and(|o| o.spdif_block == Some(AlinkFirmware::Absent))
+                    {
+                        "no S/PDIF time base (firmware)"
+                    } else if spdif_unit && seen.is_some_and(|o| o.spdif.is_none()) {
+                        "state unknown"
+                    } else if spdif_unit {
+                        "out of range"
                     } else if usb_unit && seen.is_some_and(Observed::without_usb_direct) {
                         // -- WP AUSB1 --
                         "no USB-direct block (firmware)"
@@ -1496,13 +1755,37 @@ impl HubHandle {
                     writes.push(WriteResult {
                         reason: Some(reason.into()),
                         ..result(
-                            if usb_unit { "usb_direct" } else { "phase" },
+                            if usb_unit {
+                                "usb_direct"
+                            } else if spdif_unit {
+                                "spdif"
+                            } else {
+                                "phase"
+                            },
                             "skipped".into(),
                         )
                     });
                     continue;
                 };
                 let dev = Arc::clone(dev);
+                // -- WP ATHUBM -- a unit on S/PDIF: its role, then its outputs
+                if plan.transport == "spdif" {
+                    let r = self.write_spdif(&dev, plan, &status.observed);
+                    let was = status
+                        .observed
+                        .get(&plan.serial)
+                        .and_then(|o| o.spdif.as_ref())
+                        .map(|s| s.mode.clone());
+                    if r == "ok"
+                        && plan.spdif.as_ref().is_some_and(|p| p.mode == "follower")
+                        && was.as_deref() != Some("follower")
+                    {
+                        spdif_switched.push(plan.unit.clone());
+                    }
+                    writes.push(result("spdif", r));
+                    writes.extend(write_out_delays(&dev, plan));
+                    continue;
+                }
                 // -- WP AUSB1 -- a USB-direct unit: its mode and D, then the outputs
                 if plan.transport == "usb_direct" {
                     let seen = status
@@ -1543,6 +1826,13 @@ impl HubHandle {
                     writes.push(result("usb_direct", r));
                     if let Some(l) = lock {
                         writes.push(result("on_lock_error", l));
+                    }
+                    // -- WP ATHUBM -- a USB-direct unit that is an S/PDIF source
+                    if plan.spdif.is_some() {
+                        writes.push(result(
+                            "spdif",
+                            self.write_spdif(&dev, plan, &status.observed),
+                        ));
                     }
                     // Its delays carry the start offsets: written once every
                     // USB-direct unit is placed again, below.
@@ -1586,6 +1876,13 @@ impl HubHandle {
                             .map_or_else(status_name, |()| "ok".into())
                     };
                     writes.push(result("phase", r));
+                    // -- WP ATHUBM -- an audio link unit that is an S/PDIF source
+                    if plan.spdif.is_some() {
+                        writes.push(result(
+                            "spdif",
+                            self.write_spdif(&dev, plan, &status.observed),
+                        ));
+                    }
                 }
                 writes.extend(write_out_delays(&dev, plan));
             }
@@ -1621,6 +1918,35 @@ impl HubHandle {
                 }
                 writes.extend(delays);
             }
+            // -- WP ATHUBM -- a unit switched to follower now reports its limits:
+            // its domain is worked out again and what differs written
+            if !spdif_switched.is_empty() {
+                let fresh = self.system_status_watching(None);
+                for plan in fresh.alignment.units.iter().filter(|p| p.spdif.is_some()) {
+                    let Some(dev) = self.device_by_serial(&plan.serial) else {
+                        continue;
+                    };
+                    let r = self.write_spdif(&dev, plan, &fresh.observed);
+                    if r != "unchanged" && r != "skipped" {
+                        writes.push(WriteResult {
+                            serial: plan.serial.clone(),
+                            element: plan.unit.clone(),
+                            what: "spdif".into(),
+                            result: r,
+                            reason: Some("its limits, read after it became a follower".into()),
+                        });
+                    }
+                    // A new domain D moves the source's lag: its speakers too.
+                    if plan.writable {
+                        writes.extend(
+                            write_out_delays(&dev, plan)
+                                .into_iter()
+                                .filter(|w| w.result != "unchanged"),
+                        );
+                    }
+                }
+                alignment = fresh.alignment;
+            }
             // -- WP AUSB2 -- (review fixm1 F5) the report says what holds after the
             // writes: "Align again" only for units still not written
             alignment
@@ -1643,6 +1969,43 @@ impl HubHandle {
             applied: apply,
             writes,
         }
+    }
+
+    // -- WP ATHUBM --
+    /// Write `plan`'s S/PDIF role (`EXT_ALINK_SPDIF`) to `dev` from the read
+    /// just made: `unchanged` when the unit has it (nothing re-anchors),
+    /// `skipped` when it cannot be (not read, out of range), `refused_locally`
+    /// for what the unit would refuse anyway, else the write's outcome. A
+    /// follower's re-anchor that follows is the hub's own (no alarm).
+    fn write_spdif(
+        &self,
+        dev: &DeviceShared,
+        plan: &align::UnitPlan,
+        observed: &BTreeMap<String, Observed>,
+    ) -> String {
+        use dspi_proto::ext::timebase as tb;
+        let seen = observed
+            .get(&plan.serial)
+            .filter(|o| o.online)
+            .and_then(|o| o.spdif.as_ref());
+        let (Some(p), Some(seen)) = (plan.spdif.as_ref(), seen) else {
+            return "skipped".into();
+        };
+        if !p.writable {
+            return "skipped".into();
+        }
+        let want = spdif_wanted(p, seen);
+        if spdif_same(&want, seen) {
+            return "unchanged".into();
+        }
+        if !want.is_valid() {
+            return "refused_locally".into();
+        }
+        if want.mode == tb::SpdifMode::Follower {
+            self.system().expect_reanchor(&plan.serial);
+        }
+        set_ext(dev, tb::EXT_ALINK_SPDIF, want.encode_out().to_vec())
+            .map_or_else(status_name, |()| "ok".into())
     }
 
     // -- WP FIXM1 --
@@ -1921,12 +2284,23 @@ impl HubHandle {
                 }
                 let Some(dev) = self.device_by_serial(&u.serial) else {
                     // Offline: as it was last seen (kept across polls, fixup hwlk1f F4)
-                    if u.usb_direct() || self.system().last_seen_without_alink(&u.serial) {
+                    // -- WP ATHUBM -- a unit on S/PDIF has no audio link frame either
+                    if u.usb_direct()
+                        || u.spdif()
+                        || self.system().last_seen_without_alink(&u.serial)
+                    {
                         no_alink.insert(u.serial.clone());
                     }
                     offline.push(u.serial.clone());
                     continue;
                 };
+                // -- WP ATHUBM -- scenes reach a unit on S/PDIF at once (its time base 3
+                // is not a scene path yet)
+                if u.spdif() {
+                    rtts.insert(u.serial.clone(), Duration::ZERO);
+                    no_alink.insert(u.serial.clone());
+                    continue;
+                }
                 // -- WP AUSB1 --
                 if u.usb_direct() {
                     let (seen, rtt) = timed_usb(&dev, reads_began);
@@ -2373,5 +2747,63 @@ mod tests_wp_ausb2 {
             usb_lead(2400, LEAD_MARGIN, [MS].into_iter(), 1200 * MS, 96_000),
             2 * lead
         );
+    }
+}
+
+// -- WP ATHUBM --
+#[cfg(test)]
+mod tests_wp_athubm {
+    use super::*;
+    use dspi_proto::ext::timebase::{self as tb, SpdifMode};
+
+    fn seen_source() -> align::SpdifSeen {
+        align::SpdifSeen {
+            mode: "source".into(),
+            auto_reanchor: true,
+            d: 192,
+            on_lock_error: "mute".into(),
+            tx_mask: 0x05,
+            state: "locked".into(),
+            ..align::SpdifSeen::default()
+        }
+    }
+
+    fn plan(mode: &str, d: u16, tx_mask: u8) -> align::SpdifPlan {
+        align::SpdifPlan {
+            mode: mode.into(),
+            source: "SRC".into(),
+            d,
+            on_lock_error: "play_unaligned".into(),
+            tx_mask,
+            lag_samples: None,
+            writable: true,
+        }
+    }
+
+    /// Review atab carry-over: a source made a follower is written with its
+    /// `tx_mask` zeroed, which the core's codec (and the firmware) take; the
+    /// mask of a source is the model's.
+    #[test]
+    fn wp_athubm_a_source_turned_follower_has_its_mask_zeroed() {
+        let want = spdif_wanted(&plan("follower", 150, 0x05), &seen_source());
+        assert_eq!(want.mode, SpdifMode::Follower);
+        assert_eq!((want.d, want.tx_mask), (150, 0));
+        assert_eq!(want.on_lock_error, tb::SPDIF_ON_LOCK_ERROR_PLAY);
+        assert!(want.is_valid());
+        assert!(!spdif_same(&want, &seen_source()));
+        let bytes = want.encode_out();
+        assert_eq!(bytes, [1, 1, 150, 0, 1, 0, 0, 0]);
+
+        let want = spdif_wanted(&plan("source", 0, 0x01), &seen_source());
+        assert_eq!(
+            (want.mode, want.tx_mask, want.d),
+            (SpdifMode::Source, 1, 192)
+        );
+        // A source keeps its own lock-error action and D.
+        assert_eq!(want.on_lock_error, tb::SPDIF_ON_LOCK_ERROR_MUTE);
+        assert!(want.is_valid());
+        let mut same = seen_source();
+        same.tx_mask = 1;
+        assert!(spdif_same(&want, &same));
     }
 }
