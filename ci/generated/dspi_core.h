@@ -7431,6 +7431,68 @@ uint32_t dspi_measure_tune_ab(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Start the passive RTA of `setup_json`: the state, or a failure
+ * (`invalid`).
+ */
+uint32_t dspi_measure_rta_passive_start(struct FfiCore *core,
+                                        const char *setup_json,
+                                        char *buf,
+                                        uint32_t len);
+
+/**
+ * Push `count` mono samples (full scale ±1) at `rate_hz` into the passive
+ * RTA; `samples` points at `count` floats (null with `count` 0). The state,
+ * or a failure (`invalid` for another rate than the started one, a block
+ * over 1 Mi samples, a null or misaligned pointer with a count).
+ */
+uint32_t dspi_measure_rta_passive_push(struct FfiCore *core,
+                                       const float *samples,
+                                       uint32_t count,
+                                       uint32_t rate_hz,
+                                       char *buf,
+                                       uint32_t len);
+
+/**
+ * The passive RTA's frame, without I/O.
+ */
+uint32_t dspi_measure_rta_passive_frame(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * The passive RTA's state, without I/O.
+ */
+uint32_t dspi_measure_rta_passive_state(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * Hold (`on` nonzero) the spectrum for comparison, or drop the held copy:
+ * the state, or a failure (`invalid`).
+ */
+uint32_t dspi_measure_rta_passive_hold(struct FfiCore *core, uint8_t on, char *buf, uint32_t len);
+
+/**
+ * The averaging preset (`averaging` a JSON string: `"fast"`, `"slow"`,
+ * `"infinite"`): the state, or a failure (`invalid`).
+ */
+uint32_t dspi_measure_rta_passive_averaging(struct FfiCore *core,
+                                            const char *averaging,
+                                            char *buf,
+                                            uint32_t len);
+
+/**
+ * Stop the passive RTA: the state (never a failure).
+ */
+uint32_t dspi_measure_rta_passive_stop(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
+ * A measurement document's curves (`options_json` null: none smoothed, no
+ * target), or a failure. No handle needed. Returns the bytes needed
+ * including the NUL, 0 for a panic.
+ */
+uint32_t dspi_measure_doc_curves(const char *doc,
+                                 const char *options_json,
+                                 char *buf,
+                                 uint32_t len);
+
+/**
  * Start looking for hubs on the local network, replacing any browse running.
  * Returns at once; false only with a null handle, in a build without the
  * feature, or when a thread cannot start. A network failure shows in

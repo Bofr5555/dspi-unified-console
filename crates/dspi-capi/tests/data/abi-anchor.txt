@@ -1847,6 +1847,28 @@ uint32_t dspi_measure_tune_keep(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_revert(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_ab(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_stop(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_rta_passive_start(struct FfiCore *core,
+const char *setup_json,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_rta_passive_push(struct FfiCore *core,
+const float *samples,
+uint32_t count,
+uint32_t rate_hz,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_rta_passive_frame(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_rta_passive_state(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_rta_passive_hold(struct FfiCore *core, uint8_t on, char *buf, uint32_t len);
+uint32_t dspi_measure_rta_passive_averaging(struct FfiCore *core,
+const char *averaging,
+char *buf,
+uint32_t len);
+uint32_t dspi_measure_rta_passive_stop(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_measure_doc_curves(const char *doc,
+const char *options_json,
+char *buf,
+uint32_t len);
 bool dspi_link_browse_start(struct FfiCore *core,
 void (*callback)(void *user_data),
 void *user_data,
