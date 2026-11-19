@@ -171,9 +171,11 @@ gets measurement, scenes and CLICK with no host change.
   only blocks beyond the erase-ahead, so the shortest broadcast lead is the ring plus two blocks
   (`SPDIF_CTRL_MIN_LEAD_FRAMES` = 896 frames, about 19 ms at 48 kHz), stated in ext spec 2.10 and refused below it by
   `EXT_ALINK_SPDIF_CTRL`;
-  (c) **while flash is unavailable** the RAM-resident stamper only reads the table, which flash code keeps filled four
-  blocks ahead (about 16 ms at 48 kHz); a blackout that outruns it emits all-zero user bits for the blocks beyond the
-  table, which the followers coast over (d) and, past 8 blocks, hold over. A measurement never overlaps a flash write
+  (c) **while flash is unavailable** the RAM-resident stamper only reads the table (as built, FWSP2 and its review: the main loop
+  stages superframes eight blocks ahead, about 32 ms at 48 kHz, and a 56-byte RAM filler copies them into the 4-entry
+  table, so nothing is built and no flash is read in a blackout; the plan's original "four blocks ahead, about 16 ms"
+  could not hold with 4 entries keyed by block index, review-fwtb0 change 2); a blackout that outruns the staging emits
+  all-zero user bits for the blocks beyond it, which the followers coast over (d) and, past 8 blocks, hold over. A measurement never overlaps a flash write
   (P5 S5 aborts on it, and the holdover is a disturbance);
   (d) **the follower's coast rule:** a missing or invalid superframe is ridden through on counter continuity (F of the
   next block = F + 192, counted in `sf_errors`, no disturbance) for at most `SPDIF_COAST_BLOCKS` = 8 blocks, then
