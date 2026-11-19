@@ -357,6 +357,14 @@ pub use measure::{
     MeasureTuneState, MeasureTuneTransition, MeasureTuneVerify, MeasureTuneVerifyOutput,
     MeasureTuneVerifySum, MeasureTuneWrite,
 };
+// -- WP ATCORE --
+pub use measure::{
+    MeasureSystemApplied, MeasureSystemApplyStage, MeasureSystemArrival, MeasureSystemDelay,
+    MeasureSystemDocument, MeasureSystemIssue, MeasureSystemLevel, MeasureSystemOutDelay,
+    MeasureSystemPhase, MeasureSystemPreflight, MeasureSystemProposal, MeasureSystemPurpose,
+    MeasureSystemResult, MeasureSystemSetup, MeasureSystemSnapshot, MeasureSystemState,
+    MeasureSystemTransition, MeasureSystemUnit, MeasureSystemUnitCheck,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

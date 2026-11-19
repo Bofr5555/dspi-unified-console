@@ -55,6 +55,18 @@ mod session;
 mod live;
 // -- WP P5TUNE -- the auto-tune (PLAN-P5 section 1.4, T10)
 mod tune;
+// -- WP ATCORE -- the system measurement across units (PLAN-AT 1.4, 1.5)
+mod system;
+pub use system::{
+    MeasureSystemApplied, MeasureSystemApplyStage, MeasureSystemArrival, MeasureSystemDelay,
+    MeasureSystemDocument, MeasureSystemIssue, MeasureSystemLevel, MeasureSystemOutDelay,
+    MeasureSystemPhase, MeasureSystemPreflight, MeasureSystemProposal, MeasureSystemPurpose,
+    MeasureSystemResult, MeasureSystemSetup, MeasureSystemSnapshot, MeasureSystemState,
+    MeasureSystemTransition, MeasureSystemUnit, MeasureSystemUnitCheck,
+};
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_atcore;
 pub use live::{
     MeasureLiveAdjust, MeasureLiveBand, MeasureLiveChange, MeasureLiveCurve, MeasureLiveFrame,
     MeasureLiveMode, MeasureLiveProposal, MeasureLiveRta, MeasureLiveSetup, MeasureLiveState,
@@ -601,6 +613,11 @@ pub(crate) struct MeasureSlot {
     tune: Mutex<tune::Tune>,
     /// What the auto-tune shows (a leaf).
     tune_view: Mutex<MeasureTuneState>,
+    // -- WP ATCORE --
+    /// The system session across units: taken before `inner`, never after.
+    system: Mutex<system::SystemSlot>,
+    /// The hub's `system.measure.aborted` events (a leaf).
+    system_aborted: system::AbortedQueue,
 }
 
 impl MeasureSlot {
