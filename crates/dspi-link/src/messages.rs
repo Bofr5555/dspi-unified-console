@@ -12,10 +12,12 @@ use serde_json::{json, Value};
 
 /// The protocol major of DSPi Link (spec 10).
 pub const PROTO_MAJOR: u32 = 1;
-/// The minor **our hub** sends in its `hello` (`dspi-hub` `server.rs`): 2 until
-/// WP PGHDEV raises it together with `protocol`, `ext`, `legacy_devices` and
-/// `denied_ids`, so the hub never claims 1.3 without behaving as one (PLAN-PG
-/// R4). The client sends [`CLIENT_PROTO_MINOR`].
+// -- PG-C merge -- doc reworded (PGHDEV's hub says LINK_13_MINOR); the value stays 2
+/// The DSPi Link 1.2 minor: the last one before 1.3 (paged devices), and what
+/// a peer that says no `proto.minor` counts as. Neither side of ours sends it
+/// any more (PLAN-PG R4): our client sends [`CLIENT_PROTO_MINOR`], our hub
+/// [`LINK_13_MINOR`] (`dspi-hub` `server.rs` `HUB_PROTO_MINOR`, WP PGHDEV,
+/// together with `protocol`, `ext`, `legacy_devices` and `denied_ids`).
 pub const PROTO_MINOR: u32 = 2;
 
 // -- WP PGLINKC --
@@ -595,7 +597,8 @@ mod tests_wp_pglinkc {
         assert!(old.denied_ids.is_empty());
     }
 
-    /// R4: the client says 1.3, our hub's constant stays 1.2 until PGHDEV.
+    /// R4: the client says 1.3; `PROTO_MINOR` is the 1.2 minor (our hub says
+    /// `LINK_13_MINOR` since PGHDEV).
     #[test]
     fn wp_pglinkc_hello_minor_and_hub_kinds() {
         let v: Value =
