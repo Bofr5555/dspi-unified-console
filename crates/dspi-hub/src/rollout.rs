@@ -276,7 +276,9 @@ pub struct Failed {
 pub struct DeviceEntry {
     /// The device.
     pub serial: String,
-    /// `pending`, `running`, `ok`, `failed`, `cancelled`, `not_tried`.
+    /// `pending`, `running`, `ok`, `failed`, `cancelled`, `not_tried`; -- WP PGFWUP --
+    /// `excluded`: a group member without BOOTSEL (a DSPi-Zero, an unknown board), never
+    /// tried, its reason in `failed` (code `no_bootsel`).
     pub state: String,
     /// The step it is at, or ended at ("" before its first).
     pub step: String,

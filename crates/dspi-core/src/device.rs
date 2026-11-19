@@ -199,10 +199,11 @@ pub(crate) fn unmappable_mirror(
     Some(mirror)
 }
 
-/// `wLength` of the `GET_PLATFORM` read: 7 bytes, the longest reply.
+/// `wLength` of the `GET_PLATFORM` read: -- WP PGFWUP -- 8 bytes, the longest
+/// reply (a DSPi-Zero's board id in byte 7; PLAN-PG section 1.9).
 const PLATFORM_REQUEST_LEN: u16 = {
-    assert!(PlatformInfo::REQUEST_LEN <= u16::MAX as usize);
-    PlatformInfo::REQUEST_LEN as u16
+    assert!(PlatformInfo::FULL_LEN <= u16::MAX as usize);
+    PlatformInfo::FULL_LEN as u16
 };
 
 /// The image's wire-format byte (header byte 0), from a short first read:

@@ -37,6 +37,7 @@
 //! Owned by WP C6 (docs/core-merge/PLAN.md).
 
 use dspi_proto::generated::opcodes as op;
+use dspi_proto::packets::{Board, PlatformInfo}; // -- WP PGFWUP --
 use dspi_proto::value::Value;
 use dspi_transport::TransportError;
 
@@ -127,7 +128,7 @@ fn entry(v: &mut [u8], i: u8) -> Option<&mut u8> {
 /// UF2 program-version string (`1.1.6`, `1.1.6-beta3`,
 /// `1.1.6-beta3-16-g557bce7`, a leading `v` allowed). `None` when it does not
 /// start with three dotted numbers that fit a byte.
-fn parse_version(s: &str) -> Option<(u8, u8, u8, u8)> {
+pub(crate) fn parse_version(s: &str) -> Option<(u8, u8, u8, u8)> {
     let s = s.trim();
     let s = s.strip_prefix(['v', 'V']).unwrap_or(s);
     let end = s
@@ -169,6 +170,139 @@ pub(crate) fn version_matches(s: &DspState, version: &str) -> bool {
     }
 }
 
+// -- WP PGFWUP --
+// ── The board (PLAN-PG sections 1.8 and 1.9) ──────────────────────────
+//
+// A board whose platform byte 7 (the board id) is present and not 0, or whose
+// USB descriptor names a board this build does not know as a standard Pico,
+// never enters the bootloader, is never offered an image and is never in a
+// rollout, for `REQ_ENTER_BOOTLOADER` 0xF0 and `SYS.ENTER_BOOTLOADER` 0x0130
+// alike (the planner maps the one onto the other, so the gate below covers
+// both). An unknown board fails closed. A byte 7 that is absent means board 0.
+//
+// A paged DSPi-Zero cannot be told from a Pico by `SYS.PLATFORM` (the registry
+// fixes it at 7 bytes): its product string and `bcdDevice` identify it where
+// the descriptor is at hand ([`board_from_descriptor`]). Behind an upstream hub
+// it is unknown.
+
+/// The product string of the DSPi-Zero (upstream DSPi-Zero `192df73`,
+/// `uac2/usb_descriptors.c`).
+pub const ZERO_PRODUCT: &str = "Weeb Labs DSPi Zero";
+/// The DSPi-Zero's `bcdDevice` (`uac2/usb_descriptors.h`).
+pub const ZERO_BCD_DEVICE: u16 = 0x0300;
+/// The product strings of the Pico builds this build knows: upstream and our
+/// DSPi, the alink sender (current and first name). Older firmware on the
+/// Raspberry Pi VID names itself `Pico DSP ...` ([`PICO_PRODUCT_PREFIX`]).
+pub const PICO_PRODUCTS: [&str; 3] = [
+    "Weeb Labs DSPi",
+    "DSPi Audio Link Sender",
+    "DSPi Link Sender",
+];
+/// The product prefix of the pre-DSPi firmware (`Pico DSP 2.1 (WinUSB)`).
+pub const PICO_PRODUCT_PREFIX: &str = "Pico DSP";
+/// The [`Board::Unknown`] id for a board known only by a product string this
+/// build does not know (no platform byte names it).
+pub const UNKNOWN_PRODUCT_BOARD: u8 = 0xFF;
+
+/// The name the clients show for a board (caps, About, the inventory: S6).
+pub fn board_name(board: Board) -> &'static str {
+    match board {
+        Board::Pico => "DSPi",
+        Board::PiZero2W => "DSPi Zero",
+        Board::Unknown(_) => "Unknown board",
+    }
+}
+
+/// What a USB device descriptor says about the board: `None` when it says
+/// nothing (no product string, and not the Zero's `bcdDevice`). A product
+/// string this build does not know is an unknown board
+/// ([`UNKNOWN_PRODUCT_BOARD`]): it fails closed. For PGZERO's descriptor
+/// fields (`product`, `bcdDevice`).
+pub fn board_from_descriptor(product: Option<&str>, bcd_device: Option<u16>) -> Option<Board> {
+    let product = product.map(str::trim).filter(|p| !p.is_empty());
+    if product == Some(ZERO_PRODUCT) || bcd_device == Some(ZERO_BCD_DEVICE) {
+        return Some(Board::PiZero2W);
+    }
+    let p = product?;
+    if PICO_PRODUCTS.contains(&p) || p.starts_with(PICO_PRODUCT_PREFIX) {
+        Some(Board::Pico)
+    } else {
+        Some(Board::Unknown(UNKNOWN_PRODUCT_BOARD))
+    }
+}
+
+/// The board, from the platform reply (byte 7) and what the descriptor says:
+/// a board the platform names is that board; on board 0 the descriptor
+/// decides, if it says anything, else it is a Pico.
+pub fn identify_board(platform: &PlatformInfo, descriptor: Option<Board>) -> Board {
+    match platform.board() {
+        Board::Pico => descriptor.unwrap_or(Board::Pico),
+        other => other,
+    }
+}
+
+/// What this transport's descriptor says about the board. PGZERO fills
+/// `DeviceDescriptor`'s product string and `bcdDevice` (USB, WebUSB, Android,
+/// our hub's own attach) and returns [`board_from_descriptor`] of them here;
+/// until then the descriptor says nothing, and a paged Zero reads as board 0.
+fn descriptor_board(t: &dyn dspi_transport::Transport) -> Option<Board> {
+    let _ = t.descriptor();
+    #[cfg(test)]
+    if let Some(b) = tests_wp_pgfwup::descriptor_override() {
+        return Some(b);
+    }
+    None
+}
+
+/// The board of the open connection, read now: `REQ_GET_PLATFORM` asked for
+/// [`PlatformInfo::FULL_LEN`] (on a paged device the planner makes it
+/// `SYS.PLATFORM`), then the descriptor. A failed or short read is the error:
+/// the caller fails closed.
+pub(crate) fn read_board(conn: &mut Connection) -> Result<Board> {
+    let reply = conn.get_upto(op::REQ_GET_PLATFORM, 0, PLATFORM_FULL_LEN)?;
+    let info = PlatformInfo::decode(&reply).map_err(|_| TransportError::ShortRead {
+        opcode: op::REQ_GET_PLATFORM,
+        wanted: PlatformInfo::MIN_LEN,
+        got: reply.len(),
+    })?;
+    Ok(identify_board(&info, descriptor_board(conn.transport())))
+}
+
+/// [`DspiError::Unsupported`] unless the open board has BOOTSEL; the read's
+/// error when it cannot be read. Nothing but the platform read is sent.
+fn bootloader_allowed(conn: &mut Connection) -> Result<()> {
+    let board = read_board(conn)?;
+    if board.has_bootsel() {
+        return Ok(());
+    }
+    log::warn!(
+        "enter_bootloader: refused: the device is a {} (board id {}), which has no BOOTSEL \
+         bootloader; nothing was sent (PLAN-PG section 1.9)",
+        board_name(board),
+        board.id()
+    );
+    Err(DspiError::Unsupported)
+}
+
+/// `wLength` of the board read.
+const PLATFORM_FULL_LEN: u16 = {
+    assert!(PlatformInfo::FULL_LEN <= u16::MAX as usize);
+    PlatformInfo::FULL_LEN as u16
+};
+
+impl DspiCore {
+    /// The board of the open device, read now (PLAN-PG section 1.9): a board
+    /// whose [`Board::has_bootsel`] is false never enters the bootloader, is
+    /// never offered an image and is never in a rollout.
+    ///
+    /// Errors: [`DspiError::Disconnected`]; the read's error (callers fail
+    /// closed on it).
+    pub fn board(&self) -> Result<Board> {
+        let mut inner = self.lock();
+        read_board(inner.conn()?)
+    }
+}
+
 // -- WP P0W --
 /// The journal path and indices a hardware setter records its change under.
 type Journal<'a> = (&'static str, &'a [u8]);
@@ -205,14 +339,25 @@ impl DspiCore {
         let current = {
             let mut guard = self.lock();
             let current = lock.is_current(&guard) && ticket.still_on(&guard).is_ok();
-            if current {
-                // -- WP P0W -- before the request: the device leaves with it
-                journal(&mut guard, "dev.bootloader", &[], Value::Trigger);
-            }
             // -- WP TMCOREF -- a refusal (a hub's `DENIED`) is an answer: the
             // device did not reboot; anything else is expected while it does
             let mut refused = None;
+            // -- WP PGFWUP -- a board without BOOTSEL never enters its
+            // bootloader (PLAN-PG section 1.9): the board is read first, and an
+            // unknown board or a failed read fails closed. Every client and
+            // the raw path's `_confirmed` call come through here.
             if current
+                && let Some(conn) = guard.conn.as_mut()
+                && let Err(e) = bootloader_allowed(conn)
+            {
+                refused = Some(e);
+            }
+            if current && refused.is_none() {
+                // -- WP P0W -- before the request: the device leaves with it
+                journal(&mut guard, "dev.bootloader", &[], Value::Trigger);
+            }
+            if current
+                && refused.is_none()
                 && let Some(conn) = guard.conn.as_mut()
                 && let Err(e) = conn.get_upto(op::REQ_ENTER_BOOTLOADER, 0, 1)
             {
@@ -1130,6 +1275,10 @@ impl DspiCore {
     }
 }
 
+// -- WP PGFWUP --
+#[cfg(test)]
+mod tests_wp_pgfwup;
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_c6 {
@@ -1974,6 +2123,8 @@ mod tests_wp_c6 {
             entries(&log),
             vec![
                 "lock Installing firmware".into(),
+                // -- WP PGFWUP -- the board read first (PLAN-PG section 1.9)
+                format!("in {:02X} 0", op::REQ_GET_PLATFORM),
                 format!("in {:02X} 0", op::REQ_ENTER_BOOTLOADER)
             ]
         );
@@ -2007,6 +2158,8 @@ mod tests_wp_c6 {
             entries(&log),
             vec![
                 "lock Installing firmware".into(),
+                // -- WP PGFWUP -- the board read first (PLAN-PG section 1.9)
+                format!("in {:02X} 0", op::REQ_GET_PLATFORM),
                 format!("in {:02X} 0", op::REQ_ENTER_BOOTLOADER)
             ]
         );

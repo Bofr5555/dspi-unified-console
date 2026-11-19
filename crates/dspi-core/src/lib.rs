@@ -208,6 +208,12 @@ pub use firmware_guard::*;
 // -- WP SECFWV --
 pub use firmware_manifest::NOTICE_NOT_VERIFIED as NOTICE_FIRMWARE_NOT_VERIFIED;
 pub use firmware_manifest::{BundledFirmware, verify_bundled}; // -- WP SECFIX --
+// -- WP PGFWUP -- the board rule and names (PLAN-PG 1.9), the manifest's lineage
+pub use firmware_manifest::{BundledImage, FirmwareGeneration, FirmwareLineage, bundled_images};
+pub use hardware::{
+    PICO_PRODUCT_PREFIX, PICO_PRODUCTS, UNKNOWN_PRODUCT_BOARD, ZERO_BCD_DEVICE, ZERO_PRODUCT,
+    board_from_descriptor, board_name, identify_board,
+};
 // -- WP CG10 --
 pub use link_text::*;
 // -- WP HB0 --
