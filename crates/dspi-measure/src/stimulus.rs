@@ -694,5 +694,27 @@ pub fn check_config_bounds(
     Ok(())
 }
 
+// -- review AT-A/AT-B --
+/// [`check_config_bounds`] for a configuration that an apply op 9
+/// (`SIGGEN_START` at a sample) will start: a log sweep only. The firmware
+/// starts only a finite type there (`extension_channel_spec.md` 2.8.7.1,
+/// review R4), and pink noise is a continuous type to it even with a
+/// duration: staged, it would complete every START `refused`. The hub's
+/// `system.measure.stage` judges with this one.
+///
+/// Errors: [`MeasureError::Invalid`] naming the first rule broken.
+pub fn check_timed_config(
+    config: &dspi_proto::packets::SiggenConfig,
+    forbidden_mask: u16,
+) -> Result<(), MeasureError> {
+    check_config_bounds(config, forbidden_mask)?;
+    if config.signal_type != SIGNAL_LOG_SWEEP {
+        return Err(MeasureError::Invalid(
+            "refused generator configuration: only a log sweep starts on the time base".into(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests_wp_p5time;

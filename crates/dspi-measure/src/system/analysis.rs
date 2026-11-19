@@ -122,8 +122,10 @@ pub struct SystemOutput {
     /// Passes averaged.
     pub passes: u16,
     /// The standard error of its intercept from the spread of its passes
-    /// about the fit, with [`ARRIVAL_RESOLUTION_US`] in quadrature, µs;
-    /// `None` with fewer than two clear passes.
+    /// about the fit (at least what the run's pooled scatter gives a key of
+    /// as many passes), with [`ARRIVAL_RESOLUTION_US`] in quadrature, µs;
+    /// `None` with fewer than two clear passes. One standard error from few
+    /// passes: an error of three of it is not rare with three passes.
     pub uncertainty_us: Option<f64>,
 }
 
@@ -595,32 +597,52 @@ fn spread(layout: &Layout, walked: &WalkedAnalysis) -> Spread {
             v.push((c.start as f64, t.residual_us));
         }
     }
+    // Per key: its passes, their mean position, the sum of its squared
+    // residuals.
     let mut sum_r2 = 0.0;
     let mut sxx = 0.0;
     let mut points = 0usize;
     let mut used_keys = 0usize;
-    let per_key = res
+    let stats: Vec<(usize, f64, f64)> = res
         .iter()
         .map(|v| {
             let n = v.len();
             if n == 0 {
-                return (None, 0.0);
+                return (0, 0.0, 0.0);
             }
             used_keys = used_keys.saturating_add(1);
             points = points.saturating_add(n);
-            let nf = n as f64;
-            let mean_n = v.iter().map(|p| p.0).sum::<f64>() / nf;
+            let mean_n = v.iter().map(|p| p.0).sum::<f64>() / n as f64;
             let r2: f64 = v.iter().map(|p| p.1 * p.1).sum();
             sum_r2 += r2;
             sxx += v.iter().map(|p| (p.0 - mean_n).powi(2)).sum::<f64>();
+            (n, mean_n, r2)
+        })
+        .collect();
+    // The fit took one intercept per key and one slope from the points.
+    let dof = points.saturating_sub(used_keys).saturating_sub(1);
+    // -- review AT-A/AT-B -- the variance of one cycle's arrival, pooled
+    // over every key of the run. The scatter is mostly the capture clock's
+    // wander, which every key shares, and a key's own two or three passes
+    // say little of it (a variance from three points is within a factor of
+    // three of the truth only two times in three, and its `n - 1` forgets
+    // that the slope was fitted from the same points). So a key's
+    // uncertainty is never below what the whole run's scatter gives it; a
+    // key that scatters more than the run (a poor signal-to-noise ratio)
+    // keeps its own.
+    let pooled = (dof >= 1).then(|| sum_r2 / dof as f64);
+    let per_key = stats
+        .iter()
+        .map(|&(n, mean_n, r2)| {
             let se = (n >= 2).then(|| {
-                let stat = r2 / (nf - 1.0) / nf;
-                (stat + ARRIVAL_RESOLUTION_US * ARRIVAL_RESOLUTION_US).sqrt()
+                let nf = n as f64;
+                let own = r2 / (nf - 1.0);
+                let var = pooled.map_or(own, |p| own.max(p));
+                (var / nf + ARRIVAL_RESOLUTION_US * ARRIVAL_RESOLUTION_US).sqrt()
             });
             (se.filter(|s| s.is_finite()), mean_n)
         })
         .collect();
-    let dof = points.saturating_sub(used_keys).saturating_sub(1);
     let slope = (dof >= 1 && sxx > 0.0)
         .then(|| (sum_r2 / dof as f64 / sxx).sqrt())
         .filter(|s| s.is_finite());

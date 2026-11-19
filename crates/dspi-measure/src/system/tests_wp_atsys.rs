@@ -186,10 +186,28 @@ fn wp_atsys_runs_the_analyser_cannot_lay_out_are_refused() {
     let s = SystemSchedule::new(D, RATE, vec![a.clone(), e]).unwrap();
     assert!(SystemAnalyser::new(&s, RATE, &o).is_err());
     // More than 16 outputs in one run.
+    // (review AT-A/AT-B: the planner refuses it too, before anything plays.)
     let units: Vec<UnitWalk> = (0..3).map(|u| unit(u, 0x3F)).collect();
-    let s = interleave(&units, &opts(Some(2))).unwrap();
+    let err = interleave(&units, &opts(Some(2))).err().unwrap();
+    assert!(err.to_string().contains("anchor output"), "{err}");
+    let mut at = 0;
+    let mut segs = Vec::new();
+    for _ in 0..2 {
+        for u in 0..3 {
+            let seg = Segment {
+                unit: UnitIndex(u),
+                start: at,
+                schedule: walk(0x3F, 1),
+            };
+            at = seg.end() + 100_000;
+            segs.push(seg);
+        }
+    }
+    let s = SystemSchedule::new(D, RATE, segs).unwrap();
     let err = SystemAnalyser::new(&s, RATE, &o).err().unwrap();
     assert!(err.to_string().contains("anchor output"), "{err}");
+    let sixteen: Vec<UnitWalk> = (0..4).map(|u| unit(u, 0xF)).collect();
+    assert!(interleave(&sixteen, &opts(Some(2))).is_ok());
     // These lay out.
     let ok = interleave(&[unit(0, 0b11), unit(1, 0b101)], &opts(Some(3))).unwrap();
     assert!(SystemAnalyser::new(&ok, RATE, &o).is_ok());
@@ -525,6 +543,12 @@ fn wp_atsys_check_config_bounds_refuses_every_broken_rule() {
         ..sweep_config()
     };
     check_config_bounds(&pink, 0).unwrap();
+    // (review AT-A/AT-B) What op 9 starts is a sweep: the firmware never
+    // starts pink noise on the time base.
+    crate::stimulus::check_timed_config(&sweep_config(), 0).unwrap();
+    assert!(crate::stimulus::check_timed_config(&sweep_config(), 0b0100).is_err());
+    let e = crate::stimulus::check_timed_config(&pink, 0).unwrap_err();
+    assert!(e.to_string().contains("log sweep"), "{e}");
     let s = sweep_config;
     let broken: Vec<(&str, SiggenConfig)> = vec![
         ("version", SiggenConfig { version: 2, ..s() }),

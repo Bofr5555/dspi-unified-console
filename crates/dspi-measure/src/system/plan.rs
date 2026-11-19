@@ -10,6 +10,7 @@ use crate::ir::MAX_CAPTURE_SAMPLES;
 use crate::stimulus::WalkSchedule;
 use crate::types::MeasureError;
 
+use super::analysis::MAX_RUN_OUTPUTS;
 use super::{DomainId, MAX_SEGMENTS, Segment, SystemSchedule, UnitIndex};
 
 /// The longest run, s (P5's S7).
@@ -58,7 +59,8 @@ pub struct InterleaveOptions {
 ///
 /// Errors: [`MeasureError::Invalid`] for no unit, a unit twice, two domains
 /// ("these units do not share a clock"), a walk of more than one pass, walks
-/// at different rates or with different sweeps, passes outside 2..=8, a gap
+/// at different rates or with different sweeps, more than
+/// [`MAX_RUN_OUTPUTS`] outputs in all, passes outside 2..=8, a gap
 /// shorter than the sweep's, or a run that does not fit one capture
 /// ([`MAX_CAPTURE_SAMPLES`], [`MAX_RUN_SECONDS`]) with the passes asked for
 /// (or with three).
@@ -90,6 +92,14 @@ pub fn interleave(
         if u.walk.sweep != first.walk.sweep {
             return bad("every unit of a run plays the same sweep".into());
         }
+    }
+    // -- review AT-A/AT-B -- a run the analyser cannot lay out is refused
+    // here, before anything plays.
+    let keys: usize = units.iter().map(|u| u.walk.outputs().len()).sum();
+    if keys > MAX_RUN_OUTPUTS {
+        return bad(format!(
+            "{keys} outputs in one run (at most {MAX_RUN_OUTPUTS}): split the group into runs through an anchor output"
+        ));
     }
     if options.gap_samples < u64::from(first.walk.sweep.gap_samples) {
         return bad("a gap between segments shorter than the sweep's".into());

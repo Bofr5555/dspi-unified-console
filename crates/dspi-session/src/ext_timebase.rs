@@ -290,3 +290,7 @@ pub fn siggen_stop_at(
 
 #[cfg(test)]
 mod tests_wp_atproto;
+
+// -- review AT-A/AT-B -- ATPROTO's helpers against ATFAKE's real fakes
+#[cfg(test)]
+mod tests_review_atab;

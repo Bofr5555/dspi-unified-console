@@ -44,7 +44,12 @@ pub struct ChainOptions {
     pub max_arrival_us: f64,
     /// The runs' captures count frames from one origin on one clock (the
     /// microphone kept open across the runs): the anchor's arrivals are
-    /// then compared on the timeline too.
+    /// then compared on the timeline too. (Review AT-A/AT-B: a weak check.
+    /// The line through three runs takes most of a move itself: the anchor
+    /// moved by `d` in the first or last run shows as `d / 3`, in the middle
+    /// one as `2 d / 3`; and a capture clock whose rate drifts over minutes
+    /// leaves the line by itself. The magnitude check is the one that
+    /// holds; this one adds little with few runs.)
     pub one_capture_clock: bool,
 }
 
