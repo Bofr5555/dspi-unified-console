@@ -49,6 +49,10 @@ use crate::{DspiError, Result};
 
 /// How often the hub's status is read (renewing the lease).
 const POLL_EVERY: Duration = Duration::from_millis(250);
+// -- WP ATDEMO --
+/// When to read the engine's terms again after `system.status` was rate
+/// limited (the hub's once a second per connection).
+const TERMS_RETRY: Duration = Duration::from_millis(1_100);
 /// Failed status reads in a row before the session gives up.
 const MAX_POLL_FAILURES: u32 = 4;
 /// Capture kept after a step's or a run's end (the input latency), ms.
@@ -184,6 +188,10 @@ pub(crate) struct SysSession {
     progress: f32,
     output: Option<SessionOutput>,
     timing_reliable: Option<bool>,
+    // -- WP ATDEMO --
+    /// The engine's terms are to be read again then (`system.status` was
+    /// rate limited: another view of this connection read it just before).
+    terms_retry: Option<Instant>,
 }
 
 fn to_value<T: serde::Serialize>(v: &T) -> Value {
@@ -342,10 +350,29 @@ impl SysSession {
             progress: 0.0,
             output: None,
             timing_reliable: None,
+            terms_retry: None, // -- WP ATDEMO --
         })
     }
 
     // ── Queries ────────────────────────────────────────────────────────
+
+    // -- WP ATDEMO --
+    /// The hub's session id ("" once closed).
+    pub(crate) fn hub_session(&self) -> &str {
+        &self.session
+    }
+
+    // -- WP ATDEMO --
+    /// The capture frame the next push must start at (0 before the first).
+    pub(crate) fn next_capture_frame(&self) -> u64 {
+        self.next_frame.unwrap_or(0)
+    }
+
+    // -- WP ATDEMO --
+    /// End the session with `issue` (the simulated microphone refused).
+    pub(crate) fn abort_with(&mut self, hub: &mut dyn Hub, issue: MeasureSystemIssue) {
+        self.abort(hub, issue);
+    }
 
     pub(crate) fn purpose(&self) -> MeasureSystemPurpose {
         self.purpose
@@ -384,7 +411,7 @@ impl SysSession {
         self.output.take()
     }
 
-    fn wants_capture(&self) -> bool {
+    pub(crate) fn wants_capture(&self) -> bool {
         matches!(
             self.stage,
             Stage::PreRoll { .. } | Stage::Ramp { .. } | Stage::Run { .. } | Stage::Analyse { .. }
@@ -627,7 +654,13 @@ impl SysSession {
                 format!("{serial}: ")
             };
             let m = format!("{who}the hub stopped the measurement ({})", e.reason);
-            self.abort(hub, issue(&serial, "measure.system.abort.hub", m));
+            // -- WP ATDEMO -- a unit's time base moved: the unit lost its lock
+            let key = if e.reason == "disturbance" {
+                "measure.system.abort.disturbance"
+            } else {
+                "measure.system.abort.hub"
+            };
+            self.abort(hub, issue(&serial, key, m));
             return;
         }
         let due = self
@@ -654,6 +687,10 @@ impl SysSession {
             );
             return;
         }
+        // -- WP ATDEMO --
+        if self.terms_retry.is_some_and(|at| now >= at) {
+            self.read_terms(hub, now);
+        }
         self.advance(hub, now);
     }
 
@@ -678,8 +715,18 @@ impl SysSession {
             Ok(r) => r,
             Err(e) => {
                 self.poll_failures = self.poll_failures.saturating_add(1);
+                // -- WP ATDEMO -- the hub answered that it stopped the session
+                // itself: why, in its words, the unit named (not "the hub
+                // does not answer")
+                if let DspiError::Link { code, msg } = &e
+                    && code == "aborted"
+                {
+                    let i = self.hub_stopped(msg);
+                    self.abort(hub, i);
+                    return false;
+                }
                 let gone = matches!(e, DspiError::Disconnected)
-                    || matches!(&e, DspiError::Link { code, .. } if code == "not_found" || code == "closed" || code == "aborted");
+                    || matches!(&e, DspiError::Link { code, .. } if code == "not_found" || code == "closed");
                 if gone || self.poll_failures >= MAX_POLL_FAILURES {
                     let m = format!("the hub does not answer: {e}");
                     self.abort(hub, issue("", "measure.system.abort.disconnected", m));
@@ -709,6 +756,49 @@ impl SysSession {
             }
         }
         true
+    }
+
+    // -- WP ATDEMO --
+    /// A `status` the hub answered `aborted` (it stopped the session
+    /// itself): the issue by the hub's reason. A unit's time base that was
+    /// disturbed or moved is `abort.disturbance`, one no longer locked
+    /// `abort.time_base`, anything else `abort.hub`; the unit is named when
+    /// the hub's words name one of the session's.
+    fn hub_stopped(&self, words: &str) -> MeasureSystemIssue {
+        let serial = self
+            .plan
+            .units
+            .iter()
+            .map(|u| u.serial.as_str())
+            .filter(|s| !s.is_empty() && words.contains(*s))
+            .max_by_key(|s| s.len())
+            .unwrap_or("")
+            .to_owned();
+        let w = words.to_ascii_lowercase();
+        let key =
+            if w == "disturbance" || w.contains("was disturbed") || w.contains("timeline moved") {
+                "measure.system.abort.disturbance"
+            } else if w.contains("its time base is") || w.contains("time base entry is gone") {
+                "measure.system.abort.time_base"
+            } else {
+                "measure.system.abort.hub"
+            };
+        // "unit X: why" as "X: why"; a bare reason as the hub's.
+        let m = match words.strip_prefix("unit ") {
+            Some(rest) if !serial.is_empty() && rest.starts_with(serial.as_str()) => {
+                rest.to_owned()
+            }
+            _ if key == "measure.system.abort.disturbance" && !serial.is_empty() => {
+                format!("{serial}: its time base was disturbed ({words})")
+            }
+            _ if key == "measure.system.abort.disturbance" => {
+                format!(
+                    "a unit's time base was disturbed: the hub stopped the measurement ({words})"
+                )
+            }
+            _ => format!("the hub stopped the measurement ({words})"),
+        };
+        issue(&serial, key, m)
     }
 
     fn timed_mut(&mut self) -> Option<&mut Timed> {
@@ -1105,7 +1195,7 @@ impl SysSession {
     fn next_ramp(&mut self, hub: &mut dyn Hub, now: Instant) {
         let Some(&(unit, output)) = self.ramp_queue.get(self.ramp_pos) else {
             // Every output has its level: the engine's terms, then the run.
-            self.read_terms(hub);
+            self.read_terms(hub, now);
             self.buf.clear();
             self.stage = Stage::PreRoll { after: After::Run };
             return;
@@ -1263,11 +1353,22 @@ impl SysSession {
     /// from `system.status`'s alignment) and each measured output's
     /// `out.delay` in effect. A unit whose terms cannot be read gets none:
     /// its arrivals are then not offered.
-    fn read_terms(&mut self, hub: &mut dyn Hub) {
+    fn read_terms(&mut self, hub: &mut dyn Hub, now: Instant) {
         if self.purpose != MeasureSystemPurpose::Measure {
             return;
         }
-        let status = hub.request("system.status", json!({})).ok();
+        // -- WP ATDEMO -- the hub answers `system.status` once a second per
+        // connection: refused because another view read it, it is read again
+        // a moment later (during the run), never taken as unreadable at once.
+        let status = match hub.request("system.status", json!({})) {
+            Ok(v) => Some(v),
+            Err(DspiError::Link { code, .. }) if code == "rate_limited" => {
+                self.terms_retry = Some(now.checked_add(TERMS_RETRY).unwrap_or(now));
+                return;
+            }
+            Err(_) => None,
+        };
+        self.terms_retry = None;
         for (i, u) in self.plan.units.iter().enumerate() {
             let outputs: Vec<u8> = u.plan.outputs.iter().map(|o| o.output).collect();
             // The unit's own D (review AT-C): the hub cannot read the units

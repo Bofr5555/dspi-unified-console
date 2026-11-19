@@ -7510,6 +7510,20 @@ uint32_t dspi_measure_system_capture_push(struct FfiCore *core,
 uint32_t dspi_measure_system_tick(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Turn the demo hub's simulated microphone on (`on` true) or off for the
+ * next measurements across units: its info (`MeasureSystemSimInfo`
+ * `{available, on, label, room, issue}`), or a failure (`dlink`
+ * `unsupported` on any hub but the demo's, `invalid` while a session runs).
+ * While on, the core reads the hub's room on every tick: push no capture.
+ */
+uint32_t dspi_measure_system_sim_set(struct FfiCore *core, bool on, char *buf, uint32_t len);
+
+/**
+ * The demo hub's simulated microphone's info, without I/O.
+ */
+uint32_t dspi_measure_system_sim_info(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * The system session's state, without I/O.
  */
 uint32_t dspi_measure_system_state(struct FfiCore *core, char *buf, uint32_t len);

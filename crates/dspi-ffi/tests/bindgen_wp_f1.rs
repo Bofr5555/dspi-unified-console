@@ -12,6 +12,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// The public `DspiCore` methods a binding cannot carry: the argument is a Rust
 /// trait object. Everything else is exported.
 const NOT_EXPORTED: &[&str] = &[
+    // -- WP ATDEMO -- The demo hub's simulated microphone for a measurement across
+    // units: the web and Qt only (Android has no system measurement screen yet,
+    // PLAN-AT Later); through the wasm and C bindings.
+    "measure_system_sim_set",
+    "measure_system_sim_info",
     "open_transport",
     // -- WP HB0 -- Rust-only: takes a trait returning `Box<dyn Transport>`.
     "set_device_broker",

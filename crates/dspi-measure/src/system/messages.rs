@@ -385,6 +385,62 @@ pub mod guard {
     }
 }
 
+// -- WP ATDEMO --
+/// The demo hub's simulated microphone (WP ATDEMO): a room that hears the
+/// demo units' generators, offered only by `uconsole --demo hub --alink
+/// --with-measure-units` and only for a session whose every unit is one of
+/// that hub's own demo units. Never on a hub with real devices in the
+/// session: the hub refuses it (`unsupported`) and the core then plays
+/// nothing.
+pub mod demo {
+    use serde::{Deserialize, Serialize};
+
+    /// The hub's `hello.caps` entry: it has a demo room.
+    pub const CAP: &str = "system_measure_demo_mic";
+    /// `system.measure.demo_mic`: what the room's microphone heard.
+    pub const T: &str = "system.measure.demo_mic";
+    /// The most frames one answer carries (it fits one Link frame).
+    pub const MAX_FRAMES: u32 = 4_096;
+    /// The samples' full scale: 24-bit integers, as a microphone's.
+    pub const FULL_SCALE: f32 = 8_388_608.0;
+
+    /// `system.measure.demo_mic`: either `units` (may the room hear these
+    /// units? nothing is read) or a `session` and the capture frame to read
+    /// from.
+    #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+    pub struct DemoMicRequest {
+        /// The session whose capture is read ("" with `units`).
+        #[serde(default)]
+        pub session: String,
+        /// The units to ask about, without a session.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub units: Vec<String>,
+        /// The first capture frame wanted (the session's frames from 0).
+        #[serde(default)]
+        pub from: u64,
+    }
+
+    /// The answer: the capture from `first_frame` (empty when nothing more
+    /// is heard yet), at `rate_hz`, as 24-bit integers ([`FULL_SCALE`]).
+    #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+    pub struct DemoMicReply {
+        /// The room may hear the units (always true in an answer).
+        pub ok: bool,
+        /// What the room is, in words.
+        #[serde(default)]
+        pub room: String,
+        /// The first frame of `samples`.
+        #[serde(default)]
+        pub first_frame: u64,
+        /// The capture's rate, Hz.
+        #[serde(default)]
+        pub rate_hz: u32,
+        /// The samples.
+        #[serde(default)]
+        pub samples: Vec<i32>,
+    }
+}
+
 #[cfg(test)]
 mod tests_wp_planat {
     use super::*;

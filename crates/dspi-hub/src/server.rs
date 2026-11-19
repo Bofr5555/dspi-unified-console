@@ -3913,6 +3913,10 @@ impl Shared {
         // -- WP ATHUB -- measuring several units, for a Link 1.3 client
         if crate::system::measure::offered_to(link_minor) {
             caps.push(dspi_measure::system::messages::CAP);
+            // -- WP ATDEMO -- the demo hub's simulated microphone, only there
+            if self.hub.system_measure_has_demo_room() {
+                caps.push(dspi_measure::system::messages::demo::CAP);
+            }
         }
         let mode = self.auth.mode();
         // -- WP SECPAIR -- a key rotation's announcement, while it lasts (PLAN-SEC 4.2)

@@ -161,6 +161,25 @@ pub(crate) fn playout_us(status: &Value, serial: &str, from: PlayOut) -> Option<
     us.is_finite().then_some(us)
 }
 
+// -- WP ATDEMO --
+/// The hub's `system.status`, waited for when it is rate limited (the hub
+/// answers it once a second per connection, and another view of this
+/// connection may just have read it): after an apply the engine's terms
+/// must be read, never taken as unreadable (a verify would then predict no
+/// change of delay and fail a good alignment).
+pub(crate) fn system_status(hub: &mut dyn Hub) -> Option<Value> {
+    for attempt in 0..3 {
+        match hub.request("system.status", json!({})) {
+            Ok(v) => return Some(v),
+            Err(DspiError::Link { code, .. }) if code == "rate_limited" && attempt < 2 => {
+                dspi_transport::clock::sleep(std::time::Duration::from_millis(1_050));
+            }
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
 /// `(output, ms)` from a `param.get_many` reply of `out.delay` per output.
 pub(crate) fn out_delays_of(reply: &Value, outputs: &[u8]) -> Option<Vec<(u8, f32)>> {
     let values = reply.get("values")?.as_array()?;
@@ -1053,7 +1072,7 @@ impl Outcome {
     }
 
     fn read_after(&self, hub: &mut dyn Hub) -> Vec<Option<Terms>> {
-        let status = hub.request("system.status", json!({})).ok();
+        let status = system_status(hub); // -- WP ATDEMO --
         let snaps = self.snapshot(hub).ok();
         self.setup
             .units

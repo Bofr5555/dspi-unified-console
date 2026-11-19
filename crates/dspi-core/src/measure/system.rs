@@ -72,6 +72,9 @@ use crate::{DspiCore, DspiError, Result};
 pub(crate) mod plan;
 pub(crate) mod proposal;
 pub(crate) mod session;
+// -- WP ATDEMO -- the demo hub's simulated microphone
+pub(crate) mod sim;
+pub use sim::MeasureSystemSimInfo;
 
 pub(crate) use session::{SessionOutput, SysSession};
 
@@ -589,6 +592,9 @@ pub(crate) struct SystemSlot {
     pub(crate) session: Option<SysSession>,
     /// The last measurement's outcome, kept for the proposal and its apply.
     pub(crate) outcome: Option<proposal::Outcome>,
+    // -- WP ATDEMO --
+    /// The demo hub's simulated microphone.
+    pub(crate) sim: sim::SystemSim,
     /// A test's scripted hub in place of the core's.
     #[cfg(test)]
     pub(crate) hub: Option<Box<dyn Hub>>,
@@ -721,6 +727,9 @@ impl DspiCore {
             if let Some(e) = plan::refusal(&pre) {
                 return Err(e);
             }
+            // -- WP ATDEMO -- the simulated microphone hears every unit, or nothing starts
+            let serials: Vec<String> = setup.units.iter().map(|u| u.serial.clone()).collect();
+            self.system_sim_probe(&mut slot, &serials)?;
             let session = self.with_hub(&mut slot, |hub| {
                 SysSession::open(
                     plan::SetupPlan::new(&setup, units)?,
@@ -761,6 +770,13 @@ impl DspiCore {
         }
         let (state, changed) = {
             let mut slot = self.system_slot();
+            // -- WP ATDEMO -- the simulated microphone is the capture: a client's is ignored
+            if slot.sim.is_on() {
+                return Ok(slot
+                    .session
+                    .as_ref()
+                    .map_or_else(MeasureSystemState::default, SysSession::state));
+            }
             let Some(mut s) = slot.session.take() else {
                 return Ok(MeasureSystemState::default());
             };
@@ -789,6 +805,7 @@ impl DspiCore {
                 return MeasureSystemState::default();
             };
             let before = s.phase_key();
+            self.system_sim_feed(&mut slot, &mut s); // -- WP ATDEMO --
             self.with_hub(&mut slot, |hub| s.tick(hub, Instant::now()));
             let changed = before != s.phase_key();
             let state = s.state();
@@ -993,6 +1010,34 @@ impl DspiCore {
         f(&mut hub)
     }
 
+    // -- WP ATDEMO --
+    /// Before a session with the simulated microphone on: the hub's room
+    /// hears every one of `serials`, or the session does not start.
+    fn system_sim_probe(&self, slot: &mut SystemSlot, serials: &[String]) -> Result<()> {
+        let mut sim = std::mem::take(&mut slot.sim);
+        let r = self.with_hub(slot, |hub| {
+            if sim.on(hub) {
+                sim.probe(hub, serials)
+            } else {
+                Ok(())
+            }
+        });
+        slot.sim = sim;
+        r
+    }
+
+    // -- WP ATDEMO --
+    /// The simulated microphone's capture since the last tick, pushed.
+    fn system_sim_feed(&self, slot: &mut SystemSlot, s: &mut SysSession) {
+        let mut sim = std::mem::take(&mut slot.sim);
+        self.with_hub(slot, |hub| {
+            if sim.on(hub) {
+                sim.feed(hub, s);
+            }
+        });
+        slot.sim = sim;
+    }
+
     /// Put a session back; a finished one leaves its outcome.
     fn system_settle(&self, slot: &mut SystemSlot, mut s: SysSession) {
         match s.take_outcome() {
@@ -1051,6 +1096,9 @@ impl DspiCore {
             for (old, new) in setup.units.iter_mut().zip(units) {
                 old.ctx.limiter_outputs = new.ctx.limiter_outputs;
             }
+            // -- WP ATDEMO -- the simulated microphone hears every unit, or nothing starts
+            let serials: Vec<String> = setup.units.iter().map(|u| u.serial.clone()).collect();
+            self.system_sim_probe(&mut slot, &serials)?;
             let session = self.with_hub(&mut slot, |hub| {
                 SysSession::open(setup, purpose, Some(jobs), hub, Instant::now())
             })?;

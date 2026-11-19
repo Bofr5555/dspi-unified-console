@@ -63,8 +63,17 @@ export interface Unit {
   latencyUs?: number;
   measuredLatencyUs?: number | null;
   speakers?: Speaker[];
-  /** -- WP AUSB1 -- `usb_direct`: fed by USB from the host, locked to its Start of Frame. Absent: the audio link. */
-  transport?: "alink" | "usb_direct";
+  /** -- WP AUSB1 -- `usb_direct`: fed by USB from the host, locked to its Start of Frame. Absent: the audio link.
+   * -- WP ATWEB -- `spdif`: fed by S/PDIF from the source unit named as `upstream` (or, a source with no `upstream`, by nothing the model holds). */
+  transport?: "alink" | "usb_direct" | "spdif";
+  // -- WP ATWEB -- an S/PDIF time-base source (docs/integrator/audio-link.md, WP ATHUBM)
+  /** It stamps its frame counter in the S/PDIF user bits of the slots in `spdifTxMask`. */
+  spdifSource?: boolean;
+  /** Bit n: output slot n (outputs 2n and 2n + 1) carries the time base; never 0 on a source. */
+  spdifTxMask?: number;
+  /** The domain's D, samples; absent: the engine's. */
+  spdifD?: number | null;
+  // -- end WP ATWEB --
   /** -- WP AUSB1 -- a USB-direct unit's mode, written with the alignment; absent: the unit's own. */
   usbMode?: UsbMode | null;
   /** -- WP AUSB2 -- what it does when it can't lock (the hub writes it); absent: mute. */
@@ -197,6 +206,31 @@ export interface Observed {
   /** -- WP AUSB1 -- a USB-direct unit: whether its firmware has the block, and what was read. */
   usbDirect?: "present" | "none" | null;
   usb?: UsbSeen | null;
+  // -- WP ATWEB -- an S/PDIF unit or source (WP ATHUBM): its firmware's block, and what was read
+  spdifBlock?: "present" | "none" | null;
+  spdif?: SpdifSeen | null;
+}
+
+// -- WP ATWEB --
+/** `EXT_ALINK_SPDIF` and `_STATUS` as the hub read them (`observed[serial].spdif`). */
+export interface SpdifSeen {
+  /** `off`, `follower` or `source`. */
+  mode: string;
+  d: number;
+  onLockError: string;
+  txMask: number;
+  /** The contract state: `none`, `acquiring`, `anchoring`, `locked`, `holdover`, `lock_error`. */
+  state: string;
+  superframe: boolean;
+  holdover: boolean;
+  lockError: boolean;
+  /** The receiver is locked to a stream without a DSPi time base. */
+  foreign: boolean;
+  sourceId: number;
+  dMin: number;
+  dMax: number;
+  lockCount: number;
+  lossCount: number;
 }
 export interface AlinkStats {
   lineClass: number;
@@ -228,8 +262,8 @@ export interface UnitPlan {
   outDelays: [number, number][];
   clampedOutputs?: number[];
   writable: boolean;
-  /** -- WP AUSB1 -- `alink` or `usb_direct`; a USB-direct unit's D (samples), mode and start offset. */
-  transport?: "alink" | "usb_direct";
+  /** -- WP AUSB1 -- `alink` or `usb_direct`; a USB-direct unit's D (samples), mode and start offset. -- WP ATWEB -- or `spdif`. */
+  transport?: "alink" | "usb_direct" | "spdif";
   usbD?: number | null;
   usbMode?: UsbMode | null;
   startOffsetSamples?: number | null;
@@ -536,6 +570,12 @@ export function pathWord(path: string): string {
 /** A USB-direct unit. */
 export function isUsbDirect(u: Unit): boolean {
   return u.transport === "usb_direct";
+}
+
+// -- WP ATWEB --
+/** A unit fed by S/PDIF (a follower, or a source fed by nothing the model holds): not on the audio link. */
+export function isSpdifFed(u: Unit): boolean {
+  return u.transport === "spdif";
 }
 
 /** A USB-direct unit has no audio link firmware block: said so, never "Unknown". */

@@ -93,6 +93,17 @@ struct Faults {
     sum_mic_ppm: Option<f64>,
     /// This unit's drivers are wired with inverted polarity.
     wired_inverted: Option<usize>,
+    // -- WP ATDEMO --
+    /// From this capture frame on, `status` answers `aborted` with these
+    /// words (the hub stopped the session itself).
+    status_aborted: Option<(u64, String)>,
+    /// The simulated microphone: `Some(f)` serves `demo_mic` from the stub's
+    /// capture, refusing it from frame `f` on (`u64::MAX`: never).
+    demo_mic: Option<u64>,
+    /// Blocks the room has heard and not served yet (the clock's pace).
+    demo_ready: u32,
+    /// `system.status` answers `rate_limited` this many times first.
+    status_rate_limited: u32,
 }
 
 struct Stub {
@@ -448,7 +459,45 @@ impl Stub {
                 })
                 .unwrap())
             }
+            // -- WP ATDEMO -- the demo hub's room: the stub's own capture
+            msg::demo::T => {
+                let Some(refuse_at) = self.faults.demo_mic else {
+                    return Err(link("unsupported", "no room here"));
+                };
+                let req: msg::demo::DemoMicRequest = serde_json::from_value(body).unwrap();
+                if self.frames >= refuse_at || req.units.iter().any(|u| u == "REAL") {
+                    return Err(link("unsupported", "REAL is not a demo unit of this hub"));
+                }
+                if req.session.is_empty() {
+                    return Ok(json!({"ok": true, "room": "the stub's room"}));
+                }
+                assert_eq!(req.from, self.frames, "read from where it was left");
+                if self.faults.demo_ready == 0 {
+                    return Ok(
+                        json!({"ok": true, "first_frame": req.from, "rate_hz": RATE, "samples": []}),
+                    );
+                }
+                self.faults.demo_ready -= 1;
+                let block = self.block();
+                let first = self.frames;
+                self.frames += BLOCK as u64;
+                let samples: Vec<i32> = block
+                    .iter()
+                    .map(|v| (v * msg::demo::FULL_SCALE) as i32)
+                    .collect();
+                Ok(
+                    json!({"ok": true, "room": "the stub's room", "first_frame": first,
+                    "rate_hz": RATE, "samples": samples}),
+                )
+            }
             msg::t::STATUS => {
+                // -- WP ATDEMO --
+                if let Some((f, words)) = self.faults.status_aborted.clone()
+                    && self.frames >= f
+                    && self.session_open
+                {
+                    return Err(link("aborted", &words));
+                }
                 if let Some((u, f)) = self.faults.hub_abort
                     && self.frames >= f
                     && self.session_open
@@ -527,6 +576,14 @@ impl Stub {
             msg::t::CLOSE => {
                 self.session_open = false;
                 Ok(json!({}))
+            }
+            // -- WP ATDEMO -- once a second per connection, as the hub's
+            "system.status" if self.faults.status_rate_limited > 0 => {
+                self.faults.status_rate_limited -= 1;
+                Err(link(
+                    "rate_limited",
+                    "system.status at most once a second per session",
+                ))
             }
             "system.status" => Ok(json!({
                 "alignment": {
@@ -2169,4 +2226,240 @@ fn wp_atguard_an_old_hub_offers_no_guard_and_says_so() {
     let p = core.measure_system_proposal().unwrap();
     assert!(p.guard_s >= 120, "{p:?}");
     let _ = &mut hub;
+}
+
+// ── WP ATDEMO ───────────────────────────────────────────────────────────
+
+/// The hub answered `status` with `aborted` (it stopped the session
+/// itself): the core reports why by the hub's words, the unit named, never
+/// "the hub does not answer".
+#[test]
+fn wp_atdemo_a_status_the_hub_aborted_says_why_not_disconnected() {
+    let cases = [
+        (
+            "unit B: its time base was disturbed (5 -> 6, last reanchor)",
+            "measure.system.abort.disturbance",
+            "B",
+        ),
+        (
+            "unit B: its timeline moved against its outputs",
+            "measure.system.abort.disturbance",
+            "B",
+        ),
+        ("disturbance", "measure.system.abort.disturbance", ""),
+        (
+            "unit B: its time base is holdover",
+            "measure.system.abort.time_base",
+            "B",
+        ),
+        ("lease", "measure.system.abort.hub", ""),
+    ];
+    for (words, key, serial) in cases {
+        let (sess, hub) = faulted(|f| f.status_aborted = Some((96_000, words.to_owned())));
+        let st = sess.state();
+        assert_eq!(st.phase, MeasureSystemPhase::Aborted, "{words}: {st:?}");
+        let i = st.issue.unwrap();
+        assert_eq!(i.key, key, "{words}: {i:?}");
+        assert_eq!(i.serial, serial, "{words}: {i:?}");
+        assert!(!i.message.contains("does not answer"), "{i:?}");
+        if !serial.is_empty() {
+            assert!(i.message.starts_with("B: "), "{i:?}");
+        }
+        let reqs = hub.0.lock().unwrap().requests.clone();
+        assert_eq!(reqs.last().map(String::as_str), Some(msg::t::CLOSE));
+    }
+    // The hub's own event for a disturbance: the unit lost its lock too.
+    let (sess, _) = faulted(|f| f.hub_abort = Some((1, 96_000)));
+    assert_eq!(sess.state().issue.unwrap().key, "measure.system.abort.hub");
+}
+
+#[test]
+fn wp_atdemo_a_hub_event_for_a_disturbance_is_the_unit_losing_its_lock() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[3.2]),
+    ]))));
+    let p = plan_of(&s, &mut hub);
+    let mut sess = SysSession::open(
+        p,
+        MeasureSystemPurpose::Measure,
+        None,
+        &mut hub,
+        Instant::now(),
+    )
+    .unwrap();
+    hub.0.lock().unwrap().aborted.push(AbortedEvent {
+        session: "s1".into(),
+        unit: Some(1),
+        reason: "disturbance".into(),
+    });
+    sess.tick(&mut hub, Instant::now());
+    let i = sess.state().issue.unwrap();
+    assert_eq!(i.key, "measure.system.abort.disturbance", "{i:?}");
+    assert_eq!(i.serial, "B");
+}
+
+/// Drive a session from the simulated microphone only: the core reads the
+/// hub's room on every tick (nothing pushed by a client).
+fn drive_sim(s: &mut SysSession, hub: &mut StubHub, max_ticks: usize) {
+    let mut sim = super::system::sim::SystemSim::default();
+    let mut now = Instant::now();
+    for _ in 0..max_ticks {
+        if s.finished() {
+            return;
+        }
+        hub.0.lock().unwrap().faults.demo_ready = 1;
+        sim.feed(hub, s);
+        now += Duration::from_millis(100);
+        s.tick(hub, now);
+    }
+    panic!("the session did not end: {:?}", s.state());
+}
+
+/// The simulated microphone's capture measures as a client's would: a
+/// result with every arrival offered, read in order from frame 0.
+#[test]
+fn wp_atdemo_the_simulated_microphone_feeds_the_session() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[3.6]),
+    ]))));
+    hub.0.lock().unwrap().faults.demo_mic = Some(u64::MAX);
+    let p = plan_of(&s, &mut hub);
+    let mut sess = SysSession::open(
+        p,
+        MeasureSystemPurpose::Measure,
+        None,
+        &mut hub,
+        Instant::now(),
+    )
+    .unwrap();
+    drive_sim(&mut sess, &mut hub, 4_000);
+    let st = sess.state();
+    assert_eq!(st.phase, MeasureSystemPhase::Done, "{st:?}");
+    let Some(SessionOutput::Measured(o)) = sess.take_outcome() else {
+        panic!("a result")
+    };
+    assert!(
+        o.result.arrivals.iter().all(|a| a.offered),
+        "{:?}",
+        o.result
+    );
+    let a = arrival(&o, "A", 0).arrival_us;
+    assert!((a + 600.0).abs() < 2.0, "A arrives 600 us before B: {a}");
+}
+
+/// The room refusing during a session (a unit that is not the demo's)
+/// aborts it at once, the abort sent.
+#[test]
+fn wp_atdemo_a_refused_simulated_microphone_aborts_the_session() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[3.6]),
+    ]))));
+    hub.0.lock().unwrap().faults.demo_mic = Some(48_000);
+    let p = plan_of(&s, &mut hub);
+    let mut sess = SysSession::open(
+        p,
+        MeasureSystemPurpose::Measure,
+        None,
+        &mut hub,
+        Instant::now(),
+    )
+    .unwrap();
+    drive_sim(&mut sess, &mut hub, 4_000);
+    let i = sess.state().issue.unwrap();
+    assert_eq!(i.key, super::system::sim::KEY_REFUSED, "{i:?}");
+    assert!(i.message.contains("not a demo unit"), "{i:?}");
+    let reqs = hub.0.lock().unwrap().requests.clone();
+    assert!(reqs.iter().any(|r| r == msg::t::ABORT), "abort sent");
+}
+
+/// Fail closed through the core's calls: no simulated microphone on a hub
+/// without the demo room; with it, a group with any unit the room does not
+/// hear does not start (nothing opened, nothing staged), and a client's
+/// pushes are ignored while it is on.
+#[test]
+fn wp_atdemo_the_simulated_microphone_is_never_offered_beyond_the_demo_units() {
+    let core = crate::DspiCore::new();
+    let hub = two_units();
+    core.measure_system_set_hub(Box::new(hub.clone()));
+    // A hub without the room (any hub but the demo's).
+    let info = core.measure_system_sim_info();
+    assert!(!info.available && !info.on, "{info:?}");
+    assert!(matches!(
+        core.measure_system_sim_set(true),
+        Err(DspiError::Link { ref code, .. }) if code == "unsupported"
+    ));
+    assert!(!core.measure_system_sim_info().on);
+    // The demo hub's room: on, labelled.
+    hub.0.lock().unwrap().caps.push(msg::demo::CAP.into());
+    hub.0.lock().unwrap().faults.demo_mic = Some(u64::MAX);
+    let info = core.measure_system_sim_set(true).unwrap();
+    assert!(info.available && info.on, "{info:?}");
+    assert_eq!(info.label, crate::SIM_MIC_LABEL);
+    // A real unit in the group: refused before anything is opened.
+    let s = setup(&[("A", &[0]), ("REAL", &[0])]);
+    let checks = vec![check(&s, "A", Vec::new()), check(&s, "REAL", Vec::new())];
+    let r = core.measure_system_start(s, checks);
+    assert!(
+        matches!(r, Err(DspiError::Link { ref code, ref msg }) if code == "unsupported" && msg.contains("REAL")),
+        "{r:?}"
+    );
+    let reqs = hub.0.lock().unwrap().requests.clone();
+    assert!(reqs.iter().any(|r| r == msg::demo::T), "{reqs:?}");
+    assert!(
+        !reqs.iter().any(|r| r == msg::t::OPEN || r == msg::t::STAGE),
+        "nothing opened or staged: {reqs:?}"
+    );
+    assert!(core.measure_system_sim_info().issue.is_some());
+    // The hub loses the room (another hub on this connection): off.
+    hub.0.lock().unwrap().caps.retain(|c| c != msg::demo::CAP);
+    assert!(!core.measure_system_sim_info().on);
+    // Off: turned off always works.
+    assert!(!core.measure_system_sim_set(false).unwrap().on);
+}
+
+/// `system.status` rate limited when the engine's terms are read (another
+/// view of the connection read it just before): read again during the run,
+/// every arrival still offered.
+#[test]
+fn wp_atdemo_a_rate_limited_system_status_is_read_again() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[3.0]),
+        unit("B", 1, 48, &[3.6]),
+    ]))));
+    hub.0.lock().unwrap().faults.status_rate_limited = 2;
+    let (sess, out) = measure(&mut hub, &s);
+    assert_eq!(sess.state().phase, MeasureSystemPhase::Done);
+    let o = out.unwrap();
+    assert!(
+        o.result.arrivals.iter().all(|a| a.offered),
+        "{:?}",
+        o.result
+    );
+    let n = hub
+        .0
+        .lock()
+        .unwrap()
+        .requests
+        .iter()
+        .filter(|r| *r == "system.status")
+        .count();
+    assert_eq!(n, 3, "read again until answered");
+}
+
+/// After an apply the engine's terms are read even when `system.status` is
+/// rate limited at first (the verify's prediction needs them).
+#[test]
+fn wp_atdemo_system_status_after_an_apply_waits_out_the_rate_limit() {
+    let mut hub = two_units();
+    hub.0.lock().unwrap().faults.status_rate_limited = 1;
+    let v = super::system::proposal::system_status(&mut hub);
+    assert!(v.is_some_and(|v| v.get("alignment").is_some()));
+    assert_eq!(hub.0.lock().unwrap().requests.len(), 2);
 }

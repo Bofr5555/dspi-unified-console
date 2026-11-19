@@ -9,6 +9,7 @@ import { SerialCore } from "./serial";
 import { WasmCore, loadWasmModule } from "./wasm";
 // -- WP P5WMS -- the measurement's capture port and ticks (measure-protocol.ts)
 import { MeasureWorkerRoute } from "./measure-protocol";
+import { SystemWorkerRoute } from "./measure-system"; // -- WP ATWEB --
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -58,6 +59,14 @@ const measure = {
   },
 };
 
+// -- WP ATWEB -- the system measurement's capture port and ticks (measure-system.ts)
+const system = new SystemWorkerRoute(
+  (m, p) => serial.call(m as never, p as never),
+  (e) => self.postMessage({ push: e }),
+  { MessageChannel, workletUrl: new URL("./capture-worklet.js", self.location.href).href, setTimeout, clearTimeout },
+);
+// -- end WP ATWEB --
+
 self.onmessage = (ev: MessageEvent<Request>) => {
   const { id, method, params } = ev.data;
   // -- WP P5WMS -- the Worker's own methods: a port (transferred), never a core call
@@ -66,13 +75,21 @@ self.onmessage = (ev: MessageEvent<Request>) => {
     self.postMessage({ reply: { id, ok: true, value: a.value } }, a.transfer);
     return;
   }
+  // -- WP ATWEB -- the system measurement's own: its capture port
+  if (system.handles(method)) {
+    const a = system.answer(method);
+    self.postMessage({ reply: { id, ok: true, value: a.value } }, a.transfer);
+    return;
+  }
   serial.call(method, params).then(
     (value) => {
       measure.after(method, true, value); // -- WP P5WMS --
+      system.after(method, true, value); // -- WP ATWEB --
       post({ reply: { id, ok: true, value } });
     },
     (err: unknown) => {
       measure.after(method, false, null); // -- WP P5WMS --
+      system.after(method, false, null); // -- WP ATWEB --
       const e =
         err instanceof CoreCallError
           ? { code: err.code, message: err.message, ...(err.noticeKey ? { noticeKey: err.noticeKey } : {}) }

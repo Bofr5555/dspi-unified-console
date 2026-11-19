@@ -17,6 +17,11 @@
 //!   {checks}` (each unit's fresh check: a summed session judges the
 //!   preflight and ramps again), `measureSystemApplied`,
 //!   `measureSystemKeep`, `measureSystemRevert`.
+//! - WP ATDEMO: `measureSystemSimSet {on}`, `measureSystemSimInfo`: the demo
+//!   hub's simulated microphone (`{available, on, label, room, issue}`);
+//!   while on, the core reads the hub's room on every tick and the page
+//!   opens no microphone (its pushes are ignored). Refused `unsupported` on
+//!   any hub but the demo's.
 
 use dspi_core::{DspiCore, MeasureSystemSetup, MeasureSystemUnit, MeasureSystemUnitCheck};
 use serde::Deserialize;
@@ -51,6 +56,13 @@ struct Start {
 struct Checks {
     #[serde(default)]
     checks: Vec<MeasureSystemUnitCheck>,
+}
+
+// -- WP ATDEMO --
+/// `measureSystemSimSet`'s parameters.
+#[derive(Debug, Deserialize)]
+struct SimSet {
+    on: bool,
 }
 
 /// A proposal's id.
@@ -95,6 +107,11 @@ pub fn dispatch(core: &DspiCore, method: &str, p: Value) -> Option<CallResult> {
         "measureSystemApplied" => Ok(tidy(&core.measure_system_applied())),
         "measureSystemKeep" => reply(core.measure_system_keep()),
         "measureSystemRevert" => reply(core.measure_system_revert()),
+        // -- WP ATDEMO --
+        "measureSystemSimSet" => {
+            params::<SimSet>(p).and_then(|q| reply(core.measure_system_sim_set(q.on)))
+        }
+        "measureSystemSimInfo" => Ok(tidy(&core.measure_system_sim_info())),
         _ => return None,
     })
 }
