@@ -104,6 +104,10 @@ struct Faults {
     demo_ready: u32,
     /// `system.status` answers `rate_limited` this many times first.
     status_rate_limited: u32,
+    // -- review AT-E --
+    /// `(unit, ms)`: the hub reports this unit's `out.delay` that much
+    /// larger than what it plays with (a wrong term).
+    term_lie_ms: Option<(usize, f32)>,
 }
 
 struct Stub {
@@ -596,14 +600,25 @@ impl Stub {
             })),
             "param.get_many" => {
                 let serial = body["serial"].as_str().unwrap_or("").to_owned();
-                let u = self.units.iter().find(|u| u.serial == serial).unwrap();
+                let (ui, u) = self
+                    .units
+                    .iter()
+                    .enumerate()
+                    .find(|(_, u)| u.serial == serial)
+                    .unwrap();
+                // -- review AT-E --
+                let lie = self
+                    .faults
+                    .term_lie_ms
+                    .filter(|(x, _)| *x == ui)
+                    .map_or(0.0, |(_, ms)| ms);
                 let values: Vec<Value> = body["items"]
                     .as_array()
                     .unwrap()
                     .iter()
                     .map(|it| {
                         let o = it["idx"][0].as_u64().unwrap() as usize;
-                        json!({"path": "out.delay", "idx": [o], "ok": true, "value": u.out_delay_ms[o]})
+                        json!({"path": "out.delay", "idx": [o], "ok": true, "value": u.out_delay_ms[o] + lie})
                     })
                     .collect();
                 Ok(json!({"serial": serial, "values": values}))
@@ -1866,7 +1881,10 @@ fn sum_check_cell(
     drive(&mut sc, hub, 4_000);
     match sc.take_outcome() {
         Some(SessionOutput::Verdicts(v)) => (v[0].passed, v[0].rms_db),
-        _ => (false, None),
+        _ => {
+            eprintln!("the summed run gave no verdict: {:?}", sc.state().issue);
+            (false, None)
+        }
     }
 }
 
@@ -1983,10 +2001,17 @@ fn review_atd1_staggered_starts_hide_no_wrong_delay() {
 /// walked analysis keeps (100 ms with the 300 ms gap): its arrival came out
 /// clamped (99.98 ms, "uncertainty" 0.35 us), its response cut, and it was
 /// offered. Now nothing of such a group is offered, and the reason says why.
+///
+/// WP ATLATE: the review made A late by its `out.delay`, which the planner
+/// now plans for (`wp_atlate_*` below). The guard is for what the planner
+/// cannot know: here the 100 ms are acoustic (or a wrong term).
 #[test]
 fn review_atd1_an_arrival_at_the_end_of_the_analysed_span_is_not_offered() {
     let s = setup(&[("A", &[0]), ("B", &[0])]);
-    let mut hub = pair_apart(100.0);
+    let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![
+        unit("A", 1, 48, &[103.0]),
+        unit("B", 1, 48, &[3.0]),
+    ]))));
     let (_, out) = measure(&mut hub, &s);
     let o = out.unwrap();
     assert!(
@@ -2004,6 +2029,15 @@ fn review_atd1_an_arrival_at_the_end_of_the_analysed_span_is_not_offered() {
     );
     let p = o.proposal("admin");
     assert!(!p.offered && p.arrivals.is_empty(), "{p:?}");
+    // -- review AT-E -- nor is the cross-unit delay shown as offered.
+    assert!(
+        o.result
+            .delays
+            .iter()
+            .all(|d| !d.offered && d.reason.contains("too long after")),
+        "{:?}",
+        o.result.delays
+    );
 }
 
 /// Two outputs of opposite polarity, their arrivals brought together by the
@@ -2535,4 +2569,214 @@ fn wp_atdemo_system_status_after_an_apply_waits_out_the_rate_limit() {
     let v = super::system::proposal::system_status(&mut hub);
     assert!(v.is_some_and(|v| v.get("alignment").is_some()));
     assert_eq!(hub.0.lock().unwrap().requests.len(), 2);
+}
+
+// -- WP ATLATE --
+/// The planner's expected lateness (review AT-D1, "For the coordinator"): A
+/// output 0 heard 100 ms and 150 ms after B's through its `out.delay` (a
+/// USB-direct unit's stream start offset is there, some 21 ms a unit). The
+/// planner reads the engine's terms before the run, starts the parts with
+/// room for it and the analysis looks for A that much later: both arrivals
+/// are measured whole and offered (before: 100 ms was cut and not offered,
+/// 150 ms "ambiguous" or not found), the acoustic arrivals within 3 us.
+#[test]
+fn wp_atlate_an_output_delay_past_the_analysed_span_is_planned_for() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    for gap in [100.0, 150.0, 400.0] {
+        let mut hub = pair_apart(gap);
+        let (sess, out) = measure(&mut hub, &s);
+        assert_eq!(
+            sess.state().phase,
+            MeasureSystemPhase::Done,
+            "{gap} ms: {:?}",
+            sess.state().issue
+        );
+        let o = out.unwrap();
+        for a in &o.result.arrivals {
+            // Both 3.0 ms acoustic: the latest's at 0, so both at 0.
+            assert!(a.offered, "{gap} ms: {a:?}");
+            assert!(a.arrival_us.abs() < 3.0, "{gap} ms: {a:?}");
+        }
+        let (a, b) = (arrival(&o, "A", 0), arrival(&o, "B", 0));
+        assert!(
+            (a.measured_us - b.measured_us - gap * 1000.0).abs() < 3.0,
+            "{gap} ms: {a:?} {b:?}"
+        );
+        assert!(o.result.delays.iter().all(|d| d.offered), "{gap} ms");
+        assert!(
+            !o.result
+                .reasons
+                .iter()
+                .any(|r| r.contains("too long after")),
+            "{gap} ms: {:?}",
+            o.result.reasons
+        );
+    }
+}
+
+/// The run waits for the engine's terms while `system.status` is rate
+/// limited (another view read it just before), so a late unit is planned for
+/// (before, the run started at once and the terms were read during it).
+#[test]
+fn wp_atlate_the_run_waits_for_the_terms_it_plans_with() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = pair_apart(150.0);
+    hub.0.lock().unwrap().faults.status_rate_limited = 2;
+    let (sess, out) = measure(&mut hub, &s);
+    assert_eq!(sess.state().phase, MeasureSystemPhase::Done);
+    let o = out.unwrap();
+    assert!(
+        o.result.arrivals.iter().all(|a| a.offered),
+        "{:?}",
+        o.result
+    );
+    // Every read of the terms before the walked run (the last RUN; the
+    // ramps' steps are runs too): none during it is needed.
+    let reqs = hub.0.lock().unwrap().requests.clone();
+    let run = reqs.iter().rposition(|r| r == msg::t::RUN).unwrap();
+    let statuses: Vec<usize> = reqs
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| *r == "system.status")
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(statuses.len(), 3, "read again until answered: {reqs:?}");
+    assert!(statuses.iter().all(|&i| i < run), "{reqs:?}");
+}
+
+/// Fail closed: a unit the terms put more than a run plans for (1 s) after
+/// the others is a model or alignment fault: the plan of the run is refused,
+/// the unit named (the session then fails `measure.system.plan` before it
+/// stages anything). Within it, the run is planned with room for it.
+#[test]
+fn wp_atlate_a_lateness_past_what_a_run_plans_for_is_refused_before_it_plays() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    let mut hub = pair_apart(2.0);
+    let p = plan_of(&s, &mut hub);
+    let part = p.runs[0].clone();
+    let terms = |a_us: f64| {
+        vec![
+            Some(proposal::Terms {
+                playout_us: a_us,
+                out_delay_ms: vec![(0, 0.0)],
+            }),
+            Some(proposal::Terms {
+                playout_us: 2_500.0,
+                out_delay_ms: vec![(0, 0.0)],
+            }),
+        ]
+    };
+    // A: 1.2 s of play-out (and B 2.5 ms).
+    let late = p.lateness(&part, &terms(1_200_000.0));
+    assert_eq!(late, [(UnitIndex(0), 57_600), (UnitIndex(1), 120)]);
+    let e = p
+        .schedule_late(&part, plan::PLANNING_LEAD_MS, &late)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("A is expected") && e.contains("more than a measurement plans for"),
+        "{e}"
+    );
+    // 150 ms: planned, B's segments started that much later after A's.
+    let late = p.lateness(&part, &terms(152_500.0));
+    let sched = p
+        .schedule_late(&part, plan::PLANNING_LEAD_MS, &late)
+        .unwrap();
+    let plain = p.schedule(&part, plan::PLANNING_LEAD_MS).unwrap();
+    assert_eq!(sched.lateness_of(UnitIndex(0)), 7_200);
+    assert_eq!(sched.lateness_of(UnitIndex(1)), 0);
+    let (seg, was) = (sched.segments(), plain.segments());
+    assert_eq!(
+        seg[1].start - seg[0].start,
+        was[1].start - was[0].start + 7_200
+    );
+    // No terms: as before this WP.
+    assert!(p.lateness(&part, &[None, None]).is_empty());
+}
+
+// -- review AT-E --
+/// The lateness is planned from the engine's terms, so a wrong term moves
+/// where the analysis looks. It must never make a wrong arrival offered:
+/// with either unit's `out.delay` reported 60 ms to 900 ms larger than what
+/// it plays with, the run either fails, or offers nothing, or its measured
+/// arrivals (on the timeline, before any term is taken off) are right.
+/// 60 ms is inside the analysed span: found where it is, so the test is seen
+/// to measure; from 100 ms on the AT-D1 guard or the cycle search refuses;
+/// between them (the guard's 15 ms) either, never a wrong arrival offered.
+#[test]
+fn review_ate_a_lateness_planned_from_a_wrong_term_never_offers_a_wrong_arrival() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    for which in [0usize, 1] {
+        for lie in [60.0f32, 86.0, 93.0, 100.0, 150.0, 400.0, 900.0] {
+            // A is 2 ms of air further than B.
+            let mut hub = pair_apart(2.0);
+            hub.0.lock().unwrap().faults.term_lie_ms = Some((which, lie));
+            let (sess, out) = measure(&mut hub, &s);
+            let Some(o) = out else {
+                let st = sess.state();
+                eprintln!("unit {which} +{lie} ms: no result: {:?}", st.issue);
+                assert_ne!(st.phase, MeasureSystemPhase::Done, "unit {which} +{lie} ms");
+                assert!(lie >= 100.0, "unit {which} +{lie} ms: {:?}", st.issue);
+                continue;
+            };
+            let (a, b) = (arrival(&o, "A", 0), arrival(&o, "B", 0));
+            let right = (a.measured_us - b.measured_us - 2_000.0).abs() < 3.0;
+            let offered = o.result.arrivals.iter().any(|x| x.offered)
+                || o.result.delays.iter().any(|d| d.offered);
+            eprintln!(
+                "unit {which} +{lie} ms: offered {offered}, right {right}: A {:.1} us, B {:.1} us, {:?}",
+                a.measured_us, b.measured_us, o.result.reasons
+            );
+            assert!(right || !offered, "unit {which} +{lie} ms: {a:?} {b:?}");
+            if lie <= 60.0 {
+                assert!(right && offered, "unit {which} +{lie} ms: {a:?} {b:?}");
+            } else if lie >= 100.0 {
+                // Found at the span's end or not at all: nothing is offered,
+                // right or not.
+                assert!(!offered, "unit {which} +{lie} ms: {:?}", o.result);
+                let p = o.proposal("admin");
+                assert!(!p.offered && p.arrivals.is_empty(), "{p:?}");
+            }
+        }
+    }
+}
+
+/// The run's **last** unit the late one, by 400 ms and 900 ms (WP ATLATE's
+/// tests made the first one late, by up to 400 ms): both arrivals are
+/// offered and right, the capture kept its lateness longer, and the summed
+/// check judges them. Before this review the summed check of the pair
+/// 900 ms apart failed "the first cycle was not heard in the window the
+/// START implies" (its earlier part starts 900 ms before the sum is heard,
+/// the search window ends 500 ms after it), so such a proposal could never
+/// be checked or applied.
+#[test]
+fn review_ate_the_runs_last_unit_late_is_captured_whole() {
+    let s = setup(&[("A", &[0]), ("B", &[0])]);
+    for gap in [400.0f32, 900.0] {
+        let (a, mut b) = (unit("A", 1, 48, &[3.0]), unit("B", 1, 48, &[3.0]));
+        b.out_delay_ms = vec![gap];
+        let mut hub = StubHub(Arc::new(Mutex::new(Stub::new(vec![a, b]))));
+        let (sess, out) = measure(&mut hub, &s);
+        assert_eq!(
+            sess.state().phase,
+            MeasureSystemPhase::Done,
+            "{gap} ms: {:?}",
+            sess.state().issue
+        );
+        let o = out.unwrap();
+        let (a, b) = (arrival(&o, "A", 0), arrival(&o, "B", 0));
+        assert!(a.offered && b.offered, "{gap} ms: {a:?} {b:?}");
+        assert!(
+            (b.measured_us - a.measured_us - f64::from(gap) * 1000.0).abs() < 3.0,
+            "{gap} ms: {a:?} {b:?}"
+        );
+        assert!(a.arrival_us.abs() < 3.0 && b.arrival_us.abs() < 3.0);
+        // The summed check on responses taken with a planned lateness (the
+        // response is on the analysis' timeline, `own_ms`): right passes, a
+        // delay 50 us wrong fails as a judged failure.
+        let (pass, rms) = sum_check_cell(&o, &mut hub, 0.0, None);
+        assert!(pass, "{gap} ms, right: {rms:?}");
+        let (pass, rms) = sum_check_cell(&o, &mut hub, 50.0, None);
+        assert!(!pass && rms.is_some(), "{gap} ms, 50 us wrong: {rms:?}");
+    }
 }

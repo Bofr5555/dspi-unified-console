@@ -53,6 +53,10 @@ const POLL_EVERY: Duration = Duration::from_millis(250);
 /// When to read the engine's terms again after `system.status` was rate
 /// limited (the hub's once a second per connection).
 const TERMS_RETRY: Duration = Duration::from_millis(1_100);
+// -- WP ATLATE --
+/// The longest a walked run waits for the engine's terms (the hub's rate
+/// limit of `system.status`) before it is planned without them.
+const TERMS_WAIT: Duration = Duration::from_secs(5);
 /// Failed status reads in a row before the session gives up.
 const MAX_POLL_FAILURES: u32 = 4;
 /// Capture kept after a step's or a run's end (the input latency), ms.
@@ -192,6 +196,8 @@ pub(crate) struct SysSession {
     /// The engine's terms are to be read again then (`system.status` was
     /// rate limited: another view of this connection read it just before).
     terms_retry: Option<Instant>,
+    // -- WP ATLATE -- until when a walked run waits for the terms.
+    terms_wait_until: Option<Instant>,
 }
 
 fn to_value<T: serde::Serialize>(v: &T) -> Value {
@@ -350,7 +356,8 @@ impl SysSession {
             progress: 0.0,
             output: None,
             timing_reliable: None,
-            terms_retry: None, // -- WP ATDEMO --
+            terms_retry: None,      // -- WP ATDEMO --
+            terms_wait_until: None, // -- WP ATLATE --
         })
     }
 
@@ -1164,15 +1171,34 @@ impl SysSession {
             .units
             .first()
             .map_or(0, |u| u32::from(u.plan.sweep.gap_ms));
+        // -- review AT-E -- a unit expected late (WP ATLATE) is heard that
+        // much after the schedule's end when its segment is the run's last:
+        // the capture is kept that much longer. Without it TAIL_MS, meant
+        // for the input latency, went to the lateness, and what the
+        // analysis lacks of a complete capture it reads as silence (a last
+        // sweep 1 s late with 0.2 s of input latency lost its end unseen).
+        let late_ms = schedule
+            .lateness()
+            .iter()
+            .map(|(_, l)| *l)
+            .max()
+            .map_or(0, |l| {
+                let ms = l
+                    .saturating_mul(1000)
+                    .checked_div(u64::from(self.plan.rate_hz))
+                    .unwrap_or(0);
+                u32::try_from(ms.saturating_add(1)).unwrap_or(u32::MAX)
+            })
+            .min(dspi_measure::system::MAX_LATENESS_MS.saturating_add(1));
+        let tail_ms = gap.saturating_add(TAIL_MS).saturating_add(late_ms);
         let end_frame = self
             .capture_at(schedule.end())
-            .saturating_add(self.frames_of(gap.saturating_add(TAIL_MS)));
+            .saturating_add(self.frames_of(tail_ms));
         let secs = self.pin.map_or(0.0, |p| {
             (schedule.end() as f64 - p.t as f64).max(0.0) / f64::from(self.plan.rate_hz.max(1))
         });
-        let planned = Duration::from_secs_f64(secs.min(1e6)).saturating_add(Duration::from_millis(
-            u64::from(gap.saturating_add(TAIL_MS)),
-        ));
+        let planned = Duration::from_secs_f64(secs.min(1e6))
+            .saturating_add(Duration::from_millis(u64::from(tail_ms)));
         Some(Timed {
             kind,
             schedule,
@@ -1428,6 +1454,25 @@ impl SysSession {
     }
 
     fn start_run(&mut self, hub: &mut dyn Hub, now: Instant) {
+        // -- WP ATLATE -- a walked run is planned with the engine's terms:
+        // while their read waits out the hub's rate limit, the pre-roll
+        // goes on (its last pre-roll's worth kept), for at most
+        // TERMS_WAIT; after it a unit still without terms is expected at 0
+        // and its arrivals are not offered.
+        if self.purpose == MeasureSystemPurpose::Measure && self.terms_retry.is_some() {
+            let until = *self
+                .terms_wait_until
+                .get_or_insert_with(|| now.checked_add(TERMS_WAIT).unwrap_or(now));
+            if now < until {
+                let want = usize::try_from(self.frames_of(PREROLL_MS)).unwrap_or(usize::MAX);
+                let extra = self.buf.len().saturating_sub(want);
+                if extra > 0 {
+                    self.buf.drain(..extra);
+                    self.buf_first = self.buf_first.saturating_add(extra as u64);
+                }
+                return;
+            }
+        }
         let built = match self.purpose {
             MeasureSystemPurpose::Measure => self.walk_run(self.run_idx),
             _ => self.sum_run(self.run_idx),
@@ -1472,8 +1517,12 @@ impl SysSession {
             .ok_or_else(|| DspiError::InvalidArgument {
                 msg: "no such run".into(),
             })?;
-        let s0 = self.plan.schedule(part, self.lead_ms)?;
+        // -- WP ATLATE -- the starts planned with each unit's expected
+        // lateness (its play-out and output delays, read before the run).
+        let lateness = self.plan.lateness(part, &self.terms);
+        let s0 = self.plan.schedule_late(part, self.lead_ms, &lateness)?;
         let schedule = SystemSchedule::new(self.domain, self.plan.rate_hz, s0.segments().to_vec())
+            .and_then(|s| s.with_lateness(s0.lateness()))
             .map_err(|e| DspiError::InvalidArgument { msg: e.to_string() })?;
         let mut configs = Vec::new();
         for (u, outs) in &part.units {

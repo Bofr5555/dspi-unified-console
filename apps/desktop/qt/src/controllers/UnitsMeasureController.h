@@ -231,7 +231,8 @@ public:
     QStringList withheld() const;
     QVariantList transitions() const;
     QString proposalNotice() const;
-    QString guardNote() const { return m_proposal.value(QLatin1String("guardNote")).toString(); }
+    // -- WP ATQTSIM -- as a sentence (the core's words begin in lower case)
+    QString guardNote() const;
     bool sumCheckNeeded() const { return m_proposal.value(QLatin1String("sumCheckNeeded")).toBool(); }
     bool mayApply() const;
     QString applyWhy() const;

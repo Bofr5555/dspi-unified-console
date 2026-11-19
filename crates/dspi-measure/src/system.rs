@@ -28,6 +28,12 @@ pub const MAX_SEGMENTS: usize = 128;
 /// of the predicted arrivals it brings together: the units' play-out and
 /// output delays, tens of milliseconds on USB-direct.
 pub const MAX_SUM_SPREAD_MS: u32 = 1_000;
+// -- WP ATLATE --
+/// The largest expected lateness of a unit over a run's earliest unit that a
+/// walked run plans for, ms ([`SystemSchedule::with_lateness`]). A unit
+/// later than this (a play-out or output delay of a second) is a model or
+/// alignment fault, not something to measure around.
+pub const MAX_LATENESS_MS: u32 = 1_000;
 
 /// [`MAX_SUM_SPREAD_MS`] in samples at `rate_hz`.
 pub fn max_sum_spread_samples(rate_hz: u32) -> u64 {
@@ -103,6 +109,10 @@ pub struct SystemSchedule {
     pub rate_hz: u32,
     segments: Vec<Segment>,
     summed: bool,
+    // -- WP ATLATE --
+    /// Each unit's expected lateness over the run's earliest, domain samples
+    /// ([`SystemSchedule::with_lateness`]); none: every unit 0.
+    lateness: Vec<(UnitIndex, u64)>,
 }
 
 impl SystemSchedule {
@@ -154,6 +164,7 @@ impl SystemSchedule {
             rate_hz,
             segments,
             summed: false,
+            lateness: Vec::new(), // -- WP ATLATE --
         })
     }
 
@@ -248,6 +259,7 @@ impl SystemSchedule {
             rate_hz,
             segments,
             summed: true,
+            lateness: Vec::new(), // -- WP ATLATE --
         })
     }
 
@@ -317,6 +329,8 @@ pub use analysis::{
 pub use chain::{Chain, ChainOptions, ChainRefusal, ChainRun, ChainedOutput, chain_runs};
 pub use gate::{GateFinding, SegmentProof, UnitFacts, check_gate, check_one_domain};
 pub use plan::{InterleaveOptions, UnitWalk, check_lead, interleave};
+// -- WP ATLATE --
+pub use plan::interleave_late;
 
 impl SystemSchedule {
     /// The same run with every start moved `by` domain samples later (a plan
@@ -336,6 +350,104 @@ impl SystemSchedule {
         }
         Ok(out)
     }
+}
+
+// -- WP ATLATE --
+impl SystemSchedule {
+    /// The same walked run told each unit's **expected lateness**: how much
+    /// later than the run's earliest unit its sound is expected after its
+    /// START, from what the planner knows before the run (the unit's
+    /// play-out of a domain sample and its outputs' `out.delay`; on
+    /// USB-direct the streams' start offsets are in `out.delay`, tens of
+    /// milliseconds a unit). The analysis looks for each unit's cycles that
+    /// much later on the timeline, so a unit heard up to
+    /// [`MAX_LATENESS_MS`] after the others is still inside the span it keeps
+    /// (100 ms either side of the first arrival with a 300 ms gap) and
+    /// measured whole; its reported arrival has the lateness added back, so
+    /// every arrival stays on the one timeline. A wrong expectation only
+    /// moves where the analysis looks: an arrival more than the search span
+    /// from where it was expected is not found (the run fails closed), and
+    /// one cut at the span's end is not offered. Lateness is relative: the
+    /// smallest of the run's units is taken off, and a unit not named is 0.
+    /// [`interleave_late`] plans the starts with the same lateness, so that
+    /// no cycle is *heard* closer than one sweep and its gap to the next.
+    ///
+    /// Errors: [`MeasureError::Invalid`] for a summed run (its parts are
+    /// started apart instead, [`SystemSchedule::summed_at`]), a unit twice,
+    /// or a lateness spread over [`MAX_LATENESS_MS`].
+    pub fn with_lateness(
+        mut self,
+        lateness: &[(UnitIndex, u64)],
+    ) -> Result<SystemSchedule, MeasureError> {
+        let rel = relative_lateness(&self.units(), lateness, self.rate_hz)?;
+        if !rel.is_empty() && self.summed {
+            return Err(MeasureError::Invalid(
+                "a summed run starts its parts apart: it takes no lateness".into(),
+            ));
+        }
+        self.lateness = rel;
+        Ok(self)
+    }
+
+    /// Unit `u`'s expected lateness over the run's earliest, domain samples
+    /// (0 unless [`SystemSchedule::with_lateness`] gave it one).
+    pub fn lateness_of(&self, u: UnitIndex) -> u64 {
+        self.lateness
+            .iter()
+            .find(|(x, _)| *x == u)
+            .map_or(0, |(_, l)| *l)
+    }
+
+    /// Every unit's non-zero expected lateness, domain samples.
+    pub fn lateness(&self) -> &[(UnitIndex, u64)] {
+        &self.lateness
+    }
+}
+
+/// `lateness` of `units` relative to the smallest (a unit not named: 0),
+/// the zeros left out ([`SystemSchedule::with_lateness`]).
+///
+/// Errors: [`MeasureError::Invalid`] for a unit twice or a spread over
+/// [`MAX_LATENESS_MS`] at `rate_hz`.
+pub(crate) fn relative_lateness(
+    units: &[UnitIndex],
+    lateness: &[(UnitIndex, u64)],
+    rate_hz: u32,
+) -> Result<Vec<(UnitIndex, u64)>, MeasureError> {
+    for (i, (u, _)) in lateness.iter().enumerate() {
+        if lateness
+            .iter()
+            .skip(i.saturating_add(1))
+            .any(|(x, _)| x == u)
+        {
+            return Err(MeasureError::Invalid(format!(
+                "unit {}'s lateness given twice",
+                u.0
+            )));
+        }
+    }
+    let of = |u: UnitIndex| {
+        lateness
+            .iter()
+            .find(|(x, _)| *x == u)
+            .map_or(0, |(_, l)| *l)
+    };
+    let min = units.iter().map(|&u| of(u)).min().unwrap_or(0);
+    let rel: Vec<(UnitIndex, u64)> = units
+        .iter()
+        .map(|&u| (u, of(u).saturating_sub(min)))
+        .filter(|(_, l)| *l > 0)
+        .collect();
+    let bound = u64::from(rate_hz).saturating_mul(u64::from(MAX_LATENESS_MS)) / 1000;
+    if let Some(&(u, l)) = rel.iter().find(|(_, l)| *l > bound) {
+        return Err(MeasureError::Invalid(format!(
+            "unit {} is expected {:.1} ms after the run's earliest unit, more than a run plans for \
+             ({MAX_LATENESS_MS} ms): check its play-out and output delays",
+            u.0,
+            l as f64 * 1000.0 / f64::from(rate_hz.max(1))
+        )));
+    }
+    Ok(rel)
 }
 
 #[cfg(test)]

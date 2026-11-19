@@ -8,7 +8,7 @@ use dspi_measure::stimulus::{LogSweep, WalkSchedule};
 use dspi_measure::system::messages::CAP;
 use dspi_measure::system::{
     AnchorOutput, DomainId, InterleaveOptions, MAX_RUN_OUTPUTS, SystemSchedule, UnitIndex,
-    UnitWalk, interleave,
+    UnitWalk, interleave_late,
 };
 
 use super::super::plan::{PREROLL_MS, Plan};
@@ -173,6 +173,47 @@ impl SetupPlan {
     /// The interleaved schedule of run `part` from domain sample 0, with a
     /// lead of `lead_ms` between a unit's segments.
     pub(crate) fn schedule(&self, part: &RunPart, lead_ms: u32) -> Result<SystemSchedule> {
+        self.schedule_late(part, lead_ms, &[])
+    }
+
+    // -- WP ATLATE --
+    /// [`SetupPlan::schedule`] with each unit's expected lateness (domain
+    /// samples after its START that its sound is expected, see
+    /// [`SetupPlan::lateness`]): the starts leave room for it and the
+    /// analysis looks for each unit that much later.
+    ///
+    /// Errors: as [`SetupPlan::schedule`], and a lateness spread over
+    /// `dspi_measure::system::MAX_LATENESS_MS`.
+    pub(crate) fn schedule_late(
+        &self,
+        part: &RunPart,
+        lead_ms: u32,
+        lateness: &[(UnitIndex, u64)],
+    ) -> Result<SystemSchedule> {
+        // Fail closed, the unit named: more than a run plans for is a model
+        // or alignment fault, refused before anything plays.
+        let of = |u: usize| {
+            lateness
+                .iter()
+                .find(|(x, _)| usize::from(x.0) == u)
+                .map_or(0, |(_, l)| *l)
+        };
+        let min = part.units.iter().map(|(u, _)| of(*u)).min().unwrap_or(0);
+        let bound = self.lead_samples(dspi_measure::system::MAX_LATENESS_MS);
+        if let Some((u, l)) = part
+            .units
+            .iter()
+            .map(|(u, _)| (*u, of(*u).saturating_sub(min)))
+            .find(|(_, l)| *l > bound)
+        {
+            let serial = self.units.get(u).map_or("", |p| p.serial.as_str());
+            return Err(invalid(format!(
+                "{serial} is expected {:.0} ms after the group's earliest unit (its play-out and \
+                 output delays), more than a measurement plans for ({} ms): check its alignment",
+                l as f64 * 1000.0 / f64::from(self.rate_hz.max(1)),
+                dspi_measure::system::MAX_LATENESS_MS
+            )));
+        }
         let sweep = self.sweep()?;
         let walks: Vec<UnitWalk> = part
             .units
@@ -191,7 +232,7 @@ impl SetupPlan {
                 })
             })
             .collect::<Result<_>>()?;
-        interleave(
+        interleave_late(
             &walks,
             &InterleaveOptions {
                 passes: self.passes,
@@ -200,8 +241,46 @@ impl SetupPlan {
                 capture_rate_hz: self.capture_rate_hz,
                 pre_roll_ms: PREROLL_MS,
             },
+            lateness,
         )
         .map_err(|e| invalid(e.to_string()))
+    }
+
+    // -- WP ATLATE --
+    /// Each unit's expected lateness in run `part`, domain samples: what the
+    /// alignment engine adds to the unit's sound after its START (its
+    /// play-out of a domain sample and the smallest `out.delay` of its
+    /// outputs in the run: on USB-direct the streams' start offsets, some
+    /// 21 ms a unit), from `terms` read before the run. A unit without terms
+    /// is expected at 0 (as before this WP): its arrivals are not offered
+    /// anyway, and the analysis' own bound (an arrival cut at the end of
+    /// what it keeps is not offered) still holds for every unit.
+    pub(crate) fn lateness(
+        &self,
+        part: &RunPart,
+        terms: &[Option<super::proposal::Terms>],
+    ) -> Vec<(UnitIndex, u64)> {
+        part.units
+            .iter()
+            .filter_map(|(u, outs)| {
+                let t = terms.get(*u)?.as_ref()?;
+                let us = outs
+                    .iter()
+                    .filter_map(|o| t.at_us(*o))
+                    .fold(f64::INFINITY, f64::min);
+                if !us.is_finite() || us <= 0.0 {
+                    return None;
+                }
+                let samples = (us * f64::from(self.rate_hz) / 1e6).round();
+                // A lateness past the counter is refused by the schedule.
+                let samples = if samples >= 1.8e19 {
+                    u64::MAX
+                } else {
+                    samples as u64
+                };
+                Some((UnitIndex(u8::try_from(*u).unwrap_or(u8::MAX)), samples))
+            })
+            .collect()
     }
 
     /// The group as runs: one when it fits (16 outputs, one capture), else

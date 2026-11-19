@@ -82,3 +82,7 @@ mod tests_review_p5a;
 // and three runs chained through an anchor in one capture.
 #[cfg(all(test, feature = "sim"))]
 mod tests_wp_ate2e;
+
+// -- WP ATLATE -- a walked run planned with each unit's expected lateness.
+#[cfg(all(test, feature = "sim"))]
+mod tests_wp_atlate;
