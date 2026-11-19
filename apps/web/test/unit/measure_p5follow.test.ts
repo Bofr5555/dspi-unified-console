@@ -130,38 +130,40 @@ test("P5FOLLOW: the guard bar adopts the tune's guard from the Worker's events, 
   });
   try {
     await desk.start();
-    assert.equal(desk.state.guard, null, "no guard at the start");
+    /** Read anew each time (an assertion of null does not narrow it for later reads). */
+    const guardNow = (): GuardedApplyRecord | null => desk.state.guard;
+    assert.equal(guardNow(), null, "no guard at the start");
     assert.equal(subs.size, 1, "the desk listens to the core's events");
     // Events of a tune without a waiting guard: nothing to show.
     push({ event: "measureTune", state: { stage: "proposed", running: false, guard: guard(0, "idle") } });
     push({ event: "measure", state: { active: true } });
-    assert.equal(desk.state.guard, null);
+    assert.equal(guardNow(), null);
     // The tune applied: its guard waits, and the bar shows it with its countdown.
     started = true;
     push({ event: "measureTune", state: { stage: "applied", running: false, guard: now } });
-    assert.equal(desk.state.guard?.id, 9);
-    assert.equal(desk.state.guard?.phase, "waiting");
+    assert.equal(guardNow()?.id, 9);
+    assert.equal(guardNow()?.phase, "waiting");
     // Driven as the bar's own: its poll moves the countdown.
     now = guard(9, "waiting", 40_000);
-    await until("the bar's poll", () => desk.state.guard?.remainingMs === 40_000);
+    await until("the bar's poll", () => guardNow()?.remainingMs === 40_000);
     assert.ok(calls.includes("applyPoll"));
     // The same guard again (the next tune turn) is not adopted twice.
     const polls = calls.filter((c) => c === "applyPoll").length;
     push({ event: "measureTune", state: { stage: "applied", running: false, guard: guard(9, "waiting", 45_000) } });
-    assert.equal(desk.state.guard?.remainingMs, 40_000, "the bar's own countdown, not the event's");
+    assert.equal(guardNow()?.remainingMs, 40_000, "the bar's own countdown, not the event's");
     // Keep: the core's gated applyConfirm; refused once (said, the guard still waits), then kept.
     assert.equal(await desk.keep(), false);
     assert.equal(desk.state.outcome?.tone, "error");
     assert.match(desk.state.outcome?.lines[0] ?? "", /keep_unverified|verify/);
-    assert.equal(desk.state.guard?.phase, "waiting", "still waiting, as the core says");
+    assert.equal(guardNow()?.phase, "waiting", "still waiting, as the core says");
     assert.ok(calls.filter((c) => c === "applyPoll").length >= polls);
     assert.equal(await desk.keep(), true);
     assert.equal(calls.filter((c) => c === "applyConfirm").length, 2, "only ever applyConfirm: never measureTuneKeep");
     assert.equal(calls.includes("measureTuneKeep"), false);
-    assert.equal(desk.state.guard?.phase, "kept");
+    assert.equal(guardNow()?.phase, "kept");
     // An ended guard in a later event is not adopted again.
     push({ event: "measureTune", state: { stage: "kept", running: false, guard: guard(9, "kept") } });
-    assert.equal(desk.state.guard?.phase, "kept");
+    assert.equal(guardNow()?.phase, "kept");
   } finally {
     desk.stop();
   }
