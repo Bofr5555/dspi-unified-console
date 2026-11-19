@@ -1024,6 +1024,9 @@ mod tests_wp_pgflash;
 // -- review PG-D1 --
 #[cfg(test)]
 mod tests_review_pgd1;
+// -- review PGS-DOC --
+#[cfg(test)]
+mod tests_review_pgsdoc;
 
 #[cfg(test)]
 mod tests_review_pgd2;
