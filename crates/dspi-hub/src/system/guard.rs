@@ -302,10 +302,19 @@ impl HubHandle {
         }
         let (_, revision) = self.system_model();
         let outcome = {
-            let st = guard(&self.system_guards().state);
-            let Some(p) = st.pending.as_ref().filter(|p| p.id == id && !p.reverting) else {
+            let mut st = guard(&self.system_guards().state);
+            // -- review AT-D2 -- judged and taken under one lock: a guard
+            // that came due (its deadline, its session closed) since the
+            // check above is the revert's, never reported as kept while the
+            // timer thread reverts it.
+            let now = Instant::now();
+            let Some(p) = st
+                .pending
+                .take_if(|p| p.id == id && !p.reverting && p.due(now).is_none())
+            else {
                 return Err(GuardRefused::Conflict(format!(
-                    "system apply guard {id} is not pending"
+                    "system apply guard {id} is not pending: it has ended or is being reverted \
+                     (system.guard.status says how)"
                 )));
             };
             Outcome {
