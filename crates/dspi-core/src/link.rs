@@ -2697,6 +2697,9 @@ fn listed_identity(d: &DeviceInfo) -> Option<dspi_session::probe::Listed> {
         num_output_channels: u8::try_from(d.outputs?).ok()?,
         version: FirmwareVersion::new(major, minor, patch, u8::try_from(d.fw_beta?).ok()?),
         reply_len: PlatformInfo::REQUEST_LEN,
+        // -- WP PGFAKE2 -- a hub lists 7 platform bytes (spec 7.4): no board id
+        // here; PGLINKC reads the 8 bytes itself (PLAN-PG R7c).
+        board_id: 0,
     };
     Some(dspi_session::probe::Listed {
         platform: info.encode().to_vec(),

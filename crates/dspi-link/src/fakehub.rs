@@ -44,6 +44,23 @@
 //! [`FakeHub::refuse_handshake`]. Timers run on [`HubConfig::clock`], so a test
 //! can use a [`ManualClock`](crate::clock::ManualClock) instead of waiting.
 //!
+//! -- WP PGLINKC -- Which DSPi Link version it plays ([`HubConfig::mode`],
+//! PLAN-PG section 1.4) and which device it serves ([`HubConfig::device`]):
+//! - [`HubMode::L12Drop`] (the default): a 1.2 hub that drops `wIndex`, as
+//!   our hub before PGHUB0; the device sees `wIndex` 2 whatever was sent.
+//! - [`HubMode::L12Forward`]: an upstream 1.2 Console hub: policy by
+//!   `bRequest` (the 1.2 table), `wIndex` forwarded verbatim.
+//! - [`HubMode::L13`]: upstream 1.3 rules: the hub probes the device with
+//!   `SYS.PROTOCOL_INFO` at attach and lists `protocol` for a paged one; a
+//!   legacy device gets `0x86` for every CMD and `unsupported` for every poll;
+//!   policy by command id (`commands-1.3.json`, absent = `config`);
+//!   `policy.denied` empty and `denied_ids` filled. [`FakeHub::swap_device`]
+//!   changes the device behind the handle (a re-flash) and announces it.
+//!
+//! The built-in device is a 1.1.6-generation one; a test plugs any other in
+//! through [`HubDevice`] (dspi-transport's paged fakes, for example).
+//! [`FakeHub::requests`] lists what reached the device with its `wIndex`.
+//!
 //! Not modelled: the bridge's limit of two unauthenticated sessions per
 //! address, its 16-entry token table (4002 on eviction), the 20-failure global
 //! PIN limit, and close 1011 for a client that stopped reading.
@@ -75,7 +92,82 @@ pub use fake_tls::FakeTlsKey;
 pub const BULK_V32: &[u8] = include_bytes!("../../../tests/fixtures/link/device/bulk_v32.bin");
 pub const PLATFORM: &[u8] = include_bytes!("../../../tests/fixtures/link/device/platform.bin");
 pub const STATUS_WVALUE9: &[u8] = include_bytes!("../../../tests/fixtures/link/device/status_wvalue9.bin");
-const POLICY: &str = include_str!("../../../tests/fixtures/link/policy/commands.json");
+// -- WP PGHPOL -- the 1.2 table, renamed from `commands.json`.
+const POLICY: &str = include_str!("../../../tests/fixtures/link/policy/commands-1.2.json");
+// -- WP PGLINKC -- the 1.3 table, keyed by command id (L13 mode)
+const POLICY_13: &str = include_str!("../../../tests/fixtures/link/policy/commands-1.3.json");
+
+// -- WP PGLINKC --
+/// The DSPi Link version the fake hub plays (module docs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HubMode {
+    /// A 1.2 (or 1.1) hub that drops `wIndex`: the device always sees 2.
+    #[default]
+    L12Drop,
+    /// An upstream 1.2 Console hub: `wIndex` forwarded verbatim, policy by `bRequest`.
+    L12Forward,
+    /// An upstream 1.3 hub (spec 1.3 sections 7.4, 8.1, 9.3).
+    L13,
+}
+
+// -- WP PGLINKC --
+/// A device behind the fake hub: one vendor request as the device's USB
+/// endpoint 0 sees it, answered with a Link status (spec 8.1: 0x00 OK, 0x02 for
+/// a STALL, a firmware result code 0x10..0x1A) and the reply.
+pub trait HubDevice: Send {
+    fn request(
+        &mut self,
+        dir: Dir,
+        b_request: u8,
+        w_value: u16,
+        w_index: u16,
+        w_length: u16,
+        payload: &[u8],
+    ) -> (u8, Vec<u8>);
+}
+
+// -- WP PGLINKC --
+/// A [`HubDevice`] shared between the hub and the test.
+#[derive(Clone)]
+pub struct SharedDevice(pub Arc<Mutex<dyn HubDevice>>);
+
+impl SharedDevice {
+    pub fn new(device: impl HubDevice + 'static) -> Self {
+        Self(Arc::new(Mutex::new(device)))
+    }
+
+    fn request(&self, dir: Dir, b_request: u8, w_value: u16, w_index: u16, w_length: u16, p: &[u8]) -> (u8, Vec<u8>) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).request(dir, b_request, w_value, w_index, w_length, p)
+    }
+}
+
+impl std::fmt::Debug for SharedDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SharedDevice(..)")
+    }
+}
+
+// -- WP PGLINKC --
+/// One request that reached the device ([`FakeHub::requests`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceRequest {
+    pub session: u16,
+    pub dir: Dir,
+    pub b_request: u8,
+    pub w_value: u16,
+    /// As the device saw it (after [`HubMode::L12Drop`] dropped the page).
+    pub w_index: u16,
+    /// As the client sent it.
+    pub sent_w_index: u16,
+    pub w_length: u16,
+}
+
+impl DeviceRequest {
+    /// The page the client named (`wIndex` high byte).
+    pub fn sent_page(&self) -> u8 {
+        (self.sent_w_index >> 8) as u8
+    }
+}
 
 /// Firmware request ids the fake device knows.
 pub mod req {
@@ -168,6 +260,11 @@ pub struct HubConfig {
     /// since it last read the blob, which stays current while the DSPi
     /// notifies: hours on a bridge that has been up for hours.
     pub snapshot_age_ms: u64,
+    // -- WP PGLINKC --
+    /// The DSPi Link version played (module docs).
+    pub mode: HubMode,
+    /// The device behind handle 0; `None` is the built-in 1.1.6 device.
+    pub device: Option<SharedDevice>,
 }
 
 impl Default for HubConfig {
@@ -199,9 +296,11 @@ impl Default for HubConfig {
             board_removal_hold: Duration::from_secs(60),
             poll_budget_bps: 200_000,
             clock: Arc::new(SystemClock),
-            rta: false,         // -- WP CG5 --
-            stats: false,       // -- WP CG21 --
-            snapshot_age_ms: 0, // -- WP LK1 --
+            rta: false,             // -- WP CG5 --
+            stats: false,           // -- WP CG21 --
+            snapshot_age_ms: 0,     // -- WP LK1 --
+            mode: HubMode::L12Drop, // -- WP PGLINKC --
+            device: None,           // -- WP PGLINKC --
         }
     }
 }
@@ -226,6 +325,26 @@ impl HubConfig {
             poll_budget_bps: 40_000,
             ..Self::default()
         }
+    }
+
+    // -- WP PGLINKC --
+    /// An upstream 1.2 Console hub (minor 2) that forwards `wIndex` verbatim
+    /// and classes by `bRequest`, in front of `device`. PIN auth, so a test
+    /// can pair a control-role session.
+    pub fn l12_forward(device: Option<SharedDevice>) -> Self {
+        Self { proto_minor: 2, mode: HubMode::L12Forward, device, ..Self::default() }
+    }
+
+    // -- WP PGLINKC --
+    /// A 1.2 hub (minor 2) that drops `wIndex`, in front of `device`.
+    pub fn l12_drop(device: Option<SharedDevice>) -> Self {
+        Self { proto_minor: 2, mode: HubMode::L12Drop, device, ..Self::default() }
+    }
+
+    // -- WP PGLINKC --
+    /// An upstream 1.3 hub (minor 3) in front of `device`.
+    pub fn l13(device: Option<SharedDevice>) -> Self {
+        Self { proto_minor: 3, mode: HubMode::L13, device, ..Self::default() }
     }
 }
 
@@ -318,7 +437,8 @@ struct SecState {
 
 /// One granted poll of a session.
 struct PollRec {
-    /// `bRequest`, `wValue` and `wLength` as bytes: what makes polls identical.
+    /// `bRequest`, `wValue`, `wLength` and (WP PGLINKC) `wIndex` as bytes:
+    /// what makes polls identical.
     spec: Vec<u8>,
     hz: u32,
     every: Duration,
@@ -426,6 +546,14 @@ struct State {
     json_log: Vec<Value>,
     // -- WP SECCORE --
     sec: SecState,
+    // -- WP PGLINKC --
+    /// `(id, dir)` -> class from `commands-1.3.json` (L13 mode).
+    classes_13: HashMap<(u16, u8), String>,
+    /// The device's protocol from the hub's own probe (L13), `None` for a
+    /// legacy device (or a 1.2 hub, which does not probe).
+    protocol: Option<(u8, u8)>,
+    /// Every request that reached the device.
+    requests: Vec<DeviceRequest>,
 }
 
 // -- WP P2CC1 --
@@ -462,6 +590,33 @@ fn load_policy() -> HashMap<(u8, u8), String> {
     out
 }
 
+// -- WP PGLINKC --
+/// `(id, dir)` -> class from the 1.3 `commands-1.3.json` (spec 9.3).
+fn load_policy_13() -> HashMap<(u16, u8), String> {
+    let v: Value = serde_json::from_str(POLICY_13).unwrap_or_default();
+    let mut out = HashMap::new();
+    for c in v["commands"].as_array().into_iter().flatten() {
+        let Some(id) = c["id"].as_u64().and_then(|i| u16::try_from(i).ok()) else { continue };
+        for (d, name) in [(0u8, "set"), (1u8, "get")] {
+            if let Some(k) = c["classes"][name].as_str() {
+                out.insert((id, d), k.to_owned());
+            }
+        }
+    }
+    out
+}
+
+// -- WP PGLINKC --
+/// The hub's probe of a device (spec 1.3 section 7.4): `protocol` from a reply
+/// that starts `DSPi`, `None` for anything else (a STALL: legacy).
+fn probe(device: &SharedDevice) -> Option<(u8, u8)> {
+    let (st, reply) = device.request(Dir::Get, 0x10, 0, 0x0102, 16, &[]);
+    match (st, reply.as_slice()) {
+        (status::OK, [b'D', b'S', b'P', b'i', major, minor, ..]) => Some((*major, *minor)),
+        _ => None,
+    }
+}
+
 fn allowed(role: &str, class: &str) -> bool {
     match role {
         "admin" => true,
@@ -489,6 +644,67 @@ impl State {
 
     fn class(&self, b_request: u8, dir: u8) -> &str {
         self.classes.get(&(b_request, dir)).map(String::as_str).unwrap_or("config")
+    }
+
+    // -- WP PGLINKC --
+    fn class_13(&self, id: u16, dir: u8) -> &str {
+        self.classes_13.get(&(id, dir)).map(String::as_str).unwrap_or("config")
+    }
+
+    // -- WP PGLINKC --
+    /// What the session's role may not send, by protocol: `denied` (1.2 rows)
+    /// and `denied_ids` (1.3 rows, L13 only; a 1.3 hub sends `denied` empty).
+    fn policy_json(&self, role: &str) -> Value {
+        if self.cfg.mode != HubMode::L13 {
+            return json!({"denied": self.denied(role)});
+        }
+        let mut ids: Vec<[u16; 2]> = self
+            .classes_13
+            .iter()
+            .filter(|(_, c)| !allowed(role, c))
+            .map(|((id, dir), _)| [*id, u16::from(*dir)])
+            .collect();
+        ids.sort();
+        json!({"denied": [], "denied_ids": ids})
+    }
+
+    // -- WP PGLINKC --
+    /// Run one request on the device behind the handle, as the mode forwards
+    /// it, and log it.
+    #[allow(clippy::too_many_arguments)]
+    fn run(
+        &mut self,
+        sid: u16,
+        dir: Dir,
+        b_request: u8,
+        w_value: u16,
+        w_index: u16,
+        w_length: u16,
+        payload: &[u8],
+    ) -> (u8, Vec<u8>) {
+        let seen = if self.cfg.mode == HubMode::L12Drop { 2 } else { w_index };
+        self.requests.push(DeviceRequest {
+            session: sid,
+            dir,
+            b_request,
+            w_value,
+            w_index: seen,
+            sent_w_index: w_index,
+            w_length,
+        });
+        if self.cfg.timeout_requests.contains(&b_request) {
+            return (status::TIMEOUT, Vec::new());
+        }
+        match self.cfg.device.clone() {
+            Some(d) => d.request(dir, b_request, w_value, seen, w_length, payload),
+            None => self.device(sid, dir, b_request, w_value, w_length, payload),
+        }
+    }
+
+    // -- WP PGLINKC --
+    /// L13: the device behind the handle is legacy, so nothing is forwarded.
+    fn legacy_on_13(&self) -> bool {
+        self.cfg.mode == HubMode::L13 && self.protocol.is_none()
     }
 
     fn denied(&self, role: &str) -> Vec<[u8; 2]> {
@@ -534,7 +750,7 @@ impl State {
 
     fn device_json(&self) -> Value {
         let p = PLATFORM;
-        json!({
+        let mut d = json!({
             "handle": 0, "serial": self.cfg.serial, "name": self.cfg.device_name,
             "platform": p[0], "fw": format!("{}.{}.{}", p[1], p[4], p[5]), "fw_beta": p[6], "outputs": p[3],
             // -- WP LK4 -- as the ESP32 bridge lists it once it has read the header
@@ -542,7 +758,12 @@ impl State {
             "wire_version": self.image[0], "state": if self.board == Board::Online { "online" } else { "offline" },
             "link": if self.cfg.kind == "bridge" { "uart" } else { "usb" },
             "locked_by": self.lock.map(|l| l.0),
-        })
+        });
+        // -- WP PGLINKC -- spec 1.3 section 7.4
+        if let Some((major, minor)) = self.protocol {
+            d["protocol"] = json!({"major": major, "minor": minor});
+        }
+        d
     }
 
     /// Replies to this session's commands not delivered yet.
@@ -736,7 +957,16 @@ impl State {
         if f.payload.len() > 8192 || (f.dir == Dir::Get && f.w_length as usize > 8192) {
             return reply(status::TOO_LARGE, Vec::new());
         }
-        if !allowed(&role, self.class(f.b_request, f.dir as u8)) {
+        // -- WP PGLINKC -- a 1.3 hub forwards nothing to a legacy device
+        if self.legacy_on_13() {
+            return reply(status::UNSUPPORTED, Vec::new());
+        }
+        let class = if self.cfg.mode == HubMode::L13 {
+            self.class_13((f.w_index & 0xFF00) | u16::from(f.b_request), f.dir as u8)
+        } else {
+            self.class(f.b_request, f.dir as u8)
+        };
+        if !allowed(&role, class) {
             return reply(status::DENIED, Vec::new());
         }
         if let Some((holder, until)) = self.lock {
@@ -762,7 +992,7 @@ impl State {
             }
         }
         self.log.push((sid, f.dir as u8, f.b_request, f.w_value));
-        let (st, mut data) = self.device(sid, f.dir, f.b_request, f.w_value, f.w_length, &f.payload);
+        let (st, mut data) = self.run(sid, f.dir, f.b_request, f.w_value, f.w_index, f.w_length, &f.payload);
         let cap = if self.cfg.bridge_limits && !bulk { 132 } else { usize::MAX };
         data.truncate((f.w_length as usize).min(cap));
         if f.dir == Dir::Set {
@@ -957,7 +1187,17 @@ impl FakeHub {
             lock: None,
             log: Vec::new(),
             classes: load_policy(),
+            classes_13: load_policy_13(), // -- WP PGLINKC --
+            protocol: None,               // -- WP PGLINKC --
+            requests: Vec::new(),         // -- WP PGLINKC --
         }));
+        // -- WP PGLINKC -- a 1.3 hub probes the device before listing it
+        {
+            let mut s = lock(&state);
+            if s.cfg.mode == HubMode::L13 {
+                s.protocol = s.cfg.device.as_ref().and_then(probe);
+            }
+        }
         let stop = Arc::new(AtomicBool::new(false));
         let (st, sp) = (Arc::clone(&state), Arc::clone(&stop));
         thread::Builder::new().name("fakehub-accept".into()).spawn(move || {
@@ -992,6 +1232,28 @@ impl FakeHub {
     /// Every command the device ran: `(session, dir, bRequest, wValue)`.
     pub fn log(&self) -> Vec<(u16, u8, u8, u16)> {
         lock(&self.state).log.clone()
+    }
+
+    // -- WP PGLINKC --
+    /// Every request that reached the device, poll ticks included (the hub's
+    /// own probe at attach and its snapshot reads are not), with its `wIndex`.
+    pub fn requests(&self) -> Vec<DeviceRequest> {
+        lock(&self.state).requests.clone()
+    }
+
+    // -- WP PGLINKC --
+    /// Replace the device behind handle 0 (a re-flash to another generation:
+    /// `None` is the built-in 1.1.6 device): an L13 hub probes it again, and
+    /// every session hears `device.changed` with its new `protocol`.
+    pub fn swap_device(&self, device: Option<SharedDevice>) {
+        let mut s = lock(&self.state);
+        s.cfg.device = device;
+        s.protocol = if s.cfg.mode == HubMode::L13 { s.cfg.device.as_ref().and_then(probe) } else { None };
+        for r in s.sessions.values_mut() {
+            r.polls.clear();
+        }
+        let changed = json!({"t": "device.changed", "device": s.device_json()}).to_string();
+        s.broadcast(changed);
     }
 
     /// Authenticated session ids.
@@ -1633,11 +1895,13 @@ fn session(ws: &mut WebSocket<Replay>, state: &Arc<Mutex<State>>, stop: &AtomicB
             }
             due.into_iter()
                 .map(|(slot, spec)| {
-                    let (_, data) = s.device(
+                    // -- WP PGLINKC -- to the device the mode forwards to, with the poll's page
+                    let (_, data) = s.run(
                         sid,
                         Dir::Get,
                         spec[0],
                         u16::from_le_bytes([spec[1], spec[2]]),
+                        u16::from_le_bytes([spec[5], spec[6]]),
                         u16::from_le_bytes([spec[3], spec[4]]),
                         &[],
                     );
@@ -1774,13 +2038,13 @@ fn pair_granted(s: &mut State, sid: u16, role: String) -> Value {
     if let Some(tok) = &token {
         s.tokens.insert(tok.clone(), role.clone());
     }
-    let denied = s.denied(&role);
+    let policy = s.policy_json(&role); // -- WP PGLINKC --
     if let Some(r) = s.sessions.get_mut(&sid) {
         r.authed = true;
         r.role = role.clone();
         r.token = token.clone();
     }
-    let mut extra = json!({"session": sid, "role": role, "policy": {"denied": denied}});
+    let mut extra = json!({"session": sid, "role": role, "policy": policy});
     if let Some(tok) = token {
         extra["token"] = json!(tok);
     }
@@ -1956,13 +2220,13 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
             }
             match s.tokens.get(&tok).cloned() {
                 Some(role) => {
-                    let denied = s.denied(&role);
+                    let policy = s.policy_json(&role); // -- WP PGLINKC --
                     if let Some(r) = s.sessions.get_mut(&sid) {
                         r.authed = true;
                         r.role = role.clone();
                         r.token = Some(tok);
                     }
-                    vec![ok(&id, json!({"session": sid, "role": role, "policy": {"denied": denied}}))]
+                    vec![ok(&id, json!({"session": sid, "role": role, "policy": policy}))]
                 }
                 None => {
                     s.auth_failed(peer);
@@ -2005,23 +2269,49 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
             if v["handle"].as_u64() != Some(0) || s.board != Board::Online {
                 return vec![err(&id, "no_device", "")];
             }
-            let b64 = data_encoding::BASE64.encode(&s.image);
+            // -- WP PGLINKC -- a plugged-in device's blob, read as its generation
+            // names it (the hub's own read, not logged); none for a legacy device on 1.3
+            if s.legacy_on_13() {
+                return vec![err(&id, "unsupported", "a legacy device: nothing is forwarded to it")];
+            }
+            let image = match s.cfg.device.clone() {
+                Some(d) => {
+                    let (b_request, w_index) =
+                        if s.protocol.is_some() { (0x40, 0x0202) } else { (req::GET_ALL_PARAMS, 2) };
+                    match d.request(Dir::Get, b_request, 0, w_index, 8192, &[]) {
+                        (status::OK, blob) if !blob.is_empty() => blob,
+                        _ => return vec![err(&id, "no_device", "the device did not give its blob")],
+                    }
+                }
+                None => s.image.clone(),
+            };
+            let b64 = data_encoding::BASE64.encode(&image);
             let st = data_encoding::BASE64.encode(&self_status(&s));
             vec![ok(
                 &id,
-                json!({"handle": 0, "wire_version": s.image[0], "age_ms": s.cfg.snapshot_age_ms, "bulk_b64": b64, "status_b64": st}),
+                json!({"handle": 0, "wire_version": image[0], "age_ms": s.cfg.snapshot_age_ms, "bulk_b64": b64, "status_b64": st}),
             )]
         }
         "poll.subscribe" => {
             if v["handle"].as_u64() != Some(0) || s.board != Board::Online {
                 return vec![err(&id, "no_device", "")];
             }
+            // -- WP PGLINKC -- spec 1.3 section 7.4
+            if s.legacy_on_13() {
+                return vec![err(&id, "unsupported", "a legacy device: nothing is forwarded to it")];
+            }
             let mut requests = Vec::new();
             let role = s.sessions.get(&sid).map(|r| r.role.clone()).unwrap_or_default();
             let polls = v["polls"].as_array().cloned().unwrap_or_default();
             for p in polls {
                 let (slot, rq) = (p["slot"].as_u64().unwrap_or(0) as u8, p["req"].as_u64().unwrap_or(0) as u8);
-                if s.class(rq, 1) != "read" || !allowed(&role, "read") {
+                let idx = p["idx"].as_u64().unwrap_or(2) as u16;
+                let class = if s.cfg.mode == HubMode::L13 {
+                    s.class_13((idx & 0xFF00) | u16::from(rq), 1)
+                } else {
+                    s.class(rq, 1)
+                };
+                if class != "read" || !allowed(&role, "read") {
                     return vec![err(&id, "denied", "poll commands must be read")];
                 }
                 let hz = u32::try_from(p["hz"].as_u64().unwrap_or(1)).unwrap_or(u32::MAX).max(1);
@@ -2030,6 +2320,7 @@ fn handle_json(state: &Arc<Mutex<State>>, sid: u16, text: &str) -> Vec<String> {
                 let mut spec = vec![rq];
                 spec.extend_from_slice(&val.to_le_bytes());
                 spec.extend_from_slice(&len.to_le_bytes());
+                spec.extend_from_slice(&idx.to_le_bytes()); // -- WP PGLINKC --
                 requests.push((slot, spec, hz));
             }
             let Some(rates) = s.grant_polls(sid, &requests) else {

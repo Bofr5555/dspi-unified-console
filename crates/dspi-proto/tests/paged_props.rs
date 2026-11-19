@@ -82,11 +82,15 @@ proptest! {
                         }
                     }
                     // Any answer finishes a single-step plan without a panic.
+                    // -- WP PGCUST -- multi-step custom recipes are checked in
+                    // `paged::custom`'s own properties.
+                    if p.single().is_some() {
                     for a in [Answer::Ack, Answer::Data(&bytes), Answer::Refused { result: None },
                               Answer::Refused { result: Some(seed) }] {
                         let mut q = plan(opcode, value, body, &pages).expect("same plan");
                         let _ = q.start();
                         prop_assert!(matches!(q.feed(a), Next::Done(_)));
+                    }
                     }
                 }
             }
@@ -222,25 +226,23 @@ fn wp_pgproto_every_simple_row_plans_and_reverses() {
     assert!(planned > 500, "{planned}");
 }
 
-/// Custom rows are refused locally until WP PGCUST, never planned by guess.
+// -- WP PGCUST -- (was `wp_pgproto_custom_rows_wait_for_pgcust`: the stub's refusal)
+/// Custom rows are planned by `paged::custom` now, never refused as unsupported.
 #[test]
-fn wp_pgproto_custom_rows_wait_for_pgcust() {
+fn wp_pgcust_custom_rows_are_planned() {
     let pages = full();
     let customs = [0x28u8, 0x43, 0x50, 0x51, 0x71, 0x83, 0x97, 0xB2, 0xB3, 0xEE];
     for op in customs {
         assert!(
-            matches!(
-                plan(op, 0, LegacyBody::In { len: 8 }, &pages),
-                Err(PlanError::Unsupported { opcode }) if opcode == op
-            ),
+            plan(op, 0, LegacyBody::In { len: 8 }, &pages).is_ok(),
             "0x{op:02X}"
         );
     }
     for op in [0x42u8, 0x44, 0x70, 0xA1] {
-        assert!(matches!(
-            plan(op, 0, LegacyBody::Out(&[0; 8]), &pages),
-            Err(PlanError::Unsupported { .. })
-        ));
+        assert!(
+            plan(op, 0, LegacyBody::Out(&[0; 18]), &pages).is_ok(),
+            "0x{op:02X}"
+        );
     }
     // Its reach is still known, for the hub's judges.
     assert!(

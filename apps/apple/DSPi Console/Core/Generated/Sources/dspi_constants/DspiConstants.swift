@@ -1052,7 +1052,18 @@ public enum LinkConstants {
     public static let STATUS_BAD_FRAME: UInt8 = 0x87
     /// Default hub port: decimal of the USB VID 0x2E8B (spec 3.1).
     public static let DEFAULT_PORT: UInt16 = 11915
-    /// The protocol this client speaks (spec 1.2; 1.1 hubs are compatible, 13.1).
+    /// The protocol major of DSPi Link (spec 10).
     public static let PROTO_MAJOR: UInt32 = 1
+    /// The minor **our hub** sends in its `hello` (`dspi-hub` `server.rs`): 2 until
+    /// WP PGHDEV raises it together with `protocol`, `ext`, `legacy_devices` and
+    /// `denied_ids`, so the hub never claims 1.3 without behaving as one (PLAN-PG
+    /// R4). The client sends [`CLIENT_PROTO_MINOR`].
     public static let PROTO_MINOR: UInt32 = 2
+    /// The minor this **client** sends in its `hello`: it speaks DSPi Link 1.3
+    /// (paged devices, `denied_ids`, the firmware result codes) and 1.2 (spec 13.1;
+    /// 1.1 hubs are compatible). PLAN-PG section 1.4, R4.
+    public static let CLIENT_PROTO_MINOR: UInt32 = 3
+    /// The first hub minor that is DSPi Link 1.3: policy by command id, `protocol`
+    /// in the device object, nothing forwarded to a legacy device (spec 13.1).
+    public static let LINK_13_MINOR: UInt32 = 3
 }

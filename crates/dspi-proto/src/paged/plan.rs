@@ -239,9 +239,19 @@ impl Rule {
 
 #[derive(Debug)]
 enum Inner {
-    Single { req: PagedRequest, rule: Rule },
+    Single {
+        req: PagedRequest,
+        rule: Rule,
+    },
     Local(Outcome),
     Machine(Box<dyn StepMachine>),
+    // -- WP PGCUST --
+    /// A custom recipe that sends exactly one request (already started) and
+    /// finishes on its answer, so a transport may batch it like `Single`.
+    OneStep {
+        req: PagedRequest,
+        machine: Box<dyn StepMachine>,
+    },
 }
 
 /// A planned 1.1.6 request: a step machine over paged requests.
@@ -259,12 +269,26 @@ impl Plan {
         Plan(Inner::Machine(m))
     }
 
+    // -- WP PGCUST --
+    /// A custom recipe that sends one request and finishes on its answer (the
+    /// machine's [`StepMachine::feed`] must return [`Next::Done`]): like a
+    /// single-step plan, [`Plan::single`] shows its request. A machine that
+    /// finishes without sending becomes a local plan.
+    pub fn one_step(mut machine: Box<dyn StepMachine>) -> Self {
+        match machine.start() {
+            Next::Send(req) => Plan(Inner::OneStep { req, machine }),
+            Next::Done(o) => Plan::local(o),
+        }
+    }
+
     /// The one request of a single-step plan, `None` for a local or multi-step
     /// one. A transport may batch single-step plans and subscribe polls to them
     /// (PLAN-PG R3, OD-PGo).
     pub fn single(&self) -> Option<&PagedRequest> {
         match &self.0 {
             Inner::Single { req, .. } => Some(req),
+            // -- WP PGCUST --
+            Inner::OneStep { req, .. } => Some(req),
             _ => None,
         }
     }
@@ -277,6 +301,8 @@ impl Plan {
             Inner::Single { rule, .. } => rule.needs_result(),
             Inner::Local(_) => false,
             Inner::Machine(_) => true,
+            // -- WP PGCUST --
+            Inner::OneStep { .. } => true,
         }
     }
 
@@ -286,6 +312,8 @@ impl Plan {
             Inner::Single { req, .. } => Next::Send(req.clone()),
             Inner::Local(o) => Next::Done(o.clone()),
             Inner::Machine(m) => m.start(),
+            // -- WP PGCUST --
+            Inner::OneStep { req, .. } => Next::Send(req.clone()),
         }
     }
 
@@ -295,6 +323,8 @@ impl Plan {
             Inner::Single { rule, .. } => Next::Done(rule.outcome(answer)),
             Inner::Local(o) => Next::Done(o.clone()),
             Inner::Machine(m) => m.feed(answer),
+            // -- WP PGCUST --
+            Inner::OneStep { machine, .. } => machine.feed(answer),
         }
     }
 

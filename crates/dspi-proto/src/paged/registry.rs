@@ -210,6 +210,31 @@ pub fn page(page: u8) -> Option<&'static PageInfo> {
     PAGES.iter().find(|p| p.page == page)
 }
 
+// -- WP PGADAPT --
+/// The byte offsets of the `f32` fields in `id`'s SET payload, as the
+/// registry's doc types them (`FLOAT_FIELDS`, generated); empty for a command
+/// whose payload the registry does not type.
+pub fn float_offsets(id: CmdId) -> &'static [u8] {
+    FLOAT_FIELDS
+        .iter()
+        .find(|(c, _)| *c == id)
+        .map_or(&[], |(_, o)| *o)
+}
+
+/// Whether `payload` carries a NaN or an infinity in a field the registry
+/// types `f32` for `id` (migration guide 5.6: the firmware refuses a
+/// non-finite value, `VC_ERR_VALUE`). A payload too short for a field is not
+/// judged here (the length rule is).
+pub fn has_non_finite(id: CmdId, payload: &[u8]) -> bool {
+    float_offsets(id).iter().any(|o| {
+        let at = usize::from(*o);
+        at.checked_add(4)
+            .and_then(|end| payload.get(at..end))
+            .and_then(|b| <[u8; 4]>::try_from(b).ok())
+            .is_some_and(|b| !f32::from_le_bytes(b).is_finite())
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_pgproto {
@@ -225,6 +250,45 @@ mod tests_wp_pgproto {
             assert!(c.id.cmd() >= 0x10, "{}", c.full_name());
             assert_eq!(page(c.id.page()).map(|p| p.mnemonic), Some(c.page));
         }
+    }
+
+    // -- WP PGADAPT --
+    /// The float layouts read from the docs: the two multi-field payloads
+    /// (guide 6.3: a band's freq, Q and gain; a crosspoint's gain) and the
+    /// plain 4-byte `f32` setters; every offset lies inside the payload.
+    #[test]
+    fn wp_pgadapt_float_fields_come_from_the_registry_docs() {
+        assert_eq!(float_offsets(cmds::FILTER_BAND), &[4, 8, 12]);
+        assert_eq!(float_offsets(cmds::ROUTE_MATRIX_ROUTE), &[4]);
+        assert_eq!(float_offsets(cmds::ROUTE_MASTER_VOLUME), &[0]);
+        assert_eq!(float_offsets(cmds::ROUTE_PREAMP), &[0]);
+        assert_eq!(float_offsets(cmds::SYS_PROTOCOL_INFO), &[] as &[u8]);
+        assert!(FLOAT_FIELDS.len() >= 50, "{}", FLOAT_FIELDS.len());
+        for (id, offs) in &FLOAT_FIELDS {
+            let c = command(*id).unwrap();
+            assert!(c.set, "{}", c.full_name());
+            for o in *offs {
+                assert!(
+                    usize::from(*o) + 4 <= usize::from(c.set_max),
+                    "{}",
+                    c.full_name()
+                );
+            }
+        }
+        let mut band = [0u8; 16];
+        assert!(!has_non_finite(cmds::FILTER_BAND, &band));
+        band[8..12].copy_from_slice(&f32::NAN.to_le_bytes());
+        assert!(has_non_finite(cmds::FILTER_BAND, &band));
+        band[8..12].copy_from_slice(&f32::NEG_INFINITY.to_le_bytes());
+        assert!(has_non_finite(cmds::FILTER_BAND, &band));
+        assert!(
+            !has_non_finite(cmds::FILTER_BAND, &band[..8]),
+            "too short to judge"
+        );
+        assert!(!has_non_finite(
+            cmds::SYS_PROTOCOL_INFO,
+            &f32::NAN.to_le_bytes()
+        ));
     }
 
     #[test]
