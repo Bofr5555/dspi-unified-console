@@ -2096,6 +2096,22 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -2194,6 +2210,8 @@ fun uniffi_dspi_core_checksum_func_link_phase_text(
 fun uniffi_dspi_core_checksum_func_link_phase_texts(
 ): Short
 fun uniffi_dspi_core_checksum_func_link_ws_url(
+): Short
+fun uniffi_dspi_core_checksum_func_measure_doc_curves(
 ): Short
 fun uniffi_dspi_core_checksum_func_measure_doc_info(
 ): Short
@@ -2790,6 +2808,20 @@ fun uniffi_dspi_core_checksum_method_dspicore_measure_next_position(
 fun uniffi_dspi_core_checksum_method_dspicore_measure_preflight(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_result(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_averaging(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_frame(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_hold(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_push(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_start(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_state(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_stop(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_measure_set_dir(
 ): Short
@@ -3844,6 +3876,20 @@ fun uniffi_dspi_core_fn_method_dspicore_measure_preflight(`ptr`: Pointer,`setup`
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_result(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_averaging(`ptr`: Pointer,`averaging`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_frame(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_hold(`ptr`: Pointer,`on`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_push(`ptr`: Pointer,`samples`: RustBuffer.ByValue,`rateHz`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_start(`ptr`: Pointer,`setup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_state(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_stop(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_method_dspicore_measure_set_dir(`ptr`: Pointer,`dir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_measure_set_listener(`ptr`: Pointer,`listener`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4412,6 +4458,8 @@ fun uniffi_dspi_core_fn_func_link_phase_texts(uniffi_out_err: UniffiRustCallStat
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_link_ws_url(`host`: RustBuffer.ByValue,`port`: Short,`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_dspi_core_fn_func_measure_doc_curves(`text`: RustBuffer.ByValue,`options`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_measure_doc_info(`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_dspi_core_fn_func_mic_import(`name`: RustBuffer.ByValue,`fileName`: RustBuffer.ByValue,`fileText`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -4712,6 +4760,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_link_ws_url() != 18495.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_func_measure_doc_curves() != 12290.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_func_measure_doc_info() != 31814.toShort()) {
@@ -5606,6 +5657,27 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_result() != 7126.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_averaging() != 35925.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_frame() != 24406.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_hold() != 28388.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_push() != 56865.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_start() != 19944.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_state() != 11846.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_rta_passive_stop() != 20846.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_measure_set_dir() != 18664.toShort()) {
@@ -10847,6 +10919,70 @@ public interface DspiCoreInterface {
      * Errors: [`DspiError::InvalidArgument`] while no result is ready.
      */
     fun `measureResult`(): kotlin.String
+    
+    /**
+     * The averaging preset; the average starts again (the held copy is
+     * kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it does not run.
+     */
+    fun `measureRtaPassiveAveraging`(`averaging`: MeasureRtaAveraging): MeasureRtaPassiveState
+    
+    /**
+     * What the passive RTA shows: the averaged spectrum in fractional-octave
+     * bands (dBFS, or dB SPL), the held copy and their difference. No I/O.
+     */
+    fun `measureRtaPassiveFrame`(): MeasureRtaPassiveFrame
+    
+    /**
+     * Hold (`true`) the spectrum for comparison, or drop the held copy
+     * (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it does not run, or there
+     * is no spectrum to hold yet.
+     */
+    fun `measureRtaPassiveHold`(`on`: kotlin.Boolean): MeasureRtaPassiveState
+    
+    /**
+     * Push one block of the microphone's capture (mono, full scale ±1, at
+     * `rate_hz`) into the passive RTA, analysed at once (no session, no
+     * safety check waits on it). A push while it does not run is ignored.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a rate other than the
+     * started one, or more than 1 Mi samples in one block (nothing is
+     * analysed).
+     */
+    fun `measureRtaPassivePush`(`samples`: List<kotlin.Float>, `rateHz`: kotlin.UInt): MeasureRtaPassiveState
+    
+    /**
+     * Start the passive microphone RTA (programme audio, no generator): it
+     * never touches the device, so it is allowed in the client read-only
+     * mode, on a read-only connection, for a Viewer through a hub and with
+     * no device at all. A running one starts again with `setup` (its held
+     * copy dropped). Then push the microphone's blocks with
+     * `measure_rta_passive_push` and read `measure_rta_passive_frame`.
+     *
+     * It never runs beside this core's own generator runs (review P5-D): it
+     * is refused while a measurement, the live view or the auto-tune's runs
+     * are active here, and a run that starts ends it, so it can never show
+     * this console's stimulus as programme audio.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
+     * band count, a microphone document that does not read), and `busy`
+     * while a measurement or the live view runs on this core.
+     */
+    fun `measureRtaPassiveStart`(`setup`: MeasureRtaPassiveSetup): MeasureRtaPassiveState
+    
+    /**
+     * The passive RTA's state. No I/O.
+     */
+    fun `measureRtaPassiveState`(): MeasureRtaPassiveState
+    
+    /**
+     * Stop the passive RTA and drop its average and held copy: the state
+     * (inactive; never a failure).
+     */
+    fun `measureRtaPassiveStop`(): MeasureRtaPassiveState
     
     /**
      * Keep measurement, microphone and target documents in files under
@@ -19003,6 +19139,144 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_result(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The averaging preset; the average starts again (the held copy is
+     * kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it does not run.
+     */
+    @Throws(DspiException::class)override fun `measureRtaPassiveAveraging`(`averaging`: MeasureRtaAveraging): MeasureRtaPassiveState {
+            return FfiConverterTypeMeasureRtaPassiveState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_averaging(
+        it, FfiConverterTypeMeasureRtaAveraging.lower(`averaging`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * What the passive RTA shows: the averaged spectrum in fractional-octave
+     * bands (dBFS, or dB SPL), the held copy and their difference. No I/O.
+     */override fun `measureRtaPassiveFrame`(): MeasureRtaPassiveFrame {
+            return FfiConverterTypeMeasureRtaPassiveFrame.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_frame(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Hold (`true`) the spectrum for comparison, or drop the held copy
+     * (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it does not run, or there
+     * is no spectrum to hold yet.
+     */
+    @Throws(DspiException::class)override fun `measureRtaPassiveHold`(`on`: kotlin.Boolean): MeasureRtaPassiveState {
+            return FfiConverterTypeMeasureRtaPassiveState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_hold(
+        it, FfiConverterBoolean.lower(`on`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Push one block of the microphone's capture (mono, full scale ±1, at
+     * `rate_hz`) into the passive RTA, analysed at once (no session, no
+     * safety check waits on it). A push while it does not run is ignored.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a rate other than the
+     * started one, or more than 1 Mi samples in one block (nothing is
+     * analysed).
+     */
+    @Throws(DspiException::class)override fun `measureRtaPassivePush`(`samples`: List<kotlin.Float>, `rateHz`: kotlin.UInt): MeasureRtaPassiveState {
+            return FfiConverterTypeMeasureRtaPassiveState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_push(
+        it, FfiConverterSequenceFloat.lower(`samples`),FfiConverterUInt.lower(`rateHz`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Start the passive microphone RTA (programme audio, no generator): it
+     * never touches the device, so it is allowed in the client read-only
+     * mode, on a read-only connection, for a Viewer through a hub and with
+     * no device at all. A running one starts again with `setup` (its held
+     * copy dropped). Then push the microphone's blocks with
+     * `measure_rta_passive_push` and read `measure_rta_passive_frame`.
+     *
+     * It never runs beside this core's own generator runs (review P5-D): it
+     * is refused while a measurement, the live view or the auto-tune's runs
+     * are active here, and a run that starts ends it, so it can never show
+     * this console's stimulus as programme audio.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
+     * band count, a microphone document that does not read), and `busy`
+     * while a measurement or the live view runs on this core.
+     */
+    @Throws(DspiException::class)override fun `measureRtaPassiveStart`(`setup`: MeasureRtaPassiveSetup): MeasureRtaPassiveState {
+            return FfiConverterTypeMeasureRtaPassiveState.lift(
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_start(
+        it, FfiConverterTypeMeasureRtaPassiveSetup.lower(`setup`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The passive RTA's state. No I/O.
+     */override fun `measureRtaPassiveState`(): MeasureRtaPassiveState {
+            return FfiConverterTypeMeasureRtaPassiveState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_state(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Stop the passive RTA and drop its average and held copy: the state
+     * (inactive; never a failure).
+     */override fun `measureRtaPassiveStop`(): MeasureRtaPassiveState {
+            return FfiConverterTypeMeasureRtaPassiveState.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_measure_rta_passive_stop(
         it, _status)
 }
     }
@@ -38174,6 +38448,172 @@ public object FfiConverterTypeLockState: FfiConverterRustBuffer<LockState> {
 
 
 /**
+ * One output's curves.
+ */
+data class MeasureDocCurve (
+    /**
+     * The output, 0-based.
+     */
+    var `output`: kotlin.UByte, 
+    /**
+     * Its way.
+     */
+    var `role`: MeasureRole, 
+    /**
+     * The speaker it belongs to ("" when the layout named none).
+     */
+    var `speaker`: kotlin.String, 
+    /**
+     * The measured response, smoothed (untrusted points flagged).
+     */
+    var `measured`: MeasureLiveCurve, 
+    /**
+     * The target levelled to the measured response, when asked for.
+     */
+    var `target`: MeasureLiveCurve?, 
+    /**
+     * Per point, the spread across positions or reseats, dB; empty when
+     * the document has none.
+     */
+    var `spreadDb`: List<kotlin.Double>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureDocCurve: FfiConverterRustBuffer<MeasureDocCurve> {
+    override fun read(buf: ByteBuffer): MeasureDocCurve {
+        return MeasureDocCurve(
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureRole.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeMeasureLiveCurve.read(buf),
+            FfiConverterOptionalTypeMeasureLiveCurve.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureDocCurve) = (
+            FfiConverterUByte.allocationSize(value.`output`) +
+            FfiConverterTypeMeasureRole.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`speaker`) +
+            FfiConverterTypeMeasureLiveCurve.allocationSize(value.`measured`) +
+            FfiConverterOptionalTypeMeasureLiveCurve.allocationSize(value.`target`) +
+            FfiConverterSequenceDouble.allocationSize(value.`spreadDb`)
+    )
+
+    override fun write(value: MeasureDocCurve, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`output`, buf)
+            FfiConverterTypeMeasureRole.write(value.`role`, buf)
+            FfiConverterString.write(value.`speaker`, buf)
+            FfiConverterTypeMeasureLiveCurve.write(value.`measured`, buf)
+            FfiConverterOptionalTypeMeasureLiveCurve.write(value.`target`, buf)
+            FfiConverterSequenceDouble.write(value.`spreadDb`, buf)
+    }
+}
+
+
+
+/**
+ * A measurement document's curves (`measure_doc_curves`).
+ */
+data class MeasureDocCurves (
+    /**
+     * The smoothing applied, 1/N octave; 0 none.
+     */
+    var `smoothing`: kotlin.UByte, 
+    /**
+     * The run's timing was reliable.
+     */
+    var `timingReliable`: kotlin.Boolean, 
+    /**
+     * One per measured output, in the document's order.
+     */
+    var `outputs`: List<MeasureDocCurve>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureDocCurves: FfiConverterRustBuffer<MeasureDocCurves> {
+    override fun read(buf: ByteBuffer): MeasureDocCurves {
+        return MeasureDocCurves(
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceTypeMeasureDocCurve.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureDocCurves) = (
+            FfiConverterUByte.allocationSize(value.`smoothing`) +
+            FfiConverterBoolean.allocationSize(value.`timingReliable`) +
+            FfiConverterSequenceTypeMeasureDocCurve.allocationSize(value.`outputs`)
+    )
+
+    override fun write(value: MeasureDocCurves, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`smoothing`, buf)
+            FfiConverterBoolean.write(value.`timingReliable`, buf)
+            FfiConverterSequenceTypeMeasureDocCurve.write(value.`outputs`, buf)
+    }
+}
+
+
+
+/**
+ * How to give a measurement's curves (`measure_doc_curves`).
+ */
+data class MeasureDocCurvesOptions (
+    /**
+     * The smoothing, 1/N octave (1 to 48); 0 for none.
+     */
+    var `smoothing`: kotlin.UByte, 
+    /**
+     * Give the target too, levelled to each output's curve.
+     */
+    var `target`: kotlin.Boolean, 
+    /**
+     * A `target` document's text; "" for the placement's default target.
+     */
+    var `targetDocument`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureDocCurvesOptions: FfiConverterRustBuffer<MeasureDocCurvesOptions> {
+    override fun read(buf: ByteBuffer): MeasureDocCurvesOptions {
+        return MeasureDocCurvesOptions(
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureDocCurvesOptions) = (
+            FfiConverterUByte.allocationSize(value.`smoothing`) +
+            FfiConverterBoolean.allocationSize(value.`target`) +
+            FfiConverterString.allocationSize(value.`targetDocument`)
+    )
+
+    override fun write(value: MeasureDocCurvesOptions, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`smoothing`, buf)
+            FfiConverterBoolean.write(value.`target`, buf)
+            FfiConverterString.write(value.`targetDocument`, buf)
+    }
+}
+
+
+
+/**
  * One measurement, microphone or target document in a list
  * ([`DspiCore::measure_docs`]).
  */
@@ -39335,6 +39775,188 @@ public object FfiConverterTypeMeasurePreflight: FfiConverterRustBuffer<MeasurePr
 
 
 /**
+ * What the passive RTA shows (`measure_rta_passive_frame`).
+ */
+data class MeasureRtaPassiveFrame (
+    /**
+     * Its state.
+     */
+    var `state`: MeasureRtaPassiveState, 
+    /**
+     * The spectrum, the held copy and their difference, as the live view's
+     * RTA gives them; `None` when it does not run.
+     */
+    var `rta`: MeasureLiveRta?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRtaPassiveFrame: FfiConverterRustBuffer<MeasureRtaPassiveFrame> {
+    override fun read(buf: ByteBuffer): MeasureRtaPassiveFrame {
+        return MeasureRtaPassiveFrame(
+            FfiConverterTypeMeasureRtaPassiveState.read(buf),
+            FfiConverterOptionalTypeMeasureLiveRta.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureRtaPassiveFrame) = (
+            FfiConverterTypeMeasureRtaPassiveState.allocationSize(value.`state`) +
+            FfiConverterOptionalTypeMeasureLiveRta.allocationSize(value.`rta`)
+    )
+
+    override fun write(value: MeasureRtaPassiveFrame, buf: ByteBuffer) {
+            FfiConverterTypeMeasureRtaPassiveState.write(value.`state`, buf)
+            FfiConverterOptionalTypeMeasureLiveRta.write(value.`rta`, buf)
+    }
+}
+
+
+
+/**
+ * What the passive RTA analyses (`measure_rta_passive_start`). Every number
+ * 0 (or absent) is the default.
+ */
+data class MeasureRtaPassiveSetup (
+    /**
+     * The microphone's `mic` document's text; "" for an uncalibrated one
+     * (dBFS). A calibrated one gives dB SPL when its scale is known.
+     */
+    var `micDocument`: kotlin.String, 
+    /**
+     * The capture's rate, Hz (8000 to 192000; 0: 48000).
+     */
+    var `captureRateHz`: kotlin.UInt, 
+    /**
+     * The averaging preset.
+     */
+    var `averaging`: MeasureRtaAveraging, 
+    /**
+     * Bands per octave (1 to 48; 0: 3).
+     */
+    var `bandsPerOctave`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRtaPassiveSetup: FfiConverterRustBuffer<MeasureRtaPassiveSetup> {
+    override fun read(buf: ByteBuffer): MeasureRtaPassiveSetup {
+        return MeasureRtaPassiveSetup(
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterTypeMeasureRtaAveraging.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureRtaPassiveSetup) = (
+            FfiConverterString.allocationSize(value.`micDocument`) +
+            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
+            FfiConverterTypeMeasureRtaAveraging.allocationSize(value.`averaging`) +
+            FfiConverterUByte.allocationSize(value.`bandsPerOctave`)
+    )
+
+    override fun write(value: MeasureRtaPassiveSetup, buf: ByteBuffer) {
+            FfiConverterString.write(value.`micDocument`, buf)
+            FfiConverterUInt.write(value.`captureRateHz`, buf)
+            FfiConverterTypeMeasureRtaAveraging.write(value.`averaging`, buf)
+            FfiConverterUByte.write(value.`bandsPerOctave`, buf)
+    }
+}
+
+
+
+/**
+ * Where the passive RTA stands.
+ */
+data class MeasureRtaPassiveState (
+    /**
+     * It runs.
+     */
+    var `active`: kotlin.Boolean, 
+    /**
+     * The capture's rate, Hz.
+     */
+    var `captureRateHz`: kotlin.UInt, 
+    /**
+     * Bands per octave.
+     */
+    var `bandsPerOctave`: kotlin.UByte, 
+    /**
+     * The averaging preset.
+     */
+    var `averaging`: MeasureRtaAveraging, 
+    /**
+     * FFT frames averaged since the start (or the last change of averaging).
+     */
+    var `frames`: kotlin.ULong, 
+    /**
+     * Non-finite samples seen (analysed as silence).
+     */
+    var `nonfiniteSamples`: kotlin.ULong, 
+    /**
+     * A spectrum is held for comparison.
+     */
+    var `held`: kotlin.Boolean, 
+    /**
+     * The spectrum is dB SPL (a calibrated microphone), else dBFS.
+     */
+    var `spl`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMeasureRtaPassiveState: FfiConverterRustBuffer<MeasureRtaPassiveState> {
+    override fun read(buf: ByteBuffer): MeasureRtaPassiveState {
+        return MeasureRtaPassiveState(
+            FfiConverterBoolean.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterTypeMeasureRtaAveraging.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MeasureRtaPassiveState) = (
+            FfiConverterBoolean.allocationSize(value.`active`) +
+            FfiConverterUInt.allocationSize(value.`captureRateHz`) +
+            FfiConverterUByte.allocationSize(value.`bandsPerOctave`) +
+            FfiConverterTypeMeasureRtaAveraging.allocationSize(value.`averaging`) +
+            FfiConverterULong.allocationSize(value.`frames`) +
+            FfiConverterULong.allocationSize(value.`nonfiniteSamples`) +
+            FfiConverterBoolean.allocationSize(value.`held`) +
+            FfiConverterBoolean.allocationSize(value.`spl`)
+    )
+
+    override fun write(value: MeasureRtaPassiveState, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`active`, buf)
+            FfiConverterUInt.write(value.`captureRateHz`, buf)
+            FfiConverterUByte.write(value.`bandsPerOctave`, buf)
+            FfiConverterTypeMeasureRtaAveraging.write(value.`averaging`, buf)
+            FfiConverterULong.write(value.`frames`, buf)
+            FfiConverterULong.write(value.`nonfiniteSamples`, buf)
+            FfiConverterBoolean.write(value.`held`, buf)
+            FfiConverterBoolean.write(value.`spl`, buf)
+    }
+}
+
+
+
+/**
  * What to measure and how (`measure_preflight`, `measure_start`). Every
  * number 0 (or absent) is the plan's default.
  */
@@ -40448,7 +41070,8 @@ data class MeasureTuneVerify (
      */
     var `timingReliable`: kotlin.Boolean, 
     /**
-     * Every summed run and verified sum within 1.5 dB RMS of the prediction.
+     * Every summed run, verified sum and verified output within 1.5 dB RMS
+     * of the prediction.
      */
     var `passed`: kotlin.Boolean, 
     /**
@@ -50431,6 +51054,34 @@ public object FfiConverterSequenceTypeLinkTxtEntry: FfiConverterRustBuffer<List<
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeMeasureDocCurve: FfiConverterRustBuffer<List<MeasureDocCurve>> {
+    override fun read(buf: ByteBuffer): List<MeasureDocCurve> {
+        val len = buf.getInt()
+        return List<MeasureDocCurve>(len) {
+            FfiConverterTypeMeasureDocCurve.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MeasureDocCurve>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMeasureDocCurve.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MeasureDocCurve>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMeasureDocCurve.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeMeasureDocInfo: FfiConverterRustBuffer<List<MeasureDocInfo>> {
     override fun read(buf: ByteBuffer): List<MeasureDocInfo> {
         val len = buf.getInt()
@@ -52202,6 +52853,28 @@ public object FfiConverterSequenceSequenceTypeFilterParams: FfiConverterRustBuff
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_link_ws_url(
         FfiConverterString.lower(`host`),FfiConverterUShort.lower(`port`),FfiConverterString.lower(`path`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A measurement document's curves for a graph: each output's response
+         * smoothed by `options.smoothing` (1/N octave, 0 none) and, with
+         * `options.target`, the target (the placement's default, or
+         * `options.target_document`) levelled to it as the live view levels it. On
+         * the standard grid (1/96 octave), with the trusted mask and the spread
+         * carried through. No device, no files.
+         *
+         * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+         * measurement document, a smoothing past 1/48 octave, or a target document
+         * that does not read.
+         */
+    @Throws(DspiException::class) fun `measureDocCurves`(`text`: kotlin.String, `options`: MeasureDocCurvesOptions): MeasureDocCurves {
+            return FfiConverterTypeMeasureDocCurves.lift(
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_func_measure_doc_curves(
+        FfiConverterString.lower(`text`),FfiConverterTypeMeasureDocCurvesOptions.lower(`options`),_status)
 }
     )
     }

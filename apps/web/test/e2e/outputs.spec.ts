@@ -560,7 +560,9 @@ test.describe("375 px, in every browser", () => {
     await point.tap();
     await expect.poll(async () => (await core(page)).matrixRouting[0]![1]).toBe(!was);
     // A cell's level and polarity appear in room it keeps: the matrix does not grow.
-    expect((await session.locator(".matrix-screen").boundingBox())!.height).toBe(ms);
+    // -- WP P5WMS -- within a thousandth of a pixel: Firefox rounds a box at a fractional top (the
+    // tab row's wrap moved with the Measure tab) differently from one layout to the next
+    expect((await session.locator(".matrix-screen").boundingBox())!.height).toBeCloseTo(ms, 3);
     await page.screenshot({ path: test.info().outputPath("matrix-375.png"), fullPage: true });
   });
 });

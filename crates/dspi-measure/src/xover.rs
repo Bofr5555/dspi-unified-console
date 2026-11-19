@@ -109,10 +109,55 @@ const TIE_DB: f64 = 1e-9;
 /// flat across the window to a hundredth of a dB, and a corner chosen on
 /// that is chosen on the room's ripple (review P5-C2, cause 4).
 pub const CORNER_MIN_GAIN_FRACTION: f64 = 0.01;
+// -- WP P5TRUST2 -- (review P5TRUST N1) and an absolute floor beside it.
+/// ... and by at least this much, dB RMS: below it a corner is chosen on
+/// the room's ripple however low the cost. Where every candidate sums alike
+/// (the P5-A room's and P5TUNE's rig's mid-tweeter transitions, 2.4 to
+/// 3.6 kHz within 0.05 dB) the 1 % let moves of 0.02 to 0.026 dB through
+/// (P5-A: 2.52 to 2.67 kHz for 0.023 dB); the design-directed moves seen
+/// gain 0.08 dB (P5TUNE's golden, 378 to 300 Hz) and 0.10 dB (P5TRUST's
+/// rig). 0.05 dB is about twice the one and below the other.
+pub const CORNER_MIN_GAIN_DB: f64 = 0.05;
 /// Candidates within this fraction of the lowest cost are taken as tied
 /// with it, and the one nearest the current corner is the search's best: a
 /// flat valley that reaches the window's edge is not an edge minimum.
 pub const CORNER_TIE_FRACTION: f64 = 0.002;
+
+// -- WP P5TRUST2 -- (review P5TRUST N2) a candidate's timing is held near
+// the arrival-based one.
+/// A candidate's relative delay is held within this fraction of its corner's
+/// period of the arrival-based delay (the ways' measured arrivals) ...
+///
+/// Why a quarter: delay and polarity stand in for each other at one
+/// frequency, so the nearest wrong alignment is half a period from the right
+/// one, with the other polarity (a whole period with the same). The right
+/// one lies near the arrival-based delay: the arrivals are onsets, and the
+/// drivers' and filters' phase at the corner, which the onsets do not see,
+/// put it off by 0.07 to 0.13 of a period below 1 kHz in the P5-A room and
+/// P5TUNE's rig. A quarter is midway between the right alignment and the
+/// nearest wrong one, so neither a half nor a whole cycle off is reachable.
+/// (P5-A room, one-octave window: 238 Hz chose -1.74 ms and a flip, 0.47 of
+/// a period off, against -0.06 ms and no flip.)
+pub const TIMING_HOLD_PERIODS: f64 = 0.25;
+/// ... but never tighter than this, ms: the onsets' own accuracy. Through
+/// the P5-A room's mid-tweeter transition (1.3 to 5 kHz) the phase-agreement
+/// timing is 0.07 to 0.13 ms off the arrival-based one, more than a quarter
+/// period there; this is about twice that, and half the delay search's
+/// narrowest window (0.5 ms). Above 1 kHz (where a quarter period is shorter)
+/// the hold excludes a whole cycle off up to about 2.6 kHz, beyond that only
+/// more than 0.25 ms off: the arrivals cannot tell the cycle there.
+pub const TIMING_HOLD_MIN_MS: f64 = 0.25;
+
+/// How far a candidate's relative delay may lie from the arrival-based one,
+/// ms ([`TIMING_HOLD_PERIODS`], [`TIMING_HOLD_MIN_MS`]).
+pub fn timing_hold_ms(corner_hz: f64) -> f64 {
+    let q = TIMING_HOLD_PERIODS * 1000.0 / corner_hz;
+    if q.is_finite() && q > TIMING_HOLD_MIN_MS {
+        q
+    } else {
+        TIMING_HOLD_MIN_MS
+    }
+}
 
 /// The protective high-pass a way must keep (S6, review RC4).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -758,12 +803,14 @@ fn search(
             })
             .map(|(i, _)| i)
             .collect();
-        let start = {
+        // -- WP P5TRUST2 -- the timing is held near the arrival-based delay
+        // only when it is one (not the current delay as a fallback).
+        let (start, from_arrivals) = {
             let s = da.arrival_ms - db.arrival_ms;
             if s.is_finite() && s.abs() <= crate::align::MAX_DELAY_BOUND_MS {
-                s
+                (s, true)
             } else {
-                delta_now
+                (delta_now, false)
             }
         };
         let budget = budget.saturating_sub(1) as usize;
@@ -806,7 +853,20 @@ fn search(
             let mut fit = if constraints.align.keep_delays {
                 ctx.search(delta_now, 0.0, 0, 0)
             } else {
-                ctx.search(start, half_window_ms(*corner), steps, refine)
+                // -- WP P5TRUST2 -- held near the arrivals (review P5TRUST N2).
+                let hold = if from_arrivals {
+                    timing_hold_ms(*corner)
+                } else {
+                    f64::INFINITY
+                };
+                let f = ctx.search_held(start, half_window_ms(*corner), steps, refine, hold);
+                // Review P5-D: a held choice that flips or lies on the hold's
+                // edge is no timing: the candidate keeps the current one.
+                if f.held_unclear {
+                    ctx.kept(delta_now, f.evals)
+                } else {
+                    f
+                }
             };
             let judged = PairCtx {
                 points: ctx.points,
@@ -854,7 +914,8 @@ fn search(
         let current_i = allowed.iter().position(|c| c.5 == 0);
         if let Some((ci, cf)) = current_i.and_then(|i| fits.get(i).map(|f| (i, *f)))
             && ci != bi
-            && cf.cost <= fit.cost * (1.0 + CORNER_MIN_GAIN_FRACTION)
+            && (cf.cost <= fit.cost * (1.0 + CORNER_MIN_GAIN_FRACTION)
+                || cf.cost - fit.cost < CORNER_MIN_GAIN_DB)
         {
             bi = ci;
             fit = cf;
@@ -862,10 +923,12 @@ fn search(
         if raw_k != 0 && allowed.get(bi).is_some_and(|c| c.5 == 0) {
             notes.push(format!(
                 "outputs {} and {}: no corner is clearly better than the current one (the sum \
-                 through the transition differs by less than {:.0} %): the corner is kept",
+                 through the transition differs by less than {:.0} % or {:.2} dB): the corner is \
+                 kept",
                 da.output,
                 db.output,
-                CORNER_MIN_GAIN_FRACTION * 100.0
+                CORNER_MIN_GAIN_FRACTION * 100.0,
+                CORNER_MIN_GAIN_DB
             ));
         }
         let k_of = |i: usize| allowed.get(i).map_or(0, |c| c.5);
@@ -928,6 +991,25 @@ fn search(
         let Some((corner, a2, b2, _, _, _)) = allowed.get(bi) else {
             return Err(MeasureError::Invalid("no candidate".into()));
         };
+        // -- WP P5TRUST2 --, review P5-D
+        if fit.held_unclear {
+            notes.push(crate::align::held_unclear_note(
+                da.output,
+                db.output,
+                *corner,
+                timing_hold_ms(*corner),
+            ));
+        } else if fit.held {
+            notes.push(format!(
+                "outputs {} and {}: the best timing at {:.0} Hz lay more than {:.2} ms from the \
+                 measured arrivals (a half or whole cycle off); the timing proposed is the best \
+                 within that",
+                da.output,
+                db.output,
+                corner,
+                timing_hold_ms(*corner)
+            ));
+        }
         if let Some(c) = work.get_mut(t.low) {
             c.crossover.clone_from(&a2.crossover);
         }

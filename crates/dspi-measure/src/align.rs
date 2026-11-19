@@ -312,17 +312,36 @@ pub fn align(
             ctx.search(db - da, 0.0, 0, 0)
         } else {
             let start = (wa.arrival_ms - da) - (wb.arrival_ms - db);
-            let start = if start.is_finite() && start.abs() <= MAX_DELAY_BOUND_MS {
-                start
+            // -- WP P5TRUST2 -- held near the arrivals, as the crossover
+            // search's candidates (review P5TRUST N2): never a half or whole
+            // cycle off them.
+            let (start, hold) = if start.is_finite() && start.abs() <= MAX_DELAY_BOUND_MS {
+                (start, crate::xover::timing_hold_ms(corner))
             } else {
-                db - da
+                (db - da, f64::INFINITY)
             };
-            ctx.search(
+            let fit = ctx.search_held(
                 start,
                 half_window_ms(corner),
                 ALIGN_COARSE_STEPS,
                 REFINE_ITERS,
-            )
+                hold,
+            );
+            if fit.held_unclear {
+                // Review P5-D: no flip and no edge of the hold is proposed.
+                notes.push(held_unclear_note(wa.output, wb.output, corner, hold));
+                ctx.kept(db - da, fit.evals)
+            } else {
+                if fit.held {
+                    notes.push(format!(
+                        "outputs {} and {}: the best timing at {corner:.0} Hz lay more than \
+                         {hold:.2} ms from the measured arrivals (a half or whole cycle off); the \
+                         timing proposed is the best within that",
+                        wa.output, wb.output
+                    ));
+                }
+                fit
+            }
         };
         let share = if total == 0 {
             0.0
@@ -753,6 +772,16 @@ pub(crate) struct PairFit {
     pub(crate) other: f64,
     /// Cost evaluations used.
     pub(crate) evals: u32,
+    // -- WP P5TRUST2 --
+    /// The best of the whole window lay further from the start than the hold
+    /// allowed, and the timing was chosen within it ([`PairCtx::search_held`]).
+    pub(crate) held: bool,
+    // Review P5-D
+    /// The hold applied and what it left is no timing to propose: the best
+    /// within it flips the polarity, or lies on the hold's edge (see
+    /// [`PairCtx::search_held`]). The caller keeps the current delay and
+    /// polarity ([`PairCtx::kept`]).
+    pub(crate) held_unclear: bool,
 }
 
 impl PairFit {
@@ -845,9 +874,51 @@ impl PairCtx {
     /// (`refine` evaluations). `steps == 0` judges `start` alone, both
     /// polarities. Uses `2·(2·steps + 1) + refine` evaluations at most.
     pub(crate) fn search(&self, start: f64, half: f64, steps: usize, refine: usize) -> PairFit {
+        self.search_held(start, half, steps, refine, f64::INFINITY)
+    }
+
+    // -- WP P5TRUST2 -- (review P5TRUST N2) a timing held near `start`.
+    /// As [`PairCtx::search`], but the result is held within `hold` ms of
+    /// `start`: when the best of the whole window lies further away, the
+    /// polarity and delay are chosen again among the coarse steps within
+    /// `hold` (the same steps, so the same evaluations), and the refinement
+    /// stays inside it. When the best of the window is within `hold` the
+    /// result is exactly [`PairCtx::search`]'s. The middle coarse step is
+    /// `start` (to rounding), so the held choice always has a candidate. A
+    /// `hold` that is not a positive number holds nothing.
+    ///
+    /// Review P5-D: the hold trusts the arrivals, and they carry the measured
+    /// chain's own group delay (the envelope of a steep low-pass peaks late:
+    /// through P5SIM's room an LR8 woofer's arrival is 0.38 of the corner's
+    /// period late, an LR6's 0.23, an LR4's 0.05 to 0.17). Where that passes
+    /// a quarter period the right alignment is outside the hold and the best
+    /// inside it is the half-cycle-off one with the polarity flipped (a
+    /// correctly wired LR8 pair got its mid flipped and 1.3 ms of delay); and
+    /// where the phase through the window decides little (a second-order
+    /// pair at 120 Hz in the room) the best inside is simply the hold's edge.
+    /// Neither is a timing to propose. So a held choice that **flips the
+    /// polarity** or **lies on the hold's edge** (within a coarse step) sets
+    /// `held_unclear`, and the callers then keep the current delay and
+    /// polarity and say so: the hold may confirm the polarity there is, it
+    /// never changes it.
+    pub(crate) fn search_held(
+        &self,
+        start: f64,
+        half: f64,
+        steps: usize,
+        refine: usize,
+        hold: f64,
+    ) -> PairFit {
+        let hold = if hold.is_nan() || hold <= 0.0 {
+            f64::INFINITY
+        } else {
+            hold
+        };
         let mut evals = 0u32;
-        // The best delay and cost of each polarity: [unflipped, flipped].
+        // The best delay and cost of each polarity: [unflipped, flipped];
+        // over the whole window and within the hold.
         let mut per = [(start, f64::INFINITY), (start, f64::INFINITY)];
+        let mut held = per;
         let step = if steps == 0 || half.is_nan() || half <= 0.0 {
             0.0
         } else {
@@ -879,19 +950,34 @@ impl PairCtx {
                 {
                     *b = (d, c);
                 }
+                if (d - start).abs() <= hold
+                    && let Some(b) = held.get_mut(usize::from(flip))
+                    && c < b.1
+                {
+                    *b = (d, c);
+                }
             }
         }
         // A flip must be clearly better (FLIP_MARGIN); a near tie keeps the
         // polarity there is.
-        let [plain, flipped] = per;
-        let flip = polarities.len() > 1 && flipped.1 < plain.1 * (1.0 - FLIP_MARGIN);
-        let chosen = if flip { flipped } else { plain };
-        let mut best = (chosen.0, flip, chosen.1);
-        let best_other = [plain.1, flipped.1];
-        // Golden-section refinement in the best coarse step's neighbourhood.
+        let pick = |[plain, flipped]: [(f64, f64); 2]| {
+            let flip = polarities.len() > 1 && flipped.1 < plain.1 * (1.0 - FLIP_MARGIN);
+            let chosen = if flip { flipped } else { plain };
+            ((chosen.0, flip, chosen.1), [plain.1, flipped.1])
+        };
+        let (mut best, mut best_other) = pick(per);
+        let was_held = (best.0 - start).abs() > hold;
+        let (lo_bound, hi_bound) = if was_held {
+            (best, best_other) = pick(held);
+            (start - hold, start + hold)
+        } else {
+            (f64::NEG_INFINITY, f64::INFINITY)
+        };
+        // Golden-section refinement in the best coarse step's neighbourhood
+        // (within the hold when it applied).
         if step > 0.0 && refine >= 2 {
             let inv_phi = (5f64.sqrt() - 1.0) / 2.0;
-            let (mut lo, mut hi) = (best.0 - step, best.0 + step);
+            let (mut lo, mut hi) = ((best.0 - step).max(lo_bound), (best.0 + step).min(hi_bound));
             let mut x1 = hi - inv_phi * (hi - lo);
             let mut x2 = lo + inv_phi * (hi - lo);
             let mut c1 = self.cost(x1, best.1);
@@ -927,14 +1013,45 @@ impl PairCtx {
             // No other polarity was judged: no margin to report.
             best.2
         };
+        // Review P5-D: a held choice that flips, or sits on the hold's edge,
+        // is no timing to propose.
+        let held_unclear =
+            was_held && (best.1 || (step > 0.0 && (best.0 - start).abs() >= hold - step));
         PairFit {
             delta_ms: best.0,
             flip: best.1,
             cost: best.2.min(WORST),
             other: other.min(WORST),
             evals,
+            held: was_held,
+            held_unclear,
         }
     }
+
+    // Review P5-D
+    /// The pair as it is: `delta_ms` (the current relative delay) and the
+    /// current polarity, judged, for a search whose held choice was unclear
+    /// (`evals` it had used). Two more evaluations.
+    pub(crate) fn kept(&self, delta_ms: f64, evals: u32) -> PairFit {
+        PairFit {
+            delta_ms,
+            flip: false,
+            cost: self.cost(delta_ms, false),
+            other: self.cost(delta_ms, true),
+            evals: evals.saturating_add(2),
+            held: true,
+            held_unclear: true,
+        }
+    }
+}
+
+/// The note of a pair whose held timing was unclear (review P5-D).
+pub(crate) fn held_unclear_note(low: u8, high: u8, corner_hz: f64, hold_ms: f64) -> String {
+    format!(
+        "outputs {low} and {high}: the best timing at {corner_hz:.0} Hz lay more than {hold_ms:.2} ms \
+         from the measured arrivals (a half or whole cycle off), and within that none is clearly \
+         right (it would flip the polarity, or lies on the edge): the delay and polarity are kept"
+    )
 }
 
 /// A judged transition: `high`'s new delay minus `low`'s and the relative

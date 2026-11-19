@@ -213,7 +213,9 @@ PRO1's T1 to T5 keep their ids; the owner's requirements add T7 to T12 (T6 is PR
 9. **Noise and trust.** A 1 s pre-roll with the generator idle gives the noise floor; per point, SNR above 20 dB and a
    repeat-to-repeat spread under 1 dB mark it trusted (`Response.valid`); untrusted points are drawn faint and never
    fitted. (WP P5TRUST: the spread is of the repeats' **windowed** responses, the fit's window, beyond the spread their
-   noise explains; the SNR rule judges the noise.)
+   noise explains; the SNR rule judges the noise. WP P5TRUST2: that allowance is at most 2 dB, so a change of the room
+   of more than 3 dB is seen at every SNR; below the cap it is the repeats' own noise, so more repeats never leave
+   points untrusted on noise alone above the floor.)
 10. **Memory and analysis** (RC8). Capture at most `MAX_CAPTURE_SAMPLES` = 8 Mi frames (32 MiB); the plan step refuses
     a setup whose planned frames (pre-roll + cycles + post-roll at the capture rate) exceed it, so the largest
     default run (a whole stereo three-way system as one alignment group: 6 outputs × 3 passes × 6.5 s ≈ 117 s, 5.6 M
@@ -348,7 +350,10 @@ before the next, and the user may stop after any step with nothing written.
    1 % better than the current one's; a best corner on the edge of the search (the window's or the trusted range's) is
    no minimum, so the corner is kept and only the timing proposed; a tweeter's high-pass is never lowered on the
    magnitude sum alone (with the delays kept no lower corner is a candidate; every crossover write is a timing write,
-   applied only after the summed check passed) and never below S6.
+   applied only after the summed check passed) and never below S6. WP P5TRUST2: the move must also be at least 0.05 dB
+   RMS better; each candidate's delay is held within a quarter of its corner's period (at least 0.25 ms) of the
+   arrival-based delay, so no candidate takes a half- or whole-cycle-off alignment (delay and polarity standing in for
+   each other at one frequency); "align only" (`align`) holds its timing the same way.
 6. **Summed check, mandatory** (RC5f). One summed run per transition with the **current** chain: both ways play the
    generator's correlated copy, `invert_mask` set to the outputs' current net polarities (the generator bypasses the
    crosspoints, RC1). The measured sum is compared with the sum predicted from the walked run's responses and timing. If
@@ -368,7 +373,9 @@ before the next, and the user may stop after any step with nothing written.
    the apply and the guard reverts.
 10. **Verify** inside the guard: one walked run of the tuned outputs **and one summed run per transition** with the new
     net polarities (a walked run cannot see polarity or delay, RC1); measured against predicted; the guard's countdown
-    shown.
+    shown. WP P5TRUST2: the verify passes only when every summed run, verified sum **and verified output** is within
+    1.5 dB RMS of its prediction (each output 100 Hz to 10 kHz within 30 dB of its loudest), and something was compared:
+    a layout without transitions is judged on its outputs.
 11. **Keep or revert.** Keep: `apply_confirm`, "After auto-tune <date>" filed with a `tune` block (the measurement's id,
     the algorithm version, the options), and the A/B compare of the two snapshots offered (`ab_start`). Revert or the
     timeout: the guard's revert; nothing else changes. After a verify that did not pass, the first Keep is refused with
@@ -738,6 +745,51 @@ on a real device (the connection kind is checked; a test proves it). **Done when
 binding produces a measurement without a microphone; a real (fake-USB-kind) connection refuses the simulated microphone.
 **Deps:** P5SES, P5SIM. **Clients:** the screens' e2e, the user's demo mode.
 
+<!-- -- WP P5TRUST2 -- -->
+**P5TRUST: Measurement trust rules, the fit's level, guarded Keep, guard length.** [DONE, merged f30d3d44 after the
+Fable review ~/.cache/dspi-build/work/review-p5trust/REPORT.md, ACCEPT-WITH-NITS, fixes 012336a5] Size 2. After P5-C2's
+review (its causes 1 to 4). **Owns:** the trust rules in `crates/dspi-measure` (`xover.rs` de-embedding, span coverage
+and corner choice; `ir.rs` repeat spread), `fit.rs`'s `FitLevel` and dip leave-out, P5TUNE's and P5LIVE's use of them,
+the tune's Keep gate and guard length in `crates/dspi-core/src/measure/tune.rs`. **Implemented:** RC12's double count
+gone (a point trusted on its own SNR >= 20 dB); the repeat spread on the repeats' windowed responses beyond their
+noise; a span covered by 85 % of its points, half of every third of an octave, the corner's own third at 85 %, no hole
+over 1/12 octave, with the 20 dB stopband waiver; a corner moves only when 1 % better, ties within 0.2 % go to the
+nearest (the higher of two equally near), an edge minimum is no minimum; the anchored fit level on a whole speaker.
+**Coordinator decisions, binding for every later WP:**
+- (a) **A tweeter's high-pass is never lowered on the magnitude sum alone.** With the delays kept no lower corner is a
+  candidate for a High way; every crossover write is a timing write (offered from a timing-reliable run only, applied
+  only after the summed check passed); S6's floor (`kept_by`) unchanged; a tie never lowers it (review F3).
+- (b) **Keep after a failed verify needs a second confirmation.** The first Keep after a verify that did not pass is
+  refused (`measure.tune.keep_unverified`, nothing changes, the guard runs on). As fixed in the review (F1): the gate
+  holds for `apply_confirm` of the tune's guard too (the generic Keep of any client's guard banner), the second press
+  counts only from 1 s after the refusal (`TUNE_KEEP_CONFIRM_MIN_MS`, a double click is one press), and the failed
+  verdict is held through Stop and a new verify until a verify passes or another apply.
+- (c) **The guard's length is the planned verify × 1.25 + 120 s, at most 590 s** (`guard_s` = 0; 300 s when a run
+  cannot be planned; an explicit `guard_s` is the caller's, capped at 590 s).
+
+**P5TRUST2: The review's follow-ups.** [IMPLEMENTED on wp/P5TRUST2, 2026-11-19] Size 1. From main 9602b62c. Nits N1,
+N2, N3, N6, N7 of the P5TRUST review (N4, the anchored bass boosts, waits for the owner). **Owns:** `xover.rs`'s corner
+choice and timing, `align.rs`'s pair search (additive), `ir.rs`'s spread allowance, the tune's guard note, this entry.
+**Implemented:**
+- N2: each candidate's relative delay is held within a quarter of its corner's period, at least 0.25 ms
+  (`TIMING_HOLD_PERIODS`, `TIMING_HOLD_MIN_MS`), of the arrival-based delay; when the window's best lies further
+  (a half or whole cycle off) the polarity and delay are chosen again within the hold, on the same evaluations, and
+  a note says so. Inside the hold the result is the old one bit for bit. (Review P5-D: a held choice that flips the
+  polarity or lies on the hold's edge is not proposed, the pair's timing is kept; see the wave P5-D review outcomes.)
+- N3: the noise allowance of the repeat spread is at most 2 dB (`MAX_NOISE_SPREAD_DB`). Coordinator: no repeat-count
+  scaling (more repeats must never make points untrusted on noise alone). **Later:** compare group averages of the
+  repeats (each group's noise like three repeats' at the averaged SNR), so many repeats see a change in the room as
+  well as three without their own noise counting against them.
+- N2 also for alignment alone: `align()` holds its timing the same way (`search_held`), with the same note, so "keep
+  the crossover, align only" and the crossover search agree.
+- N1: a corner moves only when at least 1 % **and** 0.05 dB RMS better (`CORNER_MIN_GAIN_DB`).
+- N7: a proposal whose planned verify needs a longer guard than 590 s carries the warning `measure.tune.guard_capped`;
+  the guard still caps.
+- N6: this entry and P5TRUST's.
+- P5TM's finding: the verify also judges each verified output against its prediction (1.5 dB RMS, RC5f's bound,
+  `VERIFY_OUTPUT_MAX_RMS_DB`) and fails when nothing could be compared, so the two-step Keep arms for a layout without
+  transitions too.
+
 ### Wave P5-D: screens and the Terminal
 
 **P5WMS: Web: measure, results, live.** [TODO] Size 3. Wave P5-D. **Owns:** new `apps/web/src/screens/measure/`
@@ -768,6 +820,51 @@ docs [--kind]`, `measure show ID`, `measure export ID --output N` (REW text), `m
 simulated microphone. No live capture in the Terminal (OD-P5m). **Done when:** command tests against the demo device: a
 mic imported and listed, a demo measurement shown and exported, a tune printed, applied and reverted, exit codes for
 `ReadOnly`, `Denied` and `LimitExceeded`. **Deps:** P5DOCK, P5SES, P5TUNE, P5DEMO.
+
+**P5CURV: Core calls for the screens: the passive microphone RTA and a document's curves.** [TODO] Size 0.5. Wave P5-D
+(asked for by P5WMS, R1: no maths in a client). **Owns:** new `crates/dspi-core/src/measure/passive.rs` (and
+`measure/passive/`), `crates/dspi-core/src/measure/doc_curves.rs`, their `mod`, `pub use` and slot lines under markers,
+`crates/dspi-capi/src/fns_misc/measure_curv.rs`, `crates/dspi-wasm/src/measure_curv.rs`, binding wiring and the
+Android contract under markers. **Implements:** the **passive** microphone RTA of section 1.5 (programme audio, no
+generator): `measure_rta_passive_start(setup {micDocument, captureRateHz, averaging, bandsPerOctave})`,
+`measure_rta_passive_push(samples, rate_hz)`, `measure_rta_passive_frame() -> {state, rta}` (the live frame's
+`MeasureLiveRta`: current, held, compare), `_state`, `_hold(on)`, `_averaging(preset)`, `_stop`; P5LIVE's maths
+(`MicRta`, its FFT length, averaging presets, hold and compare, the mic's calibration and dB SPL scale, the live
+display curve); it never touches the device (no generator, lock, read or write), so it is allowed read-only, on a
+read-only connection, for a Viewer and with no device. And the free `measure_doc_curves(text, {smoothing, target,
+targetDocument})`: each output's stored response smoothed (P5RESP's `smooth`) and, when asked, the target (the
+placement's default or a document) levelled to it as the live view levels it (`levelled_target`), on
+`LogGrid::STANDARD` with the trusted mask and the spread carried through. Both are reads (WriteGuardedCore). **Done
+when:** tests: no request at all reaches the device (USB-kind recorder, client read-only mode on) and nothing is
+written through the fake hub as a Viewer; a calibrated mic reads a full-scale sine at its dB SPL; the curves equal the
+stored curve, P5RESP's smoothing and the live view's levelled target exactly, mask kept; bad input refused, never a
+panic (proptest); C and wasm calls tested. **Deps:** P5LIVE, P5DOCK. **Clients:** P5WMS (its passive RTA tab and
+results' smoothing/target), P5QUI.
+
+**Wave P5-D review outcomes** (`work/review-p5d/REPORT.md`; binding for P5-E and later, they amend the entries above):
+- **The timing hold never changes a polarity and never proposes its own edge.** The hold (P5TRUST2: a quarter of the
+  corner's period, at least 0.25 ms, about the arrival-based delay) trusts arrivals that carry the measured chain's own
+  group delay: through P5SIM's room a woofer's arrival behind an LR8 low-pass is 0.38 of the period late, an LR6's 0.23,
+  an LR4's 0.05 to 0.17 (the only family the hold was fitted on). Past a quarter period the right alignment is outside
+  the hold and the best inside it is the half-cycle-off one with the polarity flipped (a correctly wired LR8 pair got
+  its mid flipped and 1.3 ms of delay). So when the hold applied and its choice flips the polarity or lies within a
+  coarse step of the hold's edge, the pair's delay and polarity are **kept** and a note says so (`align` and every
+  candidate of the corner search; `PairFit.held_unclear`). **Later (a small WP):** anchor the hold on an arrival
+  corrected for the measured chain (or on the de-embedded drivers' own delay), so a steep pair gets its timing too;
+  until then an LR8 or LR6 pair whose arrivals are that far off gets no timing proposal, the EQ only.
+- **The passive microphone RTA never runs beside this core's own generator runs:** `measure_rta_passive_start` is `busy`
+  while a measurement, the live view or the auto-tune's runs are active, and a run that starts ends it (the core's
+  rule, not only the screens').
+- **A verify without any sum fails on an output it could not compare** (before: only when it could compare none): of
+  two full-range outputs one never goes unjudged. With a sum, the speaker's sum judges its ways.
+- **A screen never leaves a run without its Stop:** a start still on its way when the screen is left (web) or the
+  window closed or Stop pressed (Qt) is withdrawn, or stopped as soon as it answers. Each stop is sent on its own.
+- **Qt:** a Viewer through a hub is told so and the tabs that play are not offered (as the web). A "Keep Anyway"
+  waiting for the core's second is withdrawn by Revert, a new apply or a new verify.
+- **Open, for P5-E or a small Qt WP before P5FIN:** the passive microphone RTA in Qt (the calls exist: P5CURV), Qt's
+  results through `measure_doc_curves` (smoothing and target, as the web; the C++ copy of the curve decoding then goes),
+  the client read-only mode in Qt's `playBlocker`. And for the coordinator: Keep before any verify, or while one runs,
+  takes one press in every client (review P5TRUST N5): P5WAT should run the verify by itself after an apply.
 
 ### Wave P5-E: the web tune, close-out
 

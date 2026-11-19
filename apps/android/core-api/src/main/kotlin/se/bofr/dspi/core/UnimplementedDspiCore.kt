@@ -572,6 +572,20 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState = throw NotImplementedError("measure_live_averaging")
 
+    override fun measureRtaPassiveStart(setup: MeasureRtaPassiveSetup): MeasureRtaPassiveState = throw NotImplementedError("measure_rta_passive_start")
+
+    override fun measureRtaPassivePush(samples: List<Float>, rateHz: Long): MeasureRtaPassiveState = throw NotImplementedError("measure_rta_passive_push")
+
+    override fun measureRtaPassiveFrame(): MeasureRtaPassiveFrame = throw NotImplementedError("measure_rta_passive_frame")
+
+    override fun measureRtaPassiveState(): MeasureRtaPassiveState = throw NotImplementedError("measure_rta_passive_state")
+
+    override fun measureRtaPassiveHold(on: Boolean): MeasureRtaPassiveState = throw NotImplementedError("measure_rta_passive_hold")
+
+    override fun measureRtaPassiveAveraging(averaging: MeasureRtaAveraging): MeasureRtaPassiveState = throw NotImplementedError("measure_rta_passive_averaging")
+
+    override fun measureRtaPassiveStop(): MeasureRtaPassiveState = throw NotImplementedError("measure_rta_passive_stop")
+
     override fun measureLayoutProposal(): MeasureLayout = throw NotImplementedError("measure_layout_proposal")
 
     override fun measureTunePropose(measurement: String, layout: MeasureLayout, options: MeasureTuneOptions): MeasureTuneProposal = throw NotImplementedError("measure_tune_propose")
@@ -997,6 +1011,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
     override fun aboutJson(): String = throw NotImplementedError("about_json")
 
     override fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord = throw NotImplementedError("link_parse_txt")
+
+    override fun measureDocCurves(text: String, options: MeasureDocCurvesOptions): MeasureDocCurves = throw NotImplementedError("measure_doc_curves")
 
     override fun measureDocInfo(text: String): MeasureDocInfo = throw NotImplementedError("measure_doc_info")
 

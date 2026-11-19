@@ -1576,7 +1576,17 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             // -- WP PGCORE -- a raw paged GET (every paged GET reads) and the
             // connection's protocol generation (no traffic)
             "rawGetId",
-            "deviceProtocol"
+            "deviceProtocol",
+            // -- WP P5CURV -- the passive microphone RTA never touches the device
+            // (no generator, no lock, no transfer); a document's curves compute locally
+            "measureRtaPassiveStart",
+            "measureRtaPassivePush",
+            "measureRtaPassiveFrame",
+            "measureRtaPassiveState",
+            "measureRtaPassiveHold",
+            "measureRtaPassiveAveraging",
+            "measureRtaPassiveStop",
+            "measureDocCurves"
         )
 
         /** Control-surface operations that only read the device (`cs.rs`, `cs_op`). */

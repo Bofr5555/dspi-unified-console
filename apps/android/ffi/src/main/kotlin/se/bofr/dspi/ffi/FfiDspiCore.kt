@@ -643,6 +643,20 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState = call { core.measureLiveAveraging(averaging.toFfi()).toDomain() }
 
+    override fun measureRtaPassiveStart(setup: MeasureRtaPassiveSetup): MeasureRtaPassiveState = call { core.measureRtaPassiveStart(setup.toFfi()).toDomain() }
+
+    override fun measureRtaPassivePush(samples: List<Float>, rateHz: Long): MeasureRtaPassiveState = call { core.measureRtaPassivePush(samples, rateHz.toUInt()).toDomain() }
+
+    override fun measureRtaPassiveFrame(): MeasureRtaPassiveFrame = core.measureRtaPassiveFrame().toDomain()
+
+    override fun measureRtaPassiveState(): MeasureRtaPassiveState = core.measureRtaPassiveState().toDomain()
+
+    override fun measureRtaPassiveHold(on: Boolean): MeasureRtaPassiveState = call { core.measureRtaPassiveHold(on).toDomain() }
+
+    override fun measureRtaPassiveAveraging(averaging: MeasureRtaAveraging): MeasureRtaPassiveState = call { core.measureRtaPassiveAveraging(averaging.toFfi()).toDomain() }
+
+    override fun measureRtaPassiveStop(): MeasureRtaPassiveState = core.measureRtaPassiveStop().toDomain()
+
     override fun measureLayoutProposal(): MeasureLayout = call { core.measureLayoutProposal().toDomain() }
 
     override fun measureTunePropose(measurement: String, layout: MeasureLayout, options: MeasureTuneOptions): MeasureTuneProposal = call { core.measureTunePropose(measurement, layout.toFfi(), options.toFfi()).toDomain() }
@@ -1068,6 +1082,8 @@ class FfiDspiCore : DspiCoreApi {
     override fun aboutJson(): String = se.bofr.dspi.ffi.uniffi.aboutJson()
 
     override fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord = call { se.bofr.dspi.ffi.uniffi.linkParseTxt(serviceName, txt.map { it.toFfi() }).toDomain() }
+
+    override fun measureDocCurves(text: String, options: MeasureDocCurvesOptions): MeasureDocCurves = call { se.bofr.dspi.ffi.uniffi.measureDocCurves(text, options.toFfi()).toDomain() }
 
     override fun measureDocInfo(text: String): MeasureDocInfo = call { se.bofr.dspi.ffi.uniffi.measureDocInfo(text).toDomain() }
 
@@ -5254,6 +5270,54 @@ internal fun MeasureState.toFfi() =
         frameFaults = frameFaults.toUInt(),
     )
 
+internal fun se.bofr.dspi.ffi.uniffi.MeasureDocCurvesOptions.toDomain() =
+    MeasureDocCurvesOptions(
+        smoothing = smoothing.toInt(),
+        target = target,
+        targetDocument = targetDocument,
+    )
+
+internal fun MeasureDocCurvesOptions.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureDocCurvesOptions(
+        smoothing = smoothing.toUByte(),
+        target = target,
+        targetDocument = targetDocument,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureDocCurve.toDomain() =
+    MeasureDocCurve(
+        output = output.toInt(),
+        role = role.toDomain(),
+        speaker = speaker,
+        measured = measured.toDomain(),
+        target = target?.let { it.toDomain() },
+        spreadDb = spreadDb,
+    )
+
+internal fun MeasureDocCurve.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureDocCurve(
+        output = output.toUByte(),
+        role = role.toFfi(),
+        speaker = speaker,
+        measured = measured.toFfi(),
+        target = target?.let { it.toFfi() },
+        spreadDb = spreadDb,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureDocCurves.toDomain() =
+    MeasureDocCurves(
+        smoothing = smoothing.toInt(),
+        timingReliable = timingReliable,
+        outputs = outputs.map { it.toDomain() },
+    )
+
+internal fun MeasureDocCurves.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureDocCurves(
+        smoothing = smoothing.toUByte(),
+        timingReliable = timingReliable,
+        outputs = outputs.map { it.toFfi() },
+    )
+
 internal fun se.bofr.dspi.ffi.uniffi.MeasureLiveSetup.toDomain() =
     MeasureLiveSetup(
         output = output.toInt(),
@@ -5452,6 +5516,58 @@ internal fun MeasureLiveState.toFfi() =
         pending = pending?.let { it.toUInt() },
         issue = issue?.let { it.toFfi() },
         session = session.toFfi(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRtaPassiveSetup.toDomain() =
+    MeasureRtaPassiveSetup(
+        micDocument = micDocument,
+        captureRateHz = captureRateHz.toLong(),
+        averaging = averaging.toDomain(),
+        bandsPerOctave = bandsPerOctave.toInt(),
+    )
+
+internal fun MeasureRtaPassiveSetup.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureRtaPassiveSetup(
+        micDocument = micDocument,
+        captureRateHz = captureRateHz.toUInt(),
+        averaging = averaging.toFfi(),
+        bandsPerOctave = bandsPerOctave.toUByte(),
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRtaPassiveState.toDomain() =
+    MeasureRtaPassiveState(
+        active = active,
+        captureRateHz = captureRateHz.toLong(),
+        bandsPerOctave = bandsPerOctave.toInt(),
+        averaging = averaging.toDomain(),
+        frames = frames.toLong(),
+        nonfiniteSamples = nonfiniteSamples.toLong(),
+        held = held,
+        spl = spl,
+    )
+
+internal fun MeasureRtaPassiveState.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureRtaPassiveState(
+        active = active,
+        captureRateHz = captureRateHz.toUInt(),
+        bandsPerOctave = bandsPerOctave.toUByte(),
+        averaging = averaging.toFfi(),
+        frames = frames.toULong(),
+        nonfiniteSamples = nonfiniteSamples.toULong(),
+        held = held,
+        spl = spl,
+    )
+
+internal fun se.bofr.dspi.ffi.uniffi.MeasureRtaPassiveFrame.toDomain() =
+    MeasureRtaPassiveFrame(
+        state = state.toDomain(),
+        rta = rta?.let { it.toDomain() },
+    )
+
+internal fun MeasureRtaPassiveFrame.toFfi() =
+    se.bofr.dspi.ffi.uniffi.MeasureRtaPassiveFrame(
+        state = state.toFfi(),
+        rta = rta?.let { it.toFfi() },
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.MeasureLayoutOutput.toDomain() =

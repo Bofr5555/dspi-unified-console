@@ -298,7 +298,47 @@ fn wp_p5a_three_way_room_end_to_end() {
     assert!(!w0.best_at_edge, "{w0:?}");
     assert!(w0.corner_hz < 267.3 && w0.corner_hz > 189.0, "{w0:?}");
     assert!(w0.cost_db.unwrap() < w0.cost_before_db.unwrap());
-    assert!(octaves(t1.corner_hz, F2) <= 1.0 / 6.0 + 1e-9, "{t1:?}");
+    // -- WP P5TRUST2 -- (review P5TRUST N2) the right cycle: before, 238 Hz
+    // won here with a relative delay of -1.74 ms and a flip (delay and
+    // polarity standing in for each other at one frequency, 0.47 of a period
+    // off the measured arrivals) against -0.06 ms and no flip in the default
+    // window. Each candidate's timing is now held within a quarter period of
+    // the arrival-based delay, and the note says where it was.
+    assert!(!w0.flipped, "{w0:?}");
+    let quarter_ms = 0.25 * 1000.0 / w0.corner_hz;
+    assert!(
+        (w0.relative_delay_ms - t0.relative_delay_ms).abs() < quarter_ms,
+        "{w0:?} against {t0:?}"
+    );
+    assert!(
+        wide.notes.iter().any(|n| n.contains("measured arrivals")),
+        "{:?}",
+        wide.notes
+    );
+    // -- WP P5TRUST2 -- (review P5TRUST N1) through the mid-tweeter
+    // transition every candidate from 2.4 to 3.6 kHz sums alike: 2.67 kHz
+    // was 6 % better than the current 2.52 kHz but by 0.023 dB RMS, the
+    // room's ripple. Under CORNER_MIN_GAIN_DB the corner is kept (it is a
+    // quarter octave from the design), the timing proposed.
+    assert_eq!(t1.corner_hz, t1.corner_before_hz, "{t1:?}");
+    assert!(octaves(t1.corner_hz, F2) <= 0.25 + 1e-3, "{t1:?}");
+    let best_other = t1
+        .candidate_costs_db
+        .iter()
+        .copied()
+        .fold(f64::INFINITY, f64::min);
+    assert!(
+        t1.cost_db.unwrap() - best_other < dspi_measure::xover::CORNER_MIN_GAIN_DB,
+        "{t1:?}"
+    );
+    assert!(
+        proposal
+            .notes
+            .iter()
+            .any(|n| n.contains("outputs 1 and 2: no corner is clearly better")),
+        "{:?}",
+        proposal.notes
+    );
     assert!(t1.cost_db.unwrap() < t1.cost_before_db.unwrap());
     assert_eq!(
         proposal

@@ -55,11 +55,18 @@ mod session;
 mod live;
 // -- WP P5TUNE -- the auto-tune (PLAN-P5 section 1.4, T10)
 mod tune;
+// -- WP P5CURV -- the passive microphone RTA and a measurement document's curves
+mod doc_curves;
+mod passive;
+pub use doc_curves::{
+    MeasureDocCurve, MeasureDocCurves, MeasureDocCurvesOptions, measure_doc_curves,
+};
 pub use live::{
     MeasureLiveAdjust, MeasureLiveBand, MeasureLiveChange, MeasureLiveCurve, MeasureLiveFrame,
     MeasureLiveMode, MeasureLiveProposal, MeasureLiveRta, MeasureLiveSetup, MeasureLiveState,
     MeasureRtaAveraging,
 };
+pub use passive::{MeasureRtaPassiveFrame, MeasureRtaPassiveSetup, MeasureRtaPassiveState};
 pub use tune::{
     MeasureLayout, MeasureLayoutOutput, MeasureTuneCheck, MeasureTuneCurves, MeasureTuneKeep,
     MeasureTuneKind, MeasureTuneOptions, MeasureTuneParam, MeasureTuneProposal, MeasureTuneStage,
@@ -157,6 +164,8 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     "measure.tune.not_kept",
     // -- WP P5TRUST --
     "measure.tune.keep_unverified",
+    // -- WP P5TRUST2 --
+    "measure.tune.guard_capped",
 ];
 
 // ── Records ─────────────────────────────────────────────────────────────
@@ -601,6 +610,9 @@ pub(crate) struct MeasureSlot {
     tune: Mutex<tune::Tune>,
     /// What the auto-tune shows (a leaf).
     tune_view: Mutex<MeasureTuneState>,
+    // -- WP P5CURV --
+    /// The passive microphone RTA (a leaf: nothing is taken under it).
+    passive: Mutex<Option<passive::Passive>>,
 }
 
 impl MeasureSlot {
@@ -957,6 +969,9 @@ impl DspiCore {
             self.lock().measure_tap.set(true);
             let session = Session::new(plan, ctx, Instant::now());
             let state = session.state();
+            // Review P5-D: the passive microphone RTA never runs beside the
+            // generator (it would show the stimulus as programme audio).
+            self.measure.passive_drop();
             *slot = Some(session);
             state
         };

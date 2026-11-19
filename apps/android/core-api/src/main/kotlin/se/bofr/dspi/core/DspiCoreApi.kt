@@ -3493,6 +3493,74 @@ interface DspiCoreApi : AutoCloseable {
     fun measureLiveAveraging(averaging: MeasureRtaAveraging): MeasureLiveState
 
     /**
+     * Start the passive microphone RTA (programme audio, no generator): it
+     * never touches the device, so it is allowed in the client read-only
+     * mode, on a read-only connection, for a Viewer through a hub and with
+     * no device at all. A running one starts again with `setup` (its held
+     * copy dropped). Then push the microphone's blocks with
+     * `measure_rta_passive_push` and read `measure_rta_passive_frame`.
+     *
+     * It never runs beside this core's own generator runs (review P5-D): it
+     * is refused while a measurement, the live view or the auto-tune's runs
+     * are active here, and a run that starts ends it, so it can never show
+     * this console's stimulus as programme audio.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a bad setup (a rate, a
+     * band count, a microphone document that does not read), and `busy`
+     * while a measurement or the live view runs on this core.
+     */
+    @Throws(DspiException::class)
+    fun measureRtaPassiveStart(setup: MeasureRtaPassiveSetup): MeasureRtaPassiveState
+
+    /**
+     * Push one block of the microphone's capture (mono, full scale ±1, at
+     * `rate_hz`) into the passive RTA, analysed at once (no session, no
+     * safety check waits on it). A push while it does not run is ignored.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a rate other than the
+     * started one, or more than 1 Mi samples in one block (nothing is
+     * analysed).
+     */
+    @Throws(DspiException::class)
+    fun measureRtaPassivePush(samples: List<Float>, rateHz: Long): MeasureRtaPassiveState
+
+    /**
+     * What the passive RTA shows: the averaged spectrum in fractional-octave
+     * bands (dBFS, or dB SPL), the held copy and their difference. No I/O.
+     */
+    fun measureRtaPassiveFrame(): MeasureRtaPassiveFrame
+
+    /**
+     * The passive RTA's state. No I/O.
+     */
+    fun measureRtaPassiveState(): MeasureRtaPassiveState
+
+    /**
+     * Hold (`true`) the spectrum for comparison, or drop the held copy
+     * (`false`).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it does not run, or there
+     * is no spectrum to hold yet.
+     */
+    @Throws(DspiException::class)
+    fun measureRtaPassiveHold(on: Boolean): MeasureRtaPassiveState
+
+    /**
+     * The averaging preset; the average starts again (the held copy is
+     * kept).
+     *
+     * Errors: [`DspiError::InvalidArgument`] when it does not run.
+     */
+    @Throws(DspiException::class)
+    fun measureRtaPassiveAveraging(averaging: MeasureRtaAveraging): MeasureRtaPassiveState
+
+    /**
+     * Stop the passive RTA and drop its average and held copy: the state
+     * (inactive; never a failure).
+     */
+    fun measureRtaPassiveStop(): MeasureRtaPassiveState
+
+    /**
      * The layout the device's state suggests (PLAN-P5 section 1.4 step 1):
      * each enabled output that plays an input, its way from its filters
      * (only a low-pass: low, or sub at or below 120 Hz or by name; a
@@ -5951,6 +6019,23 @@ interface DspiCoreApi : AutoCloseable {
      */
     @Throws(DspiException::class)
     fun linkParseTxt(serviceName: String, txt: List<LinkTxtEntry>): LinkTxtRecord
+
+    /**
+     * A measurement document's curves for a graph: each output's response
+     * smoothed by `options.smoothing` (1/N octave, 0 none) and, with
+     * `options.target`, the target (the placement's default, or
+     * `options.target_document`) levelled to it as the live view levels it. On
+     * the standard grid (1/96 octave), with the trusted mask and the spread
+     * carried through. No device, no files.
+     *
+     * Errors: [`DspiError::InvalidArgument`] for a text that is not a valid
+     * measurement document, a smoothing past 1/48 octave, or a target document
+     * that does not read.
+     *
+     * Stateless (a free function in dspi-core); needs no device.
+     */
+    @Throws(DspiException::class)
+    fun measureDocCurves(text: String, options: MeasureDocCurvesOptions): MeasureDocCurves
 
     /**
      * What a measurement, microphone or target document's text is: validated by

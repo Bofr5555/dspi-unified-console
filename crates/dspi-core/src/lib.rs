@@ -357,6 +357,11 @@ pub use measure::{
     MeasureTuneState, MeasureTuneTransition, MeasureTuneVerify, MeasureTuneVerifyOutput,
     MeasureTuneVerifySum, MeasureTuneWrite,
 };
+// -- WP P5CURV --
+pub use measure::{
+    MeasureDocCurve, MeasureDocCurves, MeasureDocCurvesOptions, MeasureRtaPassiveFrame,
+    MeasureRtaPassiveSetup, MeasureRtaPassiveState, measure_doc_curves,
+};
 
 /// The embedder API. Create one per app with [`DspiCore::new`].
 ///

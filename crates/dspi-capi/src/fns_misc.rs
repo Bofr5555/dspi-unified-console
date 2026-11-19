@@ -104,6 +104,8 @@ mod measure_sim;
 mod measure_tune;
 // -- WP PGCORE -- the protocol generation and raw paged requests
 mod protocol;
+// -- WP P5CURV -- the passive microphone RTA and a measurement document's curves
+mod measure_curv;
 
 // ── Replies ──────────────────────────────────────────────────────────
 
