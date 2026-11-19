@@ -76,3 +76,9 @@ pub use types::*;
 // line up with the documents).
 #[cfg(test)]
 mod tests_review_p5a;
+
+// -- WP ATE2E -- ATSIM's world through ATSYS's analyser over many seeds: the
+// offer rule of R8c, the gate's pass rate as the microphone's wander falls,
+// and three runs chained through an anchor in one capture.
+#[cfg(all(test, feature = "sim"))]
+mod tests_wp_ate2e;
