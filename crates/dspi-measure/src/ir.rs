@@ -178,6 +178,37 @@ pub const ONSET_FRACTION: f64 = 0.3;
 const MAX_WINDOW_FREQS: usize = 4 * crate::types::MAX_GRID_POINTS;
 /// The longest frequency-dependent window, samples (bounds its cost).
 const MAX_FDW_LEN: usize = 1 << 17;
+// -- WP P5TRUST --
+/// The repeats' spread a point's noise explains is this many standard
+/// deviations of one repeat's level in dB: with the trust rule's 1 dB on
+/// top, noise alone exceeds the rule at about one point in a hundred at
+/// 20 dB of SNR (three repeats) and almost never above, while a change of
+/// the room between repeats of 1 dB plus that much is still seen.
+pub const NOISE_SPREAD_SIGMAS: f64 = 3.0;
+
+/// The spread of the repeats' levels, dB, that noise of power `noise` on a
+/// windowed value of power `signal` explains: each repeat's level moves by
+/// `20·log10|1 + ε z|`, `ε² = noise / signal`, its in-phase part of standard
+/// deviation `ε/√2`; [`NOISE_SPREAD_SIGMAS`] of that, as a range. 200 dB
+/// (anything) once the noise is as loud as the signal.
+fn noise_spread_db(noise: f64, signal: f64) -> f64 {
+    if !(noise.is_finite() && noise > 0.0) {
+        return 0.0;
+    }
+    if !(signal.is_finite() && signal > 0.0) {
+        return 200.0;
+    }
+    let a = 0.5 * NOISE_SPREAD_SIGMAS * (noise / signal).sqrt() / std::f64::consts::SQRT_2;
+    if a >= 0.999 {
+        return 200.0;
+    }
+    let d = 20.0 * ((1.0 + a) / (1.0 - a)).log10();
+    if d.is_finite() {
+        d.clamp(0.0, 200.0)
+    } else {
+        200.0
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Frame continuity (S5, RC5c)
@@ -541,8 +572,15 @@ pub struct OutputIr {
     /// Σw²` (see [`WindowedResponse::sum_w2`]); the signal is `|H|²` of the same
     /// DFT.
     pub noise_db: Option<Vec<f64>>,
-    /// The repeats' magnitude spread (largest minus smallest, 1/96 octave
-    /// bands) on [`LogGrid::STANDARD`], dB; zeros for one repeat.
+    /// The repeats' magnitude spread (largest minus smallest) on
+    /// [`LogGrid::STANDARD`], beyond what their noise explains, dB; zeros
+    /// for one repeat. Each repeat's own impulse response under the fit's
+    /// window ([`FIT_WINDOW_CYCLES`] about the output's arrival), so a
+    /// point's spread carries the noise its windowed response has, less the
+    /// spread that noise gives ([`NOISE_SPREAD_SIGMAS`]): the trust mask's
+    /// SNR rule already judges the noise (WP P5TRUST; before, the whole
+    /// segment's per-cycle power in 1/96-octave bands, with that much more
+    /// noise, and the noise's own spread counted as disagreement).
     pub spread_db: Vec<f64>,
     /// The largest phase disagreement between its repeats where checked, °.
     pub phase_spread_deg: f64,
@@ -1684,6 +1722,13 @@ struct Found {
 struct RepeatStats {
     power: Vec<f64>,
     z: Vec<C64>,
+    // -- WP P5TRUST --
+    /// `|H|²` of this repeat's own impulse response under the fit's window
+    /// ([`FIT_WINDOW_CYCLES`] about the output's arrival) on the grid: what
+    /// the repeat spread compares (empty when it could not be made).
+    windowed: Vec<f64>,
+    /// The window's `Σw²` per grid point (the noise of a windowed value).
+    windowed_w2: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2358,6 +2403,26 @@ impl WalkedAnalyser {
         Ok(())
     }
 
+    // -- WP P5TRUST --
+    /// `|H|²` on the grid of one repeat's impulse response `samples` (on the
+    /// averaged response's index, `pre` at the timing origin) under the fit's
+    /// window about `centre`, and the window's `Σw²`; empty when the window
+    /// cannot be made.
+    fn windowed_power(&self, samples: &[f64], centre: f64) -> (Vec<f64>, Vec<f64>) {
+        if samples.is_empty() || !centre.is_finite() {
+            return (Vec::new(), Vec::new());
+        }
+        let ir = ImpulseResponse {
+            rate_hz: self.rate as u32,
+            samples: samples.to_vec(),
+            zero_index: self.pre.min(samples.len().saturating_sub(1)),
+        };
+        let c = centre.clamp(0.0, (samples.len().saturating_sub(1)) as f64);
+        fdw_response(&ir, c, &self.grid, FIT_WINDOW_CYCLES)
+            .map(|w| (w.values.iter().map(|v| v.norm_sqr()).collect(), w.sum_w2))
+            .unwrap_or_default()
+    }
+
     fn pass2(&mut self, capture: &WalkedCapture<'_>, k: usize) -> Result<bool, TimingError> {
         let Some(c) = self.schedule.cycles().get(k).copied() else {
             self.stage = Stage::Finish;
@@ -2406,6 +2471,8 @@ impl WalkedAnalyser {
         let mut st = RepeatStats {
             power: Vec::with_capacity(self.grid_bins.len()),
             z: Vec::with_capacity(self.grid_bins.len()),
+            windowed: Vec::new(),
+            windowed_w2: Vec::new(),
         };
         for &(lo, hi) in &self.grid_bins {
             let mut pw = 0.0;
@@ -2421,16 +2488,32 @@ impl WalkedAnalyser {
             st.power.push(if cnt > 0.0 { pw / cnt } else { 0.0 });
             st.z.push(z);
         }
+        four.inverse(&mut buf);
+        let pre = self.pre as i64;
+        let len = self.acc.get(oi).map_or(0, Vec::len);
+        let own: Vec<f64> = (0..len)
+            .map(|i| {
+                let j = (i as i64).saturating_sub(pre);
+                let idx = j.rem_euclid(n as i64) as usize;
+                buf.get(idx).map_or(0.0, |c| c.re)
+            })
+            .collect();
+        // -- WP P5TRUST -- the repeat's windowed response, as the output's
+        // response is made (the fit's window), so the spread is judged on
+        // what is trusted: the unwindowed per-cycle power holds the noise of
+        // the whole segment, so a point with 25 to 49 dB of SNR in the
+        // windowed response read as a repeat spread above 1 dB (review P5-C2,
+        // cause 2). The window is about the output's arrival here (`pre` plus
+        // its offset); the response's own window is about its onset, at most
+        // the envelope's rise earlier, and the spread compares the repeats
+        // under one window either way.
+        (st.windowed, st.windowed_w2) = self.windowed_power(&own, self.pre as f64 + offset);
         if let Some(s) = self.stats.get_mut(oi) {
             s.push(st);
         }
-        four.inverse(&mut buf);
         if let Some(acc) = self.acc.get_mut(oi) {
-            let pre = self.pre as i64;
-            for (i, a) in acc.iter_mut().enumerate() {
-                let j = (i as i64).saturating_sub(pre);
-                let idx = j.rem_euclid(n as i64) as usize;
-                *a += buf.get(idx).map_or(0.0, |c| c.re);
+            for (a, v) in acc.iter_mut().zip(&own) {
+                *a += v;
             }
         }
         self.stage = if k.saturating_add(1) < self.schedule.cycles().len() {
@@ -2594,12 +2677,58 @@ impl WalkedAnalyser {
                     })
                     .collect::<Vec<f64>>()
             });
+            // -- WP P5TRUST -- on the repeats' windowed responses when every
+            // repeat has one, else (a window that could not be made) on the
+            // per-cycle power as before.
+            let windowed = stats.iter().all(|s| {
+                s.windowed.len() == self.grid.len() && s.windowed_w2.len() == self.grid.len()
+            });
+            // The noise of one repeat's windowed value, per grid point: the
+            // averaged response's noise per sample times the repeats, times
+            // the window's Σw².
+            let rep_noise: Option<Vec<f64>> = (windowed && noise_measured).then(|| {
+                self.grid
+                    .iter()
+                    .zip(&g_sums)
+                    .enumerate()
+                    .map(|(g, (&f, &(s, cnt)))| {
+                        let p = self.noise_at(f).unwrap_or(0.0);
+                        let rho = p * seg * (s / cnt) / n;
+                        let w2 = stats
+                            .first()
+                            .and_then(|st| st.windowed_w2.get(g))
+                            .copied()
+                            .unwrap_or(0.0);
+                        rho * w2
+                    })
+                    .collect()
+            });
             let spread_db: Vec<f64> = (0..self.grid.len())
                 .map(|g| {
                     if stats.len() < 2 {
                         return 0.0;
                     }
-                    let vals = stats.iter().filter_map(|s| s.power.get(g).copied());
+                    // -- WP P5TRUST -- the spread the repeats' own noise
+                    // explains is no disagreement: the SNR rule judges the
+                    // noise, the spread the room's changes.
+                    let allowance = match &rep_noise {
+                        Some(nz) => {
+                            let mean = stats
+                                .iter()
+                                .filter_map(|s| s.windowed.get(g).copied())
+                                .sum::<f64>()
+                                / stats.len().max(1) as f64;
+                            noise_spread_db(nz.get(g).copied().unwrap_or(0.0), mean)
+                        }
+                        None => 0.0,
+                    };
+                    let vals = stats.iter().filter_map(|s| {
+                        if windowed {
+                            s.windowed.get(g).copied()
+                        } else {
+                            s.power.get(g).copied()
+                        }
+                    });
                     let (mn, mx) =
                         vals.fold((f64::INFINITY, 0.0f64), |(a, b), v| (a.min(v), b.max(v)));
                     if mx <= 0.0 {
@@ -2607,7 +2736,7 @@ impl WalkedAnalyser {
                     } else if mn <= 0.0 {
                         200.0
                     } else {
-                        (10.0 * (mx / mn).log10()).clamp(0.0, 200.0)
+                        (10.0 * (mx / mn).log10() - allowance).clamp(0.0, 200.0)
                     }
                 })
                 .collect();

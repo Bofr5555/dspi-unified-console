@@ -46,7 +46,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use dspi_measure::doc::{MeasurementDoc, TargetDoc};
-use dspi_measure::fit::{FitOptions, FitResult, fit};
+use dspi_measure::fit::{FitLevel, FitOptions, FitResult, fit, reference_offset_db};
 use dspi_measure::response::{resample, smooth};
 use dspi_measure::rta::{Averaging, MicRta, RtaConfig};
 use dspi_measure::target::{
@@ -770,6 +770,42 @@ pub(crate) fn curve(resp: &Response, smoothing: u8) -> Option<MeasureLiveCurve> 
     })
 }
 
+// -- WP P5TRUST --
+/// The live fit's anchored level: the measurement against the target in the
+/// reference band, when the output's crossover passes all of that band
+/// within 3 dB (a woofer crossed below it measures its own stopband there,
+/// which is no level for the bass) and the band is trusted there; `None`
+/// keeps the level free.
+pub(crate) fn live_anchor(
+    measured: &Response,
+    target: &Response,
+    chain: &ChannelChain,
+) -> Option<f64> {
+    let band = DEFAULT_REFERENCE_BAND;
+    let freqs = measured.grid.freqs().ok()?;
+    let f: Vec<f64> = freqs
+        .into_iter()
+        .filter(|f| *f >= band.low_hz && *f <= band.high_hz)
+        .collect();
+    let xo = ChannelChain {
+        peq: Vec::new(),
+        crossover: chain.crossover.clone(),
+        gain_db: 0.0,
+        delay_ms: 0.0,
+        feed: dspi_measure::types::ProgrammeFeed {
+            gain_db: 0.0,
+            inverted: false,
+        },
+    };
+    let passes = chain_db(&xo, &CoreSectionModel, &f)
+        .iter()
+        .all(|d| d.is_finite() && *d >= -3.0);
+    if !passes {
+        return None;
+    }
+    reference_offset_db(measured, target, band.low_hz, band.high_hz)
+}
+
 /// `target` moved to `measured`'s level: the mean difference over the
 /// reference band's trusted points (else over every trusted point).
 pub(crate) fn levelled_target(target: &Response, measured: &Response) -> Response {
@@ -1277,6 +1313,20 @@ impl DspiCore {
         if let Some(cap) = crate::limits::profile(&mut self.lock()).and_then(|p| p.max_peq_boost_db)
         {
             options.max_boost_db = options.max_boost_db.min(f64::from(cap.max(0.0)));
+        }
+        // -- WP P5TRUST -- "fit this range" fits toward the target as the
+        // graph shows it: levelled in the reference band when the output
+        // plays there (else its level stays free in the range), and a dip the
+        // boost cap cannot fill is left out of the fit and its level (review
+        // P5-C2, follow-up 3: the free level was pulled down into such a dip).
+        if adjust == MeasureLiveAdjust::FitRange {
+            options.leave_out_dips = true;
+            if let Some(offset_db) = live_anchor(&base.resp, &live.target, &chain_now) {
+                options.level = FitLevel::Anchored { offset_db };
+                // A high shelf at the range's top would tilt what the fit
+                // does not see, the reference band included.
+                options.no_high_shelf = true;
+            }
         }
         let r = fit(
             &base.resp,

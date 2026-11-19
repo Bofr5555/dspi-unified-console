@@ -3547,9 +3547,10 @@ interface DspiCoreApi : AutoCloseable {
     /**
      * Apply proposal `proposal_id` (PLAN-P5 section 1.4 step 9, S10): the
      * preflight **again** with the chains it was computed for, the "before"
-     * snapshot filed, the guard begun (`guard_s` seconds; 0: 300), then
-     * every write through `write_param` in one undo group "Auto-tune". A
-     * refused write ends the group and the guard reverts. Returns the guard.
+     * snapshot filed, the guard begun (`guard_s` seconds; 0: the planned
+     * verify plus a margin, at most 590 s), then every write through
+     * `write_param` in one undo group "Auto-tune". A refused write ends the
+     * group and the guard reverts. Returns the guard.
      *
      * Errors, with nothing written: [`DspiError::InvalidArgument`] for
      * another proposal's id, a proposal with timing writes whose summed check
@@ -3582,8 +3583,15 @@ interface DspiCoreApi : AutoCloseable {
      * algorithm, the options, the writes), and the tune's row added to the
      * measurement. A verify still running is stopped first.
      *
-     * Errors: [`DspiError::InvalidArgument`] when no tune is applied;
-     * `apply_confirm`'s. Filing failures are notes, not errors.
+     * **After a verify that did not pass** the first Keep is refused with
+     * `measure.tune.keep_unverified` (nothing changes, the guard runs on;
+     * the state's `issue` says it): the client shows why and asks the user
+     * again, and only a second Keep, on the user's explicit confirmation,
+     * keeps it. A new verify, Revert or another apply ask again.
+     *
+     * Errors: [`DspiError::InvalidArgument`] when no tune is applied, or the
+     * first Keep after a failed verify; `apply_confirm`'s. Filing failures
+     * are notes, not errors.
      */
     @Throws(DspiException::class)
     fun measureTuneKeep(): MeasureTuneKeep

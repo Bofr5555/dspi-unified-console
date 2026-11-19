@@ -351,18 +351,33 @@ fn wp_p5tune_the_proposal_aligns_flips_the_mid_and_keeps_the_common_delay() {
         .fold(f32::MAX, f32::min);
     assert!((min - COMMON_MS).abs() < 1e-4, "{min}");
     // Corners move toward the design (set 1/3 octave above and 1/4 octave
-    // below it), each to within 1/4 octave.
+    // below it), each to within 1/4 octave, or stay. WP P5TRUST: the upper
+    // one stays: through the mid-tweeter transition this room's sum differs
+    // by 0.01 dB RMS from 1.8 to 3.6 kHz (the drivers are flat there; the
+    // reflections' ripple is all the cost sees), less than the 1 % a corner
+    // must gain to move; before, it went where the ripple put it (2.83 kHz,
+    // then 1.78 kHz with RC12 fixed alone). The lower one gains 3 %.
     let start = start_chains();
-    for (now, was, design) in [
-        (lo.crossover[0].freq, start[0].crossover[0].freq, F1),
-        (hi.crossover[0].freq, start[2].crossover[0].freq, F2),
+    for (now, was, design, must_move) in [
+        (lo.crossover[0].freq, start[0].crossover[0].freq, F1, true),
+        (hi.crossover[0].freq, start[2].crossover[0].freq, F2, false),
     ] {
         let off = |f: f32| (f64::from(f) / design).log2().abs();
         assert!(
-            off(now) < off(was) && off(now) <= 0.25 + 1e-6,
+            off(now) <= off(was) + 1e-6 && off(now) <= 0.25 + 1e-3,
             "{now} from {was}"
         );
+        if must_move {
+            assert!(off(now) < off(was) && off(now) <= 0.1, "{now} from {was}");
+        }
     }
+    assert!(
+        c.notes
+            .iter()
+            .any(|n| n.contains("outputs 1 and 2: no corner is clearly better")),
+        "{:#?}",
+        c.notes
+    );
     // Nothing raised; timing writes flagged; the EQ within its caps.
     for (w, b) in c.chains.iter().zip(&start_chains()) {
         assert!(w.gain_db <= b.gain_db + 1e-6);
@@ -438,14 +453,42 @@ fn wp_p5tune_the_bass_modes_are_reduced_within_2_db() {
     assert!(modes < modes_before && peak < peak_before);
     let fit = sp.fit.as_ref().unwrap();
     assert!(fit.rms_after_db < fit.rms_before_db);
-    // The fit starts above the lowest trusted point, never at 20 Hz, and
-    // uses no broad band (speakers: Q 2 or more).
+    // The fit starts above the lowest trusted point, never at 20 Hz. WP
+    // P5TRUST: its level is anchored in the reference band, so a band may be
+    // broader (Q 0.7 or more) and a low shelf may be used, never a high
+    // shelf, and the bands leave the reference band within 0.5 dB.
     assert!(fit.bands.iter().all(|b| f64::from(b.band.freq) > 20.0));
     assert!(
         fit.bands
             .iter()
-            .all(|b| f64::from(b.band.q) >= maths::SPEAKERS_Q_MIN - 1e-3)
+            .all(|b| f64::from(b.band.q) >= maths::SPEAKERS_ANCHORED_Q_MIN - 1e-3)
     );
+    assert!(
+        fit.bands
+            .iter()
+            .all(|b| b.band.filter_type != dspi_measure::fit::TYPE_HIGH_SHELF)
+    );
+    let f = LogGrid::STANDARD.freqs().unwrap();
+    let refband: Vec<f64> = f
+        .iter()
+        .copied()
+        .filter(|x| (500.0..=2000.0).contains(x))
+        .collect();
+    let bands = ChannelChain {
+        peq: fit.bands.iter().map(|b| b.band).collect(),
+        ..start_chains()[0].clone()
+    };
+    let only = ChannelChain {
+        crossover: Vec::new(),
+        gain_db: 0.0,
+        delay_ms: 0.0,
+        ..bands
+    };
+    let spill = crate::measure::live::chain_db(&only, &CoreSectionModel, &refband)
+        .iter()
+        .map(|d| d.abs())
+        .fold(0.0, f64::max);
+    assert!(spill <= maths::MAX_REFERENCE_SPILL_DB, "{spill}");
     // Every band of the fit is written, on each way that plays there.
     let eq: Vec<_> = c
         .writes

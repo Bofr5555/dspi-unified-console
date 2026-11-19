@@ -77,6 +77,7 @@ use serde_json::Value;
 use super::live::{MeasureLiveCurve, curve, levelled_target, repredict};
 use super::plan::Plan;
 use super::preflight::{self, PreflightOptions, chain_of};
+use super::safety;
 use super::{
     MeasureCoupler, MeasureIssue, MeasureOutput, MeasurePhase, MeasurePlacement, MeasureRole,
     MeasureRunKind, MeasureSetup, MeasureSlot, MeasureState,
@@ -100,9 +101,21 @@ use maths::{Allow, Bounds, Computed, WayIn};
 
 /// The label of the guard and the undo group.
 pub(crate) const TUNE_LABEL: &str = "Auto-tune";
-/// The guard's timeout when the caller gives 0, s (S10: room for the verify
-/// runs).
+/// The guard's timeout when the caller gives 0 and the verify's length is
+/// not known, s (S10: room for the verify runs).
 pub(crate) const TUNE_GUARD_DEFAULT_S: u32 = 300;
+// -- WP P5TRUST -- coordinator decision (c): the guard's length scales with
+// the planned verify (a stereo three-way at 5.5 s sweeps verifies in about
+// 175 s plus its analysis, close to the flat 300 s).
+/// The guard's time beyond the planned verify, s: the analysis, and the
+/// user reading the verify and choosing Keep or Revert.
+pub(crate) const TUNE_GUARD_MARGIN_S: u32 = 120;
+/// The planned verify's length is taken this much longer (the analysis
+/// between runs, a slow client's ticks), percent.
+pub(crate) const TUNE_GUARD_SLACK_PCT: u64 = 25;
+/// Each ramp step of a planned run, ms: the pre-roll, the short sweep and
+/// its analysis.
+const RAMP_STEP_MS: u64 = 2_600;
 /// A measurement older than this is warned, ms (30 days).
 const OLD_MS: i64 = 30 * 24 * 3600 * 1000;
 /// What the tune's algorithm calls itself in the "after" snapshot.
@@ -130,6 +143,7 @@ pub(crate) const NOTICE_KEYS: &[&str] = &[
     KEY_SUM_NEEDED,
     KEY_MIC,
     KEY_NOT_KEPT,
+    KEY_KEEP_UNVERIFIED,
 ];
 const KEY_OTHER_DEVICE: &str = "measure.tune.other_device";
 const KEY_OLD: &str = "measure.tune.old";
@@ -138,6 +152,8 @@ const KEY_CHAINS: &str = "measure.tune.chains_changed";
 const KEY_SUM_NEEDED: &str = "measure.tune.sum_check_needed";
 const KEY_MIC: &str = "measure.tune.mic";
 const KEY_NOT_KEPT: &str = "measure.tune.not_kept";
+// -- WP P5TRUST -- coordinator decision (b)
+const KEY_KEEP_UNVERIFIED: &str = "measure.tune.keep_unverified";
 
 fn invalid(msg: impl Into<String>) -> DspiError {
     DspiError::InvalidArgument { msg: msg.into() }
@@ -548,6 +564,10 @@ pub(crate) struct Tune {
     after: Option<(String, String)>,
     applied: Vec<ChannelChain>,
     verify: Option<MeasureTuneVerify>,
+    // -- WP P5TRUST --
+    /// Keep after a verify that did not pass was refused once: the next Keep
+    /// is the user's second, explicit confirmation.
+    keep_armed: bool,
 }
 
 impl MeasureSlot {
@@ -1124,6 +1144,120 @@ impl DspiCore {
             name: name.to_owned(),
             ..MeasureSetup::default()
         }
+    }
+
+    // -- WP P5TRUST -- the verify's runs, for the verify and for the guard's
+    // length.
+    /// The verify's runs of an applied tune: a walked run of the tuned
+    /// outputs, then a summed run per transition with the polarities of
+    /// `applied` (the chains after the apply; the proposal's where empty).
+    fn tune_verify_queue(input: &Input, c: &Computed, applied: &[ChannelChain]) -> Vec<RunItem> {
+        let (placement, coupler, count) = placement_setup(&input.doc.measurement.placement);
+        let st = &input.doc.measurement.stimulus;
+        let walked = MeasureSetup {
+            kind: MeasureRunKind::Walked,
+            outputs: input
+                .ways
+                .iter()
+                .map(|w| MeasureOutput {
+                    output: w.output,
+                    role: w.role,
+                    speaker: w.speaker.clone(),
+                    group: input
+                        .layout
+                        .outputs
+                        .iter()
+                        .find(|o| o.output == w.output)
+                        .map_or(0, |o| o.group),
+                    inverted: false,
+                })
+                .collect(),
+            placement,
+            count,
+            coupler,
+            mic_document: input.mic_document.clone(),
+            sweep_ms: st.duration_ms,
+            gap_ms: st.gap_ms,
+            passes: st.repeat.max(3),
+            capture_rate_hz: input.doc.measurement.capture.rate_hz,
+            ceiling_db: Some(run_ceiling(&input.doc)),
+            name: "Auto-tune verify".into(),
+            ..MeasureSetup::default()
+        };
+        let mut queue = vec![RunItem {
+            purpose: Purpose::VerifyWalked,
+            setup: walked,
+        }];
+        for (si, sp) in c.speakers.iter().enumerate() {
+            if sp.drivers.is_none() {
+                continue;
+            }
+            for (k, tr) in sp.transitions.iter().enumerate() {
+                let (Some(lo), Some(hi)) = (
+                    sp.ways.get(tr.low).and_then(|i| input.ways.get(*i)),
+                    sp.ways.get(tr.high).and_then(|i| input.ways.get(*i)),
+                ) else {
+                    continue;
+                };
+                let inv = |w: &WayIn| {
+                    input
+                        .ways
+                        .iter()
+                        .position(|x| x.output == w.output)
+                        .and_then(|i| applied.get(i))
+                        .map_or(w.chain_now.feed.inverted, |c| c.feed.inverted)
+                };
+                queue.push(RunItem {
+                    purpose: Purpose::VerifySummed {
+                        speaker: si,
+                        transition: k,
+                    },
+                    setup: Self::tune_summed_setup(
+                        input,
+                        &[(lo, inv(lo)), (hi, inv(hi))],
+                        "Auto-tune verify (summed)",
+                    ),
+                });
+            }
+        }
+        queue
+    }
+
+    /// The guard's length for applying `c` (coordinator decision (c)): the
+    /// planned verify, [`TUNE_GUARD_SLACK_PCT`] longer, plus
+    /// [`TUNE_GUARD_MARGIN_S`]; at most the guard's longest. The planned
+    /// verify is each run's capture plus its ramp's steps from the start
+    /// level to the ceiling. [`TUNE_GUARD_DEFAULT_S`] when a run cannot be
+    /// planned.
+    fn tune_guard_s(input: &Input, c: &Computed) -> u32 {
+        let rate = match input.doc.measurement.stimulus.device_rate_hz {
+            r @ (44_100 | 48_000 | 96_000) => r,
+            _ => 48_000,
+        };
+        let mut ms: u64 = 0;
+        for item in Self::tune_verify_queue(input, c, &c.chains) {
+            let Ok(plan) = Plan::new(&item.setup) else {
+                return TUNE_GUARD_DEFAULT_S;
+            };
+            let span = f64::from(plan.ceiling_db - plan.start_db).max(0.0);
+            let steps = ((span / f64::from(safety::RAMP_STEP_DB)).ceil() as u64).saturating_add(1);
+            for run in &plan.runs {
+                let Ok(run_ms) = plan.run_ms(run, rate) else {
+                    return TUNE_GUARD_DEFAULT_S;
+                };
+                let ramps = (run.outputs.len() as u64).saturating_mul(steps);
+                ms = ms
+                    .saturating_add(run_ms)
+                    .saturating_add(ramps.saturating_mul(RAMP_STEP_MS));
+            }
+        }
+        let s = ms
+            .saturating_mul(100 + TUNE_GUARD_SLACK_PCT)
+            .div_ceil(100_000)
+            .saturating_add(u64::from(TUNE_GUARD_MARGIN_S));
+        u32::try_from(s)
+            .unwrap_or(u32::MAX)
+            .min(crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S)
     }
 
     /// Start the next run of `t`, or end the step (`finish`).
@@ -2017,9 +2151,10 @@ impl DspiCore {
 
     /// Apply proposal `proposal_id` (PLAN-P5 section 1.4 step 9, S10): the
     /// preflight **again** with the chains it was computed for, the "before"
-    /// snapshot filed, the guard begun (`guard_s` seconds; 0: 300), then
-    /// every write through `write_param` in one undo group "Auto-tune". A
-    /// refused write ends the group and the guard reverts. Returns the guard.
+    /// snapshot filed, the guard begun (`guard_s` seconds; 0: the planned
+    /// verify plus a margin, at most 590 s), then every write through
+    /// `write_param` in one undo group "Auto-tune". A refused write ends the
+    /// group and the guard reverts. Returns the guard.
     ///
     /// Errors, with nothing written: [`DspiError::InvalidArgument`] for
     /// another proposal's id, a proposal with timing writes whose summed check
@@ -2128,14 +2263,15 @@ impl DspiCore {
             ),
         )?;
         let before_id = self.tune_file_snapshot(&before_text, &mut notes);
-        let guard = self.apply_guard_begin(
-            TUNE_LABEL.to_owned(),
-            if guard_s == 0 {
-                TUNE_GUARD_DEFAULT_S
-            } else {
-                guard_s
-            },
-        )?;
+        let guard_len = if guard_s == 0 {
+            match t.computed.as_ref() {
+                Some(c) => Self::tune_guard_s(&input, c),
+                None => TUNE_GUARD_DEFAULT_S,
+            }
+        } else {
+            guard_s
+        };
+        let guard = self.apply_guard_begin(TUNE_LABEL.to_owned(), guard_len)?;
         self.begin_group(TUNE_LABEL.to_owned());
         let mut failed = None;
         'all: for w in &p.writes {
@@ -2167,6 +2303,7 @@ impl DspiCore {
         t.stage = MeasureTuneStage::Applied;
         t.issue = None;
         t.verify = None;
+        t.keep_armed = false;
         if !notes.is_empty() {
             t.issue = Some(MeasureIssue::new(KEY_NOT_KEPT, None, notes.join("; ")));
         }
@@ -2199,74 +2336,7 @@ impl DspiCore {
                 "{KEY_MIC}: the measurement's microphone document is needed to verify"
             )));
         }
-        let (placement, coupler, count) = placement_setup(&input.doc.measurement.placement);
-        let st = &input.doc.measurement.stimulus;
-        let walked = MeasureSetup {
-            kind: MeasureRunKind::Walked,
-            outputs: input
-                .ways
-                .iter()
-                .map(|w| MeasureOutput {
-                    output: w.output,
-                    role: w.role,
-                    speaker: w.speaker.clone(),
-                    group: input
-                        .layout
-                        .outputs
-                        .iter()
-                        .find(|o| o.output == w.output)
-                        .map_or(0, |o| o.group),
-                    inverted: false,
-                })
-                .collect(),
-            placement,
-            count,
-            coupler,
-            mic_document: input.mic_document.clone(),
-            sweep_ms: st.duration_ms,
-            gap_ms: st.gap_ms,
-            passes: st.repeat.max(3),
-            capture_rate_hz: input.doc.measurement.capture.rate_hz,
-            ceiling_db: Some(run_ceiling(&input.doc)),
-            name: "Auto-tune verify".into(),
-            ..MeasureSetup::default()
-        };
-        let mut queue = vec![RunItem {
-            purpose: Purpose::VerifyWalked,
-            setup: walked,
-        }];
-        for (si, sp) in c.speakers.iter().enumerate() {
-            if sp.drivers.is_none() {
-                continue;
-            }
-            for (k, tr) in sp.transitions.iter().enumerate() {
-                let (Some(lo), Some(hi)) = (
-                    sp.ways.get(tr.low).and_then(|i| input.ways.get(*i)),
-                    sp.ways.get(tr.high).and_then(|i| input.ways.get(*i)),
-                ) else {
-                    continue;
-                };
-                let inv = |w: &WayIn| {
-                    input
-                        .ways
-                        .iter()
-                        .position(|x| x.output == w.output)
-                        .and_then(|i| t.applied.get(i))
-                        .map_or(w.chain_now.feed.inverted, |c| c.feed.inverted)
-                };
-                queue.push(RunItem {
-                    purpose: Purpose::VerifySummed {
-                        speaker: si,
-                        transition: k,
-                    },
-                    setup: Self::tune_summed_setup(
-                        &input,
-                        &[(lo, inv(lo)), (hi, inv(hi))],
-                        "Auto-tune verify (summed)",
-                    ),
-                });
-            }
-        }
+        let queue = Self::tune_verify_queue(&input, &c, &t.applied);
         let total = u16::try_from(queue.len()).unwrap_or(u16::MAX);
         t.runs = Some(Runs {
             queue,
@@ -2276,6 +2346,7 @@ impl DspiCore {
         t.stage = MeasureTuneStage::Verifying;
         t.issue = None;
         t.verify = None;
+        t.keep_armed = false;
         self.tune_next(&mut t);
         if t.runs.is_none() {
             let why = t
@@ -2294,8 +2365,15 @@ impl DspiCore {
     /// algorithm, the options, the writes), and the tune's row added to the
     /// measurement. A verify still running is stopped first.
     ///
-    /// Errors: [`DspiError::InvalidArgument`] when no tune is applied;
-    /// `apply_confirm`'s. Filing failures are notes, not errors.
+    /// **After a verify that did not pass** the first Keep is refused with
+    /// `measure.tune.keep_unverified` (nothing changes, the guard runs on;
+    /// the state's `issue` says it): the client shows why and asks the user
+    /// again, and only a second Keep, on the user's explicit confirmation,
+    /// keeps it. A new verify, Revert or another apply ask again.
+    ///
+    /// Errors: [`DspiError::InvalidArgument`] when no tune is applied, or the
+    /// first Keep after a failed verify; `apply_confirm`'s. Filing failures
+    /// are notes, not errors.
     pub fn measure_tune_keep(&self) -> Result<MeasureTuneKeep> {
         let mut t = self.measure.tune_lock();
         self.tune_guard_ended(&mut t);
@@ -2304,6 +2382,20 @@ impl DspiCore {
             MeasureTuneStage::Applied | MeasureTuneStage::Verifying | MeasureTuneStage::Verified
         ) {
             return Err(invalid("no applied tune waits for Keep"));
+        }
+        // -- WP P5TRUST -- coordinator decision (b): a failed verify needs a
+        // second, explicit Keep.
+        let failed_verify =
+            t.stage == MeasureTuneStage::Verified && t.verify.as_ref().is_some_and(|v| !v.passed);
+        if failed_verify && !t.keep_armed {
+            t.keep_armed = true;
+            let why = format!(
+                "{KEY_KEEP_UNVERIFIED}: the verify did not confirm the tune; Keep it only if \
+                 you are sure (call Keep again to keep it anyway, or Revert)"
+            );
+            t.issue = Some(MeasureIssue::new(KEY_KEEP_UNVERIFIED, None, why.clone()));
+            self.tune_publish(&t);
+            return Err(invalid(why));
         }
         if t.runs.take().is_some() && self.measure_state().active {
             self.measure_stop_session();

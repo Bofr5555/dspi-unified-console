@@ -123,19 +123,32 @@ pub(crate) fn to_response(grid: LogGrid, h: &[Cx]) -> Response {
     }
 }
 
-/// What a walked run measures for `d` through `c`: no noise, SNR `snr_db`.
+/// What a walked run measures for `d` through `c`: no noise in the response,
+/// an SNR of `snr_db` where the chain passes and, as a measurement has it,
+/// less by the chain's attenuation where it does not (review P5-C2: the SNR
+/// per point, which the de-embedding's mask reads as it is).
 pub(crate) fn way(output: u8, role: WayRole, c: ChannelChain, d: &Drv, snr_db: f64) -> Way {
     let grid = LogGrid::STANDARD;
     let f = grid.freqs().unwrap();
     let h: Vec<Cx> = f.iter().map(|f| d.at(*f).mul(chain_at(&c, *f))).collect();
-    let n = h.len();
+    let p = sections(&c.peq, &ProtoModel).unwrap();
+    let x = sections(&c.crossover, &ProtoModel).unwrap();
+    let snr: Vec<f64> = f
+        .iter()
+        .map(|f| {
+            let shape = cascade_at(&p, *f, 48_000.0)
+                .unwrap()
+                .mul(cascade_at(&x, *f, 48_000.0).unwrap());
+            snr_db - (-shape.db()).max(0.0)
+        })
+        .collect();
     Way {
         output,
         role,
         arrival_ms: d.arrival_ms + f64::from(c.delay_ms) + 0.05,
         chain: c,
         response: to_response(grid, &h),
-        snr_db: vec![snr_db; n],
+        snr_db: snr,
         timing_reliable: true,
     }
 }

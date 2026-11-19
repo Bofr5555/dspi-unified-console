@@ -7391,7 +7391,8 @@ uint32_t dspi_measure_tune_tick(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_measure_tune_state(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Apply proposal `proposal_id` guarded for `guard_s` seconds (0: 300): the
+ * Apply proposal `proposal_id` guarded for `guard_s` seconds (0: the planned
+ * verify plus a margin, at most 590 s): the
  * guard, or a failure (`invalid` naming the blocker, `read_only`,
  * `denied`, the setters' refusals).
  */
@@ -7407,7 +7408,9 @@ uint32_t dspi_measure_tune_apply(struct FfiCore *core,
 uint32_t dspi_measure_tune_verify(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
- * Keep the applied tune: Keep's reply, or a failure.
+ * Keep the applied tune: Keep's reply, or a failure. After a verify that did
+ * not pass the first Keep fails (`invalid`, `measure.tune.keep_unverified`):
+ * show it, and keep only with a second Keep the user confirms.
  */
 uint32_t dspi_measure_tune_keep(struct FfiCore *core, char *buf, uint32_t len);
 

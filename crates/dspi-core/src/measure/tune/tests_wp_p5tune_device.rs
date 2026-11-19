@@ -17,8 +17,8 @@ use dspi_transport::{
 };
 
 use super::tests_wp_p5tune::{
-    COMMON_MS, RATE, SERIAL, bass_held, layout, offline_doc, role, speakers_target, start_chains,
-    world,
+    COMMON_MS, F1, F2, RATE, SERIAL, bass_held, layout, offline_doc, role, speakers_target,
+    start_chains, world,
 };
 use super::*;
 use crate::records::FilterParams;
@@ -1148,4 +1148,195 @@ fn review_p5c2_the_tunes_runs_never_play_louder_than_the_measurement() {
     assert!(st.active, "{st:#?}");
     r.core.measure_tune_stop();
     assert!(!r.core.measure_state().active);
+}
+
+// ── WP P5TRUST ──────────────────────────────────────────────────────────
+
+/// Review P5-C2's follow-up 2 as a done criterion: P5TUNE's rig in P5SIM's
+/// own room (-85 dBFS of noise, nothing made louder), the ramp's own level.
+/// Before the trust rules were fixed every transition was kept (EQ only);
+/// now the proposal holds delays, the midrange's polarity and the crossover,
+/// the corners near the design, and the summed checks pass within RC5f (the
+/// reviewer's probe read 0.25 and 0.09 dB RMS at -50 dBFS).
+#[test]
+fn wp_p5trust_the_rig_at_realistic_noise_gives_a_full_timing_proposal() {
+    let r = rig("p5trust-noise");
+    let w = world(11, 0.3);
+    assert_eq!(w.noise_dbfs, Some(-85.0), "P5SIM's own noise");
+    let mut mic = Mic::new(&r, w);
+    let text = mic.measure(walked(&[0, 1, 2]), 300.0);
+    let doc = MeasurementDoc::from_text(&text).unwrap();
+    assert!(doc.measurement.capture.timing_reliable, "{text}");
+    let level = doc.measurement.stimulus.level_db;
+    println!("measured at {level:.1} dBFS");
+    let p = r
+        .core
+        .measure_tune_propose(text, layout(&[0, 1, 2]), MeasureTuneOptions::default())
+        .unwrap();
+    for w in &p.writes {
+        println!("{}", w.words);
+    }
+    for n in &p.notes {
+        println!("note: {n}");
+    }
+    assert!(p.timing_reliable && p.withdrawn.is_empty(), "{p:#?}");
+    assert!(
+        !p.notes.iter().any(|n| n.contains("trusted range")),
+        "no transition is kept for want of trust: {:#?}",
+        p.notes
+    );
+    let has = |o: u8, k: MeasureTuneKind| p.writes.iter().any(|w| w.output == o && w.kind == k);
+    assert!(
+        (0..3).any(|o| has(o, MeasureTuneKind::Delay)),
+        "a delay is proposed"
+    );
+    assert_ne!(
+        has(1, MeasureTuneKind::Polarity),
+        has(0, MeasureTuneKind::Polarity),
+        "the inverted midrange is corrected"
+    );
+    assert!(
+        (0..3).any(|o| has(o, MeasureTuneKind::Crossover)),
+        "a corner is proposed"
+    );
+    assert_eq!(p.transitions.len(), 2);
+    for (t, design) in p.transitions.iter().zip([F1, F2]) {
+        let off = |f: f64| (f / design).log2().abs();
+        println!(
+            "transition {}-{}: {:.0} -> {:.0} Hz (design {design:.0}), delay {:.4} ms, flipped {}",
+            t.low_output,
+            t.high_output,
+            t.corner_before_hz,
+            t.corner_hz,
+            t.relative_delay_ms,
+            t.flipped
+        );
+        // Never further from the design than the corner was, and within a
+        // quarter of an octave of it.
+        assert!(off(t.corner_hz) <= off(t.corner_before_hz) + 1e-6);
+        assert!(off(t.corner_hz) <= 0.25 + 1e-3, "{t:?}");
+    }
+    // The tweeter's high-pass is never below its protective floor.
+    let hp = p
+        .transitions
+        .iter()
+        .find(|t| t.high_output == 2)
+        .unwrap()
+        .corner_hz;
+    assert!(hp >= f64::from(HighpassRule::HIGH.min_hz));
+    // The summed check passes, within RC5f.
+    r.core.measure_tune_sum_check(p.id).unwrap();
+    let st = mic.tune(180.0);
+    assert_eq!(st.stage, MeasureTuneStage::Proposed, "{st:#?}");
+    let p = r.core.measure_tune_proposal().unwrap();
+    assert_eq!(p.sum_check, MeasureTuneCheck::Passed, "{:#?}", p.withdrawn);
+    for t in &p.transitions {
+        let rms = t.sum_check_rms_db.unwrap();
+        println!(
+            "summed check {}-{}: {rms:.2} dB RMS (review P5-C2's probe: 0.25 and 0.09)",
+            t.low_output, t.high_output
+        );
+        assert!(rms <= dspi_measure::xover::SUMMED_CHECK_MAX_RMS_DB);
+    }
+    assert!(
+        p.writes.iter().any(|w| w.timing),
+        "the timing stays offered"
+    );
+}
+
+/// Coordinator decisions (b) and (c): the guard of an applied tune lasts the
+/// planned verify plus a margin (not a flat 300 s), and Keep after a verify
+/// that did not pass is refused with `measure.tune.keep_unverified` until it
+/// is asked a second time.
+#[test]
+fn wp_p5trust_keep_after_a_failed_verify_needs_a_second_confirmation() {
+    let r = rig("p5trust-keep");
+    let mut mic = Mic::new(&r, heard());
+    let text = mic.measure(walked(&[0, 1, 2]), 150.0);
+    let p = r
+        .core
+        .measure_tune_propose(text, layout(&[0, 1, 2]), MeasureTuneOptions::default())
+        .unwrap();
+    assert!(p.writes.iter().any(|w| w.timing), "{p:#?}");
+    // Every crossover write is a timing write: applied only after the
+    // summed check passed (decision (a)).
+    assert!(
+        p.writes
+            .iter()
+            .filter(|w| w.kind == MeasureTuneKind::Crossover)
+            .all(|w| w.timing)
+    );
+    r.core.measure_tune_sum_check(p.id).unwrap();
+    let st = mic.tune(180.0);
+    assert_eq!(st.stage, MeasureTuneStage::Proposed, "{st:#?}");
+    let p = r.core.measure_tune_proposal().unwrap();
+    assert_eq!(p.sum_check, MeasureTuneCheck::Passed);
+    // (c) The guard's length: the planned verify plus the margin.
+    let planned = {
+        let t = r.core.measure.tune_lock();
+        DspiCore::tune_guard_s(t.input.as_ref().unwrap(), t.computed.as_ref().unwrap())
+    };
+    let g = r.core.measure_tune_apply(p.id, 0).unwrap();
+    assert_eq!(g.phase, GuardPhase::Waiting);
+    assert_eq!(g.timeout_ms, planned * 1000, "{g:#?}");
+    assert_ne!(planned, TUNE_GUARD_DEFAULT_S);
+    assert!(planned > TUNE_GUARD_MARGIN_S && planned <= 590, "{planned}");
+    // The verify hears the tweeter 0.25 ms later than everything before:
+    // its summed run disagrees with the prediction.
+    mic.summed_extra = Some((2, 0.25));
+    let started = std::time::Instant::now();
+    r.core.measure_tune_verify().unwrap();
+    let st = mic.tune(400.0);
+    let took = started.elapsed().as_secs_f64();
+    println!("the verify took {took:.0} s of a {planned} s guard");
+    assert!(took < f64::from(planned - TUNE_GUARD_MARGIN_S), "{took}");
+    assert_eq!(st.stage, MeasureTuneStage::Verified, "{st:#?}");
+    let v = st.verify.clone().unwrap();
+    assert!(!v.passed, "{v:#?}");
+    // (b) The first Keep is refused, typed; nothing changes.
+    let image = r.remote.image();
+    let e = r.core.measure_tune_keep().unwrap_err();
+    assert!(e.to_string().contains(KEY_KEEP_UNVERIFIED), "{e}");
+    let st = r.core.measure_tune_state();
+    assert_eq!(st.stage, MeasureTuneStage::Verified);
+    assert_eq!(st.issue.as_ref().unwrap().key, KEY_KEEP_UNVERIFIED);
+    assert_eq!(st.guard.phase, GuardPhase::Waiting, "the guard runs on");
+    assert_eq!(r.remote.image(), image);
+    // The second, explicit Keep keeps it.
+    let k = r.core.measure_tune_keep().unwrap();
+    assert_eq!(k.guard.phase, GuardPhase::Kept, "{k:#?}");
+    assert_eq!(r.core.measure_tune_state().stage, MeasureTuneStage::Kept);
+}
+
+/// Decision (c), the length alone: longer sweeps, a longer guard; never past
+/// the guard's longest.
+#[test]
+fn wp_p5trust_the_guard_scales_with_the_planned_verify() {
+    let r = rig("p5trust-guard");
+    let _ = eq_only(&r);
+    let (input, computed) = {
+        let t = r.core.measure.tune_lock();
+        (t.input.clone().unwrap(), t.computed.clone().unwrap())
+    };
+    let short = DspiCore::tune_guard_s(&input, &computed);
+    let mut long = input.clone();
+    long.doc.measurement.stimulus.duration_ms = 5_500;
+    let longer = DspiCore::tune_guard_s(&long, &computed);
+    println!("guard {short} s at 1 s sweeps, {longer} s at 5.5 s");
+    assert!(
+        short > TUNE_GUARD_MARGIN_S && longer > short,
+        "{short} {longer}"
+    );
+    long.doc.measurement.stimulus.duration_ms = 15_000;
+    long.doc.measurement.stimulus.repeat = 8;
+    assert!(DspiCore::tune_guard_s(&long, &computed) <= crate::guarded::APPLY_GUARD_MAX_TIMEOUT_S);
+    // The apply with 0 takes it; an explicit length is the caller's.
+    let p = eq_only(&r);
+    let g = r.core.measure_tune_apply(p.id, 0).unwrap();
+    assert_eq!(g.timeout_ms, short * 1000);
+    r.core.measure_tune_revert().unwrap();
+    let p = eq_only(&r);
+    let g = r.core.measure_tune_apply(p.id, 45).unwrap();
+    assert_eq!(g.timeout_ms, 45_000);
+    r.core.measure_tune_revert().unwrap();
 }

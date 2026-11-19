@@ -19,11 +19,27 @@
 //! - the error after is never above the error before: otherwise no change is
 //!   returned.
 //!
+//! **The level** (WP P5TRUST, review P5-C2 follow-up 3): [`FitLevel::Free`]
+//! (the default) fits the error's shape in the range and leaves its level
+//! free, so a broad excess over the whole range is not seen;
+//! [`FitLevel::Anchored`] holds the target at a level the caller gives (the
+//! target levelled to the measurement in a reference band outside the range,
+//! [`reference_offset_db`]), so the range's level against the rest is fitted
+//! too and a broad band or a shelf means what it says. With
+//! [`FitOptions::leave_out_dips`] (the auto-tune's and the live view's
+//! choice; off in [`FitOptions::speakers`] and [`FitOptions::headphones`]), a
+//! point more than the max boost plus [`DIP_LEAVE_OUT_MARGIN_DB`] below the
+//! levelled target is a dip no band may fill: it is left out of the cost and
+//! of the level (only the EQ change there counts, so no band deepens it), so
+//! it does not pull the level down and make every other point read as a peak.
+//!
 //! The method: the measured response (optionally smoothed) is levelled to the
 //! target by the median difference in the range (which dips are deep or vary
 //! is judged there); the cost is the squared error with its mean taken out
 //! (the level is free, so no band is spent moving it, and a broad boost
-//! never pays), plus the squared EQ change at dips left alone; then greedy
+//! never pays), plus the squared EQ change at dips left alone (against the
+//! EQ's own level over the fitted points while the level is free, WP
+//! P5TRUST: cutting everything around a dip boosts it); then greedy
 //! placement on the
 //! largest error area, a short refinement of the new band, a bounded
 //! coordinate descent with box constraints over every fitted band, until the
@@ -91,6 +107,59 @@ const STEP_EVALUATIONS: u32 = 600;
 const BOOST_WEIGHT: f64 = 0.05;
 /// Slack on the boost cap for rounding in the cascade, dB.
 const BOOST_SLACK_DB: f64 = 1e-6;
+/// With [`FitOptions::leave_out_dips`], a point this far below the levelled
+/// target beyond the max boost is left out, dB (WP P5TRUST).
+pub const DIP_LEAVE_OUT_MARGIN_DB: f64 = 1.0;
+
+// -- WP P5TRUST --
+/// How the fit sets the target's level.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "mode")]
+pub enum FitLevel {
+    /// Free in the fit's range: the error's mean over the fitted points is
+    /// taken out, so only the error's shape is fitted.
+    #[default]
+    Free,
+    /// The target moved by `offset_db` (the measurement's level against the
+    /// target, e.g. [`reference_offset_db`] in a reference band) and held
+    /// there: the error is fitted as it is, its level included.
+    Anchored {
+        /// The target's level shift, dB (finite, at most 200 dB).
+        offset_db: f64,
+    },
+}
+
+/// The measurement's level against the target in `low_hz..=high_hz`: the
+/// mean difference over the points trusted in both (as the graph levels its
+/// target); `None` when fewer than 8 such points lie there or a grid is bad.
+pub fn reference_offset_db(
+    measured: &Response,
+    target: &Response,
+    low_hz: f64,
+    high_hz: f64,
+) -> Option<f64> {
+    let freqs = measured.grid.freqs().ok()?;
+    let tfreqs = target.grid.freqs().ok()?;
+    if measured.mag_db.len() != freqs.len() || target.mag_db.len() != tfreqs.len() {
+        return None;
+    }
+    let (mut sum, mut n) = (0.0f64, 0usize);
+    for (i, (f, m)) in freqs.iter().zip(&measured.mag_db).enumerate() {
+        let ok = measured
+            .valid
+            .as_ref()
+            .is_none_or(|v| v.get(i).copied().unwrap_or(false));
+        if !ok || *f < low_hz || *f > high_hz || !m.is_finite() {
+            continue;
+        }
+        if let Some(t) = interp(target, &tfreqs, *f) {
+            sum += m - t;
+            n = n.saturating_add(1);
+        }
+    }
+    let o = sum / n.max(1) as f64;
+    (n >= MIN_POINTS && o.is_finite()).then_some(o)
+}
 
 /// What the fit may do. [`FitOptions::speakers`] and
 /// [`FitOptions::headphones`] give OD-P5l's defaults; the caller lowers the
@@ -135,6 +204,20 @@ pub struct FitOptions {
     pub deep_dip_db: f64,
     /// Offset the fit's net boost by an equal output-gain cut.
     pub headroom: bool,
+    // -- WP P5TRUST --
+    /// The target's level: free in the range, or anchored ([`FitLevel`]).
+    #[serde(default)]
+    pub level: FitLevel,
+    /// Leave out the dips more than the max boost plus
+    /// [`DIP_LEAVE_OUT_MARGIN_DB`] below the levelled target (see the module
+    /// docs).
+    #[serde(default)]
+    pub leave_out_dips: bool,
+    /// With `shelves`: low shelves only, never a high shelf at the range's
+    /// top (it would tilt everything above the range, which the fit does not
+    /// see).
+    #[serde(default)]
+    pub no_high_shelf: bool,
     /// Stop once the RMS error in the range is at or below this, dB.
     pub target_rms_db: f64,
     /// The evaluation cap (at most [`MAX_EVALUATIONS`]).
@@ -143,7 +226,11 @@ pub struct FitOptions {
 
 impl FitOptions {
     /// Speakers: 20 Hz to 300 Hz, boost +3 dB, cut -15 dB, Q 0.3 to 10,
-    /// 1/24-octave smoothing, shelves allowed, headroom kept.
+    /// 1/24-octave smoothing, shelves allowed, headroom kept, the level free
+    /// and every dip in the cost (a dip of up to 10 dB is filled by up to the
+    /// max boost). The auto-tune and the live view's "fit this range" anchor
+    /// the level where they have a reference band and leave out the dips
+    /// past the cap (WP P5TRUST).
     pub fn speakers() -> Self {
         FitOptions {
             min_hz: 20.0,
@@ -161,6 +248,9 @@ impl FitOptions {
             spread_limit_db: 3.0,
             deep_dip_db: 10.0,
             headroom: true,
+            level: FitLevel::Free,
+            leave_out_dips: false,
+            no_high_shelf: false,
             target_rms_db: 0.5,
             max_evaluations: DEFAULT_EVALUATIONS,
         }
@@ -384,6 +474,8 @@ struct Setup<'a> {
     measured: &'a Response,
     freqs: Vec<f64>,
     trig: Vec<Trig>,
+    /// The level is free (the mean error taken out), not anchored.
+    free_level: bool,
     /// Per grid point, trusted and in the range: the (smoothed) measurement
     /// minus the levelled target, as the chain stands.
     d0: Vec<Option<f64>>,
@@ -582,7 +674,12 @@ impl<'a> Setup<'a> {
                 hz(opts.max_hz)
             )));
         }
-        let offset = median(&mut diffs);
+        let free_level = opts.level == FitLevel::Free;
+        let offset = match opts.level {
+            FitLevel::Free => median(&mut diffs),
+            FitLevel::Anchored { offset_db } => offset_db,
+        };
+        let dip_floor = -(opts.max_boost_db + DIP_LEAVE_OUT_MARGIN_DB);
 
         let spread_at = |i: usize| -> f64 {
             opts.spread_db
@@ -595,6 +692,7 @@ impl<'a> Setup<'a> {
         let mut kind = Vec::with_capacity(n);
         let mut alone: Vec<(f64, f64)> = Vec::new();
         let mut deep: Vec<(f64, f64)> = Vec::new();
+        let mut out_dips: Vec<(f64, f64)> = Vec::new();
         for (i, (d, (&f, &o))) in d_raw
             .iter()
             .zip(freqs.iter().zip(old_db.iter()))
@@ -613,6 +711,12 @@ impl<'a> Setup<'a> {
                 kind.push(Kind::LeaveAlone);
                 e0.push(Some(e));
                 alone.push((f, e));
+            } else if opts.leave_out_dips && e < dip_floor {
+                // -- WP P5TRUST -- a dip no band may fill: out of the cost
+                // and of the level, only the EQ change there counts.
+                kind.push(Kind::LeaveAlone);
+                e0.push(Some(e));
+                out_dips.push((f, e));
             } else if e < -opts.deep_dip_db {
                 kind.push(Kind::Normal);
                 e0.push(Some(e.max(-opts.max_boost_db)));
@@ -627,6 +731,15 @@ impl<'a> Setup<'a> {
             notes.push(format!(
                 "dip of {e:.1} dB at {} varies across positions: left alone",
                 hz(f)
+            ));
+        }
+        for (f, e) in runs_minimum(&out_dips, ppo) {
+            notes.push(format!(
+                "dip of {e:.1} dB at {} is deeper than the boost cap {:+.1} dB and {:.0} dB: \
+                 left out of the fit and its level",
+                hz(f),
+                opts.max_boost_db,
+                DIP_LEAVE_OUT_MARGIN_DB
             ));
         }
         for (f, e) in runs_minimum(&deep, ppo) {
@@ -649,6 +762,7 @@ impl<'a> Setup<'a> {
             old_db,
             old_sections,
             offset,
+            free_level,
             bounds,
             allowed,
             replaced_idx,
@@ -680,6 +794,7 @@ impl<'a> Setup<'a> {
             w.kind.push(k);
             w.e0.push(self.e0.get(i).copied().flatten().unwrap_or(0.0));
             w.lf.push(f.log2());
+            w.free_level = self.free_level;
             if k != Kind::Ignored {
                 w.n_cost = w.n_cost.saturating_add(1);
             }
@@ -691,6 +806,7 @@ impl<'a> Setup<'a> {
         let work = self.work();
         let cap = self.opts.max_evaluations;
         let shelves = self.opts.shelves && self.bounds.lq_shelf.is_some();
+        let high_shelf = shelves && !self.opts.no_high_shelf;
         let ppo = f64::from(self.measured.grid.points_per_octave.max(1));
         let mut st = State::new(&work, self.model, self.bounds, self.opts.max_boost_db);
         while st.bands.len() < self.budget && st.rms() > self.opts.target_rms_db && st.evals < cap {
@@ -698,7 +814,7 @@ impl<'a> Setup<'a> {
             let mut best: Option<State> = None;
             let mut spent = 0u32;
             'regions: for r in regions.iter().take(REGIONS_PER_STEP) {
-                for c in r.candidates(&work, ppo, shelves) {
+                for c in r.candidates(&work, ppo, shelves, high_shelf) {
                     let room = cap.saturating_sub(st.evals.saturating_add(spent));
                     if room == 0 {
                         break 'regions;
@@ -908,8 +1024,11 @@ impl<'a> Setup<'a> {
     }
 
     /// The level of the error: its mean over the points the fit may change
-    /// (the fit's cost leaves the level free).
+    /// (the fit's cost leaves the level free); 0 when it is anchored.
     fn level(&self, new_db: Option<&[f64]>) -> f64 {
+        if !self.free_level {
+            return 0.0;
+        }
         let e = self.fit_errors(new_db);
         e.iter().sum::<f64>() / e.len().max(1) as f64
     }
@@ -1025,6 +1144,11 @@ fn check_options(o: &FitOptions, fs: f64) -> Result<Bounds, MeasureError> {
     if !finite_all(&nums) {
         return Err(invalid("a fit option is not finite"));
     }
+    if let FitLevel::Anchored { offset_db } = o.level
+        && !(offset_db.is_finite() && offset_db.abs() <= 200.0)
+    {
+        return Err(invalid(format!("anchored level {offset_db} dB")));
+    }
     let flo = o.min_hz.max(GRID_MIN_HZ);
     let fhi = o.max_hz.min(fs * MAX_FREQ_FRACTION).min(GRID_MAX_HZ);
     if !(flo > 0.0 && fhi > flo) {
@@ -1072,6 +1196,8 @@ fn check_options(o: &FitOptions, fs: f64) -> Result<Bounds, MeasureError> {
 /// The work points of the fit.
 #[derive(Debug, Clone, Default)]
 struct Work {
+    /// The level is free (see [`FitLevel`]).
+    free_level: bool,
     trig: Vec<Trig>,
     kind: Vec<Kind>,
     e0: Vec<f64>,
@@ -1096,7 +1222,7 @@ struct Region {
 impl Region {
     /// Candidate bands: a peak, and a shelf where the region touches an end
     /// of the range.
-    fn candidates(&self, w: &Work, ppo: f64, shelves: bool) -> Vec<Cand> {
+    fn candidates(&self, w: &Work, ppo: f64, shelves: bool, high_shelf: bool) -> Vec<Cand> {
         let lf_at = |j: usize| w.lf.get(j).copied().unwrap_or(0.0);
         let n = self.end.saturating_sub(self.start).saturating_add(1) as f64;
         let mean = self.sum_e / n;
@@ -1119,7 +1245,7 @@ impl Region {
                 g: -mean,
             });
         }
-        if shelves && self.touches_hi {
+        if shelves && high_shelf && self.touches_hi {
             out.push(Cand {
                 ty: TYPE_HIGH_SHELF,
                 lf: lf_at(self.start),
@@ -1168,8 +1294,12 @@ impl<'w> State<'w> {
         self.cost.max(0.0).sqrt()
     }
 
-    /// The mean error over the fitted points (the free level).
+    /// The mean error over the fitted points (the free level); 0 when it is
+    /// anchored.
     fn level(&self) -> f64 {
+        if !self.w.free_level {
+            return 0.0;
+        }
         let (s, n) = self
             .w
             .kind
@@ -1190,6 +1320,10 @@ impl<'w> State<'w> {
         // is free, so no band is spent on moving it (sum of squares minus
         // n times the squared mean).
         let (mut sum, mut lin, mut n_fit) = (0.0, 0.0, 0usize);
+        // -- WP P5TRUST -- the EQ change at the points left alone, against
+        // the EQ's own level over the fitted points when the level is free:
+        // cutting everything around a dip is boosting the dip.
+        let (mut eq_fit, mut a1, mut a2, mut n_alone) = (0.0, 0.0, 0.0, 0usize);
         for (j, ((&t, &k), &e0)) in self
             .total
             .iter()
@@ -1213,13 +1347,25 @@ impl<'w> State<'w> {
                     let boost = eq.max(0.0);
                     sum += e * e + BOOST_WEIGHT * boost * boost;
                     lin += e;
+                    eq_fit += eq;
                     n_fit = n_fit.saturating_add(1);
                 }
-                Kind::LeaveAlone => sum += eq * eq,
+                Kind::LeaveAlone => {
+                    a1 += eq;
+                    a2 += eq * eq;
+                    n_alone = n_alone.saturating_add(1);
+                }
                 Kind::Ignored => {}
             }
         }
-        let level = lin * lin / n_fit.max(1) as f64;
+        let (level, mu) = if self.w.free_level {
+            let n = n_fit.max(1) as f64;
+            (lin * lin / n, eq_fit / n)
+        } else {
+            (0.0, 0.0)
+        };
+        // Σ (eq - mu)² over the points left alone.
+        sum += (a2 - 2.0 * mu * a1 + n_alone as f64 * mu * mu).max(0.0);
         Some((sum - level).max(0.0) / self.w.n_cost.max(1) as f64)
     }
 

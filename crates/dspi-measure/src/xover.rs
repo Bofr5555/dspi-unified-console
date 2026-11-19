@@ -5,12 +5,14 @@
 //!   chain it was measured with (crossover, PEQ, output gain, delay), computed
 //!   through the core's [`SectionModel`] so the maths and the graph share one
 //!   filter model (OD-P5c). Its validity mask: trusted only where the
-//!   measurement's SNR minus the chain's attenuation is at least 20 dB
-//!   (review RC12).
+//!   measurement's SNR at that point is at least 20 dB (review RC12; the
+//!   SNR per point carries the chain's attenuation, review P5-C2).
 //! - [`crossover_corner`]: per transition, candidate corners on a 1/12-octave
 //!   grid within a window around the current corner (half an octave by
 //!   default), **only where both drivers are trusted one octave each side**
-//!   (RC12) and never below the protective high-pass rule (RC4, S6); the
+//!   (RC12; most of the span and every part of it, not every point:
+//!   [`SPAN_MIN_TRUSTED_FRACTION`], WP P5TRUST) and never below the
+//!   protective high-pass rule (RC4, S6); the
 //!   current family and order kept; levels cut only and re-normalised so the
 //!   way that needs the least cut keeps its gain (S9, S-f; no gain is ever
 //!   raised and repeated tunes do not ratchet down); delay and polarity
@@ -61,9 +63,30 @@ pub const CORNER_STEP_OCTAVES: f64 = 1.0 / 12.0;
 pub const DEFAULT_WINDOW_OCTAVES: f64 = 0.5;
 /// The widest window the user may choose, octaves each side.
 pub const MAX_WINDOW_OCTAVES: f64 = 2.0;
-/// A de-embedded point is trusted when the measurement's SNR minus the
-/// chain's attenuation there is at least this, dB (RC12).
+/// A de-embedded point is trusted when the measurement's SNR **at that
+/// point** is at least this, dB (RC12). Dividing by the chain scales the
+/// signal and the noise of a point alike, so the driver's SNR there is the
+/// measurement's; and the measurement's SNR per point already is "the SNR
+/// minus the chain's attenuation": where the chain attenuates by 24 dB the
+/// measured signal, and with it the SNR, is 24 dB lower. (Review P5-C2, WP
+/// P5TRUST: the attenuation was subtracted a second time from the per-point
+/// SNR, so a point an octave past an LR4 corner needed 69 dB in the passband
+/// and a real room's measurement never offered a delay, polarity or corner.)
 pub const DEEMBED_MIN_SNR_DB: f64 = 20.0;
+// -- WP P5TRUST -- the coverage of a candidate's span (review P5-C2, cause
+// 3: every 1/96-octave point of corner/2 to 2x corner had to be trusted in
+// both drivers, so one point failed a candidate and a real room rarely
+// passed).
+/// A candidate's span (half the lower corner to twice the upper) is covered
+/// when at least this fraction of its points is trusted in both drivers ...
+pub const SPAN_MIN_TRUSTED_FRACTION: f64 = 0.85;
+/// ... every third of an octave of it holds at least this fraction of
+/// trusted points ...
+pub const SPAN_MIN_BAND_FRACTION: f64 = 0.5;
+/// ... and no run of untrusted points in it is wider than this, octaves; the
+/// corner's own third of an octave (each side) is held to
+/// [`SPAN_MIN_TRUSTED_FRACTION`] too, so a corner never sits in a hole.
+pub const SPAN_MAX_GAP_OCTAVES: f64 = 1.0 / 12.0;
 /// The summed check fails above this RMS difference through a transition, dB
 /// (RC5f).
 pub const SUMMED_CHECK_MAX_RMS_DB: f64 = 1.5;
@@ -80,6 +103,16 @@ const MAX_SECTIONS: usize = 1024;
 /// A candidate must beat the best so far by this much to replace it, dB, so
 /// ties keep the candidate nearest the current corner.
 const TIE_DB: f64 = 1e-9;
+// -- WP P5TRUST --
+/// A corner moves only when its cost is lower than the current corner's by
+/// at least this fraction: in a room the sum through a transition is often
+/// flat across the window to a hundredth of a dB, and a corner chosen on
+/// that is chosen on the room's ripple (review P5-C2, cause 4).
+pub const CORNER_MIN_GAIN_FRACTION: f64 = 0.01;
+/// Candidates within this fraction of the lowest cost are taken as tied
+/// with it, and the one nearest the current corner is the search's best: a
+/// flat valley that reaches the window's edge is not an edge minimum.
+pub const CORNER_TIE_FRACTION: f64 = 0.002;
 
 /// The protective high-pass a way must keep (S6, review RC4).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -229,7 +262,9 @@ pub struct Driver {
 }
 
 /// De-embed a way: its measurement divided by its measured chain, with the
-/// validity mask "SNR minus the chain's attenuation at least 20 dB" (RC12).
+/// validity mask "the measurement's SNR per point at least 20 dB" (RC12; the
+/// per-point SNR carries the chain's attenuation, see
+/// [`DEEMBED_MIN_SNR_DB`]).
 ///
 /// Errors: [`MeasureError::Invalid`] for a response without phase, a size
 /// mismatch, a non-finite chain, a band `model` cannot model or a bad sample
@@ -267,8 +302,7 @@ pub fn de_embed(way: &Way, model: &dyn SectionModel) -> Result<Driver, MeasureEr
         };
         match drv {
             Some((x, s)) => {
-                let att = (-s.db()).max(0.0);
-                let trusted = trusted_meas && snr.is_finite() && snr - att >= DEEMBED_MIN_SNR_DB;
+                let trusted = trusted_meas && snr.is_finite() && snr >= DEEMBED_MIN_SNR_DB;
                 let m = x.db();
                 // The measured phase minus the chain's, so the driver's phase
                 // stays as continuous as the measurement's.
@@ -342,6 +376,16 @@ pub struct XoTransition {
     pub corner_hz: f64,
     /// Every candidate corner evaluated, Hz, in the order evaluated.
     pub candidates_hz: Vec<f64>,
+    // -- WP P5TRUST --
+    /// Each candidate's cost, dB RMS against the target, in the order of
+    /// `candidates_hz`.
+    #[serde(default)]
+    pub candidate_costs_db: Vec<f64>,
+    /// The lowest cost lay on the edge of the searched corners (the window's,
+    /// or the drivers' trusted range): the minimum is not inside the search,
+    /// so the corner is kept and only the timing is proposed (WP P5TRUST).
+    #[serde(default)]
+    pub best_at_edge: bool,
     /// Cost evaluations spent (at most [`MAX_EVALUATIONS_PER_TRANSITION`]).
     pub evaluations: u32,
     /// The current chain's cost through the window, dB RMS against the
@@ -634,10 +678,33 @@ fn search(
                 None => (info.corner_hz, info.corner_hz, info.corner_hz),
             };
             let (span_lo, span_hi) = (lo / 2.0, hi * 2.0);
-            if !span_covered(&freqs, span_lo, span_hi, &pa.trusted, &pb.trusted) {
+            // -- WP P5TRUST -- a driver deep in its candidate crossover's
+            // stopband need not be trusted there (as `predict_sum`'s rule).
+            let ta = stopband_waived(&freqs, &pa.trusted, &a2, model, fs)?;
+            let tb = stopband_waived(&freqs, &pb.trusted, &b2, model, fs)?;
+            let ca: Vec<bool> = ta
+                .iter()
+                .zip(&pb.trusted)
+                .zip(&pa.trusted)
+                .map(|((wa, tb_), ta_)| *ta_ || (*wa && *tb_))
+                .collect();
+            let cb: Vec<bool> = tb
+                .iter()
+                .zip(&pa.trusted)
+                .zip(&pb.trusted)
+                .map(|((wb, ta_), tb_)| *tb_ || (*wb && *ta_))
+                .collect();
+            if !span_covered(&freqs, span_lo, span_hi, &ca, &cb) {
                 continue;
             }
             if rule_a.is_some_and(|r| !r.kept_by(&a2)) || rule_b.is_some_and(|r| !r.kept_by(&b2)) {
+                continue;
+            }
+            // -- WP P5TRUST -- coordinator decision (a): a tweeter's
+            // high-pass is never lowered on the magnitude sum alone. With
+            // the delays kept the timing is not searched with the corner,
+            // so a lower corner for a high way is not a candidate.
+            if k < 0 && constraints.align.keep_delays && db.role == WayRole::High {
                 continue;
             }
             allowed.push((corner, a2, b2, span_lo, span_hi, k));
@@ -666,6 +733,8 @@ fn search(
                 corner_before_hz: info.corner_hz,
                 corner_hz: info.corner_hz,
                 candidates_hz: Vec::new(),
+                candidate_costs_db: Vec::new(),
+                best_at_edge: false,
                 evaluations: 0,
                 cost_before_db: None,
                 cost_db: None,
@@ -708,6 +777,7 @@ fn search(
         let mut cost_before = None;
         let mut best: Option<(usize, crate::align::PairFit)> = None;
         let mut cands = Vec::with_capacity(allowed.len());
+        let mut fits = Vec::with_capacity(allowed.len());
         for (ci, (corner, a2, b2, _, _, k)) in allowed.iter().enumerate() {
             let mut ctx = pair_ctx(&idx, &freqs, &tgt, pa, pb, a2, b2, model, fs)?;
             if quadrature {
@@ -745,13 +815,109 @@ fn search(
             fit.cost = judged.cost(fit.delta_ms, fit.flip);
             evaluations = evaluations.saturating_add(fit.evals).saturating_add(1);
             cands.push(*corner);
+            fits.push(fit);
             if best.is_none_or(|(_, b)| fit.cost < b.cost - TIE_DB) {
                 best = Some((ci, fit));
             }
         }
-        let Some((bi, fit)) = best else {
+        let Some((mut bi, mut fit)) = best else {
             return Err(MeasureError::Invalid("no candidate".into()));
         };
+        // -- WP P5TRUST -- the lowest cost on the edge of the searched corners
+        // (the window's, or where the drivers stop being trusted) is no
+        // minimum: the cost still falls past it, so the corner the search
+        // would pick is wherever the search happened to stop (review P5-C2,
+        // cause 4: the golden's upper corner went to the window's lower edge,
+        // 1.78 kHz for a 3 kHz design). The corner is then kept, its timing
+        // still proposed, and the edge is said.
+        let raw_k = allowed.get(bi).map_or(0, |c| c.5);
+        // Near-ties with the lowest cost: the one nearest the current corner.
+        let tie = fit.cost * (1.0 + CORNER_TIE_FRACTION) + TIE_DB;
+        if let Some((i, f)) = fits
+            .iter()
+            .enumerate()
+            .filter(|(_, f)| f.cost <= tie)
+            .min_by_key(|(i, _)| allowed.get(*i).map_or(i32::MAX, |c| c.5.saturating_abs()))
+            .map(|(i, f)| (i, *f))
+        {
+            bi = i;
+            fit = f;
+        }
+        // A corner no clearer than the current one: the current one stays.
+        let current_i = allowed.iter().position(|c| c.5 == 0);
+        if let Some((ci, cf)) = current_i.and_then(|i| fits.get(i).map(|f| (i, *f)))
+            && ci != bi
+            && cf.cost <= fit.cost * (1.0 + CORNER_MIN_GAIN_FRACTION)
+        {
+            bi = ci;
+            fit = cf;
+        }
+        if raw_k != 0 && allowed.get(bi).is_some_and(|c| c.5 == 0) {
+            notes.push(format!(
+                "outputs {} and {}: no corner is clearly better than the current one (the sum \
+                 through the transition differs by less than {:.0} %): the corner is kept",
+                da.output,
+                db.output,
+                CORNER_MIN_GAIN_FRACTION * 100.0
+            ));
+        }
+        let k_of = |i: usize| allowed.get(i).map_or(0, |c| c.5);
+        let k_min = allowed.iter().map(|c| c.5).min().unwrap_or(0);
+        let k_max = allowed.iter().map(|c| c.5).max().unwrap_or(0);
+        let kb = k_of(bi);
+        let at_edge = (kb < 0 && kb == k_min) || (kb > 0 && kb == k_max);
+        if at_edge {
+            let edge_hz = cands.get(bi).copied().unwrap_or(info.corner_hz);
+            let current = allowed.iter().position(|c| c.5 == 0);
+            notes.push(format!(
+                "outputs {} and {}: the best corner lies on the edge of the search ({:.0} Hz), so \
+                 the minimum is outside it; {}",
+                da.output,
+                db.output,
+                edge_hz,
+                if current.is_some() {
+                    "the corner is kept and only this pair's timing is proposed"
+                } else {
+                    "the crossover and this pair's timing are kept"
+                }
+            ));
+            match current.and_then(|i| fits.get(i).map(|f| (i, *f))) {
+                Some((i, f)) => {
+                    bi = i;
+                    fit = f;
+                }
+                None => {
+                    let reason = format!(
+                        "outputs {} and {}: the best corner lies on the edge of the search and \
+                         the current one is not a candidate; the crossover and this pair's \
+                         timing are kept",
+                        da.output, db.output
+                    );
+                    edges.push(Edge {
+                        low: t.low,
+                        high: t.high,
+                        delta_ms: delta_now,
+                        flip: false,
+                    });
+                    out_t.push(XoTransition {
+                        low_output: da.output,
+                        high_output: db.output,
+                        corner_before_hz: info.corner_hz,
+                        corner_hz: info.corner_hz,
+                        candidate_costs_db: fits.iter().map(|f| f.cost).collect(),
+                        candidates_hz: cands,
+                        best_at_edge: true,
+                        evaluations,
+                        cost_before_db: cost_before,
+                        cost_db: None,
+                        relative_delay_ms: delta_now,
+                        flipped: false,
+                        kept_reason: Some(reason),
+                    });
+                    continue;
+                }
+            }
+        }
         let Some((corner, a2, b2, _, _, _)) = allowed.get(bi) else {
             return Err(MeasureError::Invalid("no candidate".into()));
         };
@@ -772,7 +938,9 @@ fn search(
             high_output: db.output,
             corner_before_hz: info.corner_hz,
             corner_hz: *corner,
+            candidate_costs_db: fits.iter().map(|f| f.cost).collect(),
             candidates_hz: cands,
+            best_at_edge: at_edge,
             evaluations,
             cost_before_db: cost_before,
             cost_db: Some(fit.cost),
@@ -871,27 +1039,110 @@ fn pair_points(
     Ok(pts)
 }
 
-/// Whether every grid point in `[lo, hi]` is trusted in both drivers, the
-/// span lies on the grid, and it holds enough points.
+/// Whether the span `[lo, hi]` (half the lower corner to twice the upper)
+/// is covered by both drivers' trusted points: it lies on the grid, holds
+/// enough points, at least [`SPAN_MIN_TRUSTED_FRACTION`] of them trusted in
+/// both (and as much of the corner's own third of an octave each side),
+/// every third of an octave of it at least [`SPAN_MIN_BAND_FRACTION`], and
+/// no untrusted run wider than [`SPAN_MAX_GAP_OCTAVES`] (WP P5TRUST; before,
+/// every point had to be trusted). The search's cost uses only the points
+/// trusted in both, so a hole this small is interpolated by nothing: it is
+/// left out.
 fn span_covered(freqs: &[f64], lo: f64, hi: f64, ta: &[bool], tb: &[bool]) -> bool {
     let (Some(first), Some(last)) = (freqs.first(), freqs.last()) else {
         return false;
     };
     // Half a 1/96-octave step of slack at the grid's ends.
-    if lo < first * 0.996 || hi > last * 1.004 {
+    if lo < first * 0.996 || hi > last * 1.004 || !(lo > 0.0 && hi > lo) {
         return false;
     }
-    let mut count = 0usize;
-    for (i, f) in freqs.iter().enumerate() {
-        if *f < lo || *f > hi {
-            continue;
+    let ok = |i: usize| ta.get(i).copied().unwrap_or(false) && tb.get(i).copied().unwrap_or(false);
+    let pts: Vec<(f64, bool)> = freqs
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| **f >= lo && **f <= hi)
+        .map(|(i, f)| (*f, ok(i)))
+        .collect();
+    if pts.len() < MIN_WINDOW_POINTS {
+        return false;
+    }
+    let fraction = |p: &[(f64, bool)]| -> f64 {
+        if p.is_empty() {
+            return 0.0;
         }
-        if !(ta.get(i).copied().unwrap_or(false) && tb.get(i).copied().unwrap_or(false)) {
+        p.iter().filter(|(_, t)| *t).count() as f64 / p.len() as f64
+    };
+    if fraction(&pts) < SPAN_MIN_TRUSTED_FRACTION {
+        return false;
+    }
+    // The corner region: a third of an octave below the lower corner (twice
+    // `lo`) to a third above the upper (half `hi`).
+    let third = (1.0f64 / 3.0).exp2();
+    let (c_lo, c_hi) = (lo * 2.0 / third, hi / 2.0 * third);
+    let corner: Vec<(f64, bool)> = pts
+        .iter()
+        .copied()
+        .filter(|(f, _)| *f >= c_lo && *f <= c_hi)
+        .collect();
+    if fraction(&corner) < SPAN_MIN_TRUSTED_FRACTION {
+        return false;
+    }
+    // Every third of an octave of the span.
+    let mut start = lo;
+    while start < hi {
+        let mut end = (start * third).min(hi);
+        // A last piece narrower than a sixth of an octave joins this band.
+        if (hi / end).log2() < 1.0 / 6.0 {
+            end = hi;
+        }
+        let band: Vec<(f64, bool)> = pts
+            .iter()
+            .copied()
+            .filter(|(f, _)| *f >= start && (*f < end || (end >= hi && *f <= hi)))
+            .collect();
+        if !band.is_empty() && fraction(&band) < SPAN_MIN_BAND_FRACTION {
             return false;
         }
-        count = count.saturating_add(1);
+        start = end;
     }
-    count >= MIN_WINDOW_POINTS
+    // No untrusted run wider than the gap bound (from the last trusted point
+    // before it to the first after, or the span's edge).
+    let mut last_ok = lo;
+    for (f, t) in &pts {
+        if *t {
+            if (f / last_ok).log2() > SPAN_MAX_GAP_OCTAVES + 1e-9 {
+                return false;
+            }
+            last_ok = *f;
+        }
+    }
+    (hi / last_ok).log2() <= SPAN_MAX_GAP_OCTAVES + 1e-9
+}
+
+// -- WP P5TRUST --
+/// A driver behind its candidate crossover this far down needs no trust of
+/// its own at a point, when the other driver is trusted there: its share of
+/// the sum is negligible (the same 20 dB as [`predict_sum`]'s rule), dB.
+pub const STOPBAND_WAIVER_DB: f64 = 20.0;
+
+/// Per grid point: `chain`'s crossover is at least [`STOPBAND_WAIVER_DB`]
+/// down there (the driver is in its stopband).
+fn stopband_waived(
+    freqs: &[f64],
+    trusted: &[bool],
+    chain: &ChannelChain,
+    model: &dyn SectionModel,
+    fs: f64,
+) -> Result<Vec<bool>, MeasureError> {
+    let xo = sections(&chain.crossover, model)?;
+    Ok(freqs
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            !trusted.get(i).copied().unwrap_or(false)
+                && cascade_at(&xo, *f, fs).is_some_and(|x| x.db() <= -STOPBAND_WAIVER_DB)
+        })
+        .collect())
 }
 
 /// Joined sets of drivers: a label per driver.
