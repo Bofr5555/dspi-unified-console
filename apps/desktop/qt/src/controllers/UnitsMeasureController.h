@@ -153,6 +153,15 @@ class UnitsMeasureController : public QObject {
     // How many Keeps the core refused (the smoke driver)
     Q_PROPERTY(int keepRefusals READ keepRefusals NOTIFY keepChanged)
 
+    // -- review AT-D2 -- the demo hub's simulated microphone (WP ATDEMO): offered
+    // only by `uconsole --demo hub --alink --with-measure-units` (the core's
+    // word for it; the hub answers only for its own demo units). On, the core
+    // hears the hub's room and no microphone is opened here.
+    Q_PROPERTY(bool simAvailable READ simAvailable NOTIFY simChanged)
+    Q_PROPERTY(bool useSim READ useSim WRITE setUseSim NOTIFY simChanged)
+    Q_PROPERTY(bool simOn READ simOn NOTIFY simChanged)
+    Q_PROPERTY(QString simLabel READ simLabel NOTIFY simChanged)
+
     // ---- Words ----
     Q_PROPERTY(QString error READ error NOTIFY wordsChanged)
     Q_PROPERTY(QString errorKey READ errorKey NOTIFY wordsChanged)
@@ -169,7 +178,8 @@ public:
     // result, the proposal and what follows): `op` is "unitCheck" (a, b: the
     // setup and the unit), "preflight", "start" (the setup and the checks),
     // "sumCheck", "verify" (the checks), "apply" (a: the proposal's id),
-    // "keep", "revert", "applied", "result", "proposal", "state", "stop".
+    // "keep", "revert", "applied", "result", "proposal", "state", "stop",
+    // "simInfo", "simSet" (a: "1" on, "0" off).
     // Returns the JSON reply.
     using Calls = std::function<QByteArray(FfiCore *core, const QString &op, const QByteArray &a, const QByteArray &b)>;
     static QByteArray coreCall(FfiCore *core, const QString &op, const QByteArray &a, const QByteArray &b);
@@ -238,6 +248,13 @@ public:
     int keepWaitS() const;
     int keepRefusals() const { return m_keepRefusals; }
 
+    // -- review AT-D2 --
+    bool simAvailable() const { return m_simAvailable; }
+    bool useSim() const { return m_simAvailable && m_useSim; }
+    void setUseSim(bool on);
+    bool simOn() const { return m_simOn; }
+    QString simLabel() const { return m_simLabel; }
+
     QString error() const { return m_error; }
     QString errorKey() const { return m_errorKey; }
     QString said() const { return m_said; }
@@ -300,6 +317,7 @@ signals:
     void guardChanged();
     void keepChanged();
     void wordsChanged();
+    void simChanged();   // -- review AT-D2 --
     // A step finished (the smoke driver): "enter", "unit", "check", "start",
     // "sumCheck", "verify", "apply", "keep", "revert", and whether it went through
     void stepDone(const QString &step, bool ok);
@@ -388,6 +406,15 @@ private:
     int m_keepRefusals = 0;
 
     QString m_error, m_errorKey, m_said, m_busy;
+
+    // -- review AT-D2 -- the demo hub's simulated microphone
+    // The microphone of a run: the hub's simulated room where it is offered
+    // and chosen (nothing opened here), else the Measure window's input
+    void openMicForRun(std::function<void(bool, int)> done);
+    bool m_simAvailable = false;
+    bool m_useSim = true;   // the default where it is offered (as the web's)
+    bool m_simOn = false;
+    QString m_simLabel;
 };
 
 #endif // UNITSMEASURECONTROLLER_H

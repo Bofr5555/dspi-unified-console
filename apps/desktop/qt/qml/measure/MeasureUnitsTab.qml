@@ -71,6 +71,14 @@ Item {
                     color: Theme.text
                     wrapMode: Text.WordWrap
                 }
+                // -- review AT-D2 -- the demo hub's simulated microphone is the run's
+                Text {
+                    objectName: "MeasureUnits.simOn"
+                    visible: tab.uc.simOn
+                    text: tab.uc.simLabel
+                    font: Theme.fontSmall
+                    color: Theme.textMuted
+                }
                 AppButton {
                     objectName: "MeasureUnits.stop"
                     text: qsTr("Stop")
@@ -140,6 +148,18 @@ Item {
                         color: Theme.warning
                         wrapMode: Text.WordWrap
                     }
+                }
+
+                // -- review AT-D2 -- the demo hub's simulated microphone (WP ATDEMO), where the hub has one
+                AppCheckBox {
+                    objectName: "MeasureUnits.sim"
+                    visible: tab.uc.simAvailable
+                    Layout.fillWidth: true
+                    text: qsTr("Use the simulated microphone (the demo hub's room hears its demo units; nothing plays anywhere)")
+                    checked: tab.uc.useSim
+                    enabled: !tab.busy
+                    Accessible.name: qsTr("Simulated microphone across units")
+                    onToggled: tab.uc.useSim = checked
                 }
 
                 Card {

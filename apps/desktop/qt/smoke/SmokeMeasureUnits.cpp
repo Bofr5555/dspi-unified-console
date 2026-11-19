@@ -387,6 +387,46 @@ static void unitsSection(SmokeDriver &d) {
                                                                                    && rec.count(QStringLiteral("unitCheck ") + B) == 1 && rec.count(QStringLiteral("preflight")) == 1);
     d.grab(w, QStringLiteral("atqt/units-checked.png"));
 
+    // -- review AT-D2 -- the demo hub's simulated microphone (WP ATDEMO) is offered here and is the
+    // default; with it a run opens no microphone on this machine, and a group with a unit the
+    // hub's room does not hear starts nothing
+    d.check("atqt: the demo hub's simulated microphone is offered and chosen by default",
+            uc->simAvailable() && uc->useSim() && uc->simLabel() == QLatin1String("Simulated microphone"));
+    {
+        QQuickItem *simBox = in(QStringLiteral("MeasureUnits.sim"));
+        steps.clear();
+        uc->setSweepMs(1000);
+        click(start);
+        const bool simStarted = step(QStringLiteral("start"), 30000) && results.value(QStringLiteral("start"));
+        std::printf("smoke: atqt: sim start: %s %s\n", qPrintable(uc->error()), qPrintable(uc->phaseText()));
+        QQuickItem *simNote = in(QStringLiteral("MeasureUnits.simOn"));
+        d.check("atqt: with the simulated microphone a run starts and no microphone is opened here; the run's bar says so",
+                simBox && simBox->isVisible() && simStarted && uc->running() && uc->simOn() && !mc->micOpen() && simNote && simNote->isVisible());
+        click(in(QStringLiteral("MeasureUnits.stop")));
+        d.check("atqt: Stop ends the simulated run too", d.waitFor(15000, [&] { return !uc->running() && !mc->running(); }));
+        // DEMO-TB-X is no unit of the hub's room: the hub refuses, nothing starts
+        uc->setUnitChosen(B, false);
+        steps.clear();
+        uc->setUnitChosen(X, true);
+        step(QStringLiteral("unit"), 20000);
+        d.waitFor(20000, [&] { return uc->unitOpen(X) && uc->blocker().isEmpty(); });
+        steps.clear();
+        click(start);
+        step(QStringLiteral("start"), 30000);
+        std::printf("smoke: atqt: sim refused: %s (%s)\n", qPrintable(uc->error()), qPrintable(uc->errorKey()));
+        d.check("atqt: the simulated microphone hears only the hub's own demo units: with another unit nothing starts, said in words",
+                !results.value(QStringLiteral("start")) && !uc->running() && !mc->micOpen()
+                    && uc->error().contains(QLatin1String("simulated microphone cannot be used")));
+        uc->setUnitChosen(X, false);
+        steps.clear();
+        uc->setUnitChosen(B, true);
+        step(QStringLiteral("unit"), 20000);
+        d.waitFor(20000, [&] { return uc->unitOpen(B) && uc->blocker().isEmpty(); });
+        // What follows uses the Measure window's input (the quiet source), as before
+        uc->setUseSim(false);
+        d.check("atqt: the simulated microphone can be turned off", !uc->useSim());
+    }
+
     // The run: the microphone, fresh checks before the preflight and again before the
     // start; Stop in view with the settle wait in words; Stop reaches the hub
     rec.clear();
@@ -715,7 +755,7 @@ static void unitsSection(SmokeDriver &d) {
     QQuickItem *outcome = in(QStringLiteral("MeasureUnits.outcome"));
     d.check("atqt: a Keep the hub's guard already reverted comes back Reverted, with the hub's words",
             uc->stage() == QLatin1String("reverted") && outcome && outcome->isVisible()
-                && outcome->property("text").toString().contains(QLatin1String("the hub's guard ran out")) && uc->guardText().isEmpty());
+                && outcome->property("text").toString().startsWith(QLatin1String("The hub's guard ran out (timeout)")) && uc->guardText().isEmpty());
     toEnd();
     d.grab(w, QStringLiteral("atqt/units-reverted-by-hub.png"));
 

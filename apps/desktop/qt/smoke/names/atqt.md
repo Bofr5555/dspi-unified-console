@@ -13,6 +13,7 @@ Sections (`smoke/SmokeMeasureUnits.cpp`): `atqt-units` (order 216) and
 | `MeasureUnits.unavailable` | "needs the DSPi hub" (`key`: `measure.system.needs_hub`) |
 | `MeasureUnits.runBar`, `.phase`, `.stop` | the run's bar: the phase in words (the settle wait too) and Stop |
 | `MeasureUnits.placement`, `.placementProblem` | where the microphone is, and why the choice stops every run (`key`: `measure_system_placement`) |
+| `MeasureUnits.sim`, `.simOn` | (review AT-D2) the demo hub's simulated microphone: the choice (only where the hub offers it) and its label in the run's bar |
 | `MeasureUnits.unit.<serial>`, `.choose.<serial>`, `.unitError.<serial>` | a unit of the hub, chosen or not, its connection's failure |
 | `MeasureUnits.output.<serial>.<n>` | output n of a chosen unit (its role beside it) |
 | `MeasureUnits.sweep`, `.passes`, `.anchor`, `.name` | the runs' settings |

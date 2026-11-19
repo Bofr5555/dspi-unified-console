@@ -108,6 +108,10 @@ QByteArray UnitsMeasureController::coreCall(FfiCore *c, const QString &op, const
         return MeasureController::reply([&](char *buf, uint32_t l) { return dspi_measure_system_result(c, buf, l); }, 1 << 22);
     if (op == QLatin1String("proposal"))
         return read([&](char *buf, uint32_t l) { return dspi_measure_system_proposal(c, buf, l); });
+    // -- review AT-D2 -- the demo hub's simulated microphone (WP ATDEMO)
+    if (op == QLatin1String("simInfo")) return read([&](char *buf, uint32_t l) { return dspi_measure_system_sim_info(c, buf, l); });
+    if (op == QLatin1String("simSet"))
+        return once([&](char *buf, uint32_t l) { return dspi_measure_system_sim_set(c, a == "1", buf, l); });
     return failure(QStringLiteral("unknown call %1").arg(op));
 }
 
@@ -276,8 +280,9 @@ void UnitsMeasureController::enter() {
         const QByteArray ap = calls(c, QStringLiteral("applied"), {}, {});
         const QByteArray res = calls(c, QStringLiteral("result"), {}, {});
         const QByteArray pro = calls(c, QStringLiteral("proposal"), {}, {});
+        const QByteArray sim = calls(c, QStringLiteral("simInfo"), {}, {});   // -- review AT-D2 --
         QJsonArray all;
-        for (const QByteArray &x : { pre, st, ap, res, pro }) all.append(object(x));
+        for (const QByteArray &x : { pre, st, ap, res, pro, sim }) all.append(object(x));
         return compact(all);
     },
            [this](const QByteArray &r) {
@@ -289,6 +294,12 @@ void UnitsMeasureController::enter() {
                        m_unavailable = tr("Measuring several units together needs the DSPi hub: it starts every unit's "
                                           "generator on one shared sample counter.");
                emit availabilityChanged();
+               // -- review AT-D2 -- the demo hub's simulated microphone, where the hub has one
+               const QJsonObject sim = all.at(5).toObject();
+               m_simAvailable = isOk(sim) && sim.value(QLatin1String("available")).toBool();
+               m_simOn = m_simAvailable && sim.value(QLatin1String("on")).toBool();
+               m_simLabel = str(sim, "label");
+               emit simChanged();
                refreshUnits();
                // What the core still holds from earlier on this console
                const QJsonObject st = all.at(1).toObject();
@@ -766,7 +777,7 @@ void UnitsMeasureController::start() {
     updateRunning();
     setBusy(tr("Starting"));
     // The microphone first, then the checks and the start
-    m->openMic([this, m, epoch](bool ok, int rateHz) {
+    openMicForRun([this, m, epoch](bool ok, int rateHz) {
         if (!ok || epoch != m_epoch) {
             m_starting = false;
             setBusy(QString());
@@ -774,7 +785,8 @@ void UnitsMeasureController::start() {
             updateRunning();
             if (ok) emit stepDone(QStringLiteral("start"), false);
             else {
-                failWords(m->error().isEmpty() ? tr("The microphone could not be opened.") : m->error());
+                // -- review AT-D2 -- the simulated microphone's own refusal stays
+                if (m_error.isEmpty()) failWords(m->error().isEmpty() ? tr("The microphone could not be opened.") : m->error());
                 emit stepDone(QStringLiteral("start"), false);
             }
             return;
@@ -891,6 +903,44 @@ void UnitsMeasureController::stop() {
                const QJsonObject st = object(r);
                if (isOk(st)) stateArrived(r);
                else endSession();
+           });
+}
+
+// -- review AT-D2 -- the demo hub's simulated microphone (WP ATDEMO)
+void UnitsMeasureController::setUseSim(bool on) {
+    if (m_useSim == on || running()) return;
+    m_useSim = on;
+    emit simChanged();
+}
+
+void UnitsMeasureController::openMicForRun(std::function<void(bool, int)> done) {
+    MeasureController *m = measure();
+    if (!m) {
+        done(false, 0);
+        return;
+    }
+    const bool sim = useSim();
+    Calls calls = m_calls;
+    // The core is told either way: on, its hub's room is the microphone (the hub
+    // answers only for its own demo units, or the session does not start); off,
+    // the Measure window's input is, as before.
+    onLoop([calls, sim](FfiCore *c) { return calls(c, QStringLiteral("simSet"), sim ? "1" : "0", {}); },
+           [this, m, sim, done](const QByteArray &r) {
+               const QJsonObject o = object(r);
+               m_simOn = isOk(o) && o.value(QLatin1String("on")).toBool();
+               emit simChanged();
+               if (!sim) {
+                   m->openMic(done);
+                   return;
+               }
+               if (!m_simOn) {
+                   // Never a real microphone in its place by itself: the person chose the simulated one
+                   failWords(isOk(o) ? tr("The simulated microphone could not be turned on.") : MeasureController::failureText(o));
+                   done(false, 0);
+                   return;
+               }
+               // Nothing is opened here: the core reads the hub's room on every tick
+               done(true, 48000);
            });
 }
 
@@ -1015,20 +1065,20 @@ void UnitsMeasureController::runs(const QString &step, const QString &op) {
     updateRunning();
     setBusy(op == QLatin1String("sumCheck") ? tr("Starting the summed check") : tr("Starting the verify"));
     const QByteArray setup = m_measured;
-    m->openMic([this, m, epoch, step, op, setup](bool ok, int) {
+    openMicForRun([this, m, epoch, step, op, setup](bool ok, int) {
         if (!ok || epoch != m_epoch) {
             m_starting = false;
             setBusy(QString());
             m->closeMic();
             updateRunning();
-            if (!ok) failWords(m->error().isEmpty() ? tr("The microphone could not be opened.") : m->error());
+            if (!ok && m_error.isEmpty()) failWords(m->error().isEmpty() ? tr("The microphone could not be opened.") : m->error());
             emit stepDone(step, false);
             return;
         }
         m_micOurs = true;
         Calls calls = m_calls;
         withChecks(step, setup, [calls, op](FfiCore *c, const QByteArray &checks) { return calls(c, op, checks, {}); },
-                   [this, m, epoch, step](const QJsonObject &st) {
+                   [this, m, epoch, step, op](const QJsonObject &st) {
                        m_starting = false;
                        setBusy(QString());
                        if (!isOk(st)) {
@@ -1036,6 +1086,15 @@ void UnitsMeasureController::runs(const QString &step, const QString &op) {
                            m->closeMic();
                            updateRunning();
                            fail(st, step);
+                           // -- review AT-D2 -- a verify refused because the hub's guard has ended: the
+                           // core then has the hub's outcome, shown instead of Verify and Keep
+                           if (op == QLatin1String("verify")) {
+                               Calls calls = m_calls;
+                               onLoop([calls](FfiCore *c) { return calls(c, QStringLiteral("applied"), {}, {}); },
+                                      [this](const QByteArray &r) {
+                                          if (isOk(object(r))) setApplied(object(r));
+                                      });
+                           }
                            return;
                        }
                        beginSession(st);
@@ -1325,7 +1384,10 @@ QString UnitsMeasureController::appliedText() const {
     if (s == QLatin1String("reverted")) {
         // The hub's words when its guard put it back (WP ATGUARD)
         const QString msg = str(m_applied, "message");
-        return msg.isEmpty() ? tr("Reverted: the installation and every unit are as they were filed.") : tr("Reverted: %1").arg(msg);
+        // -- review AT-D2 -- the core's words as they are (its own begin "reverted: ..."; the hub's say
+        // when it could NOT put everything back, which "Reverted:" before them would deny)
+        if (msg.isEmpty()) return tr("Reverted: the installation and every unit are as they were filed.");
+        return msg.at(0).toUpper() + msg.mid(1);
     }
     return {};
 }
@@ -1340,7 +1402,7 @@ QString UnitsMeasureController::guardText() const {
     if (m_guardS <= 0 || (s != QLatin1String("applied") && s != QLatin1String("verified"))) return {};
     const int left = guardRemainingS();
     if (left <= 0)
-        return tr("The hub's guard has run out: it has put the installation and every unit back by itself. Keep shows what it did.");
+        return tr("The hub's guard has run out: unless it was kept, the hub has put the installation back by itself. Keep shows what the hub did.");
     return tr("Keep or Revert within %n s: without Keep the hub puts everything back by itself (also if this console's "
               "connection is lost).", nullptr, left);
 }
