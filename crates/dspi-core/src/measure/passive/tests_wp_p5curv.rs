@@ -3,6 +3,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "link")] // -- INT-R1 -- used by the link-only test below; ios-check builds without it
 use std::time::Duration;
 
 use dspi_measure::doc::{
